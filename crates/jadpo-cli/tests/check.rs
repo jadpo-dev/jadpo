@@ -36,7 +36,7 @@ fn project(name: &str) -> PathBuf {
     write(
         &root,
         TALLY,
-        "action tally(count: Count) -> Count {\n    return count\n}\n",
+        "use planning/types { Count }\n\naction tally(count: Count) -> Count {\n    return count\n}\n",
     );
     root
 }
@@ -84,7 +84,7 @@ fn a_clean_project_is_one_line_from_any_subfolder() {
     assert_eq!(output.code, 0);
 }
 
-const MISTAKE: &str = "action tally(count: Count) -> Count {\n    return dobule(count)\n}\n\nfunction double(count: Count) -> Count {\n    return count\n}\n";
+const MISTAKE: &str = "use planning/types { Count }\n\naction tally(count: Count) -> Count {\n    return dobule(count)\n}\n\nfunction double(count: Count) -> Count {\n    return count\n}\n";
 
 #[test]
 fn problems_print_in_the_error_shape_then_the_summary() {
@@ -94,9 +94,9 @@ fn problems_print_in_the_error_shape_then_the_summary() {
     assert_eq!(
         output.stdout,
         "error: `dobule` isn't a function, action or query
- --> domains/planning/actions/tally.jadpo:2:12
+ --> domains/planning/actions/tally.jadpo:4:12
   |
-2 |     return dobule(count)
+4 |     return dobule(count)
   |            ^^^^^^ not declared
   reason: Nothing in this project called `dobule` can be called. Did you mean `double`?
   next: Use `double` instead of `dobule` (agent)
@@ -118,9 +118,9 @@ fn a_terminal_gets_the_rich_form() {
     assert_eq!(
         strip_ansi(&output.stdout),
         "✗ error  `dobule` isn't a function, action or query
-  domains/planning/actions/tally.jadpo:2:12
+  domains/planning/actions/tally.jadpo:4:12
     │
-  2 │     return dobule(count)
+  4 │     return dobule(count)
     │            ^^^^^^ not declared
     │
   reason    Nothing in this project called `dobule` can be called. Did you mean
@@ -154,7 +154,7 @@ fn json_carries_the_problems_with_lines_and_edits() {
     let problem = &document["diagnostics"][0];
     assert_eq!(problem["rule"], "semantic.unknown_callee");
     assert_eq!(problem["location"]["path"], TALLY);
-    assert_eq!(problem["location"]["line"], 2);
+    assert_eq!(problem["location"]["line"], 4);
     assert_eq!(problem["location"]["column"], 12);
     assert_eq!(problem["next"]["edits"][0]["replacement"], "double");
     let again = jadpo(&root, &["check", "--json"]);
@@ -303,7 +303,7 @@ fn a_long_else_if_chain_checks_and_formats() {
         &root,
         TALLY,
         &format!(
-            "action tally(count: Count) -> Count {{\n    if (count == 0) {{\n        return count\n    }}{chain}\n    return count\n}}\n"
+            "use planning/types {{ Count }}\n\naction tally(count: Count) -> Count {{\n    if (count == 0) {{\n        return count\n    }}{chain}\n    return count\n}}\n"
         ),
     );
     let output = jadpo(&root, &["check"]);

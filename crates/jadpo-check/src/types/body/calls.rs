@@ -205,9 +205,9 @@ impl Body<'_> {
         let written = format!("{head}.{}", rest.join("."));
         if starts_upper(&head) {
             if self.table.field(&head, &rest).is_some() {
-                let target = Ty::Field(head.clone(), rest.clone());
-                let ty = self.construct(&written, Some(target), call);
-                let reach = Reach::Construct(Ty::Field(head.clone(), rest.clone()));
+                let target = self.table.field_type(&head, &rest);
+                let ty = self.construct(&written, Some(target.clone()), call);
+                let reach = Reach::Construct(target);
                 return (ty, CallKind::Pure(format!("{written}(...)")), reach);
             }
             if self.callable_kind(&head) == Some(ItemKind::Entity) && rest.len() == 1 {

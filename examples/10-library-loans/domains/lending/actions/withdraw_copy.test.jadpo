@@ -1,3 +1,8 @@
+use lending/entities { Book, Loan, Member }
+use lending/types { LoanStatus, Wear }
+use lending/failures { BookHasLoans, BookNotFound }
+use lending/actions { add_copy, enrol, lend, return_book }
+
 test "a copy with loans on record stays in the catalogue" {
     var ada: Member = attempt enrol("ada@example.test", "Ada")
     var dune: Book = add_copy("9780441013593", "Dune", Wear.worn)

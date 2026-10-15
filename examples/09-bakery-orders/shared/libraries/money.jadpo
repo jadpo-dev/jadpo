@@ -1,3 +1,5 @@
+use shared/types { Pence, Percent }
+
 /// Sums of money.
 library money {
     /// `percent` per cent of `amount`, to the nearest penny; a half penny

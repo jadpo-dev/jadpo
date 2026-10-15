@@ -3,6 +3,10 @@
 // each part under it, and the exact command that reruns just that test
 // in the same order: `jadpo test <file>:<line> --seed <seed>`.
 
+use loyalty/types { Card }
+use loyalty/failures { CardNotFull }
+use loyalty/fixtures { new_card }
+
 test "a full card is emptied when redeemed" {
     var emptied: Card = attempt redeem_card(new_card(10))
     assert emptied == Card {

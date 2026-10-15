@@ -33,7 +33,7 @@ this project:
 cargo build --release -p jadpo-cli
 target/release/jadpo check examples/06-failures
 target/release/jadpo test examples/06-failures
-target/release/jadpo test examples/06-failures/domains/sales/actions/change_order.test.jadpo:21
+target/release/jadpo test examples/06-failures/domains/sales/actions/change_order.test.jadpo:23
 target/release/jadpo test examples/06-failures --watch
 target/release/jadpo fmt --check examples/06-failures
 ```

@@ -4,6 +4,10 @@
 // an arm, with no `_`. A failure arm can recover with a value, turn the
 // failure into another with `reject`, or pass it on with `propagate`.
 
+use sales/types { CakeCount, CustomerNumber, Stock }
+use sales/failures { CakeSoldOut, NotYourOrder, OrderLocked, OrderNotFound }
+use sales/actions { reserve_cakes }
+
 /// Where an order is in the kitchen.
 type OrderState = Enum {
     waiting

@@ -2,6 +2,9 @@
 // that failure. A call under `attempt` in a test passes its value on, and
 // if it fails instead, the test ends there and reports the failure.
 
+use sales/types { CakeCount }
+use sales/failures { CakeSoldOut }
+
 test "a shelf with enough cakes reserves them" {
     var reserved: CakeCount = attempt reserve_cakes(10, 4)
     assert reserved == 4

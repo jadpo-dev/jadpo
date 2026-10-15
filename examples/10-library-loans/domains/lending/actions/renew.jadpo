@@ -3,6 +3,10 @@
 // sets more fields when a given one was supplied: a new due date ends the
 // old voucher's promise.
 
+use lending/entities { Loan }
+use lending/types { LoanChanges }
+use lending/failures { BookAlreadyLent }
+
 /// Changes a loan as its member asks.
 action renew(loan: Loan, amendment: LoanChanges) fails BookAlreadyLent -> Loan {
     return attempt Loan.update(loan) {

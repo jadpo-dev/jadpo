@@ -17,11 +17,11 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/notes/actions/save_note.jadpo",
-        "action save_note(body: Body) -> Body {\n    return body\n}\n",
+        "use notes/types { Body }\n\naction save_note(body: Body) -> Body {\n    return body\n}\n",
     ),
     (
         "domains/notes/actions/broken.jadpo",
-        "action broken(body: Body) -> Body {\n    return missing(body)\n}\n",
+        "use notes/types { Body }\n\naction broken(body: Body) -> Body {\n    return missing(body)\n}\n",
     ),
 ];
 

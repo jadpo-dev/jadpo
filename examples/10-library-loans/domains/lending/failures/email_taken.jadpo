@@ -1,6 +1,8 @@
 // A unique rule a write breaks is a conflict: the write's `conflict:`
 // block names the failure, of kind `conflict`, the caller gets.
 
+use lending/entities { Member }
+
 /// Another member has that address.
 type EmailTaken = Failure {
     kind: FailureKind.conflict

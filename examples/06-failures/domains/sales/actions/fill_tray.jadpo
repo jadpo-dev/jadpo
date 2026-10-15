@@ -1,5 +1,8 @@
 // A named collection's rules break as a number's do.
 
+use sales/types { CakeCount }
+use sales/failures { NothingToBake, TrayFull }
+
 /// The orders baked together on one tray: at least one, and no more than
 /// the oven takes.
 type Tray = List<CakeCount> {

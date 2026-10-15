@@ -1,3 +1,5 @@
+use sales/types { CakeLine }
+
 test "a receipt line multiplies the price by the count" {
     var line: CakeLine = CakeLine {
         cake: "Victoria sponge"

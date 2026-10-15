@@ -1,3 +1,5 @@
+use sales/types { CakeLine }
+
 test "repricing builds a new line and leaves the old one alone" {
     var before: CakeLine = CakeLine {
         cake: "Carrot"

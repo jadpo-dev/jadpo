@@ -4,6 +4,9 @@
 // query with `in`: a read inside a `for` loop is refused, since it would
 // read once per item.
 
+use lending/entities { Book, Loan }
+use lending/types { LoanStatus, LoanView }
+
 /// The loans of these copies still out and due between two dates,
 /// soonest first; a loan someone vouched for counts only once it is
 /// overdue.

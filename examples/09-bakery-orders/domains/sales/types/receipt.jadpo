@@ -1,6 +1,8 @@
 // `public`, because the scenario in the root `tests/` folder reads the
 // receipt `price_basket` sends back.
 
+use shared/types { Pence }
+
 /// What the customer pays, and how it was worked out.
 public type Receipt = Output {
     subtotal: Pence

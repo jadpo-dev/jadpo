@@ -438,7 +438,7 @@ impl Lower<'_> {
             return ty.clone();
         }
         if let Some((host, path)) = self.facts.fields.get(&key) {
-            return Ty::Field(host.clone(), path.clone());
+            return self.resolver.table.field_type(host, path);
         }
         match expr {
             Expr::Literal(_) | Expr::PrefixExpr(_) => literal_type(&Const::from_expr(expr)),

@@ -1,3 +1,5 @@
+use sales/failures { KitchenBusy, OvenDown }
+
 test "a quiet kitchen with one oven lit takes orders" {
     // A `Unit` action that can fail is called with `attempt` on its own
     // line: its result isn't needed, only whether it failed.

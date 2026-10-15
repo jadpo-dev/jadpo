@@ -232,7 +232,7 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     for item in &item_tree(db, file).items {
         match (&location.ownership, folder, &item.kind) {
             (Ownership::Domain(domain), folder, kind)
-                if !matches!(folder, Folder::Types | Folder::Libraries)
+                if folder != Folder::Types
                     && (*kind == ItemKind::Function || is_plain_type(kind)) =>
             {
                 let mut others: Vec<&User> = named(&item.name)
@@ -269,6 +269,21 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                         ));
                     }
                     _ => {}
+                }
+            }
+            // A type beside a shared library that another file uses moves
+            // to a file of its own in `shared/types/`.
+            (Ownership::Shared, folder, kind) if folder != Folder::Types && is_plain_type(kind) => {
+                if let Some(user) = named(&item.name).iter().find(|user| user.path != *path) {
+                    out.push(promoted(
+                        db,
+                        project,
+                        file,
+                        &source,
+                        item,
+                        Move::OwnFile("shared/types"),
+                        &user.path,
+                    ));
                 }
             }
             (Ownership::Domain(_), Folder::Failures, ItemKind::Type(Base::Failure)) => {
@@ -423,7 +438,14 @@ fn promoted(
     let Some(decl) = tree::decl_at(source, item.index) else {
         return problem;
     };
-    crate::imports::move_edits(db, project, file, decl.syntax(), name, &target)
+    let edits = crate::imports::move_edits(db, project, file, decl.syntax(), name, &target);
+    if edits.is_empty() {
+        return problem;
+    }
+    let problem = problem.next(format!(
+        "Move `{name}` to `{target}`, or run `jadpo fmt --layout`, which moves it and updates the imports"
+    ));
+    edits
         .into_iter()
         .fold(problem, |problem, (span, text)| problem.edit(span, text))
 }

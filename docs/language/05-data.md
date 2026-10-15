@@ -471,6 +471,8 @@ type Priority = Enum {
 ```
 
 ```jadpo check project=migrations file=domains/planning/entities/todo.jadpo hidden migrate=add_priority
+use planning/types { Priority }
+
 entity Todo {
     id: Uuid
     priority: Priority
@@ -479,6 +481,9 @@ entity Todo {
 
 ```jadpo check project=migrations file=database/migrations/20261020T1401_add_priority/changes.jadpo migrate=finish
 // changes.jadpo
+use planning/entities { Todo }
+use planning/types { Priority }
+
 /// Adds a priority to every todo and retires the legacy flag.
 migration {
     Todo.priority: {
@@ -877,6 +882,8 @@ entity User {
 ```
 
 ```jadpo check project=e-across-stores file=domains/planning/entities/old_todo.jadpo expect=data.reference_across_stores
+use planning/entities { User }
+
 entity OldTodo {
     id: Uuid
     owner_id: User.id {
@@ -1598,6 +1605,8 @@ type Stars = Int {
 ```
 
 ```jadpo check project=e-decision-required file=domains/notes/entities/note.jadpo hidden migrate=add_stars
+use notes/types { Stars }
+
 entity Note {
     id: Uuid
     stars: Stars
@@ -1605,6 +1614,8 @@ entity Note {
 ```
 
 ```jadpo check project=e-decision-required file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.decision_required
+use notes/entities { Note }
+
 migration {
     Note.stars: {}
 }
@@ -1644,6 +1655,8 @@ type Stars = Int {
 ```
 
 ```jadpo check project=e-decision-invalid file=domains/notes/entities/note.jadpo hidden migrate=add_stars
+use notes/types { Stars }
+
 entity Note {
     id: Uuid
     stars: Stars
@@ -1651,6 +1664,8 @@ entity Note {
 ```
 
 ```jadpo check project=e-decision-invalid file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.decision_invalid
+use notes/entities { Note }
+
 migration {
     Note.stars: {
         backfill: 9
@@ -1692,6 +1707,8 @@ type Stars = Int {
 ```
 
 ```jadpo check project=e-decision-unknown file=domains/notes/entities/note.jadpo hidden migrate=add_stars
+use notes/types { Stars }
+
 entity Note {
     id: Uuid
     stars: Stars
@@ -1699,6 +1716,8 @@ entity Note {
 ```
 
 ```jadpo check project=e-decision-unknown file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.decision_unknown
+use notes/entities { Note }
+
 migration {
     Note.stars: {
         backfill: 3
@@ -1743,6 +1762,8 @@ type Stars = Int {
 ```
 
 ```jadpo check project=e-unfinished file=domains/notes/entities/note.jadpo hidden migrate=add_stars
+use notes/types { Stars }
+
 entity Note {
     id: Uuid
     stars: Stars
@@ -1750,6 +1771,8 @@ entity Note {
 ```
 
 ```jadpo check project=e-unfinished file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.unfinished
+use notes/entities { Note }
+
 migration {
     Note.stars: {
         backfill: 3

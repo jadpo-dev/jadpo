@@ -21,19 +21,19 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "shared/libraries/rounding.jadpo",
-        "/// Rounding rules for prices.\nlibrary rounding {\n    /// Rounds to the nearest penny, ties to the even penny.\n    function half_even(amount: Price) -> Price {\n        return nearest(amount)\n    }\n\n    function nearest(amount: Price) -> Price {\n        return amount\n    }\n}\n",
+        "use shared/types { Price }\n\n/// Rounding rules for prices.\nlibrary rounding {\n    /// Rounds to the nearest penny, ties to the even penny.\n    function half_even(amount: Price) -> Price {\n        return nearest(amount)\n    }\n\n    function nearest(amount: Price) -> Price {\n        return amount\n    }\n}\n",
     ),
     (
         "domains/inventory/entities/stock_level.jadpo",
-        "entity StockLevel {\n    id: Uuid\n    quantity: Quantity\n}\n",
+        "use shared/types { Quantity }\n\nentity StockLevel {\n    id: Uuid\n    quantity: Quantity\n}\n",
     ),
     (
         "domains/inventory/actions/reserve_stock.jadpo",
-        "public action reserve_stock(quantity: Quantity) -> Unit {\n    var level: StockLevel = StockLevel.create {\n        set: {\n            quantity: quantity\n        }\n    }\n    if (level.quantity == quantity) {\n        return\n    }\n}\n",
+        "use shared/types { Quantity }\nuse inventory/entities { StockLevel }\n\npublic action reserve_stock(quantity: Quantity) -> Unit {\n    var level: StockLevel = StockLevel.create {\n        set: {\n            quantity: quantity\n        }\n    }\n    if (level.quantity == quantity) {\n        return\n    }\n}\n",
     ),
     (
         "domains/inventory/actions/reserve_stock.test.jadpo",
-        "test \"reserving stock\" {\n    reserve_stock(Quantity(1))\n}\n",
+        "use shared/types { Quantity }\n\ntest \"reserving stock\" {\n    reserve_stock(Quantity(1))\n}\n",
     ),
     (
         "domains/ordering/failures/cart_empty.jadpo",
@@ -41,11 +41,11 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "domains/ordering/actions/checkout.jadpo",
-        "type CheckoutTotal = Output {\n    total: Price\n}\n\npublic action checkout(subtotal: Price, quantity: Quantity) fails CartEmpty -> CheckoutTotal {\n    if (subtotal == Price(0.00)) {\n        reject CartEmpty\n    }\n    inventory.reserve_stock(quantity)\n    var total: Price = rounding.half_even(subtotal)\n    emit OrderPlaced {\n        total: total\n    }\n    return CheckoutTotal {\n        total: total\n    }\n}\n",
+        "use shared/types { Price, Quantity }\nuse shared/libraries { rounding }\nuse ordering/failures { CartEmpty }\nuse ordering/events { OrderPlaced }\nuse inventory\n\ntype CheckoutTotal = Output {\n    total: Price\n}\n\npublic action checkout(subtotal: Price, quantity: Quantity) fails CartEmpty -> CheckoutTotal {\n    if (subtotal == Price(0.00)) {\n        reject CartEmpty\n    }\n    inventory.reserve_stock(quantity)\n    var total: Price = rounding.half_even(subtotal)\n    emit OrderPlaced {\n        total: total\n    }\n    return CheckoutTotal {\n        total: total\n    }\n}\n",
     ),
     (
         "domains/ordering/events/order_placed.jadpo",
-        "type OrderPlaced = Event {\n    total: Price\n}\n",
+        "use shared/types { Price }\n\ntype OrderPlaced = Event {\n    total: Price\n}\n",
     ),
     (
         "domains/ordering/routes/checkouts.jadpo",
@@ -53,7 +53,7 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "tests/checkout_reserves_stock.test.jadpo",
-        "test \"checkout reserves stock\" {\n    attempt ordering.checkout(Price(1.00), Quantity(1))\n}\n",
+        "use shared/types { Price, Quantity }\nuse ordering\n\ntest \"checkout reserves stock\" {\n    attempt ordering.checkout(Price(1.00), Quantity(1))\n}\n",
     ),
     ("database/seeds/local_demo.jadpo", "seed local_demo {}\n"),
 ];
@@ -69,7 +69,7 @@ fn the_same_files_in_any_order_give_the_same_result() {
     reversed.reverse();
     reversed.push((
         "domains/ordering/actions/refund.jadpo",
-        "action refund(total: Missing) -> Unit {}\n\naction refund(total: Price) -> Unit {}\n",
+        "use shared/types { Price }\n\naction refund(total: Missing) -> Unit {}\n\naction refund(total: Price) -> Unit {}\n",
     ));
     let mut forwards = SHOP.to_vec();
     forwards.push(reversed.last().copied().expect("the extra file"));
@@ -177,12 +177,12 @@ fn public_is_only_for_what_another_domain_uses() {
     let mut files = SHOP.to_vec();
     files.push((
         "domains/inventory/actions/count_stock.jadpo",
-        "public action count_stock(quantity: Quantity) -> Quantity {\n    return quantity\n}\n",
+        "use shared/types { Quantity }\n\npublic action count_stock(quantity: Quantity) -> Quantity {\n    return quantity\n}\n",
     ));
     // The domain's own tests don't count.
     files.push((
         "domains/inventory/actions/count_stock.test.jadpo",
-        "test \"counting stock\" {\n    assert count_stock(Quantity(2)) == 2\n}\n",
+        "use shared/types { Quantity }\n\ntest \"counting stock\" {\n    assert count_stock(Quantity(2)) == 2\n}\n",
     ));
     let project = support::project(&db, Layout::Project, &files);
     let found = jadpo_check::check(&db, project);
@@ -200,12 +200,12 @@ fn public_is_only_for_what_another_domain_uses() {
             primary.span.start,
             primary.span.end
         ),
-        ("domains/inventory/actions/count_stock.jadpo", 0, 6)
+        ("domains/inventory/actions/count_stock.jadpo", 31, 37)
     );
     let next = problem.next.as_ref().expect("a next step");
     assert_eq!(next.text, "Remove `public`");
     assert_eq!(next.edits.len(), 1);
-    assert_eq!((next.edits[0].span.start, next.edits[0].span.end), (0, 7));
+    assert_eq!((next.edits[0].span.start, next.edits[0].span.end), (31, 38));
     assert_eq!(next.edits[0].replacement, "");
 
     // Another domain's code, another domain's tests and a root scenario
@@ -219,16 +219,16 @@ fn public_is_only_for_what_another_domain_uses() {
             ),
             (
                 "domains/inventory/actions/pick_bin.jadpo",
-                "public action pick_bin(code: BinCode) -> Unit {}\n"
+                "use inventory/types { BinCode }\n\npublic action pick_bin(code: BinCode) -> Unit {}\n"
             ),
             (
                 "domains/ordering/actions/pick.jadpo",
-                "action pick() -> Unit {\n    inventory.pick_bin(\"A1\")\n}\n"
+                "use inventory\n\naction pick() -> Unit {\n    inventory.pick_bin(\"A1\")\n}\n"
             ),
             stocked(true),
             (
                 "domains/ordering/actions/checkout.test.jadpo",
-                "test \"checking out stocked items\" {\n    attempt checkout(Price(1.00), inventory.stocked())\n}\n"
+                "use shared/types { Price }\nuse inventory\n\ntest \"checking out stocked items\" {\n    attempt checkout(Price(1.00), inventory.stocked())\n}\n"
             ),
         ]),
         Vec::<String>::new()
@@ -243,7 +243,7 @@ fn public_is_only_for_what_another_domain_uses() {
             ),
             (
                 "domains/inventory/actions/pick_bin.jadpo",
-                "public action pick_bin(code: BinCode) -> Unit {}\n"
+                "use inventory/types { BinCode }\n\npublic action pick_bin(code: BinCode) -> Unit {}\n"
             ),
         ]),
         [
@@ -258,7 +258,7 @@ fn calls_name_their_owner() {
     assert_eq!(
         with(&[(
             "domains/ordering/actions/reorder.jadpo",
-            "action reorder(quantity: Quantity) -> Unit {\n    reserve_stock(quantity)\n}\n"
+            "use shared/types { Quantity }\n\naction reorder(quantity: Quantity) -> Unit {\n    reserve_stock(quantity)\n}\n"
         )]),
         [
             "domains/ordering/actions/reorder.jadpo semantic.unknown_callee: `reserve_stock` belongs to domain `inventory`"
@@ -267,7 +267,7 @@ fn calls_name_their_owner() {
     assert_eq!(
         with(&[(
             "domains/ordering/actions/reprice.jadpo",
-            "action reprice(price: Price) -> Price {\n    return half_even(price)\n}\n"
+            "use shared/types { Price }\n\naction reprice(price: Price) -> Price {\n    return half_even(price)\n}\n"
         )]),
         [
             "domains/ordering/actions/reprice.jadpo semantic.unknown_callee: `half_even` is in library `rounding`"
@@ -276,7 +276,7 @@ fn calls_name_their_owner() {
     assert_eq!(
         with(&[(
             "domains/ordering/actions/reprice.jadpo",
-            "action reprice(price: Price) -> Price {\n    return rounding.half_odd(price)\n}\n"
+            "use shared/types { Price }\nuse shared/libraries { rounding }\n\naction reprice(price: Price) -> Price {\n    return rounding.half_odd(price)\n}\n"
         )]),
         [
             "domains/ordering/actions/reprice.jadpo semantic.unknown_callee: Library `rounding` has no function `half_odd`"
@@ -285,7 +285,7 @@ fn calls_name_their_owner() {
     assert_eq!(
         with(&[(
             "domains/ordering/actions/reprice.jadpo",
-            "action reprice(price: Price) -> Price {\n    return temporal.nope(price)\n}\n"
+            "use shared/types { Price }\n\naction reprice(price: Price) -> Price {\n    return temporal.nope(price)\n}\n"
         )]),
         [
             "domains/ordering/actions/reprice.jadpo semantic.unknown_callee: `temporal` has no operation `nope`"
@@ -294,7 +294,7 @@ fn calls_name_their_owner() {
     assert_eq!(
         with(&[(
             "domains/ordering/actions/reorder.jadpo",
-            "action reorder(quantity: Quantity) -> Unit {\n    invntory.reserve_stock(quantity)\n}\n"
+            "use shared/types { Quantity }\n\naction reorder(quantity: Quantity) -> Unit {\n    invntory.reserve_stock(quantity)\n}\n"
         )]),
         [
             "domains/ordering/actions/reorder.jadpo semantic.unknown_name: `invntory` isn't a domain, library or namespace"
@@ -312,7 +312,7 @@ fn domains_see_only_what_others_make_public() {
             ),
             (
                 "domains/ordering/actions/pick.jadpo",
-                "action pick(code: BinCode) -> Unit {}\n"
+                "use inventory/types { BinCode }\n\naction pick(code: BinCode) -> Unit {}\n"
             ),
         ]),
         [
@@ -322,7 +322,7 @@ fn domains_see_only_what_others_make_public() {
     assert_eq!(
         with(&[(
             "domains/ordering/actions/peek.jadpo",
-            "action peek(quantity: Quantity) -> Quantity {\n    var level: StockLevel = StockLevel.get(quantity)\n    return level.quantity\n}\n"
+            "use shared/types { Quantity }\n\naction peek(quantity: Quantity) -> Quantity {\n    var level: StockLevel = StockLevel.get(quantity)\n    return level.quantity\n}\n"
         )]),
         [
             "domains/ordering/actions/peek.jadpo visibility.private_cross_domain: `StockLevel` is private to domain `inventory`",
@@ -340,15 +340,15 @@ fn a_scenario_sees_only_what_domains_make_public() {
         with(&[
             (
                 "domains/inventory/actions/count_stock.jadpo",
-                "action count_stock(quantity: Quantity) -> Quantity {\n    return quantity\n}\n"
+                "use shared/types { Quantity }\n\naction count_stock(quantity: Quantity) -> Quantity {\n    return quantity\n}\n"
             ),
             (
                 "domains/inventory/actions/count_stock.test.jadpo",
-                "test \"counting stock\" {\n    assert count_stock(Quantity(2)) == 2\n}\n"
+                "use shared/types { Quantity }\n\ntest \"counting stock\" {\n    assert count_stock(Quantity(2)) == 2\n}\n"
             ),
             (
                 "tests/stock_is_counted.test.jadpo",
-                "test \"stock is counted\" {\n    assert inventory.count_stock(Quantity(2)) == 2\n}\n"
+                "use shared/types { Quantity }\nuse inventory\n\ntest \"stock is counted\" {\n    assert inventory.count_stock(Quantity(2)) == 2\n}\n"
             ),
         ]),
         [
@@ -362,9 +362,9 @@ fn stocked(public: bool) -> (&'static str, &'static str) {
     (
         "domains/inventory/fixtures/stocked.jadpo",
         if public {
-            "public fixture stocked() -> Quantity {\n    return Quantity(5)\n}\n"
+            "use shared/types { Quantity }\n\npublic fixture stocked() -> Quantity {\n    return Quantity(5)\n}\n"
         } else {
-            "fixture stocked() -> Quantity {\n    return Quantity(5)\n}\n"
+            "use shared/types { Quantity }\n\nfixture stocked() -> Quantity {\n    return Quantity(5)\n}\n"
         },
     )
 }
@@ -379,19 +379,19 @@ fn a_public_fixture_is_offered_to_other_domains_tests_fixtures_and_seeds() {
             stocked(true),
             (
                 "domains/ordering/actions/checkout.test.jadpo",
-                "test \"checking out stocked items\" {\n    attempt checkout(Price(1.00), inventory.stocked())\n}\n"
+                "use shared/types { Price }\nuse inventory\n\ntest \"checking out stocked items\" {\n    attempt checkout(Price(1.00), inventory.stocked())\n}\n"
             ),
             (
                 "domains/ordering/fixtures/stocked_order.jadpo",
-                "fixture stocked_order() -> Quantity {\n    return inventory.stocked()\n}\n"
+                "use shared/types { Quantity }\nuse inventory\n\nfixture stocked_order() -> Quantity {\n    return inventory.stocked()\n}\n"
             ),
             (
                 "tests/stocked_items_check_out.test.jadpo",
-                "test \"stocked items check out\" {\n    attempt ordering.checkout(Price(1.00), inventory.stocked())\n}\n"
+                "use shared/types { Price }\nuse inventory\nuse ordering\n\ntest \"stocked items check out\" {\n    attempt ordering.checkout(Price(1.00), inventory.stocked())\n}\n"
             ),
             (
                 "database/seeds/stocked_demo.jadpo",
-                "seed stocked_demo {\n    inventory.reserve_stock(inventory.stocked())\n}\n"
+                "use inventory\n\nseed stocked_demo {\n    inventory.reserve_stock(inventory.stocked())\n}\n"
             ),
         ]),
         Vec::<String>::new()
@@ -403,19 +403,19 @@ fn a_private_fixture_stays_in_its_domain() {
     let calls = [
         (
             "domains/ordering/actions/checkout.test.jadpo",
-            "test \"checking out stocked items\" {\n    attempt checkout(Price(1.00), inventory.stocked())\n}\n",
+            "use shared/types { Price }\nuse inventory\n\ntest \"checking out stocked items\" {\n    attempt checkout(Price(1.00), inventory.stocked())\n}\n",
         ),
         (
             "tests/stocked_items_check_out.test.jadpo",
-            "test \"stocked items check out\" {\n    attempt ordering.checkout(Price(1.00), inventory.stocked())\n}\n",
+            "use shared/types { Price }\nuse inventory\nuse ordering\n\ntest \"stocked items check out\" {\n    attempt ordering.checkout(Price(1.00), inventory.stocked())\n}\n",
         ),
         (
             "database/seeds/stocked_demo.jadpo",
-            "seed stocked_demo {\n    inventory.reserve_stock(inventory.stocked())\n}\n",
+            "use inventory\n\nseed stocked_demo {\n    inventory.reserve_stock(inventory.stocked())\n}\n",
         ),
         (
             "domains/inventory/actions/reserve_stock.test.jadpo",
-            "test \"reserving stock\" {\n    reserve_stock(stocked())\n}\n",
+            "use inventory/fixtures { stocked }\n\ntest \"reserving stock\" {\n    reserve_stock(stocked())\n}\n",
         ),
     ];
     let mut files = vec![stocked(false)];
@@ -447,7 +447,7 @@ fn a_private_fixture_stays_in_its_domain() {
             stocked(true),
             (
                 "domains/ordering/actions/checkout.test.jadpo",
-                "test \"checking out stocked items\" {\n    attempt checkout(Price(1.00), stocked())\n}\n"
+                "use shared/types { Price }\n\ntest \"checking out stocked items\" {\n    attempt checkout(Price(1.00), stocked())\n}\n"
             ),
         ]),
         [
@@ -464,11 +464,11 @@ fn only_tests_fixtures_and_seeds_call_a_fixture() {
             stocked(true),
             (
                 "domains/inventory/actions/restock.jadpo",
-                "action restock() -> Quantity {\n    return stocked()\n}\n"
+                "use shared/types { Quantity }\nuse inventory/fixtures { stocked }\n\naction restock() -> Quantity {\n    return stocked()\n}\n"
             ),
             (
                 "domains/ordering/actions/reorder.jadpo",
-                "action reorder() -> Quantity {\n    return inventory.stocked()\n}\n"
+                "use shared/types { Quantity }\nuse inventory\n\naction reorder() -> Quantity {\n    return inventory.stocked()\n}\n"
             ),
         ]),
         [
@@ -483,7 +483,7 @@ fn shared_code_never_depends_on_a_domain() {
     assert_eq!(
         with(&[(
             "shared/libraries/stock_maths.jadpo",
-            "library stock_maths {\n    function spare(level: StockLevel) -> Quantity {\n        return level.quantity\n    }\n}\n"
+            "use shared/types { Quantity }\n\nlibrary stock_maths {\n    function spare(level: StockLevel) -> Quantity {\n        return level.quantity\n    }\n}\n"
         )]),
         [
             "shared/libraries/stock_maths.jadpo layout.unused_declaration: `spare` isn't used",
@@ -497,7 +497,7 @@ fn declarations_move_when_a_second_file_or_domain_uses_them() {
     assert_eq!(
         with(&[(
             "domains/ordering/actions/quote.jadpo",
-            "action quote(subtotal: Price) -> CheckoutTotal {\n    return CheckoutTotal {\n        total: subtotal\n    }\n}\n"
+            "use shared/types { Price }\nuse ordering/actions { CheckoutTotal }\n\naction quote(subtotal: Price) -> CheckoutTotal {\n    return CheckoutTotal {\n        total: subtotal\n    }\n}\n"
         )]),
         [
             "domains/ordering/actions/checkout.jadpo layout.promotion_required: `CheckoutTotal` is used beyond this file"
@@ -511,11 +511,11 @@ fn declarations_move_when_a_second_file_or_domain_uses_them() {
             ),
             (
                 "domains/inventory/actions/release_stock.jadpo",
-                "action release_stock() fails OutOfStock -> Unit {\n    reject OutOfStock\n}\n"
+                "use inventory/failures { OutOfStock }\n\naction release_stock() fails OutOfStock -> Unit {\n    reject OutOfStock\n}\n"
             ),
             (
                 "domains/ordering/actions/hold.jadpo",
-                "action hold() fails OutOfStock -> Unit {\n    reject OutOfStock\n}\n"
+                "use inventory/failures { OutOfStock }\n\naction hold() fails OutOfStock -> Unit {\n    reject OutOfStock\n}\n"
             ),
         ]),
         [
@@ -530,7 +530,7 @@ fn declarations_move_when_a_second_file_or_domain_uses_them() {
             ),
             (
                 "domains/ordering/actions/pick.jadpo",
-                "action pick(code: BinCode) -> Unit {}\n"
+                "use inventory/types { BinCode }\n\naction pick(code: BinCode) -> Unit {}\n"
             ),
         ]),
         [
@@ -543,18 +543,18 @@ fn declarations_move_when_a_second_file_or_domain_uses_them() {
 fn a_route_counts_as_a_user_only_when_nothing_else_uses_the_type() {
     let route = (
         "domains/ordering/routes/quotes.jadpo",
-        "routes Quotes {\n    prefix: /quotes\n\n    GET / {\n        output: CheckoutTotal\n    }\n}\n",
+        "use ordering/actions { CheckoutTotal }\n\nroutes Quotes {\n    prefix: /quotes\n\n    GET / {\n        output: CheckoutTotal\n    }\n}\n",
     );
     assert_eq!(with(&[route]), Vec::<String>::new());
     assert_eq!(
         with(&[
             (
                 "domains/ordering/routes/carts.jadpo",
-                "type CartView = Output {\n    total: Price\n}\n\nroutes Carts {\n    prefix: /carts\n\n    GET / {\n        output: CartView\n    }\n}\n"
+                "use shared/types { Price }\n\ntype CartView = Output {\n    total: Price\n}\n\nroutes Carts {\n    prefix: /carts\n\n    GET / {\n        output: CartView\n    }\n}\n"
             ),
             (
                 "domains/ordering/routes/quotes.jadpo",
-                "routes Quotes {\n    prefix: /quotes\n\n    GET / {\n        output: CartView\n    }\n}\n"
+                "use ordering/routes { CartView }\n\nroutes Quotes {\n    prefix: /quotes\n\n    GET / {\n        output: CartView\n    }\n}\n"
             ),
         ]),
         [
@@ -568,7 +568,7 @@ fn names_follow_their_kind_and_stay_unique() {
     assert_eq!(
         with(&[(
             "domains/ordering/actions/cancel.jadpo",
-            "action cancel(quantity: Quantity) -> Unit {\n    var inventory: Quantity = quantity\n    var temporal: Quantity = quantity\n}\n"
+            "use shared/types { Quantity }\n\naction cancel(quantity: Quantity) -> Unit {\n    var inventory: Quantity = quantity\n    var temporal: Quantity = quantity\n}\n"
         )]),
         [
             "domains/ordering/actions/cancel.jadpo semantic.duplicate_declaration: `inventory` is already a domain",

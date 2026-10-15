@@ -270,9 +270,26 @@ impl Names<'_> {
         })
     }
 
-    /// A name where it is used outside a body: a type, its member, or a
-    /// declaration named by name.
+    /// A name where it is used outside a body: a type, its member, a
+    /// declaration named by name, or a name on a `use` line (area 1,
+    /// Imports): what it brings in, or the domain `use menu` names.
     fn name_ref(&self, name_ref: &SyntaxNode, text: &str) -> Option<Found> {
+        match name_ref.parent().map(|parent| parent.kind()) {
+            Some(USE_NAMES) => {
+                return declaration_key(self.resolver.symbols, text).map(Found::Node);
+            }
+            Some(USE_PATH) => {
+                let first = name_ref.prev_sibling().is_none();
+                return (first && self.resolver.symbols.is_domain(text)).then(|| {
+                    Found::Node(self.resolver.symbols.registry().key(
+                        jadpo_graph::Kind::Domain,
+                        text,
+                        None,
+                    ))
+                });
+            }
+            _ => {}
+        }
         if let Some(path) = name_ref.parent().and_then(ast::Path::cast) {
             let names: Vec<String> = path
                 .name_refs()

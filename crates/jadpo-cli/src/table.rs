@@ -359,25 +359,40 @@ pub static COMMANDS: &[Command] = &[
         group: "Build and check",
         summary: "Format source files",
         description: "Rewrite Jadpo files in the one layout the formatter owns: indentation, spacing, \
-                      blank lines and one member per line. With --check, change nothing and fail if \
-                      any file isn't formatted. Without a path, the project is found by walking up \
-                      to app.jadpo.",
+                      blank lines and one member per line. In a project it first fixes each file's \
+                      `use` lines: adds a missing import, removes an unused one and sorts them. \
+                      With --layout it also moves each declaration another file uses into a file \
+                      of its own, as layout.promotion_required asks. With --check, change nothing \
+                      and fail if any file would change. Without a path, the project is found by \
+                      walking up to app.jadpo.",
         arguments: &[Argument {
             name: "path",
             description: "A file or folder instead of the whole project",
             required: false,
             values: Values::Path,
         }],
-        flags: &[Flag {
-            name: "--check",
-            value: None,
-            description: "Report unformatted files and change nothing",
-            values: &[],
-        }],
+        flags: &[
+            Flag {
+                name: "--check",
+                value: None,
+                description: "Report unformatted files and change nothing",
+                values: &[],
+            },
+            Flag {
+                name: "--layout",
+                value: None,
+                description: "Also make the moves promotion asks for",
+                values: &[],
+            },
+        ],
         examples: &[
             Example {
                 description: "Format the project you are in",
                 command: "jadpo fmt",
+            },
+            Example {
+                description: "Make the moves layout.promotion_required asks for, then format",
+                command: "jadpo fmt --layout",
             },
             Example {
                 description: "Check formatting without changing anything, as CI does",

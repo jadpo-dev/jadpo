@@ -305,6 +305,11 @@ pub fn import_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
             .collect();
     }
     let location = location(db, project, file);
+    // A migration's decisions name what changed (`Todo.rank: { ... }`) in
+    // a record `jadpo migrate new` writes; they import nothing.
+    if location.place == Place::Migration {
+        return Vec::new();
+    }
     let lookup = Lookup::new(db, project);
     let here = Here {
         path,
@@ -520,6 +525,20 @@ impl Here<'_> {
                 _ => None,
             })
             .collect();
+        // A name the file writes that names nothing is resolution's to
+        // report; while one does, it may be a misspelling of an import, so
+        // no import is called unused and `jadpo fmt` removes none.
+        let unresolved = written.iter().any(|w| match w.role {
+            Role::Type => {
+                !self.std.is_type(&w.name)
+                    && !self.table.is_package(&w.name)
+                    && self.table.declared(&w.name).is_empty()
+            }
+            Role::Call => {
+                self.table.declared(&w.name).is_empty() && self.std.namespace_of(&w.name).is_none()
+            }
+            Role::Owner => false,
+        });
         let mut out = Vec::new();
         let mut imported: BTreeMap<String, (u32, u32)> = BTreeMap::new();
         let mut domains: BTreeMap<String, usize> = BTreeMap::new();
@@ -543,7 +562,7 @@ impl Here<'_> {
                         out.push(self.duplicate_line(index, first));
                     } else if self.own_domain() == Some(domain.as_str()) {
                         out.push(self.own_domain_line(index, &domain));
-                    } else if !used_domains.contains(domain.as_str()) {
+                    } else if !used_domains.contains(domain.as_str()) && !unresolved {
                         out.push(self.unused_domain(index, &domain));
                     }
                     domains.entry(domain).or_insert(index);
@@ -571,6 +590,7 @@ impl Here<'_> {
                         imported.insert(name.clone(), span);
                         if let Some(problem) =
                             self.check_name(index, entry, &folder, name, span, &used_names)
+                            && !(unresolved && problem.rule.id == rule::IMPORT_UNUSED.id)
                         {
                             out.push(problem);
                         }
@@ -1181,15 +1201,25 @@ pub(crate) fn move_edits(
     let start = attached_start(first);
     let end = u32::from(last.text_range().end());
     let moved = &text[start as usize..end as usize];
-    // Up to whatever follows, or, for the last declaration, back to the
-    // end of the line before it.
-    let removal = match last
-        .next_token()
-        .into_iter()
-        .flat_map(|token| std::iter::successors(Some(token), SyntaxToken::next_token))
-        .find(|token| !token.kind().is_trivia())
-    {
-        Some(next) => (start, attached_start(&next)),
+    // Up to whatever follows, a comment of its own included, or, for the
+    // last declaration, back to the end of the line before it. A comment
+    // after its last token on the same line goes with it.
+    let mut after = None;
+    let mut same_line = true;
+    let mut current = last.next_token();
+    while let Some(token) = current {
+        match token.kind() {
+            WHITESPACE => same_line &= !token.text().contains('\n'),
+            COMMENT | DOC_COMMENT if same_line => {}
+            _ => {
+                after = Some(u32::from(token.text_range().start()));
+                break;
+            }
+        }
+        current = token.next_token();
+    }
+    let removal = match after {
+        Some(next) => (start, next),
         None => {
             let before = first
                 .prev_token()

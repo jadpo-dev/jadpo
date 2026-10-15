@@ -426,17 +426,17 @@ fn a_rule_on_a_field_reaches_the_tests_using_its_record() {
     write(
         &root,
         "domains/plots/types/corner.jadpo",
-        "type Corner = Object {\n    x: Size\n    y: Size\n}\n",
+        "use plots/types { Size }\n\ntype Corner = Object {\n    x: Size\n    y: Size\n}\n",
     );
     write(
         &root,
         "domains/plots/actions/shift.jadpo",
-        "action shift(corner: Corner) -> Corner {\n    return corner\n}\n",
+        "use plots/types { Corner }\n\naction shift(corner: Corner) -> Corner {\n    return corner\n}\n",
     );
     write(
         &root,
         "domains/plots/actions/shift.test.jadpo",
-        "test \"a corner stays put\" {\n    var start: Corner = Corner {\n        x: 1\n        y: 2\n    }\n    assert shift(start) == start\n}\n",
+        "use plots/types { Corner }\n\ntest \"a corner stays put\" {\n    var start: Corner = Corner {\n        x: 1\n        y: 2\n    }\n    assert shift(start) == start\n}\n",
     );
     let (mut watch, first) = Watch::start(options(&root)).expect("starts");
     assert_eq!(run_of(&first).results.len(), 1);

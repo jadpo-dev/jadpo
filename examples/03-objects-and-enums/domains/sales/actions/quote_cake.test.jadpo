@@ -2,6 +2,8 @@
 // that may be left out. `==` compares objects by their contents, field by
 // field, so a whole expected value can be written out and compared.
 
+use sales/types { CakeLine }
+
 test "a plain request quotes a medium cake with no candles" {
     var request: CakeRequest = CakeRequest {
         cake: "Lemon drizzle"

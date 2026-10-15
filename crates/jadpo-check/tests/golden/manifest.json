@@ -13,8 +13,8 @@
       "id": "action save_note",
       "kind": "action",
       "lines": [
-        1,
-        11
+        5,
+        15
       ],
       "name": "save_note",
       "raises": [
@@ -45,8 +45,8 @@
       "id": "action summarise_note",
       "kind": "action",
       "lines": [
-        1,
-        6
+        3,
+        8
       ],
       "name": "summarise_note",
       "signature": {
@@ -71,8 +71,8 @@
       "id": "branch save_note.0",
       "kind": "branch",
       "lines": [
-        2,
-        6
+        6,
+        10
       ],
       "name": "save_note.0",
       "parent": "action save_note"
@@ -83,8 +83,8 @@
       "id": "branch save_note.1",
       "kind": "branch",
       "lines": [
-        2,
-        6
+        6,
+        10
       ],
       "name": "save_note.1",
       "parent": "action save_note"
@@ -102,8 +102,8 @@
       "id": "field Note.body",
       "kind": "field",
       "lines": [
-        2,
-        2
+        4,
+        4
       ],
       "name": "Note.body",
       "order": 0,
@@ -120,8 +120,8 @@
       "id": "field Note.pinned",
       "kind": "field",
       "lines": [
-        3,
-        3
+        5,
+        5
       ],
       "name": "Note.pinned",
       "order": 1,
@@ -166,8 +166,8 @@
       "id": "field Summary.body",
       "kind": "field",
       "lines": [
-        2,
-        2
+        4,
+        4
       ],
       "name": "Summary.body",
       "order": 0,
@@ -184,8 +184,8 @@
       "id": "field Summary.shade",
       "kind": "field",
       "lines": [
-        3,
-        3
+        5,
+        5
       ],
       "name": "Summary.shade",
       "order": 1,
@@ -207,26 +207,26 @@
       "name": "app.jadpo"
     },
     {
-      "digest": "8a881a885612b739",
+      "digest": "bf628861820012e3",
       "domain": "notes",
       "file": "domains/notes/actions/save_note.jadpo",
       "id": "file domains/notes/actions/save_note.jadpo",
       "kind": "file",
       "lines": [
         1,
-        11
+        15
       ],
       "name": "domains/notes/actions/save_note.jadpo"
     },
     {
-      "digest": "d9fabc0d6e29722f",
+      "digest": "c12f96c4b18a5735",
       "domain": "notes",
       "file": "domains/notes/actions/summarise_note.jadpo",
       "id": "file domains/notes/actions/summarise_note.jadpo",
       "kind": "file",
       "lines": [
         1,
-        6
+        8
       ],
       "name": "domains/notes/actions/summarise_note.jadpo"
     },
@@ -243,14 +243,14 @@
       "name": "domains/notes/failures/note_refused.jadpo"
     },
     {
-      "digest": "87f677c81573b125",
+      "digest": "f7b9b3f32c71efef",
       "domain": "notes",
       "file": "domains/notes/libraries/wording.jadpo",
       "id": "file domains/notes/libraries/wording.jadpo",
       "kind": "file",
       "lines": [
         1,
-        6
+        8
       ],
       "name": "domains/notes/libraries/wording.jadpo"
     },
@@ -267,14 +267,14 @@
       "name": "domains/notes/types/body.jadpo"
     },
     {
-      "digest": "3bb086dee76303e3",
+      "digest": "d1c3c27781ae881a",
       "domain": "notes",
       "file": "domains/notes/types/note.jadpo",
       "id": "file domains/notes/types/note.jadpo",
       "kind": "file",
       "lines": [
         1,
-        4
+        6
       ],
       "name": "domains/notes/types/note.jadpo"
     },
@@ -291,14 +291,14 @@
       "name": "domains/notes/types/shade.jadpo"
     },
     {
-      "digest": "4d616b7c4af1de7a",
+      "digest": "1bc0cda9062fb259",
       "domain": "notes",
       "file": "domains/notes/types/summary.jadpo",
       "id": "file domains/notes/types/summary.jadpo",
       "kind": "file",
       "lines": [
         1,
-        4
+        6
       ],
       "name": "domains/notes/types/summary.jadpo"
     },
@@ -310,8 +310,8 @@
       "id": "function wording.keep",
       "kind": "function",
       "lines": [
-        3,
-        5
+        5,
+        7
       ],
       "name": "wording.keep",
       "parent": "library wording",
@@ -336,8 +336,8 @@
       "id": "library wording",
       "kind": "library",
       "lines": [
-        1,
-        6
+        3,
+        8
       ],
       "name": "wording"
     },
@@ -347,8 +347,8 @@
       "id": "site save_note.10",
       "kind": "site",
       "lines": [
-        8,
-        8
+        12,
+        12
       ],
       "name": "save_note.10",
       "parent": "action save_note"
@@ -359,8 +359,8 @@
       "id": "site save_note.3",
       "kind": "site",
       "lines": [
-        2,
-        2
+        6,
+        6
       ],
       "name": "save_note.3",
       "parent": "action save_note"
@@ -371,8 +371,8 @@
       "id": "site save_note.6",
       "kind": "site",
       "lines": [
-        3,
-        5
+        7,
+        9
       ],
       "name": "save_note.6",
       "parent": "action save_note"
@@ -403,8 +403,8 @@
       "id": "type Note",
       "kind": "type",
       "lines": [
-        1,
-        4
+        3,
+        6
       ],
       "name": "Note"
     },
@@ -449,8 +449,8 @@
       "id": "type Summary",
       "kind": "type",
       "lines": [
-        1,
-        4
+        3,
+        6
       ],
       "name": "Summary",
       "uses": [

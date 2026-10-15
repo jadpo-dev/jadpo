@@ -1,0 +1,5 @@
+/// How many slices of a cake.
+type SliceCount = Int {
+    min: 1
+    max: 16
+}

@@ -3,6 +3,8 @@
 // request changed the loan in between, the runtime throws this attempt
 // away and runs the whole action again, with fresh reads.
 
+use lending/entities { Loan, LoanNotFound, Member }
+
 /// Records that a member vouches for a loan.
 action vouch(loan_id: Loan.id, voucher: Member) fails LoanNotFound -> Loan {
     var loan: Loan = attempt Loan.get(loan_id)

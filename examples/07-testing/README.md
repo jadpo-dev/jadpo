@@ -29,7 +29,7 @@ this project:
 cargo build --release -p jadpo-cli
 target/release/jadpo check examples/07-testing
 target/release/jadpo test examples/07-testing
-target/release/jadpo test examples/07-testing/domains/loyalty/actions/stamp_card.test.jadpo:18
+target/release/jadpo test examples/07-testing/domains/loyalty/actions/stamp_card.test.jadpo:22
 target/release/jadpo test examples/07-testing --watch
 target/release/jadpo fmt --check examples/07-testing
 ```

@@ -6,15 +6,16 @@ what it offers, and what they share.
 
 A project grows by adding domains, never by nesting folders. Each domain
 owns everything in it, and its declarations are private unless marked
-`public`. Code two domains share moves to `shared/`. There are no
-imports: the dot in a call names the owner of what is called.
+`public`. Code two domains share moves to `shared/`. Each file names
+where its names come from on `use` lines, and the dot in a call names
+the owner of what is called.
 
 ## What it teaches
 
 1. **`shared/`.** Types, a failure and a library two domains use. See `shared/types/`, `shared/failures/too_heavy.jadpo` (raised by the library and by `domains/pantry/actions/restock.jadpo`) and [area 1, Sharing and promotion](../../docs/language/01-project-layout-and-modules.md#sharing-and-promotion).
 2. **Libraries.** A shared library and a domain's own, called through their names. See `shared/libraries/portions.jadpo`, `domains/pantry/libraries/sacks.jadpo` and [area 3, Calling](../../docs/language/03-logic.md#calling).
 3. **`public`.** A public action and a public failure, the only things another domain can reach. See `domains/pantry/actions/take_flour.jadpo`, `domains/pantry/failures/flour_short.jadpo` and [area 1, Ownership and calls replace modules](../../docs/language/01-project-layout-and-modules.md#ownership-and-calls-replace-modules).
-4. **Calling across domains.** The dot names the owner: `pantry.take_flour(...)`. See `domains/sales/actions/bake_loaves.jadpo`.
+4. **Calling across domains.** `use pantry` brings in the domain, and the dot names the owner at every call: `pantry.take_flour(...)`. Its public failure comes in by folder like any other name, `use pantry/failures { FlourShort }`, and so do `shared/`'s names. See `domains/sales/actions/bake_loaves.jadpo` and [area 1, Imports](../../docs/language/01-project-layout-and-modules.md#imports).
 5. **A scenario.** A test in the root `tests/` folder sees only what domains make public. See `tests/baking_from_the_pantry.test.jadpo` and [area 13, Where tests live](../../docs/language/13-testing.md#where-tests-live).
 6. **A public fixture.** Fixtures (example 07) shared across domains: `sales`'s tests and the scenario call `pantry.a_days_flour()`, which application code never can. See `domains/pantry/fixtures/a_days_flour.jadpo` and [area 13, Shared test data: fixtures](../../docs/language/13-testing.md#shared-test-data-fixtures).
 
@@ -27,7 +28,7 @@ this project:
 cargo build --release -p jadpo-cli
 target/release/jadpo check examples/08-domains-and-sharing
 target/release/jadpo test examples/08-domains-and-sharing
-target/release/jadpo test examples/08-domains-and-sharing/tests/baking_from_the_pantry.test.jadpo:6
+target/release/jadpo test examples/08-domains-and-sharing/tests/baking_from_the_pantry.test.jadpo:11
 target/release/jadpo test examples/08-domains-and-sharing --watch
 target/release/jadpo fmt --check examples/08-domains-and-sharing
 ```
@@ -52,4 +53,6 @@ target/release/jadpo fmt --check examples/08-domains-and-sharing
   <!-- try {"file": "domains/pantry/fixtures/a_days_flour.jadpo", "replace": "public fixture a_days_flour", "with": "fixture a_days_flour", "check": ["visibility.private_cross_domain"]} -->
 - In `tests/baking_from_the_pantry.test.jadpo`, add `assert sacks.grams_in(1) == 16000`. `jadpo check` reports `visibility.private_cross_domain`: a scenario can't use `pantry`'s private library, though the pantry's own tests can.
   <!-- try {"file": "tests/baking_from_the_pantry.test.jadpo", "replace": "    assert pantry.take_flour(16001, 1) fails FlourShort\n", "with": "    assert pantry.take_flour(16001, 1) fails FlourShort\n    assert sacks.grams_in(1) == 16000\n", "check": ["visibility.private_cross_domain"]} -->
+- In `bake_loaves.jadpo`, delete the line `use pantry`. `jadpo check` reports `import.missing` at `pantry.take_flour`: a call into another domain needs the domain imported.
+  <!-- try {"file": "domains/sales/actions/bake_loaves.jadpo", "replace": "use pantry\n", "with": "", "check": ["import.missing"]} -->
 - Then read [09-bakery-orders](../09-bakery-orders/README.md).

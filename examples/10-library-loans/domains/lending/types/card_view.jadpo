@@ -1,3 +1,5 @@
+use lending/entities { Card }
+
 /// A member's card, as their page shows it.
 type CardView = Output {
     pick: [Card.number]

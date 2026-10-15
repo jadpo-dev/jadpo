@@ -442,7 +442,7 @@ fn only_a_domains_interface_can_be_public() {
             ),
             (
                 "domains/planning/actions/keep.jadpo",
-                "action keep(n: Count) -> Count {\n    return n\n}\n",
+                "use planning/types { Count }\n\naction keep(n: Count) -> Count {\n    return n\n}\n",
             ),
             (path, text),
         ];
@@ -460,7 +460,7 @@ fn only_a_domains_interface_can_be_public() {
     assert_eq!(
         in_project(
             "domains/planning/actions/tick.jadpo",
-            "action tick(n: Count) -> Count {\n    return helper(n)\n}\n\npublic function helper(n: Count) -> Count {\n    return n\n}\n"
+            "use planning/types { Count }\n\naction tick(n: Count) -> Count {\n    return helper(n)\n}\n\npublic function helper(n: Count) -> Count {\n    return n\n}\n"
         ),
         ["visibility.public_not_allowed"]
     );
@@ -472,7 +472,7 @@ fn only_a_domains_interface_can_be_public() {
             "public action tick() -> Unit {}\n",
             &[(
                 "tests/ticking.test.jadpo",
-                "test \"planning ticks\" {\n    planning.tick()\n}\n"
+                "use planning\n\ntest \"planning ticks\" {\n    planning.tick()\n}\n"
             )]
         ),
         CLEAN
@@ -482,10 +482,10 @@ fn only_a_domains_interface_can_be_public() {
     assert_eq!(
         with_users(
             "domains/planning/fixtures/counted.jadpo",
-            "public fixture counted() -> Count {\n    return keep(3)\n}\n",
+            "use planning/types { Count }\nuse planning/actions { keep }\n\npublic fixture counted() -> Count {\n    return keep(3)\n}\n",
             &[(
                 "tests/counting.test.jadpo",
-                "test \"planning counts\" {\n    assert planning.counted() == 3\n}\n"
+                "use planning\n\ntest \"planning counts\" {\n    assert planning.counted() == 3\n}\n"
             )]
         ),
         CLEAN

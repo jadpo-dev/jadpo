@@ -1,3 +1,7 @@
+use lending/entities { Card, Member }
+use lending/failures { CardAlreadyIssued }
+use lending/actions { enrol, issue_card }
+
 test "a revoked card makes way for a new one" {
     var ada: Member = attempt enrol("ada@example.test", "Ada")
     var card: Card = attempt issue_card(ada.id, "00012345")

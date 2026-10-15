@@ -2,6 +2,10 @@
 // so every rule applies as it does at the desk. Each test that calls it
 // gets them in its own copy of the database.
 
+use lending/entities { Book, Card, Loan, Member }
+use lending/types { Borrower, Wear }
+use lending/actions { add_copy, enrol, issue_card, lend }
+
 /// Ada, with her card, borrowing two of three copies.
 fixture ada_borrows_two() -> Borrower {
     var ada: Member = attempt enrol("ada@example.test", "Ada")

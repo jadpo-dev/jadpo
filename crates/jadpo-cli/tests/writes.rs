@@ -63,15 +63,15 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/shop/entities/shelf.jadpo",
-        "/// A shelf.\nentity Shelf {\n    id: Uuid\n    name: Name {\n        unique: true\n    }\n    visits: Count\n}\n",
+        "use shop/types { Count, Name }\n\n/// A shelf.\nentity Shelf {\n    id: Uuid\n    name: Name {\n        unique: true\n    }\n    visits: Count\n}\n",
     ),
     (
         "domains/shop/entities/item.jadpo",
-        "/// An item on a shelf.\nentity Item {\n    id: Uuid\n    shelf_id: Shelf.id {\n        on_delete: OnDelete.restricted\n    }\n    label: Name\n    note: Name?\n    changed_at: Instant {\n        generated: Generated.on_change\n    }\n}\n",
+        "use shop/entities { Shelf }\nuse shop/types { Name }\n\n/// An item on a shelf.\nentity Item {\n    id: Uuid\n    shelf_id: Shelf.id {\n        on_delete: OnDelete.restricted\n    }\n    label: Name\n    note: Name?\n    changed_at: Instant {\n        generated: Generated.on_change\n    }\n}\n",
     ),
     (
         "domains/shop/types/item_changes.jadpo",
-        "/// Changes to an item.\ntype ItemChanges = Input {\n    pick: [Item.label, Item.note]\n    optional: all\n}\n",
+        "use shop/entities { Item }\n\n/// Changes to an item.\ntype ItemChanges = Input {\n    pick: [Item.label, Item.note]\n    optional: all\n}\n",
     ),
     (
         "domains/shop/failures/shelf_taken.jadpo",
@@ -83,39 +83,39 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/shop/actions/add_shelf.jadpo",
-        "/// Adds a shelf.\naction add_shelf(name: Shelf.name) fails ShelfTaken -> Shelf {\n    return attempt Shelf.create {\n        set: {\n            name: name\n            visits: 0\n        }\n        conflict: {\n            Shelf.name: ShelfTaken\n        }\n    }\n}\n",
+        "use shop/entities { Shelf }\nuse shop/failures { ShelfTaken }\n\n/// Adds a shelf.\naction add_shelf(name: Shelf.name) fails ShelfTaken -> Shelf {\n    return attempt Shelf.create {\n        set: {\n            name: name\n            visits: 0\n        }\n        conflict: {\n            Shelf.name: ShelfTaken\n        }\n    }\n}\n",
     ),
     (
         "domains/shop/actions/add_item.jadpo",
-        "/// Adds an item to a shelf, by its id.\naction add_item(shelf_id: Shelf.id, label: Item.label) fails ShelfNotFound -> Item {\n    return attempt Item.create {\n        set: {\n            shelf_id: shelf_id\n            label: label\n            note: none\n        }\n    }\n}\n",
+        "use shop/entities { Item, Shelf, ShelfNotFound }\n\n/// Adds an item to a shelf, by its id.\naction add_item(shelf_id: Shelf.id, label: Item.label) fails ShelfNotFound -> Item {\n    return attempt Item.create {\n        set: {\n            shelf_id: shelf_id\n            label: label\n            note: none\n        }\n    }\n}\n",
     ),
     (
         "domains/shop/actions/rename_shelf.jadpo",
-        "/// Renames a shelf.\naction rename_shelf(shelf_id: Shelf.id, name: Shelf.name) fails ShelfNotFound, ShelfTaken -> Shelf {\n    var shelf: Shelf = attempt Shelf.get(shelf_id)\n    return attempt Shelf.update(shelf) {\n        set: {\n            name: name\n        }\n        conflict: {\n            Shelf.name: ShelfTaken\n        }\n    }\n}\n",
+        "use shop/entities { Shelf, ShelfNotFound }\nuse shop/failures { ShelfTaken }\n\n/// Renames a shelf.\naction rename_shelf(shelf_id: Shelf.id, name: Shelf.name) fails ShelfNotFound, ShelfTaken -> Shelf {\n    var shelf: Shelf = attempt Shelf.get(shelf_id)\n    return attempt Shelf.update(shelf) {\n        set: {\n            name: name\n        }\n        conflict: {\n            Shelf.name: ShelfTaken\n        }\n    }\n}\n",
     ),
     (
         "domains/shop/actions/visit.jadpo",
-        "/// Counts a visit.\naction visit(shelf_id: Shelf.id) fails ShelfNotFound -> Shelf {\n    return attempt Shelf.update(shelf_id) {\n        set: {\n            visits: Count(Shelf.visits + 1)\n        }\n    }\n}\n",
+        "use shop/entities { Shelf, ShelfNotFound }\nuse shop/types { Count }\n\n/// Counts a visit.\naction visit(shelf_id: Shelf.id) fails ShelfNotFound -> Shelf {\n    return attempt Shelf.update(shelf_id) {\n        set: {\n            visits: Count(Shelf.visits + 1)\n        }\n    }\n}\n",
     ),
     (
         "domains/shop/actions/edit_item.jadpo",
-        "/// Edits an item.\naction edit_item(item: Item, changes: ItemChanges) -> Item {\n    return Item.update(item) {\n        patch: changes\n    }\n}\n",
+        "use shop/entities { Item }\nuse shop/types { ItemChanges }\n\n/// Edits an item.\naction edit_item(item: Item, changes: ItemChanges) -> Item {\n    return Item.update(item) {\n        patch: changes\n    }\n}\n",
     ),
     (
         "domains/shop/actions/remove_shelf.jadpo",
-        "/// Removes a shelf.\naction remove_shelf(shelf_id: Shelf.id) fails ShelfNotFound, ShelfInUse -> Unit {\n    attempt Shelf.delete(shelf_id) {\n        conflict: {\n            Item.shelf_id: ShelfInUse\n        }\n    }\n}\n",
+        "use shop/entities { Item, Shelf, ShelfNotFound }\nuse shop/failures { ShelfInUse }\n\n/// Removes a shelf.\naction remove_shelf(shelf_id: Shelf.id) fails ShelfNotFound, ShelfInUse -> Unit {\n    attempt Shelf.delete(shelf_id) {\n        conflict: {\n            Item.shelf_id: ShelfInUse\n        }\n    }\n}\n",
     ),
     (
         "domains/shop/actions/shelf_named.jadpo",
-        "/// A new shelf with a name, or one with the other name when the first is taken.\naction shelf_named(name: Shelf.name, other: Shelf.name) fails ShelfTaken -> Shelf {\n    var taken: Bool = match add_shelf(name) {\n        success -> false\n        ShelfTaken -> true\n    }\n    if (taken) {\n        var second: Shelf = attempt add_shelf(other)\n        return second\n    }\n    var first: Shelf = attempt Shelf.create {\n        set: {\n            name: other\n            visits: 0\n        }\n        conflict: {\n            Shelf.name: ShelfTaken\n        }\n    }\n    return first\n}\n",
+        "use shop/entities { Shelf }\nuse shop/failures { ShelfTaken }\nuse shop/actions { add_shelf }\n\n/// A new shelf with a name, or one with the other name when the first is taken.\naction shelf_named(name: Shelf.name, other: Shelf.name) fails ShelfTaken -> Shelf {\n    var taken: Bool = match add_shelf(name) {\n        success -> false\n        ShelfTaken -> true\n    }\n    if (taken) {\n        var second: Shelf = attempt add_shelf(other)\n        return second\n    }\n    var first: Shelf = attempt Shelf.create {\n        set: {\n            name: other\n            visits: 0\n        }\n        conflict: {\n            Shelf.name: ShelfTaken\n        }\n    }\n    return first\n}\n",
     ),
     (
         "domains/shop/actions/tally.jadpo",
-        "/// Counts a visit to a shelf it reads first.\naction tally(shelf_id: Shelf.id) fails ShelfNotFound -> Shelf {\n    var shelf: Shelf = attempt Shelf.get(shelf_id)\n    return attempt Shelf.update(shelf.id) {\n        set: {\n            visits: Count(Shelf.visits + 1)\n        }\n    }\n}\n",
+        "use shop/entities { Shelf, ShelfNotFound }\nuse shop/types { Count }\n\n/// Counts a visit to a shelf it reads first.\naction tally(shelf_id: Shelf.id) fails ShelfNotFound -> Shelf {\n    var shelf: Shelf = attempt Shelf.get(shelf_id)\n    return attempt Shelf.update(shelf.id) {\n        set: {\n            visits: Count(Shelf.visits + 1)\n        }\n    }\n}\n",
     ),
     (
         "domains/shop/actions/restock.jadpo",
-        "/// Adds an item named after its shelf, and counts the visit.\naction restock(shelf_id: Shelf.id) fails ShelfNotFound -> Item {\n    var shelf: Shelf = attempt Shelf.get(shelf_id)\n    var item: Item = Item.create {\n        set: {\n            shelf_id: shelf.id\n            label: shelf.name\n            note: none\n        }\n    }\n    var counted: Shelf = Shelf.update(shelf) {\n        set: {\n            visits: Count(shelf.visits + 1)\n        }\n    }\n    return Item.update(item) {\n        set: {\n            note: counted.name\n        }\n    }\n}\n",
+        "use shop/entities { Item, Shelf, ShelfNotFound }\nuse shop/types { Count }\n\n/// Adds an item named after its shelf, and counts the visit.\naction restock(shelf_id: Shelf.id) fails ShelfNotFound -> Item {\n    var shelf: Shelf = attempt Shelf.get(shelf_id)\n    var item: Item = Item.create {\n        set: {\n            shelf_id: shelf.id\n            label: shelf.name\n            note: none\n        }\n    }\n    var counted: Shelf = Shelf.update(shelf) {\n        set: {\n            visits: Count(shelf.visits + 1)\n        }\n    }\n    return Item.update(item) {\n        set: {\n            note: counted.name\n        }\n    }\n}\n",
     ),
 ];
 

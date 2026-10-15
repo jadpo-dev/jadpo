@@ -385,7 +385,14 @@ is checked to be idempotent and to parse to the same AST after formatting.
 Since chunk 1.9 the formatter also reads its own output back: when it
 doesn't parse to the same tokens, nodes and comments, or doesn't format to
 itself, it writes nothing and reports `format.unsafe`, a formatter mistake;
-a fuzz test feeds it the parser fuzz test's edits of every example.
+a fuzz test feeds it the parser fuzz test's edits of every example. Since
+chunk 3.5 it moves `use` lines to the top of the file and sorts them and
+their names (`jadpo_fmt::imports`), reading the path alone; the canonical
+form sorts them the same way, so the self-check and the digests take their
+order for layout. Adding or removing an import needs the project's names,
+which the formatter doesn't have, so `jadpo fmt` (in `jadpo-cli`) first
+applies the edits of the file's import problems against a loaded project,
+round by round until none is left, then formats.
 
 **Item trees.** Each file is summarised into its declarations and
 signatures without bodies (rust-analyzer's `ItemTree`), so editing a body
@@ -405,6 +412,27 @@ chunk 2.7 a call names one owner (a call through three names is reported,
 except a connection's, which is not built yet), a collection type is never
 a constructor, and a call that reaches nothing is always reported, so no
 call checks clean and then faults as something that can't be called.
+
+**Imports** (chunk 3.5, area 1). `imports::import_problems`, a query per
+file, compares the names a file writes with its `use` lines. What a name
+can be is read from where it stands, as written: an upper-case name first
+in a path or chain is a type, entity, failure or event; a bare call's
+callee is a function, action, query or fixture of the file's own domain;
+the name before a dot is a domain, library or connection. So it reads only
+its own tree and, through the per-name lookups, the entries of the names it
+writes and imports: no other file's text, and no typed body. A name is
+brought in from the folder its symbol's file is in (`<domain>/<folder>`,
+`shared/<folder>`, a root file), a domain by `use <domain>`. What
+resolution reports (an unknown name, a private one, domain code in
+`shared/`, a bare call into another domain) is never asked for as an
+import, so one mistake gives one error. Each problem carries its edit;
+`import_edits` gathers the ones that don't overlap for `jadpo fmt`.
+`layout.promotion_required` on a type carries the edits that move it
+(`imports::move_edits`): out of its file with its attached comments, into
+a new file below the `use` lines it needs, and imported back into the old
+file when that still uses it; `jadpo fmt --layout` applies them one move at
+a time, checking again after each. The language server's lookup reads a
+`use` line's names as the declarations they bring in.
 
 **Types.** Nominal and bidirectional: the expected type flows into
 literals (area 2). Widening is the only implicit conversion; the standard
@@ -602,6 +630,7 @@ and invalidation is where hand-rolled caches go wrong.
 | `symbols` | project | an item tree changes |
 | `signature`, `type_def`, `name_facts`, `failure_info` (per-name lookups) | name | that name's entry in its project table changes |
 | `typed_body` (resolved, typed, diagnostics) | callable | its file's text, or a name it reads, changes |
+| `import_problems` | file | its text, or the entry of a name it writes or imports, changes |
 | `effects` | callable | its body or a callee's effects change |
 | `plan` (SQL, codecs, policy) | query, write site, type | its inputs, entity or policy change |
 | `graph`, `diagnostics` | project, file | anything above; assembly only |

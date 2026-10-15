@@ -1,3 +1,7 @@
+use lending/entities { Book, Loan, LoanNotFound, Member }
+use lending/types { LoanChanges, Wear }
+use lending/actions { add_copy, enrol, lend, vouch }
+
 test "a patch changes only what the request supplied" {
     var ada: Member = attempt enrol("ada@example.test", "Ada")
     var bob: Member = attempt enrol("bob@example.test", "Bob")

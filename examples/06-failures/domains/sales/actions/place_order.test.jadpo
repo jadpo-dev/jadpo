@@ -1,3 +1,6 @@
+use sales/types { CakeCount }
+use sales/failures { CakeSoldOut, KitchenBusy, OvenDown }
+
 test "an order the kitchen and the shelf can meet is placed" {
     var placed: CakeCount = attempt place_order(10, 2, 5, 1)
     assert placed == 2

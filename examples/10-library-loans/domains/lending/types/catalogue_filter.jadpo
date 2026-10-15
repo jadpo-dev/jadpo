@@ -2,6 +2,8 @@
 // opaque cursor a page gives for the next: a client sends it back as
 // `after`, and leaves it out for the first page.
 
+use lending/types { Wear }
+
 /// Which copies to list, a page at a time.
 type CatalogueFilter = Input {
     wear: Wear {

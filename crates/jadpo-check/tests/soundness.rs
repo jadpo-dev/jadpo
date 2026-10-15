@@ -193,17 +193,17 @@ fn in_project(path: &str, text: &str) -> Vec<String> {
             ),
             (
                 "domains/pantry/libraries/sacks.jadpo",
-                "library sacks {\n    function grams_in(count: SackCount) -> Grams {\n        return Grams(count * 16000)\n    }\n}\n",
+                "use pantry/types { Grams, SackCount }\n\nlibrary sacks {\n    function grams_in(count: SackCount) -> Grams {\n        return Grams(count * 16000)\n    }\n}\n",
             ),
             (
                 "domains/pantry/actions/weigh.jadpo",
-                "public action weigh(count: SackCount) -> Grams {\n    return sacks.grams_in(count)\n}\n",
+                "use pantry/types { Grams, SackCount }\nuse pantry/libraries { sacks }\n\npublic action weigh(count: SackCount) -> Grams {\n    return sacks.grams_in(count)\n}\n",
             ),
             // What makes the pantry's declarations public: another part
             // of the project uses them (area 1, "Unused `public`").
             (
                 "tests/the_pantry_weighs.test.jadpo",
-                "test \"the pantry weighs a sack\" {\n    assert pantry.weigh(1) == 16000\n}\n",
+                "use pantry\n\ntest \"the pantry weighs a sack\" {\n    assert pantry.weigh(1) == 16000\n}\n",
             ),
             (path, text),
         ],
@@ -215,28 +215,28 @@ fn a_call_through_three_names_is_reported() {
     assert_eq!(
         in_project(
             "tests/weighing.test.jadpo",
-            "test \"a sack weighs\" {\n    var g: Grams = pantry.sacks.grams_in(1)\n    assert g == 16000\n}\n"
+            "use pantry/types { Grams }\nuse pantry\n\ntest \"a sack weighs\" {\n    var g: Grams = pantry.sacks.grams_in(1)\n    assert g == 16000\n}\n"
         ),
         ["semantic.unknown_callee"]
     );
     assert_eq!(
         in_project(
             "domains/pantry/actions/count.jadpo",
-            "action count(n: SackCount) -> Grams {\n    return pantry.nonexistent.thing(n)\n}\n"
+            "use pantry/types { Grams, SackCount }\n\naction count(n: SackCount) -> Grams {\n    return pantry.nonexistent.thing(n)\n}\n"
         ),
         ["semantic.unknown_callee"]
     );
     assert_eq!(
         in_project(
             "domains/pantry/actions/count.jadpo",
-            "action count(n: SackCount) -> Grams {\n    return sacks.grams_in.again(n)\n}\n"
+            "use pantry/types { Grams, SackCount }\nuse pantry/libraries { sacks }\n\naction count(n: SackCount) -> Grams {\n    return sacks.grams_in.again(n)\n}\n"
         ),
         ["semantic.unknown_callee"]
     );
     assert_eq!(
         in_project(
             "domains/pantry/actions/count.jadpo",
-            "action count(n: SackCount) -> Grams {\n    return sacks.grams_in(n)\n}\n"
+            "use pantry/types { Grams, SackCount }\nuse pantry/libraries { sacks }\n\naction count(n: SackCount) -> Grams {\n    return sacks.grams_in(n)\n}\n"
         ),
         CLEAN
     );

@@ -3,6 +3,9 @@
 // with `if` and raised with `reject`, as a `conflict` with the shelf's
 // state, and only what really is a type rule goes in an `attempt` arm.
 
+use sales/types { CakeCount, Stock }
+use sales/failures { OrderTooLarge, ShelfEmpty }
+
 /// An order for every cake left on the shelf.
 action order_shelf(left: Stock) fails ShelfEmpty, OrderTooLarge -> CakeCount {
     if (left == 0) {

@@ -29,7 +29,7 @@ this project:
 cargo build --release -p jadpo-cli
 target/release/jadpo check examples/04-lists-and-loops
 target/release/jadpo test examples/04-lists-and-loops
-target/release/jadpo test examples/04-lists-and-loops/domains/baking/actions/weigh_recipe.test.jadpo:4
+target/release/jadpo test examples/04-lists-and-loops/domains/baking/actions/weigh_recipe.test.jadpo:6
 target/release/jadpo test examples/04-lists-and-loops --watch
 target/release/jadpo fmt --check examples/04-lists-and-loops
 ```

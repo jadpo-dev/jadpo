@@ -137,7 +137,7 @@ fn a_change_that_needs_decisions_waits_for_them() {
     write(
         &root,
         TODO,
-        "entity Todo {\n    id: Uuid\n    rank: Rank\n}\n",
+        "use planning/types { Rank }\n\nentity Todo {\n    id: Uuid\n    rank: Rank\n}\n",
     );
     let started = jadpo(&root, &["migrate", "new", "add_rank"]);
     assert_eq!(started.code, 0, "{}", started.stdout);

@@ -2,6 +2,9 @@
 // named after it. It is called like the standard library, through its
 // name: `portions.together(...)`. A library holds only functions.
 
+use shared/types { Grams, PortionCount }
+use shared/failures { TooHeavy }
+
 /// Working with weights made of equal portions.
 library portions {
     /// The weight of `count` portions of `each` grams.

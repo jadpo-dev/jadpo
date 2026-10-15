@@ -280,8 +280,11 @@ fn help_describes_fmt() {
         output.stdout,
         "jadpo fmt, also called format
 Rewrite Jadpo files in the one layout the formatter owns: indentation, spacing,
-blank lines and one member per line. With --check, change nothing and fail if
-any file isn't formatted. Without a path, the project is found by walking up to
+blank lines and one member per line. In a project it first fixes each file's
+`use` lines: adds a missing import, removes an unused one and sorts them. With
+--layout it also moves each declaration another file uses into a file of its
+own, as layout.promotion_required asks. With --check, change nothing and fail if
+any file would change. Without a path, the project is found by walking up to
 app.jadpo.
 
 Usage
@@ -292,6 +295,7 @@ Arguments
 
 Flags
   --check       Report unformatted files and change nothing
+  --layout      Also make the moves promotion asks for
 
 On every command
   --json        Print data for tools instead of text
@@ -301,6 +305,9 @@ On every command
 Examples
   Format the project you are in
     jadpo fmt
+
+  Make the moves layout.promotion_required asks for, then format
+    jadpo fmt --layout
 
   Check formatting without changing anything, as CI does
     jadpo fmt --check

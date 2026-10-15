@@ -255,6 +255,8 @@ type OrderNotFound = Failure {
 ```
 
 ```jadpo check project=reorder file=domains/inventory/types/reservation.jadpo hidden
+use ordering/entities { Order }
+
 public type Reservation = Object {
     order_id: Order.id
 }
@@ -267,12 +269,22 @@ public type QuantityUnavailable = Failure {
 ```
 
 ```jadpo check project=reorder file=domains/inventory/actions/reserve_for_order.jadpo hidden
+use inventory/types { Reservation }
+use inventory/failures { QuantityUnavailable }
+use ordering/entities { Order }
+
 public action reserve_for_order(order: Order) fails QuantityUnavailable -> Reservation {
     reject QuantityUnavailable
 }
 ```
 
 ```jadpo check project=reorder file=domains/ordering/actions/reorder.jadpo migrate=initial
+use inventory/types { Reservation }
+use inventory/failures { QuantityUnavailable }
+use ordering/entities { Order }
+use ordering/failures { OrderNotFound }
+use inventory
+
 action reorder(order_id: Order.id) fails OrderNotFound, QuantityUnavailable -> Reservation {
     var order: Order = attempt Order.get(order_id)  // can fail with OrderNotFound
     return attempt inventory.reserve_for_order(order)  // can fail with QuantityUnavailable

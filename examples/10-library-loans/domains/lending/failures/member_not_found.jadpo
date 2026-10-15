@@ -1,3 +1,5 @@
+use lending/entities { Member }
+
 /// No member has that id.
 type MemberNotFound = Failure {
     kind: FailureKind.not_found

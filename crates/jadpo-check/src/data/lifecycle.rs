@@ -142,6 +142,15 @@ pub(super) fn read(
         .find(|(name, _)| name == "initial")
         .map(|(_, member)| reader.values(member, "initial"))
         .unwrap_or_default();
+    // Every field `initial:` gives, its value checked or not: one whose
+    // value is wrong has had its error.
+    let given: Vec<String> = sections
+        .iter()
+        .find(|(name, _)| name == "initial")
+        .into_iter()
+        .flat_map(|(_, member)| tree::members(member.block()))
+        .filter_map(|(name, _)| tree::name_text(&name))
+        .collect();
     // A `visible:` already reported leaves what it hides unknown, so
     // nothing reports a knock-on of it.
     let has_visible = sections.iter().any(|(name, _)| name == "visible");
@@ -189,7 +198,7 @@ pub(super) fn read(
         let Some(field) = entity.fields.iter().find(|f| f.name == *name) else {
             continue;
         };
-        if field.nullable || initial.iter().any(|(given, _)| given == name) {
+        if field.nullable || given.contains(name) {
             continue;
         }
         let at = transitions
@@ -663,6 +672,15 @@ impl<'a> Reader<'a, '_> {
                 });
             }
         }
+        // A type that names nothing is resolution's one error.
+        if let Some((first, _)) = dotted(&expr)
+            && let Some(head) = tree::name_ref_text(&first)
+            && starts_upper(&head)
+            && self.lookup.def(&head).is_none()
+            && !crate::std_lib::StdNames::get().is_type(&head)
+        {
+            return None;
+        }
         let fixed = "a literal, an enum value, `none` or `clock.now`";
         let (message, label, reason) = if let Some(other) = self.bare_field(&expr) {
             (
@@ -1025,6 +1043,10 @@ impl<'a> Reader<'a, '_> {
 /// A field's type as a lifecycle compares it: `Todo.status`, or
 /// `Todo.status?` for a nullable field.
 fn field_ty(entity: &EntityModel, field: &FieldModel) -> Ty {
+    // A field whose type names nothing absorbs what is compared with it.
+    if field.ty.has_error() {
+        return Ty::Error;
+    }
     let ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
     if field.nullable { ty.nullable() } else { ty }
 }

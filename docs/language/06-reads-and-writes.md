@@ -1433,6 +1433,8 @@ application {}
 ```
 
 ```jadpo check project=e-other-domain file=domains/lending/actions/check_out.jadpo hidden
+use catalogue/entities { Book }
+
 /// Lends a copy.
 action check_out(book: Book) -> Unit {}
 ```
@@ -1445,6 +1447,8 @@ public entity Book {
 ```
 
 ```jadpo check project=e-other-domain file=domains/lending/queries/shelf.jadpo expect=query.other_domain
+use catalogue/entities { Book }
+
 /// Every copy.
 query shelf() -> List<Book> {
     from: Book
@@ -2870,12 +2874,17 @@ entity Cart {
 ```
 
 ```jadpo check project=e-action-spans-stores file=domains/ordering/actions/clear_cart.jadpo hidden
+use ordering/entities { Cart }
+
 action clear_cart(cart: Cart) -> Unit {
     Cart.delete(cart)
 }
 ```
 
 ```jadpo check project=e-action-spans-stores file=domains/ordering/actions/checkout.jadpo expect=store.action_spans_stores
+use ordering/entities { Cart, Order }
+use ordering/actions { clear_cart }
+
 action checkout(cart: Cart) -> Order {
     var order: Order = Order.create {
         set: {}

@@ -1,3 +1,7 @@
+use loyalty/types { Card }
+use loyalty/actions { stamp_card }
+use loyalty/fixtures { new_card }
+
 /// A new card stamped once, the way a customer's is: through the real
 /// action, so the stamp follows the same rules. A fixture may call other
 /// fixtures and actions; `attempt` here would fail the calling test if

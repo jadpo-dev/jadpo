@@ -5,7 +5,16 @@
 //   collection.count(...)     the standard library
 //   flour_for(...)            a helper in this file, by its bare name
 //
-// Searching for `pantry.` finds every call into that domain.
+// Searching for `pantry.` finds every call into that domain. `use pantry`
+// brings the domain in for those calls; the names this file takes from
+// `pantry` and `shared/` (its failure, types and library) come in by
+// folder, one line per folder.
+
+use shared/types { Grams, PortionCount, SackCount }
+use shared/failures { TooHeavy }
+use shared/libraries { portions }
+use pantry/failures { FlourShort }
+use pantry
 
 /// How many loaves a bake makes.
 type LoafCount = Int {

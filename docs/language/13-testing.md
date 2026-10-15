@@ -52,6 +52,9 @@ tests/         sign_up_to_first_reminder.test.jadpo
 A test file holds only `test` declarations. A test beside its subject can
 call anything in its own domain, private or not. A scenario in `tests/` sees
 what another domain would see: public declarations and routes (question 1).
+A test file sees everything its subject declares without importing it, and
+brings in anything else it uses on `use` lines, as any file does; a
+scenario imports all it uses (area 1, Imports; built in chunk 3.5).
 
 ## Writing a test
 
@@ -67,10 +70,16 @@ never depend on each other and can run in any order.
 application {}
 ```
 
-```jadpo check project=writing-a-test file=domains/planning/libraries/due_dates.jadpo hidden
+```jadpo check project=writing-a-test file=domains/planning/types/due_at.jadpo hidden
 type DueAt = Instant {}
+```
 
+```jadpo check project=writing-a-test file=domains/planning/types/overdue.jadpo hidden
 type Overdue = Bool {}
+```
+
+```jadpo check project=writing-a-test file=domains/planning/libraries/due_dates.jadpo hidden
+use planning/types { DueAt, Overdue }
 
 library due_dates {
     /// Whether a todo due at `due` is overdue at `now`.
@@ -81,6 +90,9 @@ library due_dates {
 ```
 
 ```jadpo check project=writing-a-test file=domains/planning/actions/remind_if_overdue.jadpo hidden
+use planning/types { DueAt, Overdue }
+use planning/libraries { due_dates }
+
 action remind_if_overdue(due: DueAt, now: DueAt) -> Overdue {
     return due_dates.is_overdue(due, now)
 }
@@ -88,6 +100,8 @@ action remind_if_overdue(due: DueAt, now: DueAt) -> Overdue {
 
 ```jadpo check project=writing-a-test file=domains/planning/libraries/due_dates.test.jadpo
 // domains/planning/libraries/due_dates.test.jadpo
+use planning/types { DueAt }
+
 test "a todo due yesterday is overdue" {
     var due: DueAt = "2026-01-14T12:00:00Z"
     var now: DueAt = "2026-01-15T12:00:00Z"
@@ -317,6 +331,8 @@ type TodoCount = Int {
 ```
 
 ```jadpo check project=public-fixture file=domains/planning/actions/add_todo.jadpo hidden
+use planning/types { TodoCount }
+
 /// The open todos once one more is added.
 action add_todo(open: TodoCount) -> TodoCount {
     return TodoCount(open + 1)
@@ -325,6 +341,9 @@ action add_todo(open: TodoCount) -> TodoCount {
 
 ```jadpo check project=public-fixture file=domains/planning/fixtures/two_open_todos.jadpo
 // domains/planning/fixtures/two_open_todos.jadpo
+use planning/types { TodoCount }
+use planning/actions { add_todo }
+
 /// Two open todos, added the way a user adds them.
 public fixture two_open_todos() -> TodoCount {
     var one: TodoCount = add_todo(0)
@@ -339,6 +358,8 @@ action send_reminders() -> Unit {}
 
 ```jadpo check project=public-fixture file=domains/reminders/actions/send_reminders.test.jadpo
 // domains/reminders/actions/send_reminders.test.jadpo
+use planning
+
 test "reminders start from planning's open todos" {
     send_reminders()
     assert planning.two_open_todos() == 2
@@ -347,6 +368,8 @@ test "reminders start from planning's open todos" {
 
 ```jadpo check project=public-fixture file=tests/a_plan_starts_with_two_todos.test.jadpo
 // tests/a_plan_starts_with_two_todos.test.jadpo
+use planning
+
 test "a plan starts with two open todos" {
     assert planning.two_open_todos() == 2
 }

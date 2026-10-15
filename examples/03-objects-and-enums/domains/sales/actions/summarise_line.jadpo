@@ -12,6 +12,8 @@
 // Copied fields follow their source: their types and rules come with
 // them, and renaming `CakeLine.cake` renames it everywhere it is copied.
 
+use sales/types { CakeCount, CakeLine, CakeName, Pence }
+
 /// What the menu board shows for a line.
 type MenuEntry = Output {
     pick: [CakeLine.cake, CakeLine.each]

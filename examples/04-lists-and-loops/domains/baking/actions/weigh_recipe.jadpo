@@ -1,5 +1,7 @@
 // Walking a list with `for`.
 
+use baking/types { Grams, IngredientName, Recipe }
+
 /// How many ingredients a recipe has.
 type IngredientCount = Int {
     min: 0

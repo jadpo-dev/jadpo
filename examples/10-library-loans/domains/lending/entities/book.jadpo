@@ -1,3 +1,5 @@
+use lending/types { BookTitle, Isbn, LendCount, Wear }
+
 /// One copy of a book on the shelves.
 entity Book {
     id: Uuid

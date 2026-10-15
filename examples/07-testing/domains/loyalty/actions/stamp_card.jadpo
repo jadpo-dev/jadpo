@@ -1,3 +1,6 @@
+use loyalty/types { Card, StampCount }
+use loyalty/failures { CardFull }
+
 /// `card` with one more stamp.
 action stamp_card(card: Card) fails CardFull -> Card {
     // A full card must be redeemed before it takes another stamp. That is

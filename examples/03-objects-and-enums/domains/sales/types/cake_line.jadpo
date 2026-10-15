@@ -4,6 +4,8 @@
 // says what it is built from: a representation such as `Int`, or
 // `Object`, `Enum`, `Input`, `Output` or `Failure` for shapes.
 
+use sales/types { CakeCount, CakeName, Pence }
+
 /// One line of an order: which cake, how many, and the price of each.
 type CakeLine = Object {
     cake: CakeName

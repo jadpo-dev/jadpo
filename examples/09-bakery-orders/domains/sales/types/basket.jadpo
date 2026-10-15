@@ -1,7 +1,4 @@
-/// A code a customer types in for money off.
-public type DiscountCode = Text {
-    pattern: "[A-Z0-9]{4,12}"
-}
+use sales/types { BasketLine, DiscountCode }
 
 // The basket as it arrives from the shop's website: an `Input`, so the
 // code may be left out, and a list whose length is part of its rules.

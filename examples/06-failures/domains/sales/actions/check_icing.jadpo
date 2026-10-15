@@ -1,5 +1,7 @@
 // An arm for one rule beside `invalid:` for the rest.
 
+use sales/failures { IcingTooLong, IcingUnreadable }
+
 /// Words a customer types into the order form to go on a cake: any text,
 /// until it is checked.
 type AskedWords = Text {}

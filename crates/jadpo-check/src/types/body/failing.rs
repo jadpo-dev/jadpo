@@ -405,7 +405,7 @@ impl Body<'_> {
             };
             let Some(value) = value else { continue };
             if is_literal(&value) || matches!(value, Expr::ListExpr(_)) {
-                let expected = Ty::Field(failure.to_string(), vec![field]);
+                let expected = self.table.field_type(failure, &[field]);
                 self.check(&value, &expected);
             } else {
                 self.check(&value, &declared.declared.clone());

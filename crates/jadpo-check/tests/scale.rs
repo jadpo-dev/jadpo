@@ -3,7 +3,8 @@
 //! per-name lookups, so an edit rechecks the file it is in and nothing that
 //! does not read what changed.
 //!
-//! The project has one shared type, `Count`, used by 2,001 action files;
+//! The project has one shared type, `Count`, used by 2,001 action files,
+//! each importing it (area 1, Imports);
 //! `act_0` also declares `Special`, which only it uses, and `act_1` an
 //! uncalled helper. Each edit is checked twice: by which per-file and
 //! per-callable checks ran again, and by how long the whole check took
@@ -24,6 +25,7 @@ const CHECKS: &[&str] = &[
     "layout_problems",
     "naming_problems",
     "resolve_file",
+    "import_problems",
     "usage_problems",
     "type_problems",
     "failure_problems",
@@ -35,9 +37,9 @@ const CHECKS: &[&str] = &[
 fn action(k: usize) -> String {
     match k {
         0 => "type Special = Int {\n    min: 0\n}\n\naction act_0(x: Special) -> Special {\n    var y: Special = x\n    return y\n}\n".to_string(),
-        1 => "action act_1(x: Count) -> Count {\n    var y: Count = x\n    return y\n}\n\nfunction helper(x: Count) -> Count {\n    return x\n}\n".to_string(),
+        1 => "use bench/types { Count }\n\naction act_1(x: Count) -> Count {\n    var y: Count = x\n    return y\n}\n\nfunction helper(x: Count) -> Count {\n    return x\n}\n".to_string(),
         k => format!(
-            "action act_{k}(x: Count) -> Count {{\n    var y: Count = x\n    return y\n}}\n"
+            "use bench/types {{ Count }}\n\naction act_{k}(x: Count) -> Count {{\n    var y: Count = x\n    return y\n}}\n"
         ),
     }
 }

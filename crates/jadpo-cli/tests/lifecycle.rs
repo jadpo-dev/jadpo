@@ -61,7 +61,9 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/club/entities/member.jadpo",
-        "/// Someone in the club.
+        "use club/types { Name, Stage }
+
+/// Someone in the club.
 entity Member {
     id: Uuid
     name: Name
@@ -108,35 +110,35 @@ entity Member {
     ),
     (
         "domains/club/entities/visit.jadpo",
-        "/// A member's visit.\nentity Visit {\n    id: Uuid\n    member_id: Member.id {\n        on_delete: OnDelete.cascade\n    }\n    note: Name\n}\n",
+        "use club/entities { Member }\nuse club/types { Name }\n\n/// A member's visit.\nentity Visit {\n    id: Uuid\n    member_id: Member.id {\n        on_delete: OnDelete.cascade\n    }\n    note: Name\n}\n",
     ),
     (
         "domains/club/entities/badge.jadpo",
-        "/// A badge a member holds, which keeps them from being purged.\nentity Badge {\n    id: Uuid\n    member_id: Member.id {\n        on_delete: OnDelete.restricted\n    }\n}\n",
+        "use club/entities { Member }\n\n/// A badge a member holds, which keeps them from being purged.\nentity Badge {\n    id: Uuid\n    member_id: Member.id {\n        on_delete: OnDelete.restricted\n    }\n}\n",
     ),
     (
         "domains/club/entities/notice.jadpo",
-        "/// A notice shown from its time.\nentity Notice {\n    id: Uuid\n    title: Name\n    published_at: Instant?\n\n    lifecycle: {\n        visible: published_at != none and published_at <= clock.now\n    }\n}\n",
+        "use club/types { Name }\n\n/// A notice shown from its time.\nentity Notice {\n    id: Uuid\n    title: Name\n    published_at: Instant?\n\n    lifecycle: {\n        visible: published_at != none and published_at <= clock.now\n    }\n}\n",
     ),
     (
         "domains/club/types/member_view.jadpo",
-        "/// A member, briefly.\ntype MemberView = Output {\n    pick: [Member.id, Member.name]\n}\n",
+        "use club/entities { Member }\n\n/// A member, briefly.\ntype MemberView = Output {\n    pick: [Member.id, Member.name]\n}\n",
     ),
     (
         "domains/club/types/visit_view.jadpo",
-        "/// A visit, briefly.\ntype VisitView = Output {\n    pick: [Visit.id, Visit.note]\n}\n",
+        "use club/entities { Visit }\n\n/// A visit, briefly.\ntype VisitView = Output {\n    pick: [Visit.id, Visit.note]\n}\n",
     ),
     (
         "domains/club/types/member_page.jadpo",
-        "/// A member with their visits.\ntype MemberPage = Output {\n    pick: [Member.id, Member.name]\n    visits: List<VisitView>\n}\n",
+        "use club/entities { Member }\nuse club/types { VisitView }\n\n/// A member with their visits.\ntype MemberPage = Output {\n    pick: [Member.id, Member.name]\n    visits: List<VisitView>\n}\n",
     ),
     (
         "domains/club/types/visit_page.jadpo",
-        "/// A visit with its member.\ntype VisitPage = Output {\n    pick: [Visit.id, Visit.note]\n    member: MemberView\n}\n",
+        "use club/entities { Visit }\nuse club/types { MemberView }\n\n/// A visit with its member.\ntype VisitPage = Output {\n    pick: [Visit.id, Visit.note]\n    member: MemberView\n}\n",
     ),
     (
         "domains/club/types/notice_view.jadpo",
-        "/// A notice, briefly.\ntype NoticeView = Output {\n    pick: [Notice.id, Notice.title]\n}\n",
+        "use club/entities { Notice }\n\n/// A notice, briefly.\ntype NoticeView = Output {\n    pick: [Notice.id, Notice.title]\n}\n",
     ),
     (
         "domains/club/failures/member_not_found.jadpo",
@@ -156,55 +158,55 @@ entity Member {
     ),
     (
         "domains/club/actions/join.jadpo",
-        "/// Adds a member.\naction join(name: Member.name) -> Member {\n    return Member.create {\n        set: {\n            name: name\n        }\n    }\n}\n",
+        "use club/entities { Member }\n\n/// Adds a member.\naction join(name: Member.name) -> Member {\n    return Member.create {\n        set: {\n            name: name\n        }\n    }\n}\n",
     ),
     (
         "domains/club/actions/leave.jadpo",
-        "/// A member leaves.\naction leave(member_id: Member.id) fails MemberNotFound -> Unit {\n    attempt Member.delete(member_id)\n}\n",
+        "use club/entities { Member }\nuse club/failures { MemberNotFound }\n\n/// A member leaves.\naction leave(member_id: Member.id) fails MemberNotFound -> Unit {\n    attempt Member.delete(member_id)\n}\n",
     ),
     (
         "domains/club/actions/activate.jadpo",
-        "/// Activates a member.\naction activate(member_id: Member.id) fails MemberNotFound, NotPending -> Member {\n    return attempt Member.activate(member_id) {\n        conflict: {\n            Member.activate: NotPending\n        }\n    }\n}\n",
+        "use club/entities { Member }\nuse club/failures { MemberNotFound, NotPending }\n\n/// Activates a member.\naction activate(member_id: Member.id) fails MemberNotFound, NotPending -> Member {\n    return attempt Member.activate(member_id) {\n        conflict: {\n            Member.activate: NotPending\n        }\n    }\n}\n",
     ),
     (
         "domains/club/actions/lapse.jadpo",
-        "/// A member lapses.\naction lapse(member: Member) fails NotActive -> Member {\n    return attempt Member.lapse(member) {\n        conflict: {\n            Member.lapse: NotActive\n        }\n    }\n}\n",
+        "use club/entities { Member }\nuse club/failures { NotActive }\n\n/// A member lapses.\naction lapse(member: Member) fails NotActive -> Member {\n    return attempt Member.lapse(member) {\n        conflict: {\n            Member.lapse: NotActive\n        }\n    }\n}\n",
     ),
     (
         "domains/club/actions/rename.jadpo",
-        "/// Renames a member, by id.\naction rename(member_id: Member.id, name: Member.name) fails MemberNotFound -> Member {\n    return attempt Member.update(member_id) {\n        set: {\n            name: name\n        }\n    }\n}\n",
+        "use club/entities { Member }\nuse club/failures { MemberNotFound }\n\n/// Renames a member, by id.\naction rename(member_id: Member.id, name: Member.name) fails MemberNotFound -> Member {\n    return attempt Member.update(member_id) {\n        set: {\n            name: name\n        }\n    }\n}\n",
     ),
     (
         "domains/club/actions/look_up.jadpo",
-        "/// Reads a member.\naction look_up(member_id: Member.id) fails MemberNotFound -> Member {\n    return attempt Member.get(member_id)\n}\n",
+        "use club/entities { Member }\nuse club/failures { MemberNotFound }\n\n/// Reads a member.\naction look_up(member_id: Member.id) fails MemberNotFound -> Member {\n    return attempt Member.get(member_id)\n}\n",
     ),
     (
         "domains/club/actions/record_visit.jadpo",
-        "/// Records a visit.\naction record_visit(member: Member, note: Visit.note) -> Visit {\n    return Visit.create {\n        set: {\n            member_id: member.id\n            note: note\n        }\n    }\n}\n",
+        "use club/entities { Member, Visit }\n\n/// Records a visit.\naction record_visit(member: Member, note: Visit.note) -> Visit {\n    return Visit.create {\n        set: {\n            member_id: member.id\n            note: note\n        }\n    }\n}\n",
     ),
     (
         "domains/club/actions/award.jadpo",
-        "/// Gives a member a badge.\naction award(member: Member) -> Badge {\n    return Badge.create {\n        set: {\n            member_id: member.id\n        }\n    }\n}\n",
+        "use club/entities { Badge, Member }\n\n/// Gives a member a badge.\naction award(member: Member) -> Badge {\n    return Badge.create {\n        set: {\n            member_id: member.id\n        }\n    }\n}\n",
     ),
     (
         "domains/club/actions/post_notice.jadpo",
-        "/// Posts a notice.\naction post_notice(title: Notice.title, published_at: Notice.published_at) -> Notice {\n    return Notice.create {\n        set: {\n            title: title\n            published_at: published_at\n        }\n    }\n}\n",
+        "use club/entities { Notice }\n\n/// Posts a notice.\naction post_notice(title: Notice.title, published_at: Notice.published_at) -> Notice {\n    return Notice.create {\n        set: {\n            title: title\n            published_at: published_at\n        }\n    }\n}\n",
     ),
     (
         "domains/club/queries/members_named.jadpo",
-        "/// Members with a name.\nquery members_named(name: Member.name) -> List<MemberView> {\n    from: Member\n    where: Member.name == name\n    order: [Member.id asc]\n    limit: 10\n}\n",
+        "use club/entities { Member }\nuse club/types { MemberView }\n\n/// Members with a name.\nquery members_named(name: Member.name) -> List<MemberView> {\n    from: Member\n    where: Member.name == name\n    order: [Member.id asc]\n    limit: 10\n}\n",
     ),
     (
         "domains/club/queries/member_with_visits.jadpo",
-        "/// A member with their visits.\nquery member_with_visits(member_id: Member.id) fails MemberNotFound -> MemberPage {\n    from: Member\n    where: Member.id == member_id\n    missing: MemberNotFound\n    include: {\n        visits: {\n            via: Visit.member_id\n            order: [Visit.note asc]\n            limit: 10\n        }\n    }\n}\n",
+        "use club/entities { Member, Visit }\nuse club/types { MemberPage }\nuse club/failures { MemberNotFound }\n\n/// A member with their visits.\nquery member_with_visits(member_id: Member.id) fails MemberNotFound -> MemberPage {\n    from: Member\n    where: Member.id == member_id\n    missing: MemberNotFound\n    include: {\n        visits: {\n            via: Visit.member_id\n            order: [Visit.note asc]\n            limit: 10\n        }\n    }\n}\n",
     ),
     (
         "domains/club/queries/visit_with_member.jadpo",
-        "/// A visit with its member.\nquery visit_with_member(visit_id: Visit.id) fails VisitNotFound -> VisitPage {\n    from: Visit\n    where: Visit.id == visit_id\n    missing: VisitNotFound\n    include: {\n        member: Visit.member_id\n    }\n}\n",
+        "use club/entities { Visit }\nuse club/types { VisitPage }\nuse club/failures { VisitNotFound }\n\n/// A visit with its member.\nquery visit_with_member(visit_id: Visit.id) fails VisitNotFound -> VisitPage {\n    from: Visit\n    where: Visit.id == visit_id\n    missing: VisitNotFound\n    include: {\n        member: Visit.member_id\n    }\n}\n",
     ),
     (
         "domains/club/queries/notices.jadpo",
-        "/// The notices showing now.\nquery notices() -> List<NoticeView> {\n    from: Notice\n    order: [Notice.title asc]\n    limit: 10\n}\n",
+        "use club/entities { Notice }\nuse club/types { NoticeView }\n\n/// The notices showing now.\nquery notices() -> List<NoticeView> {\n    from: Notice\n    order: [Notice.title asc]\n    limit: 10\n}\n",
     ),
 ];
 

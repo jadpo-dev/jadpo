@@ -1,3 +1,5 @@
+use baking/types { Allergen, Ingredient, Recipe }
+
 test "an ingredient that goes in twice is bought once" {
     var shortbread: Recipe = Recipe {
         ingredients: [

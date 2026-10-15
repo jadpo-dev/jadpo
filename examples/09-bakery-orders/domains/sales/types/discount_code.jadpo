@@ -1,0 +1,4 @@
+/// A code a customer types in for money off.
+public type DiscountCode = Text {
+    pattern: "[A-Z0-9]{4,12}"
+}

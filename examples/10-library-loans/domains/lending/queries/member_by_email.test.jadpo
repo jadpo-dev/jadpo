@@ -1,3 +1,6 @@
+use lending/types { Borrower }
+use lending/fixtures { ada_borrows_two }
+
 test "a member is found by address" {
     var ada: Borrower = ada_borrows_two()
     assert member_by_email("ada@example.test") == ada.member

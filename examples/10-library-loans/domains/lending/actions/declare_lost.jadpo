@@ -1,6 +1,9 @@
 // By `id`, a transition also fails with the entity's not-found failure
 // when no loan has it, here the `LoanNotFound` the compiler provides.
 
+use lending/entities { Loan, LoanNotFound }
+use lending/failures { LoanNotOut }
+
 /// Records that a borrower lost the copy they had on loan.
 action declare_lost(loan_id: Loan.id) fails LoanNotFound, LoanNotOut -> Loan {
     return attempt Loan.declare_lost(loan_id) {

@@ -1,3 +1,5 @@
+use sales/failures { IcingTooLong, IcingUnreadable }
+
 test "words the decorator can pipe are accepted" {
     var icing: Icing = attempt check_icing("Happy birthday, Sam!")
     assert icing == "Happy birthday, Sam!"

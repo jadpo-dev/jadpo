@@ -1,0 +1,3 @@
+test "the usual order is four loaves, a bag and delivery" {
+    assert usual_order() == 1155
+}

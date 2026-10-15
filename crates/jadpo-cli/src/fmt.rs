@@ -50,6 +50,18 @@ impl Status {
 pub fn fmt(call: &Call) -> Reply {
     let check = call.flag("--check");
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
+    let mut moves = Vec::new();
+    if call.flag("--layout") {
+        let start = cwd.join(call.arguments.first().map_or(".", String::as_str));
+        let Some(root) = jadpo_db::find_root(&start) else {
+            return project_not_found("fmt");
+        };
+        if check {
+            moves = pending_moves(&root);
+        } else {
+            make_moves(&root);
+        }
+    }
     let (root, files) = match call.arguments.first() {
         Some(argument) => match named(&cwd, argument) {
             Ok(found) => found,
@@ -80,7 +92,57 @@ pub fn fmt(call: &Call) -> Reply {
         );
         results.push((shown, status));
     }
-    report(check, results, diagnostics, sources)
+    let moved = moves.len();
+    diagnostics.extend(moves);
+    report(check, results, moved, diagnostics, sources)
+}
+
+/// The moves the compiler asks for (`layout.promotion_required`) that
+/// carry the edits making them, in the order `jadpo check` reports them.
+fn pending_moves(root: &Path) -> Vec<Diagnostic> {
+    let loaded = jadpo_db::load(root);
+    jadpo_check::check(&loaded.db, loaded.project)
+        .into_iter()
+        .filter(|problem| {
+            problem.rule.id == rule::LAYOUT_PROMOTION_REQUIRED.id
+                && problem
+                    .next
+                    .as_ref()
+                    .is_some_and(|next| !next.edits.is_empty())
+        })
+        .collect()
+}
+
+/// Makes every move `jadpo check` asks for, one at a time, checking again
+/// after each, since a move can bring the next to light: a declaration
+/// the moved one names, now used from its new file.
+fn make_moves(root: &Path) {
+    for _ in 0..64 {
+        let Some(first) = pending_moves(root).into_iter().next() else {
+            return;
+        };
+        let Some(next) = first.next else { return };
+        let mut by_file: BTreeMap<String, Vec<(u32, u32, String)>> = BTreeMap::new();
+        for edit in next.edits {
+            by_file.entry(edit.span.path.clone()).or_default().push((
+                edit.span.start,
+                edit.span.end,
+                edit.replacement,
+            ));
+        }
+        for (path, edits) in by_file {
+            let file = root.join(&path);
+            let text = std::fs::read_to_string(&file).unwrap_or_default();
+            if let Some(folder) = file.parent()
+                && std::fs::create_dir_all(folder).is_err()
+            {
+                return;
+            }
+            if std::fs::write(&file, apply(&text, edits)).is_err() {
+                return;
+            }
+        }
+    }
 }
 
 /// Each named file's text with its imports fixed, by its path as shown,
@@ -350,6 +412,7 @@ fn count(n: usize, what: &str) -> String {
 fn report(
     check: bool,
     results: Vec<(String, Status)>,
+    moves: usize,
     diagnostics: Vec<Diagnostic>,
     sources: BTreeMap<String, String>,
 ) -> Reply {
@@ -366,6 +429,11 @@ fn report(
         .filter(|(status, _)| tally(*status) > 0)
         .map(|(status, what)| Fact::problem(count(tally(*status), what)))
         .collect();
+    match moves {
+        0 => {}
+        1 => facts.push(Fact::problem("1 move to make")),
+        n => facts.push(Fact::problem(format!("{n} moves to make"))),
+    }
     let failed = !facts.is_empty();
     let changed = tally(Status::Formatted);
     let unchanged = tally(Status::Unchanged);

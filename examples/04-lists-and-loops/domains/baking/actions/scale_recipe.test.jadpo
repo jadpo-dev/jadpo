@@ -1,3 +1,5 @@
+use baking/types { Allergen, Ingredient, Recipe }
+
 test "scaling multiplies every ingredient's weight" {
     var sponge: Recipe = Recipe {
         ingredients: [
