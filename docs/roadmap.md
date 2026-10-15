@@ -313,7 +313,9 @@ reference only).
 ## Phase 6 — Events and schedules (area 12)
 
 - [ ] **6.1 Events:** `opus · high` outbox, subscribers, retries, `Access.system`, trace
-  context.
+  context, and `events: { store: }`, with the compile error for an action
+  that writes no store but needs one for its outbox or idempotency keys
+  (until then such an action keeps no key, chunk 4.2).
 - [ ] **6.2 Schedules:** `opus · high` leases, the native tick, schedule monitoring basics,
   and the runtime's own sweeps, starting with deleting expired idempotency
   keys (area 7).
