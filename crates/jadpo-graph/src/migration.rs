@@ -189,6 +189,16 @@ pub fn narrows(was: &Allows, now: &Allows) -> bool {
         || shorter(was.max_length, now.max_length, false)
 }
 
+/// The conditions under which a stored value of `column`, which `was`
+/// held, breaks what `now` allows: none unless `now` allows less.
+fn refit(was: &Column, now: &Column, column: &str) -> Vec<String> {
+    if narrowed(was, now) {
+        breaks(column, now.allows.as_ref())
+    } else {
+        Vec::new()
+    }
+}
+
 /// The SQL condition a stored value of `column` breaks `allows` under; a
 /// pattern is left out, since PostgreSQL's regular expressions are not
 /// Jadpo's.
@@ -380,7 +390,7 @@ pub fn migration_sql(
                 });
                 if let Some(need) = need {
                     plan.columns
-                        .extend(backfill(table, column, col.allows.as_ref(), need, decided));
+                        .extend(backfill(table, column, &[], need, decided));
                 }
             }
             Change::AlterColumn { table, column, .. } => {
@@ -436,7 +446,7 @@ pub fn migration_sql(
                 match need {
                     Some(need) => {
                         plan.columns
-                            .extend(backfill(table, column, now.allows.as_ref(), need, decided));
+                            .extend(backfill(table, column, &refit(was, now, &ident(column)), need, decided));
                     }
                     None if !was.nullable && now.nullable => plan.columns.push(Statement {
                         sql: format!(
@@ -523,16 +533,15 @@ struct Plan {
 fn backfill(
     table: &str,
     column: &str,
-    allows: Option<&Allows>,
+    broken: &[String],
     need: &Needed,
     decided: &dyn Fn(&Needed) -> Option<Decided>,
 ) -> Vec<Statement> {
     let (table, column) = (ident(table), ident(column));
-    let broken = breaks(&column, allows);
     match (need.kind, decided(need)) {
         (NeededKind::Backfill, Some(Decided::Backfill(value))) => {
             let mut empty = vec![format!("{column} IS NULL")];
-            empty.extend(broken);
+            empty.extend(broken.iter().cloned());
             vec![
                 Statement {
                     sql: format!(

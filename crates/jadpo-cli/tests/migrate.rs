@@ -2,7 +2,8 @@
 //! migration from the entities, waits for the decisions a change needs and
 //! finishes the migration once they are written; `jadpo check` agrees at
 //! each step; `apply` and `status` run against a live database, which
-//! `JADPO_SKIP_POSTGRES=1` skips.
+//! `JADPO_SKIP_POSTGRES=1` skips, as does a field that allows less
+//! replacing the stored values it no longer allows.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -355,5 +356,96 @@ fn apply_runs_pending_migrations_once_and_status_shows_them() {
         changed.stderr.contains("rule: migration.store_diverged"),
         "{}",
         changed.stderr
+    );
+}
+
+/// Runs `sql` on the database at `url` and gives each row's text columns.
+fn rows(url: &str, sql: &str) -> Vec<Vec<String>> {
+    use jadpo_runtime::{Database, SqlValue};
+    let store = jadpo_host_native::postgres(url).expect("store");
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let mut transaction = store.begin().await.expect("begin");
+        let rows = transaction.query(sql, &[]).await.expect("query");
+        transaction.commit().await.expect("commit");
+        rows.into_iter()
+            .map(|row| {
+                row.into_iter()
+                    .map(|value| match value {
+                        SqlValue::Text(text) => text,
+                        other => format!("{other:?}"),
+                    })
+                    .collect()
+            })
+            .collect()
+    })
+}
+
+#[test]
+fn allowing_less_replaces_the_stored_values_no_longer_allowed() {
+    if skipped() {
+        println!("skipped: JADPO_SKIP_POSTGRES is set");
+        return;
+    }
+    let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
+    let url = server.create_database("migrate_narrowing").expect("database");
+    let root = folder("narrowing");
+    write(&root, "app.jadpo", APP);
+    let size = "domains/planning/types/size.jadpo";
+    let label = "domains/planning/types/label.jadpo";
+    write(&root, size, "type Size = Enum {\n    small\n    medium\n    large\n}\n");
+    write(&root, label, "type Label = Text {\n    max_length: 20\n}\n");
+    write(
+        &root,
+        "domains/planning/entities/parcel.jadpo",
+        "use planning/types { Label, Size }\n\nentity Parcel {\n    id: Uuid\n    size: Size\n    label: Label\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["migrate", "new", "initial"]).code, 0);
+    assert_eq!(jadpo(&root, &["migrate", "apply", "--url", &url]).code, 0);
+    rows(
+        &url,
+        "INSERT INTO \"parcel\" VALUES \
+         ('00000000-0000-7000-8000-000000000001', 'large', 'a label of twenty ch'), \
+         ('00000000-0000-7000-8000-000000000002', 'small', 'short') RETURNING \"id\"",
+    );
+
+    // A variant added allows more: a migration with nothing to run.
+    write(&root, size, "type Size = Enum {\n    small\n    medium\n    large\n    huge\n}\n");
+    let drift = jadpo(&root, &["check"]);
+    assert!(drift.stdout.contains("migration.out_of_date"), "{}", drift.stdout);
+    let grown = jadpo(&root, &["migrate", "new", "add_huge"]);
+    assert!(
+        grown.stdout.contains("no statements: nothing in the database changes"),
+        "{}",
+        grown.stdout
+    );
+
+    // A variant gone and a shorter label allow less: each needs a value
+    // for what is stored.
+    write(&root, size, "type Size = Enum {\n    small\n    medium\n    huge\n}\n");
+    write(&root, label, "type Label = Text {\n    max_length: 10\n}\n");
+    let waiting = jadpo(&root, &["migrate", "new", "shrink"]);
+    assert!(waiting.stdout.contains("allows less"), "{}", waiting.stdout);
+    let shrink = migrations(&root).pop().expect("the migration");
+    let unfinished = jadpo(&root, &["check"]);
+    assert!(
+        unfinished.stdout.contains("migration.decision_required"),
+        "{}",
+        unfinished.stdout
+    );
+    write(
+        &root,
+        &format!("database/migrations/{shrink}/changes.jadpo"),
+        "/// Stops large parcels and shortens labels.\nmigration {\n    Parcel.label: {\n        backfill: \"relabel\"\n    }\n    Parcel.size: {\n        backfill: Size.medium\n    }\n}\n",
+    );
+    let finished = jadpo(&root, &["migrate", "new", "shrink"]);
+    assert_eq!(finished.code, 0, "{}{}", finished.stdout, finished.stderr);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    let applied = jadpo(&root, &["migrate", "apply", "--url", &url]);
+    assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
+    assert_eq!(
+        rows(&url, "SELECT \"size\", \"label\" FROM \"parcel\" ORDER BY \"id\""),
+        [vec!["medium", "relabel"], vec!["small", "short"]]
     );
 }

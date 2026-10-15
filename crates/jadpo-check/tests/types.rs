@@ -306,7 +306,7 @@ fn widening_follows_declared_steps_only() {
 
 #[test]
 fn reading_through_objects_gives_field_types() {
-    let source = "type PostalCode = Text {\n    max_length: 10\n}\n\ntype Address = Object {\n    postal_code: PostalCode\n}\n\nentity Customer {\n    id: Uuid\n    billing_address: Address\n    shipping_address: Address\n}\n\nfunction billing(customer: Customer) -> Address.postal_code {\n    return customer.billing_address.postal_code\n}\n\nfunction shipping(customer: Customer) -> Address.postal_code {\n    return customer.shipping_address.postal_code\n}\n\nfunction plain(customer: Customer) -> PostalCode {\n    return customer.billing_address.postal_code\n}\n";
+    let source = "type PostalCode = Text {\n    max_length: 10\n}\n\ntype Address = Object {\n    postal_code: PostalCode\n}\n\ntype Customer = Object {\n    id: Uuid\n    billing_address: Address\n    shipping_address: Address\n}\n\nfunction billing(customer: Customer) -> Address.postal_code {\n    return customer.billing_address.postal_code\n}\n\nfunction shipping(customer: Customer) -> Address.postal_code {\n    return customer.shipping_address.postal_code\n}\n\nfunction plain(customer: Customer) -> PostalCode {\n    return customer.billing_address.postal_code\n}\n";
     assert_eq!(check(source), Vec::<String>::new());
 }
 
