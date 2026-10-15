@@ -28,8 +28,44 @@ impl AstNode for SourceFile {
 }
 
 impl SourceFile {
+    pub fn use_decls(&self) -> AstChildren<UseDecl> {
+        support::children(&self.syntax)
+    }
     pub fn decls(&self) -> AstChildren<Decl> {
         support::children(&self.syntax)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct UseDecl {
+    pub(crate) syntax: SyntaxNode,
+}
+
+impl AstNode for UseDecl {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == USE_DECL
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl UseDecl {
+    pub fn use_kw_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, USE_KW)
+    }
+    pub fn use_path(&self) -> Option<UsePath> {
+        support::child(&self.syntax)
+    }
+    pub fn use_names(&self) -> Option<UseNames> {
+        support::child(&self.syntax)
     }
 }
 
@@ -271,6 +307,7 @@ impl Snippet {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SnippetItem {
+    UseDecl(UseDecl),
     Decl(Decl),
     Member(Member),
     BareMember(BareMember),
@@ -281,7 +318,8 @@ pub enum SnippetItem {
 
 impl AstNode for SnippetItem {
     fn can_cast(kind: SyntaxKind) -> bool {
-        Decl::can_cast(kind)
+        kind == USE_DECL
+            || Decl::can_cast(kind)
             || kind == MEMBER
             || kind == BARE_MEMBER
             || kind == ROUTE_ENTRY
@@ -290,6 +328,9 @@ impl AstNode for SnippetItem {
     }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         let kind = syntax.kind();
+        if kind == USE_DECL {
+            return Some(Self::UseDecl(UseDecl { syntax }));
+        }
         if Decl::can_cast(kind) {
             return Decl::cast(syntax).map(Self::Decl);
         }
@@ -312,6 +353,7 @@ impl AstNode for SnippetItem {
     }
     fn syntax(&self) -> &SyntaxNode {
         match self {
+            Self::UseDecl(it) => it.syntax(),
             Self::Decl(it) => it.syntax(),
             Self::Member(it) => it.syntax(),
             Self::BareMember(it) => it.syntax(),
@@ -319,6 +361,12 @@ impl AstNode for SnippetItem {
             Self::Stmt(it) => it.syntax(),
             Self::Elision(it) => it.syntax(),
         }
+    }
+}
+
+impl From<UseDecl> for SnippetItem {
+    fn from(node: UseDecl) -> SnippetItem {
+        SnippetItem::UseDecl(node)
     }
 }
 
@@ -645,6 +693,96 @@ impl AstNode for TemplateBody {
 impl TemplateBody {
     pub fn template_parts(&self) -> AstChildren<TemplatePart> {
         support::children(&self.syntax)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct UsePath {
+    pub(crate) syntax: SyntaxNode,
+}
+
+impl AstNode for UsePath {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == USE_PATH
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl UsePath {
+    pub fn name_refs(&self) -> AstChildren<NameRef> {
+        support::children(&self.syntax)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct UseNames {
+    pub(crate) syntax: SyntaxNode,
+}
+
+impl AstNode for UseNames {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == USE_NAMES
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl UseNames {
+    pub fn l_brace_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, L_BRACE)
+    }
+    pub fn name_refs(&self) -> AstChildren<NameRef> {
+        support::children(&self.syntax)
+    }
+    pub fn comma_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, COMMA)
+    }
+    pub fn r_brace_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, R_BRACE)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NameRef {
+    pub(crate) syntax: SyntaxNode,
+}
+
+impl AstNode for NameRef {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == NAME_REF
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl NameRef {
+    pub fn ident_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, IDENT)
     }
 }
 
@@ -2488,33 +2626,6 @@ impl Literal {
                 NONE_KW,
             ],
         )
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct NameRef {
-    pub(crate) syntax: SyntaxNode,
-}
-
-impl AstNode for NameRef {
-    fn can_cast(kind: SyntaxKind) -> bool {
-        kind == NAME_REF
-    }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if Self::can_cast(syntax.kind()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-    fn syntax(&self) -> &SyntaxNode {
-        &self.syntax
-    }
-}
-
-impl NameRef {
-    pub fn ident_token(&self) -> Option<SyntaxToken> {
-        support::token(&self.syntax, IDENT)
     }
 }
 

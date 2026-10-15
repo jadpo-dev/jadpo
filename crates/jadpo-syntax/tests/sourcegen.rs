@@ -82,6 +82,7 @@ const KEYWORDS: &[&str] = &[
 /// everywhere else.
 const CONTEXTUAL_KEYWORDS: &[&str] = &[
     "asc", "desc", "end", "include", "matches", "package", "provide", "resource", "seed", "test",
+    "use",
 ];
 
 /// Tokens whose text varies.

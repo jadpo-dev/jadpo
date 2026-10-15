@@ -76,6 +76,7 @@ pub enum SyntaxKind {
     RESOURCE_KW,
     SEED_KW,
     TEST_KW,
+    USE_KW,
     IDENT,
     INT_NUMBER,
     DECIMAL_NUMBER,
@@ -88,6 +89,7 @@ pub enum SyntaxKind {
     DOC_COMMENT,
     ERROR,
     SOURCE_FILE,
+    USE_DECL,
     SNIPPET,
     MEMBER,
     BARE_MEMBER,
@@ -95,6 +97,9 @@ pub enum SyntaxKind {
     ELISION,
     TEMPLATE,
     TEMPLATE_BODY,
+    USE_PATH,
+    USE_NAMES,
+    NAME_REF,
     TYPE_DECL,
     FUNCTION_DECL,
     ACTION_DECL,
@@ -137,7 +142,6 @@ pub enum SyntaxKind {
     ELSE_BRANCH,
     ASSERT_FAILS,
     LITERAL,
-    NAME_REF,
     FIELD_EXPR,
     CALL_EXPR,
     RECORD_EXPR,
@@ -180,7 +184,7 @@ pub enum SyntaxKind {
 
 use self::SyntaxKind::*;
 
-const ALL: [SyntaxKind; 170] = [
+const ALL: [SyntaxKind; 174] = [
     EOF,
     L_BRACE,
     R_BRACE,
@@ -251,6 +255,7 @@ const ALL: [SyntaxKind; 170] = [
     RESOURCE_KW,
     SEED_KW,
     TEST_KW,
+    USE_KW,
     IDENT,
     INT_NUMBER,
     DECIMAL_NUMBER,
@@ -263,6 +268,7 @@ const ALL: [SyntaxKind; 170] = [
     DOC_COMMENT,
     ERROR,
     SOURCE_FILE,
+    USE_DECL,
     SNIPPET,
     MEMBER,
     BARE_MEMBER,
@@ -270,6 +276,9 @@ const ALL: [SyntaxKind; 170] = [
     ELISION,
     TEMPLATE,
     TEMPLATE_BODY,
+    USE_PATH,
+    USE_NAMES,
+    NAME_REF,
     TYPE_DECL,
     FUNCTION_DECL,
     ACTION_DECL,
@@ -312,7 +321,6 @@ const ALL: [SyntaxKind; 170] = [
     ELSE_BRANCH,
     ASSERT_FAILS,
     LITERAL,
-    NAME_REF,
     FIELD_EXPR,
     CALL_EXPR,
     RECORD_EXPR,
@@ -487,6 +495,7 @@ impl SyntaxKind {
             "resource" => RESOURCE_KW,
             "seed" => SEED_KW,
             "test" => TEST_KW,
+            "use" => USE_KW,
             _ => return None,
         };
         Some(kind)
@@ -564,6 +573,7 @@ impl SyntaxKind {
             RESOURCE_KW => "resource",
             SEED_KW => "seed",
             TEST_KW => "test",
+            USE_KW => "use",
             _ => return None,
         };
         Some(text)
@@ -642,6 +652,7 @@ macro_rules! T {
     [resource] => { $crate::SyntaxKind::RESOURCE_KW };
     [seed] => { $crate::SyntaxKind::SEED_KW };
     [test] => { $crate::SyntaxKind::TEST_KW };
+    [use] => { $crate::SyntaxKind::USE_KW };
     [ident] => { $crate::SyntaxKind::IDENT };
     [int_number] => { $crate::SyntaxKind::INT_NUMBER };
     [decimal_number] => { $crate::SyntaxKind::DECIMAL_NUMBER };

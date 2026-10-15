@@ -293,6 +293,16 @@ rules! {
         "14-tooling.html#format-unsafe", "Formatting would change the file's meaning";
     FORMAT_WRITE_FAILED: "format.write_failed", area 14, Error, Human,
         "14-tooling.html#formatting", "Formatted source could not be written";
+    IMPORT_DUPLICATE: "import.duplicate", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#import-duplicate", "Name or folder imported twice";
+    IMPORT_MISSING: "import.missing", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#import-missing", "Name used without its import";
+    IMPORT_UNKNOWN: "import.unknown", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#import-unknown", "Import names nothing in its folder";
+    IMPORT_UNNEEDED: "import.unneeded", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#import-unneeded", "Import of a name the file sees without one";
+    IMPORT_UNUSED: "import.unused", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#import-unused", "Imported name the file does not use";
     LAYOUT_CALL_DIRECTION: "layout.call_direction", area 1, Error, Human,
         "01-project-layout-and-modules.html#layout-call-direction", "Shared code depends on a domain";
     LAYOUT_FILE_NAME_MISMATCH: "layout.file_name_mismatch", area 1, Error, Agent,

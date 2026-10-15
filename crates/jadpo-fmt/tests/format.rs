@@ -217,3 +217,40 @@ fn comparisons_keep_a_space_on_both_sides() {
         "type arguments stay tight"
     );
 }
+
+#[test]
+fn use_lines_go_first_sorted_with_their_names_sorted() {
+    // Area 1, Imports: one line per folder, names before domains, from the
+    // root files through `shared/` to each domain's folders in the
+    // layout's order; the comments opening the file stay above them.
+    assert_eq!(
+        fmt(
+            "// Prices a basket.\n\nuse menu\nuse sales/actions {price_lines}\nuse shared/libraries { money }\nuse sales/types { Receipt, Basket ,DiscountCode }\nuse shared/types { Percent, Pence }\n\nuse sales/failures { BasketEmpty }\n/// The total.\naction price_basket() -> Unit {}\n"
+        ),
+        "// Prices a basket.\n\nuse shared/types { Pence, Percent }\nuse shared/libraries { money }\nuse sales/types { Basket, DiscountCode, Receipt }\nuse sales/failures { BasketEmpty }\nuse sales/actions { price_lines }\nuse menu\n\n/// The total.\naction price_basket() -> Unit {}\n"
+    );
+}
+
+#[test]
+fn a_use_line_written_after_a_declaration_moves_to_the_top() {
+    assert_eq!(
+        fmt("type A = Int {}\n\nuse shared/types { Pence }\n"),
+        "use shared/types { Pence }\n\ntype A = Int {}\n"
+    );
+}
+
+#[test]
+fn a_long_use_line_puts_one_name_per_line() {
+    let names: Vec<String> = (0..12).map(|i| format!("LongTypeName{i:02}")).collect();
+    let out = fmt(&format!(
+        "use shared/types {{ {} }}\n\ntype A = Int {{}}\n",
+        names.join(", ")
+    ));
+    assert_eq!(
+        out,
+        format!(
+            "use shared/types {{\n    {}\n}}\n\ntype A = Int {{}}\n",
+            names.join(",\n    ")
+        )
+    );
+}

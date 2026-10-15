@@ -12,11 +12,6 @@ use jadpo_syntax::{parse_file, parse_snippet};
 /// has decided. Each is (file, a line of the block, why).
 const EXPECTED_TO_FAIL: &[(&str, &str, &str)] = &[
     (
-        "docs/language/01-project-layout-and-modules.md",
-        "use shared/types { Pence, Percent }",
-        "area 1's `use` lines, decided 2026-10-14 and built in chunk 3.5",
-    ),
-    (
         "docs/language/02-values-and-types.md",
         "type OrderId = Uuid       // rejected",
         "area 2 question 6 shows the block-less type it rejects",

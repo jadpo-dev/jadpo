@@ -111,3 +111,42 @@ fn a_field_access_reads_the_name_after_the_dot() {
         .collect();
     assert_eq!(fields, ["a.b . c", "a . b"]);
 }
+
+#[test]
+fn use_lines_name_a_folder_and_what_they_bring_in() {
+    let source = file("use shared/types { Pence, Percent }\nuse menu\n\ntype A = Int {}\n");
+    let lines: Vec<(String, Vec<String>)> = source
+        .use_decls()
+        .map(|line| {
+            let path = line
+                .use_path()
+                .map(|path| path.syntax().text().to_string())
+                .unwrap_or_default();
+            let names = line
+                .use_names()
+                .into_iter()
+                .flat_map(|names| names.name_refs())
+                .map(|name| name.syntax().text().to_string())
+                .collect();
+            (path, names)
+        })
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            ("shared/types".to_string(), vec!["Pence".to_string(), "Percent".to_string()]),
+            ("menu".to_string(), Vec::new()),
+        ]
+    );
+    // The declarations are counted without the `use` lines.
+    assert_eq!(source.decls().count(), 1);
+}
+
+#[test]
+fn use_is_reserved_where_something_is_named() {
+    let parse = jadpo_syntax::parse_file("function use() -> Unit {}\n");
+    assert_eq!(
+        parse.errors().first().map(|e| e.message.as_str()),
+        Some("`use` is a reserved word")
+    );
+}

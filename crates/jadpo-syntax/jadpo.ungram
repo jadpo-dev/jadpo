@@ -16,9 +16,9 @@
 // Files                   //
 //*************************//
 
-// A `.jadpo` file: declarations only.
+// A `.jadpo` file: its `use` lines, then declarations.
 SourceFile =
-  Decl*
+  UseDecl* Decl*
 
 // A documentation example: declarations, members, route entries and
 // statements, with `...` standing for code left out.
@@ -26,7 +26,8 @@ Snippet =
   SnippetItem*
 
 SnippetItem =
-  Decl
+  UseDecl
+| Decl
 | Member
 | BareMember
 | RouteEntry
@@ -36,6 +37,24 @@ SnippetItem =
 // An email template: text with Jadpo inside `{{ }}` (area 16).
 Template =
   TemplateBody
+
+//*************************//
+// Imports                 //
+//*************************//
+
+// `use shared/types { Pence, Percent }` brings in names from a folder,
+// written exactly as the code uses them; `use menu` brings in a domain,
+// whose calls stay qualified, `menu.price_item(...)` (area 1, Imports).
+UseDecl =
+  'use' UsePath UseNames?
+
+// A domain, a domain's or `shared/`'s folder, or a root file:
+// `menu`, `sales/types`, `shared/libraries`, `app`.
+UsePath =
+  NameRef ('/' NameRef)*
+
+UseNames =
+  '{' (NameRef (',' NameRef)* ','?)? '}'
 
 //*************************//
 // Declarations            //
