@@ -1053,7 +1053,9 @@ The driver also sends `time` values and one-dimensional arrays.
 `Host::database(store)` gives each store by its connection's name, and an
 action's transaction is begun in the store its first store operation
 names; asking for a second store in one action is a fault, since an action
-writes one store (area 5). `jadpo_runtime::migrate` and `standing` apply a
+writes one store (area 5), and since chunk 3.10 the checker refuses an
+action that reads a second store (`toolchain.not_built_yet`) until reads
+outside the transaction are built. `jadpo_runtime::migrate` and `standing` apply a
 store's pending migrations and say where it stands, recording each in the
 store's `jadpo_migrations` table under the table's lock (a row lock, never
 an advisory one) and refusing a store that applied a migration the project

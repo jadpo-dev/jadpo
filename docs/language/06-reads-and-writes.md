@@ -1228,8 +1228,76 @@ brings in the second store.
 
 Built in chunk 3.3: the check, counting every action an action calls. At
 run time an action's transaction is begun in the store its first store
-operation names, and any operation on another store in the same action is
-a fault; reading another store outside the transaction is not built yet.
+operation names. Reading another store outside the transaction is not
+built yet, so since chunk 3.10 an action that reads a second store, itself
+or through an action it calls, is `toolchain.not_built_yet` at the read or
+call that brings it in, rather than a fault as it runs:
+
+```jadpo check project=e-second-store-read file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        catalogue: {
+            driver: Driver.postgres
+        }
+    }
+}
+```
+
+```jadpo check project=e-second-store-read file=domains/ordering/types/product_name.jadpo hidden
+type ProductName = Text {
+    max_length: 80
+}
+```
+
+```jadpo check project=e-second-store-read file=domains/ordering/entities/product.jadpo hidden
+use ordering/types { ProductName }
+
+entity Product {
+    id: Uuid
+    name: ProductName
+
+    store: catalogue
+}
+```
+
+```jadpo check project=e-second-store-read file=domains/ordering/entities/order.jadpo hidden migrate=initial
+use ordering/types { ProductName }
+
+entity Order {
+    id: Uuid
+    product_name: ProductName
+}
+```
+
+```jadpo check project=e-second-store-read file=domains/ordering/actions/order_product.jadpo expect=toolchain.not_built_yet
+use ordering/entities { Order, Product, ProductNotFound }
+
+action order_product(product_id: Product.id) fails ProductNotFound -> Order {
+    var product: Product = attempt Product.get(product_id)
+    return Order.create {
+        set: {
+            product_name: product.name
+        }
+    }
+}
+```
+
+```text output
+error: Reading a second store in `order_product` isn't built yet
+ --> domains/ordering/actions/order_product.jadpo:4:36
+  |
+4 |     var product: Product = attempt Product.get(product_id)
+  |                                    ^^^^^^^^^^^^^^^^^^^^^^^ store `catalogue`
+  reason: An action may read another store outside its transaction (area 6), but this compiler runs all of an action's store operations in the one transaction its first begins; `order_product` uses `Order` (store `main`), and here it reads `Product` (store `catalogue`).
+  next: Read `Product` before `order_product` runs, and pass in what it needs, for now (agent)
+  rule: toolchain.not_built_yet
+  help: docs/language/06-reads-and-writes.html#one-store-per-action
+
+check failed: 1 error, 5 files
+```
 
 ## Where a read comes from
 
