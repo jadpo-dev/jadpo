@@ -34,9 +34,11 @@
 pub mod collection;
 pub mod decimal;
 pub mod integer;
+pub mod json;
 pub mod ops;
 pub mod order;
 mod rounding;
+pub mod shape;
 pub mod validate;
 mod value;
 

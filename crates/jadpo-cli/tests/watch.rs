@@ -1102,8 +1102,8 @@ fn the_command_starts_a_session_or_ends_on_a_mistake() {
         "{}",
         missing.stderr
     );
-    let route = jadpo(&root, &["test", "--watch", "--kind", "route"]);
-    assert_eq!((route.code, route.session.is_none()), (1, true));
+    let schedule = jadpo(&root, &["test", "--watch", "--kind", "schedule"]);
+    assert_eq!((schedule.code, schedule.session.is_none()), (1, true));
     let nowhere = jadpo(&folder("command-nowhere"), &["test", "--watch"]);
     assert_eq!((nowhere.code, nowhere.session.is_none()), (1, true));
     assert!(nowhere.stdout.starts_with("error: No Jadpo project here\n"));

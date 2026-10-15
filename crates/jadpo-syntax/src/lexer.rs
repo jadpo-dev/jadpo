@@ -63,6 +63,23 @@ pub(crate) enum LexMode {
 pub(crate) const HTTP_METHODS: &[&str] =
     &["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
+/// Whether `word`, starting at `start` in `text`, reads as a route
+/// entry's method: an HTTP method, or any upper-case word that starts its
+/// line, such as `FETCH`, which the parser reports as a method a route
+/// isn't written with (area 7) rather than as a division.
+pub(crate) fn is_method_word(text: &str, start: usize, word: &str) -> bool {
+    if HTTP_METHODS.contains(&word) {
+        return true;
+    }
+    word.len() >= 2
+        && word.bytes().all(|b| b.is_ascii_uppercase())
+        && text
+            .get(..start)
+            .unwrap_or("")
+            .trim_end_matches([' ', '\t'])
+            .ends_with(['\n', '{'])
+}
+
 pub(crate) fn lex(text: &str, mode: LexMode) -> (Vec<LexToken>, Vec<LexError>) {
     let mut lexer = Lexer {
         text,
@@ -198,7 +215,7 @@ impl Lexer<'_> {
         }
         match self.last {
             Some((COLON, _, _)) => true,
-            Some((IDENT, start, end)) => HTTP_METHODS.contains(&&self.text[start..end]),
+            Some((IDENT, start, end)) => is_method_word(self.text, start, &self.text[start..end]),
             _ => false,
         }
     }
@@ -462,7 +479,8 @@ impl Lexer<'_> {
     fn semicolon(&mut self) {
         let start = self.pos;
         // Splitting the line is only the fix when what comes before the `;`
-        // can end one: not after `use shared/;` or `a +;`.
+        // can end one (not after `use shared/;` or `a +;`) and what follows
+        // can start one (not `use shared/types ;{ Pence }`).
         let ends_line = matches!(
             self.last,
             Some((
@@ -488,6 +506,7 @@ impl Lexer<'_> {
         let after = self.rest_of_line(self.pos);
         let code = after.split("//").next().unwrap_or("").trim();
         let ends = code.is_empty() || code.starts_with('}') || code.chars().all(|c| c == ';');
+        let ends_line = ends_line && !code.starts_with('{');
         let (edit, next) = if ends {
             // Spaces before the `;` go with it.
             let before = self.text[..start].trim_end_matches([' ', '\t']).len();

@@ -59,11 +59,18 @@ fn top_level_plain() -> String {
 Build and check
   check         Check the project for errors
   test          Run tests
+  dev           Run the app and reload on every save
   fmt           Format source files
 
 Data
   migrate       Write and apply migrations    new, apply, status
   sql           Show the SQL a query or action sends
+
+Look things up
+  routes        List every route
+
+Change safely
+  api           Rewrite the API records       update
 
 Set up
   completions   Turn on Tab completion        zsh, bash, fish
@@ -110,11 +117,18 @@ fn rich_help_uses_symbols_and_the_same_grid() {
 Build and check
   check         Check the project for errors
   test          Run tests
+  dev           Run the app and reload on every save
   fmt           Format source files
 
 Data
   migrate       Write and apply migrations    new · apply · status
   sql           Show the SQL a query or action sends
+
+Look things up
+  routes        List every route
+
+Change safely
+  api           Rewrite the API records       update
 
 Set up
   completions   Turn on Tab completion        zsh · bash · fish
@@ -265,16 +279,19 @@ fn help_json_is_the_whole_command_reference() {
         [
             "check",
             "test",
+            "dev",
             "fmt",
             "migrate",
             "sql",
+            "routes",
+            "api",
             "completions",
             "lsp",
             "help",
             "version"
         ]
     );
-    let completions = &data["commands"][5];
+    let completions = &data["commands"][8];
     assert_eq!(completions["synonyms"], serde_json::json!(["completion"]));
     assert_eq!(completions["group"], "Set up");
     assert_eq!(completions["usage"], "jadpo completions <shell>");
@@ -645,9 +662,12 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
         [
             "check\tCheck the project for errors",
             "test\tRun tests",
+            "dev\tRun the app and reload on every save",
             "fmt\tFormat source files",
             "migrate\tWrite and apply migrations",
             "sql\tShow the SQL a query or action sends",
+            "routes\tList every route",
+            "api\tRewrite the API records",
             "completions\tTurn on Tab completion",
             "lsp\tRun the language server for editors",
             "help\tShow commands, flags and examples",

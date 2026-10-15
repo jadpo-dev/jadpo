@@ -40,6 +40,7 @@ async fn body(
                         let caught = machine.catching();
                         invoke(program, ctx, callee, args, at.0, caught).await
                     }
+                    Target::Request(route) => request(program, ctx, route, &args).await,
                     effect => store(program, ctx, effect, args, at.0).await,
                 };
                 step = machine.resume(ctx, result);
@@ -95,14 +96,14 @@ fn store<'a, 'p: 'a>(
             Target::Query(id) => plan.query(id).map(|query| StoreOp::Read(&query.read)),
             Target::Get(id) => plan.entity(id).map(|entity| StoreOp::Read(&entity.get)),
             Target::Write(id) => plan.write(id).map(|write| StoreOp::Write(&write.plan)),
-            Target::Callable(_) => None,
+            Target::Callable(_) | Target::Request(_) => None,
         };
         let Some(op) = op else {
             let what = match target {
                 Target::Query(_) => "a query with no plan",
                 Target::Get(_) => "an entity with no plan",
                 Target::Write(_) => "a write with no plan",
-                Target::Callable(_) => "a call run as a read",
+                Target::Callable(_) | Target::Request(_) => "a call run as a read",
             };
             return Err(Stop::Fault(
                 ctx.fault(FaultKind::Defect(what.to_string()), at),
@@ -116,6 +117,28 @@ fn store<'a, 'p: 'a>(
             Stored::Fault(fault) => Err(Stop::Fault(fault)),
         }
     })
+}
+
+/// A route test's request (area 13), through the runtime's HTTP component
+/// as a client's would go, answered as a `Response` value.
+/// A defect behind the response ends the test with that fault, as one
+/// anywhere else in it would: a 500 is never what a test means to check.
+async fn request(
+    program: &Program,
+    ctx: &mut Ctx<'_>,
+    route: u32,
+    args: &[Value],
+) -> Result<Value, Stop> {
+    let app = program.app();
+    let Some(request) = jadpo_runtime::http::test_request(&app, route, args) else {
+        return Ok(Value::None);
+    };
+    let id = jadpo_runtime::http::request_id(ctx, u64::from(ctx.actions()));
+    let mut response = jadpo_runtime::http::handle(&app, program, ctx, &request, &id, None).await;
+    if let Some(fault) = response.fault.take() {
+        return Err(Stop::Fault(fault));
+    }
+    Ok(jadpo_runtime::http::response_value(&app, route, &response))
 }
 
 /// An action's body as the runtime's boundary runs it, once or, after a

@@ -293,8 +293,9 @@ impl Lower<'_> {
                 callee,
                 Callee::Action(_) | Callee::Fixture(_) | Callee::Query(_) | Callee::Entity { .. }
             ),
-            // `create`, `update` and `delete` write a record.
-            typed::Node::Expr(typed::Expr::Write { .. }) => true,
+            // `create`, `update` and `delete` write a record, and a
+            // route test's request goes through the HTTP boundary.
+            typed::Node::Expr(typed::Expr::Write { .. } | typed::Expr::Request { .. }) => true,
             typed::Node::Expr(typed::Expr::Unchecked) => {
                 self.facts.effects.contains(&node_key(node))
             }
@@ -809,6 +810,9 @@ impl Lower<'_> {
     /// `Type { ... }` or `Enum.variant { ... }`.
     fn record(&mut self, record: &ast::RecordExpr) -> typed::Expr {
         let key = node_key(record.syntax());
+        if let Some(fact) = self.facts.requests.get(&key).cloned() {
+            return self.request(&fact, record);
+        }
         if let Some(fact) = self.facts.writes.get(&key) {
             return self.write(fact, record.expr(), None, record.member_list());
         }
@@ -848,6 +852,49 @@ impl Lower<'_> {
             callee,
             fields,
             fallible,
+        }
+    }
+
+    /// A route test's request (area 13): its placeholders in the route's
+    /// order, then its input.
+    fn request(
+        &mut self,
+        fact: &super::request::RequestFact,
+        record: &ast::RecordExpr,
+    ) -> typed::Expr {
+        let members = crate::tree::members(record.member_list());
+        let value = |name: &str| {
+            members
+                .iter()
+                .find(|(key, _)| crate::tree::name_text(key).as_deref() == Some(name))
+                .map(|(_, member)| member.clone())
+        };
+        let given: Vec<(String, Expr)> = value("params")
+            .map(|member| {
+                crate::tree::members(member.block())
+                    .into_iter()
+                    .filter_map(|(name, param)| {
+                        Some((crate::tree::name_text(&name)?, param.value()?))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut params = Vec::new();
+        for name in &fact.params {
+            if let Some((_, expr)) = given.iter().find(|(given, _)| given == name) {
+                params.push(self.expr(expr));
+            }
+        }
+        let input = value("input")
+            .and_then(|member| member.value())
+            .map(|expr| self.expr(&expr));
+        if let Some(method) = value("method").and_then(|member| member.value()) {
+            self.scan(method.syntax());
+        }
+        typed::Expr::Request {
+            route: fact.route.clone(),
+            params,
+            input,
         }
     }
 

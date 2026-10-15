@@ -32,6 +32,8 @@ pub enum Session {
     Lsp(PathBuf),
     /// `jadpo test --watch`, until it is stopped.
     Watch(Box<WatchArgs>),
+    /// `jadpo dev`, until it is stopped.
+    Dev(Box<crate::dev::DevArgs>),
 }
 
 /// Everything a command's `run` function receives.
@@ -189,6 +191,16 @@ pub(crate) fn finish(
                 stderr: String::new(),
                 code: 0,
                 session: Some(Session::Watch(args)),
+            };
+        }
+        Reply::Session(Session::Dev(mut args)) => {
+            args.json = json;
+            args.choice = choice;
+            return Output {
+                stdout: String::new(),
+                stderr: String::new(),
+                code: 0,
+                session: Some(Session::Dev(args)),
             };
         }
         Reply::Session(session) => {

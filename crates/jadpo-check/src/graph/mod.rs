@@ -14,7 +14,7 @@ mod lookup;
 mod part;
 pub(crate) mod paths;
 mod similar;
-mod text;
+pub(crate) mod text;
 
 pub use lookup::{Found, lookup};
 pub use part::{FilePart, file_part};
@@ -221,6 +221,19 @@ pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
     }
     for node in records(db, project) {
         builder.node(node.clone());
+    }
+    // The APIs (area 7), once there is a route or `apis:` declares them.
+    let apis = crate::routes::api_table(db, project);
+    if apis.declared || !crate::routes::group_names(db, project).is_empty() {
+        for api in &apis.apis {
+            let mut node = Node::new(
+                registry.key(Kind::Api, &api.name, None),
+                Kind::Api,
+                &api.name,
+            );
+            node.detail = jadpo_graph::Detail::Api { prefix: api.path() };
+            builder.node(node);
+        }
     }
     Arc::new(builder.build())
 }

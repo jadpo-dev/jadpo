@@ -690,6 +690,9 @@ fn body_features(
                 Expr::Field { .. } => {
                     out.insert("expr field");
                 }
+                Expr::Request { .. } => {
+                    out.insert("expr request");
+                }
                 Expr::Call {
                     callee,
                     args,
@@ -1053,7 +1056,13 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             | Detail::Placement { .. }
             | Detail::SystemTable { .. }
             | Detail::Lifecycle { .. }
-            | Detail::Transition { .. } => {}
+            | Detail::Transition { .. }
+            | Detail::Api { .. } => {}
+            Detail::Route { input, output, .. } => {
+                for ty in input.iter().chain(output) {
+                    shapes(ty, &mut used);
+                }
+            }
         }
     }
     // Area 5's settings and decisions, as the checker read them.

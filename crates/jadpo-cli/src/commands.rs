@@ -6,10 +6,13 @@ use jadpo_term::Json;
 
 use crate::completion;
 
+pub use crate::api::api;
 pub use crate::check::check;
+pub use crate::dev::dev;
 pub use crate::fmt::fmt;
 use crate::help::{self, VERSION};
 pub use crate::migrate::migrate;
+pub use crate::routes::routes;
 use crate::run::{Call, Reply, Session, both, either, quoted, unknown_command};
 pub use crate::sql::sql;
 use crate::suggest::nearest;

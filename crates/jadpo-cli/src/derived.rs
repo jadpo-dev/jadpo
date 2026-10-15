@@ -7,8 +7,9 @@
 //! check finds errors, so what an agent looks up is never stale (area 14,
 //! question 3); the manifest's `errors` says the graph may be incomplete.
 //! The other views come with their areas: the schema, query and
-//! permissions reports in `build/report/` (5, 6, 9), OpenAPI (7) and the
-//! monitoring rules (16).
+//! permissions reports in `build/report/` (5, 6, 9) and the monitoring
+//! rules (16). Since chunk 4.1 each API's OpenAPI document is written to
+//! `build/openapi/<api>.json` once its routes read cleanly (area 7).
 
 use std::path::Path;
 
@@ -19,27 +20,45 @@ use jadpo_graph::{Graph, catalogue};
 use crate::help::VERSION;
 
 /// Writes every derived file; the paths written, relative to the root.
-pub fn write(root: &Path, graph: &Graph, errors: usize) -> Result<Vec<String>, Box<Diagnostic>> {
+pub fn write(
+    root: &Path,
+    graph: &Graph,
+    errors: usize,
+    openapi: &[(String, jadpo_graph::json::Value)],
+) -> Result<Vec<String>, Box<Diagnostic>> {
     let stamp = Stamp {
         compiler: VERSION.to_string(),
         errors,
     };
     let libraries = catalogue::libraries(graph);
     let failures = catalogue::failures(graph);
-    let files = [
-        ("build/manifest.json", manifest(graph, &stamp).to_document()),
-        ("build/catalogue/libraries.md", libraries.markdown),
+    let mut files = vec![
         (
-            "build/catalogue/libraries.json",
+            "build/manifest.json".to_string(),
+            manifest(graph, &stamp).to_document(),
+        ),
+        (
+            "build/catalogue/libraries.md".to_string(),
+            libraries.markdown,
+        ),
+        (
+            "build/catalogue/libraries.json".to_string(),
             libraries.json.to_document(),
         ),
-        ("build/catalogue/failures.md", failures.markdown),
-        ("build/catalogue/failures.json", failures.json.to_document()),
+        ("build/catalogue/failures.md".to_string(), failures.markdown),
+        (
+            "build/catalogue/failures.json".to_string(),
+            failures.json.to_document(),
+        ),
     ];
+    // One OpenAPI document per API (area 7), once its routes read cleanly.
+    for (api, document) in openapi {
+        files.push((format!("build/openapi/{api}.json"), document.to_document()));
+    }
     let mut written = Vec::new();
     for (path, text) in files {
-        put(root, path, &text)?;
-        written.push(path.to_string());
+        put(root, &path, &text)?;
+        written.push(path);
     }
     Ok(written)
 }

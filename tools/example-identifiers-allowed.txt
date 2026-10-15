@@ -277,3 +277,8 @@ notify
 ready
 low
 high
+
+# The failure envelope's field (area 4) and OpenAPI's `info.title` (area 7):
+# protocol words the runtime and OpenAPI must write as they are.
+details
+title

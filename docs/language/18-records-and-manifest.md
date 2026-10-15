@@ -341,10 +341,10 @@ that the path number cannot be decoded.
 | Feature | Status |
 |---|---|
 | Manifest | Built (chunk 1.7): `jadpo check` writes `build/manifest.json` at `format` 1, with nodes for areas 1 to 4 and their `calls`, `uses` and `raises` edges. The build stamp, routes, schedules, hosts, policy, personal fields and thresholds join as their areas are built. |
-| Views of it | The library and failure catalogues are built (chunk 1.7); the other reports, OpenAPI and the monitoring rules come with their areas. |
+| Views of it | The library and failure catalogues are built (chunk 1.7), and one OpenAPI document per API in `build/openapi/` (chunk 4.1); the other reports and the monitoring rules come with their areas. |
 | Migrations | Built (chunk 3.1): `jadpo migrate new` writes each folder, and `jadpo check` fails while the entities and the latest snapshot disagree. Each folder is a `migration_snapshot` node in the manifest. |
 | Stable identity | Built (chunk 1.7): a key is the kind and the born name, and a test's key is the file it sits beside and its sentence (chunk 1.9). The registry is read once `jadpo rename` writes it (area 14). |
-| API record | Decided, not built: comes with routes (chunk 4.1). |
+| API record | Built (chunk 4.1): `jadpo api update` writes `api/<api>.api` for each API with routes, and `jadpo check` fails while one disagrees with the routes (`api.record_out_of_date`, area 7), naming what changed. Breaking-change classification and acceptances come after the first build. |
 | Lock | Decided, not built: comes with packages (chunk 7.1). |
 | Build stamp | Decided, not built: comes with compiled deployables (Phase 8). |
 | Approval, acceptances, package upgrade plans, `jadpo incident` | Decided, not built: after the first build (roadmap, areas 17 and 18). |

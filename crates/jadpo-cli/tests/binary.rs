@@ -108,9 +108,12 @@ fn bash_completes_commands_and_values() {
         [
             "check",
             "test",
+            "dev",
             "fmt",
             "migrate",
             "sql",
+            "routes",
+            "api",
             "completions",
             "lsp",
             "help",

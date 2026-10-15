@@ -172,7 +172,7 @@ pub const CONSTRAINTS: [&str; 8] = [
 ];
 
 /// The settings a field of an `Input` may have beside its constraints.
-pub const FIELD_SETTINGS: [&str; 2] = ["optional", "default"];
+pub const FIELD_SETTINGS: [&str; 3] = ["optional", "default", "header"];
 
 /// Why a constraint can't be used.
 #[derive(Clone, Debug, PartialEq, Eq)]

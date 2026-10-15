@@ -564,7 +564,7 @@ application {}
 
 ```jadpo check project=e-public file=domains/planning/routes/todos.jadpo expect=visibility.public_not_allowed
 public routes Todos {
-    prefix: "/todos"
+    prefix: /todos
 }
 ```
 

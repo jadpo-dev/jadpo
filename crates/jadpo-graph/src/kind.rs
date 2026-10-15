@@ -135,9 +135,9 @@ kinds! {
     Site: "site", Behaviour, Built, 18;
     Branch: "branch", Behaviour, Built, 16;
 
-    Api: "api", Triggers, Reserved, 7;
-    RouteGroup: "route_group", Triggers, Declared, 7;
-    Route: "route", Triggers, Reserved, 7;
+    Api: "api", Triggers, Built, 7;
+    RouteGroup: "route_group", Triggers, Built, 7;
+    Route: "route", Triggers, Built, 7;
     Schedule: "schedule", Triggers, Declared, 12;
     Subscriber: "subscriber", Triggers, Declared, 12;
     GeneratedRoute: "generated_route", Triggers, Reserved, 8;
@@ -230,12 +230,12 @@ macro_rules! edges {
 }
 
 edges! {
-    Calls: "calls", Built, "A callable calls a function, action, query, fixture or library function";
+    Calls: "calls", Built, "A callable calls a function, action, query, fixture or library function; a test sends a request through a route";
     Reads: "reads", Built, "A query or an entity's `get` reads an entity";
     Writes: "writes", Built, "An action or fixture creates, updates or deletes an entity's records";
     Emits: "emits", Reserved, "Emits an event";
     Subscribes: "subscribes", Reserved, "A subscriber listens for an event";
-    Runs: "runs", Reserved, "A trigger runs an action or query";
+    Runs: "runs", Built, "A trigger runs an action or query";
     Raises: "raises", Built, "A failure can leave the callable";
     Maps: "maps", Reserved, "One failure becomes another";
     References: "references", Built, "An entity refers to another";

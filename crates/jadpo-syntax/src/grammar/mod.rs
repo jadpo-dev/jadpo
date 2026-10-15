@@ -12,7 +12,7 @@ use jadpo_diag::rule;
 
 use crate::SyntaxKind::{self, *};
 use crate::error::{SyntaxError, TextEdit};
-use crate::lexer::HTTP_METHODS;
+use crate::lexer::is_method_word;
 use crate::parser::{CompletedMarker, Parser};
 
 /// Declarations that exist once per project and carry no name (area 1).
@@ -1153,7 +1153,8 @@ fn close_brace(p: &mut Parser<'_>, open: (u32, u32)) {
 }
 
 fn at_route_entry(p: &Parser<'_>) -> bool {
-    p.at(IDENT) && HTTP_METHODS.contains(&p.current_text()) && p.nth(1) == SLASH
+    let (start, _) = p.range();
+    p.at(IDENT) && is_method_word(p.text(), start as usize, p.current_text()) && p.nth(1) == SLASH
 }
 
 /// The number of tokens in a member key (`name`, `Todo.priority`) when one
@@ -1398,8 +1399,55 @@ fn member_without_colon(p: &mut Parser<'_>, context: Members) {
     skip_line(p);
 }
 
+/// The methods a route entry is written with (area 7): the runtime
+/// answers `HEAD` and `OPTIONS` itself.
+const ROUTE_METHODS: [&str; 5] = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+
 fn route_entry(p: &mut Parser<'_>) {
     let m = p.start();
+    let method = p.current_text().to_string();
+    if !ROUTE_METHODS.contains(&method.as_str()) {
+        let answered = matches!(method.as_str(), "HEAD" | "OPTIONS");
+        let mut error = p
+            .error_here(
+                &rule::SYNTAX_EXPECTED_HTTP_METHOD,
+                format!("`{method}` isn't a method a route is written with"),
+            )
+            .label(if answered {
+                "answered by the runtime"
+            } else {
+                "not a route method"
+            })
+            .reason(if answered {
+                format!(
+                    "Routes are written with `GET`, `POST`, `PUT`, `PATCH` or `DELETE`; the runtime answers `{method}` for every route itself."
+                )
+            } else {
+                "Routes are written with `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.".to_string()
+            });
+        // A word another framework or plain English uses for a method
+        // (`FETCH`), else a typo that keeps the first letter (`PSOT`).
+        let meant = match method.as_str() {
+            "FETCH" | "READ" | "LIST" | "SHOW" => Some("GET"),
+            "CREATE" | "ADD" | "NEW" => Some("POST"),
+            "UPDATE" | "EDIT" | "MODIFY" | "CHANGE" => Some("PATCH"),
+            "REPLACE" | "SET" => Some("PUT"),
+            "REMOVE" | "DESTROY" | "DEL" | "DROP" => Some("DELETE"),
+            _ => crate::nearest(&method, ROUTE_METHODS.iter().copied())
+                .filter(|near| near.chars().next() == method.chars().next()),
+        };
+        error = match meant {
+            Some(near) if !answered => {
+                let (start, end) = p.range();
+                error
+                    .next(format!("Use `{near}` instead of `{method}`"))
+                    .edit(TextEdit::replace(start, end, near))
+            }
+            _ if answered => error.next(format!("Remove the `{method}` route")),
+            _ => error.next("Write the route with one of those methods"),
+        };
+        p.push_error(error);
+    }
     p.bump(IDENT);
     route_path(p);
     body_start(p, true);

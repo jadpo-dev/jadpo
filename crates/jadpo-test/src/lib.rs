@@ -43,7 +43,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use jadpo_diag::{Diagnostic, Severity, Span, rule};
+use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_graph::{EdgeKind, Graph, Kind};
 use jadpo_interp::Prepared;
 
@@ -93,7 +93,7 @@ impl TestKind {
 
     /// Whether this toolchain can run tests of this kind yet.
     pub fn built(self) -> bool {
-        matches!(self, TestKind::Pure | TestKind::Action)
+        matches!(self, TestKind::Pure | TestKind::Action | TestKind::Route)
     }
 }
 
@@ -295,10 +295,7 @@ pub(crate) fn prepare(loaded: &jadpo_db::Loaded, cwd: &std::path::Path) -> Resul
         });
     }
     let diagnostics = jadpo_check::check(db, loaded.project);
-    if diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.severity() == Severity::Error)
-    {
+    if diagnostics.iter().any(jadpo_check::blocks_running) {
         return Err(Ran::Refused {
             diagnostics,
             sources: sources(loaded),
@@ -448,13 +445,19 @@ pub fn discover(graph: &Graph) -> Vec<Test> {
                     Kind::Action | Kind::Query | Kind::Fixture
                 )
             }) || graph.outgoing(id, EdgeKind::Reads).next().is_some();
+            // A request through a route makes it a route test (area 13).
+            let routes = graph
+                .outgoing(id, EdgeKind::Calls)
+                .any(|callee| graph.node(callee).kind == Kind::Route);
             Some(Test {
                 key: node.key.as_str().to_string(),
                 name: node.name.clone(),
                 file: place.file.clone(),
                 line: place.lines.0,
                 end_line: place.lines.1,
-                kind: if acts {
+                kind: if routes {
+                    TestKind::Route
+                } else if acts {
                     TestKind::Action
                 } else {
                     TestKind::Pure

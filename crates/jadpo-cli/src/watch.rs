@@ -351,6 +351,11 @@ pub fn serve_to(
     0
 }
 
+/// The time of day now, in the local zone, as `14:02:31`.
+pub(crate) fn time_now() -> String {
+    clock(local_offset())
+}
+
 /// The local time zone's offset from UTC in seconds, asked of `date` once:
 /// the standard library has no time zones, and a rule's time is only read
 /// by people. UTC when `date` can't say.

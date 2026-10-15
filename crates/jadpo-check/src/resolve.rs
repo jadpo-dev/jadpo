@@ -433,7 +433,7 @@ impl Names<'_> {
 
     /// A type written as a member's value: `Count`, `Todo.id`, `List<Tag>`,
     /// `Name?`, `ProductName { optional: true }`.
-    fn type_expr(&self, expr: &Expr, want: Want, out: &mut Vec<Diagnostic>) {
+    pub(crate) fn type_expr(&self, expr: &Expr, want: Want, out: &mut Vec<Diagnostic>) {
         match expr {
             Expr::NameRef(name) => self.type_name(name, want, out),
             Expr::FieldExpr(_) => {

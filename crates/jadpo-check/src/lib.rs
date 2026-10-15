@@ -18,6 +18,7 @@ mod layout;
 pub mod lookups;
 mod naming;
 mod resolve;
+pub mod routes;
 mod std_lib;
 mod tree;
 pub mod types;
@@ -98,7 +99,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .iter()
                     .cloned(),
             );
+            out.extend(routes::route_problems(db, project, file).iter().cloned());
         }
+        out.extend(routes::api_problems(db, project).iter().cloned());
+        out.extend(routes::table_problems(db, project).iter().cloned());
+        out.extend(routes::record::record_problems(db, project).iter().cloned());
         out.extend(types::call_problems(db, project).iter().cloned());
         out.extend(
             data::migrations::migration_problems(db, project)
@@ -133,6 +138,15 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     }
     sort(&mut out);
     out
+}
+
+/// Whether `diagnostic` stops a program running (`jadpo test`, `jadpo
+/// dev`): every error but an API record out of date, which is a promise
+/// to clients that `jadpo check` and CI hold to (area 7), not a reason
+/// the program can't run.
+pub fn blocks_running(diagnostic: &Diagnostic) -> bool {
+    diagnostic.severity() == jadpo_diag::Severity::Error
+        && diagnostic.rule.id != rule::API_RECORD_OUT_OF_DATE.id
 }
 
 /// The zero-based line `offset` is on.
