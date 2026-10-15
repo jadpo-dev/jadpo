@@ -12,3 +12,6 @@ node_modules/
 !.env.example
 !.env.sample
 !.env.template
+
+# The extension is packaged on demand (editors/vscode/README.md).
+*.vsix
