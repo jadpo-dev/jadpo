@@ -51,8 +51,8 @@ pub struct Guard {
 }
 
 /// The key a request sends: `Ok(None)` without one, `Err(())` when it
-/// isn't 1 to 255 visible ASCII characters.
-pub fn key(request: &Request) -> Result<Option<String>, ()> {
+/// isn't 1 to 255 printable ASCII characters.
+pub(crate) fn key(request: &Request) -> Result<Option<String>, ()> {
     let Some(key) = request.header(HEADER) else {
         return Ok(None);
     };

@@ -136,7 +136,7 @@ const KEY_REQUIRED: (u16, &str, &str) = (
 const KEY_INVALID: (u16, &str, &str) = (
     400,
     "invalid_request",
-    "An Idempotency-Key is 1 to 255 visible ASCII characters.",
+    "An Idempotency-Key is 1 to 255 printable ASCII characters.",
 );
 const KEY_REUSED: (u16, &str, &str) = (
     422,

@@ -28,7 +28,7 @@ const SHARED: [(&str, &str, &str, &str); 8] = [
         "400",
         "InvalidRequest",
         "invalid_request",
-        "The body is not JSON, the query string can't be read, or the `Idempotency-Key` header is missing where the API requires it or isn't 1 to 255 visible characters.",
+        "The body is not JSON, the query string can't be read, or the `Idempotency-Key` header is missing where the API requires it or isn't 1 to 255 printable ASCII characters.",
     ),
     (
         "409",

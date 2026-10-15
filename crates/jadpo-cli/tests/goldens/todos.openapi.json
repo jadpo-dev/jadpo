@@ -1,6 +1,36 @@
 {
   "components": {
     "responses": {
+      "DeadlineExceeded": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/DeadlineExceeded"
+            }
+          }
+        },
+        "description": "The route's deadline passed; nothing the request did was kept."
+      },
+      "IdempotencyKeyInFlight": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/IdempotencyKeyInFlight"
+            }
+          }
+        },
+        "description": "A request with this `Idempotency-Key` is still running; retry once it has finished."
+      },
+      "IdempotencyKeyReused": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/IdempotencyKeyReused"
+            }
+          }
+        },
+        "description": "This `Idempotency-Key` was already used with a different request."
+      },
       "InternalFault": {
         "content": {
           "application/json": {
@@ -29,7 +59,7 @@
             }
           }
         },
-        "description": "The body is not JSON, or the query string can't be read."
+        "description": "The body is not JSON, the query string can't be read, or the `Idempotency-Key` header is missing where the API requires it or isn't 1 to 255 printable ASCII characters."
       },
       "RateLimited": {
         "content": {
@@ -40,6 +70,16 @@
           }
         },
         "description": "Too many requests from this caller; wait as `Retry-After` says."
+      },
+      "RequestTooLarge": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RequestTooLarge"
+            }
+          }
+        },
+        "description": "The body is larger than 1 MB."
       }
     },
     "schemas": {
@@ -55,6 +95,93 @@
         },
         "required": [
           "title"
+        ],
+        "type": "object"
+      },
+      "DeadlineExceeded": {
+        "description": "The route's deadline passed; nothing the request did was kept.",
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "const": "deadline_exceeded",
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "IdempotencyKeyInFlight": {
+        "description": "A request with this `Idempotency-Key` is still running; retry once it has finished.",
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "const": "conflict",
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "IdempotencyKeyReused": {
+        "description": "This `Idempotency-Key` was already used with a different request.",
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "const": "idempotency_key_reused",
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
         ],
         "type": "object"
       },
@@ -144,7 +271,7 @@
         "type": "object"
       },
       "InvalidRequest": {
-        "description": "The body is not JSON, or the query string can't be read.",
+        "description": "The body is not JSON, the query string can't be read, or the `Idempotency-Key` header is missing where the API requires it or isn't 1 to 255 printable ASCII characters.",
         "properties": {
           "error": {
             "properties": {
@@ -179,6 +306,35 @@
             "properties": {
               "code": {
                 "const": "rate_limited",
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "RequestTooLarge": {
+        "description": "The body is larger than 1 MB.",
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "const": "request_too_large",
                 "type": "string"
               },
               "message": {
@@ -342,12 +498,27 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalFault"
+          },
+          "504": {
+            "$ref": "#/components/responses/DeadlineExceeded"
           }
         }
       },
       "post": {
         "description": "Creates a todo.",
         "operationId": "post_todos",
+        "parameters": [
+          {
+            "description": "Makes a retry safe: a repeat with the same key and request gets the first response for 24 hours instead of running again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -372,14 +543,44 @@
           "400": {
             "$ref": "#/components/responses/InvalidRequest"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdempotencyKeyInFlight"
+                }
+              }
+            },
+            "description": "Fails with `conflict`."
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestTooLarge"
+          },
           "422": {
-            "$ref": "#/components/responses/InvalidInput"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidInput"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IdempotencyKeyReused"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Fails with `idempotency_key_reused`."
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
           "500": {
             "$ref": "#/components/responses/InternalFault"
+          },
+          "504": {
+            "$ref": "#/components/responses/DeadlineExceeded"
           }
         }
       }
@@ -428,6 +629,9 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalFault"
+          },
+          "504": {
+            "$ref": "#/components/responses/DeadlineExceeded"
           }
         }
       }
