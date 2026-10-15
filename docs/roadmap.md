@@ -216,6 +216,13 @@ reference only).
   every other action at repeatable read. Done when two concurrent counters
   that are their actions' first statements both commit with no rerun (today
   the second reruns), and a counter after a read still reruns.
+- [ ] **3.8 Habits from other languages** `opus · high`
+  ([decision](decision-register.md#errors-for-habits-from-other-languages--2026-10-15)):
+  a researched catalogue of constructs people and agents carry over from
+  other languages, each with its own error, an edit and recovery as if the
+  Jadpo form were written; no syntax error followed by a second on the same
+  line, checked over a corpus of broken files; each rule with a checked
+  example on its area page.
 
 ## Phase 4 — HTTP, identity and policy (areas 7–9)
 
