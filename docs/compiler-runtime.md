@@ -461,7 +461,9 @@ Since chunk 3.9 `usage_problems` also reports each type or helper
 function beside a file's primary declaration that the primary doesn't
 reach through the names its declarations write, `layout.unused_declaration`;
 it reads the file's own tree and, per supporting declaration, the per-name
-users, so one another file uses is left to `layout.promotion_required`.
+users, so one another file uses is left to `layout.promotion_required`;
+while what the primary reaches writes a name that names nothing (an
+unknown type, or an unknown callee in its typed body), it reports none.
 `layout.promotion_required` on a type carries the edits that move it
 (`imports::move_edits`): out of its file with its attached comments, into
 a new file below the `use` lines it needs, and imported back into the old
