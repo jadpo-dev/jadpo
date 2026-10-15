@@ -36,6 +36,9 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    examples and errors it must make pass, and write those as failing tests
    first.
 3. Build until its "done when" holds and the gate (`tools/verify.py`) passes.
+   The full gate runs once, in the building subagent; when merging, the
+   session runs `--profile quick` only if merging `main` brought in code,
+   and leaves the full run to CI.
    From 2.4 on, every chunk adds or extends the commented examples in
    `examples/` so the coverage check still passes with what it built.
 4. Open a pull request from a branch named `chunk-<number>`, merge it when CI

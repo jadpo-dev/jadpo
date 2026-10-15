@@ -31,6 +31,10 @@ merged and anything that needs Richard.
 ## Working rules
 
 - `python3 tools/verify.py` is the gate. It must pass before a chunk merges.
+  Run the full gate once per chunk, where the building happens; the session
+  that merges doesn't run it again. After merging `main` into the branch it
+  runs `--profile quick` only if the merge brought in code, then pushes and
+  lets CI run the full gate on the result (Richard, 2026-10-15).
 - Branch from `main` per chunk, commit and push often, merge through a pull
   request when CI passes. Never create worktrees under `/private/tmp`.
 - Plan each chunk in the session from its area pages; write their examples
