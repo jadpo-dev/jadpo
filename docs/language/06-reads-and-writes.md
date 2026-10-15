@@ -976,8 +976,10 @@ in one step and nothing needs checking. On the right of `set:`,
 `Video.view_count` means the value stored at the moment of the write, while
 `video.view_count` would be the copy loaded earlier. Such an update takes the
 record's `id` instead of a loaded record, and its values may use only
-parameters, constants, `clock.now` and the record's stored fields, so it
-never reruns the action.
+parameters, constants, `clock.now` and the record's stored fields, so no
+increment is ever lost. As the action's first statement it never reruns; after
+an earlier read in the same action, two requests racing on the row rerun the
+action, as any concurrent change does (Richard, 2026-10-15).
 
 ```jadpo check project=counter file=video.jadpo hidden
 type ViewCount = Int {
