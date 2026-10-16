@@ -55,10 +55,7 @@ then built. No design is left for implementation.
     call per action". Settle before chunk 7.4.
 7c. ~~Per-user OAuth~~: decided, see "Acting for each user: OAuth grants".
 7d. ~~Redis entity queries~~: decided, see "Redis entities".
-8. **What a library package may also carry**: email partials and layouts,
-   translations, a usage guide for agents. *Recommendation:* yes to all
-   three. *Translations decided 2026-10-16 (Richard):* see "Translations",
-   "Packages and strictness".
+8. ~~What a library package may also carry~~: decided, see that section.
 9. **Software and disk**: a disk driver for files on one native server,
    image variants made by the runtime, virus scanning, and the `documents`
    capability rendering typed templates to HTML or PDF, now needed (the
@@ -809,6 +806,22 @@ record's own fields are checked after reading. Joins and `include`,
 ranges, ordering by other fields, `matches`, and grants beyond simple
 equality are compile errors naming the reason and PostgreSQL as the
 alternative.
+
+## What a library package may also carry (open item 8)
+
+Decided 2026-10-16 (Richard).
+
+- **No emails in packages**: an `emails/` folder in a package is a compile
+  error; email templates, partials and layouts are the app's own. (The
+  golden rule runs one way, so a package doing less than the app is
+  consistent.)
+- **Translations**, as decided under Translations, for a package's own
+  failures and messages.
+- **A usage guide**: one optional `GUIDE.md` in the package root saying how
+  to use the package well; every code example in it is compiled and run at
+  publish; `jadpo package show <name> --guide` prints it and the surface
+  points to it.
+- **Recipes in library packages too**, not only provider packages.
 
 ## Decided: the golden rule
 
