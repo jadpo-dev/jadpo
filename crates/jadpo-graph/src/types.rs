@@ -81,9 +81,10 @@ impl TypeRef {
 }
 
 impl fmt::Display for TypeRef {
-    /// With each key's born name; the manifest names keys as they are now.
+    /// With each key's born name as code writes it; the manifest names
+    /// keys as they are now.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.render(&|key| key.name().to_string()))
+        f.write_str(&self.render(&|key| key.written().to_string()))
     }
 }
 

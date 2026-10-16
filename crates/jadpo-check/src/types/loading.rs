@@ -103,7 +103,7 @@ pub struct Decided {
 /// by key.
 #[salsa::tracked(returns(ref))]
 pub fn file_loading(db: &dyn Db, project: Project, file: File) -> BTreeMap<Key, Loading> {
-    let lookup = Lookup::new(db, project);
+    let lookup = Lookup::for_file(db, project, file);
     let mut out = BTreeMap::new();
     for item in &item_tree(db, file).items {
         if !matches!(item.kind, ItemKind::Action | ItemKind::Fixture) {

@@ -575,7 +575,7 @@ impl Body<'_> {
                         .next(format!("Write `{host}.{name} {{ ... }}` with each field")),
                     );
                 }
-                Ty::Named(host.to_string())
+                Ty::Named(self.table.canonical(host))
             }
         }
     }
@@ -588,6 +588,7 @@ impl Body<'_> {
             .variants(host)
             .map(|variants| variants.iter().map(|v| v.name.clone()).collect())
             .unwrap_or_default();
+        let host = crate::types::shown(host);
         let near = nearest(&name, names.iter().map(String::as_str)).map(str::to_string);
         let problem = Diagnostic::new(
             &rule::TYPE_UNKNOWN_ENUM_VARIANT,
@@ -792,6 +793,7 @@ impl Body<'_> {
         span: Span,
         variant: bool,
     ) {
+        let host = crate::types::shown(host);
         let names: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
         let near = nearest(field, names.iter().copied());
         let listed: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
@@ -877,19 +879,19 @@ impl Body<'_> {
                     &[],
                 );
                 self.object_built(record);
-                Ty::Named(name)
+                Ty::Named(self.table.canonical(&name))
             }
             ([], Some(Def::Scalar { .. })) | ([], None)
                 if Prim::from_name(&name).is_some() || self.table.def(&name).is_some() =>
             {
                 self.not_record(record, &name, "scalar");
                 self.walk(|walk| walk.member_values(record.member_list()));
-                Ty::Named(name)
+                Ty::Named(self.table.canonical(&name))
             }
             ([], Some(Def::Enum { .. })) => {
                 self.not_record(record, &name, "enum");
                 self.walk(|walk| walk.member_values(record.member_list()));
-                Ty::Named(name)
+                Ty::Named(self.table.canonical(&name))
             }
             (
                 [operation],
@@ -951,7 +953,7 @@ impl Body<'_> {
                         self.walk(|walk| walk.member_values(record.member_list()));
                     }
                 }
-                Ty::Named(name)
+                Ty::Named(self.table.canonical(&name))
             }
             _ => {
                 self.failure_value(&Expr::RecordExpr(record.clone()));

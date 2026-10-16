@@ -69,7 +69,7 @@ that path numbers decode against, and each deployable's build id.
 
 ```json
 {
-  "format": 1,
+  "format": 2,
   "source": { "commit": "8d113e6", "modified": false },
   "compiler": "0.4.0",
   "deployables": { "api": { "target": "wasm", "build": "b_9a1f03c6d2e4" } },
@@ -104,7 +104,9 @@ that path numbers decode against, and each deployable's build id.
   file.
 
 > **Built (chunk 1.7).** For a project, `jadpo check` writes
-> `build/manifest.json`, errors or not, at `format` 1: `compiler`, `errors`
+> `build/manifest.json`, errors or not, at `format` 2 since chunk 5.3d,
+> when the keys of functions and types declared in a domain began to carry
+> the domain (format 1 before): `compiler`, `errors`
 > and `nodes`. A node has `id`, `kind`, `name`, `file`, `lines` and `digest`,
 > and where they apply `domain`, `parent`, `public`, `doc`, a type's `base`,
 > `rules` and `failure`, a field's `type`, a callable's `signature`, an
@@ -166,6 +168,20 @@ renaming a domain or an entity is one line.
 > title"`, with no path, so moving its domain keeps it; two tests with one
 > sentence anywhere in the project are `semantic.duplicate_declaration`
 > (decided in the Phase 1 review, built in chunk 1.9).
+
+> **Built (chunk 5.3d).** Question 8's amendment: the key of a function or
+> type declared in a domain, public or not, carries the domain, `type
+> billing.Address`, `function billing.format_address`, and its fields and
+> variants follow it, `field billing.Address.street`. Every other key is
+> the kind and the born name, a library's functions included (`function
+> rounding.half_even`: the library keeps its name in `shared/`). The
+> registry is read from `database/identities.json`, one JSON object of
+> `"kind name-now": "born name"` lines; one that can't be read is reported
+> as a file that couldn't be read. `layout.promotion_required`'s edits
+> for a type moving to `shared/types/` add its line, `"type Address":
+> "billing.Address"`, so `jadpo fmt --layout` writes it and the key stays
+> `type billing.Address`. The manifest's `format` is 2; manifests are
+> never stored, so nothing reads format 1.
 
 ## Comparing two builds
 
@@ -476,8 +492,8 @@ that the path number cannot be decoded.
    (`jadpo fmt --layout` or the editor's fix) writes one registry line,
    `"type Address": "billing.Address"`, so the move reads as a move and not
    as a removal and an addition. Every other key stays the kind and the
-   born name. Decided, not built until chunk 5.3d, which reworks part of
-   chunk 1.7's registry; it is a new manifest `format`.
+   born name. Built in chunk 5.3d, which reworked part of chunk 1.7's
+   registry; the manifest is `format` 2.
 
 ### Decisions
 
@@ -486,7 +502,7 @@ that the path number cannot be decoded.
 | Compiler data | Carried from area 1: a visible `database/` folder for the identity registry, migrations and seeds | 2026-10-12 |
 | New domains | Carried from area 1: creating or renaming a domain appears in the approval review | 2026-10-12 |
 | Policy protection | Carried from area 1: through the approval check wherever policy lives, not by file path | 2026-10-12 |
-| Stable identity | A key is the kind and the born name (`action complete_todo`), never qualified by domain; the domain is a field of the node, so promotion to `shared/` keeps the key (Amended 2026-10-16: a function or type declared in a domain carries its domain, `type billing.Address`, and promotion to `shared/` writes a registry move line; not built until chunk 5.3d) | 2026-10-13 |
+| Stable identity | A key is the kind and the born name (`action complete_todo`), never qualified by domain; the domain is a field of the node, so promotion to `shared/` keeps the key (Amended 2026-10-16: a function or type declared in a domain carries its domain, `type billing.Address`, and promotion to `shared/` writes a registry move line; built in chunk 5.3d, manifest `format` 2) | 2026-10-13 |
 | Migration snapshots | Carried from area 5: each migration folder holds a generated `snapshot.json`, generated SQL and `changes.jadpo` only for decisions; `check` fails when entities and the latest snapshot disagree | 2026-10-12 |
 | Removing data | Carried from area 5: retire, then drop in a later migration; a drop needs explicit acceptance | 2026-10-12 |
 | System tables | Carried from area 5: runtime tables prefixed `jadpo_`, part of the migration snapshots | 2026-10-13 |

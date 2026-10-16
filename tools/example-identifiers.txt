@@ -507,6 +507,7 @@ lend_count
 lending
 let_go
 line_count
+line_one
 line_receipt
 line_total
 link_phone
@@ -758,6 +759,7 @@ price_loaves
 price_per_kilo
 price_range
 primary_database
+print_label
 priorities
 priority
 priority_too_high
@@ -889,6 +891,7 @@ second_loan
 second_use
 secret_to_public
 send_completion_email
+send_invoice
 send_order_confirmation
 send_overdue_reminder
 send_reminder
@@ -905,9 +908,11 @@ shelf_name
 shelf_size
 shelvable
 shift_end
+ship_parcel
 shipment
 shipped
 shipped_text
+shipping_address
 shop_day
 shop_time
 shopping_list
@@ -963,6 +968,7 @@ stock
 stock_badge
 stock_badges
 story
+street
 street_address
 stripe_v2024
 subtitle
@@ -1034,6 +1040,7 @@ top_shelf
 top_tier
 total_weight
 touch
+town
 tray
 tray_capacity
 tray_count

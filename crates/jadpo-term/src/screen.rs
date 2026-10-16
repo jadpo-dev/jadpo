@@ -14,7 +14,7 @@ use crate::report::Report;
 use crate::sources::Sources;
 
 /// Where label values start.
-const VALUE_COLUMN: usize = 12;
+pub(crate) const VALUE_COLUMN: usize = 12;
 /// The narrowest name column in a list, so descriptions start at column 16.
 const MIN_NAME_WIDTH: usize = 12;
 /// The narrowest description column when a list has a third column.

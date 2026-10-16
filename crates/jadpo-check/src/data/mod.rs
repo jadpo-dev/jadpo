@@ -31,7 +31,7 @@ use jadpo_std::{Driver, Generated, OnDelete};
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr, MemberItem};
 
 use crate::case::to_snake;
-use crate::graph::{field_key, registry};
+use crate::graph::{entity_field_key, registry};
 use crate::lookups::{Lookup, Name, NameView};
 use crate::tree::{self, node_span};
 use crate::types::{Const, Def, FieldsBase, Ty, TypeRef, TypeView};
@@ -724,7 +724,7 @@ impl Reader<'_> {
     ) -> Option<FieldModel> {
         let written = TypeRef::from_expr(value);
         let ty = self.lookup.resolve(&written);
-        let born = field_key(self.registry, entity, &[name.to_string()])
+        let born = entity_field_key(self.registry, entity, &[name.to_string()])
             .name()
             .rsplit('.')
             .next()

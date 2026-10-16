@@ -376,6 +376,19 @@ impl Plan {
     /// `line_total`, `rounding.half_even`, or a test's key,
     /// `test main "a large size is rejected"`.
     pub fn find(&self, name: &str) -> Option<u32> {
+        // A function declared in a domain is keyed by its domain too,
+        // `function billing.format_address` (area 18): its name alone
+        // finds it while only one domain declares one.
+        let in_domain = |callable: &CallablePlan| {
+            callable.kind == Kind::Function
+                && callable
+                    .key
+                    .name()
+                    .split_once('.')
+                    .is_some_and(|(domain, own)| {
+                        own == name && callable.file.starts_with(&format!("domains/{domain}/"))
+                    })
+        };
         let at = self
             .callables
             .iter()
@@ -384,6 +397,15 @@ impl Plan {
                 self.callables
                     .iter()
                     .position(|callable| callable.key.name() == name)
+            })
+            .or_else(|| {
+                let mut found = self
+                    .callables
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, callable)| in_domain(callable));
+                let (at, _) = found.next()?;
+                found.next().is_none().then_some(at)
             })?;
         u32::try_from(at).ok()
     }

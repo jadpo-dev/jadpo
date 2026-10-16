@@ -9,12 +9,14 @@
 //! the item trees alone, so editing a body never invalidates another file's
 //! resolution.
 
+mod identities;
 mod items;
 mod load;
 mod places;
 mod table;
 mod texts;
 
+pub use identities::{IDENTITIES, parse_identities, write_identities};
 pub use items::{Base, Item, ItemKind, ItemTree, Param, Signature, item_tree};
 pub use items::{items_of, primary};
 pub use load::{
@@ -23,7 +25,7 @@ pub use load::{
 pub use places::{
     Folder, Location, Ownership, Place, RootFile, Stray, locate, name_words, to_snake,
 };
-pub use table::{Symbol, Symbols, symbols};
+pub use table::{Contested, Symbol, Symbols, contested, domain_scope, identity_name, symbols};
 pub use texts::source_texts;
 
 use std::collections::BTreeMap;
@@ -51,8 +53,9 @@ pub struct File {
 }
 
 /// A committed record beside the source that isn't a `.jadpo` file (area
-/// 18): a migration's `snapshot.json` and `postgres.sql`, and an API's
-/// record, `api/<api>.api` (area 7), read whole.
+/// 18): a migration's `snapshot.json` and `postgres.sql`, an API's record,
+/// `api/<api>.api` (area 7), and the identity registry,
+/// `database/identities.json`, read whole.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Record {
     /// Project-relative, with `/`.
@@ -62,8 +65,12 @@ pub struct Record {
 }
 
 /// Whether a project-relative path is a record [`Record`] holds: a file in
-/// a migration's folder that isn't source.
+/// a migration's folder that isn't source, an API's record or the identity
+/// registry.
 pub fn is_record(path: &str) -> bool {
+    if path == IDENTITIES {
+        return true;
+    }
     if let ["api", name] = path.split('/').collect::<Vec<_>>().as_slice() {
         return name.ends_with(".api");
     }

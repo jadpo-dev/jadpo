@@ -125,11 +125,20 @@ pub struct TypeTable {
 pub fn type_table(db: &dyn Db, project: Project) -> TypeTable {
     let std = StdNames::get();
     let mut shapes: BTreeMap<String, ShapeKind> = BTreeMap::new();
+    // A domain's contested private names are known by their domain too, so
+    // each domain's types read their own (area 1, "Files and names").
+    let contested = jadpo_db::contested(db, project);
     for &file in project.files(db) {
+        let location = jadpo_db::location(db, project, file);
+        let domain = location.ownership.domain();
+        let canonical = |written: &str| contested.canonical(written, domain);
         for shape in type_shapes(db, file) {
-            shapes
-                .entry(shape.name.clone())
-                .or_insert_with(|| shape.kind.clone());
+            let shape = if contested.0.is_empty() {
+                shape.clone()
+            } else {
+                shape.scoped(&canonical)
+            };
+            shapes.entry(shape.name).or_insert(shape.kind);
         }
     }
     // The not-found failures the compiler provides carry no fields.
@@ -665,6 +674,13 @@ pub trait TypeView {
     /// What `name` means, if it is a type of the project or the stubs.
     fn def(&self, name: &str) -> Option<&Def>;
 
+    /// The name the type tables know `written` by, as this reader writes
+    /// it: `written`, or `<domain>.<name>` for a domain's private type
+    /// whose name another scope declares too (area 1, "Files and names").
+    fn canonical(&self, written: &str) -> String {
+        written.to_string()
+    }
+
     /// Whether `name` is declared in the project or the stubs.
     fn contains(&self, name: &str) -> bool {
         self.def(name).is_some()
@@ -735,7 +751,7 @@ pub trait TypeView {
     /// The type of field `path` of `host` as code reads it, `Host.field`,
     /// or `Error` when the field's own type names nothing.
     fn field_type(&self, host: &str, path: &[String]) -> Ty {
-        self.absorbing(Ty::Field(host.to_string(), path.to_vec()))
+        self.absorbing(Ty::Field(self.canonical(host), path.to_vec()))
     }
 
     /// `ty` with each field type whose field's own type names nothing made
@@ -774,7 +790,7 @@ pub trait TypeView {
                 match names.as_slice() {
                     [name] => self.resolve_name(name, args, stub),
                     [host, rest @ ..] if self.field(host, rest).is_some() => {
-                        Ty::Field(host.clone(), rest.to_vec())
+                        Ty::Field(self.canonical(host), rest.to_vec())
                     }
                     // A kind of caller (area 8): `Principal.user`.
                     [host, kind]
@@ -829,7 +845,7 @@ pub trait TypeView {
         }
         if self.def(name).is_some() {
             return if args.is_empty() {
-                Ty::Named(name.to_string())
+                Ty::Named(self.canonical(name))
             } else {
                 Ty::Error
             };

@@ -323,7 +323,7 @@ pub fn import_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
     if location.place == Place::Migration {
         return Vec::new();
     }
-    let lookup = Lookup::new(db, project);
+    let lookup = Lookup::for_file(db, project, file);
     let here = Here {
         path,
         text: file.text(db),
@@ -517,11 +517,13 @@ impl Here<'_> {
                 if self.std.is_type(name) || self.table.is_package(name) {
                     return None;
                 }
-                let symbol = self
-                    .table
-                    .declared(name)
+                // A name the file declares itself is its own, even when
+                // another declaration of it is reported as a duplicate.
+                let declared = self.table.declared(name);
+                let symbol = declared
                     .iter()
-                    .find(|symbol| symbol.library.is_none())?;
+                    .find(|symbol| symbol.library.is_none() && self.declared_here(symbol))
+                    .or_else(|| declared.iter().find(|symbol| symbol.library.is_none()))?;
                 Some(Need::Name(Box::new(symbol.clone())))
             }
             // A bare call reaches only the file's own domain; one into
@@ -1298,8 +1300,9 @@ pub(crate) fn move_edits(
             }
         }
     };
-    let lookup = Lookup::new(db, project);
     let new_location = jadpo_db::locate(target, Layout::Project);
+    let lookup = Lookup::within(db, project, &new_location.ownership);
+    let old_lookup = Lookup::for_file(db, project, file);
     let new_here = Here {
         path: target,
         text: "",
@@ -1372,7 +1375,7 @@ pub(crate) fn move_edits(
         text,
         location: old_location,
         subject: None,
-        table: &lookup,
+        table: &old_lookup,
         std: StdNames::get(),
         lines: use_lines(source.syntax()),
         top: top(source.syntax()),

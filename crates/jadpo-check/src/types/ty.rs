@@ -129,9 +129,10 @@ impl fmt::Display for Ty {
         match self {
             Ty::Error => f.write_str("?"),
             Ty::Prim(prim) => f.write_str(prim.name()),
-            Ty::Named(name) | Ty::Var(name) | Ty::Unknown(name) => f.write_str(name),
+            Ty::Named(name) => f.write_str(shown(name)),
+            Ty::Var(name) | Ty::Unknown(name) => f.write_str(name),
             Ty::Number => f.write_str("Number"),
-            Ty::Field(host, path) => write!(f, "{host}.{}", path.join(".")),
+            Ty::Field(host, path) => write!(f, "{}.{}", shown(host), path.join(".")),
             Ty::List(inner) => write!(f, "List<{inner}>"),
             Ty::Set(inner) => write!(f, "Set<{inner}>"),
             Ty::Map(key, value) => write!(f, "Map<{key}, {value}>"),
@@ -143,8 +144,23 @@ impl fmt::Display for Ty {
                 write!(f, "{name}<{}>", args.join(", "))
             }
             Ty::Function(from, to) => write!(f, "{from} -> {to}"),
-            Ty::Variant(host, variant) => write!(f, "{host}.{variant}"),
+            Ty::Variant(host, variant) => write!(f, "{}.{variant}", shown(host)),
         }
+    }
+}
+
+/// A declared type's name as code writes it: the checker's tables know a
+/// domain's contested private type as `<domain>.<name>` (area 1, "Files
+/// and names"), which is shown as `<name>`.
+pub fn shown(name: &str) -> &str {
+    match name.split_once('.') {
+        Some((domain, rest))
+            if domain.starts_with(|c: char| c.is_ascii_lowercase())
+                && rest.starts_with(|c: char| c.is_ascii_uppercase()) =>
+        {
+            rest
+        }
+        _ => name,
     }
 }
 

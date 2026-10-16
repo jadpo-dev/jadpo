@@ -1028,6 +1028,10 @@ pub struct Diagnostic {
     pub next: Option<Next>,
     /// Printed only when it says something the rest does not.
     pub impact: Option<String>,
+    /// The names in use that a rename should know about, each with its
+    /// file (`semantic.duplicate_declaration`, area 1): printed as the `in
+    /// use` field after `next`.
+    pub in_use: Vec<(String, String)>,
     /// A page section that says more than the rule's own entry, relative
     /// to `docs/language/`: for a rule many areas share, such as
     /// `toolchain.not_built_yet`, the section that decides what isn't
@@ -1045,6 +1049,7 @@ impl Diagnostic {
             reason: None,
             next: None,
             impact: None,
+            in_use: Vec::new(),
             help: None,
         }
     }
@@ -1117,6 +1122,12 @@ impl Diagnostic {
                 replacement: replacement.into(),
             });
         }
+        self
+    }
+
+    /// The names in use, each with its file, printed as the `in use` field.
+    pub fn in_use(mut self, names: Vec<(String, String)>) -> Diagnostic {
+        self.in_use = names;
         self
     }
 

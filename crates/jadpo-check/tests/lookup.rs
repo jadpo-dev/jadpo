@@ -72,21 +72,21 @@ const SAVE: &str = "domains/notes/actions/save_note.jadpo";
 #[test]
 fn declarations_where_they_are_written_and_used() {
     assert_eq!(node(SAVE, "save_note", 0), "action save_note");
-    assert_eq!(node(SAVE, "Body", 0), "type Body");
-    assert_eq!(node(SAVE, "NoteRefused", 0), "type NoteRefused");
-    assert_eq!(node(SAVE, "NoteRefused", 1), "type NoteRefused");
-    assert_eq!(node(SAVE, "Note {", 0), "type Note");
+    assert_eq!(node(SAVE, "Body", 0), "type notes.Body");
+    assert_eq!(node(SAVE, "NoteRefused", 0), "type notes.NoteRefused");
+    assert_eq!(node(SAVE, "NoteRefused", 1), "type notes.NoteRefused");
+    assert_eq!(node(SAVE, "Note {", 0), "type notes.Note");
     assert_eq!(
         node("domains/notes/types/body.jadpo", "Body", 0),
-        "type Body"
+        "type notes.Body"
     );
 }
 
 #[test]
 fn names_on_use_lines() {
-    assert_eq!(node(SAVE, "Body, Note }", 0), "type Body");
-    assert_eq!(node(SAVE, "Note }", 0), "type Note");
-    assert_eq!(node(SAVE, "NoteRefused }", 0), "type NoteRefused");
+    assert_eq!(node(SAVE, "Body, Note }", 0), "type notes.Body");
+    assert_eq!(node(SAVE, "Note }", 0), "type notes.Note");
+    assert_eq!(node(SAVE, "NoteRefused }", 0), "type notes.NoteRefused");
     assert_eq!(node(SAVE, "wording }", 0), "library wording");
     // The folder isn't a node.
     assert_eq!(at(SAVE, "failures {", 0), None);
@@ -161,25 +161,25 @@ fn libraries_and_their_functions() {
 fn fields_and_variants() {
     assert_eq!(
         node("domains/notes/types/note.jadpo", "body", 0),
-        "field Note.body"
+        "field notes.Note.body"
     );
     assert_eq!(
         node("domains/notes/failures/note_refused.jadpo", "length", 0),
-        "field NoteRefused.length"
+        "field notes.NoteRefused.length"
     );
     assert_eq!(
         node("domains/notes/types/shade.jadpo", "tinted", 0),
-        "variant Shade.tinted"
+        "variant notes.Shade.tinted"
     );
     assert_eq!(
         node("domains/notes/types/shade.jadpo", "level", 0),
-        "field Shade.tinted.level"
+        "field notes.Shade.tinted.level"
     );
     let shade_of = "domains/notes/actions/shade_of.jadpo";
-    assert_eq!(node(shade_of, "plain", 0), "variant Shade.plain");
-    assert_eq!(node(shade_of, "pinned", 0), "field Note.pinned");
+    assert_eq!(node(shade_of, "plain", 0), "variant notes.Shade.plain");
+    assert_eq!(node(shade_of, "pinned", 0), "field notes.Note.pinned");
     // A field given while building a value.
-    assert_eq!(node(SAVE, "pinned: false", 0), "field Note.pinned");
+    assert_eq!(node(SAVE, "pinned: false", 0), "field notes.Note.pinned");
 }
 
 #[test]
