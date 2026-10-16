@@ -40,7 +40,7 @@ with Richard one at a time, recorded on this page as decided, and only
 then built. No design is left for implementation.
 
 1. ~~The golden rule~~: decided, see "Decided: the golden rule".
-2. **Translations** (chunk 5.3 is close). *Decided:* area 10 question 9,
+2. ~~Translations~~: decided, see "Translations". Was: (chunk 5.3 is close). *Decided:* area 10 question 9,
    one ICU MessageFormat JSON file per locale, typed calls from the default
    locale's keys, missing keys and placeholders are compile errors, built
    in from the start. *To design:* key naming and nesting; whether keys
@@ -157,44 +157,104 @@ conformance suite. Packages fill capabilities and never invent them.
 
 ## Translations (open item 2)
 
-Area 10 question 9 decided the format: one ICU MessageFormat JSON file per
-locale in `translations/`, typed calls generated from the default
-locale's keys, built in from the start. Decided 2026-10-16 (Richard):
+Decided 2026-10-16 (Richard). Area 10 question 9 chose ICU MessageFormat
+with the default locale's file defining the keys; both are replaced below.
 
-- **Keys are grouped by domain inside each locale's file**
-  (`shipping.order_shipped`); still one file per locale, as translators
-  and their tools expect.
-- **A missing translation falls back to the default locale** with a
-  warning, listed by `jadpo translations missing`; a wrong or missing
-  placeholder stays an error. This changes area 10's "missing keys are
-  compile errors", which would block every change until translators
-  finish.
-- **Failure messages for clients** live under `failures.<code>` and are
-  exported per locale beside the OpenAPI document, so web and mobile apps
-  load them; the server's `message` stays English (area 4). This resolves
-  area 4 against area 10's amendment.
-- **Jadpo's own text** (privacy pages, built-in emails, generated
-  messages) uses keys under `jadpo.`; Jadpo ships defaults for common
-  locales, and the app changes one by writing its key.
-- **Tooling**: `jadpo translations missing` and `unused` with `--json`,
-  go to definition from a key, a pseudo-locale that renders every message
-  accented and lengthened to expose hard-coded text and tight layouts;
-  Crowdin and Lokalise use the files as they are.
-- **Templates read translations as `translations.`**, not `t.`
-  (`{{ translations.shipping.parcels(count: parcel_count) }}`), the same
-  name code uses, with the locale taken from the email.
-- **Templates are strict**: every mistake is a compile error, never a
-  blank at runtime: a name that is not a field of the email's type, a
-  translation key that does not exist, a placeholder missing or of the
-  wrong type, a partial that does not exist or is called with the wrong
-  fields, `if` on something that is not `Bool`, `for` over something that
-  is not a list, and any call other than translations and formatting. A
-  field the template never uses is a warning. Values are escaped; HTML
-  goes in unescaped only as the safe-HTML type (input to chunk 5.4).
+**Where they live.** In the domain that uses them, as its emails do; a
+message a second domain uses moves to `shared/`, under area 1's promotion
+rule. The root `translations/` holds app-wide text and the app's wording
+for Jadpo's own text (`jadpo.` keys). This changes area 1, which made
+`translations/` a root-only folder.
 
-Still open: **placeholder types taken from the message** (`plural` and
-`#` take a number, `date` an `Instant`, `select` one of the app's enums
-with every value covered or an `other`).
+```text
+domains/shipping/translations/
+    order_shipped.jadpo       type OrderShipped = Message { ... }
+    parcels.jadpo             type Parcels = Message { ... }
+    en_gb.json
+    de_de.json
+shared/translations/          messages several domains use
+translations/                 app-wide text; jadpo.* overrides
+```
+
+**Each message is a type.** `Message` is a type base beside `Failure`,
+`Event` and `EmailMessage`; its fields are the placeholders, its `///`
+descriptions reach translators as context, and its JSON key is its name in
+lower_snake_case. A backend writes few messages (emails, generated pages,
+failures for clients), so one file per message follows area 1 without
+cost.
+
+```text
+// domains/shipping/translations/order_shipped.jadpo
+/// Subject of the email sent when a parcel leaves the warehouse.
+type OrderShipped = Message {
+    tone: Tone            // an enum: one wording per value
+    name: Text
+}
+
+// domains/shipping/translations/parcels.jadpo
+/// How many parcels an order has, on the tracking page.
+type Parcels = Message {
+    count: Count          // plural forms, per language
+}
+```
+
+**The files hold plain strings.** A placeholder is `{name}` and nothing
+else. A message with an enum field has one nested key per value of the
+enum; one with a `Count` field has one nested key per plural form the
+language needs, from Unicode's CLDR data (English `one` and `other`;
+Polish `one`, `few`, `many` and `other`). Dates and numbers are formatted
+in code with `temporal.format` and passed in as text.
+
+```json
+{
+  "order_shipped": {
+    "formal": "Your order has shipped, {name}.",
+    "casual": "Good news {name}, your order's on its way!"
+  },
+  "parcels": {
+    "one": "{count} parcel",
+    "other": "{count} parcels"
+  }
+}
+```
+
+```text
+translations.shipping.order_shipped(shop.tone, name: customer.first_name)    // in code
+{{ translations.shipping.parcels(count: parcel_count) }}                     // in a template
+```
+
+**Checked by the compiler**: a key no message type declares, a variant
+that is not a value of the enum, a missing variant or plural form, and a
+missing or unknown placeholder are errors; a message not yet translated in
+one language falls back to the default locale with a warning, listed by
+`jadpo translations missing`. No grouping inside a domain's file (the
+domain is the group; nesting means variants and plural forms only), and no
+message inside another (reused values such as a product name are
+placeholders), because languages that inflect cannot reuse a fragment.
+
+**Failures and emails follow the same rule.** A `Failure`'s client text
+lives under `failures.<code>`, exported per locale beside the OpenAPI
+document for client apps, while the server's `message` stays English (area
+4). An `EmailMessage`'s templates read `translations.` with the email's
+locale.
+
+**Jadpo's own text** (privacy pages, built-in emails, generated messages)
+uses `jadpo.` keys with defaults shipped for common locales; the app
+changes one by writing its key in the root `translations/`.
+
+**Tooling**: `jadpo translations missing` and `unused` with `--json`; go to
+definition from a call to its type and its strings; a pseudo-locale that
+renders every message accented and lengthened to expose hard-coded text
+and tight layouts; Crowdin and Lokalise read the files through a folder
+pattern (`domains/*/translations/<locale>.json`).
+
+**Templates are strict**: a name that is not a field of the email's type,
+a message that does not exist, a placeholder missing or of the wrong type,
+a partial that does not exist or is called with the wrong fields, `if` on
+something that is not `Bool`, `for` over something that is not a list, and
+any call other than translations and formatting are compile errors. A field
+the template never uses is a warning. Values are escaped; HTML goes in
+unescaped only as the safe-HTML type (input to chunk 5.4).
 
 ## Decided: the golden rule
 
