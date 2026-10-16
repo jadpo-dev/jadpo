@@ -37,6 +37,8 @@ program, and how is a feature turned on, off or replaced?
 | What a library package may also carry | Proposed |
 | Software and disk | Proposed |
 | Services: containers run by Jadpo | Proposed, its own topic |
+| Capability providers ([options](capability-providers-options.md), design C recommended) | Awaiting Richard |
+| Watching code run in development | Proposed |
 
 ## Decided before this: swapping a provider
 
@@ -687,6 +689,37 @@ drives the engine directly; agents and developers manage services through
 
 On Workers, which runs no containers, a service is hosted elsewhere and
 the connection gives its address.
+
+## Proposed: watching code run in development
+
+Richard, 2026-10-16: an agent should be able to watch for a particular
+part of the code to run, then see its inputs and outputs, without reading
+whole logs. For area 17, beside `jadpo trace`.
+
+```text
+jadpo watch action shipping.book_collection --once --json
+jadpo watch domain billing
+jadpo watch call couriers.bookings.create --failed
+jadpo watch file domains/shipping/actions/book_collection.jadpo
+```
+
+- **Filters name code, as the compiler knows it**: a route, action, query,
+  subscriber, schedule, provider operation, domain or file, optionally
+  narrowed to failures or faults. Unknown names are an error with the
+  nearest match, as everywhere else.
+- **Each match prints the step with its inputs, output or failure, the
+  queries, writes, events and calls inside it, timings, and the request
+  id**, so `jadpo trace <request>` opens the whole request.
+- **`--once` exits after the first match**, so an agent starts it in the
+  background, triggers the flow, and waits for the command to finish
+  rather than polling; `--count` and `--timeout` bound it, and `--json`
+  gives the same as data.
+- **Development only, with values in full**, as the development call log
+  shows provider payloads (capability options, question 14), in
+  `jadpo dev`'s git-ignored data; secrets are never shown. Production
+  keeps area 16's spans with no values.
+- The screens follow the CLI design language and are designed before they
+  are built.
 
 ## Every extension point
 
