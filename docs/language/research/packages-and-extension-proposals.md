@@ -603,6 +603,13 @@ Engine-specific features (synonyms, ranking rules) are the package's own
 operations. Development and tests use PostgreSQL search whatever
 production uses.
 
+**Rate limits.** As area 16 decided, plus: Cloudflare's rate-limiting
+binding is a store on Workers for the limits it can count (short windows,
+10 or 60 seconds, to check), and a limit it cannot count is an error
+naming Redis as the alternative; a limited caller gets area 7's `429` with
+`Retry-After` and the standard `RateLimit` headers, its wording from
+translations like any failure (to add to area 7 if it does not say so).
+
 **Redis entities and running without a database.** An entity may live in
 a Redis store and must expire: `expires_after: 2h`, measured from its last
 write, expired records hidden as area 6 says (answering area 5 question
