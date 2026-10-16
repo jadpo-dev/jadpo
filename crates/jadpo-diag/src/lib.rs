@@ -855,6 +855,8 @@ rules! {
         "03-logic.html#type-named-argument-unknown", "Named argument is not a parameter";
     TYPE_NAMED_ARGUMENT_UNSUPPORTED: "type.named_argument_unsupported", area 3, Error, Agent,
         "03-logic.html#type-named-argument-unsupported", "Callable does not take named arguments";
+    TYPE_NOT_A_VALUE: "type.not_a_value", area 3, Error, Agent,
+        "03-logic.html#type-not-a-value", "Declaration named where a value is read";
     TYPE_NOT_RECORD: "type.not_record", area 2, Error, Agent,
         "02-values-and-types.html#type-not-record", "Braces build a type that has no fields";
     TYPE_NULLABLE_SELECTION: "type.nullable_selection", area 2, Error, Agent,

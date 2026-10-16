@@ -500,6 +500,34 @@ error: These files have no tests
 }
 
 #[test]
+fn a_type_used_as_a_value_is_refused_before_anything_runs() {
+    // It once checked clean and failed when the interpreter reached it.
+    let root = loose(
+        "type-as-value",
+        &["test \"adds\" {\n    assert add(2, 3) == Point\n}\n"],
+    );
+    let output = jadpo(&root, &["test", "."]);
+    assert_eq!(output.code, 1);
+    assert!(
+        output
+            .stdout
+            .starts_with("error: `Point` is a type, not a value\n --> sizes.test.jadpo:2:25\n"),
+        "{}",
+        output.stdout
+    );
+    assert!(
+        output
+            .stdout
+            .ends_with("\ntests not run: 1 error, 2 files\n"),
+        "{}",
+        output.stdout
+    );
+    let document = json(&jadpo(&root, &["test", ".", "--json"]));
+    assert_eq!(document["data"]["ran"], false);
+    assert_eq!(document["diagnostics"][0]["rule"], "type.not_a_value");
+}
+
+#[test]
 fn a_project_with_errors_is_refused_with_them() {
     let root = loose(
         "refused",

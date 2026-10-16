@@ -2020,6 +2020,14 @@ impl Reader<'_> {
             (ArgRoot::Param(root.clone()), (*ty).clone())
         } else if root == "current_principal" {
             return self.caller_argument(expr, &first, &rest, used);
+        } else if let Some(named) = crate::not_value::classify(self.lookup, self.lookup, &root) {
+            // A declaration's name is no value (area 3).
+            self.out.push(crate::not_value::diagnostic(
+                &root,
+                &named,
+                self.span(&first),
+            ));
+            return None;
         } else {
             let mut known: Vec<&str> = params.iter().map(|(name, _)| *name).collect();
             if input.is_some() {

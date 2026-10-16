@@ -777,11 +777,14 @@ impl Body<'_> {
         self.resolved.append(&mut found);
     }
 
-    /// Resolves names with `resolve`, keeping what it reports.
-    fn resolved_by(&mut self, resolve: impl FnOnce(&Names<'_>, &mut Vec<Diagnostic>)) {
+    /// Resolves names with `resolve`, keeping what it reports; whether it
+    /// reported nothing.
+    fn resolved_by(&mut self, resolve: impl FnOnce(&Names<'_>, &mut Vec<Diagnostic>)) -> bool {
         let mut found = Vec::new();
         resolve(&self.names(), &mut found);
+        let clean = found.is_empty();
         self.resolved.append(&mut found);
+        clean
     }
 
     fn find(&self, name: &str) -> Option<&Local> {

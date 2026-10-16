@@ -1351,6 +1351,18 @@ impl<'a> Reader<'a> {
                 );
                 return None;
             }
+            // A declaration's name is no value (area 3); an entity's field
+            // is a field, which has its own error.
+            if let Some(named) = crate::not_value::classify(self.lookup, self.lookup, &head)
+                && (rest.is_empty() || !matches!(named, crate::not_value::Named::Entity))
+            {
+                self.out.push(crate::not_value::diagnostic(
+                    &head,
+                    &named,
+                    Self::span(scope.path, &first),
+                ));
+                return None;
+            }
             if self.entities.get(&head).is_some() {
                 self.out.push(
                     Diagnostic::new(
@@ -1370,6 +1382,14 @@ impl<'a> Reader<'a> {
             return Some((Value::Now, Ty::Prim(Prim::Instant)));
         }
         let Some(index) = scope.params.iter().position(|(name, _)| *name == head) else {
+            if let Some(named) = crate::not_value::classify(self.lookup, self.lookup, &head) {
+                self.out.push(crate::not_value::diagnostic(
+                    &head,
+                    &named,
+                    Self::span(scope.path, &first),
+                ));
+                return None;
+            }
             if rest.is_empty()
                 && let Some(problem) = crate::foreign_value(&head, Self::span(scope.path, &first))
             {
