@@ -27,7 +27,7 @@ program, and how is a feature turned on, off or replaced?
 | What publishing requires | Decided |
 | No code with side effects in packages | Decided |
 | Decoding responses and requests | Decided |
-| Dependencies between packages | Next |
+| Dependencies between packages: none | Decided |
 | Private packages | Proposed |
 | The model and its rules | Proposed |
 | Capability mappings calling pure functions | Proposed |
@@ -93,9 +93,9 @@ conformance suite. Packages fill capabilities and never invent them.
 - **Everything in a provider package follows the provider rules**, its
   library types included: only ids and plain values may be stored,
   because a provider package is versioned by the API's version and the
-  next version is a new package. Types worth storing go in a library
-  package that the provider package requires (a `Postcodes` library
-  required by a `Getaddress` lookup provider).
+  next version is a new package. What an app keeps from a provider it
+  stores as ids, plain values and built-in types (money, countries, phone
+  numbers), or as its own types.
 
 ### Names
 
@@ -143,7 +143,7 @@ and every package, and the compiler checks a package as it checks
 
 ```text
 postcodes/v2/
-    package.jadpo                   the index: description, licence, Jadpo version, requirements
+    package.jadpo                   the index: description, licence, Jadpo version
     types/uk_postcode.jadpo         public type UkPostcode = Text { ... }
     failures/invalid_postcode.jadpo
     libraries/uk.jadpo              library uk { public parse(...)  normalise(...) }
@@ -187,8 +187,9 @@ Presets as packages are dropped: every case that made the index messy was a
 package configuring a built-in driver.
 
 - **Every index is the same**: `package Name.vN { }` with a `///`
-  description and three keys, `licence:`, `jadpo:` (the lowest version it
-  needs) and `requires:`.
+  description and two keys, `licence:` and `jadpo:` (the lowest version
+  it needs). There is no `requires:`: packages have no dependencies
+  (below).
 - **A package that describes an API has one `provider.jadpo`**, a
   `provider { }` declaration with one fixed set of keys: `protocol:`
   (`Protocol.json_http`, `.form_http`, `.multipart_http`, `.aws_json`),
@@ -429,14 +430,28 @@ list_rows: {
   surface shows both the wire and the output type, so the published
   documentation and the review make it visible.
 
-## Next: dependencies between packages
+## Decided: packages have no dependencies
 
-Proposed: a package lists its requirements in its index; one version of
-each is in use, two only while callers move across; `jadpo package add`
-writes every requirement into `jadpo.lock`, so nothing arrives that the
-lock does not show. To discuss: whether a library may require a provider
-package (helpers on top of someone else's Stripe), how deep requirements
-may go, and how an upgrade of a shared requirement is resolved.
+Decided 2026-10-16 (Richard). A package cannot require another package.
+
+- **The standard library carries the shared vocabulary.** Money,
+  countries, currencies and phone numbers are built in (the input to chunk
+  5.4), which is what packages elsewhere mostly depend on each other for.
+- **What is left is copied.** A package that needs another's code includes
+  a copy, checked and tested by the publishing bar like the rest of it. Two
+  packages for one vendor (Shopify's Admin and Storefront APIs) each have
+  their own types, generated from the vendor's description anyway.
+- **It sends effort to the root package.** Npm is full of packages that
+  wrap other packages; with no wrapping possible, improvements go into the
+  package itself, or into the app that needs them.
+- **It removes** version resolution, clashes between packages, "required
+  by" tracking and clean-up on removal. Installing is one folder and one
+  line in the lock.
+- **It is the reversible choice**: adding requirements later breaks
+  nothing published, and is done only if real packages keep copying
+  something substantial that does not belong in the standard library.
+- The cost: two packages' types for the same thing are converted at the
+  call, usually in one line.
 
 ## Proposed: private packages
 
