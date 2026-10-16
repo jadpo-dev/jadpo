@@ -56,6 +56,8 @@ fn mutated_examples_format_safely_and_idempotently() {
 fn the_reviews_reproducers_format_safely() {
     for text in [
         "library wording { config {} }\n",
+        // Two `?` apart: written together they read as one mistake.
+        "entity Book {\n    id: Uuid\n    at: Instant? ?\n}\n",
         "type Quantity = Int {}\n\naction reserve_stock(quantity: Quantity) -> Unit { // TODO\n}\n",
         "type Count = Int {}\n\nfunction f(x: Count) -> Count {\n    return Count(x + // the base\n    1) // plus one\n}\n",
     ] {

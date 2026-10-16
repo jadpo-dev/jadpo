@@ -315,14 +315,22 @@ impl Formatter {
         let children = significant_children(node);
         let mut docs = Vec::new();
         let mut previous: Option<SyntaxKind> = None;
+        let mut ends_in_question = false;
         for child in &children {
+            // `??` written together is one mistake the parser reads on its
+            // own, so a `?` after a `?` keeps its space.
             if let Some(left) = previous
-                && space_between(parent, left, child.kind())
+                && (space_between(parent, left, child.kind())
+                    || (ends_in_question && child.kind() == QUESTION))
             {
                 docs.push(text(" "));
             }
             docs.push(self.element(child));
             previous = Some(child.kind());
+            ends_in_question = match child {
+                NodeOrToken::Node(node) => node.text().to_string().trim_end().ends_with('?'),
+                NodeOrToken::Token(token) => token.kind() == QUESTION,
+            };
         }
         concat(docs)
     }

@@ -387,7 +387,7 @@ reference only).
   `Forwarded`, Cloudflare's `CF-Connecting-IP`), declared once in
   `app.jadpo` and read from the request, so the default rate limits count
   the client and not the proxy.
-- [ ] **5.1d Restricted values stored elsewhere** `opus · high` (area 9,
+- [x] **5.1d Restricted values stored elsewhere** `opus · high` (area 9,
   decided 2026-10-16): a create or update storing a value in a field some
   of whose readers may not read the value is `policy.output_field_unproved`
   at the `set:`, following the value as 4.8's flow check does; copies
@@ -423,7 +423,10 @@ reference only).
   review: a system caller, so `Access.system` grants schedules and
   subscribers (today every policed statement refuses them), and events
   delivered after the response is sent, through the host (Workers'
-  `waitUntil`), not before it.
+  `waitUntil`), not before it. From chunk 5.1d: what a subscriber stores
+  from an event is checked against what every `emit` of it put there, as
+  area 9's stored values are (an `emit` itself stores nothing a caller
+  reads).
 - [ ] **6.2 Schedules:** `opus · high` leases, the native tick, schedule monitoring basics,
   and the runtime's own sweeps, starting with deleting expired idempotency
   keys (area 7).
@@ -462,7 +465,10 @@ reference only).
   so generated code decodes a request straight into its structs; plan data
   embedded as constants rather than rebuilt at start; a route trie and no
   per-request allocation for paths, labels and failure lookups; the native
-  host accepting asynchronously and spreading connections round-robin.
+  host accepting asynchronously and spreading connections round-robin,
+  with one rate-limit count per caller across its worker threads (today
+  each thread counts its own, so a caller on several gets several
+  allowances).
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling; the client's address from
   `CF-Connecting-IP` (`ClientAddress::read` with `Target::Workers`, built in
