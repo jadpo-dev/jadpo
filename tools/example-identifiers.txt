@@ -368,6 +368,7 @@ finish_magic_link
 finish_review
 first_loan
 first_page
+first_placed
 first_quantity
 first_use
 flapjack

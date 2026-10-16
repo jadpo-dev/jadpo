@@ -1184,10 +1184,23 @@ impl Decls<'_> {
             return;
         }
         // `default:` is checked like a literal going into the field.
-        if matches!(value, Const::Other | Const::Path(_)) {
-            if matches!(value, Const::Path(_)) {
-                return;
+        let lower_path = matches!(value, Const::Path(names)
+            if !names.first().is_some_and(|head| crate::case::starts_upper(head)));
+        if let Const::Path(names) = value
+            && !lower_path
+        {
+            // A variant, `Status.open`, is checked where it is used; any
+            // other declaration's name is no value (area 3).
+            let head = names.first().map_or("", String::as_str);
+            let variant = names.len() == 2
+                && matches!(self.table.def(head), Some(super::table::Def::Enum { .. }));
+            if !variant && let Some(named) = crate::not_value::classify_type(self.table, head) {
+                self.out
+                    .push(crate::not_value::diagnostic(head, &named, value_span));
             }
+            return;
+        }
+        if matches!(value, Const::Other) || lower_path {
             self.out.push(
                 Diagnostic::new(&rule::TYPE_SETTING_VALUE, "`default` takes a literal")
                     .at(value_span, "a computed value")

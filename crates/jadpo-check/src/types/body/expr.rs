@@ -400,11 +400,11 @@ impl Body<'_> {
         };
         let head = text(&first);
         if starts_upper(&head) {
-            self.resolved_by(|names, out| names.value_name(expr, out));
+            let clean = self.resolved_by(|names, out| names.value_name(expr, out));
             if let Some(ty) = self.stored_field(&head, &rest, expr) {
                 return ty;
             }
-            return self.type_member(&head, &rest, expr);
+            return self.type_member(&first, &rest, expr, clean);
         }
         if StdNames::get().namespace(&head) == Some(Namespace::Generated) {
             return self.generated_value(&head, &rest, expr);
@@ -412,6 +412,11 @@ impl Body<'_> {
         let Some(mut receiver) = self.read(&first) else {
             if !self.is_qualifier(&head) {
                 self.unknown_value(&first);
+            } else {
+                let written = tree::written(expr.syntax());
+                let span = self.span(expr);
+                self.out
+                    .push(crate::not_value::member_diagnostic(&written, span));
             }
             return Ty::Error;
         };
@@ -514,7 +519,14 @@ impl Body<'_> {
     }
 
     /// `Type.member` as a value: an enum's variant.
-    pub(super) fn type_member(&mut self, host: &str, rest: &[ast::NameRef], expr: &Expr) -> Ty {
+    pub(super) fn type_member(
+        &mut self,
+        first: &ast::NameRef,
+        rest: &[ast::NameRef],
+        expr: &Expr,
+        resolved: bool,
+    ) -> Ty {
+        let host = &text(first);
         if host == super::super::ty::TIME_FORMAT {
             // A built-in format is named only in `format:` (area 10).
             let written = tree::written(expr.syntax());
@@ -524,6 +536,11 @@ impl Body<'_> {
             return Ty::Error;
         }
         let Some(variants) = self.table.variants(host) else {
+            // `Placed.level`: a type has no members to read as a value.
+            if resolved {
+                let span = self.span(first);
+                self.declaration_as_value(host, span);
+            }
             return Ty::Error;
         };
         let [variant] = rest else {
@@ -1182,6 +1199,17 @@ impl Body<'_> {
         );
     }
 
+    /// A declaration named where a value is read (area 3): reported, and
+    /// whether `name` was one.
+    pub(super) fn declaration_as_value(&mut self, name: &str, span: Span) -> bool {
+        let Some(named) = crate::not_value::classify(self.symbols, self.table, name) else {
+            return false;
+        };
+        self.out
+            .push(crate::not_value::diagnostic(name, &named, span));
+        true
+    }
+
     /// A lower-case name used as a value: a local, or a mistake.
     pub(super) fn name_value(&mut self, name: &ast::NameRef) -> Ty {
         let written = text(name);
@@ -1197,15 +1225,17 @@ impl Body<'_> {
             return Ty::Error;
         }
         if starts_upper(&written) {
-            // A type or a failure as a value: resolved here, and the type
-            // checks have nothing to add (area 1), but for a format, which
-            // is named only in `format:` (area 10).
+            // A type, a failure or an entity is no value (area 3); a format
+            // is named only in `format:` (area 10). A name that doesn't
+            // resolve is reported by resolution (area 1).
             let expr = Expr::NameRef(name.clone());
-            self.resolved_by(|names, out| names.value_name(&expr, out));
+            let resolved = self.resolved_by(|names, out| names.value_name(&expr, out));
+            let span = self.span(name);
             if let Some(super::super::table::Def::Format { .. }) = self.table.def(&written) {
-                let span = self.span(name);
                 self.out
                     .push(super::super::formats::not_a_value(&written, span, false));
+            } else if resolved {
+                self.declaration_as_value(&written, span);
             }
             return Ty::Error;
         }
@@ -1245,23 +1275,7 @@ impl Body<'_> {
         self.unknown_name = true;
         let written = text(name);
         let span = self.span(name);
-        let callable = self.symbols.get(&written).filter(|symbol| {
-            matches!(
-                symbol.kind,
-                ItemKind::Function | ItemKind::Action | ItemKind::Query | ItemKind::Fixture
-            )
-        });
-        if let Some(symbol) = callable {
-            let word = symbol.kind.word();
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TYPE_UNKNOWN_VALUE,
-                    format!("`{written}` is {}, not a value", symbol.kind.with_a()),
-                )
-                .at(span, format!("{word} used as a value"))
-                .reason("Functions and actions aren't values: they are called, and only a standard-library collection operation takes an inline function, `item -> expression`.")
-                .next(format!("Call it, as in `{written}(...)`")),
-            );
+        if self.declaration_as_value(&written, span.clone()) {
             return;
         }
         let names = self.names_in_scope();

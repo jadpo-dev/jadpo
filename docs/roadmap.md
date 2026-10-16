@@ -402,7 +402,7 @@ reference only).
   `format_relative` checked (`zone:` required for an `Instant` and refused
   otherwise), the text they give staying `toolchain.not_built_yet` until
   5.3; area 10's formatting errors rewritten with real output.
-- [ ] **5.2c A type name is not a value** `sonnet · high`, found in 5.2b:
+- [x] **5.2c A type name is not a value** `sonnet · high`, found in 5.2b:
   `var g: Label = Placed`, a type's or other declaration's bare name where
   a value is expected, checks clean today; it is an error with its own
   rule, a checked example and the one-step fix where one exists (a
