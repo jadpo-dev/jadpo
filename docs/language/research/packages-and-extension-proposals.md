@@ -226,6 +226,31 @@ Local packages skip the bar until they are published. Descriptions alone
 are not the bar, because the compiler cannot judge whether one says
 anything; examples are, because they must run.
 
+## Built in or a library package
+
+Agreed 2026-10-16 (Richard) as input to chunk 5.4, which decides it. A
+thing is built in when the compiler gains from knowing it: a type that
+turns a mistake into a compile error, carries personal-data marking, a SQL
+or OpenAPI form or generated test values, or a security boundary the
+language should own. Saving an install is not enough.
+
+| Thing | Where | Why |
+|---|---|---|
+| Money and currency | Built in | Mixing currencies is a compile error; rounding fixed; one column form |
+| Countries, currencies, languages | Built in | Small, slow to change, needed by money and phone numbers |
+| Phone numbers | Built in | Already carried to area 2 for SMS; always personal data |
+| HTML cleaning and Markdown, as a safe-HTML type | Built in | A security boundary; the parser Jadpo is worst at writing |
+| CSV | Built in | Already in 5.4's encodings |
+| Postcodes, IBAN, VAT numbers, ISBN | Package | A long tail of per-country rules |
+| Public holidays, business days | Package | Data that changes yearly, per country |
+| Repeating dates, `.ics`, QR codes | Package | Niche; can move into the standard library later |
+
+Built-in data ships with Jadpo releases, as time-zone data does in every
+language. With the common cases built in, public library packages are the
+long tail, and the largest use is likely private: types and rules shared
+between one company's own apps. Open for 5.4: where fixed reference data
+(a country table, phone formats) can be declared at all.
+
 ## How far a capability mapping goes
 
 Area 11 question 21 limits a `provide` mapping to field paths, literals,
