@@ -22,6 +22,7 @@ program, and how is a feature turned on, off or replaced?
 | Layout inside a package | Decided |
 | Where packages live, and where your own code lives | Decided |
 | Names | Decided |
+| The index, `provider.jadpo`, and drivers in `app.jadpo` (no presets) | Decided |
 | The package surface | Decided |
 | What publishing requires | Decided |
 | No code with side effects in packages | Decided |
@@ -142,7 +143,7 @@ and every package, and the compiler checks a package as it checks
 
 ```text
 postcodes/v2/
-    package.jadpo                   the index: name, version, description, licence, requirements
+    package.jadpo                   the index: description, licence, Jadpo version, requirements
     types/uk_postcode.jadpo         public type UkPostcode = Text { ... }
     failures/invalid_postcode.jadpo
     libraries/uk.jadpo              library uk { public parse(...)  normalise(...) }
@@ -151,11 +152,13 @@ postcodes/v2/
     surface.json                    generated
 ```
 
-A provider package adds `resources/`, `events/` and `recordings/`:
+A provider package adds `provider.jadpo`, `resources/`, `events/`,
+`recordings/` and, when it fills a capability, `provides/`:
 
 ```text
 stripe/v2024_06_20/
-    package.jadpo                          hosts, credential scheme, idempotency, error location
+    package.jadpo                          the same three keys as every package
+    provider.jadpo                         how the API is reached and called
     resources/payment_intents.jadpo        imported, corrections merged in
     types/payment_intent.jadpo             imported
     failures/card_declined.jadpo
@@ -175,6 +178,77 @@ stripe/v2024_06_20/
   corrections survive, as area 11 already says for corrections.
 - **A package's tests run when it is published**, not in every app's
   `jadpo test`; the digest guarantees the code is the code that passed.
+
+## Decided: the index, `provider.jadpo`, and drivers in `app.jadpo`
+
+Decided 2026-10-16 (Richard), from
+[the layout comparison](package-layout-options.md), its candidate B.
+Presets as packages are dropped: every case that made the index messy was a
+package configuring a built-in driver.
+
+- **Every index is the same**: `package Name.vN { }` with a `///`
+  description and three keys, `licence:`, `jadpo:` (the lowest version it
+  needs) and `requires:`.
+- **A package that describes an API has one `provider.jadpo`**, a
+  `provider { }` declaration with one fixed set of keys: `protocol:`
+  (`Protocol.json_http`, `.form_http`, `.multipart_http`, `.aws_json`),
+  `hosts:` (`live:`, `sandbox:`; the same host twice when the sandbox is a
+  test credential), `runs:` (a container, below), `credential:`,
+  `idempotency:` (left out when the API takes no key), `error_code:`,
+  `webhooks:` (`check:`, `event_id:`, `event_type:`), `settings:` (typed
+  values the app gives) and `imported:`. A package without one is a
+  library. One package describes at most one API, because one API is one
+  connection with one set of hosts and credentials.
+- **A capability mapping is a file**, `provides/<capability>.jadpo`, found by
+  name; area 11's `provides:` key in the index goes.
+- **Where an API is comes from exactly one place**: `hosts:` (on the
+  internet), `runs:` (Jadpo runs it), or neither, when the app gives
+  `host:` on the connection (another Jadpo app, a self-hosted product, a
+  service on Workers). A connection's `host:` beside `runs:` means it is
+  already running there; a package with fixed `hosts:` refuses one.
+- **Anything Jadpo has a built-in driver for is configured in `app.jadpo`,
+  never packaged**: PostgreSQL, Redis, S3, SMTP, OpenID Connect. Cloudflare
+  R2 is `driver: Driver.s3` with its host and `region: "auto"`; Neon is the
+  PostgreSQL driver with its pooling mode; Gmail is the SMTP driver with
+  its host and port. A vendor with storage and an API is a driver
+  connection plus a package, so there is no hybrid case.
+- **Vendor settings are documented, so agents look them up**: each
+  driver's language page lists the settings for the common services (R2,
+  Backblaze B2, DigitalOcean Spaces, MinIO, Amazon S3; Neon, Supabase,
+  Amazon RDS; Gmail, Microsoft 365, Amazon SES SMTP; Google, Microsoft),
+  each a working connection checked with the pages' other examples, and
+  `jadpo check` warns when it recognises a host that is missing one. A
+  vendor driver in a Jadpo release only where a flow needs native code.
+- **Sign-in**: Google, Microsoft and other OpenID Connect providers are
+  `Driver.oidc` with an issuer; area 8's built-in presets narrow to GitHub
+  and Apple, which are not plain OpenID Connect.
+- **A vendor with two APIs under different credentials** (Shopify's Admin
+  and Storefront APIs) is two packages.
+- **The declaration is called `provider`**, matching provider packages and
+  `shared/providers/`.
+
+```text
+// app.jadpo
+avatars: {
+    driver: Driver.s3
+    host: config.r2_host
+    region: "auto"
+    bucket: "avatars"
+    credential: {
+        key_id: config.r2_key_id
+        secret: config.r2_secret
+    }
+}
+stripe: {
+    package: Stripe.v2024_06_20
+    domains: [payments]
+    credential: config.stripe_secret_key
+}
+```
+
+This changes area 11 question 19 ("files: as S3 presets"), question 21's
+`provides:` key, question 25's test-credential sandbox, area 16's R2
+example and area 8 question 11's presets.
 
 ## Decided: where packages live, and where your own code lives
 
@@ -424,12 +498,11 @@ falling back to a second provider, come later and only when an app asks.
 
 ## Proposed: sign-in providers as a capability
 
-Area 8 decided built-in presets (Google, GitHub) plus generic OpenID
-Connect, not built yet. As a `sign_in` capability, generic OpenID Connect
-and OAuth 2.0 become built-in drivers and each preset becomes a package
-that sets the issuer, scopes and where the email and its verified flag
-come from, so adding "Sign in with Apple" is a package, not a compiler
-release.
+Decided above: Google, Microsoft and other OpenID Connect providers are
+`Driver.oidc` with an issuer, and built-in presets remain only for GitHub
+and Apple. Still proposed: making sign-in a `sign_in` capability, so
+`sign_in: { connections: [google, github] }` names the connections the way
+`email:` does.
 
 ## Proposed: other candidate capabilities
 
@@ -482,14 +555,27 @@ separately. If a package can declare the container it needs, everything
 the app depends on is described in the app.
 
 ```text
-package Gotenberg.v8 {
-    service: { image: "gotenberg/gotenberg:8"  port: 3000 }
-    ...
+// packages/gotenberg/v8/provider.jadpo
+provider {
+    protocol: Protocol.multipart_http
+    runs: {
+        image: "gotenberg/gotenberg:8@sha256:…"
+        port: 3000
+        asks: ["fonts.googleapis.com"]
+    }
+}
+
+// app.jadpo
+pdfs: {
+    package: Gotenberg.v8
+    domains: [billing]
+    outbound: ["fonts.googleapis.com"]
 }
 ```
 
-The image is pinned by digest in `jadpo.lock` and listed in the approval
-report.
+The image's digest is written in the package source, which the package's
+own digest already pins, and an own integration in `shared/providers/` has
+no lock entry. The image is listed in the approval report.
 
 **Only stateless services** (decided 2026-10-16, Richard): a service
 holds no data and has no volume, and each app instance runs its own copy,
@@ -500,7 +586,7 @@ nowhere else.
 
 **Security is the engine's, with three settings Jadpo always applies**
 (decided 2026-10-16) when it creates a container: no outbound network
-unless granted (the app's own deny-by-default rule, area 11 question 9,
+unless granted (`outbound:` on the connection) (the app's own deny-by-default rule, area 11 question 9,
 which Docker's default network does not give: a PDF service rendering an
 invoice could otherwise send it anywhere), never privileged, and no access
 to the host's disk. Jadpo creates the containers itself, so there is no
@@ -578,7 +664,7 @@ the connection gives its address.
 |---|---|---|
 | Database, cache, schedules | Capability, built-in drivers only | Decided (area 11) |
 | Files, email, SMS, publishing | Capability, drivers and packages | Decided (area 11) |
-| Sign-in providers | Built-in presets today; a capability if agreed | Proposed |
+| Sign-in providers | `Driver.oidc` with an issuer; GitHub and Apple built in; a capability if agreed | Decided; capability proposed |
 | Search, push, bot protection | Candidate capabilities | Proposed |
 | Rate limits, flags, sessions, idempotency keys, outbox, audit | Name a store; not capabilities | Decided (areas 5, 12, 16) |
 | Event delivery | Runtime only; external queues are publishing targets | Decided (area 12) |
