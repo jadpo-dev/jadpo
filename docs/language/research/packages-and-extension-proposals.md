@@ -576,6 +576,19 @@ when an app needs it; media services (Cloudinary, Uploadcare) stay
 ordinary packages, since they cannot do the whole `files` job. Still to
 explore in depth: the disk driver and what it offers (Richard).
 
+**Cache.** Upstash, Valkey, ElastiCache and other Redis-compatible
+services use the Redis driver, their settings listed on its page, on
+Workers too; `Driver.memory` is allowed in production with a warning (per
+server, emptied on restart) and is an error on Workers; Cloudflare KV is
+not a cache driver (a change can take a minute to reach every location),
+so an app wanting it calls it as a package. Nothing is cached by default
+(area 5). The cache holds only what is harmless to lose: cached records
+and queries, route rate limits and, through the same
+`rate_limits: { store: cache }`, provider rate limits shared across
+servers; never idempotency keys, webhook de-duplication, sessions, poll
+state, schedule leases or the outbox. Flag values, when flags are built,
+are held in each server's memory and refreshed every few seconds.
+
 ## Decided: the golden rule
 
 Decided 2026-10-16 (Richard): **a package can do nothing the app cannot,
