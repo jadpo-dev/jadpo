@@ -9,11 +9,13 @@
 //! The grants are the entity's own, or for a write an action listed under
 //! root `policy { actions: }` makes in its own body, that line's. Tenancy
 //! limits every grant to the tenants where the caller has a membership: a
-//! tenant's own record being created belongs to nobody yet, and a new
-//! membership in a tenant makes its member one.
+//! tenant's own record being created belongs to nobody yet, a new
+//! membership in a tenant nobody belongs to yet makes its member the
+//! first, and a record moved to another tenant needs the caller's
+//! membership there too.
 
 use jadpo_check::data::EntityModel;
-use jadpo_check::policy::{Effect, Grant};
+use jadpo_check::policy::{Effect, Grant, LineGate};
 use jadpo_sql::policy::{Membership, Who, any_of, qualified};
 use jadpo_std::http::PrincipalKind;
 use jadpo_std::policy::{CallerPart, Gate};
@@ -218,16 +220,18 @@ impl Planner<'_> {
                         None,
                     )?));
                 }
-                // A new membership in the tenant makes its member one.
+                // A new membership in a tenant nobody belongs to yet makes
+                // its member the first (founding it); in any other tenant,
+                // only someone who belongs to it already may add one.
                 if let Row::New(_) = row
                     && let Some(held) = self.access.membership(&entity.name)
-                    && held.scope_entity.as_deref() == Some(tenancy.entity.as_str())
+                    && held.scope.as_deref() == Some(tenancy.via.as_str())
                 {
                     let member = self.value_of(entity, &held.member, row)?;
-                    tenants.push(Who::Equals {
-                        value: member,
-                        caller: bind.caller(CallerPart::User),
-                    });
+                    let caller = bind.caller(CallerPart::User);
+                    let mut founding = vec![format!("{member} = {caller}")];
+                    founding.extend(self.nobody_in(&at)?);
+                    tenants.push(Who::Condition(format!("({})", founding.join(" AND "))));
                 }
                 let tenants = any_of(&tenants);
                 condition = if anyone {
@@ -238,6 +242,58 @@ impl Planner<'_> {
             }
         }
         Some(condition)
+    }
+
+    /// That no membership of any kind is held in the tenant `at` (SQL),
+    /// hidden ones included, since a tenant that has had members isn't
+    /// being founded: one `NOT EXISTS` per membership held in the tenant.
+    fn nobody_in(&self, at: &str) -> Option<Vec<String>> {
+        let mut out = Vec::new();
+        for (i, name) in self.access.root.tenant_memberships.iter().enumerate() {
+            let held = self.access.membership(name)?;
+            let model = self.model.entity(&held.entity)?;
+            let scope = &field(model, held.scope.as_deref()?)?.born;
+            out.push(jadpo_sql::policy::unheld(
+                &model.table,
+                &format!("jadpo_f{i}"),
+                scope,
+                at,
+            ));
+        }
+        Some(out)
+    }
+
+    /// The condition a write moving a record of `entity` to another tenant
+    /// adds (area 9, "Tenancy"): the caller holds a current membership in
+    /// the tenant `to` (SQL), its new tenancy, as a create there would.
+    /// `None` for an entity that belongs to no tenant, or is the tenant.
+    pub(crate) fn moved_to(
+        &self,
+        bind: &mut dyn CallerBind,
+        entity: &EntityModel,
+        to: &str,
+    ) -> Option<Option<String>> {
+        let moves = self
+            .access
+            .entity(&entity.name)
+            .and_then(|policy| policy.tenancy.as_ref())
+            .is_some_and(|tenancy| tenancy.via != "id");
+        if !moves {
+            return Some(None);
+        }
+        let mut tenants: Vec<Who> = Vec::new();
+        for (i, name) in self.access.root.tenant_memberships.iter().enumerate() {
+            let held = self.access.membership(name)?;
+            let alias = format!("jadpo_n{i}");
+            tenants.push(Who::Member(self.held(
+                bind,
+                held,
+                &alias,
+                Some(to.to_string()),
+                None,
+            )?));
+        }
+        Some(Some(any_of(&tenants)))
     }
 
     /// What keeps the references a write sets inside the tenant (area 9,
@@ -350,49 +406,40 @@ impl Planner<'_> {
         self.granted(bind, entity, &grants, row)
     }
 
-    /// Who may call the action `action` as it starts, when its line under
-    /// `actions:` doesn't depend on a record (area 9, "Actions"): anyone
-    /// signed in, or a role held across the whole application.
-    pub(crate) fn gate(&self, action: &str) -> Option<Gate> {
-        use jadpo_check::policy::ActionWho;
-        let line = self.access.root.action(action)?;
-        if line.who.contains(&ActionWho::Public) {
-            return None;
+    /// What the plan checks as an action starts, from who its line under
+    /// `actions:` lets call it (area 9, "Actions"): nothing for anyone at
+    /// all or when the statements its own body writes decide, anyone
+    /// signed in, a role held across the whole application, or nobody.
+    /// A gate it can't plan refuses everyone rather than no one.
+    pub(crate) fn gate(&self, gate: &LineGate) -> Option<Gate> {
+        match gate {
+            LineGate::Anyone | LineGate::Statements => None,
+            LineGate::Signed => Some(Gate::Signed),
+            LineGate::Nobody => Some(Gate::Nobody),
+            LineGate::Roles(roles) => Some(self.roles_gate(roles).unwrap_or(Gate::Nobody)),
         }
-        if line.who.contains(&ActionWho::Signed) {
-            return Some(Gate::Signed);
-        }
+    }
+
+    /// A caller holding one of `roles`, each held across the whole
+    /// application, as a `SELECT 1` of their membership.
+    fn roles_gate(&self, roles: &[(String, String)]) -> Option<Gate> {
         let mut statement = Statement::default();
         let mut whos = Vec::new();
         let mut store = None;
-        for (at, who) in line.who.iter().enumerate() {
-            match who {
-                ActionWho::Role { membership, role } => {
-                    let held = self.access.membership(membership)?;
-                    if held.scope.is_some() {
-                        // Held in a record: the statements decide.
-                        return None;
-                    }
-                    store = self.model.entity(&held.entity)?.store.clone();
-                    let alias = format!("jadpo_m{at}");
-                    whos.push(Who::Member(self.held(
-                        &mut statement,
-                        held,
-                        &alias,
-                        None,
-                        Some(vec![role.clone()]),
-                    )?));
-                }
-                ActionWho::Field { .. } => return None,
-                ActionWho::System => {}
-                ActionWho::Signed | ActionWho::Public => {}
-            }
+        for (at, (membership, role)) in roles.iter().enumerate() {
+            let held = self.access.membership(membership)?;
+            store = Some(self.model.entity(&held.entity)?.store.clone()?);
+            let alias = format!("jadpo_m{at}");
+            whos.push(Who::Member(self.held(
+                &mut statement,
+                held,
+                &alias,
+                None,
+                Some(vec![role.clone()]),
+            )?));
         }
-        let Some(store) = store else {
-            return Some(Gate::Nobody);
-        };
         Some(Gate::Roles {
-            store,
+            store: store?,
             sql: format!("SELECT 1 WHERE {}", any_of(&whos)),
             params: statement.into_params(),
         })
@@ -493,6 +540,10 @@ pub(crate) fn gates(
         .root
         .actions
         .iter()
-        .filter_map(|line| Some((line.action.clone(), planner.gate(&line.action)?)))
+        .filter_map(|line| {
+            let gate = jadpo_check::policy::reach::line_gate(db, project, &line.action)
+                .unwrap_or(LineGate::Nobody);
+            Some((line.action.clone(), planner.gate(&gate)?))
+        })
         .collect()
 }

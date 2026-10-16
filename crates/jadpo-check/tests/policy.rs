@@ -604,8 +604,9 @@ fn an_include_reads_a_parent_only_when_every_reader_may() {
     // A company's role applies to the company a project refers to, and a
     // membership's member holds a role in its company; a task refers only
     // to a project of its own company (chunk 4.7), so a role held in the
-    // task's company is held in its project's. The person an assignment
-    // points at holds no role the proof can see.
+    // task's company is held in its project's. An assignment every company
+    // shares says nothing of the company its person belongs to, so its
+    // person holds no role the proof can see.
     let found = company(
         r#"type ProjectWithCompany = Output {
     pick: [Project.id, Project.name]
@@ -662,6 +663,7 @@ entity Assignment {
 
     policy: {
         read: [person_id]
+        tenant: Tenancy.shared
     }
 }
 
@@ -1419,7 +1421,7 @@ action spend(project_id: Project.id, amount: Amount) fails ProjectNotFound, Over
         "{found:#?}"
     );
     assert!(
-        found[0].contains("`spend` refuses with `OverBudget` when `Project.budget` decides, which not every caller may read"),
+        found[0].contains("`spend` raises `OverBudget` on a condition that tests `Project.budget`, which not every caller may read"),
         "{found:#?}"
     );
 }
@@ -1917,9 +1919,9 @@ type WhoFailed = Failure {
     assert_eq!(
         rules_of(&found),
         [
-            "type.auth_principal_failure_context",
+            "type.auth_principal_output",
             "type.auth_principal_input",
-            "type.auth_principal_output"
+            "type.auth_principal_failure_context"
         ],
         "{found:#?}"
     );

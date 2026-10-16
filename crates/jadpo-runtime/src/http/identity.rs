@@ -613,7 +613,9 @@ pub async fn issue_key(
         SqlValue::Timestamp(expires_at.saturating_mul(1000)),
     ];
     let gated = plan.and_then(|plan| plan.gated.issue_key.as_ref());
-    let (statement, params) = policed(ctx, ISSUE_KEY, gated, params);
+    let Some((statement, params)) = policed(ctx, ISSUE_KEY, gated, params) else {
+        return Stored::Fault(unpoliced(ctx, site));
+    };
     match execute(ctx, &store, &statement, &params).await {
         Ok(0) if gated.is_some() && !ctx.unpoliced() => {
             return Stored::Failed(ctx.fail(crate::read::not_permitted(), site));
@@ -660,7 +662,9 @@ pub async fn issued(
     } else {
         (TOKENS, plan.and_then(|plan| plan.gated.tokens.as_ref()))
     };
-    let (statement, params) = policed(ctx, statement, gated, params);
+    let Some((statement, params)) = policed(ctx, statement, gated, params) else {
+        return Stored::Fault(unpoliced(ctx, site));
+    };
     let rows = match ctx.transaction(&store).await {
         Ok(transaction) => transaction.query(&statement, &params).await,
         Err(error) => Err(error),
@@ -776,7 +780,9 @@ pub async fn revoke(
             plan.and_then(|plan| plan.gated.revoke_token.as_ref()),
         )
     };
-    let (statement, params) = policed(ctx, statement, gated, vec![id]);
+    let Some((statement, params)) = policed(ctx, statement, gated, vec![id]) else {
+        return Stored::Fault(unpoliced(ctx, site));
+    };
     if let Err(error) = execute(ctx, &store, &statement, &params).await {
         return stopped(ctx, error, site);
     }
@@ -785,23 +791,36 @@ pub async fn revoke(
 
 /// A credential statement with the policy its holder's grants add (area
 /// 9, question 8), and its parameters with the caller's after `own`; the
-/// statement without policy for a call a test makes without a caller.
+/// statement without policy only for a call a test makes without a
+/// caller. A policed call whose plan has no policed statement runs
+/// nothing: `None`, never the statement without policy.
 fn policed(
     ctx: &Ctx<'_>,
     plain: &str,
     gated: Option<&jadpo_std::policy::Gated>,
     mut own: Vec<SqlValue>,
-) -> (String, Vec<SqlValue>) {
-    let Some(gated) = gated.filter(|_| !ctx.unpoliced()) else {
-        return (plain.to_string(), own);
-    };
+) -> Option<(String, Vec<SqlValue>)> {
+    if ctx.unpoliced() {
+        return Some((plain.to_string(), own));
+    }
+    let gated = gated?;
     for param in &gated.extra {
         own.push(match &param.source {
             jadpo_std::read::Source::Caller(part) => ctx.caller_param(*part),
             _ => SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
         });
     }
-    (gated.sql.clone(), own)
+    Some((gated.sql.clone(), own))
+}
+
+/// The fault a policed credential statement the plan has no policy for
+/// is: a mistake in the plan, which refuses rather than runs unpoliced.
+fn unpoliced(ctx: &mut Ctx<'_>, site: u32) -> Box<Fault> {
+    defect(
+        ctx,
+        "a credential statement with no policy for a caller",
+        site,
+    )
 }
 
 /// Runs `statement` in the running action's transaction in `store`.

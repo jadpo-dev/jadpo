@@ -286,15 +286,71 @@ impl ActionGrants {
         out
     }
 
-    /// Whether the line names someone who doesn't depend on a record:
-    /// what an action that touches no entity can be called by.
-    pub fn record_free(&self) -> bool {
-        self.who.iter().all(|who| match who {
-            ActionWho::Field { .. } => false,
-            ActionWho::Role { .. } => true,
-            _ => true,
-        })
+    /// Who the line lets call its action as it starts (area 9, "Actions"),
+    /// given the entities whose records the action's own body creates,
+    /// changes or deletes (`writes`). A user field or a role held in a
+    /// record lets someone in only on those records, so when one applies
+    /// to a record the body writes, the statements decide; otherwise such
+    /// an entry lets nobody in, and the action is checked against the
+    /// line's other entries as it starts, wherever it is called from.
+    pub fn gate(&self, writes: &[&EntityModel], memberships: &[Membership]) -> LineGate {
+        if self.who.contains(&ActionWho::Public) {
+            return LineGate::Anyone;
+        }
+        if self.who.contains(&ActionWho::Signed) {
+            return LineGate::Signed;
+        }
+        let applies = writes.iter().any(|entity| {
+            self.on(entity, memberships).iter().any(|grant| {
+                matches!(
+                    grant,
+                    Grant::Caller { .. } | Grant::Role { via: Some(_), .. }
+                )
+            })
+        });
+        if applies {
+            return LineGate::Statements;
+        }
+        let roles: Vec<(String, String)> = self
+            .who
+            .iter()
+            .filter_map(|who| match who {
+                ActionWho::Role { membership, role }
+                    if memberships
+                        .iter()
+                        .any(|m| m.entity == *membership && m.scope.is_none()) =>
+                {
+                    Some((membership.clone(), role.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        if roles.is_empty() {
+            LineGate::Nobody
+        } else {
+            LineGate::Roles(roles)
+        }
     }
+}
+
+/// Who a listed action's line lets call it as it starts: what the plan
+/// checks then, the proofs count on, and a route that could never succeed
+/// is refused for (area 9, "Actions").
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum LineGate {
+    /// `Access.public`: anyone at all, so nothing is checked.
+    Anyone,
+    /// An entry that depends on a record applies to a record the action's
+    /// own body writes: those statements decide, with the line's grants.
+    Statements,
+    /// `Access.authenticated`: anyone signed in.
+    Signed,
+    /// A caller holding one of these roles held across the whole
+    /// application: each by its membership entity and role.
+    Roles(Vec<(String, String)>),
+    /// Nobody: the line names only `Access.system`, which no request is,
+    /// or callers that only a record the action never writes could name.
+    Nobody,
 }
 
 /// The reference through which a role held in `scope` applies to
