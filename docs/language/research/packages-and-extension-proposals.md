@@ -1,28 +1,46 @@
 # Packages and extension points
 
-Status: proposal, 2026-10-16, for [area 11](../11-integrations.md), with
-changes to areas 1, 8, 14 and 16. Nothing here is decided until Richard
-answers the questions at the end; decisions then move to the area pages.
+Status: working document, 2026-10-16, for [area 11](../11-integrations.md),
+with changes to areas 1, 2, 8, 14 and 16. Richard and Claude are working
+through it one part at a time. Each part says whether it is **decided**
+(Richard agreed it) or **proposed** (not yet discussed). When every part is
+decided, the decisions move to the area pages and this page becomes the
+research behind them.
 
-Richard asked (2026-10-16) for one design that every later chunk follows
-when it builds something an app might want to swap, extend or add from a
-package: how packages are installed, where they sit, how they reach the
-program, and how a feature is turned on, off or replaced. Email is the
-example: chunk 7.3 builds SMTP, but an app may want to send through a
-provider's HTTP API instead.
+Richard's question (2026-10-16): before chunks build anything an app might
+want to swap, extend or get from a package (email in 7.3 is the example),
+how are packages installed, where do they sit, how do they reach the
+program, and how is a feature turned on, off or replaced?
 
-## What is already decided
+## At a glance
 
-Most of the pattern exists, in area 11's provider packages (questions 1–18)
-and capabilities (questions 19–25), all decided 2026-10-13. The email case
-is answered there:
+| Part | State |
+|---|---|
+| Swapping a provider (the email case) | Decided before, in area 11 (2026-10-13) |
+| Which kinds of package exist | Decided |
+| Built in or a library package | Agreed as input to chunk 5.4 |
+| Layout inside a package | Decided |
+| Where packages live | Decided |
+| The package surface | Decided |
+| What publishing requires | Decided |
+| No code with side effects in packages | Decided |
+| Decoding responses and requests | Decided |
+| Dependencies between packages | Next |
+| Private packages | Proposed |
+| The model and its rules | Proposed |
+| Capability mappings calling pure functions | Proposed |
+| Choosing a provider when deploying | Proposed |
+| Sign-in providers as a capability | Proposed |
+| Other candidate capabilities | Proposed |
 
-1. `jadpo provider add Postmark.v1` copies the package into the local
-   cache and pins its digest in `jadpo.lock`.
-2. `app.jadpo` declares a connection to it, beside the database.
-3. `email: { connection: postmark }` in `application { }` sends every
-   `EmailMessage` through it. Replacing `postmark` with an SMTP connection
-   is the only change needed to go back; no domain code changes.
+## Decided before this: swapping a provider
+
+Area 11's provider packages (questions 1–18) and capabilities (questions
+19–25), decided 2026-10-13, already answer the email case. Email is a
+**capability**: a job several providers do, with one API in application
+code. SMTP is one built-in driver for it; a mail package such as Postmark
+is another, providing the capability through a declarative `provide email
+{ }` mapping. `app.jadpo` names which one is used:
 
 ```text
 // app.jadpo
@@ -36,104 +54,65 @@ application {
 }
 ```
 
-There is nothing to disable. SMTP is a built-in driver that does nothing
-unless a connection names it; chunk 7.3 builds the `email` capability with
-SMTP as its first driver, and the Postmark package plugs into the same
-capability. What makes that work:
+There is nothing to disable: SMTP does nothing unless a connection names
+it, and changing provider changes `app.jadpo`, never domain code. The
+capabilities are a fixed list owned by the language (database, cache,
+files, email, SMS, publishing, schedules), each with standard types and
+events, a local driver for development, one fake for tests and a
+conformance suite. Packages fill capabilities and never invent them.
 
-- **Capabilities** are a fixed, language-owned list of jobs (database,
-  cache, files, email, SMS, publishing, schedules). Each has one API in
-  application code, standard types and events, a local driver for
-  development, one fake for tests and a conformance suite.
-- **A package provides a capability** with a `provide email { }` file that
-  maps the standard operations onto its own calls, declaratively.
-- **Provider features** come through typed connection settings, standard
-  events back (`EmailBounced`), or the package's own operations, called
-  directly from the domains the connection lists.
-- **Development and tests** swap every driver for a local one (inbox, disk,
-  in-memory cache); the local drivers do not exist in production builds.
-
-What is not designed is everything outside "a package describes another
-company's API": packages of Jadpo code, how packages depend on each other,
-how far a capability mapping can go, choosing a provider at deploy time,
-and which other features should become capabilities. That is this page.
-
-## The model
-
-Four layers, each extended in exactly one way.
-
-| Layer | Holds | Extended by | Who can extend it |
-|---|---|---|---|
-| Runtime | Drivers (PostgreSQL, Redis, SMTP, S3, OIDC), wire formats, credential and signature schemes, schedule ticks | A Jadpo release | Jadpo only |
-| Capabilities | The swap points: one API, types, events, fake, conformance suite each | A language change through review | Jadpo only |
-| Packages | Jadpo source: API descriptions, capability mappings, types, failures, library functions | `jadpo package add` or a local folder | Anyone |
-| Wiring | `connections:` and the capability settings in `app.jadpo` | Editing `app.jadpo` | The app |
-
-### The rules every chunk follows
-
-1. **Nothing is ambient.** Every backend a feature uses is a named
-   connection in `app.jadpo`, and the feature names the connection it uses
-   (`store: main`, `email: { connection: postmark }`). Turning a feature
-   off is removing its wiring; replacing a provider is changing a name.
-   There are no enable or disable switches, and no defaults that pick a
-   backend silently. This is area 16's rule for flags and rate limits,
-   applied everywhere.
-2. **Native code only comes from a Jadpo release.** A package is Jadpo
-   source, checked by the compiler like the app's own code. It has no
-   install scripts and no native code, and it reaches the network only
-   through connections the app declares, so a package cannot phone home or
-   read a secret the app did not hand to its connection.
-3. **A swap point is a capability.** Where an app should be able to change
-   provider without changing code, the language adds a capability with all
-   five parts. Packages fill capabilities; they never invent them (area 11
-   question 19). Anything else from a provider is called as that provider.
-4. **Extend by events, override by name.** A package, or a built-in
-   feature, offers extension through events an app subscribes to and
-   settings it declares. An app overrides a template or translation by
-   writing its own file at the same key. Nothing patches another
-   declaration's behaviour.
-5. **Everything a package brings is reported.** The manifest, the network
-   report, the personal-data report and the approval report show what each
-   package adds, with an upgrade shown as a diff of what the app uses.
-6. **Development never leaves the machine.** Every capability has a local
-   driver that `jadpo dev` and `jadpo test` use in place of the wired one.
-
-A new feature that needs a backend asks, in order: is it state the app
-already keeps (then it names a store), is it a job several providers do and
-the compiler gains from knowing it (then it is a capability), or is it one
-provider's API (then it is a provider package).
-
-## Package kinds
-
-Decided in discussion with Richard, 2026-10-16.
+## Decided: which kinds of package exist
 
 | Kind | Contains | Used as |
 |---|---|---|
-| Provider | One API at one version: resources, operations, types, failures, events, hosts; optionally `provide` mappings and library functions | A connection; `connection.resource.operation(input)` (area 11) |
+| Provider | One API at one version: resources, operations, types, failures, events, hosts; optionally `provide` mappings and library functions | A connection: `stripe.payment_intents.create(...)` (area 11) |
 | Library | Types, failures and library functions under `shared/`'s rules: pure, no entities, no routes, no network | `use Postcodes`, then `Postcodes.uk.parse(text)`, `Postcodes.UkPostcode` |
 
-**No feature packages.** A whole slice of an app (invitations, billing)
-is not a package, installed or copied in. An agent writes it from the
-language pages, with the compiler catching the dangerous mistakes, and
-most features other frameworks take from packages (sign-in, flags, audit,
-files, email) are built in. Where agents keep getting a feature wrong
-(chunk 10.2 measures this), the fix is a worked reference in `examples/`
-that the agent reads, not a package system.
+- **No feature packages.** A whole slice of an app (invitations, billing)
+  is not a package, installed or copied in. An agent writes it from the
+  language pages, the compiler catches the dangerous mistakes, and most
+  features other frameworks take from packages (sign-in, flags, audit,
+  files, email) are built in. Where agents keep getting one wrong (chunk
+  10.2 measures this), the fix is a worked reference in `examples/`.
+- **No driver packages.** Anything that needs native code (a new
+  database, a signing scheme, a wire format) comes only through a Jadpo
+  release. Packages never carry native or WebAssembly code.
+- **Library types may be stored** in entity fields and used in route
+  inputs and outputs, unlike provider types. An upgrade that changes a
+  stored type appears in the upgrade plan and the migration, as a change
+  to the app's own type does.
 
-**No driver packages.** Anything that needs native code (a new database,
-a signing scheme) comes only through a Jadpo release. Packages never carry
-native or WebAssembly code.
+## Agreed: built in or a library package
 
-**Library package types may be stored** in entity fields and used in
-route inputs and outputs, unlike provider types. An upgrade that changes a
-stored type appears in the upgrade plan and the migration, as a change to
-the app's own type does.
+Input to chunk 5.4 (the standard-library plan), which decides it. A thing
+is built in when the compiler gains from knowing it: a type that turns a
+mistake into a compile error, carries personal-data marking, has a SQL or
+OpenAPI form or generated test values, or a security boundary the language
+should own. Saving an install is not enough.
 
-## Inside a package
+| Thing | Where | Why |
+|---|---|---|
+| Money and currency | Built in | Mixing currencies is a compile error; rounding fixed; one column form |
+| Countries, currencies, languages | Built in | Small, slow to change, needed by money and phone numbers |
+| Phone numbers | Built in | Already carried to area 2 for SMS; always personal data |
+| HTML cleaning and Markdown, as a safe-HTML type | Built in | A security boundary; the parser Jadpo is worst at writing |
+| CSV | Built in | Already in 5.4's encodings |
+| Postcodes, IBAN, VAT numbers, ISBN | Package | A long tail of per-country rules |
+| Public holidays, business days | Package | Data that changes yearly, per country |
+| Repeating dates, `.ics`, QR codes | Package | Niche; can move into the standard library later |
 
-Decided 2026-10-16: the layout is `shared/`'s, so one set of rules covers
-the app and every package, and the compiler checks a package as it checks
-`shared/`.
+Built-in data ships with Jadpo releases, as time-zone data does in every
+language. Public library packages are then the long tail, and the largest
+use is likely private: types and rules shared between one company's own
+apps. Open for 5.4: where fixed reference data (a country table, phone
+formats) can be declared at all, since the language has no way to declare
+a table of values today.
+
+## Decided: the layout inside a package
+
+A package is laid out as `shared/` is, so one set of rules covers the app
+and every package, and the compiler checks a package as it checks
+`shared/`. A library package:
 
 ```text
 postcodes/v2/
@@ -142,20 +121,40 @@ postcodes/v2/
     failures/invalid_postcode.jadpo
     libraries/uk.jadpo              library uk { public parse(...)  normalise(...) }
     libraries/uk.test.jadpo         tests beside the file, as in an app
-    CHANGELOG.md                    read by the upgrade plan
-    surface.json                    generated: the package's public surface (proposed below)
+    CHANGELOG.md
+    surface.json                    generated
+```
+
+A provider package adds `resources/`, `events/` and `recordings/`:
+
+```text
+stripe/v2024_06_20/
+    package.jadpo                          hosts, credential scheme, idempotency, error location
+    resources/payment_intents.jadpo        imported, corrections merged in
+    types/payment_intent.jadpo             imported
+    failures/card_declined.jadpo
+    events/payment_intent_succeeded.jadpo
+    libraries/tables.jadpo                 written: decoders and translation helpers
+    libraries/tables.test.jadpo
+    recordings/payment_intents.create.json real responses that confirm the types
+    surface.json
 ```
 
 - **`public` marks the package's API**, as it marks what a domain offers
   other domains. Everything else is internal and may change freely.
+- **The index lists no files**: a file is named after what it declares,
+  so the compiler finds a resource by name and loads only what the app
+  uses.
+- **A re-import rewrites only imported files.** Written libraries and
+  corrections survive, as area 11 already says for corrections.
 - **A package's tests run when it is published**, not in every app's
   `jadpo test`; the digest guarantees the code is the code that passed.
 
-## Where packages live
+## Decided: where packages live
 
-Decided 2026-10-16: in the repository, committed. This changes where area
-11 put registry packages (a cache on the developer's machine); the pin by
-digest and "never fetched during a build" stand.
+In the repository, committed, under `packages/<name>/<version>/`. This
+changes where area 11 put registry packages (a cache on the developer's
+machine); the pin by digest and "never fetched during a build" stand.
 
 ```text
 app.jadpo
@@ -173,23 +172,26 @@ jadpo.lock
 - The compiler refuses a registry package whose files do not match its
   digest. Changing one means taking it out of the lock, and it becomes a
   local package the app owns.
-- Folders nest by version, so two versions sit side by side: a provider
-  during an upgrade (area 11 question 3), a library while an upgrade plan
-  compiles the app against the candidate, or while callers move across.
-  While two versions are in use, names carry the version
+- Two versions can sit side by side: a provider during an upgrade (area
+  11 question 3), a candidate version while the upgrade plan compiles the
+  app against it, or two library versions while callers move across.
+  While two are in use, names carry the version
   (`Postcodes.v3.UkPostcode`), as area 11 question 16 decided for
   providers.
+- The commands are `jadpo package …` (`add`, `import`, `record`,
+  `conform`, `update`, `remove`, `show`, `publish`), replacing area 11's
+  `jadpo provider …`.
 
-## The package surface
+## Decided: the package surface
 
-Proposed 2026-10-16 (Richard's idea). The compiler works out a package's
-public surface and writes it to `surface.json`: every public type with its
-fields and constraints, every failure with its kind and code, every
-function's signature, failures and `///` description, the requirements and
-licence, and for a provider its operations, hosts, credential scheme,
-settings and the capabilities it provides.
+Richard's idea. The compiler works out a package's public surface and
+writes it to `surface.json`: every public type with its fields and
+constraints, every failure with its kind and code, every function's
+signature, failures and description, the requirements and licence, and for
+a provider its operations (wire and output types both), hosts, credential
+scheme, settings and the capabilities it provides.
 
-- **One source for documentation.** The registry renders each package's
+- **One source for documentation.** The registry renders every package's
   pages from its surface, so every package is documented the same way,
   and an agent reads one file instead of the package's code (also as
   `jadpo package show <name> --json`).
@@ -200,23 +202,18 @@ settings and the capabilities it provides.
   last release's and refuses a breaking change (a public name removed, a
   field retyped, a new failure) without a new major version, as Elm's
   package manager does. The upgrade plan diffs the same two files.
-- **Examples in descriptions are tested.** An example in a function's
-  `///` description is compiled and run at publish, so the documentation
-  cannot drift from the code.
 
-## Publishing
+## Decided: what publishing requires
 
-Decided 2026-10-16 (Richard). The surface above is generated as proposed,
-and `jadpo package publish` refuses a package unless:
+`jadpo package publish` refuses a package unless:
 
 1. it compiles with no errors and no warnings;
 2. every public type, failure and function has a `///` description;
 3. every public function has at least one example in its description,
    compiled and run at publish, and every failure it can raise is shown by
    an example or a test;
-4. its tests pass;
-5. its version agrees with the surface diff: a breaking change needs a new
-   major version;
+4. its tests pass, and every decoder decodes every recorded response;
+5. its version agrees with the surface diff;
 6. its changelog's list of changes is generated from the surface diff, and
    the author writes only why;
 7. it declares a licence from a fixed list and the lowest Jadpo version it
@@ -226,204 +223,192 @@ Local packages skip the bar until they are published. Descriptions alone
 are not the bar, because the compiler cannot judge whether one says
 anything; examples are, because they must run.
 
-## Built in or a library package
+## Decided: no code with side effects in packages
 
-Agreed 2026-10-16 (Richard) as input to chunk 5.4, which decides it. A
-thing is built in when the compiler gains from knowing it: a type that
-turns a mistake into a compile error, carries personal-data marking, a SQL
-or OpenAPI form or generated test values, or a security boundary the
-language should own. Saving an install is not enough.
+A package holds no actions, subscribers or calls. An operation is a
+description the runtime performs, and only the app's actions call one.
+That keeps area 11's rules whole: one changing call per action, the call
+before the writes, the provider's failures mapped onto the app's at the
+call, and every outside call visible where it happens. Multi-step flows
+are events and subscribers, which are the app's.
 
-| Thing | Where | Why |
-|---|---|---|
-| Money and currency | Built in | Mixing currencies is a compile error; rounding fixed; one column form |
-| Countries, currencies, languages | Built in | Small, slow to change, needed by money and phone numbers |
-| Phone numbers | Built in | Already carried to area 2 for SMS; always personal data |
-| HTML cleaning and Markdown, as a safe-HTML type | Built in | A security boundary; the parser Jadpo is worst at writing |
-| CSV | Built in | Already in 5.4's encodings |
-| Postcodes, IBAN, VAT numbers, ISBN | Package | A long tail of per-country rules |
-| Public holidays, business days | Package | Data that changes yearly, per country |
-| Repeating dates, `.ics`, QR codes | Package | Niche; can move into the standard library later |
+A provider package may hold pure functions in its `libraries/`, for
+decoding (below) and for helpers that belong to that API version and
+change with it.
 
-Built-in data ships with Jadpo releases, as time-zone data does in every
-language. With the common cases built in, public library packages are the
-long tail, and the largest use is likely private: types and rules shared
-between one company's own apps. Open for 5.4: where fixed reference data
-(a country table, phone formats) can be declared at all.
+## Decided: decoding and translation
 
-## Provider packages with code
+Two kinds of conversion, split by one test: is it needed to make the value
+mean what the provider's documentation says it is?
 
-Decided 2026-10-16 (Richard).
+- **Decoding** (yes): dates as Unix seconds, numbers as text, lists as
+  `"a,b,c"`, an envelope around the real object, an error inside a `200`,
+  a columnar table that is really a list of rows, Stripe's
+  `amount: 1250, currency: "gbp"` that is really money. **The package
+  declares it and the runtime does it**, so the app only ever sees
+  correctly typed values.
+- **Translation** (no): turning a correct value into the shape one app
+  prefers. **The app's action does it, with an explicit call.**
 
-- **Packages never contain code with side effects**: no actions,
-  subscribers or calls. An operation is a description the runtime
-  performs, and only the app's actions call one, so one changing call per
-  action, calls before writes, failures mapped at the call and a call
-  visible where it happens all hold. Multi-step flows are events and
-  subscribers, which are the app's.
-- **Translation functions live in the provider package**, in its
-  `libraries/`, because they belong to one API version and change with it.
-- **Translation is an explicit call** (`Stripe.amounts.intent_for(total)`),
-  not a conversion attached to an operation.
+Decoding is declared on fields and on operations (syntax illustrative):
 
 ```text
-packages/stripe/v2024_06_20/
-    package.jadpo                          hosts, credential scheme, idempotency, error location
-    resources/payment_intents.jadpo        imported, corrections merged in
-    types/payment_intent.jadpo             imported
-    failures/card_declined.jadpo
-    events/payment_intent_succeeded.jadpo
-    libraries/amounts.jadpo                written: Money to and from Stripe's amounts
-    libraries/amounts.test.jadpo
-    recordings/payment_intents.create.json
-    surface.json
-```
+type Booking = Object {
+    collect_at: Instant {
+        wire: Wire.unix_seconds
+    }
+    weight: Decimal {
+        scale: 2
+        wire: Wire.text
+    }
+    slot: SlotWindow {
+        decode: slots.parse_window
+        encode: slots.format_window
+    }
+}
 
-The layout is `shared/`'s plus `resources/`, `events/` and `recordings/`;
-the index no longer lists resource files, since a file is named after its
-resource. A re-import rewrites only imported files; written libraries and
-corrections survive.
-
-## How far a capability mapping goes
-
-Area 11 question 21 limits a `provide` mapping to field paths, literals,
-lists, nested blocks and enum tables, with real code in the runtime. The
-eight packages modelled in the capabilities research needed nothing more
-for mapping beyond a map over a list for batches, which the first build
-leaves out; the other gaps they found (hosts with a placeholder, two-part
-credentials, new webhook checks) are runtime parts, already decided.
-
-When a provider does need a value computed (an address list joined into
-one string, a body encoded), the choice is between a Jadpo release that
-adds a runtime feature and letting the mapping call a pure function
-(question 3). The safety that matters is rule 2, no native code and no
-network beyond declared connections, and a pure Jadpo function keeps it:
-the compiler checks it and it has no effects. Wire formats, signing and
-protocols stay in the runtime either way.
-
-## Choosing a provider when deploying
-
-`email: { connection: postmark }` is fixed when the app is built. That
-suits a team that writes and runs its own app. It does not suit an app
-that other people deploy, such as an open-source product run by many
-operators, each with their own mail provider, who should not have to edit
-source.
-
-The fit with the rules (question 5): the app declares every connection it
-supports, and a setting chooses among them when the app starts.
-
-```text
-// app.jadpo
-email: {
-    connection: config.mail_provider    // MailProvider.smtp or .postmark
-    from: config.mail_sender
+list_rows: {
+    method: HttpMethod.get
+    path: "/v1/reports/{id}/rows"
+    wire_output: ColumnTable
+    output: List<ReportRow>
+    decode: tables.to_rows
+    output_at: "data"
+    failed_when: { path: "ok"  equals: false }
 }
 ```
 
-Every candidate is compiled, checked and listed in the network report,
-and the configuration report shows which settings each one needs, so
-nothing is wired at runtime that review has not seen. A connection that is
-not chosen needs no credential.
+- **Built-in encodings** for the common cases, a fixed list extended by
+  Jadpo releases: Unix seconds and milliseconds, ISO dates, numbers as
+  text, joined lists, base64, JSON inside a string, money in minor units,
+  envelopes, errors inside a `200`.
+- **Pure decode and encode functions** from the package's own
+  `libraries/` for anything else, on a field or a whole request or
+  response. A field's pair is checked to round-trip at publish; a
+  whole-response decoder is run over every recorded response.
+- **Byte formats stay in the runtime**: JSON, form-encoded, multipart, XML
+  later. Package functions reshape values, never bytes.
+- **Decoding is lazy where it can be.** A field decoder runs only when code
+  reads the field. A whole-response decoder reads what it reads, so "a
+  provider adding fields breaks nothing" holds for fields it ignores.
+- **A value that will not decode is a fault** naming the operation and
+  field, as a field that does not match its type is today; contract runs
+  against the sandbox catch it before production does.
+- **App tests script the clean type**, never the wire shape; the package's
+  own tests and recordings cover its decoders. Webhook payloads decode the
+  same way.
+- **The importer cannot see most of this** (OpenAPI often says only
+  `integer` for Unix seconds), so the agent adds it with the other
+  corrections and `jadpo package record` confirms it against a real
+  response.
+- The compiler cannot police the line between decoding and translation; the
+  surface shows both the wire and the output type, so the published
+  documentation and the review make it visible.
 
-Two related needs are later, each when an app asks: sending different
-messages through different connections (marketing mail through one,
-password resets through another), and falling back to a second provider.
-Fallback is only safe when the first surely did nothing, which area 11's
-`unavailable` fault already tells apart from `outcome_unknown`.
+## Next: dependencies between packages
+
+Proposed: a package lists its requirements in its index; one version of
+each is in use, two only while callers move across; `jadpo package add`
+writes every requirement into `jadpo.lock`, so nothing arrives that the
+lock does not show. To discuss: whether a library may require a provider
+package (helpers on top of someone else's Stripe), how deep requirements
+may go, and how an upgrade of a shared requirement is resolved.
+
+## Proposed: private packages
+
+A company's own apps sharing types and rules is likely the largest use of
+library packages, so private packages need a home from the start: a
+private registry, or a package fetched from a git repository the company
+controls, under the same publishing bar.
+
+## Proposed: the model and its rules
+
+Four layers, each extended in exactly one way:
+
+| Layer | Holds | Extended by |
+|---|---|---|
+| Runtime | Drivers, byte formats, built-in encodings, credential and signature schemes, schedule ticks | A Jadpo release |
+| Capabilities | The swap points | A language change through review |
+| Packages | Provider and library packages: Jadpo source | `jadpo package add`, or a local folder |
+| Wiring | `connections:` and capability settings in `app.jadpo` | The app |
+
+The rules every chunk would follow:
+
+1. **Nothing is ambient.** Every backend is a named connection, and each
+   feature names the connection it uses. Turning a feature off is removing
+   its wiring; replacing a provider is changing a name.
+2. **Native code only comes from a Jadpo release**, and a package reaches
+   the network only through connections the app declares.
+3. **A swap point is a capability**; packages fill capabilities and never
+   invent them.
+4. **Extend by events, override by name.** Built-in features offer events
+   and settings; an app overrides a template or translation by writing
+   its own file under the same name.
+5. **Everything a package brings is reported**: manifest, network,
+   personal-data and approval reports.
+6. **Development never leaves the machine.**
+
+A new feature that needs a backend asks, in order: is it state the app
+keeps (it names a store), a job several providers do that the compiler
+gains from knowing (a capability), or one provider's API (a provider
+package)?
+
+## Proposed: capability mappings calling pure functions
+
+Area 11 question 21 limits a `provide` mapping to field paths, literals,
+lists, nested blocks and enum tables. Decoding already lets a package's
+pure functions run on the response path; the same would let a mapping call
+them, added with the first package that needs one.
+
+## Proposed: choosing a provider when deploying
+
+`email: { connection: postmark }` is fixed at build time. An app that
+other people deploy (an open-source product run by many operators) would
+instead declare every connection it supports and let a setting choose one
+at start (`connection: config.mail_provider`), so every candidate is still
+compiled, checked and reported, and an unchosen one needs no credential.
+Depends on whether Jadpo apps will be run by people who did not write
+them. Sending different messages through different connections, and
+falling back to a second provider, come later and only when an app asks.
+
+## Proposed: sign-in providers as a capability
+
+Area 8 decided built-in presets (Google, GitHub) plus generic OpenID
+Connect, not built yet. As a `sign_in` capability, generic OpenID Connect
+and OAuth 2.0 become built-in drivers and each preset becomes a package
+that sets the issuer, scopes and where the email and its verified flag
+come from, so adding "Sign in with Apple" is a package, not a compiler
+release.
+
+## Proposed: other candidate capabilities
+
+Search (an external index such as Meilisearch or Typesense behind the
+decided `search:` section), push notifications and bot protection, each
+added through review only when an app needs it. Payments and AI models stay
+provider packages: one action per job is the app's swap point for those.
 
 ## Every extension point
 
-Everything in the language pages that an app might swap, extend or get
-from a package, and which way it goes.
+| Thing | Way | State |
+|---|---|---|
+| Database, cache, schedules | Capability, built-in drivers only | Decided (area 11) |
+| Files, email, SMS, publishing | Capability, drivers and packages | Decided (area 11) |
+| Sign-in providers | Built-in presets today; a capability if agreed | Proposed |
+| Search, push, bot protection | Candidate capabilities | Proposed |
+| Rate limits, flags, sessions, idempotency keys, outbox, audit | Name a store; not capabilities | Decided (areas 5, 12, 16) |
+| Event delivery | Runtime only; external queues are publishing targets | Decided (area 12) |
+| Telemetry | OpenTelemetry settings | Decided (area 16) |
+| Secrets | Environment variables through `config.jadpo` | Decided (area 10) |
+| Payments, AI models, any other API | Provider package | Decided (area 11) |
+| Money, countries, phone numbers, safe HTML, CSV | Built in | Agreed, for 5.4 |
+| Shared types and rules | Library package | Decided |
+| Whole features | The agent writes them; references in `examples/` | Decided |
 
-| Thing | Way | Today | Change proposed |
-|---|---|---|---|
-| Database | Capability, built-in drivers only | PostgreSQL; D1 later | None |
-| Cache | Capability, built-in drivers only | Redis; in memory | None |
-| Files | Capability | S3 driver; R2 and S3 as preset packages; local disk | None |
-| Email | Capability | SMTP driver (7.3); mail packages; local inbox | Deploy-time choice (question 5) |
-| SMS | Capability | Packages; local inbox | None |
-| Publishing | Capability | Packages; local log; outgoing webhooks as a driver later | None |
-| Schedules | Capability, built-in ticks only | Timer; Cloudflare cron; external tick | None |
-| Sign-in providers | Built-in presets plus generic OIDC (area 8) | Not built | Become a `sign_in` capability (question 6) |
-| Search | Entity's own store, PostgreSQL full-text | Not built | Candidate capability when an app needs typo tolerance (question 7) |
-| Push notifications | Not yet | — | Candidate capability (question 7) |
-| Bot protection | Not yet | — | Candidate capability (question 7) |
-| Rate-limit counters | Names a cache connection | Redis or bounded memory | None: a store, not a capability |
-| Flags, sessions, idempotency keys, outbox, audit | Name a database connection | Main store | None: a store, not a capability |
-| Event delivery | Runtime only | Outbox in the main store | None: external queues are publishing targets |
-| Telemetry | OpenTelemetry settings | Any vendor's endpoint | None |
-| Secrets | Environment variables | `config.jadpo` | None: a secrets manager fills the environment |
-| Payments, AI models, geocoding, tax, any other API | Provider package | — | None: one provider's API each, called as that provider |
-| Shared types and helpers | Library package | — | New kind (decided 2026-10-16) |
-| Whole features (billing, CMS) | Written by the agent; worked references in `examples/` | — | Not a package (decided 2026-10-16) |
-
-**Sign-in providers** are the one built-in list that should follow the
-pattern and does not. Area 8 decided presets (Google, GitHub) plus generic
-OpenID Connect, built after the first build. As a `sign_in` capability,
-generic OpenID Connect and OAuth 2.0 become built-in drivers and each
-preset becomes a package that sets the issuer, the scopes and where the
-email and its verified flag come from. Adding "Sign in with Apple" is then
-a package, not a compiler release; anything that needs real code (Apple
-signs its client secret as a JWT) is a credential scheme in the runtime,
-as for any provider.
-
-**What stays a provider package and not a capability.** Payments (money
-moves at the provider, and switching provider is a migration of customer
-records, never a configuration change), AI models (each provider's options
-differ in ways the compiler gains nothing from hiding), and any API one app
-uses. An app that wants to swap one of these writes one action per job,
-and that action is the swap point. A job that several apps keep wrapping
-the same way is the signal to propose a capability through review.
-
-## What each coming chunk follows
+## What the coming chunks follow
 
 | Chunk | Follows |
 |---|---|
-| 5.1 Configuration | Connection settings come from `config.jadpo`; an enum setting can choose a connection if question 5 is agreed |
-| 7.1 Packages and connections | `packages/<name>/<version>/` committed and checked against `jadpo.lock`, and `jadpo package` commands; library packages laid out as `shared/` and resolved with `use`; the index's requirements (question 4); the surface (question 8) |
-| 7.2 Importing and faking | Imports write into `packages/`; unchanged otherwise |
-| 7.3 Email | The `email` capability with SMTP as one driver and a mail package as the second, proving the swap; the local inbox as the development driver; templates overridable by name |
-| After the first build | Sign-in providers as a capability (question 6); search, push and bot protection only when an app needs them (question 7) |
-
-## Questions for Richard
-
-Questions 1, 2 and 4 change what chunk 7.1 builds. The rest change nothing
-until later, but answering them now fixes the pattern.
-
-1. **Which kinds of package exist?** *Decided 2026-10-16 (Richard):*
-   provider and library packages; no feature or driver packages (see
-   "Package kinds").
-2. **Where do packages live, and how are they laid out?** *Decided
-   2026-10-16 (Richard):* committed in `packages/<name>/<version>/`, laid
-   out as `shared/`, `public` marking the API, `jadpo package …` commands
-   (see "Inside a package" and "Where packages live").
-3. **May a capability mapping call pure functions?** *Recommendation:* yes,
-   functions from the package's own libraries and the standard library,
-   added with the first package that needs one, not before. Rule 2 still
-   holds, and the alternative is a Jadpo release for each provider's quirk.
-4. **How do packages depend on each other?** *Recommendation:* a package
-   lists its requirements; one version of each in use, two only while
-   callers move across; every requirement written into `jadpo.lock`, so
-   nothing arrives that the lock does not show.
-5. **Can the provider be chosen when deploying?** This depends on whether
-   Jadpo apps will be run by people who did not write them.
-   *Recommendation:* yes, when the first such app needs it: the app
-   declares every connection it supports and an enum setting picks one at
-   start, so every candidate is still compiled, checked and reported.
-6. **Do sign-in providers become a `sign_in` capability?**
-   *Recommendation:* yes: generic OpenID Connect and OAuth 2.0 as built-in
-   drivers, Google, GitHub, Microsoft and Apple as packages. Area 8's
-   generated routes, linked accounts and `on_first_sign_in:` stay as
-   decided. Nothing of it is built yet, so the change costs nothing now.
-7. **Which other capabilities are candidates?** *Recommendation:* search
-   (an external index such as Meilisearch or Typesense behind the decided
-   `search:` section), push notifications and bot protection, each added
-   through review only when an app needs it. Payments and AI models stay
-   provider packages.
-8. **Does the compiler generate a package's surface?** Richard's idea,
-   2026-10-16. *Decided 2026-10-16 (Richard):* yes, as "The package surface" describes:
-   `surface.json` generated at publish and checked by the registry, the
-   registry's documentation rendered from it, publishing refused when the
-   surface breaks without a new major version, and examples in `///`
-   descriptions run at publish.
+| 5.4 Standard library: the plan | The built-in-or-package table and its rule; where reference data is declared |
+| 7.1 Packages and connections | `packages/<name>/<version>/` committed and checked against `jadpo.lock`; `jadpo package` commands; both kinds laid out as `shared/`; `public` as the API; `use` for library packages; the surface and the publishing bar |
+| 7.2 Importing and faking | Imports write into `packages/`; decoding (`wire:`, `decode:`, `wire_output:`) with built-in encodings; recordings checked by decoders; fakes scripting the clean type |
+| 7.3 Email | The `email` capability with SMTP as one driver and a mail package as the second, proving the swap |
