@@ -619,6 +619,8 @@ routes Notes {
 // `jadpo check` fails while it disagrees with them.
 version: 1
 
+authentication: browser_session
+
 POST /account/sign-out
     status: 204
 
@@ -629,6 +631,7 @@ POST /account/sign-up
     fails: handle_taken 409
 
 POST /notes
+    caller: user
     input: WriteNote (body)
     output: NoteView
     status: 201
@@ -1124,10 +1127,13 @@ routes Partners {
 // `jadpo check` fails while it disagrees with them.
 version: 4
 
+authentication: api_token, service_key
+
 POST /account/sign-out
     status: 204
 
 POST /account/sign-out-everywhere
+    caller: user
     status: 204
 
 POST /account/sign-up
@@ -1138,6 +1144,7 @@ POST /account/sign-up
     fails: handle_taken 409
 
 GET /devices
+    caller: user
     output: List<IssuedToken>
     status: 200
 
@@ -1146,17 +1153,20 @@ GET /devices/{member_id: Uuid}
     status: 200
 
 POST /notes
+    caller: user
     input: WriteNote (body)
     output: NoteView
     status: 201
 
 POST /partners
+    caller: user
     input: AddPartner (body)
     output: PartnerAdded
     status: 201
     fails: partner_name_taken 409
 
 GET /partners/me
+    caller: service
     output: PartnerView
     status: 200
     fails: partner_not_found 404
@@ -2421,7 +2431,11 @@ and keys in `jadpo_service_keys` beside its services. Since chunk 4.4 the
 owning record's grants decide who may list (`read`) and revoke or issue
 (`update`) a token or a key (area 9, question 8). OpenAPI shows each
 API's security schemes, the API record marks the routes anyone may call,
-and `jadpo routes` lists each route's authentication.
+and `jadpo routes` lists each route's authentication. Since chunk 4.9 the
+record also names each API's sign-in methods and each route's kind of
+caller, a request with a credential to a route anyone may call counts
+against its address before it runs, and a handled failure undoes its
+`sessions.start` or `sessions.end`.
 
 Not yet, each `toolchain.not_built_yet` where it is written:
 
@@ -2653,3 +2667,4 @@ builds it.
 | `IssuedToken` and `IssuedKey` in an `Output` (chosen in chunk 4.4c) | An `Output` field, and a route's `output:` as a `List`, may be either; on the wire each is an object of `id` (a UUID), `started_at` and `ends_at` (timestamps), never the credential. The API record gives each an `output IssuedToken` section and OpenAPI a schema of its own. They are made only by listing, so an entity can't store one (as any structured stored field, `toolchain.not_built_yet`) | 2026-10-16 |
 | Policy on a listing route (chosen in chunk 4.4c) | A route that lists reaches a `read` of the holder's entity, the same grant `sessions.tokens` needs in an action: no one granted is `policy.effect_ungranted`, and a route anyone may call needs `Access.public` (`policy.public_grant_missing`). The runtime runs it as a one-statement read at repeatable read with the statement the plan limited by those grants, so it lists the tokens or keys of holders the caller may read, and a list for any other holder is `[]` with 200, never a failure. There is nothing to prove for the output: its three fields belong to the credential, whose holder's `read` already decided the list | 2026-10-16 |
 | A caller held deep in a type (chosen in chunk 4.8) | An `Input`, `Output` or failure field whose type holds a caller anywhere (in a `List`, `Set`, `Map` or option, or in a field of an object or a variant's data, followed through every named type it uses) is `type.auth_principal_input`, `type.auth_principal_output` or `type.auth_principal_failure_context`, as if it held the caller itself; an `Input`, `Output` or failure it uses is checked at its own declaration | 2026-10-16 |
+| Counting and undoing on a request (chosen in chunk 4.9) | A route anyone may call runs as no one, so a request to it with a credential counts against its address before it runs, as every other such request does; only a route that needs a caller counts after signing in. An action whose failure its caller handles forgets what it did to the request's session with its writes: a `sessions.start` sets no cookie and a `sessions.end` clears none, and a token or key it issued doesn't stop the response being kept. Each API's record names the methods it accepts and each route the kind of caller it selects (area 7) | 2026-10-16 |

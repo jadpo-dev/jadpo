@@ -2,7 +2,7 @@
 title: HTTP
 area: 7
 status: decided
-checked-with: jadpo chunk-4.2 (2026-10-15)
+checked-with: jadpo chunk-4.9 (2026-10-16)
 rules:
   - route.*
   - api.*
@@ -106,6 +106,10 @@ GET / {
   which authentication owns (area 8).
 - Unknown keys and fields are refused. A `GET` or `DELETE` never reads a
   body, and a body is limited to 1 MB (question 5).
+- A body is read only when it is sent as JSON (`Content-Type:
+  application/json`, or another `application/…+json` type), so a form a
+  browser posts from another site never reaches an action. A query string
+  or a body a route doesn't read is unknown input, like an unknown field.
 
 ## Output and status
 
@@ -175,7 +179,10 @@ GET /devices {
 
 Every route has a deadline: 10 seconds unless `deadline:` says otherwise,
 and never more than 60 (question 5). When it passes, the runtime starts no
-new work, commits nothing and answers 504 `deadline_exceeded`. The deadline
+new work, commits nothing and answers 504 `deadline_exceeded`. That holds
+for work that never waits too, such as a long calculation: the runtime
+checks the deadline as the work runs, and a body that finishes past it
+commits nothing. The deadline
 covers integration calls, which have their own shorter timeouts (area 11);
 longer work answers `status: SuccessStatus.accepted` and continues in a
 subscriber, or the route waits for it with `settle:`.
@@ -325,8 +332,9 @@ numbers (question 9):
 
 | Condition | Status and code |
 |---|---|
-| The body is not JSON, or the query string cannot be read | 400 `invalid_request` |
-| A field is missing, unknown or breaks a rule (body, query, header or placeholder) | 422 `invalid_input` |
+| The body is not JSON, isn't sent as JSON (`Content-Type`), or the query string cannot be read | 400 `invalid_request` |
+| A header's value isn't printable ASCII | 400 `invalid_request` |
+| A field is missing, unknown or breaks a rule (body, query, header or placeholder), or the route reads no query string or body and one came | 422 `invalid_input` |
 | No route matches | 404 `route_not_found` |
 | The path exists but not for this method | 405 `method_not_allowed`, with `Allow` |
 | The body is over the limit | 413 `request_too_large` |
@@ -341,6 +349,10 @@ The compiler writes one OpenAPI 3.1 document per API into `build/openapi/`:
 every route with its input, output, success status and reachable failures,
 the 400 and 422 input responses, and the `///` descriptions (area 1). The
 title is the application's name and the version the API record's version.
+Each route's responses follow from what it runs: 403 where policy can
+refuse what it or an action it calls does, 503 where it uses a store, and
+an `Idempotency-Key` that promises a repeat the first response only where
+that response is kept.
 
 ## The public API record
 
@@ -354,8 +366,12 @@ one file.
 A whole group, with what it runs and the record `jadpo api update` writes
 for it. The record is the wire contract: a field shows what a client sends
 or reads, objects and enums have a section of their own, and each failure
-code shows its status, message and client fields. Its `version:` rises by
-one each time the record changes, and is the OpenAPI document's version:
+code shows its status, message and client fields. An API that signs
+clients in says how at the top (`authentication: browser_session,
+api_token`), and a route for one kind of caller says which (`caller:
+user`), so switching an API from bearer tokens to cookies is a diff of the
+record. Its `version:` rises by one each time the record changes, and is
+the OpenAPI document's version:
 
 ```jadpo check project=todos file=app.jadpo hidden
 application {}
@@ -1747,7 +1763,9 @@ check failed: 1 error, 1 file
 
 ### `route.header_credential`
 
-Credentials and Jadpo's own headers belong to authentication (area 8):
+Credentials and Jadpo's own headers belong to authentication (area 8),
+and `Idempotency-Key` to the runtime, which reads it before anything runs
+(question 17):
 
 ```jadpo check project=e-header-credential expect=route.header_credential
 type Memo = Text {
@@ -2288,6 +2306,17 @@ Since chunk 4.4c (area 8) a `GET` runs `sessions.tokens` and
 `<Service>.keys` itself, and the record and OpenAPI describe the
 `IssuedToken` and `IssuedKey` it sends.
 
+Since chunk 4.9 (the Phase 4 review) the runtime reads a body only as
+JSON, refuses a query string or body a route doesn't read and a header it
+can't read, stops work that never waits at its deadline, runs an action
+again on a concurrent change found as it commits, and counts a request
+with a credential on a route anyone may call against its address before
+it runs; OpenAPI derives each route's responses from what it runs and
+shows `Time` and a mixed enum as they are sent, and the record names each
+API's sign-in methods. Natively, a client has 10 seconds for its headers
+and 30 for its body, and the server holds at most 1,024 connections and 10
+database connections per store per worker.
+
 Not yet: deleting
 expired idempotency keys from the runtime's minute tick (6.2), and the
 `events: { store: }` an action that writes no store needs before it keeps a
@@ -2512,3 +2541,10 @@ is written.
 | `jadpo dev` (chosen in chunk 4.1) | Listens on 127.0.0.1, port 3000 unless `--port`; the database is the one `--url` names (until configuration, area 10) or a disposable PostgreSQL for the session, and pending migrations are applied when it starts and after each save that adds one | 2026-10-15 |
 | Waiting for follow-on work | `settle: { answer: <query>(result...) within: <duration> }`: after commit the runtime delivers the action's events and their follow-ons at once and waits until each has succeeded, failed for good or been parked, then answers with the query and the route's status; past `within:` the same query answers 202; `output:` is the query's result; a repeat with the same `Idempotency-Key` reruns the query (Richard, from an outside review) | 2026-10-15 |
 | Route authentication (chosen in chunk 4.3) | A route's `authentication:` takes `RouteAuthentication.none` or `.fresh`; anything else is `route.authentication_invalid`, which offers both without an edit, since one opens the route. An API's `authentication:` is a list of `AuthenticationMethod`s `authentication.jadpo` declares, each once, else `api.authentication_invalid`; an API that names none accepts every declared method. Area 8's Decisions hold the rest | 2026-10-16 |
+| Request reading (chosen in chunk 4.9) | A body is read only with a JSON `Content-Type` (`application/json` or `application/…+json`, any parameters, any case), else 400 `invalid_request` "A request body is JSON, sent with `Content-Type: application/json`."; a header value that isn't printable ASCII (spaces and tabs allowed) is 400 `invalid_request` "A header's value isn't printable ASCII.", whichever header it is, so a credential or key is never dropped; a route that reads no query string answers each key it gets as `{ field: <key>, rule: unknown_field }`, and one that reads no body answers a body that isn't blank as `{ field: "", rule: unknown_field }`, 422 `invalid_input`, before anything runs; a page's cursor that isn't one of its query's is 422 `invalid_input` with `{ field: <its path in the input>, rule: format }` | 2026-10-16 |
+| Deadlines on work that never waits (chosen in chunk 4.9) | The runtime reads the host's monotonic clock against the route's deadline: the interpreter checks it every 4,096 steps and stops the body there, and any body that finishes past the deadline, stopped or not, is answered 504 `deadline_exceeded` with nothing committed and its claimed key given up. Until then such a body holds its worker thread, and the requests that thread serves wait | 2026-10-16 |
+| A concurrent change at commit (chosen in chunk 4.9) | A change another transaction made, found as the action commits, runs the whole action again, as area 6 says, within the same three attempts and the route's deadline, then 503 `unavailable`; a claim that lapsed and was taken before the commit is `unavailable` too, with nothing kept | 2026-10-16 |
+| OpenAPI responses (chosen in chunk 4.9) | Every route lists 400, 413, 422, 429, 500 and 504, since any request can be unreadable, too large or carry unknown input; 503 `unavailable` where what it runs uses a store; 403 where policy can refuse its action or one it calls; a write's 409 and 422 for a key only where a key is claimed, and its `Idempotency-Key` described by what is kept: the response, nothing for a response that starts or ends a session or carries a new credential, or nothing at all for an action that writes no store. A `Time` is a string `09:30` (seconds and milliseconds when it has them), and a mixed enum's plain variant is its name as a string constant | 2026-10-16 |
+| Sign-in methods in the record (chosen in chunk 4.9) | Each API's record starts with `authentication:` and the methods it accepts, its own list or every declared one, when `authentication.jadpo` declares any; a route that selects one kind of caller says `caller: user` or `caller: service` | 2026-10-16 |
+| Native request limits (chosen in chunk 4.9) | A client has 10 seconds to send a request's headers and 30 its body, else the connection is closed without an answer; the server holds at most 1,024 connections, closing one past that as it is accepted; each worker opens at most 10 connections per store, a transaction past that waiting for one, inside the route's deadline. Configuration may set them once area 10 does | 2026-10-16 |
+| `Idempotency-Key` as input (chosen in chunk 4.9) | An `Input` field may not read `Idempotency-Key`, which the runtime reads before anything runs: `route.header_credential`, "`Idempotency-Key` belongs to the runtime" | 2026-10-16 |

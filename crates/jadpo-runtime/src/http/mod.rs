@@ -14,9 +14,15 @@
 //! - a body over 1 MB is refused with 413 `request_too_large`;
 //! - every route has a deadline: when it passes, whatever is running is
 //!   dropped, its transaction with it, so nothing commits, and the answer
-//!   is 504 `deadline_exceeded`. An action's commit happens after its body,
-//!   outside the deadline ([`crate::Ctx::hold`]), so a request that
-//!   committed is never answered 504;
+//!   is 504 `deadline_exceeded`. Work that never waits checks it as it runs
+//!   ([`crate::Ctx::out_of_time`]), and a body that finishes past it is
+//!   answered the same way (chunk 4.9). An action's commit happens after
+//!   its body, outside the deadline ([`crate::Ctx::hold`]), so a request
+//!   that committed is never answered 504; a concurrent change found as it
+//!   commits runs the action again;
+//! - a header the runtime can't read as printable ASCII is 400, a body is
+//!   read only as JSON, and a query string or body a route doesn't read is
+//!   422 `invalid_input` (chunk 4.9);
 //! - `GET /health/live` and `GET /health/ready` ([`health`]);
 //! - `Idempotency-Key` on every route but a `GET` ([`idempotency`]).
 //!
