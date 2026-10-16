@@ -331,7 +331,7 @@ reference only).
   member one only for a tenant with no members yet, so no one joins a
   tenant as owner; a listed action moving a record to another tenant
   needs the caller's membership there.
-- [ ] **4.9 Phase 4 review: request soundness** `opus · high`. The address
+- [x] **4.9 Phase 4 review: request soundness** `opus · high`. The address
   rate limit counted before the work on routes anyone may call, even with
   a credential header; deadlines enforced on work that never waits (the
   interpreter checks the deadline as it runs, and a body finishing past it

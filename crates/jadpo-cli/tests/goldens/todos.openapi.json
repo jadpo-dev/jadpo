@@ -59,7 +59,7 @@
             }
           }
         },
-        "description": "The body is not JSON, the query string can't be read, or the `Idempotency-Key` header is missing where the API requires it or isn't 1 to 255 printable ASCII characters."
+        "description": "The request can't be read: its path or query string isn't valid UTF-8, a header's value isn't printable ASCII, the body isn't JSON or isn't sent as `application/json`, or the `Idempotency-Key` header is missing where the API requires it or isn't 1 to 255 printable ASCII characters."
       },
       "RateLimited": {
         "content": {
@@ -80,6 +80,16 @@
           }
         },
         "description": "The body is over 1 MB."
+      },
+      "Unavailable": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Unavailable"
+            }
+          }
+        },
+        "description": "A store the route needs can't be reached, or kept changing under it; nothing was kept, so a retry runs again."
       }
     },
     "schemas": {
@@ -271,7 +281,7 @@
         "type": "object"
       },
       "InvalidRequest": {
-        "description": "The body is not JSON, the query string can't be read, or the `Idempotency-Key` header is missing where the API requires it or isn't 1 to 255 printable ASCII characters.",
+        "description": "The request can't be read: its path or query string isn't valid UTF-8, a header's value isn't printable ASCII, the body isn't JSON or isn't sent as `application/json`, or the `Idempotency-Key` header is missing where the API requires it or isn't 1 to 255 printable ASCII characters.",
         "properties": {
           "error": {
             "properties": {
@@ -459,6 +469,35 @@
           "status"
         ],
         "type": "object"
+      },
+      "Unavailable": {
+        "description": "A store the route needs can't be reached, or kept changing under it; nothing was kept, so a retry runs again.",
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "const": "unavailable",
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
       }
     }
   },
@@ -519,6 +558,9 @@
           "400": {
             "$ref": "#/components/responses/InvalidRequest"
           },
+          "413": {
+            "$ref": "#/components/responses/RequestTooLarge"
+          },
           "422": {
             "$ref": "#/components/responses/InvalidInput"
           },
@@ -527,6 +569,16 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalFault"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unavailable"
+                }
+              }
+            },
+            "description": "Fails with `unavailable`."
           },
           "504": {
             "$ref": "#/components/responses/DeadlineExceeded"
@@ -619,6 +671,16 @@
           "500": {
             "$ref": "#/components/responses/InternalFault"
           },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unavailable"
+                }
+              }
+            },
+            "description": "Fails with `unavailable`."
+          },
           "504": {
             "$ref": "#/components/responses/DeadlineExceeded"
           }
@@ -652,6 +714,9 @@
             },
             "description": "Success."
           },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -662,6 +727,9 @@
             },
             "description": "Fails with `todo_not_found`."
           },
+          "413": {
+            "$ref": "#/components/responses/RequestTooLarge"
+          },
           "422": {
             "$ref": "#/components/responses/InvalidInput"
           },
@@ -670,6 +738,16 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalFault"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unavailable"
+                }
+              }
+            },
+            "description": "Fails with `unavailable`."
           },
           "504": {
             "$ref": "#/components/responses/DeadlineExceeded"

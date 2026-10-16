@@ -1417,6 +1417,37 @@ transition's probe with its fields' grants, so a field's refusal is 403
 before the condition's 409. `types::decl::holds_principal` follows named
 types.
 
+Built in chunk 4.9: the Phase 4 review's request findings (areas 6, 7, 8
+and 13), each in the runtime or the native host. A route sets the
+request's deadline on `Ctx` (`set_deadline`, read from
+`Host::monotonic_ms`, which a test's host leaves `None`); the
+interpreter's machine checks `Ctx::out_of_time` once every 4,096 tasks and
+stops with `FaultKind::DeadlineExceeded`, and the component answers any
+body that finished past the deadline as one the timer stopped: abandoned,
+its claim given up, 504. A held commit that finds a concurrent change runs
+the action again within `RERUN_ATTEMPTS` and the same deadline; a claim
+that lapsed before the commit is `unavailable`. A route anyone may call
+counts a request with a credential against its address before it runs;
+`boundary::caught` restores the session effect and `issued` with the
+outbox when a handled action fails. Before routing, a header value that
+isn't printable ASCII is 400 (the native host passes every value, as
+`from_utf8_lossy` reads it); a route refuses a query string or a body it
+doesn't read as `unknown_field`, and reads a body only with a JSON
+`Content-Type`. `jadpo_value::json` leaves an omitted `Input` field out
+when it writes one, so a route test's body is the one a client sends. A
+page's bad cursor answers `invalid_input` naming its field
+(`http::cursor_field`). Natively, hyper has tokio's timer and a 10-second
+header timeout, a body has 30 seconds, the listener holds at most 1,024
+connections (`http::MAX_CONNECTIONS`), and each worker's `Postgres` opens
+at most 10 connections (`MAX_OPEN`), a transaction past that waiting for
+one to go idle or close. `jadpo-check` derives each route's OpenAPI
+responses from what it runs (`openapi::facts`: policy reach through calls,
+`types::used_stores` for 503, `types::written_stores` and
+`types::unkept_responses` for what an `Idempotency-Key` keeps), writes
+`Time` and a mixed enum's plain variants as they are sent, and puts each
+API's sign-in methods (`apis::accepted_methods`) and each route's caller
+kind in the record.
+
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
 runs one current-thread tokio runtime per core, each with its own

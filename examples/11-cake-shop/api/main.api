@@ -1,12 +1,15 @@
 // Written by `jadpo api update` from the routes; never edit it by hand.
 // `jadpo check` fails while it disagrees with them.
-version: 1
+version: 2
+
+authentication: browser_session
 
 GET /account/orders
     output: List<OrderView>
     status: 200
 
 POST /account/orders
+    caller: user
     input: PlaceOrder (body)
     output: OrderView
     status: 201
@@ -45,10 +48,12 @@ GET /cakes/{cake_id: Uuid}
     fails: cake_not_found 404
 
 GET /devices
+    caller: user
     output: List<IssuedToken>
     status: 200
 
 POST /devices
+    caller: user
     output: PhoneLinked
     status: 201
 

@@ -5,7 +5,9 @@
 //! chosen by the client's address, so one address is always counted on
 //! one thread and the runtime's futures never cross threads. hyper reads
 //! and writes HTTP/1.1; the runtime's HTTP component
-//! (`jadpo_runtime::http`) answers each request.
+//! (`jadpo_runtime::http`) answers each request. A client has 10 seconds
+//! to send a request's headers and 30 its body, and the server holds at
+//! most [`MAX_CONNECTIONS`] connections open.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -13,7 +15,7 @@ use std::io;
 use std::net::{SocketAddr, TcpListener};
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -22,7 +24,7 @@ use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioIo, TokioTimer};
 use jadpo_runtime::LocalFuture;
 use jadpo_runtime::http::{BODY_LIMIT, Request, Response};
 
@@ -76,6 +78,7 @@ pub fn serve(listener: TcpListener, workers: usize, make: MakeHandler) -> io::Re
     let address = listener.local_addr()?;
     listener.set_nonblocking(true)?;
     let stop = Arc::new(AtomicBool::new(false));
+    let open = Arc::new(AtomicUsize::new(0));
     let workers = workers.max(1);
     let mut senders = Vec::with_capacity(workers);
     let mut threads = Vec::with_capacity(workers + 1);
@@ -83,9 +86,10 @@ pub fn serve(listener: TcpListener, workers: usize, make: MakeHandler) -> io::Re
         let (sender, receiver) = tokio::sync::mpsc::unbounded_channel::<std::net::TcpStream>();
         senders.push(sender);
         let make = Arc::clone(&make);
+        let open = Arc::clone(&open);
         let thread = std::thread::Builder::new()
             .name(format!("jadpo-http-{index}"))
-            .spawn(move || worker(receiver, make))?;
+            .spawn(move || worker(receiver, make, open))?;
         threads.push(thread);
     }
     let accepting = Arc::clone(&stop);
@@ -94,7 +98,11 @@ pub fn serve(listener: TcpListener, workers: usize, make: MakeHandler) -> io::Re
         .spawn(move || {
             while !accepting.load(Ordering::SeqCst) {
                 match listener.accept() {
+                    // Past the cap a connection is closed at once, so a
+                    // flood of idle ones can't exhaust the process.
+                    Ok(_) if open.load(Ordering::SeqCst) >= MAX_CONNECTIONS => {}
                     Ok((stream, peer)) => {
+                        open.fetch_add(1, Ordering::SeqCst);
                         let mut hasher = DefaultHasher::new();
                         peer.ip().hash(&mut hasher);
                         let at = (hasher.finish() % senders.len() as u64) as usize;
@@ -118,9 +126,20 @@ pub fn serve(listener: TcpListener, workers: usize, make: MakeHandler) -> io::Re
     })
 }
 
+/// One open connection, counted against [`MAX_CONNECTIONS`] until it is
+/// dropped.
+struct Open(Arc<AtomicUsize>);
+
+impl Drop for Open {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 fn worker(
     mut receiver: tokio::sync::mpsc::UnboundedReceiver<std::net::TcpStream>,
     make: MakeHandler,
+    open: Arc<AtomicUsize>,
 ) {
     let Ok(runtime) = Runtime::new() else {
         return;
@@ -128,6 +147,7 @@ fn worker(
     let handler: Rc<dyn Handler> = Rc::from(make());
     runtime.block_on(async move {
         while let Some(stream) = receiver.recv().await {
+            let counted = Open(Arc::clone(&open));
             let peer = stream.peer_addr().ok();
             if stream.set_nonblocking(true).is_err() {
                 continue;
@@ -138,22 +158,23 @@ fn worker(
             let _ = stream.set_nodelay(true);
             let handler = Rc::clone(&handler);
             tokio::task::spawn_local(async move {
+                let _counted = counted;
                 let service = service_fn(move |request: hyper::Request<Incoming>| {
                     let handler = Rc::clone(&handler);
                     async move {
-                        let request = read(request, peer).await;
-                        let response = match request {
-                            Some(request) => handler.handle(request).await,
-                            None => Response {
-                                status: 400,
-                                ..Response::default()
-                            },
+                        // A body that can't be read in time, or at all,
+                        // ends the connection without an answer.
+                        let Some(request) = read(request, peer).await else {
+                            return Err(Unread);
                         };
-                        Ok::<_, std::convert::Infallible>(write(response))
+                        let response = handler.handle(request).await;
+                        Ok::<_, Unread>(write(response))
                     }
                 });
                 let _ = http1::Builder::new()
                     .keep_alive(true)
+                    .timer(TokioTimer::new())
+                    .header_read_timeout(HEADER_TIMEOUT)
                     .serve_connection(TokioIo::new(stream), service)
                     .await;
             });
@@ -161,9 +182,32 @@ fn worker(
     });
 }
 
+/// A request whose body wasn't read: hyper closes its connection.
+#[derive(Debug)]
+struct Unread;
+
+impl std::fmt::Display for Unread {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the request's body couldn't be read")
+    }
+}
+
+impl std::error::Error for Unread {}
+
 /// How much of a body past the runtime's limit is read and dropped before
 /// answering 413.
 const DRAIN_LIMIT: usize = 16 * BODY_LIMIT;
+
+/// How long a client has to send a request's headers, from the first byte
+/// (or from the last response on a kept-alive connection).
+const HEADER_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How long a client has to send a request's whole body.
+const BODY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The most connections the server holds open at once, across its
+/// workers; one past it is closed as it is accepted.
+pub const MAX_CONNECTIONS: usize = 1024;
 
 /// A hyper request as the runtime's, its body read whole, or, once it
 /// passes the runtime's limit (area 7, question 5), marked too large and
@@ -181,27 +225,38 @@ async fn read(request: hyper::Request<Incoming>, peer: Option<SocketAddr>) -> Op
     // past the bound the connection is closed.
     let mut seen = 0usize;
     if declared.is_none_or(|length| length <= DRAIN_LIMIT) {
-        while let Some(frame) = body.frame().await {
-            if let Ok(data) = frame.ok()?.into_data() {
-                seen = seen.saturating_add(data.len());
-                if seen > DRAIN_LIMIT {
-                    break;
-                }
-                if seen <= BODY_LIMIT {
-                    bytes.extend_from_slice(&data);
+        // A client that stops sending part-way is given up on, its
+        // connection closed without an answer.
+        let reading = async {
+            while let Some(frame) = body.frame().await {
+                if let Ok(data) = frame.ok()?.into_data() {
+                    seen = seen.saturating_add(data.len());
+                    if seen > DRAIN_LIMIT {
+                        break;
+                    }
+                    if seen <= BODY_LIMIT {
+                        bytes.extend_from_slice(&data);
+                    }
                 }
             }
-        }
+            Some(())
+        };
+        tokio::time::timeout(BODY_TIMEOUT, reading).await.ok()??;
     }
     let too_large = seen > BODY_LIMIT || declared.is_some_and(|length| length > BODY_LIMIT);
     if too_large {
         bytes.clear();
     }
+    // Every header reaches the runtime, a value that isn't printable ASCII
+    // as it came, so the runtime refuses it rather than never seeing it.
     let headers = parts
         .headers
         .iter()
-        .filter_map(|(name, value)| {
-            Some((name.as_str().to_string(), value.to_str().ok()?.to_string()))
+        .map(|(name, value)| {
+            (
+                name.as_str().to_string(),
+                String::from_utf8_lossy(value.as_bytes()).into_owned(),
+            )
         })
         .collect();
     Some(Request {

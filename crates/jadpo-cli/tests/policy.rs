@@ -576,11 +576,14 @@ routes Desk {
 // `jadpo check` fails while it disagrees with them.
 version: 1
 
+authentication: browser_session, api_token, service_key
+
 POST /desk/audit
     output: AuditView
     status: 200
 
 POST /desk/robots/{robot_id: Uuid}/keys
+    caller: user
     input: KeyRequest (body)
     status: 204
 

@@ -454,8 +454,14 @@ fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
         Builtin::Instant => string(&mut out, Some("date-time")),
         Builtin::CalendarDate => string(&mut out, Some("date")),
         Builtin::Duration => string(&mut out, Some("duration")),
+        // A time of day as it is sent: `09:30`, with seconds and up to
+        // three decimal places when it has them.
         Builtin::Time => {
-            out.set("type", "object");
+            string(&mut out, None);
+            out.set(
+                "pattern",
+                "^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]{1,3})?)?$",
+            );
         }
         Builtin::Unit => out.set("type", "null"),
         _ => string(&mut out, None),

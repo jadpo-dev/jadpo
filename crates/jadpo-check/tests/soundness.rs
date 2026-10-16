@@ -293,3 +293,27 @@ fn a_refinement_that_loosens_an_inherited_rule_is_an_error() {
         CLEAN
     );
 }
+
+// --- Phase 4 review (chunk 4.9): the runtime's own headers ------------------
+
+/// A route whose input reads header `header`.
+fn reading_header(header: &str) -> String {
+    format!(
+        "type Memo = Text {{\n    max_length: 200\n}}\n\ntype TaggedMemo = Input {{\n    text: Memo\n    tag: Memo {{\n        header: \"{header}\"\n    }}\n}}\n\ntype MemoView = Output {{\n    text: Memo\n}}\n\naction add_tagged_memo(input: TaggedMemo) -> MemoView {{\n    return MemoView {{\n        text: input.tag\n    }}\n}}\n\npolicy {{\n    actions: {{\n        add_tagged_memo: [Access.public]\n    }}\n}}\n\nroutes Memos {{\n    prefix: /memos\n\n    POST / {{\n        authentication: RouteAuthentication.none\n        input: TaggedMemo\n        output: MemoView\n        run: add_tagged_memo(input)\n    }}\n}}\n"
+    )
+}
+
+#[test]
+fn an_input_never_reads_the_idempotency_key() {
+    assert_eq!(check(&reading_header("X-Memo-Tag")), CLEAN);
+    for header in ["Idempotency-Key", "idempotency-key"] {
+        assert_eq!(
+            check(&reading_header(header)),
+            ["route.header_credential"],
+            "{header}"
+        );
+    }
+    let found = diagnostics(&reading_header("Idempotency-Key"));
+    let shown = format!("{:?}", found.first().map(|d| &d.message));
+    assert!(shown.contains("belongs to the runtime"), "{shown}");
+}

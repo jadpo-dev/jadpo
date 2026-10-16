@@ -207,6 +207,14 @@ pub trait Host {
         let _ = millis;
         Box::pin(std::future::pending())
     }
+
+    /// Milliseconds on the platform's monotonic clock, from any start it
+    /// likes: what a route's deadline is checked against while work runs
+    /// that never waits (area 7, "Time limits"). `None` for a host with no
+    /// timer, as a test's, so nothing runs out of time there.
+    fn monotonic_ms(&self) -> Option<u64> {
+        None
+    }
 }
 
 /// A store that holds nothing: its transactions begin, commit and roll back

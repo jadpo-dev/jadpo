@@ -1233,6 +1233,20 @@ impl Decls<'_> {
             return;
         }
         let lower = name.to_ascii_lowercase();
+        // The runtime reads `Idempotency-Key` to answer a retried write
+        // once (area 7, question 17); the action never sees it.
+        if lower == "idempotency-key" {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_HEADER_CREDENTIAL,
+                    format!("`{name}` belongs to the runtime"),
+                )
+                .at(span, "read by the runtime")
+                .reason("The runtime reads `Idempotency-Key` to answer a retried write once, before anything runs, so the action never sees the key (area 7).")
+                .next("Remove the field; a retry with the same key is answered by the runtime"),
+            );
+            return;
+        }
         if matches!(
             lower.as_str(),
             "authorization" | "proxy-authorization" | "cookie" | "set-cookie"

@@ -550,6 +550,8 @@ routes Chores {
 // `jadpo check` fails while it disagrees with them.
 version: 3
 
+authentication: browser_session
+
 POST /chores
     input: AddChore (body)
     output: ChoreCard
@@ -1159,6 +1161,8 @@ routes Projects {
 // Written by `jadpo api update` from the routes; never edit it by hand.
 // `jadpo check` fails while it disagrees with them.
 version: 1
+
+authentication: browser_session
 
 POST /projects
     input: StartProject (body)

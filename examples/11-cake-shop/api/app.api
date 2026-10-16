@@ -1,7 +1,8 @@
 // Written by `jadpo api update` from the routes; never edit it by hand.
 // `jadpo check` fails while it disagrees with them.
-version: 1
+version: 2
 
+authentication: api_token
 idempotency: required
 
 GET /app/orders
@@ -9,6 +10,7 @@ GET /app/orders
     status: 200
 
 POST /app/orders
+    caller: user
     input: PlaceOrder (body)
     output: OrderView
     status: 201
