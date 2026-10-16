@@ -81,6 +81,26 @@ conformance suite. Packages fill capabilities and never invent them.
   inputs and outputs, unlike provider types. An upgrade that changes a
   stored type appears in the upgrade plan and the migration, as a change
   to the app's own type does.
+- **One package format; the kind follows from what is inside.** A package
+  with `resources/` is a provider package and needs a connection to call
+  its operations; one without is a library package. A provider package's
+  library functions are callable without a connection.
+- **Everything in a provider package follows the provider rules**, its
+  library types included: only ids and plain values may be stored,
+  because a provider package is versioned by the API's version and the
+  next version is a new package. Types worth storing go in a library
+  package that the provider package requires (a `Postcodes` library
+  required by a `Getaddress` lookup provider).
+
+### Names
+
+- **Provider brand names are reserved**: Jadpo ships the list of curated
+  provider names, and an app's own package cannot take one, so `Stripe` in
+  code always means the official package.
+- **Two packages never share a name in code.** Installing a registry
+  package whose name one of the app's own packages already uses stops and
+  asks for the app's own to be renamed first (`jadpo rename`).
+- Creating a package checks the registry and warns when the name is taken.
 
 ## Agreed: built in or a library package
 
