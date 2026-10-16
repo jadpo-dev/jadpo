@@ -145,10 +145,10 @@ kinds! {
     Principal: "principal", Access, Reserved, 8;
     AuthenticationMethod: "authentication_method", Access, Reserved, 8;
     SignInProvider: "sign_in_provider", Access, Reserved, 8;
-    Grant: "grant", Access, Reserved, 9;
-    FieldRestriction: "field_restriction", Access, Reserved, 9;
-    Tenancy: "tenancy", Access, Reserved, 9;
-    ActionException: "action_exception", Access, Reserved, 9;
+    Grant: "grant", Access, Built, 9;
+    FieldRestriction: "field_restriction", Access, Built, 9;
+    Tenancy: "tenancy", Access, Built, 9;
+    ActionException: "action_exception", Access, Built, 9;
     OauthScope: "oauth_scope", Access, Reserved, 8;
 
     Connection: "connection", Outside, Reserved, 11;
@@ -240,8 +240,8 @@ edges! {
     Maps: "maps", Reserved, "One failure becomes another";
     References: "references", Built, "An entity refers to another";
     Includes: "includes", Built, "A query includes related records of an entity";
-    Grants: "grants", Reserved, "Policy grants an effect";
-    Scopes: "scopes", Reserved, "Tenancy scopes an entity";
+    Grants: "grants", Built, "A grant or field restriction grants an effect on its entity or field; a listed action's line lets its callers in";
+    Scopes: "scopes", Built, "A tenancy limits an entity's records to its tenant";
     Invalidates: "invalidates", Reserved, "A write invalidates a cache";
     Uses: "uses", Built, "Names a type, entity or failure in its signature, fields or body";
     Provides: "provides", Reserved, "A package provides a capability";

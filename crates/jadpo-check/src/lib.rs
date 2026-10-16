@@ -103,6 +103,12 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             out.extend(routes::route_problems(db, project, file).iter().cloned());
             out.extend(policy::policy_problems(db, project, file).iter().cloned());
+            out.extend(
+                policy::outputs::query_policy_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(policy::flow::flow_problems(db, project, file.path(db)));
         }
         out.extend(identity::identity_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());

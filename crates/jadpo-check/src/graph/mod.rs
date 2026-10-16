@@ -222,6 +222,13 @@ pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
     for node in records(db, project) {
         builder.node(node.clone());
     }
+    let (nodes, edges) = policy_nodes(db, project);
+    for node in nodes {
+        builder.node(node.clone());
+    }
+    for (from, kind, to) in edges {
+        builder.edge(from.clone(), *kind, to.clone());
+    }
     // The APIs (area 7), once there is a route or `apis:` declares them.
     let apis = crate::routes::api_table(db, project);
     if apis.declared || !crate::routes::group_names(db, project).is_empty() {
@@ -297,4 +304,191 @@ pub fn records(db: &dyn Db, project: Project) -> Vec<Node> {
         out.push(node);
     }
     out
+}
+
+/// Policy's nodes (area 9): each list of an entity's `policy:` as a
+/// `grant`, each field's own policy as a `field_restriction`, each
+/// tenant's entity's `tenancy`, and each line under root `policy {
+/// actions: }` as an `action_exception`; with the `grants` edges from
+/// each to the entity, field or action it decides, and the `scopes` edges
+/// from each tenancy to its entity.
+#[salsa::tracked(returns(ref))]
+pub fn policy_nodes(
+    db: &dyn Db,
+    project: Project,
+) -> (Vec<Node>, Vec<(Key, jadpo_graph::EdgeKind, Key)>) {
+    use crate::policy::{Effect, FieldPolicy};
+    use jadpo_graph::{Detail, Digest, EdgeKind};
+    let registry = registry(db, project);
+    let lookup = crate::lookups::Lookup::new(db, project);
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
+    let place = |path: &str, span: &jadpo_diag::Span| -> Option<jadpo_graph::Place> {
+        let file =
+            crate::lookups::file_at(db, project, crate::lookups::Name::new(db, path.to_string()))?;
+        let lines = LineIndex::new(file.text(db));
+        let last = span.end.saturating_sub(1).max(span.start);
+        Some(jadpo_graph::Place {
+            file: path.to_string(),
+            start: span.start,
+            end: span.end,
+            lines: (lines.line(span.start), lines.line(last)),
+        })
+    };
+    let domain_of = |name: &str, kind: ItemKind| {
+        lookup
+            .declared(name)
+            .iter()
+            .find(|symbol| symbol.kind == kind)
+            .and_then(|symbol| match &symbol.ownership {
+                jadpo_db::Ownership::Domain(domain) => Some(domain.clone()),
+                _ => None,
+            })
+    };
+    for name in crate::data::entity_names(db, project) {
+        let Some(read) =
+            crate::policy::policy_read(db, project, crate::lookups::Name::new(db, name.clone()))
+        else {
+            continue;
+        };
+        let Some(entity) = declaration_key(&lookup, name) else {
+            continue;
+        };
+        let born = registry.born(Kind::Entity, name, None);
+        let domain = domain_of(name, ItemKind::Entity);
+        let at = |word: &str| {
+            read.places
+                .iter()
+                .find(|(part, _)| part == word)
+                .and_then(|(_, span)| place(&read.path, span))
+        };
+        let policy = &read.model;
+        for effect in Effect::ALL {
+            let Some(list) = policy.lists.get(&effect) else {
+                continue;
+            };
+            let now = format!("{name}.{}", effect.word());
+            let mut node = Node::new(
+                registry.key(Kind::Grant, &now, Some((name, &born))),
+                Kind::Grant,
+                now,
+            );
+            node.place = at(effect.word());
+            node.digest = Some(Digest::of(
+                std::iter::once(effect.word()).chain(list.written.iter().map(String::as_str)),
+            ));
+            node.domain = domain.clone();
+            node.parent = Some(entity.clone());
+            node.detail = Detail::Grant {
+                effect: effect.word().to_string(),
+                who: list.written.clone(),
+            };
+            edges.push((node.key.clone(), EdgeKind::Grants, entity.clone()));
+            nodes.push(node);
+        }
+        for field in &policy.fields {
+            let now = format!("{name}.{}", field.field);
+            let mut node = Node::new(
+                registry.key(Kind::FieldRestriction, &now, Some((name, &born))),
+                Kind::FieldRestriction,
+                now,
+            );
+            let grants: Vec<(String, Vec<String>)> = FieldPolicy::EFFECTS
+                .iter()
+                .filter_map(|effect| {
+                    field
+                        .lists
+                        .get(effect)
+                        .map(|list| (effect.word().to_string(), list.written.clone()))
+                })
+                .collect();
+            let mut parts: Vec<String> = vec![if field.server_only {
+                "server_only".to_string()
+            } else {
+                String::new()
+            }];
+            for (effect, who) in &grants {
+                parts.push(effect.clone());
+                parts.extend(who.iter().cloned());
+            }
+            node.place = at(&format!("field {}", field.field));
+            node.digest = Some(Digest::of(parts.iter().map(String::as_str)));
+            node.domain = domain.clone();
+            let target = field_key(registry, name, std::slice::from_ref(&field.field));
+            node.parent = Some(target.clone());
+            node.detail = Detail::FieldRestriction {
+                server_only: field.server_only,
+                grants,
+            };
+            edges.push((node.key.clone(), EdgeKind::Grants, target));
+            nodes.push(node);
+        }
+        if let Some(tenancy) = &policy.tenancy
+            && let Some(tenant) = declaration_key(&lookup, &tenancy.entity)
+        {
+            let mut node = Node::new(
+                registry.key(Kind::Tenancy, name, Some((name, &born))),
+                Kind::Tenancy,
+                name.clone(),
+            );
+            // Where `tenant:` is written, or else the reference it
+            // follows, or the tenant's own name.
+            node.place = at("tenant").or_else(|| {
+                let entity_read = crate::data::entity_read(
+                    db,
+                    project,
+                    crate::lookups::Name::new(db, name.clone()),
+                )
+                .as_ref()?;
+                let span = match entity_read
+                    .model
+                    .fields
+                    .iter()
+                    .position(|f| f.name == tenancy.via)
+                {
+                    Some(at) if tenancy.via != "id" => entity_read.spans.fields.get(at)?,
+                    _ => &entity_read.spans.name,
+                };
+                place(&entity_read.model.path, span)
+            });
+            node.digest = Some(Digest::of([tenancy.entity.as_str(), tenancy.via.as_str()]));
+            node.domain = domain.clone();
+            node.parent = Some(entity.clone());
+            node.detail = Detail::Tenancy {
+                tenant,
+                via: tenancy.via.clone(),
+            };
+            edges.push((node.key.clone(), EdgeKind::Scopes, entity.clone()));
+            nodes.push(node);
+        }
+    }
+    let root = crate::policy::root_read(db, project);
+    for line in &root.model.actions {
+        let Some(action) = declaration_key(&lookup, &line.action) else {
+            continue;
+        };
+        let mut node = Node::new(
+            registry.key(Kind::ActionException, &line.written, None),
+            Kind::ActionException,
+            line.written.clone(),
+        );
+        node.place = match (
+            &root.path,
+            root.places.iter().find(|(a, _)| *a == line.action),
+        ) {
+            (Some(path), Some((_, span))) => place(path, span),
+            _ => None,
+        };
+        node.digest = Some(Digest::of(
+            std::iter::once(line.written.as_str())
+                .chain(line.written_who.iter().map(String::as_str)),
+        ));
+        node.domain = domain_of(&line.action, ItemKind::Action);
+        node.detail = Detail::ActionException {
+            who: line.written_who.clone(),
+        };
+        edges.push((node.key.clone(), EdgeKind::Grants, action));
+        nodes.push(node);
+    }
+    (nodes, edges)
 }

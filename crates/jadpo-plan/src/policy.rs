@@ -124,6 +124,19 @@ impl Planner<'_> {
         grants: &[Grant],
         row: &Row<'_>,
     ) -> Option<String> {
+        let condition = self.any_grant(bind, entity, grants, row)?;
+        self.in_tenant(bind, entity, condition, row)
+    }
+
+    /// Whether the caller passes any of `grants` on `row`, without the
+    /// tenancy: what a field's own `policy:` adds beside its record's.
+    pub(crate) fn any_grant(
+        &self,
+        bind: &mut dyn CallerBind,
+        entity: &EntityModel,
+        grants: &[Grant],
+        row: &Row<'_>,
+    ) -> Option<String> {
         let mut whos: Vec<Who> = Vec::new();
         // A membership's roles, gathered by the membership and the
         // reference they apply through, so each is one `EXISTS`.
@@ -172,7 +185,18 @@ impl Planner<'_> {
                 Some(listed),
             )?));
         }
-        let mut condition = any_of(&whos);
+        Some(any_of(&whos))
+    }
+
+    /// `condition`, limited to the tenants where the caller has a
+    /// membership when `entity`'s records belong to one.
+    fn in_tenant(
+        &self,
+        bind: &mut dyn CallerBind,
+        entity: &EntityModel,
+        mut condition: String,
+        row: &Row<'_>,
+    ) -> Option<String> {
         let anyone = condition == jadpo_sql::policy::ANYONE;
         if let Some(tenancy) = self
             .access
@@ -214,6 +238,27 @@ impl Planner<'_> {
             }
         }
         Some(condition)
+    }
+
+    /// The condition a field's own `policy:` adds to a write changing it
+    /// (area 9, "Field restrictions"), when it narrows the record's grants
+    /// for `effect`: who may change the field, over `row`.
+    pub(crate) fn field_policy(
+        &self,
+        bind: &mut dyn CallerBind,
+        entity: &EntityModel,
+        field: &str,
+        effect: Effect,
+        row: &Row<'_>,
+    ) -> Option<Option<String>> {
+        let Some(grants) = self
+            .access
+            .entity(&entity.name)
+            .and_then(|policy| policy.field_grants(field, effect))
+        else {
+            return Some(None);
+        };
+        Some(Some(self.any_grant(bind, entity, grants, row)?))
     }
 
     /// The condition policy adds to a statement doing `effect` to

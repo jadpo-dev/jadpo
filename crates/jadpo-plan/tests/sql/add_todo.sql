@@ -13,5 +13,5 @@ RETURNING "id", "owner_id", "project_id", "title", "status", "score", "due_at", 
 -- $8: clock.now as Timestamp
 -- $9: caller User as Uuid
 -- returns: uuid, uuid, uuid, text, enum TodoStatus, int, instant, instant, instant
--- refused by todo_owner_id_fkey: not found, failure 8
--- refused by todo_project_id_fkey: fault: the `Project` this create refers to was deleted after it was loaded
+-- refused by todo_owner_id_fkey: fault: the `User` this create refers to was deleted after it was loaded
+-- refused by todo_project_id_fkey: not found, failure 0

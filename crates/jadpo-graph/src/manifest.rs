@@ -211,6 +211,39 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set_some("guarded", *guarded);
             out.set("sets", sets.iter().map(Value::from).collect::<Vec<_>>());
         }
+        Detail::Grant { effect, who } => {
+            out.set("effect", effect.as_str());
+            out.set("who", who.iter().map(Value::from).collect::<Vec<_>>());
+        }
+        Detail::FieldRestriction {
+            server_only,
+            grants,
+        } => {
+            out.set_some("serverOnly", *server_only);
+            if !*server_only {
+                out.set(
+                    "grants",
+                    Value::Object(
+                        grants
+                            .iter()
+                            .map(|(effect, who)| {
+                                (
+                                    effect.clone(),
+                                    Value::Array(who.iter().map(Value::from).collect()),
+                                )
+                            })
+                            .collect(),
+                    ),
+                );
+            }
+        }
+        Detail::Tenancy { tenant, via } => {
+            out.set("tenant", tenant.as_str());
+            out.set("via", via.as_str());
+        }
+        Detail::ActionException { who } => {
+            out.set("who", who.iter().map(Value::from).collect::<Vec<_>>());
+        }
     }
 }
 
@@ -296,6 +329,30 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     ("output", "A route's output type"),
     ("deadline", "A route's deadline, in milliseconds"),
     ("prefix", "The path an API's routes start with"),
+    (
+        "effect",
+        "What a grant lets someone do to its entity's records: create, read, update or delete",
+    ),
+    (
+        "who",
+        "Who a grant or a listed action names, each as written: a user field, a role or Access",
+    ),
+    (
+        "serverOnly",
+        "A field no client may read or write (FieldAccess.server_only)",
+    ),
+    (
+        "grants",
+        "A field restriction's own lists, by the effect each narrows; an effect left out follows the record",
+    ),
+    (
+        "tenant",
+        "The id of the entity a tenancy's records belong to",
+    ),
+    (
+        "via",
+        "The reference a tenancy reaches its tenant through; id on the tenant itself",
+    ),
 ];
 
 /// The manifest's schema, for `jadpo help --json`.

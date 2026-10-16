@@ -175,6 +175,28 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
                 lines.join("\n    ")
             )
         }
+        Detail::Grant { effect, who } => {
+            let entity = node.name.rsplit_once('.').map_or("", |(entity, _)| entity);
+            format!("{effect}: [{}]  // `{entity}`'s grant", who.join(", "))
+        }
+        Detail::FieldRestriction {
+            server_only: true, ..
+        } => format!("{}  // policy: FieldAccess.server_only", node.name),
+        Detail::FieldRestriction { grants, .. } => {
+            let lists: Vec<String> = grants
+                .iter()
+                .map(|(effect, who)| format!("{effect}: [{}]", who.join(", ")))
+                .collect();
+            format!("{}  // policy: {{ {} }}", node.name, lists.join(" "))
+        }
+        Detail::Tenancy { tenant, via } => format!(
+            "{} belongs to a `{}` through `{via}`",
+            node.name,
+            name(tenant)
+        ),
+        Detail::ActionException { who } => {
+            format!("{}: [{}]  // under `actions:`", node.name, who.join(", "))
+        }
         Detail::Transition { when, sets, .. } => {
             let when = when
                 .as_ref()

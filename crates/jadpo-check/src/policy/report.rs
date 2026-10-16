@@ -3,6 +3,9 @@
 //! written beside each entity, which `jadpo check` writes to
 //! `build/report/permissions.md` with a `.json` twin.
 //!
+//! A field whose own `policy:` narrows its record's grants gets a row of its
+//! own beside "the record" (chunk 4.4b).
+//!
 //! It is read to answer "who may delete a project?" and, once the approval
 //! review comes (area 14), to see what a change widened, so it is built
 //! for small diffs: no times or totals, entities in a fixed order, one
@@ -11,7 +14,7 @@
 use jadpo_db::{Db, ItemKind, Ownership, Project};
 use jadpo_graph::json::Value;
 
-use super::{Access, ActionGrants, Effect, EntityPolicy, Membership};
+use super::{Access, ActionGrants, Effect, EntityPolicy, FieldPolicy, GrantList, Membership};
 use crate::lookups::{Lookup, NameView};
 
 /// The report as Markdown and as JSON.
@@ -36,7 +39,11 @@ fn qualified(lookup: &Lookup<'_>, name: &str) -> String {
 
 /// One cell: the list as written, or "nobody".
 fn cell(policy: &EntityPolicy, effect: Effect) -> String {
-    match policy.lists.get(&effect) {
+    listed(policy.lists.get(&effect))
+}
+
+fn listed(list: Option<&GrantList>) -> String {
+    match list {
         Some(list) if !list.written.is_empty() => list
             .written
             .iter()
@@ -44,6 +51,19 @@ fn cell(policy: &EntityPolicy, effect: Effect) -> String {
             .collect::<Vec<_>>()
             .join(", "),
         _ => "nobody".to_string(),
+    }
+}
+
+/// One cell of a field's row (area 9, "The permissions report"): its own
+/// list where it narrows the record's, "server only" for a field no client
+/// may read or write, and "as the record" where it follows the record's.
+fn field_cell(field: &FieldPolicy, effect: Effect) -> String {
+    if field.server_only && effect != Effect::Delete {
+        return "server only".to_string();
+    }
+    match field.lists.get(&effect) {
+        Some(list) => listed(Some(list)),
+        None => "as the record".to_string(),
     }
 }
 
@@ -107,6 +127,17 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
              only within the `{tenant}`s where the caller holds a membership.\n\n"
         ));
     }
+    if access
+        .entities
+        .values()
+        .any(|policy| !policy.fields.is_empty())
+    {
+        markdown.push_str(
+            "A field whose own `policy:` narrows its record's grants has a row of its own: \
+             \"as the record\" follows the record's list, and \"server only\" means no client \
+             may read or write it.\n\n",
+        );
+    }
     // Entities in name order of their qualified names, so a domain's sit
     // together.
     let mut entities: Vec<(String, &EntityPolicy)> = access
@@ -127,6 +158,16 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             cell(policy, Effect::Update),
             cell(policy, Effect::Delete),
         ));
+        for field in &policy.fields {
+            markdown.push_str(&format!(
+                "| `{}` | {} | {} | {} | {} |\n",
+                field.field,
+                field_cell(field, Effect::Create),
+                field_cell(field, Effect::Read),
+                field_cell(field, Effect::Update),
+                field_cell(field, Effect::Delete),
+            ));
+        }
         let membership = access.membership(&policy.entity);
         let remarks = remarks(access, policy, membership);
         if !remarks.is_empty() {
@@ -159,6 +200,27 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             entry.set("membership", held);
         }
         entry.set_some("fixed", policy.fixed.clone());
+        if !policy.fields.is_empty() {
+            let fields: Vec<Value> = policy
+                .fields
+                .iter()
+                .map(|field| {
+                    let mut own = Value::object();
+                    own.set("field", field.field.as_str());
+                    if field.server_only {
+                        own.set("serverOnly", true);
+                    } else {
+                        let mut grants = Value::object();
+                        for (effect, list) in &field.lists {
+                            grants.set(effect.word(), list.written.clone());
+                        }
+                        own.set("grants", grants);
+                    }
+                    own
+                })
+                .collect();
+            entry.set("fields", fields);
+        }
         json_entities.push(entry);
     }
     markdown.push_str("## Actions listed separately\n\n");

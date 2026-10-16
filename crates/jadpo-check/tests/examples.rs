@@ -1060,6 +1060,10 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             | Detail::SystemTable { .. }
             | Detail::Lifecycle { .. }
             | Detail::Transition { .. }
+            | Detail::Grant { .. }
+            | Detail::FieldRestriction { .. }
+            | Detail::Tenancy { .. }
+            | Detail::ActionException { .. }
             | Detail::Api { .. } => {}
             Detail::Route { input, output, .. } => {
                 for ty in input.iter().chain(output) {

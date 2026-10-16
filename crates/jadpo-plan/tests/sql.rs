@@ -177,6 +177,26 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
             ));
         }
     }
+    if let Some(jadpo_std::write::PolicyRefusal::Probe {
+        fields: Some(probe),
+        ..
+    }) = &plan.policy
+    {
+        out.push_str(
+            "-- no row: asks, refused by a field's own policy when the record's grants let the caller in\n",
+        );
+        for line in probe.sql.lines() {
+            out.push_str(&format!("--   {line}\n"));
+        }
+        for (i, param) in probe.params.iter().enumerate() {
+            out.push_str(&format!(
+                "--   ${}: {:?} as {:?}\n",
+                i + 1,
+                param.source,
+                param.ty
+            ));
+        }
+    }
     if plan.missing.is_some() {
         out.push_str("-- no row: the entity's not-found failure\n");
     }
