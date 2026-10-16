@@ -462,7 +462,10 @@ reference only).
   so generated code decodes a request straight into its structs; plan data
   embedded as constants rather than rebuilt at start; a route trie and no
   per-request allocation for paths, labels and failure lookups; the native
-  host accepting asynchronously and spreading connections round-robin.
+  host accepting asynchronously and spreading connections round-robin,
+  with one rate-limit count per caller across its worker threads (today
+  each thread counts its own, so a caller on several gets several
+  allowances).
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling; the client's address from
   `CF-Connecting-IP` (`ClientAddress::read` with `Target::Workers`, built in
