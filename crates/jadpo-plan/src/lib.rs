@@ -171,6 +171,9 @@ pub struct Plan {
     /// Every translation key and its message in each supported locale
     /// (area 10, chunk 5.3b), which the runtime formats a call from.
     translations: jadpo_std::translation::TranslationPlan,
+    /// The locales the application supports, when it declares them (area
+    /// 10, chunk 5.3c): what `locale.from_accept_language` chooses among.
+    locales: Option<jadpo_std::LocalePlan>,
 }
 
 impl Plan {
@@ -351,6 +354,7 @@ impl Plan {
             routes,
             config,
             translations: jadpo_check::translations::plan(db, project),
+            locales: jadpo_check::locales::locales(db, project).plan.clone(),
         }
     }
 
@@ -453,6 +457,11 @@ impl Plan {
     /// The translation keys and their messages (area 10).
     pub fn translations(&self) -> &jadpo_std::translation::TranslationPlan {
         &self.translations
+    }
+
+    /// The locales the application supports, when it declares them.
+    pub fn locales(&self) -> Option<&jadpo_std::LocalePlan> {
+        self.locales.as_ref()
     }
 
     /// The purge of the entity called `entity`, when its lifecycle has one.

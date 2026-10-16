@@ -45,10 +45,10 @@ const FILES: &[(&str, &str)] = &[
         r#"use shop/types { CartText, ItemCount, OrderNumber }
 
 /// The cart, in the customer's language.
-action show_cart(number: OrderNumber, count: ItemCount, locale: Locale) -> CartText {
+action show_cart(number: OrderNumber, count: ItemCount, reader_locale: Locale) -> CartText {
     return CartText {
-        shipped: translations.order_shipped(locale: locale, order_number: number)
-        cart: translations.items_in_cart(locale: locale, count: count)
+        shipped: translations.order_shipped(locale: reader_locale, order_number: number)
+        cart: translations.items_in_cart(locale: reader_locale, count: count)
     }
 }
 "#,

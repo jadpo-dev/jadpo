@@ -24,7 +24,7 @@ const FR: &str = r#"{
 }
 "#;
 
-const CALLS: &str = "subject: translations.order_shipped(locale: locale, order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: count)";
+const CALLS: &str = "subject: translations.order_shipped(locale: reader_locale, order_number: number)\n        cart: translations.items_in_cart(locale: reader_locale, count: count)";
 
 fn files(app: &str, translations: &[(&str, &str)], calls: &str) -> Vec<(String, String)> {
     let mut files = vec![
@@ -44,7 +44,7 @@ fn files(app: &str, translations: &[(&str, &str)], calls: &str) -> Vec<(String, 
         (
             "domains/shop/actions/show_shipped.jadpo".to_string(),
             format!(
-                "use shop/types {{ ItemCount, OrderNumber, ShippedText }}\n\n/// The text, in the customer's language.\naction show_shipped(number: OrderNumber, count: ItemCount, locale: Locale) -> ShippedText {{\n    return ShippedText {{\n        {calls}\n    }}\n}}\n"
+                "use shop/types {{ ItemCount, OrderNumber, ShippedText }}\n\n/// The text, in the customer's language.\naction show_shipped(number: OrderNumber, count: ItemCount, reader_locale: Locale) -> ShippedText {{\n    return ShippedText {{\n        {calls}\n    }}\n}}\n"
             ),
         ),
     ];
@@ -172,7 +172,7 @@ fn a_key_is_a_name_a_call_can_use() {
     assert_eq!(
         rules_with_calls(
             &[("en_gb.json", &en), ("fr_fr.json", &fr)],
-            "subject: \"a\"\n        cart: translations.items_in_cart(locale: locale, count: count)"
+            "subject: \"a\"\n        cart: translations.items_in_cart(locale: reader_locale, count: count)"
         ),
         ["translation.key_invalid", "translation.key_invalid"]
     );
@@ -391,7 +391,7 @@ fn a_key_no_file_defines_is_unknown() {
     assert_eq!(
         rules_with_calls(
             &[("en_gb.json", EN), ("fr_fr.json", FR)],
-            "subject: translations.order_shiped(locale: locale, order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: count)"
+            "subject: translations.order_shiped(locale: reader_locale, order_number: number)\n        cart: translations.items_in_cart(locale: reader_locale, count: count)"
         ),
         ["translation.key_unknown"]
     );
@@ -412,7 +412,7 @@ fn a_call_gives_the_locale_and_each_placeholder() {
     assert_eq!(
         rules_with_calls(
             both,
-            "subject: translations.order_shipped(locale: locale)\n        cart: translations.items_in_cart(locale: locale, count: count)"
+            "subject: translations.order_shipped(locale: reader_locale)\n        cart: translations.items_in_cart(locale: reader_locale, count: count)"
         ),
         ["type.argument_count"]
     );
@@ -420,7 +420,7 @@ fn a_call_gives_the_locale_and_each_placeholder() {
     assert_eq!(
         rules_with_calls(
             both,
-            "subject: translations.order_shipped(locale: locale, order_number: number, extra: number)\n        cart: translations.items_in_cart(locale: locale, count: count)"
+            "subject: translations.order_shipped(locale: reader_locale, order_number: number, extra: number)\n        cart: translations.items_in_cart(locale: reader_locale, count: count)"
         ),
         ["type.named_argument_unknown"]
     );
@@ -428,7 +428,7 @@ fn a_call_gives_the_locale_and_each_placeholder() {
     assert_eq!(
         rules_with_calls(
             both,
-            "subject: translations.order_shipped(order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: count)"
+            "subject: translations.order_shipped(order_number: number)\n        cart: translations.items_in_cart(locale: reader_locale, count: count)"
         ),
         ["type.argument_count"]
     );
@@ -441,14 +441,14 @@ fn an_argument_is_the_kind_its_placeholder_takes() {
     assert_eq!(
         rules_with_calls(
             both,
-            "subject: translations.order_shipped(locale: locale, order_number: count)\n        cart: translations.items_in_cart(locale: locale, count: count)"
+            "subject: translations.order_shipped(locale: reader_locale, order_number: count)\n        cart: translations.items_in_cart(locale: reader_locale, count: count)"
         ),
         ["type.mismatch"]
     );
     assert_eq!(
         rules_with_calls(
             both,
-            "subject: translations.order_shipped(locale: locale, order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: number)"
+            "subject: translations.order_shipped(locale: reader_locale, order_number: number)\n        cart: translations.items_in_cart(locale: reader_locale, count: number)"
         ),
         ["type.mismatch"]
     );
@@ -460,14 +460,14 @@ fn a_locale_written_out_is_a_supported_one() {
     assert_eq!(
         rules_with_calls(
             both,
-            "subject: translations.order_shipped(locale: Locale.fr_fr, order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: count)"
+            "subject: translations.order_shipped(locale: Locale.fr_fr, order_number: number)\n        cart: translations.items_in_cart(locale: reader_locale, count: count)"
         ),
         CLEAN
     );
     assert_eq!(
         rules_with_calls(
             both,
-            "subject: translations.order_shipped(locale: Locale.de_de, order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: count)"
+            "subject: translations.order_shipped(locale: Locale.de_de, order_number: number)\n        cart: translations.items_in_cart(locale: reader_locale, count: count)"
         ),
         ["type.locale_unsupported"]
     );
@@ -477,7 +477,7 @@ fn a_locale_written_out_is_a_supported_one() {
 fn what_a_call_gives_is_text_for_a_person() {
     let both = &[("en_gb.json", EN), ("fr_fr.json", FR)];
     // It can't go where `Text` is wanted, as formatted times can't.
-    let calls = "subject: translations.order_shipped(locale: locale, order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: count)";
+    let calls = "subject: translations.order_shipped(locale: reader_locale, order_number: number)\n        cart: translations.items_in_cart(locale: reader_locale, count: count)";
     assert_eq!(rules_with_calls(both, calls), CLEAN);
 }
 
@@ -511,7 +511,7 @@ fn a_number_a_date_and_a_choice_take_their_own_kinds() {
         ));
         all.push((
             "domains/shop/actions/show_summary.jadpo".into(),
-            format!("use shop/types {{ ItemCount, OrderNumber, PlacedAt, PlacedDay, SummaryText }}\n\n/// The summary.\naction show_summary(who: OrderNumber, n: ItemCount, when: {when}, kind: OrderNumber, locale: Locale) -> SummaryText {{\n    return SummaryText {{\n        summary: translations.summary(locale: locale, who: who, n: n, when: when, kind: kind)\n    }}\n}}\n"),
+            format!("use shop/types {{ ItemCount, OrderNumber, PlacedAt, PlacedDay, SummaryText }}\n\n/// The summary.\naction show_summary(who: OrderNumber, n: ItemCount, when: {when}, kind: OrderNumber, reader_locale: Locale) -> SummaryText {{\n    return SummaryText {{\n        summary: translations.summary(locale: reader_locale, who: who, n: n, when: when, kind: kind)\n    }}\n}}\n"),
         ));
         all
     };

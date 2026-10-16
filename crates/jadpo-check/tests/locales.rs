@@ -164,7 +164,7 @@ const TYPES: &str = "type OrderedAt = Instant {}\n\n";
 
 fn formats(locales: &str, locale: &str) -> Vec<String> {
     let source = format!(
-        "{locales}\n{TYPES}function label(value: OrderedAt, locale: Locale) -> PresentationText {{\n    return temporal.format(value, zone: Zone.utc, locale: {locale}, format: TimeFormat.date_long)\n}}\n"
+        "{locales}\n{TYPES}function label(value: OrderedAt, reader_locale: Locale) -> PresentationText {{\n    return temporal.format(value, zone: Zone.utc, locale: {locale}, format: TimeFormat.date_long)\n}}\n"
     );
     rules(&source)
 }
@@ -173,7 +173,7 @@ fn formats(locales: &str, locale: &str) -> Vec<String> {
 fn a_locale_written_out_is_one_the_application_supports() {
     assert_eq!(formats(PAGE, "Locale.fr_fr"), CLEAN);
     assert_eq!(
-        formats(PAGE, "locale"),
+        formats(PAGE, "reader_locale"),
         CLEAN,
         "a Locale passed in is read as a supported one"
     );
@@ -212,7 +212,7 @@ fn application(locales: &str) -> Vec<(&'static str, String)> {
         ),
         (
             "domains/shop/actions/show_placed.jadpo",
-            "use shop/types { OrderedAt, PlacedText }\n\n/// The placing, in the customer's language.\naction show_placed(ordered_at: OrderedAt, locale: Locale) -> PlacedText {\n    return PlacedText {\n        placed: temporal.format(ordered_at, zone: Zone.utc, locale: locale, format: TimeFormat.date_long)\n    }\n}\n".into(),
+            "use shop/types { OrderedAt, PlacedText }\n\n/// The placing, in the customer's language.\naction show_placed(ordered_at: OrderedAt, reader_locale: Locale) -> PlacedText {\n    return PlacedText {\n        placed: temporal.format(ordered_at, zone: Zone.utc, locale: reader_locale, format: TimeFormat.date_long)\n    }\n}\n".into(),
         ),
         (
             "domains/shop/actions/show_placed.test.jadpo",
@@ -247,4 +247,201 @@ fn a_setting_of_type_locale_starts_with_a_supported_one() {
     );
     // With no locales declared there is nothing to start from.
     assert_eq!(rules(config), CLEAN);
+}
+
+// --- choosing a locale from a request (chunk 5.3c) -----------------------------------------
+
+const DECLARED: &str =
+    "\nlocales {\n    default: Locale.en_gb\n    supported: [Locale.en_gb, Locale.fr_fr]\n}\n";
+
+/// An application whose action takes `params` and runs `body`, with the
+/// types a request's header and a shown text are.
+fn choosing(locales: &str, params: &str, body: &str) -> Vec<String> {
+    choosing_to(locales, params, "Locale", body)
+}
+
+fn choosing_to(locales: &str, params: &str, result: &str, body: &str) -> Vec<String> {
+    let files = [
+        ("app.jadpo", format!("application {{\n}}\n{locales}")),
+        (
+            "domains/shop/types/accept_language.jadpo",
+            "/// An `Accept-Language` header.\ntype AcceptLanguage = Text {}\n".into(),
+        ),
+        (
+            "domains/shop/types/placed_at.jadpo",
+            "/// When an order was placed.\ntype PlacedAt = Instant {}\n".into(),
+        ),
+        (
+            "domains/shop/types/placed_text.jadpo",
+            "/// An order's placing, shown.\ntype PlacedText = Output {\n    placed: PresentationText\n}\n".into(),
+        ),
+        (
+            "domains/shop/actions/choose.jadpo",
+            format!(
+                "use shop/types {{ AcceptLanguage, PlacedAt, PlacedText }}\n\n/// Whatever the body gives.\naction choose({params}) -> {result} {{\n    {body}\n}}\n"
+            ),
+        ),
+    ];
+    let files: Vec<(&str, &str)> = files.iter().map(|(p, t)| (*p, t.as_str())).collect();
+    support::rules(Layout::Project, &files)
+        .into_iter()
+        .filter(|rule| rule != "import.unused" && rule != "layout.unused_declaration")
+        .collect()
+}
+
+#[test]
+fn a_locale_is_chosen_from_a_header() {
+    for header in ["header: AcceptLanguage?", "header: AcceptLanguage"] {
+        assert_eq!(
+            choosing(
+                DECLARED,
+                header,
+                "return locale.from_accept_language(header)"
+            ),
+            CLEAN,
+            "{header}"
+        );
+    }
+    assert_eq!(
+        choosing(
+            DECLARED,
+            "header: AcceptLanguage?",
+            "return locale.from_accept_language(header: header)"
+        ),
+        CLEAN,
+        "by name"
+    );
+    assert_eq!(
+        choosing(DECLARED, "", "return locale.from_accept_language(none)"),
+        CLEAN
+    );
+    assert_eq!(
+        choosing(
+            DECLARED,
+            "",
+            "return locale.from_accept_language(\"fr-FR, en;q=0.5\")"
+        ),
+        CLEAN
+    );
+}
+
+#[test]
+fn the_locale_chosen_is_one_the_application_supports() {
+    // It is a `Locale` like any other, so it goes where one is wanted,
+    // formatting included, without being written out and checked.
+    assert_eq!(
+        choosing_to(
+            DECLARED,
+            "header: AcceptLanguage?, placed_at: PlacedAt",
+            "PresentationText",
+            "var chosen: Locale = locale.from_accept_language(header)\n    return temporal.format(placed_at, zone: Zone.utc, locale: chosen, format: TimeFormat.date_long)"
+        ),
+        CLEAN
+    );
+}
+
+#[test]
+fn choosing_needs_the_application_s_locales() {
+    assert_eq!(
+        choosing(
+            "",
+            "header: AcceptLanguage?",
+            "return locale.from_accept_language(header)"
+        ),
+        ["type.temporal_locales_required"]
+    );
+}
+
+#[test]
+fn files_on_their_own_have_no_locales_to_choose_among() {
+    let source = "type AcceptLanguage = Text {}\n\nfunction choose(header: AcceptLanguage?) -> Locale {\n    return locale.from_accept_language(header)\n}\n";
+    assert_eq!(rules(source), CLEAN);
+}
+
+#[test]
+fn the_header_is_text_that_may_be_none_and_is_always_passed() {
+    assert_eq!(
+        choosing(
+            DECLARED,
+            "placed_at: PlacedAt",
+            "return locale.from_accept_language(placed_at)"
+        ),
+        ["type.mismatch"]
+    );
+    assert_eq!(
+        choosing(DECLARED, "", "return locale.from_accept_language()"),
+        ["type.argument_count"]
+    );
+    assert_eq!(
+        choosing(
+            DECLARED,
+            "header: AcceptLanguage?",
+            "return locale.from_accept_language(header, header)"
+        ),
+        ["type.argument_count"]
+    );
+    assert_eq!(
+        choosing(
+            DECLARED,
+            "header: AcceptLanguage?",
+            "return locale.from_accept_language(language: header)"
+        ),
+        ["type.named_argument_unknown"]
+    );
+}
+
+#[test]
+fn the_choice_is_a_locale_and_nothing_else() {
+    let files = [
+        ("app.jadpo", format!("application {{\n}}\n{DECLARED}")),
+        (
+            "domains/shop/types/accept_language.jadpo",
+            "/// An `Accept-Language` header.\ntype AcceptLanguage = Text {}\n".into(),
+        ),
+        (
+            "domains/shop/types/shown.jadpo",
+            "/// A label.\ntype Shown = Text {}\n".into(),
+        ),
+        (
+            "domains/shop/actions/choose.jadpo",
+            "use shop/types { AcceptLanguage, Shown }\n\n/// The language a request asks for, as text.\naction choose(header: AcceptLanguage?) -> Shown {\n    return locale.from_accept_language(header)\n}\n".to_string(),
+        ),
+    ];
+    let files: Vec<(&str, &str)> = files.iter().map(|(p, t)| (*p, t.as_str())).collect();
+    assert_eq!(support::rules(Layout::Project, &files), ["type.mismatch"]);
+}
+
+#[test]
+fn a_variable_cannot_be_called_locale_since_that_is_the_namespace() {
+    assert_eq!(
+        choosing(DECLARED, "locale: Locale", "return locale"),
+        ["semantic.standard_namespace_reserved"]
+    );
+}
+
+#[test]
+fn a_query_computes_nothing_so_it_cannot_choose_a_locale() {
+    // The choice is made before the query, and its result passed in, as
+    // every other call is.
+    let files = [
+        ("app.jadpo", format!("application {{\n}}\n{DECLARED}")),
+        (
+            "domains/shop/types/accept_language.jadpo",
+            "/// An `Accept-Language` header.\ntype AcceptLanguage = Text {}\n".into(),
+        ),
+        (
+            "domains/shop/entities/greeting.jadpo",
+            "/// A greeting in one language.\nentity Greeting {\n    id: Uuid\n    language: Locale\n}\n".into(),
+        ),
+        (
+            "domains/shop/queries/greeting_for.jadpo",
+            "use shop/types { AcceptLanguage }\nuse shop/entities { Greeting }\n\n/// The greeting in the language a request asks for.\nquery greeting_for(header: AcceptLanguage?) -> List<Greeting> {\n    from: Greeting\n    where: Greeting.language == locale.from_accept_language(header)\n    order: [Greeting.id asc]\n    limit: 1\n}\n".into(),
+        ),
+    ];
+    let files: Vec<(&str, &str)> = files.iter().map(|(p, t)| (*p, t.as_str())).collect();
+    let rules = support::rules(Layout::Project, &files);
+    assert!(
+        rules.contains(&"query.value_unsupported".to_string()),
+        "{rules:?}"
+    );
 }

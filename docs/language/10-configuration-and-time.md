@@ -68,7 +68,7 @@ How an application declares its settings and secrets, where their values come
 from, and how code reads the current time, works with dates and zones, and
 shows times to people in their own language.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; chunk 5.1c built the client's address behind trusted proxies (`client_address:`). Chunk 5.2 built time: `ZonedTime`, durations, arithmetic and comparison, the `temporal` library over a bundled time zone database, and a test's clock; chunk 5.2b built the formats and `PresentationText`, and checks `temporal.format` and `format_relative`. The examples marked `check` in those sections and their errors run with this checkout's `jadpo`. Chunk 5.3 built locales (`locales { }`, checked wherever a locale is written) and the text `temporal.format` and `format_relative` give, in each locale's own words, order and digits; chunk 5.3b built translations (`translations/`, ICU MessageFormat messages, one typed call per key, the checks between locales' files), and choosing a language from `Accept-Language` comes in chunk 5.3c.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; chunk 5.1c built the client's address behind trusted proxies (`client_address:`). Chunk 5.2 built time: `ZonedTime`, durations, arithmetic and comparison, the `temporal` library over a bundled time zone database, and a test's clock; chunk 5.2b built the formats and `PresentationText`, and checks `temporal.format` and `format_relative`. The examples marked `check` in those sections and their errors run with this checkout's `jadpo`. Chunk 5.3 built locales (`locales { }`, checked wherever a locale is written) and the text `temporal.format` and `format_relative` give, in each locale's own words, order and digits; chunk 5.3b built translations (`translations/`, ICU MessageFormat messages, one typed call per key, the checks between locales' files); chunk 5.3c built choosing a locale from a request, `locale.from_accept_language(header)`.
 
 Two rules run through the page. **Code never reads the environment or the
 system clock directly**: settings arrive as typed `config.<field>` values,
@@ -1060,9 +1060,9 @@ type OrderPlaced = Output {
 use shop/types { OrderPlaced, OrderedAt, ShortDate }
 
 /// The order's placing, in the customer's zone and language.
-action show_placed(ordered_at: OrderedAt, zone: Zone, locale: Locale) -> OrderPlaced {
+action show_placed(ordered_at: OrderedAt, zone: Zone, reader_locale: Locale) -> OrderPlaced {
     return OrderPlaced {
-        placed: temporal.format(ordered_at, zone: zone, locale: locale, format: ShortDate)
+        placed: temporal.format(ordered_at, zone: zone, locale: reader_locale, format: ShortDate)
     }
 }
 ```
@@ -1251,13 +1251,13 @@ type SentText = Output {
 use chat/types { SentAt, SentText }
 
 /// When a message was sent, against now in London.
-action show_sent(sent_at: SentAt, locale: Locale) -> SentText {
+action show_sent(sent_at: SentAt, reader_locale: Locale) -> SentText {
     return SentText {
         seen: temporal.format_relative(
             sent_at,
             now: clock.now,
             zone: Zone.europe_london,
-            locale: locale
+            locale: reader_locale
         )
     }
 }
@@ -1342,7 +1342,8 @@ format for themselves receive the `Instant`.
   "Two to six days away" is a weekday and the time, in the past or the
   future alike; a week or more is the long date, with no time.
 - **Not here.** Translations are chunk 5.3b ("Translations", below), and
-  choosing a locale from an `Accept-Language` header is chunk 5.3c.
+  choosing a locale from an `Accept-Language` header is chunk 5.3c
+  ("Choosing a locale from a request", below).
 
 ## Locales
 
@@ -1375,7 +1376,143 @@ decoded like any enum, so an unsupported tag is an `invalid_value` failure
 and the OpenAPI document lists only the supported tags; a setting typed
 `Locale` is read the same way when the app starts. Choosing a language from
 an `Accept-Language` header is a library call that falls back to `default`
-(chunk 5.3c).
+("Choosing a locale from a request", below).
+
+### Choosing a locale from a request
+
+> Built in chunk 5.3c, named by Richard on 2026-10-16. The examples marked
+> `check` run with this checkout's `jadpo`.
+
+`locale.from_accept_language(header)` gives the `Locale` a browser asks for
+in its `Accept-Language` header, out of the locales the application
+supports, and `default:` when the header names none of them. `header` is
+`Text?`: a field read with `header: "Accept-Language"` and `optional: true`
+(area 7) is passed straight in, whether the request sent the header or not.
+The call never fails, and it is the only way a request chooses a locale
+that is not written in its input.
+
+```jadpo fragment
+type PlaceRequest = Input {
+    ordered_at: OrderedAt
+    languages_header: BrowserLanguages {
+        header: "Accept-Language"
+        optional: true
+    }
+}
+```
+
+```jadpo check project=accept-language file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.en_us, Locale.fr_fr]
+}
+```
+
+```jadpo check project=accept-language file=domains/shop/types/browser_languages.jadpo
+/// What a browser says its reader's languages are.
+type BrowserLanguages = Text {
+    max_length: 2000
+}
+```
+
+```jadpo check project=accept-language file=domains/shop/types/ordered_at.jadpo
+/// When an order was placed.
+type OrderedAt = Instant {}
+```
+
+```jadpo check project=accept-language file=domains/shop/types/placed_text.jadpo
+/// An order's placing, shown to its customer.
+type PlacedText = Output {
+    reply_locale: Locale
+    placed: PresentationText
+}
+```
+
+```jadpo check project=accept-language file=domains/shop/actions/show_placed.jadpo
+use shop/types { BrowserLanguages, OrderedAt, PlacedText }
+
+/// The placing, in the language the customer's browser asks for.
+action show_placed(ordered_at: OrderedAt, languages_header: BrowserLanguages?) -> PlacedText {
+    var reader_pick: Locale = locale.from_accept_language(languages_header)
+    return PlacedText {
+        reply_locale: reader_pick
+        placed: temporal.format(
+            ordered_at,
+            zone: Zone.europe_london,
+            locale: reader_pick,
+            format: TimeFormat.date_long
+        )
+    }
+}
+```
+
+```jadpo check project=accept-language file=domains/shop/actions/show_placed.test.jadpo
+test "the browser's languages choose the locale" {
+    assert show_placed("2026-09-27T13:30:05Z", "fr-FR").reply_locale == Locale.fr_fr
+    assert show_placed("2026-09-27T13:30:05Z", "fr-CA").reply_locale == Locale.fr_fr
+    assert show_placed("2026-09-27T13:30:05Z", "en").reply_locale == Locale.en_us
+    assert show_placed("2026-09-27T13:30:05Z", "en-GB;q=0.3, fr;q=0.9").reply_locale == Locale.fr_fr
+    assert show_placed(
+        "2026-09-27T13:30:05Z",
+        "fr-FR;q=0, en-US;q=0.1"
+    ).reply_locale == Locale.en_us
+    assert show_placed("2026-09-27T13:30:05Z", "de-DE, ja;q=0.8").reply_locale == Locale.en_gb
+    assert show_placed("2026-09-27T13:30:05Z", "fr-FR;q=nonsense").reply_locale == Locale.en_gb
+    assert show_placed("2026-09-27T13:30:05Z", none).reply_locale == Locale.en_gb
+    assert show_placed("2026-09-27T13:30:05Z", "fr-FR").placed == "27 septembre 2026"
+}
+```
+
+The rules are fixed, so every target gives the same locale for the same
+header and the same `locales { }`:
+
+- **Reading the header.** As RFC 9110 reads `Accept-Language`: a list split
+  at commas, each entry a language range (`fr-CA`, `en`) with an optional
+  weight, `;q=` and a number from 0 to 1 with up to three decimals. Spaces
+  and tabs around entries and the `;` are ignored, an empty entry is
+  nothing, and the range is read in any case, `_` as `-` (a client that
+  writes `en_GB` means it). An entry that does not parse (a weight like
+  `1.5` or `abc`, a range with an empty part or a part over eight
+  characters, anything after the weight) is skipped and the others are
+  still read. A weight of `0` means "not acceptable", so that tag is
+  skipped too, and `*`, which names no language, is ignored.
+- **Taking the tags.** By weight, the heaviest first; tags of equal weight
+  keep the order the header gives them (an entry with no weight has `1`).
+  The first tag that matches a supported locale decides, so a lighter tag
+  that matches is chosen over a heavier one that does not.
+- **Matching a tag.** Against `supported:` only, never against every
+  `Locale`. A supported locale with exactly the tag wins, whatever the case
+  (`fr-FR` is `Locale.fr_fr`). Otherwise a supported locale of the same
+  language answers, so `fr-CA` gets `fr_fr` when French is supported only
+  as `fr_fr`. Where several are of that language, the one CLDR's likely
+  subtags give for the language alone is chosen (`en` means `en-US`, `pt`
+  means `pt-BR`), and if none of them is that one, the first in the order
+  `supported:` lists them. Only the language is compared, never the
+  script, so list a locale a header should reach exactly (`zh-TW` is
+  `Locale.zh_tw`); otherwise it is answered by another locale of its
+  language.
+- **Falling back.** With no tag matching, an empty header or `none`, the
+  result is `default:`. It is never the server's own locale, and never a
+  locale that is not supported.
+- **A pure function.** The same header and `locales { }` give the same
+  locale in the interpreter, a native deployable and WebAssembly. It reads
+  no clock, store or request, so it may be called in any function, action
+  or test. A query computes nothing, so it cannot call it
+  (`query.value_unsupported`): choose the locale in the action and pass it
+  in.
+- **The call is checked as a standard-library call is.** `header` is
+  always given, by position or as `header:`, and takes a `Text`, a type
+  built on `Text`, `none`, or any of these that may be `none`
+  (`type.argument_count`, `type.named_argument_unknown`, `type.mismatch`).
+  A project with no `locales { }` has nothing to choose among, which is
+  `type.temporal_locales_required`, as it is for formatting.
+- **The name `locale` is reserved.** It is a standard-library namespace
+  now, so a parameter or variable cannot be called `locale`
+  (`semantic.standard_namespace_reserved`); the examples on this page
+  call theirs `reader_locale`. A field or a named argument called `locale`
+  (`locale:`) is a different thing and stays.
 
 ## Translations
 
@@ -1451,10 +1588,10 @@ type CartText = Output {
 use shop/types { CartText, ItemCount, OrderNumber }
 
 /// The order, in the customer's language.
-action describe_order(number: OrderNumber, count: ItemCount, locale: Locale) -> CartText {
+action describe_order(number: OrderNumber, count: ItemCount, reader_locale: Locale) -> CartText {
     return CartText {
-        shipped: translations.order_shipped(locale: locale, order_number: number)
-        cart: translations.items_in_cart(locale: locale, count: count)
+        shipped: translations.order_shipped(locale: reader_locale, order_number: number)
+        cart: translations.items_in_cart(locale: reader_locale, count: count)
     }
 }
 ```
@@ -2401,8 +2538,8 @@ check failed: 1 error, 1 file
 ```jadpo check project=e-zone-required expect=type.temporal_zone_required
 type OrderedAt = Instant {}
 
-function placed_label(ordered_at: OrderedAt, locale: Locale) -> PresentationText {
-    return temporal.format(ordered_at, locale: locale, format: TimeFormat.date_long)
+function placed_label(ordered_at: OrderedAt, reader_locale: Locale) -> PresentationText {
+    return temporal.format(ordered_at, locale: reader_locale, format: TimeFormat.date_long)
 }
 ```
 
@@ -2410,7 +2547,7 @@ function placed_label(ordered_at: OrderedAt, locale: Locale) -> PresentationText
 error: `temporal.format` needs the zone to show `OrderedAt` in
  --> main.jadpo:4:12
   |
-4 |     return temporal.format(ordered_at, locale: locale, format: TimeFormat.date_long)
+4 |     return temporal.format(ordered_at, locale: reader_locale, format: TimeFormat.date_long)
   |            ^^^^^^^^^^^^^^^ no `zone:`
   reason: An `Instant` is one moment for everyone, and its date and clock time depend on where it is read; the server never guesses a zone, so `zone:` says which.
   next: Add `zone: ...` with the reader's zone, such as `zone: Zone.europe_london` (agent)
@@ -2425,17 +2562,26 @@ check failed: 1 error, 1 file
 ```jadpo check project=e-format-invalid expect=type.temporal_format_invalid
 type OrderedAt = Instant {}
 
-function placed_label(ordered_at: OrderedAt, zone: Zone, locale: Locale) -> PresentationText {
-    return temporal.format(ordered_at, zone: zone, locale: locale, format: TimeFormat.date_longest)
+function placed_label(
+    ordered_at: OrderedAt,
+    zone: Zone,
+    reader_locale: Locale
+) -> PresentationText {
+    return temporal.format(
+        ordered_at,
+        zone: zone,
+        locale: reader_locale,
+        format: TimeFormat.date_longest
+    )
 }
 ```
 
 ```text output
 error: `TimeFormat.date_longest` isn't a time format
- --> main.jadpo:4:76
-  |
-4 |     return temporal.format(ordered_at, zone: zone, locale: locale, format: TimeFormat.date_longest)
-  |                                                                            ^^^^^^^^^^^^^^^^^^^^^^^ not a format
+ --> main.jadpo:12:17
+   |
+12 |         format: TimeFormat.date_longest
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^ not a format
   reason: `temporal.format`'s `format:` is written out: a built-in format, `TimeFormat.` followed by `date_`, `time_` or `date_time_` and `full`, `long`, `medium` or `short`, or the name of a format declared as `type Name = TimeFormat { ... }`.
   next: Write a built-in format such as `TimeFormat.date_long`, or declare one with `type Name = TimeFormat { ... }` (agent)
   rule: type.temporal_format_invalid
@@ -2452,17 +2598,17 @@ as a value, is reported the same way: it holds no value.
 ```jadpo check project=e-requires-time expect=type.temporal_format_requires_time
 type InvoiceDate = CalendarDate {}
 
-function invoice_dated(day: InvoiceDate, locale: Locale) -> PresentationText {
-    return temporal.format(day, locale: locale, format: TimeFormat.date_time_long)
+function invoice_dated(day: InvoiceDate, reader_locale: Locale) -> PresentationText {
+    return temporal.format(day, locale: reader_locale, format: TimeFormat.date_time_long)
 }
 ```
 
 ```text output
 error: `TimeFormat.date_time_long` shows a clock time, which `InvoiceDate` doesn't have
- --> main.jadpo:4:57
+ --> main.jadpo:4:64
   |
-4 |     return temporal.format(day, locale: locale, format: TimeFormat.date_time_long)
-  |                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^ shows a clock time
+4 |     return temporal.format(day, locale: reader_locale, format: TimeFormat.date_time_long)
+  |                                                                ^^^^^^^^^^^^^^^^^^^^^^^^^ shows a clock time
   reason: `InvoiceDate` is a date, with no clock time or zone, so `temporal.format` can show only its weekday, day, month and year.
   next: Use a date format such as `TimeFormat.date_long`, or format an `Instant` or a `ZonedTime` instead (agent)
   rule: type.temporal_format_requires_time
@@ -2590,12 +2736,12 @@ type PlacedText = Output {
 use shop/types { OrderedAt, PlacedText }
 
 /// The placing, in the customer's language.
-action show_placed(ordered_at: OrderedAt, locale: Locale) -> PlacedText {
+action show_placed(ordered_at: OrderedAt, reader_locale: Locale) -> PlacedText {
     return PlacedText {
         placed: temporal.format(
             ordered_at,
             zone: Zone.utc,
-            locale: locale,
+            locale: reader_locale,
             format: TimeFormat.date_long
         )
     }
@@ -2614,6 +2760,43 @@ error: `temporal.format` needs the application's locales
   help: docs/language/10-configuration-and-time.html#type-temporal-locales-required
 
 check failed: 1 error, 4 files
+```
+
+The same rule covers choosing a locale from a request, since there is
+nothing to choose among and nothing to fall back to:
+
+```jadpo check project=e-locales-required-choose file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-locales-required-choose file=domains/shop/types/browser_languages.jadpo hidden
+/// What a browser says its reader's languages are.
+type BrowserLanguages = Text {
+    max_length: 2000
+}
+```
+
+```jadpo check project=e-locales-required-choose file=domains/shop/actions/locale_for_reader.jadpo expect=type.temporal_locales_required
+use shop/types { BrowserLanguages }
+
+/// The language the customer's browser asks for.
+action locale_for_reader(languages_header: BrowserLanguages?) -> Locale {
+    return locale.from_accept_language(languages_header)
+}
+```
+
+```text output
+error: `locale.from_accept_language` needs the application's locales
+ --> domains/shop/actions/locale_for_reader.jadpo:5:12
+  |
+5 |     return locale.from_accept_language(languages_header)
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^ no locales declared
+  reason: `locale.from_accept_language` chooses among the locales the application supports and falls back to its `default:`. None is declared, so there is nothing to choose among and nothing to fall back to.
+  next: Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }` (agent)
+  rule: type.temporal_locales_required
+  help: docs/language/10-configuration-and-time.html#type-temporal-locales-required
+
+check failed: 1 error, 3 files
 ```
 
 ### `syntax.locales_default_required`
@@ -3239,9 +3422,9 @@ type ShippedText = Output {
 use shop/types { OrderNumber, ShippedText }
 
 /// The text, in the customer's language.
-action show_shipped(number: OrderNumber, locale: Locale) -> ShippedText {
+action show_shipped(number: OrderNumber, reader_locale: Locale) -> ShippedText {
     return ShippedText {
-        subject: translations.order_shiped(locale: locale, order_number: number)
+        subject: translations.order_shiped(locale: reader_locale, order_number: number)
     }
 }
 ```
@@ -3250,7 +3433,7 @@ action show_shipped(number: OrderNumber, locale: Locale) -> ShippedText {
 error: `translations.order_shiped` is not a translation key
  --> domains/shop/actions/show_shipped.jadpo:6:18
   |
-6 |         subject: translations.order_shiped(locale: locale, order_number: number)
+6 |         subject: translations.order_shiped(locale: reader_locale, order_number: number)
   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^ no such key
   reason: `order_shiped` is not a key of the default locale's file. Did you mean `order_shipped`?
   next: Use `translations.order_shipped` (agent)
@@ -3432,8 +3615,9 @@ the wire or in a setting limited to the supported ones) and the text
 `temporal.format` and `format_relative` give, over CLDR data compiled into
 every target. Chunk 5.3b built translations (`translations/`, ICU
 MessageFormat messages, one typed call per key, the checks between the
-locales' files, and the interpreter and runtime writing the text); choosing
-a language from `Accept-Language` is chunk 5.3c.
+locales' files, and the interpreter and runtime writing the text). Chunk
+5.3c built `locale.from_accept_language(header)`, which chooses a supported
+`Locale` from an `Accept-Language` header and falls back to `default:`.
 
 ### Consistency with the rest of the language
 
@@ -3526,7 +3710,7 @@ a language from `Accept-Language` is chunk 5.3c.
    `default: Locale.en_gb` and `supported: [Locale.en_gb, Locale.fr_fr]`, in
    `app.jadpo`, with `Locale` a built-in enum of the standard locales. An
    unsupported tag in a request is an ordinary `invalid_value` like any
-   enum; header negotiation is a library call that falls back to `default`. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.3* (the `Accept-Language` call is chunk 5.3c).
+   enum; header negotiation is a library call that falls back to `default`. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.3*; the library call, which the page left without a name, was named `locale.from_accept_language(header)` on 2026-10-16 and *built in chunk 5.3c*.
 9. **What format does `translations/` use?** *Recommendation:* one JSON file
    per supported locale with ICU MessageFormat messages (what FormatJS, Java
    and translation services such as Crowdin and Lokalise use), typed calls
@@ -3639,7 +3823,7 @@ a language from `Accept-Language` is chunk 5.3c.
 | Locale data (chosen in chunk 5.3) | ICU4X 2.3 with Unicode CLDR 48 compiled into the binary (`icu_datetime`, `icu_calendar`, `icu_time`, `icu_locale` 2.3 and `icu_experimental` 0.6 for the relative-time words, pinned exactly; pure Rust, builds for wasm32): the interpreter, native deployables and Workers write the same text. A WebAssembly module that formats is about 3.5 MB larger than one that does not (3.9 MB against 0.35 MB; 1.2 MB against 0.1 MB compressed with gzip, 0.8 MB with Brotli), because the data holds every locale `Locale` lists. The next lever, if a deployable needs it, is data exported for the supported locales only | 2026-10-16 |
 | Writing a time (chosen in chunk 5.3) | Always the Gregorian calendar (as `Intl.DateTimeFormat` with `calendar: "gregory"`), the locale's own digits, CLDR's narrow no-break space written as a plain space. A built-in format is the locale's pattern at CLDR's four lengths (`date_full` with the weekday), so `date_time_long` is "27 September 2026 at 14:30:05 BST" in `en_gb`, with seconds as `timeStyle: "long"` has. A declared format takes the locale's pattern for its parts (a month as a name from the long or medium date pattern, a number from the short one; a date and a time joined as the locale joins them for that month) and sets each part's width: `numeric` leaves a number as the locale writes it, `two_digit` makes it at least two. Parts with no pattern together are written one after another with a space, and `zone_name` alone is the name alone | 2026-10-16 |
 | `format_relative` (chosen in chunk 5.3) | Against `now:`, in the zone the value is seen in: under a minute either way "just now" (English; the locale's "now" elsewhere); under an hour whole minutes, a past value rounded down and a future one up; the same local date "Today at" and the short time; the date before or after "Yesterday at" or "Tomorrow at"; two to six days away the weekday and the short time; anything else the long date. The words are the locale's, the first letter a capital; a locale with no word for yesterday or tomorrow shows the long date | 2026-10-16 |
-| Not built here (chosen in chunk 5.3) | Translations (`translations/`, ICU MessageFormat, typed calls, their errors) and choosing a locale from an `Accept-Language` header, which the page calls a library call without naming it, are chunks 5.3b and 5.3c | 2026-10-16 |
+| Not built here (chosen in chunk 5.3) | Translations (`translations/`, ICU MessageFormat, typed calls, their errors) and choosing a locale from an `Accept-Language` header, which the page called a library call without naming it, were chunks 5.3b and 5.3c; both are built now | 2026-10-16 |
 | Translation files (chosen in chunk 5.3b) | `translations/<tag>.json`, the tag a `Locale` variant (`en_gb`), one flat object of keys to ICU MessageFormat strings, read strictly (no comments, trailing commas, nesting or non-string values: `translation.file_invalid`, at the character it fails on). A name that is no `Locale` variant is `translation.file_name_invalid`, a locale not supported `translation.locale_unsupported`, a supported locale without a file `translation.file_missing` (the default locale's first), files with no `locales { }` `translation.locales_required`. `jadpo fmt` leaves the JSON alone, and the language server reports its problems at the file | 2026-10-16 |
 | Keys and calls (chosen in chunk 5.3b) | The default locale's file defines the keys; a key is one lower_snake_case name, once (`translation.key_invalid`, `translation.key_duplicate`), and is the call `translations.<key>(locale:, ...)`, with an argument for each placeholder by its name (by position: the locale, then the placeholders sorted by name). Another locale's file has the same keys (`translation.key_missing`, `translation.key_extra`) and each key the same placeholders (`translation.placeholder_mismatch`) of the same kind (`translation.placeholder_type`). A call of a key no default message has is `translation.key_unknown`, with the nearest key. Area 16's email messages under the type's name with a dot (`welcome_email.subject`) are `translation.key_invalid` until the email chunk says how a dotted key is called | 2026-10-16 |
 | What a call is (chosen in chunk 5.3b) | `PresentationText`, from a pure call (allowed in a function) that carries its arguments' provenance. Its arguments are checked as a standard-library call's: `type.argument_count`, `type.named_argument_unknown`, `type.mismatch`, and a `Locale` written out that is not supported `type.locale_unsupported` (or `type.temporal_locales_required` with none declared) | 2026-10-16 |
@@ -3648,6 +3832,11 @@ a language from `Accept-Language` is chunk 5.3c.
 | Writing a message (chosen in chunk 5.3b) | A number is written with the places it has (`12.50` stays `12.50`) in the locale's digits, grouping and decimal separator; `integer` rounds half to even. A plural's category is CLDR 48's cardinal rule for the locale (ordinal for `selectordinal`) on the number less the `offset:`, an `=N` case matches the number as given, and `#` is the number less the offset written as `{n, number}`. A date or time is `temporal.format`'s built-in format of that length. A `select` with a word that is no case shows `other` | 2026-10-16 |
 | Where messages run (chosen in chunk 5.3b) | Messages are parsed while compiling into `jadpo_std::translation::Message` and carried to the runtime as plan data (`TranslationPlan`: each key, its placeholders and its message in every supported locale); `jadpo_value::present::translate` writes one, over `icu_plurals` and `icu_decimal` 2.3 (pinned with the other ICU4X crates, CLDR 48, already underneath `icu_datetime`), so the interpreter, a native deployable and WebAssembly write the same text and the code generator will call the same function. The call is `Callee::Translation` in the typed body | 2026-10-16 |
 | Watching translations (chosen in chunk 5.3b) | The files are a salsa input of their own (`Project::translations`), read once into messages (`translation_files`); a call asks `lookup` for its key's placeholders alone, so editing the words of any message in any locale checks no call again and a placeholder edit checks only the callables that call that key. Each key is a `translation_key` graph node digested with its message in every supported locale and used by the callables that call it, so `jadpo test --watch` reruns the tests that reach it; `jadpo dev` reloads on a save, and the language server watches `translations/*.json` | 2026-10-16 |
+| Name of the locale call (Richard, 2026-10-16) | `locale.from_accept_language(header)`, giving a `Locale`, in a new `locale` standard-library namespace beside `temporal`. `header` is `Text?`, so a header read with `header: "Accept-Language"` and `optional: true` passes straight in; the call never fails and picks only from `locales { supported: }`, falling back to `default:`. It is a pure function of the header and the application's locales, so the interpreter and every compiled target agree | 2026-10-16 |
+| Matching an `Accept-Language` header (chosen in chunk 5.3c) | RFC 9110: split at commas, a weight `;q=` of 0 to 1 with up to three decimals, a weight of 0 excluded, `*` ignored, an entry that does not parse skipped (a range is read in any case, `_` as `-`). Tags are taken by descending weight then header order, and the first that matches wins: an exact supported locale, else a supported locale of the same language, the one CLDR likely subtags give for the language (`ICU4X` `LocaleExpander`, extended data) before any other, else the first listed in `supported:`. Only the language is compared when no supported locale has the exact tag, never the script (`zh-TW` with no supported `zh_tw` is answered by whichever supported `zh` locale the rule picks) | 2026-10-16 |
+| What the call is checked against (chosen in chunk 5.3c) | A standard-library call: `header` is a `Text?` parameter the call must pass (the operation table marks it `nullable`, not `optional`), taking a `Text`, a type built on `Text`, `none`, or any of those that may be `none`. With no `locales { }` in a project it is `type.temporal_locales_required` with its reason worded for this call (files on their own have none to require). In a query it is `query.value_unsupported`, as every call is | 2026-10-16 |
+| `locale` is a reserved namespace (chosen in chunk 5.3c) | A standard-library namespace cannot name a parameter, variable, declaration, domain or library (`semantic.standard_namespace_reserved`, area 1), so no parameter or variable is called `locale` any more. This page's examples, and the compiler's tests, call theirs `reader_locale`. A field (`input.locale`) or a named argument (`locale:`) is not a variable and keeps the name | 2026-10-16 |
+| Where the choice runs (chosen in chunk 5.3c) | `jadpo_value::locale::from_accept_language(header, &LocalePlan)`, given the plan's locales by `jadpo_value::run` (a fourth parameter, the application's `Option<&LocalePlan>`, which `jadpo-plan` builds from `locales { }` and the interpreter passes), over `icu_locale`'s likely subtags, so the code generator will call the same function | 2026-10-16 |
 | Constants as defaults (Richard) | A `constant` (area 3) counts as a literal for a setting's `default:`, so code and a setting can share one value; `configuration.default_literal_required` still refuses anything computed. Rule of thumb: if a deployment could ever need a different value it is a setting, otherwise a constant. (Revised 2026-10-16 (Richard): a constant does not count as a literal for `default:` or `test:`, which stay literals as chosen in chunk 5.1, `configuration.default_literal_required` unchanged; the rule of thumb stands. See the next row.) | 2026-10-16 |
 | A constant or a setting (Richard) | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both: one source, one way to read it. If a constant could seed a setting, code reading the constant would silently ignore the environment variable (the `DEFAULT_PORT` bug of TypeScript and pydantic code); `default:` on the field already names the default. Tiers: `constant` (fixed in code), `config` (per deployment), `flags { }` (area 16, changes at runtime). Decided, not built (chunk 5.3e) | 2026-10-16 |
 | Making a constant a setting (Richard) | `jadpo config move <constant>`, and the editor's "Make this a setting" running the same code, adds a `config` field of the constant's name and type with its value as `default:` and its `///` description, deletes the constant and rewrites every read to `config.<name>`, so a reviewer sees each place that can now differ per deployment. Offered, never required, so not part of `jadpo fmt --layout`. Refuses, editing nothing, a type a setting can't hold, a name a setting already has, and a constant read in a query, an update by `id`, a backfill or another constant. No command moves a setting back. Rejected: a constant an environment variable can override (`setting: true`: hides per-deployment behaviour at the call site, agents add it everywhere, no single list of variables, moving a file renames its variable); a `config { }` per domain; settings declared beside their use and gathered by the compiler; values per environment in source (`production:`, `staging:`), against no layering. Decided, not built (chunk 5.3e) | 2026-10-16 |

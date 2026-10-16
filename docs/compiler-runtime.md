@@ -410,7 +410,11 @@ over ICU4X with Unicode CLDR compiled in (pure Rust, pinned exactly, built
 for wasm32 like the rest; area 10, "Chosen in chunk 5.3"): the format
 arrives as `TimeFormatSpec` text, the locale as the `Locale` variant, and
 the locales an application supports (`locales { }`, `LocalePlan`) reach the
-wire through the codecs, which accept only those. Translations (area 10,
+wire through the codecs, which accept only those, and reach `jadpo-value`'s
+`run` as its `locales` argument, which `locale.from_accept_language`
+(chunk 5.3c; `locale` module, a pure function of the header and the plan)
+chooses among; a `nullable` parameter (a stub's `T?` that a call must still
+pass) is the one the table marks apart from an `optional` one. Translations (area 10,
 "Chosen in chunk 5.3b") are read in `jadpo-check`'s `translations` module
 from `translations/<locale>.json`, a salsa input of the project of its own
 (`Project::translations`): the messages are parsed into `jadpo-std`'s

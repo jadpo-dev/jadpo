@@ -422,11 +422,10 @@ reference only).
   default locale's file, every other file checked for the same keys and
   placeholders (their errors, with real output), and the interpreter and
   runtime running them.
-- [ ] **5.3c Choosing a locale from a request** `sonnet · high` (area 10,
+- [x] **5.3c Choosing a locale from a request** `sonnet · high` (area 10,
   "Locales"): the library call that picks a supported `Locale` from an
-  `Accept-Language` header and falls back to `default`. **Needs Richard**
-  to name it before it is built: no page does. Recommendation:
-  `locale.from_accept_language(header)`, giving a `Locale`.
+  `Accept-Language` header and falls back to `default`. Named by Richard on
+  2026-10-16: `locale.from_accept_language(header)`, giving a `Locale`.
 - [ ] **5.3d Names private to a domain** `opus · high` (area 1, "Files and
   names", decided 2026-10-16): a private function or type unique only
   within its domain in the checker's name table, resolution and imports,

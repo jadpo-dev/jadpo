@@ -2011,6 +2011,7 @@ impl<'p> Machine<'p> {
         at: SiteId,
     ) -> Result<Value, Stop> {
         let mut stopped: Option<Stop> = None;
+        let locales = self.program.plan().locales();
         // An inline function's expressions give a value per item, not one
         // an assertion's report could show.
         if inline.is_some() {
@@ -2033,7 +2034,7 @@ impl<'p> Machine<'p> {
                     }
                 }
             };
-            jadpo_value::run(op, values, &mut each)
+            jadpo_value::run(op, values, locales, &mut each)
         };
         if inline.is_some() {
             ctx.resume_recording();

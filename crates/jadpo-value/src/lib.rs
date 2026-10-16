@@ -35,6 +35,7 @@ pub mod collection;
 pub mod decimal;
 pub mod integer;
 pub mod json;
+pub mod locale;
 pub mod ops;
 pub mod order;
 pub mod present;
@@ -44,7 +45,7 @@ pub mod temporal;
 pub mod validate;
 mod value;
 
-pub use jadpo_std::{Op, Rounding};
+pub use jadpo_std::{LocalePlan, Op, Rounding};
 pub use ops::Fault;
 pub use validate::{Invalid, Validator};
 pub use value::{Decimal, QUOTIENT_PLACES, Record, Value, Variant, Zoned};
@@ -52,13 +53,29 @@ pub use value::{Decimal, QUOTIENT_PLACES, Record, Value, Variant, Zoned};
 /// Runs one standard-library operation with the values of its parameters
 /// in table order, its inline-function parameter left out; `each` runs the
 /// call's inline function on one item, and gives no value when it stopped
-/// (the caller knows why: it is [`Fault::Stopped`] here).
+/// (the caller knows why: it is [`Fault::Stopped`] here). `locales` is
+/// what the application's `locales { }` declares: the operations that
+/// choose among its locales read it, and every other ignores it.
 pub fn run(
     op: Op,
     args: &[Value],
+    locales: Option<&LocalePlan>,
     each: &mut dyn FnMut(&Value) -> Option<Value>,
 ) -> Result<Value, Fault> {
     match (op, args) {
+        // The locale a header asks for, of the ones the application
+        // supports (area 10, "Locales"); with none declared there is
+        // nothing to choose among.
+        (Op::LocaleFromAcceptLanguage, [header]) => {
+            let plan = locales.ok_or(Fault::Shape)?;
+            let header = match header {
+                Value::None => None,
+                Value::Text(text) => Some(&**text),
+                _ => return Err(Fault::Shape),
+            };
+            Ok(locale::value(locale::from_accept_language(header, plan)))
+        }
+        (Op::LocaleFromAcceptLanguage, _) => Err(Fault::Shape),
         (Op::CollectionContains, [Value::List(items), item]) => {
             Ok(Value::Bool(collection::contains(items, item)))
         }
@@ -237,6 +254,13 @@ mod tests {
             "en_gb",
             Vec::new(),
         );
+        let plan = LocalePlan {
+            default: jadpo_std::locale_ordinal("en_gb").unwrap_or(0),
+            supported: vec![
+                jadpo_std::locale_ordinal("en_gb").unwrap_or(0),
+                jadpo_std::locale_ordinal("fr_fr").unwrap_or(0),
+            ],
+        };
         let date = Value::Date(jadpo_std::date_number("2026-10-25").unwrap_or(0));
         let zoned = Value::Zoned(Zoned {
             millis: 0,
@@ -265,6 +289,7 @@ mod tests {
                         english.clone(),
                     ]
                 }
+                Op::LocaleFromAcceptLanguage => vec![Value::text("en-GB, fr;q=0.5")],
                 Op::CollectionContains => vec![items.clone(), Value::Int(2)],
                 Op::CollectionCount | Op::CollectionFilter | Op::CollectionMap => {
                     vec![items.clone()]
@@ -302,13 +327,18 @@ mod tests {
                 | Op::TemporalInstant
                 | Op::TemporalZone => vec![zoned.clone()],
             };
-            let result = run(operation.op, &args, &mut |item| {
+            let result = run(operation.op, &args, Some(&plan), &mut |item| {
                 Some(Value::Bool(matches!(item, Value::Int(n) if n % 2 == 1)))
             });
             assert!(result.is_ok(), "{} runs", operation.qualified());
         }
         assert_eq!(
-            run(Op::CollectionMap, std::slice::from_ref(&items), &mut double),
+            run(
+                Op::CollectionMap,
+                std::slice::from_ref(&items),
+                None,
+                &mut double
+            ),
             Ok(Value::list(vec![
                 Value::Int(2),
                 Value::Int(4),
@@ -323,6 +353,7 @@ mod tests {
                     Value::Int(3),
                     variant("half_even")
                 ],
+                None,
                 &mut double
             ),
             Ok(Value::Decimal(Decimal::new(333, 2)))
@@ -331,14 +362,46 @@ mod tests {
             run(
                 Op::IntegerDivide,
                 &[Value::Int(1), Value::Int(0), variant("up")],
+                None,
                 &mut double
             ),
             Err(Fault::DivisionByZero),
             "a zero divisor is a fault"
         );
         assert_eq!(
-            run(Op::CollectionCount, &[Value::Int(1)], &mut double),
+            run(Op::CollectionCount, &[Value::Int(1)], None, &mut double),
             Err(Fault::Shape)
         );
+        // The locale a header asks for is a `Locale` variant, and a call
+        // with no locales declared, or a header that is not text, is not
+        // run.
+        let mut asks = |header: Value, locales: Option<&LocalePlan>| {
+            run(
+                Op::LocaleFromAcceptLanguage,
+                &[header],
+                locales,
+                &mut double,
+            )
+        };
+        assert_eq!(
+            asks(Value::text("fr-CA, en;q=0.1"), Some(&plan)),
+            Ok(Value::variant(
+                jadpo_std::LOCALE,
+                jadpo_std::locale_ordinal("fr_fr").unwrap_or(0),
+                "fr_fr",
+                Vec::new()
+            ))
+        );
+        assert_eq!(
+            asks(Value::None, Some(&plan)),
+            Ok(Value::variant(
+                jadpo_std::LOCALE,
+                jadpo_std::locale_ordinal("en_gb").unwrap_or(0),
+                "en_gb",
+                Vec::new()
+            ))
+        );
+        assert_eq!(asks(Value::None, None), Err(Fault::Shape));
+        assert_eq!(asks(Value::Int(1), Some(&plan)), Err(Fault::Shape));
     }
 }

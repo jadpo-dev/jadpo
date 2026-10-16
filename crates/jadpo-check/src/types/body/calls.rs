@@ -741,6 +741,14 @@ impl Body<'_> {
                 continue;
             }
             let expected = substitute(&param, &bound);
+            // A value that may be `none` (`header: Text?`) takes a value
+            // built on the type, or one that may be `none`.
+            if let Ty::Nullable(inner) = &expected
+                && let Some(accepts) = built_on(inner)
+            {
+                self.nullable_built_on_argument(&value, ty, accepts, &expected);
+                continue;
+            }
             if let Some(accepts) = built_on(&expected) {
                 let name = params[*slot].0.clone();
                 self.built_on_argument(&value, ty, accepts, written, &name);
@@ -818,6 +826,11 @@ impl Body<'_> {
             )
         {
             self.locale_argument(call, &args, &slots, table, written);
+        }
+        if let Some(table) = table
+            && table.op == jadpo_std::Op::LocaleFromAcceptLanguage
+        {
+            self.locales_for_choosing(call, written);
         }
         substitute(&result, &bound)
     }
@@ -930,6 +943,33 @@ impl Body<'_> {
             .reason(reason)
             .next(format!("Pass {wanted} here")),
         );
+    }
+
+    /// An argument to a parameter that takes `none` or a value built on one
+    /// of `accepts`: `Text?` takes `none`, a `Text`, a named type built on
+    /// `Text`, and either of those that may be `none`.
+    fn nullable_built_on_argument(
+        &mut self,
+        value: &Expr,
+        ty: Option<Ty>,
+        accepts: &[Prim],
+        expected: &Ty,
+    ) {
+        // A literal is `none` or written as the type is.
+        let Some(ty) = ty else {
+            self.check(value, expected);
+            return;
+        };
+        if ty.has_error() || matches!(ty, Ty::None) {
+            return;
+        }
+        let built = self
+            .table
+            .representation(ty.strip_nullable())
+            .is_some_and(|prim| accepts.contains(&prim));
+        if !built {
+            self.require(value, &ty, expected);
+        }
     }
 
     /// Binds the type variables in `param` from an argument's type, read
