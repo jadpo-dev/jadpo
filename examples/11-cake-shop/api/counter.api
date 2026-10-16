@@ -1,6 +1,8 @@
 // Written by `jadpo api update` from the routes; never edit it by hand.
 // `jadpo check` fails while it disagrees with them.
-version: 1
+version: 2
+
+authentication: service_key
 
 GET /counter/handovers
     input: CollectionDay (query)
@@ -8,10 +10,12 @@ GET /counter/handovers
     status: 200
 
 GET /counter/keys
+    caller: service
     output: List<IssuedKey>
     status: 200
 
 POST /counter/keys
+    caller: service
     input: OutletKeyRequest (body)
     output: NewOutletKey
     status: 201

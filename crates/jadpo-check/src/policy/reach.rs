@@ -544,18 +544,20 @@ pub fn route_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 }
 
 /// Whether policy may refuse the caller of the action called `run` with
-/// 403 `not_permitted` (area 9, "When policy says no"): it is listed under
-/// `actions:`, or it creates, changes or deletes a record itself or
-/// through an action it calls. A record a read can't see is its code's
-/// own not-found failure instead.
+/// 403 `not_permitted` (area 9, "When policy says no"): it, or an action
+/// it calls, is listed under `actions:`, or creates, changes or deletes a
+/// record. A record a read can't see is its code's own not-found failure
+/// instead.
 pub fn may_refuse(db: &dyn Db, project: Project, run: &str) -> bool {
-    if super::access(db, project).root.action(run).is_some() {
-        return true;
-    }
+    let access = super::access(db, project);
     let acts = all_acts(db, project);
     let mut seen = BTreeSet::from([run.to_string()]);
     let mut queue = vec![run.to_string()];
     while let Some(current) = queue.pop() {
+        // An action listed under `actions:`, the route's or one it calls.
+        if access.root.action(&current).is_some() {
+            return true;
+        }
         for act in acts.get(&current).into_iter().flatten() {
             match act {
                 Act::Entity(_, Effect::Create | Effect::Update | Effect::Delete) => return true,

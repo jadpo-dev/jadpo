@@ -1,11 +1,14 @@
 //! One OpenAPI 3.1 document per API (area 7, "OpenAPI"), written by `jadpo
 //! check` into `build/openapi/<api>.json`: every route with its
 //! placeholders, input, output and success status, the failures it can
-//! reach under their statuses, the 400 and 422 input responses, rate
-//! limits' 429, the 413 a body past the limit gets, the 500 and the 504
-//! every route can answer, and on every route but a `GET` the
-//! `Idempotency-Key` header (required when the API says so) with the 409
-//! and 422 a key's repeat can answer, all with the `///` descriptions. Its
+//! reach under their statuses, the 400, 413, 429, 500 and 504 every route
+//! can answer, the 422 of a route that takes input, the 503 of one that
+//! uses a store, and on every route but a `GET` the `Idempotency-Key`
+//! header (required when the API says so), described by what the route
+//! keeps, with the 409 and 422 a key's repeat can answer where a key is
+//! claimed, all with the `///` descriptions. Each route's responses come
+//! from what it runs (chunk 4.9): what it can be refused, whether it uses
+//! a store, and whether its response is kept for a repeat. Its
 //! title is the application's name and its version the API record's
 //! version. Health (`/health/live`, `/health/ready`) is the runtime's own
 //! and in no document. The sign-in methods the API accepts are its
@@ -27,12 +30,12 @@ use crate::lookups::Lookup;
 
 /// The responses every route shares, by status, with the code and message
 /// each sends (area 7, "How failures reach the client").
-const SHARED: [(&str, &str, &str, &str); 8] = [
+const SHARED: [(&str, &str, &str, &str); 9] = [
     (
         "400",
         "InvalidRequest",
         "invalid_request",
-        "The body is not JSON, the query string can't be read, or the `Idempotency-Key` header is missing where the API requires it or isn't 1 to 255 printable ASCII characters.",
+        "The request can't be read: its path or query string isn't valid UTF-8, a header's value isn't printable ASCII, the body isn't JSON or isn't sent as `application/json`, or the `Idempotency-Key` header is missing where the API requires it or isn't 1 to 255 printable ASCII characters.",
     ),
     (
         "409",
@@ -63,6 +66,12 @@ const SHARED: [(&str, &str, &str, &str); 8] = [
         "RateLimited",
         "rate_limited",
         "Too many requests from this caller; wait as `Retry-After` says.",
+    ),
+    (
+        "503",
+        "Unavailable",
+        "unavailable",
+        "A store the route needs can't be reached, or kept changing under it; nothing was kept, so a retry runs again.",
     ),
     (
         "500",
@@ -182,27 +191,18 @@ pub fn document(
     let required = declared.is_some_and(|api| api.idempotency == jadpo_std::Idempotency::Required);
     let identity = crate::identity::identity(db, project);
     // The methods it accepts: its own list, or every declared one.
-    let methods: Vec<jadpo_std::AuthenticationMethod> = match declared {
-        Some(api) if !api.methods.is_empty() => api.methods.clone(),
-        _ => identity
-            .methods
-            .iter()
-            .map(|method| method.method)
-            .collect(),
-    };
+    let methods = super::apis::accepted_methods(db, project, api);
     let mut refs: BTreeSet<Key> = BTreeSet::new();
     let mut failure_schemas: BTreeMap<String, Value> = BTreeMap::new();
     let mut paths: BTreeMap<String, Value> = BTreeMap::new();
     for (_, route) in &routes {
-        let refuses = !route.run.query
-            && crate::graph::declaration_key(&lookup, &route.run.name)
-                .is_some_and(|key| crate::policy::reach::may_refuse(db, project, key.name()));
+        let facts = facts(db, project, &lookup, route);
         let mut operation = operation(
             &wire,
             &lookup,
             route,
             required,
-            refuses,
+            &facts,
             &methods,
             &mut refs,
             &mut failure_schemas,
@@ -296,6 +296,65 @@ pub fn document(
     Some(out)
 }
 
+/// What a route's responses follow from in what it runs.
+struct Facts {
+    /// Policy may refuse its caller with 403 `not_permitted`.
+    refuses: bool,
+    /// It uses a store, so it can answer 503 `unavailable`.
+    store: bool,
+    /// What a write keeps for an `Idempotency-Key`.
+    keys: Keys,
+}
+
+/// What a write keeps for an `Idempotency-Key` (area 7, "Idempotency
+/// keys").
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Keys {
+    /// The key and the response, so a repeat gets it.
+    Kept,
+    /// The key while the request runs, but not its response, which starts
+    /// or ends a session or carries a new credential.
+    Claimed,
+    /// Nothing: the action writes no store, so running it again changes
+    /// nothing.
+    Nothing,
+}
+
+fn facts(db: &dyn Db, project: Project, lookup: &Lookup<'_>, route: &RouteModel) -> Facts {
+    if route.run.query || route.run.generated.is_some() {
+        return Facts {
+            refuses: false,
+            store: true,
+            keys: Keys::Nothing,
+        };
+    }
+    let Some(key) = crate::graph::declaration_key(lookup, &route.run.name) else {
+        return Facts {
+            refuses: false,
+            store: false,
+            keys: Keys::Nothing,
+        };
+    };
+    let name = key.name();
+    let writes = crate::types::written_stores(db, project)
+        .get(name)
+        .is_some_and(|stores| !stores.is_empty());
+    let keys = if !writes {
+        Keys::Nothing
+    } else if crate::types::unkept_responses(db, project).contains(name) {
+        Keys::Claimed
+    } else {
+        Keys::Kept
+    };
+    Facts {
+        refuses: crate::policy::reach::may_refuse(db, project, name),
+        store: crate::types::used_stores(db, project)
+            .get(name)
+            .is_some_and(|stores| !stores.is_empty()),
+        keys,
+    }
+}
+
 fn response(description: &str, schema: Option<Value>) -> Value {
     let mut out = Value::object();
     out.set("description", description);
@@ -385,7 +444,7 @@ fn operation(
     lookup: &Lookup<'_>,
     route: &RouteModel,
     key_required: bool,
-    refuses: bool,
+    facts: &Facts,
     methods: &[jadpo_std::AuthenticationMethod],
     refs: &mut BTreeSet<Key>,
     failure_schemas: &mut BTreeMap<String, Value>,
@@ -458,7 +517,11 @@ fn operation(
         parameter.set("in", "header");
         parameter.set(
             "description",
-            "Makes a retry safe: a repeat with the same key and request gets the first response for 24 hours instead of running again.",
+            match facts.keys {
+                Keys::Kept => "Makes a retry safe: a repeat with the same key and request gets the first response for 24 hours instead of running again.",
+                Keys::Claimed => "Keeps a retry from running alongside the first request; the response isn't kept, since it starts or ends a session or carries a new credential, so a retry once the first has finished runs again.",
+                Keys::Nothing => "Accepted, but nothing is kept: the route writes no store, so running it again changes nothing.",
+            },
         );
         parameter.set_some("required", key_required);
         let mut schema = Value::object();
@@ -564,7 +627,7 @@ fn operation(
     }
     // Policy (area 9): a create, a change to a record the action loaded,
     // or an action listed under `actions:` can be refused.
-    if refuses {
+    if facts.refuses {
         failure_schemas.insert(
             "PolicyRefused".to_string(),
             envelope(
@@ -578,8 +641,15 @@ fn operation(
             .or_default()
             .push(("not_permitted".to_string(), "PolicyRefused".to_string()));
     }
-    let has_input = route.input.is_some() || route.params().next().is_some();
-    if writes {
+    // A store that can't answer, or a change found as the action commits
+    // more times than the budget allows.
+    if facts.store {
+        by_status
+            .entry("503".to_string())
+            .or_default()
+            .push(("unavailable".to_string(), "Unavailable".to_string()));
+    }
+    if writes && facts.keys != Keys::Nothing {
         by_status
             .entry("409".to_string())
             .or_default()
@@ -592,7 +662,7 @@ fn operation(
     for (status, mut failures) in by_status {
         failures.sort();
         let mut schemas: Vec<Value> = failures.iter().map(|(_, name)| reference(name)).collect();
-        if status == "422" && has_input {
+        if status == "422" {
             schemas.insert(0, reference("InvalidInput"));
         }
         let codes: Vec<String> = failures
@@ -614,13 +684,11 @@ fn operation(
             ),
         );
     }
-    if route.input.is_some() || writes {
-        responses.set("400", shared_response("InvalidRequest"));
-    }
-    if route.input.is_some() && !route.method.reads_query() {
-        responses.set("413", shared_response("RequestTooLarge"));
-    }
-    if has_input && responses.get("422").is_none() {
+    // Any request can be unreadable or too large, and a query string or
+    // body a route doesn't read is unknown input.
+    responses.set("400", shared_response("InvalidRequest"));
+    responses.set("413", shared_response("RequestTooLarge"));
+    if responses.get("422").is_none() {
         responses.set("422", shared_response("InvalidInput"));
     }
     responses.set("429", shared_response("RateLimited"));
@@ -652,9 +720,17 @@ fn type_schema(wire: &Wire<'_>, key: &Key, refs: &mut BTreeSet<Key>) -> Value {
                         .collect::<Vec<_>>(),
                 );
             } else {
+                // A variant without fields is sent as its name, one with
+                // fields as an object tagged with it.
                 let options: Vec<Value> = variants
                     .into_iter()
                     .map(|(name, fields)| {
+                        if fields.is_empty() {
+                            let mut plain = Value::object();
+                            plain.set("type", "string");
+                            plain.set("const", name.as_str());
+                            return plain;
+                        }
                         let mut tag = Value::object();
                         tag.set("const", name.as_str());
                         let mut properties = Value::object();

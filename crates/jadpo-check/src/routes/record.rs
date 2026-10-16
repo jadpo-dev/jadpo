@@ -4,8 +4,10 @@
 //! record disagrees with the routes ([`record_problems`]) and `jadpo api
 //! update` rewrites it, so every change to the API is a diff of one file.
 //!
-//! An API that requires an `Idempotency-Key` on its writes says so at the
-//! top (`idempotency: required`), since every write must then send one.
+//! An API says at the top how clients sign in to it (`authentication:
+//! browser_session, api_token`, chunk 4.9) and whether its writes must
+//! send an `Idempotency-Key` (`idempotency: required`); a route for one
+//! kind of caller says which (`caller: user`).
 //!
 //! The record is the wire contract, so a field shows what a client sends
 //! or reads (`Text { max_length: 200 }`), not the name of the type behind
@@ -83,12 +85,24 @@ pub fn record_bodies(db: &dyn Db, project: Project) -> BTreeMap<String, String> 
         .into_iter()
         .map(|(api, routes)| {
             let mut body = write(&wire, &lookup, routes);
+            let mut head = String::new();
+            // How clients sign in: switching a bearer-only API to cookies
+            // changes what a browser's requests carry (area 8).
+            let methods = super::apis::accepted_methods(db, project, &api);
+            if !methods.is_empty() {
+                let names: Vec<&str> = methods.iter().map(|method| method.name()).collect();
+                head.push_str(&format!("authentication: {}\n", names.join(", ")));
+            }
             // Requiring a key changes what every write must send.
             if apis
                 .get(&api)
                 .is_some_and(|api| api.idempotency == jadpo_std::Idempotency::Required)
             {
-                body.insert_str(0, "idempotency: required\n\n");
+                head.push_str("idempotency: required\n");
+            }
+            if !head.is_empty() {
+                head.push('\n');
+                body.insert_str(0, &head);
             }
             (api, body)
         })
@@ -135,6 +149,10 @@ fn write(
         // reviewer must see (area 8).
         if !route.authentication.needs_caller() {
             out.push_str("    authentication: none\n");
+        }
+        // A route for one kind of caller refuses the other.
+        if let Some(kind) = route.caller {
+            out.push_str(&format!("    caller: {}\n", kind.name()));
         }
         if let Some(input) = &route.input {
             if let Some(key) = declaration_key(lookup, input) {

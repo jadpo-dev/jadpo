@@ -1,6 +1,8 @@
 // Written by `jadpo api update` from the routes; never edit it by hand.
 // `jadpo check` fails while it disagrees with them.
-version: 1
+version: 2
+
+authentication: browser_session
 
 POST /account/sign-up
     authentication: none
@@ -13,6 +15,7 @@ GET /bakeries
     status: 200
 
 POST /bakeries
+    caller: user
     input: NewBakery (body)
     output: BakeryView
     status: 201
@@ -22,6 +25,7 @@ GET /bakeries/{bakery_id: Uuid}/recipes
     status: 200
 
 POST /bakeries/{bakery_id: Uuid}/recipes
+    caller: user
     input: WriteRecipe (body)
     output: RecipeCard
     status: 201

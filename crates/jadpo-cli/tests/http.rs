@@ -1455,7 +1455,14 @@ fn openapi_shows_the_session_and_what_signing_in_answers() {
         record.contains("POST /account/sign-up\n    authentication: none\n"),
         "{record}"
     );
-    assert!(record.contains("POST /notes\n    input:"), "{record}");
+    assert!(
+        record.contains("POST /notes\n    caller: user\n    input:"),
+        "{record}"
+    );
+    assert!(
+        record.contains("\nauthentication: browser_session\n"),
+        "the record says how clients sign in: {record}"
+    );
     let listed = jadpo(&root, &["routes", "--json"]);
     assert_eq!(listed.code, 0, "{}{}", listed.stdout, listed.stderr);
     let listed: serde_json::Value = serde_json::from_str(&listed.stdout).expect("JSON");
@@ -2827,4 +2834,417 @@ routes Leaving {
     );
     let written = dev.send("POST", "/notes", &signed_in, r#"{"text":"still here"}"#);
     assert_eq!(written.status, 201, "{written:?}");
+}
+
+/// A project whose routes send the wire's harder values (a time of day, an
+/// enum with plain and tagged variants), page through a query, patch a
+/// record, and run actions that use no store or call a listed one.
+const WIRE: &[(&str, &str)] = &[
+    ("app.jadpo", "application {}\n"),
+    (
+        "policy.jadpo",
+        "use lab\n\npolicy {\n    actions: {\n        lab.echo: [Access.public]\n    }\n}\n",
+    ),
+    (
+        "domains/lab/entities/item.jadpo",
+        r#"use lab/types { ItemName, Note }
+
+entity Item {
+    id: Uuid
+    name: ItemName
+    note: Note?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+"#,
+    ),
+    (
+        "domains/lab/actions/add_item.jadpo",
+        r#"use lab/entities { Item }
+use lab/types { ItemView }
+
+action add_item(input: AddItem) -> ItemView {
+    var item: Item = Item.create {
+        set: {
+            name: input.name
+            note: input.note
+        }
+    }
+    return ItemView {
+        id: item.id
+        name: item.name
+        note: item.note
+    }
+}
+
+type AddItem = Input {
+    pick: [Item.name, Item.note]
+}
+"#,
+    ),
+    (
+        "domains/lab/actions/edit_item.jadpo",
+        r#"use lab/entities { Item, ItemNotFound }
+use lab/types { ItemView }
+
+action edit_item(item_id: Item.id, input: ItemChanges) fails ItemNotFound -> ItemView {
+    var item: Item = attempt Item.update(item_id) {
+        patch: input
+    }
+    return ItemView {
+        id: item.id
+        name: item.name
+        note: item.note
+    }
+}
+
+type ItemChanges = Input {
+    pick: [Item.name, Item.note]
+    optional: all
+}
+"#,
+    ),
+    (
+        "domains/lab/actions/echo.jadpo",
+        r#"use lab/types { EchoInput, EchoView }
+
+/// Sends back what it was given, using no store.
+action echo(input: EchoInput) -> EchoView {
+    return EchoView {
+        moment: input.moment
+        outcome: input.outcome
+        name: none
+    }
+}
+"#,
+    ),
+    (
+        "domains/lab/types/echo_input.jadpo",
+        r#"use lab/types { Moment, Outcome }
+
+type EchoInput = Input {
+    moment: Moment
+    outcome: Outcome
+}
+"#,
+    ),
+    (
+        "domains/lab/actions/relay.jadpo",
+        r#"use lab/entities { Item, ItemNotFound }
+use lab/types { EchoInput, EchoView }
+use lab/actions { echo }
+
+/// Echoes through the listed action, with the item's name.
+action relay(item_id: Item.id, input: EchoInput) fails ItemNotFound -> EchoView {
+    var item: Item = attempt Item.get(item_id)
+    var echoed: EchoView = echo(input)
+    return EchoView {
+        moment: echoed.moment
+        outcome: echoed.outcome
+        name: item.name
+    }
+}
+"#,
+    ),
+    (
+        "domains/lab/queries/find_item.jadpo",
+        r#"use lab/entities { Item }
+use lab/types { ItemView }
+use lab/failures { ItemMissing }
+
+query find_item(item_id: Item.id) fails ItemMissing -> ItemView {
+    from: Item
+    where: Item.id == item_id
+    missing: ItemMissing {
+        item_id: item_id
+    }
+}
+"#,
+    ),
+    (
+        "domains/lab/queries/list_items.jadpo",
+        r#"use lab/entities { Item }
+use lab/types { ItemView }
+
+/// Items by name, a page at a time.
+query list_items(filter: ListItems) -> Page<ItemView> {
+    from: Item
+    order: [Item.name asc]
+    page: {
+        size: filter.page_size
+        after: filter.after
+    }
+}
+
+/// Which page.
+type ListItems = Input {
+    page_size: PageSize {
+        default: 10
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+"#,
+    ),
+    (
+        "domains/lab/failures/item_missing.jadpo",
+        r#"use lab/entities { Item }
+
+type ItemMissing = Failure {
+    kind: FailureKind.not_found
+    message: "No such item."
+    client: {
+        item_id: Item.id
+    }
+}
+"#,
+    ),
+    (
+        "domains/lab/routes/items.jadpo",
+        r#"use lab/entities { Item }
+use lab/types { EchoInput, EchoView, ItemView }
+use lab/actions { AddItem, ItemChanges, add_item, echo, edit_item, relay }
+use lab/queries { ListItems, find_item, list_items }
+
+routes Items {
+    prefix: /items
+
+    POST / {
+        authentication: RouteAuthentication.none
+        input: AddItem
+        output: ItemView
+        status: SuccessStatus.created
+        run: add_item(input)
+    }
+
+    GET / {
+        authentication: RouteAuthentication.none
+        input: ListItems
+        output: Page<ItemView>
+        run: list_items(input)
+    }
+
+    PATCH /{item_id: Item.id} {
+        authentication: RouteAuthentication.none
+        input: ItemChanges
+        output: ItemView
+        run: edit_item(item_id, input)
+    }
+
+    GET /{item_id: Item.id} {
+        authentication: RouteAuthentication.none
+        output: ItemView
+        run: find_item(item_id)
+    }
+
+    POST /echo {
+        authentication: RouteAuthentication.none
+        input: EchoInput
+        output: EchoView
+        run: echo(input)
+    }
+
+    POST /{item_id: Item.id}/relay {
+        authentication: RouteAuthentication.none
+        input: EchoInput
+        output: EchoView
+        run: relay(item_id, input)
+    }
+}
+"#,
+    ),
+    (
+        "domains/lab/routes/items.test.jadpo",
+        r#"use lab/types { ItemView }
+use lab/actions { AddItem, ItemChanges, add_item }
+use lab/queries { find_item }
+
+test "a patch that leaves the note out keeps it" {
+    var item: ItemView = add_item(AddItem {
+        name: "a"
+        note: "keep me"
+    })
+    var changed: Response = request {
+        method: HttpMethod.patch
+        path: "/items/{item_id}"
+        params: {
+            item_id: item.id
+        }
+        input: ItemChanges {
+            name: "b"
+        }
+    }
+    assert changed.status == 200
+    var after: ItemView = attempt find_item(item.id)
+    assert after.name == "b"
+    assert after.note == "keep me"
+}
+"#,
+    ),
+    (
+        "domains/lab/types/echo_view.jadpo",
+        r#"use lab/types { ItemName, Moment, Outcome }
+
+type EchoView = Output {
+    moment: Moment
+    outcome: Outcome
+    name: ItemName?
+}
+"#,
+    ),
+    (
+        "domains/lab/types/item_name.jadpo",
+        "type ItemName = Text {\n    min_length: 1\n    max_length: 80\n}\n",
+    ),
+    (
+        "domains/lab/types/item_view.jadpo",
+        "use lab/entities { Item }\n\ntype ItemView = Output {\n    pick: [Item.id, Item.name, Item.note]\n}\n",
+    ),
+    ("domains/lab/types/moment.jadpo", "type Moment = Time {}\n"),
+    (
+        "domains/lab/types/note.jadpo",
+        "type Note = Text {\n    max_length: 200\n}\n",
+    ),
+    (
+        "domains/lab/types/outcome.jadpo",
+        "use lab/types { Small }\n\ntype Outcome = Enum {\n    pending\n    paid: {\n        amount: Small\n    }\n}\n",
+    ),
+    (
+        "domains/lab/types/small.jadpo",
+        "type Small = Int {\n    min: 0\n    max: 100\n}\n",
+    ),
+];
+
+/// The wire project, migrated, recorded and checking cleanly.
+fn wire_project() -> (tempdir::Dir, PathBuf) {
+    let dir = tempdir::Dir::new("wire");
+    let root = dir.path().join("lab");
+    for (path, text) in WIRE {
+        write(&root, path, text);
+    }
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["api", "update"],
+        &["check"],
+    ] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    (dir, root)
+}
+
+/// The project's OpenAPI document for `main`.
+fn openapi(root: &Path) -> serde_json::Value {
+    let text = std::fs::read_to_string(root.join("build/openapi/main.json")).expect("written");
+    serde_json::from_str(&text).expect("json")
+}
+
+#[test]
+fn openapi_describes_values_as_they_are_sent() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = wire_project();
+    let document = openapi(&root);
+    let schemas = &document["components"]["schemas"];
+    assert_eq!(
+        schemas["Outcome"]["oneOf"][0],
+        serde_json::json!({ "type": "string", "const": "pending" }),
+        "a plain variant is its name"
+    );
+    assert_eq!(schemas["Outcome"]["oneOf"][1]["properties"]["tag"]["const"], "paid");
+    let moment = &schemas["EchoInput"]["properties"]["moment"];
+    assert_eq!(moment["type"], "string", "{moment}");
+    // What the runtime sends matches what the document says.
+    let dev = Dev::start(&root);
+    let echoed = dev.send(
+        "POST",
+        "/items/echo",
+        &[],
+        r#"{"moment":"09:30","outcome":"pending"}"#,
+    );
+    assert_eq!(echoed.status, 200, "{echoed:?}");
+    assert_eq!(
+        echoed.json(),
+        serde_json::json!({ "moment": "09:30", "outcome": "pending", "name": null })
+    );
+    let pattern = moment["pattern"].as_str().expect("a pattern");
+    assert_eq!(pattern, "^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]{1,3})?)?$");
+}
+
+#[test]
+fn openapi_lists_each_routes_responses_from_what_it_runs() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = wire_project();
+    let document = openapi(&root);
+    let responses = |method: &str, path: &str| {
+        let operation = &document["paths"][path][method];
+        let mut statuses: Vec<String> = operation["responses"]
+            .as_object()
+            .unwrap_or_else(|| panic!("{method} {path}"))
+            .keys()
+            .cloned()
+            .collect();
+        statuses.sort();
+        statuses
+    };
+    let key_description = |method: &str, path: &str| {
+        document["paths"][path][method]["parameters"]
+            .as_array()
+            .and_then(|parameters| {
+                parameters
+                    .iter()
+                    .find(|parameter| parameter["name"] == "Idempotency-Key")
+            })
+            .and_then(|parameter| parameter["description"].as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    // Every route can be unreadable, too large or given unknown input.
+    for (method, path) in [("get", "/items/{item_id}"), ("get", "/items")] {
+        let statuses = responses(method, path);
+        for status in ["400", "413", "422", "429", "500", "503", "504"] {
+            assert!(statuses.contains(&status.to_string()), "{method} {path}: {statuses:?}");
+        }
+    }
+    // A write that keeps its response promises the replay.
+    assert!(key_description("post", "/items").contains("gets the first response"));
+    assert!(responses("post", "/items").contains(&"409".to_string()));
+    // One that uses no store keeps nothing, and can't be unavailable.
+    let echo = responses("post", "/items/echo");
+    assert!(!echo.contains(&"409".to_string()), "{echo:?}");
+    assert!(!echo.contains(&"503".to_string()), "{echo:?}");
+    assert!(key_description("post", "/items/echo").contains("nothing is kept"));
+    // Calling a listed action can be refused.
+    assert!(
+        responses("post", "/items/{item_id}/relay").contains(&"403".to_string()),
+        "{:?}",
+        responses("post", "/items/{item_id}/relay")
+    );
+
+    // A page's bad cursor is bad input in the field it came in.
+    let dev = Dev::start(&root);
+    let bad = dev.send("GET", "/items?after=nonsense", &[], "");
+    assert_eq!(bad.status, 422, "{bad:?}");
+    assert_eq!(
+        bad.json()["error"]["details"]["problems"],
+        serde_json::json!([{ "field": "after", "rule": "format" }])
+    );
+}
+
+#[test]
+fn a_route_test_leaves_an_omitted_field_out() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = wire_project();
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
 }

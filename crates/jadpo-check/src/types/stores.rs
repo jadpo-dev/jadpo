@@ -108,6 +108,74 @@ pub fn store_reaches(
         .collect()
 }
 
+/// The actions and fixtures in `file` whose own body starts or ends a
+/// session or issues an API token or a service key (area 8).
+#[salsa::tracked(returns(ref))]
+fn session_effects(db: &dyn Db, project: Project, file: File) -> BTreeSet<String> {
+    use jadpo_std::http::SessionOp;
+    let mut out = BTreeSet::new();
+    for callable in callables_of(db, file) {
+        let checked = typed_body(db, project, callable);
+        let Some(key) = checked.key.as_ref() else {
+            continue;
+        };
+        let affects = checked.body.sites.iter().any(|site| {
+            matches!(
+                &site.node,
+                Node::Expr(jadpo_graph::body::Expr::Call {
+                    callee: Callee::Session(
+                        SessionOp::Start | SessionOp::End | SessionOp::IssueToken | SessionOp::IssueKey
+                    ),
+                    ..
+                })
+            )
+        });
+        if affects {
+            out.insert(key.name().to_string());
+        }
+    }
+    out
+}
+
+/// The actions whose response is never kept for an idempotent repeat:
+/// each one that starts or ends a session, or issues a token or a key,
+/// itself or through an action it calls (area 7, "Idempotency keys").
+#[salsa::tracked(returns(ref))]
+pub fn unkept_responses(db: &dyn Db, project: Project) -> BTreeSet<String> {
+    let mut calls: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut direct: BTreeSet<String> = BTreeSet::new();
+    for &file in project.files(db) {
+        direct.extend(session_effects(db, project, file).iter().cloned());
+        for (name, found) in store_reaches(db, project, file) {
+            let callees = calls.entry(name.clone()).or_default();
+            for reach in found {
+                if let Reach::Calls(callee) = reach {
+                    callees.insert(callee.clone());
+                }
+            }
+        }
+    }
+    calls
+        .keys()
+        .filter(|name| {
+            let mut seen = BTreeSet::from([(*name).clone()]);
+            let mut queue = vec![(*name).clone()];
+            while let Some(current) = queue.pop() {
+                if direct.contains(&current) {
+                    return true;
+                }
+                for callee in calls.get(&current).into_iter().flatten() {
+                    if seen.insert(callee.clone()) {
+                        queue.push(callee.clone());
+                    }
+                }
+            }
+            false
+        })
+        .cloned()
+        .collect()
+}
+
 /// The stores each action and fixture writes, through every action it
 /// calls: each store with an entity it writes there.
 #[salsa::tracked(returns(ref))]
