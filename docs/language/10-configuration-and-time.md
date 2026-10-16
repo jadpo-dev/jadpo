@@ -177,7 +177,11 @@ BCP 47 tag (`en-GB`). A `Duration` is written as it is in source (`30s`, `5m`,
 
 A default is a literal of the field's type, checked while compiling
 (`default: 25`, `default: 5s`, `default: LogLevel.normal`), against every rule of
-the type and the types it is built on. The same is true of `test:`, the value
+the type and the types it is built on. A constant (area 3,
+[Constants](03-logic.md#constants)) counts as a literal here, since it is
+fixed while compiling: `default: paging.largest_page` reads one through its
+library, so the code and the setting share one value (decided 2026-10-16,
+not built until chunk 5.3e). The same is true of `test:`, the value
 every test reads (below); a field that has none of its own default and is read
 by a test needs one.
 
@@ -1512,6 +1516,10 @@ error: `default:` on `page_size` isn't a literal
 check failed: 1 error, 1 file
 ```
 
+Here `largest_page` names nothing. Once constants are built (chunk 5.3e),
+a constant of the setting's type is accepted after `default:`, and the
+reason says "a literal or a constant".
+
 ### `configuration.default_type`
 
 ```jadpo check project=e-default-type expect=configuration.default_type
@@ -2648,3 +2656,4 @@ chunk 5.3c.
 | Writing a time (chosen in chunk 5.3) | Always the Gregorian calendar (as `Intl.DateTimeFormat` with `calendar: "gregory"`), the locale's own digits, CLDR's narrow no-break space written as a plain space. A built-in format is the locale's pattern at CLDR's four lengths (`date_full` with the weekday), so `date_time_long` is "27 September 2026 at 14:30:05 BST" in `en_gb`, with seconds as `timeStyle: "long"` has. A declared format takes the locale's pattern for its parts (a month as a name from the long or medium date pattern, a number from the short one; a date and a time joined as the locale joins them for that month) and sets each part's width: `numeric` leaves a number as the locale writes it, `two_digit` makes it at least two. Parts with no pattern together are written one after another with a space, and `zone_name` alone is the name alone | 2026-10-16 |
 | `format_relative` (chosen in chunk 5.3) | Against `now:`, in the zone the value is seen in: under a minute either way "just now" (English; the locale's "now" elsewhere); under an hour whole minutes, a past value rounded down and a future one up; the same local date "Today at" and the short time; the date before or after "Yesterday at" or "Tomorrow at"; two to six days away the weekday and the short time; anything else the long date. The words are the locale's, the first letter a capital; a locale with no word for yesterday or tomorrow shows the long date | 2026-10-16 |
 | Not built here (chosen in chunk 5.3) | Translations (`translations/`, ICU MessageFormat, typed calls, their errors) and choosing a locale from an `Accept-Language` header, which the page calls a library call without naming it, are chunks 5.3b and 5.3c | 2026-10-16 |
+| Constants as defaults (Richard) | A `constant` (area 3) counts as a literal for a setting's `default:`, so code and a setting can share one value; `configuration.default_literal_required` still refuses anything computed. Rule of thumb: if a deployment could ever need a different value it is a setting, otherwise a constant. Decided, not built (chunk 5.3e) | 2026-10-16 |

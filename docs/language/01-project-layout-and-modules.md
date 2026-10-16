@@ -32,7 +32,9 @@ one defined later or in another file. Names are unique across the whole
 project, so a second `Count` in another file is an error (see
 `semantic.duplicate_declaration` below). The one exception, decided
 2026-10-16 and not built until chunk 5.3d: a private function or type needs
-a name unique only within its domain (see [Files and names](#files-and-names)).
+a name unique only within its domain (see [Files and names](#files-and-names)),
+as does a private constant (area 3, decided 2026-10-16, not built until
+chunk 5.3e).
 
 ## Domains instead of modules
 
@@ -51,7 +53,7 @@ Every name has one spelling, decided by what kind of thing it names.
 | Kind of name | Form | Examples |
 |---|---|---|
 | Types and declared contracts (entities, failures, services, config, events) | `UpperCamelCase` | `Todo`, `TodoNotFound`, `ReminderMail` |
-| Values, fields, parameters, functions, actions, queries, jobs, variants | `lower_snake_case` | `due_at`, `order_total`, `overdue_reminders` |
+| Values, fields, parameters, constants, functions, actions, queries, jobs, variants | `lower_snake_case` | `due_at`, `order_total`, `overdue_reminders` |
 | Standard library | lowercase namespace, always qualified | `temporal.in_zone(...)` |
 | Keywords | lowercase | `function`, `return`, `match` |
 
@@ -67,7 +69,8 @@ names a declaration, field, parameter, variable or variant, and using one is
 `if`, `in`, `library`, `match`, `mut`, `none`, `not`, `or`, `package`,
 `propagate`, `provide`, `public`, `query`, `reject`, `resource`, `return`,
 `routes`, `schedule`, `seed`, `subscriber`, `test`, `true`, `type`, `use`
-and `var`. A setting the language defines may still use one as its key
+and `var`; `constant` joins them with constants (area 3, decided
+2026-10-16, not built until chunk 5.3e). A setting the language defines may still use one as its key
 (`package: Stripe.v2024_06_20` in a connection, `test:` in configuration).
 
 These words mean something only where the language expects them, and stay
@@ -1291,6 +1294,22 @@ error: `Count` doesn't start a declaration
 check failed: 1 error, 1 file
 ```
 
+Decided 2026-10-16 (Richard), not built until chunk 5.3e: a top-level `var`
+is this error too, and its `next:` points to `constant`, because at the top
+of a file a fixed value is a constant (area 3, [Constants](03-logic.md#constants)):
+
+```text
+error: `var` doesn't start a declaration
+ --> main.jadpo:5:1
+  |
+5 | var vat_rate: VatRate = 0.2000
+  | ^^^ expected a declaration
+  reason: `var` names a value inside a body; at the top of a file a fixed value is a `constant`.
+  next: Write `constant vat_rate: VatRate = 0.2000` (agent)
+  rule: syntax.expected_declaration
+  help: docs/language/01-project-layout-and-modules.html#syntax-expected-declaration
+```
+
 ### `syntax.expected_name`
 
 ```jadpo check project=e-expected-name expect=syntax.expected_name
@@ -1512,6 +1531,7 @@ rule's real output under [Errors](#errors).
 | Reserved words | Built: a reserved word can't name anything. |
 | Comments | Built: `//` and `///` documentation comments. |
 | Similar helpers | Built (chunk 1.7): the `library.similar_exists` warning. |
+| Constants | Decided 2026-10-16, not built (chunk 5.3e): `constant` as a reserved word and a declaration placed and shared as helper functions are, a private one unique within its domain, `constant.similar_exists`, and a top-level `var` pointed at `constant` (area 3). |
 | Imports | Built (chunk 3.5): `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
 | A file holds only what its primary declaration uses, primary first | Built (chunk 3.9): `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another, and `jadpo fmt` moving the primary declaration to the top. |
 | Referenced assets | Decided, not built: `layout.asset_unreferenced` waits for the reference forms of areas 11 and 16. |
@@ -1673,7 +1693,7 @@ build/
 | `failures/` | One failure per file, every failure the domain raises | Added 2026-10-12 (area 4); failures raised by two or more domains go in `shared/failures/` |
 | `actions/` | Every action, one per file | Called by name (`complete_todo(todo_id)`); called by triggers or, if `public`, by other domains (decided 2026-10-12) |
 | `queries/` | Every query, one per file, whatever it reads; a query's cache sits in its file | Decided in area 5 (2026-10-12) |
-| `libraries/` | Named groups of helper functions, e.g. `library rounding` | Called like the standard library: `rounding.half_even(x)` |
+| `libraries/` | Named groups of helper functions and constants, e.g. `library rounding` | Called like the standard library: `rounding.half_even(x)`, `pricing.vat_rate` (constants decided 2026-10-16, area 3) |
 | `routes/` | Named route groups with a prefix the compiler checks | HTTP trigger: the URL is written in the source |
 | `schedules/` | Time triggers: when to run which action | Replaces "jobs" |
 | `events/` | Event definitions | |
@@ -1708,7 +1728,8 @@ build/
   email, `type X = Failure` or `EmailMessage`) needs a name unique only
   within its domain, whether it has a file of its own or sits beside the
   declaration that uses it (2026-10-16, Richard; decided, not built until
-  chunk 5.3d). Everything else stays unique across the project:
+  chunk 5.3d). A private `constant` follows the same rule (area 3,
+  2026-10-16, Richard; not built until chunk 5.3e). Everything else stays unique across the project:
   - anything `public`, and anything in `shared/` or the root files;
   - every other kind of declaration, whatever its visibility, since most
     have a name outside the code: entities (tables), failures (public error
@@ -1767,7 +1788,11 @@ build/
 - A type, failure or helper used by one file lives in that file. When a
   second file in the domain uses it, it must move to a file of its own in the
   domain's `types/`, `failures/` or `libraries/`; when a second domain does,
-  to `shared/` (pure types, failures and libraries only). Moving to the
+  to `shared/` (pure types, failures and libraries only). A constant
+  (area 3) is placed as a helper function is: used by one file it sits at
+  the top of that file, and used by a second it moves into a library and
+  is read through it, `pricing.vat_rate` (2026-10-16, Richard; not built
+  until chunk 5.3e). Moving to the
   right folder is not enough: `DiscountCode` in `types/basket.jadpo` used by
   another file must move to `types/discount_code.jadpo` (2026-10-14). Tests never count as users, a route only counts when
   nothing else uses the type, and a failure counts where it is raised.
@@ -1790,6 +1815,10 @@ build/
   Depending on two domains' types is an error that needs a design decision.
   Making a helper generic, for example extracting `money.sum(amounts)` for
   `ordering` and `payments` to share, is a deliberate refactor.
+- Two constants of the same type holding the same value get the
+  `constant.similar_exists` warning, so parallel agents each inventing
+  `vat_rate` find each other's (area 3, 2026-10-16; not built until chunk
+  5.3e).
 - Duplicates are caught at the point of writing: when a new helper looks like
   an existing one, `jadpo check` says so and names it ("a similar library
   exists: `rounding.half_even` in `shared/libraries/rounding.jadpo`"). The
@@ -2142,3 +2171,4 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | A file holds only what its primary declaration uses | The primary declaration is the one of the folder's kind named after the file (the first of that kind when the file is misnamed), or the seed in `database/seeds/`; every type or helper function beside it is used by it, directly or through one another, or is `layout.unused_declaration`. Tests never count. One another file uses is moved by `layout.promotion_required`, not reported unused. While the primary, or a declaration it uses, writes a name that names nothing, perhaps a misspelling of the one it meant, nothing beside it is called unused, as with imports. Test files, root files and loose files have no primary declaration, and a library's functions keep their own rule: one nothing calls is unused (chunk 3.9) | 2026-10-15 |
 | The primary declaration first | `jadpo fmt` moves the primary declaration below the file's opening comments, up to their last blank line, and its `use` lines; it takes the comments written above it and the one after it on its line, and everything else keeps its written order. `jadpo fmt --check` fails on a file whose primary declaration isn't first; loose files keep their order (chunk 3.9) | 2026-10-15 |
 | Names per domain | A private function or type (not a failure, an email, or a type an API's record names) needs a name unique only within its domain; everything public, in `shared/` or the root files, and every other kind (entities, failures, events, actions, queries, routes, schedules, subscribers, services, fixtures, emails) stays unique across the project, as do domain, library and standard-library names among themselves. Why: agents in parallel workspaces on different domains would otherwise clash on private helper names at merge; imports stay exact. Rejected: a namespace per domain, which only moves the prefix into tables, error codes, OpenAPI and event names, and makes one name mean different things by folder. The identity key of a function or type declared in a domain carries the domain, and promotion to `shared/` writes a registry move line (amends area 18's question 8). `semantic.duplicate_declaration` says copy or clash, never invents a name, and lists the names in use with the same word; `jadpo rename` refuses a name in use; agents merge `main` and run `jadpo check` before pushing, and generated CI runs `jadpo check` first. Decided, not built (chunk 5.3d) (Richard) | 2026-10-16 |
+| Constants in the layout | A `constant` (area 3) is placed and shared as a helper function is: used by one file it sits at the top of that file, never as a primary declaration, and used by a second it moves into a library and is read through it (`pricing.vat_rate`), so a library holds functions and constants; a private constant needs a name unique only within its domain; `constant` is reserved; a top-level `var` is `syntax.expected_declaration` whose `next:` writes `constant`; two constants of one type holding one value warn `constant.similar_exists`. Decided, not built (chunk 5.3e) (Richard) | 2026-10-16 |
