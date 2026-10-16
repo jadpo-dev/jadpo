@@ -61,12 +61,7 @@ then built. No design is left for implementation.
    capability rendering typed templates to HTML or PDF, now needed (the
    invoice scenario in [the scenario sketches](package-scenarios-code.md)
    has nothing to render its page).
-10. **Packages generated from your own Jadpo apps.** Four calls: generated
-    from the API record, read-only, in `packages/`; `jadpo package add
-    ../orders` within one repository, the path in the lock; breaking
-    changes (already needing sign-off) become a new major version;
-    `jadpo check` reports what a change breaks in other apps in the same
-    repository. *Recommendation:* yes to all four.
+10. ~~Packages generated from your own Jadpo apps~~: decided, see "Packages from other Jadpo apps".
 10b. **Developing a package**: the whole cycle for a package author:
     starting one (`jadpo package new`) in its own repository; what a
     package repository holds besides the package (a sample app for
@@ -839,6 +834,40 @@ the declared service; in tests the fake returns a placeholder PDF and a
 test can read the rendered HTML. The disk driver is not decided yet: file
 reading, writing, very large files and parsing CSV, TSV and JSON are being
 researched first (Richard).
+
+## Packages from other Jadpo apps (open item 10)
+
+Decided 2026-10-16 (Richard). For one Jadpo app calling another's API.
+
+- **Jadpo's OpenAPI documents carry `x-jadpo` fields** saying what plain
+  OpenAPI lacks: which operations change something, idempotency, each
+  failure's code and kind, constraints. Other tools ignore them.
+- **The OpenAPI importer uses them whenever it finds them**, so importing a
+  Jadpo app's OpenAPI gives an exact package needing no corrections or
+  recordings; a provider that is not Jadpo is imported as before. There is
+  one importer and one format; nothing is special about the other app
+  being Jadpo except those fields.
+- **Every API serves its OpenAPI document** at `<prefix>/openapi.json` by
+  default, under the API's own default authentication (an admin API's
+  document needs sign-in); `serve_openapi: false` turns it off.
+- **Getting it**: in one repository `jadpo package add ../orders` reads the
+  other app's generated OpenAPI; across repositories the other app
+  publishes its package to the company's private registry (item 11); for
+  another company's public API, `jadpo package add
+  https://api.orders.example/v1` fetches the served document. Each is read
+  once, when the package is added or updated, then pinned in the lock with
+  its source and digest, never fetched during a build.
+- **The result is an ordinary installed provider package** in
+  `packages/<name>/<version>/` with no fixed host (the connection gives
+  `host:`) and a service-key credential (area 8); at runtime the two apps
+  meet only over HTTP, and the called app cannot tell what made the call.
+- **Versions**: an additive change to the other API regenerates as a minor
+  version through `jadpo package update`, `jadpo check` saying when it is
+  out of date; a breaking change (already needing sign-off in that app,
+  area 7) becomes a new major version, side by side while callers move.
+- **Breaks across apps**: in one repository, `jadpo check` in the called
+  app reads the other apps' locks and reports which of their calls a
+  change breaks, before it merges. Built later.
 
 ## Decided: the golden rule
 
