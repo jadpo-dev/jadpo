@@ -525,7 +525,7 @@ connection, where an agent or developer writes them deliberately, and a
 new grant appears in the approval report. Until then `jadpo check` names
 the hosts asked for and the line that grants them.
 
-**Reaching a service** (proposed). Packages never choose a port on the
+**Reaching a service** (decided 2026-10-16, Richard). Packages never choose a port on the
 machine; a package says only which port its service listens on inside
 its container, so two packages can both use 3000. Jadpo gives each app a
 private network that only it and its services are on, and hands each
@@ -537,7 +537,7 @@ check when it is built: Docker's networks that block outbound traffic may
 not allow a port to be published to the machine, which would mean either
 firewall rules or running the app in a container beside its services.
 
-**How containers run** (proposed): Jadpo is a client, never a container
+**How containers run** (decided 2026-10-16, Richard): Jadpo is a client, never a container
 runtime. It talks to whatever engine the machine has through the
 Docker-compatible API, which Docker and Podman both serve (Podman without
 a daemon or root), and leaves pulling, isolation and restart policies to
@@ -545,6 +545,29 @@ it. Jadpo's own part is the declaration, the digest pin, locked-down
 defaults, start order, health and telemetry. On a Mac, containers need a
 Linux virtual machine (Docker Desktop, OrbStack, Podman), so `jadpo dev`
 says plainly when none is installed.
+
+**Docker stays behind the scenes** (decided 2026-10-16, Richard). Nobody
+drives the engine directly; agents and developers manage services through
+`jadpo` and the dev console (area 17), and every command has `--json`:
+
+| Command | Does |
+|---|---|
+| `jadpo services` | Each service: package, image, state, health, CPU and memory, restarts, uptime |
+| `jadpo services start`, `stop`, `restart <name>` | As named |
+| `jadpo services logs <name>` | Its logs, `--follow` to stream, `--since` to go back |
+| `jadpo services shell <name>` | A shell inside the container, for debugging; development only |
+
+- **Logs join the app's own.** A service's output is collected into the
+  app's OpenTelemetry logs under the service's name, so it arrives wherever
+  the app's logs go, and a call to a service already appears in the
+  request's trace as a provider call.
+- **In production the commands talk to the running app**, which supervises
+  its services, never to the engine, as area 14's operator commands do.
+- **The engine is needed only when a package declares a service.** An app
+  with none never needs Docker or Podman. When one does and no engine is
+  found, `jadpo dev` and the deployable say so and how to install one.
+  Screens follow the CLI design language and are designed before they are
+  built.
 
 On Workers, which runs no containers, a service is hosted elsewhere and
 the connection gives its address.
