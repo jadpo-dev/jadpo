@@ -360,6 +360,20 @@ impl Access {
     pub fn membership(&self, entity: &str) -> Option<&Membership> {
         self.memberships.iter().find(|m| m.entity == entity)
     }
+
+    /// When a reference from a record of `from` to one of `to` stays
+    /// inside the tenant (area 9, "References stay inside the tenant"):
+    /// both belong to the tenant and `to` isn't the tenant itself, so the
+    /// record it points at belongs to the same tenant, which every create
+    /// and update that sets it checks. Each one's tenancy, in that order.
+    ///
+    /// A reference to the tenant itself is the record's tenancy, or, beside
+    /// the one an entity names with `tenant:`, another tenant on purpose.
+    pub fn kept_in_tenant(&self, from: &str, to: &str) -> Option<(&Tenancy, &Tenancy)> {
+        let from = self.entity(from)?.tenancy.as_ref()?;
+        let to = self.entity(to)?.tenancy.as_ref()?;
+        (to.via != "id").then_some((from, to))
+    }
 }
 
 // --- reading -------------------------------------------------------------------

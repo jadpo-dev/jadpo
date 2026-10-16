@@ -6,7 +6,10 @@
 //! `Input`. It gives a `Response`: `status`, the failure's `code` (`none`
 //! on success) and the route's `output` (`none` unless it succeeded).
 //! `as:` signs in as a caller (area 8) through the route's real
-//! authentication: a user with a browser session.
+//! authentication: a user with a browser session. Every request but a
+//! `GET` sends a fresh `Idempotency-Key`, as a real client would, or the
+//! text `idempotency_key:` gives, to test repeats and refusals (area 13,
+//! chunk 4.7).
 
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_std::HttpMethod;
@@ -30,7 +33,7 @@ pub(crate) struct RequestFact {
 }
 
 /// What a `request` block holds.
-const ITEMS: [&str; 5] = ["method", "path", "params", "input", "as"];
+const ITEMS: [&str; 6] = ["method", "path", "params", "input", "idempotency_key", "as"];
 
 impl Body<'_> {
     /// The type of `response.<field>`; `None` when `receiver` isn't a
@@ -72,6 +75,7 @@ impl Body<'_> {
         let mut params: Vec<(String, Expr, jadpo_diag::Span)> = Vec::new();
         let mut input = None;
         let mut caller: Option<(Expr, jadpo_diag::Span)> = None;
+        let mut sent_key: Option<(Expr, jadpo_diag::Span)> = None;
         for (key, member) in tree::members(record.member_list()) {
             let Some(item) = tree::name_text(&key) else {
                 continue;
@@ -126,6 +130,11 @@ impl Body<'_> {
                     }
                 }
                 "input" => input = member.value(),
+                "idempotency_key" => {
+                    if let Some(value) = member.value() {
+                        sent_key = Some((value, key_span));
+                    }
+                }
                 "as" => {
                     if let Some(value) = member.value() {
                         caller = Some((value, key_span));
@@ -140,7 +149,7 @@ impl Body<'_> {
                         )
                         .at(key_span, "unknown item")
                         .reason(format!(
-                            "A request holds `method:`, `path:`, `params:`, `input:` and `as:`.{}",
+                            "A request holds `method:`, `path:`, `params:`, `input:`, `idempotency_key:` and `as:`.{}",
                             near.map_or_else(String::new, |near| format!(
                                 " Did you mean `{near}`?"
                             ))
@@ -246,6 +255,20 @@ impl Body<'_> {
             }
             (None, None) => {}
         }
+        if let Some((value, key_span)) = sent_key {
+            // A `GET` changes nothing, so the runtime reads no key for it
+            // (area 7, question 17).
+            if method == HttpMethod::Get {
+                ok = false;
+                self.infer(&value);
+                self.request_problem(
+                    key_span,
+                    &format!("`{}` reads no `Idempotency-Key`", route.label()),
+                );
+            } else {
+                self.check(&value, &Ty::Prim(Prim::Text));
+            }
+        }
         if let Some((value, key_span)) = caller {
             let ty = self.infer(&value);
             match super::identity::caller_kind(&ty) {
@@ -325,7 +348,7 @@ impl Body<'_> {
         self.out.push(
             Diagnostic::new(&rule::SEMANTIC_REQUEST_INVALID, message.to_string())
                 .at(span, "doesn't fit the route")
-                .reason("A request gives the route's method, its path as `jadpo routes` prints it, each placeholder in `params:` and, when the route takes one, its `input:`.")
+                .reason("A request gives the route's method, its path as `jadpo routes` prints it, each placeholder in `params:` and, when the route takes one, its `input:`; a request but a `GET` may give the `Idempotency-Key` it sends in `idempotency_key:`.")
                 .next("Give the request what its route takes"),
         );
     }

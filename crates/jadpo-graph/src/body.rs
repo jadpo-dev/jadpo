@@ -341,6 +341,9 @@ pub enum Expr {
         route: Key,
         params: Vec<SiteId>,
         input: Option<SiteId>,
+        /// `idempotency_key:`: the `Idempotency-Key` it sends instead of a
+        /// fresh one (area 13, "Idempotency keys in route tests").
+        idempotency_key: Option<SiteId>,
         /// `as:`: the caller it signs in as (area 8).
         caller: Option<SiteId>,
     },

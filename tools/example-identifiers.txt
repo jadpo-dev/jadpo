@@ -7,6 +7,7 @@ act_as
 ada
 ada_borrows_two
 add_cake
+add_chore
 add_copy
 add_delivery
 add_interest
@@ -19,6 +20,7 @@ admin_orders
 afterwards
 alice
 alice_with_todos
+all_memos
 allergen
 allergen_check
 allergens
@@ -200,6 +202,10 @@ checkout_unavailable
 checkup
 chocolate
 choose_handover
+chore
+chore_card
+chore_view
+chores
 clear_cart
 clock_reading
 close_enough
@@ -212,6 +218,7 @@ collect_on
 collection_day
 comment_body
 company
+company_chores
 company_id
 company_membership
 company_name
@@ -223,6 +230,7 @@ completed_at
 contact_address
 contact_email
 contact_text
+contoso
 copy_name
 cost_bun
 cost_recipe
@@ -441,6 +449,7 @@ key_in_order
 keyed_count
 keyed_in
 keypad_entry
+kickoff
 kilograms
 kilos
 kitchen
@@ -534,6 +543,7 @@ memo_id
 memo_locked
 memo_record
 memo_summary
+memo_text
 memo_view
 memos
 menu
@@ -587,6 +597,7 @@ nuts
 off_menu_cake
 old_reference
 old_todo
+on_file
 on_menu
 on_payment_succeeded
 on_shelf
@@ -692,6 +703,7 @@ portions
 postal_code
 postcode
 postpone_all
+praised_notes
 pretend_pure
 price
 price_basket
@@ -713,6 +725,7 @@ product_name
 product_view
 project_board
 project_board_view
+project_card
 project_has_todos
 project_id
 project_name
@@ -787,6 +800,7 @@ request_tag
 request_timeout
 reread
 reschedule_todo
+resent
 reservation
 reserve_cakes
 reserve_for_cart
@@ -802,6 +816,7 @@ review_stage
 reviewer_id
 revoke_card
 revoke_outlet_key
+rival
 rotated
 rye
 sack_count

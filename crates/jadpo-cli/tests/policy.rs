@@ -1417,6 +1417,143 @@ query company_projects(company_id: Company.id) -> List<ProjectCard> {
 "#,
     ),
     (
+        "domains/ledger/types/task_card.jadpo",
+        r#"use ledger/entities { Task }
+
+type TaskCard = Output {
+    pick: [Task.id, Task.title]
+}
+"#,
+    ),
+    (
+        "domains/ledger/types/task_view.jadpo",
+        r#"use ledger/entities { Task }
+use ledger/types { ProjectCard }
+
+type TaskView = Output {
+    pick: [Task.id, Task.title]
+    project: ProjectCard
+}
+"#,
+    ),
+    (
+        "domains/ledger/entities/task.jadpo",
+        r#"use ledger/entities { Company, Project }
+use ledger/types { CompanyRole, Label }
+
+entity Task {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    project_id: Project.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Label
+
+    policy: {
+        create: [CompanyRole.owner, CompanyRole.editor]
+        read: [CompanyRole.owner, CompanyRole.editor, CompanyRole.viewer]
+        update: [CompanyRole.owner, CompanyRole.editor]
+    }
+}
+"#,
+    ),
+    (
+        "domains/ledger/actions/add_task.jadpo",
+        r#"use ledger/entities { Company, CompanyNotFound, Project, ProjectNotFound, Task }
+use ledger/types { Label, TaskCard }
+
+action add_task(input: AddTask) fails CompanyNotFound, ProjectNotFound -> TaskCard {
+    var task: Task = attempt Task.create {
+        set: {
+            company_id: input.company_id
+            project_id: input.project_id
+            title: input.title
+        }
+    }
+    return TaskCard {
+        id: task.id
+        title: task.title
+    }
+}
+
+type AddTask = Input {
+    company_id: Company.id
+    project_id: Project.id
+    title: Label
+}
+"#,
+    ),
+    (
+        "domains/ledger/actions/move_task.jadpo",
+        r#"use ledger/entities { Project, ProjectNotFound, Task, TaskNotFound }
+use ledger/types { TaskCard }
+
+action move_task(task_id: Task.id, input: MoveTask) fails ProjectNotFound, TaskNotFound -> TaskCard {
+    var task: Task = attempt Task.update(task_id) {
+        set: {
+            project_id: input.project_id
+        }
+    }
+    return TaskCard {
+        id: task.id
+        title: task.title
+    }
+}
+
+type MoveTask = Input {
+    project_id: Project.id
+}
+"#,
+    ),
+    (
+        "domains/ledger/queries/company_tasks.jadpo",
+        r#"use ledger/entities { Company, Task }
+use ledger/types { TaskView }
+
+query company_tasks(company_id: Company.id) -> List<TaskView> {
+    from: Task
+    where: Task.company_id == company_id
+    order: [Task.title asc]
+    limit: 100
+    include: {
+        project: Task.project_id
+    }
+}
+"#,
+    ),
+    (
+        "domains/ledger/routes/tasks.jadpo",
+        r#"use ledger/entities { Company, Task }
+use ledger/types { TaskCard, TaskView }
+use ledger/actions { AddTask, MoveTask, add_task, move_task }
+use ledger/queries { company_tasks }
+
+routes Tasks {
+    prefix: /tasks
+
+    POST / {
+        input: AddTask
+        output: TaskCard
+        status: SuccessStatus.created
+        run: add_task(input)
+    }
+
+    PATCH /{task_id: Task.id} {
+        input: MoveTask
+        output: TaskCard
+        run: move_task(task_id, input)
+    }
+
+    GET /{company_id: Company.id} {
+        output: List<TaskView>
+        run: company_tasks(company_id)
+    }
+}
+"#,
+    ),
+    (
         "domains/ledger/routes/projects.jadpo",
         r#"use ledger/entities { Company, Project }
 use ledger/types { BudgetView, ProjectCard }
@@ -1573,6 +1710,149 @@ test "a request can't write a field only the server writes" {
 }
 "#;
 
+const TASK_TESTS: &str = r#"use ledger/entities { Company, CompanyMembership, Member }
+use ledger/types { CompanyRole, ProjectCard, TaskCard, TaskView }
+use ledger/actions { AddTask, MoveTask, StartProject, add_member, add_task, found_company, register, start_project }
+
+test "a task refers only to a project of its own company" {
+    var ann: Member = attempt register("ann")
+    var acme: Company = found_company("Acme", Principal.user(ann))
+    var globex: Company = found_company("Globex", Principal.user(ann))
+    var launch: ProjectCard = attempt start_project(
+        StartProject {
+            company_id: acme.id
+            name: "Launch"
+            reference: none
+        }
+    )
+    var rival: ProjectCard = attempt start_project(
+        StartProject {
+            company_id: globex.id
+            name: "Rival"
+            reference: none
+        }
+    )
+    var across: Response = request {
+        method: HttpMethod.post
+        path: "/tasks"
+        as: Principal.user(ann)
+        input: AddTask {
+            company_id: acme.id
+            project_id: rival.id
+            title: "Borrow"
+        }
+    }
+    assert across.status == 403
+    assert across.code == "not_permitted"
+    var inside: Response = request {
+        method: HttpMethod.post
+        path: "/tasks"
+        as: Principal.user(ann)
+        input: AddTask {
+            company_id: acme.id
+            project_id: launch.id
+            title: "Plan"
+        }
+    }
+    assert inside.status == 201
+    var task: TaskCard = attempt add_task(
+        AddTask {
+            company_id: acme.id
+            project_id: launch.id
+            title: "Ship"
+        }
+    )
+    var moved_out: Response = request {
+        method: HttpMethod.patch
+        path: "/tasks/{task_id}"
+        params: {
+            task_id: task.id
+        }
+        as: Principal.user(ann)
+        input: MoveTask {
+            project_id: rival.id
+        }
+    }
+    assert moved_out.status == 403
+    assert moved_out.code == "not_permitted"
+    var missing: Response = request {
+        method: HttpMethod.post
+        path: "/tasks"
+        as: Principal.user(ann)
+        input: AddTask {
+            company_id: acme.id
+            project_id: "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e"
+            title: "Nowhere"
+        }
+    }
+    assert missing.status == 404
+    assert missing.code == "project_not_found"
+}
+
+test "a viewer reads each task with its project, only in their company" {
+    var ann: Member = attempt register("ann")
+    var bob: Member = attempt register("bob")
+    var acme: Company = found_company("Acme", Principal.user(ann))
+    var globex: Company = found_company("Globex", Principal.user(ann))
+    var viewer: CompanyMembership = attempt add_member(acme.id, bob.id, CompanyRole.viewer)
+    assert viewer.role == CompanyRole.viewer
+    var launch: ProjectCard = attempt start_project(
+        StartProject {
+            company_id: acme.id
+            name: "Launch"
+            reference: none
+        }
+    )
+    var rival: ProjectCard = attempt start_project(
+        StartProject {
+            company_id: globex.id
+            name: "Rival"
+            reference: none
+        }
+    )
+    var plan: TaskCard = attempt add_task(
+        AddTask {
+            company_id: acme.id
+            project_id: launch.id
+            title: "Plan"
+        }
+    )
+    var other: TaskCard = attempt add_task(
+        AddTask {
+            company_id: globex.id
+            project_id: rival.id
+            title: "Copy"
+        }
+    )
+    assert other.title == "Copy"
+    var seen: Response = request {
+        method: HttpMethod.get
+        path: "/tasks/{company_id}"
+        params: {
+            company_id: acme.id
+        }
+        as: Principal.user(bob)
+    }
+    assert seen.status == 200
+    assert seen.output == [
+        TaskView {
+            id: plan.id
+            title: "Plan"
+            project: launch
+        }
+    ]
+    var theirs: Response = request {
+        method: HttpMethod.get
+        path: "/tasks/{company_id}"
+        params: {
+            company_id: globex.id
+        }
+        as: Principal.user(bob)
+    }
+    assert theirs.output == []
+}
+"#;
+
 fn ledger(name: &str) -> PathBuf {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("policy-{name}"));
     let _ = fs::remove_dir_all(&root);
@@ -1600,6 +1880,141 @@ fn a_field_the_caller_may_not_change_refuses_the_whole_write() {
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
     assert!(tested.stdout.contains("2 passed"), "{}", tested.stdout);
+}
+
+#[test]
+fn a_reference_stays_inside_its_tenant_so_an_include_of_its_parent_proves() {
+    if skipped() {
+        return;
+    }
+    let root = ledger("ledger-tenant");
+    write(&root, "domains/ledger/routes/tasks.test.jadpo", TASK_TESTS);
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(tested.stdout.contains("2 passed"), "{}", tested.stdout);
+    // `jadpo sql` shows the check in the create's statement.
+    let shown = jadpo(&root, &["sql", "add_task"]);
+    assert_eq!(shown.code, 0, "{}{}", shown.stdout, shown.stderr);
+    assert!(
+        shown.stdout.contains("IS DISTINCT FROM"),
+        "{}",
+        shown.stdout
+    );
+}
+
+#[test]
+fn a_reference_into_another_tenant_is_refused_without_policy_too() {
+    if skipped() {
+        return;
+    }
+    let root = ledger("ledger-unpoliced");
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let host = Store(postgres(&url).expect("store"), std::cell::Cell::new(0));
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        // A test's or a seed's call without a caller runs without policy,
+        // but what the data is still holds.
+        let plain = |action: &'static str, args: Vec<Value>| {
+            let program = &program;
+            let host = &host;
+            async move {
+                let id = program.plan().find(action).expect("the action");
+                host.1.set(host.1.get() + 1);
+                let env = Env {
+                    seed: Some(host.1.get()),
+                    clock: Clock::TEST,
+                };
+                let mut ctx = Ctx::new(program.places(), host, env);
+                ctx.set_unpoliced();
+                program.run(&mut ctx, id, args).await
+            }
+        };
+        let ann = value(plain("register", vec![Value::text("ann")]).await);
+        let founder = signed_in(&ann);
+        let acme = value(
+            call(
+                &program,
+                &host,
+                "found_company",
+                vec![Value::text("Acme"), founder.clone()],
+                Some(&founder),
+            )
+            .await,
+        );
+        let globex = value(
+            call(
+                &program,
+                &host,
+                "found_company",
+                vec![Value::text("Globex"), founder.clone()],
+                Some(&founder),
+            )
+            .await,
+        );
+        let start = |company: &Value, name: &str| {
+            Value::record(
+                "StartProject",
+                vec![
+                    ("company_id".into(), field(company, "id")),
+                    ("name".into(), Value::text(name)),
+                    ("reference".into(), Value::None),
+                ],
+            )
+        };
+        let launch = value(plain("start_project", vec![start(&acme, "Launch")]).await);
+        let rival = value(plain("start_project", vec![start(&globex, "Rival")]).await);
+        let add = |project: &Value| {
+            Value::record(
+                "AddTask",
+                vec![
+                    ("company_id".into(), field(&acme, "id")),
+                    ("project_id".into(), field(project, "id")),
+                    ("title".into(), Value::text("Plan")),
+                ],
+            )
+        };
+        let across = plain("add_task", vec![add(&rival)]).await;
+        assert!(
+            matches!(&across, Outcome::Failed(failure) if failure.code == "not_permitted"),
+            "{across:?}"
+        );
+        let task = value(plain("add_task", vec![add(&launch)]).await);
+        let moved = plain(
+            "move_task",
+            vec![
+                field(&task, "id"),
+                Value::record("MoveTask", vec![("project_id".into(), field(&rival, "id"))]),
+            ],
+        )
+        .await;
+        assert!(
+            matches!(&moved, Outcome::Failed(failure) if failure.code == "not_permitted"),
+            "{moved:?}"
+        );
+        // A task that isn't there is only missing.
+        let missing = plain(
+            "move_task",
+            vec![
+                field(&launch, "id"),
+                Value::record(
+                    "MoveTask",
+                    vec![("project_id".into(), field(&launch, "id"))],
+                ),
+            ],
+        )
+        .await;
+        assert!(
+            matches!(&missing, Outcome::Failed(failure) if failure.code == "task_not_found"),
+            "{missing:?}"
+        );
+    });
 }
 
 #[test]
@@ -1688,6 +2103,31 @@ query company_projects(company_id: Company.id) -> List<BudgetView> {
             && refused
                 .stdout
                 .contains("`company_projects` sends `Project.budget`"),
+        "{}",
+        refused.stdout
+    );
+    // A query filtering on the budget shows each budget to viewers too.
+    write(
+        &root,
+        "domains/ledger/queries/company_projects.jadpo",
+        r#"use ledger/entities { Company, Project }
+use ledger/types { ProjectCard }
+
+query company_projects(company_id: Company.id) -> List<ProjectCard> {
+    from: Project
+    where: Project.company_id == company_id
+    where: Project.budget > 100
+    order: [Project.name asc]
+    limit: 100
+}
+"#,
+    );
+    let refused = jadpo(&root, &["check"]);
+    assert_eq!(refused.code, 1, "{}", refused.stdout);
+    assert!(
+        refused.stdout.contains(
+            "`company_projects` filters on `Project.budget`, which not every caller may read"
+        ) && refused.stdout.contains("tests `budget`"),
         "{}",
         refused.stdout
     );

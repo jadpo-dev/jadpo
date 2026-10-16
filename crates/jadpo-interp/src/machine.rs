@@ -73,7 +73,13 @@ pub(crate) enum Target {
     Write(u32),
     /// A route test's request, by the route's place in the route table;
     /// `signed` when its last value is the caller it signs in as.
-    Request { route: u32, signed: bool },
+    /// A route test's request: with `keyed`, the `Idempotency-Key` it
+    /// sends comes before the caller, which `signed` says it has.
+    Request {
+        route: u32,
+        keyed: bool,
+        signed: bool,
+    },
     /// `sessions.start` or `sessions.end` (area 8).
     Session(jadpo_std::http::SessionOp),
 }
@@ -1328,6 +1334,7 @@ impl<'p> Machine<'p> {
                 route,
                 params,
                 input,
+                idempotency_key,
                 caller,
             } => {
                 let Some(index) = self
@@ -1344,11 +1351,13 @@ impl<'p> Machine<'p> {
                     .iter()
                     .copied()
                     .chain(*input)
+                    .chain(*idempotency_key)
                     .chain(*caller)
                     .collect();
                 self.tasks.push(Task::Invoke {
                     target: Target::Request {
                         route: index as u32,
+                        keyed: idempotency_key.is_some(),
                         signed: caller.is_some(),
                     },
                     count: parts.len(),

@@ -306,7 +306,7 @@ reference only).
 - [x] **4.6 Teaching examples for Phase 4** `opus · high`: bring
   `examples/` up to date with routes, identity and policy, and pass
   `tools/verify.py --require-examples`.
-- [ ] **4.7 Phase 4 decisions** `opus · high` (Richard, 2026-10-16): a
+- [x] **4.7 Phase 4 decisions** `opus · high` (Richard, 2026-10-16): a
   reference between tenant-owned records stays inside the tenant, checked on
   every write, so an include of a tenant-owned parent proves (area 9); a
   condition or order on a field some caller may not read is

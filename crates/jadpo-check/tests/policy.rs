@@ -591,8 +591,10 @@ query projects(company_id: Company.id) -> List<ProjectCard> {
 #[test]
 fn an_include_reads_a_parent_only_when_every_reader_may() {
     // A company's role applies to the company a project refers to, and a
-    // membership's member holds a role in its company; a task's company
-    // and its project's company are two references, which may differ.
+    // membership's member holds a role in its company; a task refers only
+    // to a project of its own company (chunk 4.7), so a role held in the
+    // task's company is held in its project's. The person an assignment
+    // points at holds no role the proof can see.
     let found = company(
         r#"type ProjectWithCompany = Output {
     pick: [Project.id, Project.name]
@@ -634,6 +636,36 @@ query task_with_project(task_id: Task.id) -> TaskView? {
         project: Task.project_id
     }
 }
+
+entity Assignment {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    project_id: Project.id {
+        on_delete: OnDelete.cascade
+    }
+    person_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+
+    policy: {
+        read: [person_id]
+    }
+}
+
+type AssignmentView = Output {
+    pick: [Assignment.id]
+    project: ProjectCard
+}
+
+query my_assignment(assignment_id: Assignment.id) -> AssignmentView? {
+    from: Assignment
+    where: Assignment.id == assignment_id
+    include: {
+        project: Assignment.project_id
+    }
+}
 "#,
     );
     assert_eq!(
@@ -642,9 +674,168 @@ query task_with_project(task_id: Task.id) -> TaskView? {
         "{found:#?}"
     );
     assert!(
-        found[0].contains("`task_with_project` includes the `Project` each `Task` refers to"),
+        found[0].contains("`my_assignment` includes the `Project` each `Assignment` refers to"),
         "{found:#?}"
     );
+}
+
+#[test]
+fn an_include_of_a_tenants_parent_proves_from_the_childs_tenancy() {
+    // Anyone signed in, within the tenant, reads a comment, and anyone
+    // signed in reads its project: the project is in the comment's tenant.
+    // A reference to the tenant itself isn't one inside it: a transfer's
+    // second company is another tenant.
+    let found = company(
+        r#"entity Note {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    task_id: Task.id {
+        on_delete: OnDelete.cascade
+    }
+    text: Label
+
+    policy: {
+        read: [Access.authenticated]
+    }
+}
+
+entity Board {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    note_id: Note.id {
+        on_delete: OnDelete.cascade
+    }
+
+    policy: {
+        read: [Role.viewer]
+    }
+}
+
+type NoteCard = Output {
+    pick: [Note.id, Note.text]
+}
+
+type BoardView = Output {
+    pick: [Board.id]
+    note: NoteCard
+}
+
+query board_card(board_id: Board.id) -> BoardView? {
+    from: Board
+    where: Board.id == board_id
+    include: {
+        note: Board.note_id
+    }
+}
+
+entity Transfer {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    to_company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+
+    policy: {
+        read: [Role.owner(company_id)]
+        tenant: company_id
+    }
+}
+
+type TransferView = Output {
+    pick: [Transfer.id]
+    to: CompanyView
+}
+
+query transfer_card(transfer_id: Transfer.id) -> TransferView? {
+    from: Transfer
+    where: Transfer.id == transfer_id
+    include: {
+        to: Transfer.to_company_id
+    }
+}
+"#,
+    );
+    assert_eq!(
+        rules_of(&found),
+        ["policy.output_field_unproved"],
+        "{found:#?}"
+    );
+    assert!(
+        found[0].contains("`transfer_card` includes the `Company` each `Transfer` refers to"),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_query_filters_and_orders_only_on_fields_every_caller_may_read() {
+    // Which projects pass `budget > 0`, and the order budgets put them in,
+    // show each budget to viewers, who may not read it.
+    let found = company(
+        r#"query funded(company_id: Company.id) -> List<ProjectCard> {
+    from: Project
+    where: Project.company_id == company_id
+    where: Project.budget > 0
+    order: [Project.name asc]
+    limit: 100
+}
+
+query by_budget(company_id: Company.id) -> List<ProjectCard> {
+    from: Project
+    where: Project.company_id == company_id
+    order: [Project.budget desc]
+    limit: 100
+}
+
+type CompanyProjects = Output {
+    pick: [Company.id]
+    projects: List<ProjectCard>
+}
+
+query company_funded(company_id: Company.id) -> CompanyProjects? {
+    from: Company
+    where: Company.id == company_id
+    include: {
+        projects: {
+            via: Project.company_id
+            where: Project.budget > 0
+            order: [Project.name asc]
+            limit: 50
+        }
+    }
+}
+
+query named(company_id: Company.id, name: Label) -> List<ProjectCard> {
+    from: Project
+    where: Project.company_id == company_id
+    where: Project.name == name
+    order: [Project.name asc]
+    limit: 100
+}
+"#,
+    );
+    assert_eq!(
+        rules_of(&found),
+        [
+            "policy.output_field_unproved",
+            "policy.output_field_unproved",
+            "policy.output_field_unproved"
+        ],
+        "{found:#?}"
+    );
+    let all = found.join("\n");
+    for expected in [
+        "`funded` filters on `Project.budget`, which not every caller may read",
+        "`by_budget` orders by `Project.budget`, which not every caller may read",
+        "`company_funded` filters on `Project.budget`, which not every caller may read",
+    ] {
+        assert!(all.contains(expected), "{expected}\n{all}");
+    }
 }
 
 #[test]
@@ -859,6 +1050,75 @@ action spend(project_id: Project.id, amount: Amount) fails ProjectNotFound, Over
     );
     assert!(
         found[0].contains("`OverBudget.budget` carries `Project.budget`"),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_transitions_condition_tests_only_fields_every_caller_may_read() {
+    // Closing a ticket that is already closed is refused, which shows an
+    // owner its stage, which only editors may read.
+    let found = company(
+        r#"type Stage = Enum {
+    open
+    closed
+}
+
+type Closed = Failure {
+    kind: FailureKind.conflict
+    message: "That ticket is closed."
+}
+
+entity Ticket {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    stage: Stage {
+        policy: {
+            read: [Role.editor]
+        }
+    }
+
+    lifecycle: {
+        initial: {
+            stage: Stage.open
+        }
+        transitions: {
+            close: {
+                when: stage == Stage.open
+                set: {
+                    stage: Stage.closed
+                }
+            }
+        }
+    }
+
+    policy: {
+        read: [Role.owner, Role.editor, Role.viewer]
+        update: [Role.owner, Role.editor]
+    }
+}
+
+action close_ticket(ticket_id: Ticket.id) fails TicketNotFound, Closed -> Unit {
+    var ticket: Ticket = attempt Ticket.close(ticket_id) {
+        conflict: {
+            Ticket.close: Closed
+        }
+    }
+    assert ticket.id == ticket_id
+}
+"#,
+    );
+    assert_eq!(
+        rules_of(&found),
+        ["policy.output_field_unproved"],
+        "{found:#?}"
+    );
+    assert!(
+        found[0].contains(
+            "`close_ticket` runs `Ticket.close`, whose `when:` tests `Ticket.stage`, which not every caller may read"
+        ),
         "{found:#?}"
     );
 }

@@ -55,9 +55,11 @@ async fn body(
                         let caught = machine.catching();
                         invoke(program, ctx, callee, args, at.0, caught).await
                     }
-                    Target::Request { route, signed } => {
-                        request(program, ctx, route, &args, signed).await
-                    }
+                    Target::Request {
+                        route,
+                        keyed,
+                        signed,
+                    } => request(program, ctx, route, &args, keyed, signed).await,
                     Target::Session(op) => session(program, ctx, op, &args, at.0).await,
                     effect => store(program, ctx, effect, args, at.0).await,
                 };
@@ -169,11 +171,14 @@ fn store<'a, 'p: 'a>(
 /// as a client's would go, answered as a `Response` value.
 /// A defect behind the response ends the test with that fault, as one
 /// anywhere else in it would: a 500 is never what a test means to check.
+/// Every request but a `GET` sends an `Idempotency-Key`, as a real client
+/// would: the one the test gives, or a fresh one (area 13, chunk 4.7).
 async fn request(
     program: &Program,
     ctx: &mut Ctx<'_>,
     route: u32,
     args: &[Value],
+    keyed: bool,
     signed: bool,
 ) -> Result<Value, Stop> {
     let app = program.app();
@@ -181,9 +186,32 @@ async fn request(
         (true, Some((caller, rest))) => (rest, Some(caller)),
         _ => (args, None),
     };
+    let (args, key) = match (keyed, args.split_last()) {
+        (true, Some((key, rest))) => (rest, Some(key)),
+        _ => (args, None),
+    };
     let Some(mut request) = jadpo_runtime::http::test_request(&app, route, args) else {
         return Ok(Value::None);
     };
+    let writes = app
+        .table
+        .routes
+        .get(route as usize)
+        .is_some_and(|plan| plan.method != jadpo_std::HttpMethod::Get);
+    if writes
+        && request
+            .header(jadpo_runtime::http::idempotency::HEADER)
+            .is_none()
+    {
+        let key = match key {
+            Some(Value::Text(text)) => Some(text.to_string()),
+            Some(_) => None,
+            None => ctx.new_id().map(|id| jadpo_runtime::uuid_text(&id)),
+        };
+        if let Some(key) = key {
+            request.headers.push(("Idempotency-Key".to_string(), key));
+        }
+    }
     if let Some(caller) = caller {
         // `as:` signs in through the application's real authentication.
         let headers =
