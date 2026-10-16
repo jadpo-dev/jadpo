@@ -99,6 +99,7 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
                 | Callee::Caller(_)
                 | Callee::Session(_)
                 | Callee::AdvanceClock
+                | Callee::Translation(_)
                 | Callee::Unknown => {}
             }
         }

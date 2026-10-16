@@ -63,6 +63,7 @@ pub mod policy;
 pub mod read;
 mod rules;
 mod time;
+pub mod translation;
 pub mod types;
 pub mod write;
 mod zones;

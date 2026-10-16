@@ -721,6 +721,7 @@ impl Lower<'_> {
             Reach::Caller(kind) => Callee::Caller(*kind),
             Reach::Session(op) => Callee::Session(*op),
             Reach::AdvanceClock => Callee::AdvanceClock,
+            Reach::Translation { key, .. } => Callee::Translation(key.clone()),
             Reach::Unknown => Callee::Unknown,
         };
         if let Some(head) = call.expr() {
@@ -732,6 +733,18 @@ impl Lower<'_> {
             .flat_map(ast::ArgList::args)
             .collect();
         let args = match (&reach, self.facts.slots.get(&key).cloned()) {
+            (Reach::Translation { arity, .. }, Some(slots)) => {
+                let mut args = vec![None; *arity];
+                for (arg, slot) in arguments.iter().zip(slots) {
+                    let lowered = arg.expr().map(|value| self.expr(&value));
+                    if let Some(slot) = slot
+                        && let Some(place) = args.get_mut(slot)
+                    {
+                        *place = lowered;
+                    }
+                }
+                args
+            }
             (Reach::Std(op), Some(slots)) => {
                 let mut args = vec![None; op.operation().params.len()];
                 for (arg, slot) in arguments.iter().zip(slots) {
@@ -793,7 +806,7 @@ impl Lower<'_> {
                 }
                 self.node(last.syntax(), callee.key().cloned(), false);
             }
-            Reach::Std(_) | Reach::Session(_) | Reach::AdvanceClock => {}
+            Reach::Std(_) | Reach::Session(_) | Reach::AdvanceClock | Reach::Translation { .. } => {}
             Reach::Caller(_) => {
                 self.scan(head.syntax());
             }

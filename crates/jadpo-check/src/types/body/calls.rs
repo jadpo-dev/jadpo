@@ -22,7 +22,7 @@ use crate::case::starts_upper;
 use crate::std_lib::{Namespace, Operation, StdNames};
 use crate::tree::{self, dotted};
 
-fn plural(n: usize, word: &str) -> String {
+pub(super) fn plural(n: usize, word: &str) -> String {
     if n == 1 {
         format!("1 {word}")
     } else {
@@ -348,6 +348,10 @@ impl Body<'_> {
             }
             if head == "clock" && member == "advance" {
                 return self.advance_clock(call, callee, &written);
+            }
+            // A translation key's call, typed by the default locale's file.
+            if head == "translations" {
+                return self.translation_call(call, callee, member, &written);
             }
             // Nothing else a generated namespace holds is called: `clock.now`
             // is a value, and the rest wait for their areas.
@@ -898,14 +902,15 @@ impl Body<'_> {
         {
             return;
         }
-        let wanted = match accepts {
-            [only] => format!("a value built on `{}`", only.name()),
-            _ => "a number".to_string(),
-        };
         let built: Vec<String> = accepts
             .iter()
             .map(|prim| format!("`{}`", prim.name()))
             .collect();
+        let wanted = match accepts {
+            [only] => format!("a value built on `{}`", only.name()),
+            _ if accepts.iter().all(|prim| prim.is_number()) => "a number".to_string(),
+            _ => format!("a value built on {}", built.join(" or ")),
+        };
         let span = self.span(value);
         let reason = if nullable {
             format!("`{written}`'s `{param}` is never `none`, and `{ty}` may be `none`.")

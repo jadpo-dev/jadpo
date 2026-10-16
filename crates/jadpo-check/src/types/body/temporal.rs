@@ -53,6 +53,25 @@ impl Body<'_> {
         table: &Operation,
         written: &str,
     ) {
+        let Some(slot) = table.params.iter().position(|p| p.name == "locale") else {
+            return;
+        };
+        let value = args
+            .iter()
+            .zip(slots)
+            .find(|(_, at)| **at == Some(slot))
+            .and_then(|(arg, _)| arg.expr());
+        self.locale_value(call, value, written);
+    }
+
+    /// The locale a call writes text in: the application declares the
+    /// locales it supports, and a locale written out is one of them.
+    pub(super) fn locale_value(
+        &mut self,
+        call: &ast::CallExpr,
+        value: Option<Expr>,
+        written: &str,
+    ) {
         let locales = crate::locales::locales(self.db, self.project);
         if !locales.declared {
             // Files handed to the compiler on their own have no
@@ -74,17 +93,7 @@ impl Body<'_> {
             return;
         }
         let Some(plan) = &locales.plan else { return };
-        let Some(slot) = table.params.iter().position(|p| p.name == "locale") else {
-            return;
-        };
-        let Some(value) = args
-            .iter()
-            .zip(slots)
-            .find(|(_, at)| **at == Some(slot))
-            .and_then(|(arg, _)| arg.expr())
-        else {
-            return;
-        };
+        let Some(value) = value else { return };
         let Some((ordinal, variant)) = crate::locales::literal_locale(&value) else {
             return;
         };

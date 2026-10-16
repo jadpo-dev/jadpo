@@ -26,6 +26,7 @@ pub mod policy;
 mod resolve;
 pub mod routes;
 mod std_lib;
+pub mod translations;
 mod tree;
 pub mod types;
 mod usage;
@@ -134,6 +135,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .cloned(),
         );
         out.extend(locales::locale_problems(db, project).iter().cloned());
+        out.extend(
+            translations::translation_problems(db, project)
+                .iter()
+                .cloned(),
+        );
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(routes::table_problems(db, project).iter().cloned());
         out.extend(routes::signin_problems(db, project).iter().cloned());

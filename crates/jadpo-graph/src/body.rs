@@ -455,6 +455,9 @@ pub enum Callee {
     /// `clock.advance(duration)` in a test (area 13, "Controlling time"):
     /// the test's clock moved on.
     AdvanceClock,
+    /// `translations.<key>(locale:, ...)` (area 10): the key, whose message
+    /// the runtime formats in the locale given.
+    Translation(String),
     /// Nothing that can be called: already reported.
     Unknown,
 }
@@ -476,6 +479,7 @@ impl Callee {
             | Callee::Caller(_)
             | Callee::Session(_)
             | Callee::AdvanceClock
+            | Callee::Translation(_)
             | Callee::Unknown => None,
         }
     }

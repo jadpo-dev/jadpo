@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use salsa::{Durability, Setter};
 
 use crate::places::{Ownership, locate};
-use crate::{Database, File, Layout, Project, Record, is_record};
+use crate::{Database, File, Layout, Project, Record, is_record, is_translation};
 
 /// The file that marks a project's root (area 14).
 pub const PROJECT_FILE: &str = "app.jadpo";
@@ -75,7 +75,7 @@ pub fn load(target: &Path) -> Loaded {
 
 /// [`load`] into a database of the caller's, such as one that records what
 /// it executes.
-pub fn load_into(target: &Path, db: Database) -> Loaded {
+pub fn load_into(target: &Path, mut db: Database) -> Loaded {
     let folder = if target.is_dir() {
         target.to_path_buf()
     } else {
@@ -98,10 +98,15 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
     let mut files = Vec::new();
     let mut other_files = Vec::new();
     let mut records = Vec::new();
+    let mut translations = Vec::new();
     for path in sources {
         let shown = display(&root, &path);
         if layout == Layout::Project && is_record(&shown) {
             records.push(read_record(&root, &shown));
+            continue;
+        }
+        if layout == Layout::Project && is_translation(&shown) {
+            translations.push(read_record(&root, &shown));
             continue;
         }
         if !shown.ends_with(".jadpo") {
@@ -136,6 +141,9 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
     // commands, which write it, exist (area 14); until then nothing has been
     // renamed.
     let project = Project::new(&db, files, other_files, layout, BTreeMap::new(), records);
+    if !translations.is_empty() {
+        project.set_translations(&mut db).to(translations);
+    }
     Loaded {
         db,
         project,
@@ -254,6 +262,18 @@ impl Loaded {
             }
             return;
         }
+        if self.project.layout(&self.db) == Layout::Project && is_translation(path) {
+            let mut translations = self.project.translations(&self.db).clone();
+            translations.retain(|record| record.path != path);
+            if full.is_file() {
+                translations.push(read_record(&self.root, path));
+                translations.sort_by(|a, b| a.path.cmp(&b.path));
+            }
+            if &translations != self.project.translations(&self.db) {
+                self.project.set_translations(&mut self.db).to(translations);
+            }
+            return;
+        }
         if !is_source(path) {
             let mut others = self.project.other_files(&self.db).clone();
             let present = full.is_file();
@@ -313,7 +333,10 @@ fn tracked(path: &str, project: bool) -> bool {
     }
     project
         && !path.split('/').any(|part| part.starts_with('.'))
-        && (path.starts_with("domains/") || path.starts_with("shared/") || is_record(path))
+        && (path.starts_with("domains/")
+            || path.starts_with("shared/")
+            || is_record(path)
+            || is_translation(path))
 }
 
 /// Whether a project-relative path is a source file the project holds.
@@ -376,6 +399,7 @@ fn walk(folder: &Path, project: bool, unreadable: &mut Vec<Unreadable>) -> Vec<P
                     if shown.starts_with("domains/")
                         || shown.starts_with("shared/")
                         || is_record(&shown)
+                        || is_translation(&shown)
                     {
                         found.push(path);
                     }
