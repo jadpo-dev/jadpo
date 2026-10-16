@@ -275,8 +275,7 @@ std_enum! {
     /// What a field's `policy:` says when no client may read or write it
     /// (area 9, "Field restrictions").
     FieldAccess: "FieldAccess" {
-        /// Only the application's own server-side work: schedules and
-        /// subscribers (area 12), never a request.
+        /// No client: no request reads or writes it.
         ServerOnly: "server_only",
     }
 }

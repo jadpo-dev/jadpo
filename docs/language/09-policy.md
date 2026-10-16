@@ -250,8 +250,8 @@ entity Project {
 - **Copies.** Passing a value through a variable or another type does not
   escape the field's rules; the compiler tracks where it came from.
 - **Server only.** `FieldAccess.server_only` lets no request read or write
-  the field. Schedules and subscribers (area 12) may, and so may a test's or
-  a seed's call without a caller, which runs without policy.
+  the field. A test's or a seed's call without a caller runs without policy,
+  so it may; how schedules and subscribers write one comes with area 12.
 
 A field's `policy:` narrows `create`, `read` and `update`; it is deleted
 with its record. Who may read a value is proved from the grants alone, not
@@ -1740,7 +1740,7 @@ check failed: 1 error, 1 file
 
 ### `policy.output_field_unproved`
 
-A note's owner may call `find_note`, but only its reviewer may read the verdict, and an output has one shape for everyone:
+A note's owner may call `find_note`, but only its reviewer may read the appraisal, and an output has one shape for everyone:
 
 ```jadpo check project=e-output-field-unproved expect=policy.output_field_unproved
 type Handle = Text {
@@ -1773,7 +1773,7 @@ entity Note {
         on_delete: OnDelete.cascade
     }
     text: NoteText
-    verdict: NoteText {
+    appraisal: NoteText {
         policy: {
             read: [reviewer_id]
         }
@@ -1785,7 +1785,7 @@ entity Note {
 }
 
 type NoteView = Output {
-    pick: [Note.id, Note.text, Note.verdict]
+    pick: [Note.id, Note.text, Note.appraisal]
 }
 
 query find_note(note_id: Note.id) fails NoteNotFound -> NoteView {
@@ -1796,20 +1796,20 @@ query find_note(note_id: Note.id) fails NoteNotFound -> NoteView {
 ```
 
 ```text output
-error: `find_note` sends `Note.verdict`, which not every caller may read
+error: `find_note` sends `Note.appraisal`, which not every caller may read
  --> main.jadpo:46:57
    |
 46 | query find_note(note_id: Note.id) fails NoteNotFound -> NoteView {
-   |                                                         ^^^^^^^^ carries `verdict`
-  reason: Anyone `Note`'s `read:` lets in may call `find_note`, the user `owner_id` points at among them, and only the user `reviewer_id` points at may read `verdict`. An output has one shape for everyone, so a field some callers may not read can't be in it.
-  next: Return an output without `verdict` from `find_note` (agent)
+   |                                                         ^^^^^^^^ carries `appraisal`
+  reason: Anyone `Note`'s `read:` lets in may call `find_note`, the user `owner_id` points at among them, and only the user `reviewer_id` points at may read `appraisal`. An output has one shape for everyone, so a field some callers may not read can't be in it.
+  next: Return an output without `appraisal` from `find_note` (agent)
   rule: policy.output_field_unproved
   help: docs/language/09-policy.html#policy-output-field-unproved
 
 check failed: 1 error, 1 file
 ```
 
-A value copied through a variable or another type keeps its field's rules, so the same verdict built into an output by an action is refused there:
+A value copied through a variable or another type keeps its field's rules, so the same appraisal built into an output by an action is refused there:
 
 ```jadpo check project=e-output-field-copied expect=policy.output_field_unproved
 type Handle = Text {
@@ -1842,7 +1842,7 @@ entity Note {
         on_delete: OnDelete.cascade
     }
     text: NoteText
-    verdict: NoteText {
+    appraisal: NoteText {
         policy: {
             read: [reviewer_id]
         }
@@ -1853,34 +1853,34 @@ entity Note {
     }
 }
 
-type Review = Object {
-    verdict: Note.verdict
+type Assessment = Object {
+    appraisal: Note.appraisal
 }
 
 type NoteView = Output {
-    pick: [Note.id, Note.verdict]
+    pick: [Note.id, Note.appraisal]
 }
 
 action show_note(note_id: Note.id) fails NoteNotFound -> NoteView {
     var note: Note = attempt Note.get(note_id)
-    var review: Review = Review {
-        verdict: note.verdict
+    var assessment: Assessment = Assessment {
+        appraisal: note.appraisal
     }
     return NoteView {
         id: note.id
-        verdict: review.verdict
+        appraisal: assessment.appraisal
     }
 }
 ```
 
 ```text output
-error: `NoteView.verdict` carries `Note.verdict`, which not every caller of `show_note` may read
- --> main.jadpo:57:18
+error: `NoteView.appraisal` carries `Note.appraisal`, which not every caller of `show_note` may read
+ --> main.jadpo:57:20
    |
-57 |         verdict: review.verdict
-   |                  ^^^^^^^^^^^^^^ from `Note.verdict`
-  reason: `show_note` reaches the `Note` it comes from for anyone its grants let in, the user `owner_id` points at among them, and only the user `reviewer_id` points at may read `verdict`. What a caller is sent has one shape for everyone, and a value passed through a variable or another type keeps its field's rules.
-  next: Leave `verdict` out of `NoteView` (agent)
+57 |         appraisal: assessment.appraisal
+   |                    ^^^^^^^^^^^^^^^^^^^^ from `Note.appraisal`
+  reason: `show_note` reaches the `Note` it comes from for anyone its grants let in, the user `owner_id` points at among them, and only the user `reviewer_id` points at may read `appraisal`. What a caller is sent has one shape for everyone, and a value passed through a variable or another type keeps its field's rules.
+  next: Leave `appraisal` out of `NoteView` (agent)
   rule: policy.output_field_unproved
   help: docs/language/09-policy.html#policy-output-field-unproved
 
@@ -2046,6 +2046,7 @@ Not yet:
 | Item | Area | Status |
 |---|---|---|
 | Who schedules and subscribers act as, and how policy applies to them | 12 | Depends on area 12 question 8 |
+| How schedules and subscribers write a `FieldAccess.server_only` field, which no request may | 12 | Input to area 12 |
 | Event and subscriber policy (today's candidate `policy { scope: f  Role: [invoke, read] }`, syntax review #52) | 12 | Input to area 12 |
 | Testing policy: calling an action as a given user and expecting `not_found` or `not_permitted` | 13 | Input to area 13 |
 | The permissions report (`build/report/permissions.md` and `.json`) and its place in the approval review | 14 | Carried to area 14 |

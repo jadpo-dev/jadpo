@@ -1770,7 +1770,7 @@ fn field_policy(
                     .map_or(span.clone(), |v| node_span(path, v.syntax())),
                 format!("`{word}:` isn't given a list"),
                 "not a list",
-                "Each grant lists who may do it, in `[ ]`: `read: [CompanyRole.editor]`.",
+                "Each grant lists who may do it, in `[ ]`: `read: [Access.authenticated]`.",
                 "Write the list in `[ ]`",
             ));
             continue;
