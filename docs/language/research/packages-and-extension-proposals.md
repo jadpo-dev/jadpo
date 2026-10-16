@@ -33,15 +33,13 @@ program, and how is a feature turned on, off or replaced?
 | Services | Stateless containers through `runs:`, Docker or Podman hidden, `jadpo services` |
 | Development | Provider calls faked by default, let through by name, logged; `jadpo watch` |
 | Built in or a package | Agreed as input to chunk 5.4 |
+| The golden rule | A package can do nothing the app cannot; the app can do everything a package can |
 
 **Open**, in the order they are being worked through. Each is settled
 with Richard one at a time, recorded on this page as decided, and only
 then built. No design is left for implementation.
 
-1. **The golden rule.** *Question:* adopt "a package can do nothing the
-   app cannot, and the app can do everything a package can"? It already
-   holds by construction (own integrations in `shared/providers/` use the
-   package format, `runs:` included). *Recommendation:* yes.
+1. ~~The golden rule~~: decided, see "Decided: the golden rule".
 2. **Translations** (chunk 5.3 is close). *Decided:* area 10 question 9,
    one ICU MessageFormat JSON file per locale, typed calls from the default
    locale's keys, missing keys and placeholders are compile errors, built
@@ -156,6 +154,27 @@ capabilities are a fixed list owned by the language (database, cache,
 files, email, publishing, schedules; SMS removed by design C below), each with standard types and
 events, a local driver for development, one fake for tests and a
 conformance suite. Packages fill capabilities and never invent them.
+
+## Decided: the golden rule
+
+Decided 2026-10-16 (Richard): **a package can do nothing the app cannot,
+and the app can do everything a package can.** A package is a folder of an
+app's own code, published.
+
+- It holds by construction: the app's own integrations in
+  `shared/providers/` use the package format whole (`provider.jadpo`,
+  `resources/`, `events/`, decoding, `provides/`, `runs:`), and its own
+  types, failures, libraries, emails and translations live in `shared/`
+  and its domains.
+- The compiler treats `packages/` and `shared/providers/` alike; they
+  differ only in provenance: the lock entry, the digest check, being
+  read-only, and the publishing bar.
+- Every future package feature is designed with how the app writes it; a
+  proposal that only works inside a package is rejected.
+- The gate checks it: each package example in the language pages also
+  compiles placed as the app's own integration in `shared/providers/`.
+- The rule runs one way only: an app can do far more than a package
+  (entities, actions, routes, policy).
 
 ## Decided: which kinds of package exist
 
