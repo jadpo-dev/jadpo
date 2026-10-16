@@ -512,7 +512,9 @@ reference only).
 - [ ] **7.2 Importing and faking:** `opus · high` the OpenAPI importer, hand-written
   packages, generated fakes, `jadpo provider record`.
 - [ ] **7.3 Email:** `opus · high` the capability, SMTP driver, `emails/` templates, the dev
-  inbox, the health score.
+  inbox, the health score, and how a dotted translation key (area 16's
+  `"welcome_email.subject"`) is called; chunk 5.3b refuses one as
+  `translation.key_invalid` until then.
 - [ ] **7.4 Outside calls hold no transaction** `opus · xhigh` (areas 6 and
   11, 2026-10-15): reads before a call in a read-only snapshot closed before
   it, the transaction opened after it, a write to a record loaded before the
