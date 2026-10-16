@@ -467,11 +467,8 @@ impl<'p> Ctx<'p> {
     /// as it runs work that never waits, and the route once its work ends
     /// (area 7, "Time limits").
     pub fn out_of_time(&self) -> bool {
-        self.deadline.is_some_and(|at| {
-            self.host
-                .monotonic_ms()
-                .is_some_and(|now| now >= at)
-        })
+        self.deadline
+            .is_some_and(|at| self.host.monotonic_ms().is_some_and(|now| now >= at))
     }
 
     /// The running action's transaction in `store`, begun at the first

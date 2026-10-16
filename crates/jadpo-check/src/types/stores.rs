@@ -124,7 +124,10 @@ fn session_effects(db: &dyn Db, project: Project, file: File) -> BTreeSet<String
                 &site.node,
                 Node::Expr(jadpo_graph::body::Expr::Call {
                     callee: Callee::Session(
-                        SessionOp::Start | SessionOp::End | SessionOp::IssueToken | SessionOp::IssueKey
+                        SessionOp::Start
+                            | SessionOp::End
+                            | SessionOp::IssueToken
+                            | SessionOp::IssueKey
                     ),
                     ..
                 })

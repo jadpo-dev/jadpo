@@ -812,7 +812,10 @@ mod tests {
         // as `null`, so each reads back as it was.
         for (sent, written) in [
             (r#"{"quantity": 3}"#, r#"{"quantity":3}"#),
-            (r#"{"quantity": 3, "total": null}"#, r#"{"quantity":3,"total":null}"#),
+            (
+                r#"{"quantity": 3, "total": null}"#,
+                r#"{"quantity":3,"total":null}"#,
+            ),
         ] {
             let (value, problems) = read(sent);
             assert!(problems.is_empty(), "{problems:?}");

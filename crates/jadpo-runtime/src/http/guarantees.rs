@@ -581,26 +581,14 @@ fn a_write_with_a_key_answers_its_repeat_without_running_again() {
     let again = send(&table, &program, &host, &post(Some("k1"), "a"), NOW + 1000);
     assert_eq!(again.status, 204);
     assert_eq!(program.runs.get(), 1, "the repeat didn't run the action");
-    let other = send(
-        &table,
-        &program,
-        &host,
-        &post(Some("k1"), "b"),
-        NOW + 2000,
-    );
+    let other = send(&table, &program, &host, &post(Some("k1"), "b"), NOW + 2000);
     assert_eq!(
         (other.status, code(&other)),
         (422, Some("idempotency_key_reused"))
     );
     assert_eq!(program.runs.get(), 1);
     // A day later the key is ignored, and the write runs again.
-    let later = send(
-        &table,
-        &program,
-        &host,
-        &post(Some("k1"), "b"),
-        NOW + DAY,
-    );
+    let later = send(&table, &program, &host, &post(Some("k1"), "b"), NOW + DAY);
     assert_eq!(later.status, 204);
     assert_eq!(program.runs.get(), 2);
     // Without a key, every request runs.
@@ -799,12 +787,12 @@ fn a_route_without_input_refuses_a_query_string_and_a_body() {
     let program = Program::new(Ends::Writes);
     let host = Fake::default();
     let mut queried = post(None, "a");
-    queried.query = Some("owner=x&limit=2".into());
+    queried.query = Some("k1=x&k2=2".into());
     let refused = send(&table, &program, &host, &queried, NOW);
     assert_eq!(refused.status, 422);
     assert_eq!(
         String::from_utf8_lossy(&refused.body),
-        "{\"error\":{\"code\":\"invalid_input\",\"message\":\"Request input is invalid.\",\"request_id\":\"req_1\",\"details\":{\"problems\":[{\"field\":\"limit\",\"rule\":\"unknown_field\"},{\"field\":\"owner\",\"rule\":\"unknown_field\"}]}}}"
+        "{\"error\":{\"code\":\"invalid_input\",\"message\":\"Request input is invalid.\",\"request_id\":\"req_1\",\"details\":{\"problems\":[{\"field\":\"k1\",\"rule\":\"unknown_field\"},{\"field\":\"k2\",\"rule\":\"unknown_field\"}]}}}"
     );
     let mut bodied = post(None, "a");
     bodied.body = b"{}".to_vec();

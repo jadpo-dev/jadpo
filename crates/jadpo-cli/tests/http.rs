@@ -2524,11 +2524,11 @@ fn a_body_is_read_only_as_json_and_a_route_refuses_what_it_doesnt_read() {
     let id = created.json()["id"].as_str().expect("an id").to_string();
 
     // A route without `input:` reads no query string and no body.
-    let queried = dev.send("GET", &format!("/todos/{id}?owner=x"), &[], "");
+    let queried = dev.send("GET", &format!("/todos/{id}?shelf=x"), &[], "");
     assert_eq!(queried.status, 422, "{queried:?}");
     assert_eq!(
         queried.json()["error"]["details"]["problems"],
-        serde_json::json!([{ "field": "owner", "rule": "unknown_field" }])
+        serde_json::json!([{ "field": "shelf", "rule": "unknown_field" }])
     );
     let bodied = dev.send("GET", &format!("/todos/{id}"), &[], "{}");
     assert_eq!(bodied.status, 422, "{bodied:?}");
@@ -3157,7 +3157,10 @@ fn openapi_describes_values_as_they_are_sent() {
         serde_json::json!({ "type": "string", "const": "pending" }),
         "a plain variant is its name"
     );
-    assert_eq!(schemas["Outcome"]["oneOf"][1]["properties"]["tag"]["const"], "paid");
+    assert_eq!(
+        schemas["Outcome"]["oneOf"][1]["properties"]["tag"]["const"],
+        "paid"
+    );
     let moment = &schemas["EchoInput"]["properties"]["moment"];
     assert_eq!(moment["type"], "string", "{moment}");
     // What the runtime sends matches what the document says.
@@ -3174,7 +3177,10 @@ fn openapi_describes_values_as_they_are_sent() {
         serde_json::json!({ "moment": "09:30", "outcome": "pending", "name": null })
     );
     let pattern = moment["pattern"].as_str().expect("a pattern");
-    assert_eq!(pattern, "^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]{1,3})?)?$");
+    assert_eq!(
+        pattern,
+        "^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]{1,3})?)?$"
+    );
 }
 
 #[test]
@@ -3211,7 +3217,10 @@ fn openapi_lists_each_routes_responses_from_what_it_runs() {
     for (method, path) in [("get", "/items/{item_id}"), ("get", "/items")] {
         let statuses = responses(method, path);
         for status in ["400", "413", "422", "429", "500", "503", "504"] {
-            assert!(statuses.contains(&status.to_string()), "{method} {path}: {statuses:?}");
+            assert!(
+                statuses.contains(&status.to_string()),
+                "{method} {path}: {statuses:?}"
+            );
         }
     }
     // A write that keeps its response promises the replay.

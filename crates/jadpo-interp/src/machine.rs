@@ -364,9 +364,8 @@ impl<'p> Machine<'p> {
             return None;
         }
         self.steps = 0;
-        ctx.out_of_time().then(|| {
-            Stop::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY))
-        })
+        ctx.out_of_time()
+            .then(|| Stop::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)))
     }
 
     /// Starts callable `callee` with `args`, called from site `at` of the
