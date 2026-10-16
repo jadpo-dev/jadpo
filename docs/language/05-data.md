@@ -614,7 +614,9 @@ migration {
   update's `set:` (area 6). The expression may use the entity's fields as
   they stand before this migration, including one this migration retires,
   constants and pure functions (`priorities` is a library, area 1); never a
-  query, another entity or `clock.now`. It is typed against the field it
+  query, another entity or `clock.now`. A constant is a `constant`
+  declaration (area 3, decided 2026-10-16, not built until chunk 5.3e),
+  read through its library (`priorities.default_priority`). It is typed against the field it
   fills, like any value.
 - The migration adds the column as optional and fills existing rows in
   batches, each in its own transaction, so a large table is never locked

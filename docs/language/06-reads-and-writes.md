@@ -276,7 +276,9 @@ A condition must be one the database can use an index for: a field,
 named first, compared with a value. A function applied to a field, two
 fields compared, and a value worked out in the query are refused; values
 are parameters and their fields, literals, enum values, lists of those and
-`clock.now`. `<` and the other orderings take numbers, times, dates and
+`clock.now`. A constant (area 3, [Constants](03-logic.md#constants)) is
+accepted wherever a literal is, since it is a value fixed while compiling
+(decided 2026-10-16, not built until chunk 5.3e). `<` and the other orderings take numbers, times, dates and
 durations, as they do in a body (area 3). A field that is `none` meets no
 comparison but `!=`, and `not` keeps that meaning, so SQL's `NULL` never
 shows through. A `where:` line can't compare with a value that may be
@@ -1069,7 +1071,8 @@ in one step and nothing needs checking. On the right of `set:`,
 `video.view_count` would be the copy loaded earlier. Such an update takes the
 record's `id` instead of a loaded record, and its values may use only
 parameters, constants, `clock.now` and the record's stored fields, so no
-increment is ever lost.
+increment is ever lost. A constant here is a `constant` declaration
+(area 3, decided 2026-10-16, not built until chunk 5.3e).
 
 Which isolation level an action runs at follows from what it does (Richard,
 2026-10-15). An action that loads no record, neither itself nor through any
@@ -1762,6 +1765,13 @@ error: `manual_pages * 2` is worked out, and a query computes nothing
 
 check failed: 1 error, 1 file
 ```
+
+A constant counts as a literal here, so `where: Manual.page_count > longest_manual`
+with `constant longest_manual: PageCount = 900` is accepted, and the
+reason will name constants among a query's values (decided 2026-10-16, not
+built until chunk 5.3e). Arithmetic on a constant inside the query is
+still worked out, and still this error: give the result a constant of its
+own.
 
 ### `query.optional_value`
 
@@ -3529,3 +3539,4 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | What loads a record | Chosen in chunk 3.7: reading one (`get`, a query and its includes); being handed one (a parameter whose type holds a record, which area 5 calls a loaded record, so a record authentication loads for an action counts too); writing one back (an `update`, `delete` or transition of a record rather than its `id`, wherever the record came from); and a transition whose `when:` can refuse a visible record, whose second statement must share the first one's snapshot. A create (its references checked by the store in the same statement), an update, delete or unguarded transition by `id`, and a counter load nothing | 2026-10-15 |
 | Isolation of fixtures and tests | Chosen in chunk 3.7: a fixture is decided as an action is; each action or fixture a test calls begins its own transaction at its own level; a read or write a test runs itself, and whatever else runs outside an action (migrations, purge), runs at repeatable read | 2026-10-15 |
 | Outside calls and the transaction | No transaction is open during an outside call: reads before it run in a read-only snapshot closed before the call, the transaction opens after it, and a write to a record loaded before the call checks its row version, a change rerunning the action (Richard, from an outside review) | 2026-10-15 |
+| Constants in queries and updates | A `constant` (area 3) is a value fixed while compiling, so a query accepts one wherever it accepts a literal (`query.value_unsupported` names constants among a query's values), and the "constants" an update by `id` may use are these. Arithmetic in a query stays refused, on constants too. Decided, not built (chunk 5.3e) (Richard) | 2026-10-16 |

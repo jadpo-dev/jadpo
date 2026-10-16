@@ -7,9 +7,9 @@ checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce
 
 # Logic
 
-How behaviour is written: functions and actions, variables, statements,
-operators, `match`, `attempt`, loops, and what the language says about passing
-functions, recursion and generic code.
+How behaviour is written: functions and actions, variables and constants,
+statements, operators, `match`, `attempt`, loops, and what the language says
+about passing functions, recursion and generic code.
 
 > Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 3. Built in the new compiler in roadmap chunk 1.5, with the failure side of `attempt` and `match` in chunk 1.6, the runtime recursion limit in chunk 2.1 and `type.not_a_value` in chunk 5.2c.
 
@@ -105,7 +105,8 @@ var todo: Todo = attempt Todo.get(todo_id)                         // an entity
 var local: ZonedTime = temporal.in_zone(at, zone)                  // the standard library
 ```
 
-A library holds only functions.
+A library holds only functions and constants (see [Constants](#constants);
+constants decided 2026-10-16, not built until chunk 5.3e).
 
 ## Variables
 
@@ -124,6 +125,172 @@ total = Pence(total + delivery)
 - A variable is visible from its declaration to the end of its block.
 - A name already in scope, including a parameter, cannot be declared again
    (decided, question 3), and an unused variable is an error (question 4).
+
+## Constants
+
+> Decided by Richard on 2026-10-16, not built until chunk 5.3e. The examples are proposals, shown as plain text because the parser doesn't know `constant` yet.
+
+A `constant` names a fixed value at the top level of a file: the same in
+every deployment, worked out while compiling, and never changed.
+
+```text
+type Pence = Int {
+    min: 0
+}
+
+constant free_delivery_from: Pence = 5000
+constant small_order_fee: Pence = 250
+
+function delivery_fee(subtotal: Pence) -> Pence {
+    if (subtotal >= free_delivery_from) {
+        return 0
+    }
+    return small_order_fee
+}
+```
+
+- **Form.** `constant name: Type = value`. The name is lower_snake_case like
+  any value, and there is no mutable form: `constant mut` is an error whose
+  edit removes `mut`.
+- **Only at the top of a file.** Inside a body a fixed value is always
+  `var`, and at the top of a file always `constant`, so each place has one
+  way to write it. `constant` in a body is an error whose edit writes `var`.
+  A top-level `var` stays `syntax.expected_declaration`, whose `next:` says
+  to write `constant` (area 1). `const` at the top of a file is one error
+  whose edit writes `constant`; in a body it stays
+  [`syntax.variable_keyword`](#syntax-variable-keyword), whose edit writes
+  `var`.
+- **A named type.** A constant's type follows the rule signatures follow
+  (area 2, "Signatures use named types"): `constant limit: Int = 5` is an
+  error, as `limit: Int` is in a parameter. A list of a named type, an
+  object, an enum, `Email`, `Url` and the other types a signature may use
+  are fine.
+- **A value the compiler can work out.** Literals, enum values, other
+  constants, construction from those (`Pence(5000)`, an object, a list),
+  and the operators of [Expressions and operators](#expressions-and-operators)
+  on them. No call of any kind (functions, library functions, the standard
+  library), no `config`, no `clock`, and no constant that depends on
+  itself. Arithmetic gives the representation, as it does in a body, so
+  `Pence(free_delivery_from * 2)` constructs it back.
+- **Checked while compiling.** The value is checked against every rule of
+  its type and the types it is built on, as a literal is
+  ([`type.invalid_literal`](02-values-and-types.md#type-invalid-literal)),
+  so a construction in a constant never needs `attempt`.
+- **Unused is an error**, as for any other declaration: beside a primary
+  declaration it is `layout.unused_declaration`, and in a library a
+  constant nothing reads is unused as a function nothing calls is.
+
+### Where a constant lives
+
+Placement and sharing follow helper functions exactly (area 1, "Sharing and
+promotion"). A constant used by one file lives at the top of that file,
+beside the declaration that uses it; it is never a file's primary
+declaration, so there is no `constants/` folder. When a second file uses
+it, `layout.promotion_required` moves it into a library, and it is read
+through the library like a library function, without brackets:
+
+```text
+library pricing {
+    /// The UK standard rate of VAT.
+    constant vat_rate: VatRate = 0.2000
+
+    function vat_on(net: Pence) -> Pence { ... }
+}
+
+var rate: VatRate = pricing.vat_rate
+```
+
+A library used by a second domain moves to `shared/libraries/`, or stays
+and becomes `public` when it depends on its domain's types, as for
+functions. A private constant needs a name unique only within its domain,
+as private functions and types do (area 1, "Files and names", chunk 5.3d).
+
+### Where a constant can be read
+
+Anywhere a value can, functions included, because it never changes. It is
+also what "constants" already means in the places that allow them:
+
+- **Queries** accept a constant wherever they accept a literal (area 6,
+  `query.value_unsupported`).
+- **An update by `id`** may use parameters, constants, `clock.now` and the
+  stored fields (area 6).
+- **A computed backfill** may use the row's stored fields, constants and
+  pure functions (area 5).
+- **A setting's `default:`** may be a constant, which counts as a literal
+  there (area 10, `configuration.default_literal_required`).
+
+### Two constants holding one value
+
+Agents working in parallel tend to invent the same constant twice, each
+writing its own `vat_rate`. Two constants of the same type holding the same
+value get a warning, `constant.similar_exists`, modelled on
+[`library.similar_exists`](01-project-layout-and-modules.md#library-similar-exists):
+`check` still passes, and the warning names the other constant and its file
+so the agent reads that one and removes its own. The library catalogue
+(area 14) lists constants with their type, value and `///` description.
+
+### A constant or a setting
+
+If a deployment could ever need a different value, it is a setting in
+`config.jadpo` (area 10); otherwise it is a constant. A page size an
+operator might tune is `config`; the number of pence in a pound is a
+constant. The agent skill gives the same rule (area 14).
+
+### Values that change on a known date
+
+Guidance, not built into the language (there is no `effective:` setting).
+A value that changes on a known date, such as the UK's VAT rate, is a
+constant holding a dated list, read through a library function:
+
+```text
+type VatDate = CalendarDate {}
+
+type VatBand = Object {
+    starts: VatDate
+    rate: VatRate
+}
+
+type VatBands = List<VatBand> {
+    min_length: 1
+}
+
+library vat {
+    constant uk_bands: VatBands = [
+        VatBand {
+            starts: "2010-01-01"
+            rate: 0.1750
+        },
+        VatBand {
+            starts: "2011-01-04"
+            rate: 0.2000
+        }
+    ]
+
+    /// The UK standard rate on a date.
+    function rate_on(on: VatDate) -> VatRate { ... }
+}
+
+var rate: VatRate = vat.rate_on(today)
+```
+
+- A change of rate is an edit to the list, reviewed as a diff, and tested
+  with the test clock (area 13) on each side of the date.
+- Make it an entity only when someone who isn't a developer must change it
+  while the app runs.
+- A record stores the rate it applied (an invoice's `vat_rate` field), so
+  a later change never rewrites what was charged.
+
+### Rejected
+
+- **A top-level `var`.** `var` would mean worked out while running in a
+  body and while compiling at the top of a file.
+- **Functions with no arguments.** Queries and updates by `id` refuse
+  calls, and a call looks like a calculation, not a fixed value.
+- **Values attached to their type, `Rate.standard_vat`.** A one-off value
+  would need a type of its own, and one block per type clashes when agents
+  work in parallel.
+- **A root `constants { }` block.** A grab-bag, the one file every change
+  touches, and against domains owning their code.
 
 ## Statements
 
@@ -3064,7 +3231,8 @@ check failed: 1 error, 1 file
 The new compiler builds this area: roadmap chunk 1.5, with the failure side
 of `attempt` and `match` in chunk 1.6 and the runtime recursion limit in
 chunk 2.1. Every example and error above is checked against it on each gate
-run.
+run, except [Constants](#constants), decided 2026-10-16 and not built until
+chunk 5.3e, whose examples are proposals.
 
 ### Consistency with the rest of the language
 
@@ -3258,3 +3426,4 @@ Decided by Richard on 2026-10-12. Built in the new compiler on 2026-10-13 (roadm
 | Callable settings | None: every action is all-or-nothing, writes always check for concurrent change, reads are current unless they read a declared cache; policy is area 9 | 2026-10-12 |
 | Generics and unions | None for your own code; a parameter accepting several types takes an `Enum` whose variants carry them | 2026-10-12 |
 | Colon rule (language-wide) | Every member inside braces is `name: value`, and a value is one thing or a `{ ... }` block (`paid: { ... }`, `persistence: { ... }`); a variant with no data is just its name; a field's own settings still follow its type (`name: ProductName { optional: true }`); top-level declarations, statements and `match` arms are not members; route entries inside a `routes` group, keyed by method and path, are the one exception (area 7) (Richard; Terraform's block-versus-attribute split is a known source of confusion) | 2026-10-12 |
+| Constants | `constant name: Type = value`, only at the top of a file or in a library (in a body it is always `var`); a named type, as in signatures; a value worked out while compiling from literals, enum values, other constants, constructions and operators, never a call, `config` or `clock`, checked against the type's rules; no mutable form; unused is an error; placed and shared as helper functions are, read as `pricing.vat_rate` from a library, a private one unique within its domain; what "constants" means in queries, updates by `id`, backfills and setting defaults; two of one type with one value warn `constant.similar_exists`; `config` when a deployment could ever need another value, otherwise a constant; dated values are a dated list constant behind a library function. Rejected: a top-level `var`, functions with no arguments, values attached to their type, a root `constants { }` block (Richard). Not built until chunk 5.3e | 2026-10-16 |

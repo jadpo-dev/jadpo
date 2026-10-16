@@ -238,10 +238,13 @@ These were decided in areas 1, 4 and 5. The library and failure catalogues
 and the similar-helper warning are built (chunk 1.7); the rest are not yet.
 
 - **Library catalogue** (`build/catalogue/libraries.md`): every library
-  function with its signature, `///` description and callers. An agent reads
-  it before writing a helper.
+  function with its signature, `///` description and callers, and every
+  library constant with its type, value, description and readers (area 3,
+  2026-10-16). An agent reads it before writing a helper or a constant.
 - **Similar-helper warning**: when a new helper looks like an existing one,
-  `jadpo check` warns `library.similar_exists` and names it.
+  `jadpo check` warns `library.similar_exists` and names it; two constants
+  of the same type holding the same value warn `constant.similar_exists`
+  (area 3, 2026-10-16, not built until chunk 5.3e).
 - **Failure catalogue** (`build/catalogue/failures.md`): every failure with
   its code, kind, status and client fields.
 - **Schema and query reports** (`build/report/`): every table, column and
@@ -270,6 +273,9 @@ rounding.half_even   shared/libraries/rounding.jadpo:4
   clash, then push. Private functions and types are unique only within
   their domain (area 1), so two domains' helpers don't clash, but a name
   another agent took in the same domain, or across the project, does.
+  It gives the rule for a fixed value (2026-10-16, Richard): if a
+  deployment could ever need a different value it is a setting in
+  `config.jadpo`, otherwise a `constant` (area 3).
 - **Generated CI runs `jadpo check` first** (2026-10-16, Richard), so a
   name clash or any other check error fails in seconds, before tests or a
   build. No page yet says what generates a project's CI (`jadpo new`
@@ -693,3 +699,4 @@ what other areas carried here and where this page answers it.
 | Completion and prompts | Tab completion from the top level of commands, flags (with descriptions) and project names; a missing argument opens a searchable list in a terminal and lists valid values otherwise; the CLI describes itself fully (`--help` with examples, `jadpo help --json`), so nobody needs the docs (Richard) | 2026-10-13 |
 | Incident input | `jadpo incident` reads a file, standard input, or text pasted at a prompt in a terminal; Jadpo events are found inside surrounding log text (timestamps, platform wrappers) and grouped by request; the build's manifest is found by the event's build id (area 18) (Richard) | 2026-10-13 |
 | CLI design language | Approved as designed in the [CLI design language](research/14-cli-design-language.md): six meaning-only colours, single-width symbols with ASCII fallbacks, one layout grid, calm by default; Jadpo's own colours when the background is known, otherwise the terminal theme's; Unicode symbols, no emoji or Nerd Font glyphs (Richard) | 2026-10-13 |
+| Constants for agents | The library catalogue lists library constants with their type, value, description and readers; `constant.similar_exists` warns on two constants of one type holding one value; the agent skill says a value a deployment could ever need to change is `config`, otherwise a `constant` (area 3). Not built: chunk 5.3e adds the warning and the catalogue entries; the skill itself isn't built yet (Richard) | 2026-10-16 |

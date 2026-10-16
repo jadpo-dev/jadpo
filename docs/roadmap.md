@@ -438,6 +438,19 @@ reference only).
   names in use that contain the same word, its checked example rewritten.
   `jadpo rename` refusing a name in use comes with `rename` (after the
   first build, item 5).
+- [ ] **5.3e Constants** `opus · high` (area 3, "Constants", decided
+  2026-10-16), after 5.3d: `constant name: Type = value` at the top of a
+  file or in a library, `constant` reserved; its type named as a
+  signature's is; its value worked out and checked while compiling, with
+  calls, `config`, `clock` and cycles refused; `constant` in a body, `const`
+  and `constant mut` each one error with an edit, and a top-level `var`'s
+  `next:` pointing at `constant`; placement, promotion into a library and
+  per-domain names as for helper functions; reads in bodies, queries (as
+  literals), updates by `id` and setting defaults (backfills, 5.6, take
+  them as they come); the
+  `constant.similar_exists` warning and constants in the library
+  catalogue. Each new error with a checked example and real output, and
+  area 3's proposal examples made check blocks.
 - [ ] **5.4 Standard library: the plan** `opus · high`. Only `collection`
   and `temporal` are specified, piecemeal across areas 2, 3 and 10, and
   real code keeps needing more: splitting and trimming text, formatting and
