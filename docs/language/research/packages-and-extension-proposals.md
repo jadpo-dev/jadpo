@@ -52,16 +52,7 @@ then built. No design is left for implementation.
 8. ~~What a library package may also carry~~: decided, see that section.
 9. ~~Software and disk~~: decided, see "Documents" and "Files and formats".
 10. ~~Packages generated from your own Jadpo apps~~: decided, see "Packages from other Jadpo apps".
-10b. **Developing a package**: the whole cycle for a package author:
-    starting one (`jadpo package new`) in its own repository; what a
-    package repository holds besides the package (a sample app for
-    recipes and tests); trying it inside a real app before publishing
-    (pointing an app at a local checkout while editing, given installed
-    packages are committed and digest-checked); fakes, recordings,
-    sandbox contract runs and capability conformance while developing;
-    the publishing bar run locally before publishing; versions, the
-    surface diff and the generated changelog; and how this meets private
-    packages (item 11).
+10b. ~~Developing a package~~: decided, see "Developing and publishing packages".
 10c. **Where committed records live**: area 7's `api/main.api` is
     committed beside the source rather than in `build/` because it is a
     record reviewed in every change (area 18 separates committed records
@@ -69,10 +60,7 @@ then built. No design is left for implementation.
     `translations/sources.json` and installed packages' `package.surface`
     now also records, decide whether they keep their own homes or share one
     (Richard asked, 2026-10-16).
-11. **Private packages**: a company's shared packages live in their own
-    repositories (decided); where apps install them from (a private
-    registry or a git repository) and whether the publishing bar applies
-    in full.
+11. ~~Private packages~~: decided, see "Developing and publishing packages".
 12. **Choosing a provider when deploying**: only if Jadpo apps will be run
     by people who did not write them; every candidate declared, a setting
     picks one.
@@ -955,6 +943,46 @@ var export = csv.write(exports
   a temporary file, then synced and renamed; downloads served with ranges,
   ETags, `attachment` and a sandbox policy; `storage_full` and a free-space
   floor; `jadpo files copy` between stores.
+
+## Developing and publishing packages, privately too (open items 10b and 11)
+
+Decided 2026-10-16 (Richard).
+
+- **A package lives in its own repository**: `jadpo package new <Name>
+  --library` or `--provider` writes the package format plus `recipes/`, a
+  `sample/` app the recipes and tests run against, and `GUIDE.md`.
+- **Developing**: `jadpo test` runs the package's tests, the examples in
+  its descriptions, its decoders against recordings and its recipes
+  compiled into `sample/`; `jadpo package record` and `conform` work
+  against the provider's sandbox; `jadpo package check` runs the whole
+  publishing bar locally, writes `package.surface`, and compares it with
+  the surface at the previous tag, refusing a breaking change without a
+  new major version.
+- **Trying it in an app before publishing**: `jadpo package link
+  ../acme-pricing` compiles the app against the live checkout; the lock
+  records the link; `jadpo build` for production and CI refuse a link, so
+  it can never ship; `jadpo package unlink` restores the installed version.
+- **Private packages come from git**: `jadpo package add
+  github.com/acme/acme-pricing@v2.1.0`, a version being a git tag the
+  package's CI tags only after `jadpo package check` passes; access is the
+  developer's or CI's own git access, with no `jadpo login` and no private
+  registry (packages are committed into apps, so a registry's caching adds
+  nothing; Go is the precedent); the lock pins the repository, the tag's
+  commit and the digest, so a public package can never stand in for it.
+  The lock's source field leaves room for a registry later.
+- **Every package is verified at install, wherever it came from**:
+  `jadpo package add` and `update` regenerate the surface from the
+  package's code and refuse one that differs from the committed
+  `package.surface`. The public registry repeats the checks on upload and
+  adds discovery, curated packages, publisher verification, signing and a
+  documentation website.
+- **Prose is unverified wherever it comes from** (`///` descriptions,
+  `GUIDE.md`); nothing safety-relevant relies on it.
+- **Publisher trust**: the app's own company's packages from git are
+  installed as any; a third party's package from git, not the registry, is
+  marked unverified in the approval report and needs a person's acceptance
+  to install; registry packages carry their verified publisher, curated
+  ones marked official.
 
 ## Decided: the golden rule
 
