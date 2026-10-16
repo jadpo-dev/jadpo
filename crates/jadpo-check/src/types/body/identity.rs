@@ -283,16 +283,16 @@ impl Body<'_> {
         type Param<'a> = (&'a str, &'a str, Ty);
         let (params, result): (Vec<Param>, Ty) = match op {
             SessionOp::Start => (
-                vec![("user_id", "the user's", id(&entity))],
+                vec![("user", "the user's", id(&entity))],
                 Ty::Prim(Prim::Unit),
             ),
             SessionOp::End => (Vec::new(), Ty::Prim(Prim::Unit)),
             SessionOp::IssueToken => (
-                vec![("user_id", "the user's", id(&entity))],
+                vec![("user", "the user's", id(&entity))],
                 Ty::Prim(Prim::ApiToken),
             ),
             SessionOp::Tokens => (
-                vec![("user_id", "the user's", id(&entity))],
+                vec![("user", "the user's", id(&entity))],
                 Ty::List(Box::new(Ty::Opaque(ISSUED_TOKEN.to_string(), Vec::new()))),
             ),
             SessionOp::RevokeToken => (
