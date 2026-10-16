@@ -2272,8 +2272,8 @@ fn a_get_route_lists_a_signed_in_users_tokens_and_a_partners_keys() {
     assert_eq!(added.status, 201, "{}", added.body);
     let two = listed(&dev.send("GET", "/devices", &[("authorization", &auth)], ""));
     assert_eq!(two.len(), 2);
-    assert!(two[0]["started_at"].as_str() <= two[1]["started_at"].as_str());
-    assert_eq!(two[0]["id"], items[0]["id"]);
+    assert_eq!(two[0]["id"], items[0]["id"], "oldest first");
+    assert_ne!(two[1]["id"], items[0]["id"]);
 
     // The route lists a member's own through their id as well.
     let ann = member_id(&dev, "ann");

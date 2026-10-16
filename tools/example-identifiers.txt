@@ -25,6 +25,7 @@ amendment
 amount_off
 animal_free
 ann
+ann_on_bob
 application_configuration
 applies_to
 apply_code
@@ -103,6 +104,9 @@ buns
 business_zone
 by_ann
 by_bob
+by_member
+by_owner
+by_partner
 cake
 cake_count
 cake_line
@@ -230,6 +234,7 @@ delivery_cost
 delivery_id
 delivery_state
 destination_company_id
+devices
 disable_user
 disabled_at
 discount

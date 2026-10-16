@@ -1278,25 +1278,25 @@ use journal/actions { create_partner, register }
 
 test "a member lists the devices that hold a token" {
     var ann: Member = attempt register("ann")
-    var listed: Response = request {
+    var response: Response = request {
         method: HttpMethod.get
         path: "/devices"
         as: Principal.user(ann)
     }
-    assert listed.status == 200
-    assert listed.output != []
+    assert response.status == 200
+    assert response.output != []
 }
 
 test "a member's tokens are listed to no one else" {
     var ann: Member = attempt register("ann")
     var bob: Member = attempt register("bob")
-    var signed_in: Response = request {
+    var by_bob: Response = request {
         method: HttpMethod.get
         path: "/devices"
         as: Principal.user(bob)
     }
-    assert signed_in.output != []
-    var own: Response = request {
+    assert by_bob.output != []
+    var by_ann: Response = request {
         method: HttpMethod.get
         path: "/devices/{member_id}"
         params: {
@@ -1304,8 +1304,8 @@ test "a member's tokens are listed to no one else" {
         }
         as: Principal.user(ann)
     }
-    assert own.output != []
-    var other: Response = request {
+    assert by_ann.output != []
+    var ann_on_bob: Response = request {
         method: HttpMethod.get
         path: "/devices/{member_id}"
         params: {
@@ -1313,21 +1313,21 @@ test "a member's tokens are listed to no one else" {
         }
         as: Principal.user(ann)
     }
-    assert other.status == 200
-    assert other.output == []
+    assert ann_on_bob.status == 200
+    assert ann_on_bob.output == []
 }
 
 test "a partner's keys are listed to the partner and its owner" {
     var ann: Member = attempt register("ann")
     var bob: Member = attempt register("bob")
     var partner: Partner = attempt create_partner("Acme", Principal.user(ann))
-    var other: Response = request {
+    var by_bob: Response = request {
         method: HttpMethod.get
         path: "/devices"
         as: Principal.user(bob)
     }
-    assert other.output != []
-    var own: Response = request {
+    assert by_bob.output != []
+    var by_partner: Response = request {
         method: HttpMethod.get
         path: "/partners/{partner_id}/keys"
         params: {
@@ -1335,8 +1335,8 @@ test "a partner's keys are listed to the partner and its owner" {
         }
         as: Principal.service(partner)
     }
-    assert own.output != []
-    var owner: Response = request {
+    assert by_partner.output != []
+    var by_owner: Response = request {
         method: HttpMethod.get
         path: "/partners/{partner_id}/keys"
         params: {
@@ -1344,8 +1344,8 @@ test "a partner's keys are listed to the partner and its owner" {
         }
         as: Principal.user(ann)
     }
-    assert owner.output != []
-    var stranger: Response = request {
+    assert by_owner.output != []
+    var by_member: Response = request {
         method: HttpMethod.get
         path: "/partners/{partner_id}/keys"
         params: {
@@ -1353,7 +1353,7 @@ test "a partner's keys are listed to the partner and its owner" {
         }
         as: Principal.user(bob)
     }
-    assert stranger.output == []
+    assert by_member.output == []
 }
 ```
 

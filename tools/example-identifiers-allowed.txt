@@ -289,3 +289,8 @@ high
 # protocol words the runtime and OpenAPI must write as they are.
 details
 title
+
+# The standard library's `IssuedToken` and `IssuedKey` (area 8), which the
+# API record writes as `output` sections of their own.
+issued_token
+issued_key

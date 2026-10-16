@@ -1627,7 +1627,7 @@ impl Reader<'_> {
         let holder = if op.on_service() {
             "service_id"
         } else {
-            "user_id"
+            "user"
         };
         let params = vec![(
             holder.to_string(),
