@@ -265,7 +265,10 @@ impl Program {
         prepared: &Prepared,
         values: &jadpo_runtime::config::ConfigValues,
     ) -> jadpo_runtime::http::signed::Settings {
-        jadpo_runtime::http::signed::Settings::read(prepared.plan.routes().identity.as_ref(), values)
+        jadpo_runtime::http::signed::Settings::read(
+            prepared.plan.routes().identity.as_ref(),
+            values,
+        )
     }
 
     /// The settings `values` hold, decoded, by their numbers.

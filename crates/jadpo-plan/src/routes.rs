@@ -233,10 +233,7 @@ pub(crate) fn table(
         && let Some(api) = exchange_api
     {
         out.routes.push(RoutePlan {
-            key: format!(
-                "route POST /{}",
-                jadpo_std::http::EXCHANGE_PATH.join("/")
-            ),
+            key: format!("route POST /{}", jadpo_std::http::EXCHANGE_PATH.join("/")),
             method: jadpo_std::HttpMethod::Post,
             segments: jadpo_std::http::EXCHANGE_PATH
                 .iter()

@@ -435,7 +435,13 @@ async fn user_credential(
     };
     let route = signing.route;
     let writes = route.method != jadpo_std::HttpMethod::Get;
-    let kept = verifier(secret);
+    // What is kept of the credential as issued: an API token's verifier
+    // is of its whole text, prefix and all.
+    let kept = if cookie {
+        verifier(secret)
+    } else {
+        verifier(&format!("{API_TOKEN_PREFIX}{secret}"))
+    };
     let now = ctx.now();
     let claims = signed
         .and_then(|signed| signing.open(method, signed, now))
@@ -1130,10 +1136,7 @@ pub(crate) fn renewal(plan: &IdentityPlan, renewed: &Renewed) -> Vec<(String, St
             )],
             None => Vec::new(),
         },
-        Renewed::Token(token) => vec![(
-            jadpo_std::http::TOKEN_HEADER.to_string(),
-            token.clone(),
-        )],
+        Renewed::Token(token) => vec![(jadpo_std::http::TOKEN_HEADER.to_string(), token.clone())],
     }
 }
 
@@ -1368,10 +1371,8 @@ mod tests {
             origin: Some("browser_origin".into()),
             ..plan()
         };
-        let values = crate::config::ConfigValues::for_test(&[(
-            "browser_origin",
-            "https://app.example/",
-        )]);
+        let values =
+            crate::config::ConfigValues::for_test(&[("browser_origin", "https://app.example/")]);
         let settings = Settings::read(Some(&plan), &values);
         // Behind a proxy, `Host` names the server inside; the origin is
         // the one configured.

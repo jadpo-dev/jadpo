@@ -28,5 +28,6 @@ mod policy;
 mod project;
 mod review;
 mod scale;
+mod signed;
 mod soundness;
 mod types;

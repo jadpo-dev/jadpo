@@ -114,10 +114,7 @@ impl Settings {
             .iter()
             .filter_map(|(method, setting)| {
                 let current = values.text(setting)?;
-                Some((
-                    *method,
-                    SigningKey::new(current, values.previous(setting)),
-                ))
+                Some((*method, SigningKey::new(current, values.previous(setting))))
             })
             .collect();
         let origin = plan
@@ -271,10 +268,9 @@ const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx
 fn base64url(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
-        let n = chunk
-            .iter()
-            .enumerate()
-            .fold(0u32, |n, (at, byte)| n | (u32::from(*byte) << (16 - 8 * at)));
+        let n = chunk.iter().enumerate().fold(0u32, |n, (at, byte)| {
+            n | (u32::from(*byte) << (16 - 8 * at))
+        });
         for at in 0..=chunk.len() {
             let index = (n >> (18 - 6 * at)) & 0x3f;
             out.push(char::from(ALPHABET[index as usize]));

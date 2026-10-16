@@ -215,8 +215,8 @@ pub fn document(
         let entry = paths.entry(route.path()).or_insert_with(Value::object);
         entry.set(&route.method.word().to_ascii_lowercase(), operation);
     }
-    let exchange = identity.exchanges()
-        && methods.contains(&jadpo_std::AuthenticationMethod::ServiceKey);
+    let exchange =
+        identity.exchanges() && methods.contains(&jadpo_std::AuthenticationMethod::ServiceKey);
     if exchange {
         let entry = paths
             .entry(format!("/{}", jadpo_std::http::EXCHANGE_PATH.join("/")))

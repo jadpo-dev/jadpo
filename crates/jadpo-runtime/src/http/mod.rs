@@ -575,8 +575,8 @@ async fn run_route(
         Some(exchanged) => exchange(app, request, request_id, route, exchanged),
         None => {
             run_with_caller(
-                app, executor, ctx, request, request_id, route, segments, deadline, caller,
-                scope, renewed,
+                app, executor, ctx, request, request_id, route, segments, deadline, caller, scope,
+                renewed,
             )
             .await
         }
@@ -597,7 +597,10 @@ fn exchange(
     (token, expires): (String, i64),
 ) -> Response {
     let _ = (app, route);
-    if request.query.as_deref().is_some_and(|query| !query.is_empty())
+    if request
+        .query
+        .as_deref()
+        .is_some_and(|query| !query.is_empty())
         || !request.body.iter().all(u8::is_ascii_whitespace)
     {
         return invalid_input(

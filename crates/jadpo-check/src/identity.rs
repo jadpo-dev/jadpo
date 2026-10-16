@@ -954,7 +954,10 @@ impl Reader<'_> {
                 self.out.problems.push(
                     Diagnostic::new(
                         &rule::SEMANTIC_AUTH_SETTING_INVALID,
-                        format!("`{member}:` reads `{name}`, which isn't a `{}`", needs.name()),
+                        format!(
+                            "`{member}:` reads `{name}`, which isn't a `{}`",
+                            needs.name()
+                        ),
                     )
                     .at(at, format!("`{name}` is `{}`", found.ty))
                     .reason(reason)
