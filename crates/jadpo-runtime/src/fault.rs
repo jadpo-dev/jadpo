@@ -14,6 +14,10 @@ pub enum FaultKind {
     DecimalOverflow,
     /// A call past [`crate::MAX_DEPTH`] frames (area 3, question 14).
     RecursionLimit,
+    /// The route's deadline passed while the body ran without waiting:
+    /// the executor stopped it (area 7, "Time limits"), and the route
+    /// answers 504 `deadline_exceeded` with nothing kept.
+    DeadlineExceeded,
     /// Something the language declares that a later chunk builds, as
     /// written: `Todo.get`, `emit`, `clock.now`.
     NotBuiltYet(String),
@@ -34,6 +38,7 @@ impl FaultKind {
             FaultKind::IntOverflow => "int_overflow",
             FaultKind::DecimalOverflow => "decimal_overflow",
             FaultKind::RecursionLimit => "recursion_limit",
+            FaultKind::DeadlineExceeded => "deadline_exceeded",
             FaultKind::NotBuiltYet(_) => "not_built_yet",
             FaultKind::Defect(_) | FaultKind::Store(_) => "internal_fault",
         }

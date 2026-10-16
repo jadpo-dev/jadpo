@@ -10,7 +10,8 @@
 //! - [`postgres`]: a PostgreSQL store over that transport.
 //! - [`NativeHost`]: the runtime's `Host` for a deployable or `jadpo dev`:
 //!   each store by its connection's name, the operating system's
-//!   randomness, and tokio's timer for deadlines (chunk 4.2).
+//!   randomness, and tokio's timer and the monotonic clock for deadlines
+//!   (chunks 4.2 and 4.9).
 //! - [`http`]: the listener and its worker threads, each a current-thread
 //!   runtime answering with its own handler (chunk 4.1).
 //!
@@ -163,6 +164,13 @@ impl Host for NativeHost {
     /// tokio's timer, which runs inside [`Runtime::block_on`].
     fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {
         Box::pin(tokio::time::sleep(std::time::Duration::from_millis(millis)))
+    }
+
+    /// The process's monotonic clock, from when it was first read.
+    fn monotonic_ms(&self) -> Option<u64> {
+        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let start = START.get_or_init(std::time::Instant::now);
+        u64::try_from(start.elapsed().as_millis()).ok()
     }
 }
 

@@ -336,7 +336,14 @@ pub(crate) struct Machine<'p> {
     activations: Vec<Activation<'p>>,
     tasks: Vec<Task<'p>>,
     values: Vec<Value>,
+    /// Tasks run since the deadline was last checked.
+    steps: u32,
 }
+
+/// How many tasks run between looks at the request's deadline: work that
+/// never waits is stopped within this many of the deadline passing (area
+/// 7, "Time limits"), at the cost of one read of the clock per batch.
+const DEADLINE_EVERY: u32 = 4096;
 
 impl<'p> Machine<'p> {
     pub fn new(program: &'p Program) -> Machine<'p> {
@@ -345,7 +352,21 @@ impl<'p> Machine<'p> {
             activations: Vec::new(),
             tasks: Vec::new(),
             values: Vec::new(),
+            steps: 0,
         }
+    }
+
+    /// The deadline fault, when the request being answered has run out of
+    /// time; checked once every [`DEADLINE_EVERY`] tasks.
+    fn past_deadline(&mut self, ctx: &mut Ctx<'_>) -> Option<Stop> {
+        self.steps += 1;
+        if self.steps < DEADLINE_EVERY {
+            return None;
+        }
+        self.steps = 0;
+        ctx.out_of_time().then(|| {
+            Stop::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY))
+        })
     }
 
     /// Starts callable `callee` with `args`, called from site `at` of the
@@ -387,7 +408,11 @@ impl<'p> Machine<'p> {
                     SiteId(Frame::ENTRY),
                 )));
             };
-            let flow = match self.step(ctx, task) {
+            let stepped = match self.past_deadline(ctx) {
+                Some(stop) => Err(stop),
+                None => self.step(ctx, task),
+            };
+            let flow = match stepped {
                 Ok(flow) => flow,
                 Err(stop) => self.unwind(ctx, stop),
             };
@@ -411,7 +436,11 @@ impl<'p> Machine<'p> {
             let Some(task) = self.tasks.pop() else {
                 return Err(self.defect(ctx, "a walk with nothing left to do", body));
             };
-            let flow = match self.step(ctx, task) {
+            let stepped = match self.past_deadline(ctx) {
+                Some(stop) => Err(stop),
+                None => self.step(ctx, task),
+            };
+            let flow = match stepped {
                 Ok(flow) => flow,
                 Err(stop) => self.unwind(ctx, stop),
             };

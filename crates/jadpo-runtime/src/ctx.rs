@@ -129,6 +129,9 @@ pub struct Ctx<'p> {
     pub(crate) unpoliced: bool,
     /// How many random values it has made from its seed.
     draws: u64,
+    /// When the request being answered runs out of time, on the host's
+    /// monotonic clock (area 7, "Time limits").
+    deadline: Option<u64>,
 }
 
 impl fmt::Debug for Ctx<'_> {
@@ -161,6 +164,7 @@ impl<'p> Ctx<'p> {
             caller: None,
             unpoliced: false,
             draws: 0,
+            deadline: None,
         }
     }
 
@@ -446,6 +450,28 @@ impl<'p> Ctx<'p> {
     /// same source fills generated fields and a query's `clock.now`.
     pub fn now(&self) -> i64 {
         self.env.clock.now()
+    }
+
+    /// Sets the request being answered to run out of time `millis` from
+    /// now on the host's monotonic clock, or with `None` to have no
+    /// deadline. A host without that clock, as a test's, sets none.
+    pub fn set_deadline(&mut self, millis: Option<u64>) {
+        self.deadline = millis.and_then(|millis| {
+            self.host
+                .monotonic_ms()
+                .map(|now| now.saturating_add(millis))
+        });
+    }
+
+    /// Whether the request's deadline has passed: what an executor checks
+    /// as it runs work that never waits, and the route once its work ends
+    /// (area 7, "Time limits").
+    pub fn out_of_time(&self) -> bool {
+        self.deadline.is_some_and(|at| {
+            self.host
+                .monotonic_ms()
+                .is_some_and(|now| now >= at)
+        })
     }
 
     /// The running action's transaction in `store`, begun at the first

@@ -118,6 +118,16 @@ pub struct App<'a> {
 /// reach the client").
 const INVALID_REQUEST: (u16, &str, &str) = (400, "invalid_request", "Request could not be read.");
 const INVALID_INPUT: (u16, &str, &str) = (422, "invalid_input", "Request input is invalid.");
+const HEADER_UNREADABLE: (u16, &str, &str) = (
+    400,
+    "invalid_request",
+    "A header's value isn't printable ASCII.",
+);
+const BODY_NOT_JSON: (u16, &str, &str) = (
+    400,
+    "invalid_request",
+    "A request body is JSON, sent with `Content-Type: application/json`.",
+);
 const ROUTE_NOT_FOUND: (u16, &str, &str) =
     (404, "route_not_found", "No route matches this request.");
 pub(crate) const METHOD_NOT_ALLOWED: (u16, &str, &str) = (
@@ -292,6 +302,9 @@ async fn route_request(
     let Some(segments) = segments else {
         return runtime_failure(INVALID_REQUEST, request_id, None);
     };
+    if !headers_readable(request) {
+        return runtime_failure(HEADER_UNREADABLE, request_id, None);
+    }
     if request.too_large || request.body.len() > BODY_LIMIT {
         return runtime_failure(REQUEST_TOO_LARGE, request_id, None);
     }
@@ -337,12 +350,44 @@ async fn route_request(
         response.headers.push(("allow".to_string(), allow));
         return response;
     };
+    // Work that never waits checks the deadline as it runs.
+    ctx.set_deadline(Some(u64::from(route.deadline_ms)));
     let mut response = run_route(
         app, executor, ctx, request, request_id, route, &segments, limits,
     )
     .await;
+    ctx.set_deadline(None);
     response.route = Some(route.label());
     response
+}
+
+/// Whether every header's value is printable ASCII, spaces and tabs
+/// included: a value a host couldn't read as such reaches the runtime as
+/// it came, and is refused rather than dropped, so a credential or an
+/// `Idempotency-Key` is never silently left out.
+fn headers_readable(request: &Request) -> bool {
+    request.headers.iter().all(|(_, value)| {
+        value
+            .bytes()
+            .all(|byte| byte == b'\t' || (b' '..=b'~').contains(&byte))
+    })
+}
+
+/// Whether the request says its body is JSON: `application/json`, or
+/// another `application/…+json` type, with any parameters. Only such a
+/// body is read, so a form a browser posts across sites never reaches an
+/// action.
+fn json_content(request: &Request) -> bool {
+    request.header("content-type").is_some_and(|value| {
+        let essence = value
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        essence == "application/json"
+            || (essence.starts_with("application/") && essence.ends_with("+json"))
+    })
 }
 
 /// Each `1` bit a fixed segment, the first segment highest, so the route
@@ -445,8 +490,17 @@ async fn run_route(
             First::Right(()) => return runtime_failure(DEADLINE_EXCEEDED, request_id, None),
         }
     } else {
+        // A route anyone may call runs as no one, so a request with a
+        // credential counts against its address before it runs, as every
+        // other does.
+        if identity::carries_credential(app.table, request)
+            && let Some(limited) = by_address(limits, ctx, request, request_id)
+        {
+            return limited;
+        }
         None
     };
+    let counted = caller.is_none() && identity::carries_credential(app.table, request);
     if let (Some(caller), Some(limits)) = (&caller, limits)
         && let Allowed::No { retry_after } = limits.allow_caller(&caller.key, ctx.now())
     {
@@ -460,7 +514,7 @@ async fn run_route(
         app, executor, ctx, request, request_id, route, segments, deadline, caller, scope,
     )
     .await;
-    response.counted = response.counted || ctx.caller().is_some();
+    response.counted = response.counted || counted || ctx.caller().is_some();
     ctx.set_caller(None);
     response
 }
@@ -491,6 +545,27 @@ async fn run_with_caller(
             params.push(codecs.read_text(*codec, written, &Path::field(name), &mut problems));
         }
     }
+    // A query string or a body the route doesn't read is refused, as an
+    // unknown field is: the query's keys each, the body as a whole.
+    let reads_query = route.input.as_ref().is_some_and(|plan| plan.query);
+    let reads_body = route.input.as_ref().is_some_and(|plan| !plan.query);
+    if !reads_query && let Some(query) = request.query.as_deref() {
+        let Some(values) = query_values(query) else {
+            return runtime_failure(INVALID_REQUEST, request_id, None);
+        };
+        for key in values.into_keys() {
+            problems.push(Problem {
+                field: key,
+                rule: "unknown_field".to_string(),
+            });
+        }
+    }
+    if !reads_body && !request.body.iter().all(u8::is_ascii_whitespace) {
+        problems.push(Problem {
+            field: String::new(),
+            rule: "unknown_field".to_string(),
+        });
+    }
     // The input.
     let input = match &route.input {
         None => None,
@@ -520,6 +595,9 @@ async fn run_with_caller(
                     object.insert(key, value);
                 }
             } else {
+                if !json_content(request) {
+                    return runtime_failure(BODY_NOT_JSON, request_id, None);
+                }
                 if request.body.iter().all(u8::is_ascii_whitespace) {
                     return runtime_failure(INVALID_REQUEST, request_id, None);
                 }
@@ -603,104 +681,127 @@ async fn run_with_caller(
         }
     }
     let claimed = Cell::new(false);
-    let work = async {
-        if let Some(guard) = &guard {
-            match idempotency::claim(ctx, guard, route.deadline_ms).await {
-                Claim::Claimed => claimed.set(true),
-                Claim::Replay(response) => return Err(response),
-                Claim::Reused => return Err(runtime_failure(KEY_REUSED, request_id, None)),
-                Claim::InFlight => return Err(runtime_failure(KEY_IN_FLIGHT, request_id, None)),
-                Claim::Unavailable => return Err(runtime_failure(UNAVAILABLE, request_id, None)),
-            }
-        }
-        Ok(match &route.run {
-            Run::Action(callable) => {
-                // Its commit waits until the deadline can't interrupt it.
-                ctx.hold();
-                executor.run(ctx, *callable, args).await
-            }
-            Run::Listing { keys } => {
-                let holder = args.first().cloned().unwrap_or(Value::None);
-                match identity::list(ctx, app.table.identity.as_ref(), *keys, &holder).await {
-                    Stored::Value(value) => Outcome::Value(value),
-                    Stored::Failed(failure) => Outcome::Failed(failure),
-                    Stored::Conflict { cause, .. } => Outcome::Failed(cause),
-                    Stored::Fault(fault) => Outcome::Fault(fault),
+    let mut deadline = deadline;
+    let mut attempt = 1;
+    loop {
+        let first = attempt == 1;
+        let work = async {
+            if first && let Some(guard) = &guard {
+                match idempotency::claim(ctx, guard, route.deadline_ms).await {
+                    Claim::Claimed => claimed.set(true),
+                    Claim::Replay(response) => return Err(response),
+                    Claim::Reused => return Err(runtime_failure(KEY_REUSED, request_id, None)),
+                    Claim::InFlight => {
+                        return Err(runtime_failure(KEY_IN_FLIGHT, request_id, None));
+                    }
+                    Claim::Unavailable => {
+                        return Err(runtime_failure(UNAVAILABLE, request_id, None));
+                    }
                 }
             }
-            Run::Query(plan) => {
-                match crate::store(ctx, StoreOp::Read(plan), app.failures, &args, Frame::ENTRY)
-                    .await
-                {
-                    Stored::Value(value) => Outcome::Value(value),
-                    Stored::Failed(failure) => Outcome::Failed(failure),
-                    Stored::Conflict { cause, .. } => Outcome::Failed(cause),
-                    Stored::Fault(fault) => Outcome::Fault(fault),
+            Ok(match &route.run {
+                Run::Action(callable) => {
+                    // Its commit waits until the deadline can't interrupt it.
+                    ctx.hold();
+                    executor.run(ctx, *callable, args.clone()).await
                 }
-            }
-        })
-    };
-    let outcome = match race(work, deadline).await {
-        First::Left(Ok(outcome)) => outcome,
-        First::Left(Err(response)) => return response,
-        First::Right(()) => {
-            // Whatever was running is dropped, its transaction with it.
-            ctx.abandon();
-            if claimed.get()
-                && let Some(guard) = &guard
-            {
-                idempotency::release(ctx, guard).await;
-            }
-            return runtime_failure(DEADLINE_EXCEEDED, request_id, None);
-        }
-    };
-    let held = ctx.take_held();
-    // A session the action started or ended sets its cookies once it
-    // commits; such a response isn't kept for a repeat, so a retry signs
-    // in again rather than getting an answer without its cookies.
-    let session = held.as_ref().and_then(|held| held.session.clone());
-    // Nor is one that carries an API token or a service key, which is
-    // shown once and kept only as its verifier.
-    let issued = held.as_ref().is_some_and(|held| held.issued);
-    // Successes and the failures the action returns are kept for a
-    // repeat; `unavailable` and faults are not, so a retry runs again.
-    let storable = session.is_none()
-        && !issued
-        && match &outcome {
-            Outcome::Value(_) => true,
-            Outcome::Failed(failure) => failure.kind.as_deref() != Some("unavailable"),
-            Outcome::Fault(_) | Outcome::Assertion(_) => false,
+                Run::Listing { keys } => {
+                    let holder = args.first().cloned().unwrap_or(Value::None);
+                    match identity::list(ctx, app.table.identity.as_ref(), *keys, &holder).await {
+                        Stored::Value(value) => Outcome::Value(value),
+                        Stored::Failed(failure) => Outcome::Failed(failure),
+                        Stored::Conflict { cause, .. } => Outcome::Failed(cause),
+                        Stored::Fault(fault) => Outcome::Fault(fault),
+                    }
+                }
+                Run::Query(plan) => {
+                    match crate::store(ctx, StoreOp::Read(plan), app.failures, &args, Frame::ENTRY)
+                        .await
+                    {
+                        Stored::Value(value) => Outcome::Value(value),
+                        Stored::Failed(failure) => Outcome::Failed(failure),
+                        Stored::Conflict { cause, .. } => Outcome::Failed(cause),
+                        Stored::Fault(fault) => Outcome::Fault(fault),
+                    }
+                }
+            })
         };
-    let mut response = answer(app, route, request_id, outcome);
-    let guard = guard.filter(|_| claimed.get());
-    let keep = guard.as_ref().filter(|_| storable);
-    let params = keep.map(|guard| idempotency::store_params(guard, &response));
-    let then = match (keep, &params) {
-        (Some(guard), Some(params)) => {
-            Some((guard.store.as_str(), idempotency::STORE, params.as_slice()))
+        let outcome = match race(work, &mut deadline).await {
+            // A body that ran past the deadline without waiting, stopped
+            // by its executor or not, is answered as one that waited past it.
+            First::Left(Ok(outcome)) if !ctx.out_of_time() => outcome,
+            First::Left(Err(response)) => return response,
+            First::Left(Ok(_)) | First::Right(()) => {
+                // Whatever was running is dropped, its transaction with it.
+                ctx.abandon();
+                if claimed.get()
+                    && let Some(guard) = &guard
+                {
+                    idempotency::release(ctx, guard).await;
+                }
+                return runtime_failure(DEADLINE_EXCEEDED, request_id, None);
+            }
+        };
+        let held = ctx.take_held();
+        // A session the action started or ended sets its cookies once it
+        // commits; such a response isn't kept for a repeat, so a retry signs
+        // in again rather than getting an answer without its cookies.
+        let session = held.as_ref().and_then(|held| held.session.clone());
+        // Nor is one that carries an API token or a service key, which is
+        // shown once and kept only as its verifier.
+        let issued = held.as_ref().is_some_and(|held| held.issued);
+        // Successes and the failures the action returns are kept for a
+        // repeat; `unavailable` and faults are not, so a retry runs again.
+        let storable = session.is_none()
+            && !issued
+            && match &outcome {
+                Outcome::Value(_) => true,
+                Outcome::Failed(failure) => failure.kind.as_deref() != Some("unavailable"),
+                Outcome::Fault(_) | Outcome::Assertion(_) => false,
+            };
+        let mut response = answer(app, route, request_id, outcome);
+        let guard = guard.as_ref().filter(|_| claimed.get());
+        let keep = guard.filter(|_| storable);
+        let params = keep.map(|guard| idempotency::store_params(guard, &response));
+        let then = match (keep, &params) {
+            (Some(guard), Some(params)) => {
+                Some((guard.store.as_str(), idempotency::STORE, params.as_slice()))
+            }
+            _ => None,
+        };
+        let committed = match held {
+            Some(held) => crate::commit_held(ctx, held, then).await,
+            None if then.is_some() => crate::commit_held(ctx, crate::Held::default(), then).await,
+            None => Ok(()),
+        };
+        match committed {
+            Ok(()) => {}
+            // Another transaction changed what the action read, found as
+            // it commits: the whole action runs again, as the boundary
+            // reruns one (area 6), within the same budget and deadline.
+            Err(crate::StoreError::ConcurrentChange)
+                if attempt < crate::RERUN_ATTEMPTS && matches!(route.run, Run::Action(_)) =>
+            {
+                attempt += 1;
+                continue;
+            }
+            Err(_) => {
+                if let Some(guard) = guard {
+                    idempotency::release(ctx, guard).await;
+                }
+                return runtime_failure(UNAVAILABLE, request_id, None);
+            }
         }
-        _ => None,
-    };
-    let committed = match held {
-        Some(held) => crate::commit_held(ctx, held, then).await,
-        None if then.is_some() => crate::commit_held(ctx, crate::Held::default(), then).await,
-        None => Ok(()),
-    };
-    if committed.is_err() {
-        if let Some(guard) = &guard {
+        if let (Some(effect), Some(plan)) = (&session, &app.table.identity) {
+            response.headers.extend(identity::set_cookies(plan, effect));
+        }
+        if keep.is_none()
+            && let Some(guard) = guard
+        {
             idempotency::release(ctx, guard).await;
         }
-        return runtime_failure(UNAVAILABLE, request_id, None);
+        return response;
     }
-    if let (Some(effect), Some(plan)) = (&session, &app.table.identity) {
-        response.headers.extend(identity::set_cookies(plan, effect));
-    }
-    if keep.is_none()
-        && let Some(guard) = &guard
-    {
-        idempotency::release(ctx, guard).await;
-    }
-    response
 }
 
 /// The response `outcome` gives: the output with the route's status, or
@@ -723,6 +824,15 @@ fn answer(app: &App<'_>, route: &RoutePlan, request_id: &str, outcome: Outcome) 
                 ..Response::default()
             },
         },
+        // A page's cursor that isn't one of this query's is bad input in
+        // the field it came in (area 6).
+        Outcome::Failed(failure) if failure.key == crate::invalid_cursor().key => invalid_input(
+            request_id,
+            &[Problem {
+                field: cursor_field(route),
+                rule: "format".to_string(),
+            }],
+        ),
         Outcome::Failed(failure) => declared_failure(app, &failure, request_id),
         Outcome::Fault(fault) => {
             let mut response = runtime_failure(INTERNAL_FAULT, request_id, None);
@@ -731,6 +841,40 @@ fn answer(app: &App<'_>, route: &RoutePlan, request_id: &str, outcome: Outcome) 
         }
         Outcome::Assertion(_) => runtime_failure(INTERNAL_FAULT, request_id, None),
     }
+}
+
+/// The field a route's page cursor comes in, by its path in the input
+/// (`after`, `filter.after`) or the placeholder's name; empty when it
+/// doesn't come straight from the request.
+fn cursor_field(route: &RoutePlan) -> String {
+    let Run::Query(plan) = &route.run else {
+        return String::new();
+    };
+    let Some(jadpo_std::read::Source::Arg { index, path }) =
+        plan.page.as_ref().map(|page| &page.after)
+    else {
+        return String::new();
+    };
+    let Some(arg) = route.args.get(*index as usize) else {
+        return String::new();
+    };
+    let mut parts: Vec<String> = match &arg.root {
+        ArgRoot::Input => Vec::new(),
+        ArgRoot::Param(at) => route
+            .segments
+            .iter()
+            .filter_map(|segment| match segment {
+                Segment::Param { name, .. } => Some(name.clone()),
+                Segment::Fixed(_) => None,
+            })
+            .nth(*at as usize)
+            .into_iter()
+            .collect(),
+        ArgRoot::Caller => return String::new(),
+    };
+    parts.extend(arg.path.iter().cloned());
+    parts.extend(path.iter().cloned());
+    parts.join(".")
 }
 
 /// The names of an input's fields whose type is a list or a set, which

@@ -436,10 +436,19 @@ impl Codecs<'_> {
             }
             (Some(Codec::Object { fields, .. }), Value::Record(record)) => {
                 out.push('{');
+                let mut first = true;
+                let omitted = record.omitted.as_deref().unwrap_or(&[]);
                 for (at, ((name, field), codec)) in record.fields.iter().zip(fields).enumerate() {
-                    if at > 0 {
+                    // An optional `Input` field left out is left out on the
+                    // wire too, so it never reads back as one sent as
+                    // `null` (area 6, "patch").
+                    if omitted.iter().any(|place| *place as usize == at) {
+                        continue;
+                    }
+                    if !first {
                         out.push(',');
                     }
+                    first = false;
                     write_string(name, out);
                     out.push(':');
                     self.write(*codec, field, out);
@@ -799,6 +808,18 @@ mod tests {
             out, r#"{"quantity":3,"total":"12"}"#,
             "an unbounded Int is text"
         );
+        // A field left out is written left out, and one sent as `null`
+        // as `null`, so each reads back as it was.
+        for (sent, written) in [
+            (r#"{"quantity": 3}"#, r#"{"quantity":3}"#),
+            (r#"{"quantity": 3, "total": null}"#, r#"{"quantity":3,"total":null}"#),
+        ] {
+            let (value, problems) = read(sent);
+            assert!(problems.is_empty(), "{problems:?}");
+            let mut out = String::new();
+            codecs.write(CodecId(2), &value.unwrap(), &mut out);
+            assert_eq!(out, written);
+        }
         let (value, problems) = read(r#"{"quantity": 0, "colour": "red"}"#);
         assert!(value.is_none());
         let shown: Vec<(String, String)> =

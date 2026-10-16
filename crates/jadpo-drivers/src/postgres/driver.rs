@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::error::Error as _;
 use std::fmt;
 use std::rc::Rc;
+use std::task::{Poll, Waker};
 
 use bytes::BytesMut;
 use jadpo_runtime::{Database, Isolation, LocalFuture, Row, SqlValue, StoreError, Transaction};
@@ -17,6 +18,67 @@ use crate::{Endpoint, Transport};
 
 /// How many connections a store keeps open between transactions.
 const MAX_IDLE: usize = 8;
+
+/// The most connections a store has open at once, idle or in a
+/// transaction; a transaction that would open one more waits for one to
+/// end. Natively each worker thread has its stores, so a server opens at
+/// most this many per worker.
+pub const MAX_OPEN: usize = 10;
+
+/// The connections a store may open: a count, and who is waiting for one.
+#[derive(Default)]
+struct Slots {
+    open: std::cell::Cell<usize>,
+    waiting: RefCell<Vec<Waker>>,
+}
+
+/// One open connection's place among [`MAX_OPEN`], given back when it is
+/// dropped, with its connection.
+struct Slot(Rc<Slots>);
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        self.0.open.set(self.0.open.get().saturating_sub(1));
+        self.0.wake();
+    }
+}
+
+impl Slots {
+    /// Wakes every transaction waiting for a connection, now that one has
+    /// gone idle or closed: the first to look takes it, and the rest wait
+    /// again. Waking them all means one that gave up waiting (its request
+    /// ran out of time) never holds the others back.
+    fn wake(&self) {
+        let waiting: Vec<Waker> = self.waiting.borrow_mut().drain(..).collect();
+        for next in waiting {
+            next.wake();
+        }
+    }
+}
+
+/// What a transaction begins on: an idle connection, or the place for a
+/// new one.
+enum Got {
+    Idle(Client, Slot),
+    New(Slot),
+}
+
+/// An idle connection, or a place for a new one once fewer than
+/// [`MAX_OPEN`] are open, waiting until there is either.
+async fn next(slots: &Rc<Slots>, idle: &RefCell<Vec<(Client, Slot)>>) -> Got {
+    std::future::poll_fn(|cx| {
+        if let Some((client, slot)) = idle.borrow_mut().pop() {
+            return Poll::Ready(Got::Idle(client, slot));
+        }
+        if slots.open.get() < MAX_OPEN {
+            slots.open.set(slots.open.get() + 1);
+            return Poll::Ready(Got::New(Slot(Rc::clone(slots))));
+        }
+        slots.waiting.borrow_mut().push(cx.waker().clone());
+        Poll::Pending
+    })
+    .await
+}
 
 /// PostgreSQL's default port.
 const DEFAULT_PORT: u16 = 5432;
@@ -43,7 +105,8 @@ pub struct Postgres {
     config: Config,
     endpoints: Vec<Endpoint>,
     transport: Rc<dyn Transport>,
-    idle: Rc<RefCell<Vec<Client>>>,
+    idle: Rc<RefCell<Vec<(Client, Slot)>>>,
+    slots: Rc<Slots>,
 }
 
 impl fmt::Debug for Postgres {
@@ -74,6 +137,7 @@ impl Postgres {
             endpoints,
             transport,
             idle: Rc::new(RefCell::new(Vec::new())),
+            slots: Rc::new(Slots::default()),
         })
     }
 
@@ -128,9 +192,10 @@ impl Postgres {
         })
     }
 
-    fn open(&self, client: Client) -> Box<dyn Transaction> {
+    fn open(&self, client: Client, slot: Slot) -> Box<dyn Transaction> {
         Box::new(PgTransaction {
             client,
+            slot,
             idle: Rc::clone(&self.idle),
             failed: None,
             saved: Vec::new(),
@@ -146,28 +211,31 @@ impl Database for Postgres {
         let begin = begin_sql(isolation);
         Box::pin(async move {
             // An idle connection may have been closed by the server since;
-            // one that can't begin is dropped and the next one tried.
+            // one that can't begin is dropped and the next one tried. With
+            // none idle and `MAX_OPEN` open, it waits for one to end.
             loop {
-                let Some(client) = self.idle.borrow_mut().pop() else {
-                    break;
+                let slot = match next(&self.slots, &self.idle).await {
+                    Got::Idle(client, slot) => {
+                        if client.is_closed() {
+                            continue;
+                        }
+                        match client.batch_execute(begin).await {
+                            Ok(()) => return Ok(self.open(client, slot)),
+                            Err(error) => match store_error(&error) {
+                                StoreError::Unavailable => continue,
+                                other => return Err(other),
+                            },
+                        }
+                    }
+                    Got::New(slot) => slot,
                 };
-                if client.is_closed() {
-                    continue;
-                }
-                match client.batch_execute(begin).await {
-                    Ok(()) => return Ok(self.open(client)),
-                    Err(error) => match store_error(&error) {
-                        StoreError::Unavailable => continue,
-                        other => return Err(other),
-                    },
-                }
+                let client = self.connect().await?;
+                client
+                    .batch_execute(begin)
+                    .await
+                    .map_err(|error| store_error(&error))?;
+                return Ok(self.open(client, slot));
             }
-            let client = self.connect().await?;
-            client
-                .batch_execute(begin)
-                .await
-                .map_err(|error| store_error(&error))?;
-            Ok(self.open(client))
         })
     }
 }
@@ -177,7 +245,9 @@ impl Database for Postgres {
 /// the transaction on the server.
 struct PgTransaction {
     client: Client,
-    idle: Rc<RefCell<Vec<Client>>>,
+    /// Its connection's place among the store's [`MAX_OPEN`].
+    slot: Slot,
+    idle: Rc<RefCell<Vec<(Client, Slot)>>>,
     /// The first error a statement gave: PostgreSQL aborts the transaction
     /// then, and answers a later `COMMIT` by rolling back.
     failed: Option<StoreError>,
@@ -200,15 +270,20 @@ impl PgTransaction {
     /// Ends the transaction with `sql`, keeping the connection for the next
     /// one if it is still sound.
     async fn end(self, sql: &str) -> Result<(), StoreError> {
-        let PgTransaction { client, idle, .. } = self;
+        let PgTransaction {
+            client, idle, slot, ..
+        } = self;
         // A connection that couldn't end its transaction is dropped.
         client
             .batch_execute(sql)
             .await
             .map_err(|error| store_error(&error))?;
-        let mut idle = idle.borrow_mut();
-        if !client.is_closed() && idle.len() < MAX_IDLE {
-            idle.push(client);
+        let mut kept = idle.borrow_mut();
+        if !client.is_closed() && kept.len() < MAX_IDLE {
+            let slots = Rc::clone(&slot.0);
+            kept.push((client, slot));
+            drop(kept);
+            slots.wake();
         }
         Ok(())
     }
