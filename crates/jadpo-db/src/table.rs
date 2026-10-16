@@ -100,7 +100,7 @@ pub fn domain_scope(
         return None;
     };
     let scoped = match kind {
-        ItemKind::Function => !in_library,
+        ItemKind::Function | ItemKind::Constant => !in_library,
         ItemKind::Type(Base::Failure | Base::EmailMessage | Base::Event) => false,
         ItemKind::Type(_) => true,
         _ => false,
@@ -121,7 +121,7 @@ pub fn identity_name(
 ) -> String {
     match (kind, ownership) {
         (ItemKind::Type(_), Ownership::Domain(domain)) => format!("{domain}.{name}"),
-        (ItemKind::Function, Ownership::Domain(domain)) if !in_library => {
+        (ItemKind::Function | ItemKind::Constant, Ownership::Domain(domain)) if !in_library => {
             format!("{domain}.{name}")
         }
         _ => name.to_string(),

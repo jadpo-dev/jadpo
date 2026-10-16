@@ -60,6 +60,7 @@ fn public_not_allowed(path: &str, decl: &jadpo_syntax::ast::Decl) -> Option<Diag
         | Decl::ActionDecl(_)
         | Decl::FixtureDecl(_) => return None,
         Decl::FunctionDecl(_) => "function",
+        Decl::ConstantDecl(_) => "constant",
         Decl::RoutesDecl(_) => "route group",
         Decl::ScheduleDecl(_) => "schedule",
         Decl::SubscriberDecl(_) => "subscriber",
@@ -75,6 +76,7 @@ fn public_not_allowed(path: &str, decl: &jadpo_syntax::ast::Decl) -> Option<Diag
     let span = Span::new(path, range.start().into(), range.end().into());
     let reason = match word {
         "function" => "Another domain uses a helper through a public library, so a plain function stays with the code that calls it.".to_string(),
+        "constant" => "Another domain reads a constant through a public library, so a constant beside its use stays with the code that reads it.".to_string(),
         "route group" | "schedule" | "subscriber" => format!(
             "A {word} is a trigger: nothing calls it, so there is nothing to offer another domain; who reaches a route is decided by the route and its policy."
         ),
@@ -225,7 +227,7 @@ impl Here<'_> {
         let node = match (&decl, &symbol.library) {
             (jadpo_syntax::ast::Decl::LibraryDecl(library), Some((_, index))) => {
                 use jadpo_syntax::ast::AstNode;
-                tree::library_functions(library)
+                tree::library_members(library)
                     .into_iter()
                     .nth(*index as usize)?
                     .syntax()
@@ -413,9 +415,13 @@ fn declaration(
     // The names folding to each file name are found once per symbol
     // table, not by comparing every pair of declarations.
     let folded = to_snake(name);
+    // A constant never has a file of its own (area 3), so its name never
+    // clashes with one: `constant vat_rate: VatRate` is how one reads.
     if let Some(other) = table
         .same_file_name(&folded)
         .iter()
+        .filter(|_| item.kind != ItemKind::Constant)
+        .filter(|symbol| symbol.kind != ItemKind::Constant)
         .filter(|symbol| symbol.name != name)
         .filter(|symbol| !callable_and_its_type(path, item, library.is_some(), symbol))
         .filter(|symbol| symbol_order(symbol) < at)

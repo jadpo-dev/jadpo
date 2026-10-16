@@ -173,6 +173,12 @@ impl Part<'_> {
                     self.library(d, item);
                 }
             }
+            Decl::ConstantDecl(_) => {
+                if let Some(item) = item {
+                    let key = self.item_key(Kind::Constant, &item.kind, &item.name);
+                    self.constant(key, item.name.clone(), decl.syntax(), item, None, None);
+                }
+            }
             Decl::RoutesDecl(_) | Decl::ScheduleDecl(_) | Decl::SubscriberDecl(_) => {
                 if let Some(item) = item
                     && let Some(kind) = super::kind_of(&item.kind)
@@ -345,10 +351,25 @@ impl Part<'_> {
         );
         node.public = item.public;
         self.out.nodes.push(node);
-        for (function, member) in tree::library_functions(decl)
+        for (function, member) in tree::library_members(decl)
             .iter()
             .zip(item.functions.iter())
         {
+            if member.kind == jadpo_db::ItemKind::Constant {
+                let Some(child) = super::constant_key(self.lookup, Some(&item.name), &member.name)
+                else {
+                    continue;
+                };
+                self.constant(
+                    child,
+                    format!("{}.{}", item.name, member.name),
+                    function.syntax(),
+                    item,
+                    Some(member),
+                    Some(&key),
+                );
+                continue;
+            }
             let child = library_function_key(self.lookup.registry(), &item.name, &member.name);
             let mut node = self.node(
                 child.clone(),
@@ -368,6 +389,47 @@ impl Part<'_> {
             self.out.nodes.push(node);
             self.body(&child, item.index, Some(member.index));
         }
+    }
+
+    /// A constant (area 3): its type and the value the compiler worked
+    /// out, and what its value reads, from its typed body.
+    fn constant(
+        &mut self,
+        key: Key,
+        name: String,
+        syntax: &SyntaxNode,
+        item: &Item,
+        member: Option<&Item>,
+        library: Option<&Key>,
+    ) {
+        let declared = member.unwrap_or(item);
+        let written = declared.signature.result.clone().unwrap_or_default();
+        let ty = match &declared.signature.result {
+            Some(result) => {
+                let canonical = |written: &str| NameView::canonical(self.lookup, written);
+                let resolved = self
+                    .lookup
+                    .resolve(&crate::types::TypeRef::parse(result).scoped(&canonical));
+                self.type_of(Some(&resolved), &written)
+            }
+            None => TypeRef::Written(written),
+        };
+        let value = crate::constants::evaluated(
+            self.db,
+            self.project,
+            self.path,
+            item.index,
+            member.map(|member| member.index),
+        )
+        .and_then(|evaluated| evaluated.value.as_ref())
+        .map(crate::constants::Value::written)
+        .unwrap_or_default();
+        let mut node = self.node(key.clone(), Kind::Constant, name, syntax.clone());
+        node.public = item.public;
+        node.parent = library.cloned();
+        node.detail = Detail::Constant { ty, value };
+        self.out.nodes.push(node);
+        self.body(&key, item.index, member.map(|member| member.index));
     }
 
     /// What a callable's typed body says: the types it uses, what it calls

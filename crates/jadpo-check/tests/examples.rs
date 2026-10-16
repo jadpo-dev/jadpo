@@ -449,6 +449,7 @@ const BODY: &[&str] = &[
     "expr field",
     "expr request",
     "expr setting",
+    "expr constant",
     "call function",
     "call action",
     "call query",
@@ -929,6 +930,9 @@ fn body_features(
                 Expr::Stored { .. } => {
                     out.insert("expr stored");
                 }
+                Expr::Constant { .. } => {
+                    out.insert("expr constant");
+                }
                 Expr::Unchecked => {}
             },
         }
@@ -1111,6 +1115,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                 }
                 shapes(&signature.result, &mut used);
             }
+            Detail::Constant { ty, .. } => shapes(ty, &mut used),
             Detail::Variant { .. }
             | Detail::None
             | Detail::Entity { .. }

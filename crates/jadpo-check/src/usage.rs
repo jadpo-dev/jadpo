@@ -52,6 +52,7 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
         if matches!(
             decl,
             Decl::FunctionDecl(_)
+                | Decl::ConstantDecl(_)
                 | Decl::ActionDecl(_)
                 | Decl::FixtureDecl(_)
                 | Decl::TestDecl(_)
@@ -66,6 +67,10 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
             {
                 found.names.insert(contested.canonical(&text, domain));
             }
+        }
+        // A query takes a constant where it takes a literal (area 3).
+        if let Decl::QueryDecl(query) = &decl {
+            constants_in_query(db, project, file, query, contested, domain, &mut found);
         }
     }
     let host_of = |key: &Key| canonical_of(contested, key);
@@ -110,6 +115,20 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
         }
         for site in &body.sites {
             match &site.node {
+                // A constant read: a library's counts as a call of it, one
+                // beside its use as a mention (area 3).
+                Node::Expr(Expr::Constant { constant }) => match constant.name().split_once('.') {
+                    Some((library, own))
+                        if !jadpo_db::symbols(db, project).domains.contains(library) =>
+                    {
+                        found
+                            .library_calls
+                            .insert((library.to_string(), own.to_string()));
+                    }
+                    _ => {
+                        found.names.insert(canonical_of(contested, constant));
+                    }
+                },
                 Node::Expr(Expr::Reject {
                     failure: Some(failure),
                     ..
@@ -128,6 +147,64 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
     found
 }
 
+/// The constants a query's block reads: one beside its use by name, a
+/// library's as a call of it.
+fn constants_in_query(
+    db: &dyn Db,
+    project: Project,
+    file: File,
+    query: &ast::QueryDecl,
+    contested: &jadpo_db::Contested,
+    domain: Option<&str>,
+    found: &mut Mentions,
+) {
+    let lookup = Lookup::for_file(db, project, file);
+    let params: BTreeSet<String> = query
+        .param_list()
+        .into_iter()
+        .flat_map(|list| list.params())
+        .filter_map(|param| param.name().as_ref().and_then(tree::name_text))
+        .collect();
+    let Some(block) = query.member_list() else {
+        return;
+    };
+    for name in block.syntax().descendants().filter_map(ast::NameRef::cast) {
+        let Some(text) = tree::name_ref_text(&name) else {
+            continue;
+        };
+        if starts_upper(&text) || params.contains(&text) {
+            continue;
+        }
+        let parent = name.syntax().parent();
+        let field = parent.clone().and_then(ast::FieldExpr::cast);
+        // The name after a dot: `pricing.vat_rate`'s `vat_rate`.
+        if let Some(field) = &field
+            && field.name_ref().is_some_and(|after| after == name)
+        {
+            let Some(ast::Expr::NameRef(head)) = field.expr() else {
+                continue;
+            };
+            let Some(library) = tree::name_ref_text(&head) else {
+                continue;
+            };
+            if lookup
+                .library_function(&library, &text)
+                .is_some_and(|symbol| symbol.kind == ItemKind::Constant)
+            {
+                found.library_calls.insert((library, text));
+            }
+            continue;
+        }
+        if lookup
+            .declared(&text)
+            .iter()
+            .any(|symbol| symbol.kind == ItemKind::Constant && symbol.library.is_none())
+        {
+            found.names.insert(contested.canonical(&text, domain));
+        }
+    }
+}
+
 /// The name the checker's tables know the declaration `key` names by, or
 /// its host's for a field or variant: a key of a function or type declared
 /// in a domain carries the domain (`type billing.Address`), which the
@@ -144,7 +221,9 @@ fn canonical_of(contested: &jadpo_db::Contested, key: &Key) -> String {
             let domain = (at == 1).then(|| parts[0]);
             contested.canonical(parts[at], domain)
         }
-        Some(Kind::Function) if parts.len() == 2 => contested.canonical(parts[1], Some(parts[0])),
+        Some(Kind::Function | Kind::Constant) if parts.len() == 2 => {
+            contested.canonical(parts[1], Some(parts[0]))
+        }
         _ => name.to_string(),
     }
 }
@@ -287,7 +366,8 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
         match (&location.ownership, folder, &item.kind) {
             (Ownership::Domain(domain), folder, kind)
                 if folder != Folder::Types
-                    && (*kind == ItemKind::Function || is_plain_type(kind)) =>
+                    && (matches!(kind, ItemKind::Function | ItemKind::Constant)
+                        || is_plain_type(kind)) =>
             {
                 let mut others: Vec<&User> = named(&item.name)
                     .iter()
@@ -457,7 +537,8 @@ fn unused_beside_primary(
         .iter()
         .filter(|item| {
             item.index != primary.index
-                && (item.kind == ItemKind::Function || is_plain_type(&item.kind))
+                && (matches!(item.kind, ItemKind::Function | ItemKind::Constant)
+                    || is_plain_type(&item.kind))
         })
         .collect();
     if supporting.is_empty() {
@@ -610,7 +691,7 @@ fn promoted(
         Move::OwnFile(folder) => format!("{folder}/{file_name}.jadpo"),
     };
     let problem = promote(path, source, item, to, user, &target);
-    if item.kind == ItemKind::Function {
+    if matches!(item.kind, ItemKind::Function | ItemKind::Constant) {
         return problem;
     }
     let Some(decl) = tree::decl_at(source, item.index) else {
@@ -689,6 +770,14 @@ fn promote(
                 "Move `{name}` into a library in `{home}/libraries/` and call it through the library"
             ),
         ),
+        (_, ItemKind::Constant) => (
+            format!(
+                "A constant read by one {scope} lives in it; once another {scope} reads it, it moves to a library in `{home}/libraries/`"
+            ),
+            format!(
+                "Move `{name}` into a library in `{home}/libraries/` and read it through the library"
+            ),
+        ),
         (Move::OwnFile(folder), _) => (
             format!(
                 "A declaration another file uses has a file of its own named after it, so its `use` line says where it is; `{name}` is in `{}`, named after another declaration, and moves to `{folder}/`",
@@ -726,7 +815,9 @@ fn unused(path: &str, source: &ast::SourceFile, item: &Item, library: Option<u32
         Some(index) => name_span(source, path, index, Some(item.index)),
         None => name_span(source, path, item.index, None),
     };
-    let what = if library.is_some() {
+    let what = if library.is_some() && item.kind == ItemKind::Constant {
+        "library constant"
+    } else if library.is_some() {
         "library function"
     } else {
         "shared type"

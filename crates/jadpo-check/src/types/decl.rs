@@ -45,6 +45,8 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
 enum Role {
     Parameter,
     Result,
+    /// A constant's type, named as a signature's is (area 3).
+    Constant,
 }
 
 pub(super) struct Decls<'a> {
@@ -78,9 +80,16 @@ impl Decls<'_> {
             Decl::ActionDecl(d) => self.signature(d.param_list(), d.ret_type(), true),
             Decl::QueryDecl(d) => self.signature(d.param_list(), d.ret_type(), true),
             Decl::FixtureDecl(d) => self.signature(d.param_list(), d.ret_type(), false),
+            Decl::ConstantDecl(d) => self.constant(d),
             Decl::LibraryDecl(d) => {
-                for function in tree::library_functions(d) {
-                    self.signature(function.param_list(), function.ret_type(), true);
+                for member in tree::library_members(d) {
+                    match member {
+                        Decl::FunctionDecl(function) => {
+                            self.signature(function.param_list(), function.ret_type(), true);
+                        }
+                        Decl::ConstantDecl(constant) => self.constant(&constant),
+                        _ => {}
+                    }
                 }
             }
             _ => {}
@@ -111,6 +120,16 @@ impl Decls<'_> {
         }
     }
 
+    /// A constant's type follows the rule a signature's does (area 3).
+    fn constant(&mut self, constant: &ast::ConstantDecl) {
+        if let Some(ty) = constant.ty() {
+            let node = TypeNode::Type(ty);
+            if self.type_node(&node, false) {
+                self.primitive(&node, Role::Constant, None);
+            }
+        }
+    }
+
     /// Functions, actions and queries take and return named types, with
     /// collection elements checked too (area 2, question 11).
     fn primitive(&mut self, node: &TypeNode, role: Role, container: Option<&Ty>) {
@@ -120,6 +139,7 @@ impl Decls<'_> {
                 let word = match role {
                     Role::Parameter => "parameter",
                     Role::Result => "result",
+                    Role::Constant => "constant",
                 };
                 let name = prim.name();
                 let message = match container {
@@ -132,9 +152,14 @@ impl Decls<'_> {
                 self.out.push(
                     Diagnostic::new(&rule::TYPE_PRIMITIVE_SIGNATURE, message)
                         .at(span, "a built-in type")
-                        .reason(format!(
-                            "Functions, actions and queries take and return named types, so each value says what it means and carries its rules; `{name}` says neither."
-                        ))
+                        .reason(match role {
+                            Role::Constant => format!(
+                                "A constant's type is named as a signature's is, so its value says what it means and carries its rules; `{name}` says neither."
+                            ),
+                            _ => format!(
+                                "Functions, actions and queries take and return named types, so each value says what it means and carries its rules; `{name}` says neither."
+                            ),
+                        })
                         .next(format!("Declare a named type built on `{name}` and use it here")),
                 );
             }

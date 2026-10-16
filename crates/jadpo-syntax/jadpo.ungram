@@ -63,6 +63,7 @@ UseNames =
 Decl =
   TypeDecl
 | FunctionDecl
+| ConstantDecl
 | ActionDecl
 | QueryDecl
 | FixtureDecl
@@ -90,6 +91,11 @@ TypeDecl =
 
 FunctionDecl =
   Visibility? 'function' Name ParamList FailsClause? RetType? Block
+
+// `constant vat_rate: VatRate = 0.2000`: a fixed value at the top of a file
+// or in a library, worked out while compiling (area 3, Constants).
+ConstantDecl =
+  Visibility? 'constant' Name ':' Type '=' value:Expr
 
 ActionDecl =
   Visibility? 'action' Name ParamList FailsClause? RetType? Block

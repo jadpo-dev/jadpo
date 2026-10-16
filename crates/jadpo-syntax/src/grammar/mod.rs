@@ -121,7 +121,19 @@ fn expected_declaration(p: &mut Parser<'_>) {
         "A file holds declarations, such as `type`, `function`, `action`, `query` and `entity`, \
          each starting a line.",
     );
-    if p.at(IDENT) && p.nth(1) == EQ {
+    if p.at(VAR_KW) {
+        let after_mut = if p.nth(1) == MUT_KW { 2 } else { 1 };
+        let rest_start = p.nth_range(after_mut).0;
+        let rest_end = habits::line_code_end(p, rest_start);
+        let rest = p.text()[rest_start as usize..rest_end.max(rest_start) as usize].to_string();
+        error = error
+            .reason(
+                "`var` names a value inside a body; at the top of a file a fixed value is a \
+                 `constant`.",
+            )
+            .next(format!("Write `constant {rest}`"))
+            .edit(TextEdit::replace(start, rest_start, "constant "));
+    } else if p.at(IDENT) && p.nth(1) == EQ {
         error = error
             .next(format!(
                 "Start the declaration with `type`: `type {text} = ...`"
@@ -406,7 +418,9 @@ pub(crate) fn ends_block(p: &Parser<'_>) -> bool {
         return false;
     }
     let n = usize::from(p.at(PUBLIC_KW));
-    p.nth(n) != IDENT || p.at_column_zero()
+    // `constant` in a body is reported where it is (a body's fixed value
+    // is `var`), so only one at the start of a line ends the block.
+    !matches!(p.nth(n), IDENT | CONSTANT_KW) || p.at_column_zero()
 }
 
 pub(crate) fn at_decl(p: &Parser<'_>) -> bool {
@@ -416,9 +430,10 @@ pub(crate) fn at_decl(p: &Parser<'_>) -> bool {
     let n = prefix + public;
     match p.nth(n) {
         TYPE_KW | FUNCTION_KW | ACTION_KW | QUERY_KW | FIXTURE_KW | ENTITY_KW | LIBRARY_KW
-        | ROUTES_KW | SCHEDULE_KW | SUBSCRIBER_KW => true,
+        | ROUTES_KW | SCHEDULE_KW | SUBSCRIBER_KW | CONSTANT_KW => true,
         IDENT => {
             contextual_decl(p, n).is_some()
+                || habits::const_keyword_at(p, n)
                 || habits::function_keyword_at(p, n).is_some()
                 || habits::type_keyword_at(p, n).is_some()
                 || (public == 1 && prefix == 0)
@@ -438,6 +453,7 @@ fn decl(p: &mut Parser<'_>) {
     match p.current() {
         TYPE_KW => type_decl(p, m),
         FUNCTION_KW => callable(p, m, FUNCTION_DECL, false),
+        CONSTANT_KW => constant_decl(p, m),
         ACTION_KW => callable(p, m, ACTION_DECL, false),
         QUERY_KW => callable(p, m, QUERY_DECL, true),
         FIXTURE_KW => {
@@ -496,6 +512,10 @@ fn decl(p: &mut Parser<'_>) {
             None if habits::function_keyword_at(p, 0).is_some() => {
                 habits::function_keyword(p, m);
             }
+            None if habits::const_keyword_at(p, 0) => {
+                habits::const_keyword(p);
+                constant_decl(p, m);
+            }
             None if habits::type_keyword_at(p, 0).is_some() => habits::type_keyword(p, m),
             None => {
                 after_public(p);
@@ -531,6 +551,85 @@ fn keyword_named(p: &mut Parser<'_>, m: crate::parser::Marker, kind: SyntaxKind,
     name(p, what);
     body_start(p, true);
     m.complete(p, kind);
+}
+
+/// `constant name: Type = value` (area 3, Constants). `const`, reported
+/// as a habit, is read as `constant`.
+fn constant_decl(p: &mut Parser<'_>, m: crate::parser::Marker) {
+    p.bump_remap(CONSTANT_KW);
+    if p.at(MUT_KW) || (p.at_word("mut") && !p.nth_on_new_line(1)) {
+        let (start, end) = p.range();
+        let to = p.nth_range(1).0.max(end);
+        let error = SyntaxError::new(
+            &rule::SYNTAX_EXPECTED_NAME,
+            "A constant can't be `mut`",
+            start,
+            end,
+        )
+        .label("remove `mut`")
+        .reason(
+            "A constant never changes, so it has no mutable form; a value that changes is a \
+             `var mut` inside a body.",
+        )
+        .next("Remove `mut`")
+        .edit(TextEdit::replace(start, to, ""))
+        .clean_recovery();
+        p.push_error(error);
+        p.skip_token();
+    }
+    let const_name = p.current_text().to_string();
+    let name_end = p.range().1;
+    name(p, "this constant");
+    if p.eat(COLON) {
+        ty(p, "the constant's type");
+    } else {
+        let error = SyntaxError::new(
+            &rule::SYNTAX_VARIABLE_TYPE_REQUIRED,
+            format!("`{const_name}` needs a type"),
+            name_end.saturating_sub(const_name.len() as u32),
+            name_end,
+        )
+        .label("expected `: Type` after the name")
+        .reason(
+            "Every constant states its type, as a signature does: `constant name: Type = value`.",
+        )
+        .next(format!(
+            "Add the type after the name: `constant {const_name}: Type = ...`"
+        ));
+        p.push_error(error);
+    }
+    if p.eat(EQ) {
+        if p.on_new_line() || p.at_eof() {
+            let error = p
+                .error_here(
+                    &rule::SYNTAX_EXPECTED_EXPRESSION,
+                    format!("`{const_name}` has no value"),
+                )
+                .label("expected a value after `=`")
+                .reason("A constant is given its value where it is declared: `constant name: Type = value`.")
+                .next(format!("Write `{const_name}`'s value after `=`"));
+            p.push_error(error);
+        } else {
+            p.with_records(true, |p| {
+                expr(p);
+            });
+        }
+    } else {
+        let found = p.found();
+        let error = p
+            .error_here(
+                &rule::SYNTAX_UNEXPECTED_TOKEN,
+                format!("`{const_name}` needs a value"),
+            )
+            .label("expected `=` and a value")
+            .reason(format!(
+                "A constant is given its value where it is declared: `constant name: Type = value`; found {found}."
+            ))
+            .next(format!("Write `= value` after `{const_name}`'s type"));
+        p.push_error(error);
+        skip_line(p);
+    }
+    m.complete(p, CONSTANT_DECL);
 }
 
 /// The `{` that opens a declaration's body: members or statements.
@@ -1535,6 +1634,26 @@ fn block_item(p: &mut Parser<'_>) {
     }
     match p.current() {
         VAR_KW => var_stmt(p),
+        CONSTANT_KW => {
+            // A fixed value inside a body is a `var` (area 3, Constants).
+            let (start, end) = p.range();
+            let error = SyntaxError::new(
+                &rule::SYNTAX_EXPECTED_STATEMENT,
+                "`constant` doesn't start a statement",
+                start,
+                end,
+            )
+            .label("write `var`")
+            .reason(
+                "A constant lives at the top of a file or in a library; inside a body a value \
+                 that never changes is a `var`.",
+            )
+            .next("Use `var` instead of `constant`")
+            .edit(TextEdit::replace(start, end, "var"))
+            .clean_recovery();
+            p.push_error(error);
+            var_stmt(p);
+        }
         RETURN_KW => return_stmt(p),
         IF_KW => if_stmt(p),
         FOR_KW => for_stmt(p),

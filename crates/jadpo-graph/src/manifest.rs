@@ -169,6 +169,10 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             );
             out.set("signature", entry);
         }
+        Detail::Constant { ty, value } => {
+            out.set("type", ty.render(name));
+            out.set("value", value.as_str());
+        }
         Detail::Entity { store, table } | Detail::SystemTable { store, table } => {
             out.set("store", store.as_str());
             out.set("table", table.as_str());

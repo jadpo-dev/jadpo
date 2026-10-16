@@ -211,6 +211,12 @@ rules! {
         "14-tooling.html#command-errors", "Configuration value is invalid";
     CONFIGURATION_VALUE_MISSING: "configuration.value_missing", area 14, Error, Human,
         "14-tooling.html#command-errors", "Required configuration is missing";
+    CONSTANT_CYCLE: "constant.cycle", area 3, Error, Agent,
+        "03-logic.html#constant-cycle", "Constant's value depends on itself";
+    CONSTANT_SIMILAR_EXISTS: "constant.similar_exists", area 3, Warning, Agent,
+        "03-logic.html#constant-similar-exists", "Another constant of the same type holds the same value";
+    CONSTANT_VALUE_NOT_FIXED: "constant.value_not_fixed", area 3, Error, Agent,
+        "03-logic.html#constant-value-not-fixed", "Constant's value is only known while the app runs";
     DATA_CLEARED_REQUIRED_REFERENCE: "data.cleared_required_reference", area 5, Error, Agent,
         "05-data.html#data-cleared-required-reference", "A reference that can never be `none` is cleared on delete";
     DATA_CONFLICT_CANNOT_BREAK: "data.conflict_cannot_break", area 6, Error, Agent,

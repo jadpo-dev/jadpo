@@ -409,6 +409,13 @@ impl Body<'_> {
         if StdNames::get().namespace(&head) == Some(Namespace::Generated) {
             return self.generated_value(&head, &rest, expr);
         }
+        if let [member] = rest.as_slice()
+            && !self.is_local(&head)
+            && self.symbols.library(&head).is_some()
+            && let Some(ty) = self.constant_read(Some(&head), &text(member), expr.syntax())
+        {
+            return ty;
+        }
         let Some(mut receiver) = self.read(&first) else {
             if !self.is_qualifier(&head) {
                 self.unknown_value(&first);
@@ -1243,6 +1250,14 @@ impl Body<'_> {
         }
         match self.read(name) {
             Some(ty) => ty,
+            // A library's functions and constants read its constants
+            // bare, as they call its functions.
+            None if let Some(library) = self.library.clone()
+                && let Some(ty) = self.constant_read(Some(&library), &written, name.syntax()) =>
+            {
+                ty
+            }
+            None if let Some(ty) = self.constant_read(None, &written, name.syntax()) => ty,
             None => {
                 // `null`, `nil` and `undefined` from other languages.
                 if let Some(problem) = crate::foreign_value(&written, self.span(name)) {
@@ -1254,6 +1269,38 @@ impl Body<'_> {
                 Ty::Error
             }
         }
+    }
+
+    /// A constant's value (area 3): `name` beside its declaration, or
+    /// `library.name`. Code reads a constant it can see: one in its own
+    /// domain, `shared/` or the root, or a public library's.
+    pub(super) fn constant_read(
+        &mut self,
+        library: Option<&str>,
+        name: &str,
+        node: &jadpo_syntax::SyntaxNode,
+    ) -> Option<Ty> {
+        let visible = match library {
+            Some(library) => self
+                .symbols
+                .library_function(library, name)
+                .filter(|symbol| symbol.kind == ItemKind::Constant)
+                .is_some_and(|symbol| symbol.visible_from(self.ownership)),
+            None => self.symbols.declared(name).iter().any(|symbol| {
+                symbol.kind == ItemKind::Constant
+                    && symbol.library.is_none()
+                    && symbol.visible_from(self.ownership)
+            }),
+        };
+        if !visible {
+            return None;
+        }
+        let ty = self.calls.constant_type(library, name)?.clone();
+        self.facts.constants.insert(
+            node_key(node),
+            (library.map(str::to_string), name.to_string()),
+        );
+        Some(ty)
     }
 
     /// Whether a lower-case name before a dot names an owner rather than a

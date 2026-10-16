@@ -24,7 +24,8 @@ use super::writes::{Breach, WriteFact};
 use super::{Body, Fallible, LocalKind};
 use crate::graph::paths::Resolver;
 use crate::graph::{
-    LineIndex, declaration_key, field_key, library_function_key, type_ref, variant_key,
+    LineIndex, constant_key, declaration_key, field_key, library_function_key, type_ref,
+    variant_key,
 };
 use crate::lookups::{FailureView, Lookup, NameView};
 use crate::tree::{self, dotted};
@@ -65,22 +66,40 @@ pub(super) fn lower(
             body.params.push(LocalId(id as u32));
         }
     }
-    let (params, result, fails, block) = parts(syntax);
-    for param in params.iter().flat_map(ast::ParamList::params) {
-        if let Some(name) = param.name() {
-            lower.declared(&name);
-        }
-        if let Some(ty) = param.ty() {
+    if let Some(constant) = ast::ConstantDecl::cast(syntax.clone()) {
+        if let Some(ty) = constant.ty() {
             lower.type_names(ty.syntax());
         }
+        // A constant's body gives its value, as a `return` would.
+        if let Some(value) = constant.value() {
+            let id = lower.alloc();
+            let value = lower.expr(&value);
+            lower.fill(
+                id,
+                constant.syntax(),
+                TypeRef::Builtin(Prim::Unit),
+                typed::Node::Stmt(TypedStmt::Return { value: Some(value) }),
+            );
+            body.block = vec![SiteId(id as u32)];
+        }
+    } else {
+        let (params, result, fails, block) = parts(syntax);
+        for param in params.iter().flat_map(ast::ParamList::params) {
+            if let Some(name) = param.name() {
+                lower.declared(&name);
+            }
+            if let Some(ty) = param.ty() {
+                lower.type_names(ty.syntax());
+            }
+        }
+        if let Some(ty) = result.and_then(|ret| ret.ty()) {
+            lower.type_names(ty.syntax());
+        }
+        for ty in fails.iter().flat_map(ast::FailsClause::types) {
+            lower.type_names(ty.syntax());
+        }
+        body.block = lower.block(block);
     }
-    if let Some(ty) = result.and_then(|ret| ret.ty()) {
-        lower.type_names(ty.syntax());
-    }
-    for ty in fails.iter().flat_map(ast::FailsClause::types) {
-        lower.type_names(ty.syntax());
-    }
-    body.block = lower.block(block);
     body.proofs = lower.proofs();
     body.sites = lower.sites.into_iter().flatten().collect();
     body.pauses = body.sites.iter().any(|site| site.pauses);
@@ -518,6 +537,7 @@ impl Lower<'_> {
             }
             Expr::NameRef(name) => match self.read(name) {
                 Some(local) => typed::Expr::Local(local),
+                None if let Some(constant) = self.constant(expr) => constant,
                 None => {
                     self.scan(expr.syntax());
                     typed::Expr::Unchecked
@@ -629,9 +649,30 @@ impl Lower<'_> {
         literal(&Const::from_expr(expr)).map_or(typed::Expr::Unchecked, typed::Expr::Literal)
     }
 
+    /// A read of a constant (area 3), naming it, and its library.
+    fn constant(&mut self, expr: &Expr) -> Option<typed::Expr> {
+        let (library, name) = self.facts.constants.get(&node_key(expr.syntax()))?;
+        let key = constant_key(self.names, library.as_deref(), name)?;
+        if let Some((first, rest)) = dotted(expr) {
+            if let Some(library) = library
+                && let Some(lib) = self.names.library(library)
+                && let Some(kind) = crate::graph::kind_of(&lib.kind)
+            {
+                let lib_key = self.names.registry().key(kind, library, None);
+                self.node(first.syntax(), Some(lib_key), false);
+            }
+            let last = rest.last().unwrap_or(&first).clone();
+            self.node(last.syntax(), Some(key.clone()), true);
+        }
+        Some(typed::Expr::Constant { constant: key })
+    }
+
     /// `value.field`, a variant's data's field, or `Enum.variant`.
     fn field(&mut self, expr: &Expr, field: &ast::FieldExpr) -> typed::Expr {
         let key = node_key(expr.syntax());
+        if let Some(constant) = self.constant(expr) {
+            return constant;
+        }
         if let Some(name) = self.facts.settings.get(&key) {
             return typed::Expr::Config {
                 field: self

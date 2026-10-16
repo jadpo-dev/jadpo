@@ -60,7 +60,10 @@ pub fn function_shapes(db: &dyn Db, file: File) -> Vec<FunctionShape> {
                 let Some(library_name) = library.name().as_ref().and_then(tree::name_text) else {
                     continue;
                 };
-                for (i, function) in tree::library_functions(library).iter().enumerate() {
+                for (i, member) in tree::library_members(library).iter().enumerate() {
+                    let Decl::FunctionDecl(function) = member else {
+                        continue;
+                    };
                     if let Some(name) = function.name().as_ref().and_then(tree::name_text) {
                         out.push(FunctionShape {
                             name: format!("{library_name}.{name}"),

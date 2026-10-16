@@ -1098,7 +1098,12 @@ impl Body<'_> {
         field: Option<Ty>,
         call: &ast::CallExpr,
     ) -> Ty {
-        let (ty, verdict) = self.construct_checked(written, field, call);
+        let (ty, mut verdict) = self.construct_checked(written, field, call);
+        // A construction in a constant's value is worked out and checked
+        // against its rules while compiling (area 3), so it never fails.
+        if self.context == Context::Constant {
+            verdict = Fallible::Never;
+        }
         self.facts
             .constructions
             .insert(node_key(call.syntax()), verdict);

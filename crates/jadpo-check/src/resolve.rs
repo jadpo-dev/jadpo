@@ -87,15 +87,22 @@ pub fn resolve_file(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
             Decl::FixtureDecl(d) => {
                 names.signature(d.param_list(), None, d.ret_type(), false, &mut out)
             }
+            Decl::ConstantDecl(d) => names.ty(d.ty(), Want::Type, &mut out),
             Decl::LibraryDecl(d) => {
-                for function in tree::library_functions(d) {
-                    names.signature(
-                        function.param_list(),
-                        function.fails_clause(),
-                        function.ret_type(),
-                        false,
-                        &mut out,
-                    );
+                for member in tree::library_members(d) {
+                    match member {
+                        Decl::FunctionDecl(function) => names.signature(
+                            function.param_list(),
+                            function.fails_clause(),
+                            function.ret_type(),
+                            false,
+                            &mut out,
+                        ),
+                        Decl::ConstantDecl(constant) => {
+                            names.ty(constant.ty(), Want::Type, &mut out);
+                        }
+                        _ => {}
+                    }
                 }
             }
             Decl::EntityDecl(d) => names.entity(d, &mut out),
@@ -133,6 +140,7 @@ fn unchecked_bodies(
         matches!(
             item.kind,
             ItemKind::Function
+                | ItemKind::Constant
                 | ItemKind::Action
                 | ItemKind::Fixture
                 | ItemKind::Test
@@ -145,11 +153,13 @@ fn unchecked_bodies(
         Decl::FixtureDecl(d) if !checked => body(d.param_list(), d.block(), out),
         Decl::TestDecl(d) if !checked => body(None, d.block(), out),
         Decl::SeedDecl(d) if !checked => body(None, d.block(), out),
-        // `typed_body` checks a library's first `functions.len()` functions.
+        // `typed_body` checks a library's first `functions.len()` members.
         Decl::LibraryDecl(d) => {
             let typed = item.map_or(0, |item| item.functions.len());
-            for function in tree::library_functions(d).into_iter().skip(typed) {
-                body(function.param_list(), function.block(), out);
+            for member in tree::library_members(d).into_iter().skip(typed) {
+                if let Decl::FunctionDecl(function) = member {
+                    body(function.param_list(), function.block(), out);
+                }
             }
         }
         _ => {}

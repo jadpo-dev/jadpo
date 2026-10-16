@@ -102,11 +102,12 @@ fn in_body(
         .find(|(_, decl)| contains(decl.syntax()))?;
     let function = match &decl {
         Decl::LibraryDecl(library) => Some(
-            tree::library_functions(library)
+            tree::library_members(library)
                 .iter()
-                .position(|function| contains(function.syntax()))? as u32,
+                .position(|member| contains(member.syntax()))? as u32,
         ),
         Decl::FunctionDecl(_)
+        | Decl::ConstantDecl(_)
         | Decl::ActionDecl(_)
         | Decl::FixtureDecl(_)
         | Decl::TestDecl(_)
