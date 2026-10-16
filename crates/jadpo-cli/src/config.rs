@@ -229,7 +229,7 @@ fn check(call: &Call) -> Reply {
     }
     let count = standing.len();
     let mut screen = Screen::new().with(Block::Section {
-        heading: "Settings".to_string(),
+        heading: "Values".to_string(),
         lines,
     });
     let ready = diagnostics.is_empty();
@@ -483,7 +483,7 @@ pub fn set(args: &SetArgs, env: &Environment) -> u8 {
         return fail(
             Diagnostic::new(
                 &rule::CLI_CONFIG_PROMPT_FAILED,
-                format!("No value was entered for `{}`", field.variable),
+                format!("Nothing was typed for `{}`", field.variable),
             )
             .reason("An empty answer would leave the setting unset, which `jadpo config check` already shows.")
             .next_for(

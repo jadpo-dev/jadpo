@@ -670,7 +670,7 @@ pub static COMMANDS: &[Command] = &[
             },
             Example {
                 description: "Store a secret without typing it anywhere it is kept",
-                command: "jadpo config set mail_api_key",
+                command: "jadpo config set session_signing_key",
             },
             Example {
                 description: "List the settings as data for tools",

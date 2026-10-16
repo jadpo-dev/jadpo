@@ -81,20 +81,20 @@ type ListLimit = Int {
     max: 100
 }
 
-type Sender = Email {}
+type FromAddress = Email {}
 
 config {
     page_size: ListLimit {
         default: 25
     }
-    mail_sender: Sender
+    mail_sender: FromAddress
 }
 
 function first_page() -> ListLimit {
     return config.page_size
 }
 
-function from_address() -> Sender {
+function from_address() -> FromAddress {
     return config.mail_sender
 }
 ```
@@ -131,14 +131,14 @@ split them into fields.
 
 ```jadpo check project=settings-enums
 type LogLevel = Enum {
-    debug
-    info
-    warning
+    verbose
+    normal
+    terse
 }
 
 config {
     log_level: LogLevel {
-        default: LogLevel.info
+        default: LogLevel.normal
     }
     business_zone: Zone {
         default: Zone.europe_london
@@ -146,7 +146,7 @@ config {
 }
 ```
 
-`LOG_LEVEL=debug` and `BUSINESS_ZONE=Europe/London` are valid values: an enum
+`LOG_LEVEL=verbose` and `BUSINESS_ZONE=Europe/London` are valid values: an enum
 is read as the variant's name, a `Zone` as its IANA name and a `Locale` as its
 BCP 47 tag (`en-GB`). A `Duration` is written as it is in source (`30s`, `5m`,
 `2h`, `30d`), a `Bool` as `true` or `false`, and an `Instant` and a
@@ -155,7 +155,7 @@ BCP 47 tag (`en-GB`). A `Duration` is written as it is in source (`30s`, `5m`,
 ### Defaults and test values
 
 A default is a literal of the field's type, checked while compiling
-(`default: 25`, `default: 5s`, `default: LogLevel.info`), against every rule of
+(`default: 25`, `default: 5s`, `default: LogLevel.normal`), against every rule of
 the type and the types it is built on. The same is true of `test:`, the value
 every test reads (below); a field that has none of its own default and is read
 by a test needs one.
@@ -266,10 +266,10 @@ test can override a value with its `config:` setting (area 13).
 A secret is never typed into a chat with an agent. The agent asks you to run:
 
 ```text
-$ jadpo config set mail_api_key
-? Enter MAIL_API_KEY hidden
-mail_api_key configured locally
-    variable  MAIL_API_KEY
+$ jadpo config set session_signing_key
+? Enter SESSION_SIGNING_KEY hidden
+session_signing_key configured locally
+    variable  SESSION_SIGNING_KEY
     file      .env.local
 ```
 
@@ -284,7 +284,7 @@ printing it. `jadpo config check` lists each field as `set`, `default`,
 
 ```text
 $ jadpo config check
-Settings
+Values
   database_url         set      DATABASE_URL
   session_signing_key  missing  SESSION_SIGNING_KEY
   log_level            default  LOG_LEVEL
@@ -952,13 +952,13 @@ check failed: 1 error, 1 file
 ### `configuration.field_unknown`
 
 ```jadpo check project=e-field-unknown expect=configuration.field_unknown
-type Sender = Email {}
+type FromAddress = Email {}
 
 config {
-    mail_sender: Sender
+    mail_sender: FromAddress
 }
 
-function from_address() -> Sender {
+function from_address() -> FromAddress {
     return config.mail_sendr
 }
 ```

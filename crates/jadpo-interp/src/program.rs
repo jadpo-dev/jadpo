@@ -204,12 +204,23 @@ impl Program {
             .map(Value::constant)
             .collect();
         let shapes = types.shapes().iter().map(Shape::new).collect();
+        // Until it is given the settings an application started with, a
+        // program reads the ones a test run does: each `test:` value and
+        // default.
+        let settings = prepared
+            .config(
+                &|_: &str| None,
+                jadpo_runtime::config::Mode::Test,
+                &|_: &mut [u8]| false,
+            )
+            .map(|values| Self::decoded(&prepared, &values))
+            .unwrap_or_default();
         Program {
             prepared,
             constants,
             shapes,
             proof_checks: false,
-            settings: Vec::new(),
+            settings,
         }
     }
 
@@ -233,17 +244,29 @@ impl Program {
     /// The same program reading `values` as its settings (area 10): what
     /// the application started with, or a test run's.
     pub fn with_config(mut self, values: &jadpo_runtime::config::ConfigValues) -> Program {
-        let config = self.prepared.plan.config();
-        self.settings = config
+        self.settings = Self::decoded(&self.prepared, values);
+        self
+    }
+
+    /// The settings `values` hold, decoded, by their numbers.
+    fn decoded(
+        prepared: &Prepared,
+        values: &jadpo_runtime::config::ConfigValues,
+    ) -> Vec<Option<Value>> {
+        let config = prepared.plan.config();
+        config
             .fields
             .iter()
             .enumerate()
             .map(|(at, field)| {
+                // Code never reads a secret, so none is held here.
+                if field.secret {
+                    return None;
+                }
                 let text = values.text_at(at as u32)?;
-                jadpo_runtime::config::decode(config, &self.prepared.validators, field, text).ok()
+                jadpo_runtime::config::decode(config, &prepared.validators, field, text).ok()
             })
-            .collect();
-        self
+            .collect()
     }
 
     /// The value of setting number `at`.

@@ -191,8 +191,8 @@ impl Reader<'_> {
             );
         }
         let path = first.path.clone();
-        // The variables taken so far, with the setting that took each.
-        let mut taken: Vec<(String, String, Span)> = Vec::new();
+        // The variables claimed so far, with the setting that took each.
+        let mut claimed: Vec<(String, String, Span)> = Vec::new();
         for item in first.list.iter().flat_map(|list| list.member_items()) {
             match item {
                 MemberItem::Elision(_) => {}
@@ -210,7 +210,8 @@ impl Reader<'_> {
                     };
                     let span = node_span(&path, name.syntax());
                     self.out.written.push(text.clone());
-                    if let Some(setting) = self.setting(&path, &text, &span, &member, &mut taken) {
+                    if let Some(setting) = self.setting(&path, &text, &span, &member, &mut claimed)
+                    {
                         self.out.settings.push(setting);
                     }
                 }
@@ -239,7 +240,7 @@ impl Reader<'_> {
         name: &str,
         span: &Span,
         member: &ast::Member,
-        taken: &mut Vec<(String, String, Span)>,
+        claimed: &mut Vec<(String, String, Span)>,
     ) -> Option<Setting> {
         let Some(value) = member.value() else {
             self.out.problems.push(
@@ -380,7 +381,7 @@ impl Reader<'_> {
             claims.push(previous_variable(&variable));
         }
         for claim in claims {
-            match taken.iter().find(|(var, _, _)| *var == claim) {
+            match claimed.iter().find(|(var, _, _)| *var == claim) {
                 Some((_, other, first)) => {
                     ok = false;
                     self.out.problems.push(
@@ -394,7 +395,7 @@ impl Reader<'_> {
                         .next(format!("Give `{name}` a variable of its own with `binding:`, or merge the two settings")),
                     );
                 }
-                None => taken.push((claim, name.to_string(), variable_span.clone())),
+                None => claimed.push((claim, name.to_string(), variable_span.clone())),
             }
         }
         // Values written in source.

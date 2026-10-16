@@ -22,7 +22,7 @@ pub const FILE: &str = ".env.local";
 
 /// One line of the file, kept as written so a rewrite changes only the line
 /// it was asked to.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum Line {
     /// A blank line or a comment.
     Other(String),
@@ -34,12 +34,22 @@ enum Line {
 }
 
 /// `.env.local` as read.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct Local {
     pub path: PathBuf,
     /// The text read, to notice a change before replacing it.
     text: String,
     lines: Vec<Line>,
+}
+
+impl std::fmt::Debug for Local {
+    /// Where it is and how many lines it has; never a value.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Local")
+            .field("path", &self.path)
+            .field("lines", &self.lines.len())
+            .finish()
+    }
 }
 
 impl Local {
@@ -57,7 +67,7 @@ impl Local {
     /// Sets `name` to `value`, in place if the file sets it and at the end
     /// otherwise.
     pub fn set(&mut self, name: &str, value: &str) {
-        let raw = format!("{name}={}", quote(value));
+        let raw = format!("{name}={}", escaped(value));
         for line in &mut self.lines {
             if let Line::Entry {
                 name: has,
@@ -92,8 +102,8 @@ impl Local {
 }
 
 /// A value as `.env.local` writes it: bare when that reads back the same
-/// everywhere, in double quotes otherwise.
-fn quote(value: &str) -> String {
+/// everywhere, in double quotation marks otherwise.
+fn escaped(value: &str) -> String {
     let bare = !value.is_empty()
         && value.chars().all(|c| {
             c.is_ascii_alphanumeric()
@@ -120,7 +130,7 @@ fn quote(value: &str) -> String {
     out
 }
 
-/// One value from after the `=`: double-quoted with escapes, single-quoted
+/// One value from after the `=`: in double marks with escapes, in single marks
 /// as it is, or bare to the end of the line.
 fn unquote(rest: &str) -> Result<String, &'static str> {
     let rest = rest.trim_start();
@@ -135,7 +145,7 @@ fn unquote(rest: &str) -> Result<String, &'static str> {
                         return if after.is_empty() || after.starts_with('#') {
                             Ok(out)
                         } else {
-                            Err("has text after its closing quote")
+                            Err("has text after its closing quotation mark")
                         };
                     }
                     '\\' => match chars.next() {
@@ -149,14 +159,14 @@ fn unquote(rest: &str) -> Result<String, &'static str> {
                     c => out.push(c),
                 }
             }
-            Err("has an opening quote and no closing one")
+            Err("has an opening quotation mark and no closing one")
         }
         Some('\'') => match rest[1..].split_once('\'') {
             Some((value, after)) if after.trim().is_empty() || after.trim().starts_with('#') => {
                 Ok(value.to_string())
             }
-            Some(_) => Err("has text after its closing quote"),
-            None => Err("has an opening quote and no closing one"),
+            Some(_) => Err("has text after its closing quotation mark"),
+            None => Err("has an opening quotation mark and no closing one"),
         },
         _ => Ok(rest.trim_end().to_string()),
     }
@@ -222,7 +232,7 @@ pub fn parse(path: PathBuf, text: String) -> Result<Local, Box<Diagnostic>> {
                     &rule::CONFIGURATION_LOCAL_SYNTAX,
                     format!("`{FILE}` line {number} {what}"),
                 )
-                .reason("Each line is blank, a `#` comment, or `NAME=value`; a value with spaces or other unusual characters goes in double quotes.")
+                .reason("Each line is blank, a `#` comment, or `NAME=value`; a value with spaces or other unusual characters goes in double quotation marks.")
                 .next(format!("Fix line {number} of `{FILE}`")),
             )
         };
@@ -366,7 +376,7 @@ mod tests {
         for value in [
             "plain",
             "with space",
-            "quote\"s",
+            "say \"hi\"",
             "back\\slash",
             "a=b#c",
             "line\nbreak",
@@ -393,7 +403,7 @@ mod tests {
         assert!(error.message.contains("line 2"));
         let error = read_text("A=1\nA=2\n").expect_err("twice");
         assert!(error.message.contains("line 2") && error.message.contains("`A`"));
-        let error = read_text("S=\"abc\" tail\n").expect_err("after the quote");
+        let error = read_text("S=\"abc\" tail\n").expect_err("after the mark");
         assert!(!error.message.contains("abc"));
     }
 }

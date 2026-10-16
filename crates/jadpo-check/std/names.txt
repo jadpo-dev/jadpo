@@ -26,7 +26,9 @@ temporal: in_zone resolve format format_relative format_friendly between day_bou
 # Namespaces the compiler fills from the project or the platform, with the
 # members built so far; any other member is `toolchain.not_built_yet` until
 # its area is built (areas 8, 10 and 13). `clock.now` is the time the
-# operation started, which only actions read (area 10).
+# operation started, which only actions read (area 10). `config.<name>` is a
+# setting of the project's own `config { }`, so its members are not listed
+# here (area 10).
 [generated]
 clock: now
 config:

@@ -583,10 +583,10 @@ compiler-owned places (signing, integration credentials), and integrations
 are faked.
 
 ```jadpo check project=test-config
-type Sender = Email {}
+type FromAddress = Email {}
 
 config {
-    mail_sender: Sender {
+    mail_sender: FromAddress {
         test: "reminders@example.test"
     }
     mail_api_key: Text {
@@ -594,19 +594,19 @@ config {
     }
 }
 
-function sender() -> Sender {
+function address() -> FromAddress {
     return config.mail_sender
 }
 
 test "reminders come from the test sender" {
-    assert sender() == "reminders@example.test"
+    assert address() == "reminders@example.test"
 }
 
 test "a test can change the sender" {
     config: {
         mail_sender: "planning@example.test"
     }
-    assert sender() == "planning@example.test"
+    assert address() == "planning@example.test"
 }
 ```
 

@@ -118,7 +118,7 @@ fn check_lists_what_is_missing_and_what_the_fix_is() {
     assert_eq!(output.stderr, "");
     assert_eq!(
         output.stdout,
-        "Settings
+        "Values
   greeting             missing  GREETING
   page_size            default  PAGE_SIZE
   business_zone        default  BUSINESS_ZONE
