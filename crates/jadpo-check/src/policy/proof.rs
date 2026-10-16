@@ -15,7 +15,10 @@
 //!
 //! Proofs are by the grants' shape alone, never by the data: two records
 //! that each refer to a company may refer to different ones, so a role
-//! held in one proves nothing about the other.
+//! held in one proves nothing about the other. The one thing the data
+//! always keeps is the tenant: a reference between two of its records
+//! points inside it, checked on every write that sets it (chunk 4.7), so
+//! what a caller holds in a record's tenant they hold in its parent's.
 
 use std::collections::BTreeMap;
 
@@ -232,6 +235,10 @@ impl<'a> Prover<'a> {
             }
         };
         let held = self.access.membership(from);
+        // A reference between two of the tenant's records points inside
+        // the tenant, so what the caller holds in the record's tenant they
+        // hold in the parent's.
+        let inside = self.access.kept_in_tenant(from, to);
         for fact in facts {
             match fact {
                 Fact::Grant(grant @ (Grant::Public | Grant::Signed | Grant::System)) => {
@@ -278,10 +285,26 @@ impl<'a> Prover<'a> {
                             }));
                             push(Fact::Member(membership.clone()));
                         }
+                        // A role held in the record's tenant is held in
+                        // the tenant of the parent it points at.
+                        Some(through)
+                            if inside.is_some_and(|(own, _)| {
+                                *through == own.via && scope == Some(own.entity.as_str())
+                            }) =>
+                        {
+                            if let Some((_, theirs)) = inside {
+                                push(Fact::Grant(Grant::Role {
+                                    membership: membership.clone(),
+                                    role: role.clone(),
+                                    via: Some(theirs.via.clone()),
+                                }));
+                            }
+                        }
                         Some(_) => {}
                     }
                 }
                 Fact::Member(_) => push(Fact::Grant(Grant::Signed)),
+                Fact::Tenant if inside.is_some() => push(Fact::Tenant),
                 Fact::Tenant => {
                     let follows = self
                         .access

@@ -2,7 +2,11 @@
 //! type has one shape for everyone, so every caller who may read a query's
 //! records may read each field its output carries, and the parent record
 //! of every include, or the query doesn't compile
-//! (`policy.output_field_unproved`).
+//! (`policy.output_field_unproved`). Which records pass a condition, and
+//! the order they come in, show the fields they test too, so every field a
+//! `where:`, `where_present:` or `order:` names, the query's own or an
+//! include's, is one every caller who reaches those records may read
+//! (area 9, "Restricted fields in conditions and orders").
 //!
 //! A query's records are the ones its entity's `read:` lets the caller see,
 //! a child's those its own entity's `read:` lets in, and a parent's those
@@ -17,7 +21,9 @@ use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_syntax::ast::{self, AstNode, Decl, MemberItem};
 
 use super::proof::{Prover, Reached};
-use crate::data::queries::{Element, Include, IncludeKind, QueryModel, Source, query_read};
+use crate::data::queries::{
+    Condition, Element, Include, IncludeKind, OrderField, QueryModel, Source, query_read,
+};
 use crate::lookups::{Lookup, Name};
 use crate::tree::{self, node_span};
 use crate::types::{Def, FieldsBase, TypeView};
@@ -55,6 +61,16 @@ enum Unproved {
         field: String,
         reached: Reached,
     },
+    /// A field of a record of `entity` that a condition tests, or with
+    /// `order`, that the records are sorted by, in the include at
+    /// `include` (none: the query's own).
+    Condition {
+        entity: String,
+        field: String,
+        order: bool,
+        include: Vec<String>,
+        reached: Reached,
+    },
     /// The parent of `to` an include reads through `from`'s `via`.
     Parent {
         from: String,
@@ -82,12 +98,22 @@ fn query(
         })
     );
     let mut found = Vec::new();
+    let reached = prover.read(&model.entity);
+    conditions(
+        &prover,
+        &model.entity,
+        &model.filter,
+        &model.order,
+        &reached,
+        &[],
+        &mut found,
+    );
     walk(
         &prover,
         &model.entity,
         &model.element,
         &model.includes,
-        &prover.read(&model.entity),
+        &reached,
         output,
         &mut Vec::new(),
         &mut found,
@@ -151,6 +177,52 @@ fn query(
                 field,
                 reached,
             } => fields.push((entity, field, reached)),
+            Unproved::Condition {
+                entity,
+                field,
+                order,
+                include,
+                reached,
+            } => {
+                let at = condition_span(path, &decl, &include, order, &entity, &field)
+                    .unwrap_or_else(|| result.clone());
+                let who = prover
+                    .counterexample(&reached, |facts| prover.field_readable(&entity, &field, facts));
+                let readers = prover.readers(&entity, &field);
+                let among = who
+                    .map(|who| format!(", {who} among them,"))
+                    .unwrap_or_default();
+                let (does, label, shows, next) = if order {
+                    (
+                        "orders by",
+                        format!("sorts by `{field}`"),
+                        format!("The order records come in shows how their `{field}` compare"),
+                        format!("Order by a field every caller may read, not `{entity}.{field}`"),
+                    )
+                } else {
+                    (
+                        "filters on",
+                        format!("tests `{field}`"),
+                        format!("Which records pass a condition shows each one's `{field}`"),
+                        format!("Remove the condition on `{entity}.{field}`, or test a field every caller may read"),
+                    )
+                };
+                out.push(
+                    Diagnostic::new(
+                        &rule::POLICY_OUTPUT_FIELD_UNPROVED,
+                        format!(
+                            "`{}` {does} `{entity}.{field}`, which not every caller may read",
+                            model.name
+                        ),
+                    )
+                    .at(at, label)
+                    .reason(format!(
+                        "Anyone `{entity}`'s `read:` lets in may see the records `{}` reads{among} and {readers} `{field}`. {shows}, so a query filters and orders only on fields every caller may read.",
+                        model.name
+                    ))
+                    .next(next),
+                );
+            }
         }
     }
     if let Some((entity, field, reached)) = fields.first() {
@@ -233,6 +305,15 @@ fn walk(
                     }
                     IncludeKind::Child | IncludeKind::Children => prover.read(&inner.entity),
                 };
+                conditions(
+                    prover,
+                    &inner.entity,
+                    &inner.filter,
+                    &inner.order,
+                    &next,
+                    include,
+                    out,
+                );
                 walk(
                     prover,
                     &inner.entity,
@@ -247,6 +328,104 @@ fn walk(
             }
         }
     }
+}
+
+/// Every field `filter` tests and `order` sorts by, on records of `entity`
+/// a caller reached as `reached`, that they aren't proved to read: one
+/// problem per field and section, in the order written.
+fn conditions(
+    prover: &Prover<'_>,
+    entity: &str,
+    filter: &[Condition],
+    order: &[OrderField],
+    reached: &Reached,
+    include: &[String],
+    out: &mut Vec<Unproved>,
+) {
+    let mut tested: Vec<String> = Vec::new();
+    for condition in filter {
+        let mut fields = std::collections::BTreeSet::new();
+        condition.fields(&mut fields);
+        for field in fields {
+            if !tested.contains(&field) {
+                tested.push(field);
+            }
+        }
+    }
+    let sorted = order
+        .iter()
+        .filter(|field| !field.added)
+        .map(|field| field.field.clone());
+    let fields = tested
+        .into_iter()
+        .map(|field| (field, false))
+        .chain(sorted.map(|field| (field, true)));
+    let mut seen = Vec::new();
+    for (field, order) in fields {
+        if seen.contains(&(field.clone(), order)) {
+            continue;
+        }
+        seen.push((field.clone(), order));
+        if !prover.field_proved(entity, &field, reached) {
+            out.push(Unproved::Condition {
+                entity: entity.to_string(),
+                field,
+                order,
+                include: include.to_vec(),
+                reached: reached.clone(),
+            });
+        }
+    }
+}
+
+/// Where `Entity.field` is written in the condition (or with `order`, the
+/// order) of the include at `names`, or of the query itself with none.
+fn condition_span(
+    path: &str,
+    decl: &ast::QueryDecl,
+    names: &[String],
+    order: bool,
+    entity: &str,
+    field: &str,
+) -> Option<Span> {
+    let mut list = decl.member_list();
+    for name in names {
+        let block = section(list, "include")?.block()?;
+        let entry = block.member_items().find_map(|item| match item {
+            MemberItem::Member(member)
+                if member
+                    .member_key()
+                    .and_then(|key| key.names().next())
+                    .and_then(|n| tree::name_text(&n))
+                    .as_deref()
+                    == Some(name.as_str()) =>
+            {
+                Some(member)
+            }
+            _ => None,
+        })?;
+        list = entry.block();
+    }
+    let words: &[&str] = if order {
+        &["order"]
+    } else {
+        &["where", "where_present"]
+    };
+    let written = format!("{entity}.{field}");
+    tree::members(list)
+        .into_iter()
+        .filter(|(name, _)| {
+            tree::name_text(name).is_some_and(|word| words.contains(&word.as_str()))
+        })
+        .find_map(|(_, member)| {
+            member
+                .syntax()
+                .descendants()
+                .find(|node| {
+                    ast::FieldExpr::can_cast(node.kind()) && tree::written(node) == written
+                })
+                .map(|node| node_span(path, &node))
+        })
 }
 
 /// Where the include at `names` (each level's field) is written.
