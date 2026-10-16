@@ -492,6 +492,9 @@ fn a_semicolon_in_a_use_path_is_not_a_clean_split() {
     // Nor before the braces: a line can't start with `{`.
     let names = parse_file("use shared/types ;{ Pence }\n");
     assert!(!names.checkable(), "{:#?}", names.errors());
+    // Nor before a `.`: the new line would start with a field access.
+    let field = parse_file("action f() -> Unit {\n    var a: Count = b;.c\n}\n");
+    assert!(!field.checkable(), "{:#?}", field.errors());
 }
 
 #[test]
