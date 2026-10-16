@@ -358,7 +358,9 @@ reference only).
   sent with the first statement (area 7's "a transaction of its own"
   becomes "one statement", the same outcomes); a policed `get` that finds
   nothing answered without a second statement; `/health/ready` cached for
-  a second; §2.4 and §2.6 and the stale comments brought up to date.
+  a second; the interpreter yielding as it checks its deadline, so a
+  route that computes without waiting doesn't hold its worker thread
+  (chunk 4.9); §2.4 and §2.6 and the stale comments brought up to date.
 - [ ] **4.11 Incremental policy and route checking** `opus · xhigh`, before
   6.1: one positionless per-callable query of what a body reads, writes,
   calls and loads, which isolation, the store rules, policy reach and the
