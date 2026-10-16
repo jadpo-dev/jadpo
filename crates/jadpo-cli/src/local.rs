@@ -233,7 +233,7 @@ pub fn parse(path: PathBuf, text: String) -> Result<Local, Box<Diagnostic>> {
         if !is_name(name) {
             return Err(syntax("doesn't start with a variable name"));
         }
-        let value = unquote(rest).map_err(|what| syntax(what))?;
+        let value = unquote(rest).map_err(syntax)?;
         if let Some(first) = seen.insert(name.to_string(), number) {
             return Err(syntax(&format!(
                 "sets `{name}`, which line {first} already sets"

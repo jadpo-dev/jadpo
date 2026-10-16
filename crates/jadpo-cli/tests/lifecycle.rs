@@ -516,7 +516,10 @@ fn purge_waits_as_long_as_a_setting_says() {
             &|_: &mut [u8]| false,
         )
         .expect("the default holds");
-    assert_eq!(program.prepared().purge_after(&values, &plan), Some(30 * DAY));
+    assert_eq!(
+        program.prepared().purge_after(&values, &plan),
+        Some(30 * DAY)
+    );
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
@@ -532,7 +535,10 @@ fn purge_waits_as_long_as_a_setting_says() {
                 .await
                 .is_err()
         );
-        let after = program.prepared().purge_after(&values, &plan).expect("a period");
+        let after = program
+            .prepared()
+            .purge_after(&values, &plan)
+            .expect("a period");
         let early = jadpo_runtime::purge_after(
             &host,
             &plan,

@@ -1411,6 +1411,33 @@ read through, are not decided on any page; they are chunk 5.1c.
     *Decided 2026-10-12:* a field may carry a `test:` value in `config.jadpo`;
     secrets need none, because `jadpo test` generates random ones; a single
     test can override a value. *Built in chunk 5.1.*
+12. **How does a deployment say which proxies to trust for a client's
+    address?** (raised in chunk 5.1; areas 7 and 16 count requests by
+    address, and no page says how the address is read.) Behind a load balancer
+    the connection's address is the proxy's, so every client shares one
+    rate-limit allowance until the real address is read from the forwarding
+    header; reading it from a header anyone can send lets a caller choose
+    its own address. Neither area 7, 10 nor 16 decides it. *Recommendation:*
+    declare it once in `app.jadpo`, beside the connections, as
+    `client_address: { source: ClientAddressSource.forwarded_for hops:
+    config.proxy_hops }`, where `ClientAddressSource` is a closed set of
+    four: `connection` (the default natively: the connection's own address,
+    no header read), `forwarded_for` (`X-Forwarded-For`), `forwarded`
+    (RFC 7239's `Forwarded: for=`) and `cloudflare` (`CF-Connecting-IP`),
+    and `hops` is how many proxies of the deployment's own sit in front of
+    the app, an `Int` setting (a list of addresses cannot be a setting, and a
+    count cannot be spoofed the way an allow-list of ranges can drift). With
+    `hops: N` the client is the N-th address from the right of the header's
+    addresses, all its lines joined in order, since each trusted proxy
+    appends the address it saw on its right and whatever a caller adds sits to
+    the left; fewer than N addresses, or one that is not an address, falls
+    back to the connection's own, never to a guess. On Workers there is no
+    connection address to fall back to, and Cloudflare sets `CF-Connecting-IP`
+    on every request from the edge and overwrites a caller's, so `cloudflare`
+    is the only source accepted there (and its default); `hops` means nothing
+    with it. The address chosen is the one rate limits count, `jadpo dev`'s
+    request lines show and the request timeline records (areas 16 and 17).
+    This is chunk 5.1c, built once the reading is agreed.
 
 ### Decisions
 

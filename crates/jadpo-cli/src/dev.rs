@@ -597,6 +597,10 @@ fn prepare(
     })
 }
 
+/// The settings the app starts with and the address each database store's
+/// connection reads, where a variable gives one.
+type StartConfig = (Arc<ConfigValues>, BTreeMap<String, String>);
+
 /// The settings the app starts with, every one checked: from the
 /// environment over `.env.local`. A database store's address that no
 /// variable gives is not a problem here: `jadpo dev` gives that store a
@@ -609,7 +613,7 @@ fn start_config(
     env: &Environment,
     stores: &[String],
     types: &dyn Fn(&str) -> String,
-) -> Result<(Arc<ConfigValues>, BTreeMap<String, String>), Vec<Diagnostic>> {
+) -> Result<StartConfig, Vec<Diagnostic>> {
     let plan = prepared.plan().config();
     if plan.is_empty() {
         return Ok((Arc::new(ConfigValues::default()), BTreeMap::new()));

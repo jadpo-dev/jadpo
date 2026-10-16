@@ -240,7 +240,11 @@ impl Plan {
             .iter()
             .filter_map(|entity| {
                 purge::plan(model, entity, &|name| {
-                    config.fields.iter().position(|field| field.name == name).and_then(|at| u32::try_from(at).ok())
+                    config
+                        .fields
+                        .iter()
+                        .position(|field| field.name == name)
+                        .and_then(|at| u32::try_from(at).ok())
                 })
             })
             .collect();

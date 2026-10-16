@@ -107,12 +107,9 @@ impl Prepared {
     ) -> Option<i64> {
         match purge.after_setting {
             None => Some(purge.after),
-            Some(at) => jadpo_runtime::config::duration_ms(
-                self.plan.config(),
-                &self.validators,
-                values,
-                at,
-            ),
+            Some(at) => {
+                jadpo_runtime::config::duration_ms(self.plan.config(), &self.validators, values, at)
+            }
         }
     }
 

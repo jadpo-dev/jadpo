@@ -140,7 +140,7 @@ pub fn setting_fact<'db>(
             .written
             .iter()
             .any(|w| w == text)
-            .then(|| SettingFact {
+            .then_some(SettingFact {
                 ty: Ty::Error,
                 secret: false,
             }),

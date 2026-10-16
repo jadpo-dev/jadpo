@@ -371,15 +371,22 @@ reference only).
 
 ## Phase 5 — Configuration, time, translations and the standard library (area 10)
 
-- [ ] **5.1 Configuration:** `sonnet · high` `config.jadpo`, environments, secrets, signing
-  keys, and the trusted proxies a client's address is read through (the
-  rate limit counts the proxy's address today).
+- [x] **5.1 Configuration:** `sonnet · high` `config.jadpo`, environments, secrets, signing
+  keys, `jadpo config`, the check before the app starts, and a test's own
+  `config:`. The trusted proxies a client's address is read through are
+  5.1c.
 - [ ] **5.1b Signed sessions** `opus · high`: area 8's
   `revocation_delay:` once 5.1 gives signing keys: sessions and tokens
   signed and checked without a read, expiring within the delay and
   renewed against the record; `RouteAuthentication.fresh` reading the
   record; `POST /auth/exchange` for service keys; a browser session's
   `origin:` from configuration.
+- [ ] **5.1c Trusted proxies** `sonnet · high`, **needs Richard** to agree
+  the reading first (area 10, question 12 gives the recommendation): which
+  proxies a deployment trusts for a client's address (`X-Forwarded-For`,
+  `Forwarded`, Cloudflare's `CF-Connecting-IP`), declared once in
+  `app.jadpo` and read from the request, so the default rate limits count
+  the client and not the proxy. No page decides it today.
 - [ ] **5.2 Time:** `opus · high` durations, instants, formatting.
 - [ ] **5.3 Translations and locales.** `sonnet · high`
 - [ ] **5.4 Standard library: the plan** `opus · high`. Only `collection`
