@@ -33,6 +33,9 @@ program, and how is a feature turned on, off or replaced?
 | Choosing a provider when deploying | Proposed |
 | Sign-in providers as a capability | Proposed |
 | Other candidate capabilities | Proposed |
+| What a library package may also carry | Proposed |
+| Software and disk | Proposed |
+| Services: containers run by Jadpo | Proposed, its own topic |
 
 ## Decided before this: swapping a provider
 
@@ -434,6 +437,79 @@ Search (an external index such as Meilisearch or Typesense behind the
 decided `search:` section), push notifications and bot protection, each
 added through review only when an app needs it. Payments and AI models stay
 provider packages: one action per job is the app's swap point for those.
+
+## Proposed: what a library package may also carry
+
+- **Email layouts and partials**, so a company's apps share one branded
+  layout. Partials are typed and read-only (area 16), so they are pure.
+- **Translations** for its own failure messages and partials.
+- **A short usage guide** for agents: the surface says what a package
+  offers, the guide how to use it well (handling a refund with Stripe).
+
+Not packages: starter templates (`jadpo new --template`), which belong
+with the references in `examples/` if ever wanted; company-wide rules
+("no app sends personal data to this provider"), which are review tooling
+for areas 17 and 18.
+
+## Proposed: software and disk
+
+Jadpo code never runs a program or touches the disk: Workers has neither,
+and a package that could run programs is npm's install-script problem
+again. Software such as LibreOffice, headless Chrome, ImageMagick, ffmpeg,
+ClamAV or Tesseract reaches an app in one of two ways:
+
+- **As a service with a provider package.** Most are already packaged as
+  small HTTP services (Gotenberg for PDFs, imgproxy for images, REST
+  wrappers for ClamAV). The registry carries curated packages for the
+  common ones, and the connection gives the service's address, as for any
+  self-hosted product (area 11).
+- **As a built-in driver behind a capability**, when the compiler gains
+  from knowing it: image variants on a `File` field
+  (`variants: { thumb: 200x200 }`, as Rails' Active Storage has), virus
+  scanning of every upload before it is attached, and a `documents`
+  capability that renders a typed template to PDF exactly as email does.
+  Each is built when an app needs it.
+
+Disk is the `files` capability. A disk driver for production on the
+native target, refused on Workers by the target rule, would let a
+single-server app keep files on its own disk.
+
+## Proposed: services, containers run by Jadpo
+
+Richard, 2026-10-16: commissioning a server that needs custom software
+means maintaining Docker Compose files and deploying those boxes
+separately. If a package can declare the container it needs, everything
+the app depends on is described in the app.
+
+```text
+package Gotenberg.v8 {
+    service: { image: "gotenberg/gotenberg:8"  port: 3000 }
+    ...
+}
+```
+
+The image is pinned by digest in `jadpo.lock` and listed in the approval
+report. It runs in its own container, reachable only by the app, with no
+host network and no volume unless declared, so rule 2 holds: no foreign
+code runs inside the app.
+
+Proposed stages, each useful alone:
+
+1. **Development.** `jadpo dev` starts the services the app's connections
+   declare, as it runs the database; tests keep using fakes.
+2. **Deployment config.** `jadpo build` writes the configuration that runs
+   each service beside the app (Compose first).
+3. **Supervision on the native target.** The deployable starts, checks,
+   restarts and upgrades its services on its own server through the
+   server's container runtime, and their logs and health join the app's
+   telemetry. Kamal's "accessories" and .NET Aspire's app host do parts of
+   this.
+
+On Workers, which runs no containers, a service is hosted elsewhere and
+the connection gives its address. Open: whether the database and cache use
+the same mechanism (they hold state, so volumes, backups and upgrades come
+with them), whether several app instances share one service, and how far
+Jadpo becomes a deployment tool.
 
 ## Every extension point
 
