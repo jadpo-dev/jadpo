@@ -53,7 +53,9 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
             | Builtin::ServiceKey
             | Builtin::PostgresUrl
             | Builtin::RedisUrl
-            | Builtin::SigningKey => {
+            | Builtin::SigningKey
+            // Text for people is shown, never stored (area 10).
+            | Builtin::PresentationText => {
                 return Err(prim.name().to_string());
             }
         },

@@ -79,7 +79,9 @@ fn decided_examples_parse() {
         failures.len(),
         failures.join("\n\n")
     );
-    assert!(checked > 100, "only {checked} decided examples were found");
+    // Fragments become `check` blocks as chunks build what they show, so
+    // this only guards against finding none at all.
+    assert!(checked > 50, "only {checked} decided examples were found");
 }
 
 #[test]

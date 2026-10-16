@@ -34,6 +34,11 @@ pub enum Kind {
     /// (area 10, "Zones and local times"): there is no time-of-day type,
     /// so only a literal gives one.
     Clock,
+    /// A time format written out (area 10, "Showing dates and times to
+    /// people"): `TimeFormat.date_long` or a declared format's name, which
+    /// the checker reads into a [`crate::TimeFormatSpec`] and the operation
+    /// is given as its text.
+    Format,
 }
 
 /// One parameter: its name, which a call may give it by (area 3), and its
@@ -51,6 +56,9 @@ pub struct Param {
     /// An option that means something only when the call's first argument
     /// is built on this type, as `dst:` only for a `ZonedTime`.
     pub only_for: Option<Builtin>,
+    /// An option that a call must give whenever it means something, as
+    /// `zone:` for an `Instant` being formatted.
+    pub needed: bool,
 }
 
 /// A condition an operation fails on unless an option settles it (area
@@ -80,6 +88,8 @@ pub enum Op {
     TemporalDate,
     TemporalDay,
     TemporalDayBounds,
+    TemporalFormat,
+    TemporalFormatRelative,
     TemporalHour,
     TemporalInZone,
     TemporalInstant,
@@ -128,6 +138,7 @@ const fn param(name: &'static str, kind: Kind) -> Param {
         never_zero: false,
         optional: false,
         only_for: None,
+        needed: false,
     }
 }
 
@@ -156,6 +167,15 @@ const fn option_only_for(name: &'static str, kind: Kind, builtin: Builtin) -> Pa
     }
 }
 
+/// An option given exactly when the call's first argument is built on
+/// `builtin`.
+const fn option_needed_for(name: &'static str, kind: Kind, builtin: Builtin) -> Param {
+    Param {
+        needed: true,
+        ..option_only_for(name, kind, builtin)
+    }
+}
+
 const ROUNDING: Kind = Kind::Enum(Rounding::NAME);
 
 /// What `temporal`'s calendar operations work on: a date, or a local time
@@ -167,6 +187,17 @@ const ZONED: Kind = Kind::Builtin(Builtin::ZonedTime);
 const INT: Kind = Kind::Builtin(Builtin::Int);
 const ZONE: Kind = Kind::Enum(crate::ZONE);
 const RANGE: Kind = Kind::Std(INSTANT_RANGE);
+const LOCALE: Kind = Kind::Enum(crate::LOCALE);
+const SHOWN_TEXT: Kind = Kind::Builtin(Builtin::PresentationText);
+
+/// What `temporal.format` shows: an instant in a zone, a date, or a local
+/// time.
+const SHOWN: Kind = Kind::OneOf(&[Builtin::Instant, Builtin::CalendarDate, Builtin::ZonedTime]);
+/// What `temporal.format_relative` shows: a moment, which a date isn't.
+const MOMENT: Kind = Kind::OneOf(&[Builtin::Instant, Builtin::ZonedTime]);
+/// `zone:` on a format: an `Instant` is shown in it, and anything else
+/// carries its own zone or has none.
+const SHOWN_IN: Param = option_needed_for("zone", ZONE, Builtin::Instant);
 
 /// `InstantRange`: what `temporal`'s bounds give, a half-open range from
 /// `start` up to but not including `end` (area 10, "Zones and local
@@ -350,6 +381,33 @@ pub const OPERATIONS: &[Operation] = &[
         RANGE,
         "temporal::day_bounds",
     ),
+    // The text these give comes with locales (area 10, "Locales", chunk
+    // 5.3): until then the checker refuses every call, so `jadpo-value`
+    // is never asked to run them.
+    temporal(
+        Op::TemporalFormat,
+        "format",
+        &[
+            param("value", SHOWN),
+            SHOWN_IN,
+            param("locale", LOCALE),
+            param("format", Kind::Format),
+        ],
+        SHOWN_TEXT,
+        "temporal::format",
+    ),
+    temporal(
+        Op::TemporalFormatRelative,
+        "format_relative",
+        &[
+            param("value", MOMENT),
+            param("now", INSTANT),
+            SHOWN_IN,
+            param("locale", LOCALE),
+        ],
+        SHOWN_TEXT,
+        "temporal::format_relative",
+    ),
     Operation {
         at_least: Some(0),
         ..temporal(
@@ -493,7 +551,7 @@ mod tests {
             operation("collection", "count").map(|op| op.at_least),
             Some(Some(0))
         );
-        assert_eq!(operation("temporal", "format"), None);
+        assert!(operation("temporal", "format").is_some());
         for operation in OPERATIONS {
             for condition in operation.conditions {
                 let settled_by = operation

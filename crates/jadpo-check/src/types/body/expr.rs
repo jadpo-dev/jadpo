@@ -515,6 +515,14 @@ impl Body<'_> {
 
     /// `Type.member` as a value: an enum's variant.
     pub(super) fn type_member(&mut self, host: &str, rest: &[ast::NameRef], expr: &Expr) -> Ty {
+        if host == super::super::ty::TIME_FORMAT {
+            // A built-in format is named only in `format:` (area 10).
+            let written = tree::written(expr.syntax());
+            let span = self.span(expr);
+            self.out
+                .push(super::super::formats::not_a_value(&written, span, false));
+            return Ty::Error;
+        }
         let Some(variants) = self.table.variants(host) else {
             return Ty::Error;
         };
@@ -1190,9 +1198,15 @@ impl Body<'_> {
         }
         if starts_upper(&written) {
             // A type or a failure as a value: resolved here, and the type
-            // checks have nothing to add (area 1).
+            // checks have nothing to add (area 1), but for a format, which
+            // is named only in `format:` (area 10).
             let expr = Expr::NameRef(name.clone());
             self.resolved_by(|names, out| names.value_name(&expr, out));
+            if let Some(super::super::table::Def::Format { .. }) = self.table.def(&written) {
+                let span = self.span(name);
+                self.out
+                    .push(super::super::formats::not_a_value(&written, span, false));
+            }
             return Ty::Error;
         }
         match self.read(name) {

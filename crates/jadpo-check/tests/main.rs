@@ -15,6 +15,7 @@ mod config;
 mod determinism;
 mod examples;
 mod failures;
+mod formats;
 mod graph;
 mod habits;
 mod identity;

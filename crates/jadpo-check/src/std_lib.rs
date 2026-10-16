@@ -62,6 +62,7 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
             Some(Kind::Any)
         }
         (jadpo_std::INSTANT_RANGE, 0) => Some(Kind::Std(jadpo_std::INSTANT_RANGE)),
+        (crate::types::TIME_FORMAT, 0) => Some(Kind::Format),
         (other, 0) => Builtin::from_name(other).map(Kind::Builtin).or_else(|| {
             jadpo_std::enums()
                 .into_iter()

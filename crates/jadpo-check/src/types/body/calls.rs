@@ -642,6 +642,7 @@ impl Body<'_> {
         let table = written
             .split_once('.')
             .and_then(|(namespace, name)| jadpo_std::operation(namespace, name));
+        let before = self.out.len() + self.resolved.len();
         let args = Self::arguments(call);
         let mut slots: Vec<Option<usize>> = Vec::new();
         let mut unknown = false;
@@ -677,7 +678,12 @@ impl Body<'_> {
             };
             let param = slot.map(|slot| &params[slot].1);
             let is_function = matches!(param, Some(Ty::Function(..)));
-            if is_literal(&value) || matches!(value, Expr::ListExpr(_)) || is_function {
+            // A format is read as written, never as a value.
+            let is_format = slot
+                .and_then(|slot| table.and_then(|op| op.params.get(slot)))
+                .is_some_and(|p| p.kind == jadpo_std::Kind::Format);
+            if is_literal(&value) || matches!(value, Expr::ListExpr(_)) || is_function || is_format
+            {
                 actual.push(None);
                 continue;
             }
@@ -692,6 +698,7 @@ impl Body<'_> {
             self.unify(&result, expected, &mut bound);
         }
         let mut inline = Vec::new();
+        let mut format: Option<(Expr, jadpo_std::TimeFormatSpec)> = None;
         for ((arg, slot), ty) in args.iter().zip(&slots).zip(actual) {
             let Some(value) = arg.expr() else { continue };
             let Some(slot) = slot else {
@@ -724,6 +731,12 @@ impl Body<'_> {
                 self.clock_argument(&value, written);
                 continue;
             }
+            if kind == Some(jadpo_std::Kind::Format) {
+                if let Some(spec) = self.format_argument(&value, written) {
+                    format = Some((value.clone(), spec));
+                }
+                continue;
+            }
             let expected = substitute(&param, &bound);
             if let Some(accepts) = built_on(&expected) {
                 let name = params[*slot].0.clone();
@@ -741,6 +754,15 @@ impl Body<'_> {
         self.divisors(&args, &slots, written);
         if let Some(table) = table {
             self.std_options(table, call, &args, &slots, written);
+        }
+        if let Some((format, spec)) = &format
+            && let Some(value) = args
+                .iter()
+                .zip(&slots)
+                .find(|(_, slot)| **slot == Some(0))
+                .and_then(|(arg, _)| arg.expr())
+        {
+            self.format_needs_time(&value, format, spec, written);
         }
         let given = args.len();
         let extra = slots.iter().filter(|slot| slot.is_none()).count();
@@ -786,7 +808,37 @@ impl Body<'_> {
                 .next(next),
             );
         }
+        // The text a format gives in each locale comes with locales (area
+        // 10, "Locales"): a call that checks is refused until then.
+        if table.is_some_and(|op| {
+            matches!(
+                op.op,
+                jadpo_std::Op::TemporalFormat | jadpo_std::Op::TemporalFormatRelative
+            )
+        }) && self.out.len() + self.resolved.len() == before
+        {
+            let span = call
+                .expr()
+                .map_or_else(|| self.span(call), |callee| self.span(&callee));
+            self.formatting_not_built(span, written);
+        }
         substitute(&result, &bound)
+    }
+
+    /// `temporal.format` and `format_relative` once checked: the text they
+    /// give in each locale comes with chunk 5.3.
+    fn formatting_not_built(&mut self, span: Span, written: &str) {
+        self.out.push(
+            Diagnostic::new(
+                &rule::TOOLCHAIN_NOT_BUILT_YET,
+                format!("`{written}` is checked, but its text isn't built yet"),
+            )
+            .at(span, "checked, not built")
+            .reason(format!(
+                "This call is right, but the text `{written}` gives in each language comes from locale data, which comes with locales and translations (area 10, roadmap chunk 5.3); until then a program that calls it couldn't run."
+            ))
+            .next("Send the `Instant` for the client to format for now, or do without this text"),
+        );
     }
 
     /// A standard-library divisor is checked as `/`'s is (area 3, question
@@ -1078,6 +1130,15 @@ impl Body<'_> {
                                 .next(format!("Write `{written} {{ ... }}` with each field")),
                             );
                             return (Ty::Named(written.to_string()), Fallible::Unknown);
+                        }
+                        Some(Def::Format { .. }) => {
+                            self.args_only(call);
+                            let span = call
+                                .expr()
+                                .map_or_else(|| self.span(call), |e| self.span(&e));
+                            self.out
+                                .push(super::super::formats::not_a_value(written, span, false));
+                            return (Ty::Error, Fallible::Unknown);
                         }
                         None => {
                             self.args_only(call);

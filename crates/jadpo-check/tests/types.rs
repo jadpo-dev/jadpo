@@ -448,11 +448,14 @@ fn standard_operations_check_their_arguments_shape_and_kind() {
 }
 
 #[test]
-fn an_operation_declared_for_a_later_area_is_not_built_yet() {
+fn formatting_is_checked_like_any_operation() {
+    // `temporal.format` is checked (area 10, chunk 5.2b): a number isn't a
+    // time, it needs a locale and a format, and it gives text for people.
+    // Only a call that checks is refused, until locales come (chunk 5.3).
     assert_eq!(
         with_names(
             "function f(n: Pence) -> Pence {\n    var formatted_price: Pence = temporal.format(n)\n    return formatted_price\n}\n"
         ),
-        ["toolchain.not_built_yet"]
+        ["type.mismatch", "type.argument_count", "type.mismatch"]
     );
 }

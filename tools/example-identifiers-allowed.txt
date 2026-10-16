@@ -307,3 +307,7 @@ later
 saturday
 sunday
 range
+
+# Words the language defines for showing time (area 10): `temporal.format`'s
+# `locale:`, a `Locale`.
+locale

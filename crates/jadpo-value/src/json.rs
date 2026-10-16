@@ -581,7 +581,8 @@ fn zoned_from_json(
 /// A scalar read from its text, before its rules are checked.
 fn scalar_from_text(builtin: Builtin, text: &str) -> Result<Value, &'static str> {
     match builtin.representation() {
-        Builtin::Text => Ok(Value::text(text)),
+        // Text for people is sent and read as the text it is (area 10).
+        Builtin::Text | Builtin::PresentationText => Ok(Value::text(text)),
         Builtin::Int => text.parse::<i64>().map(Value::Int).map_err(|_| "type"),
         Builtin::Decimal => Decimal::parse(text).map(Value::Decimal).ok_or("type"),
         Builtin::Uuid => {

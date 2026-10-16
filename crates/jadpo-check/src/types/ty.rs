@@ -13,8 +13,10 @@ use crate::tree::{self, dotted};
 /// shares: no Jadpo declaration can say what they are made of.
 pub use jadpo_std::Builtin as Prim;
 
-/// The bases used only after `=` in a `type` declaration (area 2).
-pub const BASES: [&str; 7] = [
+/// The bases used only after `=` in a `type` declaration (area 2), and
+/// `TimeFormat`, which declares a format for showing dates and times
+/// (area 10).
+pub const BASES: [&str; 8] = [
     "Object",
     "Enum",
     "Input",
@@ -22,7 +24,12 @@ pub const BASES: [&str; 7] = [
     "Failure",
     "Event",
     "EmailMessage",
+    TIME_FORMAT,
 ];
+
+/// The base of a declared time format, whose values are the built-in
+/// formats (area 10, "Showing dates and times to people").
+pub const TIME_FORMAT: &str = "TimeFormat";
 
 /// The generic containers and how many type arguments each takes.
 pub fn container_arity(name: &str) -> Option<usize> {

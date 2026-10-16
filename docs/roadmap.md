@@ -395,14 +395,19 @@ reference only).
 - [x] **5.2 Time:** `opus · high` durations, instants, zones and the
   `temporal` library, `ZonedTime` in place of the time of day, time on the
   wire and in queries, and a test's clock. Formatting is 5.2b.
-- [ ] **5.2b Time formats** `opus · high` (area 10, "Showing dates and
+- [x] **5.2b Time formats** `opus · high` (area 10, "Showing dates and
   times to people"), split from 5.2: `TimeFormat` declared and built in,
   `ComponentStyle`, `PresentationText` and
   `type.presentation_text_persistence`, and `temporal.format` and
   `format_relative` checked (`zone:` required for an `Instant` and refused
   otherwise), the text they give staying `toolchain.not_built_yet` until
   5.3; area 10's formatting errors rewritten with real output.
-- [ ] **5.3 Translations and locales.** `sonnet · high`
+- [ ] **5.3 Translations and locales.** `sonnet · high` Besides locales and
+  translations, it gives the text 5.2b left refused: `temporal::format`
+  and `format_relative` in `jadpo-value` over locale data (the format
+  arrives as `TimeFormatSpec` text), `locale:` checked against the
+  supported locales, and the `toolchain.not_built_yet` refusal in
+  `jadpo-check` removed.
 - [ ] **5.4 Standard library: the plan** `opus · high`. Only `collection`
   and `temporal` are specified, piecemeal across areas 2, 3 and 10, and
   real code keeps needing more: splitting and trimming text, formatting and

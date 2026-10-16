@@ -69,6 +69,48 @@ pub enum Def {
     Enum {
         variants: Vec<VariantDef>,
     },
+    /// A declared time format and the components it shows (area 10): it
+    /// holds no values, and is named only in `temporal.format`'s
+    /// `format:`.
+    Format {
+        spec: jadpo_std::TimeFormatSpec,
+    },
+}
+
+/// The components a declared format's settings give, each the first time
+/// it is written with a style it takes; the declaration check reports the
+/// rest.
+pub fn format_spec(settings: &[Setting]) -> jadpo_std::TimeFormatSpec {
+    let mut parts = Vec::new();
+    for (key, value) in settings {
+        let Some(component) = jadpo_std::Component::from_name(key) else {
+            continue;
+        };
+        if parts.iter().any(|(seen, _)| *seen == component) {
+            continue;
+        }
+        if let Some(style) = component_style(component, value) {
+            parts.push((component, style));
+        }
+    }
+    jadpo_std::TimeFormatSpec::components(parts)
+}
+
+/// `ComponentStyle.<style>`, when `component` takes that style.
+pub fn component_style(
+    component: jadpo_std::Component,
+    value: &rules::Const,
+) -> Option<jadpo_std::ComponentStyle> {
+    let rules::Const::Path(path) = value else {
+        return None;
+    };
+    let [host, style] = path.as_slice() else {
+        return None;
+    };
+    let style = (host == jadpo_std::ComponentStyle::NAME)
+        .then(|| jadpo_std::ComponentStyle::from_name(style))
+        .flatten()?;
+    component.styles().contains(&style).then_some(style)
 }
 
 /// Every type in the project, by name.
@@ -477,6 +519,9 @@ impl TypeTable {
                         })
                         .collect(),
                 },
+                ShapeKind::Format { settings } => Def::Format {
+                    spec: format_spec(settings),
+                },
             };
             table.defs.insert(name.clone(), def);
         }
@@ -523,6 +568,9 @@ impl TypeTable {
                                 .map(|lines| resolve_fields(&variant_fields(lines))),
                         })
                         .collect(),
+                },
+                ShapeKind::Format { settings } => Def::Format {
+                    spec: format_spec(settings),
                 },
             };
             resolved.insert(name.clone(), def);

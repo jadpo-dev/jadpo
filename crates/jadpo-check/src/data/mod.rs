@@ -34,7 +34,7 @@ use crate::case::to_snake;
 use crate::graph::{field_key, registry};
 use crate::lookups::{Lookup, Name, NameView};
 use crate::tree::{self, node_span};
-use crate::types::{Const, FieldsBase, Ty, TypeRef, TypeView};
+use crate::types::{Const, Def, FieldsBase, Ty, TypeRef, TypeView};
 
 pub use columns::column_type;
 
@@ -776,6 +776,28 @@ impl Reader<'_> {
             );
             return Some(field);
         }
+        // Text for people is shown, never stored (area 10).
+        if let Some(held) = holds_presentation(self.lookup, &ty, &mut Vec::new()) {
+            let through = if held == "PresentationText" {
+                String::new()
+            } else {
+                format!(", through `{held}`,")
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_PRESENTATION_TEXT_PERSISTENCE,
+                    format!("`{entity}.{name}` would store text formatted for a person"),
+                )
+                .at(node_span(path, value.syntax()), "`PresentationText`, stored")
+                .reason(format!(
+                    "`{entity}.{name}`{through} holds `PresentationText`: text in one reader's language and zone, which another reader, a change of locale or a correction to the zone database would show differently, and which can't be read back as a time. A record keeps the value itself and formats it when it is shown."
+                ))
+                .next(format!(
+                    "Store the `Instant`, `CalendarDate` or `ZonedTime` instead, and format `{entity}.{name}` in the output that shows it"
+                )),
+            );
+            return Some(field);
+        }
         field.allows = columns::allows(
             self.lookup,
             &Ty::Field(entity.to_string(), vec![name.to_string()]),
@@ -1487,6 +1509,41 @@ fn head(node: &jadpo_syntax::SyntaxNode) -> String {
 }
 
 /// The entity a type holds, directly or inside a collection.
+/// Whether a value of `ty` holds `PresentationText`, directly or in a
+/// collection, an object's field or a variant's data: the type that holds
+/// it, or `PresentationText` itself.
+fn holds_presentation(lookup: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> Option<String> {
+    if lookup.base_prim(ty) == Some(jadpo_std::Builtin::PresentationText) {
+        return Some(match ty.strip_nullable() {
+            Ty::Named(name) => name.clone(),
+            _ => "PresentationText".to_string(),
+        });
+    }
+    match lookup.structure(ty) {
+        Ty::Nullable(inner) | Ty::List(inner) | Ty::Set(inner) => {
+            holds_presentation(lookup, &inner, seen)
+        }
+        Ty::Map(key, value) => holds_presentation(lookup, &key, seen)
+            .or_else(|| holds_presentation(lookup, &value, seen)),
+        Ty::Named(name) if !seen.contains(&name) => {
+            seen.push(name.clone());
+            let held = match lookup.def(&name) {
+                Some(Def::Fields { fields, base, .. }) if *base != FieldsBase::Entity => fields
+                    .iter()
+                    .any(|field| holds_presentation(lookup, &field.declared, seen).is_some()),
+                Some(Def::Enum { variants }) => variants
+                    .iter()
+                    .filter_map(|variant| variant.fields.as_deref())
+                    .flatten()
+                    .any(|field| holds_presentation(lookup, &field.declared, seen).is_some()),
+                _ => false,
+            };
+            held.then_some(name)
+        }
+        _ => None,
+    }
+}
+
 fn holds_entity(lookup: &dyn TypeView, ty: &Ty) -> Option<String> {
     match ty {
         Ty::Named(name) if lookup.base(name) == Some(FieldsBase::Entity) => Some(name.clone()),

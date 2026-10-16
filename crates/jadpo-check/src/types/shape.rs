@@ -108,6 +108,11 @@ pub enum ShapeKind {
     Enum {
         variants: Vec<VariantShape>,
     },
+    /// A time format, `type ShortDate = TimeFormat { day: ... }`, with its
+    /// components as written (area 10).
+    Format {
+        settings: Vec<Setting>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -138,6 +143,9 @@ pub fn shape(decl: &Decl) -> Option<Shape> {
                     match (names[0].as_str(), FieldsBase::from_base(&names[0])) {
                         ("Enum", _) => ShapeKind::Enum {
                             variants: variants(list),
+                        },
+                        (super::ty::TIME_FORMAT, _) => ShapeKind::Format {
+                            settings: settings(list),
                         },
                         (_, Some(FieldsBase::Failure)) => ShapeKind::Fields {
                             base: FieldsBase::Failure,

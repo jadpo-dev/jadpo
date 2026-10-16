@@ -40,6 +40,7 @@ apply_code
 apply_discount
 appoint_editor
 appraisal
+approve_consent
 approved
 archive_todo
 archived
@@ -229,6 +230,8 @@ company_projects
 company_role
 complete_todo
 completed_at
+consent
+consent_id
 contact_address
 contact_email
 contact_text
@@ -376,7 +379,6 @@ flour_for
 flour_short
 follow_up
 forget_memos
-formatted_price
 found_company
 founder
 fragile
@@ -440,6 +442,7 @@ invited
 invoice
 invoice_address
 invoice_date
+invoice_dated
 invoice_transfer
 is_overdue
 isbn
@@ -644,6 +647,7 @@ order_line_view
 order_locked
 order_not_found
 order_note
+order_placed
 order_product
 order_shelf
 order_stage
@@ -721,6 +725,7 @@ pickup_outlet
 pin_note
 ping
 place_order
+placed_label
 placed_with
 plan_effort
 platform_role
@@ -743,7 +748,6 @@ price_loaf
 price_loaves
 price_per_kilo
 price_range
-price_text
 primary_database
 priorities
 priority

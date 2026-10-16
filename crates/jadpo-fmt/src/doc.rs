@@ -14,6 +14,10 @@ pub enum Doc {
     SoftLine,
     /// Always a line break; the groups around it break too.
     HardLine,
+    /// A line break unless nothing but indentation is on the line yet:
+    /// what a comment written on a line of its own starts with, so it never
+    /// lands after code (`st.//`) and reads back as a trailing comment.
+    FreshLine,
     Indent(Box<Doc>),
     Concat(Vec<Doc>),
     /// Flat if it fits on the line, broken otherwise.
@@ -62,7 +66,7 @@ impl Doc {
 
     fn has_hard_line(&self) -> bool {
         match self {
-            Doc::HardLine => true,
+            Doc::HardLine | Doc::FreshLine => true,
             Doc::Indent(doc) => doc.has_hard_line(),
             Doc::Concat(docs) => docs.iter().any(Doc::has_hard_line),
             Doc::Group { breaks, .. } => *breaks,
@@ -123,8 +127,14 @@ pub fn print(doc: &Doc, width: usize) -> String {
                 }
             }
             Doc::LineSuffix(s) => suffixes.push(s),
-            Doc::Line | Doc::SoftLine | Doc::HardLine => {
-                if mode == Mode::Flat && !matches!(doc, Doc::HardLine) {
+            Doc::FreshLine
+                if suffixes.is_empty()
+                    && out
+                        .rsplit('\n')
+                        .next()
+                        .is_some_and(|line| line.trim().is_empty()) => {}
+            Doc::Line | Doc::SoftLine | Doc::HardLine | Doc::FreshLine => {
+                if mode == Mode::Flat && matches!(doc, Doc::Line | Doc::SoftLine) {
                     if matches!(doc, Doc::Line) {
                         out.push(' ');
                         column += 1;
@@ -195,7 +205,7 @@ fn fits(next: Command<'_>, rest: &[Command<'_>], mut room: isize) -> bool {
             }
             Doc::LineSuffix(_) if after => return true,
             Doc::LineSuffix(_) => suffix = true,
-            Doc::HardLine => return true,
+            Doc::HardLine | Doc::FreshLine => return true,
             Doc::Line | Doc::SoftLine if mode == Mode::Break => return true,
             Doc::Line => room -= 1,
             Doc::SoftLine => {}

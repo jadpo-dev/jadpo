@@ -1946,7 +1946,7 @@ check failed: 1 error, 1 file
 | Reading from a cache or projection (question 3) | 6 | Input to area 6 |
 | Whether children are hidden when their parent is soft-deleted; today they stay visible and a required include of a hidden parent reads as missing | 6, 9 | Open |
 | Field-level policy in the field's block (`role:`, `immutable:`, `policy: { }`), entity `policy: { }`, `membership`, and purge as a compiler-only authority | 9 | Input to area 9 |
-| Persisting presentation text (`type.presentation_text_persistence`) and `Instant` precision | 10 | Input to area 10 |
+| Persisting presentation text (`type.presentation_text_persistence`) and `Instant` precision | 10 | Built: milliseconds in chunk 5.2, and an entity field holding `PresentationText` refused in chunk 5.2b |
 | Scheduling the purge worker | 12 | Input to area 12 |
 | Test fixtures versus seeds | 13 | Input to area 13 |
 | `migration.*` rules raised only by `jadpo schema` commands (snapshot, diff, decision, plan and SQL errors, registry read and write failures, `migration.identity_registry_missing`, `migration.identity_registry_exists`, `migration.identity_additions_have_removal`, rename errors), `index.accept_*` and `index.recommendation_*` other than the check warning, `cli.schema_*`, and `toolchain.target_store_not_implemented` (raised by `jadpo build`); none can be triggered by `jadpo check` on source | 14 | Input to area 14 |

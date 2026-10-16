@@ -186,7 +186,7 @@ fn holds_record(lookup: &Lookup<'_>, ty: &Ty, seen: &mut BTreeSet<String>) -> bo
                     .iter()
                     .filter_map(|variant| variant.fields.as_deref())
                     .any(|own| fields(own, seen)),
-                Some(Def::Scalar { .. }) | None => false,
+                Some(Def::Scalar { .. } | Def::Format { .. }) | None => false,
             }
         }
         Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => holds_record(lookup, inner, seen),

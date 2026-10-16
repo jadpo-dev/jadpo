@@ -710,7 +710,8 @@ impl Reader<'_> {
                     Err("An object has several fields; make each a setting of its own.".to_string())
                 }
                 Some(Def::Scalar { .. }) => self.scalar(ty),
-                None => Err(String::new()),
+                // A format holds no value, which the type's own check says.
+                Some(Def::Format { .. }) | None => Err(String::new()),
             },
             _ => self.scalar(ty),
         }
@@ -721,7 +722,11 @@ impl Reader<'_> {
             return Err(String::new());
         };
         Ok(match base {
-            Prim::PageCursor | Prim::PageSize | Prim::ApiToken | Prim::ServiceKey => {
+            Prim::PageCursor
+            | Prim::PageSize
+            | Prim::ApiToken
+            | Prim::ServiceKey
+            | Prim::PresentationText => {
                 return Err(format!(
                     "`{}` is made by the runtime, not read from a deployment.",
                     base.name()
