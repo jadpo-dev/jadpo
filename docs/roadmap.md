@@ -381,7 +381,7 @@ reference only).
   renewed against the record; `RouteAuthentication.fresh` reading the
   record; `POST /auth/exchange` for service keys; a browser session's
   `origin:` from configuration.
-- [ ] **5.1c Trusted proxies** `sonnet · high` (area 10, question 12,
+- [x] **5.1c Trusted proxies** `sonnet · high` (area 10, question 12,
   decided 2026-10-16): which
   proxies a deployment trusts for a client's address (`X-Forwarded-For`,
   `Forwarded`, Cloudflare's `CF-Connecting-IP`), declared once in
@@ -464,7 +464,11 @@ reference only).
   per-request allocation for paths, labels and failure lookups; the native
   host accepting asynchronously and spreading connections round-robin.
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
-  commit, PostgreSQL through Cloudflare's pooling.
+  commit, PostgreSQL through Cloudflare's pooling; the client's address from
+  `CF-Connecting-IP` (`ClientAddress::read` with `Target::Workers`, built in
+  5.1c), and a `client_address:` source other than `cloudflare` refused when
+  a project is built for Workers (area 10, "Client addresses"), which needs
+  deployables declared first.
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
   TypeScript app, comparing Wasm with native and Bun with native as well

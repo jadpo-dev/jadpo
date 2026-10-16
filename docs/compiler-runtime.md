@@ -1599,6 +1599,27 @@ time it checks a request's deadline (`Step::Yield`,
 longer holds the requests its worker serves until its deadline; an inline
 function inside a collection operation still only stops there.
 
+**The client's address** (chunk 5.1c). The address a request counts as,
+for the default rate limits, `jadpo dev`'s request lines and the request
+timeline, is chosen in the runtime from plan data and not by a host:
+`application { client_address: }` is `RouteTable::client_address`, read
+with the settings the app started with into `http::address::ClientAddress`
+(`ClientAddress::read(plan, values, Target)`), which `App::client` carries.
+`serve_request` sets the chosen address on the context (`Ctx::client`) and on
+the response (`Response::client`) before anything else runs, and
+`by_address` counts that. A host only gives the connection's address
+(`Request::address`; natively the peer's), so the Workers host uses the same
+code with `Target::Workers`, where the default is `cloudflare`
+(`CF-Connecting-IP`) and `read` refuses every other source (`NotAccepted`)
+for the deployable to report as a start-up problem (chunk 8.2). With
+`hops: N` the client is the N-th address from the right of `X-Forwarded-For`
+(every line joined) or of `Forwarded`'s `for` parameters; a header that is
+short, invalid or missing gives the connection's address, never a guess, and
+addresses are kept in one spelling. Natively the listener still sends a
+connection to the worker its peer address hashes to, so a client behind
+one proxy is counted on one thread; clients behind several proxies can be
+counted on several, as clients on several addresses always were.
+
 **Configuration** (chunk 5.1). Starting is one function, `jadpo_runtime::
 config::load`, given the plan's settings, their compiled validators and a
 source of variables (`Variables`, a host capability: `Host::variable` is the
