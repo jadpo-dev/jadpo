@@ -15,6 +15,7 @@ mod examples;
 mod failures;
 mod graph;
 mod habits;
+mod identity;
 mod imports;
 mod incremental;
 mod isolation;

@@ -801,7 +801,7 @@ impl Body<'_> {
     /// An argument to a parameter that takes any type built on one of
     /// `accepts`, as operators work on the representation: `Number`, or a
     /// built-in representation written in a stub.
-    fn built_on_argument(
+    pub(super) fn built_on_argument(
         &mut self,
         value: &Expr,
         ty: Option<Ty>,

@@ -2,7 +2,7 @@
 title: Identity
 area: 8
 status: decided
-checked-with: jadpo chunk-4.3 (2026-10-16)
+checked-with: jadpo chunk-4.3b (2026-10-16)
 rules:
   - semantic.auth_*
   - semantic.multiple_*
@@ -2172,39 +2172,56 @@ check failed: 1 error, 1 file
 
 ### Status
 
-Built in chunk 4.3. `jadpo check` reads `application { }`'s
+Built in chunks 4.3 and 4.3b. `jadpo check` reads `application { }`'s
 `revocation_delay:`, `principal { }` and `authentication { }` (each declared
-once), with each variant's `subject:` and `active:`, and `browser_session:`
-with its cookie; routes need a signed-in caller unless they say
-`authentication: RouteAuthentication.none` (or `.fresh`), an API lists the
-methods it accepts, and protected routes with nothing to sign anyone in are
-`semantic.auth_not_set_up`. A route passes `current_principal`, or the kind
-it selects, to what it runs, and actions, queries and functions take
-`Principal.user` parameters whose `id`, `subject` and `strength` they read;
-a caller never sits in an `Input`, an `Output` or a failure. Tests,
-fixtures and seeds make a caller with `Principal.user(record)`, and a route
-test signs in with `as:`. The runtime authenticates a request before its
+once), with each variant's `subject:` and `active:`, `browser_session:`
+with its cookie, and `api_token:` and `service_key:`; routes need a
+signed-in caller unless they say `authentication: RouteAuthentication.none`
+(or `.fresh`), an API lists the methods it accepts, and protected routes
+with nothing to sign anyone in are `semantic.auth_not_set_up`. A route
+passes `current_principal`, or the kind it selects, to what it runs, and
+actions, queries and functions take `Principal.user` and
+`Principal.service` parameters whose `id`, `subject` and `strength` they
+read; a caller never sits in an `Input`, an `Output` or a failure, and an
+`ApiToken` or `ServiceKey` never in an entity. Tests, fixtures and seeds
+make a caller with `Principal.user(record)` or `Principal.service(record)`,
+and a route test signs in with `as:`, through a browser session, an API
+token or a service key. The runtime authenticates a request before its
 input is read, refuses it as "Failures" lists, checks a cookie write's
-`Origin` and CSRF token, starts and ends sessions from actions, and keeps
-sessions in the `jadpo_sessions` system table beside the principal's
-users. OpenAPI shows each API's security scheme, the API record marks the
-routes anyone may call, and `jadpo routes` lists each route's
-authentication.
+`Origin` and CSRF token, starts and ends sessions and issues, lists and
+revokes API tokens and service keys from actions, and keeps sessions and
+tokens in the `jadpo_sessions` system table beside the principal's users
+and keys in `jadpo_service_keys` beside its services. OpenAPI shows each
+API's security schemes, the API record marks the routes anyone may call,
+and `jadpo routes` lists each route's authentication.
 
 Not yet, each `toolchain.not_built_yet` where it is written:
 
-- `api_token` and `service_key`, with `Service.issue_key`, `Service.keys`,
-  `Service.revoke_key`, `service_disabled` and signing in as a service in a
-  route test (roadmap chunk 4.3b). How an application issues an API token
-  is open (below).
 - `revocation_delay:`, signed sessions and tokens, `POST /auth/exchange`,
   and `origin:` and `signing_key:` from configuration (chunk 5.1b, after
   configuration in 5.1). Until then every request checks the caller's
   record, which `RouteAuthentication.fresh` asks for anyway.
 - `external_token`, `sign_in_providers:` and `oauth_provider:`, after the
   first build.
-- Deleting ended sessions from the runtime's minute tick (area 12, chunk
-  6.2): a lookup ignores a session past its 30 days.
+- Deleting ended sessions, tokens and expired keys from the runtime's
+  minute tick (area 12, chunk 6.2): a lookup ignores one past its end.
+- Who may issue, list and revoke a token or a key: the owning record's
+  grants (area 9, question 8), with policy in chunk 4.4. Until then
+  `sessions.revoke_token(token_id)` and `Service.revoke_key(key_id)` end
+  whichever token or key has that `id`, so an action that takes an `id`
+  from a request checks it is among the caller's own (`sessions.tokens`,
+  `Service.keys`) first.
+
+**Listing tokens and keys from a `GET`** (open, raised in chunk 4.3b).
+`sessions.tokens(user_id)` and `Service.keys(service_id)` are for an
+application's own "signed-in devices" and key screens, but only an
+action calls them, and a `GET` route runs a query (area 7), so today a
+screen lists them through a `POST` route or another action, and copies
+each `IssuedToken`'s fields into an `Output` of its own. *Recommendation:*
+let a `GET` route run them directly, as generated queries, and make
+`IssuedToken` and `IssuedKey` types an `Output` can hold, so
+`GET /devices { run: sessions.tokens(current_principal.user.id) }` works
+the way an entity's own queries do.
 
 **How an API token is issued** (decided 2026-10-16). The page says `api_token`
 travels as `Authorization: Bearer` for the application's own mobile and
@@ -2405,4 +2422,9 @@ builds it.
 | Starting and ending sessions (chosen in chunk 4.3) | `sessions.start(user_id)` takes the user entity's `id`, `sessions.end()` nothing; only actions call them, not functions, queries, tests, fixtures or seeds. Each writes the sessions' store, so the action writes that store (one store per action, area 6). A test that calls such an action keeps the session with no response to set it on. `sessions.end()` on a request with no session ends none and still clears the cookies | 2026-10-16 |
 | The caller in code (chosen in chunk 4.3) | `current_principal` alone is a `Principal`, whose fields aren't read until a kind is selected; a route passes `current_principal`, `current_principal.user` or one of its fields, never both kinds. A caller's `id` counts as a record loaded earlier, so writing a record that refers to it needs no not-found failure. `as:` signs in a user through a real browser session (a session kept in its own transaction, the cookie, the CSRF token and an `Origin`); `as:` on a route anyone may call is `semantic.request_invalid` | 2026-10-16 |
 | Reports (chosen in chunk 4.3) | Each API's OpenAPI document lists the accepted methods as security schemes (`browser_session` as an `apiKey` cookie) and requires them at the top; a route anyone may call says `security: []`, and every other answers 401 (`authentication_required`, `invalid_credentials`, `ambiguous_credentials`), 403 (`user_disabled`, and `csrf_rejected` on a write) and 503 (`authentication_unavailable`). The API record writes `authentication: none` under a route anyone may call. `jadpo routes` shows `required`, `none` or `fresh`. Wrong route and API values are `route.authentication_invalid` and `api.authentication_invalid` (area 7) | 2026-10-16 |
-| Not built yet (chosen in chunk 4.3) | `revocation_delay:` is checked for a positive duration, then `toolchain.not_built_yet` until signing keys (chunk 5.1b), as are `origin:` and a `signing_key:` read from configuration; a `signing_key:` written as a literal is `semantic.auth_setting_invalid`. `api_token:` and `service_key:` wait for chunk 4.3b, `external_token:`, `sign_in_providers:` and `oauth_provider:` for after the first build | 2026-10-16 |
+| Not built yet (chosen in chunk 4.3; updated in 4.3b) | `revocation_delay:` is checked for a positive duration, then `toolchain.not_built_yet` until signing keys (chunk 5.1b), as are `origin:` and a `signing_key:` read from configuration; a `signing_key:` written as a literal is `semantic.auth_setting_invalid`. `external_token:`, `sign_in_providers:` and `oauth_provider:` wait for after the first build | 2026-10-16 |
+| Bearer credentials (chosen in chunk 4.3b) | `api_token:` and `service_key:` take only `signing_key:` (a literal is `semantic.auth_setting_invalid`, a configuration value waits for 5.1b), so each is written `{}`; `api_token:` needs the principal's `user:` and `service_key:` its `service:` (`semantic.auth_principal_required`). Each travels as `Authorization: Bearer <value>`, the scheme in any case: an API token is `jadpo_token_` and 64 hexadecimal digits, a service key `jadpo_key_` and 64, 32 random bytes kept only as their BLAKE3 verifiers. The prefix says which method a credential is; one the route's API doesn't accept, or any other value, is 401 `invalid_credentials` without clearing cookies. A bearer credential needs no `Origin` or CSRF token | 2026-10-16 |
+| API tokens (chosen in chunk 4.3b) | A token is a session without a cookie: a `jadpo_sessions` row with no CSRF verifier, lasting 30 days from `sessions.issue_token(user_id) -> ApiToken`, with no sliding renewal; a cookie never signs in with a token's row, nor a bearer with a session's. `sessions.end()` ends the token or session a request came with, needing either method. `sessions.tokens(user_id) -> List<IssuedToken>` lists the user's tokens that haven't ended, oldest first; `sessions.revoke_token(token_id)` takes a `Uuid` and deletes only a token, never a browser session; an unknown `id` revokes nothing | 2026-10-16 |
+| Service keys (chosen in chunk 4.3b) | `issue_key`, `keys` and `revoke_key` belong to the entity the principal's `service:` names, once `service_key:` is declared; on any other entity they are `semantic.unknown_callee`. `issue_key(service_id, expires_at: Instant) -> ServiceKey` keeps the key until `expires_at`, `keys(service_id) -> List<IssuedKey>` lists those that haven't expired, oldest first, and `revoke_key(key_id: Uuid)` deletes one. Keys live in `jadpo_service_keys` (`id`, `principal_id`, `verifier`, `started_at`, `ends_at`) in the service entity's store, read with the service's record, `active:` and lifecycle in one statement. A service caller's rate limit and idempotency keys are its own (`service <id>`) | 2026-10-16 |
+| Issued credentials in code (chosen in chunk 4.3b) | `ApiToken` and `ServiceKey` are built-in text types an `Output` can send; an entity field of either is `type.auth_credential_stored`. A response from an action that issued one is never kept for an idempotent repeat, so a retry runs again. `IssuedToken` and `IssuedKey` are built-in values with `id: Uuid`, `started_at: Instant` and `ends_at: Instant` that code reads; they don't cross the boundary themselves. None of the six operations fails: like `sessions.start`, each takes an `id` the action has already loaded, and only an action calls them (`type.auth_sessions_context`), the reads included, writing or reading the store their table lives in | 2026-10-16 |
+| Signing in from a route test (chosen in chunk 4.3b) | `as: Principal.user(...)` signs in through a browser session when the route's API accepts one, otherwise through an API token; `as: Principal.service(...)` through a key issued as `issue_key` issues one, lasting 30 days. Each is kept for real in its own transaction and sent as a client sends it. With nothing declared that signs that kind of caller in, `as:` is `semantic.request_invalid` | 2026-10-16 |

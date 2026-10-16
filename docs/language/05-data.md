@@ -647,10 +647,14 @@ store that holds an entity, since any of them can be written:
 | `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure | Area 12, chunk 6.1 |
 | `jadpo_idempotency_keys` | Each idempotent request's key, digest and stored response | Area 7, built in chunk 4.2 |
 
-Browser sessions (`jadpo_sessions`: each session's user, the verifiers of
-its token and CSRF token, and when it started and ends; area 8, built in
-chunk 4.3) go only in the store the principal's user entity lives in, since
-authentication reads a session with its user's record in one statement.
+Browser sessions and API tokens (`jadpo_sessions`: each one's user, the
+verifiers of its token and a browser session's CSRF token, and when it
+started and ends; area 8, built in chunks 4.3 and 4.3b) go only in the
+store the principal's user entity lives in, and service keys
+(`jadpo_service_keys`: each key's service, its verifier, and when it was
+issued and expires; chunk 4.3b) only in the store its service entity lives
+in, since authentication reads a credential with its caller's record in
+one statement.
 Schedule state and the stores system features name explicitly
 (`schedules: { store: main }`) join them with their chunks. The manifest
 holds a `system_table` node for each, and `jadpo_migrations`, which

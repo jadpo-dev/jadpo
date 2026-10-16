@@ -279,31 +279,39 @@ impl Body<'_> {
         };
         let entity = variant.entity.clone();
         let id = |of: &str| Ty::Field(of.to_string(), vec!["id".to_string()]);
-        let (params, result): (Vec<(&str, Ty)>, Ty) = match op {
-            SessionOp::Start => (vec![("the user's", id(&entity))], Ty::Prim(Prim::Unit)),
+        // Each parameter's name, how a message describes it, and its type.
+        type Param<'a> = (&'a str, &'a str, Ty);
+        let (params, result): (Vec<Param>, Ty) = match op {
+            SessionOp::Start => (
+                vec![("user_id", "the user's", id(&entity))],
+                Ty::Prim(Prim::Unit),
+            ),
             SessionOp::End => (Vec::new(), Ty::Prim(Prim::Unit)),
-            SessionOp::IssueToken => (vec![("the user's", id(&entity))], Ty::Prim(Prim::ApiToken)),
+            SessionOp::IssueToken => (
+                vec![("user_id", "the user's", id(&entity))],
+                Ty::Prim(Prim::ApiToken),
+            ),
             SessionOp::Tokens => (
-                vec![("the user's", id(&entity))],
+                vec![("user_id", "the user's", id(&entity))],
                 Ty::List(Box::new(Ty::Opaque(ISSUED_TOKEN.to_string(), Vec::new()))),
             ),
             SessionOp::RevokeToken => (
-                vec![("the token's", Ty::Prim(Prim::Uuid))],
+                vec![("token_id", "the token's", Ty::Prim(Prim::Uuid))],
                 Ty::Prim(Prim::Unit),
             ),
             SessionOp::IssueKey => (
                 vec![
-                    ("the service's", id(&entity)),
-                    ("when it expires,", Ty::Prim(Prim::Instant)),
+                    ("service_id", "the service's", id(&entity)),
+                    ("expires_at", "its expiry, an", Ty::Prim(Prim::Instant)),
                 ],
                 Ty::Prim(Prim::ServiceKey),
             ),
             SessionOp::Keys => (
-                vec![("the service's", id(&entity))],
+                vec![("service_id", "the service's", id(&entity))],
                 Ty::List(Box::new(Ty::Opaque(ISSUED_KEY.to_string(), Vec::new()))),
             ),
             SessionOp::RevokeKey => (
-                vec![("the key's", Ty::Prim(Prim::Uuid))],
+                vec![("key_id", "the key's", Ty::Prim(Prim::Uuid))],
                 Ty::Prim(Prim::Unit),
             ),
         };
@@ -313,7 +321,7 @@ impl Body<'_> {
                 .map_or_else(|| self.span(call), |list| self.span(&list));
             let takes: Vec<String> = params
                 .iter()
-                .map(|(whose, ty)| format!("{whose} `{ty}`"))
+                .map(|(_, whose, ty)| format!("{whose} `{ty}`"))
                 .collect();
             let takes = if takes.is_empty() {
                 "nothing".to_string()
@@ -340,9 +348,16 @@ impl Body<'_> {
             );
             return failed(self);
         }
-        for (arg, (_, ty)) in args.iter().zip(&params) {
-            if let Some(value) = arg.expr() {
-                self.check(&value, ty);
+        for (arg, (name, _, ty)) in args.iter().zip(&params) {
+            let Some(value) = arg.expr() else { continue };
+            match ty {
+                // Any type built on it, as the standard library's
+                // operations take them: an `Instant` or a `Uuid`.
+                Ty::Prim(prim) => {
+                    let inferred = (!super::is_literal(&value)).then(|| self.infer(&value));
+                    self.built_on_argument(&value, inferred, &[*prim], written, name);
+                }
+                _ => self.check(&value, ty),
             }
         }
         (

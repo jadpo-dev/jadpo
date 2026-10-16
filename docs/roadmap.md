@@ -281,7 +281,7 @@ reference only).
   routes signed in by default, `current_principal`, starting and ending a
   session, signing in from route tests. Split: API tokens and service keys
   are 4.3b, the revocation delay 5.1b.
-- [ ] **4.3b API tokens and service keys** `opus · high`: `service_key:`
+- [x] **4.3b API tokens and service keys** `opus · high`: `service_key:`
   with `Service.issue_key`, `.keys` and `.revoke_key` and a
   `jadpo_service_keys` table, service callers (`service_disabled`,
   `Principal.service`, a route test signing in as a service), and

@@ -873,7 +873,10 @@ impl Reader<'_> {
                     let near = nearest(other, ["signing_key"]);
                     let problem = Diagnostic::new(
                         &rule::SEMANTIC_AUTH_SETTING_UNKNOWN,
-                        format!("`{other}` isn't an `{word}` setting"),
+                        format!(
+                            "`{other}` isn't {} `{word}` setting",
+                            if method == AuthenticationMethod::ApiToken { "an" } else { "a" }
+                        ),
                     )
                     .at(key_span.clone(), "unknown setting")
                     .reason(format!(

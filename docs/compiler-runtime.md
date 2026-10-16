@@ -1287,6 +1287,27 @@ which a held commit hands back so the response sets or clears the cookies
 once the action commits. A signed-in caller counts against
 `RateLimits::allow_caller`, and keys its idempotency as `user <id>`.
 
+Built in chunk 4.3b: API tokens and service keys (area 8). The identity
+reads `api_token:` and `service_key:`, and `jadpo_std::http::SessionOp`
+names every generated credential operation: `sessions.start`, `.end`,
+`.issue_token`, `.tokens` and `.revoke_token`, and the service entity's
+`issue_key`, `keys` and `revoke_key`, each a `Callee::Session` that only
+an action calls and that reads or writes the store its table lives in
+(`jadpo_sessions` beside the users, `jadpo_service_keys` beside the
+services, each a system table in that store's schema). `ApiToken` and
+`ServiceKey` are built-in text types no entity may store; `IssuedToken`
+and `IssuedKey` are built-in values whose fields (`jadpo_std::http::
+ISSUED_FIELDS`) code reads. `jadpo-plan` writes each kind of caller's
+lookup (`PrincipalPlan::lookup`: a session or token with its user, a key
+with its service), and the HTTP component reads a bearer credential by
+its prefix (`jadpo_token_`, `jadpo_key_`), where the route's API accepts
+its method, refusing a disabled service with `service_disabled` and the
+wrong kind for the route with `not_permitted`; a service caller is keyed
+`service <id>`. An action that issues a token or key marks its boundary
+(`Ctx::issued`), and its response is never stored for an idempotent
+repeat. A route test's `as:` keeps a real credential of the kind the
+route's API accepts (`http::identity::test_credentials`).
+
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
 runs one current-thread tokio runtime per core, each with its own
