@@ -30,15 +30,16 @@ program, and how is a feature turned on, off or replaced?
 | Dependencies between packages: none | Decided |
 | Private packages | Proposed |
 | The model and its rules | Proposed |
-| Capability mappings calling pure functions | Proposed |
+| Capability mappings calling pure functions | Dropped |
 | Choosing a provider when deploying | Proposed |
 | Sign-in providers as a capability | Proposed |
-| Other candidate capabilities | Proposed |
+| Other candidate capabilities | Revised by design C |
 | What a library package may also carry | Proposed |
 | Software and disk | Proposed |
 | Services: containers run by Jadpo | Proposed, its own topic |
-| Capability providers ([options](capability-providers-options.md), design C recommended) | Awaiting Richard |
-| Watching code run in development | Proposed |
+| Capabilities: only jobs the language does itself (design C) | Decided |
+| Provider calls in development | Decided |
+| Watching code run in development | Decided |
 
 ## Decided before this: swapping a provider
 
@@ -64,7 +65,7 @@ application {
 There is nothing to disable: SMTP does nothing unless a connection names
 it, and changing provider changes `app.jadpo`, never domain code. The
 capabilities are a fixed list owned by the language (database, cache,
-files, email, SMS, publishing, schedules), each with standard types and
+files, email, publishing, schedules; SMS removed by design C below), each with standard types and
 events, a local driver for development, one fake for tests and a
 conformance suite. Packages fill capabilities and never invent them.
 
@@ -510,12 +511,71 @@ keeps (it names a store), a job several providers do that the compiler
 gains from knowing (a capability), or one provider's API (a provider
 package)?
 
-## Proposed: capability mappings calling pure functions
+## Decided: capabilities are only jobs the language does itself
 
-Area 11 question 21 limits a `provide` mapping to field paths, literals,
-lists, nested blocks and enum tables. Decoding already lets a package's
-pure functions run on the response path; the same would let a mapping call
-them, added with the first package that needs one.
+Decided 2026-10-16 (Richard), from
+[the capability comparison](capability-providers-options.md), its design C,
+with every open question answered as that page recommends.
+
+- **A capability exists only for a job Jadpo performs itself, and covers
+  that job whole.** Every connection that fills it does all of it, so
+  partial support cannot arise and there are no optional parts.
+- **Email is a Jadpo-rendered `EmailMessage` sent after commit**,
+  attachments included (a `File` field on the message is an attachment,
+  checked against the package's declared size limit), through SMTP, SES,
+  Postmark or any package that provides it, chosen in `app.jadpo`. Jadpo's
+  own mail (sign-in, password resets, privacy requests) always goes this
+  way. A provider that cannot send attachments stays a package but cannot
+  be the email connection.
+- **Everything provider-specific is the package's own operations**, called
+  from an action or subscriber in a domain the connection lists, as
+  payments are: hosted templates with variables
+  (`postmark.email.send_with_template(...)`), suppression lists, marketing
+  sends. One connection serves both: `email:` uses it, and the listed
+  domains call it.
+- **Bounces and complaints are the package's own webhook events**;
+  `EmailBounced` and `EmailComplained` go from area 16. They return to the
+  capability only when a built-in feature consumes them.
+- **SMS is not a capability**: nothing in the language sends SMS. Twilio
+  is a package, its text still typed against translations; `sms` returns
+  if SMS sign-in codes are built. `publishing` stays, for outgoing
+  webhooks.
+- **Erasing a person at a provider** uses area 15's package-level deletion
+  declaration, not capability mappings.
+- **Mappings stay data**, with no function calls; computation lives in the
+  decided encoders and decoders. A mapping gains `each:` and `as:` to map a
+  list element by element.
+- **A package input may take any of the app's object types** (Postmark's
+  template variables, Stripe's metadata), serialised as JSON: a general
+  addition for area 2 to design.
+- **Image variants**, when built, are made by the runtime over any store,
+  so `files` stays whole.
+- **Emails without an idempotency key** keep area 12's parking on
+  `outcome_unknown`; revisit if chunk 7.3 shows parking is common.
+- **Two kinds of mail through two connections** wait for an app that asks.
+- **What is lost for hosted-template mail**: the dev inbox entry, the
+  health score and the automatic template check (an app can add a contract
+  case). Moving provider rewrites its bounce subscribers.
+
+## Decided: provider calls in development
+
+Decided 2026-10-16 (Richard), as in section 4 of the capability comparison.
+
+- **Every provider operation is faked by default in `jadpo dev`**,
+  answered from the package's recordings where they exist and generated
+  defaults otherwise, so nothing leaves the machine and no credential is
+  needed.
+- **Named operations or resources go to the sandbox, never live**, through
+  `development: { sandbox: [payment_intents.retrieve, customers] }` on the
+  connection in `app.jadpo`, where review and agents see it. `--fake` and
+  `--sandbox` on `jadpo dev` change one session only.
+- **`jadpo calls script <operation> <failure>`** sets the next answer, so an
+  agent can walk a failure path by hand.
+- **Every call is logged**, faked or real, with its inputs and answer in
+  full (development only, secrets never), its source (recording,
+  generated, scripted, sandbox), attempts, duration and request: in
+  `jadpo calls`, `jadpo calls show <id>`, `jadpo trace` and `--json`. This
+  changes area 17's hashing of text for call payloads in development only.
 
 ## Proposed: choosing a provider when deploying
 
@@ -536,12 +596,13 @@ and Apple. Still proposed: making sign-in a `sign_in` capability, so
 `sign_in: { connections: [google, github] }` names the connections the way
 `email:` does.
 
-## Proposed: other candidate capabilities
+## Revised: other candidate capabilities
 
-Search (an external index such as Meilisearch or Typesense behind the
-decided `search:` section), push notifications and bot protection, each
-added through review only when an app needs it. Payments and AI models stay
-provider packages: one action per job is the app's swap point for those.
+Under design C a capability exists only for a job the language does
+itself. Search qualifies if an external index ever backs the decided
+`search:` section; bot protection would if routes gain it; push
+notifications do not until a built-in feature sends them. Payments and AI
+models stay provider packages.
 
 ## Proposed: what a library package may also carry
 
@@ -690,9 +751,9 @@ drives the engine directly; agents and developers manage services through
 On Workers, which runs no containers, a service is hosted elsewhere and
 the connection gives its address.
 
-## Proposed: watching code run in development
+## Decided: watching code run in development
 
-Richard, 2026-10-16: an agent should be able to watch for a particular
+Decided 2026-10-16 (Richard): an agent should be able to watch for a particular
 part of the code to run, then see its inputs and outputs, without reading
 whole logs. For area 17, beside `jadpo trace`.
 
@@ -726,9 +787,10 @@ jadpo watch file domains/shipping/actions/book_collection.jadpo
 | Thing | Way | State |
 |---|---|---|
 | Database, cache, schedules | Capability, built-in drivers only | Decided (area 11) |
-| Files, email, SMS, publishing | Capability, drivers and packages | Decided (area 11) |
+| Files, email, publishing | Capability, drivers and packages; only jobs the language does itself | Decided |
+| SMS, hosted email templates, bounces | Provider packages' own operations and events | Decided (design C) |
 | Sign-in providers | `Driver.oidc` with an issuer; GitHub and Apple built in; a capability if agreed | Decided; capability proposed |
-| Search, push, bot protection | Candidate capabilities | Proposed |
+| Search, bot protection | Capabilities only once the language uses them | Decided rule |
 | Rate limits, flags, sessions, idempotency keys, outbox, audit | Name a store; not capabilities | Decided (areas 5, 12, 16) |
 | Event delivery | Runtime only; external queues are publishing targets | Decided (area 12) |
 | Telemetry | OpenTelemetry settings | Decided (area 16) |
@@ -745,4 +807,4 @@ jadpo watch file domains/shipping/actions/book_collection.jadpo
 | 5.4 Standard library: the plan | The built-in-or-package table and its rule; where reference data is declared |
 | 7.1 Packages and connections | `packages/<name>/<version>/` for installed packages only, committed and checked against `jadpo.lock`; the app's own integrations in `shared/providers/`; reserved brand names; `jadpo package` commands; both kinds laid out as `shared/`; `public` as the API; `use` for library packages; the surface and the publishing bar |
 | 7.2 Importing and faking | Imports write into `shared/providers/`; decoding (`wire:`, `decode:`, `wire_output:`) with built-in encodings; recordings checked by decoders; fakes scripting the clean type |
-| 7.3 Email | The `email` capability with SMTP as one driver and a mail package as the second, proving the swap |
+| 7.3 Email | The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver and a mail package as the second, proving the swap; provider calls faked in development and logged |
