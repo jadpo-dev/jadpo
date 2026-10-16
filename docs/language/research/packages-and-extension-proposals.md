@@ -14,32 +14,39 @@ program, and how is a feature turned on, off or replaced?
 
 ## At a glance
 
-| Part | State |
+**Decided** (2026-10-16 unless marked):
+
+| Part | In short |
 |---|---|
-| Swapping a provider (the email case) | Decided before, in area 11 (2026-10-13) |
-| Which kinds of package exist | Decided |
-| Built in or a library package | Agreed as input to chunk 5.4 |
-| Layout inside a package | Decided |
-| Where packages live, and where your own code lives | Decided |
-| Names | Decided |
-| The index, `provider.jadpo`, and drivers in `app.jadpo` (no presets) | Decided |
-| The package surface | Decided |
-| What publishing requires | Decided |
-| No code with side effects in packages | Decided |
-| Decoding responses and requests | Decided |
-| Dependencies between packages: none | Decided |
-| Private packages | Proposed |
-| The model and its rules | Proposed |
-| Capability mappings calling pure functions | Dropped |
-| Choosing a provider when deploying | Proposed |
-| Sign-in providers as a capability | Proposed |
-| Other candidate capabilities | Revised by design C |
-| What a library package may also carry | Proposed |
-| Software and disk | Proposed |
-| Services: containers run by Jadpo | Proposed, its own topic |
-| Capabilities: only jobs the language does itself (design C) | Decided |
-| Provider calls in development | Decided |
-| Watching code run in development | Decided |
+| Swapping a provider | A connection in `app.jadpo` (area 11, 2026-10-13) |
+| Kinds of package | Library and provider; no feature or driver packages |
+| What a package looks like | `package.jadpo` (`licence:`, `jadpo:`), optional `provider.jadpo`, `shared/`-style folders, `public` as the API |
+| Where packages live | Installed: `packages/<name>/<version>/`, committed, locked, read-only. Your own: `shared/providers/` |
+| Names | Brand names reserved; rename yours on a clash |
+| The surface | `package.surface`, readable, with file pointers; `jadpo package show` |
+| Publishing | The seven-point bar |
+| Side effects | None in packages; the app's actions make every call |
+| Decoding | `wire:` and `decode:` in the package; translation in the app |
+| Presets | None; built-in drivers configured in `app.jadpo`, vendor settings documented per driver |
+| Dependencies | None between packages |
+| Capabilities | Only jobs Jadpo itself does, each whole (design C) |
+| Services | Stateless containers through `runs:`, Docker or Podman hidden, `jadpo services` |
+| Development | Provider calls faked by default, let through by name, logged; `jadpo watch` |
+| Built in or a package | Agreed as input to chunk 5.4 |
+
+**Open**, in the order they are being worked through:
+
+| # | Part |
+|---|---|
+| 1 | The golden rule: anything a package can do, the app can do |
+| 2 | Overriding: settings and events only; magic-link sign-in built in ([scenarios](override-scenarios.md)) |
+| 3 | The override scenarios' smaller answers (erasure keys, handshakes, telemetry, error format, outgoing webhooks) |
+| 4 | What a library package may also carry |
+| 5 | Software and disk: disk driver, image variants, scanning, PDFs |
+| 6 | Packages generated from your own Jadpo apps |
+| 7 | Private packages |
+| 8 | Choosing a provider when deploying |
+| 9 | Then: move every decision onto the area pages and the roadmap |
 
 ## Decided before this: swapping a provider
 
