@@ -76,6 +76,8 @@ then built. No design is left for implementation.
 7c. **Per-user OAuth**: apps acting for each user on Google, Xero or
     HubSpot need those users' tokens kept and refreshed safely, owned by
     the runtime like sessions.
+7d. **Redis entity queries**: which reads a Redis entity supports beyond
+    get, create, update and delete by id (lists, filters), with area 6.
 8. **What a library package may also carry**: email partials and layouts,
    translations, a usage guide for agents. *Recommendation:* yes to all
    three. *Translations decided 2026-10-16 (Richard):* see "Translations",
@@ -588,6 +590,28 @@ and queries, route rate limits and, through the same
 servers; never idempotency keys, webhook de-duplication, sessions, poll
 state, schedule leases or the outbox. Flag values, when flags are built,
 are held in each server's memory and refreshed every few seconds.
+
+**Search.** `search` becomes a capability with PostgreSQL full-text search
+as the built-in default (`search: { fields: [...] store: products_index }`
+naming an engine; left out, PostgreSQL); an engine's package fills it with
+upsert, remove and query by words with equality filters. The engine
+returns ranked ids filtered by tenant, and Jadpo reads the records through
+the policy-applied query, so a result is never one the caller could not
+read. Jadpo keeps the index in step after commit through the outbox,
+erasure removes a person's records, and `jadpo search reindex` rebuilds it.
+Engine-specific features (synonyms, ranking rules) are the package's own
+operations. Development and tests use PostgreSQL search whatever
+production uses.
+
+**Redis entities and running without a database.** An entity may live in
+a Redis store and must expire: `expires_after: 2h`, measured from its last
+write, expired records hidden as area 6 says (answering area 5 question
+15); which queries a Redis entity supports beyond get, create, update and
+delete by id is settled with area 6 (open item). No database is required
+unless something uses one; area 5's implied PostgreSQL `main` becomes "only
+when needed", and `jadpo check` is an error naming the feature that needs
+one when none is declared (sign-in, events and the outbox, idempotency
+keys, webhook de-duplication, flags, audit, any database entity).
 
 ## Decided: the golden rule
 
