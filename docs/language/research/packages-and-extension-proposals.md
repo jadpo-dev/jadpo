@@ -610,6 +610,22 @@ naming Redis as the alternative; a limited caller gets area 7's `429` with
 `Retry-After` and the standard `RateLimit` headers, its wording from
 translations like any failure (to add to area 7 if it does not say so).
 
+**Generated routes; no pages** (Richard: Jadpo is a backend, so
+frontends own every page). Jadpo generates endpoints only, never pages:
+the magic link points at a path on the app's frontend
+(`magic_link: { link: "/sign-in/confirm" }`, at the browser origin
+already configured), which posts the token to
+`POST /auth/magic-link/confirm`, so mail scanners loading the page consume
+nothing; area 15's generated privacy page becomes endpoints only, the
+frontend building the page (a recipe can show one), reversing area 15's
+decision. A generated route takes a `path:` setting where its feature is
+configured, or `routes: false`, after which the app writes its own route
+over the generated operations (`magic_links.request`,
+`magic_links.redeem`, `sessions.start`), which keep every protection;
+webhook routes can change path but cannot be switched off; generated
+response shapes are fixed. This removes the confirm page, its wording and
+any page layout from the earlier decisions.
+
 **Redis entities and running without a database.** An entity may live in
 a Redis store and must expire: `expires_after: 2h`, measured from its last
 write, expired records hidden as area 6 says (answering area 5 question
