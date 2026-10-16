@@ -676,13 +676,13 @@ impl Walk<'_> {
                     WriteOp::Create => vec![fresh(base)],
                     WriteOp::Update | WriteOp::Delete => targets(&entity, base, target.as_ref()),
                 };
-                self.stored = Some((entity.clone(), ways.clone()));
+                let outer = self.stored.replace((entity.clone(), ways.clone()));
                 let mut values: Vec<(String, SiteId, Prov)> = Vec::new();
                 for (key, value) in &set {
                     let prov = self.eval(flow, *value);
                     values.push((field_name(key), *value, self.with_pc(prov)));
                 }
-                self.stored = None;
+                self.stored = outer;
                 if let Some(patch) = patch {
                     self.eval(flow, patch);
                 }
@@ -1118,18 +1118,26 @@ impl Walk<'_> {
     /// `value`.
     fn output(&mut self, flow: &Flow<'_>, output: &str, field: &str, value: SiteId, prov: &Prov) {
         self.params_in(prov);
-        let Some((entity, from, reached)) = unproved(flow, prov).into_iter().next() else {
+        let Some((entity, from, reached, decided)) = unread(flow, prov).into_iter().next() else {
             return;
         };
-        let who = flow.prover.counterexample(&reached, |facts| {
-            flow.prover.field_readable(&entity, &from, facts)
-        });
+        let among = among(flow, &entity, &from, &reached);
         let readers = flow.prover.readers(&entity, &from);
-        let among = who
-            .map(|who| format!(", {who} among them,"))
-            .unwrap_or_default();
+        let (label, keeps, next) = if decided {
+            (
+                format!("decided by `{entity}.{from}`"),
+                "Which value is sent shows what decided it, so a value made under an `if`, a `match` or a loop, or kept by a filter, keeps the rules of the fields they test.".to_string(),
+                format!("Decide `{field}` by what every caller of `{}` may read", self.name),
+            )
+        } else {
+            (
+                format!("from `{entity}.{from}`"),
+                "What a caller is sent has one shape for everyone, and a value passed through a variable or another type keeps its field's rules.".to_string(),
+                format!("Leave `{field}` out of `{output}`"),
+            )
+        };
         let reason = format!(
-            "`{}` reaches the `{entity}` it comes from for anyone its grants let in{among} and {readers} `{from}`. What a caller is sent has one shape for everyone, and a value passed through a variable or another type keeps its field's rules.",
+            "`{}` reaches the `{entity}` it comes from for anyone its grants let in{among} and {readers} `{from}`. {keeps}",
             self.name
         );
         self.problems.push(
@@ -1140,9 +1148,9 @@ impl Walk<'_> {
                     self.name
                 ),
             )
-            .at(self.span(value), format!("from `{entity}.{from}`"))
+            .at(self.span(value), label)
             .reason(reason)
-            .next(format!("Leave `{field}` out of `{output}`")),
+            .next(next),
         );
     }
 
@@ -1154,13 +1162,8 @@ impl Walk<'_> {
         let Some((entity, from, reached)) = unproved(flow, prov).into_iter().next() else {
             return false;
         };
-        let who = flow.prover.counterexample(&reached, |facts| {
-            flow.prover.field_readable(&entity, &from, facts)
-        });
+        let among = among(flow, &entity, &from, &reached);
         let readers = flow.prover.readers(&entity, &from);
-        let among = who
-            .map(|who| format!(", {who} among them,"))
-            .unwrap_or_default();
         let reason = format!(
             "`{callee}` puts what it is given here in the output it returns, and `{}` reaches the `{entity}` it comes from for anyone its grants let in{among} while {readers} `{from}`. A value passed to another action keeps its field's rules.",
             self.name
@@ -1283,7 +1286,10 @@ fn fresh(mut reached: Reached) -> Reached {
 fn targets(entity: &str, base: Reached, target: Option<&Prov>) -> Vec<Reached> {
     let mut out: Vec<Reached> = Vec::new();
     let mut alone = target.is_none_or(|target| target.whole.is_empty());
-    for src in target.map(|target| target.whole.as_slice()).unwrap_or_default() {
+    for src in target
+        .map(|target| target.whole.as_slice())
+        .unwrap_or_default()
+    {
         match src {
             Src::Record {
                 entity: loaded,
@@ -1363,11 +1369,19 @@ fn element(
 /// record isn't proved to read, with how they reached it: for a record
 /// passed whole, each of its fields but those a write just gave it.
 fn unproved(flow: &Flow<'_>, prov: &Prov) -> Vec<(String, String, Reached)> {
+    unread(flow, prov)
+        .into_iter()
+        .map(|(entity, field, reached, _)| (entity, field, reached))
+        .collect()
+}
+
+/// [`unproved`], each with whether it only decided the value.
+fn unread(flow: &Flow<'_>, prov: &Prov) -> Vec<(String, String, Reached, bool)> {
     let mut out = Vec::new();
     for src in prov.flat() {
-        let src = match src {
-            Src::Decided(inner) => *inner,
-            other => other,
+        let (src, decided) = match src {
+            Src::Decided(inner) => (*inner, true),
+            other => (other, false),
         };
         match src {
             Src::Field {
@@ -1376,7 +1390,7 @@ fn unproved(flow: &Flow<'_>, prov: &Prov) -> Vec<(String, String, Reached)> {
                 reached,
             } => {
                 if !flow.prover.field_proved(&entity, &field, &reached) {
-                    out.push((entity, field, reached));
+                    out.push((entity, field, reached, decided));
                 }
             }
             Src::Record {
@@ -1391,7 +1405,7 @@ fn unproved(flow: &Flow<'_>, prov: &Prov) -> Vec<(String, String, Reached)> {
                     if !given.contains(&field.name)
                         && !flow.prover.field_proved(&entity, &field.name, &reached)
                     {
-                        out.push((entity.clone(), field.name.clone(), reached.clone()));
+                        out.push((entity.clone(), field.name.clone(), reached.clone(), decided));
                     }
                 }
             }

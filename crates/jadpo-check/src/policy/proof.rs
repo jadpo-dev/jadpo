@@ -273,7 +273,8 @@ impl<'a> Prover<'a> {
 
     /// Whether `facts` let the caller read a record of `entity`.
     pub fn readable(&self, entity: &str, facts: &Facts) -> bool {
-        self.proves_on(entity, facts, &self.grants(entity, Effect::Read)) && self.tenant(entity, facts)
+        self.proves_on(entity, facts, &self.grants(entity, Effect::Read))
+            && self.tenant(entity, facts)
     }
 
     /// Whether `facts` let the caller read the field `field` of a record
@@ -281,8 +282,7 @@ impl<'a> Prover<'a> {
     /// field is its `id`, which they named to reach it), and the field's
     /// own `read:` when it narrows the record's.
     pub fn field_readable(&self, entity: &str, field: &str, facts: &Facts) -> bool {
-        let record =
-            field == "id" || facts.contains(&Fact::Fresh) || self.readable(entity, facts);
+        let record = field == "id" || facts.contains(&Fact::Fresh) || self.readable(entity, facts);
         record
             && match self
                 .access

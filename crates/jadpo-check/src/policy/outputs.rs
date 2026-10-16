@@ -354,7 +354,12 @@ fn walk(
                                 include: include.clone(),
                                 reached: reached.clone(),
                             });
-                        } else if !prover.parent_readable(entity, &inner.via, &inner.entity, reached) {
+                        } else if !prover.parent_readable(
+                            entity,
+                            &inner.via,
+                            &inner.entity,
+                            reached,
+                        ) {
                             out.push(Unproved::Parent {
                                 from: entity.to_string(),
                                 via: inner.via.clone(),

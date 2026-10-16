@@ -583,7 +583,6 @@ fn nobody_passes(
     line: &super::ActionGrants,
     access: &Access,
 ) -> Diagnostic {
-    let written: Vec<String> = line.written_who.iter().map(|w| format!("`{w}`")).collect();
     let system_only = line.who.iter().all(|who| *who == ActionWho::System);
     let why = if system_only {
         "names only `Access.system`: schedules and subscribers, which no request is".to_string()
@@ -593,21 +592,22 @@ fn nobody_passes(
             .iter()
             .zip(&line.written_who)
             .filter_map(|(who, text)| match who {
-                ActionWho::Field { entity, .. } => {
-                    Some(format!("`{text}` is checked on the `{entity}` it changes"))
-                }
+                ActionWho::Field { entity, .. } => Some(format!(
+                    "`{text}`, the caller a `{entity}` the action changes points at"
+                )),
                 ActionWho::Role { membership, .. } => access
                     .membership(membership)
                     .and_then(|m| m.scope_entity.as_deref())
                     .map(|scope| {
-                        format!("`{text}` is checked on a record it changes that belongs to a `{scope}`")
+                        format!(
+                            "`{text}`, a role held in the `{scope}` a record the action changes belongs to"
+                        )
                     }),
                 _ => None,
             })
             .collect();
         format!(
-            "names {}: {}, and `{run}`'s own body changes no record they apply to",
-            crate::and_list(&written),
+            "names {}, and `{run}` changes no such record itself",
             crate::and_list(&held)
         )
     };
@@ -617,7 +617,7 @@ fn nobody_passes(
     )
     .at(span, "nobody passes its line")
     .reason(format!(
-        "`{}`'s line under `actions:` {why}, so no caller passes it as the action starts and this route could never succeed.",
+        "`{}`'s line under `actions:` {why}, so no caller passes the line as the action starts and this route could never succeed.",
         line.written
     ))
     .next(format!(

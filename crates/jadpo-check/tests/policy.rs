@@ -1467,7 +1467,9 @@ action note_budget(project_id: Project.id) fails ProjectNotFound -> JotView {
         "{found:#?}"
     );
     assert!(
-        found[0].contains("`JotView.amount` carries `Project.budget`, which not every caller of `note_budget`"),
+        found[0].contains(
+            "`JotView.amount` carries `Project.budget`, which not every caller of `note_budget`"
+        ),
         "{found:#?}"
     );
 }

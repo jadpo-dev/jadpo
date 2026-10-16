@@ -188,7 +188,9 @@ POST / {
 - A schedule or subscriber has no caller; an action it runs cannot ask for one
   (area 12).
 - A caller value can never be returned to a client, read from request input or
-  put in a failure's fields (`type.auth_principal_*`).
+  put in a failure's fields (`type.auth_principal_*`), however deep a field
+  holds it: in a list, a map or an option, or in an object's field or a
+  variant's data.
 
 ## Routes: signed in by default
 
@@ -2650,3 +2652,4 @@ builds it.
 | Listing from a `GET` route (chosen in chunk 4.4c) | `run: sessions.tokens(...)` and `run: <Service>.keys(...)` are the only generated calls a route runs, each on a `GET` and passing one argument, the holder's `id` (a placeholder, `input`'s field or `current_principal.user.id`); the call is `List<IssuedToken>` or `List<IssuedKey>`, so `output:` is exactly that. On another method it is `route.run_kind`, and `issue_token`, `revoke_token`, `issue_key` and `revoke_key` are `route.run_invalid`; with the method undeclared it is `type.auth_sessions_context`, as in an action | 2026-10-16 |
 | `IssuedToken` and `IssuedKey` in an `Output` (chosen in chunk 4.4c) | An `Output` field, and a route's `output:` as a `List`, may be either; on the wire each is an object of `id` (a UUID), `started_at` and `ends_at` (timestamps), never the credential. The API record gives each an `output IssuedToken` section and OpenAPI a schema of its own. They are made only by listing, so an entity can't store one (as any structured stored field, `toolchain.not_built_yet`) | 2026-10-16 |
 | Policy on a listing route (chosen in chunk 4.4c) | A route that lists reaches a `read` of the holder's entity, the same grant `sessions.tokens` needs in an action: no one granted is `policy.effect_ungranted`, and a route anyone may call needs `Access.public` (`policy.public_grant_missing`). The runtime runs it as a one-statement read at repeatable read with the statement the plan limited by those grants, so it lists the tokens or keys of holders the caller may read, and a list for any other holder is `[]` with 200, never a failure. There is nothing to prove for the output: its three fields belong to the credential, whose holder's `read` already decided the list | 2026-10-16 |
+| A caller held deep in a type (chosen in chunk 4.8) | An `Input`, `Output` or failure field whose type holds a caller anywhere (in a `List`, `Set`, `Map` or option, or in a field of an object or a variant's data, followed through every named type it uses) is `type.auth_principal_input`, `type.auth_principal_output` or `type.auth_principal_failure_context`, as if it held the caller itself; an `Input`, `Output` or failure it uses is checked at its own declaration | 2026-10-16 |
