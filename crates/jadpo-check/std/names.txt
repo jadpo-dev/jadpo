@@ -12,16 +12,14 @@ InstantRange
 Page
 File Principal Response Access
 IssuedToken IssuedKey
-TimeFormat
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
 FieldAccess OnDelete Generated FieldChange
 ApiChange PersonalData Erasure FileType SearchLanguage RateLimitKey
-ComponentStyle
 
 # Standard-library namespaces and the operations the pages name so far,
-# always called through the namespace (area 10).
+# always called through the namespace (area 10); none waits for a stub
+# now.
 [namespaces]
-temporal: format format_relative
 
 # Namespaces the compiler fills from the project or the platform, with the
 # members built so far; any other member is `toolchain.not_built_yet` until

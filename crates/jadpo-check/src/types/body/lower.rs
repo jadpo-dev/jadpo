@@ -491,6 +491,12 @@ impl Lower<'_> {
 
     fn expr_node(&mut self, expr: &Expr) -> typed::Expr {
         let key = node_key(expr.syntax());
+        // A format is given to its operation as its text (area 10); the
+        // names it is written with still refer to what they name.
+        if let Some(format) = self.facts.formats.get(&key).cloned() {
+            self.scan(expr.syntax());
+            return typed::Expr::Literal(Literal::Text(format));
+        }
         match expr {
             Expr::Literal(_) => self.literal(expr),
             Expr::PrefixExpr(prefix) => {

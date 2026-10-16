@@ -246,3 +246,11 @@ pub(crate) fn and_list(items: &[String]) -> String {
         [init @ .., last] => format!("{} and {last}", init.join(", ")),
     }
 }
+
+pub(crate) fn or_list(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [only] => only.clone(),
+        [init @ .., last] => format!("{} or {last}", init.join(", ")),
+    }
+}

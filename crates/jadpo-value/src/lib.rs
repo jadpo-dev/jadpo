@@ -113,6 +113,11 @@ pub fn run(
             | Op::TemporalZone,
             _,
         ) => run_temporal(op, args),
+        // The text these give in each locale comes with locales (area 10,
+        // "Locales", roadmap chunk 5.3); until then the checker refuses
+        // every call to them (`toolchain.not_built_yet`), so a program
+        // that runs never reaches here.
+        (Op::TemporalFormat | Op::TemporalFormatRelative, _) => Err(Fault::Shape),
     }
 }
 
@@ -233,6 +238,8 @@ mod tests {
         };
         for operation in jadpo_std::OPERATIONS {
             let args: Vec<Value> = match operation.op {
+                // Refused while checking until locales come (chunk 5.3).
+                Op::TemporalFormat | Op::TemporalFormatRelative => continue,
                 Op::CollectionContains => vec![items.clone(), Value::Int(2)],
                 Op::CollectionCount | Op::CollectionFilter | Op::CollectionMap => {
                     vec![items.clone()]

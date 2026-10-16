@@ -42,6 +42,12 @@ pub enum Builtin {
     /// A key sessions and tokens are signed with (area 10, "Signing key
     /// rotation"): at least [`SIGNING_KEY_MIN`] characters. Always secret.
     SigningKey,
+    /// Text for a person, in their language, as `temporal.format` and
+    /// translations give it (area 10, "Showing dates and times to
+    /// people"): it goes into a response, an email or a page, and is never
+    /// stored, read back as a time, ordered or rebuilt into `Text`, so it
+    /// is its own representation.
+    PresentationText,
 }
 
 /// The fewest characters a [`Builtin::SigningKey`] has: 256 bits of a
@@ -69,7 +75,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
 };
 
 impl Builtin {
-    pub const ALL: [Builtin; 21] = [
+    pub const ALL: [Builtin; 22] = [
         Builtin::Bool,
         Builtin::Int,
         Builtin::Decimal,
@@ -91,6 +97,7 @@ impl Builtin {
         Builtin::PostgresUrl,
         Builtin::RedisUrl,
         Builtin::SigningKey,
+        Builtin::PresentationText,
     ];
 
     pub fn name(self) -> &'static str {
@@ -116,6 +123,7 @@ impl Builtin {
             Builtin::PostgresUrl => "PostgresUrl",
             Builtin::RedisUrl => "RedisUrl",
             Builtin::SigningKey => "SigningKey",
+            Builtin::PresentationText => "PresentationText",
         }
     }
 
@@ -159,6 +167,7 @@ impl Builtin {
                 | Builtin::PostgresUrl
                 | Builtin::RedisUrl
                 | Builtin::SigningKey
+                | Builtin::PresentationText
         )
     }
 

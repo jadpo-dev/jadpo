@@ -135,6 +135,25 @@ std_enum! {
 }
 
 std_enum! {
+    /// How one part of a declared `TimeFormat` is shown (area 10, "Showing
+    /// dates and times to people"), as `Intl.DateTimeFormat` and CLDR's
+    /// skeletons name them: each part takes some of these
+    /// ([`crate::Component::styles`]), and the locale decides the rest.
+    ComponentStyle: "ComponentStyle" {
+        /// Digits as the locale writes them: `5`, `2026`.
+        Numeric: "numeric",
+        /// Always two digits: `05`, `26`.
+        TwoDigit: "two_digit",
+        /// An abbreviated name: `Oct`, `Sun`, `BST`.
+        Short: "short",
+        /// The full name: `October`, `Sunday`, `British Summer Time`.
+        Long: "long",
+        /// The narrowest form: `O`, `S`.
+        Narrow: "narrow",
+    }
+}
+
+std_enum! {
     /// When a generated `Instant` field is set (area 5, "Fields and their
     /// settings").
     Generated: "Generated" {
@@ -375,6 +394,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (Weekday::NAME, Weekday::NAMES.to_vec()),
         (Dst::NAME, Dst::NAMES.to_vec()),
         (InvalidDay::NAME, InvalidDay::NAMES.to_vec()),
+        (ComponentStyle::NAME, ComponentStyle::NAMES.to_vec()),
         (Generated::NAME, Generated::NAMES.to_vec()),
         (OnDelete::NAME, OnDelete::NAMES.to_vec()),
         (FieldChange::NAME, FieldChange::NAMES.to_vec()),
@@ -419,6 +439,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         Weekday::NAME => position(Weekday::NAMES),
         Dst::NAME => position(Dst::NAMES),
         InvalidDay::NAME => position(InvalidDay::NAMES),
+        ComponentStyle::NAME => position(ComponentStyle::NAMES),
         Generated::NAME => position(Generated::NAMES),
         OnDelete::NAME => position(OnDelete::NAMES),
         FieldChange::NAME => position(FieldChange::NAMES),

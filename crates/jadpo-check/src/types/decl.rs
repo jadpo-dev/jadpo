@@ -14,7 +14,7 @@ use jadpo_syntax::ast::{self, AstNode, Decl, Expr, MemberItem};
 use super::literal;
 use super::rules::{self, CONSTRAINTS, Const, FIELD_SETTINGS, Problem, Rules, Subject};
 use super::shape::{self, FieldsBase, Line, ShapeKind};
-use super::table::{Found, LineKind, LineProblem, TypeView, derive};
+use super::table::{Def, Found, LineKind, LineProblem, TypeView, derive};
 use super::ty::{BASES, Prim, Ty, TypeNode, TypeRef, container_arity};
 use crate::lookups::Lookup;
 use crate::std_lib::StdNames;
@@ -60,7 +60,7 @@ pub(super) struct Decls<'a> {
 }
 
 impl Decls<'_> {
-    fn span(&self, node: &SyntaxNode) -> Span {
+    pub(super) fn span(&self, node: &SyntaxNode) -> Span {
         node_span(self.path, node)
     }
 
@@ -202,6 +202,13 @@ impl Decls<'_> {
                             "Declare `type Name = {first} {{ ... }}` and use its name here"
                         )),
                     );
+                    return false;
+                }
+                if names.len() == 1
+                    && let Some(Def::Format { .. }) = self.table.def(first)
+                {
+                    let span = self.span(&head);
+                    self.out.push(super::formats::not_a_value(first, span));
                     return false;
                 }
                 if names.len() == 1 {
@@ -363,6 +370,7 @@ impl Decls<'_> {
             ShapeKind::Fields { base, lines } => {
                 self.lines(list, *base, &shape.name, lines);
             }
+            ShapeKind::Format { .. } => self.format_decl(decl, &shape.name),
             ShapeKind::Enum { variants } => {
                 if variants.is_empty() {
                     let span = decl

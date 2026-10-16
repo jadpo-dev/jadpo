@@ -863,6 +863,8 @@ rules! {
         "02-values-and-types.html#type-optional-outside-input", "Optional or default field outside an Input";
     TYPE_ORDERING_OPERAND: "type.ordering_operand", area 3, Error, Agent,
         "03-logic.html#type-ordering-operand", "Values cannot be ordered";
+    TYPE_PRESENTATION_TEXT_PERSISTENCE: "type.presentation_text_persistence", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-presentation-text-persistence", "Text for people is stored";
     TYPE_PRIMITIVE_SIGNATURE: "type.primitive_signature", area 2, Error, Agent,
         "02-values-and-types.html#type-primitive-signature", "Signature uses a built-in type directly";
     TYPE_PRINCIPAL_ACTIVE_INVALID: "type.principal_active_invalid", area 8, Error, Agent,
@@ -881,8 +883,20 @@ rules! {
         "02-values-and-types.html#type-sibling-mismatch", "Field type is used for a sibling field type";
     TYPE_TEMPORAL_CLOCK_INVALID: "type.temporal_clock_invalid", area 10, Error, Agent,
         "10-configuration-and-time.html#type-temporal-clock-invalid", "Clock time is not written `HH:MM`";
+    TYPE_TEMPORAL_FORMAT_COMPONENT_DUPLICATE: "type.temporal_format_component_duplicate", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-format-component-duplicate", "Format component is given twice";
+    TYPE_TEMPORAL_FORMAT_COMPONENT_INVALID: "type.temporal_format_component_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-format-component-invalid", "Format component takes no such style";
+    TYPE_TEMPORAL_FORMAT_COMPONENTS_EMPTY: "type.temporal_format_components_empty", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-format-components-empty", "Declared format shows nothing";
+    TYPE_TEMPORAL_FORMAT_INVALID: "type.temporal_format_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-format-invalid", "Format is not a written-out time format";
+    TYPE_TEMPORAL_FORMAT_REQUIRES_TIME: "type.temporal_format_requires_time", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-format-requires-time", "Format shows a clock time a date doesn't have";
     TYPE_TEMPORAL_OPTION_UNUSED: "type.temporal_option_unused", area 10, Error, Agent,
         "10-configuration-and-time.html#type-temporal-option-unused", "Option means nothing for this value";
+    TYPE_TEMPORAL_ZONE_REQUIRED: "type.temporal_zone_required", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-zone-required", "Formatting an instant needs a zone";
     TYPE_TEST_CLOCK_CONTEXT: "type.test_clock_context", area 13, Error, Agent,
         "13-testing.html#type-test-clock-context", "The clock is moved outside a test";
     TYPE_TYPE_ARGUMENT_COUNT: "type.type_argument_count", area 2, Error, Agent,

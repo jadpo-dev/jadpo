@@ -1,17 +1,45 @@
 //! What `temporal`'s calls add to an ordinary standard-library call (area
-//! 10, "Zones and local times"): a clock time written out, options that
-//! mean something only for a local time, and the conditions a call fails
-//! on unless an option settles them, which its `attempt` maps by the
-//! option's name as a construction's broken rules are mapped (area 2).
+//! 10, "Zones and local times" and "Showing dates and times to people"): a
+//! clock time and a format written out, options that mean something only
+//! for some values and one that those values need, and the conditions a
+//! call fails on unless an option settles them, which its `attempt` maps
+//! by the option's name as a construction's broken rules are mapped (area
+//! 2).
 
-use jadpo_diag::{Diagnostic, Span, rule};
-use jadpo_std::Operation;
+use jadpo_diag::{Diagnostic, Span, nearest, rule};
+use jadpo_std::{BuiltinFormat, Operation, TimeFormatSpec};
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
 use super::super::rules::Const;
-use super::super::ty::{Prim, Ty};
-use super::{Body, Fallible, is_literal, node_key};
-use crate::tree;
+use super::super::table::Def;
+use super::super::ty::{Prim, TIME_FORMAT, Ty};
+use super::{Body, Fallible, did_you_mean, is_literal, node_key};
+use crate::case::starts_upper;
+use crate::tree::{self, dotted};
+
+/// Why an option means nothing for the value a call is given.
+fn unused_reason(option: &str, written: &str, shown: &str, built_on: Prim) -> (String, String) {
+    match option {
+        "zone" if built_on == Prim::ZonedTime => (
+            format!("`{shown}` is seen in its own zone"),
+            format!(
+                "`zone:` says which zone an `Instant` is shown in; `{shown}` is a `ZonedTime`, which carries the zone it is seen in, so `{written}` shows it there."
+            ),
+        ),
+        "zone" => (
+            format!("`{shown}` has no clock time"),
+            format!(
+                "`zone:` says which zone an `Instant` is shown in; `{shown}` is a date, with no clock time, so it reads the same in every zone."
+            ),
+        ),
+        _ => (
+            format!("`{shown}` has no clock time"),
+            format!(
+                "`{option}:` chooses an instant when a local time falls in a daylight-saving gap or overlap; `{written}` on a `{shown}` moves a date, which has no clock time, so no such time arises."
+            ),
+        ),
+    }
+}
 
 impl Body<'_> {
     /// `at:`: a clock time written as text, `"09:30"`, checked here, since
@@ -50,6 +78,129 @@ impl Body<'_> {
                 "There is no time-of-day type, so no value holds a clock time on its own: `at:` is the clock time written as text, `\"09:30\"`, which is checked while compiling.",
             )
             .next("Write the clock time itself, such as `\"09:30\"`"),
+        );
+    }
+
+    /// `format:`: a built-in format, `TimeFormat.date_long`, or a declared
+    /// one by its name, written out, since no value holds a format (area
+    /// 10, "Showing dates and times to people"). The argument is lowered
+    /// as the format's text.
+    pub(super) fn format_argument(&mut self, value: &Expr, written: &str) -> Option<TimeFormatSpec> {
+        let span = self.span(value);
+        let shown = tree::written(value.syntax());
+        let names = dotted(value).filter(|(first, _)| starts_upper(&super::text(first)));
+        let Some((first, rest)) = names else {
+            if !is_literal(value) {
+                self.infer(value);
+            }
+            let message = if is_literal(value) {
+                format!("`{shown}` isn't a time format")
+            } else {
+                format!("`{written}`'s `format:` is written out, not passed as a value")
+            };
+            self.out.push(
+                Diagnostic::new(&rule::TYPE_TEMPORAL_FORMAT_INVALID, message)
+                    .at(span, if is_literal(value) { "not a format" } else { "a value" })
+                    .reason(format_reason(written))
+                    .next("Write the format itself, such as `TimeFormat.date_long`, or a format's name"),
+            );
+            return None;
+        };
+        let before = self.resolved.len() + self.out.len();
+        self.resolved_by(|names, out| names.value_name(value, out));
+        if self.resolved.len() + self.out.len() != before {
+            return None;
+        }
+        let head = super::text(&first);
+        let rest: Vec<String> = rest.iter().map(super::text).collect();
+        let found = match rest.as_slice() {
+            [] => match self.table.def(&head) {
+                Some(Def::Format { spec }) => Some(spec.clone()),
+                _ => None,
+            },
+            [member] if head == TIME_FORMAT => {
+                BuiltinFormat::from_name(member).map(TimeFormatSpec::Builtin)
+            }
+            _ => None,
+        };
+        if let Some(spec) = found {
+            let key = node_key(value.syntax());
+            self.facts.types.insert(key, Ty::Prim(Prim::Text));
+            self.facts.formats.insert(key, spec.written());
+            return Some(spec);
+        }
+        let near = match rest.as_slice() {
+            [member] if head == TIME_FORMAT => nearest(
+                member,
+                BuiltinFormat::ALL.iter().map(|format| format.name()),
+            )
+            .map(|near| format!("{TIME_FORMAT}.{near}")),
+            _ => None,
+        };
+        let problem = Diagnostic::new(
+            &rule::TYPE_TEMPORAL_FORMAT_INVALID,
+            format!("`{shown}` isn't a time format"),
+        )
+        .at(span.clone(), "not a format")
+        .reason(format!(
+            "{}{}",
+            format_reason(written),
+            did_you_mean(near.as_deref())
+        ));
+        self.out.push(match near {
+            Some(near) => problem
+                .next(format!("Use `{near}`"))
+                .edit(span, near),
+            None => problem.next(
+                "Write a built-in format such as `TimeFormat.date_long`, or declare one with `type Name = TimeFormat { ... }`",
+            ),
+        });
+        None
+    }
+
+    /// A format that shows a clock time or a zone, given a value with
+    /// neither.
+    pub(super) fn format_needs_time(
+        &mut self,
+        value: &Expr,
+        format: &Expr,
+        spec: &TimeFormatSpec,
+        written: &str,
+    ) {
+        let Some(ty) = self.facts.types.get(&node_key(value.syntax())).cloned() else {
+            return;
+        };
+        if ty.has_error()
+            || self.table.representation(&ty) != Some(Prim::CalendarDate)
+            || !spec.needs_time()
+        {
+            return;
+        }
+        let shown = tree::written(format.syntax());
+        let what = match spec {
+            TimeFormatSpec::Builtin(_) => "a clock time".to_string(),
+            TimeFormatSpec::Components(parts) => {
+                let listed: Vec<String> = parts
+                    .iter()
+                    .filter(|(component, _)| component.needs_time())
+                    .map(|(component, _)| format!("`{}`", component.name()))
+                    .collect();
+                crate::and_list(&listed)
+            }
+        };
+        let span = self.span(format);
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_TEMPORAL_FORMAT_REQUIRES_TIME,
+                format!("`{shown}` shows a clock time, and a `{ty}` has none"),
+            )
+            .at(span, format!("shows {what}"))
+            .reason(format!(
+                "`{ty}` is a date, with no clock time or zone, so `{written}` can show only its weekday, day, month and year."
+            ))
+            .next(
+                "Use a date format such as `TimeFormat.date_long`, or format an `Instant` or a `ZonedTime` instead",
+            ),
         );
     }
 
@@ -94,17 +245,44 @@ impl Body<'_> {
                 .map_or_else(|| self.span(arg), |name| self.span(&name));
             let removal = self.argument_removal(arg);
             let shown = first.as_ref().map(ToString::to_string).unwrap_or_default();
+            let (label, reason) = unused_reason(name, written, &shown, built_on);
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_TEMPORAL_OPTION_UNUSED,
                     format!("`{name}:` means nothing for a `{shown}`"),
                 )
-                .at(span, format!("`{shown}` has no clock time"))
-                .reason(format!(
-                    "`{name}:` chooses an instant when a local time falls in a daylight-saving gap or overlap; `{written}` on a `{shown}` moves a date, which has no clock time, so no such time arises."
-                ))
+                .at(span, label)
+                .reason(reason)
                 .next(format!("Remove `{name}: ...`"))
                 .edit(removal, ""),
+            );
+        }
+        // An option the value needs, as `zone:` for an `Instant` shown to
+        // a person.
+        for (slot, param) in table.params.iter().enumerate() {
+            let (true, Some(needs), Some(built_on)) = (param.needed, param.only_for, built_on)
+            else {
+                continue;
+            };
+            if built_on != needs || given(slot).is_some() {
+                continue;
+            }
+            let shown = first.as_ref().map(ToString::to_string).unwrap_or_default();
+            let span = self.span(call);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_TEMPORAL_ZONE_REQUIRED,
+                    format!("`{written}` needs the zone to show `{shown}` in"),
+                )
+                .at(span, "no `zone:`")
+                .reason(format!(
+                    "An `Instant` is one moment for everyone, and its date and clock time depend on where it is read; the server never guesses a zone, so `{}:` says which.",
+                    param.name
+                ))
+                .next(format!(
+                    "Add `{}: ...` with the reader's zone, such as `{}: customer.zone` or `{}: Zone.europe_london`",
+                    param.name, param.name, param.name
+                )),
             );
         }
         let mut open: Vec<String> = Vec::new();
@@ -208,6 +386,13 @@ impl Body<'_> {
             );
         Span::new(self.path, start, u32::from(node.text_range().end()))
     }
+}
+
+/// What `format:` takes.
+fn format_reason(written: &str) -> String {
+    format!(
+        "`{written}`'s `format:` is written out: a built-in format, `TimeFormat.` and `date_`, `time_` or `date_time_` with `full`, `long`, `medium` or `short`, or the name of a format declared as `type Name = TimeFormat {{ ... }}`."
+    )
 }
 
 /// Whether an option is written as one of its enum's values other than

@@ -13,6 +13,9 @@
 //! - [`Rounding`], [`TextFormat`], [`UuidVersion`] and [`Weekday`], and
 //!   the `Zone` and `Locale` tables ([`ZONES`], [`LOCALES`]): the standard
 //!   library's enums that Rust code interprets, declared once.
+//! - [`TimeFormatSpec`]: a time format as `temporal.format` is given it,
+//!   built in or declared from [`Component`]s and their
+//!   [`ComponentStyle`]s (area 10).
 //! - [`types`]: type plans, what a value of each type is made of and what
 //!   a declared failure holds, and [`Constant`], a value known while
 //!   compiling, as plain data `jadpo-plan` decides and the runtime reads.
@@ -48,6 +51,7 @@ mod builtin;
 pub mod config;
 mod constant;
 mod enums;
+mod format;
 pub mod http;
 mod isolation;
 mod literal;
@@ -65,11 +69,12 @@ mod zones;
 pub use builtin::{Builtin, SIGNING_KEY_MIN};
 pub use constant::Constant;
 pub use enums::{
-    Access, AuthenticationMethod, AuthenticationStrength, ClientAddressSource, Driver, Dst,
+    Access, AuthenticationMethod, AuthenticationStrength, ClientAddressSource, ComponentStyle, Driver, Dst,
     FieldAccess, FieldChange, Generated, HttpMethod, Idempotency, InvalidDay, LOCALE,
     MembershipScope, OnDelete, Rounding, RouteAuthentication, SuccessStatus, Tenancy, TextFormat,
     UuidVersion, Weekday, ZONE, enums, variant_ordinal,
 };
+pub use format::{BuiltinFormat, Component, FormatLength, FormatPart, TimeFormatSpec};
 pub use isolation::Isolation;
 pub use literal::Literal;
 pub use migration::Migration;
