@@ -242,7 +242,8 @@ the placeholders, and `kind:` and `message:` are not. The generated call
 takes every field by name plus `locale:` (in templates the email's
 locale), and returns `PresentationText`. A placeholder that is not a field
 is an error; a field that no wording in a language uses is a warning, and
-one variant leaving a field out is normal.
+one variant leaving a field out is normal. An enum maps the same way as a
+message with one enum field (see enums below).
 
 **Checked by the compiler**: a key no message type declares, a variant
 that is not a value of the enum, a missing variant or plural form, and a
@@ -284,8 +285,8 @@ templates as in placeholders: `{{ value }}` takes `Text`,
 `PresentationText`, `Int` or `Decimal` (numbers written the locale's
 way). Anything else must be formatted first, and writing it out directly
 is a compile error that names how: an `Instant` or `Money` with
-`temporal.format` or the money formatter, an enum through a message with
-one wording per value, a `Bool` is a condition for `if`, a list is walked
+`temporal.format` or the money formatter, an enum through its translated
+wording (below), a `Bool` is a condition for `if`, a list is walked
 with `for`, an object's fields are written one by one.
 
 **Also decided on translations** (2026-10-16, as recommended):
@@ -303,6 +304,14 @@ with `for`, an object's fields are written one by one.
   person accepts them.
 - **Text direction**: every locale knows its direction, and templates read
   it (`<html dir="{{ locale.direction }}">`).
+- **Enums can be written out once translated** (Richard, 2026-10-16): a
+  domain's language files may give an enum one wording per value
+  (`order_status: { pending: "Waiting to be packed" ... }`), checked like a
+  message, a value's fields usable as placeholders; then `{{ order.status }}`
+  writes the translated wording, and code reads it with
+  `translations.shipping.order_status(order.status, locale: ...)`. Without
+  wording, writing an enum out is an error that says to add it. Area 2's
+  "enums have no display labels" stands: the wording lives in translations.
 - **Out of scope**: the app's own data (product names, articles) is not a
   translation; an app models translated content as ordinary fields.
 - Waiting for open item 8: a library package's own messages, and whether
