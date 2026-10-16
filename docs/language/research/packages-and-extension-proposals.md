@@ -666,6 +666,50 @@ unreachable provider refuses the request (fails closed), and loosening that
 needs an acceptance. Development and tests pass every check through a local
 driver; a test can script `bot_check_failed`.
 
+**Telemetry.** Its own section in `application { }`, not a connection,
+its host still in the network report; one protocol (OpenTelemetry), no
+vendor-specific code, a vendor being an endpoint and a header:
+
+```text
+telemetry: {
+    endpoint: config.telemetry_endpoint
+    credential: {
+        header: "x-honeycomb-team"
+        value: config.telemetry_key
+    }
+    send: {
+        traces: true
+        metrics: true
+        logs: LogLevel.info
+    }
+    detail: {
+        full_traces: [Trace.failures, Trace.faults, Trace.slow, Trace.new_paths]
+        samples: {
+            per_path: 1
+            every: 1m
+        }
+    }
+}
+```
+
+The standard `OTEL_*` variables fill these settings (area 16). Area 16's
+rule stays: no values from the app's data unless added deliberately.
+Custom metrics are declared in a domain's monitoring file
+(`metric checkouts_completed = Counter { by: [plan] }`), recorded with
+`telemetry.checkouts_completed.add(1, plan: ...)`; `telemetry.note(...)`
+adds an attribute to the current trace; personal fields are refused as
+labels or attributes. Jadpo's own data (path ids, stable identities,
+source locations, build id) travels to every provider as `jadpo.`
+attributes, nothing held back (Richard); a monitoring product decodes them
+against the build manifest (area 18), which a deploy uploads once per
+build. In development nothing is exported unless `jadpo dev
+--export-telemetry`; the data stays local and is readable from the CLI as
+the development call log is, filterable and watchable for agents and
+developers (`jadpo traces`, `jadpo metrics`, `jadpo logs`, each with
+filters by route, action, domain, path, failure and slowness, `--follow`,
+and `--json`; `jadpo watch` and `jadpo trace` as decided), and later in the
+dev console's UI.
+
 **Redis entities and running without a database.** An entity may live in
 a Redis store and must expire: `expires_after: 2h`, measured from its last
 write, expired records hidden as area 6 says (answering area 5 question
