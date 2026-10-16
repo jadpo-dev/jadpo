@@ -50,11 +50,7 @@ then built. No design is left for implementation.
 7c. ~~Per-user OAuth~~: decided, see "Acting for each user: OAuth grants".
 7d. ~~Redis entity queries~~: decided, see "Redis entities".
 8. ~~What a library package may also carry~~: decided, see that section.
-9. **Software and disk**: a disk driver for files on one native server,
-   image variants made by the runtime, virus scanning, and the `documents`
-   capability rendering typed templates to HTML or PDF, now needed (the
-   invoice scenario in [the scenario sketches](package-scenarios-code.md)
-   has nothing to render its page).
+9. ~~Software and disk~~: decided, see "Documents" and "Files and formats".
 10. ~~Packages generated from your own Jadpo apps~~: decided, see "Packages from other Jadpo apps".
 10b. **Developing a package**: the whole cycle for a package author:
     starting one (`jadpo package new`) in its own repository; what a
@@ -898,6 +894,67 @@ app's types and back, whatever the bytes came from (a file, a request body,
 a provider's answer, a queue message); the app's code joins them, and the
 large-file `each:` form joins them piece by piece. The format namespaces
 are decided on chunk 5.4's page.
+
+**One way to read and write row data, any size** (Richard: every helper
+handles small and large files alike). Explicit helpers per format and
+direction, all running on one shared machinery, batches:
+
+```text
+var import = csv.read(input.file
+    as: ProductRow
+    each: row -> save_product(row, account: input.account_id)
+    finished: summary -> import_finished(summary, account: input.account_id)
+    key: input.file.id
+)
+
+var export = csv.write(exports
+    name: "products.csv"
+    format: CsvFormat.spreadsheet
+    from: Product.where(Product.account_id == account)
+    each: product -> ProductExportRow { sku: product.sku, name: product.name, price: product.price }
+    finished: done -> send_export_ready(done.file, to: user.email)
+    key: request_id
+)
+```
+
+- Helpers: `csv.read`/`csv.write`, `tsv.read`/`tsv.write`,
+  `json_lines.read`/`json_lines.write`, `json.read(file, items_at:, as:)`/
+  `json.write` for a large JSON list, and `batches.each(from:, each:,
+  finished:, key:)` for work with no file (a large query, every page of a
+  provider's list). `each:` is the inline form area 3 allows for standard
+  operations: without a destination it calls an action per item; when
+  writing it returns the row to write.
+- All start after the calling action commits, like `emit`, run in the
+  background and return a run: `batches.status(id)` gives progress and
+  problems, `batches.cancel(id)` stops it; `key:` makes a repeated start
+  return the same run. Underneath: items grouped into batches, each one
+  transaction committing its writes and its position together, so a crash
+  or deploy resumes at the next item; file order kept; a row that cannot be
+  decoded, or an item whose action fails, becomes a problem (row as a
+  spreadsheet numbers it, column, rule, never the value) and the rest carry
+  on; values `each:` captures are saved with the run, and only storable
+  values may be captured.
+- No other way: no loop over a file's rows and no whole-file parse into a
+  list. `store.read(file)` returns a file-contents type for passing bytes on
+  (to a PDF service, as an attachment) that the format helpers do not
+  accept; a provider's CSV report is put in a store and read the same way;
+  `json.decode` stays only for single JSON documents in memory (request
+  bodies, provider answers).
+- From the research (questions 2 to 10, as recommended): rows read are
+  `Input`s and rows written `Output`s, with `column:` and the decided
+  `wire:` encodings; writing CSV names its reader (`CsvFormat.spreadsheet`:
+  byte-order mark, CRLF, formula escaping; `CsvFormat.standard`); read
+  UTF-8, UTF-16 with a mark and declared legacy encodings, never guess,
+  write UTF-8; gzip only, with a required `max_unpacked_size:`, no zip;
+  uploads over 100 MB through a multipart slot, the same on S3, R2 and
+  disk; other number and date conventions through `wire:` and `decode:`;
+  the batches machinery replaces chained events for paging (area 12's
+  16-deep limit), settling area 11's pagination.
+- **The disk driver** as specified in the research: native only, one
+  server; files immutable under generated sharded keys; uploads streamed to
+  a temporary file, then synced and renamed; downloads served with ranges,
+  ETags, `attachment` and a sandbox policy; `storage_full` and a free-space
+  floor; `jadpo files copy` between stores.
 
 ## Decided: the golden rule
 
