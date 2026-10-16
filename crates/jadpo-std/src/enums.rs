@@ -239,6 +239,22 @@ std_enum! {
 }
 
 std_enum! {
+    /// Where the address of the client a request came from is read (area
+    /// 10, "Client addresses"): the connection's own, or a header a proxy
+    /// of the deployment's own adds.
+    ClientAddressSource: "ClientAddressSource" {
+        /// The connection's own address; no header is read.
+        Connection: "connection",
+        /// `X-Forwarded-For`.
+        ForwardedFor: "forwarded_for",
+        /// RFC 7239's `Forwarded: for=`.
+        Forwarded: "forwarded",
+        /// Cloudflare's `CF-Connecting-IP`.
+        Cloudflare: "cloudflare",
+    }
+}
+
+std_enum! {
     /// How strongly a caller proved who they are (area 8, "The principal").
     AuthenticationStrength: "AuthenticationStrength" {
         /// One factor: a session, a token or a key.
@@ -345,6 +361,10 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
             AuthenticationStrength::NAME,
             AuthenticationStrength::NAMES.to_vec(),
         ),
+        (
+            ClientAddressSource::NAME,
+            ClientAddressSource::NAMES.to_vec(),
+        ),
         (Access::NAME, Access::NAMES.to_vec()),
         (Tenancy::NAME, Tenancy::NAMES.to_vec()),
         (MembershipScope::NAME, MembershipScope::NAMES.to_vec()),
@@ -374,6 +394,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         RouteAuthentication::NAME => position(RouteAuthentication::NAMES),
         AuthenticationMethod::NAME => position(AuthenticationMethod::NAMES),
         AuthenticationStrength::NAME => position(AuthenticationStrength::NAMES),
+        ClientAddressSource::NAME => position(ClientAddressSource::NAMES),
         Access::NAME => position(Access::NAMES),
         Tenancy::NAME => position(Tenancy::NAMES),
         MembershipScope::NAME => position(MembershipScope::NAMES),

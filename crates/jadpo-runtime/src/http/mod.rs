@@ -36,6 +36,7 @@
 //! 4.4) is compiled into the statements what a route runs sends, and an
 //! action's gate is checked by the action boundary.
 
+pub mod address;
 #[cfg(test)]
 mod guarantees;
 mod health;
@@ -70,8 +71,9 @@ pub struct Request {
     pub query: Option<String>,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
-    /// The client's address, which rate limits count by when no one is
-    /// signed in.
+    /// The address of the connection the request came on, which the host
+    /// gives; the address it counts as is chosen from it and the headers
+    /// by [`address::ClientAddress`] (area 10, "Client addresses").
     pub address: Option<String>,
     /// The host stopped reading the body once it passed [`BODY_LIMIT`]:
     /// `body` holds what it read, and the request is refused with 413.
@@ -105,6 +107,9 @@ pub struct Response {
     /// Set while the component answers when the request has been counted
     /// against a rate limit; never sent.
     pub counted: bool,
+    /// The address the request counted as (area 10, "Client addresses"),
+    /// for the host's log line; never sent.
+    pub client: Option<String>,
 }
 
 impl Response {
@@ -129,6 +134,9 @@ pub struct App<'a> {
     /// with: each method's signing key and the browser session's origin
     /// (area 8; area 10, "Signing keys").
     pub auth: &'a signed::AuthSettings,
+    /// How the address a request counts as is chosen from its headers and
+    /// its connection (area 10, "Client addresses").
+    pub client: &'a address::ClientAddress,
 }
 
 /// The failures the runtime answers with itself (area 7, "How failures
@@ -282,7 +290,9 @@ async fn answer_request(
     request_id: &str,
     ready: Option<&health::Readiness>,
 ) -> Response {
+    ctx.set_client(app.client.of(request));
     let mut response = respond(app, executor, ctx, request, request_id, ready).await;
+    response.client = ctx.client().map(str::to_string);
     response
         .headers
         .push(("x-request-id".to_string(), request_id.to_string()));
@@ -311,13 +321,13 @@ async fn respond(
     // in, or against its address if it isn't; every other request against
     // its address, here.
     let deferred = identity::carries_credential(app.table, request);
-    if !deferred && let Some(response) = by_address(ctx, request, request_id).await {
+    if !deferred && let Some(response) = by_address(ctx, request_id).await {
         return response;
     }
     let mut response = route_request(app, executor, ctx, request, request_id).await;
     if deferred
         && !response.counted
-        && let Some(limited) = by_address(ctx, request, request_id).await
+        && let Some(limited) = by_address(ctx, request_id).await
     {
         response = limited;
     }
@@ -327,11 +337,8 @@ async fn respond(
 
 /// 429 when `request`'s address has used its allowance, as the host
 /// counts it.
-async fn by_address(ctx: &Ctx<'_>, request: &Request, request_id: &str) -> Option<Response> {
-    let key = format!(
-        "address {}",
-        request.address.as_deref().unwrap_or("unknown")
-    );
+async fn by_address(ctx: &Ctx<'_>, request_id: &str) -> Option<Response> {
+    let key = format!("address {}", ctx.client().unwrap_or("unknown"));
     match ctx.host().rate_limit(&key, ADDRESS_LIMIT, ctx.now()).await {
         Allowed::Yes => None,
         Allowed::No { retry_after } => Some(rate_limited(request_id, retry_after)),
@@ -536,7 +543,7 @@ async fn run_route(
             }
             First::Left(Err(refused)) => {
                 if refused.credential
-                    && let Some(limited) = by_address(ctx, request, request_id).await
+                    && let Some(limited) = by_address(ctx, request_id).await
                 {
                     return limited;
                 }
@@ -551,7 +558,7 @@ async fn run_route(
         // credential counts against its address before it runs, as every
         // other does.
         if identity::carries_credential(app.table, request)
-            && let Some(limited) = by_address(ctx, request, request_id).await
+            && let Some(limited) = by_address(ctx, request_id).await
         {
             return limited;
         }
@@ -1041,6 +1048,7 @@ fn json_response(status: u16, code: &str, body: Vec<u8>) -> Response {
         route: None,
         fault: None,
         counted: false,
+        client: None,
     }
 }
 

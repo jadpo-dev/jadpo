@@ -155,6 +155,16 @@ rules! {
         "10-configuration-and-time.html#configuration-binding-empty", "Setting names an empty environment variable";
     CONFIGURATION_BINDING_INVALID: "configuration.binding_invalid", area 10, Error, Agent,
         "10-configuration-and-time.html#configuration-binding-invalid", "Setting names a variable that is not in capitals";
+    CONFIGURATION_CLIENT_ADDRESS_DUPLICATE: "configuration.client_address_duplicate", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-client-address-duplicate", "Client address is declared twice";
+    CONFIGURATION_CLIENT_ADDRESS_HOPS_INVALID: "configuration.client_address_hops_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-client-address-hops-invalid", "Client address counts proxies with something that is not a count from 1";
+    CONFIGURATION_CLIENT_ADDRESS_HOPS_UNUSED: "configuration.client_address_hops_unused", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-client-address-hops-unused", "Client address gives a count of proxies to a source that counts none";
+    CONFIGURATION_CLIENT_ADDRESS_INVALID: "configuration.client_address_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-client-address-invalid", "Client address is not a block of a source and a count of proxies";
+    CONFIGURATION_CLIENT_ADDRESS_SOURCE_UNKNOWN: "configuration.client_address_source_unknown", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-client-address-source-unknown", "Client address names a source that is not one of the four";
     CONFIGURATION_DEFAULT_INVALID: "configuration.default_invalid", area 10, Error, Agent,
         "10-configuration-and-time.html#configuration-default-invalid", "Setting value breaks its type's rules";
     CONFIGURATION_DEFAULT_LITERAL_REQUIRED: "configuration.default_literal_required", area 10, Error, Agent,
