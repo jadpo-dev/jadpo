@@ -1611,7 +1611,7 @@ Not yet, each `toolchain.not_built_yet` where it is written:
 - Deleting ended sessions from the runtime's minute tick (area 12, chunk
   6.2): a lookup ignores a session past its 30 days.
 
-**Needs Richard: how is an API token issued?** The page says `api_token`
+**How an API token is issued** (decided 2026-10-16). The page says `api_token`
 travels as `Authorization: Bearer` for the application's own mobile and
 command-line clients, but not how a client gets one: `sessions.start` sets a
 cookie, and nothing hands a token to a client. *Recommendation:* a
@@ -1621,7 +1621,8 @@ a verifier, like `Service.issue_key` and Laravel Sanctum's `createToken`),
 with `sessions.end()` ending the token a request came with, and
 `sessions.tokens(user_id)` and `sessions.revoke_token(token_id)` beside
 `Service.keys` and `Service.revoke_key` for an application's own "signed-in
-devices" screen. Chunk 4.3b builds API tokens once this is decided.
+devices" screen. *Decided 2026-10-16:* yes, as recommended; chunk 4.3b
+builds it.
 
 ### Consistency with the rest of the language
 
@@ -1804,6 +1805,7 @@ devices" screen. Chunk 4.3b builds API tokens once this is decided.
 | Declarations (chosen in chunk 4.3) | `application`, `principal` and `authentication` are each declared once (`semantic.multiple_*`), in any file of a single-file project and in `app.jadpo` and `authentication.jadpo` otherwise. A variant holds `subject:`, a required `unique: true` field of an entity kept in a PostgreSQL store, and an optional `active:`; left out, every record of the entity is active. `active:` is a condition on that entity's own fields named as a query names them (`Member.status == MemberStatus.active`): comparisons with literals, enum values, `none` and `clock.now`, joined with `and` and `or`. A record the entity's lifecycle hides can't sign in. `oidc:` is refused with its rename to `external_token:` | 2026-10-16 |
 | Browser sessions (chosen in chunk 4.3) | `browser_session:` requires `cookie:` (1 to 64 letters, digits, `_` and `-`, starting with a letter). The token is 32 random bytes in hexadecimal in that cookie (`HttpOnly; Secure; SameSite=Strict; Path=/`), the CSRF token the same in `<cookie>_csrf`, readable by the application's scripts; both are kept only as BLAKE3 verifiers. A session lasts 30 days from its start, with no sliding renewal. Every method but `GET` that comes with the cookie needs an `Origin` whose host is the request's `Host` (until configuration gives `origin:`) and `X-Jadpo-CSRF` matching the session, else 403 `csrf_rejected`. An unknown or ended session is 401 `invalid_credentials` and its response clears both cookies. A cookie is read only on an API that accepts `browser_session`; an `Authorization` header where no bearer method is built is 401 `invalid_credentials` | 2026-10-16 |
 | Where sessions live (chosen in chunk 4.3) | `jadpo_sessions` is a system table in the store the principal's user entity lives in, in its migration snapshots, read with the user's record in one statement (question 12); area 5's `sessions:` store setting isn't needed while that holds, and a store of their own (Redis) would bring it back | 2026-10-16 |
+| Issuing API tokens | A generated `sessions.issue_token(user_id) -> ApiToken`, called by an action and returned in its output once, kept only as a verifier; `sessions.end()` ends the token a request came with; `sessions.tokens(user_id)` and `sessions.revoke_token(token_id)` beside `Service.keys` and `Service.revoke_key` (Richard) | 2026-10-16 |
 | Signing in on a request (chosen in chunk 4.3) | Authentication runs after routing, inside the route's deadline and before its input is read; a route that selects `current_principal.user` refuses a service with 403 `not_permitted`. A signed-in caller's requests count against its own allowance, 600 a minute (area 16), counted per worker thread natively until the Redis store; a request with a credential that is refused counts against its address, and every other against its address as before. Idempotency keys are kept per caller (`user <id>`), and per `anonymous` on routes anyone may call. A response whose action started or ended a session isn't kept for a repeat, so a retry signs in again | 2026-10-16 |
 | Starting and ending sessions (chosen in chunk 4.3) | `sessions.start(user_id)` takes the user entity's `id`, `sessions.end()` nothing; only actions call them, not functions, queries, tests, fixtures or seeds. Each writes the sessions' store, so the action writes that store (one store per action, area 6). A test that calls such an action keeps the session with no response to set it on. `sessions.end()` on a request with no session ends none and still clears the cookies | 2026-10-16 |
 | The caller in code (chosen in chunk 4.3) | `current_principal` alone is a `Principal`, whose fields aren't read until a kind is selected; a route passes `current_principal`, `current_principal.user` or one of its fields, never both kinds. A caller's `id` counts as a record loaded earlier, so writing a record that refers to it needs no not-found failure. `as:` signs in a user through a real browser session (a session kept in its own transaction, the cookie, the CSRF token and an `Origin`); `as:` on a route anyone may call is `semantic.request_invalid` | 2026-10-16 |
