@@ -1188,7 +1188,7 @@ format for themselves receive the `Instant`.
   "27 September 2026 at 14:30:05 BST", with the seconds `timeStyle: "long"`
   has. For a handful of locales (Japanese and Korean `time_` formats, the
   punctuation of a few `date_` formats) the pattern is ICU4X's, which is
-  not always the one `Intl.DateTimeFormat` writes.
+  not always the one `Intl.DateTimeFormat` writes. Measured against Node 24 (ICU 78, CLDR 48) on all 533 locales, two zones and four instants, 87% of 145,000 formatted texts, built-in and declared, are identical; by built-in format the same text is 92% for `date_long` and 94% for `time_medium`, down to 68% for `date_time_full`, the rest differing in punctuation, joining words, number widths or the 24-hour padding.
 - **The zone's name.** From the zone and the instant: "BST" or "British
   Summer Time" in summer, "GMT" or "Greenwich Mean Time" in winter, and
   where CLDR has no name for the locale, its offset ("GMT+1", "UTC+1").

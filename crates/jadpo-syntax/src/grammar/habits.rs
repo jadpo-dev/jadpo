@@ -531,7 +531,9 @@ pub(super) fn throw(p: &mut Parser<'_>) {
     let (start, end) = p.range();
     let word = p.current_text().to_string();
     let mut edits = vec![TextEdit::replace(start, end, "reject")];
-    let mut clean = true;
+    // `reject` needs the failure it raises; `throw` with nothing after it
+    // has none to keep.
+    let mut clean = p.nth(1) != R_BRACE && p.nth(1) != EOF;
     let new_at = 1;
     if p.nth_word(new_at, "new") && !p.nth_on_new_line(new_at) {
         let (new_start, _) = p.nth_range(new_at);
