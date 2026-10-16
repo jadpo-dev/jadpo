@@ -458,6 +458,19 @@ impl Planner<'_> {
                         assignments.push(text::equal("id", &text::column("id")));
                     }
                 }
+                // A record moved to another tenant (only a listed action
+                // may) needs the caller's membership there, as a create
+                // there would (area 9, "Tenancy").
+                if *op == WriteOp::Update
+                    && let Some(tenancy) = self
+                        .access
+                        .entity(&entity_model.name)
+                        .and_then(|policy| policy.tenancy.as_ref())
+                    && let Some((_, to)) = changed.iter().rev().find(|(n, _)| *n == tenancy.via)
+                    && let Some(member) = self.moved_to(&mut writing, entity_model, to)?
+                {
+                    narrowed.push(member);
+                }
                 // Each reference it changes inside the tenant points at a
                 // record of the record's tenant, with or without policy
                 // (area 9).
@@ -539,10 +552,32 @@ impl Planner<'_> {
                     text::where_clause(&mut bare, &asked, "");
                     let asked_policy =
                         self.policy(&mut asking, entity_model, effect, &Row::Table)?;
-                    if asked_policy == jadpo_sql::policy::ANYONE {
+                    // A field the caller may not change refuses the write
+                    // before its condition can: the probe asks with the
+                    // fields' grants too, so a refused field is 403, not
+                    // the condition's failure (area 9, "Field
+                    // restrictions").
+                    let mut fields = Vec::new();
+                    if *op == WriteOp::Update {
+                        for (name, _) in &transition.set {
+                            if let Some(who) = self.field_policy(
+                                &mut asking,
+                                entity_model,
+                                name,
+                                Effect::Update,
+                                &Row::Table,
+                            )? {
+                                fields.push(who);
+                            }
+                        }
+                    }
+                    if asked_policy == jadpo_sql::policy::ANYONE && fields.is_empty() {
                         guard = Some((bare, None, asking.params));
                     } else {
-                        asked.push(asked_policy);
+                        if asked_policy != jadpo_sql::policy::ANYONE {
+                            asked.push(asked_policy);
+                        }
+                        asked.extend(fields);
                         let mut probe = text::select_one(table);
                         text::where_clause(&mut probe, &asked, "");
                         guard = Some((probe, Some(bare), asking.params));

@@ -20,7 +20,7 @@
 //! points inside it, checked on every write that sets it (chunk 4.7), so
 //! what a caller holds in a record's tenant they hold in its parent's.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_db::{Db, Project};
 use jadpo_std::http::PrincipalKind;
@@ -39,6 +39,14 @@ pub enum Fact {
     Member(String),
     /// They hold a membership in the tenant the record belongs to.
     Tenant,
+    /// They created the record: what it holds is what they set, or new
+    /// (its `id`, its generated fields), so its `read:` hides nothing
+    /// from them; a field's own `read:` still applies.
+    Fresh,
+    /// The record was read as the parent an include follows a reference
+    /// to, which its lifecycle may hide (area 6, question 10): a
+    /// membership read this way may not be current, so it proves no role.
+    MaybeHidden,
 }
 
 /// Everything known of a caller who passed one grant.
@@ -78,8 +86,12 @@ pub struct Prover<'a> {
     pub access: &'a Access,
     user: Option<String>,
     service: Option<String>,
-    /// Each membership entity's role enum's values, in order.
+    /// Each membership entity's role enum's values, in order, when its
+    /// `role:` always holds one: a membership whose role may be `none`
+    /// holds none of them.
     roles: BTreeMap<String, Vec<String>>,
+    /// The entities whose lifecycle hides some records (`visible:`).
+    hiding: BTreeSet<String>,
 }
 
 impl<'a> Prover<'a> {
@@ -87,9 +99,30 @@ impl<'a> Prover<'a> {
         let access = super::access(db, project);
         let identity = crate::identity::identity(db, project);
         let lookup = Lookup::new(db, project);
+        let entities = crate::data::Entities::new(db, project);
+        let model = crate::data::data_model(db, project);
+        let hiding = model
+            .entities
+            .iter()
+            .filter(|entity| {
+                entity
+                    .lifecycle
+                    .as_ref()
+                    .is_some_and(|lifecycle| lifecycle.visible.is_some())
+            })
+            .map(|entity| entity.name.clone())
+            .collect();
         let roles = access
             .memberships
             .iter()
+            .filter(|m| {
+                entities.get(&m.entity).is_some_and(|entity| {
+                    entity
+                        .fields
+                        .iter()
+                        .any(|field| field.name == m.role && !field.nullable)
+                })
+            })
             .filter_map(|m| match lookup.def(&m.roles) {
                 Some(Def::Enum { variants }) => Some((
                     m.entity.clone(),
@@ -107,6 +140,7 @@ impl<'a> Prover<'a> {
                 .variant(PrincipalKind::Service)
                 .map(|v| v.entity.clone()),
             roles,
+            hiding,
         }
     }
 
@@ -183,6 +217,37 @@ impl<'a> Prover<'a> {
             })
     }
 
+    /// Whether `facts` show the caller passes one of `grants` on a record of
+    /// `entity`: as [`Self::proves_any`] says, or because they hold a
+    /// membership in its tenant and the list names every role of every
+    /// membership held in the tenant, through its tenancy's reference.
+    fn proves_on(&self, entity: &str, facts: &Facts, grants: &[Grant]) -> bool {
+        if self.proves_any(facts, grants) {
+            return true;
+        }
+        let Some(tenancy) = self
+            .access
+            .entity(entity)
+            .and_then(|policy| policy.tenancy.as_ref())
+        else {
+            return false;
+        };
+        let tenants = &self.access.root.tenant_memberships;
+        facts.contains(&Fact::Tenant)
+            && !tenants.is_empty()
+            && tenants.iter().all(|membership| {
+                self.roles.get(membership).is_some_and(|roles| {
+                    roles.iter().all(|role| {
+                        grants.contains(&Grant::Role {
+                            membership: membership.clone(),
+                            role: role.clone(),
+                            via: Some(tenancy.via.clone()),
+                        })
+                    })
+                })
+            })
+    }
+
     /// Whether `facts` show the caller belongs to the tenant a record of
     /// `entity` belongs to; always, for a record that belongs to none.
     fn tenant(&self, entity: &str, facts: &Facts) -> bool {
@@ -208,21 +273,25 @@ impl<'a> Prover<'a> {
 
     /// Whether `facts` let the caller read a record of `entity`.
     pub fn readable(&self, entity: &str, facts: &Facts) -> bool {
-        self.proves_any(facts, &self.grants(entity, Effect::Read)) && self.tenant(entity, facts)
+        self.proves_on(entity, facts, &self.grants(entity, Effect::Read))
+            && self.tenant(entity, facts)
     }
 
-    /// Whether `facts`, on a record of `entity` the caller already reads,
-    /// let them read its field `field`: its own `read:` when it narrows
-    /// the record's.
+    /// Whether `facts` let the caller read the field `field` of a record
+    /// of `entity`: the record's `read:` (unless they created it, or the
+    /// field is its `id`, which they named to reach it), and the field's
+    /// own `read:` when it narrows the record's.
     pub fn field_readable(&self, entity: &str, field: &str, facts: &Facts) -> bool {
-        match self
-            .access
-            .entity(entity)
-            .and_then(|policy| policy.field_grants(field, Effect::Read))
-        {
-            None => true,
-            Some(grants) => self.proves_any(facts, grants),
-        }
+        let record = field == "id" || facts.contains(&Fact::Fresh) || self.readable(entity, facts);
+        record
+            && match self
+                .access
+                .entity(entity)
+                .and_then(|policy| policy.field_grants(field, Effect::Read))
+            {
+                None => true,
+                Some(grants) => self.proves_on(entity, facts, grants),
+            }
     }
 
     /// What a caller with `facts` on a record of `from` is known to pass on
@@ -234,7 +303,12 @@ impl<'a> Prover<'a> {
                 out.push(fact);
             }
         };
-        let held = self.access.membership(from);
+        // A membership read as an include's parent may be one its
+        // lifecycle hides, which grants nothing.
+        let held = self
+            .access
+            .membership(from)
+            .filter(|_| !facts.contains(&Fact::MaybeHidden));
         // A reference between two of the tenant's records points inside
         // the tenant, so what the caller holds in the record's tenant they
         // hold in the parent's.
@@ -304,6 +378,7 @@ impl<'a> Prover<'a> {
                     }
                 }
                 Fact::Member(_) => push(Fact::Grant(Grant::Signed)),
+                Fact::Fresh | Fact::MaybeHidden => {}
                 Fact::Tenant if inside.is_some() => push(Fact::Tenant),
                 Fact::Tenant => {
                     let follows = self
@@ -349,7 +424,17 @@ impl<'a> Prover<'a> {
                 })
                 .collect(),
         };
-        along.and(self.read(to))
+        let mut reached = along.and(self.read(to));
+        if self.hiding.contains(to) {
+            for way in &mut reached.ways {
+                for facts in way.iter_mut() {
+                    if !facts.contains(&Fact::MaybeHidden) {
+                        facts.push(Fact::MaybeHidden);
+                    }
+                }
+            }
+        }
+        reached
     }
 
     /// Whether every caller who reached a record of `entity` may read its
@@ -405,6 +490,22 @@ impl<'a> Prover<'a> {
         let Some(policy) = self.access.entity(entity) else {
             return "nobody may read".to_string();
         };
+        let record = || {
+            let grants = policy.grants(Effect::Read);
+            if grants.is_empty() {
+                "nobody may read".to_string()
+            } else {
+                format!(
+                    "only {} may read",
+                    crate::and_list(
+                        &grants
+                            .iter()
+                            .map(|grant| self.described(grant))
+                            .collect::<Vec<_>>()
+                    )
+                )
+            }
+        };
         match policy.field(field) {
             Some(own) if own.server_only => {
                 "no client may read it, as it is `FieldAccess.server_only`".to_string()
@@ -421,9 +522,9 @@ impl<'a> Prover<'a> {
                     )
                 ),
                 Some(_) => "nobody may read".to_string(),
-                None => "whoever may read the record may read".to_string(),
+                None => record(),
             },
-            None => "whoever may read the record may read".to_string(),
+            None => record(),
         }
     }
 }

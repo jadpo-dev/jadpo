@@ -313,7 +313,7 @@ reference only).
   `policy.output_field_unproved` (area 9); route tests send a fresh
   `Idempotency-Key` on every write unless they write their own (area 13),
   with the examples' workaround in `11-cake-shop` removed.
-- [ ] **4.8 Phase 4 review: policy soundness** `opus · xhigh`. Proofs and
+- [x] **4.8 Phase 4 review: policy soundness** `opus · xhigh`. Proofs and
   gates that let data out: a scoped-role or field line under `actions:`
   never enforced on an action that touches no entity (refuse or gate as
   nobody); an `Output` built in a function never checked; values decided

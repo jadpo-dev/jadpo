@@ -22,7 +22,7 @@ use jadpo_graph::body::{Callee, Expr as BodyExpr, Node};
 use jadpo_std::http::{PrincipalKind, SessionOp};
 use jadpo_std::write::WriteOp;
 
-use super::{Access, Effect, Grant};
+use super::{Access, ActionWho, Effect, Grant, LineGate};
 use crate::lookups::{Lookup, Name};
 use crate::types::{callables_of, typed_body};
 
@@ -150,6 +150,32 @@ pub fn all_acts(db: &dyn Db, project: Project) -> BTreeMap<String, BTreeSet<Act>
         }
     }
     out
+}
+
+/// The entities whose records the action called `action` creates, changes
+/// or deletes in its own body, by name.
+pub fn own_writes(db: &dyn Db, project: Project, action: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for act in all_acts(db, project).get(action).into_iter().flatten() {
+        if let Act::Entity(entity, Effect::Create | Effect::Update | Effect::Delete) = act
+            && !out.contains(entity)
+        {
+            out.push(entity.clone());
+        }
+    }
+    out
+}
+
+/// Who the line under `actions:` for the action called `action` lets call
+/// it as it starts, when it is listed (area 9, "Actions").
+pub fn line_gate(db: &dyn Db, project: Project, action: &str) -> Option<LineGate> {
+    let access = super::access(db, project);
+    let line = access.root.action(action)?;
+    let entities = crate::data::Entities::new(db, project);
+    let names = own_writes(db, project, action);
+    let writes: Vec<&crate::data::EntityModel> =
+        names.iter().filter_map(|name| entities.get(name)).collect();
+    Some(line.gate(&writes, &access.memberships))
 }
 
 /// What the query called `name` reads: its entity and every included one.
@@ -371,6 +397,12 @@ pub fn route_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             let listed = (!route.run.query)
                 .then(|| access.root.action(&run))
                 .flatten();
+            if let Some(line) = listed
+                && line_gate(db, project, &run) == Some(LineGate::Nobody)
+            {
+                out.push(nobody_passes(&label, span, &route.run.name, line, access));
+                continue;
+            }
             if !any {
                 match listed {
                     None => out.push(
@@ -388,7 +420,7 @@ pub fn route_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                             written_action(&lookup, &route.run.name)
                         )),
                     ),
-                    Some(line) if anyone && !line.who.contains(&super::ActionWho::Public) => out.push(
+                    Some(line) if anyone && !line.who.contains(&ActionWho::Public) => out.push(
                         public_missing(&label, span, &format!("`{}`'s line under `actions:`", line.written), "Add `Access.public` to the line, or remove `authentication: RouteAuthentication.none` from the route"),
                     ),
                     Some(_) => {}
@@ -540,6 +572,58 @@ fn touches_own(db: &dyn Db, project: Project, run: &str, entity: &str, effect: E
     all_acts(db, project)
         .get(run)
         .is_some_and(|found| found.contains(&Act::Entity(entity.to_string(), effect)))
+}
+
+/// `policy.effect_ungranted`: a route running an action whose line under
+/// `actions:` lets nobody call it.
+fn nobody_passes(
+    label: &str,
+    span: jadpo_diag::Span,
+    run: &str,
+    line: &super::ActionGrants,
+    access: &Access,
+) -> Diagnostic {
+    let system_only = line.who.iter().all(|who| *who == ActionWho::System);
+    let why = if system_only {
+        "names only `Access.system`: schedules and subscribers, which no request is".to_string()
+    } else {
+        let held: Vec<String> = line
+            .who
+            .iter()
+            .zip(&line.written_who)
+            .filter_map(|(who, text)| match who {
+                ActionWho::Field { entity, .. } => Some(format!(
+                    "`{text}`, the caller a `{entity}` the action changes points at"
+                )),
+                ActionWho::Role { membership, .. } => access
+                    .membership(membership)
+                    .and_then(|m| m.scope_entity.as_deref())
+                    .map(|scope| {
+                        format!(
+                            "`{text}`, a role held in the `{scope}` a record the action changes belongs to"
+                        )
+                    }),
+                _ => None,
+            })
+            .collect();
+        format!(
+            "names {}, and `{run}` changes no such record itself",
+            crate::and_list(&held)
+        )
+    };
+    Diagnostic::new(
+        &rule::POLICY_EFFECT_UNGRANTED,
+        format!("`{label}` runs `{run}`, which nobody may call"),
+    )
+    .at(span, "nobody passes its line")
+    .reason(format!(
+        "`{}`'s line under `actions:` {why}, so no caller passes the line as the action starts and this route could never succeed.",
+        line.written
+    ))
+    .next(format!(
+        "List `Access.authenticated` or a role held across the whole application for `{}` under `actions:`",
+        line.written
+    ))
 }
 
 fn public_missing(label: &str, span: jadpo_diag::Span, what: &str, next: &str) -> Diagnostic {

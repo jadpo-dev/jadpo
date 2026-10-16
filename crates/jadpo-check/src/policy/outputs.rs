@@ -71,6 +71,17 @@ enum Unproved {
         include: Vec<String>,
         reached: Reached,
     },
+    /// The reference `via` of a record of `holder` an include follows,
+    /// from it to its parent `to`, or with `child`, from `to` to the
+    /// `holder` records that refer to it.
+    Via {
+        holder: String,
+        via: String,
+        to: String,
+        child: bool,
+        include: Vec<String>,
+        reached: Reached,
+    },
     /// The parent of `to` an include reads through `from`'s `via`.
     Parent {
         from: String,
@@ -177,6 +188,45 @@ fn query(
                 field,
                 reached,
             } => fields.push((entity, field, reached)),
+            Unproved::Via {
+                holder,
+                via,
+                to,
+                child,
+                include,
+                reached,
+            } => {
+                let at = include_span(path, &decl, &include).unwrap_or_else(|| result.clone());
+                let who = prover.counterexample(&reached, |facts| {
+                    prover.field_readable(&holder, &via, facts)
+                });
+                let readers = prover.readers(&holder, &via);
+                let among = who
+                    .map(|who| format!(", {who} among them,"))
+                    .unwrap_or_default();
+                let headline = if child {
+                    format!(
+                        "`{}` includes the `{holder}`s that refer to each `{to}` through `{via}`, which not every caller may read",
+                        model.name
+                    )
+                } else {
+                    format!(
+                        "`{}` includes the `{to}` each `{holder}` refers to through `{via}`, which not every caller may read",
+                        model.name
+                    )
+                };
+                out.push(
+                    Diagnostic::new(&rule::POLICY_OUTPUT_FIELD_UNPROVED, headline)
+                        .at(at, format!("through `{via}`"))
+                        .reason(format!(
+                            "Anyone `{holder}`'s `read:` lets in may see the records `{}` reads{among} and {readers} `{via}`. Which record an include reads shows the reference it follows, so a query includes only through references every caller may read.",
+                            model.name
+                        ))
+                        .next(format!(
+                            "Remove the include, or give `{holder}.{via}`'s `read:` everyone who may read a `{holder}`"
+                        )),
+                );
+            }
             Unproved::Condition {
                 entity,
                 field,
@@ -295,7 +345,21 @@ fn walk(
                 include.push(inner.name.clone());
                 let next = match inner.kind {
                     IncludeKind::Parent => {
-                        if !prover.parent_readable(entity, &inner.via, &inner.entity, reached) {
+                        if !prover.field_proved(entity, &inner.via, reached) {
+                            out.push(Unproved::Via {
+                                holder: entity.to_string(),
+                                via: inner.via.clone(),
+                                to: inner.entity.clone(),
+                                child: false,
+                                include: include.clone(),
+                                reached: reached.clone(),
+                            });
+                        } else if !prover.parent_readable(
+                            entity,
+                            &inner.via,
+                            &inner.entity,
+                            reached,
+                        ) {
                             out.push(Unproved::Parent {
                                 from: entity.to_string(),
                                 via: inner.via.clone(),
@@ -306,7 +370,20 @@ fn walk(
                         }
                         prover.parent(entity, &inner.via, &inner.entity, reached)
                     }
-                    IncludeKind::Child | IncludeKind::Children => prover.read(&inner.entity),
+                    IncludeKind::Child | IncludeKind::Children => {
+                        let next = prover.read(&inner.entity);
+                        if !prover.field_proved(&inner.entity, &inner.via, &next) {
+                            out.push(Unproved::Via {
+                                holder: inner.entity.clone(),
+                                via: inner.via.clone(),
+                                to: entity.to_string(),
+                                child: true,
+                                include: include.clone(),
+                                reached: next.clone(),
+                            });
+                        }
+                        next
+                    }
                 };
                 conditions(
                     prover,

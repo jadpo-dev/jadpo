@@ -1391,6 +1391,32 @@ A route test's `request { }` takes `idempotency_key:` (graph
 `Expr::Request::idempotency_key`), and the interpreter's `request` sends it,
 or a fresh one from the test's seed, with every request but a `GET`.
 
+Built in chunk 4.8: the Phase 4 review's policy findings (areas 8 and 9).
+`ActionGrants::gate` decides who a listed line lets call its action as it
+starts (`LineGate`), from the entities its own body writes
+(`policy::reach::own_writes`, `line_gate`): the checker refuses a route
+whose line lets nobody in, `policy::flow` counts on it, and the plan's
+`gates` compiles it, refusing every caller when it can't build one, as
+`http::identity::policed` refuses a credential statement with no policed
+twin. `policy::flow` walks functions as well as actions; `Src::Decided`
+carries what an `if`, a `match`, a loop or a filter tested into every value
+made under it (`Walk::pc`), `Src::Record::given` keeps what a write set
+in the record it gives back, `Src::Param` names the part of a parameter a
+summary sends, and each value that finds a record is checked like an
+output (`Walk::lookup`). `Prover::field_readable` asks the record's `read:`
+too, except of a created record (`Fact::Fresh`) or its `id`; an update's
+record is proved once for each record its target may be (`targets`);
+`Fact::MaybeHidden` keeps a membership read as a parent from proving a
+role, `Prover::proves_on` proves a list naming every role held in the
+tenant from the tenant alone, and an optional `role:` proves none.
+`policy::outputs` checks each include's reference (`Unproved::Via`). The
+plan founds a tenant only while `jadpo_sql::policy::unheld` holds for every
+membership held in it (`Planner::nobody_in`), adds the caller's membership
+in the new tenant to a move (`Planner::moved_to`), and asks a guarded
+transition's probe with its fields' grants, so a field's refusal is 403
+before the condition's 409. `types::decl::holds_principal` follows named
+types.
+
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
 runs one current-thread tokio runtime per core, each with its own

@@ -123,6 +123,7 @@ browse_books
 browser_origin
 budget
 build_product
+bulletin
 bumped
 bun_cost
 bun_count
@@ -206,6 +207,9 @@ chore
 chore_card
 chore_view
 chores
+citation
+citation_id
+citation_view
 clear_cart
 clock_reading
 close_enough
@@ -319,8 +323,10 @@ due_window
 dune
 duplicate_failure
 duplicate_success
+edit_note
 edit_todo
 edited_at
+editor_id
 effort
 egg
 eggs
@@ -442,6 +448,7 @@ jar_name
 job_run_at
 joined_at
 jot_down
+judge_note
 keep_memo
 keeper
 key_expires_at
@@ -466,6 +473,7 @@ last_viewed_at
 late
 latest_due_at
 launch
+laurel
 lead_id
 ledger
 ledger_account
@@ -578,8 +586,10 @@ normal
 northwind
 not_a_call
 not_an_address
+not_praised
 not_work
 not_your_order
+note_citation
 note_id
 note_invalid
 note_matches
@@ -587,8 +597,10 @@ note_refused
 note_rejected
 note_role
 note_text
+note_tidings
 note_view
 note_was_edited
+note_with_citation
 notes
 nothing_to_bake
 notify_owner
@@ -691,6 +703,7 @@ phone_token_id
 phone_tokens
 photo
 pickup_outlet
+pin_note
 ping
 place_order
 placed_with
@@ -703,6 +716,7 @@ portions
 postal_code
 postcode
 postpone_all
+praised
 praised_notes
 pretend_pure
 price
@@ -912,6 +926,7 @@ stripe_v2024
 subtitle
 subtotal
 summarise_line
+summary_view
 supplier
 supplier_contact
 supplier_desk
@@ -937,6 +952,7 @@ test_configuration
 the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest
 this_partner
 ticket_status
+tidings
 tidy
 tidy_up
 tier
