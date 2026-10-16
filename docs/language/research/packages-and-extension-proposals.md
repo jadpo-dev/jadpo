@@ -562,6 +562,20 @@ Decided 2026-10-16 (Richard), from [the scenarios](override-scenarios.md).
   guards (HTTPS only, no private addresses, no redirects), listed once in
   the network report.
 
+## Override scenarios (open item 6)
+
+Decided 2026-10-16 (Richard), one scenario at a time.
+
+**Files.** A `Driver.disk` store for production on the native target only,
+the build manifest recording that the app then runs on one server; image
+variants (`variants: { thumb: 200x200 }`) made by the runtime over any
+store; virus scanning as a `scanning` capability (Jadpo itself refuses
+infected uploads), filled by a ClamAV container package or a scanning API,
+a file staying in a scanning state and unattachable until it passes, built
+when an app needs it; media services (Cloudinary, Uploadcare) stay
+ordinary packages, since they cannot do the whole `files` job. Still to
+explore in depth: the disk driver and what it offers (Richard).
+
 ## Decided: the golden rule
 
 Decided 2026-10-16 (Richard): **a package can do nothing the app cannot,
