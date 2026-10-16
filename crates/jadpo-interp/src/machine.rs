@@ -98,7 +98,7 @@ pub(crate) enum Step {
         at: SiteId,
     },
     /// It checked the request's deadline, which hasn't passed: the caller
-    /// gives the thread back once ([`jadpo_runtime::yield_now`]), so other
+    /// gives the thread back once ([`jadpo_runtime::Host::yield_now`]), so other
     /// requests the thread serves carry on, then [`Machine::carry_on`].
     Yield,
 }

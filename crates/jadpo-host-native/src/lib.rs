@@ -171,6 +171,13 @@ impl Host for NativeHost {
         Box::pin(tokio::time::sleep(std::time::Duration::from_millis(millis)))
     }
 
+    /// tokio's yield, which wakes the task only after the I/O driver is
+    /// polled: a task that wakes itself is polled again first, up to a
+    /// `LocalSet`'s whole tick, so other requests' replies would wait.
+    fn yield_now(&self) -> LocalFuture<'_, ()> {
+        Box::pin(tokio::task::yield_now())
+    }
+
     /// The process's monotonic clock, from when it was first read.
     fn monotonic_ms(&self) -> Option<u64> {
         static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
