@@ -12,7 +12,11 @@
 //! transaction's lock, which commits nothing. The project's OpenAPI document is compared
 //! with its golden copy (`JADPO_BLESS=1` rewrites it). Signing in (area 8):
 //! a browser session with its CSRF token, an API token an action issues,
-//! and a service key, each ended or revoked.
+//! and a service key, each ended or revoked. Request soundness (chunk
+//! 4.9): a body read only as JSON, a query string or body a route doesn't
+//! read refused, a header that isn't ASCII refused, work that never waits
+//! stopped at its deadline, a credential on a route anyone may call
+//! counted before it runs, and a handled failure keeping the session.
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips the
@@ -393,22 +397,35 @@ impl Reply {
     }
 }
 
-/// Sends one HTTP/1.1 request and reads the whole response.
+/// Sends one HTTP/1.1 request and reads the whole response. A body goes
+/// as JSON, with `Content-Type: application/json`, unless `headers` name
+/// a type of their own.
 fn send(port: u16, method: &str, path: &str, headers: &[(&str, &str)], body: &str) -> Reply {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connects");
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .expect("timeout");
     let mut request = format!(
         "{method} {path} HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\ncontent-length: {}\r\n",
         body.len()
     );
+    let typed = headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("content-type"));
+    if !body.is_empty() && !typed {
+        request.push_str("content-type: application/json\r\n");
+    }
     for (name, value) in headers {
         request.push_str(&format!("{name}: {value}\r\n"));
     }
     request.push_str("\r\n");
     request.push_str(body);
-    stream.write_all(request.as_bytes()).expect("sends");
+    send_raw(port, request.as_bytes())
+}
+
+/// Sends `request`'s bytes as they are and reads the whole response.
+fn send_raw(port: u16, request: &[u8]) -> Reply {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connects");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .expect("timeout");
+    stream.write_all(request).expect("sends");
     let mut raw = Vec::new();
     stream.read_to_end(&mut raw).expect("reads");
     let text = String::from_utf8_lossy(&raw).into_owned();
@@ -2461,4 +2478,353 @@ fn openapi_shows_both_bearer_methods_and_who_each_route_refuses() {
             "{schema}"
         );
     }
+}
+
+#[test]
+fn a_body_is_read_only_as_json_and_a_route_refuses_what_it_doesnt_read() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = project();
+    let dev = Dev::start(&root);
+    let body = r#"{"title":"Buy milk"}"#;
+    // A form or plain text a browser could post from another site.
+    for (content_type, sent) in [
+        ("text/plain", body),
+        ("application/x-www-form-urlencoded", "title=Buy+milk"),
+        ("multipart/form-data; boundary=x", body),
+    ] {
+        let refused = dev.send("POST", "/todos", &[("content-type", content_type)], sent);
+        assert_eq!(refused.status, 400, "{content_type}: {refused:?}");
+        assert_eq!(refused.json()["error"]["code"], "invalid_request");
+    }
+    let untyped = send_raw(
+        dev.port,
+        format!(
+            "POST /todos HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        )
+        .as_bytes(),
+    );
+    assert_eq!(untyped.status, 400, "{untyped:?}");
+    let created = dev.send(
+        "POST",
+        "/todos",
+        &[("content-type", "Application/JSON; charset=utf-8")],
+        body,
+    );
+    assert_eq!(created.status, 201, "{created:?}");
+    let id = created.json()["id"].as_str().expect("an id").to_string();
+
+    // A route without `input:` reads no query string and no body.
+    let queried = dev.send("GET", &format!("/todos/{id}?owner=x"), &[], "");
+    assert_eq!(queried.status, 422, "{queried:?}");
+    assert_eq!(
+        queried.json()["error"]["details"]["problems"],
+        serde_json::json!([{ "field": "owner", "rule": "unknown_field" }])
+    );
+    let bodied = dev.send("GET", &format!("/todos/{id}"), &[], "{}");
+    assert_eq!(bodied.status, 422, "{bodied:?}");
+    // Nor does one that reads its input from the body read a query string.
+    let both = dev.send("POST", "/todos?title=x", &[], body);
+    assert_eq!(both.status, 422, "{both:?}");
+    assert_eq!(
+        both.json()["error"]["details"]["problems"],
+        serde_json::json!([{ "field": "title", "rule": "unknown_field" }])
+    );
+    let read = dev.send("GET", &format!("/todos/{id}"), &[], "");
+    assert_eq!(read.status, 200, "{read:?}");
+}
+
+#[test]
+fn a_header_that_isnt_ascii_is_refused_rather_than_dropped() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = project();
+    let dev = Dev::start(&root);
+    let body = r#"{"title":"Buy milk"}"#;
+    let mut request = format!(
+        "POST /todos HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\ncontent-type: application/json\r\ncontent-length: {}\r\nidempotency-key: caf",
+        body.len()
+    )
+    .into_bytes();
+    request.extend_from_slice(b"\xc3\xa9\r\n\r\n");
+    request.extend_from_slice(body.as_bytes());
+    let refused = send_raw(dev.port, &request);
+    assert_eq!(refused.status, 400, "{refused:?}");
+    assert_eq!(refused.json()["error"]["code"], "invalid_request");
+    let tagged =
+        b"GET /todos HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\nx-request-tag: \xff\r\n\r\n"
+            .to_vec();
+    let refused = send_raw(dev.port, &tagged);
+    assert_eq!(refused.status, 400, "{refused:?}");
+    let listed = dev.send("GET", "/todos", &[("x-request-tag", "plain")], "");
+    assert_eq!(listed.status, 200, "{listed:?}");
+    let rows = query(&dev.url, "SELECT \"id\" FROM \"todo\"", Vec::new());
+    assert!(rows.is_empty(), "the refused write never ran");
+}
+
+/// A project whose route keeps a mark, then works without waiting for as
+/// long as it is asked, against a one-second deadline.
+const SPIN: &[(&str, &str)] = &[
+    ("app.jadpo", "application {}\n"),
+    (
+        "domains/busy/entities/mark.jadpo",
+        r#"use busy/types { Label }
+
+entity Mark {
+    id: Uuid
+    label: Label
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+"#,
+    ),
+    (
+        "domains/busy/actions/spin.jadpo",
+        r#"use busy/entities { Mark }
+use busy/types { Calls, Depth, Label }
+
+/// Keeps a mark, then counts calls for a while.
+action spin(input: SpinRequest) -> Spun {
+    var mark: Mark = Mark.create {
+        set: {
+            label: input.label
+        }
+    }
+    return Spun {
+        label: mark.label
+        total: busy(input.depth)
+    }
+}
+
+/// How long to spin, and the mark to keep.
+type SpinRequest = Input {
+    label: Label
+    depth: Depth
+}
+
+/// What spinning counted.
+type Spun = Output {
+    label: Label
+    total: Calls
+}
+
+/// Two calls per level.
+function busy(depth: Depth) -> Calls {
+    if (depth == 0) {
+        return 1
+    }
+    return Calls(busy(Depth(depth - 1)) + busy(Depth(depth - 1)))
+}
+"#,
+    ),
+    (
+        "domains/busy/routes/busywork.jadpo",
+        r#"use busy/actions { SpinRequest, Spun, spin }
+
+/// Spinning.
+routes Busywork {
+    prefix: /busywork
+
+    /// Anyone may spin, for a second at most.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: SpinRequest
+        output: Spun
+        deadline: 1s
+        run: spin(input)
+    }
+}
+"#,
+    ),
+    (
+        "domains/busy/types/calls.jadpo",
+        "/// A count of calls.\ntype Calls = Int {\n    min: 0\n}\n",
+    ),
+    (
+        "domains/busy/types/depth.jadpo",
+        "/// A recursion depth.\ntype Depth = Int {\n    min: 0\n    max: 40\n}\n",
+    ),
+    (
+        "domains/busy/types/label.jadpo",
+        "type Label = Text {\n    min_length: 1\n    max_length: 40\n}\n",
+    ),
+];
+
+#[test]
+fn work_that_never_waits_stops_at_its_deadline_and_keeps_nothing() {
+    if skipped() {
+        return;
+    }
+    let dir = tempdir::Dir::new("spin");
+    let root = dir.path().join("busy");
+    for (path, text) in SPIN {
+        write(&root, path, text);
+    }
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["api", "update"],
+        &["check"],
+    ] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let dev = Dev::start(&root);
+    let quick = dev.send("POST", "/busywork", &[], r#"{"label":"quick","depth":3}"#);
+    assert_eq!(quick.status, 200, "{quick:?}");
+    assert_eq!(quick.json()["total"], "8", "an unbounded Int is text");
+    let started = Instant::now();
+    let slow = dev.send(
+        "POST",
+        "/busywork",
+        &[("Idempotency-Key", "spin-1")],
+        r#"{"label":"slow","depth":30}"#,
+    );
+    assert_eq!(slow.status, 504, "{slow:?}");
+    assert_eq!(slow.json()["error"]["code"], "deadline_exceeded");
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "stopped at the deadline: {:?}",
+        started.elapsed()
+    );
+    let labels: Vec<String> = query(&dev.url, "SELECT \"label\" FROM \"mark\"", Vec::new())
+        .into_iter()
+        .filter_map(|row| match row.first() {
+            Some(jadpo_runtime::SqlValue::Text(text)) => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(labels, ["quick"], "the mark kept before the deadline went");
+    // Its key was given up, so a retry runs (and runs out of time again).
+    let retried = dev.send(
+        "POST",
+        "/busywork",
+        &[("Idempotency-Key", "spin-1")],
+        r#"{"label":"slow","depth":30}"#,
+    );
+    assert_eq!(retried.status, 504, "{retried:?}");
+}
+
+#[test]
+fn a_credential_on_a_route_anyone_may_call_is_counted_before_it_runs() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = sign_in_project();
+    let dev = Dev::start(&root);
+    let mut statuses = Vec::new();
+    for n in 0..=jadpo_std::http::ADDRESS_LIMIT.requests {
+        let reply = dev.send(
+            "POST",
+            "/account/sign-up",
+            &[("authorization", "junk")],
+            &format!(r#"{{"handle":"rl{n:03}"}}"#),
+        );
+        statuses.push(reply.status);
+    }
+    let limit = jadpo_std::http::ADDRESS_LIMIT.requests as usize;
+    assert!(
+        statuses[..limit].iter().all(|status| *status == 204),
+        "{statuses:?}"
+    );
+    assert_eq!(statuses[limit], 429);
+    let rows = query(
+        &dev.url,
+        "SELECT \"handle\" FROM \"member\" WHERE \"handle\" = $1",
+        vec![jadpo_runtime::SqlValue::Text(format!("rl{limit:03}"))],
+    );
+    assert!(rows.is_empty(), "the refused sign-up was never kept");
+}
+
+#[test]
+fn a_handled_failure_keeps_the_session_it_tried_to_end() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = sign_in_project();
+    write(
+        &root,
+        "domains/notes/actions/end_then_fail.jadpo",
+        r#"use notes/entities { Member }
+use notes/failures { HandleTaken }
+use notes/actions { register }
+use notes/types { Handle }
+
+/// Ends the request's session, then fails on a taken handle.
+action end_then_fail(handle: Handle) fails HandleTaken -> Member {
+    sessions.end()
+    return attempt register(handle)
+}
+"#,
+    );
+    write(
+        &root,
+        "domains/notes/actions/leave_badly.jadpo",
+        r#"use notes/failures { HandleTaken }
+use notes/actions { end_then_fail }
+use notes/types { Handle, NoteText, NoteView }
+
+/// Signs out through an action whose failure it handles.
+action leave_badly(input: LeaveBadly) -> NoteView {
+    var word: NoteText = match end_then_fail(input.handle) {
+        success -> "kept"
+        HandleTaken -> "rolled back"
+    }
+    return NoteView {
+        text: word
+    }
+}
+
+/// A handle to collide with.
+type LeaveBadly = Input {
+    handle: Handle
+}
+"#,
+    );
+    write(
+        &root,
+        "domains/notes/routes/leaving.jadpo",
+        r#"use notes/types { NoteView }
+use notes/actions { LeaveBadly, leave_badly }
+
+/// Leaving, badly.
+routes Leaving {
+    prefix: /leaving
+
+    POST / {
+        input: LeaveBadly
+        output: NoteView
+        run: leave_badly(input)
+    }
+}
+"#,
+    );
+    for args in [&["api", "update"][..], &["check"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let dev = Dev::start(&root);
+    let signed = dev.send("POST", "/account/sign-up", &[], r#"{"handle":"ann"}"#);
+    assert_eq!(signed.status, 204, "{signed:?}");
+    let (token, csrf, _) = session_cookies(&signed);
+    let cookie = format!("notes_session={token}; notes_session_csrf={csrf}");
+    let signed_in = [
+        ("cookie", cookie.as_str()),
+        ("origin", "http://localhost"),
+        ("x-jadpo-csrf", csrf.as_str()),
+    ];
+    let left = dev.send("POST", "/leaving", &signed_in, r#"{"handle":"ann"}"#);
+    assert_eq!(left.status, 200, "{left:?}");
+    assert_eq!(left.json()["text"], "rolled back");
+    assert!(
+        left.header("set-cookie").is_none(),
+        "the session it tried to end was kept, so nothing clears its cookies: {left:?}"
+    );
+    let written = dev.send("POST", "/notes", &signed_in, r#"{"text":"still here"}"#);
+    assert_eq!(written.status, 201, "{written:?}");
 }
