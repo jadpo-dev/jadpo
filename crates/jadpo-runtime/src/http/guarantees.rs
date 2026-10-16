@@ -904,7 +904,7 @@ fn two_clients_behind_a_proxy_are_counted_apart() {
         Target::Native,
     )
     .expect("accepted");
-    let ann = send_as(
+    let first_client = send_as(
         &table,
         &program,
         &host,
@@ -913,10 +913,10 @@ fn two_clients_behind_a_proxy_are_counted_apart() {
         &believing,
     );
     assert_eq!(
-        (ann.status, ann.client.as_deref()),
+        (first_client.status, first_client.client.as_deref()),
         (204, Some("203.0.113.9"))
     );
-    let bob = send_as(
+    let second_client = send_as(
         &table,
         &program,
         &host,
@@ -925,7 +925,7 @@ fn two_clients_behind_a_proxy_are_counted_apart() {
         &believing,
     );
     assert_eq!(
-        (bob.status, bob.client.as_deref()),
+        (second_client.status, second_client.client.as_deref()),
         (204, Some("198.51.100.4")),
         "a second client has an allowance of its own"
     );

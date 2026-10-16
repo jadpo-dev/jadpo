@@ -100,7 +100,7 @@ impl Reader<'_> {
                     "`client_address:` isn't a block",
                 )
                 .at(at.clone(), "a block goes here")
-                .reason("The client's address is read from a `source:` and, for the sources that count proxies in a header, the number of proxies of the deployment's own: `client_address: { source: ClientAddressSource.forwarded_for hops: config.proxy_hops }`.")
+                .reason("The client's address is read from a `source:` and, for the sources that count proxies in a header, the number of proxies of the deployment's own: `client_address: { source: ClientAddressSource.forwarded_for hops: config.<setting> }`.")
                 .next("Write `client_address: { source: ClientAddressSource.<source> }`, with `hops:` for `forwarded_for` and `forwarded`"),
             );
             return None;
@@ -351,7 +351,7 @@ impl Reader<'_> {
                 format!("`hops:` reads `{name}`, whose type doesn't declare `min: 1`"),
                 span.clone(),
                 format!("`{name}` may be below 1"),
-                "A count below 1 would trust no proxy at all, so the setting's type has to rule it out when the app starts: `type ProxyHops = Int { min: 1 }`.",
+                "A count below 1 would trust no proxy at all, so the setting's type has to rule it out when the app starts: `type <Name> = Int { min: 1 }`.",
                 &format!("Give `{name}` a type that declares `min:` of at least 1"),
             ));
             return Count::Bad;
