@@ -1005,6 +1005,25 @@ Decided 2026-10-16 (Richard).
   config.mail_provider }`); every candidate is compiled, checked and
   reported, and an unchosen one needs no credential.
 
+## The record format
+
+Decided 2026-10-16 (Richard), from [the record format design](jadpo-record-format.md),
+with its five questions answered as it recommends: the indented outline of
+Jadpo words, two shapes (views rebuilt and checked byte for byte; ledgers
+of one-line entries), the header and `record <kind> <format>` line; the
+API record drops its `version:` counter, the OpenAPI version coming from a
+hash of the record; no file pointers in the API record, kept in package
+surfaces; surfaces carry each description's first paragraph; ledgers use
+git's `union` merge (whether GitHub's merge button applies it is still to
+check); `jadpo.lock` uses the format and keeps its name.
+
+**The first build's scope** (Richard): batches (6.4), multi-step calls
+(7.5), what package code may do (7.6) and receiving (7.7) are in the first
+build; services, documents, OAuth grants, search, bot checks, scanning,
+the disk driver, telemetry configuration, `jadpo watch`, other sign-in
+providers, publishing packages, cross-app checks and deploy-time choice
+follow it.
+
 ## Decided: the golden rule
 
 Decided 2026-10-16 (Richard): **a package can do nothing the app cannot,

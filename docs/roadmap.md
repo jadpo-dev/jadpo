@@ -465,9 +465,11 @@ The design is area 11 as revised on 2026-10-16, with its research in
   2026-10-16): the API record and identity registry renamed to
   `.jadpo_record` in the decided record format, with the header line, the
   hand-edit check and `jadpo records`; the format 7.1's package surfaces
-  and 5.3's translation sources also use. **Needs Richard** to have decided
-  the record format ([the design](language/research/jadpo-record-format.md))
-  before it starts.
+  and 5.3's translation sources also use, as
+  [the design](language/research/jadpo-record-format.md) sets out (decided
+  2026-10-16): the API record loses its `version:` counter, the OpenAPI
+  version coming from a hash of the record, and `jadpo.lock` takes the
+  format.
 - [ ] **7.1 Packages and connections** `opus · high`: the package format
   (`package.jadpo`, `provider.jadpo`, folders, `public` and the public
   surface rule), library and provider kinds, `packages/` installed and

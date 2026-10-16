@@ -446,7 +446,14 @@ clients in says how at the top (`authentication: browser_session,
 api_token`), and a route for one kind of caller says which (`caller:
 user`), so switching an API from bearer tokens to cookies is a diff of the
 record. Its `version:` rises by one each time the record changes, and is
-the OpenAPI document's version:
+the OpenAPI document's version (as built in chunk 4.1):
+
+> Decided 2026-10-16 (Richard), built in chunk 7.0: the record becomes
+> `api/main.jadpo_record` in the [record format](research/jadpo-record-format.md),
+> and loses its `version:` line, because two branches that both change
+> the API would always conflict on it; the OpenAPI document's version
+> becomes a hash of the record. The example below shows the record as
+> chunk 4.1 built it.
 
 ```jadpo check project=todos file=app.jadpo hidden
 application {}
