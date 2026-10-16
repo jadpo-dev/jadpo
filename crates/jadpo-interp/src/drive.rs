@@ -11,6 +11,7 @@
 //! never allocates one, and functions, which never pause, run on the
 //! machine without awaiting anything.
 
+use jadpo_graph::Kind;
 use jadpo_graph::body::SiteId;
 use jadpo_runtime::{
     ActionBody, Ctx, Fault, FaultKind, Isolation, LocalFuture, Outcome, StoreOp, Stored,
@@ -31,10 +32,24 @@ async fn body(
 ) -> Result<Value, Stop> {
     let mut machine = Machine::new(program);
     let mut step = machine.start(ctx, callee, args, SiteId(at));
+    // A test, fixture or seed runs each call as the caller it passes
+    // (area 9): policy then applies as to that caller.
+    let test_like = program
+        .plan()
+        .callable(callee)
+        .is_some_and(|callable| matches!(callable.kind, Kind::Test | Kind::Fixture | Kind::Seed));
     loop {
         match step {
             Step::Done(result) => return result,
             Step::Pause { target, args, at } => {
+                if test_like
+                    && matches!(
+                        target,
+                        Target::Callable(_) | Target::Query(_) | Target::Get(_)
+                    )
+                {
+                    calling_as(ctx, &args);
+                }
                 let result = match target {
                     Target::Callable(callee) => {
                         let caught = machine.catching();
@@ -49,6 +64,32 @@ async fn body(
                 step = machine.resume(ctx, result);
             }
         }
+    }
+}
+
+/// Runs what a test, fixture or seed calls with `args` as the caller they
+/// pass, a `Principal.user` or `Principal.service`, so policy applies as
+/// to that caller; with none, without policy, so the call proves behaviour
+/// and data and a route test proves policy (areas 9 and 13).
+fn calling_as(ctx: &mut Ctx<'_>, args: &[Value]) {
+    let caller = args.iter().find_map(|arg| match arg {
+        Value::Record(record) if record.ty.starts_with("Principal.") => {
+            let kind = record.ty.trim_start_matches("Principal.");
+            let id = match record.get("id") {
+                Some(Value::Uuid(id)) => id.to_string(),
+                _ => String::new(),
+            };
+            Some(jadpo_runtime::Caller {
+                value: arg.clone(),
+                key: format!("{kind} {id}"),
+                session: None,
+            })
+        }
+        _ => None,
+    });
+    match caller {
+        Some(caller) => ctx.set_caller(Some(caller)),
+        None => ctx.set_unpoliced(),
     }
 }
 
@@ -225,6 +266,22 @@ impl<'p> ActionBody<'p> for Action<'_> {
 
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
         Box::pin(async move {
+            // An action whose line under `actions:` needs no record says
+            // who may call it as it starts (area 9).
+            if let Some(gate) = self
+                .program
+                .plan()
+                .callable(self.callee)
+                .and_then(|callable| callable.gate.as_ref())
+            {
+                match jadpo_runtime::admit(ctx, gate, self.at).await {
+                    Stored::Value(_) => {}
+                    Stored::Failed(failure) | Stored::Conflict { cause: failure, .. } => {
+                        return Outcome::Failed(failure);
+                    }
+                    Stored::Fault(fault) => return Outcome::Fault(fault),
+                }
+            }
             outcome(body(self.program, ctx, self.callee, self.args.clone(), self.at).await)
         })
     }

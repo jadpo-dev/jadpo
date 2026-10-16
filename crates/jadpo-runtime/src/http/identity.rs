@@ -602,15 +602,21 @@ pub async fn issue_key(
         ));
     };
     let key = format!("{SERVICE_KEY_PREFIX}{key}");
-    let params = [
+    let params = vec![
         SqlValue::Uuid(id),
         service,
         SqlValue::Text(verifier(&key)),
         SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
         SqlValue::Timestamp(expires_at.saturating_mul(1000)),
     ];
-    if let Err(error) = execute(ctx, &store, ISSUE_KEY, &params).await {
-        return stopped(ctx, error, site);
+    let gated = plan.and_then(|plan| plan.gated.issue_key.as_ref());
+    let (statement, params) = policed(ctx, ISSUE_KEY, gated, params);
+    match execute(ctx, &store, &statement, &params).await {
+        Ok(0) if gated.is_some() && !ctx.unpoliced() => {
+            return Stored::Failed(ctx.fail(crate::read::not_permitted(), site));
+        }
+        Ok(_) => {}
+        Err(error) => return stopped(ctx, error, site),
     }
     ctx.issued();
     Stored::Value(Value::text(&key))
@@ -645,10 +651,15 @@ pub async fn issued(
             site,
         ));
     };
-    let params = [holder, SqlValue::Timestamp(ctx.now().saturating_mul(1000))];
-    let statement = if keys { KEYS } else { TOKENS };
+    let params = vec![holder, SqlValue::Timestamp(ctx.now().saturating_mul(1000))];
+    let (statement, gated) = if keys {
+        (KEYS, plan.and_then(|plan| plan.gated.keys.as_ref()))
+    } else {
+        (TOKENS, plan.and_then(|plan| plan.gated.tokens.as_ref()))
+    };
+    let (statement, params) = policed(ctx, statement, gated, params);
     let rows = match ctx.transaction(&store).await {
-        Ok(transaction) => transaction.query(statement, &params).await,
+        Ok(transaction) => transaction.query(&statement, &params).await,
         Err(error) => Err(error),
     };
     let rows = match rows {
@@ -704,11 +715,43 @@ pub async fn revoke(
             site,
         ));
     };
-    let statement = if keys { REVOKE_KEY } else { REVOKE_TOKEN };
-    if let Err(error) = execute(ctx, &store, statement, &[id]).await {
+    let (statement, gated) = if keys {
+        (
+            REVOKE_KEY,
+            plan.and_then(|plan| plan.gated.revoke_key.as_ref()),
+        )
+    } else {
+        (
+            REVOKE_TOKEN,
+            plan.and_then(|plan| plan.gated.revoke_token.as_ref()),
+        )
+    };
+    let (statement, params) = policed(ctx, statement, gated, vec![id]);
+    if let Err(error) = execute(ctx, &store, &statement, &params).await {
         return stopped(ctx, error, site);
     }
     Stored::Value(Value::Unit)
+}
+
+/// A credential statement with the policy its holder's grants add (area
+/// 9, question 8), and its parameters with the caller's after `own`; the
+/// statement without policy for a call a test makes without a caller.
+fn policed(
+    ctx: &Ctx<'_>,
+    plain: &str,
+    gated: Option<&jadpo_std::policy::Gated>,
+    mut own: Vec<SqlValue>,
+) -> (String, Vec<SqlValue>) {
+    let Some(gated) = gated.filter(|_| !ctx.unpoliced()) else {
+        return (plain.to_string(), own);
+    };
+    for param in &gated.extra {
+        own.push(match &param.source {
+            jadpo_std::read::Source::Caller(part) => ctx.caller_param(*part),
+            _ => SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
+        });
+    }
+    (gated.sql.clone(), own)
 }
 
 /// Runs `statement` in the running action's transaction in `store`.

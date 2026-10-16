@@ -15,7 +15,7 @@
 //! savepoint ([`crate::action`]).
 
 use jadpo_std::read::Field;
-use jadpo_std::write::{WriteParam, WritePlan, WriteSource};
+use jadpo_std::write::{PolicyRefusal, WriteParam, WritePlan, WriteSource};
 use jadpo_value::Value;
 
 use crate::read::{Interrupt, defect, from_sql, refused, to_sql, uuid_text};
@@ -27,8 +27,12 @@ pub(crate) enum Written {
     /// The record it created or changed; `Unit` for a delete.
     Value(Value),
     /// A write by `id` found no record: the entity's not-found failure,
-    /// which its plan names.
-    Missing,
+    /// which its plan names. With `true`, the record is there and policy
+    /// refused the caller, which the failure's log says (area 9).
+    Missing(bool),
+    /// Policy refused the caller a create, or a change to a record it
+    /// loaded earlier: `not_permitted` (area 9, "When policy says no").
+    NotPermitted,
     /// The store refused it with the plan's constraint at `at`: what the
     /// plan says that raises, keeping `cause`, the store's refusal, as its
     /// internal cause (area 4).
@@ -45,14 +49,19 @@ pub(crate) async fn write(
 ) -> Result<Written, Interrupt> {
     let now = ctx.now();
     let params = params_of(ctx, &plan.params, inputs, site, now)?;
+    let unpoliced = ctx.unpoliced();
+    let sql = match (&plan.unpoliced, unpoliced) {
+        (Some(sql), true) => sql,
+        _ => &plan.sql,
+    };
     // A refusal ends a PostgreSQL transaction; a caller that handles the
     // failure it becomes returns to the savepoint taken before the action
     // it called (`crate::action`), which undoes the refusal with the rest.
     let result = match ctx.transaction(&plan.store).await {
         Ok(transaction) => match &plan.returns {
-            Some(_) => transaction.query(&plan.sql, &params).await,
+            Some(_) => transaction.query(sql, &params).await,
             None => transaction
-                .execute(&plan.sql, &params)
+                .execute(sql, &params)
                 .await
                 .map(|changed| (0..changed).map(|_| Vec::new()).collect()),
         },
@@ -90,8 +99,12 @@ pub(crate) async fn write(
         // whether the record is there: then the condition refused it.
         if let Some(guard) = &plan.guard {
             let params = params_of(ctx, &guard.params, inputs, site, now)?;
+            let probe = match (&guard.unpoliced, unpoliced) {
+                (Some(sql), true) => sql,
+                _ => &guard.sql,
+            };
             let found = match ctx.transaction(&plan.store).await {
-                Ok(transaction) => transaction.query(&guard.sql, &params).await,
+                Ok(transaction) => transaction.query(probe, &params).await,
                 Err(error) => Err(error),
             };
             match found {
@@ -113,8 +126,28 @@ pub(crate) async fn write(
                 Err(error) => return Err(refused(ctx, error, site)),
             }
         }
+        // Whether policy refused it: a create it refused writes no row,
+        // and an update or delete asks whether the record is there.
+        let policed = match (&plan.policy, unpoliced) {
+            (Some(PolicyRefusal::Create), false) => return Ok(Written::NotPermitted),
+            (Some(PolicyRefusal::Probe { sql, params: asked }), false) => {
+                let params = params_of(ctx, asked, inputs, site, now)?;
+                let found = match ctx.transaction(&plan.store).await {
+                    Ok(transaction) => transaction.query(sql, &params).await,
+                    Err(error) => Err(error),
+                };
+                match found {
+                    Ok(rows) => !rows.is_empty(),
+                    Err(error) => return Err(refused(ctx, error, site)),
+                }
+            }
+            _ => false,
+        };
         if plan.by_id {
-            return Ok(Written::Missing);
+            return Ok(Written::Missing(policed));
+        }
+        if policed {
+            return Ok(Written::NotPermitted);
         }
         // A loaded record changed by another transaction is a concurrent
         // change; one this transaction can't see at all was deleted by
@@ -191,6 +224,10 @@ fn params_of(
                 }
             },
             WriteSource::Now => Value::Instant(now),
+            WriteSource::Caller(part) => {
+                params.push(ctx.caller_param(*part));
+                continue;
+            }
         };
         match to_sql(&value, param.ty) {
             Ok(sql) => params.push(sql),

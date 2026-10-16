@@ -337,6 +337,26 @@ pub struct IdentityPlan {
     pub api_tokens: bool,
     pub user: Option<PrincipalPlan>,
     pub service: Option<PrincipalPlan>,
+    /// The credential statements the owning record's grants limit (area
+    /// 9, question 8), each `None` when nothing declares what it needs.
+    pub gated: GatedStatements,
+}
+
+/// Listing, issuing and revoking credentials, limited to holders whose
+/// record the caller may read (to list) or update (to issue or revoke).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GatedStatements {
+    /// `sessions.tokens(user_id)`: `$1` the user, `$2` the time now.
+    pub tokens: Option<crate::policy::Gated>,
+    /// `sessions.revoke_token(token_id)`: `$1` the token.
+    pub revoke_token: Option<crate::policy::Gated>,
+    /// `Service.issue_key(...)`: `$1` the key's `id`, `$2` the service,
+    /// `$3` its verifier, `$4` the time now and `$5` when it expires.
+    pub issue_key: Option<crate::policy::Gated>,
+    /// `Service.keys(service_id)`: `$1` the service, `$2` the time now.
+    pub keys: Option<crate::policy::Gated>,
+    /// `Service.revoke_key(key_id)`: `$1` the key.
+    pub revoke_key: Option<crate::policy::Gated>,
 }
 
 impl IdentityPlan {

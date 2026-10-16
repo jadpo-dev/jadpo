@@ -33,8 +33,12 @@ use jadpo_std::write::{
 use jadpo_sql::Bind;
 use jadpo_sql::statement as text;
 
+use crate::policy::{CallerBind, Row};
 use crate::queries::{Planner, Reach, column_type, field};
 use crate::types::{Types, ValidatorId};
+use jadpo_check::policy::Effect;
+use jadpo_std::policy::CallerPart;
+use jadpo_std::write::PolicyRefusal;
 
 /// What one write site runs: its plan, which says what its refusals and
 /// a missing record raise, and the sites the executor works out first.
@@ -85,6 +89,12 @@ impl Bind for Writing {
     }
 }
 
+impl CallerBind for Writing {
+    fn caller(&mut self, part: CallerPart) -> String {
+        self.param(WriteSource::Caller(part), part.ty())
+    }
+}
+
 impl Planner<'_> {
     /// The plan of the write at `site` of `body`.
     pub(crate) fn write(&mut self, body: &Body, site: SiteId) -> Option<WriteSitePlan> {
@@ -121,7 +131,9 @@ impl Planner<'_> {
             None => None,
         };
         let mut writing = Writing::default();
-        let mut guard: Option<(String, Vec<WriteParam>)> = None;
+        let mut guard: Option<(String, Option<String>, Vec<WriteParam>)> = None;
+        let unpoliced: Option<String>;
+        let policy: Option<PolicyRefusal>;
         // Where each reference's value comes from, for a refusal's failure.
         let mut written_refs: Vec<(String, MissingValue)> = Vec::new();
         let sql = match op {
@@ -173,7 +185,30 @@ impl Planner<'_> {
                     names.push(field.born.as_str());
                     values.push(writing.param(source, ty));
                 }
-                text::insert(table, &names, &values, &returning(entity_model))
+                // The new record's grants hold of its values, in the
+                // same statement (area 9).
+                let new: Vec<(String, String)> = entity_model
+                    .fields
+                    .iter()
+                    .map(|f| f.name.clone())
+                    .zip(values.iter().cloned())
+                    .collect();
+                let condition =
+                    self.policy(&mut writing, entity_model, Effect::Create, &Row::New(&new))?;
+                unpoliced = Some(text::insert(
+                    table,
+                    &names,
+                    &values,
+                    &returning(entity_model),
+                ));
+                policy = Some(PolicyRefusal::Create);
+                jadpo_sql::policy::insert_when(
+                    table,
+                    &names,
+                    &values,
+                    &condition,
+                    &returning(entity_model),
+                )
             }
             WriteOp::Update | WriteOp::Delete => {
                 let record = writing.input((*target)?, None);
@@ -328,6 +363,29 @@ impl Planner<'_> {
                 let id = writing.param(id_source.clone(), SqlType::Uuid);
                 let mut conditions = vec![text::equal("id", &id)];
                 conditions.extend(self.access(&mut writing, entity_model, Reach::Write)?);
+                // A delete needs `delete` whether it removes the record or
+                // runs the lifecycle's `delete` transition; every other
+                // transition is an update (area 9, "Grants").
+                let effect = if *op == WriteOp::Delete {
+                    Effect::Delete
+                } else {
+                    Effect::Update
+                };
+                let granted = self.policy(&mut writing, entity_model, effect, &Row::Table)?;
+                // Writing no row asks whether the record is there under its
+                // lifecycle: then policy refused it.
+                {
+                    let mut asking = Writing::default();
+                    let id = asking.param(id_source.clone(), SqlType::Uuid);
+                    let mut asked = vec![text::equal("id", &id)];
+                    asked.extend(self.access(&mut asking, entity_model, Reach::Write)?);
+                    let mut probe = text::select_one(table);
+                    text::where_clause(&mut probe, &asked, "");
+                    policy = Some(PolicyRefusal::Probe {
+                        sql: probe,
+                        params: asking.params,
+                    });
+                }
                 // A transition's `when:` joins the `WHERE` when it can
                 // refuse a visible record; writing no row then asks which
                 // it was, the record or the condition.
@@ -339,9 +397,12 @@ impl Planner<'_> {
                     let id = asking.param(id_source, SqlType::Uuid);
                     let mut asked = vec![text::equal("id", &id)];
                     asked.extend(self.access(&mut asking, entity_model, Reach::Write)?);
+                    let mut bare = text::select_one(table);
+                    text::where_clause(&mut bare, &asked, "");
+                    asked.push(self.policy(&mut asking, entity_model, effect, &Row::Table)?);
                     let mut probe = text::select_one(table);
                     text::where_clause(&mut probe, &asked, "");
-                    guard = Some((probe, asking.params));
+                    guard = Some((probe, Some(bare), asking.params));
                     conditions.push(jadpo_sql::condition(
                         &mut writing,
                         entity_model,
@@ -349,16 +410,21 @@ impl Planner<'_> {
                         false,
                     )?);
                 }
-                let mut sql = match op {
-                    _ if transition.is_some() => text::update(table, &assignments),
-                    WriteOp::Update => text::update(table, &assignments),
-                    _ => text::delete(table),
+                let write = |conditions: &[String]| {
+                    let mut sql = match op {
+                        _ if transition.is_some() => text::update(table, &assignments),
+                        WriteOp::Update => text::update(table, &assignments),
+                        _ => text::delete(table),
+                    };
+                    text::where_clause(&mut sql, conditions, "");
+                    if *op == WriteOp::Update {
+                        text::returning(&mut sql, &returning(entity_model));
+                    }
+                    sql
                 };
-                text::where_clause(&mut sql, &conditions, "");
-                if *op == WriteOp::Update {
-                    text::returning(&mut sql, &returning(entity_model));
-                }
-                sql
+                unpoliced = Some(write(&conditions));
+                conditions.push(granted);
+                write(&conditions)
             }
         };
         // What each refusal raises: an arm's failure, a missing record's
@@ -432,9 +498,12 @@ impl Planner<'_> {
                 store,
                 op: *op,
                 sql,
+                unpoliced,
+                policy,
                 guard: match (guard, guarded_at) {
-                    (Some((sql, params)), Some(refusal)) => Some(Guard {
+                    (Some((sql, unpoliced, params)), Some(refusal)) => Some(Guard {
                         sql,
+                        unpoliced,
                         params,
                         refusal,
                     }),
@@ -570,14 +639,18 @@ pub(crate) fn plans(
 ) -> (Vec<WriteSitePlan>, HashMap<(Key, u32), u32>) {
     let model = jadpo_check::data::data_model(db, project);
     let lookup = jadpo_check::lookups::Lookup::new(db, project);
+    let access = jadpo_check::policy::access(db, project);
     let mut planner = Planner {
         model,
         lookup: &lookup,
         types,
+        access,
+        action: None,
     };
     let mut out = Vec::new();
     let mut at = HashMap::new();
     for (key, body) in bodies {
+        planner.action = (key.kind() == Some(Kind::Action)).then(|| key.name().to_string());
         for (site, _, _) in body.writes() {
             if let Some(plan) = planner.write(body, site) {
                 at.insert((key.clone(), site.0), out.len() as u32);

@@ -348,7 +348,19 @@ fn input_name(source: &WriteSource, write: &WriteSitePlan, body: &Body, text: &s
         ),
         WriteSource::NewId => "a new identity".to_string(),
         WriteSource::Now => "clock.now".to_string(),
+        WriteSource::Caller(part) => caller(*part),
     }
+}
+
+/// How a caller parameter of a statement's policy reads (area 9).
+fn caller(part: jadpo_std::policy::CallerPart) -> String {
+    use jadpo_std::policy::CallerPart;
+    match part {
+        CallerPart::User => "the signed-in user's id, or none",
+        CallerPart::Service => "the signed-in service's id, or none",
+        CallerPart::Signed => "whether anyone is signed in",
+    }
+    .to_string()
 }
 
 /// The names of the actions in the project at `root`: each action is its
@@ -489,6 +501,7 @@ impl Names<'_> {
                     .join(".")
             }
             Source::Now => "clock.now".to_string(),
+            Source::Caller(part) => caller(*part),
             Source::Keys => self.include.unwrap_or("the keys").to_string(),
             Source::Cursor(i) => {
                 let field = self

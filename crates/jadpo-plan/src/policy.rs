@@ -1,0 +1,366 @@
+//! Policy compiled into the plan's statements (area 9, "When policy says
+//! no"; area 6: policy is part of each query's `WHERE`): every read,
+//! update and delete reaches only the records its grants let the caller
+//! in to, and a create writes its row only when the new record's grants
+//! hold, in the same statement, so a membership removed a moment earlier
+//! can't slip through. The runtime binds who is calling
+//! ([`jadpo_std::policy::CallerPart`]).
+//!
+//! The grants are the entity's own, or for a write an action listed under
+//! root `policy { actions: }` makes in its own body, that line's. Tenancy
+//! limits every grant to the tenants where the caller has a membership: a
+//! tenant's own record being created belongs to nobody yet, and a new
+//! membership in a tenant makes its member one.
+
+use jadpo_check::data::EntityModel;
+use jadpo_check::policy::{Effect, Grant};
+use jadpo_sql::policy::{Membership, Who, any_of, qualified};
+use jadpo_std::http::PrincipalKind;
+use jadpo_std::policy::{CallerPart, Gate};
+use jadpo_std::read::Source;
+
+use crate::queries::{Planner, Statement, field};
+
+/// A statement that can bind who is calling, as well as a condition's
+/// values.
+pub(crate) trait CallerBind: jadpo_sql::Bind {
+    /// `$n` for part `part` of the caller.
+    fn caller(&mut self, part: CallerPart) -> String;
+}
+
+impl CallerBind for Statement {
+    fn caller(&mut self, part: CallerPart) -> String {
+        self.param(Source::Caller(part), part.ty())
+    }
+}
+
+/// Where the record a grant is tested on is.
+pub(crate) enum Row<'r> {
+    /// The row of the table the statement reaches.
+    Table,
+    /// A record being created: each field's value as SQL, by field name.
+    New(&'r [(String, String)]),
+}
+
+/// The part of the caller a grant compares a field with.
+fn part(kind: PrincipalKind) -> CallerPart {
+    match kind {
+        PrincipalKind::User => CallerPart::User,
+        PrincipalKind::Service => CallerPart::Service,
+    }
+}
+
+impl Planner<'_> {
+    /// The grants deciding `effect` on `entity`'s records for the
+    /// statement being planned: the entity's own, or for a write in the
+    /// body of an action listed under `actions:`, that line's.
+    pub(crate) fn grants(&self, entity: &EntityModel, effect: Effect) -> Vec<Grant> {
+        if matches!(effect, Effect::Create | Effect::Update | Effect::Delete)
+            && let Some(line) = self
+                .action
+                .as_deref()
+                .and_then(|action| self.access.root.action(action))
+        {
+            return line.on(entity, &self.access.memberships);
+        }
+        self.access
+            .entity(&entity.name)
+            .map(|policy| policy.grants(effect).to_vec())
+            .unwrap_or_default()
+    }
+
+    /// The record's field `name` as SQL: its column, qualified, or the new
+    /// record's value.
+    fn value_of(&self, entity: &EntityModel, name: &str, row: &Row<'_>) -> Option<String> {
+        match row {
+            Row::Table => Some(qualified(&entity.table, &field(entity, name)?.born)),
+            Row::New(values) => values
+                .iter()
+                .find(|(field, _)| field == name)
+                .map(|(_, value)| value.clone()),
+        }
+    }
+
+    /// The caller's current membership in `membership`, as an `EXISTS`
+    /// under `alias`.
+    fn held(
+        &self,
+        bind: &mut dyn CallerBind,
+        membership: &jadpo_check::policy::Membership,
+        alias: &str,
+        scope: Option<String>,
+        roles: Option<Vec<String>>,
+    ) -> Option<Membership> {
+        let model = self.model.entity(&membership.entity)?;
+        let visible = match model.lifecycle.as_ref().and_then(|l| l.visible.as_ref()) {
+            Some(visible) => Some(jadpo_sql::condition(bind, model, visible, false)?),
+            None => None,
+        };
+        let scope = match (&membership.scope, scope) {
+            (Some(column), Some(value)) => Some((field(model, column)?.born.clone(), value)),
+            _ => None,
+        };
+        let roles = match roles {
+            Some(roles) => Some((field(model, &membership.role)?.born.clone(), roles)),
+            None => None,
+        };
+        Some(Membership {
+            table: model.table.clone(),
+            alias: alias.to_string(),
+            member: field(model, &membership.member)?.born.clone(),
+            caller: bind.caller(CallerPart::User),
+            scope,
+            roles,
+            visible,
+        })
+    }
+
+    /// The condition `grants` add for a statement whose record is `row`:
+    /// any of them, and the tenancy.
+    pub(crate) fn granted(
+        &self,
+        bind: &mut dyn CallerBind,
+        entity: &EntityModel,
+        grants: &[Grant],
+        row: &Row<'_>,
+    ) -> Option<String> {
+        let mut whos: Vec<Who> = Vec::new();
+        // A membership's roles, gathered by the membership and the
+        // reference they apply through, so each is one `EXISTS`.
+        let mut roles: Vec<(String, Option<String>, Vec<String>)> = Vec::new();
+        for grant in grants {
+            match grant {
+                Grant::Caller { field: name, kind } => {
+                    let value = self.value_of(entity, name, row)?;
+                    let caller = bind.caller(part(*kind));
+                    whos.push(Who::Equals { value, caller });
+                }
+                Grant::Role {
+                    membership,
+                    role,
+                    via,
+                } => match roles
+                    .iter_mut()
+                    .find(|(m, v, _)| m == membership && v == via)
+                {
+                    Some((_, _, listed)) => listed.push(role.clone()),
+                    None => roles.push((membership.clone(), via.clone(), vec![role.clone()])),
+                },
+                Grant::Signed => whos.push(Who::Condition(bind.caller(CallerPart::Signed))),
+                Grant::Public => whos.push(Who::Anyone),
+                // No request is a schedule or a subscriber yet (area 12).
+                Grant::System => {}
+            }
+        }
+        for (at, (membership, via, listed)) in roles.into_iter().enumerate() {
+            let held = self.access.membership(&membership)?;
+            let scope = match &via {
+                Some(via) => Some(self.value_of(entity, via, row)?),
+                None => None,
+            };
+            let alias = format!("jadpo_m{at}");
+            whos.push(Who::Member(self.held(
+                bind,
+                held,
+                &alias,
+                scope,
+                Some(listed),
+            )?));
+        }
+        let mut condition = any_of(&whos);
+        if let Some(tenancy) = self
+            .access
+            .entity(&entity.name)
+            .and_then(|policy| policy.tenancy.as_ref())
+        {
+            let creating_tenant = matches!(row, Row::New(_)) && tenancy.via == "id";
+            if !creating_tenant {
+                let at = self.value_of(entity, &tenancy.via, row)?;
+                let mut tenants: Vec<Who> = Vec::new();
+                for (i, name) in self.access.root.tenant_memberships.iter().enumerate() {
+                    let held = self.access.membership(name)?;
+                    let alias = format!("jadpo_t{i}");
+                    tenants.push(Who::Member(self.held(
+                        bind,
+                        held,
+                        &alias,
+                        Some(at.clone()),
+                        None,
+                    )?));
+                }
+                // A new membership in the tenant makes its member one.
+                if let Row::New(_) = row
+                    && let Some(held) = self.access.membership(&entity.name)
+                    && held.scope_entity.as_deref() == Some(tenancy.entity.as_str())
+                {
+                    let member = self.value_of(entity, &held.member, row)?;
+                    tenants.push(Who::Equals {
+                        value: member,
+                        caller: bind.caller(CallerPart::User),
+                    });
+                }
+                condition = format!("{condition} AND {}", any_of(&tenants));
+            }
+        }
+        Some(condition)
+    }
+
+    /// The condition policy adds to a statement doing `effect` to
+    /// `entity`'s records, whose record is `row`.
+    pub(crate) fn policy(
+        &self,
+        bind: &mut dyn CallerBind,
+        entity: &EntityModel,
+        effect: Effect,
+        row: &Row<'_>,
+    ) -> Option<String> {
+        let grants = self.grants(entity, effect);
+        self.granted(bind, entity, &grants, row)
+    }
+
+    /// Who may call the action `action` as it starts, when its line under
+    /// `actions:` doesn't depend on a record (area 9, "Actions"): anyone
+    /// signed in, or a role held across the whole application.
+    pub(crate) fn gate(&self, action: &str) -> Option<Gate> {
+        use jadpo_check::policy::ActionWho;
+        let line = self.access.root.action(action)?;
+        if line.who.contains(&ActionWho::Public) {
+            return None;
+        }
+        if line.who.contains(&ActionWho::Signed) {
+            return Some(Gate::Signed);
+        }
+        let mut statement = Statement::default();
+        let mut whos = Vec::new();
+        let mut store = None;
+        for (at, who) in line.who.iter().enumerate() {
+            match who {
+                ActionWho::Role { membership, role } => {
+                    let held = self.access.membership(membership)?;
+                    if held.scope.is_some() {
+                        // Held in a record: the statements decide.
+                        return None;
+                    }
+                    store = self.model.entity(&held.entity)?.store.clone();
+                    let alias = format!("jadpo_m{at}");
+                    whos.push(Who::Member(self.held(
+                        &mut statement,
+                        held,
+                        &alias,
+                        None,
+                        Some(vec![role.clone()]),
+                    )?));
+                }
+                ActionWho::Field { .. } => return None,
+                ActionWho::System => {}
+                ActionWho::Signed | ActionWho::Public => {}
+            }
+        }
+        let Some(store) = store else {
+            return Some(Gate::Nobody);
+        };
+        Some(Gate::Roles {
+            store,
+            sql: format!("SELECT 1 WHERE {}", any_of(&whos)),
+            params: statement.into_params(),
+        })
+    }
+
+    /// The condition limiting a credential statement to holders whose
+    /// record `effect` lets the caller in to (area 9, question 8): its
+    /// holder (`"principal_id"`, or a parameter) among them.
+    pub(crate) fn holders(
+        &self,
+        bind: &mut dyn CallerBind,
+        entity: &EntityModel,
+        effect: Effect,
+        holder: &str,
+    ) -> Option<String> {
+        let mut conditions = self.access(bind, entity, crate::queries::Reach::Read)?;
+        conditions.push(self.policy(bind, entity, effect, &Row::Table)?);
+        Some(jadpo_sql::policy::held_by(
+            holder,
+            &entity.table,
+            &conditions,
+        ))
+    }
+
+    /// A credential statement limited by its holder's grants: `sql`, whose
+    /// own parameters are the first `own`, with `AND <holders>` where it
+    /// says `{held}`.
+    pub(crate) fn gated(
+        &self,
+        entity: &EntityModel,
+        effect: Effect,
+        own: usize,
+        holder: &str,
+        sql: &str,
+    ) -> Option<jadpo_std::policy::Gated> {
+        let mut bind = After {
+            own,
+            params: Vec::new(),
+        };
+        let held = self.holders(&mut bind, entity, effect, holder)?;
+        Some(jadpo_std::policy::Gated {
+            sql: sql.replace("{held}", &held),
+            extra: bind.params,
+        })
+    }
+}
+
+/// Binds a credential statement's parameters after its own `own`.
+struct After {
+    own: usize,
+    params: Vec<jadpo_std::read::Param>,
+}
+
+impl After {
+    fn param(&mut self, source: Source, ty: jadpo_std::read::SqlType) -> String {
+        let param = jadpo_std::read::Param { source, ty };
+        let at = match self.params.iter().position(|p| *p == param) {
+            Some(at) => at,
+            None => {
+                self.params.push(param);
+                self.params.len() - 1
+            }
+        };
+        jadpo_sql::placeholder(self.own + at)
+    }
+}
+
+impl jadpo_sql::Bind for After {
+    fn bind(&mut self, value: &jadpo_sql::Value, ty: jadpo_std::read::SqlType) -> Option<String> {
+        matches!(value, jadpo_sql::Value::Now).then(|| self.param(Source::Now, ty))
+    }
+}
+
+impl CallerBind for After {
+    fn caller(&mut self, part: CallerPart) -> String {
+        self.param(Source::Caller(part), part.ty())
+    }
+}
+
+/// Who may call each action listed under root `policy { actions: }` as it
+/// starts, by action name, where its line says without a record.
+pub(crate) fn gates(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    types: &mut crate::types::Types,
+) -> std::collections::HashMap<String, Gate> {
+    let model = jadpo_check::data::data_model(db, project);
+    let lookup = jadpo_check::lookups::Lookup::new(db, project);
+    let access = jadpo_check::policy::access(db, project);
+    let planner = Planner {
+        model,
+        lookup: &lookup,
+        types,
+        access,
+        action: None,
+    };
+    access
+        .root
+        .actions
+        .iter()
+        .filter_map(|line| Some((line.action.clone(), planner.gate(&line.action)?)))
+        .collect()
+}
