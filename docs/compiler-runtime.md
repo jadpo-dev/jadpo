@@ -1375,6 +1375,22 @@ one-statement read in a boundary of its own at repeatable read that calls
 the same `issued` an action does, so the plan's policy-limited statement
 (`GatedStatements`) decides the list.
 
+Built in chunk 4.7: three Phase 4 decisions (areas 9 and 13).
+`jadpo_check::policy::Access::kept_in_tenant` says when a reference stays
+inside the tenant; `Prover::along` moves the tenant, and a role held
+through the record's tenancy, along it, so an include of a tenant's parent
+proves. `Planner::kept_in_tenant` compiles each such reference a write sets
+into its own statement as `jadpo_sql::policy::outside_tenant` (`NOT
+EXISTS` a record with that `id` in another tenant), in the policed and the
+unpoliced text alike, and `WritePlan::kept_in_tenant` tells the runtime
+that writing no row without policy is `not_permitted` too, a create's or a
+found record's. `policy::outputs` proves each field a query's or an
+include's `where:`, `where_present:` and `order:` tests, and
+`policy::flow` a `get`'s `id` and a transition's `when:`, like an output.
+A route test's `request { }` takes `idempotency_key:` (graph
+`Expr::Request::idempotency_key`), and the interpreter's `request` sends it,
+or a fresh one from the test's seed, with every request but a `GET`.
+
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
 runs one current-thread tokio runtime per core, each with its own

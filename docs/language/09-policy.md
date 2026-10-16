@@ -2,7 +2,7 @@
 title: Policy
 area: 9
 status: decided
-checked-with: jadpo chunk-4.4b (2026-10-16)
+checked-with: jadpo chunk-4.7 (2026-10-16)
 rules:
   - policy.*
   - type.field_update_forbidden
@@ -14,7 +14,7 @@ Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. "Status" below lists the rest.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. "Status" below lists the rest.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -187,6 +187,462 @@ caller has a membership. An entity shared by every tenant, such as a list of
 countries or `User` itself, says `tenant: Tenancy.shared` in its `policy:`.
 A new entity is tenant-scoped unless someone accepts otherwise.
 
+### References stay inside the tenant
+
+A reference from one of a tenant's records to another always points at a
+record of the same tenant: a task of Northwind's names one of Northwind's
+projects, never Contoso's. Every create and update that sets such a
+reference checks it in its own statement, with or without policy, and one
+that points into another tenant is refused with 403 `not_permitted`; a
+record that isn't there is still the code's own not-found failure
+(Richard, 2026-10-16; built in chunk 4.7). So whoever may read a task
+holds their role in the project's company too, and a query of tasks may
+include each task's project:
+
+```jadpo check project=tenant-references file=app.jadpo hidden
+use work/entities { Member }
+
+application {}
+
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+```
+
+```jadpo check project=tenant-references file=authentication.jadpo hidden
+authentication {
+    browser_session: {
+        cookie: "work_session"
+    }
+}
+```
+
+```jadpo check project=tenant-references file=policy.jadpo hidden
+use work/entities { Company }
+use work
+
+policy {
+    tenant: Company
+    actions: {
+        work.found_company: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/types/handle.jadpo hidden
+type Handle = Text {
+    min_length: 3
+    max_length: 40
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/types/label.jadpo hidden
+type Label = Text {
+    min_length: 1
+    max_length: 80
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/types/company_role.jadpo hidden
+/// What a member may do in a company.
+type CompanyRole = Enum {
+    owner
+    viewer
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/types/project_card.jadpo hidden
+use work/entities { Project }
+
+/// A project as members see it.
+type ProjectCard = Output {
+    pick: [Project.id, Project.name]
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/types/task_card.jadpo hidden
+use work/entities { Task }
+
+/// A task on its own.
+type TaskCard = Output {
+    pick: [Task.id, Task.title]
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/types/task_view.jadpo hidden
+use work/entities { Task }
+use work/types { ProjectCard }
+
+/// A task with the project it belongs to.
+type TaskView = Output {
+    pick: [Task.id, Task.title]
+    project: ProjectCard
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/failures/handle_taken.jadpo hidden
+type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/entities/member.jadpo hidden
+use work/types { Handle }
+
+/// Someone who signs in.
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/entities/company.jadpo hidden
+use work/types { CompanyRole, Label }
+
+/// A customer: the tenant every other record belongs to.
+entity Company {
+    id: Uuid
+    name: Label
+
+    policy: {
+        read: [CompanyRole.owner, CompanyRole.viewer]
+    }
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/entities/company_membership.jadpo hidden
+use work/entities { Company, Member }
+use work/types { CompanyRole }
+
+/// A member's role in a company.
+entity CompanyMembership {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    member_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+    role: CompanyRole
+
+    membership: {
+        scope: company_id
+        member: member_id
+        role: role
+    }
+
+    policy: {
+        create: [CompanyRole.owner]
+        read: [CompanyRole.owner, member_id]
+    }
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/entities/project.jadpo hidden
+use work/entities { Company }
+use work/types { CompanyRole, Label }
+
+/// A piece of work in a company.
+entity Project {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    name: Label
+
+    policy: {
+        create: [CompanyRole.owner]
+        read: [CompanyRole.owner, CompanyRole.viewer]
+    }
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/actions/register.jadpo hidden
+use work/entities { Member }
+use work/types { Handle }
+use work/failures { HandleTaken }
+
+/// Signs a new member up; anyone may.
+action register(handle: Handle) fails HandleTaken -> Member {
+    return attempt Member.create {
+        set: {
+            handle: handle
+        }
+        conflict: {
+            Member.handle: HandleTaken
+        }
+    }
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/actions/found_company.jadpo hidden
+use work/entities { Company, CompanyMembership }
+use work/types { CompanyRole, Label }
+
+/// Starts a company with its founder as its owner.
+action found_company(name: Label, founder: Principal.user) -> Company {
+    var company: Company = Company.create {
+        set: {
+            name: name
+        }
+    }
+    var owner: CompanyMembership = CompanyMembership.create {
+        set: {
+            company_id: company.id
+            member_id: founder.id
+            role: CompanyRole.owner
+        }
+    }
+    assert owner.role == CompanyRole.owner
+    return company
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/actions/add_member.jadpo hidden
+use work/entities { Company, CompanyMembership, CompanyNotFound, Member, MemberNotFound }
+use work/types { CompanyRole }
+
+/// Gives a member a role in a company; only its owners may.
+action add_member(
+    company_id: Company.id,
+    member_id: Member.id,
+    role: CompanyRole
+) fails CompanyNotFound, MemberNotFound -> CompanyMembership {
+    return attempt CompanyMembership.create {
+        set: {
+            company_id: company_id
+            member_id: member_id
+            role: role
+        }
+    }
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/actions/start_project.jadpo hidden
+use work/entities { Company, CompanyNotFound, Project }
+use work/types { Label, ProjectCard }
+
+/// Starts a project in a company.
+action start_project(company_id: Company.id, name: Label) fails CompanyNotFound -> ProjectCard {
+    var project: Project = attempt Project.create {
+        set: {
+            company_id: company_id
+            name: name
+        }
+    }
+    return ProjectCard {
+        id: project.id
+        name: project.name
+    }
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/actions/add_task.jadpo hidden
+use work/entities { Company, CompanyNotFound, Project, ProjectNotFound, Task }
+use work/types { Label, TaskCard }
+
+/// Adds a task to a project.
+action add_task(input: AddTask) fails CompanyNotFound, ProjectNotFound -> TaskCard {
+    var task: Task = attempt Task.create {
+        set: {
+            company_id: input.company_id
+            project_id: input.project_id
+            title: input.title
+        }
+    }
+    return TaskCard {
+        id: task.id
+        title: task.title
+    }
+}
+
+/// What adding a task takes.
+type AddTask = Input {
+    company_id: Company.id
+    project_id: Project.id
+    title: Label
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/entities/task.jadpo
+use work/entities { Company, Project }
+use work/types { CompanyRole, Label }
+
+/// One step of a project.
+entity Task {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    project_id: Project.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Label
+
+    policy: {
+        create: [CompanyRole.owner]
+        read: [CompanyRole.owner, CompanyRole.viewer]
+    }
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/queries/company_tasks.jadpo
+use work/entities { Company, Task }
+use work/types { TaskView }
+
+/// A company's tasks, each with its project.
+query company_tasks(company_id: Company.id) -> List<TaskView> {
+    from: Task
+    where: Task.company_id == company_id
+    order: [Task.title asc]
+    limit: 100
+    include: {
+        project: Task.project_id
+    }
+}
+```
+
+```jadpo check project=tenant-references file=domains/work/routes/tasks.jadpo migrate=initial hidden
+use work/entities { Company }
+use work/types { TaskCard, TaskView }
+use work/actions { AddTask, add_task }
+use work/queries { company_tasks }
+
+/// A company's tasks.
+routes Tasks {
+    prefix: /tasks
+
+    /// Adds a task.
+    POST / {
+        input: AddTask
+        output: TaskCard
+        status: SuccessStatus.created
+        run: add_task(input)
+    }
+
+    /// A company's tasks, each with its project.
+    GET /{company_id: Company.id} {
+        output: List<TaskView>
+        run: company_tasks(company_id)
+    }
+}
+```
+
+```jadpo check project=tenant-references file=api/main.api hidden
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 2
+
+POST /tasks
+    input: AddTask (body)
+    output: TaskCard
+    status: 201
+    fails: company_not_found 404, project_not_found 404
+
+GET /tasks/{company_id: Uuid}
+    output: List<TaskView>
+    status: 200
+
+input AddTask
+    company_id: Uuid
+    project_id: Uuid
+    title: Text { min_length: 1, max_length: 80 }
+
+output ProjectCard
+    id: Uuid
+    name: Text { min_length: 1, max_length: 80 }
+
+output TaskCard
+    id: Uuid
+    title: Text { min_length: 1, max_length: 80 }
+
+output TaskView
+    id: Uuid
+    title: Text { min_length: 1, max_length: 80 }
+    project: ProjectCard
+
+failure company_not_found 404
+
+failure project_not_found 404
+```
+
+Ann owns both companies, so only the reference refuses her; Bob, a viewer
+of Northwind, sees its tasks with their projects:
+
+```jadpo check project=tenant-references file=domains/work/routes/tasks.test.jadpo
+use work/entities { Company, CompanyMembership, Member }
+use work/types { CompanyRole, ProjectCard, TaskCard, TaskView }
+use work/actions { AddTask, add_member, add_task, found_company, register, start_project }
+
+test "a task can't name another company's project" {
+    var ann: Member = attempt register("ann")
+    var northwind: Company = found_company("Northwind", Principal.user(ann))
+    var contoso: Company = found_company("Contoso", Principal.user(ann))
+    var rival: ProjectCard = attempt start_project(contoso.id, "Rival")
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/tasks"
+        as: Principal.user(ann)
+        input: AddTask {
+            company_id: northwind.id
+            project_id: rival.id
+            title: "Borrow"
+        }
+    }
+    assert response.status == 403
+    assert response.code == "not_permitted"
+}
+
+test "a viewer sees each task with its project" {
+    var ann: Member = attempt register("ann")
+    var bob: Member = attempt register("bob")
+    var northwind: Company = found_company("Northwind", Principal.user(ann))
+    var viewer: CompanyMembership = attempt add_member(northwind.id, bob.id, CompanyRole.viewer)
+    assert viewer.role == CompanyRole.viewer
+    var launch: ProjectCard = attempt start_project(northwind.id, "Launch")
+    var plan: TaskCard = attempt add_task(
+        AddTask {
+            company_id: northwind.id
+            project_id: launch.id
+            title: "Plan"
+        }
+    )
+    var seen: Response = request {
+        method: HttpMethod.get
+        path: "/tasks/{company_id}"
+        params: {
+            company_id: northwind.id
+        }
+        as: Principal.user(bob)
+    }
+    assert seen.status == 200
+    assert seen.output == [
+        TaskView {
+            id: plan.id
+            title: "Plan"
+            project: launch
+        }
+    ]
+}
+```
+
+A reference to the tenant itself is the record's tenancy, or, beside the
+one an entity names with `tenant:`, another tenant on purpose, so it isn't
+checked. A write that moves a record to another tenant, which only an
+action listed under `actions:` may, checks every reference it keeps, and
+that no record of the old tenant refers to it.
+
 ## Actions
 
 An action takes its permission from the entities it touches. Root
@@ -247,6 +703,13 @@ entity Project {
   narrower output. The same holds for the record a query includes through
   a reference: everyone who may read the record must be able to read what
   it refers to.
+- **Conditions and orders.** Which records pass a condition, and the order
+  they come in, show the fields they test, so a query, `get`, include or
+  write may filter or order on a field only when everyone who may run it
+  may read that field; otherwise `policy.output_field_unproved` names the
+  condition or order (Richard, 2026-10-16; built in chunk 4.7). A
+  transition's `when:` is a write's condition: refusing a record shows what
+  it tests.
 - **Copies.** Passing a value through a variable or another type does not
   escape the field's rules; the compiler tracks where it came from.
 - **Server only.** `FieldAccess.server_only` lets no request read or write
@@ -1887,6 +2350,66 @@ error: `NoteView.appraisal` carries `Note.appraisal`, which not every caller of 
 check failed: 1 error, 1 file
 ```
 
+A condition shows the field it tests, so a list of the notes whose
+appraisal is "Excellent" is refused to their owners, who may not read it:
+
+```jadpo check project=e-condition-field-unproved expect=policy.output_field_unproved
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    reviewer_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    text: NoteText
+    appraisal: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+
+    policy: {
+        read: [owner_id, reviewer_id]
+    }
+}
+
+type NoteView = Output {
+    pick: [Note.id, Note.text]
+}
+
+query praised_notes() -> List<NoteView> {
+    from: Note
+    where: Note.appraisal == "Excellent"
+    order: [Note.text asc]
+    limit: 50
+}
+```
+
+```text output
+```
+
 ### `policy.role_field_create_forbidden`
 
 A note's `create:` names only `owner_id`, so a note is only ever created by its owner, and `owner_id` is set from the caller rather than the request:
@@ -2006,12 +2529,19 @@ gives each such field a row, and the graph and manifest hold every grant,
 field restriction, tenancy and listed action, with `grants` and `scopes`
 edges.
 
+Built in chunk 4.7: a reference from one of a tenant's records to another
+points inside the tenant, checked in the statement of every create and
+update that sets it, with or without policy (403 `not_permitted`), so an
+include of a tenant's parent proves from the child's own tenancy; and a
+field a query's, an include's or a `get`'s condition or order tests, or a
+transition's `when:`, is proved readable by everyone who may run it, like
+an output (`policy.output_field_unproved`).
+
 Not yet:
 
-- A restricted field read only in a condition, an order or an event isn't
-  an output: a list filtered by `budget` shows which records pass, and an
-  event's subscribers (area 12) are server work. Area 15's log redaction
-  covers what a log holds.
+- A restricted field read only in an event isn't an output: an event's
+  subscribers (area 12) are server work. Area 15's log redaction covers
+  what a log holds.
 - `scopes:`, with the tokens issued to other applications (`oauth_token`,
   `external_token`), after the first build.
 - `Access.system`: no schedule or subscriber runs yet (area 12), so it
@@ -2021,7 +2551,10 @@ Not yet:
 - Indexes for policy: every field a condition filters on is a reference
   (a user field, a role's or the tenant's reference, a membership's scope
   and member), and each already has its own index (area 5), so policy adds
-  none yet.
+  none yet. Keeping a reference inside the tenant finds the record it
+  points at by `id`, its primary key, and a move to another tenant finds
+  the records referring to it by their reference, which has its index, so
+  it needs no index or migration of its own.
 
 ### Consistency with the rest of the language
 
@@ -2178,3 +2711,5 @@ Not yet:
 | The permissions report (chosen in chunk 4.4) | `jadpo check` writes `build/report/permissions.md` and `.json` once policy reads cleanly: a table per entity, `domain.Entity`, with each list as written or "nobody", a line on its tenancy, its membership and the fields only listed actions change, and a table of the actions listed separately; no times or totals, so a change reads as a one-line diff | 2026-10-16 |
 | References stay inside the tenant | A reference from one tenant-owned record to another must point at a record of the same tenant, checked on every create and update that sets it (403 `not_permitted` otherwise), so an include of a tenant-owned parent proves from the child's own tenancy; built in chunk 4.7 (Richard) | 2026-10-16 |
 | Restricted fields in conditions and orders | A query, `get`, include or write may filter or order on a field only when every caller who may run it may read that field; otherwise `policy.output_field_unproved` names the condition or order, since which records pass shows the value; built in chunk 4.7 (Richard) | 2026-10-16 |
+| Keeping references inside the tenant (chosen in chunk 4.7) | The check is a condition in the write's own statement, `NOT EXISTS` a record with that `id` in another tenant, so it costs no round trip, and its unpoliced twin carries it too: what the data is holds for a test's or a seed's call without a caller as well. A record that isn't there passes, so its foreign key still reports the entity's not-found failure; one in another tenant is 403 `not_permitted`, a create's or, for an update, once the record is found under its grants. It covers references between two entities that belong to the tenant, the tenant itself included as one that belongs to itself; a reference to the tenant is the record's tenancy, or beside the one `tenant:` names, another tenant on purpose, and isn't checked. A write that changes a record's tenancy (a listed action) checks every reference it keeps and that no record of the old tenant refers to it. The record it points at is found by its primary key and the records referring to it by their reference's own index, so no index or migration is added. In proofs, a role held through the record's tenancy, in a membership scoped to the tenant, holds through the parent's, and membership of the tenant moves along the reference | 2026-10-16 |
+| Conditions and orders (chosen in chunk 4.7) | Checked like outputs against how a caller reached the records: a query's `where:`, `where_present:` and `order:` (the tie-break the compiler adds isn't written, so isn't checked) through its entity's `read:`, an include's through its own entity's, a `get`'s `id`, and a transition's `when:` through the grants its write checked. A lifecycle's `visible:` isn't one: it decides what exists for every caller alike. One problem per field and section, at the field where the condition or order names it | 2026-10-16 |

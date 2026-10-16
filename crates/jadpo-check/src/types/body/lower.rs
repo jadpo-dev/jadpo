@@ -897,6 +897,9 @@ impl Lower<'_> {
         let input = value("input")
             .and_then(|member| member.value())
             .map(|expr| self.expr(&expr));
+        let idempotency_key = value("idempotency_key")
+            .and_then(|member| member.value())
+            .map(|expr| self.expr(&expr));
         let caller = value("as")
             .and_then(|member| member.value())
             .map(|expr| self.expr(&expr));
@@ -907,6 +910,7 @@ impl Lower<'_> {
             route: fact.route.clone(),
             params,
             input,
+            idempotency_key,
             caller,
         }
     }

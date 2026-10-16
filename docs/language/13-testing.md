@@ -267,6 +267,226 @@ test "a memo comes back as it was sent" {
 }
 ```
 
+### Idempotency keys
+
+A route test sends a fresh `Idempotency-Key` with every request but a
+`GET`, as a real client would, so a route on an API with `idempotency:
+Idempotency.required` (area 7) is tested through its success like any
+other. A request that gives `idempotency_key:` sends that key instead, to
+test what a repeat gets back and what reusing a key for another request is
+refused with (Richard, 2026-10-16; built in chunk 4.7). This API refuses a
+write without a key:
+
+```jadpo check project=route-idempotency file=app.jadpo
+application {
+    apis: {
+        main: {
+            prefix: /
+            idempotency: Idempotency.required
+        }
+    }
+}
+```
+
+```jadpo check project=route-idempotency file=domains/notes/types/memo_text.jadpo hidden
+type MemoText = Text {
+    min_length: 1
+    max_length: 200
+}
+```
+
+```jadpo check project=route-idempotency file=domains/notes/types/memo_view.jadpo hidden
+use notes/entities { Memo }
+
+/// A memo as anyone sees it.
+type MemoView = Output {
+    pick: [Memo.id, Memo.text]
+}
+```
+
+```jadpo check project=route-idempotency file=domains/notes/entities/memo.jadpo hidden
+use notes/types { MemoText }
+
+/// A note anyone may leave.
+entity Memo {
+    id: Uuid
+    text: MemoText
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=route-idempotency file=domains/notes/actions/add_memo.jadpo hidden
+use notes/entities { Memo }
+use notes/types { MemoText, MemoView }
+
+/// Leaves a memo.
+action add_memo(input: AddMemo) -> MemoView {
+    var memo: Memo = Memo.create {
+        set: {
+            text: input.text
+        }
+    }
+    return MemoView {
+        id: memo.id
+        text: memo.text
+    }
+}
+
+/// What leaving a memo takes.
+type AddMemo = Input {
+    text: MemoText
+}
+```
+
+```jadpo check project=route-idempotency file=domains/notes/queries/all_memos.jadpo hidden
+use notes/entities { Memo }
+use notes/types { MemoView }
+
+/// Every memo, by text.
+query all_memos() -> List<MemoView> {
+    from: Memo
+    order: [Memo.text asc]
+    limit: 50
+}
+```
+
+```jadpo check project=route-idempotency file=domains/notes/routes/memos.jadpo migrate=initial hidden
+use notes/types { MemoView }
+use notes/actions { AddMemo, add_memo }
+use notes/queries { all_memos }
+
+/// Memos anyone may leave and read.
+routes Memos {
+    prefix: /memos
+
+    /// Leaves a memo.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: AddMemo
+        output: MemoView
+        status: SuccessStatus.created
+        run: add_memo(input)
+    }
+
+    /// Every memo.
+    GET / {
+        authentication: RouteAuthentication.none
+        output: List<MemoView>
+        run: all_memos()
+    }
+}
+```
+
+```jadpo check project=route-idempotency file=api/main.api hidden
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 1
+
+idempotency: required
+
+GET /memos
+    authentication: none
+    output: List<MemoView>
+    status: 200
+
+POST /memos
+    authentication: none
+    input: AddMemo (body)
+    output: MemoView
+    status: 201
+
+input AddMemo
+    text: Text { min_length: 1, max_length: 200 }
+
+output MemoView
+    id: Uuid
+    text: Text { min_length: 1, max_length: 200 }
+```
+
+The first test sends no key of its own and is answered as any client
+would be; the others send `memo-1` twice. A repeat gets the first answer
+back and leaves no second memo; the same key with another memo is 422
+`idempotency_key_reused`:
+
+```jadpo check project=route-idempotency file=domains/notes/routes/memos.test.jadpo
+use notes/actions { AddMemo }
+
+test "a memo is left through its route, with a fresh key" {
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/memos"
+        input: AddMemo {
+            text: "Call the plumber"
+        }
+    }
+    assert response.status == 201
+}
+
+test "a memo sent again with its key is left once" {
+    var first: Response = request {
+        method: HttpMethod.post
+        path: "/memos"
+        idempotency_key: "memo-1"
+        input: AddMemo {
+            text: "Call the plumber"
+        }
+    }
+    var again: Response = request {
+        method: HttpMethod.post
+        path: "/memos"
+        idempotency_key: "memo-1"
+        input: AddMemo {
+            text: "Call the plumber"
+        }
+    }
+    assert again.status == 201
+    assert again.output == first.output
+    var listed: Response = request {
+        method: HttpMethod.get
+        path: "/memos"
+    }
+    match first.output {
+        some(memo) -> {
+            assert listed.output == [memo]
+        }
+        none -> {
+            assert first.output != none
+        }
+    }
+}
+
+test "a key sent again with another memo is refused" {
+    var first: Response = request {
+        method: HttpMethod.post
+        path: "/memos"
+        idempotency_key: "memo-1"
+        input: AddMemo {
+            text: "Call the plumber"
+        }
+    }
+    assert first.status == 201
+    var other: Response = request {
+        method: HttpMethod.post
+        path: "/memos"
+        idempotency_key: "memo-1"
+        input: AddMemo {
+            text: "Fix the tap"
+        }
+    }
+    assert other.status == 422
+    assert other.code == "idempotency_key_reused"
+}
+```
+
+`idempotency_key:` takes text; the runtime checks it as it checks a
+client's, so a key that isn't 1 to 255 printable characters is 400
+`invalid_request`. A `GET` reads no key, so a request to one that gives
+`idempotency_key:` is `semantic.request_invalid`.
+
 A schedule test runs the schedule once at the test's clock:
 
 ```jadpo fragment
@@ -1406,7 +1626,7 @@ with when it comes.
 |---|---|
 | Pure and action tests | Work in the new compiler (run, chunk 2.2): `jadpo test` runs `test "…" { }` and `assert` in the interpreter, for tests that call functions and actions. Since chunk 2.10 each test gets its own environment (its seed and clock, and the places its database and fakes will take), tests run on a thread per core, and the results are reported in the order seed's order. Each action or fixture a test calls commits on its own, through the runtime's action boundary; an action it calls joins its transaction. |
 | Kind of test | Works (run, chunk 2.2): the kind comes from what a test calls (an action, query or fixture makes it an action test, a `request` a route test), and the footer and `--json` count each kind. Schedule tests come with area 12; `--kind schedule` says so (`toolchain.not_built_yet`). |
-| Route tests | Work (run, chunk 4.1): `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token (chunks 4.3, 4.3b), and a service through a real service key (chunk 4.3b). |
+| Route tests | Work (run, chunk 4.1): `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token (chunks 4.3, 4.3b), and a service through a real service key (chunk 4.3b). Since chunk 4.7 every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). |
 | Assertion messages | Work (run, chunk 2.2): a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). The trace, fakes, kept database and clock in the decided report come with their phases and are left out until then. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
 | Clock | Decided, not built: the test clock comes with time (area 10, roadmap 5.2). |
@@ -1581,3 +1801,4 @@ with when it comes.
 | What a failed test leaves | `--keep-failed` keeps the database and trace | 2026-10-13 |
 | Speed of database copies | Copies prepared in the background; measured on the golden app before changing approach | 2026-10-13 |
 | Idempotency keys in route tests | A route test sends a fresh `Idempotency-Key` with every request but a `GET`, as a real client would, so a route on an API with `idempotency: Idempotency.required` is tested through its success; a test that writes its own `Idempotency-Key` header sends that one instead, to test repeats and refusals; built in chunk 4.7 (Richard) | 2026-10-16 |
+| Writing a route test's key (chosen in chunk 4.7) | A test writes the key it sends as `idempotency_key:` in `request { }`, text, as `as:` stands for the credential: the request has no headers of its own, and an `Input`'s `header:` field is the action's, which the runtime's key never reaches. The runtime checks it as it checks a client's. A `GET` reads no key, so a request to one that gives `idempotency_key:` is `semantic.request_invalid`. A fresh key is a new identity from the test's seed, so a run is the same every time; a route whose `Input` itself reads an `Idempotency-Key` header sends that one | 2026-10-16 |
