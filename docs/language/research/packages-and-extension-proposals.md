@@ -204,6 +204,28 @@ settings and the capabilities it provides.
   `///` description is compiled and run at publish, so the documentation
   cannot drift from the code.
 
+## Publishing
+
+Decided 2026-10-16 (Richard). The surface above is generated as proposed,
+and `jadpo package publish` refuses a package unless:
+
+1. it compiles with no errors and no warnings;
+2. every public type, failure and function has a `///` description;
+3. every public function has at least one example in its description,
+   compiled and run at publish, and every failure it can raise is shown by
+   an example or a test;
+4. its tests pass;
+5. its version agrees with the surface diff: a breaking change needs a new
+   major version;
+6. its changelog's list of changes is generated from the surface diff, and
+   the author writes only why;
+7. it declares a licence from a fixed list and the lowest Jadpo version it
+   needs.
+
+Local packages skip the bar until they are published. Descriptions alone
+are not the bar, because the compiler cannot judge whether one says
+anything; examples are, because they must run.
+
 ## How far a capability mapping goes
 
 Area 11 question 21 limits a `provide` mapping to field paths, literals,
@@ -342,7 +364,7 @@ until later, but answering them now fixes the pattern.
    through review only when an app needs it. Payments and AI models stay
    provider packages.
 8. **Does the compiler generate a package's surface?** Richard's idea,
-   2026-10-16. *Recommendation:* yes, as "The package surface" describes:
+   2026-10-16. *Decided 2026-10-16 (Richard):* yes, as "The package surface" describes:
    `surface.json` generated at publish and checked by the registry, the
    registry's documentation rendered from it, publishing refused when the
    surface breaks without a new major version, and examples in `///`
