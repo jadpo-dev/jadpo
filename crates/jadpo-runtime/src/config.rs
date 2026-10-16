@@ -139,7 +139,7 @@ pub enum ProblemKind {
 }
 
 /// The checked values of a start.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ConfigValues {
     entries: Vec<Entry>,
 }

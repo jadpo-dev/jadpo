@@ -54,10 +54,6 @@ impl Local {
             .collect()
     }
 
-    pub fn is_missing(&self) -> bool {
-        self.text.is_empty() && self.lines.is_empty()
-    }
-
     /// Sets `name` to `value`, in place if the file sets it and at the end
     /// otherwise.
     pub fn set(&mut self, name: &str, value: &str) {
@@ -100,7 +96,11 @@ impl Local {
 fn quote(value: &str) -> String {
     let bare = !value.is_empty()
         && value.chars().all(|c| {
-            c.is_ascii_alphanumeric() || matches!(c, '_' | '@' | '%' | '+' | '=' | ':' | ',' | '.' | '/' | '~' | '-')
+            c.is_ascii_alphanumeric()
+                || matches!(
+                    c,
+                    '_' | '@' | '%' | '+' | '=' | ':' | ',' | '.' | '/' | '~' | '-'
+                )
         });
     if bare {
         return value.to_string();
@@ -325,7 +325,10 @@ fn ignore(root: &Path) -> bool {
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     let ignored = text.lines().any(|line| {
         let line = line.trim();
-        matches!(line, ".env.local" | "/.env.local" | ".env.*" | ".env*" | "*.local")
+        matches!(
+            line,
+            ".env.local" | "/.env.local" | ".env.*" | ".env*" | "*.local"
+        )
     });
     if ignored {
         return false;
@@ -349,8 +352,9 @@ mod tests {
 
     #[test]
     fn lines_read_as_names_and_values() {
-        let local = read_text("# local\nMAIL_SENDER=a@example.test\n\nNAME=\"two words\"\nQ='x y'\n")
-            .expect("reads");
+        let local =
+            read_text("# local\nMAIL_SENDER=a@example.test\n\nNAME=\"two words\"\nQ='x y'\n")
+                .expect("reads");
         let values = local.values();
         assert_eq!(values["MAIL_SENDER"], "a@example.test");
         assert_eq!(values["NAME"], "two words");
@@ -359,7 +363,15 @@ mod tests {
 
     #[test]
     fn a_value_survives_being_written_and_read() {
-        for value in ["plain", "with space", "quote\"s", "back\\slash", "a=b#c", "line\nbreak", ""] {
+        for value in [
+            "plain",
+            "with space",
+            "quote\"s",
+            "back\\slash",
+            "a=b#c",
+            "line\nbreak",
+            "",
+        ] {
             let mut local = Local::default();
             local.set("KEY", value);
             let back = read_text(&local.render()).expect("reads").values();
