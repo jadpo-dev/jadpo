@@ -28,8 +28,8 @@ use crate::types::{callables_of, typed_body};
 
 /// One thing an action, fixture or query does that policy decides.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Touch {
-    /// An entity's records, by entity name, as its own body touches them.
+pub enum Act {
+    /// An entity's records, by entity name, as its own body acts them.
     Entity(String, Effect),
     /// An action it calls, by name.
     Calls(String),
@@ -40,9 +40,9 @@ pub enum Touch {
     SignsIn,
 }
 
-/// What each action and fixture in `file` touches, by name.
+/// What each action and fixture in `file` acts, by name.
 #[salsa::tracked(returns(ref))]
-pub fn touches(db: &dyn Db, project: Project, file: File) -> BTreeMap<String, BTreeSet<Touch>> {
+pub fn acts(db: &dyn Db, project: Project, file: File) -> BTreeMap<String, BTreeSet<Act>> {
     let identity = crate::identity::identity(db, project);
     let user = identity
         .variant(PrincipalKind::User)
@@ -62,65 +62,65 @@ pub fn touches(db: &dyn Db, project: Project, file: File) -> BTreeMap<String, BT
         };
         let mut found = BTreeSet::new();
         for site in &checked.body.sites {
-            let touch = match &site.node {
+            let act = match &site.node {
                 Node::Expr(BodyExpr::Write { entity, op, .. }) => {
                     let effect = match op {
                         WriteOp::Create => Effect::Create,
                         WriteOp::Update => Effect::Update,
                         WriteOp::Delete => Effect::Delete,
                     };
-                    Touch::Entity(entity.name().to_string(), effect)
+                    Act::Entity(entity.name().to_string(), effect)
                 }
                 Node::Expr(BodyExpr::Call {
                     callee: Callee::Action(callee),
                     ..
-                }) => Touch::Calls(callee.name().to_string()),
+                }) => Act::Calls(callee.name().to_string()),
                 Node::Expr(BodyExpr::Call {
                     callee: Callee::Entity { entity, operation },
                     ..
-                }) if operation == "get" => Touch::Entity(entity.name().to_string(), Effect::Read),
+                }) if operation == "get" => Act::Entity(entity.name().to_string(), Effect::Read),
                 Node::Expr(BodyExpr::Call {
                     callee: Callee::Query(query),
                     ..
-                }) => Touch::Queries(query.name().to_string()),
+                }) => Act::Queries(query.name().to_string()),
                 Node::Expr(BodyExpr::Call {
                     callee: Callee::Session(op),
                     ..
-                }) => match session_touch(*op, user.as_deref(), service.as_deref()) {
-                    Some(touch) => touch,
+                }) => match session_act(*op, user.as_deref(), service.as_deref()) {
+                    Some(act) => act,
                     None => continue,
                 },
                 _ => continue,
             };
-            found.insert(touch);
+            found.insert(act);
         }
         out.insert(key.name().to_string(), found);
     }
     out
 }
 
-/// What a session or key operation touches (area 9, question 8): listing a
+/// What a session or key operation acts (area 9, question 8): listing a
 /// user's tokens or a service's keys reads its record, revoking one or
 /// issuing a key changes it, and starting, ending and issuing a token
 /// sign a caller in or out.
-pub fn session_touch(op: SessionOp, user: Option<&str>, service: Option<&str>) -> Option<Touch> {
+pub fn session_act(op: SessionOp, user: Option<&str>, service: Option<&str>) -> Option<Act> {
     Some(match op {
-        SessionOp::Start | SessionOp::End | SessionOp::IssueToken => Touch::SignsIn,
-        SessionOp::Tokens => Touch::Entity(user?.to_string(), Effect::Read),
-        SessionOp::RevokeToken => Touch::Entity(user?.to_string(), Effect::Update),
-        SessionOp::Keys => Touch::Entity(service?.to_string(), Effect::Read),
+        SessionOp::Start | SessionOp::End | SessionOp::IssueToken => Act::SignsIn,
+        SessionOp::Tokens => Act::Entity(user?.to_string(), Effect::Read),
+        SessionOp::RevokeToken => Act::Entity(user?.to_string(), Effect::Update),
+        SessionOp::Keys => Act::Entity(service?.to_string(), Effect::Read),
         SessionOp::IssueKey | SessionOp::RevokeKey => {
-            Touch::Entity(service?.to_string(), Effect::Update)
+            Act::Entity(service?.to_string(), Effect::Update)
         }
     })
 }
 
-/// Every action's and fixture's touches, across the project.
+/// Every action's and fixture's acts, across the project.
 #[salsa::tracked(returns(ref))]
-pub fn all_touches(db: &dyn Db, project: Project) -> BTreeMap<String, BTreeSet<Touch>> {
-    let mut out: BTreeMap<String, BTreeSet<Touch>> = BTreeMap::new();
+pub fn all_acts(db: &dyn Db, project: Project) -> BTreeMap<String, BTreeSet<Act>> {
+    let mut out: BTreeMap<String, BTreeSet<Act>> = BTreeMap::new();
     for &file in project.files(db) {
-        for (name, found) in touches(db, project, file) {
+        for (name, found) in acts(db, project, file) {
             out.entry(name.clone())
                 .or_default()
                 .extend(found.iter().cloned());
@@ -166,7 +166,7 @@ fn reached(
     run: &str,
     query: bool,
 ) -> (Vec<Reached>, bool) {
-    let touches = all_touches(db, project);
+    let acts = all_acts(db, project);
     let entities = crate::data::Entities::new(db, project);
     let mut out: Vec<Reached> = Vec::new();
     let mut any = false;
@@ -201,9 +201,9 @@ fn reached(
     let mut seen = BTreeSet::from([run.to_string()]);
     let mut queue = vec![(run.to_string(), true)];
     while let Some((current, first)) = queue.pop() {
-        for touch in touches.get(&current).into_iter().flatten() {
-            match touch {
-                Touch::Entity(entity, effect) => {
+        for act in acts.get(&current).into_iter().flatten() {
+            match act {
+                Act::Entity(entity, effect) => {
                     any = true;
                     let grants = match (first, listed, effect) {
                         (true, Some(line), Effect::Create | Effect::Update | Effect::Delete) => {
@@ -216,18 +216,18 @@ fn reached(
                     };
                     push(entity, *effect, grants, &mut out);
                 }
-                Touch::Calls(callee) => {
+                Act::Calls(callee) => {
                     if seen.insert(callee.clone()) {
                         queue.push((callee.clone(), false));
                     }
                 }
-                Touch::Queries(query) => {
+                Act::Queries(query) => {
                     for entity in query_reads(db, project, query) {
                         any = true;
                         push(&entity, Effect::Read, own(&entity, Effect::Read), &mut out);
                     }
                 }
-                Touch::SignsIn => any = true,
+                Act::SignsIn => any = true,
             }
         }
     }
@@ -248,7 +248,9 @@ fn doing(effect: Effect, entity: &str) -> String {
 /// it reaches that it may never do.
 #[salsa::tracked(returns(ref))]
 pub fn route_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
-    if !super::policy_clean(db, project) {
+    // Policy checks what the routes reach once the routes and the policy
+    // read cleanly: a route table with problems is reported first.
+    if !super::policy_clean(db, project) || !crate::routes::routes_clean(db, project) {
         return Vec::new();
     }
     let access = super::access(db, project);
@@ -278,7 +280,7 @@ pub fn route_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     None => continue,
                 }
             };
-            let (reached, any) = reached(db, project, &access, &run, route.run.query);
+            let (reached, any) = reached(db, project, access, &run, route.run.query);
             let listed = (!route.run.query)
                 .then(|| access.root.action(&run))
                 .flatten();
@@ -391,9 +393,9 @@ pub fn route_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 
 /// Whether the action `run`'s own body does `effect` to `entity`.
 fn touches_own(db: &dyn Db, project: Project, run: &str, entity: &str, effect: Effect) -> bool {
-    all_touches(db, project)
+    all_acts(db, project)
         .get(run)
-        .is_some_and(|found| found.contains(&Touch::Entity(entity.to_string(), effect)))
+        .is_some_and(|found| found.contains(&Act::Entity(entity.to_string(), effect)))
 }
 
 fn public_missing(label: &str, span: jadpo_diag::Span, what: &str, next: &str) -> Diagnostic {

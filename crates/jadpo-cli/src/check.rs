@@ -88,7 +88,9 @@ pub fn check(call: &Call) -> Reply {
         let graph = jadpo_check::graph::graph(db, loaded.project);
         let openapi =
             jadpo_check::routes::openapi::documents(db, loaded.project, &title(&loaded.root));
-        match derived::write(&loaded.root, graph, errors, &openapi) {
+        let permissions = jadpo_check::policy::policy_clean(db, loaded.project)
+            .then(|| jadpo_check::policy::report::report(db, loaded.project));
+        match derived::write(&loaded.root, graph, errors, &openapi, permissions.as_ref()) {
             Ok(paths) => written = paths,
             Err(problem) => diagnostics.push(*problem),
         }

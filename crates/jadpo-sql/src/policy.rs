@@ -86,7 +86,7 @@ pub fn exists(membership: &Membership) -> String {
 /// Whether any of `whos` lets the caller in: `FALSE` for none, `TRUE`
 /// when anyone may.
 pub fn any_of(whos: &[Who]) -> String {
-    if whos.iter().any(|who| *who == Who::Anyone) {
+    if whos.contains(&Who::Anyone) {
         return "TRUE".to_string();
     }
     let parts: Vec<String> = whos

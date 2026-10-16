@@ -1026,6 +1026,7 @@ mod tests {
             api_tokens: false,
             user: None,
             service: None,
+            gated: Default::default(),
         };
         let set = set_cookies(
             &plan,

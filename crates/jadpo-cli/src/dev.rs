@@ -536,7 +536,9 @@ fn prepare(root: &Path) -> Result<Ready, (Vec<Diagnostic>, BTreeMap<String, Stri
         .count();
     let graph = jadpo_check::graph::graph(db, project);
     let openapi = jadpo_check::routes::openapi::documents(db, project, &crate::check::title(root));
-    let _ = crate::derived::write(root, graph, errors, &openapi);
+    let permissions = jadpo_check::policy::policy_clean(db, project)
+        .then(|| jadpo_check::policy::report::report(db, project));
+    let _ = crate::derived::write(root, graph, errors, &openapi, permissions.as_ref());
     let blocking: Vec<Diagnostic> = diagnostics
         .into_iter()
         .filter(jadpo_check::blocks_running)

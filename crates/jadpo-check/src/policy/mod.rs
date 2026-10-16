@@ -482,12 +482,12 @@ pub fn membership_read<'db>(
         (
             "scope",
             &rule::POLICY_MEMBERSHIP_SCOPE_REQUIRED,
-            "what the role is held in: a reference such as `company_id`, or `MembershipScope.application` for a role held across the whole application",
+            "what the role is held in: a field typed `<Entity>.id`, or `MembershipScope.application` for a role held across the whole application",
         ),
         (
             "member",
             &rule::POLICY_MEMBERSHIP_MEMBER_REQUIRED,
-            "who holds it: a reference to the user entity, such as `user_id`",
+            "who holds it: a reference to the user entity",
         ),
         (
             "role",
@@ -540,7 +540,7 @@ pub fn membership_read<'db>(
                         span.clone(),
                         format!("`scope: {written}` isn't a reference of `{}`", entity.name),
                         "not a reference",
-                        "A membership's `scope:` names the reference to the record its role is held in, such as `company_id`, or says `MembershipScope.application` for a role held across the whole application.",
+                        "A membership's `scope:` names the reference to the record its role is held in, or says `MembershipScope.application` for a role held across the whole application.",
                         "Name a field typed `<Entity>.id`, or write `MembershipScope.application`",
                     ));
                 }
@@ -598,7 +598,7 @@ pub fn membership_read<'db>(
                 span.clone(),
                 format!("`role: {written}` isn't a field holding a role"),
                 "not an enum field",
-                "A membership's `role:` names the field that stores the role, typed with an enum whose values a grant names (`CompanyRole.editor`).",
+                "A membership's `role:` names the field that stores the role, typed with an enum whose values a grant names (`<Role>.<value>`).",
                 "Name a field typed with the role's enum",
             )),
         }
@@ -723,6 +723,7 @@ fn entries(value: Option<&Expr>) -> Option<Vec<Expr>> {
 
 /// What role enum `roles` and its `role` resolve to: the membership that
 /// holds the enum, or the problem.
+#[allow(clippy::result_large_err)]
 fn role_of<'m>(
     lookup: &Lookup<'_>,
     memberships: &'m [Membership],
@@ -738,7 +739,7 @@ fn role_of<'m>(
                 span.clone(),
                 format!("`{written}` isn't someone a grant can name"),
                 "not a user field, a role or `Access`",
-                "A grant names a field of the record that points at the caller (`owner_id`), a membership role (`CompanyRole.editor`), or `Access.authenticated`, `Access.public` or `Access.system`.",
+                "A grant names a field of the record that points at the caller, a membership role (`<Role>.<value>`), or `Access.authenticated`, `Access.public` or `Access.system`.",
                 "Name one of these",
             ));
         }
@@ -891,7 +892,9 @@ pub fn root_read(db: &dyn Db, project: Project) -> Arc<RootRead> {
             |v| node_span(&path, v.syntax()),
         );
         match &value {
-            Some(Expr::NameRef(name)) if tree::name_ref_text(name).is_some_and(|n| entities.get(&n).is_some()) => {
+            Some(Expr::NameRef(name))
+                if tree::name_ref_text(name).is_some_and(|n| entities.get(&n).is_some()) =>
+            {
                 let tenant = tree::name_ref_text(name).unwrap_or_default();
                 let held: Vec<String> = memberships
                     .iter()
@@ -914,7 +917,7 @@ pub fn root_read(db: &dyn Db, project: Project) -> Arc<RootRead> {
                 span,
                 format!("`tenant: {written}` isn't an entity"),
                 "not an entity",
-                "Root `policy { }`'s `tenant:` names the entity each customer's data belongs to, such as `Company`.",
+                "Root `policy { }`'s `tenant:` names the entity each tenant's data belongs to.",
                 "Name an entity",
             )),
         }
@@ -1011,7 +1014,7 @@ pub fn root_read(db: &dyn Db, project: Project) -> Arc<RootRead> {
                         roles,
                         role,
                         via: None,
-                    } => role_of(&lookup, &memberships, &roles, &role, &at, &text).map(|m| {
+                    } => role_of(&lookup, memberships, &roles, &role, &at, &text).map(|m| {
                         ActionWho::Role {
                             membership: m.entity.clone(),
                             role: role.clone(),
@@ -1021,14 +1024,14 @@ pub fn root_read(db: &dyn Db, project: Project) -> Arc<RootRead> {
                         at.clone(),
                         format!("`{field}` doesn't say whose field it is"),
                         "a bare field",
-                        "An `actions:` line applies to every record its action reaches, so a field names its entity: `Todo.owner_id`.",
+                        "An `actions:` line applies to every record its action reaches, so a field names its entity: `<Entity>.<field>`.",
                         &format!("Write `<Entity>.{field}`"),
                     )),
                     _ => Err(binding(
                         at.clone(),
                         format!("`{text}` isn't someone an action can be granted to"),
                         "not a field, a role or `Access`",
-                        "An `actions:` line names a field of a record the action reaches that points at the caller (`Todo.owner_id`), a membership role (`StaffRole.operator`), or `Access.authenticated`, `Access.public` or `Access.system`.",
+                        "An `actions:` line names a field of a record the action reaches that points at the caller (`<Entity>.<field>`), a membership role (`<Role>.<value>`), or `Access.authenticated`, `Access.public` or `Access.system`.",
                         "Name one of these",
                     )),
                 };
@@ -1113,7 +1116,7 @@ fn action_named(lookup: &Lookup<'_>, names: &[String]) -> Option<String> {
         .iter()
         .find(|s| s.kind == ItemKind::Action)?;
     let matches = match (&symbol.ownership, domain) {
-        (Ownership::Domain(owner), Some(domain)) => owner == domain,
+        (Ownership::Domain(holder), Some(domain)) => holder == domain,
         (Ownership::Loose, None) => true,
         _ => false,
     };
@@ -1211,10 +1214,12 @@ pub fn policy_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
             };
             let Some(items) = entries(member.value().as_ref()) else {
                 problems.push(binding(
-                    member.value().map_or(span.clone(), |v| node_span(&path, v.syntax())),
+                    member
+                        .value()
+                        .map_or(span.clone(), |v| node_span(&path, v.syntax())),
                     format!("`{word}:` isn't given a list"),
                     "not a list",
-                    "Each grant lists who may do it, in `[ ]`: `read: [owner_id, CompanyRole.viewer]`.",
+                    "Each grant lists who may do it, in `[ ]`: `read: [Access.authenticated]`.",
                     "Write the list in `[ ]`",
                 ));
                 continue;
@@ -1228,16 +1233,7 @@ pub fn policy_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
                     continue;
                 }
                 list.written.push(text.clone());
-                match resolve_who(
-                    db,
-                    project,
-                    &lookup,
-                    entity,
-                    &memberships,
-                    &expr,
-                    &text,
-                    &at,
-                ) {
+                match resolve_who(db, project, &lookup, entity, memberships, &expr, &text, &at) {
                     Ok(grant) => {
                         if !list.grants.contains(&grant) {
                             list.grants.push(grant);
@@ -1396,7 +1392,7 @@ fn effect_unknown(path: &str, node: &jadpo_syntax::SyntaxNode, word: &str) -> Di
     .at(span.clone(), "not a grant or a setting")
     .reason(match near {
         Some(near) => format!("An entity's `policy:` lists who may `create`, `read`, `update` and `delete` its records, and may say which `tenant:` they belong to. Every action takes its permission from these. Did you mean `{near}`?"),
-        None => "An entity's `policy:` lists who may `create`, `read`, `update` and `delete` its records, and may say which `tenant:` they belong to. Every action takes its permission from these; one that needs other people is listed under `actions:` in `policy.jadpo`.".to_string(),
+        None => "An entity's `policy:` lists who may `create`, `read`, `update` and `delete` its records, and may say which `tenant:` they belong to. Every action takes its permission from these; one that needs others is listed under `actions:` in `policy.jadpo`.".to_string(),
     });
     match near {
         Some(near) => problem.next(format!("Use `{near}`")).edit(span, near),
@@ -1405,7 +1401,7 @@ fn effect_unknown(path: &str, node: &jadpo_syntax::SyntaxNode, word: &str) -> Di
 }
 
 /// One entry of an entity's grant list, resolved against the entity.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::result_large_err)]
 fn resolve_who(
     db: &dyn Db,
     project: Project,
@@ -1425,7 +1421,7 @@ fn resolve_who(
             let exists = entity.fields.iter().any(|f| f.name == field);
             let reason = match (&user, exists) {
                 (Some(user), true) => format!(
-                    "A field names who may do this when it points at the caller: a reference to `{user}`, the principal's user entity (area 8), such as `owner_id: {user}.id`. `{}.{field}` doesn't.",
+                    "A field names who may do this when it points at the caller: a reference to `{user}`, the principal's user entity (area 8), typed `{user}.id`. `{}.{field}` isn't.",
                     entity.name
                 ),
                 (Some(user), false) => format!(
@@ -1537,7 +1533,7 @@ fn resolve_who(
             at.clone(),
             format!("`{text}` isn't someone a grant can name"),
             "not a user field, a role or `Access`",
-            "A grant names a field of the record that points at the caller (`owner_id`), a membership role (`CompanyRole.editor`), or `Access.authenticated`, `Access.public` or `Access.system`.",
+            "A grant names a field of the record that points at the caller, a membership role (`<Role>.<value>`), or `Access.authenticated`, `Access.public` or `Access.system`.",
             "Name one of these",
         )),
     }

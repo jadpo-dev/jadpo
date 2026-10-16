@@ -1965,8 +1965,10 @@ pub fn write_rules<'db>(
     entity: crate::lookups::Name<'db>,
 ) -> Option<WriteRules> {
     let found = entity_model(db, project, entity).as_deref()?;
-    let mut rules = WriteRules::default();
-    rules.fixed = crate::policy::fixed_fields(db, project, &found.name);
+    let mut rules = WriteRules {
+        fixed: crate::policy::fixed_fields(db, project, &found.name),
+        ..WriteRules::default()
+    };
     for field in &found.fields {
         if field.immutable {
             rules.immutable.push(field.name.clone());
