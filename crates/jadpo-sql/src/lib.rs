@@ -17,6 +17,7 @@
 //! table called `user` or `order` is a name, not a keyword.
 
 pub mod condition;
+pub mod policy;
 pub mod statement;
 pub mod table;
 

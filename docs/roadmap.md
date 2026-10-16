@@ -287,9 +287,19 @@ reference only).
   `Principal.service`, a route test signing in as a service), and
   `api_token:` with `sessions.issue_token`, `.tokens` and `.revoke_token`
   (area 8, decided 2026-10-16).
-- [ ] **4.4 Policy:** `opus · xhigh` grants compiled into queries, tenancy, the permissions
-  report.
-- [ ] **4.4b Listing tokens and keys from a `GET`** `sonnet · high`
+- [x] **4.4 Policy:** `opus · xhigh` grants compiled into queries, tenancy, the permissions
+  report, and `sessions.revoke_token` and `Service.revoke_key` gated by
+  the owning record's grants (today they revoke any id, area 8). Split:
+  field restrictions are 4.4b.
+- [ ] **4.4b Field restrictions:** `opus · xhigh` a field's own
+  `policy:` and `FieldAccess.server_only`, `policy.field_widens_entity`,
+  `policy.output_field_unproved` with a field's value followed through
+  variables and other types, writes refused for a field the caller may
+  not change, `policy.role_field_create_forbidden`, proving every caller
+  who may read a record may read the parents a query includes, the
+  report's field rows, and policy's grants and scopes in the graph and
+  manifest (area 9).
+- [ ] **4.4c Listing tokens and keys from a `GET`** `sonnet · high`
   (area 8, decided 2026-10-16): a `GET` route runs `sessions.tokens` and
   `Service.keys` as generated queries, and `IssuedToken` and `IssuedKey`
   can be held in an `Output`, so a "signed-in devices" screen is one route.

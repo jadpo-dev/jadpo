@@ -3,6 +3,7 @@ SELECT "id", "board_id", "stage", "published_at", "archived_at", "changed_at"
 FROM "card"
 WHERE "id" = $1
   AND ("published_at" IS NOT NULL AND "published_at" <= $2)
+  AND FALSE
 -- $1: argument 0 as Uuid
 -- $2: clock.now as Timestamp
 -- columns: uuid, uuid, enum Stage, instant, instant, instant

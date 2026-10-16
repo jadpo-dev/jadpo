@@ -365,6 +365,36 @@ rules! {
         "01-project-layout-and-modules.html#naming-generic-name", "Domain or library has a generic name";
     NAMING_ROUND_TRIP: "naming.round_trip", area 1, Error, Agent,
         "01-project-layout-and-modules.html#naming-round-trip", "Name does not survive conversion to its file name";
+    POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
+        "09-policy.html#policy-binding-invalid", "Policy names something that can't say who";
+    POLICY_DECLARATION_DUPLICATE: "policy.declaration_duplicate", area 9, Error, Agent,
+        "09-policy.html#policy-declaration-duplicate", "Policy is declared twice";
+    POLICY_EFFECT_DUPLICATE: "policy.effect_duplicate", area 9, Error, Agent,
+        "09-policy.html#policy-effect-duplicate", "Policy gives the same list twice";
+    POLICY_EFFECT_UNGRANTED: "policy.effect_ungranted", area 9, Error, Human,
+        "09-policy.html#policy-effect-ungranted", "Route reaches something no grant allows";
+    POLICY_EFFECT_UNKNOWN: "policy.effect_unknown", area 9, Error, Agent,
+        "09-policy.html#policy-effect-unknown", "Policy holds something that isn't a grant or a setting";
+    POLICY_MEMBERSHIP_DUPLICATE: "policy.membership_duplicate", area 9, Error, Agent,
+        "09-policy.html#policy-membership-duplicate", "Entity declares a membership twice, or gives one of its parts twice";
+    POLICY_MEMBERSHIP_MEMBER_REQUIRED: "policy.membership_member_required", area 9, Error, Agent,
+        "09-policy.html#policy-membership-member-required", "Membership doesn't say who holds it";
+    POLICY_MEMBERSHIP_ROLE_REQUIRED: "policy.membership_role_required", area 9, Error, Agent,
+        "09-policy.html#policy-membership-role-required", "Membership doesn't say which field holds the role";
+    POLICY_MEMBERSHIP_SCOPE_REQUIRED: "policy.membership_scope_required", area 9, Error, Agent,
+        "09-policy.html#policy-membership-scope-required", "Membership doesn't say what it is held in";
+    POLICY_PUBLIC_GRANT_MISSING: "policy.public_grant_missing", area 9, Error, Human,
+        "09-policy.html#policy-public-grant-missing", "Route anyone may call reaches what not everyone may do";
+    POLICY_ROLE_UNBOUND: "policy.role_unbound", area 9, Error, Agent,
+        "09-policy.html#policy-role-unbound", "Grant names a role no membership holds";
+    POLICY_SCOPE_AMBIGUOUS: "policy.scope_ambiguous", area 9, Error, Agent,
+        "09-policy.html#policy-scope-ambiguous", "Grant doesn't say which reference a role or the tenant applies through";
+    POLICY_SCOPE_DUPLICATE: "policy.scope_duplicate", area 9, Error, Agent,
+        "09-policy.html#policy-scope-duplicate", "A scope or tenant is given twice";
+    POLICY_SCOPE_MISSING: "policy.scope_missing", area 9, Error, Agent,
+        "09-policy.html#policy-scope-missing", "Entity has no reference a role or the tenant applies through";
+    POLICY_SUBJECT_DUPLICATE: "policy.subject_duplicate", area 9, Error, Agent,
+        "09-policy.html#policy-subject-duplicate", "Grant names the same caller twice";
     QUERY_CONDITION_UNSUPPORTED: "query.condition_unsupported", area 6, Error, Agent,
         "06-reads-and-writes.html#query-condition-unsupported", "Query condition is not one an index can serve";
     QUERY_FROM_NOT_ENTITY: "query.from_not_entity", area 6, Error, Agent,
@@ -705,6 +735,8 @@ rules! {
         "02-values-and-types.html#type-field-on-non-record", "Field is read from a value without fields";
     TYPE_FIELD_UNPROVED: "type.field_unproved", area 2, Error, Agent,
         "02-values-and-types.html#type-field-unproved", "Object field value may break the field's rules";
+    TYPE_FIELD_UPDATE_FORBIDDEN: "type.field_update_forbidden", area 9, Error, Agent,
+        "09-policy.html#type-field-update-forbidden", "Update changes a field that never changes";
     TYPE_FOREIGN_TYPE: "type.foreign_type", area 2, Error, Agent,
         "02-values-and-types.html#type-foreign-type", "Type named as another language names it";
     TYPE_FOREIGN_VALUE: "type.foreign_value", area 2, Error, Agent,

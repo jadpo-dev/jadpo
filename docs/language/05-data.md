@@ -1223,7 +1223,7 @@ error: `identity` isn't something an entity holds
   |
 4 |     identity: id
   |     ^^^^^^^^ not a field or a section
-  reason: An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:` and `policy:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.
+  reason: An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:`, `policy:` and `membership:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.
   next: Remove it from `Note`, or move it where it belongs (agent)
   rule: data.unknown_section
   help: docs/language/05-data.html#data-unknown-section
@@ -1894,8 +1894,8 @@ Not built yet, and said so where it is used (`toolchain.not_built_yet`):
   `jadpo migrate new`.
 - Entities in Redis, whose expiry syntax is open (question 15), record
   caches (`caches:`), and indexes with a `kind:` option.
-- `policy:` is read but not checked: area 9 builds it. Seeds and `jadpo
-  seed` are not built.
+- Seeds and `jadpo seed` are not built. An entity's `policy:` and
+  `membership:` are area 9's, built in chunk 4.4.
 - A lifecycle's `purge: { after: config.<setting> }` waits for configuration
   (chunk 5.1), and the hourly purge schedule for schedules (chunk 6.2).
 - `jadpo rename`, which writes the identity registry (area 18), comes with

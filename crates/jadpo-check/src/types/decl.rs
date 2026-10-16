@@ -1300,12 +1300,13 @@ struct FieldCtx {
 /// Settings later areas give an entity's or event's fields: data (area 5),
 /// policy (area 9) and personal data (area 15). They are checked when
 /// those areas are built.
-const LATER_FIELD_SETTINGS: [&str; 8] = [
+const LATER_FIELD_SETTINGS: [&str; 9] = [
     "erase",
     "generated",
     "immutable",
     "on_delete",
     "personal",
+    "policy",
     "retention",
     "role",
     "unique",

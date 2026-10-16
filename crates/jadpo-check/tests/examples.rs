@@ -171,7 +171,6 @@ const EXEMPT: &[(&str, &str)] = &[
         "root file authentication.jadpo",
         "not built: sign-in (area 8)",
     ),
-    ("root file policy.jadpo", "not built: policy (area 9)"),
     ("root file flags.jadpo", "not built: flags (area 16)"),
     ("domain folder routes", "not built: routes (area 7)"),
     ("domain folder schedules", "not built: schedules (area 12)"),

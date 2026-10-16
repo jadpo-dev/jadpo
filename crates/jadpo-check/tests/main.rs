@@ -23,6 +23,7 @@ mod logic;
 mod lookup;
 mod named_collections;
 mod one_error;
+mod policy;
 mod project;
 mod review;
 mod scale;

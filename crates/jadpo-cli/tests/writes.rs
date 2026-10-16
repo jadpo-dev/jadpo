@@ -71,11 +71,11 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/shop/entities/shelf.jadpo",
-        "use shop/types { Count, Name }\n\n/// A shelf.\nentity Shelf {\n    id: Uuid\n    name: Name {\n        unique: true\n    }\n    visits: Count\n}\n",
+        "use shop/types { Count, Name }\n\n/// A shelf.\nentity Shelf {\n    id: Uuid\n    name: Name {\n        unique: true\n    }\n    visits: Count\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n}\n",
     ),
     (
         "domains/shop/entities/item.jadpo",
-        "use shop/entities { Shelf }\nuse shop/types { Name }\n\n/// An item on a shelf.\nentity Item {\n    id: Uuid\n    shelf_id: Shelf.id {\n        on_delete: OnDelete.restricted\n    }\n    label: Name\n    note: Name?\n    changed_at: Instant {\n        generated: Generated.on_change\n    }\n}\n",
+        "use shop/entities { Shelf }\nuse shop/types { Name }\n\n/// An item on a shelf.\nentity Item {\n    id: Uuid\n    shelf_id: Shelf.id {\n        on_delete: OnDelete.restricted\n    }\n    label: Name\n    note: Name?\n    changed_at: Instant {\n        generated: Generated.on_change\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n}\n",
     ),
     (
         "domains/shop/types/item_changes.jadpo",
@@ -131,7 +131,7 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/shop/entities/log.jadpo",
-        "/// A running log.\nentity Log {\n    id: Uuid\n    text: Text\n}\n",
+        "/// A running log.\nentity Log {\n    id: Uuid\n    text: Text\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n}\n",
     ),
     (
         "domains/shop/actions/start_log.jadpo",

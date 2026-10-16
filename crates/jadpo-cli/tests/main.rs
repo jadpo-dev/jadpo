@@ -14,6 +14,7 @@ mod lifecycle;
 mod lsp;
 mod manifest;
 mod migrate;
+mod policy;
 mod queries;
 mod sql;
 #[path = "test.rs"]

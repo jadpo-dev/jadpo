@@ -50,6 +50,9 @@ pub enum WriteSource {
     NewId,
     /// The operation's clock, for a generated field (area 5).
     Now,
+    /// Who is calling, for the policy compiled into the statement (area
+    /// 9).
+    Caller(crate::policy::CallerPart),
 }
 
 /// One parameter: `$1` is the first.
@@ -75,6 +78,12 @@ pub struct WritePlan {
     pub store: String,
     pub op: WriteOp,
     pub sql: String,
+    /// The statement without the policy compiled into `sql`, when policy
+    /// limits it: what a test's call without a caller runs (area 9). It
+    /// takes the same parameters.
+    pub unpoliced: Option<String>,
+    /// When policy limits it: what writing no row means (area 9).
+    pub policy: Option<PolicyRefusal>,
     pub params: Vec<WriteParam>,
     /// The record a `create` or `update` gives; `None` for a `delete`.
     pub returns: Option<Returned>,
@@ -124,12 +133,31 @@ pub enum Raises {
 /// its `when:` refused it.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Guard {
-    /// `SELECT 1` of the record by `id`, under the lifecycle's `visible:`.
+    /// `SELECT 1` of the record by `id`, under the lifecycle's `visible:`
+    /// and policy.
     pub sql: String,
+    /// The same without policy.
+    pub unpoliced: Option<String>,
     /// Its parameters, from the write's inputs.
     pub params: Vec<WriteParam>,
     /// The position in `refusals` its refusal takes.
     pub refusal: u32,
+}
+
+/// What a write that policy limits means when it changed no row (area 9,
+/// "When policy says no").
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PolicyRefusal {
+    /// A create policy refused: `not_permitted`.
+    Create,
+    /// An update or delete: `SELECT 1` of the record by `id` under its
+    /// lifecycle but not policy. Found, policy refused it: a write by `id`
+    /// reports the record's not-found failure, logged as concealed by
+    /// policy, and one of a record loaded earlier `not_permitted`.
+    Probe {
+        sql: String,
+        params: Vec<WriteParam>,
+    },
 }
 
 /// How many records one purge batch deletes at most (area 5: "in small

@@ -194,11 +194,15 @@ pub fn document(
     let mut failure_schemas: BTreeMap<String, Value> = BTreeMap::new();
     let mut paths: BTreeMap<String, Value> = BTreeMap::new();
     for (_, route) in &routes {
+        let refuses = !route.run.query
+            && crate::graph::declaration_key(&lookup, &route.run.name)
+                .is_some_and(|key| crate::policy::reach::may_refuse(db, project, key.name()));
         let mut operation = operation(
             &wire,
             &lookup,
             route,
             required,
+            refuses,
             &methods,
             &mut refs,
             &mut failure_schemas,
@@ -372,11 +376,13 @@ fn envelope(code: &str, description: &str, details: Option<Value>) -> Value {
     outer
 }
 
+#[allow(clippy::too_many_arguments)]
 fn operation(
     wire: &Wire<'_>,
     lookup: &Lookup<'_>,
     route: &RouteModel,
     key_required: bool,
+    refuses: bool,
     methods: &[jadpo_std::AuthenticationMethod],
     refs: &mut BTreeSet<Key>,
     failure_schemas: &mut BTreeMap<String, Value>,
@@ -552,6 +558,22 @@ fn operation(
                 .or_default()
                 .push((code.to_string(), name.to_string()));
         }
+    }
+    // Policy (area 9): a create, a change to a record the action loaded,
+    // or an action listed under `actions:` can be refused.
+    if refuses {
+        failure_schemas.insert(
+            "PolicyRefused".to_string(),
+            envelope(
+                "not_permitted",
+                "Policy doesn't let the caller do this.",
+                None,
+            ),
+        );
+        by_status
+            .entry("403".to_string())
+            .or_default()
+            .push(("not_permitted".to_string(), "PolicyRefused".to_string()));
     }
     let has_input = route.input.is_some() || route.params().next().is_some();
     if writes {

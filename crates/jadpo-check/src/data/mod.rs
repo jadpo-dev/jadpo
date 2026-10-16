@@ -39,14 +39,16 @@ use crate::types::{Const, FieldsBase, Ty, TypeRef, TypeView};
 pub use columns::column_type;
 
 /// The sections an entity may hold besides its fields (area 5, "Where
-/// things live"). The last three are decided and come with their chunks.
-pub const SECTIONS: [&str; 6] = [
+/// things live"), with area 9's `membership:`. `policy:` and `membership:`
+/// are read by [`crate::policy`]; `caches:` comes with Redis.
+pub const SECTIONS: [&str; 7] = [
     "store",
     "unique",
     "indexes",
     "lifecycle",
     "caches",
     "policy",
+    "membership",
 ];
 
 /// The store an entity lives in when its file names none (area 5, "Stores").
@@ -200,6 +202,8 @@ pub struct FieldModel {
     pub unique: bool,
     pub generated: Option<Generated>,
     pub reference: Option<Reference>,
+    /// `immutable: true`: no ordinary update changes it (area 9).
+    pub immutable: bool,
     /// What its type allows beyond its column type, which a migration
     /// snapshot records.
     pub allows: physical::Allows,
@@ -474,10 +478,9 @@ impl Reader<'_> {
                 "unique" => unique = Some(member.clone()),
                 "indexes" => indexes = Some(member.clone()),
                 "lifecycle" => lifecycle = Some(member.clone()),
-                // Decided, and checked by the chunk that builds it (4.4). A
-                // record cache needs the Redis driver, which no chunk
-                // builds yet.
-                "policy" => {}
+                // Read by `crate::policy` (area 9). A record cache needs
+                // the Redis driver, which no chunk builds yet.
+                "policy" | "membership" => {}
                 "caches" => self.out.push(
                     Diagnostic::new(
                         &rule::TOOLCHAIN_NOT_BUILT_YET,
@@ -609,7 +612,7 @@ impl Reader<'_> {
             format!("`{written}` isn't something an entity holds"),
         )
         .at(span.clone(), "not a field or a section");
-        let reason = "An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:` and `policy:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.";
+        let reason = "An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:`, `policy:` and `membership:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.";
         problem = match near {
             Some(near) if near != written => problem
                 .reason(format!("{reason} Did you mean `{near}`?"))
@@ -735,6 +738,7 @@ impl Reader<'_> {
             unique: false,
             generated: None,
             reference: None,
+            immutable: false,
             allows: physical::Allows::default(),
         };
         if ty.has_error() {
@@ -902,6 +906,22 @@ impl Reader<'_> {
                     Some(Const::Bool(true)) => field.unique = true,
                     _ => self.setting_value(value_span, "unique", "`true`"),
                 },
+                "immutable" => match member.value().as_ref().map(Const::from_expr) {
+                    Some(Const::Bool(true)) => field.immutable = true,
+                    Some(Const::Bool(false)) => {}
+                    _ => self.setting_value(value_span, "immutable", "`true` or `false`"),
+                },
+                // A field's own grants narrow its entity's (area 9, "Field
+                // restrictions"), roadmap chunk 4.4b.
+                "policy" => self.out.push(
+                    Diagnostic::new(
+                        &rule::TOOLCHAIN_NOT_BUILT_YET,
+                        format!("`{entity}.{name}`'s own `policy:` isn't built yet"),
+                    )
+                    .at(key_span, "decided, not built")
+                    .reason("A field's `policy:` narrows who may read or change it below its entity's grants (area 9, \"Field restrictions\"), and comes with roadmap chunk 4.4b; until then a field follows its entity's grants.")
+                    .next(format!("Leave `{name}`'s `policy:` out for now, or keep `{name}` in an entity of its own")),
+                ),
                 "on_delete" => match names.as_slice() {
                     [host, variant]
                         if host == OnDelete::NAME && OnDelete::from_name(variant).is_some() =>
@@ -1895,6 +1915,12 @@ pub struct WriteRules {
     /// A reference through which removing a record would cascade to an
     /// entity with a lifecycle: the entity holding it and the field.
     pub cascades_to_lifecycle: Option<(String, String)>,
+    /// The fields no update changes: `immutable: true` (area 9).
+    pub immutable: Vec<String>,
+    /// The fields only an action listed in root `policy { actions: }`
+    /// changes: those policy reaches the caller or the tenant through
+    /// (area 9, "A user field on the record").
+    pub fixed: Vec<String>,
 }
 
 /// What one transition writes (area 5, "Lifecycle").
@@ -1939,8 +1965,14 @@ pub fn write_rules<'db>(
     entity: crate::lookups::Name<'db>,
 ) -> Option<WriteRules> {
     let found = entity_model(db, project, entity).as_deref()?;
-    let mut rules = WriteRules::default();
+    let mut rules = WriteRules {
+        fixed: crate::policy::fixed_fields(db, project, &found.name),
+        ..WriteRules::default()
+    };
     for field in &found.fields {
+        if field.immutable {
+            rules.immutable.push(field.name.clone());
+        }
         if field.unique && field.name != "id" {
             rules.unique.push(UniqueRule {
                 name: field.name.clone(),

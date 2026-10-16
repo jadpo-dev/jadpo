@@ -205,7 +205,7 @@ test "a due date in the past is rejected" {
 }
 ```
 
-Built in chunk 4.1, and `as:` in chunks 4.3 and 4.3b: it signs in through the application's real authentication, a browser session, an API token or, for `Principal.service(service)`, a service key, as area 8's end-to-end examples show. The route below lets anyone call it, so this test signs no one in. The
+Built in chunk 4.1, and `as:` in chunks 4.3 and 4.3b: it signs in through the application's real authentication, a browser session, an API token or, for `Principal.service(service)`, a service key, as area 8's end-to-end examples show. The route below lets anyone call it, so this test signs no one in; `add_memo` reaches no entity, so root `policy { }` says who may call it (area 9). The
 request names its route by `method:` and its path as `jadpo routes` prints
 it, each placeholder given in `params:` (`path: "/todos/{todo_id}"` with
 `params: { todo_id: todo.id }`), and `input:` is the route's `Input`. It
@@ -242,6 +242,12 @@ routes Memos {
         output: MemoView
         status: SuccessStatus.created
         run: add_memo(input)
+    }
+}
+
+policy {
+    actions: {
+        add_memo: [Access.public]
     }
 }
 
@@ -312,7 +318,11 @@ test "bob cannot complete alice's todo" {
 ```
 
 Policy reports a hidden record as the same `not_found` failure (area 4), so
-the test checks exactly what Bob would see.
+the test checks exactly what Bob would see. A call a test, fixture or seed
+makes runs as the caller it passes, as `complete_todo` runs as Bob here; a
+call that passes none, such as one setting up data, runs without policy, so
+it proves behaviour and data, and a route test or a call with a caller
+proves policy (chosen in chunk 4.4, area 9).
 
 ## Controlling time
 
@@ -862,6 +872,12 @@ routes Memos {
     }
 }
 
+policy {
+    actions: {
+        add_memo: [Access.public]
+    }
+}
+
 test "a memo comes back" {
     var response: Response = request {
         method: HttpMethod.post
@@ -876,9 +892,9 @@ test "a memo comes back" {
 
 ```text output
 error: No route answers `POST /memo`
- --> main.jadpo:34:15
+ --> main.jadpo:40:15
    |
-34 |         path: "/memo"
+40 |         path: "/memo"
    |               ^^^^^^^ no such route
   reason: A request names a route by its method and its path as `jadpo routes` prints it, placeholders by name; the `POST` routes are `/memos`.
   next: Write the path of the route this test exercises, as `jadpo routes` lists it (agent)
@@ -924,6 +940,12 @@ routes Memos {
     }
 }
 
+policy {
+    actions: {
+        add_memo: [Access.public]
+    }
+}
+
 test "a memo comes back" {
     var response: Response = request {
         method: HttpMethod.post
@@ -935,9 +957,9 @@ test "a memo comes back" {
 
 ```text output
 error: `POST /memos` takes `input:`, a `AddMemo`
- --> main.jadpo:32:30
+ --> main.jadpo:38:30
    |
-32 |     var response: Response = request {
+38 |     var response: Response = request {
    |                              ^^^^^^^ doesn't fit the route
   reason: A request gives the route's method, its path as `jadpo routes` prints it, each placeholder in `params:` and, when the route takes one, its `input:`.
   next: Give the request what its route takes (agent)
@@ -1424,7 +1446,7 @@ with when it comes.
 |---|---|---|
 | The `request { }` form in route tests, the `Response` type, its `status`, `code` and typed output | 7 | Input to area 7 |
 | `Principal.user(user)` in tests, fixtures and seeds, and `as:` signing in through the real authentication method (question 10); a service caller in tests | 8 | Built in chunk 4.3 for users and chunk 4.3b for services |
-| Policy tests are ordinary tests: call as another user and `assert … fails` with the failure policy reports | 9 | Follows from question 6 |
+| Policy tests are ordinary tests: call as another user and `assert … fails` with the failure policy reports | 9 | Built in chunk 4.4: a call passing a caller runs as that caller; one passing none runs without policy |
 | `test:` values on configuration fields, and the `5m` duration literal | 10 | Input to area 10 |
 | Fake responses name the provider conditions in the integration's `failures:` block; checking a fake against the provider's contract or sandbox | 11 | Input to area 11 |
 | `overdue_reminders.run()` in tests, subscriber delivery order, and retries of a failing subscriber in tests | 12 | Input to area 12 |

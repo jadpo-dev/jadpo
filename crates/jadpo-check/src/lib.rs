@@ -18,6 +18,7 @@ pub mod imports;
 mod layout;
 pub mod lookups;
 mod naming;
+pub mod policy;
 mod resolve;
 pub mod routes;
 mod std_lib;
@@ -101,11 +102,13 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .cloned(),
             );
             out.extend(routes::route_problems(db, project, file).iter().cloned());
+            out.extend(policy::policy_problems(db, project, file).iter().cloned());
         }
         out.extend(identity::identity_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(routes::table_problems(db, project).iter().cloned());
         out.extend(routes::signin_problems(db, project).iter().cloned());
+        out.extend(policy::reach::route_problems(db, project).iter().cloned());
         out.extend(routes::record::record_problems(db, project).iter().cloned());
         out.extend(types::call_problems(db, project).iter().cloned());
         out.extend(

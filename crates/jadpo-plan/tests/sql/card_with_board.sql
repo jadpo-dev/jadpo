@@ -3,6 +3,7 @@ SELECT "id", "stage", "board_id"
 FROM "card"
 WHERE "id" = $1
   AND ("published_at" IS NOT NULL AND "published_at" <= $2)
+  AND FALSE
 -- $1: argument 0 as Uuid
 -- $2: clock.now as Timestamp
 -- columns: uuid, enum Stage, uuid
@@ -12,6 +13,7 @@ WHERE "id" = $1
   SELECT "id", "name"
   FROM "board"
   WHERE "id" = ANY($1)
+    AND FALSE
   -- $1: keys as Array(Uuid)
   -- columns: uuid, text
   -- record BoardView: id = column 0, name = column 1

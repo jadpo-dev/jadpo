@@ -43,6 +43,7 @@ fn source(source: &Source) -> String {
         Source::Keys => "keys".to_string(),
         Source::Cursor(i) => format!("cursor {i}"),
         Source::SizePlusOne => "page size + 1".to_string(),
+        Source::Caller(part) => format!("caller {part:?}"),
     }
 }
 
@@ -143,6 +144,7 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
             }
             WriteSource::NewId => "a new identity".to_string(),
             WriteSource::Now => "clock.now".to_string(),
+            WriteSource::Caller(part) => format!("caller {part:?}"),
         };
         out.push_str(&format!("-- ${}: {source} as {:?}\n", i + 1, param.ty));
     }

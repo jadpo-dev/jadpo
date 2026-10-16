@@ -137,19 +137,26 @@ async fn run(
             Ok(Found::Value(value)) => Stored::Value(value),
             // A read for exactly one record found none: the failure its
             // plan names, its fields from the read's arguments.
-            Ok(Found::Missing) => match missing(ctx, plan.missing.as_ref(), failures, args) {
-                Some(failure) => Stored::Failed(ctx.fail(failure, site)),
-                None => defect(ctx, "a read for one record with no failure for none"),
-            },
+            Ok(Found::Missing(concealed)) => {
+                match missing(ctx, plan.missing.as_ref(), failures, args) {
+                    Some(failure) => Stored::Failed(ctx.fail(concealing(failure, concealed), site)),
+                    None => defect(ctx, "a read for one record with no failure for none"),
+                }
+            }
             Err(stop) => interrupted(stop),
         },
         StoreOp::Write(plan) => match write(ctx, plan, args, site).await {
             Ok(Written::Value(value)) => Stored::Value(value),
             // By `id`, no record has it: the entity's not-found failure.
-            Ok(Written::Missing) => match missing(ctx, plan.missing.as_ref(), failures, args) {
-                Some(failure) => Stored::Failed(ctx.fail(failure, site)),
-                None => defect(ctx, "a write by id with no failure for none"),
-            },
+            Ok(Written::Missing(concealed)) => {
+                match missing(ctx, plan.missing.as_ref(), failures, args) {
+                    Some(failure) => Stored::Failed(ctx.fail(concealing(failure, concealed), site)),
+                    None => defect(ctx, "a write by id with no failure for none"),
+                }
+            }
+            Ok(Written::NotPermitted) => {
+                Stored::Failed(ctx.fail(crate::read::not_permitted(), site))
+            }
             Ok(Written::Refused { at, cause }) => {
                 match plan
                     .refusals
@@ -175,6 +182,18 @@ async fn run(
             Err(stop) => interrupted(stop),
         },
     }
+}
+
+/// A not-found failure for a record policy hid, which its log says (area
+/// 4, "Concealing records"): the client sees the same failure as for a
+/// record that isn't there.
+fn concealing(mut failure: Failure, concealed: bool) -> Failure {
+    if concealed {
+        failure
+            .internal
+            .push(("concealed_by".to_string(), Value::text("policy")));
+    }
+    failure
 }
 
 fn interrupted(stop: Interrupt) -> Stored {

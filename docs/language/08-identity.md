@@ -417,6 +417,11 @@ entity Member {
         unique: true
     }
     status: MemberStatus
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+    }
 }
 ```
 
@@ -430,6 +435,11 @@ entity Note {
         on_delete: OnDelete.cascade
     }
     text: NoteText
+
+    policy: {
+        create: [author_id]
+        read: [author_id]
+    }
 }
 ```
 
@@ -736,6 +746,12 @@ entity Member {
         unique: true
     }
     status: MemberStatus
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        update: [id]
+    }
 }
 ```
 
@@ -749,19 +765,35 @@ entity Note {
         on_delete: OnDelete.cascade
     }
     text: NoteText
+
+    policy: {
+        create: [author_id]
+        read: [author_id]
+    }
 }
 ```
 
 ```jadpo check project=tokens-and-keys file=domains/journal/entities/partner.jadpo
+use journal/entities { Member }
 use journal/types { PartnerName, PartnerStatus }
 
-/// Another system that reads the journal with its keys.
+/// Another system that reads the journal with its keys, managed by the
+/// member who added it.
 entity Partner {
     id: Uuid
+    owner_id: Member.id {
+        on_delete: OnDelete.restricted
+    }
     name: PartnerName {
         unique: true
     }
     status: PartnerStatus
+
+    policy: {
+        create: [owner_id]
+        read: [id, owner_id]
+        update: [owner_id]
+    }
 }
 ```
 
@@ -802,9 +834,10 @@ use journal/entities { Partner }
 use journal/types { PartnerName, PartnerStatus }
 use journal/failures { PartnerNameTaken }
 
-action create_partner(name: PartnerName) fails PartnerNameTaken -> Partner {
+action create_partner(name: PartnerName, owner: Principal.user) fails PartnerNameTaken -> Partner {
     return attempt Partner.create {
         set: {
+            owner_id: owner.id
             name: name
             status: PartnerStatus.active
         }
@@ -896,7 +929,8 @@ action sign_out_everywhere(member: Principal.user) -> Unit {
 ```
 
 Adding a partner issues its first key, which expires when the input
-says; the partner reads itself with it:
+says; the partner reads itself with it. The member who adds a partner owns
+it, so its grants let them issue and revoke its keys (area 9):
 
 ```jadpo check project=tokens-and-keys file=domains/journal/actions/add_partner.jadpo
 use journal/entities { Partner }
@@ -905,8 +939,11 @@ use journal/failures { PartnerNameTaken }
 use journal/actions { create_partner }
 
 /// Adds a partner and gives its first key, shown once.
-action add_partner(input: AddPartner) fails PartnerNameTaken -> PartnerAdded {
-    var partner: Partner = attempt create_partner(input.name)
+action add_partner(
+    input: AddPartner,
+    owner: Principal.user
+) fails PartnerNameTaken -> PartnerAdded {
+    var partner: Partner = attempt create_partner(input.name, owner)
     return PartnerAdded {
         key: Partner.issue_key(partner.id, input.key_expires_at)
     }
@@ -997,7 +1034,7 @@ routes Partners {
         input: AddPartner
         output: PartnerAdded
         status: SuccessStatus.created
-        run: add_partner(input)
+        run: add_partner(input, current_principal.user)
     }
 
     /// A partner reads itself, signed in with its key.
@@ -1095,7 +1132,8 @@ test "a member writes a note with the app's token" {
 }
 
 test "a partner reads itself with its key" {
-    var partner: Partner = attempt create_partner("Acme")
+    var ann: Member = attempt register("ann")
+    var partner: Partner = attempt create_partner("Acme", Principal.user(ann))
     var response: Response = request {
         method: HttpMethod.get
         path: "/partners/me"
@@ -1108,7 +1146,8 @@ test "a partner reads itself with its key" {
 }
 
 test "a partner can't write a member's note" {
-    var partner: Partner = attempt create_partner("Acme")
+    var ann: Member = attempt register("ann")
+    var partner: Partner = attempt create_partner("Acme", Principal.user(ann))
     var response: Response = request {
         method: HttpMethod.post
         path: "/notes"
@@ -1122,7 +1161,8 @@ test "a partner can't write a member's note" {
 }
 
 test "a suspended partner is refused" {
-    var partner: Partner = attempt create_partner("Acme")
+    var ann: Member = attempt register("ann")
+    var partner: Partner = attempt create_partner("Acme", Principal.user(ann))
     var suspended: Partner = attempt suspend_partner(partner.id)
     var response: Response = request {
         method: HttpMethod.get
@@ -2191,7 +2231,9 @@ input is read, refuses it as "Failures" lists, checks a cookie write's
 `Origin` and CSRF token, starts and ends sessions and issues, lists and
 revokes API tokens and service keys from actions, and keeps sessions and
 tokens in the `jadpo_sessions` system table beside the principal's users
-and keys in `jadpo_service_keys` beside its services. OpenAPI shows each
+and keys in `jadpo_service_keys` beside its services. Since chunk 4.4 the
+owning record's grants decide who may list (`read`) and revoke or issue
+(`update`) a token or a key (area 9, question 8). OpenAPI shows each
 API's security schemes, the API record marks the routes anyone may call,
 and `jadpo routes` lists each route's authentication.
 
@@ -2205,12 +2247,6 @@ Not yet, each `toolchain.not_built_yet` where it is written:
   first build.
 - Deleting ended sessions, tokens and expired keys from the runtime's
   minute tick (area 12, chunk 6.2): a lookup ignores one past its end.
-- Who may issue, list and revoke a token or a key: the owning record's
-  grants (area 9, question 8), with policy in chunk 4.4. Until then
-  `sessions.revoke_token(token_id)` and `Service.revoke_key(key_id)` end
-  whichever token or key has that `id`, so an action that takes an `id`
-  from a request checks it is among the caller's own (`sessions.tokens`,
-  `Service.keys`) first.
 
 **Listing tokens and keys from a `GET`** (decided 2026-10-16).
 `sessions.tokens(user_id)` and `Service.keys(service_id)` are for an
@@ -2222,7 +2258,7 @@ let a `GET` route run them directly, as generated queries, and make
 `IssuedToken` and `IssuedKey` types an `Output` can hold, so
 `GET /devices { run: sessions.tokens(current_principal.user.id) }` works
 the way an entity's own queries do. *Decided 2026-10-16:* yes, as
-recommended; chunk 4.4b builds it.
+recommended; chunk 4.4c builds it.
 
 **How an API token is issued** (decided 2026-10-16). The page says `api_token`
 travels as `Authorization: Bearer` for the application's own mobile and

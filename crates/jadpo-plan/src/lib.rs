@@ -33,6 +33,7 @@
 
 mod constant;
 mod identity;
+mod policy;
 mod purge;
 mod queries;
 mod routes;
@@ -83,6 +84,10 @@ pub struct CallablePlan {
     /// (area 6, "Counters and other one-step updates"). Every other
     /// callable says repeatable read, and never begins one.
     pub isolation: Isolation,
+    /// For an action listed under root `policy { actions: }` whose line
+    /// doesn't depend on a record: who may call it, checked as it starts
+    /// (area 9, "Actions").
+    pub gate: Option<jadpo_std::policy::Gate>,
 }
 
 impl CallablePlan {
@@ -162,6 +167,7 @@ impl Plan {
             .map(|(key, _, _, body)| (key.clone(), body.as_ref()))
             .collect();
         let (writes, write_ids) = writes::plans(db, project, &mut types, &bodies);
+        let gates = policy::gates(db, project, &mut types);
         let model = jadpo_check::data::data_model(db, project);
         let purges: Vec<PurgePlan> = model
             .entities
@@ -195,6 +201,9 @@ impl Plan {
                 write: &write,
             }
             .body(&body, text);
+            let gate = (kind == Kind::Action)
+                .then(|| gates.get(key.name()).cloned())
+                .flatten();
             callables.push(CallablePlan {
                 key,
                 kind,
@@ -204,6 +213,7 @@ impl Plan {
                 body,
                 sites,
                 isolation,
+                gate,
             });
         }
         let mut routes = routes::table(
