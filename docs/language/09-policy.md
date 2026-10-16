@@ -391,13 +391,6 @@ type HandleTaken = Failure {
 }
 ```
 
-```jadpo check project=policy-end-to-end file=domains/work/failures/project_not_found.jadpo hidden
-type ProjectNotFound = Failure {
-    kind: FailureKind.not_found
-    message: "Project not found."
-}
-```
-
 A member may read only their own record, and anyone may sign up; members
 are shared by every company. The membership says where its role is held,
 who holds it and which field holds it, and a company's records follow the
@@ -577,9 +570,8 @@ type StartProject = Input {
 ```
 
 ```jadpo check project=policy-end-to-end file=domains/work/actions/rename_project.jadpo hidden
-use work/entities { Project }
+use work/entities { Project, ProjectNotFound }
 use work/types { ProjectName, ProjectView }
-use work/failures { ProjectNotFound }
 
 /// Renames a project.
 action rename_project(
@@ -687,7 +679,7 @@ input StartProject
 
 failure company_not_found 404
 
-failure project_not_found 404 "Project not found."
+failure project_not_found 404
 ```
 
 A route test signs in as each member, so what it checks is exactly what a
@@ -704,85 +696,85 @@ test "a company's projects are listed only to its members" {
     var ann: Member = attempt register("ann")
     var bob: Member = attempt register("bob")
     var cy: Member = attempt register("cyd")
-    var acme: Company = found_company("Acme", Principal.user(ann))
-    var viewer: CompanyMembership = attempt add_member(acme.id, bob.id, CompanyRole.viewer)
+    var northwind: Company = found_company("Northwind", Principal.user(ann))
+    var viewer: CompanyMembership = attempt add_member(northwind.id, bob.id, CompanyRole.viewer)
     assert viewer.role == CompanyRole.viewer
-    var roadmap: ProjectView = attempt start_project(
+    var launch: ProjectView = attempt start_project(
         StartProject {
-            company_id: acme.id
-            name: "Roadmap"
+            company_id: northwind.id
+            name: "Launch"
         }
     )
     var seen: Response = request {
         method: HttpMethod.get
         path: "/projects/{company_id}"
         params: {
-            company_id: acme.id
+            company_id: northwind.id
         }
         as: Principal.user(bob)
     }
     assert seen.status == 200
-    assert seen.output == [roadmap]
-    var unseen: Response = request {
+    assert seen.output == [launch]
+    var outsider: Response = request {
         method: HttpMethod.get
         path: "/projects/{company_id}"
         params: {
-            company_id: acme.id
+            company_id: northwind.id
         }
         as: Principal.user(cy)
     }
-    assert unseen.output == []
+    assert outsider.output == []
 }
 
 test "a viewer can't rename a project, which reads as missing" {
     var ann: Member = attempt register("ann")
     var bob: Member = attempt register("bob")
-    var acme: Company = found_company("Acme", Principal.user(ann))
-    var viewer: CompanyMembership = attempt add_member(acme.id, bob.id, CompanyRole.viewer)
+    var northwind: Company = found_company("Northwind", Principal.user(ann))
+    var viewer: CompanyMembership = attempt add_member(northwind.id, bob.id, CompanyRole.viewer)
     assert viewer.role == CompanyRole.viewer
-    var roadmap: ProjectView = attempt start_project(
+    var launch: ProjectView = attempt start_project(
         StartProject {
-            company_id: acme.id
-            name: "Roadmap"
+            company_id: northwind.id
+            name: "Launch"
         }
     )
-    var renamed: Response = request {
+    var by_bob: Response = request {
         method: HttpMethod.patch
         path: "/projects/{project_id}"
         params: {
-            project_id: roadmap.id
+            project_id: launch.id
         }
         as: Principal.user(bob)
         input: RenameProject {
             name: "Plans"
         }
     }
-    assert renamed.status == 404
-    assert renamed.code == "project_not_found"
-    var owned: Response = request {
+    assert by_bob.status == 404
+    assert by_bob.code == "project_not_found"
+    var by_ann: Response = request {
         method: HttpMethod.patch
         path: "/projects/{project_id}"
         params: {
-            project_id: roadmap.id
+            project_id: launch.id
         }
         as: Principal.user(ann)
         input: RenameProject {
             name: "Plans"
         }
     }
-    assert owned.status == 200
+    assert by_ann.status == 200
 }
 
 test "someone outside a company can't start a project in it" {
     var ann: Member = attempt register("ann")
     var cyd: Member = attempt register("cyd")
-    var acme: Company = found_company("Acme", Principal.user(ann))
+    var northwind: Company = found_company("Northwind", Principal.user(ann))
     var response: Response = request {
         method: HttpMethod.post
         path: "/projects"
         as: Principal.user(cyd)
         input: StartProject {
-            company_id: acme.id
+            company_id: northwind.id
             name: "Takeover"
         }
     }
@@ -910,7 +902,7 @@ principal {
 }
 
 type StaffRole = Enum {
-    operator
+    steward
 }
 
 entity StaffMembership {
@@ -962,7 +954,7 @@ principal {
 }
 
 type StaffRole = Enum {
-    operator
+    steward
 }
 
 entity StaffMembership {
@@ -1014,7 +1006,7 @@ principal {
 }
 
 type StaffRole = Enum {
-    operator
+    steward
 }
 
 entity StaffMembership {
@@ -1068,7 +1060,7 @@ principal {
 }
 
 type StaffRole = Enum {
-    operator
+    steward
 }
 
 entity StaffMembership {
@@ -1112,7 +1104,7 @@ check failed: 1 error, 1 file
 
 ### `policy.scope_missing`
 
-`Report` names a company role but has no reference to `Company`, which the role is held in; an entity with no reference to the tenant is refused the same way:
+`Ledger` names a company role but has no reference to `Company`, which the role is held in; an entity with no reference to the tenant is refused the same way:
 
 ```jadpo check project=e-scope-missing expect=policy.scope_missing
 type Handle = Text {
@@ -1158,7 +1150,7 @@ entity CompanyMembership {
     }
 }
 
-entity Report {
+entity Ledger {
     id: Uuid
 
     policy: {
@@ -1168,13 +1160,13 @@ entity Report {
 ```
 
 ```text output
-error: `Report` has no reference to `Company`
+error: `Ledger` has no reference to `Company`
  --> main.jadpo:48:16
    |
 48 |         read: [CompanyRole.editor]
    |                ^^^^^^^^^^^^^^^^^^ a role held in a `Company`
-  reason: `CompanyRole` is held in a `Company` (`CompanyMembership`'s `scope:`), and a role applies to a record through the record's reference to its scope, so `Report` needs a field typed `Company.id`.
-  next: Add a reference to `Company` to `Report`, or name someone else (agent)
+  reason: `CompanyRole` is held in a `Company` (`CompanyMembership`'s `scope:`), and a role applies to a record through the record's reference to its scope, so `Ledger` needs a field typed `Company.id`.
+  next: Add a reference to `Company` to `Ledger`, or name someone else (agent)
   rule: policy.scope_missing
   help: docs/language/09-policy.html#policy-scope-missing
 
@@ -1279,7 +1271,7 @@ principal {
 }
 
 type StaffRole = Enum {
-    operator
+    steward
 }
 
 entity StaffMembership {
@@ -1331,7 +1323,7 @@ action check_health() -> Health {
     }
 }
 
-routes Monitoring {
+routes Checkup {
     prefix: /health
 
     POST / {

@@ -1129,6 +1129,9 @@ impl Body<'_> {
                     continue;
                 };
                 let span = self.span(&field_name);
+                if self.fixed_field(entity, &field, span.clone(), &written, rules) {
+                    continue;
+                }
                 if patched.contains(&field) {
                     let input_name = input.map_or("", |(name, _)| name);
                     self.out.push(

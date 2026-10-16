@@ -247,6 +247,9 @@ sign_out
 browser_session
 fresh
 user_disabled
+# the toolchain's own error code, `toolchain.project_not_found` (area 14),
+# which a project's failure code for an entity called Project matches
+project_not_found
 
 # Generic names the language rejects for a domain or library (area 1)
 helpers
