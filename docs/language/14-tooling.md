@@ -45,7 +45,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo routes` | Lists every route with its full method and path, file, API, authentication and the query or action it runs | Built (chunk 4.1); authentication shows `required`, `none` or `fresh` since chunk 4.3 (area 8) |
 | `jadpo sql <query>`, `jadpo sql <action>` | Prints a query's generated SQL for PostgreSQL and SQLite, or the statements an action's writes send; `--explain` runs it on a disposable database and shows the plan | Built for PostgreSQL (chunk 3.2): each statement the query sends, one for each include too, with the parameters that fill it, and `--json`. Since chunk 3.4, given an action, each `create`, `update`, `delete` and transition it writes, in order, with its parameters as the action writes them, what each refusal raises (the constraint and the failure its `conflict:` arm names, the not-found failure, or a fault) and, for a transition whose `when:` can refuse a record, the statement that asks when no row changed. Tab completes the project's queries and actions, and without one it fails listing them. SQLite comes with a SQLite store; `--explain` is decided, not built: the flag says `toolchain.not_built_yet` |
 | `jadpo impact <name>` | Lists what a change to `name` reaches | Decided in area 1, not built |
-| `jadpo rename <old> <new>` | Renames a declaration or field everywhere, keeping stored data | Proposed (question 5) |
+| `jadpo rename <old> <new>` | Renames a declaration or field everywhere, keeping stored data | Decided (question 5), not built; refuses a new name already in use (2026-10-16) |
 | `jadpo domain rename/split/merge` | Moves a domain's files and updates every call | Decided in area 1, not built |
 | `jadpo migrate new <purpose>` / `apply` / `status` | Writes, runs and lists migrations | Built (chunk 3.1): `new` writes the next migration, or finishes the latest once its decisions are written; `apply` and `status` take the database's URL with `--url` (and `--store` when there are several), or read it from the connection's setting in the environment over `.env.local` (chunk 5.1); replaces `schema` (question 4). Prompting for a missing purpose, as the design language draws it, waits for prompts: without one the command names a purpose to use |
 | `jadpo seed <name>` | Runs a seed; refuses production | Decided in area 5, not built |
@@ -264,6 +264,17 @@ rounding.half_even   shared/libraries/rounding.jadpo:4
   to run `jadpo check --json` after edits, read the catalogues before adding
   code, and run `jadpo impact <name>` before changing or removing anything
   shared or public. It points at these language pages for syntax.
+  It also gives the routine for agents working in parallel workspaces
+  (2026-10-16, Richard): before pushing, merge `main`, run `jadpo check`
+  (it builds nothing: 0.2 s on the 66-file library-loans example), fix any
+  clash, then push. Private functions and types are unique only within
+  their domain (area 1), so two domains' helpers don't clash, but a name
+  another agent took in the same domain, or across the project, does.
+- **Generated CI runs `jadpo check` first** (2026-10-16, Richard), so a
+  name clash or any other check error fails in seconds, before tests or a
+  build. No page yet says what generates a project's CI (`jadpo new`
+  creates none); whatever does must follow this. Neither the skill nor
+  generated CI is built.
 
 ## Review and sign-off
 
@@ -542,6 +553,13 @@ what other areas carried here and where this page answers it.
    removal and an addition, which `migrate new` refuses with a pointer to the
    command. Domains keep their own `jadpo domain` commands because they move
    folders. *Decided 2026-10-13:* yes, as recommended.
+   *Extended 2026-10-16 (Richard, area 1 "Names per domain"):* `jadpo rename`
+   refuses a new name already in use before editing anything, naming the
+   declaration that holds it and its file, and lists the names in use that
+   contain the same word, as `semantic.duplicate_declaration` does. A name
+   is in use where the new name would have to be unique: in the domain for a
+   private function or type, across the project for everything else. Built
+   with `rename` itself.
 6. **Trim error messages and fix help links?** *Recommendation:* yes:
    relative paths; the two impact lines only when they say something;
    obvious repairs carry their edit; JSON gains line and column and one key
@@ -657,6 +675,8 @@ what other areas carried here and where this page answers it.
 | `check` writes derived files | `check` writes `build/` except the runnable app; `artifacts` and `watch` go; `dev --no-run` rebuilds only | 2026-10-13 |
 | `migrate` commands | `migrate new <purpose>`, `apply`, `status` replace the twelve `schema` commands | 2026-10-13 |
 | Renaming | `jadpo rename <old> <new>` updates source, callers, file names and the identity registry; the editor's rename calls it; a hand rename of stored data is refused by `migrate new` | 2026-10-13 |
+| Renaming a name in use | `jadpo rename` refuses a new name already in use before editing anything, naming the declaration that holds it, and lists the names in use with the same word (Richard) | 2026-10-16 |
+| Parallel agents | The agent skill's routine: merge `main`, run `jadpo check`, fix any clash, then push; generated CI runs `jadpo check` first, so a clash fails in seconds; what generates CI is not yet specified (Richard) | 2026-10-16 |
 | Error messages | Relative paths, impact lines only when useful, repairs carry their edit, JSON line and column, help links to these pages | 2026-10-13 |
 | Affected tests | `check` reports affected tests; `jadpo test --affected` runs them | 2026-10-13 |
 | What `--affected` measures against | The merge-base with `main`: the tests reaching any node whose digest differs from that commit's, read through the same before side as diffs (Richard) | 2026-10-14 |
