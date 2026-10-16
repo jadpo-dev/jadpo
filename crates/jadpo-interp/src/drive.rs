@@ -34,21 +34,32 @@ async fn body(
     let mut step = machine.start(ctx, callee, args, SiteId(at));
     // A test, fixture or seed runs each call as the caller it passes
     // (area 9): policy then applies as to that caller.
-    let test_like = program
-        .plan()
+    let plan = program.plan();
+    let test_like = plan
         .callable(callee)
         .is_some_and(|callable| matches!(callable.kind, Kind::Test | Kind::Fixture | Kind::Seed));
     loop {
         match step {
             Step::Done(result) => return result,
+            // Work that never waits gives the thread back as it checks the
+            // request's deadline.
+            Step::Yield => {
+                jadpo_runtime::yield_now().await;
+                step = machine.carry_on(ctx);
+            }
             Step::Pause { target, args, at } => {
-                if test_like
-                    && matches!(
-                        target,
-                        Target::Callable(_) | Target::Query(_) | Target::Get(_)
-                    )
-                {
-                    calling_as(ctx, &args);
+                if test_like {
+                    // The parameter the callee's plan names as its caller.
+                    let caller = match target {
+                        Target::Callable(id) => plan.callable(id).map(|callable| callable.caller),
+                        Target::Query(id) => plan.query(id).map(|query| query.caller),
+                        Target::Get(_) => Some(None),
+                        _ => None,
+                    };
+                    if let Some(caller) = caller {
+                        let passed = caller.and_then(|at| args.get(at as usize));
+                        jadpo_runtime::call_as(ctx, passed);
+                    }
                 }
                 let result = match target {
                     Target::Callable(callee) => {
@@ -66,32 +77,6 @@ async fn body(
                 step = machine.resume(ctx, result);
             }
         }
-    }
-}
-
-/// Runs what a test, fixture or seed calls with `args` as the caller they
-/// pass, a `Principal.user` or `Principal.service`, so policy applies as
-/// to that caller; with none, without policy, so the call proves behaviour
-/// and data and a route test proves policy (areas 9 and 13).
-fn calling_as(ctx: &mut Ctx<'_>, args: &[Value]) {
-    let caller = args.iter().find_map(|arg| match arg {
-        Value::Record(record) if record.ty.starts_with("Principal.") => {
-            let kind = record.ty.trim_start_matches("Principal.");
-            let id = match record.get("id") {
-                Some(Value::Uuid(id)) => id.to_string(),
-                _ => String::new(),
-            };
-            Some(jadpo_runtime::Caller {
-                value: arg.clone(),
-                key: format!("{kind} {id}"),
-                session: None,
-            })
-        }
-        _ => None,
-    });
-    match caller {
-        Some(caller) => ctx.set_caller(Some(caller)),
-        None => ctx.set_unpoliced(),
     }
 }
 
@@ -168,11 +153,10 @@ fn store<'a, 'p: 'a>(
 }
 
 /// A route test's request (area 13), through the runtime's HTTP component
-/// as a client's would go, answered as a `Response` value.
-/// A defect behind the response ends the test with that fault, as one
-/// anywhere else in it would: a 500 is never what a test means to check.
-/// Every request but a `GET` sends an `Idempotency-Key`, as a real client
-/// would: the one the test gives, or a fresh one (area 13, chunk 4.7).
+/// as a client's would go, answered as a `Response` value
+/// ([`jadpo_runtime::http::route_test`]). The site's values are the
+/// route's arguments, then, when `keyed`, the `Idempotency-Key` the test
+/// gives, then, when `signed`, the caller it signs in as.
 async fn request(
     program: &Program,
     ctx: &mut Ctx<'_>,
@@ -181,7 +165,6 @@ async fn request(
     keyed: bool,
     signed: bool,
 ) -> Result<Value, Stop> {
-    let app = program.app();
     let (args, caller) = match (signed, args.split_last()) {
         (true, Some((caller, rest))) => (rest, Some(caller)),
         _ => (args, None),
@@ -190,42 +173,9 @@ async fn request(
         (true, Some((key, rest))) => (rest, Some(key)),
         _ => (args, None),
     };
-    let Some(mut request) = jadpo_runtime::http::test_request(&app, route, args) else {
-        return Ok(Value::None);
-    };
-    let writes = app
-        .table
-        .routes
-        .get(route as usize)
-        .is_some_and(|plan| plan.method != jadpo_std::HttpMethod::Get);
-    if writes
-        && request
-            .header(jadpo_runtime::http::idempotency::HEADER)
-            .is_none()
-    {
-        let key = match key {
-            Some(Value::Text(text)) => Some(text.to_string()),
-            Some(_) => None,
-            None => ctx.new_id().map(|id| jadpo_runtime::uuid_text(&id)),
-        };
-        if let Some(key) = key {
-            request.headers.push(("Idempotency-Key".to_string(), key));
-        }
-    }
-    if let Some(caller) = caller {
-        // `as:` signs in through the application's real authentication.
-        let headers =
-            jadpo_runtime::http::identity::test_credentials(ctx, app.table, route, caller)
-                .await
-                .map_err(Stop::Fault)?;
-        request.headers.extend(headers);
-    }
-    let id = jadpo_runtime::http::request_id(ctx, u64::from(ctx.actions()));
-    let mut response = jadpo_runtime::http::handle(&app, program, ctx, &request, &id, None).await;
-    if let Some(fault) = response.fault.take() {
-        return Err(Stop::Fault(fault));
-    }
-    Ok(jadpo_runtime::http::response_value(&app, route, &response))
+    jadpo_runtime::http::route_test(&program.app(), program, ctx, route, args, key, caller)
+        .await
+        .map_err(Stop::Fault)
 }
 
 /// `sessions.start(user_id)`, `sessions.end()`, an API token's or a
@@ -292,24 +242,20 @@ impl<'p> ActionBody<'p> for Action<'_> {
         self.caught
     }
 
+    /// Who may call it, as its plan says; the boundary checks it.
+    fn gate(&self) -> Option<&jadpo_std::policy::Gate> {
+        self.program
+            .plan()
+            .callable(self.callee)
+            .and_then(|callable| callable.gate.as_ref())
+    }
+
+    fn site(&self) -> u32 {
+        self.at
+    }
+
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
         Box::pin(async move {
-            // An action whose line under `actions:` needs no record says
-            // who may call it as it starts (area 9).
-            if let Some(gate) = self
-                .program
-                .plan()
-                .callable(self.callee)
-                .and_then(|callable| callable.gate.as_ref())
-            {
-                match jadpo_runtime::admit(ctx, gate, self.at).await {
-                    Stored::Value(_) => {}
-                    Stored::Failed(failure) | Stored::Conflict { cause: failure, .. } => {
-                        return Outcome::Failed(failure);
-                    }
-                    Stored::Fault(fault) => return Outcome::Fault(fault),
-                }
-            }
             outcome(body(self.program, ctx, self.callee, self.args.clone(), self.at).await)
         })
     }

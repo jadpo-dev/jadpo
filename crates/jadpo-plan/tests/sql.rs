@@ -20,6 +20,10 @@ fn folder() -> PathBuf {
 
 fn plan() -> Plan {
     let source = std::fs::read_to_string(folder().join("project.jadpo")).expect("the fixture");
+    planned(source)
+}
+
+fn planned(source: String) -> Plan {
     let db = Database::default();
     let file = File::new(&db, "main.jadpo".to_string(), source);
     let project = Project::new(
@@ -69,6 +73,11 @@ fn select(out: &mut String, select: &Select, depth: usize) {
     }
     let columns: Vec<String> = select.columns.iter().map(column).collect();
     out.push_str(&format!("{indent}-- columns: {}\n", columns.join(", ")));
+    if let Some(at) = select.permitted {
+        out.push_str(&format!(
+            "{indent}-- the caller may read a row: column {at}\n"
+        ));
+    }
     let fields: Vec<String> = select
         .record
         .fields
@@ -271,4 +280,37 @@ fn every_query_shape_matches_its_golden_sql() {
         "the SQL changed; review it and run with JADPO_BLESS=1:\n\n{}",
         different.join("\n")
     );
+}
+
+/// The caller a test's, fixture's or seed's call runs as is the argument
+/// the callee's signature types as a `Principal`, wherever it comes, which
+/// the plan names (chunk 4.10), never a value's type name.
+#[test]
+fn the_plan_names_each_callables_caller_parameter() {
+    let mut source = std::fs::read_to_string(folder().join("project.jadpo")).expect("the fixture");
+    source.push_str(
+        r#"
+query own_projects(name: Project.name, owner: Principal.user?) -> List<Project> {
+    from: Project
+    where: Project.name == name
+    order: [Project.name asc]
+    limit: 10
+}
+"#,
+    );
+    let plan = planned(source);
+    let caller = |name: &str| {
+        let id = plan.find(name).unwrap_or_else(|| panic!("`{name}`"));
+        plan.callable(id).expect("a callable").caller
+    };
+    assert_eq!(caller("open_ledger"), Some(0));
+    assert_eq!(caller("add_todo"), Some(0));
+    assert_eq!(
+        caller("set_balance"),
+        None,
+        "no caller: runs without policy"
+    );
+    let query = |name: &str| plan.query_named(name).expect("a query").caller;
+    assert_eq!(query("own_projects"), Some(1), "an optional caller, second");
+    assert_eq!(query("project_by_id"), None);
 }

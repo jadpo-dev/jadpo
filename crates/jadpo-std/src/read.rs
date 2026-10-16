@@ -190,10 +190,18 @@ pub struct Record {
 pub struct Select {
     pub sql: String,
     /// The statement without the policy compiled into `sql`, when policy
-    /// limits it: what a test's call without a caller runs, and what asks
-    /// whether a record policy hid is there (area 9). It takes the same
-    /// parameters.
+    /// limits it: what a test's call without a caller runs (area 9). It
+    /// takes the same parameters.
     pub unpoliced: Option<String>,
+    /// For a read of exactly one record that policy limits: the column of
+    /// `sql` that says whether the caller may read each row. Such a
+    /// statement filters only on what the read asks and the record's
+    /// visibility, and selects the grant rather than testing it, so one
+    /// statement tells a record policy hid from one that isn't there (area
+    /// 4, "Concealing records"); a row the caller may not read is dropped
+    /// before anything else reads it. A call without a caller reads every
+    /// row, as `unpoliced` would.
+    pub permitted: Option<u32>,
     pub params: Vec<Param>,
     /// What each selected column becomes, in order.
     pub columns: Vec<Column>,

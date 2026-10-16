@@ -480,6 +480,7 @@ dependencies = [
  "jadpo-check",
  "jadpo-db",
  "jadpo-diag",
+ "jadpo-drivers",
  "jadpo-fmt",
  "jadpo-graph",
  "jadpo-host-native",
@@ -493,6 +494,7 @@ dependencies = [
  "jadpo-test",
  "jadpo-value",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -546,6 +548,7 @@ dependencies = [
  "hyper-util",
  "jadpo-drivers",
  "jadpo-runtime",
+ "jadpo-std",
  "tokio",
 ]
 

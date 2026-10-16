@@ -16,7 +16,7 @@ use jadpo_std::{HttpMethod, Idempotency, SuccessStatus};
 use jadpo_value::Value;
 use jadpo_value::json::Codecs;
 
-use super::idempotency::{CLAIM, LOOKUP, RELEASE, STORE};
+use super::idempotency::{CLAIM, RELEASE, STORE};
 use super::{App, Request, Response, handle};
 use crate::{
     ActionBody, Ctx, Database, Env, Event, Executor, Failure, Host, Isolation, LocalFuture,
@@ -101,19 +101,19 @@ impl Tx {
             if free {
                 let kept = (text(params.get(2)), None, None, at, time(params.get(4)));
                 state.keys.insert(id, kept);
-                return Ok(vec![vec![SqlValue::Text(scope)]]);
+                return Ok(vec![vec![
+                    SqlValue::Bool(true),
+                    SqlValue::Null(crate::SqlType::Text),
+                    SqlValue::Null(crate::SqlType::Int2),
+                    SqlValue::Null(crate::SqlType::Json),
+                ]]);
             }
-            return Ok(Vec::new());
-        }
-        if sql == LOOKUP {
-            state.lines.push("lookup".into());
-            let now = time(params.get(2));
             return Ok(state
                 .keys
                 .get(&id)
-                .filter(|kept| kept.4 > now)
                 .map(|kept| {
                     vec![vec![
+                        SqlValue::Bool(false),
                         SqlValue::Text(kept.0.clone()),
                         kept.1
                             .map_or(SqlValue::Null(crate::SqlType::Int2), SqlValue::Int2),
@@ -236,6 +236,27 @@ impl Database for Store {
             }) as Box<dyn Transaction>)
         })
     }
+
+    /// One statement on its own: it is kept as it runs, with no `begin`
+    /// or `commit` line.
+    fn query_once<'a>(
+        &'a self,
+        sql: &'a str,
+        params: &'a [SqlValue],
+    ) -> LocalFuture<'a, Result<Vec<Row>, StoreError>> {
+        let mut alone = Tx {
+            store: self.clone(),
+            pending: Vec::new(),
+            ended: true,
+            wrote: false,
+        };
+        let rows = alone.run(sql, params);
+        let mut state = self.0.borrow_mut();
+        for (scope, key, kept) in alone.pending.drain(..) {
+            state.keys.insert((scope, key), kept);
+        }
+        Box::pin(async move { rows })
+    }
 }
 
 /// A host with store `main`, unless `no_store`, whose timer runs out at
@@ -248,6 +269,11 @@ struct Fake {
     /// A monotonic clock that moves a second each time it is read, when
     /// given: work that never waits runs past a deadline on it.
     clock: Option<Cell<u64>>,
+    /// Counts requests against one a minute, whatever the runtime's
+    /// default, when given.
+    limits: Option<crate::RateLimits>,
+    /// A monotonic clock that moves only when the test moves it.
+    still: Option<Cell<u64>>,
 }
 
 impl Host for Fake {
@@ -272,10 +298,30 @@ impl Host for Fake {
     }
 
     fn monotonic_ms(&self) -> Option<u64> {
+        if let Some(still) = &self.still {
+            return Some(still.get());
+        }
         let clock = self.clock.as_ref()?;
         let now = clock.get();
         clock.set(now + 1000);
         Some(now)
+    }
+
+    fn rate_limit<'a>(
+        &'a self,
+        key: &'a str,
+        _limit: jadpo_std::http::RateLimit,
+        now: i64,
+    ) -> LocalFuture<'a, crate::Allowed> {
+        let one = jadpo_std::http::RateLimit {
+            requests: 1,
+            window_ms: 60_000,
+        };
+        let allowed = self
+            .limits
+            .as_ref()
+            .map_or(crate::Allowed::Yes, |limits| limits.allow(key, one, now));
+        Box::pin(async move { allowed })
     }
 }
 
@@ -419,17 +465,6 @@ fn send(
     request: &Request,
     clock: i64,
 ) -> Response {
-    send_limited(table, program, host, request, clock, None)
-}
-
-fn send_limited(
-    table: &RouteTable,
-    program: &Program,
-    host: &Fake,
-    request: &Request,
-    clock: i64,
-    limits: Option<&crate::RateLimits>,
-) -> Response {
     let app = App {
         table,
         codecs: Codecs {
@@ -444,7 +479,7 @@ fn send_limited(
         clock: crate::Clock::fixed(clock),
     };
     let mut ctx = Ctx::new(&program.places, host, env);
-    block_on(handle(&app, program, &mut ctx, request, "req_1", limits)).expect("nothing waits")
+    block_on(handle(&app, program, &mut ctx, request, "req_1")).expect("nothing waits")
 }
 
 /// `POST /widgets/<name>`, with no body.
@@ -508,8 +543,8 @@ fn health_is_answered_by_the_runtime_from_its_stores() {
     );
     assert_eq!(
         host.store.lines(),
-        ["begin", "SELECT 1", "rollback"],
-        "each store runs `SELECT 1`"
+        ["SELECT 1"],
+        "each store runs `SELECT 1`, one statement of its own"
     );
     let gone = Fake {
         no_store: true,
@@ -538,6 +573,65 @@ fn health_is_answered_by_the_runtime_from_its_stores() {
 }
 
 #[test]
+fn a_worker_reuses_its_readiness_check_for_a_second() {
+    let table = table(Some("main"), false);
+    let program = Program::new(Ends::Writes);
+    let app = App {
+        table: &table,
+        codecs: Codecs {
+            codecs: &CODECS,
+            validators: &[],
+            shapes: &[],
+        },
+        failures: &[],
+    };
+    let host = Fake {
+        still: Some(Cell::new(5_000)),
+        ..Fake::default()
+    };
+    let worker = super::Worker::default();
+    let ready = Request {
+        method: "GET".into(),
+        path: "/health/ready".into(),
+        ..Request::default()
+    };
+    let probe = || {
+        block_on(super::serve_request(&app, &program, &host, &worker, &ready))
+            .expect("nothing waits")
+    };
+    let first = probe();
+    assert_eq!(first.status, 200);
+    let again = probe();
+    assert_eq!((again.status, &again.body), (200, &first.body));
+    assert_eq!(host.store.lines(), ["SELECT 1"], "checked once");
+    if let Some(still) = &host.still {
+        still.set(5_999);
+    }
+    probe();
+    assert_eq!(host.store.lines(), ["SELECT 1"], "still within the second");
+    if let Some(still) = &host.still {
+        still.set(6_000);
+    }
+    probe();
+    assert_eq!(host.store.lines(), ["SELECT 1", "SELECT 1"], "a second on");
+    // Each answer has its own request id.
+    let ids: Vec<String> = [probe(), probe()]
+        .iter()
+        .filter_map(|response| response.header("x-request-id").map(str::to_string))
+        .collect();
+    assert_eq!(ids.len(), 2);
+    assert_ne!(ids[0], ids[1]);
+    // A route test's requests, which no worker answers, check every time.
+    let host = Fake {
+        still: Some(Cell::new(5_000)),
+        ..Fake::default()
+    };
+    send(&table, &program, &host, &ready, NOW);
+    send(&table, &program, &host, &ready, NOW);
+    assert_eq!(host.store.lines(), ["SELECT 1", "SELECT 1"]);
+}
+
+#[test]
 fn a_passed_deadline_drops_the_work_commits_nothing_and_answers_504() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Hangs);
@@ -554,9 +648,11 @@ fn a_passed_deadline_drops_the_work_commits_nothing_and_answers_504() {
     assert_eq!(
         lines,
         [
-            "begin", "claim", "commit", // the claim
-            "begin", "write", "dropped", // the action, abandoned
-            "begin", "release", "commit", // the claim given up
+            "claim",   // the claim, one statement
+            "begin",   // the action,
+            "write",   //
+            "dropped", // abandoned
+            "release", // the claim given up, one statement
         ]
     );
     assert_eq!(host.store.kept("k1"), None, "a retry runs again");
@@ -572,7 +668,7 @@ fn a_write_with_a_key_answers_its_repeat_without_running_again() {
     assert_eq!(
         host.store.lines(),
         [
-            "begin", "claim", "commit", // the claim
+            "claim", // the claim, one statement
             "begin", "write", "store", "commit", // the response, with the writes
         ]
     );
@@ -695,9 +791,11 @@ fn work_that_never_waits_past_its_deadline_commits_nothing_and_answers_504() {
     assert_eq!(
         host.store.lines(),
         [
-            "begin", "claim", "commit", // the claim
-            "begin", "write", "dropped", // the action, never committed
-            "begin", "release", "commit", // the claim given up
+            "claim",   // the claim, one statement
+            "begin",   // the action,
+            "write",   //
+            "dropped", // never committed
+            "release", // the claim given up, one statement
         ]
     );
     assert_eq!(host.store.kept("k1"), None, "a retry runs again");
@@ -715,7 +813,7 @@ fn a_concurrent_change_found_at_commit_runs_the_action_again() {
     assert_eq!(
         host.store.lines(),
         [
-            "begin", "claim", "commit", // the claim
+            "claim", // the claim, one statement
             "begin", "write", "store", "changed", // the first run
             "begin", "write", "store", "commit", // the second
         ]
@@ -735,20 +833,16 @@ fn a_concurrent_change_found_at_commit_runs_the_action_again() {
 fn a_credential_on_a_route_anyone_may_call_counts_its_address_before_it_runs() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Writes);
-    let host = Fake::default();
-    let limits = crate::RateLimits::new(
-        jadpo_std::http::RateLimit {
-            requests: 1,
-            window_ms: 60_000,
-        },
-        1 << 20,
-    );
+    let host = Fake {
+        limits: Some(crate::RateLimits::new(1 << 20)),
+        ..Fake::default()
+    };
     let mut junk = post(None, "a");
     junk.headers.push(("Authorization".into(), "junk".into()));
     junk.address = Some("10.0.0.1".into());
-    let first = send_limited(&table, &program, &host, &junk, NOW, Some(&limits));
+    let first = send(&table, &program, &host, &junk, NOW);
     assert_eq!(first.status, 204);
-    let limited = send_limited(&table, &program, &host, &junk, NOW, Some(&limits));
+    let limited = send(&table, &program, &host, &junk, NOW);
     assert_eq!(
         (limited.status, code(&limited)),
         (429, Some("rate_limited"))

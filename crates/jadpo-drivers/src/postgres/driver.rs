@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::error::Error as _;
 use std::fmt;
+use std::future::Future;
 use std::rc::Rc;
 use std::task::{Poll, Waker};
 
@@ -92,60 +93,17 @@ fn begin_sql(isolation: Isolation) -> &'static str {
     }
 }
 
-/// A PostgreSQL store, reached through the host's [`Transport`]. It keeps
-/// a few connections open between transactions and begins each one at the
-/// level it is asked for: read committed for an action that loads no
-/// record, repeatable read for any other (area 6).
-///
-/// Connections are unencrypted: TLS is not built yet, so a URL that
-/// requires it (`sslmode=require`) is refused when the first transaction
-/// connects. Natively that suits a server on the same machine or network;
-/// on Workers, Hyperdrive encrypts the connection to the database.
-pub struct Postgres {
+/// What a store's transactions share: where it connects and the
+/// connections it keeps.
+struct Pool {
     config: Config,
     endpoints: Vec<Endpoint>,
     transport: Rc<dyn Transport>,
-    idle: Rc<RefCell<Vec<(Client, Slot)>>>,
+    idle: RefCell<Vec<(Client, Slot)>>,
     slots: Rc<Slots>,
 }
 
-impl fmt::Debug for Postgres {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Never the URL: it may hold a password.
-        f.debug_struct("Postgres")
-            .field("endpoints", &self.endpoints)
-            .field("idle", &self.idle.borrow().len())
-            .finish_non_exhaustive()
-    }
-}
-
-impl Postgres {
-    /// A store for `url`, in either of libpq's forms
-    /// (`postgresql://user@host:port/db` or `host=… dbname=…`); a host
-    /// starting with `/` is the folder of a Unix socket. Nothing connects
-    /// until the first transaction begins.
-    pub fn new(url: &str, transport: Rc<dyn Transport>) -> Result<Postgres, StoreError> {
-        let config: Config = url.parse().map_err(|error| {
-            StoreError::Fault(format!(
-                "the database URL isn't valid: {}",
-                describe(&error)
-            ))
-        })?;
-        let endpoints = endpoints(&config)?;
-        Ok(Postgres {
-            config,
-            endpoints,
-            transport,
-            idle: Rc::new(RefCell::new(Vec::new())),
-            slots: Rc::new(Slots::default()),
-        })
-    }
-
-    /// Where the store connects, in the order it tries them.
-    pub fn endpoints(&self) -> &[Endpoint] {
-        &self.endpoints
-    }
-
+impl Pool {
     /// Opens a connection, trying each endpoint in turn.
     async fn connect(&self) -> Result<Client, StoreError> {
         let mut last = StoreError::Unavailable;
@@ -174,6 +132,167 @@ impl Postgres {
         Err(last)
     }
 
+    /// A connection to run on: an idle one, which may have been closed by
+    /// the server since (`reused`), or a new one; with none idle and
+    /// [`MAX_OPEN`] open, it waits for one to end.
+    async fn take(&self) -> Result<Conn, StoreError> {
+        loop {
+            match next(&self.slots, &self.idle).await {
+                Got::Idle(client, slot) => {
+                    if client.is_closed() {
+                        continue;
+                    }
+                    return Ok(Conn {
+                        client,
+                        slot,
+                        reused: true,
+                    });
+                }
+                Got::New(slot) => {
+                    let client = self.connect().await?;
+                    return Ok(Conn {
+                        client,
+                        slot,
+                        reused: false,
+                    });
+                }
+            }
+        }
+    }
+
+    /// Keeps a connection for the next transaction, if it is still sound
+    /// and fewer than [`MAX_IDLE`] are kept.
+    fn give_back(&self, conn: Conn) {
+        let Conn { client, slot, .. } = conn;
+        let mut kept = self.idle.borrow_mut();
+        if !client.is_closed() && kept.len() < MAX_IDLE {
+            kept.push((client, slot));
+            drop(kept);
+            self.slots.wake();
+        }
+    }
+}
+
+/// One connection taken from the pool.
+struct Conn {
+    client: Client,
+    /// Its place among the store's [`MAX_OPEN`].
+    slot: Slot,
+    /// It was idle, so the server may have closed it meanwhile: a first
+    /// round trip that finds it gone is sent again on another.
+    reused: bool,
+}
+
+/// Runs `a` and `b` together, `a` polled first, until both finish: what
+/// sends a transaction's `BEGIN` and its first statement in one round
+/// trip, since each sends its messages when first polled and the
+/// connection writes them out together.
+async fn both<A: Future, B: Future>(a: A, b: B) -> (A::Output, B::Output) {
+    let mut a = std::pin::pin!(a);
+    let mut b = std::pin::pin!(b);
+    let mut left = None;
+    let mut right = None;
+    std::future::poll_fn(|cx| {
+        if left.is_none()
+            && let Poll::Ready(value) = a.as_mut().poll(cx)
+        {
+            left = Some(value);
+        }
+        if right.is_none()
+            && let Poll::Ready(value) = b.as_mut().poll(cx)
+        {
+            right = Some(value);
+        }
+        match (left.take(), right.take()) {
+            (Some(a), Some(b)) => Poll::Ready((a, b)),
+            (a, b) => {
+                left = a;
+                right = b;
+                Poll::Pending
+            }
+        }
+    })
+    .await
+}
+
+/// A statement as a transaction or [`Database::query_once`] sends it.
+enum Op<'a> {
+    Query(&'a str, &'a [(&'a (dyn ToSql + Sync), Type)]),
+    Execute(&'a str, &'a [(&'a (dyn ToSql + Sync), Type)]),
+    Batch(&'a str),
+}
+
+/// What a statement gave back.
+enum Done {
+    Rows(Vec<tokio_postgres::Row>),
+    Count(u64),
+    Ran,
+}
+
+async fn send(client: &Client, op: &Op<'_>) -> Result<Done, tokio_postgres::Error> {
+    match op {
+        Op::Query(sql, params) => client.query_typed(sql, params).await.map(Done::Rows),
+        Op::Execute(sql, params) => client.execute_typed(sql, params).await.map(Done::Count),
+        Op::Batch(sql) => client.batch_execute(sql).await.map(|()| Done::Ran),
+    }
+}
+
+/// A PostgreSQL store, reached through the host's [`Transport`]. It keeps
+/// a few connections open between transactions and begins each one at the
+/// level it is asked for: read committed for an action that loads no
+/// record, repeatable read for any other (area 6). A transaction's `BEGIN`
+/// goes with its first statement, in the same round trip, and the
+/// runtime's own short steps run as one statement of their own
+/// ([`Database::query_once`]), so neither waits on a `BEGIN` or a
+/// `COMMIT` of its own (chunk 4.10).
+///
+/// Connections are unencrypted: TLS is not built yet, so a URL that
+/// requires it (`sslmode=require`) is refused when the first transaction
+/// connects. Natively that suits a server on the same machine or network;
+/// on Workers, Hyperdrive encrypts the connection to the database.
+pub struct Postgres {
+    pool: Rc<Pool>,
+}
+
+impl fmt::Debug for Postgres {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Never the URL: it may hold a password.
+        f.debug_struct("Postgres")
+            .field("endpoints", &self.pool.endpoints)
+            .field("idle", &self.pool.idle.borrow().len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl Postgres {
+    /// A store for `url`, in either of libpq's forms
+    /// (`postgresql://user@host:port/db` or `host=… dbname=…`); a host
+    /// starting with `/` is the folder of a Unix socket. Nothing connects
+    /// until the first transaction begins.
+    pub fn new(url: &str, transport: Rc<dyn Transport>) -> Result<Postgres, StoreError> {
+        let config: Config = url.parse().map_err(|error| {
+            StoreError::Fault(format!(
+                "the database URL isn't valid: {}",
+                describe(&error)
+            ))
+        })?;
+        let endpoints = endpoints(&config)?;
+        Ok(Postgres {
+            pool: Rc::new(Pool {
+                config,
+                endpoints,
+                transport,
+                idle: RefCell::new(Vec::new()),
+                slots: Rc::new(Slots::default()),
+            }),
+        })
+    }
+
+    /// Where the store connects, in the order it tries them.
+    pub fn endpoints(&self) -> &[Endpoint] {
+        &self.pool.endpoints
+    }
+
     /// Runs statements without parameters outside any transaction, on a
     /// connection of their own: for what PostgreSQL refuses inside one,
     /// such as `CREATE DATABASE`. Tools and the test harness use it;
@@ -184,57 +303,62 @@ impl Postgres {
         sql: &'a str,
     ) -> LocalFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
-            let client = self.connect().await?;
+            let client = self.pool.connect().await?;
             client
                 .batch_execute(sql)
                 .await
                 .map_err(|error| store_error(&error))
         })
     }
-
-    fn open(&self, client: Client, slot: Slot) -> Box<dyn Transaction> {
-        Box::new(PgTransaction {
-            client,
-            slot,
-            idle: Rc::clone(&self.idle),
-            failed: None,
-            saved: Vec::new(),
-        })
-    }
 }
 
 impl Database for Postgres {
+    /// Takes a connection, opening one when none is idle, and leaves the
+    /// `BEGIN` to go with the first statement.
     fn begin_at(
         &self,
         isolation: Isolation,
     ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
-        let begin = begin_sql(isolation);
         Box::pin(async move {
-            // An idle connection may have been closed by the server since;
-            // one that can't begin is dropped and the next one tried. With
-            // none idle and `MAX_OPEN` open, it waits for one to end.
+            let conn = self.pool.take().await?;
+            Ok(Box::new(PgTransaction {
+                conn: Some(conn),
+                pool: Rc::clone(&self.pool),
+                begin: Some(begin_sql(isolation)),
+                failed: None,
+                saved: Vec::new(),
+            }) as Box<dyn Transaction>)
+        })
+    }
+
+    /// The statement on an idle connection, or a new one, outside any
+    /// transaction, so PostgreSQL commits it as it runs. A connection the
+    /// server closed while it was idle never ran it, so the statement is
+    /// sent again on another.
+    fn query_once<'a>(
+        &'a self,
+        sql: &'a str,
+        params: &'a [SqlValue],
+    ) -> LocalFuture<'a, Result<Vec<Row>, StoreError>> {
+        Box::pin(async move {
+            let bound = bind(params)?;
+            let typed = typed(&bound);
             loop {
-                let slot = match next(&self.slots, &self.idle).await {
-                    Got::Idle(client, slot) => {
-                        if client.is_closed() {
+                let conn = self.pool.take().await?;
+                match conn.client.query_typed(sql, &typed).await {
+                    Ok(rows) => {
+                        self.pool.give_back(conn);
+                        return rows.iter().map(read_row).collect();
+                    }
+                    Err(error) => {
+                        let error = store_error(&error);
+                        if conn.reused && error == StoreError::Unavailable {
                             continue;
                         }
-                        match client.batch_execute(begin).await {
-                            Ok(()) => return Ok(self.open(client, slot)),
-                            Err(error) => match store_error(&error) {
-                                StoreError::Unavailable => continue,
-                                other => return Err(other),
-                            },
-                        }
+                        self.pool.give_back(conn);
+                        return Err(error);
                     }
-                    Got::New(slot) => slot,
-                };
-                let client = self.connect().await?;
-                client
-                    .batch_execute(begin)
-                    .await
-                    .map_err(|error| store_error(&error))?;
-                return Ok(self.open(client, slot));
+                }
             }
         })
     }
@@ -244,10 +368,11 @@ impl Database for Postgres {
 /// rollback, it drops its connection, and closing the connection aborts
 /// the transaction on the server.
 struct PgTransaction {
-    client: Client,
-    /// Its connection's place among the store's [`MAX_OPEN`].
-    slot: Slot,
-    idle: Rc<RefCell<Vec<(Client, Slot)>>>,
+    /// Its connection: `None` only once it was lost finding another.
+    conn: Option<Conn>,
+    pool: Rc<Pool>,
+    /// The `BEGIN` its first statement sends with it, until it is sent.
+    begin: Option<&'static str>,
     /// The first error a statement gave: PostgreSQL aborts the transaction
     /// then, and answers a later `COMMIT` by rolling back.
     failed: Option<StoreError>,
@@ -257,34 +382,72 @@ struct PgTransaction {
 }
 
 impl PgTransaction {
-    fn note<T>(&mut self, result: Result<T, tokio_postgres::Error>) -> Result<T, StoreError> {
-        result.map_err(|error| {
-            let error = store_error(&error);
-            if self.failed.is_none() {
-                self.failed = Some(error.clone());
+    fn note<T>(&mut self, result: Result<T, StoreError>) -> Result<T, StoreError> {
+        if let Err(error) = &result
+            && self.failed.is_none()
+        {
+            self.failed = Some(error.clone());
+        }
+        result
+    }
+
+    /// Sends `op`, with the transaction's `BEGIN` before it in the same
+    /// round trip when it is the first. A connection that was idle and
+    /// turns out closed began nothing and ran nothing, so both go again
+    /// on another. `BEGIN` fails only when its connection does, and then
+    /// the statement after it does too.
+    async fn run(&mut self, op: Op<'_>) -> Result<Done, StoreError> {
+        let Some(begin) = self.begin.take() else {
+            let done = match &self.conn {
+                Some(conn) => send(&conn.client, &op)
+                    .await
+                    .map_err(|error| store_error(&error)),
+                None => Err(StoreError::Unavailable),
+            };
+            return self.note(done);
+        };
+        loop {
+            let Some(conn) = &self.conn else {
+                return self.note(Err(StoreError::Unavailable));
+            };
+            let (begun, done) =
+                both(conn.client.batch_execute(begin), send(&conn.client, &op)).await;
+            let error = match begun {
+                Ok(()) => return self.note(done.map_err(|error| store_error(&error))),
+                Err(error) => store_error(&error),
+            };
+            if conn.reused && error == StoreError::Unavailable {
+                // Its place goes back before another is taken.
+                self.conn = None;
+                match self.pool.take().await {
+                    Ok(conn) => {
+                        self.conn = Some(conn);
+                        continue;
+                    }
+                    Err(error) => return self.note(Err(error)),
+                }
             }
-            error
-        })
+            return self.note(Err(error));
+        }
     }
 
     /// Ends the transaction with `sql`, keeping the connection for the next
-    /// one if it is still sound.
+    /// one if it is still sound. One that never began sends nothing.
     async fn end(self, sql: &str) -> Result<(), StoreError> {
         let PgTransaction {
-            client, idle, slot, ..
+            conn, pool, begin, ..
         } = self;
-        // A connection that couldn't end its transaction is dropped.
-        client
-            .batch_execute(sql)
-            .await
-            .map_err(|error| store_error(&error))?;
-        let mut kept = idle.borrow_mut();
-        if !client.is_closed() && kept.len() < MAX_IDLE {
-            let slots = Rc::clone(&slot.0);
-            kept.push((client, slot));
-            drop(kept);
-            slots.wake();
+        let Some(conn) = conn else {
+            return Err(StoreError::Unavailable);
+        };
+        if begin.is_none() {
+            // A connection that couldn't end its transaction is dropped.
+            conn.client
+                .batch_execute(sql)
+                .await
+                .map_err(|error| store_error(&error))?;
         }
+        pool.give_back(conn);
         Ok(())
     }
 }
@@ -298,9 +461,10 @@ impl Transaction for PgTransaction {
         Box::pin(async move {
             let bound = bind(params)?;
             let typed = typed(&bound);
-            let rows = self.client.query_typed(sql, &typed).await;
-            let rows = self.note(rows)?;
-            rows.iter().map(read_row).collect()
+            match self.run(Op::Query(sql, &typed)).await? {
+                Done::Rows(rows) => rows.iter().map(read_row).collect(),
+                Done::Count(_) | Done::Ran => Ok(Vec::new()),
+            }
         })
     }
 
@@ -312,22 +476,21 @@ impl Transaction for PgTransaction {
         Box::pin(async move {
             let bound = bind(params)?;
             let typed = typed(&bound);
-            let count = self.client.execute_typed(sql, &typed).await;
-            self.note(count)
+            match self.run(Op::Execute(sql, &typed)).await? {
+                Done::Count(count) => Ok(count),
+                Done::Rows(rows) => Ok(rows.len() as u64),
+                Done::Ran => Ok(0),
+            }
         })
     }
 
     fn batch<'a>(&'a mut self, sql: &'a str) -> LocalFuture<'a, Result<(), StoreError>> {
-        Box::pin(async move {
-            let done = self.client.batch_execute(sql).await;
-            self.note(done)
-        })
+        Box::pin(async move { self.run(Op::Batch(sql)).await.map(|_| ()) })
     }
 
     fn savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
-            let done = self.client.batch_execute(jadpo_runtime::SAVEPOINT).await;
-            self.note(done)?;
+            self.run(Op::Batch(jadpo_runtime::SAVEPOINT)).await?;
             self.saved.push(self.failed.clone());
             Ok(())
         })
@@ -335,11 +498,8 @@ impl Transaction for PgTransaction {
 
     fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
-            let done = self
-                .client
-                .batch_execute(jadpo_runtime::RELEASE_SAVEPOINT)
-                .await;
-            self.note(done)?;
+            self.run(Op::Batch(jadpo_runtime::RELEASE_SAVEPOINT))
+                .await?;
             self.saved.pop();
             Ok(())
         })
@@ -347,11 +507,8 @@ impl Transaction for PgTransaction {
 
     fn rollback_to_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
-            let done = self
-                .client
-                .batch_execute(jadpo_runtime::ROLLBACK_TO_SAVEPOINT)
-                .await;
-            self.note(done)?;
+            self.run(Op::Batch(jadpo_runtime::ROLLBACK_TO_SAVEPOINT))
+                .await?;
             // The refused statement is undone, and with it its error.
             self.failed = self.saved.pop().flatten();
             Ok(())

@@ -16,6 +16,7 @@ mod manifest;
 mod migrate;
 mod policy;
 mod queries;
+mod round_trips;
 mod sql;
 #[path = "test.rs"]
 mod test_command;

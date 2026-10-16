@@ -1,18 +1,21 @@
-//! Default rate limits (area 16, "Rate limits", question 6), counted in
-//! memory: with no Redis store named, each instance counts on its own,
-//! within a fixed allowance of memory, the oldest counters dropped first.
-//! Every route has the default limits: 600 requests a minute per signed-in
-//! caller, 120 per address when there is none. Sign-in comes with area 8,
-//! so for now every request counts against its address.
+//! Rate limits counted in memory (area 16, "Rate limits", question 6):
+//! what the native host counts with ([`crate::Host::rate_limit`]), fixed
+//! windows within a fixed allowance of memory, the oldest counters dropped
+//! first. The HTTP component asks the host about every request: 600 a
+//! minute per signed-in caller, 120 per address when there is none.
 //!
-//! A limiter is one thread's: the runtime is single-threaded (§2.6), and
-//! the native host sends every connection from one address to the same
-//! thread, so an address is counted in one place without a lock.
+//! Counters are one thread's: the runtime is single-threaded (§2.6), and
+//! the native host keeps a set per worker thread. It sends every
+//! connection from one address to the same thread, so an address is
+//! counted in one place without a lock; a signed-in caller's requests
+//! from several addresses can land on several threads, each counting the
+//! caller's whole allowance, which a Redis connection (area 16) counts
+//! once.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 
-use jadpo_std::http::{ADDRESS_LIMIT, CALLER_LIMIT, RATE_LIMIT_MEMORY, RateLimit};
+use jadpo_std::http::{RATE_LIMIT_MEMORY, RateLimit};
 
 /// About how much memory one counter takes: its key, its window and count,
 /// and its place in the eviction queue.
@@ -39,49 +42,28 @@ struct Counters {
 /// In-memory counters, fixed windows, bounded by memory.
 #[derive(Debug)]
 pub struct RateLimits {
-    limit: RateLimit,
-    /// A signed-in caller's (area 8): 600 a minute.
-    caller: RateLimit,
     capacity: usize,
     counters: RefCell<Counters>,
 }
 
 impl Default for RateLimits {
     fn default() -> RateLimits {
-        RateLimits::new(ADDRESS_LIMIT, RATE_LIMIT_MEMORY)
+        RateLimits::new(RATE_LIMIT_MEMORY)
     }
 }
 
 impl RateLimits {
-    /// Counters for `limit`, within `memory` bytes.
-    pub fn new(limit: RateLimit, memory: usize) -> RateLimits {
+    /// Counters within `memory` bytes.
+    pub fn new(memory: usize) -> RateLimits {
         RateLimits {
-            limit,
-            caller: CALLER_LIMIT,
             capacity: (memory / ENTRY_BYTES).max(1),
             counters: RefCell::new(Counters::default()),
         }
     }
 
-    /// The same, with `caller` as a signed-in caller's limit.
-    pub fn with_caller(mut self, caller: RateLimit) -> RateLimits {
-        self.caller = caller;
-        self
-    }
-
-    /// Counts a request from address `key` at `now` (milliseconds) and
-    /// says whether it may go ahead.
-    pub fn allow(&self, key: &str, now: i64) -> Allowed {
-        self.count(key, self.limit, now)
-    }
-
-    /// Counts a request from signed-in caller `key`, against a caller's
-    /// limit.
-    pub fn allow_caller(&self, key: &str, now: i64) -> Allowed {
-        self.count(key, self.caller, now)
-    }
-
-    fn count(&self, key: &str, limit: RateLimit, now: i64) -> Allowed {
+    /// Counts a request from `key` at `now` (milliseconds) against `limit`
+    /// and says whether it may go ahead.
+    pub fn allow(&self, key: &str, limit: RateLimit, now: i64) -> Allowed {
         let window = i64::from(limit.window_ms);
         let mut counters = self.counters.borrow_mut();
         if !counters.counts.contains_key(key) {
@@ -114,38 +96,37 @@ mod tests {
 
     #[test]
     fn an_address_gets_its_allowance_a_window() {
-        let limits = RateLimits::new(
-            RateLimit {
-                requests: 2,
-                window_ms: 60_000,
-            },
-            RATE_LIMIT_MEMORY,
-        );
-        assert_eq!(limits.allow("a", 0), Allowed::Yes);
-        assert_eq!(limits.allow("a", 10), Allowed::Yes);
-        assert_eq!(limits.allow("a", 1_000), Allowed::No { retry_after: 59 });
+        let limits = RateLimits::new(RATE_LIMIT_MEMORY);
+        let two = RateLimit {
+            requests: 2,
+            window_ms: 60_000,
+        };
+        assert_eq!(limits.allow("a", two, 0), Allowed::Yes);
+        assert_eq!(limits.allow("a", two, 10), Allowed::Yes);
         assert_eq!(
-            limits.allow("b", 1_000),
+            limits.allow("a", two, 1_000),
+            Allowed::No { retry_after: 59 }
+        );
+        assert_eq!(
+            limits.allow("b", two, 1_000),
             Allowed::Yes,
             "each address counts alone"
         );
-        assert_eq!(limits.allow("a", 60_000), Allowed::Yes, "a new window");
+        assert_eq!(limits.allow("a", two, 60_000), Allowed::Yes, "a new window");
     }
 
     #[test]
     fn the_oldest_counters_go_first_when_memory_runs_out() {
-        let limits = RateLimits::new(
-            RateLimit {
-                requests: 1,
-                window_ms: 60_000,
-            },
-            ENTRY_BYTES * 2,
-        );
-        assert_eq!(limits.allow("a", 0), Allowed::Yes);
-        assert_eq!(limits.allow("b", 0), Allowed::Yes);
-        assert_eq!(limits.allow("c", 0), Allowed::Yes);
+        let limits = RateLimits::new(ENTRY_BYTES * 2);
+        let one = RateLimit {
+            requests: 1,
+            window_ms: 60_000,
+        };
+        assert_eq!(limits.allow("a", one, 0), Allowed::Yes);
+        assert_eq!(limits.allow("b", one, 0), Allowed::Yes);
+        assert_eq!(limits.allow("c", one, 0), Allowed::Yes);
         // `a`'s counter was dropped to make room, so it starts again.
-        assert_eq!(limits.allow("a", 0), Allowed::Yes);
-        assert!(matches!(limits.allow("c", 0), Allowed::No { .. }));
+        assert_eq!(limits.allow("a", one, 0), Allowed::Yes);
+        assert!(matches!(limits.allow("c", one, 0), Allowed::No { .. }));
     }
 }

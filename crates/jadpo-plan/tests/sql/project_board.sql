@@ -1,12 +1,12 @@
 -- query project_board: one, store main
-SELECT "id", "name", "owner_id"
+SELECT "id", "name", "owner_id", ("project"."owner_id" = $2 OR $3) IS TRUE AS "jadpo_permitted"
 FROM "project"
 WHERE "id" = $1
-  AND ("project"."owner_id" = $2 OR $3)
 -- $1: argument 0 as Uuid
 -- $2: caller User as Uuid
 -- $3: caller Signed as Bool
--- columns: uuid, text, uuid
+-- columns: uuid, text, uuid, bool
+-- the caller may read a row: column 3
 -- record ProjectBoardView: id = column 0, name = column 1, owner = include 0, todos = include 1
 
 -- include 0: one, matching column 2

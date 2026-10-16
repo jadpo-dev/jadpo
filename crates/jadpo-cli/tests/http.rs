@@ -16,7 +16,9 @@
 //! 4.9): a body read only as JSON, a query string or body a route doesn't
 //! read refused, a header that isn't ASCII refused, work that never waits
 //! stopped at its deadline, a credential on a route anyone may call
-//! counted before it runs, and a handled failure keeping the session.
+//! counted before it runs, and a handled failure keeping the session. And
+//! work that never waits giving its worker thread to another request
+//! (chunk 4.10).
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips the
@@ -2715,6 +2717,51 @@ fn work_that_never_waits_stops_at_its_deadline_and_keeps_nothing() {
         r#"{"label":"slow","depth":30}"#,
     );
     assert_eq!(retried.status, 504, "{retried:?}");
+}
+
+#[test]
+fn work_that_never_waits_leaves_its_worker_to_other_requests() {
+    if skipped() {
+        return;
+    }
+    let dir = tempdir::Dir::new("spin-shared");
+    let root = dir.path().join("busy");
+    for (path, text) in SPIN {
+        write(&root, path, text);
+    }
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["api", "update"],
+        &["check"],
+    ] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let dev = Dev::start(&root);
+    let warm = dev.send("POST", "/busywork", &[], r#"{"label":"warm","depth":3}"#);
+    assert_eq!(warm.status, 200, "{warm:?}");
+    // Both come from one address, so one worker thread answers both.
+    let port = dev.port;
+    let slow = std::thread::spawn(move || {
+        send(
+            port,
+            "POST",
+            "/busywork",
+            &[],
+            r#"{"label":"slow","depth":30}"#,
+        )
+    });
+    std::thread::sleep(Duration::from_millis(150));
+    let started = Instant::now();
+    let quick = dev.send("POST", "/busywork", &[], r#"{"label":"quick","depth":3}"#);
+    let waited = started.elapsed();
+    assert_eq!(quick.status, 200, "{quick:?}");
+    let slow = slow.join().expect("the slow request");
+    assert_eq!(slow.status, 504, "{slow:?}");
+    assert!(
+        waited < Duration::from_millis(500),
+        "answered while the other computed, not after its 1 s deadline: {waited:?}"
+    );
 }
 
 #[test]

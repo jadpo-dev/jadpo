@@ -38,6 +38,32 @@ pub trait Executor {
     ) -> LocalFuture<'a, Outcome>;
 }
 
+/// Gives the thread back once: pending the first time it is polled, after
+/// asking to be polled again, so whatever else the thread runs (other
+/// requests a worker answers, the route's own deadline) has a turn. What
+/// an executor awaits each time it checks a request's deadline while
+/// running work that never waits (area 7, "Time limits"; chunk 4.10).
+pub fn yield_now() -> YieldNow {
+    YieldNow(false)
+}
+
+/// The future [`yield_now`] gives.
+#[derive(Debug)]
+pub struct YieldNow(bool);
+
+impl Future for YieldNow {
+    type Output = ();
+
+    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> std::task::Poll<()> {
+        if self.0 {
+            return std::task::Poll::Ready(());
+        }
+        self.0 = true;
+        cx.waker().wake_by_ref();
+        std::task::Poll::Pending
+    }
+}
+
 /// A future [`block_on`] gave up on: it waited for something nothing will
 /// wake it for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -463,6 +463,13 @@ impl<'p> Ctx<'p> {
         });
     }
 
+    /// Whether the invocation answers a request with a deadline: then an
+    /// executor gives the thread back as it checks the deadline
+    /// ([`crate::yield_now`]), so other requests the thread serves carry on.
+    pub fn has_deadline(&self) -> bool {
+        self.deadline.is_some()
+    }
+
     /// Whether the request's deadline has passed: what an executor checks
     /// as it runs work that never waits, and the route once its work ends
     /// (area 7, "Time limits").

@@ -19,6 +19,45 @@ pub fn select<S: AsRef<str>>(columns: &[S], table: &str, indent: &str) -> String
     )
 }
 
+/// `SELECT` of `columns` and whether `grant` holds for each row, the last
+/// column, from `table`: a read that tells a row policy hides from one that
+/// isn't there in one statement.
+pub fn select_granted<S: AsRef<str>>(columns: &[S], grant: &str, table: &str) -> String {
+    format!(
+        "SELECT {}, {} IS TRUE AS \"jadpo_permitted\"\nFROM {}",
+        idents(columns),
+        parenthesised(grant),
+        ident(table)
+    )
+}
+
+/// `condition` in parentheses, unless one pair already holds all of it.
+fn parenthesised(condition: &str) -> String {
+    let mut depth = 0usize;
+    let mut closes_at_end = false;
+    for (at, c) in condition.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    closes_at_end = at + 1 == condition.len();
+                    if !closes_at_end {
+                        break;
+                    }
+                }
+            }
+            _ if depth == 0 => break,
+            _ => {}
+        }
+    }
+    if condition.starts_with('(') && closes_at_end {
+        condition.to_string()
+    } else {
+        format!("({condition})")
+    }
+}
+
 /// `SELECT 1` from `table`: whether a row is there.
 pub fn select_one(table: &str) -> String {
     format!("SELECT 1\nFROM {}", ident(table))

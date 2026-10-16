@@ -16,7 +16,7 @@
 //! for each save, and errors drawn as `jadpo check` draws them. With
 //! `--json`, every step is one envelope on one line.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::net::TcpListener;
@@ -31,8 +31,8 @@ use jadpo_diag::{Diagnostic, rule};
 use jadpo_host_native::http::{Handler, MakeHandler, Server};
 use jadpo_host_native::{NativeHost, Runtime, postgres};
 use jadpo_interp::{Prepared, Program};
-use jadpo_runtime::http::{Request, Response, handle, request_id};
-use jadpo_runtime::{Clock, Ctx, Env, LocalFuture, RateLimits};
+use jadpo_runtime::LocalFuture;
+use jadpo_runtime::http::{Request, Response, Worker, serve_request};
 use jadpo_term::{
     Block, ColorChoice, Environment, Fact, Json, Outcome, Screen, Stream, Style, Token, envelope,
 };
@@ -108,13 +108,13 @@ struct Shared {
 }
 
 /// A worker's handler: its view of the program, rebuilt when a save
-/// swaps in a new version, its stores and its rate-limit counters.
+/// swaps in a new version, its host (its stores and rate-limit counters)
+/// and what the runtime keeps between its requests.
 struct DevHandler {
     shared: Arc<Shared>,
     program: RefCell<Option<(u64, Rc<Program>)>>,
     host: NativeHost,
-    limits: RateLimits,
-    count: Cell<u64>,
+    worker: Worker,
 }
 
 impl DevHandler {
@@ -140,30 +140,15 @@ impl Handler for DevHandler {
         Box::pin(async move {
             let started = Instant::now();
             let program = self.program();
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |elapsed| elapsed.as_millis() as i64);
-            let env = Env {
-                seed: None,
-                clock: Clock::fixed(now),
-            };
-            let mut ctx = Ctx::new(program.places(), &self.host, env);
-            let count = self.count.get() + 1;
-            self.count.set(count);
-            let id = request_id(&ctx, count);
             let app = program.app();
-            let response = handle(
-                &app,
-                program.as_ref(),
-                &mut ctx,
-                &request,
-                &id,
-                Some(&self.limits),
-            )
-            .await;
+            let response =
+                serve_request(&app, program.as_ref(), &self.host, &self.worker, &request).await;
             if let Ok(log) = self.shared.log.lock() {
                 let _ = log.send(Line {
-                    id,
+                    id: response
+                        .header("x-request-id")
+                        .unwrap_or_default()
+                        .to_string(),
                     method: request.method.clone(),
                     path: request.path.clone(),
                     status: response.status,
@@ -393,8 +378,7 @@ pub fn serve_to(
             shared: Arc::clone(&make_shared),
             program: RefCell::new(None),
             host,
-            limits: RateLimits::default(),
-            count: Cell::new(0),
+            worker: Worker::default(),
         }) as Box<dyn Handler>
     });
     let workers = std::thread::available_parallelism().map_or(2, |n| n.get().min(8));

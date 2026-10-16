@@ -112,7 +112,7 @@ pub(crate) async fn read(
         };
         run_read(transaction, plan, &env).await
     };
-    let (rows, values) = match result {
+    let (rows, values, hidden) = match result {
         Ok(found) => found,
         Err(Problem::Store(error)) => return Err(refused(ctx, error, site)),
         Err(Problem::Defect(what)) => return Err(defect(ctx, &what, site)),
@@ -123,30 +123,9 @@ pub(crate) async fn read(
     Ok(match plan.cardinality {
         Cardinality::One => match values.into_iter().next() {
             Some(value) => Found::Value(value),
-            // Whether policy hid it: the statement without policy finds it.
-            None => match (&plan.select.unpoliced, env.unpoliced) {
-                (Some(unpoliced), false) => {
-                    let mut params = Vec::with_capacity(plan.select.params.len());
-                    for param in &plan.select.params {
-                        match bind(param, &env) {
-                            Ok(value) => params.push(value),
-                            Err(Problem::Defect(what)) => return Err(defect(ctx, &what, site)),
-                            Err(_) => {
-                                return Err(defect(ctx, "a parameter it couldn't send", site));
-                            }
-                        }
-                    }
-                    let found = match ctx.transaction(&plan.store).await {
-                        Ok(transaction) => transaction.query(unpoliced, &params).await,
-                        Err(error) => Err(error),
-                    };
-                    match found {
-                        Ok(rows) => Found::Missing(!rows.is_empty()),
-                        Err(error) => return Err(refused(ctx, error, site)),
-                    }
-                }
-                _ => Found::Missing(false),
-            },
+            // Whether policy hid it: the statement selected the grant of
+            // every record it found.
+            None => Found::Missing(hidden),
         },
         Cardinality::Optional => Found::Value(values.into_iter().next().unwrap_or(Value::None)),
         Cardinality::List => Found::Value(Value::list(values)),
@@ -282,15 +261,25 @@ fn bind(param: &jadpo_std::read::Param, env: &Env<'_>) -> Result<SqlValue, Probl
     })
 }
 
-/// The main statement's rows, and the values they become.
+/// The main statement's rows, the values they become, and whether it found
+/// a record the caller may not read, which is left out before anything
+/// else reads it.
 async fn run_read(
     transaction: &mut dyn Transaction,
     plan: &ReadPlan,
     env: &Env<'_>,
-) -> Result<(Vec<Row>, Vec<Value>), Problem> {
-    let rows = run(transaction, &plan.select, env).await?;
+) -> Result<(Vec<Row>, Vec<Value>, bool), Problem> {
+    let mut rows = run(transaction, &plan.select, env).await?;
+    let mut hidden = false;
+    if let Some(at) = plan.select.permitted
+        && !env.unpoliced
+    {
+        let found = rows.len();
+        rows.retain(|row| matches!(row.get(at as usize), Some(SqlValue::Bool(true))));
+        hidden = rows.len() < found;
+    }
     let values = records(transaction, &plan.select, &rows, env).await?;
-    Ok((rows, values))
+    Ok((rows, values, hidden))
 }
 
 async fn run(

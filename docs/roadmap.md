@@ -347,7 +347,7 @@ reference only).
   at commit rerunning the action, not answering 503; header, body and
   connection timeouts and caps in the native host; each API's sign-in
   methods in its record.
-- [ ] **4.10 The runtime owns Phase 4's request path** `opus · xhigh`,
+- [x] **4.10 The runtime owns Phase 4's request path** `opus · xhigh`,
   before Phase 5, from the Phase 4 review: an action's gate checked in
   `jadpo_runtime::action`; the caller a call runs as read from the plan,
   not a type name; route tests' caller and `Idempotency-Key` given to the
@@ -358,7 +358,9 @@ reference only).
   sent with the first statement (area 7's "a transaction of its own"
   becomes "one statement", the same outcomes); a policed `get` that finds
   nothing answered without a second statement; `/health/ready` cached for
-  a second; §2.4 and §2.6 and the stale comments brought up to date.
+  a second; the interpreter yielding as it checks its deadline, so a
+  route that computes without waiting doesn't hold its worker thread
+  (chunk 4.9); §2.4 and §2.6 and the stale comments brought up to date.
 - [ ] **4.11 Incremental policy and route checking** `opus · xhigh`, before
   6.1: one positionless per-callable query of what a body reads, writes,
   calls and loads, which isolation, the store rules, policy reach and the
