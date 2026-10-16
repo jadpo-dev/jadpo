@@ -18,6 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use jadpo_db::{Db, Project};
 use jadpo_graph::json::Value;
 use jadpo_graph::{Base, Detail, Key, Section};
+use jadpo_std::http::PrincipalKind;
 
 use super::wire::{Wire, reference};
 use super::{GroupModel, RouteModel, Segment, groups, routes_clean};
@@ -77,51 +78,80 @@ const SHARED: [(&str, &str, &str, &str); 8] = [
     ),
 ];
 
+/// When a refusal from signing in can answer a route.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum When {
+    /// Every route that needs a caller.
+    Always,
+    /// A write, where the API accepts browser sessions.
+    CookieWrite,
+    /// Where the API accepts a method that signs users in.
+    Users,
+    /// Where the API accepts service keys.
+    Services,
+    /// A route that selects one kind of caller, where the API accepts a
+    /// method that signs in the other.
+    OtherKind,
+}
+
 /// What signing in can answer (area 8, "Failures"): each status, schema
-/// name and code, its description, and whether only a write that came with
-/// a cookie answers it.
-const SIGN_IN: [(&str, &str, &str, &str, bool); 6] = [
+/// name and code, its description, and when it answers.
+const SIGN_IN: [(&str, &str, &str, &str, When); 8] = [
     (
         "401",
         "AuthenticationRequired",
         "authentication_required",
         "The request carries no credential.",
-        false,
+        When::Always,
     ),
     (
         "401",
         "InvalidCredentials",
         "invalid_credentials",
         "The credential is malformed, expired or unknown; a browser session's cookies are cleared.",
-        false,
+        When::Always,
     ),
     (
         "401",
         "AmbiguousCredentials",
         "ambiguous_credentials",
         "The request carries more than one credential, such as a cookie and a bearer token.",
-        false,
+        When::Always,
     ),
     (
         "403",
         "AccountDisabled",
         "user_disabled",
         "The signed-in user's record isn't active.",
-        false,
+        When::Users,
+    ),
+    (
+        "403",
+        "ServiceDisabled",
+        "service_disabled",
+        "The signed-in service's record isn't active.",
+        When::Services,
     ),
     (
         "403",
         "CsrfRejected",
         "csrf_rejected",
         "A write that came with the session's cookie has no `Origin` naming this server, or no `X-Jadpo-CSRF` matching the session.",
-        true,
+        When::CookieWrite,
+    ),
+    (
+        "403",
+        "WrongKindOfCaller",
+        "not_permitted",
+        "A service called a route for users, or a user one for services.",
+        When::OtherKind,
     ),
     (
         "503",
         "AuthenticationUnavailable",
         "authentication_unavailable",
         "The store sessions are kept in can't be reached.",
-        false,
+        When::Always,
     ),
 ];
 
@@ -169,6 +199,7 @@ pub fn document(
             &lookup,
             route,
             required,
+            &methods,
             &mut refs,
             &mut failure_schemas,
         );
@@ -210,6 +241,25 @@ pub fn document(
     let mut security = Vec::new();
     let mut schemes = Value::object();
     for method in &methods {
+        let bearer = match method {
+            jadpo_std::AuthenticationMethod::ApiToken => Some(
+                "An API token, `jadpo_token_` and 64 hexadecimal digits, which a route whose action calls `sessions.issue_token` gives once.",
+            ),
+            jadpo_std::AuthenticationMethod::ServiceKey => Some(
+                "A service key, `jadpo_key_` and 64 hexadecimal digits, which a route whose action calls `issue_key` gives once.",
+            ),
+            _ => None,
+        };
+        if let Some(description) = bearer.filter(|_| identity.built(*method)) {
+            let mut scheme = Value::object();
+            scheme.set("type", "http");
+            scheme.set("scheme", "bearer");
+            scheme.set("description", description);
+            schemes.set(method.name(), scheme);
+            let mut requirement = Value::object();
+            requirement.set(method.name(), Vec::<Value>::new());
+            security.push(requirement);
+        }
         if *method == jadpo_std::AuthenticationMethod::BrowserSession
             && let Some(cookie) = identity.cookie()
         {
@@ -327,6 +377,7 @@ fn operation(
     lookup: &Lookup<'_>,
     route: &RouteModel,
     key_required: bool,
+    methods: &[jadpo_std::AuthenticationMethod],
     refs: &mut BTreeSet<Key>,
     failure_schemas: &mut BTreeMap<String, Value>,
 ) -> Value {
@@ -475,8 +526,24 @@ fn operation(
     }
     // Signing in (area 8).
     if route.authentication.needs_caller() {
-        for (status, name, code, description, cookie_write) in SIGN_IN {
-            if cookie_write && !writes {
+        use jadpo_std::AuthenticationMethod as M;
+        let users = methods
+            .iter()
+            .any(|method| matches!(method, M::BrowserSession | M::ApiToken));
+        let services = methods.contains(&M::ServiceKey);
+        for (status, name, code, description, when) in SIGN_IN {
+            let answers = match when {
+                When::Always => true,
+                When::CookieWrite => writes && methods.contains(&M::BrowserSession),
+                When::Users => users,
+                When::Services => services,
+                When::OtherKind => match route.caller {
+                    Some(PrincipalKind::User) => services,
+                    Some(PrincipalKind::Service) => users,
+                    None => false,
+                },
+            };
+            if !answers {
                 continue;
             }
             failure_schemas.insert(name.to_string(), envelope(code, description, None));

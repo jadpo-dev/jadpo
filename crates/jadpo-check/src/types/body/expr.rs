@@ -584,6 +584,28 @@ impl Body<'_> {
                 .insert(node_key(node.syntax()), (PAGE.to_string(), vec![field]));
             return ty;
         }
+        // A token or a key as `sessions.tokens` or `Service.keys` lists it
+        // (area 8).
+        if let Ty::Opaque(issued, args) = receiver.strip_nullable()
+            && args.is_empty()
+            && (issued == jadpo_std::http::ISSUED_TOKEN || issued == jadpo_std::http::ISSUED_KEY)
+        {
+            let found = jadpo_std::http::ISSUED_FIELDS
+                .iter()
+                .find(|(name, _)| *name == field);
+            let Some((_, builtin)) = found else {
+                let fields: Vec<FieldDef> = jadpo_std::http::ISSUED_FIELDS
+                    .iter()
+                    .map(|(name, builtin)| plain_field(name, Ty::Prim(*builtin)))
+                    .collect();
+                self.unknown_field(issued, &field, &fields, span, false);
+                return Ty::Error;
+            };
+            self.facts
+                .fields
+                .insert(node_key(node.syntax()), (issued.clone(), vec![field]));
+            return Ty::Prim(*builtin);
+        }
         // A route test's response (area 13).
         if let Some(found) = self.response_field(receiver, &field) {
             return match found {
@@ -1236,6 +1258,21 @@ fn response_fields() -> Vec<FieldDef> {
             generated: false,
         })
         .collect()
+}
+
+/// A built-in type's field, with nothing declared about it.
+fn plain_field(name: &str, declared: Ty) -> FieldDef {
+    FieldDef {
+        name: name.to_string(),
+        declared,
+        rules: Rules::default(),
+        optional: false,
+        default: None,
+        header: None,
+        copied: false,
+        replaces: None,
+        generated: false,
+    }
 }
 
 fn page_fields(item: &Ty) -> Vec<FieldDef> {

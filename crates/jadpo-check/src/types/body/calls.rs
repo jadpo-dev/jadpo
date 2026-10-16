@@ -241,6 +241,12 @@ impl Body<'_> {
                     self.walk(|walk| walk.member_values(block));
                     return (Ty::Error, CallKind::Effect(written), Reach::Unknown);
                 }
+                // The service entity's keys (area 8, question 7).
+                if let Some(op) = jadpo_std::http::SessionOp::key_op(&rest[0]) {
+                    let block = self.pending_block.take();
+                    self.walk(|walk| walk.member_values(block));
+                    return self.key_call(&head, op, call, callee, &written);
+                }
                 let block = self.pending_block.take();
                 if self.context.is_pure() {
                     self.persistence(span, &written);
@@ -795,7 +801,7 @@ impl Body<'_> {
     /// An argument to a parameter that takes any type built on one of
     /// `accepts`, as operators work on the representation: `Number`, or a
     /// built-in representation written in a stub.
-    fn built_on_argument(
+    pub(super) fn built_on_argument(
         &mut self,
         value: &Expr,
         ty: Option<Ty>,

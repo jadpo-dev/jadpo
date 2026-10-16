@@ -281,12 +281,12 @@ reference only).
   routes signed in by default, `current_principal`, starting and ending a
   session, signing in from route tests. Split: API tokens and service keys
   are 4.3b, the revocation delay 5.1b.
-- [ ] **4.3b API tokens and service keys** `opus · high`: `service_key:`
+- [x] **4.3b API tokens and service keys** `opus · high`: `service_key:`
   with `Service.issue_key`, `.keys` and `.revoke_key` and a
   `jadpo_service_keys` table, service callers (`service_disabled`,
   `Principal.service`, a route test signing in as a service), and
-  `api_token:`. **Needs Richard** to decide how an application issues an
-  API token (area 8, "Status", with a recommendation).
+  `api_token:` with `sessions.issue_token`, `.tokens` and `.revoke_token`
+  (area 8, decided 2026-10-16).
 - [ ] **4.4 Policy:** `opus · xhigh` grants compiled into queries, tenancy, the permissions
   report.
 - [ ] **4.6 Teaching examples for Phase 4** `opus · high`: bring

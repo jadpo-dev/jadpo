@@ -650,9 +650,13 @@ async fn run_with_caller(
     // commits; such a response isn't kept for a repeat, so a retry signs
     // in again rather than getting an answer without its cookies.
     let session = held.as_ref().and_then(|held| held.session.clone());
+    // Nor is one that carries an API token or a service key, which is
+    // shown once and kept only as its verifier.
+    let issued = held.as_ref().is_some_and(|held| held.issued);
     // Successes and the failures the action returns are kept for a
     // repeat; `unavailable` and faults are not, so a retry runs again.
     let storable = session.is_none()
+        && !issued
         && match &outcome {
             Outcome::Value(_) => true,
             Outcome::Failed(failure) => failure.kind.as_deref() != Some("unavailable"),

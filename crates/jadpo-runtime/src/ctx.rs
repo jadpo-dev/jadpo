@@ -48,6 +48,9 @@ pub(crate) struct Boundary {
     /// What the body did to the request's session, for its response once
     /// it commits (area 8).
     pub session: Option<SessionEffect>,
+    /// Whether the body issued an API token or a service key, whose
+    /// response is never kept for an idempotent repeat (area 8).
+    pub issued: bool,
 }
 
 /// What an action did to the session of the request a route answers
@@ -64,11 +67,14 @@ pub enum SessionEffect {
 /// The signed-in caller of the request being answered (area 8).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Caller {
-    /// The caller value code receives: a `Principal.user` record.
+    /// The caller value code receives: a `Principal.user` or
+    /// `Principal.service` record.
     pub value: Value,
-    /// Whose it is, for rate limits and idempotency keys: `user <id>`.
+    /// Whose it is, for rate limits and idempotency keys: `user <id>` or
+    /// `service <id>`.
     pub key: String,
-    /// The browser session it came with, when it did, by `id`.
+    /// The browser session or API token it came with, when it did, by
+    /// `id`, which `sessions.end()` ends.
     pub session: Option<[u8; 16]>,
 }
 
@@ -84,6 +90,8 @@ pub struct Held {
     pub outbox: Vec<Event>,
     /// What the body did to the request's session.
     pub session: Option<SessionEffect>,
+    /// Whether the body issued an API token or a service key.
+    pub issued: bool,
 }
 
 impl fmt::Debug for Held {
@@ -92,6 +100,7 @@ impl fmt::Debug for Held {
             .field("transaction", &self.transaction.is_some())
             .field("outbox", &self.outbox)
             .field("session", &self.session)
+            .field("issued", &self.issued)
             .finish()
     }
 }
@@ -194,6 +203,18 @@ impl<'p> Ctx<'p> {
         match &mut self.boundary {
             Some(boundary) => {
                 boundary.session = Some(effect);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Records that the running action issued an API token or a service
+    /// key; `false` outside an action.
+    pub fn issued(&mut self) -> bool {
+        match &mut self.boundary {
+            Some(boundary) => {
+                boundary.issued = true;
                 true
             }
             None => false,

@@ -9,6 +9,7 @@ add_copy
 add_delivery
 add_interest
 add_memo
+add_partner
 add_tagged_memo
 add_todo
 admin_orders
@@ -184,6 +185,7 @@ country_id
 country_view
 create_booking
 create_order
+create_partner
 create_private_note
 create_product
 create_test_message
@@ -353,6 +355,7 @@ joined_at
 jot_down
 keep_memo
 keeper
+key_expires_at
 key_in_order
 keyed_count
 keyed_in
@@ -366,6 +369,7 @@ labelled
 larger
 last_lent_at
 last_seen_at
+last_token
 last_tray
 last_viewed_at
 late
@@ -525,7 +529,16 @@ paid
 pale
 pantry
 parcel
+partner
+partner_added
+partner_id
+partner_name
+partner_name_taken
+partner_not_found
 partner_ref
+partner_status
+partner_view
+partners
 party_id
 party_label
 party_title
@@ -696,9 +709,12 @@ short_product_name
 shortbread
 shout
 show_on_menu
+sign_in_app
 sign_in_link
+sign_out_everywhere
 sign_up
 signed_in
+signed_up
 signup_ip
 size_of
 size_price
@@ -739,6 +755,7 @@ supplier_desk
 supplier_label
 supplier_site
 suspend
+suspend_partner
 suspended
 tag_all
 tag_memo
@@ -752,6 +769,7 @@ temperature_for
 tenth
 test_configuration
 the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest
+this_partner
 ticket_status
 tidy
 tidy_up

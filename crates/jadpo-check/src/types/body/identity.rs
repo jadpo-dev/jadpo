@@ -5,7 +5,7 @@
 //! `sessions.end()`, question 9).
 
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_std::http::{PrincipalKind, SessionOp};
+use jadpo_std::http::{ISSUED_KEY, ISSUED_TOKEN, PrincipalKind, SessionOp};
 use jadpo_syntax::ast::{self, AstNode};
 
 use super::facts::{Reach, node_key};
@@ -163,9 +163,11 @@ impl Body<'_> {
         )
     }
 
-    /// `sessions.start(user_id)` and `sessions.end()`: only in an action,
-    /// which a route runs; the runtime sets or clears the session's cookies
-    /// on that route's response (area 8, question 9).
+    /// `sessions.start(user_id)`, `sessions.end()`, `sessions.issue_token`,
+    /// `.tokens` and `.revoke_token`, and the service entity's
+    /// `issue_key`, `keys` and `revoke_key`: only in an action, which keeps
+    /// what they write in its transaction; for a session, the runtime sets
+    /// or clears its cookies on the route's response (area 8, question 9).
     pub(super) fn session_call(
         &mut self,
         op: SessionOp,
@@ -179,85 +181,224 @@ impl Body<'_> {
             .iter()
             .flat_map(|list| list.args())
             .collect();
+        let failed = |body: &mut Self| {
+            body.args_only(call);
+            (
+                Ty::Error,
+                CallKind::Effect(written.to_string()),
+                Reach::Unknown,
+            )
+        };
         if self.context != Context::Action {
             let who = super::capital(self.context.with_a());
+            let does = match op {
+                SessionOp::Start => "starts the session of the request a route answers".to_string(),
+                SessionOp::End => "ends the session of the request a route answers".to_string(),
+                SessionOp::Tokens | SessionOp::Keys => format!(
+                    "reads the {} the runtime keeps, which only an action, run by a route or another action, reads",
+                    if op == SessionOp::Tokens {
+                        "tokens"
+                    } else {
+                        "keys"
+                    }
+                ),
+                _ => format!(
+                    "writes the {} the runtime keeps, in the transaction of the action that calls it",
+                    if op.on_service() { "keys" } else { "tokens" }
+                ),
+            };
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_AUTH_SESSIONS_CONTEXT,
                     format!("{who} can't call `{written}`"),
                 )
                 .at(span, "outside an action")
-                .reason(format!(
-                    "`{written}` {} the session of the request a route answers, so only an action, which a route runs, calls it.",
-                    if op == SessionOp::Start { "starts" } else { "ends" }
-                ))
-                .next(format!("Call `{written}` in the action a sign-in or sign-out route runs")),
+                .reason(format!("`{written}` {does}, so only an action calls it."))
+                .next(match op {
+                    SessionOp::Start | SessionOp::End => {
+                        format!("Call `{written}` in the action a sign-in or sign-out route runs")
+                    }
+                    _ => format!("Call `{written}` in an action"),
+                }),
             );
-            self.args_only(call);
-            return (
-                Ty::Error,
-                CallKind::Effect(written.to_string()),
-                Reach::Unknown,
-            );
+            return failed(self);
         }
         let identity = self.identity();
-        let user = identity
-            .variant(PrincipalKind::User)
-            .cloned()
-            .filter(|_| identity.cookie().is_some());
-        let Some(user) = user else {
-            // Nothing to start a session for: what is missing is reported
-            // where it is declared, or here when nothing is.
-            if !identity
-                .methods
-                .iter()
-                .any(|m| m.method == jadpo_std::AuthenticationMethod::BrowserSession)
-            {
+        let method = op.method();
+        let kind = if op.on_service() {
+            PrincipalKind::Service
+        } else {
+            PrincipalKind::User
+        };
+        // `sessions.end()` ends a browser session or an API token.
+        let available = match op {
+            SessionOp::End => identity.sessions_store().is_some(),
+            _ => identity.built(method),
+        };
+        let declared = identity.methods.iter().any(|m| {
+            m.method == method
+                || (op == SessionOp::End && m.method == jadpo_std::AuthenticationMethod::ApiToken)
+        });
+        let variant = identity.variant(kind).cloned().filter(|_| available);
+        let Some(variant) = variant else {
+            // Nothing to issue for: what is missing is reported where it
+            // is declared, or here when nothing is.
+            if !declared {
+                let (needs, declare) = match method {
+                    jadpo_std::AuthenticationMethod::BrowserSession if op == SessionOp::End => (
+                        "browser sessions or API tokens",
+                        "A session is a browser session, which `authentication { browser_session: { cookie: \"<name>\" } }` declares, or an API token, which `api_token: {}` declares.",
+                    ),
+                    jadpo_std::AuthenticationMethod::BrowserSession => (
+                        "browser sessions",
+                        "A session is a browser session, which `authentication { browser_session: { cookie: \"<name>\" } }` declares.",
+                    ),
+                    jadpo_std::AuthenticationMethod::ApiToken => (
+                        "API tokens",
+                        "An API token signs a user in from the application's own clients, which `authentication { api_token: {} }` declares.",
+                    ),
+                    _ => (
+                        "service keys",
+                        "A service key signs a service in, which `authentication { service_key: {} }` declares.",
+                    ),
+                };
                 self.out.push(
                     Diagnostic::new(
                         &rule::TYPE_AUTH_SESSIONS_CONTEXT,
-                        format!("`{written}` needs browser sessions"),
+                        format!("`{written}` needs {needs}"),
                     )
-                    .at(span, "no browser session declared")
-                    .reason("A session is a browser session, which `authentication { browser_session: { cookie: \"<name>\" } }` declares.")
-                    .next("Declare `browser_session:` in `authentication.jadpo`"),
+                    .at(span, format!("no `{}` declared", method.name()))
+                    .reason(declare)
+                    .next(format!(
+                        "Declare `{}:` in `authentication.jadpo`",
+                        method.name()
+                    )),
                 );
             }
-            self.args_only(call);
-            return (
-                Ty::Error,
-                CallKind::Effect(written.to_string()),
-                Reach::Unknown,
-            );
+            return failed(self);
         };
-        let wanted = match op {
-            SessionOp::Start => 1,
-            SessionOp::End => 0,
+        let entity = variant.entity.clone();
+        let id = |of: &str| Ty::Field(of.to_string(), vec!["id".to_string()]);
+        // Each parameter's name, how a message describes it, and its type.
+        type Param<'a> = (&'a str, &'a str, Ty);
+        let (params, result): (Vec<Param>, Ty) = match op {
+            SessionOp::Start => (
+                vec![("user", "the user's", id(&entity))],
+                Ty::Prim(Prim::Unit),
+            ),
+            SessionOp::End => (Vec::new(), Ty::Prim(Prim::Unit)),
+            SessionOp::IssueToken => (
+                vec![("user", "the user's", id(&entity))],
+                Ty::Prim(Prim::ApiToken),
+            ),
+            SessionOp::Tokens => (
+                vec![("user", "the user's", id(&entity))],
+                Ty::List(Box::new(Ty::Opaque(ISSUED_TOKEN.to_string(), Vec::new()))),
+            ),
+            SessionOp::RevokeToken => (
+                vec![("token_id", "the token's", Ty::Prim(Prim::Uuid))],
+                Ty::Prim(Prim::Unit),
+            ),
+            SessionOp::IssueKey => (
+                vec![
+                    ("service_id", "the service's", id(&entity)),
+                    ("expires_at", "its expiry, an", Ty::Prim(Prim::Instant)),
+                ],
+                Ty::Prim(Prim::ServiceKey),
+            ),
+            SessionOp::Keys => (
+                vec![("service_id", "the service's", id(&entity))],
+                Ty::List(Box::new(Ty::Opaque(ISSUED_KEY.to_string(), Vec::new()))),
+            ),
+            SessionOp::RevokeKey => (
+                vec![("key_id", "the key's", Ty::Prim(Prim::Uuid))],
+                Ty::Prim(Prim::Unit),
+            ),
         };
-        if args.len() != wanted || args.iter().any(|arg| arg.name().is_some()) {
+        if args.len() != params.len() || args.iter().any(|arg| arg.name().is_some()) {
             let at = call
                 .arg_list()
                 .map_or_else(|| self.span(call), |list| self.span(&list));
+            let takes: Vec<String> = params
+                .iter()
+                .map(|(_, whose, ty)| format!("{whose} `{ty}`"))
+                .collect();
+            let takes = if takes.is_empty() {
+                "nothing".to_string()
+            } else {
+                crate::and_list(&takes)
+            };
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_ARGUMENT_COUNT,
-                    match op {
-                        SessionOp::Start => format!("`{written}` takes the user's `{}.id`", user.entity),
-                        SessionOp::End => format!("`{written}` takes nothing"),
-                    },
+                    format!("`{written}` takes {takes}"),
                 )
                 .at(at, format!("{} given", args.len()))
                 .reason(match op {
                     SessionOp::Start => format!(
-                        "A session starts for one user, named by `{}.id`, once the action has checked who they are.",
-                        user.entity
+                        "A session starts for one user, named by `{entity}.id`, once the action has checked who they are."
                     ),
                     SessionOp::End => "A session ends for the request it came with.".to_string(),
+                    _ => format!("`{written}` takes {takes}, in that order."),
                 })
                 .next(match op {
-                    SessionOp::Start => format!("Pass the user's `{}.id`", user.entity),
                     SessionOp::End => "Call `sessions.end()`".to_string(),
+                    _ => format!("Pass {takes}"),
                 }),
+            );
+            return failed(self);
+        }
+        for (arg, (name, _, ty)) in args.iter().zip(&params) {
+            let Some(value) = arg.expr() else { continue };
+            match ty {
+                // Any type built on it, as the standard library's
+                // operations take them: an `Instant` or a `Uuid`.
+                Ty::Prim(prim) => {
+                    let inferred = (!super::is_literal(&value)).then(|| self.infer(&value));
+                    self.built_on_argument(&value, inferred, &[*prim], written, name);
+                }
+                _ => self.check(&value, ty),
+            }
+        }
+        (
+            result,
+            CallKind::Effect(written.to_string()),
+            Reach::Session(op),
+        )
+    }
+
+    /// `Entity.issue_key(...)`, `Entity.keys(...)` or
+    /// `Entity.revoke_key(...)`: the service entity's generated operations
+    /// (area 8, question 7); on any other entity, no operation at all.
+    pub(super) fn key_call(
+        &mut self,
+        entity: &str,
+        op: SessionOp,
+        call: &ast::CallExpr,
+        callee: &ast::Expr,
+        written: &str,
+    ) -> (Ty, CallKind, Reach) {
+        let identity = self.identity();
+        let service = identity.variant(PrincipalKind::Service);
+        if service.is_none_or(|variant| variant.entity != entity) {
+            let span = self.span(callee);
+            let message = format!("`{entity}` has no operation `{}`", op.name());
+            self.out.push(
+                Diagnostic::new(&rule::SEMANTIC_UNKNOWN_CALLEE, message)
+                    .at(span, "not an operation")
+                    .reason(match service {
+                        Some(variant) => format!(
+                            "`issue_key`, `keys` and `revoke_key` belong to the entity the principal's `service:` names, `{}`.",
+                            variant.entity
+                        ),
+                        None => "`issue_key`, `keys` and `revoke_key` belong to the entity the principal's `service:` names, and `principal { }` declares none.".to_string(),
+                    })
+                    .next(match service {
+                        Some(variant) => format!("Call `{}.{}`", variant.entity, op.name()),
+                        None => format!(
+                            "Declare `service: {{ subject: {entity}.<field> }}` in `principal {{ }}`"
+                        ),
+                    }),
             );
             self.args_only(call);
             return (
@@ -266,16 +407,6 @@ impl Body<'_> {
                 Reach::Unknown,
             );
         }
-        if let Some(value) = args.first().and_then(ast::Arg::expr) {
-            self.check(
-                &value,
-                &Ty::Field(user.entity.clone(), vec!["id".to_string()]),
-            );
-        }
-        (
-            Ty::Prim(Prim::Unit),
-            CallKind::Effect(written.to_string()),
-            Reach::Session(op),
-        )
+        self.session_call(op, call, callee, written)
     }
 }

@@ -36,9 +36,12 @@ pub enum Reach {
     Reads(String),
     /// A query, by name.
     Queries(String),
-    /// `sessions.start` or `sessions.end` (area 8): a write to the store
-    /// sessions are kept in.
-    Sessions,
+    /// A write to the store sessions and API tokens are kept in, or with
+    /// `true` the store service keys are kept in (area 8):
+    /// `sessions.start`, `Service.issue_key` and the like.
+    Sessions(bool),
+    /// A read of either: `sessions.tokens` or `Service.keys`.
+    ReadsSessions(bool),
 }
 
 /// One action's or fixture's name and what it reaches, each with its
@@ -75,9 +78,13 @@ fn reaches(db: &dyn Db, project: Project, file: File) -> Vec<Reaches> {
                     ..
                 }) => Reach::Queries(query.name().to_string()),
                 Node::Expr(jadpo_graph::body::Expr::Call {
-                    callee: Callee::Session(_),
+                    callee: Callee::Session(op),
                     ..
-                }) => Reach::Sessions,
+                }) if op.reads_only() => Reach::ReadsSessions(op.on_service()),
+                Node::Expr(jadpo_graph::body::Expr::Call {
+                    callee: Callee::Session(op),
+                    ..
+                }) => Reach::Sessions(op.on_service()),
                 _ => continue,
             };
             found.push((reach, (site.start, site.end)));
@@ -136,10 +143,25 @@ fn query_entity<'db>(db: &'db dyn Db, project: Project, query: Name<'db>) -> Opt
 /// write's, or with `reads`, a `get`'s or a query's.
 fn store_of(db: &dyn Db, project: Project, reach: &Reach, reads: bool) -> Option<(String, String)> {
     let name = |text: &str| Name::new(db, text.to_string());
-    if *reach == Reach::Sessions {
+    let keys = match reach {
+        Reach::Sessions(keys) => Some(*keys),
+        Reach::ReadsSessions(keys) if reads => Some(*keys),
+        Reach::ReadsSessions(_) => return None,
+        _ => None,
+    };
+    if let Some(keys) = keys {
         let identity = crate::identity::identity(db, project);
-        let store = identity.sessions_store()?.to_string();
-        return Some((store, "jadpo_sessions".to_string()));
+        return Some(if keys {
+            (
+                identity.keys_store()?.to_string(),
+                crate::data::SERVICE_KEYS.to_string(),
+            )
+        } else {
+            (
+                identity.sessions_store()?.to_string(),
+                crate::data::SESSIONS.to_string(),
+            )
+        });
     }
     let entity = match reach {
         Reach::Writes(entity) => entity.clone(),
@@ -255,11 +277,11 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                     reached(callee).written.clone(),
                     format!("calls `{callee}`, which writes"),
                 ),
-                Reach::Sessions => (
+                Reach::Sessions(_) => (
                     store_of(db, project, &reach, false).into_iter().collect(),
                     "writes".to_string(),
                 ),
-                Reach::Reads(_) | Reach::Queries(_) => continue,
+                Reach::Reads(_) | Reach::Queries(_) | Reach::ReadsSessions(_) => continue,
             };
             let Some((store, entity)) = stores
                 .iter()
@@ -321,11 +343,11 @@ fn second_store_read(
                     .collect(),
                 format!("calls `{callee}`, which uses"),
             ),
-            Reach::Writes(_) | Reach::Sessions => (
+            Reach::Writes(_) | Reach::Sessions(_) => (
                 store_of(db, project, reach, true).into_iter().collect(),
                 "writes".to_string(),
             ),
-            Reach::Reads(_) | Reach::Queries(_) => (
+            Reach::Reads(_) | Reach::Queries(_) | Reach::ReadsSessions(_) => (
                 store_of(db, project, reach, true).into_iter().collect(),
                 "reads".to_string(),
             ),

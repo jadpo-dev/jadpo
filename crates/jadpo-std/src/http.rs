@@ -202,32 +202,115 @@ impl PrincipalKind {
     }
 }
 
-/// What an action does to the request's session (area 8, "Starting and
-/// ending a session").
+/// What an action does with sessions, API tokens and service keys (area
+/// 8): the operations the compiler generates in the `sessions` namespace
+/// and on the principal's service entity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SessionOp {
     /// `sessions.start(user_id)`.
     Start,
     /// `sessions.end()`.
     End,
+    /// `sessions.issue_token(user_id)`: an `ApiToken`, shown once.
+    IssueToken,
+    /// `sessions.tokens(user_id)`: the user's live tokens.
+    Tokens,
+    /// `sessions.revoke_token(token_id)`.
+    RevokeToken,
+    /// `Service.issue_key(service_id, expires_at)`: a `ServiceKey`, shown
+    /// once.
+    IssueKey,
+    /// `Service.keys(service_id)`: the service's live keys.
+    Keys,
+    /// `Service.revoke_key(key_id)`.
+    RevokeKey,
 }
 
 impl SessionOp {
+    pub const ALL: [SessionOp; 8] = [
+        SessionOp::Start,
+        SessionOp::End,
+        SessionOp::IssueToken,
+        SessionOp::Tokens,
+        SessionOp::RevokeToken,
+        SessionOp::IssueKey,
+        SessionOp::Keys,
+        SessionOp::RevokeKey,
+    ];
+
     pub fn name(self) -> &'static str {
         match self {
             SessionOp::Start => "start",
             SessionOp::End => "end",
+            SessionOp::IssueToken => "issue_token",
+            SessionOp::Tokens => "tokens",
+            SessionOp::RevokeToken => "revoke_token",
+            SessionOp::IssueKey => "issue_key",
+            SessionOp::Keys => "keys",
+            SessionOp::RevokeKey => "revoke_key",
         }
     }
 
+    /// The operation `sessions.<name>` names.
     pub fn from_name(name: &str) -> Option<SessionOp> {
-        match name {
-            "start" => Some(SessionOp::Start),
-            "end" => Some(SessionOp::End),
-            _ => None,
+        SessionOp::ALL
+            .into_iter()
+            .find(|op| !op.on_service() && op.name() == name)
+    }
+
+    /// The operation `<Service>.<name>` names on the service entity.
+    pub fn key_op(name: &str) -> Option<SessionOp> {
+        SessionOp::ALL
+            .into_iter()
+            .find(|op| op.on_service() && op.name() == name)
+    }
+
+    /// Whether it is the service entity's (`Service.issue_key`) rather
+    /// than the `sessions` namespace's.
+    pub fn on_service(self) -> bool {
+        matches!(
+            self,
+            SessionOp::IssueKey | SessionOp::Keys | SessionOp::RevokeKey
+        )
+    }
+
+    /// Whether it only reads.
+    pub fn reads_only(self) -> bool {
+        matches!(self, SessionOp::Tokens | SessionOp::Keys)
+    }
+
+    /// The sign-in method it needs declared.
+    pub fn method(self) -> crate::AuthenticationMethod {
+        match self {
+            SessionOp::Start | SessionOp::End => crate::AuthenticationMethod::BrowserSession,
+            SessionOp::IssueToken | SessionOp::Tokens | SessionOp::RevokeToken => {
+                crate::AuthenticationMethod::ApiToken
+            }
+            SessionOp::IssueKey | SessionOp::Keys | SessionOp::RevokeKey => {
+                crate::AuthenticationMethod::ServiceKey
+            }
         }
     }
 }
+
+/// What `sessions.tokens` lists, never the token itself: `IssuedToken`.
+pub const ISSUED_TOKEN: &str = "IssuedToken";
+
+/// What `Service.keys` lists, never the key itself: `IssuedKey`.
+pub const ISSUED_KEY: &str = "IssuedKey";
+
+/// The fields of an `IssuedToken` and an `IssuedKey`, in order.
+pub const ISSUED_FIELDS: [(&str, crate::Builtin); 3] = [
+    ("id", crate::Builtin::Uuid),
+    ("started_at", crate::Builtin::Instant),
+    ("ends_at", crate::Builtin::Instant),
+];
+
+/// What an API token starts with, before its 64 hexadecimal digits.
+pub const API_TOKEN_PREFIX: &str = "jadpo_token_";
+
+/// What a service key starts with, before its 64 hexadecimal digits.
+pub const SERVICE_KEY_PREFIX: &str = "jadpo_key_";
 
 /// How long a browser session lasts from when it starts (area 8, chosen
 /// in chunk 4.3): 30 days, after which the caller signs in again.
@@ -236,9 +319,9 @@ pub const SESSION_LIFETIME_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 /// The header a browser sends its session's CSRF token back in (area 8).
 pub const CSRF_HEADER: &str = "x-jadpo-csrf";
 
-/// Who can sign in and how (area 8): the store sessions are kept in, the
-/// cookie a browser session travels in, and how each kind of caller is
-/// looked up.
+/// Who can sign in and how (area 8): the cookie a browser session travels
+/// in, which bearer credentials are accepted, and how each kind of caller
+/// is looked up.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IdentityPlan {
     /// The store `jadpo_sessions` lives in: the user entity's, so a
@@ -250,6 +333,8 @@ pub struct IdentityPlan {
     /// The browser session's cookie, when `browser_session` is declared;
     /// its CSRF token travels in the same name with `_csrf` after it.
     pub cookie: Option<String>,
+    /// Whether `api_token` is declared.
+    pub api_tokens: bool,
     pub user: Option<PrincipalPlan>,
     pub service: Option<PrincipalPlan>,
 }
@@ -266,6 +351,15 @@ impl IdentityPlan {
             PrincipalKind::Service => self.service.as_ref(),
         }
     }
+
+    /// The store `jadpo_service_keys` lives in, when service keys are
+    /// declared: the service entity's.
+    pub fn keys_store(&self) -> Option<&str> {
+        self.service
+            .as_ref()
+            .filter(|service| service.lookup.is_some())
+            .map(|service| service.store.as_str())
+    }
 }
 
 /// How one kind of caller is looked up (area 8, "The principal").
@@ -273,17 +367,21 @@ impl IdentityPlan {
 pub struct PrincipalPlan {
     /// The entity it is: `User`.
     pub entity: String,
+    /// The store it lives in, which keeps its sessions or keys.
+    pub store: String,
     /// The field `subject:` names, which a caller made from a record in a
     /// test reads (`Principal.user(user)`).
     pub subject: String,
     /// How the subject's column reads back.
     pub column: Column,
-    /// A session's lookup, `$1` its verifier and `$2` the time now: one
-    /// row of the session's id, its CSRF token's verifier, the record's
-    /// `id` and subject, and whether its `active:` holds, or none when no
-    /// live session or visible record has it. `None` when nothing signs
-    /// this kind of caller in.
-    pub session: Option<String>,
+    /// How a credential finds it, `$1` the credential's verifier and `$2`
+    /// the time now: for a user, a session's lookup, one row of the
+    /// session's id, its CSRF token's verifier (`NULL` for an API token),
+    /// the record's `id` and subject, and whether its `active:` holds; for
+    /// a service, a key's, the same without the CSRF token's verifier.
+    /// None when no live session or key or visible record has it. `None`
+    /// when nothing signs this kind of caller in.
+    pub lookup: Option<String>,
 }
 
 /// One argument: a placeholder or the input, or a field read through them.

@@ -145,9 +145,10 @@ async fn request(
     };
     if let Some(caller) = caller {
         // `as:` signs in through the application's real authentication.
-        let headers = jadpo_runtime::http::identity::test_credentials(ctx, app.table, caller)
-            .await
-            .map_err(Stop::Fault)?;
+        let headers =
+            jadpo_runtime::http::identity::test_credentials(ctx, app.table, route, caller)
+                .await
+                .map_err(Stop::Fault)?;
         request.headers.extend(headers);
     }
     let id = jadpo_runtime::http::request_id(ctx, u64::from(ctx.actions()));
@@ -158,9 +159,9 @@ async fn request(
     Ok(jadpo_runtime::http::response_value(&app, route, &response))
 }
 
-/// `sessions.start(user_id)` or `sessions.end()` at site `at` (area 8): the
-/// runtime keeps or deletes the session in the running action's
-/// transaction.
+/// `sessions.start(user_id)`, `sessions.end()`, an API token's or a
+/// service key's operation at site `at` (area 8): the runtime keeps,
+/// lists or deletes it in the running action's transaction.
 async fn session(
     program: &Program,
     ctx: &mut Ctx<'_>,
@@ -168,17 +169,25 @@ async fn session(
     args: &[Value],
     at: u32,
 ) -> Result<Value, Stop> {
+    use jadpo_runtime::http::identity;
+    use jadpo_std::http::SessionOp;
     let plan = program.plan().routes().identity.as_ref();
-    let stored = match (op, args.first()) {
-        (jadpo_std::http::SessionOp::Start, Some(user)) => {
-            jadpo_runtime::http::identity::start(ctx, plan, user, at).await
+    let stored = match (op, args) {
+        (SessionOp::Start, [user]) => identity::start(ctx, plan, user, at).await,
+        (SessionOp::End, []) => identity::end(ctx, plan, at).await,
+        (SessionOp::IssueToken, [user]) => identity::issue_token(ctx, plan, user, at).await,
+        (SessionOp::IssueKey, [service, expires_at]) => {
+            identity::issue_key(ctx, plan, service, expires_at, at).await
         }
-        (jadpo_std::http::SessionOp::End, _) => {
-            jadpo_runtime::http::identity::end(ctx, plan, at).await
+        (SessionOp::Tokens | SessionOp::Keys, [holder]) => {
+            identity::issued(ctx, plan, op.on_service(), holder, at).await
         }
-        (jadpo_std::http::SessionOp::Start, None) => {
+        (SessionOp::RevokeToken | SessionOp::RevokeKey, [id]) => {
+            identity::revoke(ctx, plan, op.on_service(), id, at).await
+        }
+        _ => {
             return Err(Stop::Fault(ctx.fault(
-                FaultKind::Defect("a session started for no one".into()),
+                FaultKind::Defect(format!("`{}` called with the wrong arguments", op.name())),
                 at,
             )));
         }
