@@ -18,6 +18,7 @@ pub mod graph;
 pub mod identity;
 pub mod imports;
 mod layout;
+pub mod locales;
 pub mod lookups;
 mod naming;
 mod not_value;
@@ -132,6 +133,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .iter()
                 .cloned(),
         );
+        out.extend(locales::locale_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(routes::table_problems(db, project).iter().cloned());
         out.extend(routes::signin_problems(db, project).iter().cloned());

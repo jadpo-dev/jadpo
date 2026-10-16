@@ -13,6 +13,7 @@ mod crate_graph;
 mod fmt;
 mod http;
 mod lifecycle;
+mod locales;
 mod lsp;
 mod manifest;
 mod migrate;

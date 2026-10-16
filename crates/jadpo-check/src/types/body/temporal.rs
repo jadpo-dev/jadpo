@@ -42,6 +42,70 @@ fn unused_reason(option: &str, written: &str, shown: &str, built_on: Prim) -> (S
 }
 
 impl Body<'_> {
+    /// `locale:` on a format: the application declares the locales it
+    /// supports (area 10, "Locales"), and a locale written out is one of
+    /// them. A `Locale` passed in is a supported one by how it is read.
+    pub(super) fn locale_argument(
+        &mut self,
+        call: &ast::CallExpr,
+        args: &[ast::Arg],
+        slots: &[Option<usize>],
+        table: &Operation,
+        written: &str,
+    ) {
+        let locales = crate::locales::locales(self.db, self.project);
+        if !locales.declared {
+            // Files handed to the compiler on their own have no
+            // application to declare locales (area 1).
+            if self.project.layout(self.db) == jadpo_db::Layout::Project {
+                let span = call
+                    .expr()
+                    .map_or_else(|| self.span(call), |callee| self.span(&callee));
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_TEMPORAL_LOCALES_REQUIRED,
+                        format!("`{written}` needs the application's locales"),
+                    )
+                    .at(span, "no locales declared")
+                    .reason("Text for a person is written in one of the locales the application supports. None is declared, so there is nothing to check `locale:` against, and nothing for a request with no usable `Accept-Language` to fall back to.")
+                    .next("Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }`"),
+                );
+            }
+            return;
+        }
+        let Some(plan) = &locales.plan else { return };
+        let Some(slot) = table.params.iter().position(|p| p.name == "locale") else {
+            return;
+        };
+        let Some(value) = args
+            .iter()
+            .zip(slots)
+            .find(|(_, at)| **at == Some(slot))
+            .and_then(|(arg, _)| arg.expr())
+        else {
+            return;
+        };
+        let Some((ordinal, variant)) = crate::locales::literal_locale(&value) else {
+            return;
+        };
+        if plan.supports(ordinal) {
+            return;
+        }
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_LOCALE_UNSUPPORTED,
+                format!("`Locale.{variant}` isn't a locale this application supports"),
+            )
+            .at(self.span(&value), "not in `locales`")
+            .reason(format!(
+                "`{written}` writes text in the locales listed in `locales {{ supported: }}`, in `app.jadpo`; `Locale.{variant}` is not one of them, and the server never guesses a language."
+            ))
+            .next(format!(
+                "Add `Locale.{variant}` to `supported:` in `app.jadpo`, or use a locale that is listed"
+            )),
+        );
+    }
+
     /// `at:`: a clock time written as text, `"09:30"`, checked here, since
     /// no value holds a time of day on its own (area 10, "Time types").
     pub(super) fn clock_argument(&mut self, value: &Expr, written: &str) {

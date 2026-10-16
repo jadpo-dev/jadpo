@@ -16,8 +16,9 @@
 // exactly when `value` is an `Instant`, since a date or a local time
 // carries its own, and `format:` is written out, a built-in
 // `TimeFormat.date_long` or a format declared as `type Name = TimeFormat
-// { ... }`. The text itself comes with locales (chunk 5.3); until then a
-// call is refused while compiling.
+// { ... }`. The text is written in `locale`, which an application that
+// declares the locales it supports (`locales { }` in `app.jadpo`) accepts
+// only from them.
 
 public library temporal {
     /// `instant` as the local time in `zone`.

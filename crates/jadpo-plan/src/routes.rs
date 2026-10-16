@@ -33,11 +33,8 @@ pub(crate) fn table(
     let apis = routes::api_table(db, project);
     let identity = jadpo_check::identity::identity(db, project);
     let lookup = jadpo_check::lookups::Lookup::new(db, project);
-    let mut codecs = Codecs {
-        types,
-        codecs: Vec::new(),
-        ids: HashMap::new(),
-    };
+    let mut codecs =
+        Codecs::new(types).supporting(jadpo_check::locales::locales(db, project).plan.clone());
     let mut out = RouteTable {
         apis: apis
             .apis
@@ -262,6 +259,10 @@ pub(crate) struct Codecs<'t> {
     types: &'t mut Types,
     codecs: Vec<Codec>,
     ids: HashMap<TypeRef, CodecId>,
+    /// The locales the application supports, when it declares them: a
+    /// `Locale` on the wire is one of these or an invalid value (area 10,
+    /// "Locales").
+    locales: Option<jadpo_std::LocalePlan>,
 }
 
 /// What a type is made of, for its codec.
@@ -286,7 +287,14 @@ impl<'t> Codecs<'t> {
             types,
             codecs: Vec::new(),
             ids: HashMap::new(),
+            locales: None,
         }
+    }
+
+    /// Reads a `Locale` as one of `locales` only.
+    pub(crate) fn supporting(mut self, locales: Option<jadpo_std::LocalePlan>) -> Codecs<'t> {
+        self.locales = locales;
+        self
     }
 
     /// Every codec numbered, by number.
@@ -422,6 +430,12 @@ impl<'t> Codecs<'t> {
                         .unwrap_or_default()
                         .into_iter()
                         .enumerate()
+                        .filter(|(ordinal, _)| {
+                            name != jadpo_std::LOCALE
+                                || self.locales.as_ref().is_none_or(|plan| {
+                                    u32::try_from(*ordinal).is_ok_and(|at| plan.supports(at))
+                                })
+                        })
                         .map(|(ordinal, variant)| VariantCodec {
                             name: variant.to_string(),
                             wire: spelling.spelling(variant),

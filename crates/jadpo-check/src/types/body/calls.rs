@@ -642,7 +642,6 @@ impl Body<'_> {
         let table = written
             .split_once('.')
             .and_then(|(namespace, name)| jadpo_std::operation(namespace, name));
-        let before = self.out.len() + self.resolved.len();
         let args = Self::arguments(call);
         let mut slots: Vec<Option<usize>> = Vec::new();
         let mut unknown = false;
@@ -808,37 +807,15 @@ impl Body<'_> {
                 .next(next),
             );
         }
-        // The text a format gives in each locale comes with locales (area
-        // 10, "Locales"): a call that checks is refused until then.
-        if table.is_some_and(|op| {
-            matches!(
-                op.op,
+        if let Some(table) = table
+            && matches!(
+                table.op,
                 jadpo_std::Op::TemporalFormat | jadpo_std::Op::TemporalFormatRelative
             )
-        }) && self.out.len() + self.resolved.len() == before
         {
-            let span = call
-                .expr()
-                .map_or_else(|| self.span(call), |callee| self.span(&callee));
-            self.formatting_not_built(span, written);
+            self.locale_argument(call, &args, &slots, table, written);
         }
         substitute(&result, &bound)
-    }
-
-    /// `temporal.format` and `format_relative` once checked: the text they
-    /// give in each locale comes with chunk 5.3.
-    fn formatting_not_built(&mut self, span: Span, written: &str) {
-        self.out.push(
-            Diagnostic::new(
-                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                format!("`{written}` is checked, but its text isn't built yet"),
-            )
-            .at(span, "checked, not built")
-            .reason(format!(
-                "This call is right, but the text `{written}` gives in each language comes from locale data, which comes with locales and translations (area 10, roadmap chunk 5.3); until then a program that calls it couldn't run."
-            ))
-            .next("Send the `Instant` for the client to format for now, or do without this text"),
-        );
     }
 
     /// A standard-library divisor is checked as `/`'s is (area 3, question
