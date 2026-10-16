@@ -160,8 +160,8 @@ own text (`jadpo.` keys); text several domains use is in `shared/`. This changes
 domains/shipping/translations/
     order_shipped.jadpo       type OrderShipped = Message { ... }
     parcels.jadpo             type Parcels = Message { ... }
-    en_gb.json
-    de_de.json
+    en_gb.jadpo               translations { ... }: the English wording
+    de_de.jadpo
 shared/translations/          messages several domains use
 translations/                 jadpo.* overrides only
 ```
@@ -188,23 +188,35 @@ type Parcels = Message {
 }
 ```
 
-**The files hold plain strings.** A placeholder is `{name}` and nothing
-else. A message with an enum field has one nested key per value of the
-enum; one with a `Count` field has one nested key per plural form the
-language needs, from Unicode's CLDR data (English `one` and `other`;
-Polish `one`, `few`, `many` and `other`). Dates and numbers are formatted
-in code with `temporal.format` and passed in as text.
+**Each language is an unnamed `translations { }` in Jadpo syntax**, in a
+file named after its locale, as `config { }` is found by its name: a name
+would add nothing, since code never refers to it (Richard, 2026-10-16,
+after a named `Translations` type was weighed). JSON was dropped: no
+comments, quotes everywhere, and area 11's principle that the compiler
+parses only Jadpo. A member is a message's or failure's name in
+lower_snake_case, found by area 1's name conversion (`order_shipped` is
+`OrderShipped`, as a file name and a failure code already are). Every
+wording is a plain string whose only syntax is `{field}`; a message with an
+enum field has one member per value, one with a `Count` field one member
+per plural form the language needs, from Unicode's CLDR data (English `one`
+and `other`; Polish `one`, `few`, `many` and `other`). Dates and numbers are
+formatted in code with `temporal.format` and passed in as text. Translation
+services work through `jadpo translations export` and `import` (XLIFF, or
+JSON).
 
-```json
-{
-  "order_shipped": {
-    "formal": "Your order has shipped, {name}.",
-    "casual": "Good news {name}, your order's on its way!"
-  },
-  "parcels": {
-    "one": "{count} parcel",
-    "other": "{count} parcels"
-  }
+```text
+// domains/shipping/translations/de_de.jadpo
+translations {
+    order_shipped: {
+        formal: "Guten Tag {name}, Ihre Bestellung wurde versandt."
+        casual: "Hallo {name}, deine Bestellung ist unterwegs!"
+    }
+    parcels: {
+        one: "{count} Paket"
+        other: "{count} Pakete"
+    }
+    delivery_window: "Lieferung am {day}, zwischen {hours}."
+    slot_taken: "Dieser Termin ist gerade vergeben worden. Der nächste ist {next_slot}."
 }
 ```
 
@@ -217,7 +229,7 @@ translations.shipping.order_shipped(tone: shop.tone, name: customer.first_name, 
 
 | In the type | In each language's file |
 |---|---|
-| The type's name, `OrderShipped` | The key, `order_shipped`, in the files of the type's own folder |
+| The type's name, `OrderShipped` | The member `order_shipped`, in the language files of the type's own folder |
 | No fields | A plain string |
 | A `Text`, `PresentationText`, `Int` or `Decimal` field | A `{field}` placeholder; numbers are written in the language's digits |
 | One enum field | An object with one key per value of the enum; the field is not a placeholder |
@@ -256,8 +268,8 @@ changes one by writing its key in the root `translations/`.
 **Tooling**: `jadpo translations missing` and `unused` with `--json`; go to
 definition from a call to its type and its strings; a pseudo-locale that
 renders every message accented and lengthened to expose hard-coded text
-and tight layouts; Crowdin and Lokalise read the files through a folder
-pattern (`domains/*/translations/<locale>.json`).
+and tight layouts; Crowdin and Lokalise through `jadpo translations export`
+and `import`.
 
 **Templates are strict**: a name that is not a field of the email's type,
 a message that does not exist, a placeholder missing or of the wrong type,
