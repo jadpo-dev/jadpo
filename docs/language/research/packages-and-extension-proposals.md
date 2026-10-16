@@ -491,16 +491,16 @@ package Gotenberg.v8 {
 The image is pinned by digest in `jadpo.lock` and listed in the approval
 report.
 
-**Only stateless services** (Richard, 2026-10-16, proposed): a service
+**Only stateless services** (decided 2026-10-16, Richard): a service
 holds no data and has no volume, and each app instance runs its own copy,
 so many servers need nothing shared. Anything that holds data (PostgreSQL,
 Redis) is infrastructure the operator provides and the app reaches through
 a connection; `jadpo dev` runs those locally as it already does, and
 nowhere else.
 
-**Security is the engine's, with three settings Jadpo always applies** when
-it creates a container: no outbound network unless the package declares
-the hosts it needs (the app's own deny-by-default rule, area 11 question 9,
+**Security is the engine's, with three settings Jadpo always applies**
+(decided 2026-10-16) when it creates a container: no outbound network
+unless granted (the app's own deny-by-default rule, area 11 question 9,
 which Docker's default network does not give: a PDF service rendering an
 invoice could otherwise send it anywhere), never privileged, and no access
 to the host's disk. Jadpo creates the containers itself, so there is no
@@ -517,6 +517,25 @@ Proposed stages, each useful alone:
    server's container runtime, and their logs and health join the app's
    telemetry. Kamal's "accessories" and .NET Aspire's app host do parts of
    this.
+
+**Outbound network needs the app's permission** (decided 2026-10-16,
+Richard). A package can only ask: it lists the hosts its service needs.
+The service gets none of them until `app.jadpo` grants them on the
+connection, where an agent or developer writes them deliberately, and a
+new grant appears in the approval report. Until then `jadpo check` names
+the hosts asked for and the line that grants them.
+
+**Reaching a service** (proposed). Packages never choose a port on the
+machine; a package says only which port its service listens on inside
+its container, so two packages can both use 3000. Jadpo gives each app a
+private network that only it and its services are on, and hands each
+connection the address to use: the service's name on that network when
+the app itself runs in a container, or a loopback port the engine picked
+when the app runs as a plain process. Nobody writes an address, so no two
+packages, or two copies of the app on one server, can collide. Still to
+check when it is built: Docker's networks that block outbound traffic may
+not allow a port to be published to the machine, which would mean either
+firewall rules or running the app in a container beside its services.
 
 **How containers run** (proposed): Jadpo is a client, never a container
 runtime. It talks to whatever engine the machine has through the
