@@ -190,14 +190,14 @@ A new entity is tenant-scoped unless someone accepts otherwise.
 ### References stay inside the tenant
 
 A reference from one of a tenant's records to another always points at a
-record of the same tenant: a task of Northwind's names one of Northwind's
+record of the same tenant: a chore of Northwind's names one of Northwind's
 projects, never Contoso's. Every create and update that sets such a
 reference checks it in its own statement, with or without policy, and one
 that points into another tenant is refused with 403 `not_permitted`; a
 record that isn't there is still the code's own not-found failure
-(Richard, 2026-10-16; built in chunk 4.7). So whoever may read a task
-holds their role in the project's company too, and a query of tasks may
-include each task's project:
+(Richard, 2026-10-16; built in chunk 4.7). So whoever may read a chore
+holds their role in the project's company too, and a query of chores may
+include each chore's project:
 
 ```jadpo check project=tenant-references file=app.jadpo hidden
 use work/entities { Member }
@@ -262,22 +262,22 @@ type ProjectCard = Output {
 }
 ```
 
-```jadpo check project=tenant-references file=domains/work/types/task_card.jadpo hidden
-use work/entities { Task }
+```jadpo check project=tenant-references file=domains/work/types/chore_card.jadpo hidden
+use work/entities { Chore }
 
-/// A task on its own.
-type TaskCard = Output {
-    pick: [Task.id, Task.title]
+/// A chore on its own.
+type ChoreCard = Output {
+    pick: [Chore.id, Chore.title]
 }
 ```
 
-```jadpo check project=tenant-references file=domains/work/types/task_view.jadpo hidden
-use work/entities { Task }
+```jadpo check project=tenant-references file=domains/work/types/chore_view.jadpo hidden
+use work/entities { Chore }
 use work/types { ProjectCard }
 
-/// A task with the project it belongs to.
-type TaskView = Output {
-    pick: [Task.id, Task.title]
+/// A chore with the project it belongs to.
+type ChoreView = Output {
+    pick: [Chore.id, Chore.title]
     project: ProjectCard
 }
 ```
@@ -448,39 +448,39 @@ action start_project(company_id: Company.id, name: Label) fails CompanyNotFound 
 }
 ```
 
-```jadpo check project=tenant-references file=domains/work/actions/add_task.jadpo hidden
-use work/entities { Company, CompanyNotFound, Project, ProjectNotFound, Task }
-use work/types { Label, TaskCard }
+```jadpo check project=tenant-references file=domains/work/actions/add_chore.jadpo hidden
+use work/entities { Company, CompanyNotFound, Project, ProjectNotFound, Chore }
+use work/types { Label, ChoreCard }
 
-/// Adds a task to a project.
-action add_task(input: AddTask) fails CompanyNotFound, ProjectNotFound -> TaskCard {
-    var task: Task = attempt Task.create {
+/// Adds a chore to a project.
+action add_chore(input: AddChore) fails CompanyNotFound, ProjectNotFound -> ChoreCard {
+    var chore: Chore = attempt Chore.create {
         set: {
             company_id: input.company_id
             project_id: input.project_id
             title: input.title
         }
     }
-    return TaskCard {
-        id: task.id
-        title: task.title
+    return ChoreCard {
+        id: chore.id
+        title: chore.title
     }
 }
 
-/// What adding a task takes.
-type AddTask = Input {
+/// What adding a chore takes.
+type AddChore = Input {
     company_id: Company.id
     project_id: Project.id
     title: Label
 }
 ```
 
-```jadpo check project=tenant-references file=domains/work/entities/task.jadpo
+```jadpo check project=tenant-references file=domains/work/entities/chore.jadpo
 use work/entities { Company, Project }
 use work/types { CompanyRole, Label }
 
 /// One step of a project.
-entity Task {
+entity Chore {
     id: Uuid
     company_id: Company.id {
         on_delete: OnDelete.cascade
@@ -497,44 +497,44 @@ entity Task {
 }
 ```
 
-```jadpo check project=tenant-references file=domains/work/queries/company_tasks.jadpo
-use work/entities { Company, Task }
-use work/types { TaskView }
+```jadpo check project=tenant-references file=domains/work/queries/company_chores.jadpo
+use work/entities { Company, Chore }
+use work/types { ChoreView }
 
-/// A company's tasks, each with its project.
-query company_tasks(company_id: Company.id) -> List<TaskView> {
-    from: Task
-    where: Task.company_id == company_id
-    order: [Task.title asc]
+/// A company's chores, each with its project.
+query company_chores(company_id: Company.id) -> List<ChoreView> {
+    from: Chore
+    where: Chore.company_id == company_id
+    order: [Chore.title asc]
     limit: 100
     include: {
-        project: Task.project_id
+        project: Chore.project_id
     }
 }
 ```
 
-```jadpo check project=tenant-references file=domains/work/routes/tasks.jadpo migrate=initial hidden
+```jadpo check project=tenant-references file=domains/work/routes/chores.jadpo migrate=initial hidden
 use work/entities { Company }
-use work/types { TaskCard, TaskView }
-use work/actions { AddTask, add_task }
-use work/queries { company_tasks }
+use work/types { ChoreCard, ChoreView }
+use work/actions { AddChore, add_chore }
+use work/queries { company_chores }
 
-/// A company's tasks.
-routes Tasks {
-    prefix: /tasks
+/// A company's chores.
+routes Chores {
+    prefix: /chores
 
-    /// Adds a task.
+    /// Adds a chore.
     POST / {
-        input: AddTask
-        output: TaskCard
+        input: AddChore
+        output: ChoreCard
         status: SuccessStatus.created
-        run: add_task(input)
+        run: add_chore(input)
     }
 
-    /// A company's tasks, each with its project.
+    /// A company's chores, each with its project.
     GET /{company_id: Company.id} {
-        output: List<TaskView>
-        run: company_tasks(company_id)
+        output: List<ChoreView>
+        run: company_chores(company_id)
     }
 }
 ```
@@ -544,17 +544,17 @@ routes Tasks {
 // `jadpo check` fails while it disagrees with them.
 version: 2
 
-POST /tasks
-    input: AddTask (body)
-    output: TaskCard
+POST /chores
+    input: AddChore (body)
+    output: ChoreCard
     status: 201
     fails: company_not_found 404, project_not_found 404
 
-GET /tasks/{company_id: Uuid}
-    output: List<TaskView>
+GET /chores/{company_id: Uuid}
+    output: List<ChoreView>
     status: 200
 
-input AddTask
+input AddChore
     company_id: Uuid
     project_id: Uuid
     title: Text { min_length: 1, max_length: 80 }
@@ -563,11 +563,11 @@ output ProjectCard
     id: Uuid
     name: Text { min_length: 1, max_length: 80 }
 
-output TaskCard
+output ChoreCard
     id: Uuid
     title: Text { min_length: 1, max_length: 80 }
 
-output TaskView
+output ChoreView
     id: Uuid
     title: Text { min_length: 1, max_length: 80 }
     project: ProjectCard
@@ -578,23 +578,23 @@ failure project_not_found 404
 ```
 
 Ann owns both companies, so only the reference refuses her; Bob, a viewer
-of Northwind, sees its tasks with their projects:
+of Northwind, sees its chores with their projects:
 
-```jadpo check project=tenant-references file=domains/work/routes/tasks.test.jadpo
+```jadpo check project=tenant-references file=domains/work/routes/chores.test.jadpo
 use work/entities { Company, CompanyMembership, Member }
-use work/types { CompanyRole, ProjectCard, TaskCard, TaskView }
-use work/actions { AddTask, add_member, add_task, found_company, register, start_project }
+use work/types { CompanyRole, ProjectCard, ChoreCard, ChoreView }
+use work/actions { AddChore, add_chore, add_member, found_company, register, start_project }
 
-test "a task can't name another company's project" {
+test "a chore can't name another company's project" {
     var ann: Member = attempt register("ann")
     var northwind: Company = found_company("Northwind", Principal.user(ann))
     var contoso: Company = found_company("Contoso", Principal.user(ann))
     var rival: ProjectCard = attempt start_project(contoso.id, "Rival")
     var response: Response = request {
         method: HttpMethod.post
-        path: "/tasks"
+        path: "/chores"
         as: Principal.user(ann)
-        input: AddTask {
+        input: AddChore {
             company_id: northwind.id
             project_id: rival.id
             title: "Borrow"
@@ -604,15 +604,15 @@ test "a task can't name another company's project" {
     assert response.code == "not_permitted"
 }
 
-test "a viewer sees each task with its project" {
+test "a viewer sees each chore with its project" {
     var ann: Member = attempt register("ann")
     var bob: Member = attempt register("bob")
     var northwind: Company = found_company("Northwind", Principal.user(ann))
     var viewer: CompanyMembership = attempt add_member(northwind.id, bob.id, CompanyRole.viewer)
     assert viewer.role == CompanyRole.viewer
     var launch: ProjectCard = attempt start_project(northwind.id, "Launch")
-    var plan: TaskCard = attempt add_task(
-        AddTask {
+    var kickoff: ChoreCard = attempt add_chore(
+        AddChore {
             company_id: northwind.id
             project_id: launch.id
             title: "Plan"
@@ -620,7 +620,7 @@ test "a viewer sees each task with its project" {
     )
     var seen: Response = request {
         method: HttpMethod.get
-        path: "/tasks/{company_id}"
+        path: "/chores/{company_id}"
         params: {
             company_id: northwind.id
         }
@@ -628,8 +628,8 @@ test "a viewer sees each task with its project" {
     }
     assert seen.status == 200
     assert seen.output == [
-        TaskView {
-            id: plan.id
+        ChoreView {
+            id: kickoff.id
             title: "Plan"
             project: launch
         }

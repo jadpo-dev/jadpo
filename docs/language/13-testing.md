@@ -435,7 +435,7 @@ test "a memo sent again with its key is left once" {
             text: "Call the plumber"
         }
     }
-    var again: Response = request {
+    var resent: Response = request {
         method: HttpMethod.post
         path: "/memos"
         idempotency_key: "memo-1"
@@ -443,15 +443,15 @@ test "a memo sent again with its key is left once" {
             text: "Call the plumber"
         }
     }
-    assert again.status == 201
-    assert again.output == first.output
-    var listed: Response = request {
+    assert resent.status == 201
+    assert resent.output == first.output
+    var on_file: Response = request {
         method: HttpMethod.get
         path: "/memos"
     }
     match first.output {
         some(memo) -> {
-            assert listed.output == [memo]
+            assert on_file.output == [memo]
         }
         none -> {
             assert first.output != none

@@ -25,15 +25,15 @@ test "the app places an order and lists it with its token" {
         }
     }
     assert placed.status == 201
-    var listed: Response = request {
+    var on_file: Response = request {
         method: HttpMethod.get
         path: "/app/orders"
         as: Principal.user(ann)
     }
-    assert listed.status == 200
+    assert on_file.status == 200
     match placed.output {
         some(order) -> {
-            assert listed.output == [order]
+            assert on_file.output == [order]
         }
         none -> {
             assert placed.output != none
@@ -61,7 +61,7 @@ test "an order sent again with its key gets the first answer back" {
             app_version: "2.4.1"
         }
     }
-    var again: Response = request {
+    var resent: Response = request {
         method: HttpMethod.post
         path: "/app/orders"
         idempotency_key: "order-1"
@@ -74,16 +74,16 @@ test "an order sent again with its key gets the first answer back" {
             app_version: "2.4.1"
         }
     }
-    assert again.status == 201
-    assert again.output == first.output
-    var listed: Response = request {
+    assert resent.status == 201
+    assert resent.output == first.output
+    var on_file: Response = request {
         method: HttpMethod.get
         path: "/app/orders"
         as: Principal.user(ann)
     }
     match first.output {
         some(order) -> {
-            assert listed.output == [order]
+            assert on_file.output == [order]
         }
         none -> {
             assert first.output != none
