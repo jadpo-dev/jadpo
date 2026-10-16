@@ -93,6 +93,16 @@ then built. No design is left for implementation.
     changes (already needing sign-off) become a new major version;
     `jadpo check` reports what a change breaks in other apps in the same
     repository. *Recommendation:* yes to all four.
+10b. **Developing a package**: the whole cycle for a package author:
+    starting one (`jadpo package new`) in its own repository; what a
+    package repository holds besides the package (a sample app for
+    recipes and tests); trying it inside a real app before publishing
+    (pointing an app at a local checkout while editing, given installed
+    packages are committed and digest-checked); fakes, recordings,
+    sandbox contract runs and capability conformance while developing;
+    the publishing bar run locally before publishing; versions, the
+    surface diff and the generated changelog; and how this meets private
+    packages (item 11).
 11. **Private packages**: a company's shared packages live in their own
     repositories (decided); where apps install them from (a private
     registry or a git repository) and whether the publishing bar applies
