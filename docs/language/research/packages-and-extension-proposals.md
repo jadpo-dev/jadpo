@@ -567,6 +567,13 @@ stripe/v2024_06_20/
   uses.
 - **A re-import rewrites only imported files.** Written libraries and
   corrections survive, as area 11 already says for corrections.
+- **Everything reachable from the public surface is public** (decided
+  2026-10-16, Richard): a failure a public function `fails` with, a
+  provider operation's `failures:`, and the types in a public signature
+  must themselves be public, checked on every compile; internal failures
+  are mapped or handled before they leave a public function. The same
+  rule applies to a domain's public actions, queries and libraries, which
+  area 1 does not state today.
 - **A package's tests run when it is published**, not in every app's
   `jadpo test`; the digest guarantees the code is the code that passed.
 
