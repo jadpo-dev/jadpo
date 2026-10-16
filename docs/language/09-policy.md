@@ -449,8 +449,8 @@ action start_project(company_id: Company.id, name: Label) fails CompanyNotFound 
 ```
 
 ```jadpo check project=tenant-references file=domains/work/actions/add_chore.jadpo hidden
-use work/entities { Company, CompanyNotFound, Project, ProjectNotFound, Chore }
-use work/types { Label, ChoreCard }
+use work/entities { Chore, Company, CompanyNotFound, Project, ProjectNotFound }
+use work/types { ChoreCard, Label }
 
 /// Adds a chore to a project.
 action add_chore(input: AddChore) fails CompanyNotFound, ProjectNotFound -> ChoreCard {
@@ -498,7 +498,7 @@ entity Chore {
 ```
 
 ```jadpo check project=tenant-references file=domains/work/queries/company_chores.jadpo
-use work/entities { Company, Chore }
+use work/entities { Chore, Company }
 use work/types { ChoreView }
 
 /// A company's chores, each with its project.
@@ -542,7 +542,7 @@ routes Chores {
 ```jadpo check project=tenant-references file=api/main.api hidden
 // Written by `jadpo api update` from the routes; never edit it by hand.
 // `jadpo check` fails while it disagrees with them.
-version: 2
+version: 3
 
 POST /chores
     input: AddChore (body)
@@ -559,10 +559,6 @@ input AddChore
     project_id: Uuid
     title: Text { min_length: 1, max_length: 80 }
 
-output ProjectCard
-    id: Uuid
-    name: Text { min_length: 1, max_length: 80 }
-
 output ChoreCard
     id: Uuid
     title: Text { min_length: 1, max_length: 80 }
@@ -571,6 +567,10 @@ output ChoreView
     id: Uuid
     title: Text { min_length: 1, max_length: 80 }
     project: ProjectCard
+
+output ProjectCard
+    id: Uuid
+    name: Text { min_length: 1, max_length: 80 }
 
 failure company_not_found 404
 
@@ -582,7 +582,7 @@ of Northwind, sees its chores with their projects:
 
 ```jadpo check project=tenant-references file=domains/work/routes/chores.test.jadpo
 use work/entities { Company, CompanyMembership, Member }
-use work/types { CompanyRole, ProjectCard, ChoreCard, ChoreView }
+use work/types { ChoreCard, ChoreView, CompanyRole, ProjectCard }
 use work/actions { AddChore, add_chore, add_member, found_company, register, start_project }
 
 test "a chore can't name another company's project" {
