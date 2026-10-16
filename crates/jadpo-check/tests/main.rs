@@ -31,4 +31,5 @@ mod review;
 mod scale;
 mod signed;
 mod soundness;
+mod stores;
 mod types;
