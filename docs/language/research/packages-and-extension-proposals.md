@@ -105,72 +105,104 @@ provider's API (then it is a provider package).
 
 ## Package kinds
 
-| Kind | Contains | Used as | Status |
-|---|---|---|---|
-| Provider | One API at one version: resources, operations, types, failures, events, hosts; optionally `provide` mappings | A connection; `connection.resource.operation(input)` | Decided (area 11) |
-| Library | Types, failures and library functions, under `shared/`'s rules: pure, no entities, no effects | `Money.Amount`, `Money.rounding.half_even(x)` | Proposed (question 1) |
-| Domain | Entities, actions, queries, routes, events, emails: a whole feature such as billing | Mounted as a domain by the app | Later (question 1) |
+Decided in discussion with Richard, 2026-10-16.
 
-A provider package may also hold library functions, for helpers that
-belong with an API (formatting Stripe's amounts), and those functions are
-what a capability mapping may call (question 3).
+| Kind | Contains | Used as |
+|---|---|---|
+| Provider | One API at one version: resources, operations, types, failures, events, hosts; optionally `provide` mappings and library functions | A connection; `connection.resource.operation(input)` (area 11) |
+| Library | Types, failures and library functions under `shared/`'s rules: pure, no entities, no routes, no network | `use Postcodes`, then `Postcodes.uk.parse(text)`, `Postcodes.UkPostcode` |
 
-**Library packages** are a publishable `shared/`. Names follow area 11's
-rule: the package's own name, then the declaration (`Money.Amount`), with
-the version only while two versions are in use. A library function is
-owned by its library, so a call reads package, library, function. They
-need no connection, because they do nothing but compute.
+**No feature packages.** A whole slice of an app (invitations, billing)
+is not a package, installed or copied in. An agent writes it from the
+language pages, with the compiler catching the dangerous mistakes, and
+most features other frameworks take from packages (sign-in, flags, audit,
+files, email) are built in. Where agents keep getting a feature wrong
+(chunk 10.2 measures this), the fix is a worked reference in `examples/`
+that the agent reads, not a package system.
 
-**Domain packages** are the hard kind, and no app needs one yet. They
-raise questions about migrations, policy, the principal and overriding
-that deserve a design of their own when a real case exists. The
-constraints that keep the door open, which nothing built before then may
-break:
+**No driver packages.** Anything that needs native code (a new database,
+a signing scheme) comes only through a Jadpo release. Packages never carry
+native or WebAssembly code.
 
-- The app mounts one under a domain name it chooses, and its entities
-  migrate in the app's own snapshots, like the app's own entities.
-- Policy stays the app's: a package may ship suggested grants, but none
-  apply until the app writes or accepts them, and the permissions report
-  shows them as the app's.
-- It is extended through its public events and public actions, and its
-  emails and translations are overridden by name (rule 4).
-- It reaches providers only through connections the app gives it.
+**Library package types may be stored** in entity fields and used in
+route inputs and outputs, unlike provider types. An upgrade that changes a
+stored type appears in the upgrade plan and the migration, as a change to
+the app's own type does.
 
-Jadpo's own built-in features (sign-in, flags, audit) already behave like
-first-party domain packages compiled into the language. They stay built
-in; domain packages, when they come, follow the same shape.
+## Inside a package
+
+Decided 2026-10-16: the layout is `shared/`'s, so one set of rules covers
+the app and every package, and the compiler checks a package as it checks
+`shared/`.
+
+```text
+postcodes/v2/
+    package.jadpo                   the index: name, version, description, licence, requirements
+    types/uk_postcode.jadpo         public type UkPostcode = Text { ... }
+    failures/invalid_postcode.jadpo
+    libraries/uk.jadpo              library uk { public parse(...)  normalise(...) }
+    libraries/uk.test.jadpo         tests beside the file, as in an app
+    CHANGELOG.md                    read by the upgrade plan
+    surface.json                    generated: the package's public surface (proposed below)
+```
+
+- **`public` marks the package's API**, as it marks what a domain offers
+  other domains. Everything else is internal and may change freely.
+- **A package's tests run when it is published**, not in every app's
+  `jadpo test`; the digest guarantees the code is the code that passed.
 
 ## Where packages live
 
-Area 11 decided: registry packages are fetched into a local cache by a
-command, pinned by digest in `jadpo.lock`, and never fetched during a
-build; local packages are committed in the repository's `providers/`
-folder. With library packages, the folder and the commands should not be
-named after providers (question 2):
+Decided 2026-10-16: in the repository, committed. This changes where area
+11 put registry packages (a cache on the developer's machine); the pin by
+digest and "never fetched during a build" stand.
 
 ```text
-packages/                 committed: local and imported packages
-    acme_couriers/
-        package.jadpo     the index: name, version, parts, requirements
-        bookings.jadpo
-        email.jadpo       a provide mapping, when it fills a capability
-jadpo.lock                every registry package, version and digest
+app.jadpo
+domains/
+shared/
+packages/
+    postcodes/v2/           from the registry: digest in jadpo.lock, read-only
+    stripe/v2024_06_20/     a provider package, same place
+    acme_couriers/v1/       a local package: not in the lock, the app's to edit
+jadpo.lock
 ```
 
-| Command | Does |
-|---|---|
-| `jadpo package add <name>` | Fetches into the cache, pins in `jadpo.lock`; for a provider, the fixed order of area 11 question 13 |
-| `jadpo package import <format> <file>` | Writes a provider package into `packages/` |
-| `jadpo package record` / `conform` | Confirms an operation; runs a capability's conformance suite |
-| `jadpo package update <name>` | Upgrades, with the upgrade plan of area 18 |
-| `jadpo package remove <name>` | Removes it, refused while code or a connection still uses it |
+- Agents read packages with the tools they already use, reviewers see an
+  upgrade as an ordinary diff, and CI needs no fetch step.
+- The compiler refuses a registry package whose files do not match its
+  digest. Changing one means taking it out of the lock, and it becomes a
+  local package the app owns.
+- Folders nest by version, so two versions sit side by side: a provider
+  during an upgrade (area 11 question 3), a library while an upgrade plan
+  compiles the app against the candidate, or while callers move across.
+  While two versions are in use, names carry the version
+  (`Postcodes.v3.UkPostcode`), as area 11 question 16 decided for
+  providers.
 
-**Requirements between packages** (question 4). A package may require
-others, by name and version, in its index. One version of each package is
-used per app (two only as two connections during a provider upgrade), and
-`jadpo package add` writes every requirement into `jadpo.lock`, so the
-lock is the full list a reviewer reads and nothing arrives unseen. Npm's
-nested copies of one package at several versions are not possible.
+## The package surface
+
+Proposed 2026-10-16 (Richard's idea). The compiler works out a package's
+public surface and writes it to `surface.json`: every public type with its
+fields and constraints, every failure with its kind and code, every
+function's signature, failures and `///` description, the requirements and
+licence, and for a provider its operations, hosts, credential scheme,
+settings and the capabilities it provides.
+
+- **One source for documentation.** The registry renders each package's
+  pages from its surface, so every package is documented the same way,
+  and an agent reads one file instead of the package's code (also as
+  `jadpo package show <name> --json`).
+- **Generated, never written.** `jadpo package publish` writes it, and the
+  registry refuses a surface that does not match the code. A local
+  package's surface is generated into `build/`.
+- **It decides the version.** Publishing compares the new surface with the
+  last release's and refuses a breaking change (a public name removed, a
+  field retyped, a new failure) without a new major version, as Elm's
+  package manager does. The upgrade plan diffs the same two files.
+- **Examples in descriptions are tested.** An example in a function's
+  `///` description is compiled and run at publish, so the documentation
+  cannot drift from the code.
 
 ## How far a capability mapping goes
 
@@ -243,8 +275,8 @@ from a package, and which way it goes.
 | Telemetry | OpenTelemetry settings | Any vendor's endpoint | None |
 | Secrets | Environment variables | `config.jadpo` | None: a secrets manager fills the environment |
 | Payments, AI models, geocoding, tax, any other API | Provider package | — | None: one provider's API each, called as that provider |
-| Shared types and helpers | Library package | — | New kind (question 1) |
-| Whole features (billing, CMS) | Domain package | — | Later, under the constraints above |
+| Shared types and helpers | Library package | — | New kind (decided 2026-10-16) |
+| Whole features (billing, CMS) | Written by the agent; worked references in `examples/` | — | Not a package (decided 2026-10-16) |
 
 **Sign-in providers** are the one built-in list that should follow the
 pattern and does not. Area 8 decided presets (Google, GitHub) plus generic
@@ -269,35 +301,31 @@ the same way is the signal to propose a capability through review.
 | Chunk | Follows |
 |---|---|
 | 5.1 Configuration | Connection settings come from `config.jadpo`; an enum setting can choose a connection if question 5 is agreed |
-| 7.1 Packages and connections | `packages/` and `jadpo package` (question 2); the index lists its parts and requirements (question 4); library packages parse and resolve (question 1) |
+| 7.1 Packages and connections | `packages/<name>/<version>/` committed and checked against `jadpo.lock`, and `jadpo package` commands; library packages laid out as `shared/` and resolved with `use`; the index's requirements (question 4); the surface (question 8) |
 | 7.2 Importing and faking | Imports write into `packages/`; unchanged otherwise |
 | 7.3 Email | The `email` capability with SMTP as one driver and a mail package as the second, proving the swap; the local inbox as the development driver; templates overridable by name |
-| After the first build | Sign-in providers as a capability (question 6); search, push and bot protection only when an app needs them (question 7); domain packages with their own design |
+| After the first build | Sign-in providers as a capability (question 6); search, push and bot protection only when an app needs them (question 7) |
 
 ## Questions for Richard
 
 Questions 1, 2 and 4 change what chunk 7.1 builds. The rest change nothing
 until later, but answering them now fixes the pattern.
 
-1. **Which kinds of package exist?** *Recommendation:* provider packages as
-   decided, plus library packages (types, failures, pure functions, under
-   `shared/`'s rules) from chunk 7.1. Domain packages later, designed when
-   a real app needs one, under the four constraints above. Library packages
-   cost little because `shared/` already has the rules; domain packages
-   carry migrations and policy that no current app tests.
-2. **Is it `packages/` and `jadpo package …`, not `providers/` and
-   `jadpo provider …`?** *Recommendation:* yes, renamed now, before 7.1
-   builds either. Library packages would otherwise sit in a folder called
-   `providers/`, and renaming a command after people use it costs more than
-   renaming it on paper.
+1. **Which kinds of package exist?** *Decided 2026-10-16 (Richard):*
+   provider and library packages; no feature or driver packages (see
+   "Package kinds").
+2. **Where do packages live, and how are they laid out?** *Decided
+   2026-10-16 (Richard):* committed in `packages/<name>/<version>/`, laid
+   out as `shared/`, `public` marking the API, `jadpo package …` commands
+   (see "Inside a package" and "Where packages live").
 3. **May a capability mapping call pure functions?** *Recommendation:* yes,
    functions from the package's own libraries and the standard library,
    added with the first package that needs one, not before. Rule 2 still
    holds, and the alternative is a Jadpo release for each provider's quirk.
 4. **How do packages depend on each other?** *Recommendation:* a package
-   lists its requirements; one version of each per app; every requirement
-   written into `jadpo.lock`, so nothing arrives that the lock does not
-   show.
+   lists its requirements; one version of each in use, two only while
+   callers move across; every requirement written into `jadpo.lock`, so
+   nothing arrives that the lock does not show.
 5. **Can the provider be chosen when deploying?** This depends on whether
    Jadpo apps will be run by people who did not write them.
    *Recommendation:* yes, when the first such app needs it: the app
@@ -313,3 +341,9 @@ until later, but answering them now fixes the pattern.
    `search:` section), push notifications and bot protection, each added
    through review only when an app needs it. Payments and AI models stay
    provider packages.
+8. **Does the compiler generate a package's surface?** Richard's idea,
+   2026-10-16. *Recommendation:* yes, as "The package surface" describes:
+   `surface.json` generated at publish and checked by the registry, the
+   registry's documentation rendered from it, publishing refused when the
+   surface breaks without a new major version, and examples in `///`
+   descriptions run at publish.
