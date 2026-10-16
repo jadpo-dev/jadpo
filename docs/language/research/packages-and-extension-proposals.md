@@ -1085,6 +1085,10 @@ app's own code, published.
   package whose name one of the app's own integrations or libraries
   already uses stops and asks for the app's own to be renamed first
   (`jadpo rename`).
+- **A package's name joins the domain, library and standard-library
+  names,** which are unique among themselves (area 1), so installing a
+  package refuses one whose name the app already uses for a domain, a
+  library or any declaration (2026-10-16, Richard).
 - Creating an integration checks the registry and warns when the name is
   taken.
 
