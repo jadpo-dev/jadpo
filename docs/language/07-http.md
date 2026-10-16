@@ -254,33 +254,28 @@ routes AdminOrders {
 - With nothing declared there is one API, `main`, at `/`. A group names its
   API with `api:` (default `main`), and its prefix starts with the API's.
 - Each API has its own OpenAPI document, record and default authentication
-  (area 8).
+  (area 8), and serves its OpenAPI document at `<prefix>/openapi.json`
+  unless its entry says `serve_openapi: false` (see [OpenAPI](#openapi)).
 - A new major version is another API (`v2: { prefix: /v2 }`), declared only
   when a break must live beside the old version. Deleting `v1` makes the
   compiler report every group and type left unused.
 
 ## Webhooks
 
-An inbound webhook is an ordinary route in the `webhooks` API (question 8):
+A provider's webhooks are generated from its package, not written (area 11,
+amending question 8 on 2026-10-13): a connection with a webhook secret gets
+`POST /webhooks/<connection>` in the `webhooks` API, whose runtime checks
+the signature over the raw body, drops repeats by the provider's event id,
+answers a handshake where the package names one, and writes each event to
+the outbox for subscribers (area 12). A webhook that needs a reply runs
+the app's answering action inside the request (area 11, "Receiving from
+outside", 2026-10-16). Its path can change; it cannot be switched off.
 
-```jadpo fragment
-// domains/payments/routes/webhooks_stripe.jadpo
-routes WebhooksStripe {
-    prefix: /webhooks/stripe
-    api: webhooks
-
-    POST / {
-        authentication: stripe.signature    // checked over the raw body (areas 8 and 11)
-        input: StripeEvent
-        status: SuccessStatus.no_content
-        run: record_stripe_event(input)
-    }
-}
-```
-
-The action stores the event under a unique rule on the provider's event id,
-so a redelivery changes nothing, and the real work runs in a subscriber
-(area 12).
+Two senders still reach ordinary routes (decided 2026-10-16): a system that
+signs webhooks and has no package gets the app's own integration in
+`shared/providers/`, whose webhooks are generated the same way; a partner
+with an agreement signs in as a `Service` with a service key (area 8) and
+calls an ordinary route.
 
 ## How failures reach the client
 
@@ -328,8 +323,12 @@ client to format in its own language.
 ## Generated routes
 
 Some features generate routes: magic-link sign-in (area 8), the privacy
-requests (area 15), `POST /auth/exchange` (area 8), `GET /flags` (area 16)
-and a provider package's webhooks (area 11). Jadpo generates endpoints
+requests (area 15), `POST /auth/exchange` (area 8), `GET /flags` (area 16),
+a provider package's webhooks (area 11), each API's
+`GET <prefix>/openapi.json` (below), and connecting and disconnecting an
+OAuth grant, `POST /connections/<name>/start`,
+`GET /connections/<name>/callback` and `POST /connections/<name>/disconnect`
+(areas 8 and 11). Jadpo generates endpoints
 only, never pages: the app's frontend owns every page (decided
 2026-10-16). Generated routes appear in `jadpo routes`, the API record and
 OpenAPI like any route, marked generated (question 12).
@@ -374,14 +373,40 @@ client must format, each `number`, `decimal`, `date`, `date_time` or
 `duration`, decided by the client field's type (area 10,
 "Failures for client apps"; decided 2026-10-16).
 
+**Served, and readable by other Jadpo apps** (decided 2026-10-16, Richard,
+area 11's "Packages from other Jadpo apps"):
+
+- **Every API serves its document** at `<prefix>/openapi.json` by default
+  (`/v1/openapi.json`, `/openapi.json` for `main` at `/`), under the API's
+  own default authentication, so an admin API's document needs sign-in.
+  `serve_openapi: false` in the API's entry in `apis: { }` turns it off.
+- **The served route is listed like any generated route**: in the API's own
+  OpenAPI document and in its API record, marked generated, and in
+  `jadpo routes`.
+- **`x-jadpo` fields** carry what plain OpenAPI lacks: `x-jadpo-changes`
+  (the operation changes something), `x-jadpo-idempotency` (whether it
+  takes `Idempotency-Key`, and whether the API requires it),
+  `x-jadpo-failure` on each failure response (its `code` and `kind`),
+  `x-jadpo-constraints` (every field's rules) and `x-jadpo-events` (the
+  public events the app publishes). Other tools ignore them;
+  area 11's OpenAPI importer reads them whenever it finds them, so another
+  Jadpo app's document imports as an exact provider package with no
+  corrections or recordings.
+
 ## The public API record
 
 A breaking change is caught at review, not by a client in production
 (question 10, researched in [the proposals](research/07-http-proposals.md)).
-Each API has a committed, readable record, `api/main.api`, of its routes,
-fields and failure codes. `jadpo check` fails while it disagrees with the
-source and `jadpo api update` rewrites it, so every API change is a diff of
-one file.
+Each API has a committed, readable record, `api/main.jadpo_record`, of its
+routes, fields and failure codes. `jadpo check` fails while it disagrees with
+the source and `jadpo api update` rewrites it, so every API change is a diff
+of one file.
+
+> Renamed 2026-10-16 (Richard, area 18): every committed generated file is a
+> `.jadpo_record` beside what it describes, starting with a line saying what
+> wrote it and which command updates it, and a hand edit is an error naming
+> that command. Today's compiler still writes `api/main.api`, as the
+> examples below show; the rename has no roadmap chunk yet.
 
 A whole group, with what it runs and the record `jadpo api update` writes
 for it. The record is the wire contract: a field shows what a client sends
@@ -2276,7 +2301,10 @@ methods it accepts, a route passes `current_principal` to what it runs, a
 signed-in caller's requests count against its own rate limit, and its
 idempotency keys are its own.
 
-Not yet: policy (4.4); deleting
+Not yet: serving each API's OpenAPI document at `<prefix>/openapi.json`,
+`serve_openapi:` and the `x-jadpo` fields (decided 2026-10-16; the fields
+with the importer in chunk 7.2, the served route with no chunk yet); the
+record's rename to `api/main.jadpo_record` (area 18); policy (4.4); deleting
 expired idempotency keys from the runtime's minute tick (6.2), and the
 `events: { store: }` an action that writes no store needs before it keeps a
 key (area 12); `settle:` (6.3); a route's own `rate_limit:` and the Redis
@@ -2400,6 +2428,8 @@ is written.
     person, one per change and used once, in the same form for database
     drops, policy weakening and new domains; the `acceptances/` folder is
     owned in CODEOWNERS so the host's review records who approved it. *Decided 2026-10-12:* yes, as recommended.
+    *Revised 2026-10-16 (Richard, area 18):* the record is named
+    `api/main.jadpo_record`, like every committed generated file.
 11. **How does a write's revision reach the client?** (carried from area 6)
     Area 6 lets a client that just wrote skip caches by its revision. What
     are the response header and cookie (`jadpo-revision`) called, and must
@@ -2414,6 +2444,8 @@ is written.
     *Decided 2026-10-12:* yes: generated routes appear in the route list and
     OpenAPI like any route, marked generated; every route shows its security
     scheme in OpenAPI.
+    *Extended 2026-10-16 (Richard, area 11):* so does each API's served
+    `GET <prefix>/openapi.json`, which also appears in the API record.
 13. **How does an API declare its accepted authentication methods?**
     (carried from area 8) Area 8 has each API list its methods,
     `authentication: [AuthenticationMethod.browser_session, AuthenticationMethod.api_token]`,
@@ -2481,7 +2513,7 @@ is written.
 | APIs and versions | `apis: { }` in `application`, `main` at `/` implied; a group names its API with `api:`; one OpenAPI document and record per API; a new major version is another API | 2026-10-12 |
 | Webhooks | Ordinary routes in a `webhooks` API; the provider's signature check as authentication; a unique rule on the provider's event id; work in a subscriber (Amended 2026-10-13 by area 11: provider webhooks are generated from the package and arrive as events; no route is written) | 2026-10-12 |
 | Field path format | The `Input` field's dotted path with list positions as numbers (`lines.2.quantity`) | 2026-10-12 |
-| API record and acceptance | Committed readable record per API (`api/main.api`) compared by `jadpo check`; breaking changes need a person-written acceptance file, one per change, the same form for drops, policy weakening and new domains; `acceptances/` owned in CODEOWNERS | 2026-10-12 |
+| API record and acceptance | Committed readable record per API (`api/main.api`) compared by `jadpo check`; breaking changes need a person-written acceptance file, one per change, the same form for drops, policy weakening and new domains; `acceptances/` owned in CODEOWNERS (Revised 2026-10-16: `api/main.jadpo_record`, area 18) | 2026-10-12 |
 | Write revision header | `Jadpo-Revision` header on every write, a cookie for browsers; sending it back skips caches | 2026-10-12 |
 | Generated authentication routes in OpenAPI | Listed like any route, marked generated; every route shows its security scheme | 2026-10-12 |
 | Accepted authentication methods per API | `authentication: [...]` in each API's entry in `apis: { }`; groups and routes may only narrow it | 2026-10-12 |
@@ -2503,3 +2535,7 @@ is written.
 | Failure wording for clients | Every failure a route can produce is worded in every supported locale in the app's language files; `jadpo build` writes `<api>.failures.<locale>.json` beside each OpenAPI document; dates and numbers stay values for the client to format; `message` stays English (Richard, area 10) | 2026-10-16 |
 | Generated routes | Endpoints only, never pages; `path:` where the feature is configured or `routes: false` over generated operations that keep every protection; webhook routes change path but cannot be switched off; response shapes fixed (Richard) | 2026-10-16 |
 | Rate-limited response | `429`, code `rate_limited`, `Retry-After` and the IETF `RateLimit` and `RateLimit-Policy` headers, wording from translations (Richard) | 2026-10-16 |
+| Serving OpenAPI | Every API serves its OpenAPI document at `<prefix>/openapi.json` under its own default authentication, `serve_openapi: false` to turn it off; the route is listed, marked generated, in its own OpenAPI document, its API record and `jadpo routes` (Richard, area 11) | 2026-10-16 |
+| `x-jadpo` fields | Jadpo's OpenAPI documents carry `x-jadpo-changes`, `x-jadpo-idempotency`, `x-jadpo-failure` (`code`, `kind`), `x-jadpo-constraints` and `x-jadpo-events`; other tools ignore them; area 11's importer reads them to make an exact package (Richard, area 11) | 2026-10-16 |
+| API record name | `api/<api>.jadpo_record`, replacing `api/main.api`: readable, starting with the line that says what wrote it, a hand edit an error (Richard, area 18) | 2026-10-16 |
+| Webhook senders without a package | A signing system with no package gets the app's own integration in `shared/providers/`; a partner with an agreement calls an ordinary route as a `Service` with a service key (Richard, area 11) | 2026-10-16 |

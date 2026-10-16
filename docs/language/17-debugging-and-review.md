@@ -31,6 +31,9 @@ refused, it is because the compiler and the runtime recorded it (question 10).
 | Breakpoints | Not now | Question 3 |
 | Why the language decided something | `jadpo why` | Question 4 |
 | What a request did | Request timeline in `jadpo dev`; `jadpo trace <request id>` | Question 5 |
+| Watching code run | `jadpo watch` waits for a named part of the code to run and prints it | Question 15 |
+| Provider calls in development | `jadpo calls`, every call logged with full values, development only | Question 16 |
+| Traces, metrics and logs in development | `jadpo traces`, `jadpo metrics`, `jadpo logs`, filterable, `--follow`, `--json` | Question 17 |
 | Failing request to test | `jadpo test new --from <request id>` | Question 6 |
 | Run a query or action | `jadpo call <name> --as <user>` | Question 7 |
 | Developer console and MCP | Local web page and read-only MCP over the same evidence | Roadmap E11; question 8 |
@@ -172,6 +175,97 @@ POST /todos/0192…/complete   409 todo_mutation_conflict   41 ms   as user 0192
   (area 16), viewed in whatever tool the team uses.
 - A request that runs several queries for one call, or a query without an
   index, is flagged on its line, matching area 6's query report.
+- Provider calls appear in the timeline with where their answer came from
+  (`recording`, `generated`, `scripted` or `sandbox`), and their inputs and
+  answers in full ("Provider calls in development", below). An action with
+  several changing calls shows each step's state: recorded, sent, answered,
+  replayed, in doubt (area 12).
+
+## Watching code run: `jadpo watch`
+
+Decided 2026-10-16 (Richard): an agent should be able to wait for a
+particular part of the code to run, then see its inputs and outputs,
+without reading whole logs.
+
+```text
+jadpo watch action shipping.book_collection --once --json
+jadpo watch domain billing
+jadpo watch call couriers.bookings.create --failed
+jadpo watch file domains/shipping/actions/book_collection.jadpo
+```
+
+- **Filters name code, as the compiler knows it**: a route, action, query,
+  subscriber, schedule, provider operation, domain or file, optionally
+  narrowed to `--failed` or `--faulted`. An unknown name is an error naming
+  the nearest match, as everywhere else.
+- **Each match prints the step** with its inputs, its output or failure,
+  the queries, writes, events and calls inside it, timings, and the
+  request id, so `jadpo trace <request id>` opens the whole request.
+- **`--once` exits after the first match**, so an agent starts it in the
+  background, triggers the flow, and waits for the command to finish
+  instead of polling; `--count <n>` and `--timeout <duration>` bound it,
+  and `--json` gives the same as data.
+- **Development only, with values in full**, as the development call log
+  shows provider payloads, from `jadpo dev`'s git-ignored data; secrets are
+  never shown. Production keeps area 16's spans with no values.
+
+## Provider calls in development: `jadpo calls`
+
+Decided 2026-10-16 (Richard). In `jadpo dev` every provider operation is
+faked by default, answered from the package's recordings where there are
+some and from generated defaults otherwise, so nothing leaves the machine
+and no credential is needed (area 11). Operations or resources named on
+the connection's `development: { sandbox: [...] }` go to the provider's
+sandbox, never live; `jadpo dev --fake <connection>` and `--sandbox
+<operation>` change one session only.
+
+```text
+$ jadpo calls
+call_31  stripe.customers.create         generated   201   4 ms   req_0c02
+call_32  stripe.payment_intents.create   scripted    card_declined   1 ms   req_0c02
+
+$ jadpo calls script stripe.payment_intents.create card_declined
+next call to stripe.payment_intents.create answers card_declined
+```
+
+- **Every call is logged**, faked or real: the connection, resource and
+  operation, the input and the answer or failure in full, where the answer
+  came from (`recording`, `generated`, `scripted`, `sandbox`), attempts and
+  retries, duration, and the request id and span, so each appears in
+  `jadpo trace` beside the queries.
+- **`jadpo calls`** lists them (`--connection`, `--operation`,
+  `--request`), **`jadpo calls show <id>`** prints one, and both take
+  `--json`. They are kept with the last 500 timelines in `build/dev/`,
+  never committed.
+- **`jadpo calls script <operation> <failure>`** sets the next answer, in
+  area 13's `fakes:` form, so an agent can walk a failure path by hand.
+  Fakes keep no state, so a flow that creates and then reads one object
+  either lets both through to the sandbox or scripts the read.
+- **Full values in development only.** The log shows inputs and answers in
+  full, which changes this page's rule of hashing text for call payloads
+  (question 5) in development only; credentials and `secret: true` values
+  are never shown. Production keeps area 16's spans with no values.
+- `jadpo dev grants add <connection> --owner <id>` makes a fake OAuth grant
+  for an owner (area 11).
+
+## Traces, metrics and logs in development
+
+Decided 2026-10-16 (Richard). In development the app's telemetry (area 16)
+stays on the machine unless `jadpo dev --export-telemetry` sends it on,
+and is read from the command line, as the call log is:
+
+| Command | Shows |
+|---|---|
+| `jadpo traces` | Recent requests, schedule runs and deliveries, one line each, opening into `jadpo trace <id>` |
+| `jadpo metrics` | The metrics the runtime records and the app's own (`monitoring.jadpo`), per route, action or path |
+| `jadpo logs` | The app's logs, its services' included (area 11), by level |
+
+Each takes the same filters, by route, action, domain, path, failure and
+slowness (`--slower-than 200ms`), `--follow` to keep printing as new ones
+arrive, and `--json`. The developer console shows the same data later.
+Their screens follow the CLI design language and are designed with the
+design skills before they are built, as `jadpo watch`'s and `jadpo
+calls`' are.
 
 ## Capturing a failing request as a test
 
@@ -279,6 +373,14 @@ order, as Markdown and JSON, and a static web view of the same report:
 4. **Other behaviour.** API record changes (area 7), schema and migrations
    (area 5), failures, events and subscribers, integrations, and the
    permissions and personal-data reports' differences (areas 9 and 15). *Decided 2026-10-13:* yes, as recommended.
+   Packages add to the first item, as decisions that need a person
+   (decided 2026-10-16): a third party's package installed from git
+   rather than the registry, marked **unverified** until a person accepts
+   it; a **package's service** whose image is new or changed, shown with
+   its image, digest and the hosts it asks for, which never starts until
+   accepted; a new outbound host granted to a service; a connection that
+   receives personal data but cannot erase it (area 15); and bot checks
+   allowed to pass when their provider is down (area 16).
    With `translations: { review: TranslationReview.required }`, wording
    changed and not yet accepted with `jadpo translations accept <locale>`
    is listed here too (area 10, decided 2026-10-16).
@@ -349,9 +451,14 @@ and the review web view come after that, as product work (E11 and E06).
 ### Consistency with the rest of the language
 
 - **Values never, places always.** Stacks, timelines and `why` answers follow
-  area 4's log rule and area 16's span rule. The one exception is the local
-  timeline kept for `test new --from`, which holds the full request in
-  `build/dev/` on the developer's machine, never logged or exported.
+  area 4's log rule and area 16's span rule. The exceptions are all local
+  to `jadpo dev`: the timeline kept for `test new --from`, which holds the
+  full request, and, since 2026-10-16, the development call log and
+  `jadpo watch`, which show values in full. All live in `build/dev/` on the
+  developer's machine, never logged, committed or exported, and never show
+  secrets.
+- **`jadpo call` and `jadpo calls`.** One runs a query or action; the other
+  lists provider calls. The names are close; `jadpo help` gives both.
 - **Concealment.** `jadpo why` says a record was concealed by policy, which
   the client must never learn (area 4). It reads local evidence or logs the
   operator already has, so this reveals nothing to a client.
@@ -383,6 +490,9 @@ and the review web view come after that, as product work (E11 and E06).
 | Path IDs and per-path query counts | 16 | Questions 11–14 |
 | Path coverage in `jadpo test`; production counts as a test input | 13 | Question 11 |
 | What a replay recording may hold | 15 | Question 13 |
+| `jadpo watch`, `calls`, `traces`, `metrics` and `logs`, and `jadpo dev --export-telemetry`, `--fake`, `--sandbox` and `grants add`, in the command reference | 14 | Questions 15 to 17 |
+| Unfinished multi-step runs and `diverged` deliveries as operator items, in `jadpo deliveries` | 12, 14 | Question 15 |
+| Unverified publishers and service approvals in the approval report | 11, 18 | Question 9 |
 
 ### Open questions
 
@@ -415,6 +525,9 @@ and the review web view come after that, as product work (E11 and E06).
    <id>` for one, SQL with placeholders and parameters under area 4's rule.
    Telescope, Rails' query log and Encore's dashboard all show this locally,
    and the spans already exist (area 16). *Decided 2026-10-13:* yes, as recommended.
+   *Revised 2026-10-16 (Richard):* provider calls in the timeline show
+   their inputs and answers in full in development only, and where each
+   answer came from; production is unchanged.
 6. **Does `jadpo test new --from <request id>` write a replay test?**
    *Recommendation:* yes: a route test with fixtures for the data read,
    fakes for integration calls, personal fields replaced, asserting what
@@ -468,6 +581,28 @@ and the review web view come after that, as product work (E11 and E06).
 14. **Does the approval report count queries per path?** *Recommendation:*
     yes, from the compiler alone, ranked by production traffic when given.
     It catches the extra query before it ships, not on a dashboard after. *Decided 2026-10-13:* yes, as recommended.
+15. **Can an agent wait for a part of the code to run?** *Decided
+    2026-10-16 (Richard):* `jadpo watch` with filters naming a route,
+    action, query, subscriber, schedule, provider operation, domain or
+    file, narrowed to failures or faults; each match prints the step's
+    inputs, output or failure, what ran inside it, timings and the request
+    id; `--once`, `--count`, `--timeout` and `--json`; development only,
+    values in full, secrets never. Each step of an action with several
+    changing calls shows its state, and an unfinished one is an operator
+    item (area 12).
+16. **What does development show of provider calls?** *Decided
+    2026-10-16 (Richard):* every call faked by default and logged, faked
+    or real, with inputs and answers in full (development only), source,
+    attempts, duration and request, in `jadpo calls`, `jadpo calls show`,
+    `jadpo trace` and `--json`; `jadpo calls script` sets the next answer;
+    the connection's `development: { sandbox: }` lets named calls through
+    to the sandbox.
+17. **How are traces, metrics and logs read in development?** *Decided
+    2026-10-16 (Richard):* nothing is exported unless `jadpo dev
+    --export-telemetry`; `jadpo traces`, `jadpo metrics` and `jadpo logs`
+    read them locally, filterable by route, action, domain, path, failure
+    and slowness, with `--follow` and `--json`, and the developer console
+    shows them later.
 
 ### Decisions
 
@@ -493,3 +628,7 @@ and the review web view come after that, as product work (E11 and E06).
 | Production replay | Opt-in, failing requests only, personal fields replaced, recordings expire | 2026-10-13 |
 | Query cost of a change | Queries per path computed by the compiler in the approval report | 2026-10-13 |
 | Unaccepted translations | With `TranslationReview.required`, changed wording not yet accepted appears in the approval report (Richard, area 10) | 2026-10-16 |
+| Watching code run | `jadpo watch` on a named route, action, query, subscriber, schedule, provider operation, domain or file, optionally failures or faults only; prints inputs, outputs, what ran inside and the request id; `--once`, `--count`, `--timeout`, `--json`; development only, values in full, secrets never (Richard) | 2026-10-16 |
+| Development call log | Provider calls faked by default, let through to the sandbox by name; every call logged with full inputs and answers in development only, its source, attempts, duration and request; `jadpo calls`, `calls show`, `calls script`, `--json` (Richard) | 2026-10-16 |
+| Telemetry in development | Nothing exported unless `--export-telemetry`; `jadpo traces`, `metrics` and `logs`, filterable by route, action, domain, path, failure and slowness, `--follow`, `--json` (Richard) | 2026-10-16 |
+| Packages in the approval report | Unverified third-party packages from git, new or changed service images, outbound grants for services, connections that cannot erase and fail-open bot checks need a person's acceptance (Richard) | 2026-10-16 |

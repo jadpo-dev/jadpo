@@ -414,6 +414,16 @@ function order_total(lines: List<OrderLine>) -> Pence {
 Decided (question 12): `for` over a list is the only loop: no `while`,
 `break` or `continue`, with `return` allowed inside the body.
 
+**No outside calls inside `for`** (decided 2026-10-16, Richard, from area
+12's multi-step calls). A provider operation, a package action, a file
+store's `put` or `read`, or a `documents` render inside a loop's body is a
+compile error, in any action, as a query inside one already is (area 6).
+A loop of calls is `batches.each` (area 12), the one way; a provider that
+takes a list is called once with the list. Keeping calls out of
+loops means the steps of an action that makes several changing calls lie
+along a path whose length the compiler knows. The error is built with
+provider calls (chunk 7.1).
+
 ## Passing functions
 
 Area 2 decided on `collection.map` and `collection.filter`, which need a
@@ -430,6 +440,31 @@ The inline function is one expression, takes its parameter's type from the
 list, may read the variables around it (safe because values never change),
 and cannot call actions or use `attempt`. Functions are not values: they
 cannot be stored in variables or passed to your own callables.
+
+**The batch helpers take the same form** (decided 2026-10-16, Richard,
+area 12): `each:` and `finished:` of `csv.read`, `csv.write`, `tsv`,
+`json_lines`, `json.read`, `json.write` and `batches.each` are inline
+functions written with `->`. They differ from the collection operations in
+two ways, because they run later, in the background, after the calling
+action commits:
+
+```jadpo fragment
+csv.read(
+    import.sheet,
+    as: ProductRow,
+    each: row -> save_product(row, account: import.account_id),
+    finished: summary -> import_finished(summary, import: import.id)
+)
+```
+
+- Where there is no destination (`each:` when reading, `batches.each`'s
+  `each:`, and every `finished:`), the body is one call to an action in the
+  same domain, as a subscriber's `run:` is; where the helper writes,
+  `each:` is a pure expression giving the row to write
+  (`product -> ProductExportRow { ... }`).
+- Values the body captures from around it are saved with the run, so only
+  storable values may be captured (those an entity field could hold).
+  Capturing anything else is a compile error naming the value.
 
 ## Recursion
 
@@ -3159,6 +3194,10 @@ run.
     request deadlines predictable, and searching or stopping early is
     `collection.filter` or a `return`. Go manages with one loop form; Elixir
     with none.
+    *Revised 2026-10-16 (Richard, area 12):* no outside call (a provider
+    operation, a package action, a file store's `put` or `read`, a
+    `documents` render) inside a `for` body, in any action; a loop of calls
+    is `batches.each`, the one way.
 13. **How are functions passed to `collection.map` and `collection.filter`?**
     *Decided 2026-10-12:* inline functions only as arguments to standard-library
     collection operations, written `todo -> todo.title`: one expression, pure,
@@ -3167,6 +3206,11 @@ run.
     variables is safe because values never change. Elixir writes the same
     shape (`fn todo -> todo.title end`); TypeScript's general closures are
     more than application code needs.
+    *Revised 2026-10-16 (Richard, area 12):* the same inline form is also
+    the `each:` and `finished:` of the batch helpers, where with no
+    destination its body is one call to an action in the same domain, and
+    what it captures is saved with the run, so only storable values may be
+    captured.
 14. **Is recursion allowed?** It is accepted today with no limit, and
     recursive types such as comment threads need it. *Decided 2026-10-12:* allow
     it in functions only; an action or query in a call cycle is an error,
@@ -3221,3 +3265,5 @@ Decided by Richard on 2026-10-12. Built in the new compiler on 2026-10-13 (roadm
 | Callable settings | None: every action is all-or-nothing, writes always check for concurrent change, reads are current unless they read a declared cache; policy is area 9 | 2026-10-12 |
 | Generics and unions | None for your own code; a parameter accepting several types takes an `Enum` whose variants carry them | 2026-10-12 |
 | Colon rule (language-wide) | Every member inside braces is `name: value`, and a value is one thing or a `{ ... }` block (`paid: { ... }`, `persistence: { ... }`); a variant with no data is just its name; a field's own settings still follow its type (`name: ProductName { optional: true }`); top-level declarations, statements and `match` arms are not members; route entries inside a `routes` group, keyed by method and path, are the one exception (area 7) (Richard; Terraform's block-versus-attribute split is a known source of confusion) | 2026-10-12 |
+| Outside calls in loops | None inside `for`, in any action: a loop of calls is `batches.each`, the one way (Richard, area 12) | 2026-10-16 |
+| Inline functions in batch helpers | `each:` and `finished:` of the batch helpers take `x -> ...`; with no destination the body is one call to an action in the same domain; captured values are saved with the run and must be storable (Richard, area 12) | 2026-10-16 |

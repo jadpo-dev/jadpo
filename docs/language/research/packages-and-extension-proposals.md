@@ -688,8 +688,10 @@ Decided 2026-10-16 (Richard).
   an agreement is a `Service` with a service key calling an ordinary route
   (area 8).
 - **Webhooks that need a reply** (Twilio's call instructions, Slack's
-  messages): the package marks the webhook as replying, with request and
-  reply types; the connection names the app's action that answers
+  messages): the package's event type names its reply type
+  (`public type IncomingCall = Event { wire_name: "..."  reply: CallReply ... }`,
+  the reply type in the package's `types/`); the connection names the
+  app's action that answers, keyed by the event's lower_snake name
   (`webhooks: { replies: { incoming_call: phone.answer_call } }`), which
   runs inside the request after the signature check and may read and write
   like any action; repeats get the stored reply; the package encodes the
@@ -734,12 +736,17 @@ Slack workspace install).
   operation declares the scope it needs. Nothing is specific to one
   provider; the connection's name is the app's.
 - **Connecting is endpoints, not pages**: `POST /connections/<name>/start`
-  for the signed-in caller returns the provider's consent address; the
-  provider returns to a generated callback, which exchanges the code (PKCE,
-  state bound to the caller's session), stores the grant and redirects to
-  the frontend's `return_to` with success or failure.
-- **Grants are held by the runtime**, like sessions, their tokens encrypted
-  with a key from configuration and never readable by code.
+  for the signed-in caller returns the provider's consent address and keeps
+  the `state` on the server against the caller's session or API token; the
+  provider returns to `GET /connections/<name>/callback`, which needs no
+  cookie, exchanges the code (PKCE), stores the grant and redirects to the
+  frontend's `return_to` with success or failure. API-token clients connect
+  the same way.
+- **Grants are held by the runtime**, like sessions, in a `jadpo_grants`
+  system table in the owner entity's store (so grants need a database),
+  their tokens encrypted with `application { grants: { encryption_key:
+  config.grant_encryption_key } }`, a `SigningKey`-like secret with the
+  decided previous-key rotation, and never readable by code.
 - **Every call names whose grant it uses**: `on_behalf_of: owner_id`;
   `grant_missing` and `grant_revoked` are failures the app maps.
 - **Refresh is automatic**: renewed before expiry, once when calls race,
@@ -747,9 +754,10 @@ Slack workspace install).
   `GrantRevoked` event so the app can ask the owner to reconnect.
 - **Scopes are checked at compile time**: calling an operation whose scope
   the connection does not request is an error.
-- **Policy decides who may connect** for an owner (area 9): a user their
-  own account, an organisation's grant as its grants say.
-- **Disconnecting** is a generated endpoint and operation, revoking at the
+- **Policy decides who may connect** for an owner (area 9): connecting
+  needs the `update` grant on the owner's record, so no new effect.
+- **Disconnecting** is `POST /connections/<name>/disconnect` and its
+  operation, revoking at the
   provider when the package declares how; erasing a person or record (area
   15) deletes and revokes its grants.
 - **Development and tests**: calls faked by default (decided);
@@ -1098,7 +1106,7 @@ postcodes/v2/
     package.jadpo                   the index: description, licence, Jadpo version
     types/uk_postcode.jadpo         public type UkPostcode = Text { ... }
     failures/invalid_postcode.jadpo
-    libraries/uk.jadpo              library uk { public parse(...)  normalise(...) }
+    libraries/uk.jadpo              public library uk { parse(...)  normalise(...) }
     libraries/uk.test.jadpo         tests beside the file, as in an app
     CHANGELOG.md
     surface.jadpo_record                 generated
@@ -1129,10 +1137,12 @@ stripe/v2024_06_20/
 - **A re-import rewrites only imported files.** Written libraries and
   corrections survive, as area 11 already says for corrections.
 - **Everything reachable from the public surface is public** (decided
-  2026-10-16, Richard): a failure a public function `fails` with, a
+  2026-10-16, Richard): a failure a public library's function `fails` with, a
   provider operation's `failures:`, and the types in a public signature
   must themselves be public, checked on every compile; internal failures
-  are mapped or handled before they leave a public function. The same
+  are mapped or handled before they leave a public library. `public` goes
+  on a library, never on a function, as in area 1, and internal helpers
+  (decoders) live in a library that is not public. The same
   rule applies to a domain's public actions, queries and libraries, which
   area 1 does not state today.
 - **A package's tests run when it is published**, not in every app's
@@ -1180,8 +1190,11 @@ package configuring a built-in driver.
   `jadpo check` warns when it recognises a host that is missing one. A
   vendor driver in a Jadpo release only where a flow needs native code.
 - **Sign-in**: Google, Microsoft and other OpenID Connect providers are
-  `Driver.oidc` with an issuer; area 8's built-in presets narrow to GitHub
-  and Apple, which are not plain OpenID Connect.
+  `Driver.oidc` connections (`issuer:`, `client_id:`, `credential:`); GitHub
+  and Apple, which are not plain OpenID Connect, are the built-in
+  `Driver.github` and `Driver.apple`;
+  `sign_in: { magic_link: { ... }  providers: [google, github] }` names
+  them.
 - **A vendor with two APIs under different credentials** (Shopify's Admin
   and Storefront APIs) is two packages.
 - **The declaration is called `provider`**, matching provider packages and
@@ -1270,8 +1283,8 @@ jadpo.lock
 Richard's idea. The compiler works out a package's public surface and
 writes it to `surface.jadpo_record`, beside `package.jadpo`: the package's
 description, licence and version, every public type with its fields and
-constraints, every failure with its kind and code, every function's
-signature, failures and description, and for a provider its operations
+constraints, every failure with its kind and code, every public library's
+functions with their signatures, failures and descriptions, and for a provider its operations
 (wire and output types both), hosts or container, credential scheme,
 settings and the capabilities it provides.
 
@@ -1306,8 +1319,10 @@ settings and the capabilities it provides.
 `jadpo package publish` refuses a package unless:
 
 1. it compiles with no errors and no warnings;
-2. every public type, failure and function has a `///` description;
-3. every public function has at least one example in its description,
+2. every public type, failure, library and library function has a `///`
+   description;
+3. every function of a public library has at least one example in its
+   description,
    compiled and run at publish, and every failure it can raise is shown by
    an example or a test;
 4. its tests pass, and every decoder decodes every recorded response;
@@ -1603,13 +1618,41 @@ Depends on whether Jadpo apps will be run by people who did not write
 them. Sending different messages through different connections, and
 falling back to a second provider, come later and only when an app asks.
 
-## Proposed: sign-in providers as a capability
+## Decided: sign-in providers are connections
 
-Decided above: Google, Microsoft and other OpenID Connect providers are
-`Driver.oidc` with an issuer, and built-in presets remain only for GitHub
-and Apple. Still proposed: making sign-in a `sign_in` capability, so
-`sign_in: { connections: [google, github] }` names the connections the way
-`email:` does.
+Decided 2026-10-16 for Richard (he asked that nothing be left for the
+build): every sign-in provider is a connection, `google: { driver:
+Driver.oidc  issuer:  client_id:  credential: }` in `connections:`, and
+`sign_in: { magic_link: { ... }  providers: [google, github] }` names
+them, the way `email:` names its connection.
+
+## Decided: details settled for the build
+
+Decided 2026-10-16 for Richard, closing what the sections above left open:
+
+- **Package keys**: `idempotency: { header:  window: 24h  max_length: 255
+  in_use: "<provider code>"  reused: "<provider code>"  new_key_on:
+  "<provider code>"  replays_failures: true }` (`new_key_on:` for a
+  "first attempt failed, use a new key" answer; `replays_failures:`,
+  default false, for a provider that replays failed answers under the same
+  key); the
+  safe-to-repeat marker is the existing operation key `idempotent: true`;
+  an operation's OAuth scope is `scope: "calendar.events"`; an email
+  mapping declares `limits: { attachments: 10mb }` in
+  `provides/email.jadpo`; in an `each:`/`as:` mapping the current element
+  is `item` (`as: { Name: item.name }`).
+- **Licences**: `Licence.mit`, `.apache_2_0`, `.bsd_2_clause`,
+  `.bsd_3_clause`, `.isc`, `.mpl_2_0`, `.unlicense`, and `.proprietary`,
+  which only git-sourced packages may use (the public registry refuses
+  it).
+- **`x-jadpo` names**: `x-jadpo-changes`, `x-jadpo-idempotency`,
+  `x-jadpo-failure` (`code`, `kind`), `x-jadpo-constraints`,
+  `x-jadpo-events`.
+- **Acceptances**: a connection that cannot erase personal data is
+  accepted as `ErasureNotPossible`.
+- **No deploy command**: a rerun detects a changed build by the build id
+  in the manifest and compares the record's step shape; operators get
+  `jadpo batches list`, `show` and `cancel`.
 
 ## Revised: other candidate capabilities
 
@@ -1805,7 +1848,7 @@ jadpo watch file domains/shipping/actions/book_collection.jadpo
 | Database, cache, schedules | Capability, built-in drivers only | Decided (area 11) |
 | Files, email, publishing | Capability, drivers and packages; only jobs the language does itself | Decided |
 | SMS, hosted email templates, bounces | Provider packages' own operations and events | Decided (design C) |
-| Sign-in providers | `Driver.oidc` with an issuer; GitHub and Apple built in; a capability if agreed | Decided; capability proposed |
+| Sign-in providers | Connections: `Driver.oidc` with an issuer, GitHub and Apple as `Driver.github` and `Driver.apple`; named by `sign_in: { providers: [...] }` | Decided |
 | Search, bot protection | Capabilities only once the language uses them | Decided rule |
 | Rate limits, flags, sessions, idempotency keys, outbox, audit | Name a store; not capabilities | Decided (areas 5, 12, 16) |
 | Event delivery | Runtime only; external queues are publishing targets | Decided (area 12) |

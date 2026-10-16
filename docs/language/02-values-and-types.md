@@ -27,8 +27,21 @@ These types exist without being declared, and their names cannot be reused.
 | Time | `Instant`, `CalendarDate`, `Time`, `Duration`, `Zone`, `Locale`, `Weekday` and the formatting types | Described in area 10, Configuration and time. |
 | Containers | `List<T>`, `Set<T>`, `Map<K, V>` | Described below. |
 | Translation | `PluralCount`, `TextDirection` | `PluralCount` is a whole number that picks a message's plural form, used directly as a `Message` field; `TextDirection` is a locale's direction, `.left_to_right` or `.right_to_left` (area 10; decided 2026-10-16, built in chunk 5.3). |
-| Bases | `Object`, `Enum`, `Input`, `Output` | Used only after `=` in a `type` declaration (decided 2026-10-12). Areas add their own bases the same way: `Failure` (area 4), `Event` (area 12), `EmailMessage` (area 16) and `Message`, a translated message whose fields are its placeholders (area 10, decided 2026-10-16, built in chunk 5.3). |
+| Files | `File`, `FileUpload`, `UploadSlot`, `FileContents` | A stored file (its key, name, size and type) as an entity field; the token of a finished upload in an `Input`; the signed address, or addresses for each part, an upload goes to; and what `store.read` returns, a file's bytes for passing on (to a provider, a PDF service, an email), which the format helpers do not accept (area 16, decided 2026-10-16). |
+| Batches | `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `CsvFormat` | A batch run, as the batch helpers return it and as an entity field can store it; its progress from `batches.status`; one bad row or failed item, without its value; what `finished:` receives after reading (or `batches.each`) and after writing, the latter holding the stored `File`; and who a CSV is written for, `CsvFormat.spreadsheet` or `.standard` (area 12, decided 2026-10-16; the format namespaces are chunk 5.4's). |
+| Services | `SearchText`, `OAuthGrant`, `AnyObject` | What people type into a search box (area 16); a connection's credential held for each owner record, `OAuthGrant { owner: ... }`, written only in a connection's `credential:` and never readable by code (area 11); and, only as a package operation's input field, any of the app's object types, sent in its JSON form (Postmark's template variables, Stripe's metadata) (decided 2026-10-16). |
+| Bases | `Object`, `Enum`, `Input`, `Output` | Used only after `=` in a `type` declaration (decided 2026-10-12). Areas add their own bases the same way: `Failure` (area 4), `Event` (area 12), `EmailMessage` (area 16), `Document`, a template rendered to HTML or PDF (area 16, decided 2026-10-16), and `Message`, a translated message whose fields are its placeholders (area 10, decided 2026-10-16, built in chunk 5.3). |
 | Nothing | `Unit` | What an action returns when it returns nothing. |
+
+The batch types' fields (area 12, decided 2026-10-16):
+
+| Type | Fields |
+|---|---|
+| `BatchRun` | `id: Uuid`; storable in an entity field, so an app can keep the run on its own import record |
+| `BatchProgress` | `items_done: Int`, `estimated_total: Int?` (from the file's size or the query's count), `problems: Int` (so far), `state: BatchState` (`.running`, `.finished`, `.failed`, `.cancelled`) |
+| `RowProblem` | `row: Int` (as a spreadsheet numbers it), `column: Text`, `rule: Text` (the rule's code, as area 7's problems give it); never the value |
+| `ImportSummary` | `items: Int`, `items_with_problems: Int`, `problems: List<RowProblem>` |
+| `ExportSummary` | The same three fields, and `file: File`, the file written |
 
 Literals are `true` and `false`, whole numbers (`25`, `-3`), decimals (`1.25`),
 strings (`"Hello"`, with `\"`, `\\`, `\n`, `\r` and `\t` escapes) and `none`.
@@ -2437,7 +2450,11 @@ Not built yet: a map literal, and walking or searching a set or map
 (Collections), which no roadmap chunk builds yet; and the JSON forms of
 sets, maps, large `Int`s and `Decimal`s, which come with routes in chunk
 4.1. The built-in `PluralCount` and `TextDirection` and the `Message` base
-come with translations in chunk 5.3 (area 10).
+come with translations in chunk 5.3 (area 10). The file, batch and
+service types and the `Document` base come with the features that use
+them: `CsvFormat` with the standard library (chunk 5.5), `OAuthGrant` with
+packages (Phase 7), and the rest after the first build or, for batches,
+when they reach the roadmap.
 
 ### Consistency with the rest of the language
 
@@ -3001,6 +3018,8 @@ to when that page is written.
 | Failure `kind` values become lower_snake_case (`kind: FailureKind.not_found`), following the setting-options decision | 4 | Follows from a decision |
 | Entity field settings (`identity`, `unique`, `references`, `generated`) go in the field's block, following question 20 | 5 | Follows from a decision |
 | The remaining syntax-review findings (`docs/language/research/syntax-review.md`) | 3 to 14 | Input to each page |
+| A package input that takes any of the app's object types, serialised as JSON (Postmark's template variables, Stripe's metadata) | 2, 11 | Decided 2026-10-16: the built-in `AnyObject` |
+| `5%` as a percentage literal (`free_space_floor:`, area 16) | 2 | Follows from a decision |
 
 ### Open questions
 
@@ -3210,3 +3229,4 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | Field settings | A field's settings go in a block after its type, one per line (`optional: true`, `default: 25`) | 2026-10-12 |
 | Lists | Square brackets are the only way to write a list: `pick: [Todo.id, Todo.title]`, `[create, read]`; braces never hold comma lists; signatures keep their commas (parameters, `fails A, B`) | 2026-10-12 |
 | Messages and `PluralCount` | `Message` is a type base for translated messages, its fields the placeholders; `PluralCount` is a built-in whole number that picks a plural form, and `TextDirection` a locale's direction; enums still have no display labels, and their wording for people lives in translations (Richard, area 10) | 2026-10-16 |
+| Types from the services decisions | `File`, `FileUpload`, `UploadSlot` and `FileContents` (what `store.read` returns, refused by the format helpers); `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary` and `CsvFormat`; `SearchText`; `OAuthGrant`, only in a connection's `credential:`; `AnyObject`, any of the app's object types as a package input, sent in its JSON form; the `Document` base; the batch types' fields as listed under "Built-in types" (Richard, areas 11, 12 and 16) | 2026-10-16 |

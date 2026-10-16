@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-15. This page is the only list of outstanding work: the
+**Updated:** 2026-10-16. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here.
@@ -314,7 +314,7 @@ reference only).
   one unnamed `translations { }` per locale and its mapping and checks
   (placeholders, enum values, CLDR plural forms, every supported locale
   complete, `in_progress:` locales falling back with warnings, stale
-  translations through `sources.json`, `TranslationReview` and `accept`);
+  translations through `sources.jadpo_record`, `TranslationReview` and `accept`);
   `translations.<domain>.<message>(..., locale:)` returning
   `PresentationText`; enum wording; email subjects; failures that can
   reach a response worded in every locale and exported as
@@ -356,23 +356,59 @@ reference only).
   "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
   events and their follow-ons at once, answers with the named query when
   they settle and with `202` past `within:`.
-- [ ] **6.4 Teaching examples for Phase 6** `opus · high`: events and
-  schedules, passing `--require-examples`.
+- [ ] **6.4 Batches** `opus · xhigh` (area 12, decided 2026-10-16):
+  `batches.each`, `batches.status`, `cancel` and `key:`, items grouped into
+  transactions that commit their writes and position together, problems
+  collected, resuming after crashes and deploys; replacing chained events
+  for paging; then `csv.read`/`write`, `tsv`, `json_lines` and
+  `json.read`/`write` on it once 5.5 provides the formats, and `store.read`'s
+  whole-read cap. Split before starting if the format helpers make it more
+  than one session.
+- [ ] **6.5 Teaching examples for Phase 6** `opus · high`: events,
+  schedules and batches, passing `--require-examples`.
 
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 
-- [ ] **7.1 Packages and connections:** `opus · high` the package format, lazy loading,
-  `connections:`, the network report.
-- [ ] **7.2 Importing and faking:** `opus · high` the OpenAPI importer, hand-written
-  packages, generated fakes, `jadpo provider record`.
-- [ ] **7.3 Email:** `opus · high` the capability, SMTP driver, `emails/` templates, the dev
-  inbox, the health score.
+The design is area 11 as revised on 2026-10-16, with its research in
+[packages and extension points](language/research/packages-and-extension-proposals.md).
+
+- [ ] **7.0 Generated records** `opus · high` (area 18, decided
+  2026-10-16): the API record and identity registry renamed to
+  `.jadpo_record` in the decided record format, with the header line, the
+  hand-edit check and `jadpo records`; the format 7.1's package surfaces
+  and 5.3's translation sources also use. **Needs Richard** to have decided
+  the record format ([the design](language/research/jadpo-record-format.md))
+  before it starts.
+- [ ] **7.1 Packages and connections** `opus · high`: the package format
+  (`package.jadpo`, `provider.jadpo`, folders, `public` and the public
+  surface rule), library and provider kinds, `packages/` installed and
+  committed, the app's own integrations in `shared/providers/`,
+  `jadpo.lock` with its sources (path, git, link) and verification at
+  install, reserved names, `surface.jadpo_record` and `jadpo package show`,
+  `connections:` and the network report, lazy loading, library packages'
+  translations, and the `jadpo package` commands for adding, linking and
+  checking. The public registry stays after the first build.
+- [ ] **7.2 Importing, decoding and faking** `opus · high`: `x-jadpo`
+  fields in every API's OpenAPI document and each API serving it at
+  `<prefix>/openapi.json` (under its own authentication, `serve_openapi:
+  false` to turn off, listed in its own OpenAPI and record); the OpenAPI
+  importer reading them, hand-written packages, `wire:`,
+  `decode:`, `wire_output:`, `output_at:` and `failed_when:`, recordings
+  and `jadpo package record`, generated fakes, provider calls faked by
+  default in `jadpo dev` with `development: { sandbox: }` and the call log
+  (`jadpo calls`), and derived provider idempotency keys (app,
+  environment, caller, step), which also close a collision between users.
+- [ ] **7.3 Email:** `opus · high` the capability under design C (whole:
+  Jadpo-rendered, attachments), the SMTP driver and a mail package as a
+  second connection proving the swap, `emails/` templates and the shared
+  layout, the dev inbox, the health score.
 - [ ] **7.3b Magic-link sign-in** `opus · high` (area 8, decided
-  2026-10-16): `sign_in:` with `magic_link:`, the generated routes and
-  confirm page, link and six-digit code, the wrong-code and send limits,
-  `on_first_sign_in` for every way in, the built-in emails' five levels
-  (area 16), the sign-in failures and events. Google and other providers
-  stay after the first build.
+  2026-10-16): `sign_in:` with `magic_link:` and `providers:`, the
+  generated endpoints (the email links to the frontend's `link:` path,
+  which posts to `POST /auth/magic-link/confirm`), link and six-digit code,
+  the wrong-code and send limits, `on_first_sign_in` for every way in, the
+  built-in emails' five levels (area 16), the sign-in failures and events.
+  Google and other providers stay after the first build.
 - [ ] **7.4 Outside calls hold no transaction** `opus · xhigh` (areas 6 and
   11, 2026-10-15): reads before a call in a read-only snapshot closed before
   it, the transaction opened after it, a write to a record loaded before the
@@ -380,8 +416,24 @@ reference only).
   the call repeated under its key. Done when a test holds a provider call
   open and shows no transaction open meanwhile, and a change made during
   the call reruns the action.
-- [ ] **7.5 Teaching examples for Phase 7** `opus · high`: packages,
-  capabilities and email, passing `--require-examples`.
+- [ ] **7.5 Multi-step calls** `opus · xhigh` (areas 11 and 12, decided
+  2026-10-16, with the edge-case review's ten fixes): several keyed
+  changing calls per action where the key survives a retry, each recorded
+  before it is sent and replayed on a rerun, the path checked and
+  `diverged` stopping for an operator, `clock.now` fixed per record, key
+  windows from the package, no outside calls inside `for`, one runner per
+  record, unfinished runs as operator items, and the late-failure warning.
+- [ ] **7.6 What package code may do** `opus · high`: package actions
+  calling only their own API, package subscribers on their own webhooks,
+  public and non-public package events, `polls:` run only while
+  subscribed, `max_concurrent:`, and recipes with `jadpo package recipe`.
+- [ ] **7.7 Receiving from outside** `opus · high`: webhook replies and
+  handshakes, `occurred_at`, and the `receiving` capability for queues
+  (`type_at`, `id_at`, `events`), with the SQS package and, on Workers,
+  the Cloudflare Queues driver.
+- [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
+  capabilities, email, sign-in, multi-step calls and receiving, passing
+  `--require-examples`.
 
 ## Phase 8 — Compiled deployables
 
@@ -394,7 +446,7 @@ reference only).
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
   TypeScript app, comparing Wasm with native and Bun with native as well
-  as Wasm with Bun. Moved from 4.5, which needed Phase 8's compiled code
+  as Wasm with Bun. Moved from an earlier chunk 4.5, which needed Phase 8's compiled code
   (Richard, 2026-10-14). **Needs Richard** if Wasm is more than 25% behind
   Bun.
 
@@ -438,9 +490,19 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
    matching, package upgrade plans.
 5. Tooling completeness (area 14): interactive tests, `rename`, `impact`,
    full completion.
-6. Product work: the developer console and MCP (E11), the graph review UI
-   (E06, Revset-inspired), the package registry, acting as an OAuth provider,
-   D1 and row-level security.
+6. Packages and capabilities after the first build (decided 2026-10-16):
+   services run by Jadpo (`runs:`, Docker or Podman hidden behind
+   `jadpo services`); the `documents` capability; OAuth grants per owner;
+   search, `bot_check` and `scanning` capabilities; the disk driver;
+   telemetry's `telemetry:` section, custom metrics and the local
+   `jadpo traces`, `metrics` and `logs`; `jadpo watch`; Google and other
+   sign-in providers; publishing packages (`jadpo package new`, `check`,
+   `publish`, git-tag versions, publisher trust); packages from other Jadpo
+   apps and the cross-app break check; choosing a provider when deploying,
+   when an app other people run needs it.
+7. Product work: the developer console and MCP (E11), the graph review UI
+   (E06, Revset-inspired), the public package registry, acting as an OAuth
+   provider, D1 and row-level security.
 
 Older epics (E03–E12) are described in the
 [archived roadmap](archive/implementation-roadmap-2026-10-11.md) and are

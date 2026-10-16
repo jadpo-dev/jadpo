@@ -963,7 +963,10 @@ earlier in the action checks that nobody changed it in between. If someone
 did, the runtime throws the attempt away and runs the whole action again,
 with fresh reads and a fresh `clock.now`. That is safe because an action's
 outside call comes before its writes and carries an idempotency key, so a
-rerun repeats it harmlessly (area 11). After three
+rerun repeats it harmlessly (area 11). An action with several changing
+calls is the exception: once its record exists, a rerun replays the
+recorded calls and keeps the record's `clock.now` ("Several outside
+calls", below). After three
 attempts within a second, the existing retry budget, the request fails
 `unavailable` and the client may try again. Authors write nothing for this.
 
@@ -1011,6 +1014,37 @@ never widens the window in which another request's change forces a rerun.
 The guarantee is the one repeatable read gives: every record the action
 writes is checked against the copy it loaded. Built with outside calls in
 chunk 7.4.
+
+### Several outside calls
+
+Decided 2026-10-16 (Richard). An action may make up to 8 changing calls in
+order (area 12, "Several changing calls in one action"). For reads and
+writes this changes three things and keeps the rest:
+
+- **Writes come after the last call.** The action's transaction opens only
+  once its last outside call has returned; a write placed before a later
+  call is a compile error naming the call it must follow. No transaction
+  is open during any call, as above, and reads between two calls each get
+  a snapshot of their own.
+- **The runtime's record is not the action's transaction.** Each step is
+  recorded before it is sent and its answer after, each in a short
+  transaction of the runtime's own in the store the action writes; the
+  record is deleted in the action's commit, so a committed action leaves
+  none behind.
+- **A rerun replays, with the record's time.** When a concurrent change
+  reruns the action, recorded steps are replayed without being sent and
+  `clock.now` is the time the record holds, not a fresh one; the reads are
+  fresh. If a fresh read changes a request the action would send, the
+  rerun stops as `diverged` before sending anything, held for an operator
+  (area 12), rather than sending a different request under a used key.
+  Database reads are never recorded, so this check is what keeps a rerun
+  honest.
+
+Because the writes still commit together after every call has answered,
+a write refused for good (a unique rule, a restricted reference) after a
+step took effect is warned at compile time, naming the fixes: check with a
+read before the first call, record what happened and finish in a
+subscriber, or undo as another step (area 12).
 
 ::: today
 
@@ -1144,7 +1178,8 @@ read.
 A query or `Todo.get` inside a `for` loop is a compile error, because it
 would read once per item. Read the whole set with one query using `in`.
 Writes inside a loop are allowed: the list is bounded and every write joins
-the action's transaction. A batch that should keep partial progress is a
+the action's transaction. An outside call inside a loop is not (area 3,
+decided 2026-10-16): a loop of calls is `batches.each` (area 12). A batch that should keep partial progress is a
 schedule or subscriber handling one item per action (area 3).
 
 ```jadpo check project=by-ids file=planning.jadpo hidden
@@ -1322,6 +1357,35 @@ route GET /todos {
     run: todos_for_owner(current_principal.user_id, input)
 }
 ```
+
+## Entities in Redis
+
+Decided 2026-10-16 (Richard). An entity in a Redis store (area 5) is read
+and written through the same queries and operations as any entity, but
+Redis keeps no indexes of its own, so only what Jadpo can keep a key or a
+set for is allowed:
+
+| Read or write | Allowed on a Redis entity |
+|---|---|
+| `get`, `create`, `update` and `delete` by `id` | Yes |
+| An update by `id` adding to a stored whole number (`Counter.views + 1`) | Yes, as one Redis `increment` |
+| A lifecycle and its transitions | No: a compile error; `expires_after:` takes its place |
+| A query whose `where:` is equality on a `unique:` field | Yes: one record, from the key Jadpo keeps per unique field |
+| A query whose `where:` is equality on one field in `indexes:` | Yes: a page, in creation order, from the set Jadpo keeps per value; counting the same |
+| Policy grants that are equality on the record's own fields | Yes, checked after reading |
+| Joins, `include`, ranges (`<`, `>`), `in`, `or`, ordering by any other field, `matches`, grants beyond simple equality | No: a compile error naming the reason and PostgreSQL as the alternative |
+
+- **Expired records are hidden** from every read and update, as
+  `visible:` hides records: a record past its `expires_after:` (counted
+  from its last write) is not found, even in the moment before Redis
+  removes it.
+- **Concurrent change** is checked through a revision Jadpo keeps on each
+  record: a write to a record loaded earlier fails as a concurrent change
+  if the revision moved, and the action reruns as any action does.
+- **One store per action** applies as everywhere: an action writing a Redis
+  entity writes nothing in another store.
+
+These are built with the Redis driver, after the first build.
 
 ## Reads across domains
 
@@ -3380,7 +3444,8 @@ database.
 | Asserting in tests how many records and database queries a query can cost | 13 | Input to area 13 |
 | The build report: each query call's source (store or cache), its row bound and query count, and the indexes it needs | 14 | Input to area 14 |
 | Counts and sums in queries, and totals kept on an entity in the same transaction (computed fields, from the stores mapping §1.8) | 6 | Deferred |
-| `expiry:` on lossy-store entities hides expired records from queries and updates like `visible:` | 5 | Follows from a decision |
+| `expiry:` on lossy-store entities hides expired records from queries and updates like `visible:` | 5 | Answered by area 5 question 15 (2026-10-16): `expires_after:` |
+| Several changing calls: the record, replay and `diverged` | 12 | Question 16 |
 
 ### Open questions
 
@@ -3483,6 +3548,20 @@ database.
     database checks the condition in the same statement (`WHERE "stock" >=
     $1`), and no row updated is the mapped failure, so the update stays one
     step and never reruns. Open.
+16. **What do several outside calls in one action change about reads and
+    writes?** (from area 12, 2026-10-16) *Decided 2026-10-16 (Richard):*
+    the writes come after the last call, with no transaction open during
+    any call; the runtime's step record is written in short transactions
+    of its own and deleted in the action's commit; a rerun after a
+    concurrent change replays recorded steps with the record's `clock.now`,
+    stopping as `diverged` if a fresh read changes a request.
+17. **Which queries does an entity in Redis support?** (from area 5
+    question 15) *Decided 2026-10-16 (Richard):* get, create, update and
+    delete by `id`; lookup by a `unique:` field; listing and counting by
+    equality on one field in `indexes:`, in creation order; revision
+    checks; policy grants of simple equality on the record's own fields,
+    checked after reading. Joins and `include`, ranges, other orderings,
+    `matches` and other grants are compile errors naming PostgreSQL.
 
 ### Decisions
 
@@ -3529,3 +3608,6 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | What loads a record | Chosen in chunk 3.7: reading one (`get`, a query and its includes); being handed one (a parameter whose type holds a record, which area 5 calls a loaded record, so a record authentication loads for an action counts too); writing one back (an `update`, `delete` or transition of a record rather than its `id`, wherever the record came from); and a transition whose `when:` can refuse a visible record, whose second statement must share the first one's snapshot. A create (its references checked by the store in the same statement), an update, delete or unguarded transition by `id`, and a counter load nothing | 2026-10-15 |
 | Isolation of fixtures and tests | Chosen in chunk 3.7: a fixture is decided as an action is; each action or fixture a test calls begins its own transaction at its own level; a read or write a test runs itself, and whatever else runs outside an action (migrations, purge), runs at repeatable read | 2026-10-15 |
 | Outside calls and the transaction | No transaction is open during an outside call: reads before it run in a read-only snapshot closed before the call, the transaction opens after it, and a write to a record loaded before the call checks its row version, a change rerunning the action (Richard, from an outside review) | 2026-10-15 |
+| Several outside calls | Writes after the last call; no transaction during calls; the step record in the runtime's own short transactions, deleted in the commit; a rerun replays with the record's `clock.now` and stops as `diverged` when a fresh read changes a request; a write refusable after a step took effect is warned (Richard, area 12) | 2026-10-16 |
+| Entities in Redis | Get, create, update and delete by `id`; lookup by a `unique:` field; equality on one indexed field, paged in creation order, and its count; revision checks; simple-equality grants checked after reading; everything else a compile error naming PostgreSQL; expired records hidden (Richard) | 2026-10-16 |
+| Redis counters and lifecycles | Counter updates by `id` allowed as one Redis `increment`; no lifecycles on a Redis entity (decided for Richard) | 2026-10-16 |

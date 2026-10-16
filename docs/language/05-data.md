@@ -19,13 +19,24 @@ is needed.
 ## Stores
 
 Stores are connections declared in `app.jadpo` (area 11 merged area 5's
-`stores:` into one `connections:` block); with no database declared, there
-is one called `main` on PostgreSQL. Each store's driver is fixed in source,
-so every environment runs the same engine (D1 is on the roadmap). Every
-entity lives in exactly one store, `main` unless its file says `store:
-name`; anything never saved is a `type`. An entity in Redis must declare an
-expiry. An action writes to at most one store; work across stores goes
-through an event and a subscriber.
+`stores:` into one `connections:` block). Each store's driver is fixed in
+source, so every environment runs the same engine (D1 is on the roadmap).
+Every entity lives in exactly one store, `main` unless its file says
+`store: name`; anything never saved is a `type`. An entity in Redis must
+declare its expiry ("Entities in Redis", below). An action writes to at
+most one store; work across stores goes through an event and a subscriber.
+
+**No database unless something needs one** (decided 2026-10-16, Richard).
+An app that uses no database has none: no URL to configure, no
+migrations, nothing for `jadpo dev` to start. With no database declared,
+`main` on PostgreSQL is implied only once something needs a database. What
+needs one: any entity stored in a database, sign-in and sessions (area 8),
+events and the outbox (area 12), idempotency keys (area 7), webhook
+de-duplication (area 11), flags and audit (area 16). Where something needs
+a database and none can hold it (the app declares databases but none
+called `main`, or names a Redis store for something only a database can
+keep), `jadpo check` is an error naming the feature that needs one and the
+connection to add.
 
 ```jadpo check project=stores file=app.jadpo
 // app.jadpo in a shop that keeps its orders apart from its catalogue
@@ -415,9 +426,71 @@ query category_page(category_id: Category.id, page: PageRequest) -> Page<Product
   every Jadpo type maps cleanly: money as `"12.50"`, large integers as
   strings, sets as arrays, enums tagged.
 
-A record that lives in Redis rather than being copied there (a session, a
-cart) uses `store: sessions` on the entity instead, and can only be looked up
-by `id` or a unique field.
+A record that lives in Redis rather than being copied there (a cart, a
+sign-up in progress) is an entity in a Redis store instead ("Entities in
+Redis", below). Which services can hold a cache (Redis-compatible ones, or
+`Driver.memory` with a warning), and what a cache may hold and never holds,
+are area 16's ("Caches: drivers and what they hold").
+
+## Entities in Redis
+
+Decided 2026-10-16 (Richard), answering question 15. An entity may live in
+a Redis store, for data that is short-lived and harmless to lose. It must
+expire: `expires_after:` gives how long a record lives, measured from its
+last write, and expired records are hidden from every read and update as
+records `visible:` hides are (area 6).
+
+```jadpo fragment
+// app.jadpo
+application {
+    connections: {
+        drafts: {
+            driver: Driver.redis
+            url: config.redis_url
+        }
+    }
+}
+
+// domains/accounts/entities/sign_up_draft.jadpo
+/// A sign-up someone has started and not yet finished.
+entity SignUpDraft {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+    step: SignUpStep
+    attempts: Int
+
+    store: drafts
+    expires_after: 2h
+    indexes: {
+        by_step: [step]
+    }
+}
+```
+
+A Redis entity supports:
+
+- **get, create, update and delete by `id`**, the generated operations every
+  entity has, counters included: an update by `id` adding to a stored whole
+  number (`SignUpDraft.attempts + 1`) is one Redis `increment`;
+- **lookup by a `unique:` field**, for which Jadpo keeps one key per unique
+  field;
+- **listing and counting by equality on one field** declared in
+  `indexes:`, for which Jadpo keeps a set per value; pages come in creation
+  order;
+- **concurrent-change checks** through a revision Jadpo keeps on each
+  record, as every write checks (area 3).
+
+Everything else is a compile error naming the reason and PostgreSQL as the
+alternative: joins and `include`, ranges, ordering by any other field,
+`matches`, an index over several fields, policy grants beyond equality
+on the record's own fields (area 6, "Entities in Redis"), and a
+`lifecycle:`, since expiry takes its place. A record
+is stored as one JSON value, the same JSON the API sends, like a cache
+entry. An `expires_after:` on an entity in a database, or a Redis entity
+without one, is a compile error. These are built with the Redis driver,
+after the first build.
 
 ## Storage types
 
@@ -656,7 +729,11 @@ issued and expires; chunk 4.3b) only in the store its service entity lives
 in, since authentication reads a credential with its caller's record in
 one statement.
 Schedule state and the stores system features name explicitly
-(`schedules: { store: main }`) join them with their chunks. The manifest
+(`schedules: { store: main }`) join them with their chunks. The runtime
+state decided on 2026-10-16 (multi-step call records and batch runs beside
+the outbox, OAuth grants, poll state, and webhook and queue
+de-duplication) follows the same rules and is always in a database, never
+a cache (area 16). The manifest
 holds a `system_table` node for each, and `jadpo_migrations`, which
 `jadpo migrate apply` keeps, is the runtime's own and in no snapshot.
 
@@ -1892,8 +1969,10 @@ Not built yet, and said so where it is used (`toolchain.not_built_yet`):
 - Removing an entity, moving one between stores, dropping a retired column
   (it needs acceptances, area 18) and other column type changes, in
   `jadpo migrate new`.
-- Entities in Redis, whose expiry syntax is open (question 15), record
-  caches (`caches:`), and indexes with a `kind:` option.
+- Entities in Redis (`expires_after:`, decided 2026-10-16, question 15),
+  record caches (`caches:`), and indexes with a `kind:` option. A database
+  implied only when something needs one (question 14, revised 2026-10-16)
+  comes with the first feature that can run without one.
 - `policy:` is read but not checked: area 9 builds it. Seeds and `jadpo
   seed` are not built.
 - A lifecycle's `purge: { after: config.<setting> }` waits for configuration
@@ -2024,10 +2103,23 @@ check failed: 1 error, 1 file
     config.database_url } } }`, with `main` on PostgreSQL implied when nothing
     is declared; each store's engine is fixed in source, so every environment
     uses the same engine. D1 is on the roadmap.
+    *Revised 2026-10-16 (Richard):* no database is required unless
+    something uses one; the implied PostgreSQL `main` becomes "only when
+    needed", and where a feature needs a database and none can hold it,
+    `jadpo check` is an error naming the feature (sign-in, events and the
+    outbox, idempotency keys, webhook de-duplication, flags, audit, any
+    database entity).
 15. **How is a Redis entity's expiry written?** (carried from area 6) An
     entity in Redis must declare an expiry, and area 6 has expired records
     hidden from queries and updates like `visible:`, but this page gives the
     `expiry:` setting no syntax. What does it look like, and where does it go?
+    *Decided 2026-10-16 (Richard):* `expires_after: 2h` on the entity,
+    beside `store:`, measured from the record's last write, expired records
+    hidden as area 6 says. A Redis entity supports get, create, update and
+    delete by `id`, lookup by a `unique:` field, listing and counting by
+    equality on one field in `indexes:` (pages in creation order), and
+    concurrent-change checks through a revision; anything else is a compile
+    error naming PostgreSQL.
 16. **A `lifecycle { }` block on an entity written `id: Uuid identity` is
     silently ignored today** (carried from area 8). Does it need its own fix?
     *Recommendation:* no; it is moot once the rework lands, because the
@@ -2062,11 +2154,11 @@ Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says ot
 | Migration workflow | `jadpo migrate new` / `apply`, one migration per store, check fails on drift, app refuses a mismatched database, moving stores needs acceptance | 2026-10-12 |
 | Removing data | Two migrations: retire (code stops using it, column stays), then drop; a drop needs explicit acceptance (the shared mechanism carried to area 7) | 2026-10-12 |
 | Seeds | `database/seeds/` files create data through the application's own actions and refuse to run against production; reference data production needs is a migration backfill | 2026-10-12 |
-| Store declaration | Stores declared in `app.jadpo`; PostgreSQL `main` implied; same engine in every environment; D1 on the roadmap | 2026-10-12 |
+| Store declaration | Stores declared in `app.jadpo`; PostgreSQL `main` implied; same engine in every environment; D1 on the roadmap (Revised 2026-10-16: `main` implied only when something needs a database; an error naming the feature where one is needed and none can hold it) | 2026-10-12 |
 | Query placement | Every query lives in its domain's `queries/` folder, one per file, whatever it reads; entity files hold the data definition; generated operations (`Todo.get`, create, update, delete) stay on the entity; a query's cache sits in its file (Richard, after scenarios) | 2026-10-12 |
 | Action placement | Every action lives in its domain's `actions/` folder, one per file; written actions are called by name (`complete_todo(todo_id)`); generated operations stay on the entity (Richard) | 2026-10-12 |
 | Generated fields | `generated: Generated.on_create` (set once when created) or `Generated.on_change` (set when created and on every change) (Richard) | 2026-10-12 |
-| Redis entity expiry syntax | | |
+| Redis entity expiry syntax | `expires_after:` on the entity, measured from the last write, required on a Redis entity and refused elsewhere; expired records hidden; get, create, update and delete by `id`, lookup by a `unique:` field, listing and counting by equality on one indexed field in creation order, revision checks; anything else a compile error naming PostgreSQL (Richard) | 2026-10-16 |
 | `lifecycle { }` ignored on `id: Uuid identity` | | |
 | Lifecycle conditions | `visible:` and `when:` may use comparisons, `and`, `or`, `none` checks and `clock.now` on the record's own fields; never other records or the caller (Richard) | 2026-10-12 |
 | Cache configuration | Opt-in: `caches: { records: { store: keep: } }` on an entity, `cache: { store: keep: }` on a query; by default a change clears every cached result reading that entity; precise clearing later; entries are one JSON value each (Richard) | 2026-10-12 |
@@ -2080,3 +2172,4 @@ Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says ot
 | Purge's period and batches | Chosen in chunk 3.4: `after:` takes a duration in place until configuration (chunk 5.1); a batch deletes at most 500 hidden records, oldest `since:` first, each batch its own transaction; a record a `restricted` reference holds stays without stopping the rest; the runtime's entry point runs it, area 12's hourly schedule calls it (chunk 6.2) | 2026-10-15 |
 | Partial indexes | Chosen in chunk 3.4: the indexes an entity's queries need hold only the records `visible:` lets through, unless it reads `clock.now`; a reference's own index stays beside a partial one | 2026-10-15 |
 | Computed backfills | `backfill:` may be an expression over each row's own stored fields (`Todo.legacy_flag`), constants and pure functions, including a field this migration retires; filled in batches, one `UPDATE` each where the expression has a SQL form and by `jadpo migrate apply` otherwise, then made required; no freeform SQL (Richard, from an outside review) | 2026-10-15 |
+| Redis entity updates | Updates by `id` include counters, done as one Redis `increment`; no lifecycles on a Redis entity, expiry taking their place (decided for Richard) | 2026-10-16 |
