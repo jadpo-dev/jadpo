@@ -259,3 +259,38 @@ fn presentation_text_is_not_a_setting() {
         ["configuration.type_unsupported"]
     );
 }
+
+#[test]
+fn a_format_is_given_to_its_operation_as_text() {
+    use jadpo_graph::body::{Callee, Expr, Literal, Node};
+    let db = jadpo_db::Database::default();
+    let source = format!(
+        "{TYPES}function label(value: Opening, locale: Locale) -> PresentationText {{\n    return temporal.format(value, locale: locale, format: ShortDate)\n}}\n"
+    );
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", source.as_str())]);
+    let file = project.files(&db)[0];
+    let callable = jadpo_check::types::callables_of(&db, file)[0];
+    let body = &jadpo_check::types::typed_body(&db, project, callable).body;
+    let args = body
+        .sites
+        .iter()
+        .find_map(|site| match &site.node {
+            Node::Expr(Expr::Call {
+                callee: Callee::Std(jadpo_std::Op::TemporalFormat),
+                args,
+                ..
+            }) => Some(args.clone()),
+            _ => None,
+        })
+        .expect("the call");
+    // `value`, no `zone:`, `locale` and the format, in the table's order.
+    assert_eq!(args.len(), 4);
+    assert!(args[1].is_none());
+    let format = args[3].expect("a format");
+    assert_eq!(
+        body.site(format).node,
+        Node::Expr(Expr::Literal(Literal::Text(
+            "day:numeric month:short year:numeric".to_string()
+        )))
+    );
+}

@@ -85,7 +85,11 @@ impl Body<'_> {
     /// one by its name, written out, since no value holds a format (area
     /// 10, "Showing dates and times to people"). The argument is lowered
     /// as the format's text.
-    pub(super) fn format_argument(&mut self, value: &Expr, written: &str) -> Option<TimeFormatSpec> {
+    pub(super) fn format_argument(
+        &mut self,
+        value: &Expr,
+        written: &str,
+    ) -> Option<TimeFormatSpec> {
         let span = self.span(value);
         let shown = tree::written(value.syntax());
         let names = dotted(value).filter(|(first, _)| starts_upper(&super::text(first)));

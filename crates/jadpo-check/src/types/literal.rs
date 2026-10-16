@@ -79,11 +79,7 @@ pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), P
         // compares formatted text with (area 10).
         Const::Str(_) => matches!(
             representation,
-            Prim::Text
-                | Prim::Uuid
-                | Prim::Instant
-                | Prim::CalendarDate
-                | Prim::PresentationText
+            Prim::Text | Prim::Uuid | Prim::Instant | Prim::CalendarDate | Prim::PresentationText
         ),
         Const::Duration(_) => representation == Prim::Duration,
         Const::TooLong => representation.is_number(),

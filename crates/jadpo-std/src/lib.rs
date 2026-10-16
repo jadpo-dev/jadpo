@@ -69,8 +69,8 @@ mod zones;
 pub use builtin::{Builtin, SIGNING_KEY_MIN};
 pub use constant::Constant;
 pub use enums::{
-    Access, AuthenticationMethod, AuthenticationStrength, ClientAddressSource, ComponentStyle, Driver, Dst,
-    FieldAccess, FieldChange, Generated, HttpMethod, Idempotency, InvalidDay, LOCALE,
+    Access, AuthenticationMethod, AuthenticationStrength, ClientAddressSource, ComponentStyle,
+    Driver, Dst, FieldAccess, FieldChange, Generated, HttpMethod, Idempotency, InvalidDay, LOCALE,
     MembershipScope, OnDelete, Rounding, RouteAuthentication, SuccessStatus, Tenancy, TextFormat,
     UuidVersion, Weekday, ZONE, enums, variant_ordinal,
 };

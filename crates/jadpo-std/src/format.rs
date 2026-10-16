@@ -259,7 +259,13 @@ mod tests {
         ] {
             assert_eq!(TimeFormatSpec::parse(&spec.written()), Some(spec));
         }
-        for text in ["", "day:long", "month:short day:numeric", "day:numeric day:two_digit", "date_huge"] {
+        for text in [
+            "",
+            "day:long",
+            "month:short day:numeric",
+            "day:numeric day:two_digit",
+            "date_huge",
+        ] {
             assert_eq!(TimeFormatSpec::parse(text), None, "{text}");
         }
     }

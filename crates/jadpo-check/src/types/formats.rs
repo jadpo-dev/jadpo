@@ -131,7 +131,11 @@ impl Decls<'_> {
                 },
                 _ => None,
             };
-            let first = component.styles().first().copied().unwrap_or(ComponentStyle::Numeric);
+            let first = component
+                .styles()
+                .first()
+                .copied()
+                .unwrap_or(ComponentStyle::Numeric);
             let fix = format!("{}.{}", ComponentStyle::NAME, first.name());
             let (message, label) = match style {
                 Some(style) => (
