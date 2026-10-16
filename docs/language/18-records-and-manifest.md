@@ -126,7 +126,9 @@ that path numbers decode against, and each deployable's build id.
 A declaration or field is known by **the name it was born with**
 (question 3). The registry holds one line for each thing that has since
 been renamed, mapping its name now to its born name. Only `jadpo rename`
-and the `jadpo domain` commands write it. Children follow their parent:
+and the `jadpo domain` commands write it, and, from chunk 5.3b, a
+promotion to `shared/` of a function or type declared in a domain
+(question 8). Children follow their parent:
 renaming a domain or an entity is one line.
 
 ```json
@@ -464,6 +466,18 @@ that the path number cannot be decoded.
    manifest `format`.
    *Decided 2026-10-13 (Richard):* as recommended; the examples above now
    use the unqualified form.
+   *Amended 2026-10-16 (Richard, area 1 "Names per domain"):* a private
+   function or type now needs a name unique only within its domain, so the
+   key of a function or type declared in a domain carries the domain:
+   `type billing.Address`, `function billing.format_address`. It does so
+   whether or not the declaration is `public` or named by an API, so adding
+   `public` by hand or a route starting to return the type never changes a
+   key. Promoting one to `shared/` changes its key, and the promotion
+   (`jadpo fmt --layout` or the editor's fix) writes one registry line,
+   `"type Address": "billing.Address"`, so the move reads as a move and not
+   as a removal and an addition. Every other key stays the kind and the
+   born name. Decided, not built until chunk 5.3b, which reworks part of
+   chunk 1.7's registry; it is a new manifest `format`.
 
 ### Decisions
 
@@ -472,7 +486,7 @@ that the path number cannot be decoded.
 | Compiler data | Carried from area 1: a visible `database/` folder for the identity registry, migrations and seeds | 2026-10-12 |
 | New domains | Carried from area 1: creating or renaming a domain appears in the approval review | 2026-10-12 |
 | Policy protection | Carried from area 1: through the approval check wherever policy lives, not by file path | 2026-10-12 |
-| Stable identity | A key is the kind and the born name (`action complete_todo`), never qualified by domain; the domain is a field of the node, so promotion to `shared/` keeps the key | 2026-10-13 |
+| Stable identity | A key is the kind and the born name (`action complete_todo`), never qualified by domain; the domain is a field of the node, so promotion to `shared/` keeps the key (Amended 2026-10-16: a function or type declared in a domain carries its domain, `type billing.Address`, and promotion to `shared/` writes a registry move line; not built until chunk 5.3b) | 2026-10-13 |
 | Migration snapshots | Carried from area 5: each migration folder holds a generated `snapshot.json`, generated SQL and `changes.jadpo` only for decisions; `check` fails when entities and the latest snapshot disagree | 2026-10-12 |
 | Removing data | Carried from area 5: retire, then drop in a later migration; a drop needs explicit acceptance | 2026-10-12 |
 | System tables | Carried from area 5: runtime tables prefixed `jadpo_`, part of the migration snapshots | 2026-10-13 |
