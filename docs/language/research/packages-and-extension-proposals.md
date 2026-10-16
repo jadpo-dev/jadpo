@@ -91,7 +91,8 @@ then built. No design is left for implementation.
    dead letters; Workers' queue consumers; how this fits area 12's events.
 8. **What a library package may also carry**: email partials and layouts,
    translations, a usage guide for agents. *Recommendation:* yes to all
-   three.
+   three. *Translations decided 2026-10-16 (Richard):* see "Translations",
+   "Packages and strictness".
 9. **Software and disk**: a disk driver for files on one native server,
    image variants made by the runtime, virus scanning, a `documents`
    capability rendering typed templates to PDF.
@@ -152,8 +153,9 @@ with the default locale's file defining the keys; both are replaced below.
 
 **Where they live.** In the domain that uses them, as its emails do; a
 message a second domain uses moves to `shared/`, under area 1's promotion
-rule. The root `translations/` holds only the app's wording for Jadpo's
-own messages; text several domains use is in `shared/`. This changes area 1, which made
+rule. The root `translations/` holds only the app's wording for text it
+did not write, grouped by owner (Jadpo's and library packages', see
+"Packages and strictness" below); text several domains use is in `shared/`. This changes area 1, which made
 `translations/` a root-only folder.
 
 ```text
@@ -164,13 +166,13 @@ domains/shipping/translations/
     de_de.jadpo
     sources.json              generated: what each translation was made from
 shared/translations/          messages several domains use
-translations/                 Jadpo's own messages, reworded by the app
+translations/                 Jadpo's and packages' text, reworded by the app
 ```
 
 **Each message is a type.** `Message` is a type base beside `Failure`,
 `Event` and `EmailMessage`; its fields are the placeholders, its `///`
-descriptions reach translators as context, and its JSON key is its name in
-lower_snake_case. A backend writes few messages (emails, generated pages,
+descriptions reach translators as context, and its member in each
+language file is its name in lower_snake_case. A backend writes few messages (emails, generated pages,
 failures for clients), so one file per message follows area 1 without
 cost.
 
@@ -249,8 +251,8 @@ message with one enum field (see enums below).
 **Checked by the compiler**: a key no message type declares, a variant
 that is not a value of the enum, a missing variant or plural form, and a
 missing or unknown placeholder are errors; a message not yet translated in
-one language falls back to the default locale with a warning, listed by
-`jadpo translations missing`. No grouping inside a domain's file (the
+a locale is an error too, unless that locale is in progress ("Packages and
+strictness", 1 and 2, below). No grouping inside a domain's file (the
 domain is the group; nesting means variants and plural forms only), and no
 message inside another (reused values such as a product name are
 placeholders), because languages that inflect cannot reuse a fragment.
@@ -270,7 +272,8 @@ Jadpo's message names in lower_snake_case with no prefix
 (`privacy_export_ready: "..."`), and the app changes one by writing it
 there; `jadpo translations builtin` lists them with their fields.
 
-**Tooling**: `jadpo translations missing` and `unused` with `--json`; go to
+**Tooling**: `jadpo translations missing`, `unused`, `builtin`, `update`,
+`accept`, `export` and `import`, with `--json` wherever they print; go to
 definition from a call to its type and its strings; a pseudo-locale that
 renders every message accented and lengthened to expose hard-coded text
 and tight layouts; Crowdin and Lokalise through `jadpo translations export`
@@ -295,10 +298,12 @@ with `for`, an object's fields are written one by one.
 
 **Also decided on translations** (2026-10-16, as recommended):
 
-- **The default language is complete**: a message missing from it is an
-  error, since every other language falls back to it.
+- **Every supported language is complete** (widened from the default
+  language alone by "Packages and strictness", 1, below): a message missing
+  from one is an error.
 - **Regional fallback**: a message missing from `fr_ca` tries `fr_fr`, if
-  supported, before the default language.
+  supported, before the default language. (Narrowed by "Strict by default"
+  below: only an in-progress locale falls back.)
 - **Stale translations are flagged**: each translation records which
   version of the default wording it was made from; when that wording
   changes, the others become warnings until updated, listed by
@@ -319,8 +324,8 @@ with `for`, an object's fields are written one by one.
   "enums have no display labels" stands: the wording lives in translations.
 - **Out of scope**: the app's own data (product names, articles) is not a
   translation; an app models translated content as ordinary fields.
-- Waiting for open item 8: a library package's own messages, and whether
-  the app can reword them.
+- ~~Waiting for open item 8: a library package's own messages, and whether
+  the app can reword them.~~ Decided below, "Packages and strictness".
 
 **Answered 2026-10-16 (Richard), so chunk 5.3 leaves nothing to decide:**
 
@@ -335,7 +340,8 @@ with `for`, an object's fields are written one by one.
 4. **Jadpo's own messages** have no `jadpo.` prefix: the root
    `translations/<locale>.jadpo` holds only them, named in lower_snake_case
    (`privacy_export_ready`), and `jadpo translations builtin` lists them
-   with their fields.
+   with their fields. (The no-prefix form is replaced by owner groups in
+   "Packages and strictness", 6, below.)
 5. A literal brace in a wording is doubled: `{{` writes `{`, `}}` writes
    `}`.
 6. **Stale check**: each `translations/` folder has a generated, committed
@@ -353,10 +359,67 @@ with `for`, an object's fields are written one by one.
 8. **Failure export**: `jadpo build` writes, beside each API's OpenAPI
    document, one file per locale named `<api>.failures.<locale>.json`, a
    flat object from failure code to wording in the same `{field}` syntax.
+   (Revised in "Packages and strictness", 4, below: the file also says
+   which placeholders the client formats.)
 9. Named types built on `Text`, `Int` or `Decimal` work as placeholders.
 10. `locale.direction` is a built-in enum `TextDirection` with
     `.left_to_right` and `.right_to_left`; Jadpo ships its wording as the
     HTML values, so `{{ locale.direction }}` writes `ltr` or `rtl`.
+
+**Packages and strictness** (Richard, 2026-10-16), which also decides
+open item 8's translations part:
+
+1. **Strict by default**: every supported locale must be complete; a
+   missing message, failure or enum wording in any supported locale is a
+   compile error whose `next:` names the file and the member to add, with
+   the placeholders to use (agent). This replaces "other locales fall back
+   with a warning".
+2. **Locales in progress**: `locales: { ... in_progress: [Locale.pl_pl] }`
+   in `app.jadpo`. Only a locale listed there falls back (regional
+   sibling, then the default locale) with warnings listed by
+   `jadpo translations missing`; removing it from the list makes gaps
+   errors again. Quality comes from the decided review setting, not from
+   waiting.
+3. Every failure that can reach a response (the compiler knows from each
+   route's failures) must have wording in every supported locale; failures
+   that never leave the server need none.
+4. A failure's client fields that are dates or numbers are sent as values
+   (an `Instant` stays an instant on the wire) and the client formats them
+   for its own language before filling the placeholder; the exported
+   per-locale file says which placeholders need formatting and how (date,
+   time, number).
+5. **Library packages carry translations**: a `translations/` folder like
+   a domain's (message types, failure wording, one `<locale>.jadpo` per
+   language they support); the app calls a package's messages as
+   `Postcodes.translations.<message>(...)`. Provider packages show users
+   no text (their failures are always mapped to the app's own), so they
+   carry none.
+6. **The root `translations/<locale>.jadpo`** holds wording for text the
+   app did not write, grouped by owner: `jadpo: { privacy_export_ready:
+   "..." }` for Jadpo's own, `postcodes: { invalid_postcode: "..." }` for a
+   package's. This is the one place grouping is allowed, the group being
+   whose text it is; it replaces the no-prefix form in answer 4 above. It
+   is checked against the owner's message and failure types.
+7. **Lookup** for a package's or Jadpo's message: the app's root wording
+   in that locale, then the owner's own, then (for an in-progress locale)
+   the regional sibling, then the default locale in the same order.
+   Completeness: the app's supported locales must be complete for every
+   package and Jadpo message the app can show, so an English-only package
+   in an app supporting French is an error until the app's root file
+   supplies the French.
+8. **Package upgrades**: a package changing a message's or failure's
+   fields is a breaking change by the surface diff, so the app's rewording
+   fails to compile until updated; a package changing its own wording
+   marks the app's rewording stale (`sources.json`). Publishing: a library
+   package ships complete wording in its own default locale, with `///`
+   descriptions on every public message.
+9. Changing a package failure's code (not just its words) is done by
+   mapping it to the app's own failure at the call with `attempt`, which
+   already exists.
+
+10. Failure wording stays in the language files, not on the failure type
+    (one rule for all text; Jadpo's and packages' failures could not carry
+    it in place). Recommended, then agreed by Richard on 2026-10-16.
 
 ## Decided: the golden rule
 
@@ -918,7 +981,8 @@ models stay provider packages.
 
 - **Email layouts and partials**, so a company's apps share one branded
   layout. Partials are typed and read-only (area 16), so they are pure.
-- **Translations** for its own failure messages and partials.
+- **Translations** for its own failure messages and partials. *Decided
+  2026-10-16:* see "Translations", "Packages and strictness".
 - **A short usage guide** for agents: the surface says what a package
   offers, the guide how to use it well (handling a refund with Stripe).
 

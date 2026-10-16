@@ -318,12 +318,23 @@ numbers (question 9):
 | An `Idempotency-Key` comes again with a different request | 422 `idempotency_key_reused` |
 | An `Idempotency-Key` comes again while its first request is running | 409 `conflict` |
 
+The envelope's `message` stays fixed English. Text for people in client
+apps comes from the app's language files (area 10, decided 2026-10-16,
+built in chunk 5.3): every failure a route can produce has wording in every
+supported locale, keyed by its code with its client fields as placeholders,
+and client fields that are dates or numbers stay values on the wire for the
+client to format in its own language.
+
 ## OpenAPI
 
 The compiler writes one OpenAPI 3.1 document per API into `build/openapi/`:
 every route with its input, output, success status and reachable failures,
 the 400 and 422 input responses, and the `///` descriptions (area 1). The
 title is the application's name and the version the API record's version.
+Beside each document, `jadpo build` writes `<api>.failures.<locale>.json`
+for each supported locale: each reachable failure's code mapped to its
+wording in `{field}` syntax, saying which placeholders the client formats
+and how (date, time or number) (area 10, decided 2026-10-16).
 
 ## The public API record
 
@@ -2451,3 +2462,4 @@ is written.
 | `jadpo dev` (chosen in chunk 4.1) | Listens on 127.0.0.1, port 3000 unless `--port`; the database is the one `--url` names (until configuration, area 10) or a disposable PostgreSQL for the session, and pending migrations are applied when it starts and after each save that adds one | 2026-10-15 |
 | Waiting for follow-on work | `settle: { answer: <query>(result...) within: <duration> }`: after commit the runtime delivers the action's events and their follow-ons at once and waits until each has succeeded, failed for good or been parked, then answers with the query and the route's status; past `within:` the same query answers 202; `output:` is the query's result; a repeat with the same `Idempotency-Key` reruns the query (Richard, from an outside review) | 2026-10-15 |
 | Route authentication (chosen in chunk 4.3) | A route's `authentication:` takes `RouteAuthentication.none` or `.fresh`; anything else is `route.authentication_invalid`, which offers both without an edit, since one opens the route. An API's `authentication:` is a list of `AuthenticationMethod`s `authentication.jadpo` declares, each once, else `api.authentication_invalid`; an API that names none accepts every declared method. Area 8's Decisions hold the rest | 2026-10-16 |
+| Failure wording for clients | Every failure a route can produce is worded in every supported locale in the app's language files; `jadpo build` writes `<api>.failures.<locale>.json` beside each OpenAPI document; dates and numbers stay values for the client to format; `message` stays English (Richard, area 10) | 2026-10-16 |

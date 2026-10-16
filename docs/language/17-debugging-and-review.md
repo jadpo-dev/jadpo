@@ -279,6 +279,9 @@ order, as Markdown and JSON, and a static web view of the same report:
 4. **Other behaviour.** API record changes (area 7), schema and migrations
    (area 5), failures, events and subscribers, integrations, and the
    permissions and personal-data reports' differences (areas 9 and 15). *Decided 2026-10-13:* yes, as recommended.
+   With `translations: { review: TranslationReview.required }`, wording
+   changed and not yet accepted with `jadpo translations accept <locale>`
+   is listed here too (area 10, decided 2026-10-16).
 5. **Source,** grouped by declaration rather than by file.
 
 ```text
@@ -489,3 +492,4 @@ and the review web view come after that, as product work (E11 and E06).
 | Production in review | Optional production counts in the approval report | 2026-10-13 |
 | Production replay | Opt-in, failing requests only, personal fields replaced, recordings expire | 2026-10-13 |
 | Query cost of a change | Queries per path computed by the compiler in the approval report | 2026-10-13 |
+| Unaccepted translations | With `TranslationReview.required`, changed wording not yet accepted appears in the approval report (Richard, area 10) | 2026-10-16 |

@@ -39,7 +39,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo test --watch` | Reruns the affected tests on every save | Built (chunk 2.3): each save reruns the tests that reach a node whose digest changed since the last run, within the path, name and kind given; a broken build shows its errors and runs nothing; `--json` writes one envelope per line; ctrl-c quits |
 | `jadpo test --interactive` | Keyboard view of every test: search, navigate, run a file, one test or all, rerun failures, toggle watch | Decided in area 13, not built: the flag says `toolchain.not_built_yet` (chunk 2.8) |
 | `jadpo test --keep-failed` / `--seed <n>` | Keeps a failed test's database and trace; reruns with a given order seed | `--seed` built (chunk 2.2); `--keep-failed` built with the test database (chunk 3.1): it keeps the database and names it in the report; the trace comes with area 17 |
-| `jadpo build` | Writes the runnable app into `build/target/` | Decided, not built: comes with compiled deployables (Phase 8) |
+| `jadpo build` | Writes the runnable app into `build/target/`, and each API's `<api>.failures.<locale>.json` beside its OpenAPI document (area 10) | Decided, not built: comes with compiled deployables (Phase 8) |
 | `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Built (chunk 4.1): runs the app in the interpreter on the native host at `http://localhost:3000` (`--port` to change it), one line per request with its request id; each save that checks cleanly serves the next request, and while a save has errors the last good version keeps serving. The database is the one `--url` names, until configuration gives each connection its URL (area 10), or a disposable PostgreSQL for the session, with pending migrations applied as they appear. `--no-run` only checks on every save and writes `build/`; `--json` writes one envelope per line |
 | `jadpo inspect` | Prints the project map: every declaration, call and failure | Decided, not built: until then `build/manifest.json` and the catalogues hold the map |
 | `jadpo routes` | Lists every route with its full method and path, file, API, authentication and the query or action it runs | Built (chunk 4.1); authentication shows `required`, `none` or `fresh` since chunk 4.3 (area 8) |
@@ -50,6 +50,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo migrate new <purpose>` / `apply` / `status` | Writes, runs and lists migrations | Built (chunk 3.1): `new` writes the next migration, or finishes the latest once its decisions are written; `apply` and `status` take the database's URL with `--url` (and `--store` when there are several) until configuration gives each connection its URL (area 10); replaces `schema` (question 4). Prompting for a missing purpose, as the design language draws it, waits for prompts: without one the command names a purpose to use |
 | `jadpo seed <name>` | Runs a seed; refuses production | Decided in area 5, not built |
 | `jadpo config set <field>` / `check` | Sets or checks local configuration in `.env.local` | Decided, not built: comes with configuration (area 10) |
+| `jadpo translations missing` / `unused` / `builtin` / `update` / `accept <locale>` / `export` / `import` | Lists missing, stale and unaccepted wording, unused messages, and Jadpo's own messages with their fields; records each translation's source in `translations/sources.json`; accepts a locale's changed wording; exchanges messages with translation services as XLIFF, or JSON | Decided in area 10 (2026-10-16), not built: comes with translations (chunk 5.3) |
 | `jadpo api update` | Rewrites the committed public API record (`api/main.api`) from the source | Built (chunk 4.1): one record per API with routes, its `version:` raised by one when it changes; a record whose API has no routes is removed. `jadpo check` fails while a record disagrees (`api.record_out_of_date`) |
 | `jadpo approval --before <ref>` | Writes the review report of what changed in behaviour, policy and the API | Decided, not built: comes with records (area 18); sign-off is question 12 |
 | `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries | Proposed (question 13) |
@@ -159,6 +160,10 @@ with the generated files.
 Decided in area 1 and not built: promotion and the similar-helper warning come
 with quick fixes; rename goes through the same code as `jadpo rename`, so an
 entity field renamed in the editor keeps its stored data (question 5).
+
+Decided in area 10 and not built: go to definition from a
+`translations.<domain>.<message>(...)` call goes to its message type and to
+its wording in each language file (chunk 5.3).
 
 Decided in area 6 and not built: hovering over a query shows its generated
 SQL, the same as `jadpo sql`. The SQL is never written into the source as a
@@ -673,3 +678,4 @@ what other areas carried here and where this page answers it.
 | Completion and prompts | Tab completion from the top level of commands, flags (with descriptions) and project names; a missing argument opens a searchable list in a terminal and lists valid values otherwise; the CLI describes itself fully (`--help` with examples, `jadpo help --json`), so nobody needs the docs (Richard) | 2026-10-13 |
 | Incident input | `jadpo incident` reads a file, standard input, or text pasted at a prompt in a terminal; Jadpo events are found inside surrounding log text (timestamps, platform wrappers) and grouped by request; the build's manifest is found by the event's build id (area 18) (Richard) | 2026-10-13 |
 | CLI design language | Approved as designed in the [CLI design language](research/14-cli-design-language.md): six meaning-only colours, single-width symbols with ASCII fallbacks, one layout grid, calm by default; Jadpo's own colours when the background is known, otherwise the terminal theme's; Unicode symbols, no emoji or Nerd Font glyphs (Richard) | 2026-10-13 |
+| Translation commands | `jadpo translations missing`, `unused`, `builtin`, `update`, `accept <locale>`, `export` and `import` (XLIFF or JSON), `--json` wherever they print; go to definition from a translations call to its type and wording (Richard, area 10) | 2026-10-16 |
