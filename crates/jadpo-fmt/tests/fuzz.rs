@@ -58,6 +58,8 @@ fn the_reviews_reproducers_format_safely() {
         "library wording { config {} }\n",
         // Two `?` apart: written together they read as one mistake.
         "entity Book {\n    id: Uuid\n    at: Instant? ?\n}\n",
+        // A comment on its own line between `.` and the field's name.
+        "function f(a: A) -> B {\n    return g([a.owner, st.\n//\n b])\n}\n",
         "type Quantity = Int {}\n\naction reserve_stock(quantity: Quantity) -> Unit { // TODO\n}\n",
         "type Count = Int {}\n\nfunction f(x: Count) -> Count {\n    return Count(x + // the base\n    1) // plus one\n}\n",
     ] {

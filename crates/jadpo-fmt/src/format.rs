@@ -258,6 +258,7 @@ impl Formatter {
             if self.printed.contains(&comment.token.text_range().start()) {
                 continue;
             }
+            docs.push(Doc::FreshLine);
             docs.push(self.comment(&comment.token));
             docs.push(Doc::HardLine);
             if comment.blank_after {
