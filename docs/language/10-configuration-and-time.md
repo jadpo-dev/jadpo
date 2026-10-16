@@ -87,7 +87,9 @@ config {
     page_size: ListLimit {
         default: 25
     }
-    mail_sender: FromAddress
+    mail_sender: FromAddress {
+        test: "reminders@example.test"
+    }
 }
 
 function first_page() -> ListLimit {
