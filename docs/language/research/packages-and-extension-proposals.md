@@ -524,8 +524,8 @@ with every open question answered as that page recommends.
   attachments included (a `File` field on the message is an attachment,
   checked against the package's declared size limit), through SMTP, SES,
   Postmark or any package that provides it, chosen in `app.jadpo`. Jadpo's
-  own mail (sign-in, password resets, privacy requests) always goes this
-  way. A provider that cannot send attachments stays a package but cannot
+  own mail, which today is area 15's privacy mail (area 8 leaves magic links
+  to the app and has no passwords), always goes this way. A provider that cannot send attachments stays a package but cannot
   be the email connection.
 - **Everything provider-specific is the package's own operations**, called
   from an action or subscriber in a domain the connection lists, as
