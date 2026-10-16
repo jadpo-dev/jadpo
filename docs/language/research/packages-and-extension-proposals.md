@@ -155,6 +155,47 @@ files, email, publishing, schedules; SMS removed by design C below), each with s
 events, a local driver for development, one fake for tests and a
 conformance suite. Packages fill capabilities and never invent them.
 
+## Translations (open item 2)
+
+Area 10 question 9 decided the format: one ICU MessageFormat JSON file per
+locale in `translations/`, typed calls generated from the default
+locale's keys, built in from the start. Decided 2026-10-16 (Richard):
+
+- **Keys are grouped by domain inside each locale's file**
+  (`shipping.order_shipped`); still one file per locale, as translators
+  and their tools expect.
+- **A missing translation falls back to the default locale** with a
+  warning, listed by `jadpo translations missing`; a wrong or missing
+  placeholder stays an error. This changes area 10's "missing keys are
+  compile errors", which would block every change until translators
+  finish.
+- **Failure messages for clients** live under `failures.<code>` and are
+  exported per locale beside the OpenAPI document, so web and mobile apps
+  load them; the server's `message` stays English (area 4). This resolves
+  area 4 against area 10's amendment.
+- **Jadpo's own text** (privacy pages, built-in emails, generated
+  messages) uses keys under `jadpo.`; Jadpo ships defaults for common
+  locales, and the app changes one by writing its key.
+- **Tooling**: `jadpo translations missing` and `unused` with `--json`,
+  go to definition from a key, a pseudo-locale that renders every message
+  accented and lengthened to expose hard-coded text and tight layouts;
+  Crowdin and Lokalise use the files as they are.
+- **Templates read translations as `translations.`**, not `t.`
+  (`{{ translations.shipping.parcels(count: parcel_count) }}`), the same
+  name code uses, with the locale taken from the email.
+- **Templates are strict**: every mistake is a compile error, never a
+  blank at runtime: a name that is not a field of the email's type, a
+  translation key that does not exist, a placeholder missing or of the
+  wrong type, a partial that does not exist or is called with the wrong
+  fields, `if` on something that is not `Bool`, `for` over something that
+  is not a list, and any call other than translations and formatting. A
+  field the template never uses is a warning. Values are escaped; HTML
+  goes in unescaped only as the safe-HTML type (input to chunk 5.4).
+
+Still open: **placeholder types taken from the message** (`plural` and
+`#` take a number, `date` an `Instant`, `select` one of the app's enums
+with every value covered or an `other`).
+
 ## Decided: the golden rule
 
 Decided 2026-10-16 (Richard): **a package can do nothing the app cannot,
