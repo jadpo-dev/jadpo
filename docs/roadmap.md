@@ -313,11 +313,65 @@ reference only).
   `policy.output_field_unproved` (area 9); route tests send a fresh
   `Idempotency-Key` on every write unless they write their own (area 13),
   with the examples' workaround in `11-cake-shop` removed.
+- [ ] **4.8 Phase 4 review: policy soundness** `opus · xhigh`. Proofs and
+  gates that let data out: a scoped-role or field line under `actions:`
+  never enforced on an action that touches no entity (refuse or gate as
+  nobody); an `Output` built in a function never checked; values decided
+  by an `if`, a `match`, a filter predicate or a `count` losing where they
+  came from; a restricted value keeping its rules when stored with `set:`,
+  used as a lookup id or followed through an include's reference; the
+  record a write returns proved against its `read:`, with the flow check
+  running when no field has a policy; an update whose target may come from
+  several records proved for every one; an optional membership `role:`
+  read as every role; a caller inside a named object reaching an `Output`,
+  `Input` or failure; a field-refused transition answering 403 before its
+  `conflict:` arm; `role_field_create_forbidden` followed through
+  branches; the fallbacks that run an unpoliced statement or leave an
+  action ungated failing closed. Tenancy: a new membership makes its
+  member one only for a tenant with no members yet, so no one joins a
+  tenant as owner; a listed action moving a record to another tenant
+  needs the caller's membership there.
+- [ ] **4.9 Phase 4 review: request soundness** `opus · high`. The address
+  rate limit counted before the work on routes anyone may call, even with
+  a credential header; deadlines enforced on work that never waits (the
+  interpreter checks the deadline as it runs, and a body finishing past it
+  answers 504 and commits nothing); a handled failure undoing its
+  `sessions.start` and `sessions.end`; header values that aren't visible
+  ASCII answered 400, never dropped; route tests leaving out an omitted
+  field rather than sending `null`; OpenAPI's plain variants in mixed
+  enums and `Time` as sent, and each route's responses (403 from listed
+  actions, 503, 413, 400, replay only where a response is stored) derived
+  from the plan; `Idempotency-Key` among the headers an `Input` can't read;
+  a route without `input:` refusing query keys and a body; a request body
+  read as JSON only with a JSON `Content-Type`; a concurrent change found
+  at commit rerunning the action, not answering 503; header, body and
+  connection timeouts and caps in the native host; each API's sign-in
+  methods in its record.
+- [ ] **4.10 The runtime owns Phase 4's request path** `opus · xhigh`,
+  before Phase 5, from the Phase 4 review: an action's gate checked in
+  `jadpo_runtime::action`; the caller a call runs as read from the plan,
+  not a type name; route tests' caller and `Idempotency-Key` given to the
+  runtime's test request; one `serve_request` that `jadpo dev` and every
+  deployable call; rate limits behind a host capability (memory natively,
+  and §2.6 settles Workers' default against area 16); the sign-in lookup,
+  the idempotency claim and its release each one statement, with `BEGIN`
+  sent with the first statement (area 7's "a transaction of its own"
+  becomes "one statement", the same outcomes); a policed `get` that finds
+  nothing answered without a second statement; `/health/ready` cached for
+  a second; §2.4 and §2.6 and the stale comments brought up to date.
+- [ ] **4.11 Incremental policy and route checking** `opus · xhigh`, before
+  6.1: one positionless per-callable query of what a body reads, writes,
+  calls and loads, which isolation, the store rules, policy reach and the
+  flow check all build on; the flow summary per action, with recursive
+  calls solved as a fixpoint; a test body reading the routes only when it
+  sends a request; routes, identity and policy in the scale test with
+  asserted recheck counts.
 
 ## Phase 5 — Configuration, time, translations and the standard library (area 10)
 
 - [ ] **5.1 Configuration:** `sonnet · high` `config.jadpo`, environments, secrets, signing
-  keys.
+  keys, and the trusted proxies a client's address is read through (the
+  rate limit counts the proxy's address today).
 - [ ] **5.1b Signed sessions** `opus · high`: area 8's
   `revocation_delay:` once 5.1 gives signing keys: sessions and tokens
   signed and checked without a read, expiring within the delay and
@@ -351,7 +405,11 @@ reference only).
 - [ ] **6.1 Events:** `opus · high` outbox, subscribers, retries, `Access.system`, trace
   context, and `events: { store: }`, with the compile error for an action
   that writes no store but needs one for its outbox or idempotency keys
-  (until then such an action keeps no key, chunk 4.2).
+  (until then such an action keeps no key, chunk 4.2). From the Phase 4
+  review: a system caller, so `Access.system` grants schedules and
+  subscribers (today every policed statement refuses them), and events
+  delivered after the response is sent, through the host (Workers'
+  `waitUntil`), not before it.
 - [ ] **6.2 Schedules:** `opus · high` leases, the native tick, schedule monitoring basics,
   and the runtime's own sweeps, starting with deleting expired idempotency
   keys (area 7).
@@ -386,6 +444,11 @@ reference only).
   compiled. Includes TLS for database connections (a hook on the driver's
   `Transport`, rustls natively), and an outcome and effect record (SQL, row
   counts, events) both executors write, for the differential comparison.
+  From the Phase 4 review, decided in §2.5 first: a typed per-route entry
+  so generated code decodes a request straight into its structs; plan data
+  embedded as constants rather than rebuilt at start; a route trie and no
+  per-request allocation for paths, labels and failure lookups; the native
+  host accepting asynchronously and spreading connections round-robin.
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling.
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
