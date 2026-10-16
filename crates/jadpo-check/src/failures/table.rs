@@ -151,3 +151,35 @@ pub fn failure_table(db: &dyn Db, project: Project) -> FailureTable {
     }
     table
 }
+
+/// The fields the failure called `name` sends its caller: those in its
+/// `client:` block, by name, read from its one declaration (chunk 4.11),
+/// so a check that asks depends on that failure alone.
+#[salsa::tracked(returns(ref))]
+pub fn client_fields<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    name: crate::lookups::Name<'db>,
+) -> Vec<String> {
+    let Some(info) = crate::lookups::failure_info(db, project, name) else {
+        return Vec::new();
+    };
+    let Some(file) = crate::lookups::file_at(
+        db,
+        project,
+        crate::lookups::Name::new(db, info.path.clone()),
+    ) else {
+        return Vec::new();
+    };
+    let Some(Decl::TypeDecl(decl)) =
+        tree::source(db, file).and_then(|source| tree::decl_at(&source, info.index))
+    else {
+        return Vec::new();
+    };
+    tree::members(decl.member_list())
+        .into_iter()
+        .filter(|(block, _)| tree::name_text(block).as_deref() == Some("client"))
+        .flat_map(|(_, member)| tree::members(member.block()))
+        .filter_map(|(field, _)| tree::name_text(&field))
+        .collect()
+}

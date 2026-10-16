@@ -236,6 +236,16 @@ pub trait Host {
         Box::pin(std::future::pending())
     }
 
+    /// Gives the thread back once, so whatever else it runs (other requests
+    /// a worker answers, their I/O) has a turn: what work that never waits
+    /// awaits as it checks its deadline (area 7, "Time limits"). The
+    /// default wakes itself at once ([`crate::yield_now`]); a host whose
+    /// scheduler polls its I/O only when nothing is ready gives one that
+    /// waits for that poll.
+    fn yield_now(&self) -> LocalFuture<'_, ()> {
+        Box::pin(crate::yield_now())
+    }
+
     /// Milliseconds on the platform's monotonic clock, from any start it
     /// likes: what a route's deadline is checked against while work runs
     /// that never waits (area 7, "Time limits"), and how old the last

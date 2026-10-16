@@ -295,6 +295,46 @@ pub fn groups(db: &dyn Db, project: Project) -> Arc<Groups> {
     })
 }
 
+/// What a test's `request` reads of the route it names (area 13): the
+/// route's key, its placeholders, its input and output, and whether it
+/// needs a caller.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct RouteShape {
+    pub key: Key,
+    pub method: HttpMethod,
+    pub segments: Vec<Segment>,
+    pub input: Option<String>,
+    pub output: Option<Ty>,
+    pub needs_caller: bool,
+}
+
+impl RouteShape {
+    /// `POST /todos`.
+    pub fn label(&self) -> String {
+        format!("{} {}", self.method.word(), path_text(&self.segments))
+    }
+}
+
+/// The route a request for `label` (`POST /todos`, its path as `jadpo
+/// routes` prints it) reaches, read by label (chunk 4.11): a test body
+/// depends on the routes it sends a request to, and on nothing else of
+/// the routes.
+#[salsa::tracked(returns(ref))]
+pub fn route_at<'db>(db: &'db dyn Db, project: Project, label: Name<'db>) -> Option<RouteShape> {
+    groups(db, project)
+        .routes()
+        .map(|(_, route)| route)
+        .find(|route| route.label() == *label.text(db))
+        .map(|route| RouteShape {
+            key: route.key.clone(),
+            method: route.method,
+            segments: route.segments.clone(),
+            input: route.input.clone(),
+            output: route.output.clone(),
+            needs_caller: route.authentication.needs_caller(),
+        })
+}
+
 /// Whether every group read without a problem: what the API record and
 /// OpenAPI are written from.
 #[salsa::tracked(returns(copy))]

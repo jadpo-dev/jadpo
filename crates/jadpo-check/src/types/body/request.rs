@@ -18,6 +18,7 @@ use jadpo_syntax::ast::{self, AstNode, Expr};
 use super::super::ty::{Prim, Ty};
 use super::Body;
 use super::facts::node_key;
+use crate::lookups::Name;
 use crate::routes::{Segment, path_text};
 use crate::tree::{self, dotted};
 
@@ -167,14 +168,12 @@ impl Body<'_> {
             self.request_problem(span, "A request needs its `method:` and `path:`");
             return Ty::Error;
         };
-        let Some(groups) = self.routes.clone() else {
-            return Ty::Error;
-        };
-        let found = groups
-            .routes()
-            .map(|(_, route)| route)
-            .find(|route| route.method == method && route.path() == path);
-        let Some(route) = found else {
+        // The one route it names, by label, so the test depends on that
+        // route alone; only a mistake reads them all, to list the paths.
+        let label = format!("{} {path}", method.word());
+        let found = crate::routes::route_at(self.db, self.project, Name::new(self.db, label));
+        let Some(route) = found.clone() else {
+            let groups = crate::routes::groups(self.db, self.project);
             let paths: Vec<String> = groups
                 .routes()
                 .filter(|(_, route)| route.method == method)
@@ -273,7 +272,7 @@ impl Body<'_> {
             let ty = self.infer(&value);
             match super::identity::caller_kind(&ty) {
                 _ if ty.has_error() => ok = false,
-                _ if !route.authentication.needs_caller() => {
+                _ if !route.needs_caller => {
                     ok = false;
                     self.request_problem(
                         key_span,

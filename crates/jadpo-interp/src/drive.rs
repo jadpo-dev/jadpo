@@ -44,7 +44,7 @@ async fn body(
             // Work that never waits gives the thread back as it checks the
             // request's deadline.
             Step::Yield => {
-                jadpo_runtime::yield_now().await;
+                ctx.host().yield_now().await;
                 step = machine.carry_on(ctx);
             }
             Step::Pause { target, args, at } => {

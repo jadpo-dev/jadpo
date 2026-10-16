@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-15. This page is the only list of outstanding work: the
+**Updated:** 2026-10-16. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here.
@@ -361,7 +361,7 @@ reference only).
   a second; the interpreter yielding as it checks its deadline, so a
   route that computes without waiting doesn't hold its worker thread
   (chunk 4.9); §2.4 and §2.6 and the stale comments brought up to date.
-- [ ] **4.11 Incremental policy and route checking** `opus · xhigh`, before
+- [x] **4.11 Incremental policy and route checking** `opus · xhigh`, before
   6.1: one positionless per-callable query of what a body reads, writes,
   calls and loads, which isolation, the store rules, policy reach and the
   flow check all build on; the flow summary per action, with recursive

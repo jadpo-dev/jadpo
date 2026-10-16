@@ -177,8 +177,6 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         loops: 0,
         pending_block: None,
         stored: None,
-        routes: matches!(decl, jadpo_syntax::ast::Decl::TestDecl(_))
-            .then(|| std::sync::Arc::clone(crate::routes::groups(db, project))),
         action: None,
     };
     let Some(target) = checker.target(&decl, callable.function(db)) else {
@@ -431,8 +429,6 @@ struct Body<'a> {
     /// While an update by `id` of this entity checks its values: the
     /// entity whose stored fields they may read (area 6, "Counters").
     stored: Option<String>,
-    /// For a test: the project's routes, which a `request` names (area 13).
-    routes: Option<std::sync::Arc<crate::routes::Groups>>,
     /// The action being checked, by name: whether root `policy {
     /// actions: }` lists it decides which fields its updates may change
     /// (area 9).

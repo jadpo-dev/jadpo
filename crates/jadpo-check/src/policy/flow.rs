@@ -28,11 +28,23 @@
 //! all of its arguments into its result, and a count only what decided
 //! which items it counts. A local holds everything ever assigned to it,
 //! worked out until nothing changes.
+//!
+//! Each action and function is its own query (chunk 4.11): its summary
+//! ([`flow_summary`]) holds no positions, so a caller reads it again only
+//! when what flows through it changes, and each file's problems
+//! ([`flow_problems`]) walk only that file's bodies. Calls that go round,
+//! a function calling itself or functions calling each other, are a cycle
+//! of summaries, solved by salsa's fixpoint iteration: each round starts
+//! from the last, so a summary only grows, and the walk is repeated until
+//! it stops changing. The summary of a call into the cycle is then
+//! everything that may flow through it, however many times round, never
+//! less. A part followed deeper than [`DEPTH`] fields, which only a
+//! recursive type can give, is widened to everything inside it
+//! ([`Src::Deep`]), so the rounds end.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 
-use jadpo_db::{Db, Project};
+use jadpo_db::{Db, File, Project};
 use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_graph::body::{ArmBody, Body, Callee, Expr, LocalId, Node, SiteId, Stmt};
 use jadpo_graph::{Key, Kind, TypeRef};
@@ -46,7 +58,13 @@ use super::{Effect, Grant, LineGate};
 use crate::data::Entities;
 use crate::data::queries::{Element, Include, IncludeKind, Source};
 use crate::lookups::{Lookup, Name};
-use crate::types::{Def, FieldsBase, TypeView, callables_of, typed_body};
+use crate::types::{
+    Callable, Def, FieldsBase, TypeView, body_facts, callables_of, resolve, typed_body,
+};
+
+/// How many fields deep a summary in a cycle follows a part before it
+/// widens it to everything inside ([`Src::Deep`]).
+const DEPTH: usize = 8;
 
 /// Where part of a value may have come from.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -75,6 +93,11 @@ enum Src {
     /// Never a whole record: whether a record is there shows only what
     /// its reader may see.
     Decided(Box<Src>),
+    /// This, anywhere inside the value: a part a summary in a cycle
+    /// followed deeper than [`DEPTH`], widened to all of it. Following a
+    /// field keeps it, and a record stays whole, so nothing it holds is
+    /// lost. Never inside [`Src::Decided`] or itself.
+    Deep(Box<Src>),
 }
 
 /// `src` as what decided a value; nothing for a whole record.
@@ -82,7 +105,41 @@ fn decided(src: Src) -> Option<Src> {
     match src {
         Src::Record { .. } => None,
         Src::Decided(_) => Some(src),
+        Src::Deep(inner) => decided(*inner).map(deep),
         other => Some(Src::Decided(Box::new(other))),
+    }
+}
+
+/// `src` anywhere inside a value.
+fn deep(src: Src) -> Src {
+    match src {
+        Src::Deep(_) => src,
+        other => Src::Deep(Box::new(other)),
+    }
+}
+
+/// `src` without [`Src::Deep`]: what it is, wherever it is.
+fn shallow(src: Src) -> Src {
+    match src {
+        Src::Deep(inner) => *inner,
+        other => other,
+    }
+}
+
+/// `src` with a parameter's path longer than [`DEPTH`] cut there and
+/// made deep.
+fn widen(src: Src) -> Src {
+    match src {
+        Src::Param(at, path) if path.len() > DEPTH => deep(Src::Param(at, path[..DEPTH].to_vec())),
+        Src::Decided(inner) => match *inner {
+            Src::Param(at, path) if path.len() > DEPTH => deep(Src::Decided(Box::new(Src::Param(
+                at,
+                path[..DEPTH].to_vec(),
+            )))),
+            other => Src::Decided(Box::new(other)),
+        },
+        Src::Deep(inner) => deep(widen(*inner)),
+        other => other,
     }
 }
 
@@ -177,6 +234,13 @@ impl Prov {
         let mut out = Prov::default();
         for src in &self.whole {
             match src {
+                // Everything anywhere in what it stands for.
+                Src::Deep(inner) => {
+                    let part = Prov::of((**inner).clone()).substitute(args);
+                    for src in part.flat() {
+                        out.add(deep(src));
+                    }
+                }
                 Src::Param(at, path) => {
                     if let Some(arg) = args.get(*at) {
                         out.union(&arg.at(path));
@@ -204,83 +268,157 @@ impl Prov {
         }
         out
     }
+
+    /// With every part deeper than [`DEPTH`] below `depth` made one deep
+    /// whole, and every parameter's path cut there.
+    fn widened(&self, depth: usize) -> Prov {
+        let mut out = Prov::default();
+        if depth >= DEPTH {
+            for src in self.flat() {
+                out.add(deep(widen(src)));
+            }
+            return out;
+        }
+        for src in &self.whole {
+            out.add(widen(src.clone()));
+        }
+        for (name, prov) in &self.fields {
+            out.fields.insert(name.clone(), prov.widened(depth + 1));
+        }
+        out
+    }
 }
 
 /// What a caller of an action or function learns of it: where its result
 /// may have come from, in terms of its parameters, and which parts of
 /// which parameters reach what a caller is shown.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Summary {
     returns: Prov,
     sends: BTreeSet<(usize, Vec<String>)>,
 }
 
-/// One action or function to walk: its file and body.
-struct Action {
-    path: String,
-    name: String,
-    kind: Kind,
-    body: Arc<Body>,
+/// The summary of a callable nothing resolves to.
+static NOTHING: Summary = Summary {
+    returns: Prov {
+        whole: Vec::new(),
+        fields: BTreeMap::new(),
+    },
+    sends: BTreeSet::new(),
+};
+
+impl Summary {
+    /// What either holds, `self`'s first, in its order.
+    fn join(mut self, other: &Summary) -> Summary {
+        self.returns.union(&other.returns);
+        self.sends.extend(other.sends.iter().cloned());
+        self
+    }
+
+    /// Cut at [`DEPTH`], so a cycle's rounds end.
+    fn widened(self) -> Summary {
+        Summary {
+            returns: self.returns.widened(0),
+            sends: self
+                .sends
+                .into_iter()
+                .map(|(at, mut path)| {
+                    path.truncate(DEPTH);
+                    (at, path)
+                })
+                .collect(),
+        }
+    }
 }
 
-/// Every action's problems with what its values carry, by file.
+/// What one action or function passes on to its callers, without
+/// positions: its own query, so a caller is walked again only when this
+/// changes. Calls that go round are a cycle, solved by fixpoint iteration:
+/// it starts empty ([`summary_start`]) and each round is joined with the
+/// last ([`summary_round`]) until it stops changing.
+#[salsa::tracked(returns(ref), cycle_fn = summary_round, cycle_initial = summary_start)]
+fn flow_summary<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db>) -> Summary {
+    walked(db, project, callable)
+        .map(|(summary, _)| summary)
+        .unwrap_or_default()
+}
+
+/// A summary in a cycle starts empty.
+fn summary_start<'db>(
+    _db: &'db dyn Db,
+    _id: salsa::Id,
+    _project: Project,
+    _callable: Callable<'db>,
+) -> Summary {
+    Summary::default()
+}
+
+/// Each round of a cycle keeps everything the last found, so the rounds
+/// only grow, and is cut at [`DEPTH`], so they end: what is left when a
+/// round finds nothing new holds everything that may flow through the
+/// cycle, never less.
+fn summary_round<'db>(
+    _db: &'db dyn Db,
+    _cycle: &salsa::Cycle,
+    last: &Summary,
+    value: Summary,
+    _project: Project,
+    _callable: Callable<'db>,
+) -> Summary {
+    last.clone().join(&value).widened()
+}
+
+/// The problems with what values carry in the actions and functions in
+/// `file`.
 #[salsa::tracked(returns(ref))]
-pub fn flow_report(db: &dyn Db, project: Project) -> BTreeMap<String, Vec<Diagnostic>> {
+pub fn flow_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     // Every record's `read:` decides what a value from it may reach, so
     // the walk runs whenever policy reads cleanly, field policies or not.
     if !super::policy_clean(db, project) {
-        return BTreeMap::new();
+        return Vec::new();
     }
-    let mut actions: BTreeMap<Key, Action> = BTreeMap::new();
-    for &file in project.files(db) {
-        for callable in callables_of(db, file) {
-            let checked = typed_body(db, project, callable);
-            let Some((key, kind)) = checked.key.as_ref().and_then(|key| {
-                key.kind()
-                    .filter(|kind| matches!(kind, Kind::Action | Kind::Function))
-                    .map(|kind| (key, kind))
-            }) else {
-                continue;
-            };
-            actions.insert(
-                key.clone(),
-                Action {
-                    path: file.path(db).clone(),
-                    name: key.name().to_string(),
-                    kind,
-                    body: Arc::clone(&checked.body),
-                },
-            );
+    let mut out = Vec::new();
+    for callable in callables_of(db, file) {
+        // Of two declarations with one name, the one a call runs.
+        let Some(key) = body_facts(db, project, callable).key_of(&[Kind::Action, Kind::Function])
+        else {
+            continue;
+        };
+        if resolve(db, project, key) != Some(callable) {
+            continue;
+        }
+        if let Some((_, problems)) = walked(db, project, callable) {
+            out.extend(problems);
         }
     }
-    let mut flow = Flow {
+    out.dedup();
+    out
+}
+
+/// An action's or function's walk: its summary and its problems.
+fn walked<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    callable: Callable<'db>,
+) -> Option<(Summary, Vec<Diagnostic>)> {
+    let checked = typed_body(db, project, callable);
+    let key = checked.key.as_ref()?;
+    let kind = key
+        .kind()
+        .filter(|kind| matches!(kind, Kind::Action | Kind::Function))?;
+    let flow = Flow {
         db,
         project,
         prover: Prover::new(db, project),
         lookup: Lookup::new(db, project),
         entities: Entities::new(db, project),
-        actions: &actions,
-        summaries: BTreeMap::new(),
-        walking: BTreeSet::new(),
-        out: BTreeMap::new(),
     };
-    let keys: Vec<Key> = actions.keys().cloned().collect();
-    for key in keys {
-        flow.summary(&key);
-    }
-    let mut out = flow.out;
-    for problems in out.values_mut() {
-        problems.dedup();
-    }
-    out
-}
-
-/// The flow problems in the file at `path`.
-pub fn flow_problems(db: &dyn Db, project: Project, path: &str) -> Vec<Diagnostic> {
-    flow_report(db, project)
-        .get(path)
-        .cloned()
-        .unwrap_or_default()
+    Some(flow.walk(
+        callable.file(db).path(db).clone(),
+        key.name().to_string(),
+        kind,
+        &checked.body,
+    ))
 }
 
 struct Flow<'a> {
@@ -289,37 +427,34 @@ struct Flow<'a> {
     prover: Prover<'a>,
     lookup: Lookup<'a>,
     entities: Entities<'a>,
-    actions: &'a BTreeMap<Key, Action>,
-    summaries: BTreeMap<Key, Summary>,
-    /// The actions being walked, so a call back into one reads as nothing
-    /// rather than going round.
-    walking: BTreeSet<Key>,
-    out: BTreeMap<String, Vec<Diagnostic>>,
 }
 
-impl Flow<'_> {
-    /// The summary of the action `key`, walking it the first time.
-    fn summary(&mut self, key: &Key) -> Summary {
-        if let Some(done) = self.summaries.get(key) {
-            return done.clone();
+impl<'a> Flow<'a> {
+    /// The summary of the action or function `key`.
+    fn summary(&self, key: &Key) -> &'a Summary {
+        match resolve(self.db, self.project, key) {
+            Some(callable) => flow_summary(self.db, self.project, callable),
+            None => &NOTHING,
         }
-        if !self.walking.insert(key.clone()) {
-            return Summary::default();
-        }
-        let Some(action) = self.actions.get(key) else {
-            return Summary::default();
-        };
-        let body = Arc::clone(&action.body);
-        let path = action.path.clone();
-        let name = action.name.clone();
-        let listed = action.kind == Kind::Action;
+    }
+
+    /// Walks the body of the action or function `name`, in the file at
+    /// `path`.
+    fn walk(
+        &self,
+        path: String,
+        name: String,
+        kind: Kind,
+        body: &Body,
+    ) -> (Summary, Vec<Diagnostic>) {
+        let listed = kind == Kind::Action;
         let mut walk = Walk {
             locals: vec![Prov::default(); body.locals.len()],
-            body: &body,
+            body,
             path,
             name: name.clone(),
             line: listed
-                .then(|| self.prover.access.root.action(&name).cloned())
+                .then(|| self.prover.policies.root().action(&name).cloned())
                 .flatten(),
             gate: None,
             returns: Prov::default(),
@@ -362,16 +497,7 @@ impl Flow<'_> {
             returns: walk.returns,
             sends: walk.sends,
         };
-        let problems = walk.problems;
-        let at = self
-            .actions
-            .get(key)
-            .map(|a| a.path.clone())
-            .unwrap_or_default();
-        self.out.entry(at).or_default().extend(problems);
-        self.walking.remove(key);
-        self.summaries.insert(key.clone(), summary.clone());
-        summary
+        (summary, walk.problems)
     }
 }
 
@@ -515,13 +641,13 @@ impl Walk<'_> {
         Span::new(&self.path, at.start, at.end)
     }
 
-    fn block(&mut self, flow: &mut Flow<'_>, sites: &[SiteId]) {
+    fn block(&mut self, flow: &Flow<'_>, sites: &[SiteId]) {
         for &site in sites {
             self.statement(flow, site);
         }
     }
 
-    fn statement(&mut self, flow: &mut Flow<'_>, site: SiteId) {
+    fn statement(&mut self, flow: &Flow<'_>, site: SiteId) {
         match &self.body.site(site).node {
             Node::Stmt(stmt) => match stmt {
                 Stmt::Var { local, value } | Stmt::Assign { local, value } => {
@@ -578,7 +704,7 @@ impl Walk<'_> {
         }
     }
 
-    fn eval(&mut self, flow: &mut Flow<'_>, site: SiteId) -> Prov {
+    fn eval(&mut self, flow: &Flow<'_>, site: SiteId) -> Prov {
         let node = self.body.site(site).node.clone();
         let Node::Expr(expr) = node else {
             self.statement(flow, site);
@@ -780,11 +906,11 @@ impl Walk<'_> {
     fn written(&self, flow: &Flow<'_>, entity: &str, effect: Effect, set: &[String]) -> Reached {
         let prover = &flow.prover;
         let grants = match (&self.line, flow.entities.get(entity)) {
-            (Some(line), Some(model)) => line.on(model, &prover.access.memberships),
+            (Some(line), Some(model)) => line.on(model, prover.policies.memberships()),
             _ => prover.grants(entity, effect),
         };
         let mut reached = Reached::by(prover.way(entity, &grants));
-        if let Some(policy) = prover.access.entity(entity) {
+        if let Some(policy) = prover.policies.entity(entity) {
             for name in set {
                 if let Some(grants) = policy.field_grants(name, effect) {
                     reached = reached.and(Reached::by(prover.way(entity, grants)));
@@ -866,7 +992,7 @@ impl Walk<'_> {
         }
     }
 
-    fn call(&mut self, flow: &mut Flow<'_>, callee: &Callee, args: &[Option<SiteId>]) -> Prov {
+    fn call(&mut self, flow: &Flow<'_>, callee: &Callee, args: &[Option<SiteId>]) -> Prov {
         // An inline function's parameter holds the list it is given.
         let first = match args.first() {
             Some(Some(first)) => self.eval(flow, *first),
@@ -1032,7 +1158,7 @@ impl Walk<'_> {
     /// Every parameter among `prov`'s sources: a caller is shown it.
     fn params_in(&mut self, prov: &Prov) {
         for src in prov.flat() {
-            match src {
+            match shallow(src) {
                 Src::Param(at, path) => {
                     self.sends.insert((at, path));
                 }
@@ -1051,7 +1177,7 @@ impl Walk<'_> {
     /// shows the caller what decided it is raised.
     fn failure(
         &mut self,
-        flow: &mut Flow<'_>,
+        flow: &Flow<'_>,
         failure: &Key,
         fields: &[(Key, SiteId)],
         raised: Option<SiteId>,
@@ -1421,8 +1547,8 @@ fn unproved(flow: &Flow<'_>, prov: &Prov) -> Vec<(String, String, Reached)> {
 fn unread(flow: &Flow<'_>, prov: &Prov) -> Vec<(String, String, Reached, bool)> {
     let mut out = Vec::new();
     for src in prov.flat() {
-        let (src, decided) = match src {
-            Src::Decided(inner) => (*inner, true),
+        let (src, decided) = match shallow(src) {
+            Src::Decided(inner) => (shallow(*inner), true),
             other => (other, false),
         };
         match src {
@@ -1451,7 +1577,7 @@ fn unread(flow: &Flow<'_>, prov: &Prov) -> Vec<(String, String, Reached, bool)> 
                     }
                 }
             }
-            Src::Caller(_) | Src::Param(..) | Src::Decided(_) => {}
+            Src::Caller(_) | Src::Param(..) | Src::Decided(_) | Src::Deep(_) => {}
         }
     }
     out
@@ -1469,18 +1595,18 @@ fn among(flow: &Flow<'_>, entity: &str, field: &str, reached: &Reached) -> Strin
 }
 
 /// Whether the failure field `key` is one of its `client:` fields, which
-/// the caller is sent.
+/// the caller is sent: read from that one failure's declaration.
 fn client_field(flow: &Flow<'_>, key: &Key) -> bool {
-    let graph = crate::graph::graph(flow.db, flow.project);
-    graph.get(key).is_some_and(|node| {
-        matches!(
-            node.detail,
-            jadpo_graph::Detail::Field {
-                section: Some(jadpo_graph::Section::Client),
-                ..
-            }
-        )
-    })
+    let Some((failure, field)) = key.name().rsplit_once('.') else {
+        return false;
+    };
+    crate::failures::client_fields(
+        flow.db,
+        flow.project,
+        Name::new(flow.db, failure.to_string()),
+    )
+    .iter()
+    .any(|name| name == field)
 }
 
 /// Whether the type called `name` is an `Output`.

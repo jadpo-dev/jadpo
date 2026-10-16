@@ -17,9 +17,11 @@
 //! Each entity's policy and membership are read by name, so an edit reads
 //! again only the entity it is in; [`access`] gathers them, resolved, for
 //! the plan, which compiles them into every statement (`jadpo-plan`), and
-//! for the permissions report ([`report`]). [`reach`] checks the routes:
-//! every create, read, update and delete a route reaches needs a grant,
-//! and one anyone may call needs `Access.public`.
+//! for the permissions report ([`report`]). The checks read them by name
+//! instead, through [`Policies`], so each depends only on the entities it
+//! proves against (chunk 4.11). [`reach`] checks the routes: every create,
+//! read, update and delete a route reaches needs a grant, and one anyone
+//! may call needs `Access.public`.
 //!
 //! - A field's own `policy:` narrows its entity's grants for `create`,
 //!   `read` and `update`, or says `FieldAccess.server_only` for a field no
@@ -1733,12 +1735,12 @@ pub fn admits(entity: &[Grant], grant: &Grant) -> bool {
 
 /// A grant as a list writes it: `owner_id`, `CompanyRole.editor`,
 /// `Access.authenticated`.
-pub fn written_grant(access: &Access, grant: &Grant) -> String {
+pub fn written_grant(memberships: &[Membership], grant: &Grant) -> String {
     match grant {
         Grant::Caller { field, .. } => field.clone(),
         Grant::Role {
             membership, role, ..
-        } => match access.membership(membership) {
+        } => match memberships.iter().find(|m| m.entity == *membership) {
             Some(held) => format!("{}.{role}", held.roles),
             None => role.clone(),
         },
@@ -1952,17 +1954,82 @@ pub fn access(db: &dyn Db, project: Project) -> Arc<Access> {
     })
 }
 
+/// The entity called `name`'s policy, resolved, without positions: what
+/// every check that proves against one entity's grants reads, so a comment
+/// or another entity's policy never reaches it (chunk 4.11).
+#[salsa::tracked(returns(ref))]
+pub fn entity_policy<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    name: Name<'db>,
+) -> Option<Arc<EntityPolicy>> {
+    policy_read(db, project, name)
+        .as_ref()
+        .map(|read| Arc::clone(&read.model))
+}
+
+/// Root `policy { }`, resolved, without positions.
+#[salsa::tracked(returns(ref))]
+pub fn root_policy(db: &dyn Db, project: Project) -> RootPolicy {
+    root_read(db, project).model.clone()
+}
+
+/// Policy read by name, as [`Access`] holds it whole: each entity's
+/// policy is a read of that one entity, so a check depends only on the
+/// policies it asks for. Root `policy { }` and the memberships are read
+/// whole, being few and read by nearly every proof.
+#[derive(Clone, Copy)]
+pub struct Policies<'db> {
+    db: &'db dyn Db,
+    project: Project,
+}
+
+impl std::fmt::Debug for Policies<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Policies").finish_non_exhaustive()
+    }
+}
+
+impl<'db> Policies<'db> {
+    pub fn new(db: &'db dyn Db, project: Project) -> Policies<'db> {
+        Policies { db, project }
+    }
+
+    pub fn entity(&self, name: &str) -> Option<&'db EntityPolicy> {
+        entity_policy(self.db, self.project, Name::new(self.db, name.to_string())).as_deref()
+    }
+
+    pub fn root(&self) -> &'db RootPolicy {
+        root_policy(self.db, self.project)
+    }
+
+    pub fn memberships(&self) -> &'db [Membership] {
+        memberships(self.db, self.project).as_slice()
+    }
+
+    pub fn membership(&self, entity: &str) -> Option<&'db Membership> {
+        self.memberships().iter().find(|m| m.entity == entity)
+    }
+
+    /// See [`Access::kept_in_tenant`].
+    pub fn kept_in_tenant(&self, from: &str, to: &str) -> Option<(&'db Tenancy, &'db Tenancy)> {
+        let from = self.entity(from)?.tenancy.as_ref()?;
+        let to = self.entity(to)?.tenancy.as_ref()?;
+        (to.via != "id").then_some((from, to))
+    }
+}
+
 /// Whether the action called `name` is listed under root `policy {
 /// actions: }`.
 pub fn listed(db: &dyn Db, project: Project, name: &str) -> bool {
-    root_read(db, project).model.action(name).is_some()
+    root_policy(db, project).action(name).is_some()
 }
 
 /// The fields of `entity` only a listed action changes.
 pub fn fixed_fields(db: &dyn Db, project: Project, entity: &str) -> Vec<String> {
-    policy_read(db, project, Name::new(db, entity.to_string()))
+    entity_policy(db, project, Name::new(db, entity.to_string()))
         .as_ref()
-        .map(|read| read.model.fixed.clone())
+        .map(|model| model.fixed.clone())
         .unwrap_or_default()
 }
 

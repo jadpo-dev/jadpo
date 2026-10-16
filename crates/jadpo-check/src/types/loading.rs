@@ -26,19 +26,20 @@
 //! by `id`, a counter (`Video.view_count + 1`, worked out by the database
 //! in one step), and calls to functions, which never touch a store.
 //!
-//! Each file's actions and fixtures are read from their typed bodies once,
-//! without positions ([`file_loading`]); the decision through every call is
-//! worked out once for the project ([`isolation`]), as the stores an action
-//! writes are (`written_stores`).
+//! Each file's actions and fixtures are read from what their bodies do
+//! (`body_facts`, without positions, chunk 4.11) and their signatures
+//! ([`file_loading`]); the decision through every call is worked out once
+//! for the project ([`isolation`]), as the stores an action writes are
+//! (`written_stores`).
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use jadpo_db::{Db, File, ItemKind, Project, item_tree};
-use jadpo_graph::body::{Callee, Expr, Node};
 use jadpo_graph::{Key, Kind};
 use jadpo_std::Isolation;
 
-use super::body::{Callable, typed_body};
+use super::body::Callable;
+use super::facts::{Fact, body_facts};
 use super::shape::FieldsBase;
 use super::table::{Def, FieldDef, TypeView};
 use super::ty::Ty;
@@ -108,8 +109,8 @@ pub fn file_loading(db: &dyn Db, project: Project, file: File) -> BTreeMap<Key, 
         if !matches!(item.kind, ItemKind::Action | ItemKind::Fixture) {
             continue;
         }
-        let checked = typed_body(db, project, Callable::new(db, file, item.index, None));
-        let Some(key) = checked.key.clone() else {
+        let facts = body_facts(db, project, Callable::new(db, file, item.index, None));
+        let Some(key) = facts.key.clone() else {
             continue;
         };
         let mut loading = Loading::default();
@@ -123,40 +124,24 @@ pub fn file_loading(db: &dyn Db, project: Project, file: File) -> BTreeMap<Key, 
                 }
             }
         }
-        for site in &checked.body.sites {
-            let Node::Expr(expr) = &site.node else {
-                continue;
-            };
-            match expr {
-                Expr::Call { callee, .. } => match callee {
-                    Callee::Entity { entity, operation } if operation == "get" => {
-                        found(Loads::Gets(entity.name().to_string()), &mut loading);
+        for fact in &facts.facts {
+            match fact {
+                Fact::Gets(entity) => found(Loads::Gets(entity.clone()), &mut loading),
+                Fact::Queries(query) => found(Loads::Queries(query.clone()), &mut loading),
+                Fact::Action(callee) | Fact::Fixture(callee) => {
+                    loading.calls.insert(callee.clone());
+                }
+                Fact::Writes(write) => {
+                    if write.given {
+                        found(Loads::WritesBack(write.entity.clone()), &mut loading);
                     }
-                    Callee::Query(query) => {
-                        found(Loads::Queries(query.name().to_string()), &mut loading);
-                    }
-                    Callee::Action(callee) | Callee::Fixture(callee) => {
-                        loading.calls.insert(callee.clone());
-                    }
-                    _ => {}
-                },
-                Expr::Write {
-                    entity,
-                    transition,
-                    target,
-                    by_id,
-                    ..
-                } => {
-                    if target.is_some() && !by_id {
-                        found(Loads::WritesBack(entity.name().to_string()), &mut loading);
-                    }
-                    if let Some(transition) = transition
-                        && guarded(&lookup, entity, transition)
+                    if let Some(transition) = &write.transition
+                        && guarded(&lookup, &write.entity, transition)
                     {
                         found(Loads::Guarded(transition.name().to_string()), &mut loading);
                     }
                 }
-                _ => {}
+                Fact::Function(_) | Fact::Session(_) => {}
             }
         }
         out.insert(key, loading);
@@ -166,13 +151,13 @@ pub fn file_loading(db: &dyn Db, project: Project, file: File) -> BTreeMap<Key, 
 
 /// Whether `transition`, of `entity`, has a `when:` that can refuse a
 /// visible record (area 5, "Lifecycle"; chunk 3.4).
-fn guarded(lookup: &Lookup<'_>, entity: &Key, transition: &Key) -> bool {
+fn guarded(lookup: &Lookup<'_>, entity: &str, transition: &Key) -> bool {
     let name = transition
         .name()
         .rsplit_once('.')
         .map_or(transition.name(), |(_, name)| name);
     lookup
-        .write_rules(entity.name())
+        .write_rules(entity)
         .and_then(|rules| rules.transition(name))
         .is_some_and(|rule| rule.guarded)
 }

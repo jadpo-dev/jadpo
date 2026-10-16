@@ -705,6 +705,7 @@ and invalidation is where hand-rolled caches go wrong.
 | `symbols` | project | an item tree changes |
 | `signature`, `type_def`, `name_facts`, `failure_info` (per-name lookups) | name | that name's entry in its project table changes |
 | `typed_body` (resolved, typed, diagnostics) | callable | its file's text, or a name it reads, changes |
+| `body_facts` (records it reads, creates, changes and deletes, fields set, calls, queries, session operations; no positions) | callable | what its typed body does past its own values changes; never for a comment (chunk 4.11) |
 | `import_problems` | file | its text, or the entry of a name it writes or imports, changes |
 | `effects` | callable | its body or a callee's effects change |
 | `entity_read`, `query_read` (model, positions, problems) | entity, query | its file's text, or a name it reads, changes |
@@ -713,12 +714,17 @@ and invalidation is where hand-rolled caches go wrong.
 | `schema`, `migration_problems` | project | any entity's or query's model changes |
 | `identity`, `api_table` | project | `app.jadpo`'s or `authentication.jadpo`'s declarations change (chunks 4.1 and 4.3) |
 | `group_read` (model, positions, problems), `groups`, `group_names` | route group, project | the group's file, or a name it reads, changes |
+| `route_at` (what a test's `request` reads of its route) | route, by label | that route's key, placeholders, input, output or need of a caller changes (chunk 4.11) |
 | `route_problems`, `table_problems`, `signin_problems`, `record_bodies`, `record_problems` | file, project | a group's model, the identity, or a type a route sends changes; the record waits on every route reading cleanly |
 | `policy_read`, `membership_read` | entity | that entity's `policy:` or `membership:`, or a name it reads, changes (chunk 4.4) |
-| `root_read`, `memberships`, `access`, `policy_clean` | project | root `policy { }`, or any entity's policy or membership, changes |
-| `policy_problems`, `query_policy_problems` | file | a read of what the file declares, or the access its queries prove against, changes |
-| `acts` | file | its actions' and fixtures' typed bodies change; `all_acts` gathers every file's |
-| `policy::reach::route_problems`, `flow_report` | project | any action's acts or typed body, the routes or the access changes, until chunk 4.11 makes them per callable |
+| `entity_policy` (no positions) | entity | that entity's resolved policy changes; never for a comment (chunk 4.11) |
+| `root_read`, `root_policy`, `memberships`, `access`, `policy_clean` | project | root `policy { }`, or any entity's policy or membership, changes; `root_policy` holds no positions |
+| `policy_problems`, `query_policy_problems` | file | a read of what the file declares, or the policy of an entity its queries read, changes |
+| `acts_of` | action, by name | the `body_facts` of its declarations change |
+| `reach_problems` | file | its route groups, the `acts_of` of an action they reach, or the policy of an entity they reach, changes (chunk 4.11) |
+| `flow_summary` (what flows to its result and its outputs, by parameter; no positions) | callable | its typed body, a callee's summary, or the policy of an entity it reaches, changes; calls that go round are a cycle, solved by fixpoint iteration (chunk 4.11) |
+| `flow_problems` | file | its bodies, a summary they call, or the policy of an entity they reach, changes |
+| `client_fields` | failure | that failure's `client:` block changes |
 | `graph`, `diagnostics` | project, file | anything above; assembly only |
 
 The plan (SQL, codecs, sites; `Plan::build` in `jadpo-plan`) is not a
@@ -779,6 +785,54 @@ own file, as before (11 + 7 ms). A new file nothing reads also reran
 every file's one-store check, which read the whole table of what each
 action writes; each file now reads its own actions' entries, and the new
 file is the only one checked (39 ms to check before, 25 ms now). The test
+asserts the counts.
+
+**Policy, routes and flow by name (chunk 4.11).** Areas 7 to 9's checks
+read what they need the same way. What a body does past its own values
+(the records it reads with `get`, creates, changes and deletes, the fields
+each write sets, the queries, actions, fixtures and functions it calls
+and its session operations) is one query per callable, `body_facts`,
+holding no positions; isolation (`file_loading`), the one-store rule
+(`store_reaches`), policy's reach (`acts_of`) and the lines the flow
+check reads under `actions:` all build on it, where each walked the typed
+bodies itself. Each entity's policy is read by name (`entity_policy`,
+through the `Policies` view, which the proofs' `Prover` reads lazily, an
+entity and a membership's roles at a time), so a check depends on the
+entities it proves against, not on `access` whole. Each route group's
+file checks its own routes (`reach_problems`, from the project-wide
+`policy::reach::route_problems`). The flow check is a summary per action
+and function (`flow_summary`), in terms of its parameters, which a caller
+reads, and each file's problems walk that file's bodies (`flow_problems`),
+where one project-wide `flow_report` walked every body again on any edit.
+Calls that go round (a function calling itself, or functions calling
+each other) are a cycle of summaries, which salsa solves by fixpoint
+iteration: a summary starts empty, each round is joined with the last, so
+it only grows, and a part followed deeper than eight fields, which only a
+recursive type gives, is widened to everything inside it, so the rounds
+end. The summary a caller then reads holds everything that may flow
+through the cycle, never less; before, a call back into a function being
+walked read as nothing, so `pick(first, second, swap)`, giving back
+`second` only through its call to itself, seemed never to give back what
+it was passed second (crates/jadpo-check/tests/policy.rs). A test body
+reads the route a `request` names, by label (`route_at`), and the whole
+table only to list the paths when there is none, where every test body
+read every route. The scale test now has 2,376 files: beside the above, a
+principal signing in with a browser session, ten entities with policies,
+each with a field only its owner reads, a query, an action creating its
+records and a route group running both, with two tests each, one sending
+a request, and a route anyone may call. Before and after, by what ran
+again: a comment above an action that writes a note walked every action's
+and function's flow again (`flow_report`), and now checks its own file,
+its flow included, and nothing else; a field's own policy on one entity
+rechecked every query file (110), every route and every action's flow,
+and now rechecks the four files that read that entity's policy (its own,
+its query's, the action creating its records and its routes'); a route no
+test sends a request to rechecked all 21 test bodies and now none; a route
+one test requests rechecks that test's body alone. A test file also
+checked that its subject is beside it by reading every file's path, so a
+new file rechecked the layout of every test file; it now reads its
+subject's path alone. Every page's and example's diagnostics, positions
+included, were compared before and after and are the same. The test
 asserts the counts.
 
 **The plan is built whole.** `Plan::build` is not incremental: each run
@@ -883,8 +937,9 @@ the body names (`ActionBody::isolation`), which both executors take from
 the plan: an action or fixture that loads no record, itself or through any
 action it calls, runs at read committed, and every other at repeatable
 read (area 6, "Counters and other one-step updates"). `jadpo-check` decides
-it: each file's actions and fixtures are read once from their typed
-bodies, without positions (`file_loading`: whether one reads a record with
+it: each file's actions and fixtures are read once from what their bodies
+do, without positions (`file_loading`, from `body_facts` since chunk 4.11:
+whether one reads a record with
 `get` or a query, is handed one in a parameter, writes one back rather than
 by `id`, or runs a transition whose `when:` can refuse a visible record,
 and which actions and fixtures it calls), and the project's decision closes
@@ -1328,8 +1383,9 @@ every entry of a grant list into a `Grant` (a field pointing at the
 caller, a membership role through the reference it applies through, or
 `Access`), each entity's tenancy and the fields only a listed action
 changes; `access` gathers them for the plan and the report, and
-`policy::reach` follows what each action and query reaches (`acts`, per
-file, like the store rules) to check each route. `jadpo-plan`'s `policy`
+`policy::reach` follows what each action and query reaches (`acts_of`,
+by name from `body_facts`, like the store rules) to check each route
+group's file (`reach_problems`). `jadpo-plan`'s `policy`
 module compiles the grants into every statement at the one place
 `Planner::access` already joined the lifecycle: a read's and an
 update's or delete's `WHERE`, and a create's `INSERT ... SELECT ...

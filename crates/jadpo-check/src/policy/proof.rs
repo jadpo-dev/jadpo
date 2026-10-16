@@ -20,12 +20,11 @@
 //! points inside it, checked on every write that sets it (chunk 4.7), so
 //! what a caller holds in a record's tenant they hold in its parent's.
 
-use std::collections::{BTreeMap, BTreeSet};
-
 use jadpo_db::{Db, Project};
 use jadpo_std::http::PrincipalKind;
 
-use super::{Access, Effect, Grant};
+use super::{Effect, Grant, Policies};
+use crate::data::Entities;
 use crate::lookups::Lookup;
 use crate::types::{Def, TypeView};
 
@@ -79,69 +78,67 @@ impl Reached {
     }
 }
 
-/// What proofs read: every entity's policy, the principal's entities, and
-/// the roles each membership can hold.
-#[derive(Debug)]
+/// What proofs read: each entity's policy, the principal's entities, and
+/// the roles each membership can hold. Each entity is read by name as a
+/// proof needs it (chunk 4.11), so a proof depends only on the entities it
+/// is about.
 pub struct Prover<'a> {
-    pub access: &'a Access,
+    pub policies: Policies<'a>,
+    entities: Entities<'a>,
+    lookup: Lookup<'a>,
     user: Option<String>,
     service: Option<String>,
-    /// Each membership entity's role enum's values, in order, when its
-    /// `role:` always holds one: a membership whose role may be `none`
-    /// holds none of them.
-    roles: BTreeMap<String, Vec<String>>,
-    /// The entities whose lifecycle hides some records (`visible:`).
-    hiding: BTreeSet<String>,
+}
+
+impl std::fmt::Debug for Prover<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Prover").finish_non_exhaustive()
+    }
 }
 
 impl<'a> Prover<'a> {
     pub fn new(db: &'a dyn Db, project: Project) -> Prover<'a> {
-        let access = super::access(db, project);
         let identity = crate::identity::identity(db, project);
-        let lookup = Lookup::new(db, project);
-        let entities = crate::data::Entities::new(db, project);
-        let model = crate::data::data_model(db, project);
-        let hiding = model
-            .entities
-            .iter()
-            .filter(|entity| {
-                entity
-                    .lifecycle
-                    .as_ref()
-                    .is_some_and(|lifecycle| lifecycle.visible.is_some())
-            })
-            .map(|entity| entity.name.clone())
-            .collect();
-        let roles = access
-            .memberships
-            .iter()
-            .filter(|m| {
-                entities.get(&m.entity).is_some_and(|entity| {
-                    entity
-                        .fields
-                        .iter()
-                        .any(|field| field.name == m.role && !field.nullable)
-                })
-            })
-            .filter_map(|m| match lookup.def(&m.roles) {
-                Some(Def::Enum { variants }) => Some((
-                    m.entity.clone(),
-                    variants.iter().map(|v| v.name.clone()).collect(),
-                )),
-                _ => None,
-            })
-            .collect();
         Prover {
-            access,
+            policies: Policies::new(db, project),
+            entities: Entities::new(db, project),
+            lookup: Lookup::new(db, project),
             user: identity
                 .variant(PrincipalKind::User)
                 .map(|v| v.entity.clone()),
             service: identity
                 .variant(PrincipalKind::Service)
                 .map(|v| v.entity.clone()),
-            roles,
-            hiding,
         }
+    }
+
+    /// The values of the membership entity `membership`'s role enum, in
+    /// order, when its `role:` always holds one: a membership whose role
+    /// may be `none` holds none of them.
+    fn roles(&self, membership: &str) -> Option<Vec<String>> {
+        let held = self.policies.membership(membership)?;
+        let entity = self.entities.get(&held.entity)?;
+        if !entity
+            .fields
+            .iter()
+            .any(|field| field.name == held.role && !field.nullable)
+        {
+            return None;
+        }
+        match self.lookup.def(&held.roles) {
+            Some(Def::Enum { variants }) => Some(variants.iter().map(|v| v.name.clone()).collect()),
+            _ => None,
+        }
+    }
+
+    /// Whether `entity`'s lifecycle hides some records (`visible:`).
+    fn hides(&self, entity: &str) -> bool {
+        self.entities.get(entity).is_some_and(|entity| {
+            entity
+                .lifecycle
+                .as_ref()
+                .is_some_and(|lifecycle| lifecycle.visible.is_some())
+        })
     }
 
     fn principal(&self, kind: PrincipalKind) -> Option<&str> {
@@ -153,7 +150,7 @@ impl<'a> Prover<'a> {
 
     /// `entity`'s grants for `effect`.
     pub fn grants(&self, entity: &str, effect: Effect) -> Vec<Grant> {
-        self.access
+        self.policies
             .entity(entity)
             .map(|policy| policy.grants(effect).to_vec())
             .unwrap_or_default()
@@ -163,7 +160,7 @@ impl<'a> Prover<'a> {
     /// record's tenancy, which every grant on it applies within.
     pub fn way(&self, entity: &str, grants: &[Grant]) -> Way {
         let tenant = self
-            .access
+            .policies
             .entity(entity)
             .is_some_and(|policy| policy.tenancy.is_some());
         grants
@@ -204,7 +201,7 @@ impl<'a> Prover<'a> {
     fn proves_any(&self, facts: &Facts, grants: &[Grant]) -> bool {
         grants.iter().any(|grant| self.proves(facts, grant))
             || facts.iter().any(|fact| match fact {
-                Fact::Member(membership) => self.roles.get(membership).is_some_and(|roles| {
+                Fact::Member(membership) => self.roles(membership).is_some_and(|roles| {
                     roles.iter().all(|role| {
                         grants.contains(&Grant::Role {
                             membership: membership.clone(),
@@ -226,17 +223,17 @@ impl<'a> Prover<'a> {
             return true;
         }
         let Some(tenancy) = self
-            .access
+            .policies
             .entity(entity)
             .and_then(|policy| policy.tenancy.as_ref())
         else {
             return false;
         };
-        let tenants = &self.access.root.tenant_memberships;
+        let tenants = &self.policies.root().tenant_memberships;
         facts.contains(&Fact::Tenant)
             && !tenants.is_empty()
             && tenants.iter().all(|membership| {
-                self.roles.get(membership).is_some_and(|roles| {
+                self.roles(membership).is_some_and(|roles| {
                     roles.iter().all(|role| {
                         grants.contains(&Grant::Role {
                             membership: membership.clone(),
@@ -252,13 +249,13 @@ impl<'a> Prover<'a> {
     /// `entity` belongs to; always, for a record that belongs to none.
     fn tenant(&self, entity: &str, facts: &Facts) -> bool {
         let Some(tenancy) = self
-            .access
+            .policies
             .entity(entity)
             .and_then(|policy| policy.tenancy.as_ref())
         else {
             return true;
         };
-        let tenants = &self.access.root.tenant_memberships;
+        let tenants = &self.policies.root().tenant_memberships;
         facts.iter().any(|fact| match fact {
             Fact::Tenant => true,
             Fact::Grant(Grant::Role {
@@ -285,7 +282,7 @@ impl<'a> Prover<'a> {
         let record = field == "id" || facts.contains(&Fact::Fresh) || self.readable(entity, facts);
         record
             && match self
-                .access
+                .policies
                 .entity(entity)
                 .and_then(|policy| policy.field_grants(field, Effect::Read))
             {
@@ -306,13 +303,13 @@ impl<'a> Prover<'a> {
         // A membership read as an include's parent may be one its
         // lifecycle hides, which grants nothing.
         let held = self
-            .access
+            .policies
             .membership(from)
             .filter(|_| !facts.contains(&Fact::MaybeHidden));
         // A reference between two of the tenant's records points inside
         // the tenant, so what the caller holds in the record's tenant they
         // hold in the parent's.
-        let inside = self.access.kept_in_tenant(from, to);
+        let inside = self.policies.kept_in_tenant(from, to);
         for fact in facts {
             match fact {
                 Fact::Grant(grant @ (Grant::Public | Grant::Signed | Grant::System)) => {
@@ -342,7 +339,7 @@ impl<'a> Prover<'a> {
                 }) => {
                     push(Fact::Grant(Grant::Signed));
                     let scope = self
-                        .access
+                        .policies
                         .membership(membership)
                         .and_then(|m| m.scope_entity.as_deref());
                     match through {
@@ -382,12 +379,12 @@ impl<'a> Prover<'a> {
                 Fact::Tenant if inside.is_some() => push(Fact::Tenant),
                 Fact::Tenant => {
                     let follows = self
-                        .access
+                        .policies
                         .entity(from)
                         .and_then(|policy| policy.tenancy.as_ref())
                         .is_some_and(|tenancy| tenancy.via == via);
                     let is_tenant = self
-                        .access
+                        .policies
                         .entity(to)
                         .and_then(|policy| policy.tenancy.as_ref())
                         .is_some_and(|tenancy| tenancy.via == "id");
@@ -425,7 +422,7 @@ impl<'a> Prover<'a> {
                 .collect(),
         };
         let mut reached = along.and(self.read(to));
-        if self.hiding.contains(to) {
+        if self.hides(to) {
             for way in &mut reached.ways {
                 for facts in way.iter_mut() {
                     if !facts.contains(&Fact::MaybeHidden) {
@@ -477,7 +474,10 @@ impl<'a> Prover<'a> {
                     format!("the {who} `{field}` points at")
                 }
             }
-            Grant::Role { .. } => format!("`{}`", super::written_grant(self.access, grant)),
+            Grant::Role { .. } => format!(
+                "`{}`",
+                super::written_grant(self.policies.memberships(), grant)
+            ),
             Grant::Signed => "anyone signed in".to_string(),
             Grant::Public => "anyone at all".to_string(),
             Grant::System => "schedules and subscribers".to_string(),
@@ -487,7 +487,7 @@ impl<'a> Prover<'a> {
     /// Who may read field `field` of `entity`, for a reason: "only the
     /// user `reviewer_id` points at may read".
     pub fn readers(&self, entity: &str, field: &str) -> String {
-        let Some(policy) = self.access.entity(entity) else {
+        let Some(policy) = self.policies.entity(entity) else {
             return "nobody may read".to_string();
         };
         let record = || {
