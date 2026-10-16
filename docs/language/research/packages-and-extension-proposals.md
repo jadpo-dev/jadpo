@@ -40,17 +40,7 @@ with Richard one at a time, recorded on this page as decided, and only
 then built. No design is left for implementation.
 
 1. ~~The golden rule~~: decided, see "Decided: the golden rule".
-2. ~~Translations~~: decided, see "Translations". Was: (chunk 5.3 is close). *Decided:* area 10 question 9,
-   one ICU MessageFormat JSON file per locale, typed calls from the default
-   locale's keys, missing keys and placeholders are compile errors, built
-   in from the start. *To design:* key naming and nesting; whether keys
-   live per domain or in one root folder; translations shipped by packages;
-   overriding Jadpo's own text (`jadpo.` keys, proposed in the scenarios
-   page); plurals, gender and select; fallback to the default locale;
-   choosing a locale from a request; failure messages translated on the
-   client by code; how translation services (Crowdin, Lokalise) sync; the
-   dev tooling. Read area 10's Locales and Translations sections and area
-   16's email templates.
+2. ~~Translations~~: decided, see "Translations".
 3. **Authentication.** *Decided:* area 8 (principal, browser sessions, API
    tokens, service keys, `external_token`, `sign_in_providers:`,
    `on_first_sign_in`, acting as an OAuth provider); area 8 leaves magic
