@@ -1388,6 +1388,25 @@ wrong kind for the route with `not_permitted`; a service caller is keyed
 repeat. A route test's `as:` keeps a real credential of the kind the
 route's API accepts (`http::identity::test_credentials`).
 
+Built in chunk 5.1b: signed sessions (area 8). The identity reads
+`revocation_delay:`, each method's `signing_key:` (a `SigningKey`
+setting) and a browser session's `origin:` (a `Url` setting) into the
+`IdentityPlan` by setting name, and each lookup returns when its session
+or key ends. `http::signed` is the runtime's host-agnostic signing:
+`Settings::read` derives each method's key (BLAKE3 `derive_key`) from the
+values the application started with, current and `_PREVIOUS`, held by the
+program and handed to the HTTP component in `App::auth`, never in a value
+code reads; a signed part is base64url JSON `Claims` and a keyed BLAKE3
+tag, compared in constant time, the same natively and on wasm32. With a
+delay, `http::identity::authenticate` signs a request in from a good
+signed part without a statement, unless the route is `fresh`; otherwise it
+runs the lookup and returns a `Renewed` credential, which the response
+carries in `Set-Cookie` or `X-Jadpo-Token` unless the action started or
+ended the session. The plan appends a `RoutePlan` with `Run::Exchange` for
+`POST /auth/exchange` in the first API that accepts service keys, whose
+sign-in signs the token the response gives; the API record, OpenAPI and
+`jadpo routes` list it from `Identity::exchanges`.
+
 Built in chunk 4.4: policy (area 9). `jadpo_check::policy` reads each
 entity's `policy:` and `membership:` by name (`policy_read`,
 `membership_read`) and root `policy { }` once (`root_read`), resolving

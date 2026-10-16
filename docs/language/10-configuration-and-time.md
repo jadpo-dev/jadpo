@@ -315,8 +315,9 @@ reads its variable and, when that is set, `NAME_PREVIOUS` as well:
 accepted, so a deployment rotates a key by setting the new one and moving the
 old one to `_PREVIOUS`, then removing it once the longest token lifetime has
 passed. Both are checked when the app starts, and neither is ever printed.
-Authentication reads the key as `signing_key: config.session_signing_key`;
-signing sessions and tokens with it comes with chunk 5.1b.
+Authentication reads the key as `signing_key: config.session_signing_key`,
+and with a revocation delay signs sessions and tokens with it (area 8, "The
+application and revocation").
 
 ## Checking values before the app starts
 
@@ -1404,8 +1405,8 @@ read through, are not decided on any page; they are chunk 5.1c.
     new tokens are signed with the current key and both are accepted. Rotate
     by setting the new key and moving the old one to `_PREVIOUS`, then remove
     it once the longest token lifetime has passed. *Built in chunk 5.1* as
-    far as reading and checking the two values; signing with them is chunk
-    5.1b.
+    far as reading and checking the two values, and signing with them in
+    chunk 5.1b (area 8).
 11. **Do configuration fields carry `test:` values?** (carried from area 13)
     Area 13 has tests take each configuration field's `test:` value, while
     "Values on your machine and in production" above says tests get their
@@ -1476,4 +1477,4 @@ read through, are not decided on any page; they are chunk 5.1c.
 | `jadpo config` (chosen in chunk 5.1) | `check` lists each setting as `set`, `default`, `missing` or `invalid` with its variable, shows each problem as `configuration.value_missing` or `configuration.value_invalid`, exits 1 on any and supports `--json`. `set <field>` needs a terminal and refuses `--json`, hides what is typed for a secret and shows it otherwise, checks the value before writing, and writes `.env.local` only as an ordinary file, through a private temporary file, if unchanged since read, and adds it to `.gitignore` | 2026-10-16 |
 | `jadpo dev` and `jadpo migrate` (chosen in chunk 5.1) | `dev` checks the environment over `.env.local` as the app starts, watches `.env.local` with the source, and keeps the last good version serving through an invalid change; a connection whose address no variable gives gets a database on a disposable PostgreSQL (`--url` still names the database directly). `migrate apply` and `status` use a connection's setting when `--url` is not given | 2026-10-16 |
 | Retention period (chosen in chunk 5.1) | `purge: { after: config.x }` takes a `Duration` setting that is not secret (`data.lifecycle_purge_after` otherwise); the period is the value the app started with, given to a run (`jadpo_runtime::purge_after`), and a period not above zero deletes nothing | 2026-10-16 |
-| Not built here (chosen in chunk 5.1) | A browser session's `origin:` and `signing_key:` reading settings, with signed sessions and tokens, are chunk 5.1b. Which proxies a deployment trusts for a client's address is decided on no page: chunk 5.1c | 2026-10-16 |
+| Not built here (chosen in chunk 5.1) | A browser session's `origin:` and `signing_key:` reading settings, with signed sessions and tokens, are chunk 5.1b (built there, area 8). Which proxies a deployment trusts for a client's address is decided on no page: chunk 5.1c | 2026-10-16 |
