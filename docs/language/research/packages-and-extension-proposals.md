@@ -425,7 +425,7 @@ open item 8's translations part:
     `{ "text": "…{next_slot}…", "formats": { "next_slot": "date_time" } }`,
     the same shape for every code; `formats` lists only placeholders the
     client must format, each one of `number`, `decimal`, `date`,
-    `date_time`, `time_of_day` or `duration`; plain text placeholders are
+    `date_time` or `duration`; plain text placeholders are
     not listed.
 12. **Format by type**: a failure's client field decides its format from
     its type: `CalendarDate` → `date`; `Instant` → `date_time`, shown in

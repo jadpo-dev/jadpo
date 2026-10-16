@@ -335,8 +335,8 @@ Beside each document, `jadpo build` writes `<api>.failures.<locale>.json`
 for each supported locale: each reachable failure's code mapped to
 `{ "text": "…{next_slot}…", "formats": { "next_slot": "date_time" } }`, the
 same shape for every code. `formats` lists only the placeholders the
-client must format, each `number`, `decimal`, `date`, `date_time`,
-`time_of_day` or `duration`, decided by the client field's type (area 10,
+client must format, each `number`, `decimal`, `date`, `date_time` or
+`duration`, decided by the client field's type (area 10,
 "Failures for client apps"; decided 2026-10-16).
 
 ## The public API record
