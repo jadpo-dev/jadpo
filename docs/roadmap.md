@@ -375,7 +375,7 @@ reference only).
   keys, `jadpo config`, the check before the app starts, and a test's own
   `config:`. The trusted proxies a client's address is read through are
   5.1c.
-- [ ] **5.1b Signed sessions** `opus · high`: area 8's
+- [x] **5.1b Signed sessions** `opus · high`: area 8's
   `revocation_delay:` once 5.1 gives signing keys: sessions and tokens
   signed and checked without a read, expiring within the delay and
   renewed against the record; `RouteAuthentication.fresh` reading the

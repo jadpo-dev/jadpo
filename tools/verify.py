@@ -153,6 +153,12 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         # Policy through `jadpo test`: tenancy, roles, owner fields, listed
         # actions and credentials; concealment through the runtime (area 9).
         ('live PostgreSQL: policy', [('jadpo-cli', 'policy')], []),
+        # The runtime's request path counted in round trips (chunk 4.10),
+        # and signed sessions: no read to sign in while a signed part
+        # lasts, the delay's bound on revocation, key rotation, the key
+        # exchange and the configured origin (area 8, chunk 5.1b).
+        ('live PostgreSQL: round trips and signed sessions',
+         [('jadpo-cli', 'round_trips'), ('jadpo-cli', 'signed')], []),
     ]
     latency_test = 'a_save_shows_the_tests_it_reaches_within_the_target'
     own_steps = [

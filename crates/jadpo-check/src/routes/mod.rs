@@ -395,7 +395,29 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     // In file order, so the later route is the one reported.
     routes.sort_by(|a, b| (&a.2.path, a.2.start).cmp(&(&b.2.path, b.2.start)));
     let mut out = Vec::new();
+    let exchanges = crate::identity::identity(db, project).exchanges();
+    let exchange: Vec<Segment> = jadpo_std::http::EXCHANGE_PATH
+        .iter()
+        .map(|text| Segment::Fixed(text.to_string()))
+        .collect();
     for (i, (group, route, span)) in routes.iter().enumerate() {
+        // The runtime answers the generated exchange (area 8, "Ways to
+        // sign in").
+        if exchanges
+            && route.method == jadpo_std::HttpMethod::Post
+            && overlaps(&route.segments, &exchange)
+        {
+            out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_PATH_OVERLAP,
+                    format!("`{}` is the runtime's key exchange", route.label()),
+                )
+                .at(span.clone(), "answered by the runtime")
+                .reason("With `revocation_delay:` and service keys, the runtime answers `POST /auth/exchange` itself, trading a service key for a short-lived token, so this route would never run.")
+                .next(format!("Give `{}` in `{group}` another path", route.label())),
+            );
+            continue;
+        }
         // The runtime answers its health checks before any route (area 7,
         // "Health").
         let fixed: Vec<&str> = route

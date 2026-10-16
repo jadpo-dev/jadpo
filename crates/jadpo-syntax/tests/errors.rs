@@ -483,3 +483,16 @@ fn a_semicolon_in_a_use_path_is_not_a_clean_split() {
     let names = parse_file("use shared/types ;{ Pence }\n");
     assert!(!names.checkable(), "{:#?}", names.errors());
 }
+
+#[test]
+fn optional_chaining_with_a_space_is_the_same_habit() {
+    // `a ? .b` would format to `a?.b`, so it reads as that habit too.
+    let spaced = parse_file("action f() -> Unit {\n    sessions ? .revoke_token(x)\n}\n");
+    assert_eq!(spaced.errors().len(), 1, "{:#?}", spaced.errors());
+    assert_eq!(
+        spaced.errors()[0].rule.id,
+        "syntax.optional_chaining",
+        "{:#?}",
+        spaced.errors()
+    );
+}

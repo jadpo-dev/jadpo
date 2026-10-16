@@ -37,11 +37,13 @@
 use jadpo_std::AuthenticationMethod;
 use jadpo_std::http::{
     API_TOKEN_PREFIX, CSRF_HEADER, ISSUED_KEY, ISSUED_TOKEN, IdentityPlan, PrincipalKind,
-    PrincipalPlan, RoutePlan, RouteTable, SERVICE_KEY_PREFIX, SESSION_LIFETIME_MS,
+    PrincipalPlan, RoutePlan, RouteTable, Run, SERVICE_KEY_PREFIX, SERVICE_TOKEN_PREFIX,
+    SESSION_LIFETIME_MS,
 };
 use jadpo_std::read::SqlType;
 use jadpo_value::Value;
 
+use super::signed::{self, AuthSettings, Claims, SigningKey};
 use super::{Request, Response};
 use crate::ctx::{Caller, SessionEffect};
 use crate::read::Interrupt;
@@ -77,6 +79,11 @@ pub(crate) const AUTHENTICATION_UNAVAILABLE: (u16, &str, &str) = (
     503,
     "authentication_unavailable",
     "Signing in is temporarily unavailable.",
+);
+pub(crate) const AUTHENTICATION_MISCONFIGURED: (u16, &str, &str) = (
+    500,
+    "authentication_misconfigured",
+    "Signing in isn't configured correctly.",
 );
 
 /// Keeps a new session, or with a `NULL` CSRF verifier an API token.
@@ -185,14 +192,46 @@ fn cookie_values<'r>(request: &'r Request, name: &str) -> Vec<&'r str> {
         .collect()
 }
 
+/// A request signed in: its caller, and the credential to send back when
+/// signing in reissued its signed part.
+pub(crate) struct Admitted {
+    pub caller: Caller,
+    pub reissued: Option<Reissued>,
+    /// On `POST /auth/exchange`, the token the key is traded for and when
+    /// it expires.
+    pub exchanged: Option<(String, i64)>,
+}
+
+impl Admitted {
+    fn new(caller: Caller) -> Admitted {
+        Admitted {
+            caller,
+            reissued: None,
+            exchanged: None,
+        }
+    }
+}
+
+/// A credential whose signed part the record was read to renew (area 8,
+/// chosen in chunk 5.1b), sent back on the response.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Reissued {
+    /// The browser session's cookie's new value, and how many seconds the
+    /// session has left.
+    Cookie { value: String, max_age: i64 },
+    /// The API token to send from now on, in `X-Jadpo-Token`.
+    Token(String),
+}
+
 /// Who is calling `route`: the signed-in caller, or why the request is
 /// refused.
 pub(crate) async fn authenticate(
-    table: &RouteTable,
+    app: &super::App<'_>,
     ctx: &mut Ctx<'_>,
     request: &Request,
     route: &RoutePlan,
-) -> Result<Caller, Refused> {
+) -> Result<Admitted, Refused> {
+    let table = app.table;
     let found = credentials(table, route, request);
     let count = found.cookies.len() + found.authorizations;
     if count == 0 {
@@ -207,8 +246,31 @@ pub(crate) async fn authenticate(
     let Some(identity) = &table.identity else {
         return Err(Refused::new(INVALID_CREDENTIALS));
     };
+    let signing = Signing {
+        identity,
+        settings: app.auth,
+        route,
+    };
     if let Some(token) = found.cookies.first().copied() {
-        return cookie(identity, ctx, request, route, token).await;
+        let invalid = Refused {
+            clear: true,
+            ..Refused::new(INVALID_CREDENTIALS)
+        };
+        if identity.cookie.is_none() {
+            return Err(invalid);
+        }
+        let Some((secret, signed)) = secret_and_signed(token) else {
+            return Err(invalid);
+        };
+        return user_credential(
+            &signing,
+            ctx,
+            request,
+            AuthenticationMethod::BrowserSession,
+            secret,
+            signed,
+        )
+        .await;
     }
     let accepts = |method: AuthenticationMethod| {
         table
@@ -220,39 +282,26 @@ pub(crate) async fn authenticate(
     let Some(credential) = credential else {
         return Err(Refused::new(INVALID_CREDENTIALS));
     };
-    if credential.starts_with(API_TOKEN_PREFIX)
+    if let Some(rest) = credential.strip_prefix(API_TOKEN_PREFIX)
         && identity.api_tokens
         && accepts(AuthenticationMethod::ApiToken)
-        && is_token(&credential[API_TOKEN_PREFIX.len()..])
+        && let Some((secret, signed)) = secret_and_signed(rest)
     {
-        let user = identity.user.as_ref().filter(|user| user.lookup.is_some());
-        let Some(user) = user else {
-            return Err(Refused::new(INVALID_CREDENTIALS));
-        };
-        let row = look_up(ctx, user, credential).await?;
-        let Some(
-            [
-                SqlValue::Uuid(session),
-                SqlValue::Null(_),
-                id,
-                subject,
-                SqlValue::Bool(active),
-            ],
-        ) = row.as_deref()
-        else {
-            return Err(Refused::new(INVALID_CREDENTIALS));
-        };
-        if !*active {
-            return Err(Refused::new(USER_DISABLED));
-        }
-        return caller_of(
-            route,
-            user,
-            PrincipalKind::User,
-            id,
-            subject,
-            Some(*session),
-        );
+        return user_credential(
+            &signing,
+            ctx,
+            request,
+            AuthenticationMethod::ApiToken,
+            secret,
+            signed,
+        )
+        .await;
+    }
+    if let Some(signed) = credential.strip_prefix(SERVICE_TOKEN_PREFIX)
+        && accepts(AuthenticationMethod::ServiceKey)
+        && !matches!(route.run, Run::Exchange)
+    {
+        return exchanged(&signing, ctx, signed).await;
     }
     if credential.starts_with(SERVICE_KEY_PREFIX)
         && accepts(AuthenticationMethod::ServiceKey)
@@ -265,66 +314,264 @@ pub(crate) async fn authenticate(
         let Some(service) = service else {
             return Err(Refused::new(INVALID_CREDENTIALS));
         };
-        let row = look_up(ctx, service, credential).await?;
-        let Some([SqlValue::Uuid(_), id, subject, SqlValue::Bool(active)]) = row.as_deref() else {
+        let key = verifier(credential);
+        let row = look_up(ctx, service, &key).await?;
+        let Some(
+            [
+                SqlValue::Uuid(_),
+                id,
+                subject,
+                SqlValue::Bool(active),
+                SqlValue::Timestamp(ends),
+            ],
+        ) = row.as_deref()
+        else {
             return Err(Refused::new(INVALID_CREDENTIALS));
         };
         if !*active {
             return Err(Refused::new(SERVICE_DISABLED));
         }
-        return caller_of(route, service, PrincipalKind::Service, id, subject, None);
+        let caller = caller_of(route, service, PrincipalKind::Service, id, subject, None)?;
+        let mut admitted = Admitted::new(caller);
+        // The exchange signs what the key's read found (area 8, "Ways to
+        // sign in").
+        if matches!(route.run, Run::Exchange) {
+            let (Some(delay), Some(signer), SqlValue::Uuid(principal)) = (
+                identity.revocation_delay_ms,
+                app.auth.key(AuthenticationMethod::ServiceKey),
+                id,
+            ) else {
+                return Err(Refused::new(AUTHENTICATION_MISCONFIGURED));
+            };
+            let expires = ctx.now().saturating_add(delay).min(ends / 1000);
+            let claims = Claims {
+                method: AuthenticationMethod::ServiceKey,
+                row: None,
+                verifier: key,
+                principal: *principal,
+                subject: subject.clone(),
+                expires,
+                csrf: None,
+            };
+            let Some(payload) = claims.to_json() else {
+                return Err(Refused::new(AUTHENTICATION_MISCONFIGURED));
+            };
+            admitted.exchanged = Some((
+                format!("{SERVICE_TOKEN_PREFIX}{}", signer.sign(&payload)),
+                expires,
+            ));
+        }
+        return Ok(admitted);
     }
     Err(Refused::new(INVALID_CREDENTIALS))
 }
 
-/// A request that came with the browser session's cookie: its session,
-/// and for a write the CSRF check.
-async fn cookie(
-    identity: &IdentityPlan,
+/// What signing in with a signed part needs: the plan, the keys and the
+/// route, which says whether its caller's record must be read now.
+struct Signing<'a> {
+    identity: &'a IdentityPlan,
+    settings: &'a AuthSettings,
+    route: &'a RoutePlan,
+}
+
+impl Signing<'_> {
+    /// The revocation delay and `method`'s key, when signed parts are
+    /// made and accepted for it.
+    fn key(&self, method: AuthenticationMethod) -> Option<(i64, &SigningKey)> {
+        Some((
+            self.identity.revocation_delay_ms?,
+            self.settings.key(method)?,
+        ))
+    }
+
+    /// What `signed` says, when `method`'s key signed it and it hasn't
+    /// expired.
+    fn open(&self, method: AuthenticationMethod, signed: &str, now: i64) -> Option<Claims> {
+        let (_, key) = self.key(method)?;
+        let claims = Claims::from_json(&key.open(signed)?)?;
+        (claims.method == method && claims.expires > now).then_some(claims)
+    }
+
+    /// Whether the route reads the caller's record whatever the delay.
+    fn fresh(&self) -> bool {
+        self.route.authentication == jadpo_std::http::Authentication::Fresh
+    }
+}
+
+/// A session's or an API token's secret, 64 hexadecimal digits, and the
+/// signed part after it, when there is one.
+fn secret_and_signed(text: &str) -> Option<(&str, Option<&str>)> {
+    let (secret, signed) = match text.split_once('.') {
+        Some((secret, signed)) => (secret, Some(signed)),
+        None => (text, None),
+    };
+    is_token(secret).then_some((secret, signed))
+}
+
+/// A user signing in with a browser session's cookie or an API token: by
+/// its signed part without a read while that lasts and the route isn't
+/// `fresh`, and otherwise by its secret's row, read with the user's record,
+/// which renews the signed part when there is a delay to sign it with.
+async fn user_credential(
+    signing: &Signing<'_>,
     ctx: &mut Ctx<'_>,
     request: &Request,
-    route: &RoutePlan,
-    token: &str,
-) -> Result<Caller, Refused> {
-    let user = identity.user.as_ref().filter(|user| user.lookup.is_some());
-    let Some(user) = user.filter(|_| identity.cookie.is_some()) else {
-        return Err(Refused::new(INVALID_CREDENTIALS));
-    };
+    method: AuthenticationMethod,
+    secret: &str,
+    signed: Option<&str>,
+) -> Result<Admitted, Refused> {
+    let cookie = method == AuthenticationMethod::BrowserSession;
     let invalid = Refused {
-        clear: true,
+        clear: cookie,
         ..Refused::new(INVALID_CREDENTIALS)
     };
-    if !is_token(token) {
+    let user = signing
+        .identity
+        .user
+        .as_ref()
+        .filter(|user| user.lookup.is_some());
+    let Some(user) = user else {
         return Err(invalid);
+    };
+    let route = signing.route;
+    let writes = route.method != jadpo_std::HttpMethod::Get;
+    // What is kept of the credential as issued: an API token's verifier
+    // is of its whole text, prefix and all.
+    let kept = if cookie {
+        verifier(secret)
+    } else {
+        verifier(&format!("{API_TOKEN_PREFIX}{secret}"))
+    };
+    let now = ctx.now();
+    let claims = signed
+        .and_then(|signed| signing.open(method, signed, now))
+        .filter(|claims| constant_eq(claims.verifier.as_bytes(), kept.as_bytes()));
+    if let Some(claims) = &claims
+        && !signing.fresh()
+    {
+        if cookie && writes && !csrf_holds(request, claims.csrf.as_deref(), signing.settings) {
+            return Err(Refused::new(CSRF_REJECTED));
+        }
+        let caller = caller_of(
+            route,
+            user,
+            PrincipalKind::User,
+            &SqlValue::Uuid(claims.principal),
+            &claims.subject,
+            claims.row,
+        )?;
+        return Ok(Admitted::new(caller));
     }
-    let row = look_up(ctx, user, token).await?;
-    // An API token has no CSRF token, and never comes as the cookie.
+    let row = look_up(ctx, user, &kept).await?;
+    // An API token has no CSRF token, and never comes as the cookie; a
+    // session never comes as a bearer.
     let Some(
         [
             SqlValue::Uuid(session),
-            csrf @ SqlValue::Text(_),
+            csrf,
             id,
             subject,
             SqlValue::Bool(active),
+            SqlValue::Timestamp(ends),
         ],
     ) = row.as_deref()
     else {
         return Err(invalid);
     };
+    let csrf = match (cookie, csrf) {
+        (true, SqlValue::Text(csrf)) => Some(csrf.clone()),
+        (false, SqlValue::Null(_)) => None,
+        _ => return Err(invalid),
+    };
     if !*active {
         return Err(Refused::new(USER_DISABLED));
     }
-    if route.method != jadpo_std::HttpMethod::Get && !csrf_holds(request, csrf) {
+    if cookie && writes && !csrf_holds(request, csrf.as_deref(), signing.settings) {
         return Err(Refused::new(CSRF_REJECTED));
     }
-    caller_of(
+    let caller = caller_of(
         route,
         user,
         PrincipalKind::User,
         id,
         subject,
         Some(*session),
-    )
+    )?;
+    let mut admitted = Admitted::new(caller);
+    // A part still good needs no renewing on a `fresh` route.
+    if claims.is_none()
+        && let (Some((delay, key)), SqlValue::Uuid(principal)) = (signing.key(method), id)
+    {
+        let ends_ms = ends / 1000;
+        let claims = Claims {
+            method,
+            row: Some(*session),
+            verifier: kept,
+            principal: *principal,
+            subject: subject.clone(),
+            expires: now.saturating_add(delay).min(ends_ms),
+            csrf,
+        };
+        if let Some(payload) = claims.to_json() {
+            let signed = key.sign(&payload);
+            admitted.reissued = Some(if cookie {
+                Reissued::Cookie {
+                    value: format!("{secret}.{signed}"),
+                    max_age: (ends_ms.saturating_sub(now) / 1000).max(0),
+                }
+            } else {
+                Reissued::Token(format!("{API_TOKEN_PREFIX}{secret}.{signed}"))
+            });
+        }
+    }
+    Ok(admitted)
+}
+
+/// A service signing in with a token `POST /auth/exchange` gave: by its
+/// signed part, and on a `fresh` route by its key's row read with the
+/// service's record. It can't be reissued: once it expires, the service
+/// exchanges its key again.
+async fn exchanged(
+    signing: &Signing<'_>,
+    ctx: &mut Ctx<'_>,
+    signed: &str,
+) -> Result<Admitted, Refused> {
+    let method = AuthenticationMethod::ServiceKey;
+    let service = signing
+        .identity
+        .service
+        .as_ref()
+        .filter(|service| service.lookup.is_some());
+    let (Some(service), Some(claims)) = (service, signing.open(method, signed, ctx.now())) else {
+        return Err(Refused::new(INVALID_CREDENTIALS));
+    };
+    if !signing.fresh() {
+        let caller = caller_of(
+            signing.route,
+            service,
+            PrincipalKind::Service,
+            &SqlValue::Uuid(claims.principal),
+            &claims.subject,
+            None,
+        )?;
+        return Ok(Admitted::new(caller));
+    }
+    let row = look_up(ctx, service, &claims.verifier).await?;
+    let Some([SqlValue::Uuid(_), id, subject, SqlValue::Bool(active), _]) = row.as_deref() else {
+        return Err(Refused::new(INVALID_CREDENTIALS));
+    };
+    if !*active {
+        return Err(Refused::new(SERVICE_DISABLED));
+    }
+    let caller = caller_of(
+        signing.route,
+        service,
+        PrincipalKind::Service,
+        id,
+        subject,
+        None,
+    )?;
+    Ok(Admitted::new(caller))
 }
 
 /// The row a credential's verifier finds, with its caller's record, in
@@ -332,7 +579,7 @@ async fn cookie(
 async fn look_up(
     ctx: &mut Ctx<'_>,
     plan: &PrincipalPlan,
-    credential: &str,
+    kept: &str,
 ) -> Result<Option<Vec<SqlValue>>, Refused> {
     let Some(lookup) = plan.lookup.as_deref() else {
         return Ok(None);
@@ -345,7 +592,7 @@ async fn look_up(
         .query_once(
             lookup,
             &[
-                SqlValue::Text(verifier(credential)),
+                SqlValue::Text(kept.to_string()),
                 SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
             ],
         )
@@ -421,20 +668,30 @@ pub fn caller_from_record(
 }
 
 /// Whether a write that came with the session's cookie may go ahead: its
-/// `Origin` names the server it was sent to, and its `X-Jadpo-CSRF` is the
-/// session's token. Until configuration names the application's origin
-/// (area 10), the server's own is the one its `Host` header gives.
-fn csrf_holds(request: &Request, csrf: &SqlValue) -> bool {
-    let (Some(origin), Some(host)) = (request.header("origin"), request.header("host")) else {
+/// `Origin` is the application's, and its `X-Jadpo-CSRF` is the session's
+/// token, whose verifier is `csrf`. The application's origin is the one
+/// a browser session's `origin:` configures, exactly (area 8, chosen in
+/// chunk 5.1b); without one, the server's own, the one its `Host` header
+/// names.
+fn csrf_holds(request: &Request, csrf: Option<&str>, settings: &AuthSettings) -> bool {
+    let Some(origin) = request.header("origin") else {
         return false;
     };
-    let Some((_, authority)) = origin.split_once("://") else {
-        return false;
+    let from_here = match settings.origin() {
+        Some(configured) => signed::origin_of(origin).is_some_and(|sent| sent == configured),
+        None => {
+            let Some(host) = request.header("host") else {
+                return false;
+            };
+            origin
+                .split_once("://")
+                .is_some_and(|(_, authority)| authority.eq_ignore_ascii_case(host.trim()))
+        }
     };
-    if !authority.eq_ignore_ascii_case(host.trim()) {
+    if !from_here {
         return false;
     }
-    let (Some(sent), SqlValue::Text(kept)) = (request.header(CSRF_HEADER), csrf) else {
+    let (Some(sent), Some(kept)) = (request.header(CSRF_HEADER), csrf) else {
         return false;
     };
     is_token(sent) && constant_eq(verifier(sent).as_bytes(), kept.as_bytes())
@@ -865,6 +1122,24 @@ pub(crate) fn set_cookies(plan: &IdentityPlan, effect: &SessionEffect) -> Vec<(S
     ]
 }
 
+/// The headers a reissued credential goes back in: the session's cookie
+/// with its new signed part, or `X-Jadpo-Token` with the API token to send
+/// from now on.
+pub(crate) fn renewal(plan: &IdentityPlan, reissued: &Reissued) -> Vec<(String, String)> {
+    match reissued {
+        Reissued::Cookie { value, max_age } => match plan.cookie.as_deref() {
+            Some(cookie) => vec![(
+                "set-cookie".to_string(),
+                format!(
+                    "{cookie}={value}; Path=/; Max-Age={max_age}; HttpOnly; Secure; SameSite=Strict"
+                ),
+            )],
+            None => Vec::new(),
+        },
+        Reissued::Token(token) => vec![(jadpo_std::http::TOKEN_HEADER.to_string(), token.clone())],
+    }
+}
+
 /// The response a refusal gives.
 pub(crate) fn refusal(table: &RouteTable, refused: &Refused, request_id: &str) -> Response {
     let mut response = super::runtime_failure(refused.failure, request_id, None);
@@ -881,12 +1156,16 @@ pub(crate) fn refusal(table: &RouteTable, refused: &Refused, request_id: &str) -
 /// The headers a route test's request to route number `route` signs in
 /// with as `caller` (area 13, `as:`): a real credential, kept in one
 /// statement of its own and sent as a client sends it. A user signs in with a
-/// browser session, its CSRF token and an `Origin` naming the server, when
-/// the route's API accepts browser sessions, and otherwise with an API
-/// token; a service with a key, as `Service.issue_key` issues one.
+/// browser session, its CSRF token and an `Origin` naming the server (the
+/// configured origin when `origin:` gives one), when the route's API
+/// accepts browser sessions, and otherwise with an API token; a service
+/// with a key, as `Service.issue_key` issues one. Each is sent as a
+/// client first sends it, without a signed part, so its first request
+/// reads the record as a sign-in's does.
 pub async fn test_credentials(
     ctx: &mut Ctx<'_>,
     table: &RouteTable,
+    settings: &AuthSettings,
     route: u32,
     caller: &Value,
 ) -> Result<Vec<(String, String)>, Box<Fault>> {
@@ -955,7 +1234,12 @@ pub async fn test_credentials(
                 ),
                 (CSRF_HEADER.to_string(), csrf),
                 ("host".to_string(), TEST_HOST.to_string()),
-                ("origin".to_string(), format!("http://{TEST_HOST}")),
+                (
+                    "origin".to_string(),
+                    settings
+                        .origin()
+                        .map_or_else(|| format!("http://{TEST_HOST}"), str::to_string),
+                ),
             ],
         ),
         (PrincipalKind::User, None) if plan.api_tokens => {
@@ -1053,32 +1337,67 @@ mod tests {
     #[test]
     fn a_write_needs_the_servers_origin_and_the_sessions_csrf_token() {
         let token = "a".repeat(64);
-        let kept = SqlValue::Text(verifier(&token));
+        let kept = verifier(&token);
+        let kept = Some(kept.as_str());
+        let none = &AuthSettings::NONE;
         let good = request(&[
             ("host", "app.test"),
             ("origin", "https://app.test"),
             ("x-jadpo-csrf", &token),
         ]);
-        assert!(csrf_holds(&good, &kept));
+        assert!(csrf_holds(&good, kept, none));
         let elsewhere = request(&[
             ("host", "app.test"),
             ("origin", "https://evil.test"),
             ("x-jadpo-csrf", &token),
         ]);
-        assert!(!csrf_holds(&elsewhere, &kept));
+        assert!(!csrf_holds(&elsewhere, kept, none));
         let no_token = request(&[("host", "app.test"), ("origin", "https://app.test")]);
-        assert!(!csrf_holds(&no_token, &kept));
+        assert!(!csrf_holds(&no_token, kept, none));
         let wrong = request(&[
             ("host", "app.test"),
             ("origin", "https://app.test"),
             ("x-jadpo-csrf", &"b".repeat(64)),
         ]);
-        assert!(!csrf_holds(&wrong, &kept));
+        assert!(!csrf_holds(&wrong, kept, none));
     }
 
     #[test]
-    fn a_session_sets_both_cookies_and_ending_it_clears_them() {
+    fn a_configured_origin_is_the_only_one_a_write_may_come_from() {
+        let token = "a".repeat(64);
+        let kept = verifier(&token);
+        let kept = Some(kept.as_str());
         let plan = IdentityPlan {
+            origin: Some("browser_origin".into()),
+            ..plan()
+        };
+        let values =
+            crate::config::ConfigValues::for_test(&[("browser_origin", "https://app.example/")]);
+        let settings = AuthSettings::read(Some(&plan), &values);
+        // Behind a proxy, `Host` names the server inside; the origin is
+        // the one configured.
+        let configured = request(&[
+            ("host", "10.0.0.5:8080"),
+            ("origin", "https://app.example"),
+            ("x-jadpo-csrf", &token),
+        ]);
+        assert!(csrf_holds(&configured, kept, &settings));
+        let host_only = request(&[
+            ("host", "10.0.0.5:8080"),
+            ("origin", "http://10.0.0.5:8080"),
+            ("x-jadpo-csrf", &token),
+        ]);
+        assert!(!csrf_holds(&host_only, kept, &settings));
+        let foreign = request(&[
+            ("host", "app.example"),
+            ("origin", "https://evil.example"),
+            ("x-jadpo-csrf", &token),
+        ]);
+        assert!(!csrf_holds(&foreign, kept, &settings));
+    }
+
+    fn plan() -> IdentityPlan {
+        IdentityPlan {
             store: "main".into(),
             signs_in: true,
             cookie: Some("todo_session".into()),
@@ -1086,7 +1405,52 @@ mod tests {
             user: None,
             service: None,
             gated: Default::default(),
-        };
+            revocation_delay_ms: None,
+            signing_keys: Vec::new(),
+            origin: None,
+        }
+    }
+
+    #[test]
+    fn a_renewed_session_sets_its_cookie_and_a_renewed_token_its_header() {
+        let plan = plan();
+        let cookie = renewal(
+            &plan,
+            &Reissued::Cookie {
+                value: "t.s".into(),
+                max_age: 60,
+            },
+        );
+        assert_eq!(
+            cookie,
+            [(
+                "set-cookie".to_string(),
+                "todo_session=t.s; Path=/; Max-Age=60; HttpOnly; Secure; SameSite=Strict"
+                    .to_string()
+            )]
+        );
+        let token = renewal(&plan, &Reissued::Token("jadpo_token_t.s".into()));
+        assert_eq!(
+            token,
+            [("x-jadpo-token".to_string(), "jadpo_token_t.s".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_secret_comes_with_or_without_its_signed_part() {
+        let secret = "ab".repeat(32);
+        assert_eq!(secret_and_signed(&secret), Some((secret.as_str(), None)));
+        let both = format!("{secret}.x.y");
+        assert_eq!(
+            secret_and_signed(&both),
+            Some((secret.as_str(), Some("x.y")))
+        );
+        assert_eq!(secret_and_signed("ab.x.y"), None);
+    }
+
+    #[test]
+    fn a_session_sets_both_cookies_and_ending_it_clears_them() {
+        let plan = plan();
         let set = set_cookies(
             &plan,
             &SessionEffect::Start {

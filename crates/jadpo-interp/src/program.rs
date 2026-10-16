@@ -163,6 +163,9 @@ pub struct Program {
     /// The settings' values, decoded, by the setting's number in the plan:
     /// `None` for one no value reached ([`Program::with_config`]).
     settings: Vec<Option<Value>>,
+    /// What signing in reads from them: the signing keys and the browser
+    /// session's origin (area 8).
+    auth: jadpo_runtime::http::signed::AuthSettings,
 }
 
 /// Why a call couldn't start.
@@ -207,13 +210,20 @@ impl Program {
         // Until it is given the settings an application started with, a
         // program reads the ones a test run does: each `test:` value and
         // default.
-        let settings = prepared
+        let values = prepared
             .config(
                 &|_: &str| None,
                 jadpo_runtime::config::Mode::Test,
                 &|_: &mut [u8]| false,
             )
-            .map(|values| Self::decoded(&prepared, &values))
+            .ok();
+        let settings = values
+            .as_ref()
+            .map(|values| Self::decoded(&prepared, values))
+            .unwrap_or_default();
+        let auth = values
+            .as_ref()
+            .map(|values| Self::auth(&prepared, values))
             .unwrap_or_default();
         Program {
             prepared,
@@ -221,6 +231,7 @@ impl Program {
             shapes,
             proof_checks: false,
             settings,
+            auth,
         }
     }
 
@@ -245,7 +256,19 @@ impl Program {
     /// the application started with, or a test run's.
     pub fn with_config(mut self, values: &jadpo_runtime::config::ConfigValues) -> Program {
         self.settings = Self::decoded(&self.prepared, values);
+        self.auth = Self::auth(&self.prepared, values);
         self
+    }
+
+    /// What signing in reads from `values`.
+    fn auth(
+        prepared: &Prepared,
+        values: &jadpo_runtime::config::ConfigValues,
+    ) -> jadpo_runtime::http::signed::AuthSettings {
+        jadpo_runtime::http::signed::AuthSettings::read(
+            prepared.plan.routes().identity.as_ref(),
+            values,
+        )
     }
 
     /// The settings `values` hold, decoded, by their numbers.
@@ -377,6 +400,7 @@ impl Program {
                 shapes: &self.shapes,
             },
             failures: self.plan().types().failures(),
+            auth: &self.auth,
         }
     }
 

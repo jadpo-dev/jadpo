@@ -294,3 +294,7 @@ title
 # API record writes as `output` sections of their own.
 issued_token
 issued_key
+
+# What the generated `POST /auth/exchange` answers with (area 8), which the
+# API record writes as an `output` section of its own.
+exchanged_token

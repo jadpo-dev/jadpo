@@ -41,6 +41,7 @@ mod guarantees;
 mod health;
 pub mod idempotency;
 pub mod identity;
+pub mod signed;
 
 use std::cell::Cell;
 use std::collections::BTreeMap;
@@ -124,6 +125,10 @@ pub struct App<'a> {
     pub table: &'a RouteTable,
     pub codecs: Codecs<'a>,
     pub failures: &'a [FailurePlan],
+    /// What signing in reads from the settings the application started
+    /// with: each method's signing key and the browser session's origin
+    /// (area 8; area 10, "Signing keys").
+    pub auth: &'a signed::AuthSettings,
 }
 
 /// The failures the runtime answers with itself (area 7, "How failures
@@ -519,10 +524,16 @@ async fn run_route(
     let host = ctx.host();
     let mut deadline = host.sleep(u64::from(route.deadline_ms));
     // Who is calling, before the input is read or anything runs (area 8).
+    let mut reissued = None;
+    let mut exchanged = None;
     let caller = if route.authentication.needs_caller() {
-        let checked = identity::authenticate(app.table, ctx, request, route);
+        let checked = identity::authenticate(app, ctx, request, route);
         match race(checked, &mut deadline).await {
-            First::Left(Ok(caller)) => Some(caller),
+            First::Left(Ok(admitted)) => {
+                reissued = admitted.reissued;
+                exchanged = admitted.exchanged;
+                Some(admitted.caller)
+            }
             First::Left(Err(refused)) => {
                 if refused.credential
                     && let Some(limited) = by_address(ctx, request, request_id).await
@@ -559,13 +570,54 @@ async fn run_route(
         || idempotency::ANONYMOUS.to_string(),
         |caller| caller.key.clone(),
     );
-    let mut response = run_with_caller(
-        app, executor, ctx, request, request_id, route, segments, deadline, caller, scope,
-    )
-    .await;
+    let mut response = match exchanged {
+        // The exchange runs nothing: the key's read signed its token.
+        Some(exchanged) => exchange(request, request_id, exchanged),
+        None => {
+            run_with_caller(
+                app, executor, ctx, request, request_id, route, segments, deadline, caller, scope,
+                reissued,
+            )
+            .await
+        }
+    };
     response.counted = response.counted || counted || ctx.caller().is_some();
     ctx.set_caller(None);
     response
+}
+
+/// `POST /auth/exchange`'s answer (area 8, "Ways to sign in"): the token
+/// the key signed in with is traded for, and when it expires. Like any
+/// route that takes no input, it refuses a query string or a body.
+fn exchange(request: &Request, request_id: &str, (token, expires): (String, i64)) -> Response {
+    if request
+        .query
+        .as_deref()
+        .is_some_and(|query| !query.is_empty())
+        || !request.body.iter().all(u8::is_ascii_whitespace)
+    {
+        return invalid_input(
+            request_id,
+            &[Problem {
+                field: String::new(),
+                rule: "unknown_field".to_string(),
+            }],
+        );
+    }
+    let mut body = String::from("{\"token\":");
+    write_string(&token, &mut body);
+    body.push_str(",\"expires_at\":");
+    write_string(&jadpo_std::format_instant(expires), &mut body);
+    body.push('}');
+    Response {
+        status: 200,
+        headers: vec![
+            ("content-type".to_string(), "application/json".to_string()),
+            ("cache-control".to_string(), "no-store".to_string()),
+        ],
+        body: body.into_bytes(),
+        ..Response::default()
+    }
 }
 
 /// The rest of a route's run, once its caller is known: `deadline` is the
@@ -582,6 +634,7 @@ async fn run_with_caller(
     deadline: crate::LocalFuture<'_, ()>,
     caller: Option<crate::Caller>,
     scope: String,
+    reissued: Option<identity::Reissued>,
 ) -> Response {
     let caller_value = caller.as_ref().map(|caller| caller.value.clone());
     ctx.set_caller(caller);
@@ -763,6 +816,11 @@ async fn run_with_caller(
                         Stored::Fault(fault) => Outcome::Fault(fault),
                     }
                 }
+                // Answered once signed in, without running anything.
+                Run::Exchange => Outcome::Fault(ctx.fault(
+                    crate::FaultKind::Defect("an exchange with no key to trade".into()),
+                    Frame::ENTRY,
+                )),
                 Run::Query(plan) => {
                     match crate::store(ctx, StoreOp::Read(plan), app.failures, &args, Frame::ENTRY)
                         .await
@@ -843,6 +901,11 @@ async fn run_with_caller(
         }
         if let (Some(effect), Some(plan)) = (&session, &app.table.identity) {
             response.headers.extend(identity::set_cookies(plan, effect));
+        }
+        // A credential signing in reissued goes back with the response,
+        // unless what ran started or ended the session it came with.
+        if let (None, Some(reissued), Some(plan)) = (&session, &reissued, &app.table.identity) {
+            response.headers.extend(identity::renewal(plan, reissued));
         }
         if keep.is_none()
             && let Some(guard) = guard
@@ -1108,7 +1171,7 @@ pub async fn test_request(
         }
     }
     if let Some(caller) = caller {
-        let headers = identity::test_credentials(ctx, app.table, route, caller).await?;
+        let headers = identity::test_credentials(ctx, app.table, app.auth, route, caller).await?;
         request.headers.extend(headers);
     }
     Ok(Some(request))

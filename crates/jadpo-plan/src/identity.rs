@@ -75,6 +75,16 @@ impl Planner<'_> {
             user: user.and_then(|variant| self.principal(variant, sessions)),
             service: service.and_then(|variant| self.principal(variant, keys)),
             gated,
+            revocation_delay_ms: identity.revocation_delay,
+            signing_keys: identity
+                .methods
+                .iter()
+                .filter(|method| method.built)
+                .filter_map(|method| Some((method.method, method.signing_key.clone()?)))
+                .collect(),
+            origin: identity
+                .method(jadpo_std::AuthenticationMethod::BrowserSession)
+                .and_then(|method| method.origin.clone()),
         })
     }
 
@@ -120,7 +130,7 @@ impl Planner<'_> {
             PrincipalKind::Service => (jadpo_check::data::SERVICE_KEYS, String::new()),
         };
         plan.lookup = Some(format!(
-            "SELECT s.{id}, {csrf}u.{id}, u.{subject}, u.{active} FROM {table} AS s CROSS JOIN LATERAL (SELECT {id}, {column} AS {subject}, {active_sql} AS {active} FROM {entity_table} WHERE {wheres}) AS u WHERE s.{verifier} = $1 AND s.{ends} > $2",
+            "SELECT s.{id}, {csrf}u.{id}, u.{subject}, u.{active}, s.{ends} FROM {table} AS s CROSS JOIN LATERAL (SELECT {id}, {column} AS {subject}, {active_sql} AS {active} FROM {entity_table} WHERE {wheres}) AS u WHERE s.{verifier} = $1 AND s.{ends} > $2",
             id = ident("id"),
             subject = ident("subject"),
             active = ident("active"),
