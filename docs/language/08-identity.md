@@ -131,8 +131,9 @@ authentication {
 | `service_key` | `Authorization: Bearer` key | services | Shown once, stored as a verifier; can be exchanged for a short token |
 
 - Keys come only from secret configuration (area 10); a key in source is an
-  error. Until configuration is built (roadmap chunk 5.1), `origin:` and
-  `signing_key:` are `toolchain.not_built_yet`: a session is an opaque value
+  error. Configuration is built (roadmap chunk 5.1), but `origin:` and
+  `signing_key:` reading it come with signed sessions (chunk 5.1b), so until
+  then they are `toolchain.not_built_yet`: a session is an opaque value
   looked up in the database, which needs no key, and a cookie write's
   `Origin` must name the server its `Host` header gives.
 - `browser_session:` names its cookie (`cookie:`, 1 to 64 letters, digits,

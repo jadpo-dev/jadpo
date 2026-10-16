@@ -45,6 +45,7 @@
 )]
 
 mod builtin;
+pub mod config;
 mod constant;
 mod enums;
 pub mod http;
@@ -61,7 +62,7 @@ pub mod types;
 pub mod write;
 mod zones;
 
-pub use builtin::Builtin;
+pub use builtin::{Builtin, SIGNING_KEY_MIN};
 pub use constant::Constant;
 pub use enums::{
     Access, AuthenticationMethod, AuthenticationStrength, Driver, FieldAccess, FieldChange,

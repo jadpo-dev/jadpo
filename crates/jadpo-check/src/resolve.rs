@@ -99,6 +99,10 @@ pub fn resolve_file(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
                 }
             }
             Decl::EntityDecl(d) => names.entity(d, &mut out),
+            // A setting's type is a name like any other (area 10).
+            Decl::SingletonDecl(d) if d.keyword().is_some_and(|word| word.text() == "config") => {
+                names.settings(d, &mut out)
+            }
             _ => {}
         }
     }
@@ -391,6 +395,16 @@ impl Names<'_> {
     }
 
     // --- types -----------------------------------------------------------
+
+    /// The types of the settings `config { }` declares (area 10).
+    fn settings(&self, decl: &ast::SingletonDecl, out: &mut Vec<Diagnostic>) {
+        for (_, member) in tree::members(decl.member_list()) {
+            let Some(value) = member.value() else {
+                continue;
+            };
+            self.type_expr(&value, Want::Type, out);
+        }
+    }
 
     pub fn ty(&self, ty: Option<Type>, want: Want, out: &mut Vec<Diagnostic>) {
         match ty {

@@ -216,6 +216,11 @@ pub struct PurgePlan {
     /// no `restricted` reference holds, oldest first.
     pub sql: String,
     pub params: Vec<PurgeParam>,
-    /// The lifecycle's `after:`, in milliseconds.
+    /// The lifecycle's `after:`, in milliseconds; 0 when a setting gives it
+    /// (`after_setting`).
     pub after: i64,
+    /// The setting `after:` reads, by its number in the plan's settings
+    /// (area 10, "Retention periods"): the period is what the application
+    /// started with, so a run is given it (`purge_after`).
+    pub after_setting: Option<u32>,
 }

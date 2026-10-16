@@ -993,7 +993,7 @@ impl Reader<'_> {
                         key_span,
                         &format!("`{name}:`"),
                         if name == "origin" {
-                            "A browser session's origin comes from configuration (area 10, roadmap chunk 5.1); until then a cookie write's `Origin` must be the server's own"
+                            "A browser session's origin comes from a setting (area 10), which signed sessions (roadmap chunk 5.1b) read; until then a cookie write's `Origin` must be the server's own"
                         } else {
                             "A signing key comes from secret configuration (area 10, roadmap chunk 5.1b), and only a revocation delay signs sessions"
                         },

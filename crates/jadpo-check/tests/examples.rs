@@ -448,6 +448,7 @@ const BODY: &[&str] = &[
     "expr local",
     "expr field",
     "expr request",
+    "expr setting",
     "call function",
     "call action",
     "call query",
@@ -743,6 +744,9 @@ fn body_features(
                 }
                 Expr::Request { .. } => {
                     out.insert("expr request");
+                }
+                Expr::Config { .. } => {
+                    out.insert("expr setting");
                 }
                 Expr::Call {
                     callee,

@@ -27,6 +27,13 @@ pub trait Executor {
     /// The number of the callable with identity key `key`.
     fn callable(&self, key: &str) -> Option<u32>;
 
+    /// The values callable `callable` gives some settings itself, by their
+    /// numbers: a test's `config:` (area 13). None for anything else.
+    fn settings(&self, callable: u32) -> Vec<(u32, Value)> {
+        let _ = callable;
+        Vec::new()
+    }
+
     /// Runs callable `callable` with `args`, one per parameter, against
     /// `ctx`, whose stack is empty: an action or fixture inside the
     /// runtime's action boundary, anything else as it is.

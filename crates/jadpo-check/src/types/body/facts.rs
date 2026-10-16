@@ -127,6 +127,9 @@ pub(crate) struct Facts {
     pub writes: BTreeMap<NodeKey, super::writes::WriteFact>,
     /// Each stored field an update by `id` reads (`Post.view_count`).
     pub stored: BTreeSet<NodeKey>,
+    /// Each read of a setting (`config.mail_sender`), with the setting's
+    /// name (area 10).
+    pub settings: BTreeMap<NodeKey, String>,
     /// Each `request { ... }` in a route test (area 13).
     pub requests: BTreeMap<NodeKey, super::request::RequestFact>,
 }

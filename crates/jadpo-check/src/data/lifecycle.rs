@@ -64,10 +64,15 @@ pub struct TransitionModel {
 /// Permanent deletion of hidden records (area 5).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PurgeModel {
-    /// How long a record stays hidden before it goes, in milliseconds.
+    /// How long a record stays hidden before it goes, in milliseconds;
+    /// nothing when a setting says (`setting`).
     pub after: i128,
     /// As written: `30d`.
     pub after_written: String,
+    /// The setting that gives the period, `soft_delete_retention` for
+    /// `after: config.soft_delete_retention` (area 10, "Retention
+    /// periods"), whose value the application starts with.
+    pub setting: Option<String>,
     /// The field it counts from.
     pub since: String,
 }
@@ -109,6 +114,7 @@ fn conjuncts(condition: &Condition) -> Vec<&Condition> {
 /// Reads `lifecycle: { ... }` on `entity`, whose fields are read already.
 pub(super) fn read(
     lookup: &dyn TypeView,
+    settings: &dyn Fn(&str) -> Option<crate::config::SettingFact>,
     path: &str,
     entity: &EntityModel,
     spans: &EntitySpans,
@@ -121,6 +127,7 @@ pub(super) fn read(
     );
     let mut reader = Reader {
         lookup,
+        settings,
         path,
         entity,
         out,
@@ -230,6 +237,8 @@ pub(super) fn read(
 
 struct Reader<'a, 'o> {
     lookup: &'a dyn TypeView,
+    /// The settings `config { }` declares (area 10).
+    settings: &'a dyn Fn(&str) -> Option<crate::config::SettingFact>,
     path: &'a str,
     entity: &'a EntityModel,
     out: &'o mut Vec<Diagnostic>,
@@ -955,38 +964,55 @@ impl<'a> Reader<'a, '_> {
                 None
             }
         };
-        let (after, after_written) = after?;
+        let (after, after_written, setting) = after?;
         let since = since?;
         visible.then_some(PurgeModel {
             after,
             after_written,
+            setting,
             since,
         })
     }
 
     /// `after:`: a positive duration, `30d`.
-    fn after(&mut self, member: &ast::Member) -> Option<(i128, String)> {
+    fn after(&mut self, member: &ast::Member) -> Option<(i128, String, Option<String>)> {
         let value = member.value()?;
         let span = self.span(&value);
         let written = shown(value.syntax());
         if let Some((first, rest)) = dotted(&value)
             && tree::name_ref_text(&first).as_deref() == Some("config")
-            && rest.len() == 1
+            && let [name] = rest.as_slice()
+            && let Some(name) = tree::name_ref_text(name)
         {
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("`{written}` isn't built yet"),
-                )
-                .at(span, "a setting")
-                .reason("A retention period is a setting in `config.jadpo` (area 10), which comes with chunk 5.1; until then `after:` takes a duration written in place.")
-                .next("Write the period, such as `after: 30d`, for now"),
-            );
-            return None;
+            // A setting that doesn't exist is reported where it is read.
+            let fact = (self.settings)(&name)?;
+            // A secret in the wrong place is reported as such, once.
+            if fact.secret {
+                return None;
+            }
+            let duration = self.lookup.base_prim(&fact.ty) == Some(jadpo_std::Builtin::Duration);
+            if !duration {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::DATA_LIFECYCLE_PURGE_AFTER,
+                        format!("`after: {written}` isn't a duration"),
+                    )
+                    .at(span, "not a duration setting")
+                    .reason(format!(
+                        "`after:` is how long a hidden record is kept before purge deletes it; `{name}` is `{}`, and a retention period is a `Duration` setting, such as `{name}: Duration {{ default: 30d }}`.",
+                        fact.ty
+                    ))
+                    .next(format!("Make `{name}` a `Duration` in `config.jadpo`, or write the period, such as `after: 30d`")),
+                );
+                return None;
+            }
+            return Some((0, written, Some(name)));
         }
         let problem = match Const::from_expr(&value) {
             Const::Duration(text) => match jadpo_std::Dur::parse(&text) {
-                Some(duration) if duration.millis > 0 => return Some((duration.millis, text)),
+                Some(duration) if duration.millis > 0 => {
+                    return Some((duration.millis, text, None));
+                }
                 Some(_) => "a hidden record would be deleted the moment it is hidden",
                 None => "it isn't a duration Jadpo reads",
             },

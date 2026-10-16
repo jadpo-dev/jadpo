@@ -844,17 +844,16 @@ fn change_groups(
 
 // --- apply and status --------------------------------------------------------
 
-/// The stores `apply` and `status` run against: each with the URL
-/// `--url` gives. Until configuration (area 10) gives each connection
-/// its URL, `--url` names the one database, and `--store` picks its store
-/// when the project has several.
+/// The store `apply` and `status` run against, with its URL: `--url` if
+/// given, otherwise the address the store's connection reads from its
+/// setting (area 10), from the environment over `.env.local`. `--store`
+/// picks the store when the project has several.
 fn target(
     call: &Call,
+    loaded: &Loaded,
     steps: &BTreeMap<String, Vec<jadpo_runtime::Migration>>,
 ) -> Result<Option<(String, String)>, Reply> {
-    let Some(url) = call.value("--url") else {
-        return Ok(None);
-    };
+    let url = call.value("--url");
     let store = match call.value("--store") {
         Some(store) => store.to_string(),
         None => match steps.keys().collect::<Vec<_>>().as_slice() {
@@ -873,7 +872,45 @@ fn target(
             }
         },
     };
-    Ok(Some((store, url.to_string())))
+    if let Some(url) = url {
+        return Ok(Some((store, url.to_string())));
+    }
+    configured_url(call, loaded, store)
+}
+
+/// The address the connection `store` reads from its setting, when a
+/// variable gives one.
+fn configured_url(
+    call: &Call,
+    loaded: &Loaded,
+    store: String,
+) -> Result<Option<(String, String)>, Reply> {
+    use jadpo_runtime::config::Variables;
+    let urls = jadpo_check::config::connection_urls(&loaded.db, loaded.project);
+    let Some(connection) = urls.url_of(&store) else {
+        return Ok(None);
+    };
+    let model = jadpo_check::config::config(&loaded.db, loaded.project);
+    let Some(setting) = model.setting(&connection.setting) else {
+        return Ok(None);
+    };
+    let layered = crate::config::Layered::new(&loaded.root, &call.environment)
+        .map_err(|problem| Reply::failed(*problem))?;
+    let Some(url) = layered.variable(&setting.variable) else {
+        return Ok(None);
+    };
+    if jadpo_std::check_builtin_text(jadpo_std::Builtin::PostgresUrl, &url).is_err() {
+        return Err(Reply::failed(crate::config::value_diagnostic(
+            &setting.name,
+            &setting.variable,
+            true,
+            "PostgresUrl",
+            &jadpo_runtime::config::ProblemKind::Invalid {
+                rule: "format".to_string(),
+            },
+        )));
+    }
+    Ok(Some((store, url)))
 }
 
 /// Whether the migrations may be applied: their records read, and the
@@ -897,13 +934,13 @@ fn apply(call: &Call) -> Reply {
     }
     let set = records::migrations(&loaded.db, loaded.project);
     let steps = store_steps(set);
-    let (store, url) = match target(call, &steps) {
+    let (store, url) = match target(call, &loaded, &steps) {
         Ok(Some(found)) => found,
         Ok(None) => {
             return Reply::failed(arguments(
                 "`jadpo migrate apply` needs the database's URL".to_string(),
-                "Until configuration gives each connection its URL (area 10), `--url` names the database to migrate.".to_string(),
-                "Add `--url postgresql://…`".to_string(),
+                "No variable gives the address of the store's connection: a connection reads it from the setting its `url:` names (area 10), and `--url` names a database directly.".to_string(),
+                "Run `jadpo config set <the connection's setting>`, or add `--url postgresql://…`".to_string(),
             ));
         }
         Err(reply) => return reply,
@@ -1010,7 +1047,7 @@ fn status(call: &Call) -> Reply {
     };
     let set = records::migrations(&loaded.db, loaded.project);
     let steps = store_steps(set);
-    let target = match target(call, &steps) {
+    let target = match target(call, &loaded, &steps) {
         Ok(found) => found,
         Err(reply) => return reply,
     };

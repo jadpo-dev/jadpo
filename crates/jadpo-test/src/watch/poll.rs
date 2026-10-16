@@ -36,6 +36,10 @@ pub struct Poller {
     root: PathBuf,
     project: bool,
     stamps: BTreeMap<String, Stamp>,
+    /// Files outside the project's sources that are watched too, by their
+    /// project-relative paths: `.env.local`, whose values `jadpo dev`
+    /// reads (area 10).
+    extra: Vec<String>,
     /// The time between looks, from what the last look cost.
     interval: Duration,
 }
@@ -47,10 +51,19 @@ impl Poller {
             root: root.to_path_buf(),
             project,
             stamps: BTreeMap::new(),
+            extra: Vec::new(),
             interval: INTERVAL,
         };
         poller.stamps = poller.look();
         poller
+    }
+
+    /// Also watches `path`, relative to the root, which need not exist: it
+    /// is added when it appears and removed when it goes.
+    pub fn watching(mut self, path: &str) -> Poller {
+        self.extra.push(path.to_string());
+        self.stamps = self.look();
+        self
     }
 
     /// How many files it watches.
@@ -71,6 +84,12 @@ impl Poller {
         let started = Instant::now();
         let stamps = jadpo_db::files_under(&self.root, self.project)
             .into_iter()
+            .chain(
+                self.extra
+                    .iter()
+                    .filter(|path| self.root.join(path).is_file())
+                    .cloned(),
+            )
             .map(|path| {
                 let stamp = std::fs::metadata(self.root.join(&path)).ok().map(|meta| {
                     (

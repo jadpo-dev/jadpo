@@ -4,7 +4,6 @@ area: 13
 status: decided
 checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce094d0)
 rules:
-  - configuration.field_unknown
   - configuration.fixture_duplicate
   - configuration.fixture_secret_required
   - configuration.fixture_secret_unexpected
@@ -575,15 +574,19 @@ one with `.run()` (question 5).
 
 Each configuration field can give a `test:` value in `config.jadpo`, used by
 every test (question 3; area 10 settles the configuration syntax). A test
-changes one with its `config:` setting. Secrets never appear in test source:
-each test run gets a generated throwaway value, which is enough because a
-secret can only reach compiler-owned places (signing, integration
-credentials), and integrations are faked.
+reads the field's `test:` value, then its `default:`, and never the
+machine's environment, so it gives the same answer everywhere. A test
+changes a field for itself, and the code it calls, with its `config:`
+setting. Secrets never appear in test source: each test run gets a generated
+throwaway value, which is enough because a secret can only reach
+compiler-owned places (signing, integration credentials), and integrations
+are faked.
 
-```jadpo fragment
-// config.jadpo
+```jadpo check project=test-config
+type FromAddress = Email {}
+
 config {
-    mail_sender: Email {
+    mail_sender: FromAddress {
         test: "reminders@example.test"
     }
     mail_api_key: Text {
@@ -591,17 +594,28 @@ config {
     }
 }
 
-// a test that needs a different sender
-test "reminders come from the configured sender" {
+function address() -> FromAddress {
+    return config.mail_sender
+}
+
+test "reminders come from the test sender" {
+    assert address() == "reminders@example.test"
+}
+
+test "a test can change the sender" {
     config: {
         mail_sender: "planning@example.test"
     }
-    ...
+    assert address() == "planning@example.test"
 }
 ```
 
 A field that tested code reads with no `test:`, `default:` or `config:` value
-is a compile error, and so is a secret in a test's `config:`.
+is a compile error (`configuration.test_value_missing`, area 10), followed
+through the functions, actions and fixtures a test calls, and so is a secret
+in a test's `config:` (`configuration.secret_default`) or a name there that is
+no field (`configuration.field_unknown`). A value in `config:` is checked as a
+`default:` is. Built in chunk 5.1.
 
 ## Fakes for integrations
 
@@ -1630,7 +1644,7 @@ with when it comes.
 | Assertion messages | Work (run, chunk 2.2): a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). The trace, fakes, kept database and clock in the decided report come with their phases and are left out until then. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
 | Clock | Decided, not built: the test clock comes with time (area 10, roadmap 5.2). |
-| Configuration | Decided, not built: configuration in tests comes with configuration (area 10, roadmap 5.1). |
+| Configuration | Works (check and run, chunk 5.1): `test:` values on fields, defaults, generated secrets and a test's own `config:`; a request sent through a route is not followed for the compile-time check that every setting a test reads has a value, and a read with none then ends the test as a fault naming the setting. |
 | Integration fakes | Decided, not built: fakes come with packages (area 11, roadmap 7.2). |
 | Database | Works (run, chunk 3.1): `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Since chunks 3.2 and 3.3 tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. |
 | Caller | Decided, not built: acting as a user comes with identity (area 8, roadmap 4.3). Until then tests run with no caller. |

@@ -34,6 +34,8 @@ pub enum Session {
     Watch(Box<WatchArgs>),
     /// `jadpo dev`, until it is stopped.
     Dev(Box<crate::dev::DevArgs>),
+    /// `jadpo config set`, which asks for the value at a prompt.
+    ConfigSet(Box<crate::config::SetArgs>),
 }
 
 /// Everything a command's `run` function receives.
@@ -48,6 +50,8 @@ pub struct Call {
     pub values: Vec<(&'static str, String)>,
     /// The folder the command runs in.
     pub cwd: Option<PathBuf>,
+    /// What it runs under: the process's variables and terminals.
+    pub environment: Environment,
 }
 
 impl Call {
@@ -191,6 +195,30 @@ pub(crate) fn finish(
                 stderr: String::new(),
                 code: 0,
                 session: Some(Session::Watch(args)),
+            };
+        }
+        Reply::Session(Session::ConfigSet(mut args)) => {
+            if json {
+                // A prompt has no JSON form: `config check` does the reading.
+                let refusal = Diagnostic::new(
+                    &rule::CLI_CONFIG_ARGUMENTS,
+                    "`jadpo config set` can't write JSON",
+                )
+                .reason("The value is typed at a prompt, and nothing about it may be printed, so there is no document to write.")
+                .next("Leave out `--json`; `jadpo config check --json` lists how each setting stands");
+                return Output {
+                    stdout: envelope(name, None, &[refusal], &()).to_document(),
+                    stderr: String::new(),
+                    code: 2,
+                    session: None,
+                };
+            }
+            args.choice = choice;
+            return Output {
+                stdout: String::new(),
+                stderr: String::new(),
+                code: 0,
+                session: Some(Session::ConfigSet(args)),
             };
         }
         Reply::Session(Session::Dev(mut args)) => {
@@ -460,6 +488,7 @@ fn dispatch(parsed: Parsed, env: &Environment) -> (Option<&'static str>, Reply) 
                     flags: Vec::new(),
                     values: Vec::new(),
                     cwd: env.cwd.clone(),
+                    environment: env.clone(),
                 }),
             );
         }
@@ -489,6 +518,7 @@ fn dispatch(parsed: Parsed, env: &Environment) -> (Option<&'static str>, Reply) 
             flags: parsed.flags,
             values: parsed.values,
             cwd: env.cwd.clone(),
+            environment: env.clone(),
         }),
     )
 }
