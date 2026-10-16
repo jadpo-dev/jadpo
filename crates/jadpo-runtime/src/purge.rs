@@ -51,13 +51,39 @@ pub async fn purge(
     now: i64,
     batches: u32,
 ) -> Result<Purged, StoreError> {
+    if plan.after_setting.is_some() {
+        return Err(StoreError::Fault(format!(
+            "the purge of `{}` waits as long as a setting says, which only `purge_after` is given",
+            plan.entity
+        )));
+    }
+    purge_after(host, plan, now, batches, plan.after).await
+}
+
+/// [`purge`] for a plan whose period a setting gives (`after_setting`):
+/// `after` is that setting's value, in milliseconds, which the application
+/// started with. A period that is not above zero would delete a record the
+/// moment it is hidden, so it deletes nothing.
+pub async fn purge_after(
+    host: &dyn Host,
+    plan: &PurgePlan,
+    now: i64,
+    batches: u32,
+    after: i64,
+) -> Result<Purged, StoreError> {
+    if after <= 0 {
+        return Err(StoreError::Fault(format!(
+            "the purge of `{}` waits for a period above zero",
+            plan.entity
+        )));
+    }
     let Some(database) = host.database(&plan.store) else {
         return Err(StoreError::Fault(format!(
             "no connection to the store `{}`",
             plan.store
         )));
     };
-    let cutoff = now.saturating_sub(plan.after);
+    let cutoff = now.saturating_sub(after);
     let mut params = Vec::with_capacity(plan.params.len());
     for param in &plan.params {
         let value = match param.source {

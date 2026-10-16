@@ -377,6 +377,21 @@ pub fn decode(
     }
 }
 
+/// A setting that holds a duration, in milliseconds: the value the
+/// application started with for setting number `at` of `plan`.
+pub fn duration_ms(
+    plan: &ConfigPlan,
+    validators: &[Validator],
+    values: &ConfigValues,
+    at: u32,
+) -> Option<i64> {
+    let field = plan.fields.get(at as usize)?;
+    match decode(plan, validators, field, values.text_at(at)?).ok()? {
+        Value::Duration(millis) => Some(millis),
+        _ => None,
+    }
+}
+
 /// A throwaway value for a secret of a test run: random, never written
 /// anywhere, and not worth anything outside the run.
 fn generate(kind: TestSecret, random: &dyn Fn(&mut [u8]) -> bool) -> Option<String> {

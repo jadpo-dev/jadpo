@@ -475,6 +475,98 @@ fn purge_deletes_records_hidden_long_enough_and_keeps_the_rest() {
 }
 
 #[test]
+fn purge_waits_as_long_as_a_setting_says() {
+    if skipped() {
+        return;
+    }
+    let root = project("purge-setting");
+    // The period is a setting (area 10, "Retention periods"), not a
+    // duration written in place.
+    let member = root.join("domains/club/entities/member.jadpo");
+    let text = fs::read_to_string(&member).expect("the entity");
+    assert!(text.contains("after: 30d"));
+    write(
+        &root,
+        "domains/club/entities/member.jadpo",
+        &text.replacen("after: 30d", "after: config.retention", 1),
+    );
+    write(
+        &root,
+        "config.jadpo",
+        "config {\n    retention: Duration {\n        default: 30d\n    }\n}\n",
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let plan = program
+        .plan()
+        .purge("Member")
+        .expect("Member's purge")
+        .clone();
+    assert_eq!(plan.after_setting, Some(0));
+    let values = program
+        .prepared()
+        .config(
+            &|_: &str| None,
+            jadpo_runtime::config::Mode::Environment,
+            &|_: &mut [u8]| false,
+        )
+        .expect("the default holds");
+    assert_eq!(program.prepared().purge_after(&values, &plan), Some(30 * DAY));
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let host = Store(postgres(&url).expect("store"), std::cell::Cell::new(0));
+    let check = postgres(&url).expect("store");
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let bob = call(&program, &host, "join", vec![Value::text("Bob")]).await;
+        call(&program, &host, "leave", vec![id_of(&bob)]).await;
+        // Without the period it is given, a purge deletes nothing.
+        assert!(
+            jadpo_runtime::purge(&host, &plan, Clock::TEST.now() + 31 * DAY, PURGE_BATCHES)
+                .await
+                .is_err()
+        );
+        let after = program.prepared().purge_after(&values, &plan).expect("a period");
+        let early = jadpo_runtime::purge_after(
+            &host,
+            &plan,
+            Clock::TEST.now() + 29 * DAY,
+            PURGE_BATCHES,
+            after,
+        )
+        .await
+        .expect("purge");
+        assert_eq!(early.removed(), 0, "{early:?}");
+        let purged = jadpo_runtime::purge_after(
+            &host,
+            &plan,
+            Clock::TEST.now() + 31 * DAY,
+            PURGE_BATCHES,
+            after,
+        )
+        .await
+        .expect("purge");
+        assert_eq!(purged.removed(), 1, "{purged:?}");
+        assert!(names(&check, "member").await.is_empty());
+        // A period that is nothing would delete at once: it deletes nothing.
+        assert!(
+            jadpo_runtime::purge_after(&host, &plan, Clock::TEST.now(), PURGE_BATCHES, 0)
+                .await
+                .is_err()
+        );
+    });
+    drop(host);
+    drop(check);
+    databases.release(copy, false);
+}
+
+#[test]
 fn purge_works_in_batches() {
     if skipped() {
         return;

@@ -91,7 +91,7 @@ pub use migrate::{MIGRATIONS_TABLE, MigrateError, Migration, Standing, migrate, 
 pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};
 pub use policy::{admit, call_as};
-pub use purge::{PURGE_BATCHES, Purged, purge};
+pub use purge::{PURGE_BATCHES, Purged, purge, purge_after};
 pub use ratelimit::{Allowed, RateLimits};
 pub use read::{PAGE, cursor, from_sql, invalid_cursor, not_permitted, to_sql, uuid_text};
 pub use report::{Detail, Location, Report, ReportRule, Sources, fields_text};

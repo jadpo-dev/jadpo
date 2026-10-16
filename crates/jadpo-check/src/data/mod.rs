@@ -547,8 +547,10 @@ impl Reader<'_> {
         }
         entity.store = self.placement(store, &name, &name_span);
         if let Some(member) = lifecycle {
+            let lookup = self.lookup;
             entity.lifecycle = lifecycle::read(
-                self.lookup,
+                lookup,
+                &|name| lookup.setting(name).cloned(),
                 path,
                 &entity,
                 &self.spans,

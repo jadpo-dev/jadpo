@@ -260,6 +260,11 @@ impl<'db> Lookup<'db> {
         same_file_name(self.db, self.project, self.name(folded))
     }
 
+    /// What a read of setting `name` needs to know of it (area 10).
+    pub fn setting(&self, name: &str) -> Option<&'db crate::config::SettingFact> {
+        crate::config::setting_fact(self.db, self.project, self.name(name)).as_ref()
+    }
+
     pub fn failures_with_code(&self, code: &str) -> &'db [FailureInfo] {
         failures_with_code(self.db, self.project, self.name(code))
     }

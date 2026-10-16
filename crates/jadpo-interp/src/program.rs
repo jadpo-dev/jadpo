@@ -96,6 +96,26 @@ impl Prepared {
         &self.validators
     }
 
+    /// How long a purge waits before it deletes a hidden record, in
+    /// milliseconds: its `after:`, or the value `values` hold for the
+    /// setting it reads (area 10, "Retention periods"). `None` when the
+    /// setting holds no duration.
+    pub fn purge_after(
+        &self,
+        values: &jadpo_runtime::config::ConfigValues,
+        purge: &jadpo_std::write::PurgePlan,
+    ) -> Option<i64> {
+        match purge.after_setting {
+            None => Some(purge.after),
+            Some(at) => jadpo_runtime::config::duration_ms(
+                self.plan.config(),
+                &self.validators,
+                values,
+                at,
+            ),
+        }
+    }
+
     /// How each setting stands against `variables` (area 10): set,
     /// defaulted, missing or invalid. Never holds a value.
     pub fn config_standing(

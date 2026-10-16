@@ -238,7 +238,11 @@ impl Plan {
         let purges: Vec<PurgePlan> = model
             .entities
             .iter()
-            .filter_map(|entity| purge::plan(model, entity))
+            .filter_map(|entity| {
+                purge::plan(model, entity, &|name| {
+                    config.fields.iter().position(|field| field.name == name).and_then(|at| u32::try_from(at).ok())
+                })
+            })
             .collect();
         let mut constants = Vec::new();
         let mut callables = Vec::with_capacity(found.len());

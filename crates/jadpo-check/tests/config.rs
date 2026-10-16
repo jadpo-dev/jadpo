@@ -603,3 +603,19 @@ fn a_url_is_a_web_address() {
         CLEAN
     );
 }
+
+// --- retention ------------------------------------------------------------------------------
+
+#[test]
+fn a_purge_period_is_a_duration_setting() {
+    let with = |after: &str| {
+        rules(&format!(
+            "config {{\n    retention: Duration {{\n        default: 30d\n    }}\n    label: Text {{\n        default: \"x\"\n    }}\n    token: Text {{\n        secret: true\n    }}\n}}\n\nentity Note {{\n    id: Uuid\n    hidden_at: Instant?\n\n    lifecycle: {{\n        visible: hidden_at == none\n        purge: {{\n            after: {after}\n            since: hidden_at\n        }}\n    }}\n}}\n"
+        ))
+    };
+    assert_eq!(with("30d"), CLEAN);
+    assert_eq!(with("config.retention"), CLEAN);
+    assert_eq!(with("config.label"), ["data.lifecycle_purge_after"]);
+    assert_eq!(with("config.token"), ["configuration.secret_flow"]);
+    assert_eq!(with("config.retentoin"), ["configuration.field_unknown"]);
+}
