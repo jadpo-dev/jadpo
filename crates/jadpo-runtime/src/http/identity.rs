@@ -45,7 +45,10 @@ use jadpo_value::Value;
 use super::{Request, Response};
 use crate::ctx::{Caller, SessionEffect};
 use crate::read::Interrupt;
-use crate::{Ctx, Fault, FaultKind, Isolation, SqlValue, StoreError, Stored};
+use crate::{
+    ActionBody, Ctx, Fault, FaultKind, Isolation, LocalFuture, Outcome, SqlValue, StoreError,
+    Stored, action,
+};
 
 /// The runtime's own failures for signing in (area 8, "Failures").
 pub(crate) const AUTHENTICATION_REQUIRED: (u16, &str, &str) =
@@ -684,6 +687,53 @@ pub async fn issued(
         items.push(Value::record(ty, fields));
     }
     Stored::Value(Value::list(items))
+}
+
+/// A `GET` route that lists tokens or keys itself (area 8, "Listing tokens
+/// and keys from a `GET`"): `holder`'s, as `sessions.tokens` and
+/// `Service.keys` list them in an action, in a boundary of its own as a
+/// one-statement read at repeatable read, limited by the holder's record's
+/// `read` grants like any query.
+pub async fn list(
+    ctx: &mut Ctx<'_>,
+    plan: Option<&IdentityPlan>,
+    keys: bool,
+    holder: &Value,
+) -> Stored {
+    let mut alone = Listing { plan, keys, holder };
+    match action(ctx, &mut alone).await {
+        Outcome::Value(value) => Stored::Value(value),
+        Outcome::Failed(failure) => Stored::Failed(failure),
+        Outcome::Fault(fault) => Stored::Fault(fault),
+        Outcome::Assertion(_) => Stored::Fault(ctx.fault(
+            FaultKind::Defect("an assertion from a listing".into()),
+            crate::Frame::ENTRY,
+        )),
+    }
+}
+
+/// The listing as its boundary's body.
+struct Listing<'o> {
+    plan: Option<&'o IdentityPlan>,
+    keys: bool,
+    holder: &'o Value,
+}
+
+impl<'p> ActionBody<'p> for Listing<'_> {
+    fn isolation(&self) -> Isolation {
+        Isolation::RepeatableRead
+    }
+
+    fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
+        Box::pin(async move {
+            match issued(ctx, self.plan, self.keys, self.holder, crate::Frame::ENTRY).await {
+                Stored::Value(value) => Outcome::Value(value),
+                Stored::Failed(failure) => Outcome::Failed(failure),
+                Stored::Conflict { cause, .. } => Outcome::Failed(cause),
+                Stored::Fault(fault) => Outcome::Fault(fault),
+            }
+        })
+    }
 }
 
 /// `sessions.revoke_token(token_id)` or `Service.revoke_key(key_id)` at

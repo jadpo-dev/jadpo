@@ -195,7 +195,7 @@ impl Body<'_> {
                 SessionOp::Start => "starts the session of the request a route answers".to_string(),
                 SessionOp::End => "ends the session of the request a route answers".to_string(),
                 SessionOp::Tokens | SessionOp::Keys => format!(
-                    "reads the {} the runtime keeps, which only an action, run by a route or another action, reads",
+                    "reads the {} the runtime keeps, which an action reads, or a `GET` route that runs it",
                     if op == SessionOp::Tokens {
                         "tokens"
                     } else {
@@ -213,10 +213,17 @@ impl Body<'_> {
                     format!("{who} can't call `{written}`"),
                 )
                 .at(span, "outside an action")
-                .reason(format!("`{written}` {does}, so only an action calls it."))
+                .reason(if op.reads_only() {
+                    format!("`{written}` {does}.")
+                } else {
+                    format!("`{written}` {does}, so only an action calls it.")
+                })
                 .next(match op {
                     SessionOp::Start | SessionOp::End => {
                         format!("Call `{written}` in the action a sign-in or sign-out route runs")
+                    }
+                    SessionOp::Tokens | SessionOp::Keys => {
+                        format!("Call `{written}` in an action, or run it from a `GET` route")
                     }
                     _ => format!("Call `{written}` in an action"),
                 }),
@@ -244,36 +251,12 @@ impl Body<'_> {
             // Nothing to issue for: what is missing is reported where it
             // is declared, or here when nothing is.
             if !declared {
-                let (needs, declare) = match method {
-                    jadpo_std::AuthenticationMethod::BrowserSession if op == SessionOp::End => (
-                        "browser sessions or API tokens",
-                        "A session is a browser session, which `authentication { browser_session: { cookie: \"<name>\" } }` declares, or an API token, which `api_token: {}` declares.",
-                    ),
-                    jadpo_std::AuthenticationMethod::BrowserSession => (
-                        "browser sessions",
-                        "A session is a browser session, which `authentication { browser_session: { cookie: \"<name>\" } }` declares.",
-                    ),
-                    jadpo_std::AuthenticationMethod::ApiToken => (
-                        "API tokens",
-                        "An API token signs a user in from the application's own clients, which `authentication { api_token: {} }` declares.",
-                    ),
-                    _ => (
-                        "service keys",
-                        "A service key signs a service in, which `authentication { service_key: {} }` declares.",
-                    ),
-                };
-                self.out.push(
-                    Diagnostic::new(
-                        &rule::TYPE_AUTH_SESSIONS_CONTEXT,
-                        format!("`{written}` needs {needs}"),
-                    )
-                    .at(span, format!("no `{}` declared", method.name()))
-                    .reason(declare)
-                    .next(format!(
-                        "Declare `{}:` in `authentication.jadpo`",
-                        method.name()
-                    )),
-                );
+                self.out.push(crate::identity::needs_method(
+                    written,
+                    method,
+                    op == SessionOp::End,
+                    span,
+                ));
             }
             return failed(self);
         };

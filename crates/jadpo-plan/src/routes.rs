@@ -123,7 +123,14 @@ pub(crate) fn table(
             .output
             .as_ref()
             .map(|ty| codecs.codec(&jadpo_check::graph::type_ref(&lookup, ty)));
-        let (run, keys) = if route.run.query {
+        let (run, keys) = if let Some(op) = route.run.generated {
+            (
+                Run::Listing {
+                    keys: op.on_service(),
+                },
+                None,
+            )
+        } else if route.run.query {
             let Some(query) = queries.iter().find(|query| query.name == route.run.name) else {
                 continue;
             };
@@ -236,6 +243,8 @@ enum Made {
     Set(TypeRef),
     Map(TypeRef, TypeRef),
     Page(TypeRef),
+    /// `IssuedToken` or `IssuedKey` (area 8).
+    Issued(&'static str),
     Unknown,
 }
 
@@ -389,6 +398,14 @@ impl Codecs<'_> {
             Made::Page(item) => Codec::Page {
                 item: self.codec(&item),
             },
+            Made::Issued(name) => {
+                let shape = self.types.issued_shape(name);
+                let fields = jadpo_std::http::ISSUED_FIELDS
+                    .iter()
+                    .map(|(_, builtin)| self.codec(&TypeRef::Builtin(*builtin)))
+                    .collect();
+                Codec::Object { shape, fields }
+            }
             Made::Unknown => self.made_unknown(),
         }
     }
@@ -439,7 +456,12 @@ impl Codecs<'_> {
                 TypeRef::Std(name, mut args) if name == "Page" && args.len() == 1 => {
                     return Made::Page(args.remove(0));
                 }
-                TypeRef::Std(name, args) if args.is_empty() => return Made::StdEnum(name),
+                TypeRef::Std(name, args) if args.is_empty() => {
+                    return match routes::wire::issued_name(&name) {
+                        Some(issued) => Made::Issued(issued),
+                        None => Made::StdEnum(name),
+                    };
+                }
                 _ => return Made::Unknown,
             }
         }

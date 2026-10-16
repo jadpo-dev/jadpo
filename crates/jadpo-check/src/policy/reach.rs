@@ -278,6 +278,46 @@ fn reached(
     (out, any)
 }
 
+/// What a route that lists a user's tokens or a service's keys itself
+/// (`sessions.tokens`, `Service.keys`; area 8) reaches: a read of the
+/// holder's record, the grant its listing is limited by (area 9, question
+/// 8).
+fn generated_reach(
+    db: &dyn Db,
+    project: Project,
+    access: &Access,
+    op: SessionOp,
+) -> (Vec<Reached>, bool) {
+    let identity = crate::identity::identity(db, project);
+    let user = identity
+        .variant(PrincipalKind::User)
+        .map(|v| v.entity.clone());
+    let service = identity
+        .variant(PrincipalKind::Service)
+        .map(|v| v.entity.clone());
+    let Some(Act::Entity(entity, effect)) = session_act(op, user.as_deref(), service.as_deref())
+    else {
+        return (Vec::new(), true);
+    };
+    let tenant = access
+        .entity(&entity)
+        .is_some_and(|policy| policy.tenancy.is_some());
+    let grants = access
+        .entity(&entity)
+        .map(|policy| policy.grants(effect).to_vec())
+        .unwrap_or_default();
+    (
+        vec![Reached {
+            entity,
+            effect,
+            grants,
+            tenant,
+            field: None,
+        }],
+        true,
+    )
+}
+
 /// What `effect` does to an entity, for a headline: "creates a `Note`".
 fn doing(effect: Effect, entity: &str) -> String {
     match effect {
@@ -324,7 +364,10 @@ pub fn route_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     None => continue,
                 }
             };
-            let (reached, any) = reached(db, project, access, &run, route.run.query);
+            let (reached, any) = match route.run.generated {
+                Some(op) => generated_reach(db, project, access, op),
+                None => reached(db, project, access, &run, route.run.query),
+            };
             let listed = (!route.run.query)
                 .then(|| access.root.action(&run))
                 .flatten();
