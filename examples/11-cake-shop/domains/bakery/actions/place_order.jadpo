@@ -1,0 +1,63 @@
+// The action takes the signed-in customer as an ordinary parameter, a
+// `Principal.user`, so its signature says it needs one and a test passes
+// one in. The route passes `current_principal.user`; only a route can
+// read who is calling.
+//
+// `Order`'s `create:` names only `customer_id`, so the order must be the
+// caller's own: the compiler checks that `customer_id` comes from the
+// caller, and the database checks it again as it writes.
+
+use bakery/entities { Cake, CakeNotFound, Order, Shop, ShopNotFound }
+use bakery/types { AppVersion, CakeCount, CakeView, OrderView }
+use bakery/failures { CakeOffMenu }
+
+/// Orders cakes for collection from a shop.
+action place_order(
+    input: PlaceOrder,
+    customer: Principal.user
+) fails CakeNotFound, CakeOffMenu, ShopNotFound -> OrderView {
+    var cake: Cake = attempt Cake.get(input.cake_id)
+    if (not cake.on_menu) {
+        reject CakeOffMenu {
+            cake_id: cake.id
+        }
+    }
+    var order: Order = attempt Order.create {
+        set: {
+            customer_id: customer.id
+            shop_id: input.shop_id
+            cake_id: cake.id
+            quantity: input.quantity
+            collect_on: input.collect_on
+            placed_with: input.app_version
+        }
+    }
+    return OrderView {
+        id: order.id
+        quantity: order.quantity
+        collect_on: order.collect_on
+        cake: CakeView {
+            id: cake.id
+            name: cake.name
+            flavour: cake.flavour
+            price: cake.price
+        }
+    }
+}
+
+// A `POST` reads its input from the JSON body, except a field that says
+// `header:`, which is read from that request header. The phone app sends
+// its version on every request, as apps usually do, and the order keeps
+// it.
+
+/// What placing an order takes.
+type PlaceOrder = Input {
+    shop_id: Shop.id
+    cake_id: Cake.id
+    quantity: CakeCount
+    collect_on: CalendarDate
+    app_version: AppVersion {
+        header: "X-App-Version"
+        optional: true
+    }
+}

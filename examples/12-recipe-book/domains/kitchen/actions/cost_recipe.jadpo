@@ -1,0 +1,26 @@
+// `batch_cost` narrows `update` to owners. An author may change their
+// recipe but not its cost, so for them the whole write is refused with
+// 403; nothing is dropped silently. The record this update returns is
+// one only owners can have changed, so its cost may go back to them.
+
+use kitchen/entities { Recipe, RecipeNotFound }
+use kitchen/types { Pence, RecipeCosting }
+
+/// Sets what a batch of a recipe costs.
+action cost_recipe(recipe_id: Recipe.id, input: CostRecipe) fails RecipeNotFound -> RecipeCosting {
+    var recipe: Recipe = attempt Recipe.update(recipe_id) {
+        set: {
+            batch_cost: input.batch_cost
+        }
+    }
+    return RecipeCosting {
+        id: recipe.id
+        name: recipe.name
+        batch_cost: recipe.batch_cost
+    }
+}
+
+/// What a batch costs now.
+type CostRecipe = Input {
+    batch_cost: Pence
+}

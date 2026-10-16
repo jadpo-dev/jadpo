@@ -1,0 +1,24 @@
+// The principal's user entity: `app.jadpo` names `email` as the subject a
+// signed-in customer is found by, so it must be unique.
+//
+// `read: [id]` grants a customer their own record and nobody else's: on
+// the user entity itself, `id` is the caller. Anyone may sign up, so
+// `create` is public.
+
+use bakery/types { CustomerName, CustomerStatus }
+
+/// Someone who orders cakes.
+entity Customer {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+    name: CustomerName
+    status: CustomerStatus
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        update: [id]
+    }
+}

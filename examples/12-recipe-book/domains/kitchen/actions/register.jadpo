@@ -1,0 +1,15 @@
+use kitchen/entities { Baker }
+use kitchen/types { Handle }
+use kitchen/failures { HandleTaken }
+
+/// Makes someone a baker in the recipe book.
+action register(handle: Handle) fails HandleTaken -> Baker {
+    return attempt Baker.create {
+        set: {
+            handle: handle
+        }
+        conflict: {
+            Baker.handle: HandleTaken
+        }
+    }
+}

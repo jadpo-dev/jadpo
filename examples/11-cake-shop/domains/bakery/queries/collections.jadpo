@@ -1,0 +1,13 @@
+use bakery/entities { Order }
+use bakery/types { CollectionDay, OrderView }
+
+/// The orders the calling shop hands over on one day.
+query collections(day: CollectionDay) -> List<OrderView> {
+    from: Order
+    where: Order.collect_on == day.collect_on
+    order: [Order.placed_at asc]
+    limit: 100
+    include: {
+        cake: Order.cake_id
+    }
+}

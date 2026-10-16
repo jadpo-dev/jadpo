@@ -1,0 +1,12 @@
+// A customer signed in on the website links the phone app: the website
+// shows the token, say as a QR code, and the app keeps it. It is shown
+// this once; the language keeps only its digest.
+
+use bakery/types { PhoneLinked }
+
+/// Gives the phone app a token for the signed-in customer.
+action link_phone(customer: Principal.user) -> PhoneLinked {
+    return PhoneLinked {
+        token: sessions.issue_token(customer.id)
+    }
+}

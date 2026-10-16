@@ -1,0 +1,9 @@
+// An output has one shape for everyone who may call what returns it, so
+// the card leaves out `batch_cost`, which only owners may read.
+
+use kitchen/entities { Recipe }
+
+/// A recipe as all of a bakery's staff see it.
+type RecipeCard = Output {
+    pick: [Recipe.id, Recipe.name, Recipe.author_id]
+}

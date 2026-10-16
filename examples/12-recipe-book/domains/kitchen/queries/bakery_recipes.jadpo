@@ -1,0 +1,10 @@
+use kitchen/entities { Bakery, Recipe }
+use kitchen/types { RecipeCard }
+
+/// A bakery's recipes, by name.
+query bakery_recipes(bakery_id: Bakery.id) -> List<RecipeCard> {
+    from: Recipe
+    where: Recipe.bakery_id == bakery_id
+    order: [Recipe.name asc]
+    limit: 200
+}

@@ -1,0 +1,48 @@
+// The app's API accepts only its tokens, so `as:` signs in with a real
+// API token sent as `Authorization: Bearer`.
+
+use bakery/entities { Customer }
+use bakery/types { OrderView, ShopFront }
+use bakery/actions { PlaceOrder, place_order, register }
+use bakery/fixtures { market_street }
+
+test "the app lists the customer's orders with its token" {
+    var front: ShopFront = market_street()
+    var ann: Customer = attempt register("ann@example.test", "Ann")
+    var order: OrderView = attempt place_order(
+        PlaceOrder {
+            shop_id: front.shop.id
+            cake_id: front.lemon.id
+            quantity: 1
+            collect_on: "2026-11-07"
+            app_version: "2.4.1"
+        },
+        Principal.user(ann)
+    )
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/app/orders"
+        as: Principal.user(ann)
+    }
+    assert response.status == 200
+    assert response.output == [order]
+}
+
+test "an app write without an Idempotency-Key is refused" {
+    var front: ShopFront = market_street()
+    var ann: Customer = attempt register("ann@example.test", "Ann")
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/app/orders"
+        as: Principal.user(ann)
+        input: PlaceOrder {
+            shop_id: front.shop.id
+            cake_id: front.lemon.id
+            quantity: 1
+            collect_on: "2026-11-07"
+            app_version: "2.4.1"
+        }
+    }
+    assert response.status == 400
+    assert response.code == "invalid_request"
+}

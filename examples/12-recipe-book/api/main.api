@@ -1,0 +1,143 @@
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 1
+
+POST /account/sign-up
+    authentication: none
+    input: SignUp (body)
+    status: 204
+    fails: handle_taken 409
+
+GET /bakeries
+    output: List<BakeryView>
+    status: 200
+
+POST /bakeries
+    input: NewBakery (body)
+    output: BakeryView
+    status: 201
+
+GET /bakeries/{bakery_id: Uuid}/recipes
+    output: List<RecipeCard>
+    status: 200
+
+POST /bakeries/{bakery_id: Uuid}/recipes
+    input: WriteRecipe (body)
+    output: RecipeCard
+    status: 201
+    fails: bakery_not_found 404
+
+GET /bakeries/{bakery_id: Uuid}/staff
+    output: List<StaffView>
+    status: 200
+
+POST /bakeries/{bakery_id: Uuid}/staff
+    input: NewStaff (body)
+    output: StaffView
+    status: 201
+    fails: baker_not_found 404, bakery_not_found 404
+
+GET /ingredients
+    output: List<IngredientView>
+    status: 200
+
+POST /ingredients
+    input: ListIngredient (body)
+    output: IngredientView
+    status: 201
+    fails: ingredient_listed 409
+
+PATCH /recipes/{recipe_id: Uuid}
+    input: RenameRecipe (body)
+    output: RecipeCard
+    status: 200
+    fails: recipe_not_found 404
+
+PUT /recipes/{recipe_id: Uuid}/cost
+    input: CostRecipe (body)
+    output: RecipeCosting
+    status: 200
+    fails: recipe_not_found 404
+
+POST /recipes/{recipe_id: Uuid}/hand-over
+    input: HandOver (body)
+    output: RecipeCard
+    status: 200
+    fails: baker_not_found 404, recipe_not_found 404
+
+DELETE /staff/{staff_id: Uuid}
+    status: 204
+    fails: staff_member_not_found 404
+
+enum Allergen
+    gluten
+    milk
+    eggs
+    nuts
+
+output BakeryView
+    id: Uuid
+    name: Text { min_length: 1, max_length: 80 }
+
+input CostRecipe
+    batch_cost: Int { min: 0 }
+
+input HandOver
+    to: Uuid
+
+output IngredientView
+    id: Uuid
+    name: Text { min_length: 1, max_length: 60 }
+    allergen: Allergen?
+
+input ListIngredient
+    name: Text { min_length: 1, max_length: 60 }
+    allergen: Allergen?
+
+input NewBakery
+    name: Text { min_length: 1, max_length: 80 }
+
+input NewStaff
+    baker_id: Uuid
+    role: StaffRole
+
+output RecipeCard
+    id: Uuid
+    name: Text { min_length: 1, max_length: 80 }
+    author_id: Uuid
+
+output RecipeCosting
+    id: Uuid
+    name: Text { min_length: 1, max_length: 80 }
+    batch_cost: Int { min: 0 }
+
+input RenameRecipe
+    name: Text { min_length: 1, max_length: 80 }
+
+input SignUp
+    handle: Text { min_length: 3, max_length: 40 }
+
+enum StaffRole
+    owner
+    baker
+    counter
+
+output StaffView
+    id: Uuid
+    baker_id: Uuid
+    role: StaffRole
+
+input WriteRecipe
+    name: Text { min_length: 1, max_length: 80 }
+
+failure baker_not_found 404
+
+failure bakery_not_found 404
+
+failure handle_taken 409 "That handle is taken."
+
+failure ingredient_listed 409 "That ingredient is already listed."
+
+failure recipe_not_found 404
+
+failure staff_member_not_found 404

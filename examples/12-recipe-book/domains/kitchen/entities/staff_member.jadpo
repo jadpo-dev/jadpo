@@ -1,0 +1,37 @@
+// A membership entity says where its role is held (`scope`), who holds it
+// (`member`) and which field holds it (`role`). Holding any role in a
+// bakery also makes the bakery one of the caller's tenants. Removing the
+// record takes the role away on the next request.
+//
+// Only owners take people on; anyone may see and end their own place.
+
+use kitchen/entities { Baker, Bakery }
+use kitchen/types { StaffRole }
+
+/// A baker's role in a bakery.
+entity StaffMember {
+    id: Uuid
+    bakery_id: Bakery.id {
+        on_delete: OnDelete.cascade
+    }
+    baker_id: Baker.id {
+        on_delete: OnDelete.cascade
+    }
+    role: StaffRole
+    joined_at: Instant {
+        generated: Generated.on_create
+    }
+
+    membership: {
+        scope: bakery_id
+        member: baker_id
+        role: role
+    }
+
+    policy: {
+        create: [StaffRole.owner]
+        read: [StaffRole.owner, baker_id]
+        update: [StaffRole.owner]
+        delete: [StaffRole.owner, baker_id]
+    }
+}

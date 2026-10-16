@@ -1,0 +1,13 @@
+// No query here names the caller or a bakery check: policy adds both to
+// the `WHERE`, so each caller sees only the bakeries where they hold a
+// role.
+
+use kitchen/entities { Bakery }
+use kitchen/types { BakeryView }
+
+/// The bakeries the caller works in, by name.
+query my_bakeries() -> List<BakeryView> {
+    from: Bakery
+    order: [Bakery.name asc]
+    limit: 50
+}

@@ -1,0 +1,46 @@
+// The counter API is for the shops' own tills, which sign in with a key.
+// `current_principal.service` selects a shop, so a customer is refused.
+//
+// Issuing a key says `authentication: RouteAuthentication.fresh`, which
+// checks the shop's record on this request even once a revocation delay
+// lets other routes skip that read: a closed shop can't mint itself a
+// new key.
+
+use bakery/entities { Shop }
+use bakery/types { CollectionDay, KeyId, NewShopKey, OrderView, ShopKeyRequest }
+use bakery/actions { issue_shop_key, revoke_shop_key }
+use bakery/queries { collections }
+
+/// A shop's counter.
+routes Counter {
+    prefix: /counter
+    api: counter
+
+    /// The orders this shop hands over on a day.
+    GET /collections {
+        input: CollectionDay
+        output: List<OrderView>
+        run: collections(input)
+    }
+
+    /// The shop's keys that haven't expired, oldest first.
+    GET /keys {
+        output: List<IssuedKey>
+        run: Shop.keys(current_principal.service.id)
+    }
+
+    /// Issues a new key, shown once.
+    POST /keys {
+        authentication: RouteAuthentication.fresh
+        input: ShopKeyRequest
+        output: NewShopKey
+        status: SuccessStatus.created
+        run: issue_shop_key(input, current_principal.service)
+    }
+
+    /// Revokes a key.
+    DELETE /keys/{key_id: KeyId} {
+        status: SuccessStatus.no_content
+        run: revoke_shop_key(key_id)
+    }
+}

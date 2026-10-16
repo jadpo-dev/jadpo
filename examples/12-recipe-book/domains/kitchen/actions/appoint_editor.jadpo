@@ -1,0 +1,15 @@
+// No route runs this, and nothing grants `create` on `PlatformStaff`: the
+// recipe book's operators appoint its editors from their own tools.
+
+use kitchen/entities { Baker, BakerNotFound, PlatformStaff }
+use kitchen/types { PlatformRole }
+
+/// Makes a baker one of the recipe book's editors.
+action appoint_editor(baker_id: Baker.id) fails BakerNotFound -> PlatformStaff {
+    return attempt PlatformStaff.create {
+        set: {
+            baker_id: baker_id
+            role: PlatformRole.editor
+        }
+    }
+}

@@ -1,0 +1,9 @@
+// A failure's kind sets the status a client gets: `conflict` is 409. The
+// API record lists every failure a route can answer, with its status, so
+// a reviewer sees each one without opening the action.
+
+/// Someone has already signed up with that address.
+type EmailTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That address already has an account."
+}

@@ -1,0 +1,2 @@
+/// One of a shop's keys, as `GET /counter/keys` lists it.
+type KeyId = Uuid {}

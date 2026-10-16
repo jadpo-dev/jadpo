@@ -1,0 +1,9 @@
+// Only an output's declared fields are ever sent: `on_menu` stays on the
+// server.
+
+use bakery/entities { Cake }
+
+/// A cake as the menu shows it.
+type CakeView = Output {
+    pick: [Cake.id, Cake.name, Cake.flavour, Cake.price]
+}

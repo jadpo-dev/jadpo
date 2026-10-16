@@ -1,0 +1,14 @@
+use kitchen/actions { SignUp, sign_up }
+
+/// Signing up.
+routes Account {
+    prefix: /account
+
+    /// Anyone may sign up; the response sets the session's cookies.
+    POST /sign-up {
+        authentication: RouteAuthentication.none
+        input: SignUp
+        status: SuccessStatus.no_content
+        run: sign_up(input)
+    }
+}

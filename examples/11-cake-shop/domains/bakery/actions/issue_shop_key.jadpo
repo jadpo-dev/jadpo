@@ -1,0 +1,14 @@
+// A counter rotates its key without stopping: it asks for a new one while
+// signed in with the old, starts using it, then revokes the old. Keys
+// overlap until each expires, and issuing one needs `update` on the shop,
+// which `Shop` grants only to the shop itself.
+
+use bakery/entities { Shop }
+use bakery/types { NewShopKey, ShopKeyRequest }
+
+/// Issues the signed-in counter a new key.
+action issue_shop_key(input: ShopKeyRequest, counter: Principal.service) -> NewShopKey {
+    return NewShopKey {
+        key: Shop.issue_key(counter.id, input.expires_at)
+    }
+}

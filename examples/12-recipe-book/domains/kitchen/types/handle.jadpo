@@ -1,0 +1,5 @@
+/// How a baker signs in.
+type Handle = Text {
+    min_length: 3
+    max_length: 40
+}

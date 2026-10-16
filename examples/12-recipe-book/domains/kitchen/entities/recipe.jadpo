@@ -1,0 +1,40 @@
+// The record's grants mix roles and a user field: an owner may change any
+// of the bakery's recipes, a baker only the ones they wrote. A role
+// applies through the record's reference to the membership's scope,
+// `bakery_id`, the same reference tenancy uses.
+//
+// A field can narrow its record's grants, never widen them. The cost of a
+// batch is for owners only; `old_reference` is for no request at all.
+
+use kitchen/entities { Baker, Bakery }
+use kitchen/types { OldReference, Pence, RecipeName, StaffRole }
+
+/// How a bakery makes something.
+entity Recipe {
+    id: Uuid
+    bakery_id: Bakery.id {
+        on_delete: OnDelete.cascade
+    }
+    author_id: Baker.id {
+        on_delete: OnDelete.restricted
+    }
+    name: RecipeName
+    batch_cost: Pence {
+        policy: {
+            read: [StaffRole.owner]
+            update: [StaffRole.owner]
+        }
+    }
+    // Brought over from the bakery's old system by an import, which runs
+    // on the server; no request reads or writes it.
+    old_reference: OldReference? {
+        policy: FieldAccess.server_only
+    }
+
+    policy: {
+        create: [StaffRole.owner, StaffRole.baker]
+        read: [StaffRole.owner, StaffRole.baker, StaffRole.counter]
+        update: [StaffRole.owner, author_id]
+        delete: [StaffRole.owner]
+    }
+}

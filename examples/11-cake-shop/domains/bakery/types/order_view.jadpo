@@ -1,0 +1,8 @@
+use bakery/entities { Order }
+use bakery/types { CakeView }
+
+/// An order as its customer sees it, with the cake it is for.
+type OrderView = Output {
+    pick: [Order.id, Order.quantity, Order.collect_on]
+    cake: CakeView
+}

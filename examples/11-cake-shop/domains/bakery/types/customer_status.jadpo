@@ -1,0 +1,5 @@
+/// Whether a customer may still sign in.
+type CustomerStatus = Enum {
+    active
+    suspended
+}

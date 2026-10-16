@@ -1,0 +1,11 @@
+use bakery/entities { Cake }
+
+
+/// The cake is no longer on the menu, so it can't be ordered.
+type CakeOffMenu = Failure {
+    kind: FailureKind.rejected
+    message: "That cake is no longer on the menu."
+    client: {
+        cake_id: Cake.id
+    }
+}

@@ -1,0 +1,13 @@
+// `StaffMember`'s `read:` names owners and the member themselves, so an owner
+// sees the whole team and anyone else only their own place.
+
+use kitchen/entities { Bakery, StaffMember }
+use kitchen/types { StaffView }
+
+/// A bakery's staff in the order they joined, as far as the caller may see them.
+query team(bakery_id: Bakery.id) -> List<StaffView> {
+    from: StaffMember
+    where: StaffMember.bakery_id == bakery_id
+    order: [StaffMember.joined_at asc]
+    limit: 100
+}

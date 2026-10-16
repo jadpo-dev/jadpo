@@ -1,0 +1,4 @@
+/// Ends the session or token the request came with.
+action sign_out() -> Unit {
+    sessions.end()
+}

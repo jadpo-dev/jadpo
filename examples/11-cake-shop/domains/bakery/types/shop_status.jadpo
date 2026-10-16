@@ -1,0 +1,5 @@
+/// Whether a shop is trading.
+type ShopStatus = Enum {
+    open
+    closed
+}

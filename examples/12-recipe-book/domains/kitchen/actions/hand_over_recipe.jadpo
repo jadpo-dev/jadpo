@@ -1,0 +1,28 @@
+// Changing `author_id` hands the recipe to someone else, which an
+// ordinary update can't do. This action is listed under `actions:` with
+// `Recipe.author_id`: only the recipe's current author may run it.
+
+use kitchen/entities { Baker, BakerNotFound, Recipe, RecipeNotFound }
+use kitchen/types { RecipeCard }
+
+/// Hands a recipe to another baker.
+action hand_over_recipe(
+    recipe_id: Recipe.id,
+    input: HandOver
+) fails BakerNotFound, RecipeNotFound -> RecipeCard {
+    var recipe: Recipe = attempt Recipe.update(recipe_id) {
+        set: {
+            author_id: input.to
+        }
+    }
+    return RecipeCard {
+        id: recipe.id
+        name: recipe.name
+        author_id: recipe.author_id
+    }
+}
+
+/// Who takes a recipe on.
+type HandOver = Input {
+    to: Baker.id
+}

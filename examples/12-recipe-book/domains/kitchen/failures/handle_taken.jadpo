@@ -1,0 +1,5 @@
+/// Another baker already signs in with that handle.
+type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}

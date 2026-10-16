@@ -1,0 +1,14 @@
+use bakery/types { ShopView }
+use bakery/queries { open_shops }
+
+/// Where cakes are collected.
+routes Shops {
+    prefix: /shops
+
+    /// The shops trading today.
+    GET / {
+        authentication: RouteAuthentication.none
+        output: List<ShopView>
+        run: open_shops()
+    }
+}

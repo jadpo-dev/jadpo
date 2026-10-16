@@ -1,0 +1,6 @@
+use bakery/entities { Shop }
+
+/// A shop a customer can collect from.
+type ShopView = Output {
+    pick: [Shop.id, Shop.name]
+}

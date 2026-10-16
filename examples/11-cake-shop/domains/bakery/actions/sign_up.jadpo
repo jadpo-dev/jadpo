@@ -1,0 +1,23 @@
+// `sessions.start` keeps a browser session for the new customer in this
+// action's transaction, so an action that fails starts none, and the
+// route's response sets its cookies once the action commits. Checking who
+// someone is (a magic link, a provider's sign-in) is an integration's job
+// (area 11); this shop signs a customer in when they sign up.
+
+use bakery/entities { Customer }
+use bakery/failures { EmailTaken }
+use bakery/actions { register }
+
+/// Makes someone a customer and signs them in.
+action sign_up(input: SignUp) fails EmailTaken -> Unit {
+    var customer: Customer = attempt register(input.email, input.name)
+    sessions.start(customer.id)
+}
+
+// An action's own `Input` sits beside it, in the same file, since nothing
+// else takes it.
+
+/// What signing up takes.
+type SignUp = Input {
+    pick: [Customer.email, Customer.name]
+}

@@ -1,0 +1,47 @@
+// Route tests prove policy: each request signs in as someone, through a
+// real browser session, and gets exactly what that person would.
+
+use kitchen/entities { Baker }
+use kitchen/types { BakeryName, KitchenStaff, NewBakery }
+use kitchen/actions { register }
+use kitchen/fixtures { northwind }
+
+test "anyone signed in may open a bakery, and owns it" {
+    var dee: Baker = attempt register("dee")
+    var opened: Response = request {
+        method: HttpMethod.post
+        path: "/bakeries"
+        as: Principal.user(dee)
+        input: NewBakery {
+            name: "Southbank"
+        }
+    }
+    assert opened.status == 201
+    var listed: Response = request {
+        method: HttpMethod.get
+        path: "/bakeries"
+        as: Principal.user(dee)
+    }
+    var names: List<BakeryName> = match listed.output {
+        some(bakeries) -> collection.map(bakeries, bakery -> bakery.name)
+        none -> []
+    }
+    assert names == ["Southbank"]
+}
+
+test "a bakery is listed only to the people who work there" {
+    var crew: KitchenStaff = northwind()
+    var outsider: Baker = attempt register("eve")
+    var by_counter: Response = request {
+        method: HttpMethod.get
+        path: "/bakeries"
+        as: Principal.user(crew.counter)
+    }
+    assert by_counter.output == [crew.bakery]
+    var by_outsider: Response = request {
+        method: HttpMethod.get
+        path: "/bakeries"
+        as: Principal.user(outsider)
+    }
+    assert by_outsider.output == []
+}

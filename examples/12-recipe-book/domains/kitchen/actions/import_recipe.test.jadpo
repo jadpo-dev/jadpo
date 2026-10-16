@@ -1,0 +1,19 @@
+// A test's call without a caller runs without policy, as server work
+// does, so it may set and read a field no request may.
+
+use kitchen/entities { Recipe }
+use kitchen/types { KitchenStaff }
+use kitchen/fixtures { northwind }
+
+test "an import keeps the old system's reference" {
+    var crew: KitchenStaff = northwind()
+    var rye: Recipe = attempt import_recipe(
+        crew.bakery.id,
+        crew.baker.id,
+        "Rye sourdough",
+        450,
+        "R-000123"
+    )
+    var stored: Recipe = attempt Recipe.get(rye.id)
+    assert stored.old_reference == "R-000123"
+}

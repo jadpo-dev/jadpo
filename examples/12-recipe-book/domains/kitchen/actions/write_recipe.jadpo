@@ -1,0 +1,32 @@
+// A recipe's cost starts at nothing: setting it is an owner's job, and a
+// create that set it from a baker's request would be refused.
+
+use kitchen/entities { Bakery, BakeryNotFound, Recipe }
+use kitchen/types { RecipeCard, RecipeName }
+
+/// Adds a recipe to a bakery, written by the caller.
+action write_recipe(
+    bakery_id: Bakery.id,
+    input: WriteRecipe,
+    author: Principal.user
+) fails BakeryNotFound -> RecipeCard {
+    var recipe: Recipe = attempt Recipe.create {
+        set: {
+            bakery_id: bakery_id
+            author_id: author.id
+            name: input.name
+            batch_cost: 0
+            old_reference: none
+        }
+    }
+    return RecipeCard {
+        id: recipe.id
+        name: recipe.name
+        author_id: recipe.author_id
+    }
+}
+
+/// What writing a recipe takes.
+type WriteRecipe = Input {
+    name: RecipeName
+}

@@ -1,0 +1,42 @@
+// Ann opens the bakery as herself, so `open_bakery`'s line applies; the
+// staff are taken on without a caller, which runs `take_on` without
+// policy, as any setup in a test may.
+
+use kitchen/entities { Baker }
+use kitchen/types { BakeryView, KitchenStaff, NewBakery, NewStaff, StaffRole, StaffView }
+use kitchen/actions { open_bakery, register, take_on }
+
+/// Northwind Bakery: Ann owns it, Bo bakes and Cy serves.
+fixture northwind() -> KitchenStaff {
+    var ann: Baker = attempt register("ann")
+    var bo: Baker = attempt register("bo_bakes")
+    var cy: Baker = attempt register("cy_serves")
+    var bakery: BakeryView = open_bakery(
+        NewBakery {
+            name: "Northwind"
+        },
+        Principal.user(ann)
+    )
+    var baker: StaffView = attempt take_on(
+        bakery.id,
+        NewStaff {
+            baker_id: bo.id
+            role: StaffRole.baker
+        }
+    )
+    var counter: StaffView = attempt take_on(
+        bakery.id,
+        NewStaff {
+            baker_id: cy.id
+            role: StaffRole.counter
+        }
+    )
+    assert counter.role == StaffRole.counter
+    return KitchenStaff {
+        bakery: bakery
+        owner: ann
+        baker: bo
+        counter: cy
+        baker_place: baker
+    }
+}

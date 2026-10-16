@@ -1,0 +1,12 @@
+// The ways a caller signs in, each one named block. The language owns
+// how each travels and is checked: a cookie for the website, a bearer
+// token for the phone app and a bearer key for a shop's counter. Each is
+// kept only as a digest, so a copy of the database signs no one in.
+
+authentication {
+    browser_session: {
+        cookie: "cake_shop_session"
+    }
+    api_token: {}
+    service_key: {}
+}

@@ -1,0 +1,5 @@
+/// Another shop already has that name.
+type ShopNameTaken = Failure {
+    kind: FailureKind.conflict
+    message: "A shop already has that name."
+}

@@ -1,0 +1,18 @@
+// Letting someone go says `authentication: RouteAuthentication.fresh`: it
+// changes who may do what, so the caller's own record is checked on this
+// request even once a revocation delay lets other routes skip that read.
+
+use kitchen/entities { StaffMember }
+use kitchen/actions { let_go }
+
+/// One person's place in a bakery.
+routes Staff {
+    prefix: /staff
+
+    /// Ends a place: an owner letting someone go, or someone leaving.
+    DELETE /{staff_id: StaffMember.id} {
+        authentication: RouteAuthentication.fresh
+        status: SuccessStatus.no_content
+        run: let_go(staff_id)
+    }
+}

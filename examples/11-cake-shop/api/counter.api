@@ -1,0 +1,52 @@
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 1
+
+GET /counter/collections
+    input: CollectionDay (query)
+    output: List<OrderView>
+    status: 200
+
+GET /counter/keys
+    output: List<IssuedKey>
+    status: 200
+
+POST /counter/keys
+    input: ShopKeyRequest (body)
+    output: NewShopKey
+    status: 201
+
+DELETE /counter/keys/{key_id: Uuid}
+    status: 204
+
+output CakeView
+    id: Uuid
+    name: Text { min_length: 1, max_length: 60 }
+    flavour: Flavour
+    price: Int { min: 0 }
+
+input CollectionDay
+    collect_on: CalendarDate
+
+enum Flavour
+    chocolate
+    lemon
+    carrot
+    coffee
+
+output IssuedKey
+    id: Uuid
+    started_at: Instant
+    ends_at: Instant
+
+output NewShopKey
+    key: ServiceKey
+
+output OrderView
+    id: Uuid
+    quantity: Int { min: 1, max: 12 }
+    collect_on: CalendarDate
+    cake: CakeView
+
+input ShopKeyRequest
+    expires_at: Instant

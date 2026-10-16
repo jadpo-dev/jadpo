@@ -1,0 +1,20 @@
+// The principal's service entity: each shop's counter signs in with a key
+// the language issues, keeps and checks. `update: [id]` lets a shop's own
+// counter issue and revoke its keys, which is what rotating one needs;
+// customers may read every shop, to choose where to collect.
+
+use bakery/types { ShopName, ShopStatus }
+
+/// A shop where customers collect their cakes.
+entity Shop {
+    id: Uuid
+    name: ShopName {
+        unique: true
+    }
+    status: ShopStatus
+
+    policy: {
+        read: [Access.public]
+        update: [id]
+    }
+}

@@ -1,0 +1,39 @@
+// A grant can name a reference on the record. `customer_id` grants the
+// customer it points at, so a customer creates, reads and changes only
+// their own orders; `shop_id` points at a service, so it grants that
+// shop's counter a read of the orders it hands over. Policy adds both to
+// every statement's `WHERE`: no query or action filters by hand.
+//
+// A field a grant names can't change in an ordinary update, since that
+// would hand the order to someone else.
+
+use bakery/entities { Cake, Customer, Shop }
+use bakery/types { AppVersion, CakeCount }
+
+/// Cakes a customer will collect from a shop.
+entity Order {
+    id: Uuid
+    customer_id: Customer.id {
+        on_delete: OnDelete.cascade
+    }
+    shop_id: Shop.id {
+        on_delete: OnDelete.restricted
+    }
+    cake_id: Cake.id {
+        on_delete: OnDelete.restricted
+    }
+    quantity: CakeCount
+    collect_on: CalendarDate
+    // Which build of the phone app placed it, so support can tell an old
+    // app's bug from a new one's; `none` from the website.
+    placed_with: AppVersion?
+    placed_at: Instant {
+        generated: Generated.on_create
+    }
+
+    policy: {
+        create: [customer_id]
+        read: [customer_id, shop_id]
+        update: [customer_id]
+    }
+}

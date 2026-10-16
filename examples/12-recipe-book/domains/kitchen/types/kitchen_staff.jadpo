@@ -1,0 +1,12 @@
+use kitchen/entities { Baker }
+use kitchen/types { BakeryView, StaffView }
+
+/// A bakery with an owner, a baker and someone on the counter.
+type KitchenStaff = Object {
+    bakery: BakeryView
+    owner: Baker
+    baker: Baker
+    counter: Baker
+    // Bo's place, which an owner can end.
+    baker_place: StaffView
+}
