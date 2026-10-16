@@ -1181,7 +1181,7 @@ error: `POST /memos` takes `input:`, a `AddMemo`
    |
 38 |     var response: Response = request {
    |                              ^^^^^^^ doesn't fit the route
-  reason: A request gives the route's method, its path as `jadpo routes` prints it, each placeholder in `params:` and, when the route takes one, its `input:`.
+  reason: A request gives the route's method, its path as `jadpo routes` prints it, each placeholder in `params:` and, when the route takes one, its `input:`; a request but a `GET` may give the `Idempotency-Key` it sends in `idempotency_key:`.
   next: Give the request what its route takes (agent)
   rule: semantic.request_invalid
   help: docs/language/13-testing.html#semantic-request-invalid

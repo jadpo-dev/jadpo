@@ -2003,7 +2003,10 @@ fn a_reference_into_another_tenant_is_refused_without_policy_too() {
             "move_task",
             vec![
                 field(&launch, "id"),
-                Value::record("MoveTask", vec![("project_id".into(), field(&launch, "id"))]),
+                Value::record(
+                    "MoveTask",
+                    vec![("project_id".into(), field(&launch, "id"))],
+                ),
             ],
         )
         .await;
@@ -2122,10 +2125,9 @@ query company_projects(company_id: Company.id) -> List<ProjectCard> {
     let refused = jadpo(&root, &["check"]);
     assert_eq!(refused.code, 1, "{}", refused.stdout);
     assert!(
-        refused
-            .stdout
-            .contains("`company_projects` filters on `Project.budget`, which not every caller may read")
-            && refused.stdout.contains("tests `budget`"),
+        refused.stdout.contains(
+            "`company_projects` filters on `Project.budget`, which not every caller may read"
+        ) && refused.stdout.contains("tests `budget`"),
         "{}",
         refused.stdout
     );

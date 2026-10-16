@@ -198,7 +198,11 @@ async fn request(
         .routes
         .get(route as usize)
         .is_some_and(|plan| plan.method != jadpo_std::HttpMethod::Get);
-    if writes && request.header(jadpo_runtime::http::idempotency::HEADER).is_none() {
+    if writes
+        && request
+            .header(jadpo_runtime::http::idempotency::HEADER)
+            .is_none()
+    {
         let key = match key {
             Some(Value::Text(text)) => Some(text.to_string()),
             Some(_) => None,

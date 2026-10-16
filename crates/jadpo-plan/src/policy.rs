@@ -294,7 +294,8 @@ impl Planner<'_> {
             let tenancy = new(&own.via)?;
             let id = qualified(&entity.table, &field(entity, "id")?.born);
             for child in &self.model.entities {
-                let Some((theirs, _)) = self.access.kept_in_tenant(&child.name, &entity.name) else {
+                let Some((theirs, _)) = self.access.kept_in_tenant(&child.name, &entity.name)
+                else {
                     continue;
                 };
                 for at in &child.fields {

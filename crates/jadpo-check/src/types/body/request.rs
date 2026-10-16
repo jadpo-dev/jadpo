@@ -33,14 +33,7 @@ pub(crate) struct RequestFact {
 }
 
 /// What a `request` block holds.
-const ITEMS: [&str; 6] = [
-    "method",
-    "path",
-    "params",
-    "input",
-    "idempotency_key",
-    "as",
-];
+const ITEMS: [&str; 6] = ["method", "path", "params", "input", "idempotency_key", "as"];
 
 impl Body<'_> {
     /// The type of `response.<field>`; `None` when `receiver` isn't a

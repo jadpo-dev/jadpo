@@ -169,9 +169,12 @@ pub(crate) async fn write(
             (Some(PolicyRefusal::Create), true) if plan.kept_in_tenant => {
                 return Ok(Written::NotPermitted);
             }
-            (Some(PolicyRefusal::Probe { sql, params: asked, .. }), true)
-                if plan.kept_in_tenant =>
-            {
+            (
+                Some(PolicyRefusal::Probe {
+                    sql, params: asked, ..
+                }),
+                true,
+            ) if plan.kept_in_tenant => {
                 let params = params_of(ctx, asked, inputs, site, now)?;
                 let found = match ctx.transaction(&plan.store).await {
                     Ok(transaction) => transaction.query(sql, &params).await,

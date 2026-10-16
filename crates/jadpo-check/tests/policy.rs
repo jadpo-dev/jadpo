@@ -674,8 +674,7 @@ query my_assignment(assignment_id: Assignment.id) -> AssignmentView? {
         "{found:#?}"
     );
     assert!(
-        found[0]
-            .contains("`my_assignment` includes the `Project` each `Assignment` refers to"),
+        found[0].contains("`my_assignment` includes the `Project` each `Assignment` refers to"),
         "{found:#?}"
     );
 }

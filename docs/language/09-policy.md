@@ -2408,6 +2408,17 @@ query praised_notes() -> List<NoteView> {
 ```
 
 ```text output
+error: `praised_notes` filters on `Note.appraisal`, which not every caller may read
+ --> main.jadpo:48:12
+   |
+48 |     where: Note.appraisal == "Excellent"
+   |            ^^^^^^^^^^^^^^ tests `appraisal`
+  reason: Anyone `Note`'s `read:` lets in may see the records `praised_notes` reads, the user `owner_id` points at among them, and only the user `reviewer_id` points at may read `appraisal`. Which records pass a condition shows each one's `appraisal`, so a query filters and orders only on fields every caller may read.
+  next: Remove the condition on `Note.appraisal`, or test a field every caller may read (agent)
+  rule: policy.output_field_unproved
+  help: docs/language/09-policy.html#policy-output-field-unproved
+
+check failed: 1 error, 1 file
 ```
 
 ### `policy.role_field_create_forbidden`

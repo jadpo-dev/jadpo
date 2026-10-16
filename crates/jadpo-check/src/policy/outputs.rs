@@ -186,8 +186,9 @@ fn query(
             } => {
                 let at = condition_span(path, &decl, &include, order, &entity, &field)
                     .unwrap_or_else(|| result.clone());
-                let who = prover
-                    .counterexample(&reached, |facts| prover.field_readable(&entity, &field, facts));
+                let who = prover.counterexample(&reached, |facts| {
+                    prover.field_readable(&entity, &field, facts)
+                });
                 let readers = prover.readers(&entity, &field);
                 let among = who
                     .map(|who| format!(", {who} among them,"))
@@ -204,7 +205,9 @@ fn query(
                         "filters on",
                         format!("tests `{field}`"),
                         format!("Which records pass a condition shows each one's `{field}`"),
-                        format!("Remove the condition on `{entity}.{field}`, or test a field every caller may read"),
+                        format!(
+                            "Remove the condition on `{entity}.{field}`, or test a field every caller may read"
+                        ),
                     )
                 };
                 out.push(
