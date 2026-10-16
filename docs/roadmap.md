@@ -347,7 +347,7 @@ reference only).
   at commit rerunning the action, not answering 503; header, body and
   connection timeouts and caps in the native host; each API's sign-in
   methods in its record.
-- [ ] **4.10 The runtime owns Phase 4's request path** `opus · xhigh`,
+- [x] **4.10 The runtime owns Phase 4's request path** `opus · xhigh`,
   before Phase 5, from the Phase 4 review: an action's gate checked in
   `jadpo_runtime::action`; the caller a call runs as read from the plan,
   not a type name; route tests' caller and `Idempotency-Key` given to the

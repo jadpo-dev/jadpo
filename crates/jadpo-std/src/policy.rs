@@ -9,7 +9,10 @@
 //! - Each statement policy limits also comes without its policy
 //!   (`unpoliced`), which a call a test makes without a caller runs: what
 //!   it proves is behaviour and data, and the route test proves policy
-//!   (area 13). Nothing else runs it.
+//!   (area 13). Nothing else runs it. A read of exactly one record instead
+//!   selects its grant as a column (`read::Select::permitted`), so one
+//!   statement serves both, and tells a record policy hid from one that
+//!   isn't there.
 //! - A [`Gate`]: who may call an action that reaches no entity, from its
 //!   line under root `policy { actions: }`.
 
