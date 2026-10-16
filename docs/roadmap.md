@@ -306,6 +306,13 @@ reference only).
 - [x] **4.6 Teaching examples for Phase 4** `opus · high`: bring
   `examples/` up to date with routes, identity and policy, and pass
   `tools/verify.py --require-examples`.
+- [ ] **4.7 Phase 4 decisions** `opus · high` (Richard, 2026-10-16): a
+  reference between tenant-owned records stays inside the tenant, checked on
+  every write, so an include of a tenant-owned parent proves (area 9); a
+  condition or order on a field some caller may not read is
+  `policy.output_field_unproved` (area 9); route tests send a fresh
+  `Idempotency-Key` on every write unless they write their own (area 13),
+  with the examples' workaround in `11-cake-shop` removed.
 
 ## Phase 5 — Configuration, time, translations and the standard library (area 10)
 

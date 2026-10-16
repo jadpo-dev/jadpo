@@ -1580,3 +1580,4 @@ with when it comes.
 | Comparing values | `==` on records and lists with field diffs; no snapshot assertions | 2026-10-13 |
 | What a failed test leaves | `--keep-failed` keeps the database and trace | 2026-10-13 |
 | Speed of database copies | Copies prepared in the background; measured on the golden app before changing approach | 2026-10-13 |
+| Idempotency keys in route tests | A route test sends a fresh `Idempotency-Key` with every request but a `GET`, as a real client would, so a route on an API with `idempotency: Idempotency.required` is tested through its success; a test that writes its own `Idempotency-Key` header sends that one instead, to test repeats and refusals; built in chunk 4.7 (Richard) | 2026-10-16 |
