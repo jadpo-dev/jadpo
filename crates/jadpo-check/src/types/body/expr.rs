@@ -575,7 +575,7 @@ impl Body<'_> {
                         .next(format!("Write `{host}.{name} {{ ... }}` with each field")),
                     );
                 }
-                Ty::Named(host.to_string())
+                Ty::Named(self.table.canonical(host))
             }
         }
     }
@@ -879,19 +879,19 @@ impl Body<'_> {
                     &[],
                 );
                 self.object_built(record);
-                Ty::Named(name)
+                Ty::Named(self.table.canonical(&name))
             }
             ([], Some(Def::Scalar { .. })) | ([], None)
                 if Prim::from_name(&name).is_some() || self.table.def(&name).is_some() =>
             {
                 self.not_record(record, &name, "scalar");
                 self.walk(|walk| walk.member_values(record.member_list()));
-                Ty::Named(name)
+                Ty::Named(self.table.canonical(&name))
             }
             ([], Some(Def::Enum { .. })) => {
                 self.not_record(record, &name, "enum");
                 self.walk(|walk| walk.member_values(record.member_list()));
-                Ty::Named(name)
+                Ty::Named(self.table.canonical(&name))
             }
             (
                 [operation],
@@ -953,7 +953,7 @@ impl Body<'_> {
                         self.walk(|walk| walk.member_values(record.member_list()));
                     }
                 }
-                Ty::Named(name)
+                Ty::Named(self.table.canonical(&name))
             }
             _ => {
                 self.failure_value(&Expr::RecordExpr(record.clone()));

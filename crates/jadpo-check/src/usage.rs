@@ -266,7 +266,24 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
         name_users(db, project, Name::new(db, canonical))
     };
     let ours = |user: &&User| user.ownership == location.ownership;
+    // A name declared twice in one scope is `semantic.duplicate_declaration`
+    // alone: who uses it can't be told apart, so no move is asked for.
+    let declared_twice = |item: &Item| {
+        let all = &lookup.facts(&item.name).declarations;
+        let Some(own) = all.iter().find(|symbol| {
+            symbol.path == *path && symbol.index == item.index && symbol.library.is_none()
+        }) else {
+            return false;
+        };
+        all.iter()
+            .filter(|symbol| symbol.library.is_none() && symbol.scope == own.scope)
+            .count()
+            > 1
+    };
     for item in &item_tree(db, file).items {
+        if declared_twice(item) {
+            continue;
+        }
         match (&location.ownership, folder, &item.kind) {
             (Ownership::Domain(domain), folder, kind)
                 if folder != Folder::Types

@@ -1,11 +1,14 @@
 //! Diagnostics on the grid: headline, location, code frame, then area 14's
-//! fields in its order (`reason`, `next`, `impact`, `rule`, `help`).
+//! fields in its order (`reason`, `next`, `impact`, `rule`, `help`), with
+//! the names in use after `next` when a rename needs them (area 1).
 
 use jadpo_diag::{Decider, Diagnostic, Label, Severity};
 
 use crate::detect::{Mode, Style};
 use crate::palette::{Symbol, Token};
-use crate::screen::{Line, decider, field, headline, paint, raw, strong, visible, width};
+use crate::screen::{
+    Line, VALUE_COLUMN, decider, field, headline, paint, raw, strong, visible, width,
+};
 use crate::sources::{Position, Sources, line_text, shown_path};
 
 /// One mark under a source line.
@@ -34,6 +37,7 @@ pub struct DiagnosticView {
     frame: Vec<FrameLine>,
     reason: Option<String>,
     next: Option<(String, Decider)>,
+    in_use: Vec<(String, String)>,
     impact: Option<String>,
     rule: String,
     help: String,
@@ -92,6 +96,7 @@ impl DiagnosticView {
                 .next
                 .as_ref()
                 .map(|next| (next.text.clone(), next.decides)),
+            in_use: diagnostic.in_use.clone(),
             impact: diagnostic.impact.clone(),
             rule: diagnostic.rule.id.to_string(),
             help: diagnostic.help(),
@@ -119,11 +124,67 @@ impl DiagnosticView {
                 style,
             ));
         }
+        lines.extend(self.in_use_lines(style));
         if let Some(impact) = &self.impact {
             lines.extend(field("impact", vec![raw(impact.as_str())], style));
         }
         lines.extend(field("rule", vec![raw(self.rule.as_str())], style));
         lines.extend(field("help", vec![raw(self.help.as_str())], style));
+        lines
+    }
+
+    /// The names in use, one per line in two columns, name and file: in
+    /// plain output under `in use:`, indented as the frame's text is; in
+    /// rich output in the value column, the files muted as paths in lists
+    /// are.
+    fn in_use_lines(&self, style: &Style) -> Vec<Line> {
+        if self.in_use.is_empty() {
+            return Vec::new();
+        }
+        let rich = style.mode == Mode::Rich;
+        let widest = self
+            .in_use
+            .iter()
+            .map(|(name, _)| width(name))
+            .max()
+            .unwrap_or(0);
+        let row = |(name, path): &(String, String)| -> Line {
+            let pad = " ".repeat(widest - width(name) + 2);
+            if path.is_empty() {
+                return vec![paint(Token::Muted, name.as_str())];
+            }
+            if rich {
+                vec![
+                    raw(format!("{name}{pad}")),
+                    paint(Token::Muted, path.as_str()),
+                ]
+            } else {
+                vec![raw(format!("{name}{pad}{path}"))]
+            }
+        };
+        if !rich {
+            let mut lines = vec![vec![raw("  in use:")]];
+            for entry in &self.in_use {
+                let mut line = vec![raw("    ")];
+                line.extend(row(entry));
+                lines.push(line);
+            }
+            return lines;
+        }
+        let mut lines = Vec::new();
+        for (index, entry) in self.in_use.iter().enumerate() {
+            let mut line = if index == 0 {
+                vec![
+                    raw("  "),
+                    paint(Token::Muted, "in use"),
+                    raw(" ".repeat(VALUE_COLUMN - 2 - width("in use"))),
+                ]
+            } else {
+                vec![raw(" ".repeat(VALUE_COLUMN))]
+            };
+            line.extend(row(entry));
+            lines.push(line);
+        }
         lines
     }
 

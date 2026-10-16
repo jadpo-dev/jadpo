@@ -517,11 +517,13 @@ impl Here<'_> {
                 if self.std.is_type(name) || self.table.is_package(name) {
                     return None;
                 }
-                let symbol = self
-                    .table
-                    .declared(name)
+                // A name the file declares itself is its own, even when
+                // another declaration of it is reported as a duplicate.
+                let declared = self.table.declared(name);
+                let symbol = declared
                     .iter()
-                    .find(|symbol| symbol.library.is_none())?;
+                    .find(|symbol| symbol.library.is_none() && self.declared_here(symbol))
+                    .or_else(|| declared.iter().find(|symbol| symbol.library.is_none()))?;
                 Some(Need::Name(Box::new(symbol.clone())))
             }
             // A bare call reaches only the file's own domain; one into

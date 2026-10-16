@@ -109,7 +109,7 @@ fn the_manifest_names_nodes_by_key_and_lists_edges_on_them() {
     };
     let document = manifest(&graph, &stamp).to_document();
     assert!(
-        document.starts_with("{\n  \"compiler\": \"1.2.3\",\n  \"errors\": 0,\n  \"format\": 1,\n")
+        document.starts_with("{\n  \"compiler\": \"1.2.3\",\n  \"errors\": 0,\n  \"format\": 2,\n")
     );
     assert!(document.contains("\"uses\": [\n        \"type Count\"\n      ]"));
     assert!(document.ends_with("}\n") && !document.contains('\r'));

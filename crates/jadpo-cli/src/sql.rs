@@ -230,7 +230,7 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
             let raises = match &refusal.raises {
                 Raises::Arm(at) => conflicts.get(*at as usize).map_or_else(
                     || "the failure its arm names".to_string(),
-                    |arm| format!("{}, mapped in conflict:", arm.failure.name()),
+                    |arm| format!("{}, mapped in conflict:", arm.failure.written()),
                 ),
                 Raises::NotFound(missing) => plan
                     .types()
@@ -286,7 +286,7 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
                     Raises::Arm(at) => conflicts.get(at as usize),
                     _ => None,
                 })
-                .map_or_else(String::new, |arm| format!(" → {}", arm.failure.name()));
+                .map_or_else(String::new, |arm| format!(" → {}", arm.failure.written()));
             let mut asked = vec![(
                 "then".to_string(),
                 format!("a row means the record is there, so when: refused it{refused}"),

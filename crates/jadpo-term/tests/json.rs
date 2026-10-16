@@ -86,6 +86,7 @@ fn a_failed_envelope_has_null_data_and_its_diagnostics() {
             "related": [],
             "reason": "Jadpo has no command with this name. Did you mean `help`?",
             "next": { "text": "Use `jadpo help` instead of `jadpo hlep`", "decides": "agent", "edits": [] },
+            "inUse": [],
             "impact": null,
             "help": "docs/language/14-tooling.html#command-errors"
         })

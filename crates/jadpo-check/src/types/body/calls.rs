@@ -1124,11 +1124,11 @@ impl Body<'_> {
                     Ty::Prim(prim)
                 } else {
                     match self.table.def(written) {
-                        Some(Def::Scalar { .. }) => Ty::Named(written.to_string()),
+                        Some(Def::Scalar { .. }) => Ty::Named(self.table.canonical(written)),
                         Some(Def::Enum { variants }) => {
                             let variants = variants.clone();
                             self.enum_constructor(written, &variants, call);
-                            return (Ty::Named(written.to_string()), Fallible::Unknown);
+                            return (Ty::Named(self.table.canonical(written)), Fallible::Unknown);
                         }
                         Some(Def::Fields { base, .. }) => {
                             if matches!(base, FieldsBase::Entity | FieldsBase::Failure) {
@@ -1151,7 +1151,7 @@ impl Body<'_> {
                                 ))
                                 .next(format!("Write `{written} {{ ... }}` with each field")),
                             );
-                            return (Ty::Named(written.to_string()), Fallible::Unknown);
+                            return (Ty::Named(self.table.canonical(written)), Fallible::Unknown);
                         }
                         Some(Def::Format { .. }) => {
                             self.args_only(call);

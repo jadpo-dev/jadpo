@@ -426,7 +426,7 @@ reference only).
   "Locales"): the library call that picks a supported `Locale` from an
   `Accept-Language` header and falls back to `default`. Named by Richard on
   2026-10-16: `locale.from_accept_language(header)`, giving a `Locale`.
-- [ ] **5.3d Names private to a domain** `opus · high` (area 1, "Files and
+- [x] **5.3d Names private to a domain** `opus · high` (area 1, "Files and
   names", decided 2026-10-16): a private function or type unique only
   within its domain in the checker's name table, resolution and imports,
   with folded collisions in the same scope; the identity key of a function

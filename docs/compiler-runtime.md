@@ -517,11 +517,24 @@ signatures without bodies (rust-analyzer's `ItemTree`), so editing a body
 never invalidates another file's resolution.
 
 **Resolution.** One project-wide name table, because names are unique
-across the project and across kinds (area 1). Decided 2026-10-16, not
-built until chunk 5.3d: a private function or type is unique only within its
-domain, so the table keys those by domain, and a name resolves among its
-file's domain's private names and the project-wide ones, which never
-overlap. A dotted prefix resolves to
+across the project and across kinds (area 1), except a private function or
+type, which is unique only within its domain (decided 2026-10-16, built in
+chunk 5.3d). The table holds every declaration of a name with the scope
+it is unique in (`Symbol::scope`), and a name resolves among its file's
+domain's private names and the project-wide ones, which never overlap: a
+`Lookup` made for a file (`Lookup::for_file`) reads names as that file
+writes them. A private name declared in more than one scope is
+*contested* (`jadpo_db::contested`, usually empty, so what reads it is
+rarely recomputed), and the type and signature tables know it as
+`<domain>.<name>`, which no declaration can be called: each file's shapes
+and signatures are read through it before the tables are built, so a
+`Ty::Named` always names one type, even one that reaches another domain
+through a public signature, and is shown as written. Duplicates and folded
+names are checked within a scope (`naming.rs`); a private type an API's
+record names (`routes::api_named`) stays unique across the project. A
+key carries the domain of a function or type declared in one (area 18,
+question 8), and lookups read such an identity, `billing.Address`, as
+the name it is. A dotted prefix resolves to
 its owner: domain, library, entity, connection, package or standard
 namespace. Visibility is the domain unless `public`. Layout rules (folder,
 kind, file name, promotion) are checked from paths. Since chunk 2.1 a
