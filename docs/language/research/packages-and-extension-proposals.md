@@ -514,10 +514,28 @@ from areas 10, 11 and 15.
   `sign_in_link_expired`, `sign_in_link_other_browser`,
   `sign_in_code_invalid`, `sign_in_codes_disabled` and `sign_in_refused`,
   `FirstSignIn` for `on_first_sign_in:`, and the events' fields.
-- **Still to decide**: the privacy emails' built-in types, fields and
-  where their `email:` and `send:` settings go; where the app's shared
-  email layout lives and what it receives; the application's display name
-  for Jadpo's wording; which roadmap chunk builds `sign_in:`.
+- **Privacy emails** (decided for Richard): built-in
+  `PrivacyAddressCheckEmail`, `PrivacyExportEmail`,
+  `PrivacyErasureConfirmedEmail` and `PrivacyErasureCompletedEmail`, with
+  fields Jadpo fills (links as `Url`, times as `PresentationText` in the
+  email's language) and a matching `...Request` type for `send:`. A
+  feature with one email takes `email:` and `send:` directly; one with
+  several takes `emails: { export_ready: { email: ... }
+  erasure_confirmed: { send: ... } }`, each entry `email:` or `send:`,
+  never both. Area 15's `self_service: { email: <connection> }` becomes
+  `self_service: {}`.
+- **Shared email layout** (decided for Richard): optional
+  `shared/emails/layout.html` and `layout.txt`, one per app, receiving
+  `{{ content }}` (safe HTML in the HTML layout), `{{ subject }}`,
+  `{{ locale.direction }}` and `{{ app.display_name }}`, able to call
+  translations, under the strict template rules; it wraps every email,
+  and Jadpo's plain layout is used without it.
+- **Display name** (decided for Richard): `application { display_name:
+  "Acme" }`, plain text, required once any built-in email or page is on;
+  `{{ app.display_name }}` in templates, `{app_name}` in Jadpo's wording;
+  an app that needs it translated rewords Jadpo's messages.
+- **Still to decide**: which roadmap chunk builds `sign_in:` (raised with
+  Richard).
 
 ## Decided: the golden rule
 

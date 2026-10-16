@@ -1704,7 +1704,9 @@ build/
   second file in the domain uses it, it must move to a file of its own in the
   domain's `types/`, `failures/` or `libraries/`; when a second domain does,
   to `shared/` (pure types, failures, libraries and messages only; a
-  message moves to `shared/translations/`, 2026-10-16). Moving to the
+  message moves to `shared/translations/`, 2026-10-16). `shared/emails/`
+  holds only the app's optional email layout, `layout.html` and
+  `layout.txt` (area 16, 2026-10-16). Moving to the
   right folder is not enough: `DiscountCode` in `types/basket.jadpo` used by
   another file must move to `types/discount_code.jadpo` (2026-10-14). Tests never count as users, a route only counts when
   nothing else uses the type, and a failure counts where it is raised.

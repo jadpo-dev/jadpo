@@ -92,7 +92,9 @@ application {
   the record. A disabled user may keep working for up to five minutes.
 
 This is the only revocation setting (question 4), and leaving it out gives
-the strict behaviour. Three paths always
+the strict behaviour. `application { }` also holds `display_name:`, the
+application's name as people see it, required once magic links or another
+built-in email or page is switched on (area 16, "Built-in emails"). Three paths always
 check the record whatever the setting: external OIDC tokens, service keys used
 directly, and routes marked `authentication: RouteAuthentication.fresh` (below).
 

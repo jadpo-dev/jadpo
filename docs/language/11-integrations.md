@@ -1490,7 +1490,7 @@ Other points:
 | One fake per capability (`mail.sent`, `sms.sent`, `published`) | 13 | Question 22 |
 | `jadpo provider conform`; local inbox for SMS and published events; Wrangler config generated per target | 14 | Questions 22–24 |
 | Capabilities in the manifest, network and personal-data reports; `erase` mappings generating `PersonErased` subscribers | 15, 18 | Question 21 |
-| `privacy: { self_service: { mail: } }` names the app's mail connection | 15 | Question 20 |
+| `privacy: { self_service: { mail: } }` names the app's mail connection | 15 | Question 20 (Superseded 2026-10-16: every email goes through the one `email:` connection; area 15's `self_service: {}`.) |
 
 ### Open questions
 

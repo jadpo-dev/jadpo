@@ -610,8 +610,10 @@ locale falls back instead). Only the messages of features the app has
 switched on count: rewording one of a feature that is off (magic-link
 wording without `magic_link:`) is an error saying the feature is off, and
 `jadpo translations builtin` lists only the switched-on features'
-messages, with their fields. The magic-link email's and confirm page's
-messages are listed in area 16, "Built-in emails".
+messages, with their fields. Every Jadpo message may use `{app_name}`,
+the application's `display_name:`; an app that needs the name translated
+rewords the messages. The magic-link email's and confirm page's messages
+are listed in area 16, "Built-in emails".
 
 A library package carries translations as a domain does: a
 `translations/` folder with its message types, its failures' wording and

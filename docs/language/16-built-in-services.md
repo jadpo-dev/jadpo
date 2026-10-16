@@ -527,8 +527,8 @@ packages' text"):
 // translations/en_gb.jadpo
 translations {
     jadpo: {
-        magic_link_email: "Your link to sign in to Notes"
-        magic_link_intro: "Someone asked to sign in to Notes as {address}."
+        magic_link_email: "Your link to sign in to {app_name}"
+        magic_link_intro: "Someone asked to sign in to {app_name} as {address}."
         sign_in_codes_disabled: "Too many wrong codes today. Use the link in your email instead."
     }
 }
@@ -537,12 +537,14 @@ translations {
 Rewording a message of a feature the app has not switched on (magic-link
 wording without `magic_link:`) is an error saying the feature is off, and
 `jadpo translations builtin` lists only the messages of the features the
-app has on, with their fields. The magic-link email and its confirm page
-use these messages:
+app has on, with their fields. Every Jadpo message may also use
+`{app_name}`, the application's `display_name:` (below); an app that needs
+the name translated rewords the messages. The magic-link email and its
+confirm page use these messages:
 
 | Message | Fields | `en_gb` wording |
 |---|---|---|
-| `magic_link_email` (the subject) | | "Your sign-in link" |
+| `magic_link_email` (the subject) | | "Sign in to {app_name}" |
 | `magic_link_heading` | | "Sign in" |
 | `magic_link_intro` | `address: Email` | "Someone asked to sign in as {address}." |
 | `magic_link_button` | | "Sign in" |
@@ -561,9 +563,36 @@ use these messages:
 language ("15 minutes"). The failures' wording also goes into the
 per-locale failure export for client apps (area 10).
 
-**Level 3: branding.** Built-in emails are wrapped in the app's shared
-email layout automatically, the same layout its own emails use (question
-11), so they carry the app's branding with no other change.
+**Level 3: branding.** Every email, built in or the app's own, is wrapped
+in the app's shared email layout, so built-in emails carry the app's
+branding with no other change. The layout is optional, one per app, in
+`shared/emails/layout.html` and `shared/emails/layout.txt`; without it
+Jadpo's plain layout is used. It is checked under the strict template
+rules and may call translations, and it receives:
+
+| In the layout | What it is |
+|---|---|
+| `{{ content }}` | The rendered body: the safe-HTML type in `layout.html`, text in `layout.txt` |
+| `{{ subject }}` | The email's subject line, `PresentationText` |
+| `{{ locale.direction }}` | `ltr` or `rtl` (area 10) |
+| `{{ app.display_name }}` | The application's `display_name:` |
+
+```text
+<!-- shared/emails/layout.html -->
+<html dir="{{ locale.direction }}">
+<head><title>{{ subject }}</title></head>
+<body>
+  <header>{{ app.display_name }}</header>
+  {{ content }}
+</body>
+</html>
+```
+
+**The application's name.** `application { display_name: "Acme" }` in
+`app.jadpo`, plain text, is required once any built-in email or page is
+switched on (magic links, the privacy pages); without it `jadpo check`
+names the feature that needs it. Templates read it as
+`{{ app.display_name }}`, and Jadpo's own wording as `{app_name}`.
 
 **Level 4: the app's own email.** `magic_link: { email: accounts.SignInEmail }`
 names an `EmailMessage` type of the app's that Jadpo fills and sends instead
@@ -651,22 +680,54 @@ action send_sign_in_link(request: MagicLinkRequest) fails MessageNotSent -> Unit
   compile error.
 
 **Every built-in email.** The same five levels apply to each email Jadpo
-sends:
+sends. A feature with one email takes `email:` or `send:` directly; a
+feature with several takes `emails: { }`, one entry per email, each taking
+`email:` or `send:`, never both. Delivery is always the one `email:`
+connection.
 
-| Email | Sent when | `email:` and `send:` set in |
+| Email | Built-in types | Sent when | Configured in |
+|---|---|---|---|
+| Magic link | `MagicLinkEmail`, `MagicLinkRequest` | `POST /auth/magic-link` (area 8) | `authentication { sign_in: { magic_link: { email: / send: } } }` |
+| Address check | `PrivacyAddressCheckEmail`, `PrivacyAddressCheckRequest` | A person asks on the `/privacy` page (area 15) | `privacy: { emails: { address_check: { } } }` |
+| Export ready | `PrivacyExportEmail`, `PrivacyExportRequest` | `PrivacyExportReady` (area 15) | `privacy: { emails: { export_ready: { } } }` |
+| Erasure confirmed, with its cancel link | `PrivacyErasureConfirmedEmail`, `PrivacyErasureConfirmedRequest` | `PrivacyErasureScheduled` (area 15) | `privacy: { emails: { erasure_confirmed: { } } }` |
+| Erasure completed, with what was kept | `PrivacyErasureCompletedEmail`, `PrivacyErasureCompletedRequest` | `PrivacyErasureCompleted` (area 15) | `privacy: { emails: { erasure_completed: { } } }` |
+
+```jadpo fragment
+// app.jadpo
+application {
+    display_name: "Acme"
+    privacy: {
+        self_service: {}
+        emails: {
+            export_ready: {
+                email: privacy_mail.ExportEmail
+            }
+            erasure_confirmed: {
+                send: privacy_mail.send_erasure_confirmation
+            }
+        }
+    }
+}
+```
+
+The privacy emails' fields, which Jadpo fills: every one has `address:
+Email` (also its `to:`) and the `locale:` of the request, and each request
+type has the same fields with times as `Instant` in place of text.
+
+| Email type | Its other fields | Request type's other fields |
 |---|---|---|
-| Magic-link email, `MagicLinkEmail` / `MagicLinkRequest` | `POST /auth/magic-link` (area 8) | `authentication { sign_in: { magic_link: { } } }` |
-| Address check for a data request | A person asks on the `/privacy` page (area 15) | Not yet decided |
-| Export ready | `PrivacyExportReady` (area 15) | Not yet decided |
-| Erasure scheduled, with its cancel link | `PrivacyErasureScheduled` (area 15) | Not yet decided |
-| Erasure completed, with what was kept | `PrivacyErasureCompleted` (area 15) | Not yet decided |
+| `PrivacyAddressCheckEmail` | `confirm_link: Url`, `expires_in: PresentationText` | `confirm_link: Url`, `expires_at: Instant` |
+| `PrivacyExportEmail` | `download_link: Url`, `expires_in: PresentationText` (7 days) | `download_link: Url`, `expires_at: Instant` |
+| `PrivacyErasureConfirmedEmail` | `erases_on: PresentationText`, `cancel_link: Url` | `erases_at: Instant`, `cancel_link: Url` |
+| `PrivacyErasureCompletedEmail` | `kept: List<PrivacyKeptRecord>` | `kept: List<PrivacyKeptRecord>` |
 
-Not yet decided, for the chunks that build them: the privacy emails'
-built-in types and fields and where their `email:` and `send:` settings
-go (area 15 names their events, not their emails); where the app's shared
-email layout lives and what it receives (question 11 decides that there is
-one); and the application's display name, which Jadpo's wording would use
-("Sign in to Notes") but no declaration holds yet.
+`PrivacyKeptRecord` has `name: PresentationText`, the kept record's wording
+(its entity's member in its domain's language files, required for every
+entity marked `Erasure.retained`), and `kept_until: PresentationText`, the
+end of its retention in the email's language. A template walks `kept`
+with `for`. The address-check link lasts 15 minutes, as a magic link
+does.
 
 ## Search
 
@@ -960,4 +1021,6 @@ monitoring thresholds come after the first build (roadmap).
 | Local inbox in development | `jadpo dev` catches all mail: browser view in the dev console (rendered, locale, working links, trace link) and `jadpo email list/show/links/open/clear` for agents (Richard) | 2026-10-13 |
 | Mail health score | Deterministic content checks per mail in the dev inbox and `jadpo email show`, optional SpamAssassin rules, `jadpo email check-domain` for SPF/DKIM/DMARC; every score states it is an early indication, cannot predict inbox placement and must not be relied on (Richard) | 2026-10-13 |
 | Email naming | Folder `emails/`, capability `email`, base type `EmailMessage` (`Email` stays the address type), commands `jadpo email ...`, app setting `email: { connection: }` (Richard) | 2026-10-13 |
+| Shared email layout and display name | Optional `shared/emails/layout.html` and `layout.txt`, one per app, wrapping every email, receiving `content` (safe HTML in the HTML layout), `subject`, `locale.direction` and `app.display_name`, strict template rules; Jadpo's plain layout otherwise. `application { display_name: }` required once a built-in email or page is on, read as `{{ app.display_name }}` and `{app_name}` (decided for Richard) | 2026-10-16 |
+| Privacy emails | Built-in `PrivacyAddressCheckEmail`, `PrivacyExportEmail`, `PrivacyErasureConfirmedEmail` and `PrivacyErasureCompletedEmail`, each with a `...Request` type for `send:`; configured in `privacy: { emails: { address_check: export_ready: erasure_confirmed: erasure_completed: } }`, each `email:` or `send:`; a feature with one email takes them directly (decided for Richard) | 2026-10-16 |
 | Built-in emails | Five levels for every email Jadpo sends: nothing (Jadpo's email and wording, `en_gb` and `en_us` at first, other supported locales an error until the app words them); the words, in the root `translations/` under `jadpo: { }`, only for features switched on; branding, through the app's shared layout; the app's own `EmailMessage` (`email:`), picking from the built-in type's fields; the app's own sending (`send:`), an action taking the built-in request, run after commit; `email:` and `send:` together an error; all through the app's one `email:` connection (Richard) | 2026-10-16 |
