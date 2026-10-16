@@ -29,6 +29,7 @@ mod ops;
 mod outcome;
 mod ranges;
 mod request;
+mod temporal;
 mod writes;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -158,6 +159,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         result: Ty::Prim(Prim::Unit),
         context: Context::Action,
         test: false,
+        word: "function",
         library: None,
         unknown_name: false,
         unused: Vec::new(),
@@ -384,6 +386,8 @@ struct Body<'a> {
     /// Whether the callable is a test, rather than a fixture or seed: it
     /// writes records only through actions and fixtures (area 6).
     test: bool,
+    /// What the callable is, as a message names it: `function`, `test`.
+    word: &'static str,
     /// The library whose functions are being checked: they call each other
     /// bare.
     library: Option<String>,
@@ -637,6 +641,7 @@ impl Body<'_> {
         } = callable;
         self.context = context;
         self.test = word == "test";
+        self.word = word;
         self.unknown_name = false;
         self.unused.clear();
         self.flow = Flow {

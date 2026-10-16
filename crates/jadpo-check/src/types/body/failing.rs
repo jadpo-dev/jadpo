@@ -48,6 +48,36 @@ pub(super) struct Arm {
     pub value: Option<Expr>,
 }
 
+/// What a `temporal` operation's conditions are, by their keys: "a local
+/// time the zone's clocks skip or show twice fails".
+fn conditions_meant(keys: &[String]) -> String {
+    let meant: Vec<String> = keys
+        .iter()
+        .map(|key| {
+            match key.as_str() {
+                "dst" => "a local time the zone's clocks skip or show twice",
+                "invalid_day" => "a day the month it lands in doesn't have",
+                _ => "a condition",
+            }
+            .to_string()
+        })
+        .collect();
+    format!("{} fails", crate::and_list(&meant).replace(" and ", " or "))
+}
+
+/// "`dst:`", or "`invalid_day:` or `dst:`".
+fn options_named(keys: &[String]) -> String {
+    let listed: Vec<String> = keys.iter().map(|k| format!("`{k}:`")).collect();
+    crate::and_list(&listed).replace(" and ", " or ")
+}
+
+fn capital_first(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
+}
+
 /// "`max`", or "`min` and `max`".
 fn keys_list(keys: &[String]) -> String {
     let listed: Vec<String> = keys.iter().map(|k| format!("`{k}`")).collect();
@@ -95,7 +125,7 @@ impl Body<'_> {
             // A caller made from a record, or a session started or ended,
             // never fails with a declared failure; a store that can't be
             // reached is the runtime's `unavailable`.
-            Some(Reach::Caller(_) | Reach::Session(_)) => Fallible::Never,
+            Some(Reach::Caller(_) | Reach::Session(_) | Reach::AdvanceClock) => Fallible::Never,
             Some(Reach::Entity { entity, operation }) => self.entity_fallible(entity, operation),
             Some(Reach::Construct(_) | Reach::Unknown) | None => Fallible::Unknown,
         }
@@ -197,6 +227,23 @@ impl Body<'_> {
                 .next(format!(
                     "Start the statement with `attempt`, or `match` on `{written}(...)` and handle {}",
                     crate::and_list(&listed)
+                ))
+            }
+            Fallible::Construction(breakable) if self.is_standard(call) => {
+                let first = breakable.first().cloned().unwrap_or_default();
+                Diagnostic::new(
+                    &rule::FAILURE_ATTEMPT_REQUIRED,
+                    format!("`{written}(...)` can fail at runtime, and nothing handles it"),
+                )
+                .at(span, "checked when it runs")
+                .reason(format!(
+                    "{} unless {} says what to do instead, so the call can fail.",
+                    capital_first(&conditions_meant(breakable)),
+                    options_named(breakable)
+                ))
+                .next(format!(
+                    "Write `attempt {written}(...) {{ {first}: SomeFailure }}`, mapping each condition to an `invalid_value` failure, or `invalid:` for all of them, or give {}",
+                    options_named(breakable)
                 ))
             }
             Fallible::Construction(breakable) => {
@@ -584,10 +631,18 @@ impl Body<'_> {
         ty
     }
 
-    /// The rules of the type a construction builds, by key and as written.
+    /// The rules of the type a construction builds, by key and as written,
+    /// or the conditions a `temporal` operation fails on, each written as
+    /// the option that settles it (area 10).
     fn construction_rules(&self, call: &ast::CallExpr) -> Vec<(&'static str, String)> {
         match self.facts.reaches.get(&node_key(call.syntax())) {
             Some(Reach::Construct(target)) => self.rules_of(target),
+            Some(Reach::Std(op)) => op
+                .operation()
+                .conditions
+                .iter()
+                .map(|condition| (condition.key.word(), format!("{}:", condition.option)))
+                .collect(),
             _ => Vec::new(),
         }
     }
@@ -872,9 +927,12 @@ impl Body<'_> {
         } else {
             ("them", "each")
         };
+        let standard =
+            matches!(attempt.expr(), Some(Expr::CallExpr(call)) if self.is_standard(&call));
         let next = if attempt.member_list().is_some() {
             format!(
-                "Add `{first}: SomeFailure` to the block, naming an `invalid_value` failure, or `invalid: SomeFailure` to cover every rule without an arm"
+                "Add `{first}: SomeFailure` to the block, naming an `invalid_value` failure, or `invalid: SomeFailure` to cover every {} without an arm",
+                if standard { "condition" } else { "rule" }
             )
         } else {
             format!(
@@ -890,10 +948,18 @@ impl Body<'_> {
                 ),
             )
             .at(span, "can fail at runtime")
-            .reason(format!(
-                "The value is only known when the program runs, and neither the declared ranges nor a condition before it prove it follows {}; {it} needs an arm naming the `invalid_value` failure the caller gets, or `invalid:` covers every rule without its own.",
-                crate::and_list(&as_written)
-            ))
+            .reason(if standard {
+                format!(
+                    "{} unless {} says what to do instead; {it} needs an arm naming the `invalid_value` failure the caller gets, or `invalid:` covers every condition without its own.",
+                    capital_first(&conditions_meant(uncovered)),
+                    options_named(uncovered)
+                )
+            } else {
+                format!(
+                    "The value is only known when the program runs, and neither the declared ranges nor a condition before it prove it follows {}; {it} needs an arm naming the `invalid_value` failure the caller gets, or `invalid:` covers every rule without its own.",
+                    crate::and_list(&as_written)
+                )
+            })
             .next(next),
         );
     }

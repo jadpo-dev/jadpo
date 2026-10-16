@@ -150,6 +150,9 @@ fn one<E: Executor>(
         )));
     };
     let mut env = TestEnv::new(seed, &test.key);
+    if let Some(start) = executor.clock(callable) {
+        env.env.clock = jadpo_runtime::Clock::fixed(start);
+    }
     let places = executor.places();
     // Only a test that calls an action, query or fixture, or sends a
     // request through a route, can touch a store.

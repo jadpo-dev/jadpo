@@ -34,6 +34,14 @@ pub trait Executor {
         Vec::new()
     }
 
+    /// Where callable `callable`'s clock starts, in milliseconds since
+    /// 1970-01-01T00:00:00Z: a test's `clock:` (area 13). None for anything
+    /// else, which runs at its host's time or the test default.
+    fn clock(&self, callable: u32) -> Option<i64> {
+        let _ = callable;
+        None
+    }
+
     /// Runs callable `callable` with `args`, one per parameter, against
     /// `ctx`, whose stack is empty: an action or fixture inside the
     /// runtime's action boundary, anything else as it is.

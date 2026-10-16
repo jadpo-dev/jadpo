@@ -22,8 +22,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::rc::Rc;
 
+use jadpo_std::Builtin;
 use jadpo_std::http::{Codec, CodecId};
-use jadpo_std::{Builtin, Dur};
 
 use crate::shape::Shape;
 use crate::{Decimal, Validator, Value};
@@ -105,6 +105,11 @@ impl Codecs<'_> {
                 builtin, validator, ..
             } => {
                 let value = match json {
+                    serde_json::Value::Object(entries)
+                        if builtin.representation() == Builtin::ZonedTime =>
+                    {
+                        zoned_from_json(entries, path, problems)?
+                    }
                     serde_json::Value::String(text) => scalar_from_text(*builtin, text),
                     serde_json::Value::Bool(flag) if *builtin == Builtin::Bool => {
                         Ok(Value::Bool(*flag))
@@ -136,7 +141,7 @@ impl Codecs<'_> {
                 serde_json::Value::String(name) => {
                     match variants
                         .iter()
-                        .find(|v| v.name == *name && v.fields.is_none())
+                        .find(|v| v.wire == *name && v.fields.is_none())
                     {
                         Some(variant) => Some(Value::variant(
                             ty,
@@ -458,7 +463,7 @@ impl Codecs<'_> {
             (Some(Codec::Enum { variants, .. }), Value::Variant(variant)) => {
                 let found = variants.iter().find(|v| v.name == *variant.name);
                 match found.and_then(|v| v.fields.as_ref()) {
-                    None => write_string(&variant.name, out),
+                    None => write_string(found.map_or(&*variant.name, |v| &v.wire), out),
                     Some((_, codecs)) => {
                         out.push_str("{\"tag\":");
                         write_string(&variant.name, out);
@@ -518,6 +523,61 @@ impl Codecs<'_> {
     }
 }
 
+/// A `ZonedTime` from `{ "instant": ..., "zone": ... }` (area 10), each
+/// problem reported at its own field.
+fn zoned_from_json(
+    entries: &serde_json::Map<String, serde_json::Value>,
+    path: &Path,
+    problems: &mut Vec<Problem>,
+) -> Option<Result<Value, &'static str>> {
+    let before = problems.len();
+    let instant = match entries.get("instant") {
+        Some(serde_json::Value::String(text)) => {
+            let found = jadpo_std::instant_millis(text);
+            if found.is_none() {
+                Codecs::problem(problems, &path.with("instant"), "format");
+            }
+            found
+        }
+        Some(_) => {
+            Codecs::problem(problems, &path.with("instant"), "type");
+            None
+        }
+        None => {
+            Codecs::problem(problems, &path.with("instant"), "required");
+            None
+        }
+    };
+    let zone = match entries.get("zone") {
+        Some(serde_json::Value::String(name)) => {
+            let found = jadpo_std::ZONES.iter().position(|(_, iana)| iana == name);
+            if found.is_none() {
+                Codecs::problem(problems, &path.with("zone"), "variant");
+            }
+            found.and_then(|at| u32::try_from(at).ok())
+        }
+        Some(_) => {
+            Codecs::problem(problems, &path.with("zone"), "type");
+            None
+        }
+        None => {
+            Codecs::problem(problems, &path.with("zone"), "required");
+            None
+        }
+    };
+    for name in entries.keys() {
+        if name != "instant" && name != "zone" {
+            Codecs::problem(problems, &path.with(name.clone()), "unknown_field");
+        }
+    }
+    match (instant, zone) {
+        (Some(millis), Some(zone)) if problems.len() == before => {
+            Some(Ok(Value::Zoned(crate::Zoned { millis, zone })))
+        }
+        _ => None,
+    }
+}
+
 /// A scalar read from its text, before its rules are checked.
 fn scalar_from_text(builtin: Builtin, text: &str) -> Result<Value, &'static str> {
     match builtin.representation() {
@@ -534,13 +594,9 @@ fn scalar_from_text(builtin: Builtin, text: &str) -> Result<Value, &'static str>
         Builtin::CalendarDate => jadpo_std::date_number(text)
             .map(Value::Date)
             .ok_or("format"),
-        Builtin::Time => jadpo_std::time_millis(text)
-            .map(Value::Time)
-            .ok_or("format"),
-        Builtin::Duration => iso_duration(text)
-            .or_else(|| Dur::parse(text).and_then(|d| i64::try_from(d.millis).ok()))
-            .map(Value::Duration)
-            .ok_or("format"),
+        // A `ZonedTime` is an object (`read`), never text.
+        Builtin::ZonedTime => Err("type"),
+        Builtin::Duration => iso_duration(text).map(Value::Duration).ok_or("format"),
         Builtin::Bytes => base64_decode(text)
             .map(|bytes| Value::Bytes(Rc::from(bytes)))
             .ok_or("format"),
@@ -572,7 +628,13 @@ fn write_scalar(value: &Value, int_as_number: bool, out: &mut String) {
         Value::Text(text) | Value::Uuid(text) => write_string(text, out),
         Value::Instant(millis) => write_string(&jadpo_std::format_instant(*millis), out),
         Value::Date(day) => write_string(&jadpo_std::format_date(*day), out),
-        Value::Time(millis) => write_string(&jadpo_std::format_time(*millis), out),
+        Value::Zoned(zoned) => {
+            out.push_str("{\"instant\":");
+            write_string(&jadpo_std::format_instant(zoned.millis), out);
+            out.push_str(",\"zone\":");
+            write_string(zoned.zone_name(), out);
+            out.push('}');
+        }
         Value::Duration(millis) => write_string(&iso_duration_text(*millis), out),
         Value::Bytes(bytes) => write_string(&base64_encode(bytes), out),
         Value::None | Value::Unit => out.push_str("null"),
@@ -600,8 +662,12 @@ pub fn write_string(text: &str, out: &mut String) {
 }
 
 /// An ISO 8601 duration of days, hours, minutes and seconds (`PT5M`,
-/// `P1DT2H`, `PT0.5S`), in milliseconds.
+/// `P1DT2H`, `PT0.5S`), negative with a leading `-` as one is written
+/// (`-PT5M`), in milliseconds.
 fn iso_duration(text: &str) -> Option<i64> {
+    if let Some(positive) = text.strip_prefix('-') {
+        return iso_duration(positive.strip_prefix('P').map(|_| positive)?)?.checked_neg();
+    }
     let rest = text.strip_prefix('P')?;
     let (date_part, time) = match rest.split_once('T') {
         Some((date_part, time)) => (date_part, time),
@@ -728,6 +794,9 @@ mod tests {
         assert_eq!(iso_duration("PT1.5S"), Some(1_500));
         assert_eq!(iso_duration("PT"), None);
         assert_eq!(iso_duration("5m"), None);
+        assert_eq!(iso_duration("-PT5M"), Some(-300_000));
+        assert_eq!(iso_duration("--PT5M"), None);
+        assert_eq!(iso_duration_text(-300_000), "-PT5M");
         assert_eq!(iso_duration_text(300_000), "PT5M");
         assert_eq!(iso_duration_text(1_500), "PT1.5S");
         assert_eq!(iso_duration_text(0), "PT0S");

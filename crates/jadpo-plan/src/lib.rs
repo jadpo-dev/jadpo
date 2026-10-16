@@ -99,6 +99,9 @@ pub struct CallablePlan {
     /// in the plan's settings with its value in a variable's spelling
     /// (area 13, "Configuration in tests").
     pub settings: Vec<(u32, String)>,
+    /// For a test: where its `clock:` starts its clock, in milliseconds
+    /// since 1970-01-01T00:00:00Z (area 13, "Test settings").
+    pub clock: Option<i64>,
 }
 
 impl CallablePlan {
@@ -176,6 +179,8 @@ impl Plan {
         let mut found: Vec<(Key, Kind, String, Arc<Body>)> = Vec::new();
         // What each test's `config:` changes, by the test's key.
         let mut overrides: HashMap<Key, Vec<(String, String)>> = HashMap::new();
+        // Where each test's `clock:` starts its clock.
+        let mut clocks: HashMap<Key, i64> = HashMap::new();
         for &file in project.files(db) {
             let path = file.path(db).clone();
             files.insert(path.clone(), file.text(db).clone());
@@ -189,6 +194,9 @@ impl Plan {
                     let given = jadpo_check::config::test_settings(db, project, callable);
                     if !given.overrides.is_empty() {
                         overrides.insert(key.clone(), given.overrides.clone());
+                    }
+                    if let Some(start) = given.clock {
+                        clocks.insert(key.clone(), start);
                     }
                 }
                 found.push((key, kind, path.clone(), Arc::clone(&checked.body)));
@@ -300,7 +308,9 @@ impl Plan {
                     Some((*at, text.clone()))
                 })
                 .collect();
+            let clock = clocks.get(&key).copied();
             callables.push(CallablePlan {
+                clock,
                 key,
                 kind,
                 file,

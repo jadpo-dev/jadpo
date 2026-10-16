@@ -36,9 +36,8 @@ pub struct Clock {
 
 impl Clock {
     /// Where a test's clock starts without a `clock:` setting: a fixed
-    /// time, never the real one (area 13). 2000-01-01T00:00:00Z, as the
-    /// archived compiler used, until chunk 5.2 builds the test clock and
-    /// documents its default.
+    /// time, never the real one (area 13, "Test settings"),
+    /// 2000-01-01T00:00:00Z.
     pub const TEST: Clock = Clock {
         millis: 946_684_800_000,
     };
@@ -51,5 +50,16 @@ impl Clock {
     /// Now, in milliseconds since 1970-01-01T00:00:00Z.
     pub fn now(&self) -> i64 {
         self.millis
+    }
+
+    /// The clock moved on by `by` milliseconds, as a test's
+    /// `clock.advance(...)` moves it; `None` for a move backwards, since a
+    /// clock only moves forward, or past the last instant.
+    pub fn advanced(self, by: i64) -> Option<Clock> {
+        if by < 0 {
+            return None;
+        }
+        let millis = self.millis.checked_add(by)?;
+        (millis <= jadpo_std::INSTANT_MAX).then_some(Clock { millis })
     }
 }

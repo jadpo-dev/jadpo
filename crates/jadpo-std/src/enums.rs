@@ -104,6 +104,37 @@ std_enum! {
 }
 
 std_enum! {
+    /// Which instant a local time takes when a zone's clocks change around
+    /// it (area 10, question 7): an `overlap` happens twice, a `gap` never.
+    /// Without `dst:`, or with `reject`, such a time is a failure the
+    /// caller maps.
+    Dst: "Dst" {
+        /// Fail: the call's `attempt` maps `dst:`.
+        Reject: "reject",
+        /// The earlier instant in an overlap; in a gap, the clock time
+        /// moved back by the gap's length (01:30 in a 01:00 to 02:00 gap
+        /// is 00:30).
+        Earlier: "earlier",
+        /// The later instant in an overlap; in a gap, the clock time moved
+        /// forward by the gap's length (01:30 is 02:30).
+        Later: "later",
+        /// Temporal's choice: earlier in an overlap, later in a gap.
+        Compatible: "compatible",
+    }
+}
+
+std_enum! {
+    /// What moving a date by months or years does when the month it lands
+    /// in has no such day, as 31 January plus a month (area 10).
+    InvalidDay: "InvalidDay" {
+        /// Fail: the call's `attempt` maps `invalid_day:`.
+        Reject: "reject",
+        /// The month's last day.
+        LastValidDay: "last_valid_day",
+    }
+}
+
+std_enum! {
     /// When a generated `Instant` field is set (area 5, "Fields and their
     /// settings").
     Generated: "Generated" {
@@ -342,6 +373,8 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (TextFormat::NAME, TextFormat::NAMES.to_vec()),
         (UuidVersion::NAME, UuidVersion::NAMES.to_vec()),
         (Weekday::NAME, Weekday::NAMES.to_vec()),
+        (Dst::NAME, Dst::NAMES.to_vec()),
+        (InvalidDay::NAME, InvalidDay::NAMES.to_vec()),
         (Generated::NAME, Generated::NAMES.to_vec()),
         (OnDelete::NAME, OnDelete::NAMES.to_vec()),
         (FieldChange::NAME, FieldChange::NAMES.to_vec()),
@@ -384,6 +417,8 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         TextFormat::NAME => position(TextFormat::NAMES),
         UuidVersion::NAME => position(UuidVersion::NAMES),
         Weekday::NAME => position(Weekday::NAMES),
+        Dst::NAME => position(Dst::NAMES),
+        InvalidDay::NAME => position(InvalidDay::NAMES),
         Generated::NAME => position(Generated::NAMES),
         OnDelete::NAME => position(OnDelete::NAMES),
         FieldChange::NAME => position(FieldChange::NAMES),

@@ -30,7 +30,7 @@ fn rank(value: &Value) -> u8 {
         Value::Uuid(_) => 6,
         Value::Instant(_) => 7,
         Value::Date(_) => 8,
-        Value::Time(_) => 9,
+        Value::Zoned(_) => 9,
         Value::Duration(_) => 10,
         Value::List(_) => 11,
         Value::Set(_) => 12,
@@ -60,7 +60,8 @@ pub fn compare(a: &Value, b: &Value) -> Ordering {
             a.cmp(b)
         }
         (Value::Date(a), Value::Date(b)) => a.cmp(b),
-        (Value::Time(a), Value::Time(b)) => a.cmp(b),
+        // On the timeline, then by zone, so the order agrees with `==`.
+        (Value::Zoned(a), Value::Zoned(b)) => a.cmp(b),
         (Value::List(a), Value::List(b)) | (Value::Set(a), Value::Set(b)) => items(a, b),
         (Value::Map(a), Value::Map(b)) => {
             for ((ak, av), (bk, bv)) in a.iter().zip(b.iter()) {
@@ -210,7 +211,7 @@ mod tests {
             Value::uuid("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e"),
             Value::Instant(0),
             Value::Date(0),
-            Value::Time(0),
+            Value::Zoned(crate::Zoned { millis: 0, zone: 0 }),
             Value::Duration(0),
             Value::list(vec![Value::Int(1)]),
             Value::set(vec![Value::Int(1)]),

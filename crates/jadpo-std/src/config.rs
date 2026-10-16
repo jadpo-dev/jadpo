@@ -28,6 +28,15 @@ pub enum Spelling {
 }
 
 impl Spelling {
+    /// How enum `name` is spelt.
+    pub fn of(name: &str) -> Spelling {
+        match name {
+            crate::ZONE => Spelling::Zone,
+            crate::LOCALE => Spelling::Locale,
+            _ => Spelling::Plain,
+        }
+    }
+
     /// The text the codec reads for `text` as an environment gives it, or
     /// `None` when this spelling has no such zone or locale.
     pub fn variant(self, text: &str) -> Option<String> {

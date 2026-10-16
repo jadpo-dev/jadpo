@@ -400,6 +400,7 @@ impl<'t> Codecs<'t> {
                             None
                         };
                         VariantCodec {
+                            wire: name.clone(),
                             name,
                             ordinal,
                             fields,
@@ -411,22 +412,26 @@ impl<'t> Codecs<'t> {
                     variants,
                 }
             }
-            Made::StdEnum(name) => Codec::Enum {
-                variants: jadpo_std::enums()
-                    .into_iter()
-                    .find(|(written, _)| *written == name)
-                    .map(|(_, variants)| variants)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .enumerate()
-                    .map(|(ordinal, variant)| VariantCodec {
-                        name: variant.to_string(),
-                        ordinal: ordinal as u32,
-                        fields: None,
-                    })
-                    .collect(),
-                ty: name,
-            },
+            Made::StdEnum(name) => {
+                let spelling = jadpo_std::config::Spelling::of(&name);
+                Codec::Enum {
+                    variants: jadpo_std::enums()
+                        .into_iter()
+                        .find(|(written, _)| *written == name)
+                        .map(|(_, variants)| variants)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .enumerate()
+                        .map(|(ordinal, variant)| VariantCodec {
+                            name: variant.to_string(),
+                            wire: spelling.spelling(variant),
+                            ordinal: ordinal as u32,
+                            fields: None,
+                        })
+                        .collect(),
+                    ty: name,
+                }
+            }
             Made::List(item) => Codec::List {
                 item: self.codec(&item),
                 validator: self.types.validator_id(ty),

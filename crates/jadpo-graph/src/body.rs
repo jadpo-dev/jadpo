@@ -452,6 +452,9 @@ pub enum Callee {
     Caller(jadpo_std::http::PrincipalKind),
     /// `sessions.start(user_id)` or `sessions.end()` in an action (area 8).
     Session(jadpo_std::http::SessionOp),
+    /// `clock.advance(duration)` in a test (area 13, "Controlling time"):
+    /// the test's clock moved on.
+    AdvanceClock,
     /// Nothing that can be called: already reported.
     Unknown,
 }
@@ -472,6 +475,7 @@ impl Callee {
             | Callee::Construct(_)
             | Callee::Caller(_)
             | Callee::Session(_)
+            | Callee::AdvanceClock
             | Callee::Unknown => None,
         }
     }

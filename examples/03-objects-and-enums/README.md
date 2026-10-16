@@ -12,7 +12,7 @@ different types.
 ## What it teaches
 
 1. **Objects and field rules.** `type CakeLine = Object { ... }`, with a field that tightens its type. See `domains/sales/types/cake_line.jadpo` and [area 2, Objects](../../docs/language/02-values-and-types.md#objects).
-2. **Inputs, outputs and absent values.** `optional:` and `default:` on an `Input`, `T?` and `none`, fields that only arrive from outside (`Bytes`, `Time`), and a `Map`, which so far can be received, compared and sent back but not walked. See `actions/quote_cake.jadpo` and [area 2, Absent values](../../docs/language/02-values-and-types.md#absent-values).
+2. **Inputs, outputs and absent values.** `optional:` and `default:` on an `Input`, `T?` and `none`, fields that only arrive from outside (`Bytes`, `ZonedTime`), and a `Map`, which so far can be received, compared and sent back but not walked. See `actions/quote_cake.jadpo` and [area 2, Absent values](../../docs/language/02-values-and-types.md#absent-values).
 3. **Field types.** `CakeLine.each` is a type of its own. Same file; [area 2, Field types](../../docs/language/02-values-and-types.md#field-types).
 4. **Enums and tagged unions.** Plain variants, variants with fields (built like objects in its tests), and reading them with `match`. See `actions/choose_handover.jadpo` and [area 2, Enums](../../docs/language/02-values-and-types.md#enums).
 5. **Values never change.** Rebuilding an object, a field used as a constructor to give a computed price the field's type, an absent field read with `match`, and `==` comparing contents. See `actions/reprice_line.jadpo` and [area 2, Values never change](../../docs/language/02-values-and-types.md#values-never-change).

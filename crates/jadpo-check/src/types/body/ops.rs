@@ -58,12 +58,15 @@ impl Operand {
 fn ordered(prim: Prim) -> bool {
     matches!(
         prim,
-        Prim::Int
-            | Prim::Decimal
-            | Prim::Instant
-            | Prim::CalendarDate
-            | Prim::Time
-            | Prim::Duration
+        Prim::Int | Prim::Decimal | Prim::Instant | Prim::CalendarDate | Prim::Duration
+    )
+}
+
+/// What `+` and `-` work on besides numbers and text (area 10).
+fn is_time(prim: Prim) -> bool {
+    matches!(
+        prim,
+        Prim::Instant | Prim::Duration | Prim::CalendarDate | Prim::ZonedTime
     )
 }
 
@@ -427,6 +430,12 @@ impl Body<'_> {
             } else {
                 match self.rep(operand) {
                     Some(prim) if ordered(prim) => None,
+                    Some(Prim::ZonedTime) => Some((
+                        format!("{} has no order of its own", capital(&shown)),
+                        format!("this is {shown}"),
+                        "A `ZonedTime` is an instant and the zone it is seen in, and two in different zones have no one order; their instants do.".to_string(),
+                        format!("Compare `temporal.instant({written})`"),
+                    )),
                     Some(Prim::Text) => Some((
                         format!("{} has no order", capital(&shown)),
                         format!("this is {shown}"),
@@ -497,6 +506,9 @@ impl Body<'_> {
             }
         }
         let (ra, rb) = (self.rep(a), self.rep(b));
+        if [ra, rb].iter().any(|prim| prim.is_some_and(is_time)) {
+            return self.time_arithmetic(binary, op, a, b);
+        }
         let (sa, sb) = (a.shown(), b.shown());
         let span = self.span(binary);
         // `+`, `-` and `/` take the same named type on both sides, or a
@@ -617,6 +629,89 @@ impl Body<'_> {
         } else {
             Ty::Prim(Prim::Int)
         }
+    }
+
+    /// `+` and `-` on time values (area 10, "Arithmetic and comparison"):
+    /// an `Instant` moved by a `Duration` keeps the instant's named type
+    /// (question 6), two instants of the same type give the `Duration`
+    /// between them, and two durations of the same type, or one and a
+    /// literal, give a plain `Duration`, as two numbers give a plain number.
+    fn time_arithmetic(&mut self, binary: &ast::BinExpr, op: &str, a: &Operand, b: &Operand) -> Ty {
+        let (ra, rb) = (self.rep(a), self.rep(b));
+        let (sa, sb) = (a.shown(), b.shown());
+        let span = self.span(binary);
+        let instant_of = |operand: &Operand| match operand {
+            Operand::Value(ty) => ty.strip_nullable().clone(),
+            Operand::Literal(_) => Ty::Prim(Prim::Instant),
+        };
+        let same = self.same_type(a, b) || Self::unitless(a) || Self::unitless(b);
+        match (op, ra, rb) {
+            ("+" | "-", Some(Prim::Instant), Some(Prim::Duration)) => return instant_of(a),
+            ("+", Some(Prim::Duration), Some(Prim::Instant)) => return instant_of(b),
+            ("-", Some(Prim::Instant), Some(Prim::Instant)) if self.same_type(a, b) => {
+                return Ty::Prim(Prim::Duration);
+            }
+            ("+" | "-", Some(Prim::Duration), Some(Prim::Duration)) if same => {
+                return Ty::Prim(Prim::Duration);
+            }
+            _ => {}
+        }
+        let both = |prim: Prim| ra == Some(prim) && rb == Some(prim);
+        let (label, reason, next) = if matches!(op, "+" | "-")
+            && (both(Prim::Instant) || both(Prim::Duration))
+        {
+            (
+                "different types",
+                format!(
+                    "`{op}` needs the same named type on both sides, or a literal, because {sa} and {sb} are different units."
+                ),
+                "Use two values of the same type".to_string(),
+            )
+        } else if [ra, rb].contains(&Some(Prim::CalendarDate)) {
+            (
+                "a date",
+                format!(
+                    "A `CalendarDate` has no clock time, so a `Duration` doesn't move it; {sa} and {sb} can't be {}.",
+                    verb(op)
+                ),
+                "Move a date by calendar days with `temporal.add_days`".to_string(),
+            )
+        } else if [ra, rb].contains(&Some(Prim::ZonedTime)) {
+            (
+                "a local time",
+                format!(
+                    "A `ZonedTime` is moved on its calendar, by `temporal.add_days`, or by its instant, `temporal.instant(...)`; {sa} and {sb} can't be {}.",
+                    verb(op)
+                ),
+                "Move it with `temporal.add_days`, or work on `temporal.instant(...)`".to_string(),
+            )
+        } else {
+            (
+                "not a time and a duration",
+                format!(
+                    "`+` and `-` move an `Instant` by a `Duration` and add or subtract durations, and `-` gives the `Duration` between two instants; {sa} and {sb} are none of those."
+                ),
+                format!("Use an instant and a duration, or two durations, with `{op}`"),
+            )
+        };
+        let (reason, next) = if matches!(op, "*" | "/" | "%") {
+            (
+                format!("`{op}` works on numbers; time values are only added and subtracted."),
+                "Work on numbers here".to_string(),
+            )
+        } else {
+            (reason, next)
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_ARITHMETIC_OPERAND,
+                format!("{} and {} can't be {}", capital(&sa), sb, verb(op)),
+            )
+            .at(span, label)
+            .reason(reason)
+            .next(next),
+        );
+        Ty::Error
     }
 
     /// Division by zero is ruled out while compiling (area 3, question 7):

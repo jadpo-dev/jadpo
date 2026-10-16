@@ -380,9 +380,11 @@ pub fn decode(
         validators,
         shapes: &[],
     };
+    // A zone or locale in any case, read as the codec spells it on the
+    // wire: `europe/london` is `Europe/London`.
     let Some(read) = (match field.spelling {
         Spelling::Plain => Some(text.to_string()),
-        other => other.variant(text),
+        other => other.variant(text).map(|variant| other.spelling(&variant)),
     }) else {
         return Err("variant".to_string());
     };

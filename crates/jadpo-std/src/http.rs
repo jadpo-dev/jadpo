@@ -65,7 +65,9 @@ pub enum Codec {
         fields: Vec<CodecId>,
     },
     /// An enum: a plain variant is its name as a string; a variant with
-    /// fields is an object with `tag` and its fields (area 2).
+    /// fields is an object with `tag` and its fields (area 2). A
+    /// `ZonedTime` is a [`Codec::Scalar`] written as an object of its
+    /// `instant` and `zone` (area 10).
     Enum {
         ty: String,
         variants: Vec<VariantCodec>,
@@ -97,6 +99,10 @@ pub enum Codec {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct VariantCodec {
     pub name: String,
+    /// The string a plain variant is sent as: its name, except that a
+    /// `Zone` is its IANA name (`Europe/London`) and a `Locale` its BCP 47
+    /// tag (`en-GB`), as area 10's table and a setting spell them.
+    pub wire: String,
     /// Its place among the enum's variants, from 0.
     pub ordinal: u32,
     /// A payload variant's shape and its fields' codecs.

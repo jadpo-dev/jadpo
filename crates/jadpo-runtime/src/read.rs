@@ -438,7 +438,6 @@ pub fn to_sql(value: &Value, ty: SqlType) -> Result<SqlValue, String> {
             SqlValue::Timestamp(millis.checked_mul(1000).ok_or("an instant out of range")?)
         }
         (Value::Date(day), SqlType::Date) => SqlValue::Date(*day),
-        (Value::Time(millis), SqlType::Time) => SqlValue::Time(i64::from(*millis) * 1000),
         (Value::Duration(millis), SqlType::Int8) => SqlValue::Int8(*millis),
         (Value::Variant(variant), SqlType::Text) if variant.fields.is_empty() => {
             SqlValue::Text(variant.name.to_string())
@@ -475,9 +474,6 @@ pub fn from_sql(sql: &SqlValue, column: &Column) -> Result<Value, String> {
         (SqlValue::Uuid(bytes), Column::Uuid) => Value::uuid(&uuid_text(bytes)),
         (SqlValue::Timestamp(micros), Column::Instant) => Value::Instant(micros.div_euclid(1000)),
         (SqlValue::Date(day), Column::Date) => Value::Date(*day),
-        (SqlValue::Time(micros), Column::Time) => {
-            Value::Time(u32::try_from(micros.div_euclid(1000)).map_err(|_| "a time out of range")?)
-        }
         (SqlValue::Text(name), Column::Enum { ty, variants }) => {
             let ordinal = variants
                 .iter()

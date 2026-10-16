@@ -714,6 +714,7 @@ impl Lower<'_> {
             },
             Reach::Caller(kind) => Callee::Caller(*kind),
             Reach::Session(op) => Callee::Session(*op),
+            Reach::AdvanceClock => Callee::AdvanceClock,
             Reach::Unknown => Callee::Unknown,
         };
         if let Some(head) = call.expr() {
@@ -786,7 +787,7 @@ impl Lower<'_> {
                 }
                 self.node(last.syntax(), callee.key().cloned(), false);
             }
-            Reach::Std(_) | Reach::Session(_) => {}
+            Reach::Std(_) | Reach::Session(_) | Reach::AdvanceClock => {}
             Reach::Caller(_) => {
                 self.scan(head.syntax());
             }

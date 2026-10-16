@@ -498,6 +498,10 @@ impl Executor for Program {
             .collect()
     }
 
+    fn clock(&self, callable: u32) -> Option<i64> {
+        self.plan().callable(callable)?.clock
+    }
+
     fn run<'a, 'p: 'a>(
         &'a self,
         ctx: &'a mut Ctx<'p>,

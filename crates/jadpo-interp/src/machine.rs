@@ -166,6 +166,10 @@ enum Task<'p> {
     Return,
     Discard,
     PushUnit,
+    /// `clock.advance(...)`: the duration on the stack moves the clock.
+    AdvanceClock(SiteId),
+    /// `none`, for an option a standard-library call leaves out.
+    PushNone,
     IfCheck {
         arms: &'p [IfArm],
         otherwise: &'p [SiteId],
@@ -671,6 +675,23 @@ impl<'p> Machine<'p> {
                 self.pop();
             }
             Task::PushUnit => self.values.push(Value::Unit),
+            Task::AdvanceClock(at) => {
+                let by = match self.pop() {
+                    Value::Duration(by) => by,
+                    _ => {
+                        return Err(self.defect(
+                            ctx,
+                            "a clock moved by something that isn't a duration",
+                            at,
+                        ));
+                    }
+                };
+                if !ctx.advance_clock(by) {
+                    return Err(self.fault(ctx, FaultKind::ClockBackward, at));
+                }
+                self.values.push(Value::Unit);
+            }
+            Task::PushNone => self.values.push(Value::None),
             Task::IfCheck {
                 arms,
                 otherwise,
@@ -1707,6 +1728,14 @@ impl<'p> Machine<'p> {
                 });
                 self.arguments(args, id);
             }
+            // A test's clock moved on (area 13).
+            Callee::AdvanceClock => {
+                let [Some(arg)] = args else {
+                    return Err(self.defect(ctx, "a clock moved by nothing", id));
+                };
+                self.tasks.push(Task::AdvanceClock(id));
+                self.tasks.push(Task::Expr(*arg));
+            }
             Callee::Object(_) | Callee::Variant(_) | Callee::Unknown => {
                 return Err(self.defect(ctx, "a call to something that can't be called", id));
             }
@@ -1895,6 +1924,11 @@ impl<'p> Machine<'p> {
         let mut count = 0;
         for (param, arg) in op.operation().params.iter().zip(args) {
             let Some(arg) = arg else {
+                if param.optional {
+                    work.push(Task::PushNone);
+                    count += 1;
+                    continue;
+                }
                 work.push(Task::Defect("an operation without one of its values", id));
                 break;
             };
@@ -1967,6 +2001,12 @@ impl<'p> Machine<'p> {
         match (result, stopped) {
             (Ok(value), _) => Ok(value),
             (Err(_), Some(stop)) => Err(stop),
+            // A temporal condition its `attempt` maps, as a construction's
+            // broken rule (area 10).
+            (Err(jadpo_value::Fault::Broke(rule)), None) => Err(Stop::Invalid {
+                rule,
+                written: format!("{}:", rule.word()),
+            }),
             (Err(fault), None) => Err(self.value_fault(ctx, fault, at)),
         }
     }

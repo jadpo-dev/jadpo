@@ -10,9 +10,11 @@ license.workspace = true
 # A runtime crate (docs/compiler-runtime.md §2.1): it builds for
 # wasm32-unknown-unknown and depends on no compiler or tooling crate; only on
 # jadpo-std, the leaf crate it shares with the compiler. serde_json reads
-# a request's JSON (area 7); what Jadpo writes it writes itself.
+# a request's JSON (area 7); what Jadpo writes it writes itself. jiff
+# holds the time zone database `temporal` works in (area 10).
 [dependencies]
 jadpo-std.workspace = true
+jiff.workspace = true
 serde_json.workspace = true
 
 [lints]

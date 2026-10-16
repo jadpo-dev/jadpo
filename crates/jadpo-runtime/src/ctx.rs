@@ -303,6 +303,19 @@ impl<'p> Ctx<'p> {
         &self.env
     }
 
+    /// Moves a test's clock on by `by` milliseconds (area 13, "Controlling
+    /// time"): what the next call reads, never one already running. `false`
+    /// for a move backwards.
+    pub fn advance_clock(&mut self, by: i64) -> bool {
+        match self.env.clock.advanced(by) {
+            Some(clock) => {
+                self.env.clock = clock;
+                true
+            }
+            None => false,
+        }
+    }
+
     // --- frames -----------------------------------------------------------
 
     /// How many frames the stack holds.

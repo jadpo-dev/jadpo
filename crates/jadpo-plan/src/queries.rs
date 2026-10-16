@@ -539,7 +539,6 @@ impl Planner<'_> {
                 Prim::Uuid => Column::Uuid,
                 Prim::Instant => Column::Instant,
                 Prim::CalendarDate => Column::Date,
-                Prim::Time => Column::Time,
                 Prim::Duration => Column::Duration,
                 _ => return None,
             });

@@ -48,7 +48,7 @@ impl TestEnv {
     /// The environment of the test with key `key` in a run seeded `seed`:
     /// its seed comes from both, so a rerun with the same seed gives it the
     /// same one wherever it falls in the order. Its clock starts at the
-    /// fixed default until a test's `clock:` setting is built (roadmap 5.2).
+    /// fixed default, 2000-01-01T00:00:00Z, which a test's `clock:` moves.
     pub fn new(seed: u64, key: &str) -> TestEnv {
         TestEnv {
             env: Env {

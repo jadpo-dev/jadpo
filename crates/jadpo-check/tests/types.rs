@@ -364,6 +364,16 @@ fn loops_and_failures_read_their_types() {
     );
 }
 
+/// How a stub writes a parameter of this kind: a value limited to some
+/// built-in types is a type variable, and a clock time is text.
+fn stub_kind(kind: jadpo_std::Kind) -> jadpo_std::Kind {
+    match kind {
+        jadpo_std::Kind::OneOf(_) => jadpo_std::Kind::Any,
+        jadpo_std::Kind::Clock => jadpo_std::Kind::Builtin(jadpo_std::Builtin::Text),
+        other => other,
+    }
+}
+
 #[test]
 fn every_stub_matches_the_operation_table() {
     // The stubs (crates/jadpo-check/std) declare what programs call; the
@@ -377,9 +387,15 @@ fn every_stub_matches_the_operation_table() {
             params: operation
                 .params
                 .iter()
-                .map(|param| (param.name.to_string(), Some(param.kind)))
+                .map(|param| {
+                    (
+                        param.name.to_string(),
+                        Some(stub_kind(param.kind)),
+                        param.optional,
+                    )
+                })
                 .collect(),
-            result: Some(operation.result),
+            result: Some(stub_kind(operation.result)),
         })
         .collect();
     assert_eq!(stubs, table);
