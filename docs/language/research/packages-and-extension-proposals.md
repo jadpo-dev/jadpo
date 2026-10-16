@@ -823,6 +823,23 @@ Decided 2026-10-16 (Richard).
   points to it.
 - **Recipes in library packages too**, not only provider packages.
 
+## Documents (open item 9)
+
+Decided 2026-10-16 (Richard). A `documents` capability renders a typed
+template to HTML or PDF, exactly as email renders: `type InvoiceDocument =
+Document { ... }` with its `.html` template in the domain's `documents/`
+folder, the strict template rules, translations, and an optional
+`shared/documents/layout.html`. `documents: { connection: pdfs  layout:
+... }` names the connection that turns HTML into PDF: Gotenberg as a
+container package or a hosted API's package (DocRaptor, PDFShift).
+`documents.pdf(InvoiceDocument { ... }, locale: ...)` returns `Bytes`;
+`documents.html(...)` returns the HTML for previews. It runs in
+subscribers, capped by `max_concurrent`. In development `jadpo dev` starts
+the declared service; in tests the fake returns a placeholder PDF and a
+test can read the rendered HTML. The disk driver is not decided yet: file
+reading, writing, very large files and parsing CSV, TSV and JSON are being
+researched first (Richard).
+
 ## Decided: the golden rule
 
 Decided 2026-10-16 (Richard): **a package can do nothing the app cannot,
