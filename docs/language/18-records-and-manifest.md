@@ -26,6 +26,7 @@ that raised it.
 | API record | Each API's routes, fields and failure codes | `api/<api>.api` | Yes | `jadpo api update` | `check`, reviewers, client teams |
 | Migrations | Each step of the database, with a snapshot of the whole schema | `database/migrations/` | Yes | `jadpo migrate new` | `migrate apply`, `check` |
 | Identity registry | What each renamed thing was born as | `database/identities.json` | Yes | `jadpo rename`, `jadpo domain …` | the compiler, `migrate`, `incident` |
+| Translation sources | For each locale and message, a hash of the default wording it was translated from, and each acceptance (area 10) | `translations/sources.json` in each translations folder | Yes | `jadpo translations update`, `import`, `accept` | `check`, `translations missing`, `approval` |
 | Lock | Registry packages by version and digest | `jadpo.lock` | Yes | `jadpo provider add` / `update` | `check`, `build` |
 | Acceptances | A person's decision to allow listed changes | `acceptances/` | Yes | drafted by `jadpo acceptance new`; the reason by a person | `check`, `approval` |
 | Manifest | The application graph: every node with its source place, edges, routes, schedules, hosts, policy, thresholds | `build/manifest.json` | No | `check` | every report, `approval`, `incident`, `inspect`, console, MCP |
@@ -486,3 +487,4 @@ that the path number cannot be decoded.
 | Acceptances | One file per decision listing the changes it covers, with a person's reason; counts only in the change that adds it; `jadpo acceptance new` drafts it; CODEOWNERS approval is the gate | 2026-10-13 |
 | Package changes | A person accepts a used operation removed, a used field removed or retyped, a new failure on a used operation, or a host or credential-scheme change | 2026-10-13 |
 | Production builds | Deployables carry a build stamp, not the manifest; `jadpo incident` rebuilds from the commit with the exact compiler version | 2026-10-13 |
+| Translation sources | Each `translations/` folder has a generated, committed `sources.json`: per locale and message, the hash of the default wording it was translated from, and acceptances; written by `jadpo translations update`, `import` and `accept` (Richard, area 10) | 2026-10-16 |

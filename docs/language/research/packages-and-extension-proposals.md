@@ -153,7 +153,7 @@ with the default locale's file defining the keys; both are replaced below.
 **Where they live.** In the domain that uses them, as its emails do; a
 message a second domain uses moves to `shared/`, under area 1's promotion
 rule. The root `translations/` holds only the app's wording for Jadpo's
-own text (`jadpo.` keys); text several domains use is in `shared/`. This changes area 1, which made
+own messages; text several domains use is in `shared/`. This changes area 1, which made
 `translations/` a root-only folder.
 
 ```text
@@ -162,8 +162,9 @@ domains/shipping/translations/
     parcels.jadpo             type Parcels = Message { ... }
     en_gb.jadpo               translations { ... }: the English wording
     de_de.jadpo
+    sources.json              generated: what each translation was made from
 shared/translations/          messages several domains use
-translations/                 jadpo.* overrides only
+translations/                 Jadpo's own messages, reworded by the app
 ```
 
 **Each message is a type.** `Message` is a type base beside `Failure`,
@@ -184,7 +185,7 @@ type OrderShipped = Message {
 // domains/shipping/translations/parcels.jadpo
 /// How many parcels an order has, on the tracking page.
 type Parcels = Message {
-    count: Count          // plural forms, per language
+    count: PluralCount    // plural forms, per language
 }
 ```
 
@@ -197,7 +198,7 @@ parses only Jadpo. A member is a message's or failure's name in
 lower_snake_case, found by area 1's name conversion (`order_shipped` is
 `OrderShipped`, as a file name and a failure code already are). Every
 wording is a plain string whose only syntax is `{field}`; a message with an
-enum field has one member per value, one with a `Count` field one member
+enum field has one member per value, one with a `PluralCount` field one member
 per plural form the language needs, from Unicode's CLDR data (English `one`
 and `other`; Polish `one`, `few`, `many` and `other`). Dates and numbers are
 formatted in code with `temporal.format` and passed in as text. Translation
@@ -233,9 +234,9 @@ translations.shipping.order_shipped(tone: shop.tone, name: customer.first_name, 
 | No fields | A plain string |
 | A `Text`, `PresentationText`, `Int` or `Decimal` field | A `{field}` placeholder; numbers are written in the language's digits |
 | One enum field | An object with one key per value of the enum; the field is not a placeholder |
-| One `Count` field | An object with one key per plural form the language needs; `{count}` is available in each |
+| One `PluralCount` field | An object with one key per plural form the language needs; `{count}` is available in each |
 | Any other field type (`Instant`, an object) | A compile error: format it in code and pass text |
-| More than one enum or `Count` field | A compile error: split the message, so a translator never fills a grid of combinations |
+| More than one enum or `PluralCount` field | A compile error: split the message, so a translator never fills a grid of combinations |
 
 A `Failure` maps the same way: its code is the key, its client fields are
 the placeholders, and `kind:` and `message:` are not. The generated call
@@ -263,8 +264,11 @@ English (area 4). An `EmailMessage`'s templates read `translations.` with the em
 locale.
 
 **Jadpo's own text** (privacy pages, built-in emails, generated messages)
-uses `jadpo.` keys with defaults shipped for common locales; the app
-changes one by writing its key in the root `translations/`.
+is Jadpo's own messages, with defaults shipped for common locales. The
+root `translations/<locale>.jadpo` holds only these: its members are
+Jadpo's message names in lower_snake_case with no prefix
+(`privacy_export_ready: "..."`), and the app changes one by writing it
+there; `jadpo translations builtin` lists them with their fields.
 
 **Tooling**: `jadpo translations missing` and `unused` with `--json`; go to
 definition from a call to its type and its strings; a pseudo-locale that
@@ -299,7 +303,8 @@ with `for`, an object's fields are written one by one.
   version of the default wording it was made from; when that wording
   changes, the others become warnings until updated, listed by
   `jadpo translations missing`.
-- **Agent translations can need review**: an app may mark translations an
+- **Agent translations can need review** (made precise in answer 7
+  below): an app may mark translations an
   agent wrote as not yet reviewed, listed in the approval report until a
   person accepts them.
 - **Text direction**: every locale knows its direction, and templates read
@@ -316,6 +321,42 @@ with `for`, an object's fields are written one by one.
   translation; an app models translated content as ordinary fields.
 - Waiting for open item 8: a library package's own messages, and whether
   the app can reword them.
+
+**Answered 2026-10-16 (Richard), so chunk 5.3 leaves nothing to decide:**
+
+1. The plural type is `PluralCount`, not `Count`, so no existing example
+   that declares its own `Count` is renamed.
+2. **Email subjects**: an `EmailMessage`'s member in its domain's language
+   files is its subject line, its fields usable as placeholders
+   (`welcome_email: "Welcome, {display_name}"`); the body stays the `.html`
+   and `.txt` templates.
+3. A message in `shared/translations/` is called
+   `translations.shared.<message>(...)`.
+4. **Jadpo's own messages** have no `jadpo.` prefix: the root
+   `translations/<locale>.jadpo` holds only them, named in lower_snake_case
+   (`privacy_export_ready`), and `jadpo translations builtin` lists them
+   with their fields.
+5. A literal brace in a wording is doubled: `{{` writes `{`, `}}` writes
+   `}`.
+6. **Stale check**: each `translations/` folder has a generated, committed
+   `translations/sources.json` (machine-written, so JSON): for each locale
+   and message, a hash of the default wording it was translated from.
+   `jadpo translations update` and `import` write it; area 18's records
+   table lists it.
+7. **Review**: `translations: { review: TranslationReview.required }` in
+   `app.jadpo` (default `.none`) makes every new or changed non-default
+   wording unreviewed until a person runs `jadpo translations accept
+   <locale>`, which records the acceptance in the same `sources.json`;
+   unaccepted wording appears in the approval report. Jadpo cannot tell who
+   wrote a wording, so it is "changed and not yet accepted", not "written
+   by an agent".
+8. **Failure export**: `jadpo build` writes, beside each API's OpenAPI
+   document, one file per locale named `<api>.failures.<locale>.json`, a
+   flat object from failure code to wording in the same `{field}` syntax.
+9. Named types built on `Text`, `Int` or `Decimal` work as placeholders.
+10. `locale.direction` is a built-in enum `TextDirection` with
+    `.left_to_right` and `.right_to_left`; Jadpo ships its wording as the
+    HTML values, so `{{ locale.direction }}` writes `ltr` or `rtl`.
 
 ## Decided: the golden rule
 

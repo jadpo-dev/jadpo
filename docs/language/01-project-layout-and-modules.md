@@ -1598,7 +1598,7 @@ database/
   identities.json
   migrations/     20260901T1000_initial/  20261012T0930_add_order_channel/
   seeds/          local_demo.jadpo
-translations/     en_gb.jadpo        the app's wording for Jadpo's own jadpo. keys
+translations/     en_gb.jadpo        the app's wording for Jadpo's own messages
 tests/            checkout_to_delivery.test.jadpo
 build/
 ```
@@ -1610,8 +1610,10 @@ build/
   `tests/` and `build/`.
 - `app.jadpo` also records the project's Jadpo language version.
 - The root `translations/` holds only the app's wording for Jadpo's own
-  text (`jadpo.` keys); an application's messages live in the domain that
-  uses them, or in `shared/translations/` (area 10, revised 2026-10-16).
+  messages, one `<locale>.jadpo` file each, members named without a prefix
+  (`privacy_export_ready`); an application's messages live in the domain
+  that uses them, or in `shared/translations/` (area 10, revised
+  2026-10-16).
 - A `.jadpo` file anywhere else is an error. Folders with no `.jadpo` files
   (`docs/`, `.github/`) are ignored.
 - There is no `env.jadpo`. `config.jadpo` declares every setting; values come
@@ -1654,7 +1656,7 @@ build/
 | `subscribers/` | Event triggers, including long-running coordination | Replaces durable "workflows" |
 | (none) | Third-party APIs are provider packages: connections in `app.jadpo`, packages in root `providers/` or pinned in `jadpo.lock` | Amended 2026-10-13 by area 11; the `integrations/` folder and `integration` keyword are gone |
 | `emails/` | Email types and their templates, one email per name (`welcome_email.jadpo`, `welcome_email.html`, `welcome_email.txt`) | Added 2026-10-13 (Richard, area 16) |
-| `translations/` | One `type X = Message` per file, and one `translations { }` language file per locale named after it (`de_de.jadpo`), wording the domain's messages, failures and enums | Added 2026-10-16 (Richard, area 10); a message a second domain uses goes in `shared/translations/`. Chunk 5.3 adds it to the folders `layout.unknown_location` lists |
+| `translations/` | One `type X = Message` per file, one `translations { }` language file per locale named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects, and the generated, committed `sources.json` (area 18) | Added 2026-10-16 (Richard, area 10); a message a second domain uses goes in `shared/translations/`. Chunk 5.3 adds it to the folders `layout.unknown_location` lists |
 | `fixtures/` | Test data shared by several test files in the domain | |
 
 #### Files and names
@@ -2057,7 +2059,7 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | Query and action placement | Every query lives in its domain's `queries/` folder and every action in `actions/`, one per file; written ones are called by name; entity files hold the data definition and the generated operations (area 5, Richard) | 2026-10-12 |
 | Root `api/` and `acceptances/` folders | Added to the fixed root, with `providers/` and `jadpo.lock` (areas 11 and 18) | 2026-10-13 |
 | Emails folder | Each domain may have `emails/`, holding email types and their templates (from area 16) | 2026-10-13 |
-| Translations folder | Each domain, and `shared/`, may have `translations/`, holding `Message` types one per file and one `translations { }` file per locale; a message a second domain uses is promoted to `shared/translations/`; the root `translations/` holds only the app's wording for `jadpo.` keys (Richard, area 10) | 2026-10-16 |
+| Translations folder | Each domain, and `shared/`, may have `translations/`, holding `Message` types one per file and one `translations { }` file per locale; a message a second domain uses is promoted to `shared/translations/`; the root `translations/` holds only the app's wording for Jadpo's own messages (Richard, area 10) | 2026-10-16 |
 | Flags and monitoring files | `flags.jadpo` joins the fixed root; each domain may hold one `monitoring.jadpo` directly in its folder (Richard, from the architecture plan) | 2026-10-13 |
 | Public fixtures | A fixture may be `public`, offered to other domains' tests, fixtures and seeds and to scenarios in root `tests/`, which call it through its domain (`planning.alice_with_todos()`); only tests, fixtures and seeds ever call a fixture, and a private one stays its own domain's. Area 13 wins over the earlier rule here that `public` on a fixture was `visibility.public_not_allowed` (Richard) | 2026-10-14 |
 | Unused `public` | `public` on a declaration nothing outside its domain uses is the error `visibility.public_unused`, whose edit removes `public`. Users are another domain's code, root `tests/` scenarios, and the signature of another public declaration that is itself used outside; the domain's own tests don't count. A package's public members are its interface to other projects and are exempt (area 11) (Richard) | 2026-10-14 |

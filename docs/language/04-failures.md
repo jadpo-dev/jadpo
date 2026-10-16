@@ -532,8 +532,10 @@ show text by `code`, which is stable (question 12):
 The text for people is written in the app, keyed by the failure's code in
 its domain's language files (area 10, Translations), with the failure's
 `client: { }` fields as placeholders; `kind:` and `message:` are not
-translated. The compiler exports it per locale beside the OpenAPI document
-for client apps to show (revised 2026-10-16, built in chunk 5.3):
+translated. `jadpo build` writes, beside each API's OpenAPI document, one
+file per locale named `<api>.failures.<locale>.json`, a flat object from
+failure code to wording in the same `{field}` syntax, for client apps to
+show (revised 2026-10-16, built in chunk 5.3):
 
 ```jadpo fragment
 // domains/planning/translations/fr_fr.jadpo
@@ -1365,8 +1367,9 @@ check failed: 1 error, 1 file
     failure declaration.
     *Revised 2026-10-16 (Richard, area 10):* the app writes each failure's
     client text, keyed by its code in its domain's language files like a
-    message, with its client fields as placeholders, and the compiler
-    exports it per locale beside the OpenAPI document for client apps. The
+    message, with its client fields as placeholders, and `jadpo build`
+    writes it beside each API's OpenAPI document as
+    `<api>.failures.<locale>.json` for client apps. The
     server's `message` stays fixed English, as decided here. This resolves
     area 10's amendment that translations serve client failure messages.
 
@@ -1418,7 +1421,7 @@ Decided by Richard on 2026-10-12. Checked by the new compiler since 2026-10-13 (
 | Concealment | A record hidden by policy reports the same `not_found` failure; the log records the concealment | 2026-10-12 |
 | Internal fields in logs | Identifiers, numbers, enums, booleans and times as values; text as a keyed hash; secrets never | 2026-10-12 |
 | Message translation | The client translates by `code`; `message` stays fixed English (Revised 2026-10-16: see "Client text per locale".) | 2026-10-12 |
-| Client text per locale | Each failure's text for people is keyed by its code in its domain's language files, client fields as placeholders, and exported per locale beside the OpenAPI document; `message` stays fixed English (Richard, area 10) | 2026-10-16 |
+| Client text per locale | Each failure's text for people is keyed by its code in its domain's language files, client fields as placeholders; `jadpo build` writes `<api>.failures.<locale>.json` beside each API's OpenAPI document, a flat object from code to wording; `message` stays fixed English (Richard, area 10) | 2026-10-16 |
 | Failure declaration form | `type Name = Failure { ... }`, the same form as every other type (Richard: consistency when writing code) | 2026-10-12 |
 | Failure fields | Fields exist only in `client: { }` and `internal: { }`; without `client` the caller gets only the code, message and request id | 2026-10-12 |
 | Request id | Every error response carries `request_id` (also the `x-request-id` header), and every failure, expected ones included, is logged with it, so a client can quote it and a developer can trace it | 2026-10-12 |

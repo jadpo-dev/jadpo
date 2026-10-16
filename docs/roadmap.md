@@ -310,15 +310,17 @@ reference only).
 - [ ] **5.2 Time:** `opus · high` durations, instants, formatting.
 - [ ] **5.3 Translations and locales** `sonnet · high` (area 10,
   Translations, decided 2026-10-16): `type X = Message` and the built-in
-  `Count`; each domain's and `shared/`'s `translations/` folder, with one
-  unnamed `translations { }` per locale and its mapping and checks
+  `PluralCount`; each domain's and `shared/`'s `translations/` folder, with
+  one unnamed `translations { }` per locale and its mapping and checks
   (placeholders, enum values, CLDR plural forms, a complete default
-  locale, regional then default fallback, stale and unreviewed
-  translations); `translations.<domain>.<message>(..., locale:)` returning
-  `PresentationText`; enum wording; failures' client text exported per
-  locale beside the OpenAPI document; `locale.direction`; `jadpo.` keys
-  with shipped wording; `jadpo translations missing`, `unused`, `export`
-  and `import`, and a pseudo-locale. Email templates follow in 7.3.
+  locale, regional then default fallback, stale translations through
+  `sources.json`, `TranslationReview` and `accept`);
+  `translations.<domain>.<message>(..., locale:)` returning
+  `PresentationText`; enum wording; email subjects; failures' client text
+  as `<api>.failures.<locale>.json`; `TextDirection`; Jadpo's own messages
+  with shipped wording; `jadpo translations missing`, `unused`, `update`,
+  `accept`, `builtin`, `export` and `import`, and a pseudo-locale. Email
+  templates follow in 7.3.
 - [ ] **5.4 Standard library: the plan** `opus · high`. Only `collection`
   and `temporal` are specified, piecemeal across areas 2, 3 and 10, and
   real code keeps needing more: splitting and trimming text, formatting and

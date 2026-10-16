@@ -364,8 +364,9 @@ OpenTelemetry stays the transport; only what is sent changes.
 Applications send a handful of messages: confirm your address, reset your
 password, an invoice. A message is a type, `type X = EmailMessage`, whose fields are
 the values its text uses, in its domain's `emails/` folder beside its HTML
-and text templates (question 11). The templates' words come from the
-domain's translations (area 10): a template calls
+and text templates (question 11). Its subject line is its member in the
+domain's language files, with its fields as placeholders. The templates'
+words come from the domain's translations (area 10): a template calls
 `{{ translations.<domain>.<message>(...) }}`, which takes the email's
 locale, and the compiler checks every call and placeholder against the
 message types and the email's fields.
@@ -386,6 +387,7 @@ type WelcomeHeading = Message {
 
 // domains/accounts/translations/en_gb.jadpo
 translations {
+    welcome_email: "Welcome, {display_name}"      // the subject line
     welcome_heading: "Welcome, {name}"
 }
 ```
@@ -415,10 +417,6 @@ money formatter, a `Bool` as a condition for `if`, a list walked with
 `for`, an object's fields one by one, an enum without wording by adding
 it. Values are escaped; HTML goes in unescaped only as the safe-HTML type,
 which the standard library defines (input to chunk 5.4).
-
-Not yet decided: where an email's subject comes from, now that its body is
-a template (the 2026-10-13 design read it from translations under the
-type's name). It is settled before chunk 7.3.
 
 Sending is emitting: the mail goes after the action commits, retried like
 any delivery (area 12), so a rolled-back sign-up never sends a welcome. Every
@@ -704,7 +702,10 @@ monitoring thresholds come after the first build (roadmap).
     `Int`, `Decimal`, and enums with wording); anything else is an error
     naming how to format it (`temporal.format`, the money formatter, `if`,
     `for`, field by field). Values are escaped, and raw HTML goes in only as
-    the safe-HTML type (input to chunk 5.4). See "Email" above.
+    the safe-HTML type (input to chunk 5.4). An email's subject line is
+    its member in its domain's language files (`welcome_email: "Welcome,
+    {display_name}"`), its fields usable as placeholders; the body stays
+    the `.html` and `.txt` templates. See "Email" above.
 12. **Is search a `search:` section using PostgreSQL full-text search?**
     *Recommendation:* yes, one language per entity, with search services as
     integrations. Django's `SearchVector` and Laravel Scout's database engine
@@ -754,7 +755,7 @@ monitoring thresholds come after the first build (roadmap).
 | Audit trail | Opt-in `audit:` per entity, same transaction, personal fields hashed, readable with `read` on the record | 2026-10-13 |
 | Tracing and metrics | OpenTelemetry generated for everything, no values in spans; settings in `config.jadpo` bound to `OTEL_*` names | 2026-10-13 |
 | Email | `emails/` folder per domain: type, HTML and text templates, shared layout; no MJML; templates use Jadpo syntax inside `{{ }}` (values, translations, `if`, `for`, typed `include`, formatting), read-only; delivered through the `email` capability (Richard) | 2026-10-13 |
-| Email templates | Translated text through `translations.<domain>.<message>(...)` with the email's locale, not `t.`; strict checks (unknown names, messages and partials, wrong placeholders or partial fields, `if` on non-`Bool`, `for` over non-lists and other calls are errors; an unused field warns); only `Text`, `PresentationText`, `Int`, `Decimal` and enums with wording are written out, anything else an error naming how to format it; values escaped, raw HTML only as the safe-HTML type (Richard, area 10) | 2026-10-16 |
+| Email templates | Subject line from the email's member in its domain's language files, its fields as placeholders; translated text through `translations.<domain>.<message>(...)` with the email's locale, not `t.`; strict checks (unknown names, messages and partials, wrong placeholders or partial fields, `if` on non-`Bool`, `for` over non-lists and other calls are errors; an unused field warns); only `Text`, `PresentationText`, `Int`, `Decimal` and enums with wording are written out, anything else an error naming how to format it; values escaped, raw HTML only as the safe-HTML type (Richard, area 10) | 2026-10-16 |
 | Search | `search:` section with PostgreSQL full-text search, one language per entity; search services as packages | 2026-10-13 |
 | Path IDs | Every request carries a path number and a stable path key | 2026-10-13 |
 | Detail by threshold | Full traces on threshold, failure, fault or new path; otherwise metrics plus one sample per path per minute | 2026-10-13 |
