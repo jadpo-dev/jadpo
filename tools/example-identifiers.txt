@@ -121,6 +121,7 @@ bread
 brought_over
 browned
 browse_books
+browser_languages
 budget
 build_product
 bulletin
@@ -480,6 +481,7 @@ kitchen_busy
 kitchen_staff
 label_jar
 labelled
+languages_header
 larger
 last_lent_at
 last_seen_at
@@ -534,6 +536,7 @@ loans_due
 loaves
 loaves_total
 local_due
+locale_for_reader
 locker
 locker_code
 log_level
@@ -729,6 +732,7 @@ pickup_outlet
 pin_note
 ping
 place_order
+place_request
 placed_label
 placed_text
 placed_with
@@ -793,6 +797,8 @@ reaction
 read_by_bob
 read_by_dee
 read_clock
+reader_locale
+reader_pick
 receipt
 receipt_id
 recipe
@@ -835,6 +841,7 @@ renew
 renewed
 replies
 reply_count
+reply_locale
 reply_total
 reprice
 reprice_line

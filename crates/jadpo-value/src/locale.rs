@@ -46,21 +46,21 @@ fn ranges(header: &str) -> Vec<(String, u16)> {
 /// for an empty one, a malformed one, `*` and a weight of zero.
 fn entry(entry: &str) -> Option<(String, u16)> {
     let entry = entry.trim_matches(is_space);
-    let (range, weight) = match entry.split_once(';') {
+    let (range, q) = match entry.split_once(';') {
         Some((range, rest)) => {
             let rest = rest.trim_start_matches(is_space);
             let value = rest
                 .get(..2)
                 .filter(|q| q.eq_ignore_ascii_case("q="))
                 .and_then(|_| rest.get(2..))?;
-            (range.trim_end_matches(is_space), weight(value)?)
+            (range.trim_end_matches(is_space), q_value(value)?)
         }
         None => (entry, 1000),
     };
-    if range == "*" || weight == 0 || !is_range(range) {
+    if range == "*" || q == 0 || !is_range(range) {
         return None;
     }
-    Some((range.replace('_', "-").to_ascii_lowercase(), weight))
+    Some((range.replace('_', "-").to_ascii_lowercase(), q))
 }
 
 fn is_space(c: char) -> bool {
@@ -69,7 +69,7 @@ fn is_space(c: char) -> bool {
 
 /// `qvalue = ( "0" [ "." 0*3DIGIT ] ) / ( "1" [ "." 0*3("0") ] )`, in
 /// thousandths.
-fn weight(text: &str) -> Option<u16> {
+fn q_value(text: &str) -> Option<u16> {
     let (whole, fraction) = match text.split_once('.') {
         Some((whole, fraction)) => (whole, fraction),
         None => (text, ""),
