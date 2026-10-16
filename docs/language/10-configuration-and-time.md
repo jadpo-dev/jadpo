@@ -1336,7 +1336,7 @@ read through, are not decided on any page; they are chunk 5.1c.
 | Mail templates using translations and `PresentationText` | 11 | Input to area 11 |
 | `config.typo` should report the configuration field | 10 | Fixed (chunk 5.1): `configuration.field_unknown` |
 | `jadpo fmt` writes `temporal.format (` with a space | 14 | Bug |
-| Trusted proxies: which proxies a deployment trusts to say a client's address (`X-Forwarded-For`, `Forwarded`, Cloudflare's `CF-Connecting-IP`) | 7, 10, 16 | Not decided on any page: chunk 5.1c |
+| Trusted proxies: which proxies a deployment trusts to say a client's address (`X-Forwarded-For`, `Forwarded`, Cloudflare's `CF-Connecting-IP`) | 7, 10, 16 | Decided 2026-10-16 (question 12): chunk 5.1c |
 | GDPR: retention periods as settings, alongside personal-data marking, erasure and export | 15 | Moved to area 15 |
 
 ### Open questions
@@ -1440,7 +1440,7 @@ read through, are not decided on any page; they are chunk 5.1c.
     is the only source accepted there (and its default); `hops` means nothing
     with it. The address chosen is the one rate limits count, `jadpo dev`'s
     request lines show and the request timeline records (areas 16 and 17).
-    This is chunk 5.1c, built once the reading is agreed.
+    *Decided 2026-10-16:* yes, as recommended; chunk 5.1c builds it.
 
 ### Decisions
 
@@ -1478,3 +1478,4 @@ read through, are not decided on any page; they are chunk 5.1c.
 | `jadpo dev` and `jadpo migrate` (chosen in chunk 5.1) | `dev` checks the environment over `.env.local` as the app starts, watches `.env.local` with the source, and keeps the last good version serving through an invalid change; a connection whose address no variable gives gets a database on a disposable PostgreSQL (`--url` still names the database directly). `migrate apply` and `status` use a connection's setting when `--url` is not given | 2026-10-16 |
 | Retention period (chosen in chunk 5.1) | `purge: { after: config.x }` takes a `Duration` setting that is not secret (`data.lifecycle_purge_after` otherwise); the period is the value the app started with, given to a run (`jadpo_runtime::purge_after`), and a period not above zero deletes nothing | 2026-10-16 |
 | Not built here (chosen in chunk 5.1) | A browser session's `origin:` and `signing_key:` reading settings, with signed sessions and tokens, are chunk 5.1b (built there, area 8). Which proxies a deployment trusts for a client's address is decided on no page: chunk 5.1c | 2026-10-16 |
+| Trusted proxies | `client_address: { source: ClientAddressSource.x hops: <Int> }` once in `app.jadpo`; sources `connection` (the native default), `forwarded_for`, `forwarded` and `cloudflare`; the client is the `hops`-th address from the right, falling back to the connection's address when the header is short or invalid; on Workers only `cloudflare` (`CF-Connecting-IP`), its default (question 12, Richard) | 2026-10-16 |

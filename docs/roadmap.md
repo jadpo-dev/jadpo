@@ -381,12 +381,17 @@ reference only).
   renewed against the record; `RouteAuthentication.fresh` reading the
   record; `POST /auth/exchange` for service keys; a browser session's
   `origin:` from configuration.
-- [ ] **5.1c Trusted proxies** `sonnet · high`, **needs Richard** to agree
-  the reading first (area 10, question 12 gives the recommendation): which
+- [ ] **5.1c Trusted proxies** `sonnet · high` (area 10, question 12,
+  decided 2026-10-16): which
   proxies a deployment trusts for a client's address (`X-Forwarded-For`,
   `Forwarded`, Cloudflare's `CF-Connecting-IP`), declared once in
   `app.jadpo` and read from the request, so the default rate limits count
-  the client and not the proxy. No page decides it today.
+  the client and not the proxy.
+- [ ] **5.1d Restricted values stored elsewhere** `opus · high` (area 9,
+  decided 2026-10-16): a create or update storing a value in a field some
+  of whose readers may not read the value is `policy.output_field_unproved`
+  at the `set:`, following the value as 4.8's flow check does; copies
+  between fields with the same readers stay allowed.
 - [ ] **5.2 Time:** `opus · high` durations, instants, formatting.
 - [ ] **5.3 Translations and locales.** `sonnet · high`
 - [ ] **5.4 Standard library: the plan** `opus · high`. Only `collection`
