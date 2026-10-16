@@ -72,10 +72,10 @@ setting cannot change while the app runs.
 
 ```jadpo check project=settings
 config {
-    database_url: PostgresUrl
-    session_signing_key: SigningKey
     browser_origin: Url
+    database_url: PostgresUrl
     mail_sender: Email
+    session_signing_key: SigningKey
     soft_delete_retention: Duration {
         default: 30d
     }
@@ -103,11 +103,11 @@ type ListLimit = Int {
 type FromAddress = Email {}
 
 config {
-    page_size: ListLimit {
-        default: 25
-    }
     mail_sender: FromAddress {
         test: "reminders@example.test"
+    }
+    page_size: ListLimit {
+        default: 25
     }
 }
 
@@ -158,11 +158,11 @@ type LogLevel = Enum {
 }
 
 config {
-    log_level: LogLevel {
-        default: LogLevel.normal
-    }
     business_zone: Zone {
         default: Zone.europe_london
+    }
+    log_level: LogLevel {
+        default: LogLevel.normal
     }
 }
 ```
@@ -177,17 +177,136 @@ BCP 47 tag (`en-GB`). A `Duration` is written as it is in source (`30s`, `5m`,
 
 A default is a literal of the field's type, checked while compiling
 (`default: 25`, `default: 5s`, `default: LogLevel.normal`), against every rule of
-the type and the types it is built on. A constant (area 3,
-[Constants](03-logic.md#constants)) counts as a literal here, since it is
-fixed while compiling: `default: paging.largest_page` reads one through its
-library, so the code and the setting share one value (decided 2026-10-16,
-not built until chunk 5.3e). The same is true of `test:`, the value
+the type and the types it is built on. The same is true of `test:`, the value
 every test reads (below); a field that has none of its own default and is read
-by a test needs one.
+by a test needs one. Neither names a constant (area 3,
+[Constants](03-logic.md#constants)), though it is fixed while compiling: a
+value is a constant or a setting, never both (below; revised 2026-10-16,
+Richard).
 
 A secret cannot have either, so a forgotten production secret stops the app
 instead of falling back to a value written in source, and secrets never appear
 in test source.
+
+### A constant or a setting
+
+> Decided by Richard on 2026-10-16, not built until chunk 5.3e. The
+> examples are proposals, shown as plain text because the parser doesn't
+> know `constant` yet.
+
+A value that could differ between deployments is a setting; one that never
+does is a `constant` (area 3). A value is one or the other, never both, so
+it has one source and one way to read it: a constant is read as
+`security.max_login_attempts`, a setting as `config.max_login_attempts`.
+That is why a `default:` never names a constant. If one could, code reading
+the constant directly would quietly ignore the environment: with
+`security.standard_attempts` (5) as `max_login_attempts`'s default,
+someone sets `MAX_LOGIN_ATTEMPTS=10`, and code reading
+`security.standard_attempts` still allows 5. That is the familiar `DEFAULT_PORT` bug of TypeScript and
+pydantic code, where a constant seeds a setting and half the code reads the
+constant. Jadpo has no need for the pattern: `default:` on the field
+already names the default, in the one place a reader looks.
+
+The three tiers, from fixed to live:
+
+| Tier | Where | Changes | Read as |
+|---|---|---|---|
+| `constant` | Beside its use, or in a library (area 3) | With a code change | `security.max_login_attempts` |
+| Setting | `config { }` in `config.jadpo` | Per deployment, when the app starts | `config.max_login_attempts` |
+| Flag | `flags { }` in `flags.jadpo` (area 16) | While the app runs | `flags.new_checkout` |
+
+#### Making a constant a setting
+
+Turning a fixed value into a per-deployment one is a move a tool makes:
+`jadpo config move <constant>` on the command line, or "Make this a
+setting" in the editor, on the constant's declaration or any read of it,
+which runs the same code (area 14, as the editor's rename runs `jadpo
+rename`). It is offered, never required, so `jadpo fmt --layout`, which
+makes only the moves an error asks for, doesn't make it. In one step it:
+
+- adds a field to `config { }` with the constant's name and type, whose
+  `default:` is the constant's value written as a literal (a value worked
+  out from other constants or operators is written as the value the
+  compiler worked out), and whose `///` description is the constant's;
+- deletes the constant;
+- rewrites every read, `security.max_login_attempts` (or
+  `max_login_attempts` beside its declaration) to
+  `config.max_login_attempts`, and removes a `use` line nothing needs any
+  more.
+
+```text
+// before: domains/accounts/libraries/security.jadpo
+library security {
+    /// Failed sign-ins before an account is locked.
+    constant max_login_attempts: LoginAttempts = 5
+}
+
+// before: domains/accounts/actions/sign_in.jadpo
+if failures >= security.max_login_attempts { ... }
+```
+
+```text
+$ jadpo config move security.max_login_attempts
+```
+
+```text
+// after: config.jadpo
+config {
+    /// Failed sign-ins before an account is locked.
+    max_login_attempts: LoginAttempts {
+        default: 5
+    }
+}
+
+// after: domains/accounts/actions/sign_in.jadpo
+if failures >= config.max_login_attempts { ... }
+```
+
+Every read changes, so the reviewer sees each place whose behaviour can now
+differ per deployment, and the tool makes that mechanical. The new
+variable, `MAX_LOGIN_ATTEMPTS`, is derived from the field's name as any
+setting's is. It refuses, editing nothing, and says why:
+
+- a constant whose type a setting can't hold ([What a setting can
+  hold](#what-a-setting-can-hold): a list, an object, `T?`, an enum with
+  data);
+- a constant whose name a setting already has, naming that setting;
+- a constant read where a setting can't be: in a query, an update by `id`,
+  a backfill or another constant's value, listing each such read.
+
+Moving a setting back to a constant has no command: it is rare, and
+removing a setting is a change to every deployment's environment, made by
+hand.
+
+Rejected (Richard, 2026-10-16):
+
+- **A constant an environment variable can override** (`setting: true` on
+  the constant). A read of it looks fixed at the call site while its value
+  differs per deployment; agents would add it everywhere "just in case";
+  there is no single list of the variables a deployment must set; and
+  moving the file would rename the variable.
+- **A `config { }` block in each domain.** Settings belong to the
+  deployment, not to the code that reads them, and an operator wants one
+  list.
+- **Settings declared beside their use and gathered by the compiler.** The
+  same missing list, and a setting's name would depend on where its first
+  reader sits.
+- **Values per environment in source** (`production:`, `staging:`). Against
+  this page's rule that values come from the deployment's environment with
+  no layering ([Values on your machine and in
+  production](#values-on-your-machine-and-in-production)).
+
+### Fields in name order
+
+`jadpo fmt` sorts the fields of `config { }` by name, each with the comments
+written above it and after it on its line, so two workspaces that each add
+a setting rarely touch the same lines and merge cleanly. Nothing gives a
+setting's position a meaning: a setting is read, bound and reported by
+name; `jadpo config check` and the check before the app starts list
+settings in the order they are written, which becomes name order.
+`jadpo fmt --check` fails on a `config { }` out of order. Decided by
+Richard on 2026-10-16, not built until chunk 5.3e; the examples on the
+language pages are already in name order.
 
 ### Chosen in chunk 5.1
 
@@ -1516,9 +1635,13 @@ error: `default:` on `page_size` isn't a literal
 check failed: 1 error, 1 file
 ```
 
-Here `largest_page` names nothing. Once constants are built (chunk 5.3e),
-a constant of the setting's type is accepted after `default:`, and the
-reason says "a literal or a constant".
+Here `largest_page` names nothing. A constant of the setting's type is
+refused the same way once constants are built (chunk 5.3e): a value is a
+constant or a setting, never both ([A constant or a
+setting](#a-constant-or-a-setting); revised 2026-10-16, Richard, reversing
+the same day's decision that a constant counts as a literal here). The
+`next:` then offers `jadpo config move <constant>`, which makes the
+constant the setting.
 
 ### `configuration.default_type`
 
@@ -2656,4 +2779,7 @@ chunk 5.3c.
 | Writing a time (chosen in chunk 5.3) | Always the Gregorian calendar (as `Intl.DateTimeFormat` with `calendar: "gregory"`), the locale's own digits, CLDR's narrow no-break space written as a plain space. A built-in format is the locale's pattern at CLDR's four lengths (`date_full` with the weekday), so `date_time_long` is "27 September 2026 at 14:30:05 BST" in `en_gb`, with seconds as `timeStyle: "long"` has. A declared format takes the locale's pattern for its parts (a month as a name from the long or medium date pattern, a number from the short one; a date and a time joined as the locale joins them for that month) and sets each part's width: `numeric` leaves a number as the locale writes it, `two_digit` makes it at least two. Parts with no pattern together are written one after another with a space, and `zone_name` alone is the name alone | 2026-10-16 |
 | `format_relative` (chosen in chunk 5.3) | Against `now:`, in the zone the value is seen in: under a minute either way "just now" (English; the locale's "now" elsewhere); under an hour whole minutes, a past value rounded down and a future one up; the same local date "Today at" and the short time; the date before or after "Yesterday at" or "Tomorrow at"; two to six days away the weekday and the short time; anything else the long date. The words are the locale's, the first letter a capital; a locale with no word for yesterday or tomorrow shows the long date | 2026-10-16 |
 | Not built here (chosen in chunk 5.3) | Translations (`translations/`, ICU MessageFormat, typed calls, their errors) and choosing a locale from an `Accept-Language` header, which the page calls a library call without naming it, are chunks 5.3b and 5.3c | 2026-10-16 |
-| Constants as defaults (Richard) | A `constant` (area 3) counts as a literal for a setting's `default:`, so code and a setting can share one value; `configuration.default_literal_required` still refuses anything computed. Rule of thumb: if a deployment could ever need a different value it is a setting, otherwise a constant. Decided, not built (chunk 5.3e) | 2026-10-16 |
+| Constants as defaults (Richard) | A `constant` (area 3) counts as a literal for a setting's `default:`, so code and a setting can share one value; `configuration.default_literal_required` still refuses anything computed. Rule of thumb: if a deployment could ever need a different value it is a setting, otherwise a constant. (Revised 2026-10-16 (Richard): a constant does not count as a literal for `default:` or `test:`, which stay literals as chosen in chunk 5.1, `configuration.default_literal_required` unchanged; the rule of thumb stands. See the next row.) | 2026-10-16 |
+| A constant or a setting (Richard) | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both: one source, one way to read it. If a constant could seed a setting, code reading the constant would silently ignore the environment variable (the `DEFAULT_PORT` bug of TypeScript and pydantic code); `default:` on the field already names the default. Tiers: `constant` (fixed in code), `config` (per deployment), `flags { }` (area 16, changes at runtime). Decided, not built (chunk 5.3e) | 2026-10-16 |
+| Making a constant a setting (Richard) | `jadpo config move <constant>`, and the editor's "Make this a setting" running the same code, adds a `config` field of the constant's name and type with its value as `default:` and its `///` description, deletes the constant and rewrites every read to `config.<name>`, so a reviewer sees each place that can now differ per deployment. Offered, never required, so not part of `jadpo fmt --layout`. Refuses, editing nothing, a type a setting can't hold, a name a setting already has, and a constant read in a query, an update by `id`, a backfill or another constant. No command moves a setting back. Rejected: a constant an environment variable can override (`setting: true`: hides per-deployment behaviour at the call site, agents add it everywhere, no single list of variables, moving a file renames its variable); a `config { }` per domain; settings declared beside their use and gathered by the compiler; values per environment in source (`production:`, `staging:`), against no layering. Decided, not built (chunk 5.3e) | 2026-10-16 |
+| Fields in name order (Richard) | `jadpo fmt` sorts `config { }` fields by name, comments moving with each, so parallel workspaces adding settings rarely touch the same lines; nothing gives a field's position meaning (settings are read, bound and reported by name). `jadpo fmt --check` fails on one out of order. The page examples are sorted already. Decided, not built (chunk 5.3e) | 2026-10-16 |

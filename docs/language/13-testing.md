@@ -589,11 +589,11 @@ are faked.
 type FromAddress = Email {}
 
 config {
-    mail_sender: FromAddress {
-        test: "reminders@example.test"
-    }
     mail_api_key: Text {
         secret: true
+    }
+    mail_sender: FromAddress {
+        test: "reminders@example.test"
     }
 }
 

@@ -446,11 +446,22 @@ reference only).
   and `constant mut` each one error with an edit, and a top-level `var`'s
   `next:` pointing at `constant`; placement, promotion into a library and
   per-domain names as for helper functions; reads in bodies, queries (as
-  literals), updates by `id` and setting defaults (backfills, 5.6, take
-  them as they come); the
+  literals) and updates by `id` (backfills, 5.6, take them as they come),
+  but never a setting's `default:` or `test:`, which stay literals
+  (revised 2026-10-16, Richard: a value is a constant or a setting, never
+  both), with `configuration.default_literal_required`'s `next:` naming
+  `jadpo config move`; the
   `constant.similar_exists` warning and constants in the library
-  catalogue. Each new error with a checked example and real output, and
-  area 3's proposal examples made check blocks.
+  catalogue. `jadpo config move <constant>` and the editor's "Make this a
+  setting" code action through the same code (area 10, "Making a constant
+  a setting"): a `config` field of the constant's name, type, value as
+  `default:` and description, the constant deleted, every read rewritten
+  to `config.<name>`, refusing a type a setting can't hold, a name a
+  setting has and a read in a query, an update by `id`, a backfill or
+  another constant. `jadpo fmt` sorting `config { }` fields by name with
+  their comments, and `--check` failing on one out of order (area 10,
+  "Fields in name order"). Each new error with a checked example and real
+  output, and area 3's and area 10's proposal examples made check blocks.
 - [ ] **5.4 Standard library: the plan** `opus · high`. Only `collection`
   and `temporal` are specified, piecemeal across areas 2, 3 and 10, and
   real code keeps needing more: splitting and trimming text, formatting and
