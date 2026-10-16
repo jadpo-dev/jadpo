@@ -387,7 +387,7 @@ reference only).
   `Forwarded`, Cloudflare's `CF-Connecting-IP`), declared once in
   `app.jadpo` and read from the request, so the default rate limits count
   the client and not the proxy.
-- [ ] **5.1d Restricted values stored elsewhere** `opus · high` (area 9,
+- [x] **5.1d Restricted values stored elsewhere** `opus · high` (area 9,
   decided 2026-10-16): a create or update storing a value in a field some
   of whose readers may not read the value is `policy.output_field_unproved`
   at the `set:`, following the value as 4.8's flow check does; copies
@@ -423,7 +423,10 @@ reference only).
   review: a system caller, so `Access.system` grants schedules and
   subscribers (today every policed statement refuses them), and events
   delivered after the response is sent, through the host (Workers'
-  `waitUntil`), not before it.
+  `waitUntil`), not before it. From chunk 5.1d: what a subscriber stores
+  from an event is checked against what every `emit` of it put there, as
+  area 9's stored values are (an `emit` itself stores nothing a caller
+  reads).
 - [ ] **6.2 Schedules:** `opus · high` leases, the native tick, schedule monitoring basics,
   and the runtime's own sweeps, starting with deleting expired idempotency
   keys (area 7).

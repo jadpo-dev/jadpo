@@ -600,7 +600,7 @@ impl Walk<'_> {
             .map(|callee| format!("`{callee}` stores what it is given here in {into}, and "))
             .unwrap_or_default();
         let reason = format!(
-            "{passed}{}veryone who may read {into} reads what is stored there, from any request{among} and {readers} `{from}`. {keeps}",
+            "{passed}{}veryone who may read {into}{among} reads what is stored there, from any request, and {readers} `{from}`. {keeps}",
             if passed.is_empty() { "E" } else { "e" }
         );
         let next = match (callee, decided) {
