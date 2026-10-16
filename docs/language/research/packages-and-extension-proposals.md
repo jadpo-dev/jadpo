@@ -44,15 +44,7 @@ then built. No design is left for implementation.
 3. ~~Authentication~~: decided, see "Authentication" and "Built-in emails".
 4. ~~Side effects and packages~~: decided, see "What package code may do".
 5. ~~Overriding~~: decided, see "Decided: overriding built-in behaviour".
-6. **Each override scenario, one at a time.** The eighteen in the
-   scenarios page (files, cache, schedules, search, sign-in, flags, audit,
-   rate limits, built-in emails and text, generated routes, decision
-   points, erasure at providers, bot protection, outgoing webhooks,
-   publishing targets, telemetry, failure format, what cannot be
-   overridden), each shown simply and decided, with its smaller answers:
-   erasure keys, webhook handshakes, telemetry as a connection, RFC 9457
-   per API, `search`, `bot_check` and `scanning` capabilities, disk and
-   memory drivers in production.
+6. ~~Each override scenario~~: decided, see "Override scenarios" (webhook handshakes move to item 7).
 7. **Receiving from outside: webhooks and queues.** *Decided* (area 11
    question 11): a connection with a webhook secret generates
    `POST /webhooks/<connection>`, checks the signature, drops repeats by
@@ -103,6 +95,13 @@ then built. No design is left for implementation.
     the publishing bar run locally before publishing; versions, the
     surface diff and the generated changelog; and how this meets private
     packages (item 11).
+10c. **Where committed records live**: area 7's `api/main.api` is
+    committed beside the source rather than in `build/` because it is a
+    record reviewed in every change (area 18 separates committed records
+    from build outputs); with `database/identities.json`, `jadpo.lock`,
+    `translations/sources.json` and installed packages' `package.surface`
+    now also records, decide whether they keep their own homes or share one
+    (Richard asked, 2026-10-16).
 11. **Private packages**: a company's shared packages live in their own
     repositories (decided); where apps install them from (a private
     registry or a git repository) and whether the publishing bar applies
@@ -709,6 +708,11 @@ developers (`jadpo traces`, `jadpo metrics`, `jadpo logs`, each with
 filters by route, action, domain, path, failure and slowness, `--follow`,
 and `--json`; `jadpo watch` and `jadpo trace` as decided), and later in the
 dev console's UI.
+
+**Failure format.** `failure_format:` per API in `apis:`, Jadpo's envelope
+by default and `FailureFormat.problem_details` (RFC 9457) as the one
+alternative, the content identical; OpenAPI describes the API's format,
+the exported wording keys by `code` either way, statuses unchanged.
 
 **Redis entities and running without a database.** An entity may live in
 a Redis store and must expire: `expires_after: 2h`, measured from its last
