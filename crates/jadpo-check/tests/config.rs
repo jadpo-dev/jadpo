@@ -107,7 +107,13 @@ config {
 
 #[test]
 fn lists_objects_and_optional_settings_are_not_one_piece_of_text() {
-    for ty in ["List<Email>", "Set<Text>", "Map<Text, Text>", "Email?", "Bytes"] {
+    for ty in [
+        "List<Email>",
+        "Set<Text>",
+        "Map<Text, Text>",
+        "Email?",
+        "Bytes",
+    ] {
         assert_eq!(
             rules(&format!("config {{\n    value: {ty}\n}}\n")),
             ["configuration.type_unsupported"],
@@ -178,8 +184,12 @@ fn bad_bindings_are_each_their_own_error() {
 
 #[test]
 fn a_binding_fix_is_offered_as_an_edit() {
-    let found = found("config {\n    mail_sender: Email {\n        binding: \"MAIL-SENDER\"\n    }\n}\n");
-    assert!(found[0].contains("`MAIL-SENDER` can't be a variable name"), "{found:?}");
+    let found =
+        found("config {\n    mail_sender: Email {\n        binding: \"MAIL-SENDER\"\n    }\n}\n");
+    assert!(
+        found[0].contains("`MAIL-SENDER` can't be a variable name"),
+        "{found:?}"
+    );
 }
 
 #[test]
@@ -221,7 +231,9 @@ fn a_setting_is_a_name_and_a_type() {
         ["configuration.expected_field"]
     );
     assert_eq!(
-        rules("config {\n    mail_sender:\n}\n").first().map(String::as_str),
+        rules("config {\n    mail_sender:\n}\n")
+            .first()
+            .map(String::as_str),
         Some("syntax.expected_expression")
     );
 }
@@ -247,12 +259,24 @@ fn a_default_is_a_literal_of_the_type() {
     assert_eq!(with("Int", "\"many\""), ["configuration.default_type"]);
     assert_eq!(with("Int", "5s"), ["configuration.default_type"]);
     assert_eq!(with("Int", "none"), ["configuration.default_type"]);
-    assert_eq!(with("Int", "other_value"), ["configuration.default_literal_required"]);
-    assert_eq!(with("Int", "1 + 2"), ["configuration.default_literal_required"]);
+    assert_eq!(
+        with("Int", "other_value"),
+        ["configuration.default_literal_required"]
+    );
+    assert_eq!(
+        with("Int", "1 + 2"),
+        ["configuration.default_literal_required"]
+    );
     assert_eq!(with("Duration", "5s"), CLEAN);
     assert_eq!(with("Duration", "5"), ["configuration.default_type"]);
-    assert_eq!(with("Email", "\"nobody\""), ["configuration.default_invalid"]);
-    assert_eq!(with("Url", "\"postgres://localhost/app\""), ["configuration.default_invalid"]);
+    assert_eq!(
+        with("Email", "\"nobody\""),
+        ["configuration.default_invalid"]
+    );
+    assert_eq!(
+        with("Url", "\"postgres://localhost/app\""),
+        ["configuration.default_invalid"]
+    );
     assert_eq!(with("Url", "\"https://example.test\""), CLEAN);
 }
 
@@ -306,7 +330,9 @@ fn a_secret_has_no_value_in_source() {
     }
     // A type that is always secret needs no flag to refuse one.
     assert_eq!(
-        rules("config {\n    database_url: PostgresUrl {\n        default: \"postgres://localhost/app\"\n    }\n}\n"),
+        rules(
+            "config {\n    database_url: PostgresUrl {\n        default: \"postgres://localhost/app\"\n    }\n}\n"
+        ),
         ["configuration.secret_default"]
     );
 }
@@ -373,7 +399,9 @@ fn a_name_that_is_no_setting_says_which_could_be_meant() {
     assert!(found[0].contains("`config.mail_sendr` isn't a setting"));
     // With no `config { }` at all, there are no settings to read.
     assert_eq!(
-        rules("type Sender = Email {}\n\nfunction from_address() -> Sender {\n    return Sender(config.mail_sender)\n}\n"),
+        rules(
+            "type Sender = Email {}\n\nfunction from_address() -> Sender {\n    return Sender(config.mail_sender)\n}\n"
+        ),
         ["configuration.field_unknown"]
     );
 }
@@ -435,11 +463,15 @@ fn a_secret_cannot_be_stored_or_put_in_a_failure_or_built_into_another_value() {
 #[test]
 fn a_type_that_is_always_secret_needs_no_flag() {
     assert_eq!(
-        rules("config {\n    database_url: PostgresUrl\n}\n\nfunction url() -> PostgresUrl {\n    return config.database_url\n}\n"),
+        rules(
+            "config {\n    database_url: PostgresUrl\n}\n\nfunction url() -> PostgresUrl {\n    return config.database_url\n}\n"
+        ),
         ["configuration.secret_flow"]
     );
     assert_eq!(
-        rules("config {\n    key: SigningKey\n}\n\nfunction key() -> SigningKey {\n    return config.key\n}\n"),
+        rules(
+            "config {\n    key: SigningKey\n}\n\nfunction key() -> SigningKey {\n    return config.key\n}\n"
+        ),
         ["configuration.secret_flow"]
     );
 }
@@ -460,7 +492,10 @@ fn a_secret_is_not_accepted_in_any_other_member_of_the_application() {
     let found = rules(
         "config {\n    api_key: Text {\n        secret: true\n    }\n}\n\napplication {\n    mail: {\n        from: config.api_key\n    }\n}\n",
     );
-    assert!(found.iter().any(|rule| rule == "configuration.secret_flow"), "{found:?}");
+    assert!(
+        found.iter().any(|rule| rule == "configuration.secret_flow"),
+        "{found:?}"
+    );
 }
 
 #[test]
@@ -483,7 +518,10 @@ fn connections(settings: &str, connection: &str) -> Vec<String> {
     let app = format!("application {{\n    connections: {{\n{connection}    }}\n}}\n");
     support::problems(
         Layout::Project,
-        &[("app.jadpo", app.as_str()), ("config.jadpo", config.as_str())],
+        &[
+            ("app.jadpo", app.as_str()),
+            ("config.jadpo", config.as_str()),
+        ],
     )
     .into_iter()
     .map(|found| {
@@ -536,7 +574,10 @@ fn the_database_a_project_gets_without_declaring_one_reads_database_url() {
             Layout::Project,
             &[
                 ("app.jadpo", "application {}\n"),
-                ("config.jadpo", format!("config {{\n    {setting}\n}}\n").as_str()),
+                (
+                    "config.jadpo",
+                    format!("config {{\n    {setting}\n}}\n").as_str(),
+                ),
             ],
         )
         .len()
@@ -550,11 +591,15 @@ fn the_database_a_project_gets_without_declaring_one_reads_database_url() {
 #[test]
 fn a_url_is_a_web_address() {
     assert_eq!(
-        rules("type Site = Url {}\n\nfunction site() -> Site {\n    return Site(\"postgres://localhost/app\")\n}\n"),
+        rules(
+            "type Site = Url {}\n\nfunction site() -> Site {\n    return Site(\"postgres://localhost/app\")\n}\n"
+        ),
         ["type.invalid_literal"]
     );
     assert_eq!(
-        rules("type Site = Url {}\n\nfunction site() -> Site {\n    return Site(\"https://example.test/app\")\n}\n"),
+        rules(
+            "type Site = Url {}\n\nfunction site() -> Site {\n    return Site(\"https://example.test/app\")\n}\n"
+        ),
         CLEAN
     );
 }

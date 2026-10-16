@@ -867,7 +867,12 @@ pub fn use_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
     let path = file.path(db);
     let mut out = Vec::new();
     for callable in callables_of(db, file) {
-        out.extend(test_settings(db, project, callable).problems.iter().cloned());
+        out.extend(
+            test_settings(db, project, callable)
+                .problems
+                .iter()
+                .cloned(),
+        );
     }
     for (name, field) in reads_in(&source) {
         let span = node_span(path, field.syntax());
@@ -1148,7 +1153,11 @@ fn test_values(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             let mut queue = vec![root];
             while let Some(current) = queue.pop() {
                 let checked = typed_body(db, project, current);
-                if !visited.insert((current.file(db).path(db).clone(), current.index(db), current.function(db))) {
+                if !visited.insert((
+                    current.file(db).path(db).clone(),
+                    current.index(db),
+                    current.function(db),
+                )) {
                     continue;
                 }
                 let path = current.file(db).path(db).clone();
@@ -1251,7 +1260,9 @@ pub fn test_settings<'db>(
                     )
                     .at(span, "given again")
                     .also(first.clone(), "first given here")
-                    .reason("A test says each setting's value once, so there is one answer to read.")
+                    .reason(
+                        "A test says each setting's value once, so there is one answer to read.",
+                    )
                     .next(format!("Remove one `{name}:`")),
                 );
                 continue;
@@ -1259,7 +1270,10 @@ pub fn test_settings<'db>(
             seen.push((name.clone(), span.clone()));
             let Some(setting) = model.setting(&name) else {
                 if !model.written.contains(&name) {
-                    reader.out.problems.push(unknown_in_test(model, &name, span));
+                    reader
+                        .out
+                        .problems
+                        .push(unknown_in_test(model, &name, span));
                 }
                 continue;
             };
@@ -1307,6 +1321,8 @@ fn unknown_in_test(model: &Config, name: &str, span: Span) -> Diagnostic {
         Some(near) => problem
             .next(format!("Use `{near}` instead of `{name}`"))
             .edit(span, near),
-        None => problem.next(format!("Declare `{name}: <Type>` in `config.jadpo`, or remove it")),
+        None => problem.next(format!(
+            "Declare `{name}: <Type>` in `config.jadpo`, or remove it"
+        )),
     }
 }

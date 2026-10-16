@@ -401,13 +401,9 @@ impl Executor for Program {
             .flat_map(|plan| plan.settings.iter())
             .filter_map(|(at, text)| {
                 let field = config.fields.get(*at as usize)?;
-                let value = jadpo_runtime::config::decode(
-                    config,
-                    &self.prepared.validators,
-                    field,
-                    text,
-                )
-                .ok()?;
+                let value =
+                    jadpo_runtime::config::decode(config, &self.prepared.validators, field, text)
+                        .ok()?;
                 Some((*at, value))
             })
             .collect()
