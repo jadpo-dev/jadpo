@@ -448,6 +448,16 @@ work after the first build.
       subscriber, except retention purges.
     - **Protection:** rate limits on the page and API (area 16), links
       single-use and short-lived, every step in the access records. *Decided 2026-10-13:* the revised recommendation.
+    *Revised 2026-10-16 (Richard, built-in emails):* the privacy emails (the
+    address check, export ready, erasure scheduled, erasure completed) are
+    built-in emails and change in area 16's five levels ("Built-in emails"):
+    Jadpo's own email, its words in the root `translations/` under
+    `jadpo: { }` (area 10), the app's shared layout, the app's own
+    `EmailMessage` (`email:`), or the app's own sending (`send:`). They go
+    through the app's one `email:` connection in `application { }`, which
+    replaces `self_service: { email: <connection> }`. Their built-in types,
+    fields and where their `email:` and `send:` settings go are still to be
+    decided, before this area is built.
 14. **How is personal data that erasure cannot reach prevented?** Raised by
     Richard (2026-10-13): no siloed data left behind. *Recommendation:* a
     compile error for any marked personal field on an entity that is not a
@@ -500,7 +510,7 @@ work after the first build.
 | Logs of marked fields | Every marked field hashed in logs, whatever its type (amends area 4) | 2026-10-13 |
 | Purpose and consent | Not in the language | 2026-10-13 |
 | Report and residency | `build/report/personal-data.md` and `.json`, shown in review when it changes; residency by deployment per region | 2026-10-13 |
-| Data request routes | `privacy: { self_service: { email: } exports: { store: keep: } }`: a generated `/privacy` page with email verification, export by expiring link, erasure after a cooling-off period, events at every step, API routes for the person only, staff actions granted in policy | 2026-10-13 |
+| Data request routes | (Revised 2026-10-16: the emails are area 16's built-in emails, sent through the app's one `email:` connection.) `privacy: { self_service: { email: } exports: { store: keep: } }`: a generated `/privacy` page with email verification, export by expiring link, erasure after a cooling-off period, events at every step, API routes for the person only, staff actions granted in policy | 2026-10-13 |
 | Unreachable personal data | A marked field that belongs to no person is a compile error; every reference into a person's records has an erasure outcome | 2026-10-13 |
 | Provider copies | Erasure emits `PersonErased`; every connection receiving marked fields needs a deleting subscriber or an accepted reason | 2026-10-13 |
 | Coverage and gaps | The report states what the language covers, what is the app's choice and what is not code; breach-notification and transfer support to add | 2026-10-13 |

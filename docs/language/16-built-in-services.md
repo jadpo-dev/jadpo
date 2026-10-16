@@ -432,8 +432,9 @@ emit WelcomeEmail {
 ```
 
 - **Where it goes** is the `email` capability (area 11, revised
-  2026-10-13): `mail: { connection: postmark  from: config.mail_sender }` in
-  `application { }` names a connection. SMTP is one built-in driver
+  2026-10-13): `email: { connection: postmark  from: config.mail_sender }` in
+  `application { }` names a connection, and every email, the app's and
+  Jadpo's built-in ones, goes through it (see "Built-in emails"). SMTP is one built-in driver
   (`driver: Driver.smtp`, port 587 on Cloudflare Workers, which blocks 25);
   a mail package (Postmark, Amazon SES, Resend) is another. The `EmailMessage`
   types, translations and `emit` are the same whichever is chosen, so
@@ -474,6 +475,198 @@ emit WelcomeEmail {
 - The personal-data report lists the mail connection as receiving every
   marked field a mail carries; a package that maps an `erase` operation
   gets area 15's `PersonErased` subscriber generated.
+
+### Built-in emails
+
+> Decided on 2026-10-16 (Richard). Built with email (chunk 7.3) and the
+> features that send them: magic-link sign-in (area 8, not yet on the
+> roadmap) and data requests (area 15, after the first build).
+
+Jadpo sends some emails itself: the magic-link email (area 8) and the
+privacy emails (area 15). Each works with nothing written, and an app can
+change as much of it as it needs, in five levels. Each level keeps the ones
+below it.
+
+**Delivery.** Every email, built in or the app's own, goes through the
+app's one `email:` setting in `application { }`, which names a connection
+providing `email` (area 11): the built-in SMTP driver or any package that
+provides it. (The SMTP driver's own connection settings are area 11's.)
+
+```jadpo fragment
+// app.jadpo
+application {
+    connections: {
+        postmark: {
+            package: Postmark.v1
+            credential: config.postmark_token
+        }
+    }
+    email: {
+        connection: postmark
+        from: config.mail_sender
+    }
+}
+```
+
+`magic_link:` with no `email:` setting is a compile error, unless it sends
+its own email (level 5).
+
+**Level 1: nothing.** Jadpo renders its own email, HTML and text, in the
+person's language, with Jadpo's wording. Jadpo ships its wording in
+`en_gb` and `en_us` at first, and releases add locales. An app that
+supports a locale Jadpo does not ship must supply the wording (level 2):
+until it does, `jadpo check` fails with one error listing every Jadpo
+message the locale is missing, unless the locale is `in_progress:`, which
+falls back as any translation does (area 10).
+
+**Level 2: change the words.** The app writes Jadpo's messages in the root
+`translations/<locale>.jadpo`, under `jadpo: { }` (area 10, "Jadpo's and
+packages' text"):
+
+```jadpo fragment
+// translations/en_gb.jadpo
+translations {
+    jadpo: {
+        magic_link_email: "Your link to sign in to Notes"
+        magic_link_intro: "Someone asked to sign in to Notes as {address}."
+        sign_in_codes_disabled: "Too many wrong codes today. Use the link in your email instead."
+    }
+}
+```
+
+Rewording a message of a feature the app has not switched on (magic-link
+wording without `magic_link:`) is an error saying the feature is off, and
+`jadpo translations builtin` lists only the messages of the features the
+app has on, with their fields. The magic-link email and its confirm page
+use these messages:
+
+| Message | Fields | `en_gb` wording |
+|---|---|---|
+| `magic_link_email` (the subject) | | "Your sign-in link" |
+| `magic_link_heading` | | "Sign in" |
+| `magic_link_intro` | `address: Email` | "Someone asked to sign in as {address}." |
+| `magic_link_button` | | "Sign in" |
+| `magic_link_code_line` | `code: SignInCode` | "Or enter this code: {code}" |
+| `magic_link_expiry_line` | `expires_in: PresentationText` | "The link and the code work for {expires_in}." |
+| `magic_link_ignore_line` | | "If you didn't ask to sign in, you can ignore this email." |
+| `magic_link_confirm_heading` | `address: Email` | "Sign in as {address}?" |
+| `magic_link_confirm_button` | | "Sign in" |
+| `sign_in_link_expired` | | "This link has expired or has been used. Ask for a new one." |
+| `sign_in_link_other_browser` | | "Open this link in the browser where you asked for it, or enter the code instead." |
+| `sign_in_code_invalid` | | "That code isn't right. Check it, or ask for a new one." |
+| `sign_in_codes_disabled` | | "Too many wrong codes today. Use the link in your email instead." |
+| `sign_in_refused` | | "We couldn't sign you in." |
+
+`expires_in` is `expires_after:` as Jadpo formats it in the email's
+language ("15 minutes"). The failures' wording also goes into the
+per-locale failure export for client apps (area 10).
+
+**Level 3: branding.** Built-in emails are wrapped in the app's shared
+email layout automatically, the same layout its own emails use (question
+11), so they carry the app's branding with no other change.
+
+**Level 4: the app's own email.** `magic_link: { email: accounts.SignInEmail }`
+names an `EmailMessage` type of the app's that Jadpo fills and sends instead
+of its own. The type takes its fields from the built-in `MagicLinkEmail`
+with `pick:`, and may have no others, since Jadpo fills it:
+
+| `MagicLinkEmail` field | Type | Holds |
+|---|---|---|
+| `address` | `Email` | The address the link was asked for; also the email's `to:` |
+| `sign_in_link` | `Url` | The link to the confirm page |
+| `code` | `SignInCode` | The six-digit code, text so a leading `0` stays |
+| `expires_in` | `PresentationText` | How long both work, formatted by Jadpo in the email's language |
+
+Every `EmailMessage` also has `to:` and `locale:` (above); Jadpo sets the
+locale as for its own email (area 8).
+
+```jadpo fragment
+// domains/accounts/emails/sign_in_email.jadpo
+/// The sign-in email, in the app's own words and design.
+type SignInEmail = EmailMessage {
+    pick: [MagicLinkEmail.sign_in_link, MagicLinkEmail.code, MagicLinkEmail.expires_in]
+}
+
+// domains/accounts/translations/en_gb.jadpo
+translations {
+    sign_in_email: "Your Notes sign-in link"       // the subject line
+    sign_in_heading: "Welcome back to Notes"
+    sign_in_button: "Open Notes"
+    sign_in_code_line: "Or type {code} on the sign-in page."
+    sign_in_expiry: "Both work for {expires_in}."
+}
+
+// authentication.jadpo
+authentication {
+    ...
+    sign_in: {
+        magic_link: {
+            email: accounts.SignInEmail
+        }
+    }
+}
+```
+
+```text
+<!-- domains/accounts/emails/sign_in_email.html -->
+<h1>{{ translations.accounts.sign_in_heading() }}</h1>
+<p><a href="{{ sign_in_link }}">{{ translations.accounts.sign_in_button() }}</a></p>
+<p>{{ translations.accounts.sign_in_code_line(code: code) }}</p>
+<p>{{ translations.accounts.sign_in_expiry(expires_in: expires_in) }}</p>
+```
+
+The messages it calls (`SignInHeading`, `SignInCodeLine` ...) are the
+domain's own `Message` types, one per file in `translations/`. Its `.html`
+and `.txt` templates sit beside it in `emails/`, its subject is
+its member in the domain's language files, and all of it follows the strict
+template rules above; it is wrapped in the shared layout like any of the
+app's emails. `MagicLinkEmail` is never emitted by app code.
+
+**Level 5: the app's own sending.** `magic_link: { send: accounts.send_sign_in_link }`
+names an action that sends the email itself, through any package, instead
+of Jadpo sending one. Its signature is fixed: it takes one built-in
+`MagicLinkRequest` and returns `Unit`.
+
+| `MagicLinkRequest` field | Type |
+|---|---|
+| `address` | `Email` |
+| `sign_in_link` | `Url` |
+| `code` | `SignInCode` |
+| `expires_at` | `Instant` |
+| `locale` | `Locale` |
+
+```jadpo fragment
+// domains/accounts/actions/send_sign_in_link.jadpo
+action send_sign_in_link(request: MagicLinkRequest) fails MessageNotSent -> Unit {
+    attempt messages.send(...)          // a package of the app's choice
+}
+```
+
+- It runs after the request commits, like a subscriber, and is retried
+  under area 12's rules; its failures are a subscriber's.
+- In development its provider calls are faked and logged, as every
+  provider call is (area 11), and the local inbox does not show it, since
+  Jadpo sends no email.
+- Levels 4 and 5 are exclusive: `email:` and `send:` on one email is a
+  compile error.
+
+**Every built-in email.** The same five levels apply to each email Jadpo
+sends:
+
+| Email | Sent when | `email:` and `send:` set in |
+|---|---|---|
+| Magic-link email, `MagicLinkEmail` / `MagicLinkRequest` | `POST /auth/magic-link` (area 8) | `authentication { sign_in: { magic_link: { } } }` |
+| Address check for a data request | A person asks on the `/privacy` page (area 15) | Not yet decided |
+| Export ready | `PrivacyExportReady` (area 15) | Not yet decided |
+| Erasure scheduled, with its cancel link | `PrivacyErasureScheduled` (area 15) | Not yet decided |
+| Erasure completed, with what was kept | `PrivacyErasureCompleted` (area 15) | Not yet decided |
+
+Not yet decided, for the chunks that build them: the privacy emails'
+built-in types and fields and where their `email:` and `send:` settings
+go (area 15 names their events, not their emails); where the app's shared
+email layout lives and what it receives (question 11 decides that there is
+one); and the application's display name, which Jadpo's wording would use
+("Sign in to Notes") but no declaration holds yet.
 
 ## Search
 
@@ -706,6 +899,9 @@ monitoring thresholds come after the first build (roadmap).
     its member in its domain's language files (`welcome_email: "Welcome,
     {display_name}"`), its fields usable as placeholders; the body stays
     the `.html` and `.txt` templates. See "Email" above.
+    *Revised 2026-10-16 (Richard, built-in emails):* every email Jadpo
+    sends (the magic-link email, the privacy emails) can be changed in five
+    levels, from nothing to the app's own sending; see "Built-in emails".
 12. **Is search a `search:` section using PostgreSQL full-text search?**
     *Recommendation:* yes, one language per entity, with search services as
     integrations. Django's `SearchVector` and Laravel Scout's database engine
@@ -764,3 +960,4 @@ monitoring thresholds come after the first build (roadmap).
 | Local inbox in development | `jadpo dev` catches all mail: browser view in the dev console (rendered, locale, working links, trace link) and `jadpo email list/show/links/open/clear` for agents (Richard) | 2026-10-13 |
 | Mail health score | Deterministic content checks per mail in the dev inbox and `jadpo email show`, optional SpamAssassin rules, `jadpo email check-domain` for SPF/DKIM/DMARC; every score states it is an early indication, cannot predict inbox placement and must not be relied on (Richard) | 2026-10-13 |
 | Email naming | Folder `emails/`, capability `email`, base type `EmailMessage` (`Email` stays the address type), commands `jadpo email ...`, app setting `email: { connection: }` (Richard) | 2026-10-13 |
+| Built-in emails | Five levels for every email Jadpo sends: nothing (Jadpo's email and wording, `en_gb` and `en_us` at first, other supported locales an error until the app words them); the words, in the root `translations/` under `jadpo: { }`, only for features switched on; branding, through the app's shared layout; the app's own `EmailMessage` (`email:`), picking from the built-in type's fields; the app's own sending (`send:`), an action taking the built-in request, run after commit; `email:` and `send:` together an error; all through the app's one `email:` connection (Richard) | 2026-10-16 |

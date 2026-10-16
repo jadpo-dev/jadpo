@@ -1481,7 +1481,7 @@ Other points:
 | Connections that receive marked fields, listed in the personal-data report | 15 | Input to area 15 |
 | Approval report entries: operations, data sent, package diffs, unconfirmed operations, calling domains | 17 | Input to area 17 |
 | Readiness does not probe providers; a provider outage should not take the app out of service | 7 | Answered here |
-| Magic links and OIDC code exchange (area 8) are ordinary providers; no special feature | 8 | Answered here |
+| Magic links and OIDC code exchange (area 8) are ordinary providers; no special feature | 8 | Answered here (Superseded 2026-10-16: magic links and sign-in providers are built in, area 8's `sign_in:`.) |
 | Mail templates and translations for message bodies | 10 | Deferred (Decided 2026-10-16: templates read `translations.<domain>.<message>`; see areas 10 and 16.) |
 | `connections:` replacing `stores:`; `driver: Driver.x` replacing `engine:`; cache in memory in development | 5 | Questions 20 and 23 |
 | `Sms` type base and a `PhoneNumber` type | 2 | Question 19 |

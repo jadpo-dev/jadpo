@@ -602,8 +602,16 @@ translations {
 ### Jadpo's and packages' text
 
 Text Jadpo writes itself (the generated privacy pages, built-in emails,
-generated messages) is Jadpo's own messages, with wording shipped for
-common locales; `jadpo translations builtin` lists them with their fields.
+generated messages) is Jadpo's own messages. Jadpo ships their wording in
+`en_gb` and `en_us` at first, and releases add locales; an app supporting
+any other locale must word them itself, and until it does `jadpo check`
+fails with one error listing the missing messages (an `in_progress:`
+locale falls back instead). Only the messages of features the app has
+switched on count: rewording one of a feature that is off (magic-link
+wording without `magic_link:`) is an error saying the feature is off, and
+`jadpo translations builtin` lists only the switched-on features'
+messages, with their fields. The magic-link email's and confirm page's
+messages are listed in area 16, "Built-in emails".
 
 A library package carries translations as a domain does: a
 `translations/` folder with its message types, its failures' wording and
@@ -1296,7 +1304,7 @@ Library packages' translations come with packages in Phase 7.
 | Failures' client text | Keyed by the failure's code in its domain's language files, client fields as placeholders; `jadpo build` writes `<api>.failures.<locale>.json` beside each API's OpenAPI document, from code to wording in `{field}` syntax (revised the same day: with each placeholder's formatting); the server's `message` stays English (Richard) | 2026-10-16 |
 | Translation checks | Every supported locale is complete: missing wording for a message, a failure that can reach a response or an enum is an error whose `next:` names the file, member and placeholders; only a locale in `locales: { in_progress: [...] }` falls back with warnings, regional sibling first (`fr_ca` to `fr_fr`), then the default; stale translations warn, judged by a hash of the default wording in each folder's generated, committed `translations/sources.json`; with `translations: { review: TranslationReview.required }` in `app.jadpo` (default `.none`), new or changed non-default wording is unaccepted, and listed in the approval report, until `jadpo translations accept <locale>` (Richard) | 2026-10-16 |
 | Text direction | `locale.direction` is the built-in enum `TextDirection` (`.left_to_right`, `.right_to_left`), whose shipped wording is `ltr` and `rtl` (Richard) | 2026-10-16 |
-| Jadpo's own text | Jadpo's own messages, with wording shipped for common locales; `jadpo translations builtin` lists them (Richard) | 2026-10-16 |
+| Jadpo's own text | Jadpo's own messages, with wording shipped in `en_gb` and `en_us` at first and more locales added by releases; another supported locale is an error listing the missing messages until the app words them; only switched-on features' messages count, rewording another is an error, and `jadpo translations builtin` lists only those (Richard) | 2026-10-16 |
 | Text the app did not write | The root `translations/<locale>.jadpo` groups wording by owner, `jadpo: { }` and a package's name, the one grouping allowed, checked against the owner's types; lookup is the app's root wording, then the owner's, then (in progress) the regional sibling, then the default; supported locales must be complete for every package and Jadpo message the app can show (Richard) | 2026-10-16 |
 | Package translations | A library package carries a `translations/` folder like a domain's, called `Postcodes.translations.<message>(...)`; provider packages carry none; changed fields break the app's rewording, changed wording makes it stale; published with complete default-locale wording and `///` on every public message; a different code for a package failure is mapped with `attempt` (Richard) | 2026-10-16 |
 | Failures sent to clients | Wording lives in the language files, never on the failure type (one rule for all text; Jadpo's and packages' failures could not carry it in place); every failure that can reach a response has wording in every supported locale; dates and numbers in client fields are sent as values and formatted by the client, and the per-locale export says which placeholders need formatting and how (Richard) | 2026-10-16 |

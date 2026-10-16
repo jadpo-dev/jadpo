@@ -41,7 +41,7 @@ then built. No design is left for implementation.
 
 1. ~~The golden rule~~: decided, see "Decided: the golden rule".
 2. ~~Translations~~: decided, see "Translations".
-3. ~~Authentication~~: decided, see "Authentication" (built-in emails' flexibility in progress).
+3. ~~Authentication~~: decided, see "Authentication" and "Built-in emails".
 4. **Side effects and packages, end to end.** Decided ("no code with side
    effects in packages", below); Richard wants it walked through: what a
    package can and cannot cause, where every effect happens (the app's
@@ -464,6 +464,60 @@ for the app's own clients).
   signing in by link or code makes the address verified for
   `on_first_sign_in`; built-in events `SignedIn`, `SignInRefused` and
   `SignInCodesDisabled` for monitoring.
+
+## Built-in emails (authentication follow-up)
+
+Decided 2026-10-16 (Richard), and written into area 8 ("Checking the
+person: `sign_in:`") and area 16 ("Built-in emails"), with cross-references
+from areas 10, 11 and 15.
+
+- **Delivery**: every email, built in or the app's own, goes through the
+  app's one `email: { connection: ... from: ... }` in `application { }`, the
+  SMTP driver or any package providing `email`. Magic links without it are
+  a compile error, unless the app sends its own (level 5).
+- **Level 1, nothing**: Jadpo renders its own email with its own wording,
+  shipped in `en_gb` and `en_us` at first, more locales added by releases;
+  an app supporting a locale Jadpo does not ship must word it, a compile
+  error listing the messages until it does.
+- **Level 2, the words**: the root `translations/<locale>.jadpo` under
+  `jadpo: { }`. Strict: rewording a message of a feature the app has not
+  switched on is an error saying the feature is off; `jadpo translations
+  builtin` lists only switched-on features' messages, with their fields.
+  The magic-link email's messages are `magic_link_email` (the subject),
+  `magic_link_heading`, `magic_link_intro` (`address`),
+  `magic_link_button`, `magic_link_code_line` (`code`),
+  `magic_link_expiry_line` (`expires_in`) and `magic_link_ignore_line`;
+  the confirm page's `magic_link_confirm_heading` (`address`) and
+  `magic_link_confirm_button`; and the failures' wording.
+- **Level 3, branding**: built-in emails are wrapped in the app's shared
+  email layout automatically.
+- **Level 4, the app's own email**: `magic_link: { email: accounts.SignInEmail }`
+  names an `EmailMessage` that `pick:`s from the built-in `MagicLinkEmail`
+  (`address`, `sign_in_link`, `code`, `expires_in` as `PresentationText`
+  Jadpo formats, with `to:` and `locale:`), with its own `.html` and `.txt`
+  templates and its subject from translations, under the strict template
+  rules.
+- **Level 5, the app's own sending**: `magic_link: { send: accounts.send_sign_in_link }`
+  names an action taking a built-in `MagicLinkRequest` (`address`,
+  `sign_in_link`, `code`, `expires_at: Instant`, `locale`), run after
+  commit like a subscriber and retried under area 12's rules; in
+  development its provider calls are faked and logged, and the dev inbox
+  does not show it.
+- Levels 4 and 5 are exclusive on one email, an error if both are set. The
+  same five levels apply to every email Jadpo sends: the magic-link email
+  and area 15's privacy emails.
+- **Magic-link details written out for the spec** (area 8): the four
+  routes (`POST /auth/magic-link`, `GET` and `POST
+  /auth/magic-link/confirm`, `POST /auth/magic-link/redeem`), `return_to`
+  limited to a path on the app's own site, the email's locale from the
+  request, `same_browser:` as a cookie, the failures
+  `sign_in_link_expired`, `sign_in_link_other_browser`,
+  `sign_in_code_invalid`, `sign_in_codes_disabled` and `sign_in_refused`,
+  `FirstSignIn` for `on_first_sign_in:`, and the events' fields.
+- **Still to decide**: the privacy emails' built-in types, fields and
+  where their `email:` and `send:` settings go; where the app's shared
+  email layout lives and what it receives; the application's display name
+  for Jadpo's wording; which roadmap chunk builds `sign_in:`.
 
 ## Decided: the golden rule
 
