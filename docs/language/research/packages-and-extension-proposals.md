@@ -46,13 +46,7 @@ then built. No design is left for implementation.
 5. ~~Overriding~~: decided, see "Decided: overriding built-in behaviour".
 6. ~~Each override scenario~~: decided, see "Override scenarios" (webhook handshakes move to item 7).
 7. ~~Receiving from outside~~: decided, see "Receiving from outside".
-7b. **Multi-step provider calls** (agreed by Richard on condition that the
-    edge cases are checked first; a stress test is under way): an action (the app's or a package's)
-    making several changing calls in order, answers recorded as they
-    happen, a key per step, resuming after a failure, a warning where a
-    step can fail for good after an earlier one took effect; calls without
-    an idempotency key stay alone. Reopens areas 11 and 12's "one changing
-    call per action". Settle before chunk 7.4.
+7b. ~~Multi-step provider calls~~: decided, see "Multi-step provider calls".
 7c. ~~Per-user OAuth~~: decided, see "Acting for each user: OAuth grants".
 7d. ~~Redis entity queries~~: decided, see "Redis entities".
 8. ~~What a library package may also carry~~: decided, see that section.
@@ -849,7 +843,10 @@ Decided 2026-10-16 (Richard). For one Jadpo app calling another's API.
   being Jadpo except those fields.
 - **Every API serves its OpenAPI document** at `<prefix>/openapi.json` by
   default, under the API's own default authentication (an admin API's
-  document needs sign-in); `serve_openapi: false` turns it off.
+  document needs sign-in); `serve_openapi: false` turns it off. The
+  served route appears in the API's own OpenAPI document and in its API
+  record (`api/main.api`), marked generated, like every generated route
+  (Richard).
 - **Getting it**: in one repository `jadpo package add ../orders` reads the
   other app's generated OpenAPI; across repositories the other app
   publishes its package to the company's private registry (item 11); for
@@ -868,6 +865,27 @@ Decided 2026-10-16 (Richard). For one Jadpo app calling another's API.
 - **Breaks across apps**: in one repository, `jadpo check` in the called
   app reads the other apps' locks and reports which of their calls a
   change breaks, before it merges. Built later.
+
+## Multi-step provider calls (open item 7b)
+
+Decided 2026-10-16 (Richard), after the edge-case review in
+[multi-step calls review](multi-step-calls-review.md): adopted with all ten
+of its must-fix changes and its open questions answered as it recommends.
+In short: each step's operation and a fingerprint of its request are
+recorded before it is sent; a rerun checks the whole path against the
+record and stops as `diverged` for an operator on any difference;
+`clock.now` is fixed for the life of a record; provider keys are derived
+from the app, environment, caller and step (fixing a collision that
+affects single calls too); packages declare their providers' key windows
+and errors, and a step whose answer never arrived is not resent after the
+window; multi-step actions run only where the key survives a retry
+(subscribers, and routes that require `Idempotency-Key`), and a route
+without a required key starting one is a compile error (it answers 202 and
+a subscriber does the steps); no outside calls inside `for`; one runner per
+record; an unfinished run becomes an operator item listing what took
+effect, with retry and abandon; records are deleted in the commit,
+encrypted, capped in size and listed in the personal-data report. Calls
+without idempotency keys stay one per action.
 
 ## Decided: the golden rule
 
