@@ -887,6 +887,18 @@ effect, with retry and abandon; records are deleted in the commit,
 encrypted, capped in size and listed in the personal-data report. Calls
 without idempotency keys stay one per action.
 
+## Files and formats (open item 9)
+
+Decided 2026-10-16 (Richard), from [files and large data](files-and-large-data.md):
+storage and formats are separate layers. Storage (`store.read`,
+`store.put`) moves bytes in and out of S3, R2 or disk and knows nothing of
+what is inside; formats (`csv`, with TSV as its tab-delimited form, `json`,
+`json_lines`) are pure standard-library namespaces turning bytes into the
+app's types and back, whatever the bytes came from (a file, a request body,
+a provider's answer, a queue message); the app's code joins them, and the
+large-file `each:` form joins them piece by piece. The format namespaces
+are decided on chunk 5.4's page.
+
 ## Decided: the golden rule
 
 Decided 2026-10-16 (Richard): **a package can do nothing the app cannot,
