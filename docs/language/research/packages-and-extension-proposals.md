@@ -489,9 +489,22 @@ package Gotenberg.v8 {
 ```
 
 The image is pinned by digest in `jadpo.lock` and listed in the approval
-report. It runs in its own container, reachable only by the app, with no
-host network and no volume unless declared, so rule 2 holds: no foreign
-code runs inside the app.
+report.
+
+**Only stateless services** (Richard, 2026-10-16, proposed): a service
+holds no data and has no volume, and each app instance runs its own copy,
+so many servers need nothing shared. Anything that holds data (PostgreSQL,
+Redis) is infrastructure the operator provides and the app reaches through
+a connection; `jadpo dev` runs those locally as it already does, and
+nowhere else.
+
+**Security is the engine's, with three settings Jadpo always applies** when
+it creates a container: no outbound network unless the package declares
+the hosts it needs (the app's own deny-by-default rule, area 11 question 9,
+which Docker's default network does not give: a PDF service rendering an
+invoice could otherwise send it anywhere), never privileged, and no access
+to the host's disk. Jadpo creates the containers itself, so there is no
+configuration to audit.
 
 Proposed stages, each useful alone:
 
@@ -515,10 +528,7 @@ Linux virtual machine (Docker Desktop, OrbStack, Podman), so `jadpo dev`
 says plainly when none is installed.
 
 On Workers, which runs no containers, a service is hosted elsewhere and
-the connection gives its address. Open: whether the database and cache use
-the same mechanism (they hold state, so volumes, backups and upgrades come
-with them), whether several app instances share one service, and how far
-Jadpo becomes a deployment tool.
+the connection gives its address.
 
 ## Every extension point
 
