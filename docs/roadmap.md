@@ -427,6 +427,41 @@ reference only).
   `Accept-Language` header and falls back to `default`. **Needs Richard**
   to name it before it is built: no page does. Recommendation:
   `locale.from_accept_language(header)`, giving a `Locale`.
+- [ ] **5.3d Names private to a domain** `opus · high` (area 1, "Files and
+  names", decided 2026-10-16): a private function or type unique only
+  within its domain in the checker's name table, resolution and imports,
+  with folded collisions in the same scope; the identity key of a function
+  or type declared in a domain carrying the domain, and promotion to
+  `shared/` writing a registry move line (area 18, question 8; reworks
+  part of chunk 1.7's registry, a new manifest `format`);
+  `semantic.duplicate_declaration` saying copy or clash and listing the
+  names in use that contain the same word, its checked example rewritten.
+  `jadpo rename` refusing a name in use comes with `rename` (after the
+  first build, item 5).
+- [ ] **5.3e Constants** `opus · high` (area 3, "Constants", decided
+  2026-10-16), after 5.3d: `constant name: Type = value` at the top of a
+  file or in a library, `constant` reserved; its type named as a
+  signature's is; its value worked out and checked while compiling, with
+  calls, `config`, `clock` and cycles refused; `constant` in a body, `const`
+  and `constant mut` each one error with an edit, and a top-level `var`'s
+  `next:` pointing at `constant`; placement, promotion into a library and
+  per-domain names as for helper functions; reads in bodies, queries (as
+  literals) and updates by `id` (backfills, 5.6, take them as they come),
+  but never a setting's `default:` or `test:`, which stay literals
+  (revised 2026-10-16, Richard: a value is a constant or a setting, never
+  both), with `configuration.default_literal_required`'s `next:` naming
+  `jadpo config move`; the
+  `constant.similar_exists` warning and constants in the library
+  catalogue. `jadpo config move <constant>` and the editor's "Make this a
+  setting" code action through the same code (area 10, "Making a constant
+  a setting"): a `config` field of the constant's name, type, value as
+  `default:` and description, the constant deleted, every read rewritten
+  to `config.<name>`, refusing a type a setting can't hold, a name a
+  setting has and a read in a query, an update by `id`, a backfill or
+  another constant. `jadpo fmt` sorting `config { }` fields by name with
+  their comments, and `--check` failing on one out of order (area 10,
+  "Fields in name order"). Each new error with a checked example and real
+  output, and area 3's and area 10's proposal examples made check blocks.
 - [ ] **5.4 Standard library: the plan** `opus · high`. Only `collection`
   and `temporal` are specified, piecemeal across areas 2, 3 and 10, and
   real code keeps needing more: splitting and trimming text, formatting and
@@ -556,7 +591,8 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
    `call`.
 4. Records and acceptances (area 18): the approval report, acceptance
    matching, package upgrade plans.
-5. Tooling completeness (area 14): interactive tests, `rename`, `impact`,
+5. Tooling completeness (area 14): interactive tests, `rename` (refusing a
+   name already in use, 2026-10-16), `impact`,
    full completion.
 6. Product work: the developer console and MCP (E11), the graph review UI
    (E06, Revset-inspired), the package registry, acting as an OAuth provider,

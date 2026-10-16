@@ -513,7 +513,11 @@ signatures without bodies (rust-analyzer's `ItemTree`), so editing a body
 never invalidates another file's resolution.
 
 **Resolution.** One project-wide name table, because names are unique
-across the project and across kinds (area 1). A dotted prefix resolves to
+across the project and across kinds (area 1). Decided 2026-10-16, not
+built until chunk 5.3d: a private function or type is unique only within its
+domain, so the table keys those by domain, and a name resolves among its
+file's domain's private names and the project-wide ones, which never
+overlap. A dotted prefix resolves to
 its owner: domain, library, entity, connection, package or standard
 namespace. Visibility is the domain unless `public`. Layout rules (folder,
 kind, file name, promotion) are checked from paths. Since chunk 2.1 a
