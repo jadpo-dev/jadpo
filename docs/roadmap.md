@@ -508,6 +508,9 @@ reference only).
   5.1c), and a `client_address:` source other than `cloudflare` refused when
   a project is built for Workers (area 10, "Client addresses"), which needs
   deployables declared first.
+  From chunk 5.3: a deployable carries locale data only for its
+  application's supported locales (today all 533 are compiled in: about
+  3.5 MB of a 3.9 MB module, 1.2 MB gzipped).
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
   TypeScript app, comparing Wasm with native and Bun with native as well
