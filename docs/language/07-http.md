@@ -16,7 +16,7 @@ input a route takes, its output and status, time limits, health endpoints,
 separate APIs and versions, webhooks, how failures reach the client,
 OpenAPI, and how a breaking change to the API is caught.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2; route authentication, each API's sign-in methods and `current_principal` in chunk 4.3 (area 8); policy on what each route reaches, and the 403 it can answer in OpenAPI, in chunk 4.4 (area 9). `settle:` comes with 6.3.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2; route authentication, each API's sign-in methods and `current_principal` in chunk 4.3 (area 8); policy on what each route reaches, and the 403 it can answer in OpenAPI, in chunk 4.4 (area 9); a `GET` listing tokens and keys itself, in chunk 4.4c (area 8). `settle:` comes with 6.3.
 
 The rule behind all of it: **a route is a thin door.** It says which method
 and URL, what comes in, what goes out and what runs. Logic lives in actions
@@ -129,7 +129,9 @@ POST / {
 }
 ```
 
-Only the output's declared fields are sent. Failure statuses are never
+Only the output's declared fields are sent. `IssuedToken` and `IssuedKey`
+(area 8) are built in and sent as the objects they are: an `id`,
+`started_at` and `ends_at`. Failure statuses are never
 written on a route: they come from the kinds of the failures the action can
 produce (area 4).
 
@@ -153,6 +155,21 @@ POST /{todo_id: Todo.id}/complete {
 
 Own-domain actions and queries are called bare, another domain's public ones
 through its name (area 1). There is no inline action in a route.
+
+One more thing a `GET` runs: the listings the language generates for
+sign-in credentials (area 8). `sessions.tokens(user_id)` and
+`<Service>.keys(service_id)` read the tokens and keys the runtime keeps, so
+a route lists them without an action that copies each one into an `Output`.
+The route passes the holder's `id` from a placeholder or `current_principal`,
+and its `output:` is the `List<IssuedToken>` or `List<IssuedKey>` the listing
+returns, exactly as for a named query:
+
+```jadpo fragment
+GET /devices {
+    output: List<IssuedToken>
+    run: sessions.tokens(current_principal.user.id)
+}
+```
 
 ## Time limits
 
@@ -2267,6 +2284,9 @@ signed-in caller's requests count against its own rate limit, and its
 idempotency keys are its own. Since chunk 4.4 (area 9) policy decides what
 each route reaches, and OpenAPI lists the 403 `not_permitted` on every
 route that runs an action that writes or is listed under `actions:`.
+Since chunk 4.4c (area 8) a `GET` runs `sessions.tokens` and
+`<Service>.keys` itself, and the record and OpenAPI describe the
+`IssuedToken` and `IssuedKey` it sends.
 
 Not yet: deleting
 expired idempotency keys from the runtime's minute tick (6.2), and the
@@ -2467,7 +2487,7 @@ is written.
 | Route groups and prefix check | `routes Todos { prefix: ... }`; file name from the prefix's fixed segments; prefixes may hold typed placeholders; every URL matches exactly one group | 2026-10-12 |
 | One input and typed placeholders | Placeholders typed in the path; one `input:` whose source follows the method; headers as `header:` on `Input` fields | 2026-10-12 |
 | `status:` and checked `output:` | `status: SuccessStatus.x`; `output:` must be an `Output` and exactly the action's result type, required unless `no_content` | 2026-10-12 |
-| What `run:` calls | A `GET` calls a named query, every other method a named action; no inline route actions | 2026-10-12 |
+| What `run:` calls | A `GET` calls a named query, every other method a named action; no inline route actions (amended in chunk 4.4c: a `GET` also runs `sessions.tokens` and `<Service>.keys`, area 8) | 2026-10-12 |
 | Deadline and body limit | 10-second default deadline, `deadline:` up to 60 seconds; 1 MB body limit answering 413 | 2026-10-12 |
 | Health | Generated only: `/health/live` and `/health/ready`, readiness from the declared stores | 2026-10-12 |
 | APIs and versions | `apis: { }` in `application`, `main` at `/` implied; a group names its API with `api:`; one OpenAPI document and record per API; a new major version is another API | 2026-10-12 |

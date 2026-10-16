@@ -299,7 +299,7 @@ reference only).
   who may read a record may read the parents a query includes, the
   report's field rows, and policy's grants and scopes in the graph and
   manifest (area 9).
-- [ ] **4.4c Listing tokens and keys from a `GET`** `sonnet · high`
+- [x] **4.4c Listing tokens and keys from a `GET`** `sonnet · high`
   (area 8, decided 2026-10-16): a `GET` route runs `sessions.tokens` and
   `Service.keys` as generated queries, and `IssuedToken` and `IssuedKey`
   can be held in an `Output`, so a "signed-in devices" screen is one route.

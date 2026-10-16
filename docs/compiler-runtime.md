@@ -1359,6 +1359,22 @@ field a row and `fields` in its JSON, and `graph::policy_nodes` adds
 `grant`, `field_restriction`, `tenancy` and `action_exception` nodes with
 `grants` and `scopes` edges.
 
+Built in chunk 4.4c: listing tokens and keys from a `GET` (area 8). A
+route's `Run` has a `generated` field: `sessions.tokens` or the service
+entity's `keys`, which no declaration holds, so it has no `Runs` edge. The
+checker reads the call in `routes::Reader::generated_run` (one argument,
+the holder's `id`; any other method is `route.run_kind`, a write is
+`route.run_invalid`), types it `List<IssuedToken>` or `List<IssuedKey>`,
+and `policy::reach` gives the route the holder's `read`
+(`session_act`). `IssuedToken` and `IssuedKey` are `routes::wire::Shape::
+Issued`: an object of `ISSUED_FIELDS` with no node in the graph, which the
+record and OpenAPI write as a section and a schema of their own and
+`jadpo-plan` gives a shape (`Types::issued_shape`) and an object codec.
+The table's `Run::Listing { keys }` is run by `http::identity::list`, a
+one-statement read in a boundary of its own at repeatable read that calls
+the same `issued` an action does, so the plan's policy-limited statement
+(`GatedStatements`) decides the list.
+
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
 runs one current-thread tokio runtime per core, each with its own
