@@ -466,7 +466,7 @@ fn send(
     clock: i64,
 ) -> Response {
     let app = App {
-        auth: &super::signed::Settings::NONE,
+        auth: &super::signed::AuthSettings::NONE,
         table,
         codecs: Codecs {
             codecs: &CODECS,
@@ -578,7 +578,7 @@ fn a_worker_reuses_its_readiness_check_for_a_second() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Writes);
     let app = App {
-        auth: &super::signed::Settings::NONE,
+        auth: &super::signed::AuthSettings::NONE,
         table: &table,
         codecs: Codecs {
             codecs: &CODECS,

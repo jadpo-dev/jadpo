@@ -78,36 +78,36 @@ impl SigningKey {
 /// The settings signing in reads (area 10): each method's signing key and
 /// the browser session's origin, read once as the application starts.
 #[derive(Clone, Default)]
-pub struct Settings {
+pub struct AuthSettings {
     keys: Vec<(AuthenticationMethod, SigningKey)>,
     /// `scheme://host[:port]`, in lower case and without a default port.
     origin: Option<String>,
 }
 
-impl fmt::Debug for Settings {
+impl fmt::Debug for AuthSettings {
     /// The methods that have keys and the origin; never a key.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let methods: Vec<&str> = self.keys.iter().map(|(method, _)| method.name()).collect();
-        f.debug_struct("Settings")
+        f.debug_struct("AuthSettings")
             .field("keys", &methods)
             .field("origin", &self.origin)
             .finish()
     }
 }
 
-impl Settings {
+impl AuthSettings {
     /// No keys and no origin: signed parts are neither made nor accepted,
     /// and a cookie write's `Origin` must name the server.
-    pub const NONE: Settings = Settings {
+    pub const NONE: AuthSettings = AuthSettings {
         keys: Vec::new(),
         origin: None,
     };
 
     /// What `plan`'s `signing_key:` and `origin:` settings hold in
     /// `values`. A setting no value reached gives nothing.
-    pub fn read(plan: Option<&IdentityPlan>, values: &ConfigValues) -> Settings {
+    pub fn read(plan: Option<&IdentityPlan>, values: &ConfigValues) -> AuthSettings {
         let Some(plan) = plan else {
-            return Settings::default();
+            return AuthSettings::default();
         };
         let keys = plan
             .signing_keys
@@ -122,7 +122,7 @@ impl Settings {
             .as_deref()
             .and_then(|setting| values.text(setting))
             .and_then(origin_of);
-        Settings { keys, origin }
+        AuthSettings { keys, origin }
     }
 
     /// `method`'s signing key.
@@ -221,7 +221,7 @@ fn subject_text(value: &SqlValue) -> Option<String> {
         SqlValue::Numeric(text) => format!("n{text}"),
         SqlValue::Uuid(bytes) => format!("u{}", hex(bytes)),
         SqlValue::Bool(flag) => format!("b{}", u8::from(*flag)),
-        SqlValue::Date(days) => format!("d{days}"),
+        SqlValue::Date(n) => format!("d{n}"),
         SqlValue::Timestamp(micros) => format!("s{micros}"),
         SqlValue::Time(micros) => format!("h{micros}"),
         _ => return None,
@@ -272,8 +272,8 @@ fn base64url(bytes: &[u8]) -> String {
             n | (u32::from(*byte) << (16 - 8 * at))
         });
         for at in 0..=chunk.len() {
-            let index = (n >> (18 - 6 * at)) & 0x3f;
-            out.push(char::from(ALPHABET[index as usize]));
+            let index = ((n >> (18 - 6 * at)) & 0x3f) as usize;
+            out.extend(ALPHABET.get(index).map(|digit| char::from(*digit)));
         }
     }
     out

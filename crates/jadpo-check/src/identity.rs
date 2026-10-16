@@ -947,7 +947,7 @@ impl Reader<'_> {
             let lookup = Lookup::new(self.db, self.project);
             if lookup.base_prim(&found.ty) != Some(needs) {
                 let reason = if signing {
-                    "A signing key is a `SigningKey` setting: secret, at least 32 characters, and rotated by moving the old value to the variable with `_PREVIOUS` after its name (area 10)."
+                    "A signing key is a `SigningKey` setting: secret, at least 32 characters, and rotates by moving the old value to the variable with `_PREVIOUS` after its name (area 10)."
                 } else {
                     "A browser session's origin is a `Url` setting: the scheme, host and port its pages are served from, such as `https://app.example`, which a cookie write's `Origin` must be."
                 };

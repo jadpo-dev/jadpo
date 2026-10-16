@@ -165,7 +165,7 @@ pub struct Program {
     settings: Vec<Option<Value>>,
     /// What signing in reads from them: the signing keys and the browser
     /// session's origin (area 8).
-    auth: jadpo_runtime::http::signed::Settings,
+    auth: jadpo_runtime::http::signed::AuthSettings,
 }
 
 /// Why a call couldn't start.
@@ -264,8 +264,8 @@ impl Program {
     fn auth(
         prepared: &Prepared,
         values: &jadpo_runtime::config::ConfigValues,
-    ) -> jadpo_runtime::http::signed::Settings {
-        jadpo_runtime::http::signed::Settings::read(
+    ) -> jadpo_runtime::http::signed::AuthSettings {
+        jadpo_runtime::http::signed::AuthSettings::read(
             prepared.plan.routes().identity.as_ref(),
             values,
         )

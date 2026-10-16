@@ -128,7 +128,7 @@ pub struct App<'a> {
     /// What signing in reads from the settings the application started
     /// with: each method's signing key and the browser session's origin
     /// (area 8; area 10, "Signing keys").
-    pub auth: &'a signed::Settings,
+    pub auth: &'a signed::AuthSettings,
 }
 
 /// The failures the runtime answers with itself (area 7, "How failures
@@ -524,15 +524,15 @@ async fn run_route(
     let host = ctx.host();
     let mut deadline = host.sleep(u64::from(route.deadline_ms));
     // Who is calling, before the input is read or anything runs (area 8).
-    let mut renewed = None;
+    let mut reissued = None;
     let mut exchanged = None;
     let caller = if route.authentication.needs_caller() {
         let checked = identity::authenticate(app, ctx, request, route);
         match race(checked, &mut deadline).await {
-            First::Left(Ok(signed_in)) => {
-                renewed = signed_in.renewed;
-                exchanged = signed_in.exchanged;
-                Some(signed_in.caller)
+            First::Left(Ok(admitted)) => {
+                reissued = admitted.reissued;
+                exchanged = admitted.exchanged;
+                Some(admitted.caller)
             }
             First::Left(Err(refused)) => {
                 if refused.credential
@@ -572,11 +572,11 @@ async fn run_route(
     );
     let mut response = match exchanged {
         // The exchange runs nothing: the key's read signed its token.
-        Some(exchanged) => exchange(app, request, request_id, route, exchanged),
+        Some(exchanged) => exchange(request, request_id, exchanged),
         None => {
             run_with_caller(
                 app, executor, ctx, request, request_id, route, segments, deadline, caller, scope,
-                renewed,
+                reissued,
             )
             .await
         }
@@ -589,14 +589,7 @@ async fn run_route(
 /// `POST /auth/exchange`'s answer (area 8, "Ways to sign in"): the token
 /// the key signed in with is traded for, and when it expires. Like any
 /// route that takes no input, it refuses a query string or a body.
-fn exchange(
-    app: &App<'_>,
-    request: &Request,
-    request_id: &str,
-    route: &RoutePlan,
-    (token, expires): (String, i64),
-) -> Response {
-    let _ = (app, route);
+fn exchange(request: &Request, request_id: &str, (token, expires): (String, i64)) -> Response {
     if request
         .query
         .as_deref()
@@ -641,7 +634,7 @@ async fn run_with_caller(
     deadline: crate::LocalFuture<'_, ()>,
     caller: Option<crate::Caller>,
     scope: String,
-    renewed: Option<identity::Renewed>,
+    reissued: Option<identity::Reissued>,
 ) -> Response {
     let caller_value = caller.as_ref().map(|caller| caller.value.clone());
     ctx.set_caller(caller);
@@ -909,10 +902,10 @@ async fn run_with_caller(
         if let (Some(effect), Some(plan)) = (&session, &app.table.identity) {
             response.headers.extend(identity::set_cookies(plan, effect));
         }
-        // A credential signing in renewed goes back with the response,
+        // A credential signing in reissued goes back with the response,
         // unless what ran started or ended the session it came with.
-        if let (None, Some(renewed), Some(plan)) = (&session, &renewed, &app.table.identity) {
-            response.headers.extend(identity::renewal(plan, renewed));
+        if let (None, Some(reissued), Some(plan)) = (&session, &reissued, &app.table.identity) {
+            response.headers.extend(identity::renewal(plan, reissued));
         }
         if keep.is_none()
             && let Some(guard) = guard
