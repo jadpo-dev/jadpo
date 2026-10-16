@@ -391,6 +391,30 @@ pub fn route_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     out
 }
 
+/// Whether policy may refuse the caller of the action called `run` with
+/// 403 `not_permitted` (area 9, "When policy says no"): it is listed under
+/// `actions:`, or it creates, changes or deletes a record itself or
+/// through an action it calls. A record a read can't see is its code's
+/// own not-found failure instead.
+pub fn may_refuse(db: &dyn Db, project: Project, run: &str) -> bool {
+    if super::access(db, project).root.action(run).is_some() {
+        return true;
+    }
+    let acts = all_acts(db, project);
+    let mut seen = BTreeSet::from([run.to_string()]);
+    let mut queue = vec![run.to_string()];
+    while let Some(current) = queue.pop() {
+        for act in acts.get(&current).into_iter().flatten() {
+            match act {
+                Act::Entity(_, Effect::Create | Effect::Update | Effect::Delete) => return true,
+                Act::Calls(callee) if seen.insert(callee.clone()) => queue.push(callee.clone()),
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
 /// Whether the action `run`'s own body does `effect` to `entity`.
 fn touches_own(db: &dyn Db, project: Project, run: &str, entity: &str, effect: Effect) -> bool {
     all_acts(db, project)

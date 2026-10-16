@@ -205,7 +205,7 @@ test "a due date in the past is rejected" {
 }
 ```
 
-Built in chunk 4.1, and `as:` in chunks 4.3 and 4.3b: it signs in through the application's real authentication, a browser session, an API token or, for `Principal.service(service)`, a service key, as area 8's end-to-end examples show. The route below lets anyone call it, so this test signs no one in. The
+Built in chunk 4.1, and `as:` in chunks 4.3 and 4.3b: it signs in through the application's real authentication, a browser session, an API token or, for `Principal.service(service)`, a service key, as area 8's end-to-end examples show. The route below lets anyone call it, so this test signs no one in; `add_memo` reaches no entity, so root `policy { }` says who may call it (area 9). The
 request names its route by `method:` and its path as `jadpo routes` prints
 it, each placeholder given in `params:` (`path: "/todos/{todo_id}"` with
 `params: { todo_id: todo.id }`), and `input:` is the route's `Input`. It
@@ -242,6 +242,12 @@ routes Memos {
         output: MemoView
         status: SuccessStatus.created
         run: add_memo(input)
+    }
+}
+
+policy {
+    actions: {
+        add_memo: [Access.public]
     }
 }
 
@@ -862,6 +868,12 @@ routes Memos {
     }
 }
 
+policy {
+    actions: {
+        add_memo: [Access.public]
+    }
+}
+
 test "a memo comes back" {
     var response: Response = request {
         method: HttpMethod.post
@@ -876,9 +888,9 @@ test "a memo comes back" {
 
 ```text output
 error: No route answers `POST /memo`
- --> main.jadpo:34:15
+ --> main.jadpo:40:15
    |
-34 |         path: "/memo"
+40 |         path: "/memo"
    |               ^^^^^^^ no such route
   reason: A request names a route by its method and its path as `jadpo routes` prints it, placeholders by name; the `POST` routes are `/memos`.
   next: Write the path of the route this test exercises, as `jadpo routes` lists it (agent)
@@ -924,6 +936,12 @@ routes Memos {
     }
 }
 
+policy {
+    actions: {
+        add_memo: [Access.public]
+    }
+}
+
 test "a memo comes back" {
     var response: Response = request {
         method: HttpMethod.post
@@ -935,9 +953,9 @@ test "a memo comes back" {
 
 ```text output
 error: `POST /memos` takes `input:`, a `AddMemo`
- --> main.jadpo:32:30
+ --> main.jadpo:38:30
    |
-32 |     var response: Response = request {
+38 |     var response: Response = request {
    |                              ^^^^^^^ doesn't fit the route
   reason: A request gives the route's method, its path as `jadpo routes` prints it, each placeholder in `params:` and, when the route takes one, its `input:`.
   next: Give the request what its route takes (agent)

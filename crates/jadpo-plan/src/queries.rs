@@ -216,14 +216,11 @@ impl Planner<'_> {
             }
             sql
         };
-        let unpoliced = write(&conditions);
-        let mut policed = conditions.clone();
-        policed.push(policy);
-        let sql = write(&policed);
+        let (sql, unpoliced) = both(&write, conditions, policy);
         let includes = self.includes(entity, &query.includes, &columns)?;
         let select = Select {
             sql,
-            unpoliced: Some(unpoliced),
+            unpoliced,
             params: statement.params,
             columns: columns.kinds,
             record,
@@ -353,9 +350,7 @@ impl Planner<'_> {
                         text::where_clause(&mut sql, conditions, "");
                         sql
                     };
-                    let unpoliced = write(&conditions);
-                    conditions.push(policy);
-                    (write(&conditions), unpoliced)
+                    both(&write, conditions, policy)
                 }
                 IncludeKind::Children => {
                     // Each record's list ordered and limited on its own.
@@ -390,9 +385,7 @@ impl Planner<'_> {
                         text::limit(&mut inner, &limit, "  ");
                         text::children(&keys, &rest, &inner, &order)
                     };
-                    let unpoliced = write(&conditions);
-                    conditions.push(policy);
-                    (write(&conditions), unpoliced)
+                    both(&write, conditions, policy)
                 }
             };
             let includes = self.includes(target, &include.includes, &columns)?;
@@ -401,7 +394,7 @@ impl Planner<'_> {
                 key,
                 select: Select {
                     sql,
-                    unpoliced: Some(unpoliced),
+                    unpoliced,
                     params: statement.params,
                     columns: columns.kinds,
                     record,
@@ -600,11 +593,13 @@ impl Planner<'_> {
         );
         let mut conditions = vec![text::equal("id", &id)];
         conditions.extend(self.access(&mut statement, entity, Reach::Read)?);
-        let mut unpoliced = text::select(&borns(entity, &columns.names), &entity.table, "");
-        text::where_clause(&mut unpoliced, &conditions, "");
-        conditions.push(self.policy(&mut statement, entity, Effect::Read, &Row::Table)?);
-        let mut sql = text::select(&borns(entity, &columns.names), &entity.table, "");
-        text::where_clause(&mut sql, &conditions, "");
+        let policy = self.policy(&mut statement, entity, Effect::Read, &Row::Table)?;
+        let write = |conditions: &[String]| {
+            let mut sql = text::select(&borns(entity, &columns.names), &entity.table, "");
+            text::where_clause(&mut sql, conditions, "");
+            sql
+        };
+        let (sql, unpoliced) = both(&write, conditions, policy);
         let not_found = self.not_found(
             entity,
             MissingValue::Arg {
@@ -617,7 +612,7 @@ impl Planner<'_> {
             cardinality: Cardinality::One,
             select: Select {
                 sql,
-                unpoliced: Some(unpoliced),
+                unpoliced,
                 params: statement.params,
                 columns: columns.kinds,
                 record: Record {
@@ -655,6 +650,22 @@ impl Planner<'_> {
             .collect();
         Some(MissingPlan { failure, fields })
     }
+}
+
+/// A statement written by `write` with `policy` among its `conditions`,
+/// and without it, which a test's call without a caller runs; just the
+/// one when policy lets anyone in.
+pub(crate) fn both(
+    write: &dyn Fn(&[String]) -> String,
+    mut conditions: Vec<String>,
+    policy: String,
+) -> (String, Option<String>) {
+    if policy == jadpo_sql::policy::ANYONE {
+        return (write(&conditions), None);
+    }
+    let unpoliced = write(&conditions);
+    conditions.push(policy);
+    (write(&conditions), Some(unpoliced))
 }
 
 // --- columns -------------------------------------------------------------------

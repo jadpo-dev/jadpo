@@ -2,7 +2,7 @@
 title: Policy
 area: 9
 status: decided
-checked-with: jadpo 3ce094d0 (2026-10-12)
+checked-with: jadpo chunk-4.4 (2026-10-16)
 rules:
   - policy.*
   - type.field_update_forbidden
@@ -14,7 +14,7 @@ Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. The new compiler does not build policy yet: roadmap chunk 4.4 (policy) builds grants compiled into queries, tenancy and the permissions report.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. A field's own `policy:` comes with chunk 4.4b; "Status" below lists the rest.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -248,17 +248,22 @@ entity Project {
 ## The permissions report
 
 Policy is written beside each entity, so nobody has to keep a central copy.
-The compiler writes the global view, `build/report/permissions.md` with a
+`jadpo check` writes the global view, `build/report/permissions.md` with a
 `.json` twin: who can do what to every entity and field, and which actions
-are listed separately.
+are listed separately. Each list is shown as written, and an effect nobody
+is granted says so.
 
-Part of the report for `Project`, with `CompanyRole` shortened:
+Part of the report for the end-to-end example below:
 
-| `projects.Project` | create | read | update | delete |
+| `work.Project` | create | read | update | delete |
 |---|---|---|---|---|
-| the record | editor | viewer, editor | editor | owner |
-| `budget` | | editor | editor | |
-| `import_reference` | | server only | server only | |
+| the record | `CompanyRole.owner`, `CompanyRole.editor` | `CompanyRole.owner`, `CompanyRole.editor`, `CompanyRole.viewer` | `CompanyRole.owner`, `CompanyRole.editor` | `CompanyRole.owner` |
+
+Belongs to a `Company` through `company_id`. Only an action listed under `actions:` changes `company_id`.
+
+A field that narrows its entity's grants gets a row of its own beside "the
+record" (chunk 4.4b): `budget` with `CompanyRole.editor` under read and
+update, `import_reference` with "server only".
 
 Changes to this matrix appear in the approval review in plain terms
 ("viewers can now read `budget`").
@@ -299,6 +304,493 @@ A token issued to another application (area 8) carries scopes, and scopes
 only narrow: the token may do what both the person's grants and its scopes
 allow (question 6).
 
+### Policy, end to end
+
+A whole application whose customers are companies: members sign up, found
+a company, and give each other roles in it, and a company's projects are
+seen and changed only by its members. The principal, its one sign-in
+method and root `policy.jadpo`, which names the tenant and the one action
+that needs other people than its entities' grants: founding a company,
+since a company with no members yet has no owner to grant anything:
+
+```jadpo check project=policy-end-to-end file=app.jadpo
+use work/entities { Member }
+
+application {}
+
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+```
+
+```jadpo check project=policy-end-to-end file=authentication.jadpo hidden
+authentication {
+    browser_session: {
+        cookie: "projects_session"
+    }
+}
+```
+
+```jadpo check project=policy-end-to-end file=policy.jadpo
+use work/entities { Company }
+use work
+
+policy {
+    tenant: Company
+    actions: {
+        work.found_company: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/types/handle.jadpo hidden
+type Handle = Text {
+    min_length: 3
+    max_length: 40
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/types/company_name.jadpo hidden
+type CompanyName = Text {
+    min_length: 1
+    max_length: 80
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/types/company_role.jadpo hidden
+/// What a member may do in a company.
+type CompanyRole = Enum {
+    owner
+    editor
+    viewer
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/types/project_name.jadpo hidden
+type ProjectName = Text {
+    min_length: 1
+    max_length: 80
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/types/project_view.jadpo hidden
+use work/entities { Project }
+
+/// A project as members see it.
+type ProjectView = Output {
+    pick: [Project.id, Project.name]
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/failures/handle_taken.jadpo hidden
+type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/failures/project_not_found.jadpo hidden
+type ProjectNotFound = Failure {
+    kind: FailureKind.not_found
+    message: "Project not found."
+}
+```
+
+A member may read only their own record, and anyone may sign up; members
+are shared by every company. The membership says where its role is held,
+who holds it and which field holds it, and a company's records follow the
+roles held in it:
+
+```jadpo check project=policy-end-to-end file=domains/work/entities/member.jadpo
+use work/types { Handle }
+
+/// Someone who signs in.
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/entities/company.jadpo
+use work/types { CompanyName, CompanyRole }
+
+/// A customer: the tenant every other record belongs to.
+entity Company {
+    id: Uuid
+    name: CompanyName
+
+    policy: {
+        read: [CompanyRole.owner, CompanyRole.editor, CompanyRole.viewer]
+    }
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/entities/company_membership.jadpo
+use work/entities { Company, Member }
+use work/types { CompanyRole }
+
+/// A member's role in a company.
+entity CompanyMembership {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    member_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+    role: CompanyRole
+
+    membership: {
+        scope: company_id
+        member: member_id
+        role: role
+    }
+
+    policy: {
+        create: [CompanyRole.owner]
+        read: [CompanyRole.owner, member_id]
+        delete: [CompanyRole.owner, member_id]
+    }
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/entities/project.jadpo
+use work/entities { Company }
+use work/types { CompanyRole, ProjectName }
+
+/// A piece of work in a company.
+entity Project {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    name: ProjectName
+
+    policy: {
+        create: [CompanyRole.owner, CompanyRole.editor]
+        read: [CompanyRole.owner, CompanyRole.editor, CompanyRole.viewer]
+        update: [CompanyRole.owner, CompanyRole.editor]
+        delete: [CompanyRole.owner]
+    }
+}
+```
+
+Founding a company is the listed action: anyone signed in may call it,
+and it makes its founder the owner. Adding a member is an ordinary create
+of a membership, so only the company's owners may; the code says nothing
+about who may do either:
+
+```jadpo check project=policy-end-to-end file=domains/work/actions/register.jadpo hidden
+use work/entities { Member }
+use work/types { Handle }
+use work/failures { HandleTaken }
+
+/// Signs a new member up; anyone may.
+action register(handle: Handle) fails HandleTaken -> Member {
+    return attempt Member.create {
+        set: {
+            handle: handle
+        }
+        conflict: {
+            Member.handle: HandleTaken
+        }
+    }
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/actions/found_company.jadpo
+use work/entities { Company, CompanyMembership }
+use work/types { CompanyName, CompanyRole }
+
+/// Starts a company with its founder as its owner.
+action found_company(name: CompanyName, founder: Principal.user) -> Company {
+    var company: Company = Company.create {
+        set: {
+            name: name
+        }
+    }
+    var owner: CompanyMembership = CompanyMembership.create {
+        set: {
+            company_id: company.id
+            member_id: founder.id
+            role: CompanyRole.owner
+        }
+    }
+    assert owner.role == CompanyRole.owner
+    return company
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/actions/add_member.jadpo
+use work/entities { Company, CompanyMembership, CompanyNotFound, Member, MemberNotFound }
+use work/types { CompanyRole }
+
+/// Gives a member a role in a company; only its owners may.
+action add_member(
+    company_id: Company.id,
+    member_id: Member.id,
+    role: CompanyRole
+) fails CompanyNotFound, MemberNotFound -> CompanyMembership {
+    return attempt CompanyMembership.create {
+        set: {
+            company_id: company_id
+            member_id: member_id
+            role: role
+        }
+    }
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/actions/start_project.jadpo hidden
+use work/entities { Company, CompanyNotFound, Project }
+use work/types { ProjectName, ProjectView }
+
+/// Starts a project in a company.
+action start_project(input: StartProject) fails CompanyNotFound -> ProjectView {
+    var project: Project = attempt Project.create {
+        set: {
+            company_id: input.company_id
+            name: input.name
+        }
+    }
+    return ProjectView {
+        id: project.id
+        name: project.name
+    }
+}
+
+/// What starting a project takes.
+type StartProject = Input {
+    company_id: Company.id
+    name: ProjectName
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/actions/rename_project.jadpo hidden
+use work/entities { Project }
+use work/types { ProjectName, ProjectView }
+use work/failures { ProjectNotFound }
+
+/// Renames a project.
+action rename_project(
+    project_id: Project.id,
+    input: RenameProject
+) fails ProjectNotFound -> ProjectView {
+    var project: Project = attempt Project.update(project_id) {
+        set: {
+            name: input.name
+        }
+    }
+    return ProjectView {
+        id: project.id
+        name: project.name
+    }
+}
+
+/// What renaming a project takes.
+type RenameProject = Input {
+    name: ProjectName
+}
+```
+
+The query names no caller and no company check: policy adds both to its
+`WHERE`, so a caller sees only the projects of companies where they hold a
+role that may read them:
+
+```jadpo check project=policy-end-to-end file=domains/work/queries/company_projects.jadpo
+use work/entities { Company, Project }
+use work/types { ProjectView }
+
+/// A company's projects, by name.
+query company_projects(company_id: Company.id) -> List<ProjectView> {
+    from: Project
+    where: Project.company_id == company_id
+    order: [Project.name asc]
+    limit: 100
+}
+```
+
+```jadpo check project=policy-end-to-end file=domains/work/routes/projects.jadpo migrate=initial
+use work/entities { Company, Project }
+use work/types { ProjectView }
+use work/actions { RenameProject, StartProject, rename_project, start_project }
+use work/queries { company_projects }
+
+/// A company's projects.
+routes Projects {
+    prefix: /projects
+
+    /// Starts a project.
+    POST / {
+        input: StartProject
+        output: ProjectView
+        status: SuccessStatus.created
+        run: start_project(input)
+    }
+
+    /// A company's projects the caller may see.
+    GET /{company_id: Company.id} {
+        output: List<ProjectView>
+        run: company_projects(company_id)
+    }
+
+    /// Renames a project.
+    PATCH /{project_id: Project.id} {
+        input: RenameProject
+        output: ProjectView
+        run: rename_project(project_id, input)
+    }
+}
+```
+
+```jadpo check project=policy-end-to-end file=api/main.api hidden
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 1
+
+POST /projects
+    input: StartProject (body)
+    output: ProjectView
+    status: 201
+    fails: company_not_found 404
+
+GET /projects/{company_id: Uuid}
+    output: List<ProjectView>
+    status: 200
+
+PATCH /projects/{project_id: Uuid}
+    input: RenameProject (body)
+    output: ProjectView
+    status: 200
+    fails: project_not_found 404
+
+output ProjectView
+    id: Uuid
+    name: Text { min_length: 1, max_length: 80 }
+
+input RenameProject
+    name: Text { min_length: 1, max_length: 80 }
+
+input StartProject
+    company_id: Uuid
+    name: Text { min_length: 1, max_length: 80 }
+
+failure company_not_found 404
+
+failure project_not_found 404 "Project not found."
+```
+
+A route test signs in as each member, so what it checks is exactly what a
+browser would see. The test sets up its data by calling actions without a
+caller, which runs them without policy; `found_company` takes its founder,
+so it runs as the founder and its grants apply:
+
+```jadpo check project=policy-end-to-end file=domains/work/routes/projects.test.jadpo
+use work/entities { Company, CompanyMembership, Member }
+use work/types { CompanyRole, ProjectView }
+use work/actions { RenameProject, StartProject, add_member, found_company, register, start_project }
+
+test "a company's projects are listed only to its members" {
+    var ann: Member = attempt register("ann")
+    var bob: Member = attempt register("bob")
+    var cy: Member = attempt register("cyd")
+    var acme: Company = found_company("Acme", Principal.user(ann))
+    var viewer: CompanyMembership = attempt add_member(acme.id, bob.id, CompanyRole.viewer)
+    assert viewer.role == CompanyRole.viewer
+    var roadmap: ProjectView = attempt start_project(
+        StartProject {
+            company_id: acme.id
+            name: "Roadmap"
+        }
+    )
+    var seen: Response = request {
+        method: HttpMethod.get
+        path: "/projects/{company_id}"
+        params: {
+            company_id: acme.id
+        }
+        as: Principal.user(bob)
+    }
+    assert seen.status == 200
+    assert seen.output == [roadmap]
+    var unseen: Response = request {
+        method: HttpMethod.get
+        path: "/projects/{company_id}"
+        params: {
+            company_id: acme.id
+        }
+        as: Principal.user(cy)
+    }
+    assert unseen.output == []
+}
+
+test "a viewer can't rename a project, which reads as missing" {
+    var ann: Member = attempt register("ann")
+    var bob: Member = attempt register("bob")
+    var acme: Company = found_company("Acme", Principal.user(ann))
+    var viewer: CompanyMembership = attempt add_member(acme.id, bob.id, CompanyRole.viewer)
+    assert viewer.role == CompanyRole.viewer
+    var roadmap: ProjectView = attempt start_project(
+        StartProject {
+            company_id: acme.id
+            name: "Roadmap"
+        }
+    )
+    var renamed: Response = request {
+        method: HttpMethod.patch
+        path: "/projects/{project_id}"
+        params: {
+            project_id: roadmap.id
+        }
+        as: Principal.user(bob)
+        input: RenameProject {
+            name: "Plans"
+        }
+    }
+    assert renamed.status == 404
+    assert renamed.code == "project_not_found"
+    var owned: Response = request {
+        method: HttpMethod.patch
+        path: "/projects/{project_id}"
+        params: {
+            project_id: roadmap.id
+        }
+        as: Principal.user(ann)
+        input: RenameProject {
+            name: "Plans"
+        }
+    }
+    assert owned.status == 200
+}
+
+test "someone outside a company can't start a project in it" {
+    var ann: Member = attempt register("ann")
+    var cyd: Member = attempt register("cyd")
+    var acme: Company = found_company("Acme", Principal.user(ann))
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/projects"
+        as: Principal.user(cyd)
+        input: StartProject {
+            company_id: acme.id
+            name: "Takeover"
+        }
+    }
+    assert response.status == 403
+    assert response.code == "not_permitted"
+}
+```
+
 ## Caches and personal data
 
 Decided in area 5: a record cache applies policy on every read, a
@@ -310,736 +802,898 @@ person's data needs `delete` on their record and exporting it needs `read`.
 
 ## Errors
 
-> These examples predate the decisions above and are rewritten when the area is built (roadmap chunk 4.4). Under the decided model, `policy.binding_duplicate`, `policy.binding_mutable`, `policy.role_field_update_forbidden`, `policy.invoke_context`, `policy.operation_unknown` and `policy.operation_effect_mismatch` disappear; the rest keep their meaning in the new vocabulary.
-
-Every error this area can produce, with an example that triggers it.
+Every error this area's checks produce, with an example that triggers it.
+The examples are one file each, so the principal and root `policy { }` sit
+beside the entities they name; a project keeps them in `app.jadpo` and
+`policy.jadpo`.
 
 ### Owner fields and memberships
 
 ### `policy.role_unbound`
 
-A role used in a grant must have a field or membership that gives it out; declaring the enum is not enough:
+A role exists only where a membership stores it; declaring the enum gives it to nobody:
 
-```jadpo project=e-role-unbound expect=policy.role_unbound
-enum NoteRole {
+```jadpo check project=e-role-unbound expect=policy.role_unbound
+type NoteRole = Enum {
     owner
 }
 
-entity User {
-    id: Uuid identity
-}
-
 entity Note {
-    id: Uuid identity
+    id: Uuid
 
-    policy {
-        NoteRole.owner: [read]
+    policy: {
+        read: [NoteRole.owner]
     }
 }
+```
+
+```text output
+error: No membership holds a `NoteRole`
+ --> main.jadpo:9:16
+  |
+9 |         read: [NoteRole.owner]
+  |                ^^^^^^^^^^^^^^ a role nobody can hold
+  reason: A role exists only where it is stored: in a membership entity whose `membership:` names a field typed `NoteRole` as its `role:`. Declaring the enum alone gives the role to nobody.
+  next: Add a membership entity holding `NoteRole`, or name someone else in the grant (agent)
+  rule: policy.role_unbound
+  help: docs/language/09-policy.html#policy-role-unbound
+
+check failed: 1 error, 1 file
 ```
 
 ### `policy.binding_invalid`
 
-A role field must reference a principal entity:
+A field names who may do something only when it points at the caller, a reference to the principal's user entity; the same rule covers a membership's `scope:`, `member:` and `role:`, `tenant:`, and the lines under `actions:`:
 
-```jadpo project=e-binding-invalid expect=policy.binding_invalid
-enum NoteRole {
-    owner
+```jadpo check project=e-binding-invalid expect=policy.binding_invalid
+type Handle = Text {
+    max_length: 40
 }
 
 entity User {
-    id: Uuid identity
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
 }
 
 entity Note {
-    id: Uuid identity
-    owner_id: Text {
-        role: NoteRole.owner
-        immutable: true
-    }
+    id: Uuid
+    owner_id: Uuid
 
-    policy {
-        NoteRole.owner: [read]
+    policy: {
+        read: [owner_id]
     }
 }
 ```
 
-### `policy.binding_duplicate`
+```text output
+error: `owner_id` doesn't point at a caller
+ --> main.jadpo:23:16
+   |
+23 |         read: [owner_id]
+   |                ^^^^^^^^ not a user field
+  reason: A field names who may do this when it points at the caller: a reference to `User`, the principal's user entity (area 8), typed `User.id`. `Note.owner_id` isn't.
+  next: Name a reference to the user, a membership role, or `Access` (agent)
+  rule: policy.binding_invalid
+  help: docs/language/09-policy.html#policy-binding-invalid
 
-```jadpo project=e-binding-duplicate expect=policy.binding_duplicate
-enum NoteRole {
-    owner
-}
-
-entity User {
-    id: Uuid identity
-}
-
-entity Note {
-    id: Uuid identity
-    owner_id: User.id {
-        role: NoteRole.owner
-        role: NoteRole.owner
-        immutable: true
-    }
-
-    policy {
-        NoteRole.owner: [read]
-    }
-}
-```
-
-### `policy.binding_mutable`
-
-```jadpo project=e-binding-mutable expect=policy.binding_mutable
-enum NoteRole {
-    owner
-}
-
-entity User {
-    id: Uuid identity
-}
-
-entity Note {
-    id: Uuid identity
-    owner_id: User.id {
-        role: NoteRole.owner
-        immutable: false
-    }
-
-    policy {
-        NoteRole.owner: [read]
-    }
-}
-```
-
-### `policy.role_field_update_forbidden`
-
-A role field that could be changed by an ordinary update:
-
-```jadpo project=e-role-field-update-forbidden expect=policy.role_field_update_forbidden
-enum NoteRole {
-    owner
-}
-
-entity User {
-    id: Uuid identity
-}
-
-entity Note {
-    id: Uuid identity
-    owner_id: User.id {
-        role: NoteRole.owner
-    }
-
-    policy {
-        NoteRole.owner: [read]
-    }
-}
-```
-
-### `policy.role_field_create_forbidden`
-
-The owner comes from the request instead of the signed-in principal:
-
-```jadpo project=e-role-field-create-forbidden expect=policy.role_field_create_forbidden
-enum NoteRole {
-    owner
-}
-
-entity User {
-    id: Uuid identity
-}
-
-entity PrivateNote {
-    id: Uuid identity
-    owner_id: User.id {
-        role: NoteRole.owner
-        immutable: true
-    }
-    title: Text
-
-    policy {
-        NoteRole.owner: [create, read, update, delete]
-    }
-}
-
-input CreatePrivateNote {
-    id: PrivateNote.id
-    owner_id: PrivateNote.owner_id
-    title: PrivateNote.title
-}
-
-action create_private_note(input: CreatePrivateNote) -> PrivateNote {
-    return create PrivateNote {
-        id: input.id
-        owner_id: input.owner_id
-        title: input.title
-    }
-}
+check failed: 1 error, 1 file
 ```
 
 ### `policy.membership_scope_required`
 
-```jadpo project=e-membership-scope-required expect=policy.membership_scope_required
-enum AppRole {
-    member
+A membership says where its role is held: a reference, or `MembershipScope.application`:
+
+```jadpo check project=e-membership-scope-required expect=policy.membership_scope_required
+type Handle = Text {
+    max_length: 40
 }
 
 entity User {
-    id: Uuid identity
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
 }
 
-entity Membership {
-    id: Uuid identity
-    user_id: User.id
-    role: AppRole
+principal {
+    user: {
+        subject: User.handle
+    }
+}
 
-    membership {
+type StaffRole = Enum {
+    operator
+}
+
+entity StaffMembership {
+    id: Uuid
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: StaffRole
+
+    membership: {
         member: user_id
         role: role
     }
 }
+```
+
+```text output
+error: `StaffMembership`'s membership has no `scope:`
+ --> main.jadpo:29:5
+   |
+29 |     membership: {
+   |     ^^^^^^^^^^ no `scope:`
+  reason: A membership says where a role is held (`scope:`), who holds it (`member:`) and which field holds it (`role:`); `scope:` is what the role is held in: a field typed `<Entity>.id`, or `MembershipScope.application` for a role held across the whole application.
+  next: Add `scope:` to the membership (agent)
+  rule: policy.membership_scope_required
+  help: docs/language/09-policy.html#policy-membership-scope-required
+
+check failed: 1 error, 1 file
 ```
 
 ### `policy.membership_member_required`
 
-```jadpo project=e-membership-member-required expect=policy.membership_member_required
-enum AppRole {
-    member
+```jadpo check project=e-membership-member-required expect=policy.membership_member_required
+type Handle = Text {
+    max_length: 40
 }
 
 entity User {
-    id: Uuid identity
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
 }
 
-entity Membership {
-    id: Uuid identity
-    user_id: User.id
-    role: AppRole
+principal {
+    user: {
+        subject: User.handle
+    }
+}
 
-    membership {
-        scope: application
+type StaffRole = Enum {
+    operator
+}
+
+entity StaffMembership {
+    id: Uuid
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: StaffRole
+
+    membership: {
+        scope: MembershipScope.application
         role: role
     }
 }
+```
+
+```text output
+error: `StaffMembership`'s membership has no `member:`
+ --> main.jadpo:29:5
+   |
+29 |     membership: {
+   |     ^^^^^^^^^^ no `member:`
+  reason: A membership says where a role is held (`scope:`), who holds it (`member:`) and which field holds it (`role:`); `member:` is who holds it: a reference to the user entity.
+  next: Add `member:` to the membership (agent)
+  rule: policy.membership_member_required
+  help: docs/language/09-policy.html#policy-membership-member-required
+
+check failed: 1 error, 1 file
 ```
 
 ### `policy.membership_role_required`
 
-```jadpo project=e-membership-role-required expect=policy.membership_role_required
-enum AppRole {
-    member
+```jadpo check project=e-membership-role-required expect=policy.membership_role_required
+type Handle = Text {
+    max_length: 40
 }
 
 entity User {
-    id: Uuid identity
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
 }
 
-entity Membership {
-    id: Uuid identity
-    user_id: User.id
-    role: AppRole
+principal {
+    user: {
+        subject: User.handle
+    }
+}
 
-    membership {
-        scope: application
+type StaffRole = Enum {
+    operator
+}
+
+entity StaffMembership {
+    id: Uuid
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: StaffRole
+
+    membership: {
+        scope: MembershipScope.application
         member: user_id
     }
 }
 ```
 
+```text output
+error: `StaffMembership`'s membership has no `role:`
+ --> main.jadpo:29:5
+   |
+29 |     membership: {
+   |     ^^^^^^^^^^ no `role:`
+  reason: A membership says where a role is held (`scope:`), who holds it (`member:`) and which field holds it (`role:`); `role:` is which field holds the role, a field typed with the role's enum.
+  next: Add `role:` to the membership (agent)
+  rule: policy.membership_role_required
+  help: docs/language/09-policy.html#policy-membership-role-required
+
+check failed: 1 error, 1 file
+```
+
 ### `policy.membership_duplicate`
 
-```jadpo project=e-membership-duplicate expect=policy.membership_duplicate
-enum AppRole {
-    member
+An entity stores one role, held by one member in one place:
+
+```jadpo check project=e-membership-duplicate expect=policy.membership_duplicate
+type Handle = Text {
+    max_length: 40
 }
 
 entity User {
-    id: Uuid identity
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
 }
 
-entity Membership {
-    id: Uuid identity
-    user_id: User.id
-    role: AppRole
+principal {
+    user: {
+        subject: User.handle
+    }
+}
 
-    membership {
-        scope: application
+type StaffRole = Enum {
+    operator
+}
+
+entity StaffMembership {
+    id: Uuid
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: StaffRole
+
+    membership: {
+        scope: MembershipScope.application
         member: user_id
         role: role
     }
 
-    membership {
-        scope: application
+    membership: {
+        scope: MembershipScope.application
         member: user_id
         role: role
     }
 }
+```
+
+```text output
+error: `StaffMembership` declares `membership:` twice
+ --> main.jadpo:35:5
+   |
+29 |     membership: {
+   |     ---------- first declared here
+35 |     membership: {
+   |     ^^^^^^^^^^ declared again
+  reason: A membership entity stores one role, held in one place by one member, so it says so once.
+  next: Remove one `membership:`, or keep the second role in an entity of its own (agent)
+  rule: policy.membership_duplicate
+  help: docs/language/09-policy.html#policy-membership-duplicate
+
+check failed: 1 error, 1 file
 ```
 
 ### Scope
 
 ### `policy.scope_missing`
 
-`Attachment` uses a note role but has no reference to `Note`:
+`Report` names a company role but has no reference to `Company`, which the role is held in; an entity with no reference to the tenant is refused the same way:
 
-```jadpo project=e-scope-missing expect=policy.scope_missing
-enum NoteRole {
-    owner
+```jadpo check project=e-scope-missing expect=policy.scope_missing
+type Handle = Text {
+    max_length: 40
 }
 
 entity User {
-    id: Uuid identity
-}
-
-entity Note {
-    id: Uuid identity
-    owner_id: User.id {
-        role: NoteRole.owner
-        immutable: true
-    }
-
-    policy {
-        NoteRole.owner: [read]
+    id: Uuid
+    handle: Handle {
+        unique: true
     }
 }
 
-entity Attachment {
-    id: Uuid identity
-
-    policy {
-        NoteRole.owner: [read]
+principal {
+    user: {
+        subject: User.handle
     }
 }
+
+type CompanyRole = Enum {
+    owner
+    editor
+}
+
+entity Company {
+    id: Uuid
+}
+
+entity CompanyMembership {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: CompanyRole
+
+    membership: {
+        scope: company_id
+        member: user_id
+        role: role
+    }
+}
+
+entity Report {
+    id: Uuid
+
+    policy: {
+        read: [CompanyRole.editor]
+    }
+}
+```
+
+```text output
+error: `Report` has no reference to `Company`
+ --> main.jadpo:48:16
+   |
+48 |         read: [CompanyRole.editor]
+   |                ^^^^^^^^^^^^^^^^^^ a role held in a `Company`
+  reason: `CompanyRole` is held in a `Company` (`CompanyMembership`'s `scope:`), and a role applies to a record through the record's reference to its scope, so `Report` needs a field typed `Company.id`.
+  next: Add a reference to `Company` to `Report`, or name someone else (agent)
+  rule: policy.scope_missing
+  help: docs/language/09-policy.html#policy-scope-missing
+
+check failed: 1 error, 1 file
 ```
 
 ### `policy.scope_ambiguous`
 
-Two references to `Company`, and the policy does not say which one decides:
+Two references to `Company`, and the grant does not say which one the role applies through; `CompanyRole.editor(source_company_id)` would:
 
-```jadpo project=e-scope-ambiguous expect=policy.scope_ambiguous
-enum CompanyRole {
-    owner
+```jadpo check project=e-scope-ambiguous expect=policy.scope_ambiguous
+type Handle = Text {
+    max_length: 40
 }
 
 entity User {
-    id: Uuid identity
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type CompanyRole = Enum {
+    owner
+    editor
 }
 
 entity Company {
-    id: Uuid identity
-    owner_id: User.id {
-        role: CompanyRole.owner
-        immutable: true
-    }
+    id: Uuid
+}
 
-    policy {
-        CompanyRole.owner: [read]
+entity CompanyMembership {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: CompanyRole
+
+    membership: {
+        scope: company_id
+        member: user_id
+        role: role
     }
 }
 
 entity InvoiceTransfer {
-    id: Uuid identity
-    source_company_id: Company.id
-    destination_company_id: Company.id
+    id: Uuid
+    source_company_id: Company.id {
+        on_delete: OnDelete.restricted
+    }
+    destination_company_id: Company.id {
+        on_delete: OnDelete.restricted
+    }
 
-    policy {
-        CompanyRole.owner: [read]
+    policy: {
+        read: [CompanyRole.editor]
     }
 }
 ```
 
+```text output
+error: `InvoiceTransfer` refers to `Company` more than once
+ --> main.jadpo:54:16
+   |
+54 |         read: [CompanyRole.editor]
+   |                ^^^^^^^^^^^^^^^^^^ through which reference?
+  reason: `CompanyRole` is held in a `Company`, and `InvoiceTransfer` has 2 references to `Company` (`source_company_id` and `destination_company_id`), so the grant names the one it means.
+  next: Write `CompanyRole.editor(source_company_id)` (agent)
+  rule: policy.scope_ambiguous
+  help: docs/language/09-policy.html#policy-scope-ambiguous
+
+check failed: 1 error, 1 file
+```
+
 ### `policy.scope_duplicate`
 
-```jadpo project=e-scope-duplicate expect=policy.scope_duplicate
-enum NoteRole {
-    owner
+```jadpo check project=e-scope-duplicate expect=policy.scope_duplicate
+type Handle = Text {
+    max_length: 40
 }
 
 entity User {
-    id: Uuid identity
-}
-
-entity Note {
-    id: Uuid identity
-    owner_id: User.id {
-        role: NoteRole.owner
-        immutable: true
-    }
-
-    policy {
-        scope: owner_id
-        scope: owner_id
-        NoteRole.owner: [read]
+    id: Uuid
+    handle: Handle {
+        unique: true
     }
 }
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type StaffRole = Enum {
+    operator
+}
+
+entity StaffMembership {
+    id: Uuid
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: StaffRole
+
+    membership: {
+        scope: MembershipScope.application
+        scope: MembershipScope.application
+        member: user_id
+        role: role
+    }
+}
+```
+
+```text output
+error: `scope:` is given twice
+ --> main.jadpo:31:9
+   |
+30 |         scope: MembershipScope.application
+   |         ----- first given here
+31 |         scope: MembershipScope.application
+   |         ^^^^^ given again
+  reason: A membership says once where its role is held, who holds it and which field holds it, so there is never a question of which counts.
+  next: Remove one `scope:` (agent)
+  rule: policy.scope_duplicate
+  help: docs/language/09-policy.html#policy-scope-duplicate
+
+check failed: 1 error, 1 file
 ```
 
 ### Grants
 
 ### `policy.effect_ungranted`
 
-An action that touches no entity needs its own grant:
+A route that runs an action reaching no entity, which `actions:` in root `policy { }` does not list; a route that reaches a create, read, update or delete no grant names is refused the same way:
 
-```jadpo project=e-effect-ungranted expect=policy.effect_ungranted
-entity Article {
-    id: Uuid identity
-
-    policy {
-        Access.authenticated: [read]
-    }
-}
-
-output Health {
+```jadpo check project=e-effect-ungranted expect=policy.effect_ungranted
+type Health = Output {
     ok: Bool
 }
 
-action administrative_health() -> Health {
-    return Health { ok: true }
+action check_health() -> Health {
+    return Health {
+        ok: true
+    }
 }
+
+routes Monitoring {
+    prefix: /health
+
+    POST / {
+        authentication: RouteAuthentication.none
+        output: Health
+        run: check_health()
+    }
+}
+```
+
+```text output
+error: `POST /health` runs `check_health`, which nobody may call
+ --> main.jadpo:14:5
+   |
+14 |     POST / {
+   |     ^^^^^^ reaches no entity
+  reason: An action takes its permission from the entities it reaches, and `check_health` reaches none, so it is refused to everyone unless root `policy { }` lists who may call it under `actions:`.
+  next: List `check_health: [...]` under `actions:` in `policy.jadpo` (human)
+  rule: policy.effect_ungranted
+  help: docs/language/09-policy.html#policy-effect-ungranted
+
+check failed: 1 error, 1 file
 ```
 
 ### `policy.effect_unknown`
 
-```jadpo project=e-effect-unknown expect=policy.effect_unknown
-enum NoteRole {
-    owner
+A policy grants `create`, `read`, `update` and `delete`; an action needing other people is listed under `actions:`:
+
+```jadpo check project=e-effect-unknown expect=policy.effect_unknown
+type Handle = Text {
+    max_length: 40
 }
 
 entity User {
-    id: Uuid identity
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
 }
 
 entity Note {
-    id: Uuid identity
+    id: Uuid
     owner_id: User.id {
-        role: NoteRole.owner
-        immutable: true
+        on_delete: OnDelete.cascade
     }
 
-    policy {
-        NoteRole.owner: [publish]
+    policy: {
+        publish: [owner_id]
     }
 }
+```
+
+```text output
+error: `publish` isn't something a policy grants
+ --> main.jadpo:25:9
+   |
+25 |         publish: [owner_id]
+   |         ^^^^^^^ not a grant or a setting
+  reason: An entity's `policy:` lists who may `create`, `read`, `update` and `delete` its records, and may say which `tenant:` they belong to. Every action takes its permission from these; one that needs others is listed under `actions:` in `policy.jadpo`.
+  next: Remove `publish` (agent)
+  rule: policy.effect_unknown
+  help: docs/language/09-policy.html#policy-effect-unknown
+
+check failed: 1 error, 1 file
 ```
 
 ### `policy.effect_duplicate`
 
-```jadpo project=e-effect-duplicate expect=policy.effect_duplicate
-enum NoteRole {
-    owner
+One list per effect, so "who may read a note?" is one line:
+
+```jadpo check project=e-effect-duplicate expect=policy.effect_duplicate
+type Handle = Text {
+    max_length: 40
 }
 
 entity User {
-    id: Uuid identity
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
 }
 
 entity Note {
-    id: Uuid identity
+    id: Uuid
     owner_id: User.id {
-        role: NoteRole.owner
-        immutable: true
+        on_delete: OnDelete.cascade
     }
 
-    policy {
-        NoteRole.owner: [read, read]
+    policy: {
+        read: [owner_id]
+        read: [Access.authenticated]
     }
 }
+```
+
+```text output
+error: `read:` is given twice
+ --> main.jadpo:26:9
+   |
+25 |         read: [owner_id]
+   |         ---- first given here
+26 |         read: [Access.authenticated]
+   |         ^^^^ given again
+  reason: `Note`'s policy gives each list once, so "who may read?" is always one line.
+  next: Merge the two `read:` lists into one (agent)
+  rule: policy.effect_duplicate
+  help: docs/language/09-policy.html#policy-effect-duplicate
+
+check failed: 1 error, 1 file
 ```
 
 ### `policy.subject_duplicate`
 
-One line per role:
-
-```jadpo project=e-subject-duplicate expect=policy.subject_duplicate
-enum NoteRole {
-    owner
+```jadpo check project=e-subject-duplicate expect=policy.subject_duplicate
+type Handle = Text {
+    max_length: 40
 }
 
 entity User {
-    id: Uuid identity
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
 }
 
 entity Note {
-    id: Uuid identity
+    id: Uuid
     owner_id: User.id {
-        role: NoteRole.owner
-        immutable: true
+        on_delete: OnDelete.cascade
     }
 
-    policy {
-        NoteRole.owner: [read]
-        NoteRole.owner: [update]
+    policy: {
+        read: [owner_id, Access.authenticated, owner_id]
     }
 }
+```
+
+```text output
+error: `owner_id` is listed twice
+ --> main.jadpo:25:48
+   |
+25 |         read: [owner_id, Access.authenticated, owner_id]
+   |                                                ^^^^^^^^ listed again
+  reason: A grant list means "any of these", so naming someone twice adds nothing and hides which line was meant.
+  next: Remove the second `owner_id` (agent)
+  rule: policy.subject_duplicate
+  help: docs/language/09-policy.html#policy-subject-duplicate
+
+check failed: 1 error, 1 file
 ```
 
 ### `policy.declaration_duplicate`
 
-```jadpo project=e-declaration-duplicate expect=policy.declaration_duplicate
-enum NoteRole {
-    owner
+```jadpo check project=e-declaration-duplicate expect=policy.declaration_duplicate
+type Handle = Text {
+    max_length: 40
 }
 
 entity User {
-    id: Uuid identity
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
 }
 
 entity Note {
-    id: Uuid identity
+    id: Uuid
     owner_id: User.id {
-        role: NoteRole.owner
-        immutable: true
+        on_delete: OnDelete.cascade
     }
 
-    policy {
-        NoteRole.owner: [read]
+    policy: {
+        read: [owner_id]
     }
 
-    policy {
-        NoteRole.owner: [update]
+    policy: {
+        update: [owner_id]
     }
 }
 ```
 
-### `policy.invoke_context`
+```text output
+error: `Note` declares `policy:` twice
+ --> main.jadpo:28:5
+   |
+24 |     policy: {
+   |     ------ first declared here
+28 |     policy: {
+   |     ^^^^^^ declared again
+  reason: An entity's grants are one list per effect in one `policy:`, so "who can delete this?" is always one line.
+  next: Move what the second `policy:` holds into the first, and remove it (agent)
+  rule: policy.declaration_duplicate
+  help: docs/language/09-policy.html#policy-declaration-duplicate
 
-An action's grant can only be `invoke`:
-
-```jadpo project=e-invoke-context expect=policy.invoke_context
-output Health {
-    ok: Bool
-}
-
-action public_health() -> Health {
-    policy {
-        Access.public: [read]
-    }
-    return Health { ok: true }
-}
+check failed: 1 error, 1 file
 ```
 
 ### `policy.public_grant_missing`
 
-A route that needs no sign-in reaches an entity that does not grant `Access.public`:
+A route anyone may call reaches an entity that does not grant `Access.public`:
 
-```jadpo project=e-public-grant-missing expect=policy.public_grant_missing
+```jadpo check project=e-public-grant-missing expect=policy.public_grant_missing
+type ArticleTitle = Text {
+    max_length: 120
+}
+
+type ArticleView = Output {
+    title: ArticleTitle
+}
+
 entity Article {
     id: Uuid
-    title: Text
-    identity: id
+    title: ArticleTitle
 
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    policy {
-        Access.authenticated: [read]
-    }
-
-    query by_id(id: Article.id)
-        freshness: authoritative
-        -> Article?
-    {
-        return attempt query optional Article {
-            where: id == id
-        }
+    policy: {
+        read: [Access.authenticated]
     }
 }
 
-route GET /articles/{article_id} {
-    auth: none
-    path: {
-        article_id: Article.id
-    }
-    output: Article?
-    run: Article.by_id(path.article_id)
-}
-```
-
-### Action exceptions
-
-### `policy.operation_unknown`
-
-```jadpo project=e-operation-unknown expect=policy.operation_unknown
-enum NoteRole {
-    owner
+query find_article(article_id: Article.id) fails ArticleNotFound -> ArticleView {
+    from: Article
+    where: Article.id == article_id
+    missing: ArticleNotFound
 }
 
-entity User {
-    id: Uuid identity
-}
+routes Articles {
+    prefix: /articles
 
-entity Note {
-    id: Uuid identity
-    owner_id: User.id {
-        role: NoteRole.owner
-        immutable: true
-    }
-
-    policy {
-        NoteRole.owner: [read]
-
-        operations {
-            archive {
-                NoteRole.owner: [update]
-            }
-        }
+    GET /{article_id: Article.id} {
+        authentication: RouteAuthentication.none
+        output: ArticleView
+        run: find_article(article_id)
     }
 }
 ```
 
-### `policy.operation_effect_mismatch`
+```text output
+error: `GET /articles/{article_id}` lets anyone call it, but not everyone may read `Article`
+ --> main.jadpo:27:5
+   |
+27 |     GET /{article_id: Article.id} {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ anyone may call it
+  reason: A route with `authentication: RouteAuthentication.none` has no caller, so everything it reaches needs `Access.public`; `Article`'s `read:` doesn't name `Access.public`. Either alone is not enough.
+  next: Add `Access.public` to `Article`'s `read:`, or remove `authentication: RouteAuthentication.none` from the route (human)
+  rule: policy.public_grant_missing
+  help: docs/language/09-policy.html#policy-public-grant-missing
 
-`label` touches no data, so there is nothing for the exception to replace:
-
-```jadpo project=e-operation-effect-mismatch expect=policy.operation_effect_mismatch
-type Label = Text {}
-
-enum NoteRole {
-    owner
-}
-
-entity User {
-    id: Uuid identity
-}
-
-entity Note {
-    id: Uuid identity
-    owner_id: User.id {
-        role: NoteRole.owner
-        immutable: true
-    }
-
-    function label() -> Label {
-        return Label("label")
-    }
-
-    policy {
-        NoteRole.owner: [read]
-
-        operations {
-            label {
-                NoteRole.owner: [read]
-            }
-        }
-    }
-}
+check failed: 1 error, 1 file
 ```
 
 ### Fields
 
-### `policy.field_widens_entity`
+### `type.field_update_forbidden`
 
-A field cannot grant more than its entity does:
+A user field named in policy is never changed by an ordinary update; handing the note to someone else is an action listed under `actions:`. A field marked `immutable: true` is refused the same way:
 
-```jadpo project=e-field-widens-entity expect=policy.field_widens_entity
-enum NoteRole {
-    owner
+```jadpo check project=e-field-update-forbidden expect=type.field_update_forbidden
+type Handle = Text {
+    max_length: 40
 }
 
 entity User {
-    id: Uuid identity
-}
-
-entity PrivateNote {
-    id: Uuid identity
-    owner_id: User.id {
-        role: NoteRole.owner
-        immutable: true
-    }
-    private_label: Text {
-        policy {
-            NoteRole.owner: [read, update]
-        }
-    }
-
-    policy {
-        NoteRole.owner: [read]
+    id: Uuid
+    handle: Handle {
+        unique: true
     }
 }
-```
 
-### `policy.output_field_unproved`
-
-Every signed-in caller may read `Note`, but only its owner may read `private_label`, so a query returning the whole `Note` is refused:
-
-```jadpo project=e-output-field-unproved expect=policy.output_field_unproved
-enum NoteRole {
-    owner
+principal {
+    user: {
+        subject: User.handle
+    }
 }
 
-entity User {
-    id: Uuid identity
-}
-
-failure NoteNotFound {
-    kind: NotFound
-    code: "note_not_found"
+type NoteText = Text {
+    max_length: 200
 }
 
 entity Note {
-    id: Uuid identity
+    id: Uuid
     owner_id: User.id {
-        role: NoteRole.owner
-        immutable: true
+        on_delete: OnDelete.cascade
     }
-    private_label: Text {
-        policy {
-            NoteRole.owner: [read]
-        }
-    }
+    text: NoteText
 
-    policy {
-        Access.authenticated: [read]
-        NoteRole.owner: [read]
+    policy: {
+        read: [owner_id]
+        update: [owner_id]
     }
+}
 
-    query by_id(id: Note.id)
-        freshness: authoritative
-        fails NoteNotFound
-        -> Note
-    {
-        return attempt query required Note {
-            where: id == id
-            missing: NoteNotFound
+action give_note(note_id: Note.id, to: User.id) fails NoteNotFound, UserNotFound -> Note {
+    return attempt Note.update(note_id) {
+        set: {
+            owner_id: to
         }
     }
 }
 ```
 
-### `type.field_update_forbidden`
+```text output
+error: `Note.update` changes `Note.owner_id`, which an update can't change
+ --> main.jadpo:38:13
+   |
+38 |             owner_id: to
+   |             ^^^^^^^^ named in policy
+  reason: `Note`'s policy reaches the caller or the tenant through `owner_id`, so changing it hands the record to someone else. That is a named action, listed with who may call it under `actions:` in `policy.jadpo`.
+  next: Remove `owner_id` from the update, or list `give_note` under `actions:` in `policy.jadpo` (agent)
+  rule: type.field_update_forbidden
+  help: docs/language/09-policy.html#type-field-update-forbidden
 
-```jadpo project=e-field-update-forbidden expect=type.field_update_forbidden
-entity Article {
-    id: Uuid identity
-    company_id: Uuid {
-        immutable: true
-    }
-    title: Text
-}
+check failed: 1 error, 1 file
+```
 
-failure ArticleNotFound {
-    kind: NotFound
-    code: "article_not_found"
-}
+### Coming with chunk 4.4b
 
-failure ArticleConflict {
-    kind: Conflict
-    code: "article_conflict"
-}
+A field's own `policy:`, `FieldAccess.server_only` and the checks that
+follow a field's value come with roadmap chunk 4.4b; until then a field's
+`policy:` is `toolchain.not_built_yet` where it is written, and a field
+follows its entity's grants. Their rules, in the decided syntax:
 
-action move_article(id: Article.id, company_id: Article.company_id)
-    fails ArticleNotFound, ArticleConflict
-    -> Article
-{
-    return attempt update required Article {
-        where: id == id
-        set: { company_id: company_id }
-        missing: ArticleNotFound
-        conflict: ArticleConflict
+- `policy.field_widens_entity`: a field can't grant anyone its entity
+  doesn't, so `budget: { policy: { read: [CompanyRole.viewer] } }` on an
+  entity whose `read:` names only `CompanyRole.editor` is refused.
+- `policy.output_field_unproved`: a query whose callers may not all read
+  one of its output fields doesn't compile; the fix is a second query with
+  a narrower output.
+- `policy.role_field_create_forbidden`: a create whose `create:` names
+  only a user field, setting that field from the request rather than from
+  the caller, could never be allowed for anyone but the caller:
+
+```jadpo fragment
+action create_note(input: CreateNote) -> Note {
+    return Note.create {
+        set: {
+            owner_id: input.owner_id    // from the request, not the caller
+            ...
+        }
     }
 }
 ```
@@ -1048,8 +1702,49 @@ action move_article(id: Article.id, company_id: Article.company_id)
 
 ### Status
 
-The new compiler builds none of this area yet. Roadmap chunk 4.4 builds
-grants compiled into queries, tenancy and the permissions report.
+Built in chunk 4.4. `jadpo check` reads each entity's `policy:` (its
+`create`, `read`, `update` and `delete` lists and its `tenant:`), each
+membership entity's `membership:`, and root `policy { }` with `tenant:`
+and `actions:`, and reports every rule under "Errors". Routes are checked
+once they and the policy read cleanly: every create, read, update and
+delete a route reaches needs a grant, an action that reaches no entity
+needs its line under `actions:`, and a route anyone may call reaches only
+what `Access.public` is granted. A field named in policy, a reference a
+role or the tenant applies through, a membership's `scope:` and `member:`,
+and any field marked `immutable: true` keep their values under an ordinary
+update.
+
+The plan compiles every grant and the tenancy into each statement's
+`WHERE` (a query, `get`, include, update, delete and transition), and a
+create writes its row only when the new record's grants hold, in the same
+statement; the runtime binds who is calling. A list holds only what the
+caller may see, filtered before paging; a record the caller may not see,
+read or change by `id` reports its code's own not-found failure, which the
+log marks `concealed_by: policy`; a create, a change to a record the action
+loaded, and a call an action's line refuses answer 403 `not_permitted`,
+which OpenAPI lists on every route that runs such an action. Listing a
+user's tokens or a service's keys needs `read` on its record, and revoking
+one or issuing a key `update`. `jadpo check` writes the permissions report
+to `build/report/permissions.md` and `.json`, and `jadpo sql` shows the
+policy each statement carries.
+
+Not yet:
+
+- A field's own `policy:`, `FieldAccess.server_only`, the output and copy
+  checks, `policy.role_field_create_forbidden`, and proving that every
+  caller who may read a record may read the parents a query includes
+  (chunk 4.4b). Until then a required parent the caller may not read
+  answers `not_permitted`.
+- `scopes:`, with the tokens issued to other applications (`oauth_token`,
+  `external_token`), after the first build.
+- `Access.system`: no schedule or subscriber runs yet (area 12), so it
+  grants nobody today.
+- An acceptance for a change that widens access, and the approval review
+  that shows the report's changes (areas 14 and 18).
+- Indexes for policy: every field a condition filters on is a reference
+  (a user field, a role's or the tenant's reference, a membership's scope
+  and member), and each already has its own index (area 5), so policy adds
+  none yet.
 
 ### Consistency with the rest of the language
 
@@ -1188,3 +1883,13 @@ grants compiled into queries, tenancy and the permissions report.
 | Accepting policy weakening | Carried from area 7: one acceptance file per weakening in `acceptances/`, the shared form | 2026-10-12 |
 | Personal data and log redaction | Designed in area 15 (Personal data); erase needs `delete`, export needs `read` | 2026-10-12 |
 | Background work | Carried from area 12: schedules and subscribers act as `Access.system`, which an entity grants explicitly; subscribers stay in their event's tenant | 2026-10-13 |
+| Who a grant names (chosen in chunk 4.4) | A field names the caller it points at: a reference to the principal's user entity (or its service entity, which grants that service), or that entity's own `id`, the caller themselves (`read: [id]` on the user entity). A role is `Role.value`, held by a membership whose `role:` field is typed with the enum, or `Role.value(field)` naming the reference it applies through; role enums are imported like any type. Anything else is `policy.binding_invalid` | 2026-10-16 |
+| Memberships (chosen in chunk 4.4) | `membership: { scope: member: role: }`: `scope:` a reference or `MembershipScope.application`, `member:` a reference to the user entity, `role:` a field typed with a plain enum. A role applies to a record through its one reference to the membership's scope, through `id` on the scope entity itself, and everywhere for an application-wide membership; with no reference it is `policy.scope_missing`, with two `policy.scope_ambiguous`. A membership the lifecycle hides grants nothing | 2026-10-16 |
+| Tenancy (chosen in chunk 4.4) | Every entity has one reference to the tenant, names it with `tenant: field`, says `tenant: Tenancy.shared`, or is the tenant itself (through `id`); otherwise `policy.scope_missing` or `policy.scope_ambiguous`. A record belongs to a caller's tenant when the caller holds a current membership, of any role, in a membership entity whose scope is the tenant; `Access.public` on a tenant's records therefore reaches only members. Creating a tenant's own record checks no tenancy, since nobody belongs to it yet, and a new membership in the tenant makes its member one. Root `policy.jadpo` imports what it names, like any root file (`use work/entities { Company }`, `use work` for `work.found_company`); a tenant no membership is held in is `policy.role_unbound` | 2026-10-16 |
+| Fields policy fixes (chosen in chunk 4.4) | An ordinary update can't change a field a grant points at the caller through, a reference a role or the tenant applies through, or a membership's `scope:` and `member:`, since each hands the record to someone else (`type.field_update_forbidden`); an action listed under `actions:` may. A field marked `immutable: true` never changes | 2026-10-16 |
+| Checking routes (chosen in chunk 4.4) | Once the routes and the policy read cleanly, each route is checked against what it reaches through every action and query it runs: an effect whose list names nobody but `Access.system`, or an action that reaches no entity and signs no one in or out and isn't listed, is `policy.effect_ungranted`; a route anyone may call reaching what `Access.public` isn't granted, or a tenant's records, is `policy.public_grant_missing`. One problem per route, at the first it reaches | 2026-10-16 |
+| When policy says no (chosen in chunk 4.4) | A list is filtered in its statement, before paging. A `get`, a query for one record, and an update or delete by `id` that policy hides report the code's own not-found failure, and a second statement without policy tells the log `concealed_by: policy`. A create policy refuses, a change to a record the action loaded, and a call an action's line refuses are 403 `not_permitted`, raised by the runtime and never in `fails`; a required parent an include can't read is `not_permitted` too until chunk 4.4b proves it can't happen. OpenAPI lists the 403 on every route that runs an action that writes or is listed | 2026-10-16 |
+| Listed actions (chosen in chunk 4.4) | An `actions:` line replaces its entities' grants on the creates, updates, deletes and transitions in the action's own body; its reads, and the actions and queries it calls, keep their own entities' grants, with the same caller. `Entity.field` names a field of that entity; a line that depends on no record (anyone signed in, or a role held across the whole application) is also checked as the action starts, wherever it is called from | 2026-10-16 |
+| Tokens and keys (chosen in chunk 4.4) | `sessions.start`, `sessions.end` and `sessions.issue_token` need no grant: who may sign in is the application's own check (area 8), and an action that only signs in or out isn't one that reaches nothing. `sessions.tokens` and `Service.keys` list only holders the caller may `read`; `sessions.revoke_token`, `Service.revoke_key` and `Service.issue_key` need `update` on the holder. A refused list is empty, a refused revoke revokes nothing, and a refused issue is 403 `not_permitted` | 2026-10-16 |
+| Calling as someone in a test (chosen in chunk 4.4) | A call a test, fixture or seed makes runs as the `Principal.user` or `Principal.service` it passes, so policy applies as to that caller; a call that passes none runs without policy, so an action test proves behaviour and data and a route test, or a call with a caller, proves policy (area 13). Nothing a request runs leaves policy out | 2026-10-16 |
+| The permissions report (chosen in chunk 4.4) | `jadpo check` writes `build/report/permissions.md` and `.json` once policy reads cleanly: a table per entity, `domain.Entity`, with each list as written or "nobody", a line on its tenancy, its membership and the fields only listed actions change, and a table of the actions listed separately; no times or totals, so a change reads as a one-line diff | 2026-10-16 |

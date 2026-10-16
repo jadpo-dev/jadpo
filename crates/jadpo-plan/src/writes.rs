@@ -195,20 +195,22 @@ impl Planner<'_> {
                     .collect();
                 let condition =
                     self.policy(&mut writing, entity_model, Effect::Create, &Row::New(&new))?;
-                unpoliced = Some(text::insert(
-                    table,
-                    &names,
-                    &values,
-                    &returning(entity_model),
-                ));
-                policy = Some(PolicyRefusal::Create);
-                jadpo_sql::policy::insert_when(
-                    table,
-                    &names,
-                    &values,
-                    &condition,
-                    &returning(entity_model),
-                )
+                let plain = text::insert(table, &names, &values, &returning(entity_model));
+                if condition == jadpo_sql::policy::ANYONE {
+                    unpoliced = None;
+                    policy = None;
+                    plain
+                } else {
+                    unpoliced = Some(plain);
+                    policy = Some(PolicyRefusal::Create);
+                    jadpo_sql::policy::insert_when(
+                        table,
+                        &names,
+                        &values,
+                        &condition,
+                        &returning(entity_model),
+                    )
+                }
             }
             WriteOp::Update | WriteOp::Delete => {
                 let record = writing.input((*target)?, None);
@@ -372,20 +374,23 @@ impl Planner<'_> {
                     Effect::Update
                 };
                 let granted = self.policy(&mut writing, entity_model, effect, &Row::Table)?;
+                let open = granted == jadpo_sql::policy::ANYONE;
                 // Writing no row asks whether the record is there under its
                 // lifecycle: then policy refused it.
-                {
+                policy = if open {
+                    None
+                } else {
                     let mut asking = Writing::default();
                     let id = asking.param(id_source.clone(), SqlType::Uuid);
                     let mut asked = vec![text::equal("id", &id)];
                     asked.extend(self.access(&mut asking, entity_model, Reach::Write)?);
                     let mut probe = text::select_one(table);
                     text::where_clause(&mut probe, &asked, "");
-                    policy = Some(PolicyRefusal::Probe {
+                    Some(PolicyRefusal::Probe {
                         sql: probe,
                         params: asking.params,
-                    });
-                }
+                    })
+                };
                 // A transition's `when:` joins the `WHERE` when it can
                 // refuse a visible record; writing no row then asks which
                 // it was, the record or the condition.
@@ -399,10 +404,16 @@ impl Planner<'_> {
                     asked.extend(self.access(&mut asking, entity_model, Reach::Write)?);
                     let mut bare = text::select_one(table);
                     text::where_clause(&mut bare, &asked, "");
-                    asked.push(self.policy(&mut asking, entity_model, effect, &Row::Table)?);
-                    let mut probe = text::select_one(table);
-                    text::where_clause(&mut probe, &asked, "");
-                    guard = Some((probe, Some(bare), asking.params));
+                    let asked_policy =
+                        self.policy(&mut asking, entity_model, effect, &Row::Table)?;
+                    if asked_policy == jadpo_sql::policy::ANYONE {
+                        guard = Some((bare, None, asking.params));
+                    } else {
+                        asked.push(asked_policy);
+                        let mut probe = text::select_one(table);
+                        text::where_clause(&mut probe, &asked, "");
+                        guard = Some((probe, Some(bare), asking.params));
+                    }
                     conditions.push(jadpo_sql::condition(
                         &mut writing,
                         entity_model,
@@ -422,9 +433,14 @@ impl Planner<'_> {
                     }
                     sql
                 };
-                unpoliced = Some(write(&conditions));
-                conditions.push(granted);
-                write(&conditions)
+                if open {
+                    unpoliced = None;
+                    write(&conditions)
+                } else {
+                    unpoliced = Some(write(&conditions));
+                    conditions.push(granted);
+                    write(&conditions)
+                }
             }
         };
         // What each refusal raises: an arm's failure, a missing record's

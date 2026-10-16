@@ -358,6 +358,11 @@ entity Todo {
     id: Uuid
     title: TodoTitle
     done: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
 }
 ```
 
@@ -1691,6 +1696,12 @@ action add_tagged_memo(input: TaggedMemo) -> MemoView {
     }
 }
 
+policy {
+    actions: {
+        add_tagged_memo: [Access.public]
+    }
+}
+
 routes Memos {
     prefix: /memos
 
@@ -1752,6 +1763,12 @@ type TaggedMemo = Input {
 action add_tagged_memo(input: TaggedMemo) -> MemoView {
     return MemoView {
         text: input.text
+    }
+}
+
+policy {
+    actions: {
+        add_tagged_memo: [Access.public]
     }
 }
 
@@ -1824,6 +1841,12 @@ action add_tagged_memo(input: TaggedMemo) -> MemoView {
     }
 }
 
+policy {
+    actions: {
+        add_tagged_memo: [Access.public]
+    }
+}
+
 routes Memos {
     prefix: /memos
 
@@ -1888,6 +1911,12 @@ type TaggedMemo = Input {
 action add_tagged_memo(input: TaggedMemo) -> MemoView {
     return MemoView {
         text: input.text
+    }
+}
+
+policy {
+    actions: {
+        add_tagged_memo: [Access.public]
     }
 }
 
@@ -2159,6 +2188,16 @@ type AddMemo = Input {
 }
 ```
 
+```jadpo check project=e-record file=policy.jadpo hidden
+use memos
+
+policy {
+    actions: {
+        memos.add_memo: [Access.public]
+    }
+}
+```
+
 ```jadpo check project=e-record file=domains/memos/types/memo.jadpo hidden
 type Memo = Text {
     max_length: 200
@@ -2197,7 +2236,7 @@ error: `api/main.api` is missing
   rule: api.record_out_of_date
   help: docs/language/07-http.html#api-record-out-of-date
 
-check failed: 1 error, 5 files
+check failed: 1 error, 6 files
 ```
 
 ## Review

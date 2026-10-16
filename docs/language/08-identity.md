@@ -417,6 +417,11 @@ entity Member {
         unique: true
     }
     status: MemberStatus
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+    }
 }
 ```
 
@@ -430,6 +435,11 @@ entity Note {
         on_delete: OnDelete.cascade
     }
     text: NoteText
+
+    policy: {
+        create: [author_id]
+        read: [author_id]
+    }
 }
 ```
 
@@ -736,6 +746,12 @@ entity Member {
         unique: true
     }
     status: MemberStatus
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        update: [id]
+    }
 }
 ```
 
@@ -749,19 +765,35 @@ entity Note {
         on_delete: OnDelete.cascade
     }
     text: NoteText
+
+    policy: {
+        create: [author_id]
+        read: [author_id]
+    }
 }
 ```
 
 ```jadpo check project=tokens-and-keys file=domains/journal/entities/partner.jadpo
+use journal/entities { Member }
 use journal/types { PartnerName, PartnerStatus }
 
-/// Another system that reads the journal with its keys.
+/// Another system that reads the journal with its keys, managed by the
+/// member who added it.
 entity Partner {
     id: Uuid
+    owner_id: Member.id {
+        on_delete: OnDelete.restricted
+    }
     name: PartnerName {
         unique: true
     }
     status: PartnerStatus
+
+    policy: {
+        create: [owner_id]
+        read: [id, owner_id]
+        update: [owner_id]
+    }
 }
 ```
 
@@ -802,9 +834,10 @@ use journal/entities { Partner }
 use journal/types { PartnerName, PartnerStatus }
 use journal/failures { PartnerNameTaken }
 
-action create_partner(name: PartnerName) fails PartnerNameTaken -> Partner {
+action create_partner(name: PartnerName, owner: Principal.user) fails PartnerNameTaken -> Partner {
     return attempt Partner.create {
         set: {
+            owner_id: owner.id
             name: name
             status: PartnerStatus.active
         }
@@ -896,7 +929,8 @@ action sign_out_everywhere(member: Principal.user) -> Unit {
 ```
 
 Adding a partner issues its first key, which expires when the input
-says; the partner reads itself with it:
+says; the partner reads itself with it. The member who adds a partner owns
+it, so its grants let them issue and revoke its keys (area 9):
 
 ```jadpo check project=tokens-and-keys file=domains/journal/actions/add_partner.jadpo
 use journal/entities { Partner }
@@ -905,8 +939,11 @@ use journal/failures { PartnerNameTaken }
 use journal/actions { create_partner }
 
 /// Adds a partner and gives its first key, shown once.
-action add_partner(input: AddPartner) fails PartnerNameTaken -> PartnerAdded {
-    var partner: Partner = attempt create_partner(input.name)
+action add_partner(
+    input: AddPartner,
+    owner: Principal.user
+) fails PartnerNameTaken -> PartnerAdded {
+    var partner: Partner = attempt create_partner(input.name, owner)
     return PartnerAdded {
         key: Partner.issue_key(partner.id, input.key_expires_at)
     }
@@ -997,7 +1034,7 @@ routes Partners {
         input: AddPartner
         output: PartnerAdded
         status: SuccessStatus.created
-        run: add_partner(input)
+        run: add_partner(input, current_principal.user)
     }
 
     /// A partner reads itself, signed in with its key.
@@ -1095,7 +1132,8 @@ test "a member writes a note with the app's token" {
 }
 
 test "a partner reads itself with its key" {
-    var partner: Partner = attempt create_partner("Acme")
+    var ann: Member = attempt register("ann")
+    var partner: Partner = attempt create_partner("Acme", Principal.user(ann))
     var response: Response = request {
         method: HttpMethod.get
         path: "/partners/me"
@@ -1108,7 +1146,8 @@ test "a partner reads itself with its key" {
 }
 
 test "a partner can't write a member's note" {
-    var partner: Partner = attempt create_partner("Acme")
+    var ann: Member = attempt register("ann")
+    var partner: Partner = attempt create_partner("Acme", Principal.user(ann))
     var response: Response = request {
         method: HttpMethod.post
         path: "/notes"
@@ -1122,7 +1161,8 @@ test "a partner can't write a member's note" {
 }
 
 test "a suspended partner is refused" {
-    var partner: Partner = attempt create_partner("Acme")
+    var ann: Member = attempt register("ann")
+    var partner: Partner = attempt create_partner("Acme", Principal.user(ann))
     var suspended: Partner = attempt suspend_partner(partner.id)
     var response: Response = request {
         method: HttpMethod.get

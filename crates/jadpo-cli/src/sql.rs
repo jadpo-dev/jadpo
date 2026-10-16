@@ -14,7 +14,9 @@
 //! grid ends with what each refusal raises: the constraint and the
 //! failure its `conflict:` arm names, the not-found failure, or the fault.
 //! A transition whose `when:` can refuse a record shows the statement that
-//! asks, under `when no row changed`. A success prints nothing more, as
+//! asks, under `when no row changed`, and a write policy limits the one
+//! that asks whether policy refused the caller, under `when policy may
+//! have refused` (area 9). A success prints nothing more, as
 //! the design language's calm default asks; `--json` gives the same as
 //! data.
 
@@ -255,6 +257,12 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
         if let Some(failure) = &not_found {
             fields.push(("no row".to_string(), failure.clone()));
         }
+        if write.plan.policy == Some(jadpo_std::write::PolicyRefusal::Create) {
+            fields.push((
+                "no row".to_string(),
+                "policy refused the caller → not_permitted".to_string(),
+            ));
+        }
         let heading = format!("write {operation}");
         screen.push(Block::section(heading.clone(), write.plan.sql.lines()));
         screen.push(Block::fields(fields));
@@ -265,8 +273,8 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
             ("params", Json::array(params)),
             ("refusals", Json::array(refusals)),
         ];
-        if let Some(failure) = not_found {
-            statement.push(("noRow", failure.into()));
+        if let Some(failure) = &not_found {
+            statement.push(("noRow", failure.as_str().into()));
         }
         if let Some(guard) = &write.plan.guard {
             let refused = write
@@ -297,6 +305,31 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
                 Json::object([
                     ("sql", guard.sql.as_str().into()),
                     ("params", Json::array(guard_params)),
+                ]),
+            ));
+        }
+        if let Some(jadpo_std::write::PolicyRefusal::Probe { sql, params }) = &write.plan.policy {
+            let then = match &not_found {
+                Some(failure) => format!(
+                    "a row means policy refused the caller → {failure}, logged as concealed"
+                ),
+                None => "a row means policy refused the caller → not_permitted".to_string(),
+            };
+            let mut asked = vec![("then".to_string(), then)];
+            let mut probe_params = Vec::new();
+            for (n, param) in params.iter().enumerate() {
+                let source = inputs(&param.source);
+                let ty = pg_type(param.ty);
+                asked.push((format!("${}", n + 1), format!("{source} · {ty}")));
+                probe_params.push(param_json(n, &source, &ty));
+            }
+            screen.push(Block::section("when policy may have refused", sql.lines()));
+            screen.push(Block::fields(asked));
+            statement.push((
+                "whenPolicyMayHaveRefused",
+                Json::object([
+                    ("sql", sql.as_str().into()),
+                    ("params", Json::array(probe_params)),
                 ]),
             ));
         }

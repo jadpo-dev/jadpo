@@ -78,9 +78,9 @@ TEST_DECLARATION = re.compile(r'^\s*test\s+"', re.MULTILINE)
 # Optional build/language-site/published.json maps page stems to published URLs for cross-page links.
 FENCE = re.compile(r'^```(\S*)(.*)$')
 # The areas the new compiler builds, whose pages own the new compiler's
-# rules: areas 1-4 from Phase 1, area 5 from chunk 3.1 and area 6 from
-# chunk 3.2.
-PHASE_ONE = 8
+# rules: areas 1-4 from Phase 1, area 5 from chunk 3.1, area 6 from chunk
+# 3.2, areas 7 and 8 from Phase 4, and area 9 from chunk 4.4.
+PHASE_ONE = 9
 # `migrate=<purpose>` on a block runs `jadpo migrate new <purpose>` once
 # the project's blocks up to it are written, at a fixed time per step, so
 # migration folders are named the same on every run.

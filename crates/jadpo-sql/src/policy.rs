@@ -83,11 +83,14 @@ pub fn exists(membership: &Membership) -> String {
     )
 }
 
-/// Whether any of `whos` lets the caller in: `FALSE` for none, `TRUE`
+/// The condition that lets anyone in, which a statement leaves out.
+pub const ANYONE: &str = "TRUE";
+
+/// Whether any of `whos` lets the caller in: `FALSE` for none, [`ANYONE`]
 /// when anyone may.
 pub fn any_of(whos: &[Who]) -> String {
     if whos.contains(&Who::Anyone) {
-        return "TRUE".to_string();
+        return ANYONE.to_string();
     }
     let parts: Vec<String> = whos
         .iter()

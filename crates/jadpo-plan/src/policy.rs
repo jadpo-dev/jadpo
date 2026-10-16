@@ -128,7 +128,12 @@ impl Planner<'_> {
         // A membership's roles, gathered by the membership and the
         // reference they apply through, so each is one `EXISTS`.
         let mut roles: Vec<(String, Option<String>, Vec<String>)> = Vec::new();
-        for grant in grants {
+        // Anyone at all: nothing else in the list adds a thing.
+        let public = grants.contains(&Grant::Public);
+        if public {
+            whos.push(Who::Anyone);
+        }
+        for grant in grants.iter().filter(|_| !public) {
             match grant {
                 Grant::Caller { field: name, kind } => {
                     let value = self.value_of(entity, name, row)?;
@@ -168,6 +173,7 @@ impl Planner<'_> {
             )?));
         }
         let mut condition = any_of(&whos);
+        let anyone = condition == jadpo_sql::policy::ANYONE;
         if let Some(tenancy) = self
             .access
             .entity(&entity.name)
@@ -199,7 +205,12 @@ impl Planner<'_> {
                         caller: bind.caller(CallerPart::User),
                     });
                 }
-                condition = format!("{condition} AND {}", any_of(&tenants));
+                let tenants = any_of(&tenants);
+                condition = if anyone {
+                    tenants
+                } else {
+                    format!("{condition} AND {tenants}")
+                };
             }
         }
         Some(condition)
