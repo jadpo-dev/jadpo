@@ -23,7 +23,7 @@ program, and how is a feature turned on, off or replaced?
 | What a package looks like | `package.jadpo` (`licence:`, `jadpo:`), optional `provider.jadpo`, `shared/`-style folders, `public` as the API |
 | Where packages live | Installed: `packages/<name>/<version>/`, committed, locked, read-only. Your own: `shared/providers/` |
 | Names | Brand names reserved; rename yours on a clash |
-| The surface | `package.surface`, readable, with file pointers; `jadpo package show` |
+| The surface | `surface.jadpo_record`, readable, with file pointers; `jadpo package show` |
 | Publishing | The seven-point bar |
 | Side effects | None in packages; the app's actions make every call |
 | Decoding | `wire:` and `decode:` in the package; translation in the app |
@@ -53,17 +53,9 @@ then built. No design is left for implementation.
 9. ~~Software and disk~~: decided, see "Documents" and "Files and formats".
 10. ~~Packages generated from your own Jadpo apps~~: decided, see "Packages from other Jadpo apps".
 10b. ~~Developing a package~~: decided, see "Developing and publishing packages".
-10c. **Where committed records live**: area 7's `api/main.api` is
-    committed beside the source rather than in `build/` because it is a
-    record reviewed in every change (area 18 separates committed records
-    from build outputs); with `database/identities.json`, `jadpo.lock`,
-    `translations/sources.json` and installed packages' `package.surface`
-    now also records, decide whether they keep their own homes or share one
-    (Richard asked, 2026-10-16).
+10c. ~~Where committed records live~~: decided, see "Generated files and deploy-time choice".
 11. ~~Private packages~~: decided, see "Developing and publishing packages".
-12. **Choosing a provider when deploying**: only if Jadpo apps will be run
-    by people who did not write them; every candidate declared, a setting
-    picks one.
+12. ~~Choosing a provider when deploying~~: decided, see "Generated files and deploy-time choice".
 13. **Then**: move every decision onto the area pages (1, 2, 7, 8, 10,
     11, 12, 14, 15, 16, 17, 18) and the roadmap's chunks, through one pull
     request.
@@ -955,7 +947,7 @@ Decided 2026-10-16 (Richard).
   its descriptions, its decoders against recordings and its recipes
   compiled into `sample/`; `jadpo package record` and `conform` work
   against the provider's sandbox; `jadpo package check` runs the whole
-  publishing bar locally, writes `package.surface`, and compares it with
+  publishing bar locally, writes `surface.jadpo_record`, and compares it with
   the surface at the previous tag, refusing a breaking change without a
   new major version.
 - **Trying it in an app before publishing**: `jadpo package link
@@ -973,7 +965,7 @@ Decided 2026-10-16 (Richard).
 - **Every package is verified at install, wherever it came from**:
   `jadpo package add` and `update` regenerate the surface from the
   package's code and refuse one that differs from the committed
-  `package.surface`. The public registry repeats the checks on upload and
+  `surface.jadpo_record`. The public registry repeats the checks on upload and
   adds discovery, curated packages, publisher verification, signing and a
   documentation website.
 - **Prose is unverified wherever it comes from** (`///` descriptions,
@@ -983,6 +975,27 @@ Decided 2026-10-16 (Richard).
   marked unverified in the approval report and needs a person's acceptance
   to install; registry packages carry their verified publisher, curated
   ones marked official.
+
+## Generated files and deploy-time choice (open items 10c and 12)
+
+Decided 2026-10-16 (Richard).
+
+- **Committed generated files keep their homes, next to what they
+  describe, and share one extension, `.jadpo_record`**: `api/main.jadpo_record`
+  (was `api/main.api`), `database/identities.jadpo_record` (was
+  `identities.json`), each `translations/sources.jadpo_record` (was
+  `sources.json`), and each installed package's `surface.jadpo_record` (was
+  `surface.jadpo_record`); `jadpo.lock` keeps its name. Each is in Jadpo's
+  readable format, not JSON, and starts with a line saying what generated
+  it and which command updates it; `jadpo check` regenerates it and a hand
+  edit is an error naming that command. People-written files
+  (acceptances) are not records. `jadpo records` lists every record and
+  flags any out of date; area 18's table stays the single index.
+- **Choosing a provider when deploying** is designed now and built when the
+  first app other people run needs it: the app declares every connection it
+  supports and a setting picks one at start (`email: { connection:
+  config.mail_provider }`); every candidate is compiled, checked and
+  reported, and an unchosen one needs no credential.
 
 ## Decided: the golden rule
 
@@ -1088,7 +1101,7 @@ postcodes/v2/
     libraries/uk.jadpo              library uk { public parse(...)  normalise(...) }
     libraries/uk.test.jadpo         tests beside the file, as in an app
     CHANGELOG.md
-    package.surface                 generated
+    surface.jadpo_record                 generated
 ```
 
 A provider package adds `provider.jadpo`, `resources/`, `events/`,
@@ -1105,7 +1118,7 @@ stripe/v2024_06_20/
     libraries/tables.jadpo                 written: decoders and translation helpers
     libraries/tables.test.jadpo
     recordings/payment_intents.create.json real responses that confirm the types
-    package.surface
+    surface.jadpo_record
 ```
 
 - **`public` marks the package's API**, as it marks what a domain offers
@@ -1255,7 +1268,7 @@ jadpo.lock
 ## Decided: the package surface
 
 Richard's idea. The compiler works out a package's public surface and
-writes it to `package.surface`, beside `package.jadpo`: the package's
+writes it to `surface.jadpo_record`, beside `package.jadpo`: the package's
 description, licence and version, every public type with its fields and
 constraints, every failure with its kind and code, every function's
 signature, failures and description, and for a provider its operations
