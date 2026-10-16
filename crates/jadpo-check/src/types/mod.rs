@@ -11,6 +11,7 @@
 
 mod body;
 pub(crate) mod decl;
+mod facts;
 pub(crate) mod literal;
 mod loading;
 mod recursion;
@@ -27,6 +28,7 @@ pub use body::{
     callables_of, failure_set, failure_sets, typed_body,
 };
 pub use decl::type_problems;
+pub use facts::{BodyFacts, Fact, Write, body_facts, fact_of, facts_at, named, resolve};
 pub use loading::{Decided, Loading, Loads, file_loading, has_isolation, isolation};
 pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
 pub use rules::{CONSTRAINTS, Const, FIELD_SETTINGS, Num, Rules};

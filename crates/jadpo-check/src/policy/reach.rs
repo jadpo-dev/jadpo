@@ -5,26 +5,28 @@
 //! route anyone may call (`authentication: RouteAuthentication.none`)
 //! reaches only what `Access.public` is granted.
 //!
-//! Each file's actions and fixtures are read from their typed bodies, by
-//! name and without positions, as the store rules read them
-//! (`types::stores`): the entities each reads, creates, updates and
-//! deletes in its own body, the actions and queries it calls, and whether
-//! it signs a caller in or out. A route's action is checked against its
-//! own line under `actions:` for the writes in its own body, and every
-//! action it calls against that action's entities, with the same caller.
+//! Each action and fixture is read by name from what its body does
+//! (`types::body_facts`, without positions), as the store rules read it:
+//! the entities it reads, creates, updates and deletes in its own body,
+//! the actions and queries it calls, and whether it signs a caller in or
+//! out. A route's action is checked against its own line under `actions:`
+//! for the writes in its own body, and every action it calls against that
+//! action's entities, with the same caller. Each route group's file is
+//! checked by its own query ([`reach_problems`]), reading the policies of
+//! the entities its routes reach by name, so an edit rechecks only the
+//! routes that reach what changed (chunk 4.11).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
-use jadpo_db::{Db, File, Project};
+use jadpo_db::{Db, File, ItemKind, Project, item_tree};
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_graph::Kind;
-use jadpo_graph::body::{Callee, Expr as BodyExpr, Node};
 use jadpo_std::http::{PrincipalKind, SessionOp};
 use jadpo_std::write::WriteOp;
 
-use super::{Access, ActionWho, Effect, Grant, LineGate};
+use super::{ActionWho, Effect, Grant, LineGate, Policies};
 use crate::lookups::{Lookup, Name};
-use crate::types::{callables_of, typed_body};
+use crate::types::{Fact, body_facts, named};
 
 /// One thing an action, fixture or query does that policy decides.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -43,83 +45,66 @@ pub enum Act {
     Field(String, String, Effect),
 }
 
-/// What each action and fixture in `file` acts, by name.
+/// What the action or fixture called `name` acts, read from what its body
+/// does: every declaration of that name's, together.
 #[salsa::tracked(returns(ref))]
-pub fn acts(db: &dyn Db, project: Project, file: File) -> BTreeMap<String, BTreeSet<Act>> {
-    let identity = crate::identity::identity(db, project);
-    let user = identity
-        .variant(PrincipalKind::User)
-        .map(|v| v.entity.clone());
-    let service = identity
-        .variant(PrincipalKind::Service)
-        .map(|v| v.entity.clone());
+pub fn acts_of<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> BTreeSet<Act> {
     let entities = crate::data::Entities::new(db, project);
-    let mut out = BTreeMap::new();
-    for callable in callables_of(db, file) {
-        let checked = typed_body(db, project, callable);
-        let Some(key) = checked
-            .key
-            .as_ref()
-            .filter(|key| matches!(key.kind(), Some(Kind::Action | Kind::Fixture)))
-        else {
+    let mut found = BTreeSet::new();
+    for callable in named(db, project, name.text(db)) {
+        let facts = body_facts(db, project, callable);
+        if facts.key_of(&[Kind::Action, Kind::Fixture]).is_none() {
             continue;
-        };
-        let mut found = BTreeSet::new();
-        for site in &checked.body.sites {
-            let act = match &site.node {
-                Node::Expr(BodyExpr::Write {
-                    entity,
-                    op,
-                    set,
-                    transition,
-                    ..
-                }) => {
-                    let effect = match op {
+        }
+        for fact in &facts.facts {
+            let act = match fact {
+                Fact::Writes(write) => {
+                    let effect = match write.op {
                         WriteOp::Create => Effect::Create,
                         WriteOp::Update => Effect::Update,
                         WriteOp::Delete => Effect::Delete,
                     };
-                    let name = entity.name().to_string();
-                    if transition.is_none() && effect != Effect::Delete {
-                        for (key, _) in set {
-                            let field = key.name().rsplit('.').next().unwrap_or_default();
+                    let name = &write.entity;
+                    if write.transition.is_none() && effect != Effect::Delete {
+                        for field in &write.set {
                             let always = effect == Effect::Update
-                                || entities.get(&name).is_some_and(|model| {
-                                    model.fields.iter().any(|f| f.name == field && !f.nullable)
+                                || entities.get(name).is_some_and(|model| {
+                                    model.fields.iter().any(|f| f.name == *field && !f.nullable)
                                 });
                             if always {
-                                found.insert(Act::Field(name.clone(), field.to_string(), effect));
+                                found.insert(Act::Field(name.clone(), field.clone(), effect));
                             }
                         }
                     }
-                    Act::Entity(name, effect)
+                    Act::Entity(name.clone(), effect)
                 }
-                Node::Expr(BodyExpr::Call {
-                    callee: Callee::Action(callee),
-                    ..
-                }) => Act::Calls(callee.name().to_string()),
-                Node::Expr(BodyExpr::Call {
-                    callee: Callee::Entity { entity, operation },
-                    ..
-                }) if operation == "get" => Act::Entity(entity.name().to_string(), Effect::Read),
-                Node::Expr(BodyExpr::Call {
-                    callee: Callee::Query(query),
-                    ..
-                }) => Act::Queries(query.name().to_string()),
-                Node::Expr(BodyExpr::Call {
-                    callee: Callee::Session(op),
-                    ..
-                }) => match session_act(*op, user.as_deref(), service.as_deref()) {
-                    Some(act) => act,
-                    None => continue,
-                },
-                _ => continue,
+                Fact::Action(callee) => Act::Calls(callee.name().to_string()),
+                Fact::Gets(entity) => Act::Entity(entity.clone(), Effect::Read),
+                Fact::Queries(query) => Act::Queries(query.clone()),
+                Fact::Session(op) => {
+                    let identity = crate::identity::identity(db, project);
+                    let user = identity
+                        .variant(PrincipalKind::User)
+                        .map(|v| v.entity.clone());
+                    let service = identity
+                        .variant(PrincipalKind::Service)
+                        .map(|v| v.entity.clone());
+                    match session_act(*op, user.as_deref(), service.as_deref()) {
+                        Some(act) => act,
+                        None => continue,
+                    }
+                }
+                Fact::Fixture(_) | Fact::Function(_) => continue,
             };
             found.insert(act);
         }
-        out.insert(key.name().to_string(), found);
     }
-    out
+    found
+}
+
+/// What the action called `name` acts.
+fn acts<'db>(db: &'db dyn Db, project: Project, name: &str) -> &'db BTreeSet<Act> {
+    acts_of(db, project, Name::new(db, name.to_string()))
 }
 
 /// What a session or key operation acts (area 9, question 8): listing a
@@ -138,25 +123,11 @@ pub fn session_act(op: SessionOp, user: Option<&str>, service: Option<&str>) -> 
     })
 }
 
-/// Every action's and fixture's acts, across the project.
-#[salsa::tracked(returns(ref))]
-pub fn all_acts(db: &dyn Db, project: Project) -> BTreeMap<String, BTreeSet<Act>> {
-    let mut out: BTreeMap<String, BTreeSet<Act>> = BTreeMap::new();
-    for &file in project.files(db) {
-        for (name, found) in acts(db, project, file) {
-            out.entry(name.clone())
-                .or_default()
-                .extend(found.iter().cloned());
-        }
-    }
-    out
-}
-
 /// The entities whose records the action called `action` creates, changes
 /// or deletes in its own body, by name.
 pub fn own_writes(db: &dyn Db, project: Project, action: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
-    for act in all_acts(db, project).get(action).into_iter().flatten() {
+    for act in acts(db, project, action) {
         if let Act::Entity(entity, Effect::Create | Effect::Update | Effect::Delete) = act
             && !out.contains(entity)
         {
@@ -169,13 +140,13 @@ pub fn own_writes(db: &dyn Db, project: Project, action: &str) -> Vec<String> {
 /// Who the line under `actions:` for the action called `action` lets call
 /// it as it starts, when it is listed (area 9, "Actions").
 pub fn line_gate(db: &dyn Db, project: Project, action: &str) -> Option<LineGate> {
-    let access = super::access(db, project);
-    let line = access.root.action(action)?;
+    let policies = Policies::new(db, project);
+    let line = policies.root().action(action)?;
     let entities = crate::data::Entities::new(db, project);
     let names = own_writes(db, project, action);
     let writes: Vec<&crate::data::EntityModel> =
         names.iter().filter_map(|name| entities.get(name)).collect();
-    Some(line.gate(&writes, &access.memberships))
+    Some(line.gate(&writes, policies.memberships()))
 }
 
 /// What the query called `name` reads: its entity and every included one.
@@ -213,11 +184,10 @@ struct Reached {
 fn reached(
     db: &dyn Db,
     project: Project,
-    access: &Access,
+    access: &Policies<'_>,
     run: &str,
     query: bool,
 ) -> (Vec<Reached>, bool) {
-    let acts = all_acts(db, project);
     let entities = crate::data::Entities::new(db, project);
     let mut out: Vec<Reached> = Vec::new();
     let mut any = false;
@@ -249,18 +219,18 @@ fn reached(
         }
         return (out, any);
     }
-    let listed = access.root.action(run);
+    let listed = access.root().action(run);
     let mut seen = BTreeSet::from([run.to_string()]);
     let mut queue = vec![(run.to_string(), true)];
     while let Some((current, first)) = queue.pop() {
-        for act in acts.get(&current).into_iter().flatten() {
+        for act in acts(db, project, &current) {
             match act {
                 Act::Entity(entity, effect) => {
                     any = true;
                     let grants = match (first, listed, effect) {
                         (true, Some(line), Effect::Create | Effect::Update | Effect::Delete) => {
                             match entities.get(entity) {
-                                Some(model) => line.on(model, &access.memberships),
+                                Some(model) => line.on(model, access.memberships()),
                                 None => Vec::new(),
                             }
                         }
@@ -311,7 +281,7 @@ fn reached(
 fn generated_reach(
     db: &dyn Db,
     project: Project,
-    access: &Access,
+    access: &Policies<'_>,
     op: SessionOp,
 ) -> (Vec<Reached>, bool) {
     let identity = crate::identity::identity(db, project);
@@ -354,22 +324,37 @@ fn doing(effect: Effect, entity: &str) -> String {
     }
 }
 
-/// The routes' policy problems: one per route at most, at the first thing
-/// it reaches that it may never do.
+/// The policy problems of the routes `file` declares: one per route at
+/// most, at the first thing it reaches that it may never do.
 #[salsa::tracked(returns(ref))]
-pub fn route_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+pub fn reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     // Policy checks what the routes reach once the routes and the policy
     // read cleanly: a route table with problems is reported first.
-    if !super::policy_clean(db, project) || !crate::routes::routes_clean(db, project) {
+    if !item_tree(db, file)
+        .items
+        .iter()
+        .any(|item| item.kind == ItemKind::Routes)
+        || !super::policy_clean(db, project)
+        || !crate::routes::routes_clean(db, project)
+    {
         return Vec::new();
     }
-    let access = super::access(db, project);
+    let path = file.path(db);
+    let access = &Policies::new(db, project);
     let lookup = Lookup::new(db, project);
     let mut out = Vec::new();
-    for name in crate::routes::group_names(db, project) {
-        let Some(read) = crate::routes::group_read(db, project, Name::new(db, name.clone())) else {
+    let mut seen = BTreeSet::new();
+    for item in &item_tree(db, file).items {
+        if item.kind != ItemKind::Routes || !seen.insert(item.name.as_str()) {
+            continue;
+        }
+        let Some(read) = crate::routes::group_read(db, project, Name::new(db, item.name.clone()))
+        else {
             continue;
         };
+        if read.path != *path {
+            continue;
+        }
         let Some(model) = &read.model else { continue };
         for route in &model.routes {
             let label = route.label();
@@ -395,7 +380,7 @@ pub fn route_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 None => reached(db, project, access, &run, route.run.query),
             };
             let listed = (!route.run.query)
-                .then(|| access.root.action(&run))
+                .then(|| access.root().action(&run))
                 .flatten();
             if let Some(line) = listed
                 && line_gate(db, project, &run) == Some(LineGate::Nobody)
@@ -549,16 +534,15 @@ pub fn route_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 /// record. A record a read can't see is its code's own not-found failure
 /// instead.
 pub fn may_refuse(db: &dyn Db, project: Project, run: &str) -> bool {
-    let access = super::access(db, project);
-    let acts = all_acts(db, project);
+    let root = super::root_policy(db, project);
     let mut seen = BTreeSet::from([run.to_string()]);
     let mut queue = vec![run.to_string()];
     while let Some(current) = queue.pop() {
         // An action listed under `actions:`, the route's or one it calls.
-        if access.root.action(&current).is_some() {
+        if root.action(&current).is_some() {
             return true;
         }
-        for act in acts.get(&current).into_iter().flatten() {
+        for act in acts(db, project, &current) {
             match act {
                 Act::Entity(_, Effect::Create | Effect::Update | Effect::Delete) => return true,
                 Act::Calls(callee) if seen.insert(callee.clone()) => queue.push(callee.clone()),
@@ -571,9 +555,7 @@ pub fn may_refuse(db: &dyn Db, project: Project, run: &str) -> bool {
 
 /// Whether the action `run`'s own body does `effect` to `entity`.
 fn touches_own(db: &dyn Db, project: Project, run: &str, entity: &str, effect: Effect) -> bool {
-    all_acts(db, project)
-        .get(run)
-        .is_some_and(|found| found.contains(&Act::Entity(entity.to_string(), effect)))
+    acts(db, project, run).contains(&Act::Entity(entity.to_string(), effect))
 }
 
 /// `policy.effect_ungranted`: a route running an action whose line under
@@ -583,7 +565,7 @@ fn nobody_passes(
     span: jadpo_diag::Span,
     run: &str,
     line: &super::ActionGrants,
-    access: &Access,
+    access: &Policies<'_>,
 ) -> Diagnostic {
     let system_only = line.who.iter().all(|who| *who == ActionWho::System);
     let why = if system_only {
