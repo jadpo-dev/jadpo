@@ -121,6 +121,119 @@ pub struct Shape {
     pub kind: ShapeKind,
 }
 
+impl TypeRef {
+    /// The same type with each name it starts from read through `canonical`
+    /// (area 1, "Files and names"): `Address` becomes `billing.Address`
+    /// where that is a contested private name of the writer's domain.
+    pub fn scoped(&self, canonical: &dyn Fn(&str) -> String) -> TypeRef {
+        match self {
+            TypeRef::Path(names, args) => {
+                let mut names = names.clone();
+                if let Some(first) = names.first_mut() {
+                    *first = canonical(first);
+                }
+                TypeRef::Path(
+                    names,
+                    args.iter().map(|arg| arg.scoped(canonical)).collect(),
+                )
+            }
+            TypeRef::Nullable(inner) => TypeRef::Nullable(Box::new(inner.scoped(canonical))),
+            TypeRef::Invalid => TypeRef::Invalid,
+        }
+    }
+}
+
+fn scoped_path(path: &[String], canonical: &dyn Fn(&str) -> String) -> Vec<String> {
+    let mut path = path.to_vec();
+    if let Some(first) = path.first_mut() {
+        *first = canonical(first);
+    }
+    path
+}
+
+fn scoped_const(value: &Const, canonical: &dyn Fn(&str) -> String) -> Const {
+    match value {
+        Const::Path(path) if path.len() > 1 => Const::Path(scoped_path(path, canonical)),
+        Const::List(items) => Const::List(
+            items
+                .iter()
+                .map(|item| scoped_const(item, canonical))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+fn scoped_settings(settings: &[Setting], canonical: &dyn Fn(&str) -> String) -> Vec<Setting> {
+    settings
+        .iter()
+        .map(|(name, value)| (name.clone(), scoped_const(value, canonical)))
+        .collect()
+}
+
+fn scoped_lines(lines: &[Line], canonical: &dyn Fn(&str) -> String) -> Vec<Line> {
+    let paths = |paths: &[Vec<String>]| -> Vec<Vec<String>> {
+        paths
+            .iter()
+            .map(|path| scoped_path(path, canonical))
+            .collect()
+    };
+    lines
+        .iter()
+        .map(|line| match line {
+            Line::Field { name, ty, settings } => Line::Field {
+                name: name.clone(),
+                ty: ty.scoped(canonical),
+                settings: scoped_settings(settings, canonical),
+            },
+            Line::Include(types) => {
+                Line::Include(types.iter().map(|ty| ty.scoped(canonical)).collect())
+            }
+            Line::Pick(found) => Line::Pick(paths(found)),
+            Line::Omit(found) => Line::Omit(paths(found)),
+            Line::Optional(found) => Line::Optional(found.as_deref().map(paths)),
+            other => other.clone(),
+        })
+        .collect()
+}
+
+impl Shape {
+    /// The shape as the type tables hold it: its name and every name it
+    /// writes read through `canonical`, as its own domain's code reads them
+    /// (area 1, "Files and names").
+    pub fn scoped(&self, canonical: &dyn Fn(&str) -> String) -> Shape {
+        let kind = match &self.kind {
+            ShapeKind::Scalar { parent, settings } => ShapeKind::Scalar {
+                parent: parent.scoped(canonical),
+                settings: scoped_settings(settings, canonical),
+            },
+            ShapeKind::Fields { base, lines } => ShapeKind::Fields {
+                base: *base,
+                lines: scoped_lines(lines, canonical),
+            },
+            ShapeKind::Enum { variants } => ShapeKind::Enum {
+                variants: variants
+                    .iter()
+                    .map(|variant| VariantShape {
+                        name: variant.name.clone(),
+                        fields: variant
+                            .fields
+                            .as_deref()
+                            .map(|lines| scoped_lines(lines, canonical)),
+                    })
+                    .collect(),
+            },
+            ShapeKind::Format { settings } => ShapeKind::Format {
+                settings: settings.clone(),
+            },
+        };
+        Shape {
+            name: canonical(&self.name),
+            kind,
+        }
+    }
+}
+
 /// The shapes a file declares, in source order.
 #[salsa::tracked(returns(ref))]
 pub fn type_shapes(db: &dyn Db, file: File) -> Vec<Shape> {

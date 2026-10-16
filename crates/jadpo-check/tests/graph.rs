@@ -83,9 +83,22 @@ fn without(files: &[(&'static str, String)], path: &str) -> Vec<(&'static str, S
 }
 
 fn build(files: &[(&'static str, String)]) -> (Graph, usize) {
-    let db = Database::default();
+    build_with(files, &[])
+}
+
+/// [`build`] with the identity registry's `lines` (area 18).
+fn build_with(files: &[(&'static str, String)], lines: &[(&str, &str)]) -> (Graph, usize) {
+    use salsa::Setter;
+    let mut db = Database::default();
     let borrowed: Vec<(&str, &str)> = files.iter().map(|(p, t)| (*p, t.as_str())).collect();
     let project = support::project_in_path_order(&db, Layout::Project, &borrowed);
+    if !lines.is_empty() {
+        let lines = lines
+            .iter()
+            .map(|(now, born)| (now.to_string(), born.to_string()))
+            .collect();
+        project.set_identities(&mut db).to(lines);
+    }
     let problems = jadpo_check::check(&db, project);
     (Graph::clone(graph(&db, project)), problems.len())
 }
@@ -138,20 +151,20 @@ fn every_node_kind_the_fixture_needs_is_there_with_its_edges() {
     for expected in [
         "domain notes",
         "file domains/notes/actions/save_note.jadpo",
-        "type Body",
-        "type Note",
-        "field Note.body",
-        "type NoteRefused",
-        "field NoteRefused.length",
+        "type notes.Body",
+        "type notes.Note",
+        "field notes.Note.body",
+        "type notes.NoteRefused",
+        "field notes.NoteRefused.length",
         "library wording",
         "function wording.keep",
         "action save_note",
-        "type Shade",
-        "variant Shade.plain",
-        "variant Shade.tinted",
-        "field Shade.tinted.level",
-        "field Summary.body",
-        "field Summary.shade",
+        "type notes.Shade",
+        "variant notes.Shade.plain",
+        "variant notes.Shade.tinted",
+        "field notes.Shade.tinted.level",
+        "field notes.Summary.body",
+        "field notes.Summary.shade",
     ] {
         assert!(
             graph.find(&key(expected)).is_some(),
@@ -166,22 +179,28 @@ fn every_node_kind_the_fixture_needs_is_there_with_its_edges() {
             .collect()
     };
     assert_eq!(named(EdgeKind::Calls), ["function wording.keep"]);
-    assert_eq!(named(EdgeKind::Raises), ["type NoteRefused"]);
+    assert_eq!(named(EdgeKind::Raises), ["type notes.NoteRefused"]);
     assert_eq!(
         named(EdgeKind::Uses),
-        ["type Body", "type Note", "type NoteRefused"]
+        [
+            "type notes.Body",
+            "type notes.Note",
+            "type notes.NoteRefused"
+        ]
     );
-    let copied = graph.get(&key("field Summary.body")).expect("copied field");
+    let copied = graph
+        .get(&key("field notes.Summary.body"))
+        .expect("copied field");
     match &copied.detail {
         jadpo_graph::Detail::Field { copied_from, .. } => {
             assert_eq!(
                 copied_from.as_ref().map(Key::as_str),
-                Some("field Note.body")
+                Some("field notes.Note.body")
             );
         }
         other => panic!("{other:?}"),
     }
-    let failure = graph.get(&key("type NoteRefused")).expect("failure");
+    let failure = graph.get(&key("type notes.NoteRefused")).expect("failure");
     assert_eq!(failure.doc.as_deref(), Some("The note was refused."));
 }
 
@@ -251,16 +270,24 @@ fn moves_within_the_layout_keep_every_key_and_digest() {
         out
     };
     let (start, _) = build(&files);
-    for moved in [together, shared] {
-        let (graph, _) = build(&moved);
-        assert_eq!(identities(&start), identities(&graph));
-    }
-    let (graph, _) = build(&{
-        let mut out = without(&files, BODY_PATH);
-        out.push(("shared/types/body.jadpo", BODY.to_string()));
-        out
-    });
-    let body = graph.get(&Key::new(Kind::Type, "Body")).expect("Body");
+    let (graph, _) = build(&together);
+    assert_eq!(identities(&start), identities(&graph));
+    // A move to shared/ keeps the key through its registry line, which the
+    // promotion writes (area 18, question 8, amended 2026-10-16).
+    let moved = [("type Body", "notes.Body")];
+    let (graph, _) = build_with(&shared, &moved);
+    assert_eq!(identities(&start), identities(&graph));
+    let (graph, _) = build_with(
+        &{
+            let mut out = without(&files, BODY_PATH);
+            out.push(("shared/types/body.jadpo", BODY.to_string()));
+            out
+        },
+        &moved,
+    );
+    let body = graph
+        .get(&Key::new(Kind::Type, "notes.Body"))
+        .expect("Body");
     assert_eq!(body.domain, None, "shared/ is owned by no domain");
     assert!(
         diff(&start, &graph)
@@ -325,7 +352,7 @@ fn a_type_written_as_a_field_uses_that_field_only() {
         .outgoing(echo, EdgeKind::Uses)
         .map(|id| graph.node(id).key.to_string())
         .collect();
-    assert_eq!(uses, ["field Note.body"]);
+    assert_eq!(uses, ["field notes.Note.body"]);
 }
 
 #[test]

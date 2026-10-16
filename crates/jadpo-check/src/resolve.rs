@@ -46,7 +46,7 @@ pub fn resolve_file(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
         return Vec::new();
     };
     let location = location(db, project, file);
-    let lookup = Lookup::new(db, project);
+    let lookup = Lookup::for_file(db, project, file);
     let names = Names {
         path: file.path(db),
         ownership: &location.ownership,

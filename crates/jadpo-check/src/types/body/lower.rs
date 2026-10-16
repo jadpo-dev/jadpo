@@ -648,7 +648,7 @@ impl Lower<'_> {
             self.path_names(&refs);
             if let [entity, name] = names.as_slice() {
                 return typed::Expr::Stored {
-                    field: field_key(self.names.registry(), entity, std::slice::from_ref(name)),
+                    field: field_key(self.names, entity, std::slice::from_ref(name)),
                 };
             }
         }
@@ -658,7 +658,7 @@ impl Lower<'_> {
                 self.path_names(&refs);
             }
             return typed::Expr::Build {
-                callee: Callee::Variant(variant_key(self.names.registry(), &host, &variant)),
+                callee: Callee::Variant(variant_key(self.names, &host, &variant)),
                 fields: Vec::new(),
                 fallible: typed::Fallible::Never,
             };
@@ -667,7 +667,7 @@ impl Lower<'_> {
             && let Some(receiver) = field.expr()
         {
             let receiver = self.expr(&receiver);
-            let field_key = field_key(self.names.registry(), &host, &path);
+            let field_key = field_key(self.names, &host, &path);
             if let Some(name) = field.name_ref() {
                 self.node(name.syntax(), Some(field_key.clone()), false);
             }
@@ -876,7 +876,7 @@ impl Lower<'_> {
                 Vec::new(),
             ),
             BuildFact::Variant(host, variant) => (
-                Callee::Variant(variant_key(self.names.registry(), host, variant)),
+                Callee::Variant(variant_key(self.names, host, variant)),
                 host.clone(),
                 vec![variant.clone()],
             ),
@@ -994,11 +994,7 @@ impl Lower<'_> {
                             continue;
                         };
                         let input_field = patch_input.as_ref().map(|input| {
-                            field_key(
-                                self.names.registry(),
-                                input,
-                                std::slice::from_ref(&supplied_name),
-                            )
+                            field_key(self.names, input, std::slice::from_ref(&supplied_name))
                         });
                         self.node(supplied.syntax(), input_field.clone(), false);
                         let given = self.fields_given(fields.block(), &fact.entity, &[]);
@@ -1031,9 +1027,7 @@ impl Lower<'_> {
                                 entity: holder,
                                 name,
                                 field: true,
-                            } => {
-                                field_key(self.names.registry(), holder, std::slice::from_ref(name))
-                            }
+                            } => field_key(self.names, holder, std::slice::from_ref(name)),
                             Breach::Unique {
                                 entity: holder,
                                 name,
@@ -1115,11 +1109,7 @@ impl Lower<'_> {
             .iter()
             .filter_map(|(field, failure)| {
                 Some((
-                    field_key(
-                        self.names.registry(),
-                        &fact.entity,
-                        std::slice::from_ref(field),
-                    ),
+                    field_key(self.names, &fact.entity, std::slice::from_ref(field)),
                     self.type_key(failure)?,
                 ))
             })
@@ -1161,7 +1151,7 @@ impl Lower<'_> {
             };
             let mut path = prefix.to_vec();
             path.push(text);
-            let field = field_key(self.names.registry(), host, &path);
+            let field = field_key(self.names, host, &path);
             self.node(name.syntax(), Some(field.clone()), false);
             if let Some(value) = member.value() {
                 out.push((field, self.expr(&value)));
@@ -1254,7 +1244,7 @@ impl Lower<'_> {
                 let pattern = match self.facts.patterns.get(&node_key(pat.syntax())).cloned() {
                     Some(PatternFact::Variant(host, variant)) => {
                         self.path_names(&refs);
-                        Pattern::Variant(variant_key(self.names.registry(), &host, &variant))
+                        Pattern::Variant(variant_key(self.names, &host, &variant))
                     }
                     Some(PatternFact::Some) => Pattern::Some,
                     Some(PatternFact::Success) => Pattern::Success,

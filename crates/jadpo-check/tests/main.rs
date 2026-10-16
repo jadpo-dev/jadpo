@@ -13,6 +13,7 @@ mod client_address;
 mod conditions;
 mod config;
 mod determinism;
+mod domain_names;
 mod examples;
 mod failures;
 mod formats;

@@ -1,6 +1,9 @@
 //! The project-wide symbol table (docs/compiler-runtime.md §2.2). Names are
-//! unique across the project and across kinds (area 1), so one table holds
-//! every declaration; it is built from item trees and paths only.
+//! unique across the project and across kinds (area 1), except a private
+//! function or type, which is unique only within its domain (area 1, "Files
+//! and names", chunk 5.3d), so one table holds every declaration by name,
+//! each with the scope its name is unique in; it is built from item trees
+//! and paths only.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -30,6 +33,14 @@ pub struct Symbol {
     /// declaration of its own: its path is the entity's file and its index
     /// [`Symbol::PROVIDED`], which no declaration has.
     pub provided: Option<String>,
+    /// The domain its name is unique in, for a private function or type of
+    /// a domain ([`domain_scope`]); `None` for a name unique across the
+    /// project.
+    pub scope: Option<String>,
+    /// The name the checker's tables know it by: its name, or, for a
+    /// domain's private function or type whose name is also declared in
+    /// another scope, `<domain>.<name>`, which no declaration can be called.
+    pub canonical: String,
 }
 
 impl Symbol {
@@ -45,6 +56,75 @@ impl Symbol {
             (Ownership::Domain(a), Ownership::Domain(b)) => a == b || self.public,
             _ => true,
         }
+    }
+
+    /// The name its stable identity is made from (area 18, question 8,
+    /// amended 2026-10-16): `<domain>.<name>` for a function or type
+    /// declared in a domain, public or not, and its name for everything
+    /// else.
+    pub fn identity(&self) -> String {
+        identity_name(
+            &self.name,
+            &self.kind,
+            self.library.is_some(),
+            &self.ownership,
+        )
+    }
+
+    /// Whether code written in `domain` (`None` outside every domain) sees
+    /// this name without reaching into another domain's private names: a
+    /// project-wide name, or one private to `domain`.
+    pub fn in_scope_of(&self, domain: Option<&str>) -> bool {
+        match &self.scope {
+            None => true,
+            Some(own) => domain == Some(own.as_str()),
+        }
+    }
+}
+
+/// The domain a declaration's name is unique in (area 1, "Files and names",
+/// decided 2026-10-16): a private `function` or `type` of a domain, other
+/// than a failure, an email or an event, whose names are seen outside the
+/// code. Everything else is unique across the project: anything public, in
+/// `shared/`, the root files or loose files, a library and its functions,
+/// and every other kind. A type an API's record names stays unique across
+/// the project too, which `semantic.duplicate_declaration` checks, since
+/// only the routes know it.
+pub fn domain_scope(
+    kind: &ItemKind,
+    public: bool,
+    in_library: bool,
+    ownership: &Ownership,
+) -> Option<String> {
+    let Ownership::Domain(domain) = ownership else {
+        return None;
+    };
+    let scoped = match kind {
+        ItemKind::Function => !in_library,
+        ItemKind::Type(Base::Failure | Base::EmailMessage | Base::Event) => false,
+        ItemKind::Type(_) => true,
+        _ => false,
+    };
+    (scoped && !public).then(|| domain.clone())
+}
+
+/// The name a declaration's stable identity is made from (area 18): the
+/// domain and the name, `billing.Address`, for a function (not a library's)
+/// or type declared in a domain, and the name for everything else. A
+/// library's functions keep their library's name, `rounding.half_even`,
+/// which promotion to `shared/` keeps.
+pub fn identity_name(
+    name: &str,
+    kind: &ItemKind,
+    in_library: bool,
+    ownership: &Ownership,
+) -> String {
+    match (kind, ownership) {
+        (ItemKind::Type(_), Ownership::Domain(domain)) => format!("{domain}.{name}"),
+        (ItemKind::Function, Ownership::Domain(domain)) if !in_library => {
+            format!("{domain}.{name}")
+        }
+        _ => name.to_string(),
     }
 }
 
@@ -65,10 +145,62 @@ pub struct Symbols {
     pub tests: BTreeMap<String, Vec<(String, u32)>>,
 }
 
+/// The private names declared in more than one scope (a domain's, another
+/// domain's or the project's), by domain and name: those whose
+/// [`Symbol::canonical`] name is `<domain>.<name>`. Usually empty, and kept
+/// apart from the whole table so what reads it isn't recomputed when an
+/// unrelated declaration changes.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Contested(pub BTreeSet<(String, String)>);
+
+impl Contested {
+    /// The name the checker's tables know the name `written`, as code in
+    /// `domain` writes it, by: `<domain>.<written>` when it is one of that
+    /// domain's contested private names, otherwise `written`.
+    pub fn canonical(&self, written: &str, domain: Option<&str>) -> String {
+        match domain {
+            Some(domain) if self.0.contains(&(domain.to_string(), written.to_string())) => {
+                format!("{domain}.{written}")
+            }
+            _ => written.to_string(),
+        }
+    }
+}
+
+/// The contested private names of `project` ([`Contested`]).
+#[salsa::tracked(returns(ref))]
+pub fn contested(db: &dyn Db, project: Project) -> Contested {
+    let mut out = BTreeSet::new();
+    for found in symbols(db, project).declarations.values() {
+        for symbol in found {
+            if let Some(domain) = &symbol.scope
+                && symbol.canonical != symbol.name
+            {
+                out.insert((domain.clone(), symbol.name.clone()));
+            }
+        }
+    }
+    Contested(out)
+}
+
 impl Symbols {
     /// The declaration called `name`, if there is exactly one or the first.
     pub fn get(&self, name: &str) -> Option<&Symbol> {
         self.declarations.get(name).and_then(|found| found.first())
+    }
+
+    /// The declaration the checker's tables know as `canonical`: a
+    /// project-wide name, or `<domain>.<name>` for a domain's contested
+    /// private name.
+    pub fn by_canonical(&self, canonical: &str) -> Option<&Symbol> {
+        if let Some(found) = self.declarations.get(canonical) {
+            return found.iter().find(|symbol| symbol.canonical == canonical);
+        }
+        let (domain, name) = canonical.split_once('.')?;
+        self.declarations
+            .get(name)?
+            .iter()
+            .find(|symbol| symbol.scope.as_deref() == Some(domain) && symbol.canonical == canonical)
     }
 
     /// The library called `name`.
@@ -101,6 +233,13 @@ pub fn symbols(db: &dyn Db, project: Project) -> Symbols {
             table.domains.insert(domain.to_string());
         }
         let symbol = |item: &Item, library: Option<(String, u32)>, index: u32| Symbol {
+            scope: domain_scope(
+                &item.kind,
+                item.public,
+                library.is_some(),
+                &location.ownership,
+            ),
+            canonical: item.name.clone(),
             name: item.name.clone(),
             kind: item.kind.clone(),
             public: item.public,
@@ -184,8 +323,24 @@ pub fn symbols(db: &dyn Db, project: Project) -> Symbols {
                 test: false,
                 transitions: Vec::new(),
                 provided: Some(entity.name.clone()),
+                scope: None,
+                canonical: String::new(),
             }],
         );
+    }
+    // A private name declared in more than one scope is known to the
+    // checker's tables by its domain and name, so each domain's reads its
+    // own (area 1, "Files and names").
+    for (name, found) in table.declarations.iter_mut() {
+        let scopes: BTreeSet<Option<&String>> =
+            found.iter().map(|symbol| symbol.scope.as_ref()).collect();
+        let contested = scopes.len() > 1;
+        for symbol in found.iter_mut() {
+            symbol.canonical = match &symbol.scope {
+                Some(domain) if contested => format!("{domain}.{name}"),
+                _ => name.clone(),
+            };
+        }
     }
     table
 }

@@ -32,14 +32,17 @@ pub struct Callables {
 #[salsa::tracked(returns(ref))]
 pub fn callables(db: &dyn Db, project: Project) -> Callables {
     let table = type_table(db, project);
-    let sig = |signature: &Signature| Sig {
+    // A domain's contested private names are known by their domain too
+    // (area 1, "Files and names").
+    let contested = jadpo_db::contested(db, project);
+    let sig = |signature: &Signature, canonical: &dyn Fn(&str) -> String| Sig {
         params: signature
             .params
             .iter()
             .map(|param| {
                 (
                     param.name.clone(),
-                    table.resolve(&TypeRef::parse(&param.ty)),
+                    table.resolve(&TypeRef::parse(&param.ty).scoped(canonical)),
                 )
             })
             .collect(),
@@ -47,24 +50,27 @@ pub fn callables(db: &dyn Db, project: Project) -> Callables {
             .result
             .as_ref()
             .map_or(Ty::Prim(Prim::Unit), |result| {
-                table.resolve(&TypeRef::parse(result))
+                table.resolve(&TypeRef::parse(result).scoped(canonical))
             }),
         fails: signature.fails.clone(),
     };
     let mut out = Callables::default();
     for &file in project.files(db) {
+        let location = jadpo_db::location(db, project, file);
+        let domain = location.ownership.domain();
+        let canonical = |written: &str| contested.canonical(written, domain);
         for item in &item_tree(db, file).items {
             match item.kind {
                 ItemKind::Function | ItemKind::Action | ItemKind::Query | ItemKind::Fixture => {
                     out.plain
-                        .entry(item.name.clone())
-                        .or_insert_with(|| sig(&item.signature));
+                        .entry(canonical(&item.name))
+                        .or_insert_with(|| sig(&item.signature, &canonical));
                 }
                 ItemKind::Library => {
                     for function in &item.functions {
                         out.library
                             .entry((item.name.clone(), function.name.clone()))
-                            .or_insert_with(|| sig(&function.signature));
+                            .or_insert_with(|| sig(&function.signature, &canonical));
                     }
                 }
                 _ => {}

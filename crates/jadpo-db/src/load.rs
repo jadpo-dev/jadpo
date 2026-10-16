@@ -6,7 +6,10 @@ use std::path::{Path, PathBuf};
 use salsa::{Durability, Setter};
 
 use crate::places::{Ownership, locate};
-use crate::{Database, File, Layout, Project, Record, is_record, is_translation};
+use crate::{
+    Database, File, IDENTITIES, Layout, Project, Record, is_record, is_translation,
+    parse_identities,
+};
 
 /// The file that marks a project's root (area 14).
 pub const PROJECT_FILE: &str = "app.jadpo";
@@ -137,10 +140,19 @@ pub fn load_into(target: &Path, mut db: Database) -> Loaded {
             }),
         }
     }
-    // `database/identities.json` is read once `jadpo rename` and the domain
-    // commands, which write it, exist (area 14); until then nothing has been
-    // renamed.
-    let project = Project::new(&db, files, other_files, layout, BTreeMap::new(), records);
+    // The identity registry (area 18): its lines are an input of their own,
+    // and its text a record, for the edits that add a line to it.
+    let identities = match identities(&records) {
+        Ok(lines) => lines,
+        Err(error) => {
+            unreadable.push(Unreadable {
+                path: IDENTITIES.to_string(),
+                error,
+            });
+            BTreeMap::new()
+        }
+    };
+    let project = Project::new(&db, files, other_files, layout, identities, records);
     if !translations.is_empty() {
         project.set_translations(&mut db).to(translations);
     }
@@ -150,6 +162,16 @@ pub fn load_into(target: &Path, mut db: Database) -> Loaded {
         root,
         unreadable,
     }
+}
+
+/// The identity registry's lines, from its record when the project has
+/// one, or why they can't be read.
+fn identities(records: &[Record]) -> Result<BTreeMap<String, String>, String> {
+    let Some(record) = records.iter().find(|record| record.path == IDENTITIES) else {
+        return Ok(BTreeMap::new());
+    };
+    let text = record.text.as_ref().map_err(Clone::clone)?;
+    parse_identities(text).map_err(|error| format!("it isn't a JSON object of names: {error}"))
 }
 
 /// The record at `path`, read from `root`.
@@ -256,6 +278,19 @@ impl Loaded {
             if full.is_file() {
                 records.push(read_record(&self.root, path));
                 records.sort_by(|a, b| a.path.cmp(&b.path));
+            }
+            if path == IDENTITIES {
+                match identities(&records) {
+                    Ok(lines) => {
+                        if &lines != self.project.identities(&self.db) {
+                            self.project.set_identities(&mut self.db).to(lines);
+                        }
+                    }
+                    Err(error) => self.unreadable.push(Unreadable {
+                        path: path.to_string(),
+                        error,
+                    }),
+                }
             }
             if &records != self.project.records(&self.db) {
                 self.project.set_records(&mut self.db).to(records);

@@ -141,7 +141,7 @@ pub fn naming_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
         return Vec::new();
     };
     let path = file.path(db);
-    let table = Lookup::new(db, project);
+    let table = Lookup::for_file(db, project, file);
     let mut out = Vec::new();
     for decl in source.decls() {
         out.extend(public_not_allowed(path, &decl));
@@ -159,14 +159,20 @@ pub fn naming_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
             }
             _ => {}
         }
+        let here = Here {
+            db,
+            project,
+            table: &table,
+            path,
+        };
         let span = name_span(&source, path, item.index, None);
-        if let Some(problem) = declaration(&table, path, item, None, span) {
+        if let Some(problem) = declaration(&here, item, None, span) {
             out.push(problem);
         }
         for function in &item.functions {
             let span = name_span(&source, path, item.index, Some(function.index));
             if let Some(problem) =
-                declaration(&table, path, function, Some((item.index, &item.name)), span)
+                declaration(&here, function, Some((item.index, &item.name)), span)
             {
                 out.push(problem);
             }
@@ -175,14 +181,186 @@ pub fn naming_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
     out
 }
 
+/// Where a declaration's naming is checked: its file, and the lookups
+/// that read names as that file writes them.
+struct Here<'a> {
+    db: &'a dyn Db,
+    project: Project,
+    table: &'a Lookup<'a>,
+    path: &'a str,
+}
+
+impl Here<'_> {
+    /// The scope a declaration's name is unique in (area 1, "Files and
+    /// names"): its domain for a private function or type, unless an API's
+    /// record names it, and the project otherwise (`None`).
+    fn scope<'s>(&self, symbol: &'s Symbol) -> Option<&'s str> {
+        let domain = symbol.scope.as_deref()?;
+        let named = crate::routes::api_named(self.db, self.project);
+        (!named.contains(&symbol.canonical)).then_some(domain)
+    }
+
+    /// Whether two declarations' names have to differ: one of them is
+    /// unique across the project, or both are private to one domain.
+    fn clash(&self, a: &Symbol, b: &Symbol) -> bool {
+        if a.scope.is_none() || b.scope.is_none() {
+            return true;
+        }
+        match (self.scope(a), self.scope(b)) {
+            (Some(a), Some(b)) => a == b,
+            _ => true,
+        }
+    }
+
+    /// The declaration `symbol` names, as its tokens without layout,
+    /// comments or `public`: two the same are a copy.
+    fn written(&self, symbol: &Symbol) -> Option<String> {
+        let file = crate::lookups::file_at(
+            self.db,
+            self.project,
+            crate::lookups::Name::new(self.db, symbol.path.clone()),
+        )?;
+        let source = tree::source(self.db, file)?;
+        let decl = tree::decl_at(&source, symbol.index)?;
+        let node = match (&decl, &symbol.library) {
+            (jadpo_syntax::ast::Decl::LibraryDecl(library), Some((_, index))) => {
+                use jadpo_syntax::ast::AstNode;
+                tree::library_functions(library)
+                    .into_iter()
+                    .nth(*index as usize)?
+                    .syntax()
+                    .clone()
+            }
+            (decl, _) => {
+                use jadpo_syntax::ast::AstNode;
+                decl.syntax().clone()
+            }
+        };
+        let tokens: Vec<String> = node
+            .descendants_with_tokens()
+            .filter_map(|element| element.into_token())
+            .filter(|token| {
+                !token.kind().is_trivia()
+                    && !token
+                        .parent_ancestors()
+                        .any(|node| node.kind() == jadpo_syntax::SyntaxKind::VISIBILITY)
+            })
+            .map(|token| token.text().to_string())
+            .collect();
+        Some(tokens.join(" "))
+    }
+
+    /// The names in use that contain `name`'s words, with their files, but
+    /// for the declaration at `except`: what an agent renaming it should
+    /// see (area 1, decided 2026-10-16).
+    fn in_use(&self, name: &str, except: &(String, u32, u32)) -> Vec<(String, String)> {
+        let words: Vec<String> = jadpo_db::name_words(name)
+            .iter()
+            .map(|word| word.to_lowercase())
+            .collect();
+        let contains = |other: &str| {
+            let theirs: Vec<String> = jadpo_db::name_words(other)
+                .iter()
+                .map(|word| word.to_lowercase())
+                .collect();
+            !words.is_empty() && theirs.windows(words.len()).any(|window| window == words)
+        };
+        let mut rows: Vec<(String, String)> = self
+            .table
+            .all()
+            .declarations
+            .iter()
+            .filter(|(other, _)| contains(other))
+            .flat_map(|(_, found)| found.iter())
+            .filter(|symbol| symbol.provided.is_none() && symbol_order(symbol) != *except)
+            .map(|symbol| (symbol.name.clone(), symbol.path.clone()))
+            .collect();
+        rows.sort();
+        rows.dedup();
+        if rows.len() > IN_USE {
+            let more = rows.len() - (IN_USE - 1);
+            rows.truncate(IN_USE - 1);
+            rows.push((format!("and {more} more"), String::new()));
+        }
+        rows
+    }
+}
+
+/// The most names the `in use` list shows.
+const IN_USE: usize = 12;
+
+/// `semantic.duplicate_declaration` for a name another declaration in the
+/// same scope already has: a copy (the two written the same) or a clash,
+/// with the names in use that contain the same words. It never invents a
+/// name (area 1, decided 2026-10-16).
+fn duplicate(
+    here: &Here<'_>,
+    item: &Item,
+    mine: &Symbol,
+    first: &Symbol,
+    at: &(String, u32, u32),
+    span: Span,
+) -> Diagnostic {
+    let name = item.name.as_str();
+    let domain = match (here.scope(mine), here.scope(first)) {
+        (Some(a), Some(b)) if a == b => Some(a),
+        _ => None,
+    };
+    let message = match domain {
+        Some(domain) => format!("`{name}` is declared twice in `{domain}`"),
+        None => format!("`{name}` is declared twice"),
+    };
+    let copy = here
+        .written(mine)
+        .is_some_and(|mine| Some(mine) == here.written(first));
+    let (reason, next) = if copy {
+        let elsewhere = mine.ownership != first.ownership
+            && !matches!(first.ownership, Ownership::Shared)
+            && matches!(item.kind, ItemKind::Type(_));
+        let next = if elsewhere {
+            format!(
+                "Remove this {} and use the one in `{}`, or move that one to `shared/` if both domains need it",
+                item.kind.word(),
+                first.path
+            )
+        } else {
+            format!(
+                "Remove this {} and use the one in `{}`",
+                item.kind.word(),
+                first.path
+            )
+        };
+        (
+            format!(
+                "`{name}` is already {}, written the same way, so this is a copy.",
+                described(first)
+            ),
+            next,
+        )
+    } else {
+        (
+            format!(
+                "`{name}` is already {}, declared differently, so these are two things with one name.",
+                described(first)
+            ),
+            "Rename one of them, here and where it's used".to_string(),
+        )
+    };
+    Diagnostic::new(&rule::SEMANTIC_DUPLICATE_DECLARATION, message)
+        .at(span, "declared again here")
+        .reason(reason)
+        .next(next)
+        .in_use(here.in_use(name, at))
+}
+
 /// The first naming problem of one declaration.
 fn declaration(
-    table: &Lookup<'_>,
-    path: &str,
+    here: &Here<'_>,
     item: &Item,
     library: Option<(u32, &str)>,
     span: Span,
 ) -> Option<Diagnostic> {
+    let (table, path) = (here.table, here.path);
     let name = item.name.as_str();
     let names = StdNames::get();
     if let Some(problem) = case(name, &item.kind, span.clone()) {
@@ -206,25 +384,20 @@ fn declaration(
         Some((library_index, _)) => (library_index, Some(item.index)),
         None => (item.index, None),
     };
-    let here = order(path, index, function);
-    if let Some(first) = table
-        .declared(name)
+    let at = order(path, index, function);
+    // Every declaration of the name, whatever its scope: this one, and
+    // the first before it whose name this one's must differ from.
+    let all = &table.facts(name).declarations;
+    let mine = all
         .iter()
-        .min_by_key(|symbol| symbol_order(symbol))
-        && symbol_order(first) < here
+        .find(|symbol| symbol.path == path && symbol_order(symbol) == at);
+    if let Some(mine) = mine
+        && let Some(first) = all
+            .iter()
+            .filter(|symbol| symbol_order(symbol) < at && here.clash(mine, symbol))
+            .min_by_key(|symbol| symbol_order(symbol))
     {
-        return Some(
-            Diagnostic::new(
-                &rule::SEMANTIC_DUPLICATE_DECLARATION,
-                format!("`{name}` is declared twice"),
-            )
-            .at(span, "declared again here")
-            .reason(format!(
-                "Names are unique across the whole project, whatever they name; `{name}` is already {}.",
-                described(first)
-            ))
-            .next(format!("Rename this {}, or remove it if it's a copy", item.kind.word())),
-        );
+        return Some(duplicate(here, item, mine, first, &at, span));
     }
     if item.kind == ItemKind::Library && table.is_domain(name) {
         return Some(
@@ -245,7 +418,8 @@ fn declaration(
         .iter()
         .filter(|symbol| symbol.name != name)
         .filter(|symbol| !callable_and_its_type(path, item, library.is_some(), symbol))
-        .filter(|symbol| symbol_order(symbol) < here)
+        .filter(|symbol| symbol_order(symbol) < at)
+        .filter(|symbol| mine.is_none_or(|mine| here.clash(mine, symbol)))
         .min_by_key(|symbol| symbol_order(symbol))
     {
         return Some(

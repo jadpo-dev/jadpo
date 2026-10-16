@@ -43,7 +43,7 @@ impl Resolver<'_> {
         let host = declaration_key(self.symbols, first)?;
         for n in (1..=rest.len()).rev() {
             if self.table.field(first, &rest[..n]).is_some() {
-                return Some(field_key(self.symbols.registry(), first, &rest[..n]));
+                return Some(field_key(self.symbols, first, &rest[..n]));
             }
         }
         if let Some(variant) = rest.first()
@@ -52,7 +52,7 @@ impl Resolver<'_> {
                 .variants(first)
                 .is_some_and(|variants| variants.iter().any(|v| &v.name == variant))
         {
-            return Some(variant_key(self.symbols.registry(), first, variant));
+            return Some(variant_key(self.symbols, first, variant));
         }
         Some(host)
     }

@@ -588,6 +588,7 @@ impl Body<'_> {
             .variants(host)
             .map(|variants| variants.iter().map(|v| v.name.clone()).collect())
             .unwrap_or_default();
+        let host = crate::types::shown(host);
         let near = nearest(&name, names.iter().map(String::as_str)).map(str::to_string);
         let problem = Diagnostic::new(
             &rule::TYPE_UNKNOWN_ENUM_VARIANT,
@@ -792,6 +793,7 @@ impl Body<'_> {
         span: Span,
         variant: bool,
     ) {
+        let host = crate::types::shown(host);
         let names: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
         let near = nearest(field, names.iter().copied());
         let listed: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();

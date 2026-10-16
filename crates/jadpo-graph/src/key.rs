@@ -4,11 +4,14 @@
 //! rounding.half_even`, the same form the identity registry's lines take
 //! (`"entity Task": "Todo"`).
 //!
-//! A key never holds a position, a file or a domain. Names are unique
-//! across the project and across kinds (area 1), so the name alone
-//! identifies a declaration, and the moves the layout rules ask for keep
-//! it: reordering, moving to the domain's `types/` folder, or promotion to
-//! `shared/`, which no command records in the registry.
+//! A key never holds a position or a file. It holds a domain only for a
+//! function or type declared in one, `type billing.Address`, since a
+//! private function or type is unique only within its domain (area 18,
+//! question 8, amended 2026-10-16); every other name is unique across the
+//! project, so the name alone identifies it. The moves the layout rules ask
+//! for keep a key: reordering, moving to the domain's `types/` folder, and
+//! promotion to `shared/`, which writes a registry line mapping the type's
+//! name now to the key it was born with.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -42,6 +45,25 @@ impl Key {
     /// The born name after the kind's word.
     pub fn name(&self) -> &str {
         self.0.split_once(' ').map_or("", |(_, name)| name)
+    }
+
+    /// The born name as code writes it: without the domain a type's key
+    /// carries (`Address` for `type billing.Address`, `Address.street` for
+    /// its field), and otherwise [`Key::name`].
+    pub fn written(&self) -> &str {
+        let name = self.name();
+        match self.kind() {
+            Some(Kind::Type | Kind::Field | Kind::Variant) => match name.split_once('.') {
+                Some((domain, rest))
+                    if domain.starts_with(|c: char| c.is_ascii_lowercase())
+                        && rest.starts_with(|c: char| c.is_ascii_uppercase()) =>
+                {
+                    rest
+                }
+                _ => name,
+            },
+            _ => name,
+        }
     }
 }
 

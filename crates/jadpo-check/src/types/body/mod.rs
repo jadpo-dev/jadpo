@@ -145,7 +145,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
     let Some(decl) = tree::decl_at(&source, callable.index(db)) else {
         return Checked::default();
     };
-    let lookup = Lookup::new(db, project);
+    let lookup = Lookup::for_file(db, project, file);
     let mut checker = Body {
         db,
         project,

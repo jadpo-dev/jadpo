@@ -64,14 +64,32 @@ pub fn kind_of(kind: &ItemKind) -> Option<Kind> {
 }
 
 /// The key of the project declaration called `name` (not a library
-/// function), when it has a node.
+/// function), when it has a node: its kind and the born name of its
+/// identity, which carries its domain for a function or type declared in a
+/// domain (area 18, question 8, amended 2026-10-16).
 pub fn declaration_key(symbols: &dyn NameView, name: &str) -> Option<Key> {
     let symbol = symbols
         .declared(name)
         .iter()
         .find(|symbol| symbol.library.is_none())?;
     let kind = kind_of(&symbol.kind)?;
-    Some(symbols.registry().key(kind, name, None))
+    Some(symbols.registry().key(kind, &symbol.identity(), None))
+}
+
+/// The key of a declaration of `kind` called `name` in a file owned by
+/// `ownership` (not a library function).
+pub fn item_key(
+    registry: &Registry,
+    kind: Kind,
+    item: &ItemKind,
+    name: &str,
+    ownership: &jadpo_db::Ownership,
+) -> Key {
+    registry.key(
+        kind,
+        &jadpo_db::identity_name(name, item, false, ownership),
+        None,
+    )
 }
 
 /// The key of function `function` of library `library`.
@@ -84,30 +102,52 @@ pub fn library_function_key(registry: &Registry, library: &str, function: &str) 
     )
 }
 
-/// The born name of the type or entity called `host` now.
-fn born_host(registry: &Registry, host: &str) -> String {
-    let as_type = registry.born(Kind::Type, host, None);
-    if as_type != host {
-        return as_type;
+/// The identity of the type or entity `host` names now, and its born name:
+/// a type declared in a domain carries the domain (area 18).
+fn host_identity(symbols: &dyn NameView, host: &str) -> (String, String) {
+    let found = symbols.declared(host).iter().find(|symbol| {
+        symbol.library.is_none() && matches!(symbol.kind, ItemKind::Type(_) | ItemKind::Entity)
+    });
+    match found.and_then(|symbol| Some((symbol, kind_of(&symbol.kind)?))) {
+        Some((symbol, kind)) => {
+            let now = symbol.identity();
+            let born = symbols.registry().born(kind, &now, None);
+            (now, born)
+        }
+        None => {
+            let shown = crate::types::shown(host).to_string();
+            (shown.clone(), shown)
+        }
     }
-    registry.born(Kind::Entity, host, None)
 }
 
 /// The key of field `path` (`Note.body`, `Outcome.paid.receipt`) under the
 /// type or entity `host`.
-pub fn field_key(registry: &Registry, host: &str, path: &[String]) -> Key {
-    let born = born_host(registry, host);
-    let now = format!("{host}.{}", path.join("."));
-    registry.key(Kind::Field, &now, Some((host, &born)))
+pub fn field_key(symbols: &dyn NameView, host: &str, path: &[String]) -> Key {
+    let (now, born) = host_identity(symbols, host);
+    host_field_key(symbols.registry(), &now, &born, path)
+}
+
+/// The key of field `path` under the host whose identity is `now`, born
+/// `born`.
+fn host_field_key(registry: &Registry, now: &str, born: &str, path: &[String]) -> Key {
+    let field = format!("{now}.{}", path.join("."));
+    registry.key(Kind::Field, &field, Some((now, born)))
+}
+
+/// The key of field `path` of entity `entity`, whose identity is its name.
+pub fn entity_field_key(registry: &Registry, entity: &str, path: &[String]) -> Key {
+    let born = registry.born(Kind::Entity, entity, None);
+    host_field_key(registry, entity, &born, path)
 }
 
 /// The key of variant `variant` of enum `host`.
-pub fn variant_key(registry: &Registry, host: &str, variant: &str) -> Key {
-    let born = born_host(registry, host);
-    registry.key(
+pub fn variant_key(symbols: &dyn NameView, host: &str, variant: &str) -> Key {
+    let (now, born) = host_identity(symbols, host);
+    symbols.registry().key(
         Kind::Variant,
-        &format!("{host}.{variant}"),
-        Some((host, &born)),
+        &format!("{now}.{variant}"),
+        Some((&now, &born)),
     )
 }
 
@@ -120,10 +160,8 @@ pub fn type_ref(symbols: &dyn NameView, ty: &Ty) -> TypeRef {
         Ty::Prim(builtin) => TypeRef::Builtin(*builtin),
         Ty::Named(name) => declaration_key(symbols, name)
             .map_or_else(|| TypeRef::Std(name.clone(), Vec::new()), TypeRef::Node),
-        Ty::Field(host, path) => TypeRef::Field(field_key(symbols.registry(), host, path)),
-        Ty::Variant(host, variant) => {
-            TypeRef::Variant(variant_key(symbols.registry(), host, variant))
-        }
+        Ty::Field(host, path) => TypeRef::Field(field_key(symbols, host, path)),
+        Ty::Variant(host, variant) => TypeRef::Variant(variant_key(symbols, host, variant)),
         Ty::List(inner) => TypeRef::List(boxed(inner)),
         Ty::Set(inner) => TypeRef::Set(boxed(inner)),
         Ty::Map(key, value) => TypeRef::Map(boxed(key), boxed(value)),
@@ -462,7 +500,7 @@ pub fn policy_nodes(
             node.place = at(&format!("field {}", field.field));
             node.digest = Some(Digest::of(parts.iter().map(String::as_str)));
             node.domain = domain.clone();
-            let target = field_key(registry, name, std::slice::from_ref(&field.field));
+            let target = entity_field_key(registry, name, std::slice::from_ref(&field.field));
             node.parent = Some(target.clone());
             node.detail = Detail::FieldRestriction {
                 server_only: field.server_only,

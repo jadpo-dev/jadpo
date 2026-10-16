@@ -47,7 +47,7 @@ pub fn lookup(
         u32::from(token.text_range().end()),
     );
     let parent = token.parent()?;
-    let names = Lookup::new(db, project);
+    let names = Lookup::for_file(db, project, file);
     let lookup = Names {
         resolver: Resolver {
             symbols: &names,
@@ -227,7 +227,7 @@ impl Names<'_> {
                         .field(host, std::slice::from_ref(field))
                         .map(|_| {
                             Found::Node(field_key(
-                                self.resolver.symbols.registry(),
+                                self.resolver.symbols,
                                 host,
                                 std::slice::from_ref(field),
                             ))
@@ -249,8 +249,8 @@ impl Names<'_> {
                 return None;
             }
             return Some(Found::Node(match path.len() {
-                1 => variant_key(self.resolver.symbols.registry(), &host, variant),
-                _ => field_key(self.resolver.symbols.registry(), &host, &path[..2]),
+                1 => variant_key(self.resolver.symbols, &host, variant),
+                _ => field_key(self.resolver.symbols, &host, &path[..2]),
             }));
         }
         // A failure's fields sit inside `client: { }` or `internal: { }`.
@@ -261,13 +261,9 @@ impl Names<'_> {
         {
             path.remove(0);
         }
-        table.field(&host, &path[..1]).map(|_| {
-            Found::Node(field_key(
-                self.resolver.symbols.registry(),
-                &host,
-                &path[..1],
-            ))
-        })
+        table
+            .field(&host, &path[..1])
+            .map(|_| Found::Node(field_key(self.resolver.symbols, &host, &path[..1])))
     }
 
     /// A name where it is used outside a body: a type, its member, a
