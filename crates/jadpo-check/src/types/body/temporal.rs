@@ -192,7 +192,7 @@ impl Body<'_> {
         self.out.push(
             Diagnostic::new(
                 &rule::TYPE_TEMPORAL_FORMAT_REQUIRES_TIME,
-                format!("`{shown}` shows a clock time, and a `{ty}` has none"),
+                format!("`{shown}` shows a clock time, which `{ty}` doesn't have"),
             )
             .at(span, format!("shows {what}"))
             .reason(format!(
@@ -268,7 +268,9 @@ impl Body<'_> {
                 continue;
             }
             let shown = first.as_ref().map(ToString::to_string).unwrap_or_default();
-            let span = self.span(call);
+            let span = call
+                .expr()
+                .map_or_else(|| self.span(call), |callee| self.span(&callee));
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_TEMPORAL_ZONE_REQUIRED,
@@ -391,7 +393,7 @@ impl Body<'_> {
 /// What `format:` takes.
 fn format_reason(written: &str) -> String {
     format!(
-        "`{written}`'s `format:` is written out: a built-in format, `TimeFormat.` and `date_`, `time_` or `date_time_` with `full`, `long`, `medium` or `short`, or the name of a format declared as `type Name = TimeFormat {{ ... }}`."
+        "`{written}`'s `format:` is written out: a built-in format, `TimeFormat.` followed by `date_`, `time_` or `date_time_` and `full`, `long`, `medium` or `short`, or the name of a format declared as `type Name = TimeFormat {{ ... }}`."
     )
 }
 

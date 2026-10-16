@@ -1137,7 +1137,7 @@ impl Body<'_> {
                                 .expr()
                                 .map_or_else(|| self.span(call), |e| self.span(&e));
                             self.out
-                                .push(super::super::formats::not_a_value(written, span));
+                                .push(super::super::formats::not_a_value(written, span, false));
                             return (Ty::Error, Fallible::Unknown);
                         }
                         None => {

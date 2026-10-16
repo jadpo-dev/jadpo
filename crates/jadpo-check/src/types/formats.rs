@@ -26,20 +26,28 @@ fn styles(component: Component) -> String {
     )
 }
 
-/// A declared format named where a value's type goes, or built like a
-/// value.
-pub(crate) fn not_a_value(name: &str, span: Span) -> Diagnostic {
-    Diagnostic::new(
-        &rule::TYPE_TEMPORAL_FORMAT_INVALID,
-        format!("`{name}` is a format, not a type of value"),
-    )
-    .at(span, "a format")
-    .reason(format!(
-        "A format says how `temporal.format` shows a date or a time; it holds no value, so `{name}` is named only as the `format:` of a call, never as the type of a field, a parameter or a variable."
-    ))
-    .next(format!(
-        "Give `format: {name}` to `temporal.format`, and use another type here"
-    ))
+/// A format named where a value's type goes, built like a value, or used
+/// as one.
+pub(crate) fn not_a_value(name: &str, span: Span, as_type: bool) -> Diagnostic {
+    let (message, place, next) = if as_type {
+        (
+            format!("`{name}` is a format, not a type of value"),
+            "never as the type of a field, a parameter or a variable",
+            "and use another type here",
+        )
+    } else {
+        (
+            format!("`{name}` is a format, not a value"),
+            "never as a value of its own",
+            "or use a value here",
+        )
+    };
+    Diagnostic::new(&rule::TYPE_TEMPORAL_FORMAT_INVALID, message)
+        .at(span, "a format")
+        .reason(format!(
+            "A format says how `temporal.format` shows a date or a time; it holds no value, so `{name}` is named only as the `format:` of a call, {place}."
+        ))
+        .next(format!("Give `format: {name}` to `temporal.format`, {next}"))
 }
 
 impl Decls<'_> {

@@ -2221,29 +2221,26 @@ check failed: 1 error, 1 file
 
 ### `toolchain.not_built_yet`
 
-The standard library declares operations that later areas build, such as
-`temporal.format` (area 10). Until a chunk builds one, calling it is an error
-rather than a program that can't run:
+The language declares operations that later chunks build, such as the
+generated `oauth.approve` (area 8). Until a chunk builds one, calling it is
+an error rather than a program that can't run:
 
 ```jadpo check project=e-not-built-yet expect=toolchain.not_built_yet
-type Pence = Int {
-    min: 0
-}
+type ConsentId = Uuid {}
 
-function price_text(price: Pence) -> Pence {
-    var formatted_price: Pence = temporal.format(price)
-    return formatted_price
+action approve_consent(consent: ConsentId) -> Unit {
+    oauth.approve(consent)
 }
 ```
 
 ```text output
-error: `temporal.format` isn't built yet
- --> main.jadpo:6:34
+error: `oauth.approve` isn't built yet
+ --> main.jadpo:4:5
   |
-6 |     var formatted_price: Pence = temporal.format(price)
-  |                                  ^^^^^^^^^^^^^^^ declared, not built
-  reason: The language declares `temporal.format`, but this compiler has nothing to run it with yet, so a program that calls it couldn't run.
-  next: Do without `temporal.format` for now (agent)
+4 |     oauth.approve(consent)
+  |     ^^^^^^^^^^^^^ declared, not built
+  reason: The language declares `oauth.approve`, but this compiler has nothing to run it with yet, so a program that calls it couldn't run.
+  next: Do without `oauth.approve` for now (agent)
   rule: toolchain.not_built_yet
   help: docs/language/03-logic.html#toolchain-not-built-yet
 

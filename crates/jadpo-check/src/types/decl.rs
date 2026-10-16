@@ -208,7 +208,8 @@ impl Decls<'_> {
                     && let Some(Def::Format { .. }) = self.table.def(first)
                 {
                     let span = self.span(&head);
-                    self.out.push(super::formats::not_a_value(first, span));
+                    self.out
+                        .push(super::formats::not_a_value(first, span, true));
                     return false;
                 }
                 if names.len() == 1 {

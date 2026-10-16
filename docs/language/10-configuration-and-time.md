@@ -27,7 +27,15 @@ rules:
   - configuration.unknown_option
   - configuration.url_type
   - type.clock_context
-  - type.temporal_*
+  - type.temporal_clock_invalid
+  - type.temporal_option_unused
+  - type.temporal_zone_required
+  - type.temporal_format_component_duplicate
+  - type.temporal_format_component_invalid
+  - type.temporal_format_components_empty
+  - type.temporal_format_invalid
+  - type.temporal_format_requires_time
+  - type.temporal_locales_required
   - type.locale_*
   - syntax.locales_*
   - semantic.multiple_locale_declarations
@@ -40,7 +48,7 @@ How an application declares its settings and secrets, where their values come
 from, and how code reads the current time, works with dates and zones, and
 shows times to people in their own language.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; chunk 5.1c built the client's address behind trusted proxies (`client_address:`). Chunk 5.2 built time: `ZonedTime`, durations, arithmetic and comparison, the `temporal` library over a bundled time zone database, and a test's clock. The examples marked `check` in those sections and their errors run with this checkout's `jadpo`. The formats and `PresentationText` come in chunk 5.2b, and locales, translations and the formatted text in chunk 5.3.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; chunk 5.1c built the client's address behind trusted proxies (`client_address:`). Chunk 5.2 built time: `ZonedTime`, durations, arithmetic and comparison, the `temporal` library over a bundled time zone database, and a test's clock; chunk 5.2b built the formats and `PresentationText`, and checks `temporal.format` and `format_relative`. The examples marked `check` in those sections and their errors run with this checkout's `jadpo`. Locales, translations and the formatted text come in chunk 5.3.
 
 Two rules run through the page. **Code never reads the environment or the
 system clock directly**: settings arrive as typed `config.<field>` values,
@@ -849,7 +857,7 @@ argument's named type:
 | `weekday(value)` | `Weekday` | |
 | `date(zoned)`, `hour(zoned)`, `minute(zoned)` | a local time's `CalendarDate`, and `Int`s from 0 | |
 | `zone(zoned)`, `instant(zoned)` | the `Zone` it is seen in, and the `Instant` it is | |
-| `format(value, zone:, locale:, format:)`, `format_relative(value, now:, zone:, locale:)` | `PresentationText`, below | not built yet |
+| `format(value, zone:, locale:, format:)`, `format_relative(value, now:, zone:, locale:)` | `PresentationText`, below; checked, and its text comes with chunk 5.3 | |
 
 A day's bounds start at its first instant: midnight, or, in a zone whose
 clocks skip midnight, the first time they show that day. `instant(...)` is
@@ -864,41 +872,101 @@ dependency change of its own (chosen in chunk 5.2).
 
 ## Showing dates and times to people
 
-> Not built yet: the formats and `PresentationText` come in chunk 5.2b, and
-> the text in each language with locales in chunk 5.3. Until then
-> `temporal.format` and `temporal.format_relative` are
-> `toolchain.not_built_yet`.
+> Built in chunk 5.2b: the formats, `PresentationText`, and both calls,
+> checked as this section says. The text they give in each language comes
+> with locales in chunk 5.3; until then a call that checks is
+> `toolchain.not_built_yet`, so the example that calls one shows that.
 
 Formatting needs three things the server must never guess: the zone, the
 language and the format. Decided (question 7): one call that takes all
 three, with the format either built in or declared once as a named type:
 
-```jadpo fragment
+```jadpo check project=format-call expect=toolchain.not_built_yet
+/// When an order was placed.
+type PlacedAt = Instant {}
+
+/// A date as "25 Oct 2026" in `Locale.en_gb`.
 type ShortDate = TimeFormat {
     day: ComponentStyle.numeric
     month: ComponentStyle.short
     year: ComponentStyle.numeric
 }
 
-var placed: PresentationText = temporal.format(
-    order.created_at,
-    zone: customer.zone,
-    locale: customer.locale,
-    format: ShortDate
-)
+/// When an order was placed, shown to its customer.
+type OrderPlaced = Output {
+    placed: PresentationText
+}
+
+/// The order's placing, in the customer's zone and language.
+function order_placed(placed_at: PlacedAt, zone: Zone, locale: Locale) -> OrderPlaced {
+    return OrderPlaced {
+        placed: temporal.format(placed_at, zone: zone, locale: locale, format: ShortDate)
+    }
+}
+```
+
+```text output
+error: `temporal.format` is checked, but its text isn't built yet
+ --> main.jadpo:19:17
+   |
+19 |         placed: temporal.format(placed_at, zone: zone, locale: locale, format: ShortDate)
+   |                 ^^^^^^^^^^^^^^^ checked, not built
+  reason: This call is right, but the text `temporal.format` gives in each language comes from locale data, which comes with locales and translations (area 10, roadmap chunk 5.3); until then a program that calls it couldn't run.
+  next: Send the `Instant` for the client to format for now, or do without this text (agent)
+  rule: toolchain.not_built_yet
+  help: docs/language/03-logic.html#toolchain-not-built-yet
+
+check failed: 1 error, 1 file
 ```
 
 A built-in format is written `format: TimeFormat.date_time_long`. The
 built-in formats are `date_`, `time_` and `date_time_` each with `full`,
-`long`, `medium` or `short`; `date_time_long` gives "27 September 2026 at
-14:30 BST" in `en_gb`. "3 minutes ago" style text uses
-`temporal.format_relative(value, now: clock.now, zone:, locale:)` with fixed
-rules: "just now", minutes, "Today at", "Yesterday at", the weekday, then the
-long date.
+`long`, `medium` or `short`, CLDR's four lengths; `date_time_long` gives
+"27 September 2026 at 14:30 BST" in `en_gb`. A declared format lists the
+parts it shows, each once, with a `ComponentStyle`, and the locale decides
+their order and punctuation and whether the clock has 12 or 24 hours, as
+CLDR's skeletons and JavaScript's `Intl.DateTimeFormat` do:
 
-The result is `PresentationText`: it can go into a response, an email or a
-page, but it cannot be stored (`type.presentation_text_persistence`), turned
-back into a time, compared as a time or rebuilt into `Text`. Clients that
+| Part | Takes |
+|---|---|
+| `weekday` | `long`, `short`, `narrow` |
+| `day`, `year` | `numeric`, `two_digit` |
+| `month` | `numeric`, `two_digit`, `long`, `short`, `narrow` |
+| `hour`, `minute`, `second` | `numeric`, `two_digit` |
+| `zone_name` | `long` ("British Summer Time"), `short` ("BST") |
+
+A format with no parts is `type.temporal_format_components_empty`, a part
+twice `type.temporal_format_component_duplicate`, a style the part doesn't
+take `type.temporal_format_component_invalid`, and a name that is no part
+`type.unknown_setting`. A format holds no value: `format:` names it
+written out, and it is never the type of a field, a parameter or a
+variable, nor a value passed in (`type.temporal_format_invalid`). The
+operation is given it as text, `day:numeric month:short year:numeric` or
+`date_time_long`.
+
+`zone:` is given exactly when the value is an `Instant`
+(`type.temporal_zone_required`): a `ZonedTime` is shown in its own zone and
+a `CalendarDate` has none, so `zone:` with either is
+`type.temporal_option_unused`. A `CalendarDate` has no clock time, so a
+`time_` or `date_time_` format, or one showing `hour`, `minute`, `second`
+or `zone_name`, is `type.temporal_format_requires_time`. `locale:` is a
+`Locale`; that it is one the application supports is checked with locales
+(chunk 5.3).
+
+"3 minutes ago" style text uses
+`temporal.format_relative(value, now: clock.now, zone:, locale:)`, for an
+`Instant` or a `ZonedTime`, with `zone:` as for `format`, and fixed rules:
+"just now", minutes, "Today at", "Yesterday at", the weekday, then the long
+date.
+
+The result is `PresentationText`, a built-in type: it can go into a
+response, an email or a page, a signature may use it directly, and text
+written in quotes may stand for one, which is how a test compares formatted
+text with what it expects. It cannot be stored: an entity field holding it,
+directly or through a named type, a list, an object or a variant's data, is
+`type.presentation_text_persistence`, and it is not a setting. It cannot be
+turned back into a time, ordered, added to or rebuilt into `Text`; two
+compare with `==` and `!=`. On the wire it is a JSON string. Clients that
 format for themselves receive the `Instant`.
 
 ## Locales
@@ -1639,8 +1707,181 @@ error: `dst:` means nothing for a `ShopDay`
 check failed: 1 error, 1 file
 ```
 
-> The formatting and locale errors below predate the decisions above and are
-> rewritten when chunks 5.2b and 5.3 build them.
+`zone:` on a date or a local time is reported the same way: a
+`ZonedTime` carries its zone, and a `CalendarDate` has none.
+
+### `type.temporal_zone_required`
+
+```jadpo check project=e-zone-required expect=type.temporal_zone_required
+type PlacedAt = Instant {}
+
+function placed_label(placed_at: PlacedAt, locale: Locale) -> PresentationText {
+    return temporal.format(placed_at, locale: locale, format: TimeFormat.date_long)
+}
+```
+
+```text output
+error: `temporal.format` needs the zone to show `PlacedAt` in
+ --> main.jadpo:4:12
+  |
+4 |     return temporal.format(placed_at, locale: locale, format: TimeFormat.date_long)
+  |            ^^^^^^^^^^^^^^^ no `zone:`
+  reason: An `Instant` is one moment for everyone, and its date and clock time depend on where it is read; the server never guesses a zone, so `zone:` says which.
+  next: Add `zone: ...` with the reader's zone, such as `zone: customer.zone` or `zone: Zone.europe_london` (agent)
+  rule: type.temporal_zone_required
+  help: docs/language/10-configuration-and-time.html#type-temporal-zone-required
+
+check failed: 1 error, 1 file
+```
+
+### `type.temporal_format_invalid`
+
+```jadpo check project=e-format-invalid expect=type.temporal_format_invalid
+type PlacedAt = Instant {}
+
+function placed_label(placed_at: PlacedAt, zone: Zone, locale: Locale) -> PresentationText {
+    return temporal.format(placed_at, zone: zone, locale: locale, format: TimeFormat.date_longest)
+}
+```
+
+```text output
+error: `TimeFormat.date_longest` isn't a time format
+ --> main.jadpo:4:75
+  |
+4 |     return temporal.format(placed_at, zone: zone, locale: locale, format: TimeFormat.date_longest)
+  |                                                                           ^^^^^^^^^^^^^^^^^^^^^^^ not a format
+  reason: `temporal.format`'s `format:` is written out: a built-in format, `TimeFormat.` followed by `date_`, `time_` or `date_time_` and `full`, `long`, `medium` or `short`, or the name of a format declared as `type Name = TimeFormat { ... }`.
+  next: Write a built-in format such as `TimeFormat.date_long`, or declare one with `type Name = TimeFormat { ... }` (agent)
+  rule: type.temporal_format_invalid
+  help: docs/language/10-configuration-and-time.html#type-temporal-format-invalid
+
+check failed: 1 error, 1 file
+```
+
+A format named as the type of a field, a parameter or a variable, or used
+as a value, is reported the same way: it holds no value.
+
+### `type.temporal_format_requires_time`
+
+```jadpo check project=e-requires-time expect=type.temporal_format_requires_time
+type InvoiceDate = CalendarDate {}
+
+function invoice_dated(day: InvoiceDate, locale: Locale) -> PresentationText {
+    return temporal.format(day, locale: locale, format: TimeFormat.date_time_long)
+}
+```
+
+```text output
+error: `TimeFormat.date_time_long` shows a clock time, which `InvoiceDate` doesn't have
+ --> main.jadpo:4:57
+  |
+4 |     return temporal.format(day, locale: locale, format: TimeFormat.date_time_long)
+  |                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^ shows a clock time
+  reason: `InvoiceDate` is a date, with no clock time or zone, so `temporal.format` can show only its weekday, day, month and year.
+  next: Use a date format such as `TimeFormat.date_long`, or format an `Instant` or a `ZonedTime` instead (agent)
+  rule: type.temporal_format_requires_time
+  help: docs/language/10-configuration-and-time.html#type-temporal-format-requires-time
+
+check failed: 1 error, 1 file
+```
+
+### `type.temporal_format_components_empty`
+
+```jadpo check project=e-components-empty expect=type.temporal_format_components_empty
+type Blank = TimeFormat {}
+```
+
+```text output
+error: `Blank` shows nothing
+ --> main.jadpo:1:6
+  |
+1 | type Blank = TimeFormat {}
+  |      ^^^^^ no parts
+  reason: A format lists the parts of a date or a time it shows, each with a `ComponentStyle`, and the locale arranges them; with none listed there is nothing to show.
+  next: List the parts to show, such as `day: ComponentStyle.numeric`, or use a built-in format such as `TimeFormat.date_long` (agent)
+  rule: type.temporal_format_components_empty
+  help: docs/language/10-configuration-and-time.html#type-temporal-format-components-empty
+
+check failed: 1 error, 1 file
+```
+
+### `type.temporal_format_component_invalid`
+
+```jadpo check project=e-component-invalid expect=type.temporal_format_component_invalid
+type ShortDate = TimeFormat {
+    day: ComponentStyle.long
+    month: ComponentStyle.short
+}
+```
+
+```text output
+error: `day` isn't shown `long`
+ --> main.jadpo:2:10
+  |
+2 |     day: ComponentStyle.long
+  |          ^^^^^^^^^^^^^^^^^^^ not a style `day` takes
+  reason: A format's `day` is shown `ComponentStyle.numeric` or `ComponentStyle.two_digit`; the locale decides the rest, such as the order and the punctuation.
+  next: Write `day: ComponentStyle.numeric` (agent)
+  rule: type.temporal_format_component_invalid
+  help: docs/language/10-configuration-and-time.html#type-temporal-format-component-invalid
+
+check failed: 1 error, 1 file
+```
+
+A part that isn't one a format shows, such as `days:`, is
+`type.unknown_setting`, with the nearest part's name.
+
+### `type.temporal_format_component_duplicate`
+
+```jadpo check project=e-component-duplicate expect=type.temporal_format_component_duplicate
+type ShortDate = TimeFormat {
+    day: ComponentStyle.numeric
+    month: ComponentStyle.short
+    day: ComponentStyle.two_digit
+}
+```
+
+```text output
+error: `day` is given twice
+ --> main.jadpo:4:5
+  |
+2 |     day: ComponentStyle.numeric
+  |     --- first given here
+4 |     day: ComponentStyle.two_digit
+  |     ^^^ given again
+  reason: A format shows each part once, in one style, so there is never a question of which `day` counts.
+  next: Remove one `day` (agent)
+  rule: type.temporal_format_component_duplicate
+  help: docs/language/10-configuration-and-time.html#type-temporal-format-component-duplicate
+
+check failed: 1 error, 1 file
+```
+
+### `type.presentation_text_persistence`
+
+```jadpo check project=e-presentation-persist expect=type.presentation_text_persistence
+entity Receipt {
+    id: Uuid
+    issued_label: PresentationText
+}
+```
+
+```text output
+error: `Receipt.issued_label` would store text formatted for a person
+ --> main.jadpo:3:19
+  |
+3 |     issued_label: PresentationText
+  |                   ^^^^^^^^^^^^^^^^ `PresentationText`, stored
+  reason: `Receipt.issued_label` holds `PresentationText`: text in one reader's language and zone, which another reader, a change of locale or a correction to the zone database would show differently, and which can't be read back as a time. A record keeps the value itself and formats it when it is shown.
+  next: Store the `Instant`, `CalendarDate` or `ZonedTime` instead, and format `Receipt.issued_label` in the output that shows it (agent)
+  rule: type.presentation_text_persistence
+  help: docs/language/10-configuration-and-time.html#type-presentation-text-persistence
+
+check failed: 1 error, 1 file
+```
+
+> The locale errors below predate the decisions above and are rewritten
+> when chunk 5.3 builds them.
 
 ### `type.temporal_locales_required`
 
@@ -1648,108 +1889,6 @@ check failed: 1 error, 1 file
 test "formatting needs declared locales" {
     var value = temporal.in_zone(Instant("2026-09-27T13:30:00Z"), Zone.europe_london)
     var label = temporal.format(value, style: TimeFormat.date_long)
-}
-```
-
-### `type.temporal_format_requires_time`
-
-```jadpo project=e-requires-time expect=type.temporal_format_requires_time
-locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    unsupported: reject
-}
-
-test "an instant needs a zone" {
-    var label = temporal.format(
-        Instant("2026-10-25T08:30:00Z"),
-        locale: Locale.en_gb,
-        style: TimeFormat.date_long
-    )
-}
-```
-
-### `type.temporal_format_choice`
-
-```jadpo project=e-format-choice expect=type.temporal_format_choice
-locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    unsupported: reject
-}
-
-test "one format choice" {
-    var value = temporal.in_zone(Instant("2026-10-25T08:30:00Z"), Zone.europe_london)
-    var label = temporal.format(
-        value,
-        locale: Locale.en_gb,
-        style: TimeFormat.date_long,
-        components: { day: numeric }
-    )
-}
-```
-
-### `type.temporal_format_components_empty`
-
-```jadpo project=e-components-empty expect=type.temporal_format_components_empty
-locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    unsupported: reject
-}
-
-test "components cannot be empty" {
-    var value = temporal.in_zone(Instant("2026-10-25T08:30:00Z"), Zone.europe_london)
-    var label = temporal.format(value, locale: Locale.en_gb, components: {})
-}
-```
-
-### `type.temporal_format_component_invalid`
-
-```jadpo project=e-component-invalid expect=type.temporal_format_component_invalid
-locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    unsupported: reject
-}
-
-test "component values are checked" {
-    var value = temporal.in_zone(Instant("2026-10-25T08:30:00Z"), Zone.europe_london)
-    var label = temporal.format(value, locale: Locale.en_gb, components: { day: enormous })
-}
-```
-
-### `type.temporal_format_component_duplicate`
-
-```jadpo project=e-component-duplicate expect=type.temporal_format_component_duplicate
-locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    unsupported: reject
-}
-
-test "components are not repeated" {
-    var value = temporal.in_zone(Instant("2026-10-25T08:30:00Z"), Zone.europe_london)
-    var label = temporal.format (
-        value,
-        locale: Locale.en_gb,
-        components: { day: numeric day: two_digit }
-    )
-}
-```
-
-### `type.presentation_text_persistence`
-
-```jadpo project=e-presentation-persist expect=type.presentation_text_persistence
-entity Receipt {
-    id: Uuid
-    identity: id
-    issued_label: PresentationText
-
-    persistence {
-        store: primary
-        role: authority
-    }
 }
 ```
 
@@ -1854,8 +1993,11 @@ first build had, durations, arithmetic and comparison, the `temporal`
 library over the IANA database bundled into every target, time values on
 the wire, in OpenAPI and in queries, and a test's `clock:` and
 `clock.advance(...)` (area 13); its readings are in the Decisions table.
-The formats and `PresentationText` come in chunk 5.2b, and locales,
-translations and the formatted text in chunk 5.3.
+Chunk 5.2b built `TimeFormat`, declared and built in, `ComponentStyle` and
+`PresentationText`, and checks `temporal.format` and `format_relative`,
+refusing a call that checks until the text comes; its readings are in the
+Decisions table too. Locales, translations and the formatted text come in
+chunk 5.3.
 
 ### Consistency with the rest of the language
 
@@ -2051,3 +2193,7 @@ translations and the formatted text in chunk 5.3.
 | The `temporal` library (chosen in chunk 5.2) | Option B's operations, nineteen built: `in_zone`, `resolve`, `between`, `add_days`, `add_months` and `add_years` (twelve months a year) on a date or a local time, keeping its named type; `day_bounds`, `week_bounds` (from `starts_on:`), `month_bounds` and `year_bounds` giving an `InstantRange` whose `start` is the period's first instant (midnight, or the first time a zone's clocks show when they skip it) and whose `end` is the next period's, not included; `year`, `month`, `day` and `weekday` of a date or a local time's date; `date`, `hour`, `minute`, `zone` and `instant` of a local time, `instant` added because a `ZonedTime` has no order of its own. A query compares a field with an `InstantRange` parameter's `start` and `end` | 2026-10-16 |
 | Time zone data (chosen in chunk 5.2) | The `temporal` operations run in `jadpo-value` on jiff 0.2.38 with its bundled database (`jiff-tzdb`, IANA 2026e, about 200 KB): pure Rust, built for wasm32, with Temporal's handling of gaps and overlaps, and nothing read from the platform's zone files or clock, so the interpreter, native deployables and Workers answer alike. Every `Zone` variant is in it, which a test holds; a newer release is a change of its own | 2026-10-16 |
 | Not built here (chosen in chunk 5.2) | The formats (`TimeFormat`, `ComponentStyle`, the built-in formats), `PresentationText` and its errors, and `temporal.format` and `format_relative` checked are chunk 5.2b; the text they give, in each locale, is chunk 5.3 | 2026-10-16 |
+| Formats (chosen in chunk 5.2b) | `TimeFormat` is a base, as `Object` is: `type Name = TimeFormat { part: ComponentStyle.style ... }` declares a format, and `TimeFormat.` names the twelve built-in ones (`date_`, `time_`, `date_time_` with `full`, `long`, `medium`, `short`). The parts are `weekday` (`long`, `short`, `narrow`), `day`, `year`, `hour`, `minute` and `second` (`numeric`, `two_digit`), `month` (all five) and `zone_name` (`long`, `short`), as `Intl.DateTimeFormat` takes them; the locale orders them. At least one part (`type.temporal_format_components_empty`), each once (`type.temporal_format_component_duplicate`), in a style it takes (`type.temporal_format_component_invalid`); any other name is `type.unknown_setting`. A format holds no value: `format:` names one written out, and a format as a field's, parameter's or variable's type, as a value or passed in is `type.temporal_format_invalid`. The operation is given it as text, `day:numeric month:short year:numeric` or `date_long` (`jadpo_std::TimeFormatSpec`), as `at:` gives its clock time | 2026-10-16 |
+| What formatting takes (chosen in chunk 5.2b) | `format` shows an `Instant`, a `CalendarDate` or a `ZonedTime`, and `format_relative` an `Instant` or a `ZonedTime` against `now:`, an `Instant`. `zone:` is given exactly for an `Instant` (`type.temporal_zone_required`), and with a date or a local time is `type.temporal_option_unused`. A date takes only a date format: a `time_` or `date_time_` one, or a part `hour`, `minute`, `second` or `zone_name`, is `type.temporal_format_requires_time`, which names that now rather than an instant without a zone. `locale:` is any `Locale` until chunk 5.3 checks it against the supported ones. `type.temporal_format_choice` is gone: `format:` replaced `style:` and `components:` (Option B) | 2026-10-16 |
+| `PresentationText` (chosen in chunk 5.2b) | A built-in type that is its own representation, so no constructor turns it into `Text` or back, and nothing orders it, adds to it or reads a time from it; `==` and `!=` compare it. A signature may use it directly, as `Email`, and text in quotes may stand for one, which is how a test compares formatted text. An `Output` holds it, sent as a JSON string, and a request may send one as text. An entity field holding it, directly or through a named type, a collection, an object's field or a variant's data, is `type.presentation_text_persistence`; a setting of it is `configuration.type_unsupported` | 2026-10-16 |
+| Not built here (chosen in chunk 5.2b) | The text: a call to `temporal.format` or `format_relative` that checks is `toolchain.not_built_yet`, naming chunk 5.3, so a program never reaches a run-time fault for it. Both are in the standard-library table with their kinds, and the call is lowered with its format as text; chunk 5.3 implements them in `jadpo-value` over locale data, checks `locale:` against the supported locales, and removes the refusal | 2026-10-16 |
