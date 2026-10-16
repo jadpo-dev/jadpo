@@ -1056,13 +1056,22 @@ action spend(project_id: Project.id, amount: Amount) fails ProjectNotFound, Over
 }
 "#,
     );
+    // The project sent when the spend fits shows that it fits, which the
+    // budget decides (chunk 4.8).
     assert_eq!(
         rules_of(&found),
-        ["policy.output_field_unproved"],
+        [
+            "policy.output_field_unproved",
+            "policy.output_field_unproved"
+        ],
         "{found:#?}"
     );
     assert!(
         found[0].contains("`OverBudget.budget` carries `Project.budget`"),
+        "{found:#?}"
+    );
+    assert!(
+        found[1].contains("`ProjectCard.id` carries `Project.budget`"),
         "{found:#?}"
     );
 }
@@ -1272,7 +1281,8 @@ action glance(project_id: Project.id) fails ProjectNotFound -> ProjectCard {
 fn a_value_an_if_a_match_a_filter_or_a_count_decides_keeps_what_decided_it() {
     // Each output below is built from constants, but which one, or the
     // number counted, shows whether a budget is over a line, which only
-    // editors may read.
+    // editors may read; each action's problem is at the first value the
+    // budget decides.
     let found = company(
         r#"type Flag = Output {
     high: Bool
@@ -1342,6 +1352,16 @@ action count_loop(company_id: Company.id) -> Tally {
     }
 }
 
+action flag_none(project_id: Project.id) fails ProjectNotFound -> Flag? {
+    var project: Project = attempt Project.get(project_id)
+    if (project.budget > 100) {
+        return none
+    }
+    return Flag {
+        high: false
+    }
+}
+
 action count_all(company_id: Company.id) -> Tally {
     var projects: List<Project> = company_records(company_id)
     return Tally {
@@ -1376,7 +1396,6 @@ action flag_found(project_id: Project.id) -> Flag {
             "policy.output_field_unproved",
             "policy.output_field_unproved",
             "policy.output_field_unproved",
-            "policy.output_field_unproved",
             "policy.output_field_unproved"
         ],
         "{all}"
@@ -1386,8 +1405,8 @@ action flag_found(project_id: Project.id) -> Flag {
         "`Flag.high` carries `Project.budget`, which not every caller of `flag_match` may read",
         "`Tally.funded` carries `Project.budget`, which not every caller of `count_funded` may read",
         "`ProjectCard.id` carries `Project.budget`, which not every caller of `funded_cards` may read",
-        "`ProjectCard.name` carries `Project.budget`, which not every caller of `funded_cards` may read",
         "`Tally.funded` carries `Project.budget`, which not every caller of `count_loop` may read",
+        "`Flag.high` carries `Project.budget`, which not every caller of `flag_none` may read",
     ] {
         assert!(all.contains(expected), "{expected}\n{all}");
     }

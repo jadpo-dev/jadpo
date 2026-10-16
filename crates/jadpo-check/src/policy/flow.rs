@@ -328,6 +328,7 @@ impl Flow<'_> {
             problems: Vec::new(),
             pc: Vec::new(),
             stored: None,
+            decided: BTreeSet::new(),
         };
         if listed {
             walk.gate = super::reach::line_gate(self.db, self.project, &name)
@@ -346,6 +347,7 @@ impl Flow<'_> {
         for _ in 0..=body.locals.len().max(1) {
             let before = walk.locals.clone();
             walk.returns = Prov::default();
+            walk.pc.clear();
             walk.block(self, &body.block);
             if walk.locals == before {
                 break;
@@ -440,9 +442,31 @@ struct Walk<'b> {
     /// caller may have reached the record it changes, which a value
     /// reading a stored field (`Post.view_count + 1`) comes from.
     stored: Option<(String, Vec<Reached>)>,
+    /// The fields already reported for deciding what a caller is shown:
+    /// one problem for each, at the first value it decides.
+    decided: BTreeSet<(String, String)>,
 }
 
 impl Walk<'_> {
+    /// The first of `prov`'s sources a caller isn't proved to read, but a
+    /// field already reported for deciding a value; one that only decides
+    /// is reported once.
+    fn first_unread(
+        &mut self,
+        flow: &Flow<'_>,
+        prov: &Prov,
+    ) -> Option<(String, String, Reached, bool)> {
+        let found = unread(flow, prov)
+            .into_iter()
+            .find(|(entity, field, _, decided)| {
+                !*decided || !self.decided.contains(&(entity.clone(), field.clone()))
+            })?;
+        if found.3 {
+            self.decided.insert((found.0.clone(), found.1.clone()));
+        }
+        Some(found)
+    }
+
     fn local(&mut self, id: Option<LocalId>, prov: &Prov) {
         if let Some(id) = id
             && let Some(held) = self.locals.get_mut(id.0 as usize)
@@ -465,6 +489,24 @@ impl Walk<'_> {
             if !self.pc.contains(&src) {
                 self.pc.push(src);
             }
+        }
+    }
+
+    /// After the `if`, `match` or loop at `site`, walked with `saved` as
+    /// what decided it runs: what it tested decides the statements after
+    /// it too when a `return` or `reject` inside it may have left.
+    fn after(&mut self, site: SiteId, saved: Vec<Src>) {
+        let at = self.body.site(site);
+        let leaves = self.body.sites.iter().any(|inner| {
+            inner.start >= at.start
+                && inner.end <= at.end
+                && matches!(
+                    inner.node,
+                    Node::Stmt(Stmt::Return { .. }) | Node::Expr(Expr::Reject { .. })
+                )
+        });
+        if !leaves {
+            self.pc = saved;
         }
     }
 
@@ -510,7 +552,7 @@ impl Walk<'_> {
                         self.block(flow, &arm.then);
                     }
                     self.block(flow, otherwise);
-                    self.pc = saved;
+                    self.after(site, saved);
                 }
                 Stmt::For { item, list, body } => {
                     let saved = self.pc.clone();
@@ -522,7 +564,7 @@ impl Walk<'_> {
                         self.decided_by(&prov);
                     }
                     self.block(flow, body);
-                    self.pc = saved;
+                    self.after(site, saved);
                 }
                 Stmt::Emit { value } | Stmt::Assert { value, .. } | Stmt::Expr { value } => {
                     if let Some(value) = value {
@@ -622,7 +664,7 @@ impl Walk<'_> {
                         ArmBody::Empty => {}
                     }
                 }
-                self.pc = saved;
+                self.after(site, saved);
                 out
             }
             Expr::Attempt { inner, arms } => {
@@ -1035,7 +1077,7 @@ impl Walk<'_> {
         if !self.report {
             return;
         }
-        let Some((entity, from, reached)) = unproved(flow, &decided).into_iter().next() else {
+        let Some((entity, from, reached, _)) = self.first_unread(flow, &decided) else {
             return;
         };
         let among = among(flow, &entity, &from, &reached);
@@ -1078,7 +1120,7 @@ impl Walk<'_> {
             }
         }
         self.params_in(&by);
-        let Some((entity, from, reached)) = unproved(flow, &by).into_iter().next() else {
+        let Some((entity, from, reached, _)) = self.first_unread(flow, &by) else {
             return;
         };
         let among = among(flow, &entity, &from, &reached);
@@ -1118,7 +1160,7 @@ impl Walk<'_> {
     /// `value`.
     fn output(&mut self, flow: &Flow<'_>, output: &str, field: &str, value: SiteId, prov: &Prov) {
         self.params_in(prov);
-        let Some((entity, from, reached, decided)) = unread(flow, prov).into_iter().next() else {
+        let Some((entity, from, reached, decided)) = self.first_unread(flow, prov) else {
             return;
         };
         let among = among(flow, &entity, &from, &reached);
