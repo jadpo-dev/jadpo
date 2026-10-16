@@ -332,9 +332,12 @@ every route with its input, output, success status and reachable failures,
 the 400 and 422 input responses, and the `///` descriptions (area 1). The
 title is the application's name and the version the API record's version.
 Beside each document, `jadpo build` writes `<api>.failures.<locale>.json`
-for each supported locale: each reachable failure's code mapped to its
-wording in `{field}` syntax, saying which placeholders the client formats
-and how (date, time or number) (area 10, decided 2026-10-16).
+for each supported locale: each reachable failure's code mapped to
+`{ "text": "…{next_slot}…", "formats": { "next_slot": "date_time" } }`, the
+same shape for every code. `formats` lists only the placeholders the
+client must format, each `number`, `decimal`, `date`, `date_time`,
+`time_of_day` or `duration`, decided by the client field's type (area 10,
+"Failures for client apps"; decided 2026-10-16).
 
 ## The public API record
 

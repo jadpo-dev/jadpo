@@ -420,6 +420,21 @@ open item 8's translations part:
 10. Failure wording stays in the language files, not on the failure type
     (one rule for all text; Jadpo's and packages' failures could not carry
     it in place). Recommended, then agreed by Richard on 2026-10-16.
+11. **Export shape** (decided for Richard, 2026-10-16):
+    `<api>.failures.<locale>.json` maps each failure code to
+    `{ "text": "…{next_slot}…", "formats": { "next_slot": "date_time" } }`,
+    the same shape for every code; `formats` lists only placeholders the
+    client must format, each one of `number`, `decimal`, `date`,
+    `date_time`, `time_of_day` or `duration`; plain text placeholders are
+    not listed.
+12. **Format by type**: a failure's client field decides its format from
+    its type: `CalendarDate` → `date`; `Instant` → `date_time`, shown in
+    the reader's own zone by the client; `Time` (`ZonedTime` once renamed)
+    → `date_time` in the zone it carries; `Duration` → `duration`; `Int` →
+    `number`; `Decimal` → `decimal`. A field type the client cannot format
+    (an object, a list) is a compile error for a placeholder, as for
+    messages.
+13. An `in_progress` locale not in `supported` is a compile error.
 
 ## Decided: the golden rule
 
