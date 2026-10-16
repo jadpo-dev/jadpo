@@ -19,7 +19,6 @@ pub fn text(builtin: Option<Builtin>, text: &str) -> Option<Constant> {
         Some(Builtin::Uuid) => Constant::Uuid(text.to_ascii_lowercase()),
         Some(Builtin::Instant) => Constant::Instant(jadpo_std::instant_millis(text)?),
         Some(Builtin::CalendarDate) => Constant::Date(jadpo_std::date_number(text)?),
-        Some(Builtin::Time) => Constant::Time(jadpo_std::time_millis(text)?),
         _ => Constant::Text(text.to_string()),
     })
 }

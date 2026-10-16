@@ -23,8 +23,6 @@ pub enum Constant {
     Instant(i64),
     /// Days since 1970-01-01.
     Date(i32),
-    /// Milliseconds since midnight.
-    Time(u32),
     /// Milliseconds.
     Duration(i64),
     /// A variant of an enum, the `ordinal`th it declares, with a payload's

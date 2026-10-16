@@ -56,6 +56,50 @@ impl fmt::Display for Dur {
     }
 }
 
+/// The first instant an `Instant` holds: 0000-01-01T00:00:00Z.
+pub const INSTANT_MIN: i64 = -62_167_219_200_000;
+
+/// The last instant an `Instant` holds, 9999-12-30T22:00:00.999Z: the last
+/// whose local time is a date of year 9999 or before in every zone.
+pub const INSTANT_MAX: i64 = 253_402_207_200_999;
+
+/// The first date a `CalendarDate` holds, 0000-01-01, in days since
+/// 1970-01-01.
+pub const DATE_MIN: i32 = -719_528;
+
+/// The last date a `CalendarDate` holds, 9999-12-31.
+pub const DATE_MAX: i32 = 2_932_896;
+
+/// Milliseconds as the wire writes a duration (area 10): ISO 8601 in
+/// hours, minutes and seconds, `PT5M`, `PT1.5S`, `PT720H`, `-PT5M`, `PT0S`.
+pub fn iso_duration(millis: i64) -> String {
+    use std::fmt::Write;
+    let sign = if millis < 0 { "-" } else { "" };
+    let mut rest = millis.unsigned_abs();
+    let hours = rest / 3_600_000;
+    rest %= 3_600_000;
+    let minutes = rest / 60_000;
+    rest %= 60_000;
+    let seconds = rest / 1_000;
+    let ms = rest % 1_000;
+    let mut out = format!("{sign}PT");
+    if hours > 0 {
+        let _ = write!(out, "{hours}H");
+    }
+    if minutes > 0 {
+        let _ = write!(out, "{minutes}M");
+    }
+    if seconds > 0 || ms > 0 || (hours == 0 && minutes == 0) {
+        if ms > 0 {
+            let fraction = format!("{ms:03}");
+            let _ = write!(out, "{seconds}.{}S", fraction.trim_end_matches('0'));
+        } else {
+            let _ = write!(out, "{seconds}S");
+        }
+    }
+    out
+}
+
 /// Why `text` isn't an `Instant`, completing "The value ...": ISO 8601 in
 /// UTC or with an offset, to the millisecond, as `2026-10-25T08:30:00Z`.
 pub fn check_instant(text: &str) -> Result<(), String> {
@@ -92,6 +136,9 @@ pub fn check_instant(text: &str) -> Result<(), String> {
     }
     if fraction.len() > 3 {
         return Err("is finer than a millisecond, the precision an `Instant` keeps".into());
+    }
+    if instant_value(text).is_none_or(|millis| !(INSTANT_MIN..=INSTANT_MAX).contains(&millis)) {
+        return Err("is past 9999-12-30T22:00:00.999Z, the last instant an `Instant` holds".into());
     }
     Ok(())
 }
@@ -171,6 +218,31 @@ fn civil_from_epoch_day(epoch_day: i64) -> (i64, i64, i64) {
     (year, month, day)
 }
 
+/// The year, month and day of the date `epoch_day` days after 1970-01-01.
+pub fn civil_date(epoch_day: i32) -> (i64, i64, i64) {
+    civil_from_epoch_day(i64::from(epoch_day))
+}
+
+/// Days since 1970-01-01 of a year, month and day, which may be past the
+/// end of the month (`2026-02-31` is `2026-03-03`), or `None` outside the
+/// years a `CalendarDate` holds.
+pub fn epoch_day(year: i64, month: i64, day: i64) -> Option<i32> {
+    i32::try_from(epoch_day_from_civil(year, month, day))
+        .ok()
+        .filter(|day| (DATE_MIN..=DATE_MAX).contains(day))
+}
+
+/// How many days month `month` of `year` has.
+pub fn days_in_month(year: i64, month: i64) -> i64 {
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    match month {
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => 31,
+    }
+}
+
 /// A `CalendarDate` as the runtime holds it: days since 1970-01-01; `None`
 /// when `text` isn't one ([`check_calendar_date`] says why).
 pub fn date_number(text: &str) -> Option<i32> {
@@ -189,7 +261,13 @@ pub fn date_number(text: &str) -> Option<i32> {
 /// ([`check_instant`] says why).
 pub fn instant_millis(text: &str) -> Option<i64> {
     check_instant(text).ok()?;
+    instant_value(text)
+}
+
+/// The milliseconds of text already in an instant's form.
+fn instant_value(text: &str) -> Option<i64> {
     let (date, time) = text.split_once('T')?;
+    check_calendar_date(date).ok()?;
     let epoch_day = i64::from(date_number(date)?);
     let (clock, offset) = match time.strip_suffix('Z') {
         Some(clock) => (clock, 0),
@@ -217,9 +295,10 @@ pub fn instant_millis(text: &str) -> Option<i64> {
     Some(epoch_day * 86_400_000 + clock - offset)
 }
 
-/// A `Time` of day as the runtime holds it: milliseconds since midnight,
-/// from `HH:MM`, `HH:MM:SS` or `HH:MM:SS.mmm`.
-pub fn time_millis(text: &str) -> Option<u32> {
+/// A clock time as `temporal.resolve`'s `at:` writes it (area 10, "Zones
+/// and local times"): milliseconds since midnight, from `HH:MM`,
+/// `HH:MM:SS` or `HH:MM:SS.mmm`, each field two digits.
+pub fn clock_millis(text: &str) -> Option<u32> {
     let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
     let parts: Vec<&str> = whole.split(':').collect();
     let field = |text: &str, max: u32| {
@@ -261,8 +340,9 @@ pub fn format_instant(millis: i64) -> String {
     )
 }
 
-/// `08:30` or `08:30:15.250`: seconds only when there are some.
-pub fn format_time(millis: u32) -> String {
+/// A clock time, `08:30` or `08:30:15.250`: seconds only when there are
+/// some.
+pub fn format_clock_time(millis: u32) -> String {
     format_clock(millis, false)
 }
 
@@ -309,12 +389,12 @@ mod tests {
                 .as_deref(),
             Some("2026-10-25T08:30:00Z")
         );
-        assert_eq!(time_millis("09:00"), Some(32_400_000));
+        assert_eq!(clock_millis("09:00"), Some(32_400_000));
         assert_eq!(
-            time_millis("09:00").map(format_time).as_deref(),
+            clock_millis("09:00").map(format_clock_time).as_deref(),
             Some("09:00")
         );
-        assert_eq!(time_millis("24:00"), None);
+        assert_eq!(clock_millis("24:00"), None);
     }
 
     #[test]
@@ -346,6 +426,14 @@ mod tests {
         assert!(check_instant("not a time").is_err());
         assert!(check_instant("2026-10-25T24:00:00Z").is_err());
         assert!(check_instant("2026-10-25T08:30:00").is_err());
+        assert!(check_instant("9999-12-31T00:00:00Z").is_err());
+        assert_eq!(instant_millis("0000-01-01T00:00:00Z"), Some(INSTANT_MIN));
+        assert_eq!(
+            instant_millis("9999-12-30T22:00:00.999Z"),
+            Some(INSTANT_MAX)
+        );
+        assert_eq!(date_number("0000-01-01"), Some(DATE_MIN));
+        assert_eq!(date_number("9999-12-31"), Some(DATE_MAX));
         assert!(check_calendar_date("2026-10-25").is_ok());
         assert!(check_calendar_date("2024-02-29").is_ok());
         assert!(check_calendar_date("2026-02-29").is_err());

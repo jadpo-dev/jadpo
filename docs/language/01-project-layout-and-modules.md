@@ -333,20 +333,20 @@ type DueAt = Instant {}
 
 type HomeZone = Zone {}
 
-type DueTime = Time {}
+type DueTime = ZonedTime {}
 
 function local_due(at: DueAt, zone: HomeZone) -> DueTime {
-    var local: Time = in_zone(at, zone)
+    var local: ZonedTime = in_zone(at, zone)
     return DueTime(local)
 }
 ```
 
 ```text output
 error: `in_zone` is a standard-library operation
- --> main.jadpo:8:23
+ --> main.jadpo:8:28
   |
-8 |     var local: Time = in_zone(at, zone)
-  |                       ^^^^^^^ needs its namespace
+8 |     var local: ZonedTime = in_zone(at, zone)
+  |                            ^^^^^^^ needs its namespace
   reason: The standard library is always called through its namespace, so the dot says who owns the operation.
   next: Call `temporal.in_zone(...)` (agent)
   rule: semantic.standard_operation_qualification

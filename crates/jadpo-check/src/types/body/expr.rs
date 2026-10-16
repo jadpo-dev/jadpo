@@ -647,6 +647,27 @@ impl Body<'_> {
                 .insert(node_key(node.syntax()), (issued.clone(), vec![field]));
             return Ty::Prim(*builtin);
         }
+        // The instants a `temporal` bounds call gives (area 10).
+        if let Ty::Opaque(range, args) = receiver.strip_nullable()
+            && args.is_empty()
+            && range == jadpo_std::INSTANT_RANGE
+        {
+            let found = jadpo_std::INSTANT_RANGE_FIELDS
+                .iter()
+                .find(|(name, _)| *name == field);
+            let Some((_, builtin)) = found else {
+                let fields: Vec<FieldDef> = jadpo_std::INSTANT_RANGE_FIELDS
+                    .iter()
+                    .map(|(name, builtin)| plain_field(name, Ty::Prim(*builtin)))
+                    .collect();
+                self.unknown_field(range, &field, &fields, span, false);
+                return Ty::Error;
+            };
+            self.facts
+                .fields
+                .insert(node_key(node.syntax()), (range.clone(), vec![field]));
+            return Ty::Prim(*builtin);
+        }
         // A route test's response (area 13).
         if let Some(found) = self.response_field(receiver, &field) {
             return match found {

@@ -65,23 +65,27 @@ mod zones;
 pub use builtin::{Builtin, SIGNING_KEY_MIN};
 pub use constant::Constant;
 pub use enums::{
-    Access, AuthenticationMethod, AuthenticationStrength, ClientAddressSource, Driver, FieldAccess,
-    FieldChange, Generated, HttpMethod, Idempotency, LOCALE, MembershipScope, OnDelete, Rounding,
-    RouteAuthentication, SuccessStatus, Tenancy, TextFormat, UuidVersion, Weekday, ZONE, enums,
-    variant_ordinal,
+    Access, AuthenticationMethod, AuthenticationStrength, ClientAddressSource, Driver, Dst,
+    FieldAccess, FieldChange, Generated, HttpMethod, Idempotency, InvalidDay, LOCALE,
+    MembershipScope, OnDelete, Rounding, RouteAuthentication, SuccessStatus, Tenancy, TextFormat,
+    UuidVersion, Weekday, ZONE, enums, variant_ordinal,
 };
 pub use isolation::Isolation;
 pub use literal::Literal;
 pub use migration::Migration;
 pub use num::{Num, compare_exact};
-pub use operations::{Kind, OPERATIONS, Op, Operation, Param, operation};
+pub use operations::{
+    Condition, INSTANT_RANGE, INSTANT_RANGE_FIELDS, Kind, OPERATIONS, Op, Operation, Param,
+    operation,
+};
 pub use read::SqlType;
 pub use rules::{
     Broken, Pattern, RuleKey, Rules, check_builtin_text, compile_pattern, is_email, is_ip_address,
     is_url, uuid_version,
 };
 pub use time::{
-    Dur, check_calendar_date, check_instant, date_number, format_date, format_instant, format_time,
-    instant_millis, time_millis,
+    DATE_MAX, DATE_MIN, Dur, INSTANT_MAX, INSTANT_MIN, check_calendar_date, check_instant,
+    civil_date, clock_millis, date_number, days_in_month, epoch_day, format_clock_time,
+    format_date, format_instant, instant_millis, iso_duration,
 };
 pub use zones::{LOCALES, ZONES};

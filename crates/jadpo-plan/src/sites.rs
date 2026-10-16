@@ -199,6 +199,7 @@ impl Decoder<'_> {
                 | Callee::Variant(_)
                 | Callee::Caller(_)
                 | Callee::Session(_)
+                | Callee::AdvanceClock
                 | Callee::Unknown => Decoded::Nothing,
             },
             Node::Expr(Expr::Build {

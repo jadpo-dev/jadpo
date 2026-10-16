@@ -24,7 +24,7 @@ These types exist without being declared, and their names cannot be reused.
 |---|---|---|
 | Representation | `Bool`, `Int`, `Decimal`, `Text`, `Bytes`, `Uuid` | The raw material for your own types. `Int` is an exact 64-bit integer and `Decimal` an exact decimal with a required `scale` (see Review, question 8). |
 | Validated text | `Email`, `Url`, `IpAddress` | Ready-made named types built on `Text`. |
-| Time | `Instant`, `CalendarDate`, `Time`, `Duration`, `Zone`, `Locale`, `Weekday` and the formatting types | Described in area 10, Configuration and time. |
+| Time | `Instant`, `CalendarDate`, `ZonedTime`, `Duration`, `Zone`, `Locale`, `Weekday` and the formatting types | Described in area 10, Configuration and time (`ZonedTime` was `Time`, renamed in area 10, question 5). |
 | Containers | `List<T>`, `Set<T>`, `Map<K, V>` | Described below. |
 | Bases | `Object`, `Enum`, `Input`, `Output` | Used only after `=` in a `type` declaration (decided 2026-10-12). |
 | Nothing | `Unit` | What an action returns when it returns nothing. |

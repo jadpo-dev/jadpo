@@ -16,7 +16,9 @@ pub enum Builtin {
     IpAddress,
     Instant,
     CalendarDate,
-    Time,
+    /// An `Instant` seen in a `Zone` (area 10, question 5): local time
+    /// for showing or reasoning about, never a time of day on its own.
+    ZonedTime,
     Duration,
     Unit,
     /// The opaque cursor a page of results gives for the next one (area
@@ -79,7 +81,7 @@ impl Builtin {
         Builtin::IpAddress,
         Builtin::Instant,
         Builtin::CalendarDate,
-        Builtin::Time,
+        Builtin::ZonedTime,
         Builtin::Duration,
         Builtin::Unit,
         Builtin::PageCursor,
@@ -104,7 +106,7 @@ impl Builtin {
             Builtin::IpAddress => "IpAddress",
             Builtin::Instant => "Instant",
             Builtin::CalendarDate => "CalendarDate",
-            Builtin::Time => "Time",
+            Builtin::ZonedTime => "ZonedTime",
             Builtin::Duration => "Duration",
             Builtin::Unit => "Unit",
             Builtin::PageCursor => "PageCursor",

@@ -780,6 +780,7 @@ fn body_features(
                         Callee::Entity { .. } => "call entity operation",
                         Callee::Caller(_) => "call caller from a record",
                         Callee::Session(_) => "call session",
+                        Callee::AdvanceClock => "advance the test clock",
                         // Objects and variants are built, below; an
                         // unknown callee is a mistake already reported.
                         Callee::Object(_) | Callee::Variant(_) | Callee::Unknown => continue,

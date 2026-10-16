@@ -157,7 +157,6 @@ pub enum Column {
     Uuid,
     Instant,
     Date,
-    Time,
     /// Milliseconds, kept as `bigint`.
     Duration,
     /// A plain variant, stored as its name: the enum and its variants in

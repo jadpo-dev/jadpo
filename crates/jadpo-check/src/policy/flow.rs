@@ -1432,7 +1432,7 @@ impl Walk<'_> {
                 }
                 out
             }
-            Callee::Session(_) | Callee::Unknown => Prov::default(),
+            Callee::Session(_) | Callee::AdvanceClock | Callee::Unknown => Prov::default(),
             _ => all(),
         }
     }

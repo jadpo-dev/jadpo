@@ -58,6 +58,8 @@ pub(crate) enum Reach {
     Caller(jadpo_std::http::PrincipalKind),
     /// `sessions.start(user_id)` or `sessions.end()` (area 8).
     Session(jadpo_std::http::SessionOp),
+    /// `clock.advance(duration)` in a test (area 13).
+    AdvanceClock,
     Unknown,
 }
 

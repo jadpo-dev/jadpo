@@ -39,13 +39,14 @@ pub mod ops;
 pub mod order;
 mod rounding;
 pub mod shape;
+pub mod temporal;
 pub mod validate;
 mod value;
 
 pub use jadpo_std::{Op, Rounding};
 pub use ops::Fault;
 pub use validate::{Invalid, Validator};
-pub use value::{Decimal, QUOTIENT_PLACES, Record, Value, Variant};
+pub use value::{Decimal, QUOTIENT_PLACES, Record, Value, Variant, Zoned};
 
 /// Runs one standard-library operation with the values of its parameters
 /// in table order, its inline-function parameter left out; `each` runs the
@@ -90,6 +91,109 @@ pub fn run(
             | Op::IntegerDivide,
             _,
         ) => Err(Fault::Shape),
+        (
+            Op::TemporalAddDays
+            | Op::TemporalAddMonths
+            | Op::TemporalAddYears
+            | Op::TemporalBetween
+            | Op::TemporalDate
+            | Op::TemporalDay
+            | Op::TemporalDayBounds
+            | Op::TemporalHour
+            | Op::TemporalInZone
+            | Op::TemporalInstant
+            | Op::TemporalMinute
+            | Op::TemporalMonth
+            | Op::TemporalMonthBounds
+            | Op::TemporalResolve
+            | Op::TemporalWeekBounds
+            | Op::TemporalWeekday
+            | Op::TemporalYear
+            | Op::TemporalYearBounds
+            | Op::TemporalZone,
+            _,
+        ) => run_temporal(op, args),
+    }
+}
+
+/// A `temporal` operation (area 10): [`temporal`] holds what each does.
+fn run_temporal(op: Op, args: &[Value]) -> Result<Value, Fault> {
+    use temporal::{Dated, Period};
+    let bounds = |date: &Value, zone: &Value, period: Period| match date {
+        Value::Date(day) => {
+            let (start, end) = temporal::bounds(*day, temporal::zone_of(zone)?, period)?;
+            Ok(temporal::range(start, end))
+        }
+        _ => Err(Fault::Shape),
+    };
+    let zoned = |value: &Value| match value {
+        Value::Zoned(zoned) => Ok(*zoned),
+        _ => Err(Fault::Shape),
+    };
+    let part = |value: &Value, at: usize| -> Result<Value, Fault> {
+        let (year, month, day) = temporal::civil(Dated::of(value)?)?;
+        Ok(Value::Int([year, month, day].get(at).copied().unwrap_or(0)))
+    };
+    match (op, args) {
+        (Op::TemporalAddDays, [value, Value::Int(days), dst]) => {
+            temporal::add_days(Dated::of(value)?, *days, temporal::dst_of(dst)?).map(Dated::value)
+        }
+        (Op::TemporalAddMonths, [value, Value::Int(months), invalid_day, dst]) => {
+            temporal::add_months(
+                Dated::of(value)?,
+                *months,
+                temporal::invalid_day_of(invalid_day)?,
+                temporal::dst_of(dst)?,
+            )
+            .map(Dated::value)
+        }
+        (Op::TemporalAddYears, [value, Value::Int(years), invalid_day, dst]) => {
+            temporal::add_years(
+                Dated::of(value)?,
+                *years,
+                temporal::invalid_day_of(invalid_day)?,
+                temporal::dst_of(dst)?,
+            )
+            .map(Dated::value)
+        }
+        (Op::TemporalBetween, [Value::Instant(start), Value::Instant(end)]) => {
+            temporal::between(*start, *end).map(Value::Duration)
+        }
+        (Op::TemporalDate, [value]) => temporal::local_date(zoned(value)?).map(Value::Date),
+        (Op::TemporalDay, [value]) => part(value, 2),
+        (Op::TemporalMonth, [value]) => part(value, 1),
+        (Op::TemporalYear, [value]) => part(value, 0),
+        (Op::TemporalWeekday, [value]) => {
+            temporal::weekday(Dated::of(value)?).map(temporal::weekday_value)
+        }
+        (Op::TemporalHour, [value]) => {
+            temporal::clock(zoned(value)?).map(|clock| Value::Int(i64::from(clock / 3_600_000)))
+        }
+        (Op::TemporalMinute, [value]) => {
+            temporal::clock(zoned(value)?).map(|clock| Value::Int(i64::from(clock / 60_000 % 60)))
+        }
+        (Op::TemporalInZone, [Value::Instant(at), zone]) => {
+            temporal::in_zone(*at, temporal::zone_of(zone)?).map(Value::Zoned)
+        }
+        (Op::TemporalInstant, [value]) => zoned(value).map(|zoned| Value::Instant(zoned.millis)),
+        (Op::TemporalZone, [value]) => zoned(value).map(|zoned| temporal::zone_value(zoned.zone)),
+        (Op::TemporalResolve, [Value::Date(day), Value::Text(at), zone, dst]) => {
+            let clock = jadpo_std::clock_millis(at).ok_or(Fault::Shape)?;
+            temporal::resolve(
+                *day,
+                clock,
+                temporal::zone_of(zone)?,
+                temporal::dst_of(dst)?,
+            )
+            .map(Value::Zoned)
+        }
+        (Op::TemporalDayBounds, [date, zone]) => bounds(date, zone, Period::Day),
+        (Op::TemporalWeekBounds, [date, zone, starts_on]) => {
+            bounds(date, zone, Period::Week(temporal::weekday_of(starts_on)?))
+        }
+        (Op::TemporalMonthBounds, [date, zone]) => bounds(date, zone, Period::Month),
+        (Op::TemporalYearBounds, [date, zone]) => bounds(date, zone, Period::Year),
+        _ => Err(Fault::Shape),
     }
 }
 
@@ -114,6 +218,14 @@ mod tests {
 
     #[test]
     fn every_operation_in_the_table_runs() {
+        let london = temporal::zone_value(
+            jadpo_std::variant_ordinal(jadpo_std::ZONE, "europe_london").unwrap_or(0),
+        );
+        let date = Value::Date(jadpo_std::date_number("2026-10-25").unwrap_or(0));
+        let zoned = Value::Zoned(Zoned {
+            millis: 0,
+            zone: temporal::zone_of(&london).unwrap_or(0),
+        });
         let items = Value::list(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
         let mut double = |item: &Value| match item {
             Value::Int(n) => Some(Value::Int(n * 2)),
@@ -131,6 +243,32 @@ mod tests {
                     variant("half_even"),
                 ],
                 Op::IntegerDivide => vec![Value::Int(25), Value::Int(10), variant("up")],
+                Op::TemporalAddDays => vec![date.clone(), Value::Int(1), Value::None],
+                Op::TemporalAddMonths | Op::TemporalAddYears => {
+                    vec![zoned.clone(), Value::Int(1), Value::None, Value::None]
+                }
+                Op::TemporalBetween => vec![Value::Instant(0), Value::Instant(1000)],
+                Op::TemporalInZone => vec![Value::Instant(0), london.clone()],
+                Op::TemporalResolve => vec![
+                    date.clone(),
+                    Value::text("09:30"),
+                    london.clone(),
+                    Value::None,
+                ],
+                Op::TemporalDayBounds | Op::TemporalMonthBounds | Op::TemporalYearBounds => {
+                    vec![date.clone(), london.clone()]
+                }
+                Op::TemporalWeekBounds => {
+                    vec![date.clone(), london.clone(), temporal::weekday_value(0)]
+                }
+                Op::TemporalDay | Op::TemporalMonth | Op::TemporalYear | Op::TemporalWeekday => {
+                    vec![date.clone()]
+                }
+                Op::TemporalDate
+                | Op::TemporalHour
+                | Op::TemporalMinute
+                | Op::TemporalInstant
+                | Op::TemporalZone => vec![zoned.clone()],
             };
             let result = run(operation.op, &args, &mut |item| {
                 Some(Value::Bool(matches!(item, Value::Int(n) if n % 2 == 1)))

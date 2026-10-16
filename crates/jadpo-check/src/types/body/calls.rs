@@ -346,6 +346,9 @@ impl Body<'_> {
             {
                 return self.session_call(op, call, callee, &written);
             }
+            if head == "clock" && member == "advance" {
+                return self.advance_clock(call, callee, &written);
+            }
             // Nothing else a generated namespace holds is called: `clock.now`
             // is a value, and the rest wait for their areas.
             let span = self.span(callee);
@@ -636,6 +639,9 @@ impl Body<'_> {
             .iter()
             .map(|(name, ty)| (name.clone(), self.table.resolve_std(ty)))
             .collect();
+        let table = written
+            .split_once('.')
+            .and_then(|(namespace, name)| jadpo_std::operation(namespace, name));
         let args = Self::arguments(call);
         let mut slots: Vec<Option<usize>> = Vec::new();
         let mut unknown = false;
@@ -708,6 +714,16 @@ impl Body<'_> {
                 }
                 continue;
             }
+            let kind = table.and_then(|op| op.params.get(*slot)).map(|p| p.kind);
+            if let Some(jadpo_std::Kind::OneOf(accepts)) = kind {
+                let name = params[*slot].0.clone();
+                self.built_on_argument(&value, ty, accepts, written, &name);
+                continue;
+            }
+            if kind == Some(jadpo_std::Kind::Clock) {
+                self.clock_argument(&value, written);
+                continue;
+            }
             let expected = substitute(&param, &bound);
             if let Some(accepts) = built_on(&expected) {
                 let name = params[*slot].0.clone();
@@ -723,13 +739,23 @@ impl Body<'_> {
             self.inline(&lambda, &from, &to, &mut bound);
         }
         self.divisors(&args, &slots, written);
+        if let Some(table) = table {
+            self.std_options(table, call, &args, &slots, written);
+        }
         let given = args.len();
         let extra = slots.iter().filter(|slot| slot.is_none()).count();
+        // An option may be left out (area 10's `dst:`).
+        let optional = |slot: usize| {
+            table
+                .and_then(|op| op.params.get(slot))
+                .is_some_and(|param| param.optional)
+        };
         let missing: Vec<String> = params
             .iter()
             .zip(&filled)
-            .filter(|(_, filled)| !**filled)
-            .map(|((name, _), _)| format!("`{name}`"))
+            .enumerate()
+            .filter(|(slot, (_, filled))| !**filled && !optional(*slot))
+            .map(|(_, ((name, _), _))| format!("`{name}`"))
             .collect();
         if !unknown && (extra > 0 || !missing.is_empty()) {
             let span = self.arg_list_span(call);
@@ -1082,8 +1108,12 @@ impl Body<'_> {
         }
         let value = &args[0].1;
         if is_literal(value) {
-            // Checked while compiling (area 2).
+            // Checked while compiling (area 2), and decoded as the type it
+            // builds: `DueAt("2026-10-25T08:30:00Z")` is an instant.
             self.literal(value, &target, true);
+            self.facts
+                .types
+                .insert(node_key(value.syntax()), target.clone());
             return (target, Fallible::Never);
         }
         if matches!(value, Expr::ListExpr(_)) && is_collection(&self.table.structure(&target)) {
@@ -1357,6 +1387,10 @@ fn built_on(param: &Ty) -> Option<&'static [Prim]> {
         Ty::Prim(Prim::Int) => Some(&[Prim::Int]),
         Ty::Prim(Prim::Decimal) => Some(&[Prim::Decimal]),
         Ty::Prim(Prim::Text) => Some(&[Prim::Text]),
+        Ty::Prim(Prim::Instant) => Some(&[Prim::Instant]),
+        Ty::Prim(Prim::CalendarDate) => Some(&[Prim::CalendarDate]),
+        Ty::Prim(Prim::ZonedTime) => Some(&[Prim::ZonedTime]),
+        Ty::Prim(Prim::Duration) => Some(&[Prim::Duration]),
         _ => None,
     }
 }

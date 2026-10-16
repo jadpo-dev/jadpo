@@ -267,11 +267,14 @@ impl<'g> Wire<'g> {
             Shape::StdEnum(name) => {
                 let mut out = Value::object();
                 out.set("type", "string");
+                // As sent: a `Zone` by its IANA name, a `Locale` by its
+                // BCP 47 tag (area 10).
+                let spelling = jadpo_std::config::Spelling::of(&name);
                 out.set(
                     "enum",
                     Wire::std_variants(&name)
                         .into_iter()
-                        .map(Value::from)
+                        .map(|variant| Value::from(spelling.spelling(variant)))
                         .collect::<Vec<_>>(),
                 );
                 out
@@ -454,14 +457,23 @@ fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
         Builtin::Instant => string(&mut out, Some("date-time")),
         Builtin::CalendarDate => string(&mut out, Some("date")),
         Builtin::Duration => string(&mut out, Some("duration")),
-        // A time of day as it is sent: `09:30`, with seconds and up to
-        // three decimal places when it has them.
-        Builtin::Time => {
-            string(&mut out, None);
-            out.set(
-                "pattern",
-                "^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]{1,3})?)?$",
+        // An instant and the zone it is seen in (area 10).
+        Builtin::ZonedTime => {
+            out.set("type", "object");
+            let mut instant = Value::object();
+            string(&mut instant, Some("date-time"));
+            let mut zone = Value::object();
+            string(&mut zone, None);
+            zone.set(
+                "description",
+                "An IANA time zone name, such as `Europe/London`.",
             );
+            let mut properties = Value::object();
+            properties.set("instant", instant);
+            properties.set("zone", zone);
+            out.set("properties", properties);
+            out.set("required", vec!["instant", "zone"]);
+            out.set("additionalProperties", false);
         }
         Builtin::Unit => out.set("type", "null"),
         _ => string(&mut out, None),

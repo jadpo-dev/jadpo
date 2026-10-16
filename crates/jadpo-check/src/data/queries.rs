@@ -1429,6 +1429,11 @@ impl<'a> Reader<'a> {
                 ty = found;
                 continue;
             }
+            // The bounds `temporal` gives (area 10, "Zones and local times").
+            if let Some(found) = range_field(&ty, field) {
+                ty = found;
+                continue;
+            }
             let Some(host) = self.object_of(&ty) else {
                 self.value_unsupported(scope, &expr);
                 return None;
@@ -1484,6 +1489,10 @@ impl<'a> Reader<'a> {
         let head = tree::name_ref_text(&first)?;
         let mut ty = scope.params.iter().find(|(n, _)| *n == head)?.1.clone();
         for field in rest.iter().filter_map(tree::name_ref_text) {
+            if let Some(found) = range_field(&ty, &field) {
+                ty = found;
+                continue;
+            }
             let host = self.object_of(&ty)?;
             let found = self.lookup.field(&host, std::slice::from_ref(&field))?;
             let next = self.lookup.field_type(&host, &[field]);
@@ -1685,7 +1694,6 @@ impl<'a> Reader<'a> {
                             | Prim::Decimal
                             | Prim::Instant
                             | Prim::CalendarDate
-                            | Prim::Time
                             | Prim::Duration
                             | Prim::Text
                             | Prim::Uuid
@@ -2839,17 +2847,23 @@ impl<'a> Reader<'a> {
 
 // --- helpers -------------------------------------------------------------------
 
+/// Field `field` of an `InstantRange`, `start` or `end`, by its type.
+fn range_field(ty: &Ty, field: &str) -> Option<Ty> {
+    match ty.strip_nullable() {
+        Ty::Opaque(name, args) if name == jadpo_std::INSTANT_RANGE && args.is_empty() => {
+            jadpo_std::INSTANT_RANGE_FIELDS
+                .iter()
+                .find(|(name, _)| *name == field)
+                .map(|(_, builtin)| Ty::Prim(*builtin))
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn ordered(lookup: &dyn TypeView, ty: &Ty) -> bool {
     matches!(
         lookup.representation(ty),
-        Some(
-            Prim::Int
-                | Prim::Decimal
-                | Prim::Instant
-                | Prim::CalendarDate
-                | Prim::Time
-                | Prim::Duration
-        )
+        Some(Prim::Int | Prim::Decimal | Prim::Instant | Prim::CalendarDate | Prim::Duration)
     )
 }
 

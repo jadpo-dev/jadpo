@@ -12,6 +12,12 @@ pub enum FaultKind {
     IntOverflow,
     /// A `Decimal` result past 38 digits.
     DecimalOverflow,
+    /// An `Instant` or `CalendarDate` result outside the years 0000 to
+    /// 9999 (area 10).
+    TimeRange,
+    /// A test moved its clock backwards, which only moves forward (area
+    /// 13, "Controlling time").
+    ClockBackward,
     /// A call past [`crate::MAX_DEPTH`] frames (area 3, question 14).
     RecursionLimit,
     /// The route's deadline passed while the body ran without waiting:
@@ -37,6 +43,8 @@ impl FaultKind {
         match self {
             FaultKind::IntOverflow => "int_overflow",
             FaultKind::DecimalOverflow => "decimal_overflow",
+            FaultKind::TimeRange => "time_out_of_range",
+            FaultKind::ClockBackward => "clock_backward",
             FaultKind::RecursionLimit => "recursion_limit",
             FaultKind::DeadlineExceeded => "deadline_exceeded",
             FaultKind::NotBuiltYet(_) => "not_built_yet",
@@ -52,6 +60,12 @@ impl From<jadpo_value::Fault> for FaultKind {
         match fault {
             jadpo_value::Fault::IntOverflow => FaultKind::IntOverflow,
             jadpo_value::Fault::DecimalOverflow => FaultKind::DecimalOverflow,
+            jadpo_value::Fault::TimeRange => FaultKind::TimeRange,
+            // The interpreter turns a condition into the failure its
+            // `attempt` maps; one that reaches here had no `attempt`.
+            jadpo_value::Fault::Broke(_) => {
+                FaultKind::Defect("a temporal condition no `attempt` maps".into())
+            }
             jadpo_value::Fault::DivisionByZero => {
                 FaultKind::Defect("a division by zero, which the checker rules out".into())
             }

@@ -879,6 +879,12 @@ rules! {
         "02-values-and-types.html#type-setting-value", "Setting has the wrong kind of value";
     TYPE_SIBLING_MISMATCH: "type.sibling_mismatch", area 2, Error, Agent,
         "02-values-and-types.html#type-sibling-mismatch", "Field type is used for a sibling field type";
+    TYPE_TEMPORAL_CLOCK_INVALID: "type.temporal_clock_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-clock-invalid", "Clock time is not written `HH:MM`";
+    TYPE_TEMPORAL_OPTION_UNUSED: "type.temporal_option_unused", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-option-unused", "Option means nothing for this value";
+    TYPE_TEST_CLOCK_CONTEXT: "type.test_clock_context", area 13, Error, Agent,
+        "13-testing.html#type-test-clock-context", "The clock is moved outside a test";
     TYPE_TYPE_ARGUMENT_COUNT: "type.type_argument_count", area 2, Error, Agent,
         "02-values-and-types.html#type-type-argument-count", "Type has the wrong number of type arguments";
     TYPE_UNARY_OPERAND: "type.unary_operand", area 3, Error, Agent,

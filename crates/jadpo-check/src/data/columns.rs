@@ -34,7 +34,9 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
             Builtin::Bytes => "bytea".into(),
             Builtin::Instant => "timestamptz(3)".into(),
             Builtin::CalendarDate => "date".into(),
-            Builtin::Time => "time(3)".into(),
+            // An instant and its zone, stored as the API's JSON (area
+            // 5's structured values), as an object is.
+            Builtin::ZonedTime => "jsonb".into(),
             // Milliseconds, as the runtime holds a duration.
             Builtin::Duration => "bigint".into(),
             Builtin::Int => integer(table, ty),

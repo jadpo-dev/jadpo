@@ -392,7 +392,16 @@ reference only).
   of whose readers may not read the value is `policy.output_field_unproved`
   at the `set:`, following the value as 4.8's flow check does; copies
   between fields with the same readers stay allowed.
-- [ ] **5.2 Time:** `opus · high` durations, instants, formatting.
+- [x] **5.2 Time:** `opus · high` durations, instants, zones and the
+  `temporal` library, `ZonedTime` in place of the time of day, time on the
+  wire and in queries, and a test's clock. Formatting is 5.2b.
+- [ ] **5.2b Time formats** `opus · high` (area 10, "Showing dates and
+  times to people"), split from 5.2: `TimeFormat` declared and built in,
+  `ComponentStyle`, `PresentationText` and
+  `type.presentation_text_persistence`, and `temporal.format` and
+  `format_relative` checked (`zone:` required for an `Instant` and refused
+  otherwise), the text they give staying `toolchain.not_built_yet` until
+  5.3; area 10's formatting errors rewritten with real output.
 - [ ] **5.3 Translations and locales.** `sonnet · high`
 - [ ] **5.4 Standard library: the plan** `opus · high`. Only `collection`
   and `temporal` are specified, piecemeal across areas 2, 3 and 10, and

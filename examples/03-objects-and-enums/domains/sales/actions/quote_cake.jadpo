@@ -46,18 +46,18 @@ type CandleCount = Int {
     max: 100
 }
 
-// Some values only ever arrive from outside, because no literal or
-// operation makes one inside the application yet: a photo is `Bytes`, a
-// time of day is `Time`. They can still be declared, received and sent
-// back.
+// Some values have no literal, so here they only arrive from outside: a
+// photo is `Bytes`, and a moment seen in a time zone is a `ZonedTime`,
+// sent as its instant and its zone. They can still be declared, received
+// and sent back.
 
 /// A photo of the cake a customer wants copied.
 type CakePhoto = Bytes {
     max_length: 2000000
 }
 
-/// The time of day a customer will collect.
-type CollectAt = Time {}
+/// When a customer will collect, in the shop's time zone.
+type CollectAt = ZonedTime {}
 
 /// An allergy a customer tells the bakery about.
 type Allergen = Text {

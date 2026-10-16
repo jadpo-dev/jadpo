@@ -40,7 +40,7 @@ How an application declares its settings and secrets, where their values come
 from, and how code reads the current time, works with dates and zones, and
 shows times to people in their own language.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; chunk 5.1c built the client's address behind trusted proxies (`client_address:`); the examples marked `check` in those sections and in the configuration errors run with this checkout's `jadpo`. Time and formatting come in chunk 5.2, locales and translations in chunk 5.3.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; chunk 5.1c built the client's address behind trusted proxies (`client_address:`). Chunk 5.2 built time: `ZonedTime`, durations, arithmetic and comparison, the `temporal` library over a bundled time zone database, and a test's clock. The examples marked `check` in those sections and their errors run with this checkout's `jadpo`. The formats and `PresentationText` come in chunk 5.2b, and locales, translations and the formatted text in chunk 5.3.
 
 Two rules run through the page. **Code never reads the environment or the
 system clock directly**: settings arrive as typed `config.<field>` values,
@@ -464,21 +464,21 @@ not running this version: 1 error, waiting for a save that fixes them
 
 | Type | What it is | Example | On the wire |
 |---|---|---|---|
-| `Instant` | One point on the timeline, in UTC, to the millisecond | when a todo was created | `"2026-01-15T12:00:00.000Z"` |
+| `Instant` | One point on the timeline, in UTC, to the millisecond | when a todo was created | `"2026-01-15T12:00:00Z"`, `"2026-01-15T12:00:00.250Z"` |
 | `CalendarDate` | A date with no time or zone | a birthday, an invoice date | `"2026-10-25"` |
-| `Time` | An `Instant` seen in a `Zone`, for showing or reasoning about local time | "09:30 in London" | `{ "instant": …, "zone": "Europe/London" }` |
+| `ZonedTime` | An `Instant` seen in a `Zone`, for showing or reasoning about local time | "09:30 in London" | `{ "instant": "2026-10-25T08:30:00Z", "zone": "Europe/London" }` |
 | `Duration` | Elapsed time | a timeout, a retention period | `"PT5M"` |
 | `Zone` | An IANA time zone, a built-in enum | `Zone.europe_london` | `"Europe/London"` |
 | `Weekday` | A built-in enum | `Weekday.monday` | `"monday"` |
 
 - Store `Instant`. Use `CalendarDate` only for facts that really are dates.
-  There is no time without a date and zone, and no date-time without a zone.
+  There is no time of day on its own and no date-time without a zone:
+  `ZonedTime` (renamed from `Time`, question 5) holds an instant and the
+  zone it is seen in.
 - `Instant` keeps milliseconds: the precision JavaScript clients, SQLite and
   PostgreSQL all share. A literal with microseconds is rejected, and
   writes to PostgreSQL's microsecond column are always whole milliseconds
   (carried from area 5).
-- `Time` is a misleading name: in Java, JavaScript's Temporal and Elixir a
-  "time" is a time of day. Proposed: rename it `ZonedTime` (question 5).
 - Types never convert to each other or to `Text` silently; signatures use
   named types built on them (decided in area 2), such as
   `type DueAt = Instant {}`.
@@ -487,7 +487,7 @@ not running this version: 1 error, waiting for a save that fixes them
   (`"2026-10-25T08:30:00Z"`), a `CalendarDate` literal a real date
   (`"2026-10-25"`), both checked while compiling; a `Duration` is written only
   with a unit (`15m`), and `min:` and `max:` on a `Duration` type are
-  enforced; a `Time` has no literal. `Zone`, `Weekday` and `Locale` are
+  enforced; a `ZonedTime` has no literal. `Zone`, `Weekday` and `Locale` are
   built-in enums: `Zone` has a variant for each zone in the IANA database's
   `zone.tab` (2026d) plus `utc`, named in lower_snake_case
   (`Zone.america_argentina_buenos_aires`); `Locale` has one for each
@@ -496,27 +496,71 @@ not running this version: 1 error, waiting for a save that fixes them
   `Locale.en_gb`; 533 in all), named in lower_snake_case from the BCP 47
   tag. Both tables live in `jadpo-std` (`src/zones.rs`, which says how each
   was made) and change only in a change of their own.
+- An `Instant` holds the years 0000 to 9999, up to
+  `9999-12-30T22:00:00.999Z`, the last instant whose local date is in year
+  9999 in every zone, and a `CalendarDate` the same years; a literal past
+  them is refused while compiling, and arithmetic that goes past them is the
+  fault `time_out_of_range` (chosen in chunk 5.2).
+- Two `ZonedTime`s are equal when both their instants and their zones are.
+  They have no order of their own, since two in different zones have none;
+  their instants do, through `temporal.instant(...)` (chosen in chunk 5.2).
+- A `ZonedTime` field of an entity is stored as an object is, as the API's
+  JSON in `jsonb`, which is not built yet (area 5); store the `Instant` and,
+  where the zone matters, a `Zone` field beside it (chosen in chunk 5.2).
 - `clock.now` in a function, a library function or an inline function is
-  `type.clock_context`; any other member of `clock`, `translations`,
-  `sessions` or `oauth` is `toolchain.not_built_yet` until its area is built.
-  `config.<name>` is a setting (chunk 5.1).
+  `type.clock_context`; `clock.advance(...)` outside a test is
+  `type.test_clock_context` (area 13); any other member of `clock`,
+  `translations`, `sessions` or `oauth` is `toolchain.not_built_yet` until
+  its area is built. `config.<name>` is a setting (chunk 5.1).
+
+```jadpo check project=time-types
+/// When an invoice falls due.
+type DueAt = Instant {}
+
+/// The day an invoice is dated.
+type InvoiceDate = CalendarDate {}
+
+test "time literals are checked while compiling and compare as time" {
+    assert DueAt("2026-10-25T13:00:00+01:00") == DueAt("2026-10-25T12:00:00Z")
+    assert InvoiceDate("2026-10-25") < InvoiceDate("2026-10-26")
+}
+```
 
 ## Durations
 
-Proposed (question 4): one spelling everywhere in source, `500ms`, `30s`,
-`5m`, `2h`, `30d`, with ISO 8601 (`"PT5M"`) only in JSON.
+Decided (question 4): one spelling everywhere in source, `500ms`, `30s`,
+`5m`, `2h`, `30d`, with ISO 8601 (`"PT5M"`) only on the wire.
 
-```jadpo fragment
+```jadpo check project=durations
+/// How long a request may take.
 type RequestTimeout = Duration {
     max: 30s
 }
 
-var grace: Duration = 5m
+/// How long a reminder comes before its due time.
+type ReminderNotice = Duration {
+    min: 1m
+    max: 30d
+}
+
+test "durations are written with a unit, and add up" {
+    var allowed: RequestTimeout = 5s
+    assert allowed + 500ms == 5500ms
+    var notice: ReminderNotice = 2h
+    assert notice - 30m == 90m
+}
 ```
 
-`30d` would mean exactly 30 × 24 hours, which is what a retention period or a
+`30d` means exactly 30 × 24 hours, which is what a retention period or a
 token lifetime means. Moving a date by calendar days is a separate operation
 on `CalendarDate` (below).
+
+On the wire a duration is ISO 8601 in hours, minutes and seconds, as the
+runtime writes it: `"PT5M"`, `"PT1.5S"`, `"PT720H"` for `30d`, `"-PT5M"`
+for a negative one. A request's JSON, query string, path and headers give
+it the same way, with days (`"P1DT2H"`) accepted as 24 hours each; `5m` is
+the source's spelling and is refused there (chosen in chunk 5.2). A setting
+is the exception, read as source writes it, `5m` (chunk 5.1).
 
 ## The current time: `clock.now`
 
@@ -527,82 +571,306 @@ way to read a fresher time, and code never reads the system clock.
 
 Only actions read the clock. Functions and queries must give the same answer
 for the same arguments, so they take the time as a parameter
-(`type.clock_context`):
+(`type.clock_context`); a query's condition may compare with `clock.now`,
+which is the calling action's (area 6):
 
-```jadpo fragment
+```jadpo check project=clock-now
 type ReminderCutoff = Instant {}
 
-action send_due_reminders() -> Unit {
-    var cutoff: ReminderCutoff = ReminderCutoff(clock.now)
-    var todos: List<Todo> = todos_due_before(cutoff)
-    // ...
+/// The latest due time a reminder goes out for now: an hour ahead.
+action reminder_cutoff() -> ReminderCutoff {
+    return ReminderCutoff(clock.now + 1h)
 }
 
-query todos_due_before(cutoff: ReminderCutoff) -> List<Todo> {
-    // where: Todo.due_at < cutoff   (query syntax is area 6)
+test "an action reads the test's clock" {
+    clock: "2026-01-15T12:00:00Z"
+
+    assert reminder_cutoff() == ReminderCutoff("2026-01-15T13:00:00Z")
+    clock.advance(30m)
+    assert reminder_cutoff() == ReminderCutoff("2026-01-15T13:30:00Z")
 }
 ```
 
 Timeouts are measured on a separate clock that wall-clock changes cannot
-move; code never sees it. Tests fix and move the clock through fixtures
-(area 13). The generated SQL always passes the time as a value; the database's
-own `now()` is never used.
+move; code never sees it. Tests fix the clock with `clock:` and move it with
+`clock.advance(...)` (area 13). The generated SQL always passes the time as
+a value; the database's own `now()` is never used.
 
 ## Arithmetic and comparison
 
-`Instant + Duration` and `Instant - Duration` give an `Instant`;
-`Instant - Instant` gives a `Duration`; `Duration ± Duration` gives a
-`Duration`. Instants compare with `<` and `==` on the timeline, so
-`12:00Z` equals `13:00+01:00`.
+`Instant + Duration`, `Duration + Instant` and `Instant - Duration` give an
+`Instant` of the instant's own named type, so no rebuild is needed
+(question 6). `Instant - Instant` gives the `Duration` between them, which is
+negative when the second is later; `Duration ± Duration` gives a
+`Duration`. As with numbers, both sides are the same type after widening, or
+one is a literal, and the result of two of the same is a plain `Duration`.
+Instants, dates and durations order with `<`, `<=`, `>` and `>=` and compare
+with `==` on the timeline, so `12:00Z` equals `13:00+01:00`.
 
-Proposed (question 6): adding a duration keeps the instant's named type, so
-no rebuild is needed:
+A `CalendarDate` has no clock time, so a `Duration` doesn't move it; it moves
+by calendar days with `temporal.add_days`. A `ZonedTime` moves on its
+calendar the same way, or through its instant. `*`, `/` and `%` don't take
+time values (chosen in chunk 5.2).
 
-```jadpo fragment
+```jadpo check project=arithmetic
+type DueAt = Instant {}
+
+type ReminderNotice = Duration {
+    min: 1m
+    max: 7d
+}
+
+type Lateness = Duration {}
+
+/// When to send a reminder: the notice before the due time. Taking a
+/// duration from a `DueAt` gives a `DueAt`.
 function reminder_time(due_at: DueAt, notice: ReminderNotice) -> DueAt {
-    return due_at - notice      // today: an Instant, rebuilt as DueAt(due_at - notice)
+    return due_at - notice
+}
+
+/// How late something done at `done_at` was: negative when it was early.
+function lateness(due_at: DueAt, done_at: DueAt) -> Lateness {
+    return Lateness(done_at - due_at)
+}
+
+test "a duration moves an instant and keeps its type" {
+    assert reminder_time("2026-10-25T09:00:00Z", 30m) == "2026-10-25T08:30:00Z"
+    assert lateness("2026-10-25T09:00:00Z", "2026-10-25T11:15:00Z") == 135m
+    assert lateness("2026-10-25T09:00:00Z", "2026-10-25T08:00:00Z") < 0s
+}
+
+test "instants compare on the timeline" {
+    assert DueAt("2026-10-25T12:00:00Z") == DueAt("2026-10-25T13:00:00+01:00")
+    assert DueAt("2026-10-25T12:00:00Z") < DueAt("2026-10-25T12:00:00.001Z")
 }
 ```
 
 ## Zones and local times
 
 A zone turns an instant into local time; this is never ambiguous:
-
-```jadpo fragment
-var local: Time = temporal.in_zone(clock.now, Zone.europe_london)
-```
+`temporal.in_zone(clock.now, Zone.europe_london)` is a `ZonedTime`.
 
 Going the other way, from a date and a clock time to an instant, can be: at
-01:30 on the day clocks go back, London has two 01:30s, and on the day they go
-forward 01:30 does not exist. The call says what to do in both cases:
+01:30 on the day clocks go back, London has two 01:30s, and on the day they
+go forward 01:30 does not exist. One option, `dst:`, says which instant to
+take (question 7): `Dst.earlier` or `Dst.later` takes that instant of an
+overlap, and in a gap moves the clock time back or forward by the gap's
+length; `Dst.compatible` is earlier in an overlap and later in a gap, as
+JavaScript's Temporal does. Left out, or `Dst.reject`, an unclear local time
+fails, and the call's `attempt` maps it by the option's name, `dst:`, the
+way a construction's broken rule is mapped (area 2): the failure is
+`invalid_value`, and `invalid:` covers every condition without its own arm.
 
-```jadpo fragment
-var cutoff: Time = temporal.resolve(
-    date: CalendarDate("2026-10-25"),
-    at: "09:30",
-    zone: Zone.europe_london,
-    overlap: LocalOverlap.reject,
-    gap: LocalGap.reject
-)
+```jadpo check project=local-times
+type ShopDay = CalendarDate {}
+
+type Opening = ZonedTime {}
+
+type OpeningUnclear = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// When the night shift opens on `day`: 01:30, which on the day the clocks
+/// go back happens twice, and on the day they go forward not at all.
+function night_opening(day: ShopDay) fails OpeningUnclear -> Opening {
+    var opening: ZonedTime = attempt temporal.resolve(day, at: "01:30", zone: Zone.europe_london) {
+        dst: OpeningUnclear
+    }
+    return Opening(opening)
+}
+
+/// The same, taking the earlier 01:30 of the two and, when there is none,
+/// the time an hour on.
+function night_opening_anyway(day: ShopDay) -> Opening {
+    return Opening(
+        temporal.resolve(day, at: "01:30", zone: Zone.europe_london, dst: Dst.compatible)
+    )
+}
+
+test "an unclear local time fails unless `dst:` decides" {
+    assert night_opening("2026-10-25") fails OpeningUnclear
+    assert night_opening("2026-03-29") fails OpeningUnclear
+    assert temporal.instant(night_opening_anyway("2026-10-25")) == Instant("2026-10-25T00:30:00Z")
+    assert temporal.instant(night_opening_anyway("2026-03-29")) == Instant("2026-03-29T01:30:00Z")
+}
+
+test "a day on keeps the clock time, 25 hours later across the change" {
+    var saturday: ZonedTime = temporal.resolve(
+        "2026-10-24",
+        at: "09:00",
+        zone: Zone.europe_london,
+        dst: Dst.compatible
+    )
+    var sunday: ZonedTime = temporal.add_days(saturday, 1, dst: Dst.compatible)
+    assert temporal.instant(sunday) - temporal.instant(saturday) == 25h
+    assert temporal.hour(sunday) == 9
+    assert temporal.weekday(sunday) == Weekday.sunday
+}
+
+test "a month on from the 31st needs a day the month has" {
+    var end_of_january: CalendarDate = "2026-01-31"
+    assert temporal.add_months(
+        end_of_january,
+        1,
+        invalid_day: InvalidDay.last_valid_day
+    ) == CalendarDate("2026-02-28")
+}
 ```
 
-A query for "orders on 25 October in London" uses the day's bounds, which are
-correct whether the day has 23, 24 or 25 hours:
+`at:` is a clock time written out, `"09:30"` or `"09:30:15"`, checked while
+compiling (`type.temporal_clock_invalid`): there is no time-of-day type, so
+no value holds one. Only a `dst:` written out settles the condition: a `Dst`
+passed as a value might be `reject`, so the call can still fail. Moving a
+date by months or years can land on a day the month doesn't have (31
+January plus a month): `invalid_day: InvalidDay.last_valid_day` takes the
+month's last day, and left out, or `InvalidDay.reject`, the call fails with
+`invalid_day:` to map. `dst:` means something only for a `ZonedTime`; on a
+`CalendarDate` it is `type.temporal_option_unused` (chosen in chunk 5.2).
 
-```jadpo fragment
-var day: InstantRange = temporal.day_bounds(CalendarDate("2026-10-25"), Zone.europe_london)
-// where: Order.created_at >= day.start and Order.created_at < day.end
+A query for "deliveries on 25 October in London" uses the day's bounds, from
+its first instant up to the next day's, which are correct whether the day has
+23, 24 or 25 hours; a query compares a field with an `InstantRange`
+parameter's `start` and `end` as with any parameter's fields (area 6):
+
+```jadpo check project=deliveries file=app.jadpo hidden
+application {}
 ```
 
-The `temporal` library has about 35 functions and six option enums. A
-smaller form, with one daylight-saving option instead of two, is in the
-[time and formatting proposals](research/10-configuration-and-time-proposals.md)
-(question 7).
+```jadpo check project=deliveries file=domains/shop/types/delivery_note.jadpo hidden
+type DeliveryNote = Text {
+    max_length: 200
+}
+```
+
+```jadpo check project=deliveries file=domains/shop/types/shop_day.jadpo hidden
+type ShopDay = CalendarDate {}
+```
+
+```jadpo check project=deliveries file=domains/shop/entities/delivery.jadpo hidden
+use shop/types { DeliveryNote }
+
+entity Delivery {
+    id: Uuid
+    note: DeliveryNote
+    arrived_at: Instant {
+        generated: Generated.on_create
+    }
+}
+```
+
+```jadpo check project=deliveries file=domains/shop/types/delivery_view.jadpo hidden
+use shop/entities { Delivery }
+
+type DeliveryView = Output {
+    pick: [Delivery.note, Delivery.arrived_at]
+}
+```
+
+```jadpo check project=deliveries file=domains/shop/actions/record_delivery.jadpo hidden
+use shop/entities { Delivery }
+
+/// Records a delivery as it arrives: `arrived_at` is the action's
+/// `clock.now`.
+action record_delivery(note: Delivery.note) -> Delivery {
+    return Delivery.create {
+        set: {
+            note: note
+        }
+    }
+}
+```
+
+```jadpo check project=deliveries file=domains/shop/queries/deliveries_in.jadpo
+use shop/entities { Delivery }
+use shop/types { DeliveryView }
+
+/// The deliveries that arrived from `range.start` up to `range.end`.
+query deliveries_in(range: InstantRange) -> List<DeliveryView> {
+    from: Delivery
+    where: Delivery.arrived_at >= range.start
+    where: Delivery.arrived_at < range.end
+    order: [Delivery.arrived_at asc]
+    limit: 100
+}
+```
+
+```jadpo check project=deliveries file=domains/shop/actions/deliveries_on.jadpo migrate=initial
+use shop/types { DeliveryView, ShopDay }
+use shop/queries { deliveries_in }
+
+/// The deliveries on `day` in London, however many hours it has.
+action deliveries_on(day: ShopDay) -> List<DeliveryView> {
+    return deliveries_in(temporal.day_bounds(day, Zone.europe_london))
+}
+```
+
+The test runs against PostgreSQL. London's clocks go back at 02:00 on 25
+October 2026, so the day runs from 23:00 UTC on the 24th to midnight UTC on
+the 26th:
+
+```jadpo check project=deliveries file=domains/shop/actions/deliveries_on.test.jadpo
+use shop/actions { record_delivery }
+
+test "a London day has 25 hours when the clocks go back" {
+    clock: "2026-10-24T22:59:00Z"
+
+    assert record_delivery("before midnight").note == "before midnight"
+    clock.advance(2m)
+    assert record_delivery("just after midnight").note == "just after midnight"
+    clock.advance(24h)
+    assert record_delivery("late on the 25th").note == "late on the 25th"
+    clock.advance(1h)
+    assert record_delivery("the 26th").note == "the 26th"
+    assert collection.map(deliveries_on("2026-10-25"), delivery -> delivery.note) == [
+        "just after midnight",
+        "late on the 25th"
+    ]
+}
+```
+
+The `temporal` library (question 7, Option B in the
+[time and formatting proposals](research/10-configuration-and-time-proposals.md)),
+always called through its namespace. "A date or local time" is a value built
+on `CalendarDate` or `ZonedTime`, and a result of "its type" keeps the
+argument's named type:
+
+| Operation | Gives | Fails on, unless an option settles it |
+|---|---|---|
+| `in_zone(instant, zone)` | `ZonedTime` | |
+| `resolve(date, at:, zone:, dst:)` | `ZonedTime` | `dst` |
+| `between(start, end)` | `Duration`, `end - start` | |
+| `add_days(value, days, dst:)` | its type, a whole number of calendar days on, the clock time kept | `dst`, for a `ZonedTime` |
+| `add_months(value, months, invalid_day:, dst:)` | its type, months on, the day and clock time kept | `invalid_day`, and `dst` for a `ZonedTime` |
+| `add_years(value, years, invalid_day:, dst:)` | its type, twelve months a year | the same |
+| `day_bounds(date, zone)` | `InstantRange`: `start`, and `end` not included | |
+| `week_bounds(date, zone, starts_on:)` | the week holding `date`, from `starts_on` (a `Weekday`) | |
+| `month_bounds(date, zone)`, `year_bounds(date, zone)` | the month or year holding `date` | |
+| `year(value)`, `month(value)`, `day(value)` | `Int`, of a date or a local time's date; `month` and `day` from 1 | |
+| `weekday(value)` | `Weekday` | |
+| `date(zoned)`, `hour(zoned)`, `minute(zoned)` | a local time's `CalendarDate`, and `Int`s from 0 | |
+| `zone(zoned)`, `instant(zoned)` | the `Zone` it is seen in, and the `Instant` it is | |
+| `format(value, zone:, locale:, format:)`, `format_relative(value, now:, zone:, locale:)` | `PresentationText`, below | not built yet |
+
+A day's bounds start at its first instant: midnight, or, in a zone whose
+clocks skip midnight, the first time they show that day. `instant(...)` is
+the one operation the proposal didn't list: a `ZonedTime` has no order of
+its own, and its instant does (chosen in chunk 5.2).
+
+Zones come from the IANA time zone database bundled into every build
+(jiff's `jiff-tzdb`, release 2026e), never the platform's own files, so the
+interpreter, a native deployable and WebAssembly on Workers answer alike,
+and every `Zone` variant is in it, which a test holds. A newer release is a
+dependency change of its own (chosen in chunk 5.2).
 
 ## Showing dates and times to people
 
+> Not built yet: the formats and `PresentationText` come in chunk 5.2b, and
+> the text in each language with locales in chunk 5.3. Until then
+> `temporal.format` and `temporal.format_relative` are
+> `toolchain.not_built_yet`.
+
 Formatting needs three things the server must never guess: the zone, the
-language and the format. Proposed (question 7): one call that takes all
+language and the format. Decided (question 7): one call that takes all
 three, with the format either built in or declared once as a named type:
 
 ```jadpo fragment
@@ -692,7 +960,7 @@ erasure, export) is designed in area 15 (Personal data).
 
 ## Errors
 
-> The configuration errors below run with this checkout's `jadpo` (chunk 5.1). The time and locale errors after them predate the decisions above and are rewritten when chunks 5.2 and 5.3 build them.
+> The configuration errors below run with this checkout's `jadpo` (chunk 5.1), and so do `type.clock_context` and the time errors after it (chunk 5.2). The formatting and locale errors after those predate the decisions above and are rewritten when chunks 5.2b and 5.3 build them.
 
 ### `configuration.binding_empty`
 
@@ -1323,17 +1591,56 @@ check failed: 1 error, 1 file
 
 ### `type.temporal_clock_invalid`
 
-```jadpo project=e-clock-invalid expect=type.temporal_clock_invalid
-test "clock text is strict" {
-    var opening = temporal.resolve(
-        date: CalendarDate("2026-10-25"),
-        at: "9:30",
-        zone: Zone.europe_london,
-        overlap: LocalOverlap.reject,
-        gap: LocalGap.reject
-    )
+```jadpo check project=e-clock-invalid expect=type.temporal_clock_invalid
+type ShopDay = CalendarDate {}
+
+type Opening = ZonedTime {}
+
+function opening(day: ShopDay) -> Opening {
+    return Opening(temporal.resolve(day, at: "9:30", zone: Zone.utc, dst: Dst.later))
 }
 ```
+
+```text output
+error: `"9:30"` isn't a clock time
+ --> main.jadpo:6:46
+  |
+6 |     return Opening(temporal.resolve(day, at: "9:30", zone: Zone.utc, dst: Dst.later))
+  |                                              ^^^^^^ not `HH:MM`
+  reason: `temporal.resolve`'s `at:` is a clock time written `HH:MM`, or `HH:MM:SS` with seconds, each part two digits, from `00:00` to `23:59`.
+  next: Write the time with two-digit hours and minutes, such as `"09:30"` (agent)
+  rule: type.temporal_clock_invalid
+  help: docs/language/10-configuration-and-time.html#type-temporal-clock-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `type.temporal_option_unused`
+
+```jadpo check project=e-option-unused expect=type.temporal_option_unused
+type ShopDay = CalendarDate {}
+
+function next_day(day: ShopDay) -> ShopDay {
+    return temporal.add_days(day, 1, dst: Dst.compatible)
+}
+```
+
+```text output
+error: `dst:` means nothing for a `ShopDay`
+ --> main.jadpo:4:38
+  |
+4 |     return temporal.add_days(day, 1, dst: Dst.compatible)
+  |                                      ^^^ `ShopDay` has no clock time
+  reason: `dst:` chooses an instant when a local time falls in a daylight-saving gap or overlap; `temporal.add_days` on a `ShopDay` moves a date, which has no clock time, so no such time arises.
+  next: Remove `dst: ...` (agent)
+  rule: type.temporal_option_unused
+  help: docs/language/10-configuration-and-time.html#type-temporal-option-unused
+
+check failed: 1 error, 1 file
+```
+
+> The formatting and locale errors below predate the decisions above and are
+> rewritten when chunks 5.2b and 5.3 build them.
 
 ### `type.temporal_locales_required`
 
@@ -1542,8 +1849,13 @@ action as `type.clock_context`. Settings, secrets, signing keys, connection
 addresses, `jadpo config`, the check before the app starts and a test's own
 values were built in chunk 5.1 (the readings it chose are in the Decisions
 table), and the trusted proxies a client's address is read through in chunk
-5.1c. Time arithmetic and formatting come in chunk 5.2, and locales and
-translations in chunk 5.3.
+5.1c. Chunk 5.2 built time: `ZonedTime` in place of the time of day the
+first build had, durations, arithmetic and comparison, the `temporal`
+library over the IANA database bundled into every target, time values on
+the wire, in OpenAPI and in queries, and a test's `clock:` and
+`clock.advance(...)` (area 13); its readings are in the Decisions table.
+The formats and `PresentationText` come in chunk 5.2b, and locales,
+translations and the formatted text in chunk 5.3.
 
 ### Consistency with the rest of the language
 
@@ -1613,16 +1925,16 @@ translations in chunk 5.3.
    (`max: 30s`), with ISO 8601 only in JSON. Keep `d` as exactly 24 hours,
    because retention and token lifetimes are elapsed time and `720h` is
    unreadable; calendar days stay a date operation. Go has no `d` and
-   Rust's `humantime` has it; no `w`, months or years, which vary. *Decided 2026-10-12:* yes, as recommended.
+   Rust's `humantime` has it; no `w`, months or years, which vary. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.2.*
 5. **Rename `Time` to `ZonedTime`?** Java, Temporal and Elixir all use "time"
    for a time of day, so `Time` will be misread by people and agents.
    *Recommendation:* yes, `ZonedTime` (Temporal says `ZonedDateTime`, jiff
-   `Zoned`), with the wire form unchanged. *Decided 2026-10-12:* yes, as recommended.
+   `Zoned`), with the wire form unchanged. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.2*, replacing the time of day the first build had called `Time`.
 6. **Does adding a duration keep the instant's named type?** Today
    `due_at - notice` is a plain `Instant` and must be rebuilt.
    *Recommendation:* yes for `+` and `-` with a `Duration`, the one mixed
    case area 3's operator rule did not cover; `Instant - Instant` gives
-   `Duration`. *Decided 2026-10-12:* yes, as recommended.
+   `Duration`. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.2.*
 7. **Should the time library and formatting be simplified?** About 35
    functions, six option enums, two daylight-saving options on every call, a
    two-step format and an anonymous components object.
@@ -1630,7 +1942,7 @@ translations in chunk 5.3.
    [time and formatting proposals](research/10-configuration-and-time-proposals.md):
    `temporal.format(value, zone:, locale:, format:)` with named built-in or
    declared formats, `format_relative` without a profile, one `dst:` option
-   that defaults to failing, and about 20 functions. *Decided 2026-10-12:* yes, as recommended.
+   that defaults to failing, and about 20 functions. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.2* but for formatting, which is chunks 5.2b and 5.3.
 8. **Locales as names, and drop `unsupported:`?** *Recommendation:* yes,
    `default: Locale.en_gb` and `supported: [Locale.en_gb, Locale.fr_fr]`, in
    `app.jadpo`, with `Locale` a built-in enum of the standard locales. An
@@ -1730,3 +2042,12 @@ translations in chunk 5.3.
 | Trusted proxies (chosen in chunk 5.1c) | `hops:` is required with `forwarded_for` and `forwarded` and refused with `connection` and `cloudflare` (`configuration.client_address_hops_unused`); written out it is a whole number from 1, and read from a setting that setting is an `Int` (or a type built on it) declaring `min:` of at least 1, so a count below 1 never starts (`configuration.client_address_hops_invalid`). A second `client_address:` is `configuration.client_address_duplicate`, a `client_address:` that is not a block of `source:` and `hops:` is `configuration.client_address_invalid`, and a `source:` that is no `ClientAddressSource` is `configuration.client_address_source_unknown` | 2026-10-16 |
 | Reading the address (chosen in chunk 5.1c) | Every line of the header joined in order, split at commas; `Forwarded` by elements, each giving the entry of its `for`; an empty entry, a name, `unknown`, an obfuscated identifier or a zone takes its place in the count but is no address; a `Forwarded` that does not parse, or a `CF-Connecting-IP` that is not exactly one address, falls back whole. Addresses are accepted with a port or in brackets and kept in one spelling (IPv6 lower case and shortened, an IPv4-mapped address as IPv4), the connection's too. With no `client_address:` the address is the connection's natively and `CF-Connecting-IP` on Workers, where any other source is refused and an address Cloudflare did not give is unknown | 2026-10-16 |
 | Where the address is chosen (chosen in chunk 5.1c) | In the runtime, as plan data (`ClientAddressPlan` in the route table) read with the settings the app started with: `serve_request` counts a request by the address `ClientAddress` chooses from its headers and the connection address the host gives, and carries it on the response, so `jadpo dev` shows it after the time on each request line and as `address` with `--json`. The native host only supplies the connection's address | 2026-10-16 |
+| `ZonedTime` (chosen in chunk 5.2) | Replaces the time of day the first build called `Time`: an instant and the `Zone` it is seen in, with no literal, sent as `{ "instant": ..., "zone": "Europe/London" }`. Two are equal when both parts are; they have no order of their own, their instants do (`temporal.instant(...)`). An entity's `ZonedTime` field is stored as an object is, as `jsonb`, not built yet; it is not a setting. The only clock time is `resolve`'s `at:`, written out | 2026-10-16 |
+| Time range (chosen in chunk 5.2) | An `Instant` holds 0000-01-01T00:00:00Z to 9999-12-30T22:00:00.999Z, the last whose local date is in year 9999 in every zone, and a `CalendarDate` 0000-01-01 to 9999-12-31; a literal past them is refused while compiling, and arithmetic past them is the fault `time_out_of_range` | 2026-10-16 |
+| Time arithmetic (chosen in chunk 5.2) | `Instant ± Duration` and `Duration + Instant` keep the instant's named type; `Instant - Instant` of the same type after widening gives a plain `Duration`, negative when the second is later; `Duration ± Duration` of the same type, or with a literal, gives a plain `Duration`. A `CalendarDate` or `ZonedTime` takes no `Duration`, and `*`, `/` and `%` take no time value (`type.arithmetic_operand`, naming `temporal.add_days`) | 2026-10-16 |
+| Time on the wire (chosen in chunk 5.2) | A `Duration` is written ISO 8601 in hours, minutes and seconds (`PT720H` for `30d`, `-PT5M`), and read the same way in JSON, query strings, paths and headers, days counting 24 hours; `5m` is source's spelling and refused there, but a setting keeps it. A `Zone` is sent as its IANA name and a `Locale` as its BCP 47 tag, as a setting reads them, and OpenAPI lists them so; a `ZonedTime` is an object of a `date-time` `instant` and a `zone`, both required | 2026-10-16 |
+| Unclear local times (chosen in chunk 5.2) | `dst:` and `invalid_day:` each settle a condition a call fails on, which its `attempt` maps by the option's name (`dst:`, `invalid_day:`) as a construction's broken rule is mapped: an `invalid_value` failure, `invalid:` for the rest, `failure.rule_unmapped` and `failure.rule_cannot_break` as for rules. Only a value written out other than `reject` settles one; a value passed in might be `reject`. `Dst` keeps Temporal's meanings (earlier or later of an overlap; in a gap, the clock moved back or forward by its length; `compatible` earlier in an overlap and later in a gap); `InvalidDay` is `reject` or `last_valid_day`. `dst:` on a `CalendarDate` is `type.temporal_option_unused` | 2026-10-16 |
+| `at:` (chosen in chunk 5.2) | A clock time written out, `HH:MM`, `HH:MM:SS` or `HH:MM:SS.mmm`, each field two digits; anything else, a value passed in included, is `type.temporal_clock_invalid`, since no type holds a time of day | 2026-10-16 |
+| The `temporal` library (chosen in chunk 5.2) | Option B's operations, nineteen built: `in_zone`, `resolve`, `between`, `add_days`, `add_months` and `add_years` (twelve months a year) on a date or a local time, keeping its named type; `day_bounds`, `week_bounds` (from `starts_on:`), `month_bounds` and `year_bounds` giving an `InstantRange` whose `start` is the period's first instant (midnight, or the first time a zone's clocks show when they skip it) and whose `end` is the next period's, not included; `year`, `month`, `day` and `weekday` of a date or a local time's date; `date`, `hour`, `minute`, `zone` and `instant` of a local time, `instant` added because a `ZonedTime` has no order of its own. A query compares a field with an `InstantRange` parameter's `start` and `end` | 2026-10-16 |
+| Time zone data (chosen in chunk 5.2) | The `temporal` operations run in `jadpo-value` on jiff 0.2.38 with its bundled database (`jiff-tzdb`, IANA 2026e, about 200 KB): pure Rust, built for wasm32, with Temporal's handling of gaps and overlaps, and nothing read from the platform's zone files or clock, so the interpreter, native deployables and Workers answer alike. Every `Zone` variant is in it, which a test holds; a newer release is a change of its own | 2026-10-16 |
+| Not built here (chosen in chunk 5.2) | The formats (`TimeFormat`, `ComponentStyle`, the built-in formats), `PresentationText` and its errors, and `temporal.format` and `format_relative` checked are chunk 5.2b; the text they give, in each locale, is chunk 5.3 | 2026-10-16 |

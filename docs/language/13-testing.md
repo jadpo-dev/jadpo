@@ -508,8 +508,9 @@ A test's environment is set at the top of its body, before the first
 statement, as `name: value` settings (question 2). There are three, and all
 are optional:
 
-- `clock:` the instant the test starts at. Without it, the clock is fixed at
-  a documented default, never the real time.
+- `clock:` the instant the test starts at, written out
+  (`"2026-01-15T12:00:00Z"`). Without it, the clock is fixed at
+  2000-01-01T00:00:00Z, never the real time (chosen in chunk 5.2).
 - `config:` configuration values that differ from the test values in
   `config.jadpo`.
 - `fakes:` the responses each integration operation gives, in order.
@@ -549,7 +550,9 @@ A test never waits for real time. The clock starts at `clock:` and moves
 only when the test says so, with `clock.advance(5m)`: the clock belongs to
 `clock`, like `clock.now`. An action reads one time for its whole run, so
 advancing changes what the next call sees, not a call already running.
-The clock only moves forward. `clock.advance` is an error outside a test.
+The clock only moves forward: a negative duration is the fault
+`clock_backward`. `clock.advance` is an error outside a test, in a fixture
+or a seed too (`type.test_clock_context`, chosen in chunk 5.2).
 
 ```jadpo fragment
 // domains/planning/queries/overdue_todos.test.jadpo
@@ -914,7 +917,7 @@ In a test (question 8 for the database, question 9 for these):
 
 ## Errors
 
-> The three `test.*` codes run on the new compiler, with `jadpo test`'s real report. The `check` errors after them (fakes, the test clock and configuration fixtures) predate the decisions above and are rewritten when areas 10 and 11 are built (roadmap Phases 5 and 7).
+> The three `test.*` codes run on the new compiler, with `jadpo test`'s real report, and so does `type.test_clock_context` (chunk 5.2). The other `check` errors after them (fakes and configuration fixtures) predate the decisions above and are rewritten when areas 10 and 11 are built (roadmap Phases 5 and 7).
 
 Every error this area can produce, with an example that triggers it:
 first the three codes a failed test gets from `jadpo test`, each with its
@@ -1463,17 +1466,27 @@ action misuse_test_boundary() -> ClockReading {
 
 Application code cannot move the clock:
 
-```jadpo project=e-clock-context expect=type.test_clock_context
-value ClockReading {
-    value: Instant
-}
+```jadpo check project=e-clock-context expect=type.test_clock_context
+type ShiftEnd = Instant {}
 
-action move_production_clock() -> ClockReading {
-    advance clock by Duration("PT5M")
-    return ClockReading {
-        value: clock.now
-    }
+action end_shift() -> ShiftEnd {
+    clock.advance(5m)
+    return ShiftEnd(clock.now)
 }
+```
+
+```text output
+error: An action can't move the clock
+ --> main.jadpo:4:5
+  |
+4 |     clock.advance(5m)
+  |     ^^^^^^^^^^^^^ moves the clock
+  reason: Only a test moves its clock: elsewhere the time is the operation's `clock.now`, fixed while it runs, and a later request or schedule run reads a later one.
+  next: Move the clock in a test with `clock.advance(...)`, or remove this line (agent)
+  rule: type.test_clock_context
+  help: docs/language/13-testing.html#type-test-clock-context
+
+check failed: 1 error, 1 file
 ```
 
 ### `configuration.field_unknown`
@@ -1643,7 +1656,7 @@ with when it comes.
 | Route tests | Work (run, chunk 4.1): `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token (chunks 4.3, 4.3b), and a service through a real service key (chunk 4.3b). Since chunk 4.7 every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). Since chunk 4.9 an optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. |
 | Assertion messages | Work (run, chunk 2.2): a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). The trace, fakes, kept database and clock in the decided report come with their phases and are left out until then. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
-| Clock | Decided, not built: the test clock comes with time (area 10, roadmap 5.2). |
+| Clock | Works (run, chunk 5.2): a test's clock starts at its `clock:`, or at 2000-01-01T00:00:00Z without one, and `clock.advance(...)` moves it on for the calls after it; only a test moves it (`type.test_clock_context`, a fixture and a seed included), and a move backwards is the fault `clock_backward`. |
 | Configuration | Works (check and run, chunk 5.1): `test:` values on fields, defaults, generated secrets and a test's own `config:`; a request sent through a route is not followed for the compile-time check that every setting a test reads has a value, and a read with none then ends the test as a fault naming the setting. |
 | Integration fakes | Decided, not built: fakes come with packages (area 11, roadmap 7.2). |
 | Database | Works (run, chunk 3.1): `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Since chunks 3.2 and 3.3 tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. |
@@ -1817,3 +1830,4 @@ with when it comes.
 | Idempotency keys in route tests | A route test sends a fresh `Idempotency-Key` with every request but a `GET`, as a real client would, so a route on an API with `idempotency: Idempotency.required` is tested through its success; a test that writes its own `Idempotency-Key` header sends that one instead, to test repeats and refusals; built in chunk 4.7 (Richard) | 2026-10-16 |
 | Writing a route test's key (chosen in chunk 4.7, confirmed by Richard 2026-10-16) | A test writes the key it sends as `idempotency_key:` in `request { }`, text, as `as:` stands for the credential: the request has no headers of its own, and an `Input`'s `header:` field is the action's, which the runtime's key never reaches. The runtime checks it as it checks a client's. A `GET` reads no key, so a request to one that gives `idempotency_key:` is `semantic.request_invalid`. A fresh key is a new identity from the test's seed, so a run is the same every time; a route whose `Input` itself reads an `Idempotency-Key` header sends that one | 2026-10-16 |
 | An omitted field in a route test (chosen in chunk 4.9) | A route test's `input:` leaves an optional field it doesn't write out of the body it sends, as a client would, so a `patch:` keeps that field rather than clearing it; a field written as `none` is sent as `null`. A request's body goes with `Content-Type: application/json` | 2026-10-16 |
+| The test clock (chosen in chunk 5.2) | A test without `clock:` starts at 2000-01-01T00:00:00Z; `clock:` is an instant written out (`type.setting_value` otherwise). `clock.advance(duration)` moves the clock on for the calls after it, never one already running; it is `type.test_clock_context` anywhere but a test, a fixture and a seed included, and a negative duration is the fault `clock_backward` | 2026-10-16 |

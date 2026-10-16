@@ -727,7 +727,7 @@ impl Reader<'_> {
                     base.name()
                 ));
             }
-            Prim::Bytes | Prim::Time | Prim::Unit => {
+            Prim::Bytes | Prim::ZonedTime | Prim::Unit => {
                 return Err(format!(
                     "`{}` has no one-piece text form for a variable.",
                     base.name()
@@ -1206,6 +1206,9 @@ fn test_values(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TestSettings {
     pub overrides: Vec<(String, String)>,
+    /// Where its `clock:` starts the test's clock, in milliseconds since
+    /// 1970-01-01T00:00:00Z (area 13, "Test settings").
+    pub clock: Option<i64>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -1245,6 +1248,15 @@ pub fn test_settings<'db>(
         let Some(key) = member.member_key() else {
             continue;
         };
+        if tree::written(key.syntax()) == "clock" {
+            if let Some(value) = member.value() {
+                match test_clock(&path, &value) {
+                    Ok(start) => out.clock = Some(start),
+                    Err(problem) => reader.out.problems.push(*problem),
+                }
+            }
+            continue;
+        }
         if tree::written(key.syntax()) != "config" {
             continue;
         }
@@ -1305,6 +1317,35 @@ pub fn test_settings<'db>(
     }
     out.problems = reader.out.problems;
     out
+}
+
+/// A test's `clock:`: an instant written out, `"2026-01-15T12:00:00Z"`.
+fn test_clock(path: &str, value: &ast::Expr) -> Result<i64, Box<Diagnostic>> {
+    let span = node_span(path, value.syntax());
+    let written = tree::written(value.syntax());
+    let text = match value {
+        ast::Expr::Literal(_) => match crate::types::Const::from_expr(value) {
+            crate::types::Const::Str(text) => Some(text),
+            _ => None,
+        },
+        _ => None,
+    };
+    if let Some(millis) = text.as_deref().and_then(jadpo_std::instant_millis) {
+        return Ok(millis);
+    }
+    let why = match text.as_deref().map(jadpo_std::check_instant) {
+        Some(Err(why)) => format!("The value {why}."),
+        _ => format!("`{written}` isn't written out as an instant."),
+    };
+    Err(Box::new(Diagnostic::new(
+        &rule::TYPE_SETTING_VALUE,
+        "`clock:` is the instant the test starts at",
+    )
+    .at(span, "not an instant")
+    .reason(format!(
+        "{why} A test's clock starts at an instant written as text, ISO 8601 with a `Z` or an offset, and moves only with `clock.advance(...)`."
+    ))
+    .next("Write the instant, such as `clock: \"2026-01-15T12:00:00Z\"`")))
 }
 
 fn unknown_in_test(model: &Config, name: &str, span: Span) -> Diagnostic {

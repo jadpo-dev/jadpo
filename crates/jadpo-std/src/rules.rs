@@ -41,11 +41,20 @@ pub enum RuleKey {
     Format,
     Scale,
     Version,
+    /// A local time a temporal operation makes falls in a daylight-saving
+    /// gap or overlap, and its `dst:` didn't say which instant to take
+    /// (area 10, "Zones and local times").
+    Dst,
+    /// A date a temporal operation makes has no such day in its month, and
+    /// its `invalid_day:` didn't say what to do instead.
+    InvalidDay,
 }
 
 impl RuleKey {
-    /// Every key, in the order a type's block lists its rules.
-    pub const ALL: [RuleKey; 8] = [
+    /// Every key: a type's rules in the order its block lists them, then
+    /// the conditions a temporal operation can fail on, each named by the
+    /// option that would settle it.
+    pub const ALL: [RuleKey; 10] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -54,6 +63,8 @@ impl RuleKey {
         RuleKey::Format,
         RuleKey::Scale,
         RuleKey::Version,
+        RuleKey::Dst,
+        RuleKey::InvalidDay,
     ];
 
     /// The key as written: `max`, `min_length`.
@@ -67,6 +78,8 @@ impl RuleKey {
             RuleKey::Format => "format",
             RuleKey::Scale => "scale",
             RuleKey::Version => "version",
+            RuleKey::Dst => "dst",
+            RuleKey::InvalidDay => "invalid_day",
         }
     }
 

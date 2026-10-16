@@ -27,6 +27,7 @@ pub(crate) fn plan(db: &dyn Db, project: Project, types: &mut Types) -> ConfigPl
             spelling: match setting.reads {
                 Reads::Zone => Spelling::Zone,
                 Reads::Locale => Spelling::Locale,
+                Reads::Duration => Spelling::Duration,
                 _ => Spelling::Plain,
             },
             default: setting.default.clone(),

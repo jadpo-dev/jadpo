@@ -102,7 +102,7 @@ var total: Price = rounding.half_even(subtotal)                    // a library
 var line: Pence = line_total(price, quantity)                      // a helper in this file
 var stock: Reservation = attempt inventory.reserve_for_cart(cart)  // another domain
 var todo: Todo = attempt Todo.get(todo_id)                         // an entity
-var local: Time = temporal.in_zone(at, zone)                       // the standard library
+var local: ZonedTime = temporal.in_zone(at, zone)                  // the standard library
 ```
 
 A library holds only functions.
@@ -2261,8 +2261,7 @@ function london_morning(date: Day) -> Instant {
         at: "09:00",
         zone: Zone.europe_london,
         zone: Zone.europe_london,
-        overlap: LocalOverlap.earlier,
-        gap: LocalGap.reject
+        dst: Dst.earlier
     )
 }
 ```
@@ -2293,8 +2292,7 @@ function london_morning(date: Day) -> Instant {
         date: date,
         "09:00",
         zone: Zone.europe_london,
-        overlap: LocalOverlap.earlier,
-        gap: LocalGap.reject
+        dst: Dst.earlier
     )
 }
 ```

@@ -11,6 +11,7 @@ Count
 Currency
 Cutoff
 Day
+Days
 Difference
 Dimensions
 Done
@@ -30,6 +31,7 @@ Money
 Name
 Note
 Open
+Opening
 Order
 Pair
 Percent
