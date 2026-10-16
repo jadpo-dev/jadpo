@@ -227,15 +227,29 @@ pub(crate) async fn authenticate(
             return Err(Refused::new(INVALID_CREDENTIALS));
         };
         let row = look_up(ctx, user, credential).await?;
-        let Some([SqlValue::Uuid(session), SqlValue::Null(_), id, subject, SqlValue::Bool(active)]) =
-            row.as_deref()
+        let Some(
+            [
+                SqlValue::Uuid(session),
+                SqlValue::Null(_),
+                id,
+                subject,
+                SqlValue::Bool(active),
+            ],
+        ) = row.as_deref()
         else {
             return Err(Refused::new(INVALID_CREDENTIALS));
         };
         if !*active {
             return Err(Refused::new(USER_DISABLED));
         }
-        return signed_in(route, user, PrincipalKind::User, id, subject, Some(*session));
+        return caller_of(
+            route,
+            user,
+            PrincipalKind::User,
+            id,
+            subject,
+            Some(*session),
+        );
     }
     if credential.starts_with(SERVICE_KEY_PREFIX)
         && accepts(AuthenticationMethod::ServiceKey)
@@ -255,7 +269,7 @@ pub(crate) async fn authenticate(
         if !*active {
             return Err(Refused::new(SERVICE_DISABLED));
         }
-        return signed_in(route, service, PrincipalKind::Service, id, subject, None);
+        return caller_of(route, service, PrincipalKind::Service, id, subject, None);
     }
     Err(Refused::new(INVALID_CREDENTIALS))
 }
@@ -282,8 +296,15 @@ async fn cookie(
     }
     let row = look_up(ctx, user, token).await?;
     // An API token has no CSRF token, and never comes as the cookie.
-    let Some([SqlValue::Uuid(session), csrf @ SqlValue::Text(_), id, subject, SqlValue::Bool(active)]) =
-        row.as_deref()
+    let Some(
+        [
+            SqlValue::Uuid(session),
+            csrf @ SqlValue::Text(_),
+            id,
+            subject,
+            SqlValue::Bool(active),
+        ],
+    ) = row.as_deref()
     else {
         return Err(invalid);
     };
@@ -293,7 +314,14 @@ async fn cookie(
     if route.method != jadpo_std::HttpMethod::Get && !csrf_holds(request, csrf) {
         return Err(Refused::new(CSRF_REJECTED));
     }
-    signed_in(route, user, PrincipalKind::User, id, subject, Some(*session))
+    caller_of(
+        route,
+        user,
+        PrincipalKind::User,
+        id,
+        subject,
+        Some(*session),
+    )
 }
 
 /// The row a credential's verifier finds, with its caller's record: none
@@ -327,7 +355,7 @@ async fn look_up(
 }
 
 /// The caller a credential signed in, once the route accepts its kind.
-fn signed_in(
+fn caller_of(
     route: &RoutePlan,
     plan: &PrincipalPlan,
     kind: PrincipalKind,
@@ -524,7 +552,11 @@ pub async fn issue_token(
         return Stored::Fault(defect(ctx, "a token issued with no randomness", site));
     };
     let Ok(user) = crate::to_sql(user, SqlType::Uuid) else {
-        return Stored::Fault(defect(ctx, "a token issued for a value that isn't an id", site));
+        return Stored::Fault(defect(
+            ctx,
+            "a token issued for a value that isn't an id",
+            site,
+        ));
     };
     let token = format!("{API_TOKEN_PREFIX}{token}");
     let now = ctx.now();
@@ -560,9 +592,14 @@ pub async fn issue_key(
     let (Some(key), Some(id)) = (new_token(ctx), ctx.new_id()) else {
         return Stored::Fault(defect(ctx, "a key issued with no randomness", site));
     };
-    let (Ok(service), Value::Instant(expires_at)) = (crate::to_sql(service, SqlType::Uuid), expires_at)
+    let (Ok(service), Value::Instant(expires_at)) =
+        (crate::to_sql(service, SqlType::Uuid), expires_at)
     else {
-        return Stored::Fault(defect(ctx, "a key issued for values that aren't an id and a time", site));
+        return Stored::Fault(defect(
+            ctx,
+            "a key issued for values that aren't an id and a time",
+            site,
+        ));
     };
     let key = format!("{SERVICE_KEY_PREFIX}{key}");
     let params = [
@@ -586,7 +623,7 @@ pub async fn issued(
     ctx: &mut Ctx<'_>,
     plan: Option<&IdentityPlan>,
     keys: bool,
-    owner: &Value,
+    holder: &Value,
     site: u32,
 ) -> Stored {
     let store = match (plan, keys) {
@@ -595,12 +632,20 @@ pub async fn issued(
         (None, _) => None,
     };
     let Some(store) = store else {
-        return Stored::Fault(defect(ctx, "tokens or keys listed with nothing to sign in", site));
+        return Stored::Fault(defect(
+            ctx,
+            "tokens or keys listed with nothing to sign in",
+            site,
+        ));
     };
-    let Ok(owner) = crate::to_sql(owner, SqlType::Uuid) else {
-        return Stored::Fault(defect(ctx, "tokens or keys listed for a value that isn't an id", site));
+    let Ok(holder) = crate::to_sql(holder, SqlType::Uuid) else {
+        return Stored::Fault(defect(
+            ctx,
+            "tokens or keys listed for a value that isn't an id",
+            site,
+        ));
     };
-    let params = [owner, SqlValue::Timestamp(ctx.now().saturating_mul(1000))];
+    let params = [holder, SqlValue::Timestamp(ctx.now().saturating_mul(1000))];
     let statement = if keys { KEYS } else { TOKENS };
     let rows = match ctx.transaction(&store).await {
         Ok(transaction) => transaction.query(statement, &params).await,
@@ -646,10 +691,18 @@ pub async fn revoke(
         (None, _) => None,
     };
     let Some(store) = store else {
-        return Stored::Fault(defect(ctx, "a token or key revoked with nothing to sign in", site));
+        return Stored::Fault(defect(
+            ctx,
+            "a token or key revoked with nothing to sign in",
+            site,
+        ));
     };
     let Ok(id) = crate::to_sql(id, SqlType::Uuid) else {
-        return Stored::Fault(defect(ctx, "a token or key revoked by a value that isn't an id", site));
+        return Stored::Fault(defect(
+            ctx,
+            "a token or key revoked by a value that isn't an id",
+            site,
+        ));
     };
     let statement = if keys { REVOKE_KEY } else { REVOKE_TOKEN };
     if let Err(error) = execute(ctx, &store, statement, &[id]).await {
@@ -665,7 +718,10 @@ async fn execute(
     statement: &str,
     params: &[SqlValue],
 ) -> Result<u64, StoreError> {
-    ctx.transaction(store).await?.execute(statement, params).await
+    ctx.transaction(store)
+        .await?
+        .execute(statement, params)
+        .await
 }
 
 /// A store's refusal of a session's statement, as what the runtime raises.
@@ -764,7 +820,8 @@ pub async fn test_credentials(
             .is_some_and(|api| api.methods.contains(&method))
     };
     let now = ctx.now();
-    let ends = |lifetime: i64| SqlValue::Timestamp(now.saturating_add(lifetime).saturating_mul(1000));
+    let ends =
+        |lifetime: i64| SqlValue::Timestamp(now.saturating_add(lifetime).saturating_mul(1000));
     let started = SqlValue::Timestamp(now.saturating_mul(1000));
     let session = plan.cookie.clone().zip(plan.csrf_cookie()).filter(|_| {
         kind == PrincipalKind::User

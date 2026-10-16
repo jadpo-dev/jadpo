@@ -242,12 +242,12 @@ pub fn document(
     let mut schemes = Value::object();
     for method in &methods {
         let bearer = match method {
-            jadpo_std::AuthenticationMethod::ApiToken => {
-                Some("An API token, `jadpo_token_` and 64 hexadecimal digits, which a route whose action calls `sessions.issue_token` gives once.")
-            }
-            jadpo_std::AuthenticationMethod::ServiceKey => {
-                Some("A service key, `jadpo_key_` and 64 hexadecimal digits, which a route whose action calls `issue_key` gives once.")
-            }
+            jadpo_std::AuthenticationMethod::ApiToken => Some(
+                "An API token, `jadpo_token_` and 64 hexadecimal digits, which a route whose action calls `sessions.issue_token` gives once.",
+            ),
+            jadpo_std::AuthenticationMethod::ServiceKey => Some(
+                "A service key, `jadpo_key_` and 64 hexadecimal digits, which a route whose action calls `issue_key` gives once.",
+            ),
             _ => None,
         };
         if let Some(description) = bearer.filter(|_| identity.built(*method)) {

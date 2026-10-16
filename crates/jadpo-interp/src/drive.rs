@@ -145,9 +145,10 @@ async fn request(
     };
     if let Some(caller) = caller {
         // `as:` signs in through the application's real authentication.
-        let headers = jadpo_runtime::http::identity::test_credentials(ctx, app.table, route, caller)
-            .await
-            .map_err(Stop::Fault)?;
+        let headers =
+            jadpo_runtime::http::identity::test_credentials(ctx, app.table, route, caller)
+                .await
+                .map_err(Stop::Fault)?;
         request.headers.extend(headers);
     }
     let id = jadpo_runtime::http::request_id(ctx, u64::from(ctx.actions()));
@@ -178,8 +179,8 @@ async fn session(
         (SessionOp::IssueKey, [service, expires_at]) => {
             identity::issue_key(ctx, plan, service, expires_at, at).await
         }
-        (SessionOp::Tokens | SessionOp::Keys, [owner]) => {
-            identity::issued(ctx, plan, op.on_service(), owner, at).await
+        (SessionOp::Tokens | SessionOp::Keys, [holder]) => {
+            identity::issued(ctx, plan, op.on_service(), holder, at).await
         }
         (SessionOp::RevokeToken | SessionOp::RevokeKey, [id]) => {
             identity::revoke(ctx, plan, op.on_service(), id, at).await

@@ -41,14 +41,14 @@ impl Planner<'_> {
         })
     }
 
-    /// How one kind of caller is made and, when `signed_in` says something
+    /// How one kind of caller is made and, when `looked_up` says something
     /// signs it in, looked up: a user by a session's or an API token's
     /// verifier in `jadpo_sessions`, a service by a key's in
     /// `jadpo_service_keys`.
     fn principal(
         &self,
         variant: &jadpo_check::identity::Variant,
-        signed_in: bool,
+        looked_up: bool,
     ) -> Option<PrincipalPlan> {
         let entity = self.model.entity(&variant.entity)?;
         let subject = entity.fields.iter().find(|f| f.name == variant.subject)?;
@@ -60,7 +60,7 @@ impl Planner<'_> {
             column,
             lookup: None,
         };
-        if !signed_in {
+        if !looked_up {
             return Some(plan);
         }
         let mut bind = Lookup;

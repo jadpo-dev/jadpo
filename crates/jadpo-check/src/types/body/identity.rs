@@ -196,7 +196,11 @@ impl Body<'_> {
                 SessionOp::End => "ends the session of the request a route answers".to_string(),
                 SessionOp::Tokens | SessionOp::Keys => format!(
                     "reads the {} the runtime keeps, which only an action, run by a route or another action, reads",
-                    if op == SessionOp::Tokens { "tokens" } else { "keys" }
+                    if op == SessionOp::Tokens {
+                        "tokens"
+                    } else {
+                        "keys"
+                    }
                 ),
                 _ => format!(
                     "writes the {} the runtime keeps, in the transaction of the action that calls it",
@@ -211,9 +215,9 @@ impl Body<'_> {
                 .at(span, "outside an action")
                 .reason(format!("`{written}` {does}, so only an action calls it."))
                 .next(match op {
-                    SessionOp::Start | SessionOp::End => format!(
-                        "Call `{written}` in the action a sign-in or sign-out route runs"
-                    ),
+                    SessionOp::Start | SessionOp::End => {
+                        format!("Call `{written}` in the action a sign-in or sign-out route runs")
+                    }
                     _ => format!("Call `{written}` in an action"),
                 }),
             );
@@ -265,7 +269,10 @@ impl Body<'_> {
                     )
                     .at(span, format!("no `{}` declared", method.name()))
                     .reason(declare)
-                    .next(format!("Declare `{}:` in `authentication.jadpo`", method.name())),
+                    .next(format!(
+                        "Declare `{}:` in `authentication.jadpo`",
+                        method.name()
+                    )),
                 );
             }
             return failed(self);
@@ -280,7 +287,10 @@ impl Body<'_> {
                 vec![("the user's", id(&entity))],
                 Ty::List(Box::new(Ty::Opaque(ISSUED_TOKEN.to_string(), Vec::new()))),
             ),
-            SessionOp::RevokeToken => (vec![("the token's", Ty::Prim(Prim::Uuid))], Ty::Prim(Prim::Unit)),
+            SessionOp::RevokeToken => (
+                vec![("the token's", Ty::Prim(Prim::Uuid))],
+                Ty::Prim(Prim::Unit),
+            ),
             SessionOp::IssueKey => (
                 vec![
                     ("the service's", id(&entity)),
@@ -292,7 +302,10 @@ impl Body<'_> {
                 vec![("the service's", id(&entity))],
                 Ty::List(Box::new(Ty::Opaque(ISSUED_KEY.to_string(), Vec::new()))),
             ),
-            SessionOp::RevokeKey => (vec![("the key's", Ty::Prim(Prim::Uuid))], Ty::Prim(Prim::Unit)),
+            SessionOp::RevokeKey => (
+                vec![("the key's", Ty::Prim(Prim::Uuid))],
+                Ty::Prim(Prim::Unit),
+            ),
         };
         if args.len() != params.len() || args.iter().any(|arg| arg.name().is_some()) {
             let at = call
@@ -332,7 +345,11 @@ impl Body<'_> {
                 self.check(&value, ty);
             }
         }
-        (result, CallKind::Effect(written.to_string()), Reach::Session(op))
+        (
+            result,
+            CallKind::Effect(written.to_string()),
+            Reach::Session(op),
+        )
     }
 
     /// `Entity.issue_key(...)`, `Entity.keys(...)` or

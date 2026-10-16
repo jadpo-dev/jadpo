@@ -776,8 +776,9 @@ impl Reader<'_> {
         );
         // A token or a key is shown once and kept only as its verifier, by
         // the runtime (area 8).
-        if let Ty::Prim(credential @ (jadpo_std::Builtin::ApiToken | jadpo_std::Builtin::ServiceKey)) =
-            self.lookup.structure(&ty)
+        if let Ty::Prim(
+            credential @ (jadpo_std::Builtin::ApiToken | jadpo_std::Builtin::ServiceKey),
+        ) = self.lookup.structure(&ty)
         {
             let what = if credential == jadpo_std::Builtin::ApiToken {
                 "An API token"
@@ -787,7 +788,14 @@ impl Reader<'_> {
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_AUTH_CREDENTIAL_STORED,
-                    format!("`{entity}.{name}` keeps a `{}`", credential.name()),
+                    format!(
+                        "`{entity}.{name}` keeps {}",
+                        if credential == jadpo_std::Builtin::ApiToken {
+                            "an API token"
+                        } else {
+                            "a service key"
+                        }
+                    ),
                 )
                 .at(node_span(path, value.syntax()), "a secret, stored")
                 .reason(format!(

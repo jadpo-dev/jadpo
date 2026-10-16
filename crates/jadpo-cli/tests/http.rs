@@ -10,7 +10,9 @@
 //! health, the body limit, a retried write answered from its
 //! `Idempotency-Key`, and a write held past its deadline by another
 //! transaction's lock, which commits nothing. The project's OpenAPI document is compared
-//! with its golden copy (`JADPO_BLESS=1` rewrites it).
+//! with its golden copy (`JADPO_BLESS=1` rewrites it). Signing in (area 8):
+//! a browser session with its CSRF token, an API token an action issues,
+//! and a service key, each ended or revoked.
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips the
@@ -1440,4 +1442,729 @@ fn openapi_shows_the_session_and_what_signing_in_answers() {
         shown.contains(&("POST /notes".into(), "required".into())),
         "{shown:?}"
     );
+}
+
+const TOKENS: &[(&str, &str)] = &[
+    (
+        "app.jadpo",
+        r#"use journal/entities { Member, Partner }
+use journal/types { MemberStatus, PartnerStatus }
+
+application {}
+
+principal {
+    user: {
+        subject: Member.handle
+        active: Member.status == MemberStatus.active
+    }
+    service: {
+        subject: Partner.name
+        active: Partner.status == PartnerStatus.active
+    }
+}
+"#,
+    ),
+    (
+        "authentication.jadpo",
+        r#"authentication {
+    api_token: {}
+    service_key: {}
+}
+"#,
+    ),
+    (
+        "domains/journal/actions/add_device.jadpo",
+        r#"/// Gives another of the member's devices a token, shown once.
+action add_device(member: Principal.user) -> DeviceAdded {
+    return DeviceAdded {
+        token: sessions.issue_token(member.id)
+    }
+}
+
+/// A device's new token.
+type DeviceAdded = Output {
+    token: ApiToken
+}
+"#,
+    ),
+    (
+        "domains/journal/actions/add_partner.jadpo",
+        r#"use journal/entities { Partner }
+use journal/types { PartnerName }
+use journal/failures { PartnerNameTaken }
+use journal/actions { create_partner }
+
+/// Adds a partner and gives its first key, shown once.
+action add_partner(input: AddPartner) fails PartnerNameTaken -> PartnerAdded {
+    var partner: Partner = attempt create_partner(input.name)
+    return PartnerAdded {
+        key: Partner.issue_key(partner.id, input.key_expires_at)
+    }
+}
+
+/// What adding a partner takes.
+type AddPartner = Input {
+    name: PartnerName
+    key_expires_at: Instant
+}
+
+/// The partner's key, which it sends as `Authorization: Bearer`.
+type PartnerAdded = Output {
+    key: ServiceKey
+}
+"#,
+    ),
+    (
+        "domains/journal/actions/create_partner.jadpo",
+        r#"use journal/entities { Partner }
+use journal/types { PartnerName, PartnerStatus }
+use journal/failures { PartnerNameTaken }
+
+action create_partner(name: PartnerName) fails PartnerNameTaken -> Partner {
+    return attempt Partner.create {
+        set: {
+            name: name
+            status: PartnerStatus.active
+        }
+        conflict: {
+            Partner.name: PartnerNameTaken
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/journal/actions/list_devices.jadpo",
+        r#"/// The member's devices, oldest first.
+action list_devices(member: Principal.user) -> DeviceList {
+    return DeviceList {
+        devices: collection.map(sessions.tokens(member.id), token -> DeviceView {
+            id: token.id
+            signed_in_at: token.started_at
+        })
+    }
+}
+
+/// One device, by its token's id.
+type DeviceView = Output {
+    id: Uuid
+    signed_in_at: Instant
+}
+
+/// Every device the member has signed in on.
+type DeviceList = Output {
+    devices: List<DeviceView>
+}
+"#,
+    ),
+    (
+        "domains/journal/actions/register.jadpo",
+        r#"use journal/entities { Member }
+use journal/types { Handle, MemberStatus }
+use journal/failures { HandleTaken }
+
+action register(handle: Handle) fails HandleTaken -> Member {
+    return attempt Member.create {
+        set: {
+            handle: handle
+            status: MemberStatus.active
+        }
+        conflict: {
+            Member.handle: HandleTaken
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/journal/actions/revoke_own_keys.jadpo",
+        r#"use journal/entities { Partner }
+
+/// Revokes every key the partner holds, this one's too.
+action revoke_own_keys(partner: Principal.service) -> Unit {
+    for key in Partner.keys(partner.id) {
+        Partner.revoke_key(key.id)
+    }
+}
+"#,
+    ),
+    (
+        "domains/journal/actions/sign_out.jadpo",
+        r#"/// Ends the token the request came with.
+action sign_out() -> Unit {
+    sessions.end()
+}
+"#,
+    ),
+    (
+        "domains/journal/actions/sign_out_everywhere.jadpo",
+        r#"/// Ends every token the member's apps hold, this one's too.
+action sign_out_everywhere(member: Principal.user) -> Unit {
+    for token in sessions.tokens(member.id) {
+        sessions.revoke_token(token.id)
+    }
+}
+"#,
+    ),
+    (
+        "domains/journal/actions/sign_up.jadpo",
+        r#"use journal/entities { Member }
+use journal/types { Handle }
+use journal/failures { HandleTaken }
+use journal/actions { register }
+
+/// Registers a member and gives their app a token, shown once.
+action sign_up(input: SignUp) fails HandleTaken -> SignedUp {
+    var member: Member = attempt register(input.handle)
+    return SignedUp {
+        token: sessions.issue_token(member.id)
+    }
+}
+
+/// What signing up takes.
+type SignUp = Input {
+    handle: Handle
+}
+
+/// The app's token, which it sends back as `Authorization: Bearer`.
+type SignedUp = Output {
+    token: ApiToken
+}
+"#,
+    ),
+    (
+        "domains/journal/actions/suspend_partner.jadpo",
+        r#"use journal/entities { Partner, PartnerNotFound }
+use journal/types { PartnerStatus }
+
+action suspend_partner(partner_id: Partner.id) fails PartnerNotFound -> Partner {
+    return attempt Partner.update(partner_id) {
+        set: {
+            status: PartnerStatus.suspended
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/journal/actions/write_note.jadpo",
+        r#"use journal/entities { Note }
+use journal/types { NoteText, NoteView }
+
+/// Writes a note as the signed-in member.
+action write_note(input: WriteNote, author: Principal.user) -> NoteView {
+    var note: Note = Note.create {
+        set: {
+            author_id: author.id
+            text: input.text
+        }
+    }
+    return NoteView {
+        text: note.text
+    }
+}
+
+/// What writing a note takes.
+type WriteNote = Input {
+    text: NoteText
+}
+"#,
+    ),
+    (
+        "domains/journal/entities/member.jadpo",
+        r#"use journal/types { Handle, MemberStatus }
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+    status: MemberStatus
+}
+"#,
+    ),
+    (
+        "domains/journal/entities/note.jadpo",
+        r#"use journal/entities { Member }
+use journal/types { NoteText }
+
+entity Note {
+    id: Uuid
+    author_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+    text: NoteText
+}
+"#,
+    ),
+    (
+        "domains/journal/entities/partner.jadpo",
+        r#"use journal/types { PartnerName, PartnerStatus }
+
+/// Another system that reads the journal with its keys.
+entity Partner {
+    id: Uuid
+    name: PartnerName {
+        unique: true
+    }
+    status: PartnerStatus
+}
+"#,
+    ),
+    (
+        "domains/journal/failures/handle_taken.jadpo",
+        r#"type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+"#,
+    ),
+    (
+        "domains/journal/failures/partner_name_taken.jadpo",
+        r#"type PartnerNameTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That partner already exists."
+}
+"#,
+    ),
+    (
+        "domains/journal/queries/this_partner.jadpo",
+        r#"use journal/entities { Partner, PartnerNotFound }
+use journal/types { PartnerView }
+
+/// The partner a key belongs to.
+query this_partner(partner: Principal.service) fails PartnerNotFound -> PartnerView {
+    from: Partner
+    where: Partner.id == partner.id
+    missing: PartnerNotFound
+}
+"#,
+    ),
+    (
+        "domains/journal/routes/account.jadpo",
+        r#"use journal/actions { SignUp, SignedUp, sign_out, sign_out_everywhere, sign_up }
+
+/// Signing up and out, from the app.
+routes Account {
+    prefix: /account
+
+    /// Anyone may sign up; the response holds the app's token.
+    POST /sign-up {
+        authentication: RouteAuthentication.none
+        input: SignUp
+        output: SignedUp
+        status: SuccessStatus.created
+        run: sign_up(input)
+    }
+
+    /// Ends the token the request came with.
+    POST /sign-out {
+        status: SuccessStatus.no_content
+        run: sign_out()
+    }
+
+    /// Ends every token the member's apps hold.
+    POST /sign-out-everywhere {
+        status: SuccessStatus.no_content
+        run: sign_out_everywhere(current_principal.user)
+    }
+}
+"#,
+    ),
+    (
+        "domains/journal/routes/devices.jadpo",
+        r#"use journal/actions { DeviceAdded, DeviceList, add_device, list_devices, revoke_own_keys }
+
+/// A member's devices, and a partner's keys.
+routes Devices {
+    prefix: /devices
+
+    POST / {
+        output: DeviceAdded
+        status: SuccessStatus.created
+        run: add_device(current_principal.user)
+    }
+
+    POST /list {
+        output: DeviceList
+        run: list_devices(current_principal.user)
+    }
+
+    POST /revoke-keys {
+        status: SuccessStatus.no_content
+        run: revoke_own_keys(current_principal.service)
+    }
+}
+"#,
+    ),
+    (
+        "domains/journal/routes/notes.jadpo",
+        r#"use journal/types { NoteView }
+use journal/actions { WriteNote, write_note }
+
+/// The signed-in member's notes.
+routes Notes {
+    prefix: /notes
+
+    POST / {
+        input: WriteNote
+        output: NoteView
+        status: SuccessStatus.created
+        run: write_note(input, current_principal.user)
+    }
+}
+"#,
+    ),
+    (
+        "domains/journal/routes/partners.jadpo",
+        r#"use journal/types { PartnerView }
+use journal/actions { AddPartner, PartnerAdded, add_partner }
+use journal/queries { this_partner }
+
+/// Partners and their keys.
+routes Partners {
+    prefix: /partners
+
+    /// A signed-in member adds a partner; the response holds its key.
+    POST / {
+        input: AddPartner
+        output: PartnerAdded
+        status: SuccessStatus.created
+        run: add_partner(input)
+    }
+
+    /// A partner reads itself, signed in with its key.
+    GET /me {
+        output: PartnerView
+        run: this_partner(current_principal.service)
+    }
+}
+"#,
+    ),
+    (
+        "domains/journal/types/handle.jadpo",
+        r#"type Handle = Text {
+    min_length: 3
+    max_length: 40
+}
+"#,
+    ),
+    (
+        "domains/journal/types/member_status.jadpo",
+        r#"type MemberStatus = Enum {
+    active
+    suspended
+}
+"#,
+    ),
+    (
+        "domains/journal/types/note_text.jadpo",
+        r#"type NoteText = Text {
+    min_length: 1
+    max_length: 500
+}
+"#,
+    ),
+    (
+        "domains/journal/types/note_view.jadpo",
+        r#"use journal/types { NoteText }
+
+type NoteView = Output {
+    text: NoteText
+}
+"#,
+    ),
+    (
+        "domains/journal/types/partner_name.jadpo",
+        r#"type PartnerName = Text {
+    min_length: 1
+    max_length: 60
+}
+"#,
+    ),
+    (
+        "domains/journal/types/partner_status.jadpo",
+        r#"type PartnerStatus = Enum {
+    active
+    suspended
+}
+"#,
+    ),
+    (
+        "domains/journal/types/partner_view.jadpo",
+        r#"use journal/types { PartnerName }
+
+type PartnerView = Output {
+    name: PartnerName
+}
+"#,
+    ),
+];
+
+/// The tokens-and-keys project, migrated and recorded, checking cleanly:
+/// members sign in from their app with API tokens, partners with keys.
+fn tokens_project() -> (tempdir::Dir, PathBuf) {
+    let dir = tempdir::Dir::new("tokens");
+    let root = dir.path().join("journal");
+    for (path, text) in TOKENS {
+        write(&root, path, text);
+    }
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["api", "update"],
+        &["check"],
+    ] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    (dir, root)
+}
+
+/// `Authorization: Bearer <credential>`.
+fn bearer(credential: &str) -> String {
+    format!("Bearer {credential}")
+}
+
+/// Whether `text` is `prefix` and 64 hexadecimal digits.
+fn issued_as(text: &str, prefix: &str) -> bool {
+    text.strip_prefix(prefix)
+        .is_some_and(|rest| rest.len() == 64 && rest.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
+#[test]
+fn an_api_token_signs_its_app_in_until_it_is_ended() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = tokens_project();
+    let dev = Dev::start(&root);
+    let json = ("content-type", "application/json");
+
+    // Signing up answers with the app's token, once.
+    let signed = dev.send(
+        "POST",
+        "/account/sign-up",
+        &[json, ("idempotency-key", "sign-up-1")],
+        r#"{"handle":"ann"}"#,
+    );
+    assert_eq!(signed.status, 201, "{}", signed.body);
+    let token = signed.json()["token"]
+        .as_str()
+        .expect("a token")
+        .to_string();
+    assert!(issued_as(&token, "jadpo_token_"), "{token}");
+    assert!(
+        !signed
+            .headers
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("set-cookie")),
+        "{:?}",
+        signed.headers
+    );
+    // The response isn't kept for a repeat, which runs again.
+    let repeat = dev.send(
+        "POST",
+        "/account/sign-up",
+        &[json, ("idempotency-key", "sign-up-1")],
+        r#"{"handle":"ann"}"#,
+    );
+    assert_eq!(repeat.status, 409, "{}", repeat.body);
+    assert_eq!(repeat.json()["error"]["code"], "handle_taken");
+
+    // Only its verifier is kept, with no CSRF token.
+    let rows = query(
+        &dev.url,
+        "SELECT \"verifier\", \"csrf_verifier\" FROM \"jadpo_sessions\"",
+        Vec::new(),
+    );
+    assert_eq!(rows.len(), 1);
+    let jadpo_runtime::SqlValue::Text(kept) = &rows[0][0] else {
+        panic!("{:?}", rows[0]);
+    };
+    assert_ne!(kept, &token);
+    assert!(
+        matches!(rows[0][1], jadpo_runtime::SqlValue::Null(_)),
+        "{:?}",
+        rows[0]
+    );
+
+    // A bearer write needs no origin or CSRF token, in any scheme case.
+    let note = r#"{"text":"Buy milk"}"#;
+    let auth = bearer(&token);
+    let written = dev.send("POST", "/notes", &[json, ("authorization", &auth)], note);
+    assert_eq!(written.status, 201, "{}", written.body);
+    let lower = format!("bearer {token}");
+    let again = dev.send("POST", "/notes", &[json, ("authorization", &lower)], note);
+    assert_eq!(again.status, 201, "{}", again.body);
+
+    // Anything else in the header is refused, and no cookie is cleared.
+    for refused in [
+        "Bearer jadpo_token_0000".to_string(),
+        bearer(&format!("jadpo_token_{}", "0".repeat(64))),
+        format!("Basic {token}"),
+        bearer(&token.replace("jadpo_token_", "jadpo_key_")),
+    ] {
+        let reply = dev.send("POST", "/notes", &[json, ("authorization", &refused)], note);
+        assert_eq!(reply.status, 401, "{refused}: {}", reply.body);
+        assert_eq!(reply.json()["error"]["code"], "invalid_credentials");
+        assert!(
+            !reply
+                .headers
+                .iter()
+                .any(|(name, _)| name.eq_ignore_ascii_case("set-cookie"))
+        );
+    }
+
+    // Another device gets its own token; both are listed, oldest first.
+    let added = dev.send("POST", "/devices", &[("authorization", &auth)], "");
+    assert_eq!(added.status, 201, "{}", added.body);
+    let second = added.json()["token"].as_str().expect("a token").to_string();
+    assert_ne!(second, token);
+    let listed = dev.send("POST", "/devices/list", &[("authorization", &auth)], "");
+    assert_eq!(listed.status, 200, "{}", listed.body);
+    let devices = listed.json()["devices"]
+        .as_array()
+        .expect("devices")
+        .clone();
+    assert_eq!(devices.len(), 2, "{}", listed.body);
+    assert!(devices[0]["signed_in_at"].as_str() <= devices[1]["signed_in_at"].as_str());
+
+    // Signing out ends the token it came with, and only that one.
+    let out = dev.send("POST", "/account/sign-out", &[("authorization", &auth)], "");
+    assert_eq!(out.status, 204, "{}", out.body);
+    let after = dev.send("POST", "/notes", &[json, ("authorization", &auth)], note);
+    assert_eq!(after.status, 401);
+    assert_eq!(after.json()["error"]["code"], "invalid_credentials");
+    let other = bearer(&second);
+    let still = dev.send("POST", "/notes", &[json, ("authorization", &other)], note);
+    assert_eq!(still.status, 201, "{}", still.body);
+
+    // Signing out everywhere revokes every token the member holds.
+    let third = dev.send("POST", "/devices", &[("authorization", &other)], "");
+    let third = bearer(third.json()["token"].as_str().expect("a token"));
+    let everywhere = dev.send(
+        "POST",
+        "/account/sign-out-everywhere",
+        &[("authorization", &other)],
+        "",
+    );
+    assert_eq!(everywhere.status, 204, "{}", everywhere.body);
+    for ended in [&other, &third] {
+        let reply = dev.send("POST", "/notes", &[json, ("authorization", ended)], note);
+        assert_eq!(reply.status, 401, "{}", reply.body);
+    }
+}
+
+#[test]
+fn a_service_key_signs_a_service_in_where_services_may_call() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = tokens_project();
+    let dev = Dev::start(&root);
+    let json = ("content-type", "application/json");
+    let signed = dev.send("POST", "/account/sign-up", &[json], r#"{"handle":"ann"}"#);
+    assert_eq!(signed.status, 201, "{}", signed.body);
+    let member = bearer(signed.json()["token"].as_str().expect("a token"));
+
+    // A member adds a partner, and the response holds its key, once.
+    let added = dev.send(
+        "POST",
+        "/partners",
+        &[json, ("authorization", &member)],
+        r#"{"name":"Acme","key_expires_at":"2100-01-01T00:00:00Z"}"#,
+    );
+    assert_eq!(added.status, 201, "{}", added.body);
+    let key = added.json()["key"].as_str().expect("a key").to_string();
+    assert!(issued_as(&key, "jadpo_key_"), "{key}");
+    let rows = query(
+        &dev.url,
+        "SELECT \"verifier\" FROM \"jadpo_service_keys\"",
+        Vec::new(),
+    );
+    assert_eq!(rows.len(), 1);
+    assert_ne!(rows[0][0], jadpo_runtime::SqlValue::Text(key.clone()));
+
+    // The partner reads itself with it.
+    let partner = bearer(&key);
+    let me = dev.send("GET", "/partners/me", &[("authorization", &partner)], "");
+    assert_eq!(me.status, 200, "{}", me.body);
+    assert_eq!(me.json()["name"], "Acme");
+
+    // A key signs in only a service, and a token only a user.
+    let note = r#"{"text":"Buy milk"}"#;
+    let refused = dev.send("POST", "/notes", &[json, ("authorization", &partner)], note);
+    assert_eq!(refused.status, 403, "{}", refused.body);
+    assert_eq!(refused.json()["error"]["code"], "not_permitted");
+    let refused = dev.send("GET", "/partners/me", &[("authorization", &member)], "");
+    assert_eq!(refused.status, 403, "{}", refused.body);
+    assert_eq!(refused.json()["error"]["code"], "not_permitted");
+
+    // A key past its expiry signs no one in.
+    let expired = dev.send(
+        "POST",
+        "/partners",
+        &[json, ("authorization", &member)],
+        r#"{"name":"Old","key_expires_at":"2001-01-01T00:00:00Z"}"#,
+    );
+    assert_eq!(expired.status, 201, "{}", expired.body);
+    let expired = bearer(expired.json()["key"].as_str().expect("a key"));
+    let reply = dev.send("GET", "/partners/me", &[("authorization", &expired)], "");
+    assert_eq!(reply.status, 401, "{}", reply.body);
+    assert_eq!(reply.json()["error"]["code"], "invalid_credentials");
+
+    // A service's idempotency keys are its own, and revoking its keys
+    // signs it out.
+    let revoked = dev.send(
+        "POST",
+        "/devices/revoke-keys",
+        &[("authorization", &partner), ("idempotency-key", "revoke-1")],
+        "",
+    );
+    assert_eq!(revoked.status, 204, "{}", revoked.body);
+    let scopes = query(
+        &dev.url,
+        "SELECT \"scope\" FROM \"jadpo_idempotency_keys\"",
+        Vec::new(),
+    );
+    let jadpo_runtime::SqlValue::Text(scope) = &scopes[0][0] else {
+        panic!("{scopes:?}");
+    };
+    assert!(scope.starts_with("service "), "{scope}");
+    let reply = dev.send("GET", "/partners/me", &[("authorization", &partner)], "");
+    assert_eq!(reply.status, 401, "{}", reply.body);
+}
+
+#[test]
+fn openapi_shows_both_bearer_methods_and_who_each_route_refuses() {
+    let (_dir, root) = tokens_project();
+    let document: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("build/openapi/main.json")).expect("the document"),
+    )
+    .expect("JSON");
+    for method in ["api_token", "service_key"] {
+        let scheme = &document["components"]["securitySchemes"][method];
+        assert_eq!(scheme["type"], "http", "{method}");
+        assert_eq!(scheme["scheme"], "bearer", "{method}");
+    }
+    let security = document["security"].as_array().expect("security");
+    assert_eq!(security.len(), 2, "{security:?}");
+    let codes = |path: &str, method: &str| -> Vec<String> {
+        let refused = &document["paths"][path][method]["responses"]["403"]["content"]["application/json"]
+            ["schema"]["oneOf"];
+        refused
+            .as_array()
+            .expect("refusals")
+            .iter()
+            .filter_map(|schema| schema["$ref"].as_str())
+            .map(|reference| reference.rsplit('/').next().unwrap_or("").to_string())
+            .collect()
+    };
+    let note = codes("/notes", "post");
+    assert!(note.contains(&"AccountDisabled".to_string()), "{note:?}");
+    assert!(note.contains(&"ServiceDisabled".to_string()), "{note:?}");
+    assert!(note.contains(&"WrongKindOfCaller".to_string()), "{note:?}");
+    assert!(!note.contains(&"CsrfRejected".to_string()), "{note:?}");
+    let me = codes("/partners/me", "get");
+    assert!(me.contains(&"WrongKindOfCaller".to_string()), "{me:?}");
 }
