@@ -338,10 +338,18 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
                 ]),
             ));
             if let Some(probe) = field_probe {
+                // A reference into another tenant refuses it the same way
+                // (area 9, "References stay inside the tenant").
+                let refused_by = if write.plan.kept_in_tenant {
+                    "a field's own policy or a reference into another tenant"
+                } else {
+                    "a field's own policy"
+                };
                 let mut asked = vec![(
                     "then".to_string(),
-                    "a row means the record's grants let the caller in, so a field's own policy refused them → not_permitted"
-                        .to_string(),
+                    format!(
+                        "a row means the record's grants let the caller in, so {refused_by} refused them → not_permitted"
+                    ),
                 )];
                 let mut probe_params = Vec::new();
                 for (n, param) in probe.params.iter().enumerate() {

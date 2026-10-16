@@ -739,6 +739,28 @@ impl Walk<'_> {
             Callee::Entity { entity, operation } if operation == "get" => {
                 let entity = entity.name().to_string();
                 let reached = self.gated(flow.prover.read(&entity));
+                // It finds its record by `id`: whether one is found shows
+                // the `id`, so every caller may read it.
+                if self.report
+                    && !flow.prover.field_proved(&entity, "id", &reached)
+                    && let Some(Some(arg)) = args.first()
+                {
+                    let readers = flow.prover.readers(&entity, "id");
+                    self.problems.push(
+                        Diagnostic::new(
+                            &rule::POLICY_OUTPUT_FIELD_UNPROVED,
+                            format!(
+                                "`{}` finds a `{entity}` by `id`, which not every caller may read",
+                                self.name
+                            ),
+                        )
+                        .at(self.span(*arg), "tests `id`")
+                        .reason(format!(
+                            "Anyone `{entity}`'s `read:` lets in may run `{entity}.get`, and {readers} `id`. Whether a record is found shows its `id`, so a `get` needs an `id` every caller may read."
+                        ))
+                        .next(format!("Give `{entity}.id`'s `read:` everyone who may read the record")),
+                    );
+                }
                 Prov::of(Src::Record { entity, reached })
             }
             Callee::Query(key) => self.query(flow, key),

@@ -102,6 +102,11 @@ pub struct WritePlan {
     /// A write by `id` that finds no record: the entity's not-found
     /// failure, given the `id`.
     pub missing: Option<MissingPlan>,
+    /// Whether its statement, with policy or without, also writes no row
+    /// when a reference it sets points into another tenant (area 9,
+    /// "References stay inside the tenant"): then writing no row without
+    /// policy, a create or a record that is there, is `not_permitted` too.
+    pub kept_in_tenant: bool,
 }
 
 /// A constraint whose refusal a write maps (area 6, "When a write is

@@ -164,6 +164,25 @@ pub(crate) async fn write(
                 }
                 found
             }
+            // Without policy, a reference into another tenant still
+            // refuses it (area 9): a create, or a record that is there.
+            (Some(PolicyRefusal::Create), true) if plan.kept_in_tenant => {
+                return Ok(Written::NotPermitted);
+            }
+            (Some(PolicyRefusal::Probe { sql, params: asked, .. }), true)
+                if plan.kept_in_tenant =>
+            {
+                let params = params_of(ctx, asked, inputs, site, now)?;
+                let found = match ctx.transaction(&plan.store).await {
+                    Ok(transaction) => transaction.query(sql, &params).await,
+                    Err(error) => Err(error),
+                };
+                match found {
+                    Ok(rows) if !rows.is_empty() => return Ok(Written::NotPermitted),
+                    Ok(_) => false,
+                    Err(error) => return Err(refused(ctx, error, site)),
+                }
+            }
             _ => false,
         };
         if plan.by_id {

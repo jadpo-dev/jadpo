@@ -126,6 +126,29 @@ pub fn insert_when(
     )
 }
 
+/// `NOT EXISTS (SELECT 1 FROM <table> AS <alias> WHERE <alias>.<column> =
+/// <value> AND <alias>.<tenant> IS DISTINCT FROM <tenancy>)`: no record of
+/// `table` whose `column` is `value` belongs to another tenant than
+/// `tenancy` (area 9, "References stay inside the tenant"). A record that
+/// isn't there passes, so its foreign key still reports it missing, and so
+/// does a `none` reference.
+pub fn outside_tenant(
+    table: &str,
+    alias: &str,
+    column: &str,
+    value: &str,
+    tenant: &str,
+    tenancy: &str,
+) -> String {
+    let alias = ident(alias);
+    format!(
+        "NOT EXISTS (SELECT 1 FROM {} AS {alias} WHERE {alias}.{} = {value} AND {alias}.{} IS DISTINCT FROM {tenancy})",
+        ident(table),
+        ident(column),
+        ident(tenant)
+    )
+}
+
 /// `<holder> IN (SELECT "id" FROM <table> WHERE <conditions>)`: a
 /// credential whose holder (a column or a parameter) has a record the
 /// conditions let in (area 9, question 8).

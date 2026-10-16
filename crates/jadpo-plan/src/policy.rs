@@ -240,6 +240,81 @@ impl Planner<'_> {
         Some(condition)
     }
 
+    /// What keeps the references a write sets inside the tenant (area 9,
+    /// "References stay inside the tenant"), checked with or without
+    /// policy, since it is what the data is rather than who asks: for each
+    /// reference in `changed` from one of the tenant's records to another,
+    /// that the record it points at belongs to the new record's tenant.
+    /// `new` gives a field's value once written, as SQL. A write that
+    /// moves a record to another tenant (only an action listed under
+    /// `actions:` may) checks every reference it keeps, and that no
+    /// record of the old tenant refers to it.
+    pub(crate) fn kept_in_tenant(
+        &self,
+        entity: &EntityModel,
+        changed: &[String],
+        new: &dyn Fn(&str) -> Option<String>,
+        creating: bool,
+    ) -> Option<Vec<String>> {
+        let Some(own) = self
+            .access
+            .entity(&entity.name)
+            .and_then(|policy| policy.tenancy.as_ref())
+        else {
+            return Some(Vec::new());
+        };
+        let moved = !creating && own.via != "id" && changed.contains(&own.via);
+        let mut out = Vec::new();
+        let mut tenancy = None;
+        for at in &entity.fields {
+            let Some(reference) = &at.reference else {
+                continue;
+            };
+            if at.name == own.via || !(moved || changed.contains(&at.name)) {
+                continue;
+            }
+            let Some((_, theirs)) = self.access.kept_in_tenant(&entity.name, &reference.target)
+            else {
+                continue;
+            };
+            let target = self.model.entity(&reference.target)?;
+            if tenancy.is_none() {
+                tenancy = Some(new(&own.via)?);
+            }
+            out.push(jadpo_sql::policy::outside_tenant(
+                &target.table,
+                &format!("jadpo_r{}", out.len()),
+                &field(target, "id")?.born,
+                &new(&at.name)?,
+                &field(target, &theirs.via)?.born,
+                tenancy.as_deref()?,
+            ));
+        }
+        if moved {
+            let tenancy = new(&own.via)?;
+            let id = qualified(&entity.table, &field(entity, "id")?.born);
+            for child in &self.model.entities {
+                let Some((theirs, _)) = self.access.kept_in_tenant(&child.name, &entity.name) else {
+                    continue;
+                };
+                for at in &child.fields {
+                    if at.reference.as_ref().map(|r| r.target.as_str()) != Some(&entity.name) {
+                        continue;
+                    }
+                    out.push(jadpo_sql::policy::outside_tenant(
+                        &child.table,
+                        &format!("jadpo_r{}", out.len()),
+                        &at.born,
+                        &id,
+                        &field(child, &theirs.via)?.born,
+                        &tenancy,
+                    ));
+                }
+            }
+        }
+        Some(out)
+    }
+
     /// The condition a field's own `policy:` adds to a write changing it
     /// (area 9, "Field restrictions"), when it narrows the record's grants
     /// for `effect`: who may change the field, over `row`.
