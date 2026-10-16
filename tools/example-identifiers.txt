@@ -29,6 +29,7 @@ application_configuration
 applies_to
 apply_code
 apply_discount
+appraisal
 approved
 archive_todo
 archived
@@ -40,6 +41,7 @@ article_title
 article_view
 articles
 asked_words
+assessment
 author
 author_id
 author_view
@@ -285,6 +287,7 @@ fill_trays
 find_article
 find_books
 find_customer
+find_note
 find_todo
 finish_magic_link
 first_loan
@@ -678,6 +681,7 @@ retag_todo
 return_book
 returned_at
 review_stage
+reviewer_id
 revoke_card
 rye
 sack_count
@@ -723,6 +727,7 @@ short_date
 short_product_name
 shortbread
 shout
+show_note
 show_on_menu
 sign_in_app
 sign_in_link

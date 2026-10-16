@@ -148,7 +148,8 @@ pub struct Guard {
 /// "When policy says no").
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PolicyRefusal {
-    /// A create policy refused: `not_permitted`.
+    /// A create policy refused, the record's grants or a field's own:
+    /// `not_permitted`.
     Create,
     /// An update or delete: `SELECT 1` of the record by `id` under its
     /// lifecycle but not policy. Found, policy refused it: a write by `id`
@@ -157,7 +158,22 @@ pub enum PolicyRefusal {
     Probe {
         sql: String,
         params: Vec<WriteParam>,
+        /// For an update changing a field whose own `policy:` narrows the
+        /// record's grants (area 9, "Field restrictions"): `SELECT 1` of
+        /// the record under its lifecycle and the record's grants, but not
+        /// the fields'. Found, the caller may change the record but not a
+        /// field the request changes, so the whole write is refused with
+        /// `not_permitted`, by `id` or not.
+        fields: Option<FieldProbe>,
     },
+}
+
+/// The statement that tells a field's policy refusing a write from the
+/// record's (see [`PolicyRefusal::Probe`]).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FieldProbe {
+    pub sql: String,
+    pub params: Vec<WriteParam>,
 }
 
 /// How many records one purge batch deletes at most (area 5: "in small

@@ -2,7 +2,7 @@
 title: Policy
 area: 9
 status: decided
-checked-with: jadpo chunk-4.4 (2026-10-16)
+checked-with: jadpo chunk-4.4b (2026-10-16)
 rules:
   - policy.*
   - type.field_update_forbidden
@@ -14,7 +14,7 @@ Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. A field's own `policy:` comes with chunk 4.4b; "Status" below lists the rest.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. "Status" below lists the rest.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -237,13 +237,26 @@ entity Project {
 ```
 
 - **Writes.** If a request changes a field the caller may not change, the
-  whole write is refused; nothing is dropped silently.
+  whole write is refused; nothing is dropped silently. A caller who may
+  change the record but not the field gets 403 `not_permitted`; a create
+  that leaves an optional field `none` sets nothing, so the field's policy
+  never refuses it.
 - **Outputs.** An output type has one shape for everyone. If anyone allowed
   to call a query cannot read one of its output fields, the query does not
   compile (`policy.output_field_unproved`); the fix is a second query with a
-  narrower output.
+  narrower output. The same holds for the record a query includes through
+  a reference: everyone who may read the record must be able to read what
+  it refers to.
 - **Copies.** Passing a value through a variable or another type does not
   escape the field's rules; the compiler tracks where it came from.
+- **Server only.** `FieldAccess.server_only` lets no request read or write
+  the field. A test's or a seed's call without a caller runs without policy,
+  so it may; how schedules and subscribers write one comes with area 12.
+
+A field's `policy:` narrows `create`, `read` and `update`; it is deleted
+with its record. Who may read a value is proved from the grants alone, not
+from the data, because two records that each refer to a company may refer
+to different companies: a role held in one says nothing about the other.
 
 ## The permissions report
 
@@ -262,8 +275,13 @@ Part of the report for the end-to-end example below:
 Belongs to a `Company` through `company_id`. Only an action listed under `actions:` changes `company_id`.
 
 A field that narrows its entity's grants gets a row of its own beside "the
-record" (chunk 4.4b): `budget` with `CompanyRole.editor` under read and
-update, `import_reference` with "server only".
+record". For the `Project` under "Field restrictions":
+
+| `work.Project` | create | read | update | delete |
+|---|---|---|---|---|
+| the record | `CompanyRole.editor` | `CompanyRole.viewer`, `CompanyRole.editor` | `CompanyRole.editor` | `CompanyRole.owner` |
+| `budget` | as the record | `CompanyRole.editor` | `CompanyRole.editor` | as the record |
+| `import_reference` | server only | server only | server only | as the record |
 
 Changes to this matrix appear in the approval review in plain terms
 ("viewers can now read `budget`").
@@ -1662,33 +1680,282 @@ error: `Note.update` changes `Note.owner_id`, which an update can't change
 check failed: 1 error, 1 file
 ```
 
-### Coming with chunk 4.4b
+### `policy.field_widens_entity`
 
-A field's own `policy:`, `FieldAccess.server_only` and the checks that
-follow a field's value come with roadmap chunk 4.4b; until then a field's
-`policy:` is `toolchain.not_built_yet` where it is written, and a field
-follows its entity's grants. Their rules, in the decided syntax:
+A field's `policy:` only takes away from its record's grants; here anyone signed in could read a note's summary when only its owner may read the note:
 
-- `policy.field_widens_entity`: a field can't grant anyone its entity
-  doesn't, so `budget: { policy: { read: [CompanyRole.viewer] } }` on an
-  entity whose `read:` names only `CompanyRole.editor` is refused.
-- `policy.output_field_unproved`: a query whose callers may not all read
-  one of its output fields doesn't compile; the fix is a second query with
-  a narrower output.
-- `policy.role_field_create_forbidden`: a create whose `create:` names
-  only a user field, setting that field from the request rather than from
-  the caller, could never be allowed for anyone but the caller:
+```jadpo check project=e-field-widens-entity expect=policy.field_widens_entity
+type Handle = Text {
+    max_length: 40
+}
 
-```jadpo fragment
-action create_note(input: CreateNote) -> Note {
-    return Note.create {
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    text: NoteText
+    summary: NoteText {
+        policy: {
+            read: [Access.authenticated]
+        }
+    }
+
+    policy: {
+        read: [owner_id]
+    }
+}
+```
+
+```text output
+error: `Note.summary` lets `Access.authenticated` read it, which `Note` doesn't
+ --> main.jadpo:30:20
+   |
+30 |             read: [Access.authenticated]
+   |                    ^^^^^^^^^^^^^^^^^^^^ not in `Note`'s `read:`
+  reason: A field's `policy:` only takes away from its record's grants: it narrows who may read the field, and never lets in anyone `Note`'s `read:` doesn't, which names `owner_id`.
+  next: Remove `Access.authenticated` from `summary`'s `read:` (agent)
+  rule: policy.field_widens_entity
+  help: docs/language/09-policy.html#policy-field-widens-entity
+
+check failed: 1 error, 1 file
+```
+
+### `policy.output_field_unproved`
+
+A note's owner may call `find_note`, but only its reviewer may read the appraisal, and an output has one shape for everyone:
+
+```jadpo check project=e-output-field-unproved expect=policy.output_field_unproved
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    reviewer_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    text: NoteText
+    appraisal: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+
+    policy: {
+        read: [owner_id, reviewer_id]
+    }
+}
+
+type NoteView = Output {
+    pick: [Note.id, Note.text, Note.appraisal]
+}
+
+query find_note(note_id: Note.id) fails NoteNotFound -> NoteView {
+    from: Note
+    where: Note.id == note_id
+    missing: NoteNotFound
+}
+```
+
+```text output
+error: `find_note` sends `Note.appraisal`, which not every caller may read
+ --> main.jadpo:46:57
+   |
+46 | query find_note(note_id: Note.id) fails NoteNotFound -> NoteView {
+   |                                                         ^^^^^^^^ carries `appraisal`
+  reason: Anyone `Note`'s `read:` lets in may call `find_note`, the user `owner_id` points at among them, and only the user `reviewer_id` points at may read `appraisal`. An output has one shape for everyone, so a field some callers may not read can't be in it.
+  next: Return an output without `appraisal` from `find_note` (agent)
+  rule: policy.output_field_unproved
+  help: docs/language/09-policy.html#policy-output-field-unproved
+
+check failed: 1 error, 1 file
+```
+
+A value copied through a variable or another type keeps its field's rules, so the same appraisal built into an output by an action is refused there:
+
+```jadpo check project=e-output-field-copied expect=policy.output_field_unproved
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    reviewer_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    text: NoteText
+    appraisal: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+
+    policy: {
+        read: [owner_id, reviewer_id]
+    }
+}
+
+type Assessment = Object {
+    appraisal: Note.appraisal
+}
+
+type NoteView = Output {
+    pick: [Note.id, Note.appraisal]
+}
+
+action show_note(note_id: Note.id) fails NoteNotFound -> NoteView {
+    var note: Note = attempt Note.get(note_id)
+    var assessment: Assessment = Assessment {
+        appraisal: note.appraisal
+    }
+    return NoteView {
+        id: note.id
+        appraisal: assessment.appraisal
+    }
+}
+```
+
+```text output
+error: `NoteView.appraisal` carries `Note.appraisal`, which not every caller of `show_note` may read
+ --> main.jadpo:57:20
+   |
+57 |         appraisal: assessment.appraisal
+   |                    ^^^^^^^^^^^^^^^^^^^^ from `Note.appraisal`
+  reason: `show_note` reaches the `Note` it comes from for anyone its grants let in, the user `owner_id` points at among them, and only the user `reviewer_id` points at may read `appraisal`. What a caller is sent has one shape for everyone, and a value passed through a variable or another type keeps its field's rules.
+  next: Leave `appraisal` out of `NoteView` (agent)
+  rule: policy.output_field_unproved
+  help: docs/language/09-policy.html#policy-output-field-unproved
+
+check failed: 1 error, 1 file
+```
+
+### `policy.role_field_create_forbidden`
+
+A note's `create:` names only `owner_id`, so a note is only ever created by its owner, and `owner_id` is set from the caller rather than the request:
+
+```jadpo check project=e-role-field-create-forbidden expect=policy.role_field_create_forbidden
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    text: NoteText
+
+    policy: {
+        create: [owner_id]
+        read: [owner_id]
+    }
+}
+
+type CreateNote = Input {
+    owner_id: User.id
+    text: NoteText
+}
+
+action create_note(input: CreateNote) fails UserNotFound -> Note {
+    return attempt Note.create {
         set: {
-            owner_id: input.owner_id    // from the request, not the caller
-            ...
+            owner_id: input.owner_id
+            text: input.text
         }
     }
 }
 ```
+
+```text output
+error: `create_note` sets `Note.owner_id` from the request, not the caller
+ --> main.jadpo:43:23
+   |
+43 |             owner_id: input.owner_id
+   |                       ^^^^^^^^^^^^^^ not the caller
+  reason: `Note`'s `create:` names only `owner_id`, so a `Note` is only ever created by the caller it points at. Set from the request, the create would be refused for every value but the caller's own, so it is set from the caller: the `id` of a `Principal.user` the action takes.
+  next: Take the caller as a parameter typed `Principal.user`, and set `owner_id` to its `id` (agent)
+  rule: policy.role_field_create_forbidden
+  help: docs/language/09-policy.html#policy-role-field-create-forbidden
+
+check failed: 1 error, 1 file
+```
+
+The fix takes the caller, `create_note(owner: Principal.user, input: CreateNote)`, and sets `owner_id: owner.id`.
 
 ## Review
 
@@ -1720,13 +1987,30 @@ one or issuing a key `update`. `jadpo check` writes the permissions report
 to `build/report/permissions.md` and `.json`, and `jadpo sql` shows the
 policy each statement carries.
 
+Built in chunk 4.4b: a field's own `policy:` narrows its record's
+`create`, `read` and `update`, or says `FieldAccess.server_only`, and can
+only take away (`policy.field_widens_entity`). Every query's output, and
+every `Output` or failure client field an action builds, is proved readable
+by everyone who could have reached the record it comes from, following the
+value through variables, objects, lists, `match`, the collection operations
+and calls to other actions (`policy.output_field_unproved`); so is the
+parent every include reads, which a caller could otherwise be refused. A
+create whose `create:` names only user fields sets one from the caller
+(`policy.role_field_create_forbidden`). A write compiles each restricted
+field it changes into its statement: a create that sets one, an update's
+`set:`, a patch's field when supplied, and a transition; the whole write is
+refused with 403 `not_permitted`, and a route whose action always changes a
+field nobody may change is `policy.effect_ungranted`. The permissions report
+gives each such field a row, and the graph and manifest hold every grant,
+field restriction, tenancy and listed action, with `grants` and `scopes`
+edges.
+
 Not yet:
 
-- A field's own `policy:`, `FieldAccess.server_only`, the output and copy
-  checks, `policy.role_field_create_forbidden`, and proving that every
-  caller who may read a record may read the parents a query includes
-  (chunk 4.4b). Until then a required parent the caller may not read
-  answers `not_permitted`.
+- A restricted field read only in a condition, an order or an event isn't
+  an output: a list filtered by `budget` shows which records pass, and an
+  event's subscribers (area 12) are server work. Area 15's log redaction
+  covers what a log holds.
 - `scopes:`, with the tokens issued to other applications (`oauth_token`,
   `external_token`), after the first build.
 - `Access.system`: no schedule or subscriber runs yet (area 12), so it
@@ -1762,6 +2046,7 @@ Not yet:
 | Item | Area | Status |
 |---|---|---|
 | Who schedules and subscribers act as, and how policy applies to them | 12 | Depends on area 12 question 8 |
+| How schedules and subscribers write a `FieldAccess.server_only` field, which no request may | 12 | Input to area 12 |
 | Event and subscriber policy (today's candidate `policy { scope: f  Role: [invoke, read] }`, syntax review #52) | 12 | Input to area 12 |
 | Testing policy: calling an action as a given user and expecting `not_found` or `not_permitted` | 13 | Input to area 13 |
 | The permissions report (`build/report/permissions.md` and `.json`) and its place in the approval review | 14 | Carried to area 14 |
@@ -1884,4 +2169,9 @@ Not yet:
 | Listed actions (chosen in chunk 4.4) | An `actions:` line replaces its entities' grants on the creates, updates, deletes and transitions in the action's own body; its reads, and the actions and queries it calls, keep their own entities' grants, with the same caller. `Entity.field` names a field of that entity; a line that depends on no record (anyone signed in, or a role held across the whole application) is also checked as the action starts, wherever it is called from | 2026-10-16 |
 | Tokens and keys (chosen in chunk 4.4) | `sessions.start`, `sessions.end` and `sessions.issue_token` need no grant: who may sign in is the application's own check (area 8), and an action that only signs in or out isn't one that reaches nothing. `sessions.tokens` and `Service.keys` list only holders the caller may `read`; `sessions.revoke_token`, `Service.revoke_key` and `Service.issue_key` need `update` on the holder. A refused list is empty, a refused revoke revokes nothing, and a refused issue is 403 `not_permitted` | 2026-10-16 |
 | Calling as someone in a test (chosen in chunk 4.4) | A call a test, fixture or seed makes runs as the `Principal.user` or `Principal.service` it passes, so policy applies as to that caller; a call that passes none runs without policy, so an action test proves behaviour and data and a route test, or a call with a caller, proves policy (area 13). Nothing a request runs leaves policy out | 2026-10-16 |
+| A field's own policy (chosen in chunk 4.4b) | `policy: { create: read: update: }` on a field narrows those lists, and an effect it leaves out follows the record's; `delete:` is `policy.effect_unknown`, since a field goes with its record. Its entries resolve like the record's, and each must be one the record's list for that effect lets in: the same entry, any entry under `Access.public`, or a user field or role under `Access.authenticated` (`policy.field_widens_entity`). `FieldAccess.server_only` lets no request read or write the field. A user field or reference a field's grant reaches the caller through joins the fields only a listed action changes | 2026-10-16 |
+| Writes to a restricted field (chosen in chunk 4.4b) | The write's statement holds the field's grants beside the record's, with tenancy once: a create's for each field it sets (none in an optional field is never refused), an update's `set:`, a patch's field when the request supplies it, and a transition's fields. Writing no row asks again under the record's grants: found, the field refused the caller and the whole write is 403 `not_permitted`, by `id` or not. A listed action's line replaces the record's grants but never a field's. A route whose action always sets a field nobody may change (an update's `set:`, or a create of a required field) is `policy.effect_ungranted` | 2026-10-16 |
+| Proving outputs (chosen in chunk 4.4b) | Who may read a value is proved from the grants alone, never the data. A query's records are reached through its entity's `read:`, a child's through its own, and a parent's both along the reference (the user a field points at is the user it includes; a role applies to the scope its reference points at; a membership's member holds a role in its scope, which proves a list naming every role) and through the parent's `read:`; a listed action whose line depends on no record adds that line, and an update's or create's record the field grants of what it sets. A value is proved when every grant of one way the caller came proves the field's `read:`. Every parent an include reads is proved readable, or the query is `policy.output_field_unproved` at the include; an output field the query's type carries, at its result type. In actions, values are followed through variables, objects, lists, `match`, `collection.filter` and `.map`, and calls (an action's parameter that reaches an output it builds is checked where it is called); a function's result carries all its arguments. An `Output` built, and a failure's `client:` field, are checked where the value is given | 2026-10-16 |
+| User fields on creates (chosen in chunk 4.4b) | When every entry of an entity's `create:` is a user field, a create in an action that isn't listed under `actions:` sets at least one of them from a `Principal.user` or `Principal.service` the action takes (directly, or through a variable or object); otherwise `policy.role_field_create_forbidden` at the first such field's value. Fixtures, tests and seeds aren't checked: their calls without a caller run without policy | 2026-10-16 |
+| Policy in the graph (chosen in chunk 4.4b) | A `grant` node per list an entity's `policy:` writes (`Project.read`, its effect and who as written) with a `grants` edge to the entity; a `field_restriction` node per field's own policy (`Project.budget`) with a `grants` edge to the field; a `tenancy` node per entity that belongs to the tenant (its tenant and reference) with a `scopes` edge to the entity; an `action_exception` node per line under `actions:` (`work.found_company`) with a `grants` edge to the action. The permissions report's JSON lists each field's own lists under `fields` | 2026-10-16 |
 | The permissions report (chosen in chunk 4.4) | `jadpo check` writes `build/report/permissions.md` and `.json` once policy reads cleanly: a table per entity, `domain.Entity`, with each list as written or "nobody", a line on its tenancy, its membership and the fields only listed actions change, and a table of the actions listed separately; no times or totals, so a change reads as a one-line diff | 2026-10-16 |

@@ -169,6 +169,67 @@ entity Todo {
     }
 }
 
+type Amount = Int {
+    min: 0
+}
+
+/// A field only its owner reads and changes, and one no client may.
+entity Ledger {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    title: ProjectName
+    balance: Amount {
+        policy: {
+            read: [owner_id]
+            update: [owner_id]
+        }
+    }
+    import_reference: ProjectName? {
+        policy: FieldAccess.server_only
+    }
+
+    policy: {
+        create: [owner_id]
+        read: [owner_id, Access.authenticated]
+        update: [owner_id, Access.authenticated]
+    }
+}
+
+type EditLedger = Input {
+    pick: [Ledger.title, Ledger.balance]
+    optional: all
+}
+
+/// A create setting a field no client may, unless it sets nothing.
+action open_ledger(owner: Principal.user, title: ProjectName, reference: ProjectName?) -> Ledger {
+    return Ledger.create {
+        set: {
+            owner_id: owner.id
+            title: title
+            balance: 0
+            import_reference: reference
+        }
+    }
+}
+
+/// An update by `id` changing a field its own policy narrows.
+action set_balance(ledger_id: Ledger.id, balance: Amount) fails LedgerNotFound -> Ledger {
+    return attempt Ledger.update(ledger_id) {
+        set: {
+            balance: balance
+        }
+    }
+}
+
+/// A patch, whose field's own policy applies when the field is supplied.
+action edit_ledger(ledger_id: Ledger.id, input: EditLedger) fails LedgerNotFound -> Ledger {
+    return attempt Ledger.update(ledger_id) {
+        patch: input
+    }
+}
+
 entity Comment {
     id: Uuid
     todo_id: Todo.id {
@@ -287,12 +348,13 @@ action sign_up(email: User.email, name: User.name) fails EmailTaken -> User {
     }
 }
 
-/// A create whose reference may name a user that isn't there.
-action add_todo(owner_id: User.id, title: Todo.title) fails UserNotFound -> Todo {
+/// A create whose reference may name a project that isn't there, owned
+/// by the caller, as its `create:` needs.
+action add_todo(owner: Principal.user, project_id: Project.id, title: Todo.title) fails ProjectNotFound -> Todo {
     return attempt Todo.create {
         set: {
-            owner_id: owner_id
-            project_id: none
+            owner_id: owner.id
+            project_id: project_id
             title: title
             status: TodoStatus.open
             score: 0

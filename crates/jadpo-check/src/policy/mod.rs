@@ -21,10 +21,23 @@
 //! every create, read, update and delete a route reaches needs a grant,
 //! and one anyone may call needs `Access.public`.
 //!
-//! Built in chunk 4.4; a field's own `policy:`, `FieldAccess.server_only`
-//! and the checks that follow a field's value into outputs come with
-//! chunk 4.4b, and OAuth scopes (`scopes:`) after the first build.
+//! - A field's own `policy:` narrows its entity's grants for `create`,
+//!   `read` and `update`, or says `FieldAccess.server_only` for a field no
+//!   client may read or write ([`FieldPolicy`]); it can only take away
+//!   (`policy.field_widens_entity`).
+//!
+//! [`proof`] decides whether every caller who reached a record may read a
+//! field of it, or the parent a query includes; [`outputs`] checks each
+//! query's output and includes with it, and [`flow`] follows values
+//! through actions' bodies into the outputs they build and the user
+//! fields their creates set.
+//!
+//! Built in chunks 4.4 and 4.4b; OAuth scopes (`scopes:`) come after the
+//! first build.
 
+pub mod flow;
+pub mod outputs;
+pub mod proof;
 pub mod reach;
 pub mod report;
 
@@ -34,7 +47,7 @@ use std::sync::Arc;
 use jadpo_db::{Db, File, ItemKind, Ownership, Project, item_tree};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_std::http::PrincipalKind;
-use jadpo_std::{Access as AccessWord, MembershipScope, Tenancy as TenancyWord};
+use jadpo_std::{Access as AccessWord, FieldAccess, MembershipScope, Tenancy as TenancyWord};
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr, MemberItem};
 
 use crate::data::{Entities, EntityModel};
@@ -128,6 +141,9 @@ pub struct EntityPolicy {
     /// `scope:` and `member:` (area 9: handing a record to someone else is
     /// a named action).
     pub fixed: Vec<String>,
+    /// The fields whose own `policy:` narrows these grants, in declared
+    /// order.
+    pub fields: Vec<FieldPolicy>,
 }
 
 impl EntityPolicy {
@@ -136,6 +152,45 @@ impl EntityPolicy {
         self.lists
             .get(&effect)
             .map_or(&[], |list| list.grants.as_slice())
+    }
+
+    /// The field called `name`'s own policy, when it has one.
+    pub fn field(&self, name: &str) -> Option<&FieldPolicy> {
+        self.fields.iter().find(|field| field.field == name)
+    }
+
+    /// Who may do `effect` to the field called `name`, when its own
+    /// `policy:` narrows the record's grants: `Some(&[])` for nobody, `None`
+    /// when the field follows the record.
+    pub fn field_grants(&self, name: &str, effect: Effect) -> Option<&[Grant]> {
+        self.field(name)?.grants(effect)
+    }
+}
+
+/// A field's own `policy:` (area 9, "Field restrictions"): the record's
+/// grants, narrowed.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FieldPolicy {
+    pub field: String,
+    /// `FieldAccess.server_only`: no client may read or write it.
+    pub server_only: bool,
+    /// Each effect it narrows (`create`, `read`, `update`), as written and
+    /// resolved; an effect left out follows the record's list.
+    pub lists: BTreeMap<Effect, GrantList>,
+}
+
+impl FieldPolicy {
+    /// The effects a field's `policy:` can narrow: a field is deleted with
+    /// its record.
+    pub const EFFECTS: [Effect; 3] = [Effect::Create, Effect::Read, Effect::Update];
+
+    /// Who may do `effect` to the field: `Some(&[])` for nobody, `None`
+    /// when it follows the record's list.
+    pub fn grants(&self, effect: Effect) -> Option<&[Grant]> {
+        if self.server_only {
+            return (effect != Effect::Delete).then_some(&[]);
+        }
+        self.lists.get(&effect).map(|list| list.grants.as_slice())
     }
 }
 
@@ -321,6 +376,10 @@ pub struct MembershipRead {
 pub struct PolicyRead {
     pub model: Arc<EntityPolicy>,
     pub path: String,
+    /// Where each part is written, for the graph: each effect's list by
+    /// its word, `tenant`, and each field's own policy by the field's name
+    /// after `field `.
+    pub places: Vec<(String, Span)>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -330,6 +389,8 @@ pub struct RootRead {
     pub model: RootPolicy,
     /// The file it is written in.
     pub path: Option<String>,
+    /// Where each line under `actions:` is written, by its action.
+    pub places: Vec<(String, Span)>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -956,6 +1017,8 @@ pub fn root_read(db: &dyn Db, project: Project) -> Arc<RootRead> {
                 continue;
             }
             listed.insert(action.clone(), span.clone());
+            out.places
+                .push((action.clone(), node_span(&path, line.syntax())));
             let Some(items) = entries(line.value().as_ref()) else {
                 out.problems.push(binding(
                     span,
@@ -1151,8 +1214,10 @@ pub fn policy_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
         tenancy: None,
         shared: false,
         fixed: Vec::new(),
+        fields: Vec::new(),
     };
     let mut tenant_written: Option<(Expr, Span)> = None;
+    let mut places: Vec<(String, Span)> = Vec::new();
     if let Some(section) = found.first() {
         let mut seen: BTreeMap<String, Span> = BTreeMap::new();
         for item in section.block().iter().flat_map(|list| list.member_items()) {
@@ -1202,6 +1267,7 @@ pub fn policy_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
                 );
                 continue;
             }
+            places.push((word.clone(), node_span(&path, member.syntax())));
             if word == "tenant" {
                 if let Some(value) = member.value() {
                     let at = node_span(&path, value.syntax());
@@ -1335,9 +1401,28 @@ pub fn policy_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
         }
         (None, None) => {}
     }
+    // Each field's own `policy:` (area 9, "Field restrictions").
+    for (field, member) in field_policies(&decl, entity) {
+        places.push((format!("field {field}"), node_span(&path, member.syntax())));
+        if let Some(read) = field_policy(
+            db,
+            project,
+            &lookup,
+            entity,
+            memberships,
+            &policy,
+            &path,
+            &field,
+            &member,
+            &mut problems,
+        ) {
+            policy.fields.push(read);
+        }
+    }
     // The fields only a listed action changes.
     let mut fixed: Vec<String> = Vec::new();
-    for list in policy.lists.values() {
+    let field_lists = policy.fields.iter().flat_map(|field| field.lists.values());
+    for list in policy.lists.values().chain(field_lists) {
         for grant in &list.grants {
             let field = match grant {
                 Grant::Caller { field, .. } => Some(field),
@@ -1370,6 +1455,7 @@ pub fn policy_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
     Some(PolicyRead {
         model: Arc::new(policy),
         path,
+        places,
         problems,
     })
 }
@@ -1536,6 +1622,246 @@ fn resolve_who(
             "A grant names a field of the record that points at the caller, a membership role (`<Role>.<value>`), or `Access.authenticated`, `Access.public` or `Access.system`.",
             "Name one of these",
         )),
+    }
+}
+
+/// Each field of `decl` with a `policy:` in its block, with that member.
+fn field_policies(decl: &ast::EntityDecl, entity: &EntityModel) -> Vec<(String, ast::Member)> {
+    let mut out = Vec::new();
+    for (name, member) in tree::members(decl.member_list()) {
+        let Some(field) = tree::name_text(&name) else {
+            continue;
+        };
+        if !entity.fields.iter().any(|f| f.name == field) {
+            continue;
+        }
+        let Some(Expr::RecordExpr(record)) = member.value() else {
+            continue;
+        };
+        if let Some((_, setting)) = tree::members(record.member_list())
+            .into_iter()
+            .find(|(key, _)| tree::name_text(key).as_deref() == Some("policy"))
+        {
+            out.push((field, setting));
+        }
+    }
+    out
+}
+
+/// Whether the record's list `entity` lets in everyone `grant` names: the
+/// grant itself, anyone signed in for a field, a role or anyone signed in,
+/// or anyone at all.
+pub fn admits(entity: &[Grant], grant: &Grant) -> bool {
+    entity.contains(grant)
+        || entity.contains(&Grant::Public)
+        || (entity.contains(&Grant::Signed)
+            && matches!(
+                grant,
+                Grant::Caller { .. } | Grant::Role { .. } | Grant::Signed
+            ))
+}
+
+/// A grant as a list writes it: `owner_id`, `CompanyRole.editor`,
+/// `Access.authenticated`.
+pub fn written_grant(access: &Access, grant: &Grant) -> String {
+    match grant {
+        Grant::Caller { field, .. } => field.clone(),
+        Grant::Role {
+            membership, role, ..
+        } => match access.membership(membership) {
+            Some(held) => format!("{}.{role}", held.roles),
+            None => role.clone(),
+        },
+        Grant::Signed => format!("{}.{}", AccessWord::NAME, AccessWord::Authenticated.name()),
+        Grant::Public => format!("{}.{}", AccessWord::NAME, AccessWord::Public.name()),
+        Grant::System => format!("{}.{}", AccessWord::NAME, AccessWord::System.name()),
+    }
+}
+
+/// The field `field`'s own `policy:` (area 9, "Field restrictions"), read
+/// and resolved against its entity, which it can only narrow.
+#[allow(clippy::too_many_arguments)]
+fn field_policy(
+    db: &dyn Db,
+    project: Project,
+    lookup: &Lookup<'_>,
+    entity: &EntityModel,
+    memberships: &[Membership],
+    policy: &EntityPolicy,
+    path: &str,
+    field: &str,
+    member: &ast::Member,
+    problems: &mut Vec<Diagnostic>,
+) -> Option<FieldPolicy> {
+    let mut out = FieldPolicy {
+        field: field.to_string(),
+        server_only: false,
+        lists: BTreeMap::new(),
+    };
+    let shape = "A field's `policy:` narrows its record's grants in the same shape, `{ read: [...] update: [...] }`, or says `FieldAccess.server_only` for a field no client may read or write.";
+    if let Some(value) = member.value() {
+        let at = node_span(path, value.syntax());
+        let written = tree::written(value.syntax());
+        match pair(&value) {
+            Some((host, word)) if host == FieldAccess::NAME => {
+                if FieldAccess::from_name(&word) == Some(FieldAccess::ServerOnly) {
+                    out.server_only = true;
+                    return Some(out);
+                }
+                problems.push(binding(
+                    at,
+                    format!("`{written}` isn't one of `FieldAccess`'s values"),
+                    "not a `FieldAccess` value",
+                    shape,
+                    "Use `FieldAccess.server_only`",
+                ));
+            }
+            _ => problems.push(binding(
+                at,
+                format!(
+                    "`{entity}.{field}`'s `policy:` isn't a list of grants",
+                    entity = entity.name
+                ),
+                "not grants",
+                shape,
+                "Write `policy: { read: [...] }`, or `policy: FieldAccess.server_only`",
+            )),
+        }
+        return None;
+    }
+    let mut seen: BTreeMap<String, Span> = BTreeMap::new();
+    for item in member.block().iter().flat_map(|list| list.member_items()) {
+        let MemberItem::Member(line) = item else {
+            if let MemberItem::Elision(_) = item {
+                continue;
+            }
+            problems.push(field_effect_unknown(
+                path,
+                item.syntax(),
+                &tree::written(item.syntax()),
+            ));
+            continue;
+        };
+        let Some(key) = line.member_key() else {
+            continue;
+        };
+        let word = tree::written(key.syntax());
+        let span = node_span(path, key.syntax());
+        let Some(effect) =
+            Effect::from_word(&word).filter(|effect| FieldPolicy::EFFECTS.contains(effect))
+        else {
+            problems.push(field_effect_unknown(path, key.syntax(), &word));
+            continue;
+        };
+        if let Some(first) = seen.get(&word) {
+            problems.push(
+                Diagnostic::new(&rule::POLICY_EFFECT_DUPLICATE, format!("`{word}:` is given twice"))
+                    .at(span, "given again")
+                    .also(first.clone(), "first given here")
+                    .reason(format!("`{}.{field}`'s policy gives each list once, so \"who may {word} it?\" is always one line.", entity.name))
+                    .next(format!("Merge the two `{word}:` lists into one")),
+            );
+            continue;
+        }
+        seen.insert(word.clone(), span.clone());
+        let Some(items) = entries(line.value().as_ref()) else {
+            problems.push(binding(
+                line.value()
+                    .map_or(span.clone(), |v| node_span(path, v.syntax())),
+                format!("`{word}:` isn't given a list"),
+                "not a list",
+                "Each grant lists who may do it, in `[ ]`: `read: [Access.authenticated]`.",
+                "Write the list in `[ ]`",
+            ));
+            continue;
+        };
+        let record = policy.grants(effect);
+        let mut list = GrantList::default();
+        for expr in items {
+            let text = tree::written(expr.syntax());
+            let at = node_span(path, expr.syntax());
+            if list.written.contains(&text) {
+                problems.push(subject_duplicate(at, &text));
+                continue;
+            }
+            list.written.push(text.clone());
+            match resolve_who(db, project, lookup, entity, memberships, &expr, &text, &at) {
+                Ok(grant) if !admits(record, &grant) => {
+                    problems.push(widens(entity, field, effect, &text, at, policy));
+                }
+                Ok(grant) => {
+                    if !list.grants.contains(&grant) {
+                        list.grants.push(grant);
+                    }
+                }
+                Err(problem) => problems.push(problem),
+            }
+        }
+        out.lists.insert(effect, list);
+    }
+    Some(out)
+}
+
+/// `policy.field_widens_entity`: a field's list naming `who`, whom its
+/// record's list for `effect` doesn't let in.
+fn widens(
+    entity: &EntityModel,
+    field: &str,
+    effect: Effect,
+    who: &str,
+    at: Span,
+    policy: &EntityPolicy,
+) -> Diagnostic {
+    let word = effect.word();
+    let names = match policy.lists.get(&effect) {
+        Some(list) if !list.written.is_empty() => format!(
+            "which names {}",
+            crate::and_list(
+                &list
+                    .written
+                    .iter()
+                    .map(|w| format!("`{w}`"))
+                    .collect::<Vec<_>>()
+            )
+        ),
+        _ => "which grants nobody".to_string(),
+    };
+    Diagnostic::new(
+        &rule::POLICY_FIELD_WIDENS_ENTITY,
+        format!(
+            "`{}.{field}` lets `{who}` {word} it, which `{}` doesn't",
+            entity.name, entity.name
+        ),
+    )
+    .at(at, format!("not in `{}`'s `{word}:`", entity.name))
+    .reason(format!(
+        "A field's `policy:` only takes away from its record's grants: it narrows who may {word} the field, and never lets in anyone `{}`'s `{word}:` doesn't, {names}.",
+        entity.name
+    ))
+    .next(format!("Remove `{who}` from `{field}`'s `{word}:`"))
+}
+
+fn field_effect_unknown(path: &str, node: &jadpo_syntax::SyntaxNode, word: &str) -> Diagnostic {
+    let span = node_span(path, node);
+    let known = ["create", "read", "update"];
+    let near = (word != "delete").then(|| nearest(word, known)).flatten();
+    let reason = if word == "delete" {
+        "A field is deleted with its record, so its `policy:` narrows who may `create`, `read` and `update` it, and the record's `delete:` decides the rest.".to_string()
+    } else {
+        match near {
+            Some(near) => format!("A field's `policy:` narrows who may `create`, `read` and `update` it, or says `FieldAccess.server_only`. Did you mean `{near}`?"),
+            None => "A field's `policy:` narrows who may `create`, `read` and `update` it, or says `FieldAccess.server_only`; the tenant and the rest are the record's.".to_string(),
+        }
+    };
+    let problem = Diagnostic::new(
+        &rule::POLICY_EFFECT_UNKNOWN,
+        format!("`{word}` isn't something a field's policy narrows"),
+    )
+    .at(span.clone(), "not a field's grant")
+    .reason(reason);
+    match near {
+        Some(near) => problem.next(format!("Use `{near}`")).edit(span, near),
+        None => problem.next(format!("Remove `{word}`")),
     }
 }
 

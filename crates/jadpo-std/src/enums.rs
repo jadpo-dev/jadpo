@@ -272,6 +272,15 @@ std_enum! {
 }
 
 std_enum! {
+    /// What a field's `policy:` says when no client may read or write it
+    /// (area 9, "Field restrictions").
+    FieldAccess: "FieldAccess" {
+        /// No client: no request reads or writes it.
+        ServerOnly: "server_only",
+    }
+}
+
+std_enum! {
     /// What a membership's `scope:` says when the role is held across the
     /// whole application (area 9, "A membership role").
     MembershipScope: "MembershipScope" {
@@ -339,6 +348,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (Access::NAME, Access::NAMES.to_vec()),
         (Tenancy::NAME, Tenancy::NAMES.to_vec()),
         (MembershipScope::NAME, MembershipScope::NAMES.to_vec()),
+        (FieldAccess::NAME, FieldAccess::NAMES.to_vec()),
         (ZONE, names(crate::zones::ZONES)),
         (LOCALE, names(crate::zones::LOCALES)),
     ]
@@ -367,6 +377,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         Access::NAME => position(Access::NAMES),
         Tenancy::NAME => position(Tenancy::NAMES),
         MembershipScope::NAME => position(MembershipScope::NAMES),
+        FieldAccess::NAME => position(FieldAccess::NAMES),
         ZONE => crate::zones::ZONES.iter().position(|(v, _)| *v == variant),
         LOCALE => crate::zones::LOCALES
             .iter()

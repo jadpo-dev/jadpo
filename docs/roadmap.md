@@ -291,7 +291,7 @@ reference only).
   report, and `sessions.revoke_token` and `Service.revoke_key` gated by
   the owning record's grants (today they revoke any id, area 8). Split:
   field restrictions are 4.4b.
-- [ ] **4.4b Field restrictions:** `opus · xhigh` a field's own
+- [x] **4.4b Field restrictions:** `opus · xhigh` a field's own
   `policy:` and `FieldAccess.server_only`, `policy.field_widens_entity`,
   `policy.output_field_unproved` with a field's value followed through
   variables and other types, writes refused for a field the caller may

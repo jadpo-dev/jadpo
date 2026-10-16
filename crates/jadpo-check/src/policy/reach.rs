@@ -38,6 +38,9 @@ pub enum Act {
     /// `sessions.start`, `.end` or `.issue_token`: signing a caller in or
     /// out, which the application's own checks decide (area 8).
     SignsIn,
+    /// A field its own body always changes, by entity and field name: an
+    /// update's `set:`, or a create giving a field that can't be `none`.
+    Field(String, String, Effect),
 }
 
 /// What each action and fixture in `file` acts, by name.
@@ -50,6 +53,7 @@ pub fn acts(db: &dyn Db, project: Project, file: File) -> BTreeMap<String, BTree
     let service = identity
         .variant(PrincipalKind::Service)
         .map(|v| v.entity.clone());
+    let entities = crate::data::Entities::new(db, project);
     let mut out = BTreeMap::new();
     for callable in callables_of(db, file) {
         let checked = typed_body(db, project, callable);
@@ -63,13 +67,32 @@ pub fn acts(db: &dyn Db, project: Project, file: File) -> BTreeMap<String, BTree
         let mut found = BTreeSet::new();
         for site in &checked.body.sites {
             let act = match &site.node {
-                Node::Expr(BodyExpr::Write { entity, op, .. }) => {
+                Node::Expr(BodyExpr::Write {
+                    entity,
+                    op,
+                    set,
+                    transition,
+                    ..
+                }) => {
                     let effect = match op {
                         WriteOp::Create => Effect::Create,
                         WriteOp::Update => Effect::Update,
                         WriteOp::Delete => Effect::Delete,
                     };
-                    Act::Entity(entity.name().to_string(), effect)
+                    let name = entity.name().to_string();
+                    if transition.is_none() && effect != Effect::Delete {
+                        for (key, _) in set {
+                            let field = key.name().rsplit('.').next().unwrap_or_default();
+                            let always = effect == Effect::Update
+                                || entities.get(&name).is_some_and(|model| {
+                                    model.fields.iter().any(|f| f.name == field && !f.nullable)
+                                });
+                            if always {
+                                found.insert(Act::Field(name.clone(), field.to_string(), effect));
+                            }
+                        }
+                    }
+                    Act::Entity(name, effect)
                 }
                 Node::Expr(BodyExpr::Call {
                     callee: Callee::Action(callee),
@@ -154,6 +177,8 @@ struct Reached {
     grants: Vec<Grant>,
     /// Whether the entity's records belong to a tenant.
     tenant: bool,
+    /// For a field whose own `policy:` narrows the record's: its name.
+    field: Option<String>,
 }
 
 /// Everything the route running `action` (or the query `query`) reaches,
@@ -182,6 +207,7 @@ fn reached(
             effect,
             grants,
             tenant,
+            field: None,
         });
     };
     let own = |entity: &str, effect: Effect| -> Vec<Grant> {
@@ -228,6 +254,24 @@ fn reached(
                     }
                 }
                 Act::SignsIn => any = true,
+                Act::Field(entity, field, effect) => {
+                    let narrowed = access
+                        .entity(entity)
+                        .and_then(|policy| policy.field_grants(field, *effect));
+                    if let Some(grants) = narrowed
+                        && !out
+                            .iter()
+                            .any(|r| r.field.as_deref() == Some(field) && r.entity == *entity)
+                    {
+                        out.push(Reached {
+                            entity: entity.clone(),
+                            effect: *effect,
+                            grants: grants.to_vec(),
+                            tenant: false,
+                            field: Some(field.clone()),
+                        });
+                    }
+                }
             }
         }
     }
@@ -310,6 +354,39 @@ pub fn route_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             }
             for reach in &reached {
                 let real = reach.grants.iter().any(|g| !matches!(g, Grant::System));
+                if !real && let Some(field) = &reach.field {
+                    let server_only = access
+                        .entity(&reach.entity)
+                        .and_then(|policy| policy.field(field))
+                        .is_some_and(|own| own.server_only);
+                    let why = if server_only {
+                        format!(
+                            "`{}.{field}` is `FieldAccess.server_only`, which no client may change",
+                            reach.entity
+                        )
+                    } else {
+                        format!(
+                            "`{}.{field}`'s own `{}:` names nobody",
+                            reach.entity,
+                            reach.effect.word()
+                        )
+                    };
+                    out.push(
+                        Diagnostic::new(
+                            &rule::POLICY_EFFECT_UNGRANTED,
+                            format!("`{label}` sets `{}.{field}`, which nobody may", reach.entity),
+                        )
+                        .at(span, format!("sets `{field}`"))
+                        .reason(format!(
+                            "Policy is always on, and a field's own `policy:` narrows who may change it: {why}, so this route could never succeed."
+                        ))
+                        .next(format!("Leave `{field}` out of what this route's action writes")),
+                    );
+                    break;
+                }
+                if reach.field.is_some() {
+                    continue;
+                }
                 if !real {
                     let from = match listed {
                         Some(line)

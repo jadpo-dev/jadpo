@@ -243,6 +243,23 @@ pub enum Detail {
         guarded: bool,
         sets: Vec<String>,
     },
+    /// One list of an entity's `policy:` (area 9): the effect it grants
+    /// (`create`, `read`, `update` or `delete`) and who it names, as
+    /// written.
+    Grant { effect: String, who: Vec<String> },
+    /// A field's own `policy:` (area 9, "Field restrictions"): no client
+    /// may read or write it (`FieldAccess.server_only`), or each effect it
+    /// narrows, with who, as written.
+    FieldRestriction {
+        server_only: bool,
+        grants: Vec<(String, Vec<String>)>,
+    },
+    /// Where an entity's records belong (area 9, "Tenancy"): the tenant
+    /// entity, and the reference to it (`id` on the tenant itself).
+    Tenancy { tenant: Key, via: String },
+    /// An action listed under root `policy { actions: }` (area 9,
+    /// "Actions"): who may call it, as written.
+    ActionException { who: Vec<String> },
 }
 
 /// What an input field's `default:` fills in when the field is left out

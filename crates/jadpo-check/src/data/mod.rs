@@ -912,16 +912,8 @@ impl Reader<'_> {
                     _ => self.setting_value(value_span, "immutable", "`true` or `false`"),
                 },
                 // A field's own grants narrow its entity's (area 9, "Field
-                // restrictions"), roadmap chunk 4.4b.
-                "policy" => self.out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!("`{entity}.{name}`'s own `policy:` isn't built yet"),
-                    )
-                    .at(key_span, "decided, not built")
-                    .reason("A field's `policy:` narrows who may read or change it below its entity's grants (area 9, \"Field restrictions\"), and comes with roadmap chunk 4.4b; until then a field follows its entity's grants.")
-                    .next(format!("Leave `{name}`'s `policy:` out for now, or keep `{name}` in an entity of its own")),
-                ),
+                // restrictions"), read by `crate::policy`.
+                "policy" => {}
                 "on_delete" => match names.as_slice() {
                     [host, variant]
                         if host == OnDelete::NAME && OnDelete::from_name(variant).is_some() =>

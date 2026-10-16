@@ -38,7 +38,7 @@ use crate::queries::{Planner, Reach, column_type, field};
 use crate::types::{Types, ValidatorId};
 use jadpo_check::policy::Effect;
 use jadpo_std::policy::CallerPart;
-use jadpo_std::write::PolicyRefusal;
+use jadpo_std::write::{FieldProbe, PolicyRefusal};
 
 /// What one write site runs: its plan, which says what its refusals and
 /// a missing record raise, and the sites the executor works out first.
@@ -195,6 +195,28 @@ impl Planner<'_> {
                     .collect();
                 let condition =
                     self.policy(&mut writing, entity_model, Effect::Create, &Row::New(&new))?;
+                // A field whose own `policy:` narrows who may set it, set
+                // by the request: setting nothing is never refused.
+                let mut narrowed = Vec::new();
+                for (name, _) in &given {
+                    let Some(who) = self.field_policy(
+                        &mut writing,
+                        entity_model,
+                        name,
+                        Effect::Create,
+                        &Row::New(&new),
+                    )?
+                    else {
+                        continue;
+                    };
+                    let value = new.iter().find(|(n, _)| n == name)?.1.clone();
+                    narrowed.push(if field(entity_model, name)?.nullable {
+                        format!("({value} IS NULL OR {who})")
+                    } else {
+                        who
+                    });
+                }
+                let condition = all_of(condition, narrowed);
                 let plain = text::insert(table, &names, &values, &returning(entity_model));
                 if condition == jadpo_sql::policy::ANYONE {
                     unpoliced = None;
@@ -223,6 +245,9 @@ impl Planner<'_> {
                     }
                 };
                 let mut assignments: Vec<String> = Vec::new();
+                // What each field's own `policy:` adds for the fields the
+                // write changes (area 9, "Field restrictions").
+                let mut narrowed: Vec<String> = Vec::new();
                 if let Some(transition) = transition {
                     // A transition sets its fields to their fixed values,
                     // and every field generated on change to the clock.
@@ -231,6 +256,17 @@ impl Planner<'_> {
                         let ty = column_type(field)?.param();
                         let value = jadpo_sql::value(&mut writing, value, ty)?;
                         assignments.push(text::equal(&field.born, &value));
+                        if *op == WriteOp::Update
+                            && let Some(who) = self.field_policy(
+                                &mut writing,
+                                entity_model,
+                                name,
+                                Effect::Update,
+                                &Row::Table,
+                            )?
+                        {
+                            narrowed.push(who);
+                        }
                     }
                     for field in &entity_model.fields {
                         if field.generated == Some(jadpo_std::Generated::OnChange) {
@@ -243,6 +279,15 @@ impl Planner<'_> {
                     // `set:`, in the order written.
                     for (key, value) in set {
                         let field_name = self.types.field_name(key).to_string();
+                        if let Some(who) = self.field_policy(
+                            &mut writing,
+                            entity_model,
+                            &field_name,
+                            Effect::Update,
+                            &Row::Table,
+                        )? {
+                            narrowed.push(who);
+                        }
                         let field = field(entity_model, &field_name)?;
                         let ty = column_type(field)?.param();
                         let validator = self.types.validator_id(&TypeRef::Field(key.clone()));
@@ -297,6 +342,15 @@ impl Planner<'_> {
                                 ty,
                             );
                             assignments.push(text::set_when(&field.born, &supplied, &value));
+                            if let Some(who) = self.field_policy(
+                                &mut writing,
+                                entity_model,
+                                &name,
+                                Effect::Update,
+                                &Row::Table,
+                            )? {
+                                narrowed.push(format!("(NOT {supplied} OR {who})"));
+                            }
                             if field.reference.is_some() {
                                 written_refs.push((
                                     name.clone(),
@@ -335,6 +389,15 @@ impl Planner<'_> {
                                 }
                                 let value = writing.param(WriteSource::Input(at), ty);
                                 assignments.push(text::set_when(&field.born, &supplied, &value));
+                                if let Some(who) = self.field_policy(
+                                    &mut writing,
+                                    entity_model,
+                                    &field_name,
+                                    Effect::Update,
+                                    &Row::Table,
+                                )? {
+                                    narrowed.push(format!("(NOT {supplied} OR {who})"));
+                                }
                             }
                         }
                     }
@@ -374,9 +437,11 @@ impl Planner<'_> {
                     Effect::Update
                 };
                 let granted = self.policy(&mut writing, entity_model, effect, &Row::Table)?;
-                let open = granted == jadpo_sql::policy::ANYONE;
+                let open = granted == jadpo_sql::policy::ANYONE && narrowed.is_empty();
                 // Writing no row asks whether the record is there under its
-                // lifecycle: then policy refused it.
+                // lifecycle: then policy refused it. With a field's own
+                // policy, it asks again under the record's grants: then the
+                // field's refused it.
                 policy = if open {
                     None
                 } else {
@@ -386,9 +451,28 @@ impl Planner<'_> {
                     asked.extend(self.access(&mut asking, entity_model, Reach::Write)?);
                     let mut probe = text::select_one(table);
                     text::where_clause(&mut probe, &asked, "");
+                    let fields_probe = if narrowed.is_empty() {
+                        None
+                    } else {
+                        let mut asking = Writing::default();
+                        let id = asking.param(id_source.clone(), SqlType::Uuid);
+                        let mut asked = vec![text::equal("id", &id)];
+                        asked.extend(self.access(&mut asking, entity_model, Reach::Write)?);
+                        let record = self.policy(&mut asking, entity_model, effect, &Row::Table)?;
+                        if record != jadpo_sql::policy::ANYONE {
+                            asked.push(record);
+                        }
+                        let mut probe = text::select_one(table);
+                        text::where_clause(&mut probe, &asked, "");
+                        Some(FieldProbe {
+                            sql: probe,
+                            params: asking.params,
+                        })
+                    };
                     Some(PolicyRefusal::Probe {
                         sql: probe,
                         params: asking.params,
+                        fields: fields_probe,
                     })
                 };
                 // A transition's `when:` joins the `WHERE` when it can
@@ -438,7 +522,10 @@ impl Planner<'_> {
                     write(&conditions)
                 } else {
                     unpoliced = Some(write(&conditions));
-                    conditions.push(granted);
+                    if granted != jadpo_sql::policy::ANYONE {
+                        conditions.push(granted);
+                    }
+                    conditions.extend(narrowed);
                     write(&conditions)
                 }
             }
@@ -620,6 +707,21 @@ impl Planner<'_> {
                 fields,
             },
         })
+    }
+}
+
+/// `condition` and each of `fields`: [`jadpo_sql::policy::ANYONE`] when
+/// both let anyone in.
+fn all_of(condition: String, fields: Vec<String>) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if condition != jadpo_sql::policy::ANYONE {
+        parts.push(condition);
+    }
+    parts.extend(fields);
+    if parts.is_empty() {
+        jadpo_sql::policy::ANYONE.to_string()
+    } else {
+        parts.join(" AND ")
     }
 }
 

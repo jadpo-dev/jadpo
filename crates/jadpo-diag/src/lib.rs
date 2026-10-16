@@ -375,6 +375,8 @@ rules! {
         "09-policy.html#policy-effect-ungranted", "Route reaches something no grant allows";
     POLICY_EFFECT_UNKNOWN: "policy.effect_unknown", area 9, Error, Agent,
         "09-policy.html#policy-effect-unknown", "Policy holds something that isn't a grant or a setting";
+    POLICY_FIELD_WIDENS_ENTITY: "policy.field_widens_entity", area 9, Error, Agent,
+        "09-policy.html#policy-field-widens-entity", "Field policy lets in someone its record's grants don't";
     POLICY_MEMBERSHIP_DUPLICATE: "policy.membership_duplicate", area 9, Error, Agent,
         "09-policy.html#policy-membership-duplicate", "Entity declares a membership twice, or gives one of its parts twice";
     POLICY_MEMBERSHIP_MEMBER_REQUIRED: "policy.membership_member_required", area 9, Error, Agent,
@@ -383,8 +385,12 @@ rules! {
         "09-policy.html#policy-membership-role-required", "Membership doesn't say which field holds the role";
     POLICY_MEMBERSHIP_SCOPE_REQUIRED: "policy.membership_scope_required", area 9, Error, Agent,
         "09-policy.html#policy-membership-scope-required", "Membership doesn't say what it is held in";
+    POLICY_OUTPUT_FIELD_UNPROVED: "policy.output_field_unproved", area 9, Error, Agent,
+        "09-policy.html#policy-output-field-unproved", "Output carries a value not every caller may read";
     POLICY_PUBLIC_GRANT_MISSING: "policy.public_grant_missing", area 9, Error, Human,
         "09-policy.html#policy-public-grant-missing", "Route anyone may call reaches what not everyone may do";
+    POLICY_ROLE_FIELD_CREATE_FORBIDDEN: "policy.role_field_create_forbidden", area 9, Error, Agent,
+        "09-policy.html#policy-role-field-create-forbidden", "Create sets the user field its grant needs from the request, not the caller";
     POLICY_ROLE_UNBOUND: "policy.role_unbound", area 9, Error, Agent,
         "09-policy.html#policy-role-unbound", "Grant names a role no membership holds";
     POLICY_SCOPE_AMBIGUOUS: "policy.scope_ambiguous", area 9, Error, Agent,

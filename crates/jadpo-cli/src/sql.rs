@@ -308,7 +308,12 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
                 ]),
             ));
         }
-        if let Some(jadpo_std::write::PolicyRefusal::Probe { sql, params }) = &write.plan.policy {
+        if let Some(jadpo_std::write::PolicyRefusal::Probe {
+            sql,
+            params,
+            fields: field_probe,
+        }) = &write.plan.policy
+        {
             let then = match &not_found {
                 Some(failure) => format!(
                     "a row means policy refused the caller → {failure}, logged as concealed"
@@ -332,6 +337,32 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
                     ("params", Json::array(probe_params)),
                 ]),
             ));
+            if let Some(probe) = field_probe {
+                let mut asked = vec![(
+                    "then".to_string(),
+                    "a row means the record's grants let the caller in, so a field's own policy refused them → not_permitted"
+                        .to_string(),
+                )];
+                let mut probe_params = Vec::new();
+                for (n, param) in probe.params.iter().enumerate() {
+                    let source = inputs(&param.source);
+                    let ty = pg_type(param.ty);
+                    asked.push((format!("${}", n + 1), format!("{source} · {ty}")));
+                    probe_params.push(param_json(n, &source, &ty));
+                }
+                screen.push(Block::section(
+                    "when a field may have refused",
+                    probe.sql.lines(),
+                ));
+                screen.push(Block::fields(asked));
+                statement.push((
+                    "whenAFieldMayHaveRefused",
+                    Json::object([
+                        ("sql", probe.sql.as_str().into()),
+                        ("params", Json::array(probe_params)),
+                    ]),
+                ));
+            }
         }
         statements.push(Json::object(statement));
     }

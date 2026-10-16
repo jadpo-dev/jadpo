@@ -30,8 +30,9 @@ pub(crate) enum Written {
     /// which its plan names. With `true`, the record is there and policy
     /// refused the caller, which the failure's log says (area 9).
     Missing(bool),
-    /// Policy refused the caller a create, or a change to a record it
-    /// loaded earlier: `not_permitted` (area 9, "When policy says no").
+    /// Policy refused the caller a create, a change to a record it loaded
+    /// earlier, or a change to a field whose own `policy:` refuses them:
+    /// `not_permitted` (area 9, "When policy says no").
     NotPermitted,
     /// The store refused it with the plan's constraint at `at`: what the
     /// plan says that raises, keeping `cause`, the store's refusal, as its
@@ -130,16 +131,38 @@ pub(crate) async fn write(
         // and an update or delete asks whether the record is there.
         let policed = match (&plan.policy, unpoliced) {
             (Some(PolicyRefusal::Create), false) => return Ok(Written::NotPermitted),
-            (Some(PolicyRefusal::Probe { sql, params: asked }), false) => {
+            (
+                Some(PolicyRefusal::Probe {
+                    sql,
+                    params: asked,
+                    fields,
+                }),
+                false,
+            ) => {
                 let params = params_of(ctx, asked, inputs, site, now)?;
                 let found = match ctx.transaction(&plan.store).await {
                     Ok(transaction) => transaction.query(sql, &params).await,
                     Err(error) => Err(error),
                 };
-                match found {
+                let found = match found {
                     Ok(rows) => !rows.is_empty(),
                     Err(error) => return Err(refused(ctx, error, site)),
+                };
+                // The caller may change the record but not a field the
+                // request changes: the whole write is refused (area 9).
+                if found && let Some(fields) = fields {
+                    let params = params_of(ctx, &fields.params, inputs, site, now)?;
+                    let granted = match ctx.transaction(&plan.store).await {
+                        Ok(transaction) => transaction.query(&fields.sql, &params).await,
+                        Err(error) => Err(error),
+                    };
+                    match granted {
+                        Ok(rows) if !rows.is_empty() => return Ok(Written::NotPermitted),
+                        Ok(_) => {}
+                        Err(error) => return Err(refused(ctx, error, site)),
+                    }
                 }
+                found
             }
             _ => false,
         };
