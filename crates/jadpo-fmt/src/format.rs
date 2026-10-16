@@ -328,7 +328,7 @@ impl Formatter {
             docs.push(self.element(child));
             previous = Some(child.kind());
             ends_in_question = match child {
-                NodeOrToken::Node(node) => node.last_token().is_some_and(|t| t.kind() == QUESTION),
+                NodeOrToken::Node(node) => node.text().to_string().trim_end().ends_with('?'),
                 NodeOrToken::Token(token) => token.kind() == QUESTION,
             };
         }
