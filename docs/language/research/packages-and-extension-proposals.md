@@ -36,17 +36,21 @@ program, and how is a feature turned on, off or replaced?
 
 **Open**, in the order they are being worked through:
 
-| # | Part |
-|---|---|
-| 1 | The golden rule: anything a package can do, the app can do |
-| 2 | Overriding: settings and events only; magic-link sign-in built in ([scenarios](override-scenarios.md)) |
-| 3 | The override scenarios' smaller answers (erasure keys, handshakes, telemetry, error format, outgoing webhooks) |
-| 4 | What a library package may also carry |
-| 5 | Software and disk: disk driver, image variants, scanning, PDFs |
-| 6 | Packages generated from your own Jadpo apps |
-| 7 | Private packages |
-| 8 | Choosing a provider when deploying |
-| 9 | Then: move every decision onto the area pages and the roadmap |
+| # | Part | Where it stands |
+|---|---|---|
+| 1 | The golden rule: a package can do nothing the app cannot, and the app can do everything a package can | Proposed |
+| 2 | Translations | Format decided in area 10 (ICU JSON per locale, typed calls); the rest undesigned; chunk 5.3 is close |
+| 3 | Authentication: magic links built in, consistency with area 8, switching sign-in methods | Area 8 designed except magic links |
+| 4 | Side effects and packages, explained end to end | Decided; to walk through |
+| 5 | Overriding: settings and events only ([scenarios](override-scenarios.md)) | Proposed |
+| 6 | Each override scenario, one at a time, with what it looks like | Sketched in the scenarios page |
+| 7 | Receiving from queues (SQS, SNS, Cloudflare Queues): directly or only through webhooks | Undesigned |
+| 8 | What a library package may also carry | Proposed |
+| 9 | Software and disk: disk driver, image variants, scanning, PDFs | Proposed |
+| 10 | Packages generated from your own Jadpo apps | Proposed |
+| 11 | Private packages | Proposed |
+| 12 | Choosing a provider when deploying | Proposed |
+| 13 | Then: move every decision onto the area pages and the roadmap | — |
 
 ## Decided before this: swapping a provider
 
