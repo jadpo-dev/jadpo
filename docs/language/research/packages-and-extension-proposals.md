@@ -87,12 +87,20 @@ then built. No design is left for implementation.
    erasure keys, webhook handshakes, telemetry as a connection, RFC 9457
    per API, `search`, `bot_check` and `scanning` capabilities, disk and
    memory drivers in production.
-7. **Receiving from queues and topics** (SQS, SNS, Cloudflare Queues,
-   Kafka, EventBridge). *To design:* whether an app consumes a queue
-   directly (a connection the runtime polls, each message arriving as an
-   event) or only through webhooks (SNS's HTTP delivery, which needs a
-   handshake); how it fits area 12's events and area 11's webhooks;
-   retries, ordering and dead letters; Workers' queue consumers.
+7. **Receiving from outside: webhooks and queues.** *Decided* (area 11
+   question 11): a connection with a webhook secret generates
+   `POST /webhooks/<connection>`, checks the signature, drops repeats by
+   event id and publishes each as a Jadpo event that subscribers take with
+   `on: Stripe.PaymentIntentSucceeded`. *To walk through and design:* the
+   whole Stripe flow end to end; webhooks for the app's own integrations
+   and for senders with no package (a partner posting to the app); webhooks
+   that need a reply body rather than `200` (Twilio's TwiML, Slack's
+   interactive replies), which an event cannot give; handshakes (Slack,
+   Microsoft Graph, SNS); ordering and out-of-date events; whether queues
+   and topics (SQS, SNS, Cloudflare Queues, Kafka, EventBridge) are
+   consumed directly (a connection the runtime reads, each message arriving
+   as an event) or only through webhooks (SNS's HTTP delivery); retries and
+   dead letters; Workers' queue consumers; how this fits area 12's events.
 8. **What a library package may also carry**: email partials and layouts,
    translations, a usage guide for agents. *Recommendation:* yes to all
    three.
