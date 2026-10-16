@@ -7,6 +7,7 @@ mod support;
 mod binary;
 mod check;
 mod cli;
+mod client_address;
 mod config;
 mod crate_graph;
 mod fmt;

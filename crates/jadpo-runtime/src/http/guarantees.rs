@@ -465,8 +465,28 @@ fn send(
     request: &Request,
     clock: i64,
 ) -> Response {
+    send_as(
+        table,
+        program,
+        host,
+        request,
+        clock,
+        &super::address::ClientAddress::CONNECTION,
+    )
+}
+
+/// [`send`] with the client's address chosen as `client` says.
+fn send_as(
+    table: &RouteTable,
+    program: &Program,
+    host: &Fake,
+    request: &Request,
+    clock: i64,
+    client: &super::address::ClientAddress,
+) -> Response {
     let app = App {
         auth: &super::signed::AuthSettings::NONE,
+        client,
         table,
         codecs: Codecs {
             codecs: &CODECS,
@@ -579,6 +599,7 @@ fn a_worker_reuses_its_readiness_check_for_a_second() {
     let program = Program::new(Ends::Writes);
     let app = App {
         auth: &super::signed::AuthSettings::NONE,
+        client: &super::address::ClientAddress::CONNECTION,
         table: &table,
         codecs: Codecs {
             codecs: &CODECS,
@@ -850,6 +871,97 @@ fn a_credential_on_a_route_anyone_may_call_counts_its_address_before_it_runs() {
         (429, Some("rate_limited"))
     );
     assert_eq!(program.runs.get(), 1, "the refused request never ran");
+}
+
+#[test]
+fn two_clients_behind_a_proxy_are_counted_apart() {
+    use super::address::{ClientAddress, Target};
+    use jadpo_std::ClientAddressSource;
+    use jadpo_std::http::{ClientAddressPlan, Hops};
+
+    let table = table(Some("main"), false);
+    let program = Program::new(Ends::Writes);
+    let host = Fake {
+        limits: Some(crate::RateLimits::new(1 << 20)),
+        ..Fake::default()
+    };
+    // From behind one proxy: every connection is the proxy's, and the proxy
+    // adds the address it saw to the right of whatever the caller sent.
+    let behind = |forwarded: &str| {
+        let mut request = post(None, "a");
+        request.address = Some("10.0.0.1".into());
+        request
+            .headers
+            .push(("X-Forwarded-For".into(), forwarded.into()));
+        request
+    };
+    let believing = ClientAddress::read(
+        Some(&ClientAddressPlan {
+            source: ClientAddressSource::ForwardedFor,
+            hops: Some(Hops::Count(1)),
+        }),
+        &crate::config::ConfigValues::default(),
+        Target::Native,
+    )
+    .expect("accepted");
+    let ann = send_as(
+        &table,
+        &program,
+        &host,
+        &behind("203.0.113.9"),
+        NOW,
+        &believing,
+    );
+    assert_eq!(
+        (ann.status, ann.client.as_deref()),
+        (204, Some("203.0.113.9"))
+    );
+    let bob = send_as(
+        &table,
+        &program,
+        &host,
+        &behind("198.51.100.4"),
+        NOW,
+        &believing,
+    );
+    assert_eq!(
+        (bob.status, bob.client.as_deref()),
+        (204, Some("198.51.100.4")),
+        "a second client has an allowance of its own"
+    );
+    let again = send_as(
+        &table,
+        &program,
+        &host,
+        &behind("203.0.113.9"),
+        NOW,
+        &believing,
+    );
+    assert_eq!((again.status, code(&again)), (429, Some("rate_limited")));
+    // A caller writing another address to the left of the proxy's is still
+    // the address the proxy saw.
+    let claiming = send_as(
+        &table,
+        &program,
+        &host,
+        &behind("192.0.2.77, 203.0.113.9"),
+        NOW,
+        &believing,
+    );
+    assert_eq!(
+        (claiming.status, claiming.client.as_deref()),
+        (429, Some("203.0.113.9"))
+    );
+    // Without `client_address:` the header is not read, so the proxy's own
+    // address is every client's, which is the problem the setting solves.
+    let first = send(&table, &program, &host, &behind("203.0.113.50"), NOW);
+    assert_eq!(
+        (first.status, first.client.as_deref()),
+        (204, Some("10.0.0.1"))
+    );
+    let second = send(&table, &program, &host, &behind("198.51.100.50"), NOW);
+    assert_eq!((second.status, code(&second)), (429, Some("rate_limited")));
+    assert_eq!(program.runs.get(), 3);
 }
 
 #[test]
