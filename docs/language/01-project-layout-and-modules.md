@@ -31,7 +31,7 @@ File order and declaration order never matter: a declaration can refer to
 one defined later or in another file. Names are unique across the whole
 project, so a second `Count` in another file is an error (see
 `semantic.duplicate_declaration` below). The one exception, decided
-2026-10-16 and not built until chunk 5.3b: a private function or type needs
+2026-10-16 and not built until chunk 5.3d: a private function or type needs
 a name unique only within its domain (see [Files and names](#files-and-names)).
 
 ## Domains instead of modules
@@ -147,7 +147,7 @@ error: `Count` is declared twice
 check failed: 1 error, 2 files
 ```
 
-Decided 2026-10-16 (Richard), not built until chunk 5.3b: the error names
+Decided 2026-10-16 (Richard), not built until chunk 5.3d: the error names
 both declarations and their files, and says which of two cases it is. If
 the two are identical, it is a copy: use the existing one, or move it to
 `shared/` if both domains need it. If they differ, they are two things with
@@ -1506,7 +1506,7 @@ rule's real output under [Errors](#errors).
 |---|---|
 | Root, domains and their folders | Built (chunk 1.3): a file where the layout has no place for it is `layout.unknown_location`, and a declaration in the wrong folder `layout.wrong_folder`; a folder or file with no `app.jadpo` above it is checked as loose files. |
 | Files and names | Built (chunks 1.3 and 1.9): one primary declaration per file, named after it; names unique project-wide; the round-trip and folded-collision rules, with the exception for a type folding to its callable's name (chunk 1.9). |
-| Names per domain | Decided 2026-10-16, not built (chunk 5.3b): private functions and types unique only within their domain, their identity keys carrying the domain, `semantic.duplicate_declaration` saying copy or clash and listing the names in use with the same word, and `jadpo rename` refusing a name in use. |
+| Names per domain | Decided 2026-10-16, not built (chunk 5.3d): private functions and types unique only within their domain, their identity keys carrying the domain, `semantic.duplicate_declaration` saying copy or clash and listing the names in use with the same word, and `jadpo rename` refusing a name in use. |
 | Order independence | Built: declaration and file order never matter. |
 | Domains, `public` and calls | Built: owner-qualified calls and per-declaration `public`, with `visibility.private_cross_domain`, `visibility.public_not_allowed` and `visibility.public_unused` (chunk 2.8). |
 | Reserved words | Built: a reserved word can't name anything. |
@@ -1708,7 +1708,7 @@ build/
   email, `type X = Failure` or `EmailMessage`) needs a name unique only
   within its domain, whether it has a file of its own or sits beside the
   declaration that uses it (2026-10-16, Richard; decided, not built until
-  chunk 5.3b). Everything else stays unique across the project:
+  chunk 5.3d). Everything else stays unique across the project:
   - anything `public`, and anything in `shared/` or the root files;
   - every other kind of declaration, whatever its visibility, since most
     have a name outside the code: entities (tables), failures (public error
@@ -1784,7 +1784,7 @@ build/
   then clashes, as `semantic.duplicate_declaration`. The move writes one
   line in the identity registry, so it reads as a move and not as a removal
   and an addition (area 18, question 8; 2026-10-16, decided, not built
-  until chunk 5.3b).
+  until chunk 5.3d).
 - A helper that depends on one domain's types (`order_math.total(order)`)
   stays in that domain and becomes public when another domain calls it.
   Depending on two domains' types is an error that needs a design decision.
@@ -2141,4 +2141,4 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | A file per shared name: where it applies | A second declaration in any domain or `shared/` file, `types/` and `libraries/` included, moves to a file of its own once another file uses it; one only its own file uses stays; the edit makes the move, and `jadpo fmt --layout` makes it and updates the imports (chunk 3.5) | 2026-10-15 |
 | A file holds only what its primary declaration uses | The primary declaration is the one of the folder's kind named after the file (the first of that kind when the file is misnamed), or the seed in `database/seeds/`; every type or helper function beside it is used by it, directly or through one another, or is `layout.unused_declaration`. Tests never count. One another file uses is moved by `layout.promotion_required`, not reported unused. While the primary, or a declaration it uses, writes a name that names nothing, perhaps a misspelling of the one it meant, nothing beside it is called unused, as with imports. Test files, root files and loose files have no primary declaration, and a library's functions keep their own rule: one nothing calls is unused (chunk 3.9) | 2026-10-15 |
 | The primary declaration first | `jadpo fmt` moves the primary declaration below the file's opening comments, up to their last blank line, and its `use` lines; it takes the comments written above it and the one after it on its line, and everything else keeps its written order. `jadpo fmt --check` fails on a file whose primary declaration isn't first; loose files keep their order (chunk 3.9) | 2026-10-15 |
-| Names per domain | A private function or type (not a failure, an email, or a type an API's record names) needs a name unique only within its domain; everything public, in `shared/` or the root files, and every other kind (entities, failures, events, actions, queries, routes, schedules, subscribers, services, fixtures, emails) stays unique across the project, as do domain, library and standard-library names among themselves. Why: agents in parallel workspaces on different domains would otherwise clash on private helper names at merge; imports stay exact. Rejected: a namespace per domain, which only moves the prefix into tables, error codes, OpenAPI and event names, and makes one name mean different things by folder. The identity key of a function or type declared in a domain carries the domain, and promotion to `shared/` writes a registry move line (amends area 18's question 8). `semantic.duplicate_declaration` says copy or clash, never invents a name, and lists the names in use with the same word; `jadpo rename` refuses a name in use; agents merge `main` and run `jadpo check` before pushing, and generated CI runs `jadpo check` first. Decided, not built (chunk 5.3b) (Richard) | 2026-10-16 |
+| Names per domain | A private function or type (not a failure, an email, or a type an API's record names) needs a name unique only within its domain; everything public, in `shared/` or the root files, and every other kind (entities, failures, events, actions, queries, routes, schedules, subscribers, services, fixtures, emails) stays unique across the project, as do domain, library and standard-library names among themselves. Why: agents in parallel workspaces on different domains would otherwise clash on private helper names at merge; imports stay exact. Rejected: a namespace per domain, which only moves the prefix into tables, error codes, OpenAPI and event names, and makes one name mean different things by folder. The identity key of a function or type declared in a domain carries the domain, and promotion to `shared/` writes a registry move line (amends area 18's question 8). `semantic.duplicate_declaration` says copy or clash, never invents a name, and lists the names in use with the same word; `jadpo rename` refuses a name in use; agents merge `main` and run `jadpo check` before pushing, and generated CI runs `jadpo check` first. Decided, not built (chunk 5.3d) (Richard) | 2026-10-16 |

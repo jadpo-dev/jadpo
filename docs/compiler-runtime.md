@@ -405,10 +405,12 @@ them, mapped by the call's `attempt` as a construction's broken rules are
 the arm's failure). `temporal` runs on jiff with its bundled IANA database,
 in `jadpo-value` only, so every target reads the same zones and none reads
 the platform's (area 10, "Zones and local times"). `temporal.format` and
-`format_relative` are in the table and checked, but `jadpo-value` has no
-locale data to give their text until chunk 5.3, so the checker refuses a
-call that checks (`toolchain.not_built_yet`) and their entry in
-`jadpo-value` is never reached. Enums that Rust code interprets (`Rounding`, `TextFormat`,
+`format_relative` write text for people in `jadpo-value`'s `present` module
+over ICU4X with Unicode CLDR compiled in (pure Rust, pinned exactly, built
+for wasm32 like the rest; area 10, "Chosen in chunk 5.3"): the format
+arrives as `TimeFormatSpec` text, the locale as the `Locale` variant, and
+the locales an application supports (`locales { }`, `LocalePlan`) reach the
+wire through the codecs, which accept only those. Enums that Rust code interprets (`Rounding`, `TextFormat`,
 `UuidVersion`, `Weekday`, `Dst`, `InvalidDay`, `ComponentStyle`, and `Zone` and `Locale` from their tables) are
 declared once, in `jadpo-std`. The namespaces the compiler fills from the
 project or the platform (`clock`, `config`, `translations`, `sessions`,
@@ -501,7 +503,7 @@ never invalidates another file's resolution.
 
 **Resolution.** One project-wide name table, because names are unique
 across the project and across kinds (area 1). Decided 2026-10-16, not
-built until chunk 5.3b: a private function or type is unique only within its
+built until chunk 5.3d: a private function or type is unique only within its
 domain, so the table keys those by domain, and a name resolves among its
 file's domain's private names and the project-wide ones, which never
 overlap. A dotted prefix resolves to

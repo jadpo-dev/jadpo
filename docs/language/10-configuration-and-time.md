@@ -36,8 +36,14 @@ rules:
   - type.temporal_format_invalid
   - type.temporal_format_requires_time
   - type.temporal_locales_required
-  - type.locale_*
-  - syntax.locales_*
+  - type.locale_default_unsupported
+  - type.locale_duplicate
+  - type.locale_invalid
+  - type.locale_unsupported
+  - syntax.locales_default_required
+  - syntax.locales_duplicate_option
+  - syntax.locales_supported_required
+  - syntax.locales_unknown_option
   - semantic.multiple_locale_declarations
   - type.presentation_text_persistence
 ---
@@ -48,7 +54,7 @@ How an application declares its settings and secrets, where their values come
 from, and how code reads the current time, works with dates and zones, and
 shows times to people in their own language.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; chunk 5.1c built the client's address behind trusted proxies (`client_address:`). Chunk 5.2 built time: `ZonedTime`, durations, arithmetic and comparison, the `temporal` library over a bundled time zone database, and a test's clock; chunk 5.2b built the formats and `PresentationText`, and checks `temporal.format` and `format_relative`. The examples marked `check` in those sections and their errors run with this checkout's `jadpo`. Locales, translations and the formatted text come in chunk 5.3.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; chunk 5.1c built the client's address behind trusted proxies (`client_address:`). Chunk 5.2 built time: `ZonedTime`, durations, arithmetic and comparison, the `temporal` library over a bundled time zone database, and a test's clock; chunk 5.2b built the formats and `PresentationText`, and checks `temporal.format` and `format_relative`. The examples marked `check` in those sections and their errors run with this checkout's `jadpo`. Chunk 5.3 built locales (`locales { }`, checked wherever a locale is written) and the text `temporal.format` and `format_relative` give, in each locale's own words, order and digits; translations come in chunk 5.3b, and choosing a language from `Accept-Language` in chunk 5.3c.
 
 Two rules run through the page. **Code never reads the environment or the
 system clock directly**: settings arrive as typed `config.<field>` values,
@@ -857,7 +863,7 @@ argument's named type:
 | `weekday(value)` | `Weekday` | |
 | `date(zoned)`, `hour(zoned)`, `minute(zoned)` | a local time's `CalendarDate`, and `Int`s from 0 | |
 | `zone(zoned)`, `instant(zoned)` | the `Zone` it is seen in, and the `Instant` it is | |
-| `format(value, zone:, locale:, format:)`, `format_relative(value, now:, zone:, locale:)` | `PresentationText`, below; checked, and its text comes with chunk 5.3 | |
+| `format(value, zone:, locale:, format:)`, `format_relative(value, now:, zone:, locale:)` | `PresentationText`, below | |
 
 A day's bounds start at its first instant: midnight, or, in a zone whose
 clocks skip midnight, the first time they show that day. `instant(...)` is
@@ -872,60 +878,176 @@ dependency change of its own (chosen in chunk 5.2).
 
 ## Showing dates and times to people
 
-> Built in chunk 5.2b: the formats, `PresentationText`, and both calls,
-> checked as this section says. The text they give in each language comes
-> with locales in chunk 5.3; until then a call that checks is
-> `toolchain.not_built_yet`, so the example that calls one shows that.
+> Built in chunk 5.2b: the formats, `PresentationText` and the checks on
+> both calls. Built in chunk 5.3: the text they give, in the words, order,
+> punctuation and digits of each locale, and the locales an application
+> supports.
 
 Formatting needs three things the server must never guess: the zone, the
 language and the format. Decided (question 7): one call that takes all
-three, with the format either built in or declared once as a named type:
+three, with the format either built in or declared once as a named type.
+The language is one the application supports, declared in `app.jadpo`
+("Locales", below), so the example is a project:
 
-```jadpo check project=format-call expect=toolchain.not_built_yet
+```jadpo check project=format-call file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=format-call file=domains/shop/types/ordered_at.jadpo
 /// When an order was placed.
 type OrderedAt = Instant {}
+```
 
+```jadpo check project=format-call file=domains/shop/types/short_date.jadpo
 /// A date as "25 Oct 2026" in `Locale.en_gb`.
 type ShortDate = TimeFormat {
     day: ComponentStyle.numeric
     month: ComponentStyle.short
     year: ComponentStyle.numeric
 }
+```
 
+```jadpo check project=format-call file=domains/shop/types/order_placed.jadpo
 /// When an order was placed, shown to its customer.
 type OrderPlaced = Output {
     placed: PresentationText
 }
+```
+
+```jadpo check project=format-call file=domains/shop/actions/show_placed.jadpo
+use shop/types { OrderPlaced, OrderedAt, ShortDate }
 
 /// The order's placing, in the customer's zone and language.
-function order_placed(ordered_at: OrderedAt, zone: Zone, locale: Locale) -> OrderPlaced {
+action show_placed(ordered_at: OrderedAt, zone: Zone, locale: Locale) -> OrderPlaced {
     return OrderPlaced {
         placed: temporal.format(ordered_at, zone: zone, locale: locale, format: ShortDate)
     }
 }
 ```
 
-```text output
-error: `temporal.format` is checked, but its text isn't built yet
- --> main.jadpo:19:17
-   |
-19 |         placed: temporal.format(ordered_at, zone: zone, locale: locale, format: ShortDate)
-   |                 ^^^^^^^^^^^^^^^ checked, not built
-  reason: This call is right, but the text `temporal.format` gives in each language comes from locale data, which comes with locales and translations (area 10, roadmap chunk 5.3); until then a program that calls it couldn't run.
-  next: Send the `Instant` for the client to format for now, or do without this text (agent)
-  rule: toolchain.not_built_yet
-  help: docs/language/03-logic.html#toolchain-not-built-yet
+The zone decides the date, and the locale the words and their order: at
+23:30 UTC on 25 October 2026 it is already the 26th in Paris.
 
-check failed: 1 error, 1 file
+```jadpo check project=format-call file=domains/shop/actions/show_placed.test.jadpo
+test "the placing is shown in the customer's zone and language" {
+    assert show_placed(
+        "2026-10-25T09:30:00Z",
+        Zone.europe_london,
+        Locale.en_gb
+    ).placed == "25 Oct 2026"
+    assert show_placed(
+        "2026-10-25T09:30:00Z",
+        Zone.europe_paris,
+        Locale.fr_fr
+    ).placed == "25 oct. 2026"
+    assert show_placed(
+        "2026-10-25T23:30:00Z",
+        Zone.europe_paris,
+        Locale.fr_fr
+    ).placed == "26 oct. 2026"
+}
 ```
 
 A built-in format is written `format: TimeFormat.date_time_long`. The
 built-in formats are `date_`, `time_` and `date_time_` each with `full`,
-`long`, `medium` or `short`, CLDR's four lengths; `date_time_long` gives
-"27 September 2026 at 14:30 BST" in `en_gb`. A declared format lists the
-parts it shows, each once, with a `ComponentStyle`, and the locale decides
-their order and punctuation and whether the clock has 12 or 24 hours, as
-CLDR's skeletons and JavaScript's `Intl.DateTimeFormat` do:
+`long`, `medium` or `short`, CLDR's four lengths: the locale's own pattern
+for a date, a time, or both with the words it joins them with. In `en_gb`,
+for 14:30:05 on Sunday 27 September 2026 in London, where the clocks are on
+British Summer Time:
+
+| Format | `en_gb` |
+|---|---|
+| `date_full` | Sunday, 27 September 2026 |
+| `date_long` | 27 September 2026 |
+| `date_medium` | 27 Sept 2026 |
+| `date_short` | 27/09/2026 |
+| `time_full` | 14:30:05 British Summer Time |
+| `time_long` | 14:30:05 BST |
+| `time_medium` | 14:30:05 |
+| `time_short` | 14:30 |
+| `date_time_full` | Sunday, 27 September 2026 at 14:30:05 British Summer Time |
+| `date_time_long` | 27 September 2026 at 14:30:05 BST |
+| `date_time_medium` | 27 Sept 2026, 14:30:05 |
+| `date_time_short` | 27/09/2026, 14:30 |
+
+This page checks the table; the project that does is hidden.
+
+```jadpo check project=format-builtins file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=format-builtins file=tests/built_in_formats.test.jadpo hidden
+test "the twelve built-in formats in en_gb" {
+    var seen: ZonedTime = temporal.in_zone("2026-09-27T13:30:05Z", Zone.europe_london)
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_full
+    ) == "Sunday, 27 September 2026"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_long
+    ) == "27 September 2026"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_medium
+    ) == "27 Sept 2026"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_short
+    ) == "27/09/2026"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.time_full
+    ) == "14:30:05 British Summer Time"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.time_long
+    ) == "14:30:05 BST"
+    assert temporal.format(seen, locale: Locale.en_gb, format: TimeFormat.time_medium) == "14:30:05"
+    assert temporal.format(seen, locale: Locale.en_gb, format: TimeFormat.time_short) == "14:30"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_time_full
+    ) == "Sunday, 27 September 2026 at 14:30:05 British Summer Time"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_time_long
+    ) == "27 September 2026 at 14:30:05 BST"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_time_medium
+    ) == "27 Sept 2026, 14:30:05"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_time_short
+    ) == "27/09/2026, 14:30"
+}
+```
+
+A declared format lists the parts it shows, each once, with a
+`ComponentStyle`, and the locale decides their order and punctuation and
+whether the clock has 12 or 24 hours, as CLDR's skeletons and JavaScript's
+`Intl.DateTimeFormat` do:
 
 | Part | Takes |
 |---|---|
@@ -950,14 +1072,73 @@ a `CalendarDate` has none, so `zone:` with either is
 `type.temporal_option_unused`. A `CalendarDate` has no clock time, so a
 `time_` or `date_time_` format, or one showing `hour`, `minute`, `second`
 or `zone_name`, is `type.temporal_format_requires_time`. `locale:` is a
-`Locale`; that it is one the application supports is checked with locales
-(chunk 5.3).
+`Locale` the application supports (`type.temporal_locales_required`,
+`type.locale_unsupported`; "Locales", below).
 
 "3 minutes ago" style text uses
 `temporal.format_relative(value, now: clock.now, zone:, locale:)`, for an
-`Instant` or a `ZonedTime`, with `zone:` as for `format`, and fixed rules:
-"just now", minutes, "Today at", "Yesterday at", the weekday, then the long
-date.
+`Instant` or a `ZonedTime`, with `zone:` as for `format`. Its rules are
+fixed, so two readers of the same value see the same words:
+
+| `value` against `now` | Text, in `en_gb` |
+|---|---|
+| under a minute, either way | "just now" |
+| under an hour | "4 minutes ago", "in 10 minutes" |
+| the same date | "Today at 13:00" |
+| the date before, or after | "Yesterday at 14:30", "Tomorrow at 14:30" |
+| two to six days away | "Friday at 07:30" |
+| anything else | "20 September 2026" |
+
+```jadpo check project=format-relative file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=format-relative file=domains/chat/types/sent_at.jadpo
+/// When a message was sent.
+type SentAt = Instant {}
+```
+
+```jadpo check project=format-relative file=domains/chat/types/sent_text.jadpo
+/// When a message was sent, as its reader reads it.
+type SentText = Output {
+    seen: PresentationText
+}
+```
+
+```jadpo check project=format-relative file=domains/chat/actions/show_sent.jadpo
+use chat/types { SentAt, SentText }
+
+/// When a message was sent, against now in London.
+action show_sent(sent_at: SentAt, locale: Locale) -> SentText {
+    return SentText {
+        seen: temporal.format_relative(
+            sent_at,
+            now: clock.now,
+            zone: Zone.europe_london,
+            locale: locale
+        )
+    }
+}
+```
+
+```jadpo check project=format-relative file=domains/chat/actions/show_sent.test.jadpo
+test "a time is shown against now" {
+    clock: "2026-09-27T13:30:00Z"
+
+    assert show_sent("2026-09-27T13:29:40Z", Locale.en_gb).seen == "just now"
+    assert show_sent("2026-09-27T13:26:00Z", Locale.en_gb).seen == "4 minutes ago"
+    assert show_sent("2026-09-27T12:00:00Z", Locale.en_gb).seen == "Today at 13:00"
+    assert show_sent("2026-09-26T13:30:00Z", Locale.en_gb).seen == "Yesterday at 14:30"
+    assert show_sent("2026-09-20T13:30:00Z", Locale.en_gb).seen == "20 September 2026"
+    assert show_sent("2026-09-27T13:26:00Z", Locale.fr_fr).seen == "il y a 4 minutes"
+    assert show_sent("2026-09-26T13:30:00Z", Locale.fr_fr).seen == "Hier à 14:30"
+}
+```
 
 The result is `PresentationText`, a built-in type: it can go into a
 response, an email or a page, a signature may use it directly, and text
@@ -969,24 +1150,95 @@ turned back into a time, ordered, added to or rebuilt into `Text`; two
 compare with `==` and `!=`. On the wire it is a JSON string. Clients that
 format for themselves receive the `Instant`.
 
+### Chosen in chunk 5.3
+
+- **Where the words come from.** Unicode CLDR 48, through ICU4X (the
+  `icu_datetime`, `icu_calendar`, `icu_time`, `icu_locale` and
+  `icu_experimental` crates, pinned together), compiled into the binary:
+  the interpreter, a native deployable and WebAssembly on Workers write the
+  same text, and nothing is read from the platform. `Locale` was generated
+  from the same release, so every variant has data.
+- **The calendar and the digits.** Always the Gregorian calendar, as
+  `calendar: "gregory"` gives in `Intl.DateTimeFormat` (a Thai or Arabic
+  reader of a `CalendarDate` sees the same year the database holds), and
+  always the digits the locale writes (`ar_eg`, `fa`, `bn`, `mr` and `ne`
+  write their own). CLDR's narrow no-break space before `PM` is written as
+  a plain space, as browsers and Node write it, so a test is written with
+  the space it shows.
+- **A declared format.** The locale's pattern for the parts is taken, then
+  each part is set to its style. A month written as a name is taken from
+  the long date pattern (the medium one where that writes the month as a
+  name too), a number from the short one, and `month: short` is that
+  pattern with the abbreviated name; `numeric` leaves a number as wide as
+  the locale writes it (`dd/MM/y` stays) and `two_digit` makes it at least
+  two; a date and a time are joined with the words the locale joins them
+  with for that month ("at" for `long`, a comma for `short`). So the output
+  is the locale's own and matches `Intl.DateTimeFormat` for most locales
+  and most options, but not all of them: where `Intl` shortens `01:59` to
+  `1:59` for `hour: numeric minute: two_digit`, this writes the locale's
+  `01:59`, and a Japanese or Korean weekday beside a long date has no
+  brackets.
+- **Parts no pattern holds together.** A year with a day (and no month), a
+  weekday and a year, a minute without an hour, or a month with a time are
+  written one after another with a space: `27 2026`, `30:05`,
+  `September, 14:30`. Only `zone_name` alone is the name alone ("British
+  Summer Time"), where `Intl` adds the date.
+- **The built-in formats.** The locale's patterns at CLDR's four lengths;
+  `date_full` is the long date with the weekday, so `date_time_long` is
+  "27 September 2026 at 14:30:05 BST", with the seconds `timeStyle: "long"`
+  has. For a handful of locales (Japanese and Korean `time_` formats, the
+  punctuation of a few `date_` formats) the pattern is ICU4X's, which is
+  not always the one `Intl.DateTimeFormat` writes. Measured against Node 24 (ICU 78, CLDR 48) on all 533 locales, two zones and four instants, 87% of 145,000 formatted texts, built-in and declared, are identical; by built-in format the same text is 92% for `date_long` and 94% for `time_medium`, down to 68% for `date_time_full`, the rest differing in punctuation, joining words, number widths or the 24-hour padding.
+- **The zone's name.** From the zone and the instant: "BST" or "British
+  Summer Time" in summer, "GMT" or "Greenwich Mean Time" in winter, and
+  where CLDR has no name for the locale, its offset ("GMT+1", "UTC+1").
+- **`format_relative`'s words.** The locale's own for "now", "4 minutes
+  ago", "yesterday" and "tomorrow"; "just now" is English's, and every
+  other locale says what CLDR says for "now". Under a minute counts
+  either way; under an hour counts whole minutes, a past value down and a
+  future one up, so a value is never said to be further away than it is.
+  Dates are the dates on the clock in the zone the value is shown in, not
+  blocks of 24 hours, so a day with 25 hours is still one day. "Tomorrow"
+  is the mirror of "Yesterday". The first letter of "Today at", "Yesterday
+  at", "Tomorrow at" and a weekday is a capital where the script has them.
+  A locale with no word for yesterday or tomorrow shows the long date.
+  "Two to six days away" is a weekday and the time, in the past or the
+  future alike; a week or more is the long date, with no time.
+- **Not here.** Translations (below) are chunk 5.3b, and choosing a locale
+  from an `Accept-Language` header is chunk 5.3c.
+
 ## Locales
 
 `Locale` is a built-in enum of the standard locales (`Locale.en_gb`,
-`Locale.fr_fr`). An application lists the ones it supports, once, in
-`app.jadpo`; formatting and translations accept only those, and using any
-other is a compile error. The server's own locale is never used.
+`Locale.fr_fr`): every locale Unicode CLDR 48 covers fully, and for each
+language without a region the region it most likely means. An application
+lists the ones it supports, once, in `app.jadpo`; formatting and
+translations accept only those, and using any other is a compile error. The
+server's own locale is never used.
 
-```jadpo fragment
-locales: {
+```jadpo check project=locales file=app.jadpo
+application {}
+
+locales {
     default: Locale.en_gb
     supported: [Locale.en_gb, Locale.en_us, Locale.fr_fr]
 }
 ```
 
-There is no `unsupported:` setting. A request field typed `Locale` is decoded like
-any enum, so an unsupported tag is an `invalid_value` failure; choosing a
-language from an `Accept-Language` header is a library call that falls back to
-`default`.
+`locales { }` is a declaration with no name, like `config { }`, with
+exactly two options, each once: `default:` and `supported:`, a list. Each
+entry is written `Locale.<tag>`, the tag in lower case with `_` for `-`
+(`Locale.zh_hans` is zh-Hans). A locale written out where text is formatted,
+or as the `default:` or `test:` of a `Locale` setting, that the list doesn't
+have is `type.locale_unsupported`; a project that formats text and declares
+none is `type.temporal_locales_required`.
+
+There is no `unsupported:` setting. A request field typed `Locale` is
+decoded like any enum, so an unsupported tag is an `invalid_value` failure
+and the OpenAPI document lists only the supported tags; a setting typed
+`Locale` is read the same way when the app starts. Choosing a language from
+an `Accept-Language` header is a library call that falls back to `default`
+(chunk 5.3c).
 
 ## Translations
 
@@ -994,7 +1246,7 @@ Failure messages are translated by the client using the failure's `code`
 (decided in area 4); `message` stays fixed English. Text the server writes
 for people, such as emails and server-rendered pages, needs translating on
 the server, and area 1 reserved the root `translations/` folder for it.
-It comes in chunk 5.3.
+It comes in chunk 5.3b.
 
 Proposed (question 9): one file per supported locale, `translations/en_gb.json`,
 holding keys and messages in ICU MessageFormat, the format translation
@@ -1028,7 +1280,7 @@ erasure, export) is designed in area 15 (Personal data).
 
 ## Errors
 
-> The configuration errors below run with this checkout's `jadpo` (chunk 5.1), and so do `type.clock_context` and the time errors after it (chunk 5.2). The formatting and locale errors after those predate the decisions above and are rewritten when chunks 5.2b and 5.3 build them.
+> The errors below run with this checkout's `jadpo`: the configuration errors (chunk 5.1), `type.clock_context` and the time errors after it (chunk 5.2), the formatting errors (chunk 5.2b) and the locale errors at the end (chunk 5.3).
 
 ### `configuration.binding_empty`
 
@@ -1880,102 +2132,290 @@ error: `Receipt.issued_label` would store text formatted for a person
 check failed: 1 error, 1 file
 ```
 
-> The locale errors below predate the decisions above and are rewritten
-> when chunk 5.3 builds them.
-
 ### `type.temporal_locales_required`
 
-```jadpo project=e-locales-required expect=type.temporal_locales_required
-test "formatting needs declared locales" {
-    var value = temporal.in_zone(Instant("2026-09-27T13:30:00Z"), Zone.europe_london)
-    var label = temporal.format(value, style: TimeFormat.date_long)
+A project that formats text for people declares the locales it supports:
+
+```jadpo check project=e-locales-required file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-locales-required file=domains/shop/types/ordered_at.jadpo hidden
+/// When an order was placed.
+type OrderedAt = Instant {}
+```
+
+```jadpo check project=e-locales-required file=domains/shop/types/placed_text.jadpo hidden
+/// An order's placing, shown to its customer.
+type PlacedText = Output {
+    placed: PresentationText
 }
+```
+
+```jadpo check project=e-locales-required file=domains/shop/actions/show_placed.jadpo expect=type.temporal_locales_required
+use shop/types { OrderedAt, PlacedText }
+
+/// The placing, in the customer's language.
+action show_placed(ordered_at: OrderedAt, locale: Locale) -> PlacedText {
+    return PlacedText {
+        placed: temporal.format(
+            ordered_at,
+            zone: Zone.utc,
+            locale: locale,
+            format: TimeFormat.date_long
+        )
+    }
+}
+```
+
+```text output
+error: `temporal.format` needs the application's locales
+ --> domains/shop/actions/show_placed.jadpo:6:17
+  |
+6 |         placed: temporal.format(
+  |                 ^^^^^^^^^^^^^^^ no locales declared
+  reason: Text for a person is written in one of the locales the application supports. None is declared, so there is nothing to check `locale:` against, and nothing for a request with no usable `Accept-Language` to fall back to.
+  next: Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }` (agent)
+  rule: type.temporal_locales_required
+  help: docs/language/10-configuration-and-time.html#type-temporal-locales-required
+
+check failed: 1 error, 4 files
 ```
 
 ### `syntax.locales_default_required`
 
-```jadpo project=e-locales-default expect=syntax.locales_default_required
+```jadpo check project=e-locales-default expect=syntax.locales_default_required
 locales {
-    supported: ["en-GB"]
-    unsupported: reject
+    supported: [Locale.en_gb]
 }
+```
+
+```text output
+error: `locales` has no `default:`
+ --> main.jadpo:1:1
+  |
+1 | locales {
+  | ^^^^^^^ no `default:`
+  reason: The default is the locale a choice from an `Accept-Language` header falls back to, so every request ends up with a language the application supports.
+  next: Add `default: Locale.en_gb` (agent)
+  rule: syntax.locales_default_required
+  help: docs/language/10-configuration-and-time.html#syntax-locales-default-required
+
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.locales_supported_required`
 
-```jadpo project=e-locales-supported expect=syntax.locales_supported_required
+```jadpo check project=e-locales-supported expect=syntax.locales_supported_required
 locales {
-    default: "en-GB"
-    unsupported: reject
+    default: Locale.en_gb
 }
 ```
 
-### `syntax.locales_unsupported_required`
+```text output
+error: `locales` has no `supported:`
+ --> main.jadpo:1:1
+  |
+1 | locales {
+  | ^^^^^^^ no `supported:`
+  reason: `supported:` lists every locale formatting and translations accept; a locale not listed is a compile error where it is written and an invalid value where it is read.
+  next: Add `supported: [Locale.en_gb]`, listing every locale the application speaks (agent)
+  rule: syntax.locales_supported_required
+  help: docs/language/10-configuration-and-time.html#syntax-locales-supported-required
 
-A third item with a different name:
+check failed: 1 error, 1 file
+```
 
-```jadpo project=e-locales-unsupported-required expect=syntax.locales_unsupported_required
+### `syntax.locales_unknown_option`
+
+There is no `unsupported:` setting any more (see "Locales"). A misspelt
+option (`suported:`) is reported the same way, with the nearest name:
+
+```jadpo check project=e-locales-unknown expect=syntax.locales_unknown_option
 locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    otherwise: reject
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+    unsupported: Locale.fr_fr
 }
 ```
 
-### `syntax.locales_unsupported_invalid`
+```text output
+error: `unsupported` isn't an option of `locales`
+ --> main.jadpo:4:5
+  |
+4 |     unsupported: Locale.fr_fr
+  |     ^^^^^^^^^^^ unknown option
+  reason: There is no `unsupported:` setting. A request field typed `Locale` is decoded like any enum, so a tag the application doesn't support is an `invalid_value` failure, and choosing a language from an `Accept-Language` header falls back to `default:`.
+  next: Remove `unsupported:` (agent)
+  rule: syntax.locales_unknown_option
+  help: docs/language/10-configuration-and-time.html#syntax-locales-unknown-option
 
-```jadpo project=e-locales-unsupported-invalid expect=syntax.locales_unsupported_invalid
+check failed: 1 error, 1 file
+```
+
+### `syntax.locales_duplicate_option`
+
+```jadpo check project=e-locales-twice expect=syntax.locales_duplicate_option
 locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    unsupported: guess
+    default: Locale.en_gb
+    default: Locale.fr_fr
+    supported: [Locale.en_gb, Locale.fr_fr]
 }
+```
+
+```text output
+error: `default:` is given twice
+ --> main.jadpo:3:5
+  |
+2 |     default: Locale.en_gb
+  |              ------------ first given here
+3 |     default: Locale.fr_fr
+  |     ^^^^^^^ given again
+  reason: `locales` says each of `default:` and `supported:` once.
+  next: Keep one `default:` and remove the other (agent)
+  rule: syntax.locales_duplicate_option
+  help: docs/language/10-configuration-and-time.html#syntax-locales-duplicate-option
+
+check failed: 1 error, 1 file
 ```
 
 ### `type.locale_invalid`
 
-```jadpo project=e-locale-invalid expect=type.locale_invalid
+A locale is a name in `Locale`, not text; a tag in quotes is the common
+slip, and the fix is one edit:
+
+```jadpo check project=e-locale-invalid expect=type.locale_invalid
 locales {
-    default: "en-GB"
-    supported: ["en-GB", "not a locale"]
-    unsupported: reject
+    default: Locale.en_gb
+    supported: [Locale.en_gb, "fr-FR"]
 }
+```
+
+```text output
+error: `"fr-FR"` isn't written as a locale
+ --> main.jadpo:3:31
+  |
+3 |     supported: [Locale.en_gb, "fr-FR"]
+  |                               ^^^^^^^ not a `Locale`
+  reason: A locale is a name in `Locale`, written `Locale.<tag>` with the tag in lower case and `_` for `-`: `Locale.en_gb` is en-GB. Closed choices are names, not text, so a misspelt one is caught while compiling.
+  next: Write `Locale.fr_fr` instead (agent)
+  rule: type.locale_invalid
+  help: docs/language/10-configuration-and-time.html#type-locale-invalid
+
+check failed: 1 error, 1 file
 ```
 
 ### `type.locale_duplicate`
 
-```jadpo project=e-locale-duplicate expect=type.locale_duplicate
+```jadpo check project=e-locale-duplicate expect=type.locale_duplicate
 locales {
-    default: "en-GB"
-    supported: ["en-GB", "en-GB"]
-    unsupported: reject
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.en_gb]
 }
+```
+
+```text output
+error: `Locale.en_gb` is listed twice
+ --> main.jadpo:3:31
+  |
+3 |     supported: [Locale.en_gb, Locale.en_gb]
+  |                               ^^^^^^^^^^^^ listed again
+  |                 ------------ first listed here
+  reason: A locale is supported or it is not; listing it twice says nothing more.
+  next: Remove the second `Locale.en_gb` (agent)
+  rule: type.locale_duplicate
+  help: docs/language/10-configuration-and-time.html#type-locale-duplicate
+
+check failed: 1 error, 1 file
 ```
 
 ### `type.locale_default_unsupported`
 
-```jadpo project=e-locale-default expect=type.locale_default_unsupported
+```jadpo check project=e-locale-default expect=type.locale_default_unsupported
 locales {
-    default: "fr-FR"
-    supported: ["en-GB"]
-    unsupported: reject
+    default: Locale.fr_fr
+    supported: [Locale.en_gb]
 }
+```
+
+```text output
+error: The default `Locale.fr_fr` isn't a supported locale
+ --> main.jadpo:2:14
+  |
+2 |     default: Locale.fr_fr
+  |              ^^^^^^^^^^^^ not in `supported:`
+3 |     supported: [Locale.en_gb]
+  |                -------------- the supported locales
+  reason: The default is what a request with no usable `Accept-Language` is given, and formatting and translations accept only the supported locales, so the default has to be one.
+  next: Add `Locale.fr_fr` to `supported:`, or choose a default that is listed (agent)
+  rule: type.locale_default_unsupported
+  help: docs/language/10-configuration-and-time.html#type-locale-default-unsupported
+
+check failed: 1 error, 1 file
+```
+
+### `type.locale_unsupported`
+
+```jadpo check project=e-locale-unsupported expect=type.locale_unsupported
+type OrderedAt = Instant {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+
+function placed_label(ordered_at: OrderedAt) -> PresentationText {
+    return temporal.format(
+        ordered_at,
+        zone: Zone.utc,
+        locale: Locale.fr_fr,
+        format: TimeFormat.date_long
+    )
+}
+```
+
+```text output
+error: `Locale.fr_fr` isn't a locale this application supports
+ --> main.jadpo:12:17
+   |
+12 |         locale: Locale.fr_fr,
+   |                 ^^^^^^^^^^^^ not in `locales`
+  reason: `temporal.format` writes text in the locales listed in `locales { supported: }`, in `app.jadpo`; `Locale.fr_fr` is not one of them, and the server never guesses a language.
+  next: Add `Locale.fr_fr` to `supported:` in `app.jadpo`, or use a locale that is listed (agent)
+  rule: type.locale_unsupported
+  help: docs/language/10-configuration-and-time.html#type-locale-unsupported
+
+check failed: 1 error, 1 file
 ```
 
 ### `semantic.multiple_locale_declarations`
 
-```jadpo project=e-locales-multiple expect=semantic.multiple_locale_declarations
+```jadpo check project=e-locales-multiple expect=semantic.multiple_locale_declarations
 locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    unsupported: reject
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
 }
 
 locales {
-    default: "en-US"
-    supported: ["en-US"]
-    unsupported: reject
+    default: Locale.en_us
+    supported: [Locale.en_us]
 }
+```
+
+```text output
+error: `locales { }` is declared twice
+ --> main.jadpo:6:1
+  |
+1 | locales {
+  | ------- first declared here
+6 | locales {
+  | ^^^^^^^ declared again
+  reason: An application lists the locales it supports once, in `app.jadpo`, so formatting and translations all accept the same ones.
+  next: Move what this `locales` lists into the first, and remove it (agent)
+  rule: semantic.multiple_locale_declarations
+  help: docs/language/10-configuration-and-time.html#semantic-multiple-locale-declarations
+
+check failed: 1 error, 1 file
 ```
 
 ## Review
@@ -1994,10 +2434,14 @@ library over the IANA database bundled into every target, time values on
 the wire, in OpenAPI and in queries, and a test's `clock:` and
 `clock.advance(...)` (area 13); its readings are in the Decisions table.
 Chunk 5.2b built `TimeFormat`, declared and built in, `ComponentStyle` and
-`PresentationText`, and checks `temporal.format` and `format_relative`,
-refusing a call that checks until the text comes; its readings are in the
-Decisions table too. Locales, translations and the formatted text come in
-chunk 5.3.
+`PresentationText`, and checks `temporal.format` and `format_relative`; its
+readings are in the Decisions table too. Chunk 5.3 built locales
+(`locales { }` with its errors, `locale:` checked against it, a `Locale` on
+the wire or in a setting limited to the supported ones) and the text
+`temporal.format` and `format_relative` give, over CLDR data compiled into
+every target. Translations (`translations/`, ICU MessageFormat and typed
+calls) are chunk 5.3b, and choosing a language from `Accept-Language`
+chunk 5.3c.
 
 ### Consistency with the rest of the language
 
@@ -2008,7 +2452,8 @@ chunk 5.3.
   code), and each place rejects the other (syntax review #56).
 - **Locales written as text** in their declaration but as `Locale.en_gb` in
   code (syntax review #57), against area 2's rule that closed options are
-  names.
+  names. Fixed by question 8: `locales { }` lists `Locale.en_gb`, and a
+  tag in quotes is `type.locale_invalid` with the one-edit fix.
 - **An anonymous object as an argument.** `components: { day: numeric }`
   breaks area 2's decision that there are no anonymous objects (syntax
   review #58).
@@ -2084,12 +2529,12 @@ chunk 5.3.
    [time and formatting proposals](research/10-configuration-and-time-proposals.md):
    `temporal.format(value, zone:, locale:, format:)` with named built-in or
    declared formats, `format_relative` without a profile, one `dst:` option
-   that defaults to failing, and about 20 functions. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.2* but for formatting, which is chunks 5.2b and 5.3.
+   that defaults to failing, and about 20 functions. *Decided 2026-10-12:* yes, as recommended. *Built in chunks 5.2, 5.2b and 5.3.*
 8. **Locales as names, and drop `unsupported:`?** *Recommendation:* yes,
    `default: Locale.en_gb` and `supported: [Locale.en_gb, Locale.fr_fr]`, in
    `app.jadpo`, with `Locale` a built-in enum of the standard locales. An
    unsupported tag in a request is an ordinary `invalid_value` like any
-   enum; header negotiation is a library call that falls back to `default`. *Decided 2026-10-12:* yes, as recommended.
+   enum; header negotiation is a library call that falls back to `default`. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.3* (the `Accept-Language` call is chunk 5.3c).
 9. **What format does `translations/` use?** *Recommendation:* one JSON file
    per supported locale with ICU MessageFormat messages (what FormatJS, Java
    and translation services such as Crowdin and Lokalise use), typed calls
@@ -2098,7 +2543,7 @@ chunk 5.3.
    email template needs it (area 11), not before. *Decided 2026-10-12:* yes, as recommended.
    *Amended 2026-10-13 (Richard):* translations are supported out of the box
    from the first build, not deferred: mail, the generated privacy pages,
-   client failure messages and any generated page use them.
+   client failure messages and any generated page use them. *Chunk 5.3b.*
 10. **How are signing keys rotated?** (carried from area 8) Area 8 keeps
     signing keys, the OIDC issuer and audience in configuration. How does a
     deployment replace a signing key without signing everyone out?
@@ -2194,6 +2639,12 @@ chunk 5.3.
 | Time zone data (chosen in chunk 5.2) | The `temporal` operations run in `jadpo-value` on jiff 0.2.38 with its bundled database (`jiff-tzdb`, IANA 2026e, about 200 KB): pure Rust, built for wasm32, with Temporal's handling of gaps and overlaps, and nothing read from the platform's zone files or clock, so the interpreter, native deployables and Workers answer alike. Every `Zone` variant is in it, which a test holds; a newer release is a change of its own | 2026-10-16 |
 | Not built here (chosen in chunk 5.2) | The formats (`TimeFormat`, `ComponentStyle`, the built-in formats), `PresentationText` and its errors, and `temporal.format` and `format_relative` checked are chunk 5.2b; the text they give, in each locale, is chunk 5.3 | 2026-10-16 |
 | Formats (chosen in chunk 5.2b) | `TimeFormat` is a base, as `Object` is: `type Name = TimeFormat { part: ComponentStyle.style ... }` declares a format, and `TimeFormat.` names the twelve built-in ones (`date_`, `time_`, `date_time_` with `full`, `long`, `medium`, `short`). The parts are `weekday` (`long`, `short`, `narrow`), `day`, `year`, `hour`, `minute` and `second` (`numeric`, `two_digit`), `month` (all five) and `zone_name` (`long`, `short`), as `Intl.DateTimeFormat` takes them; the locale orders them. At least one part (`type.temporal_format_components_empty`), each once (`type.temporal_format_component_duplicate`), in a style it takes (`type.temporal_format_component_invalid`); any other name is `type.unknown_setting`. A format holds no value: `format:` names one written out, and a format as a field's, parameter's or variable's type, as a value or passed in is `type.temporal_format_invalid`. The operation is given it as text, `day:numeric month:short year:numeric` or `date_long` (`jadpo_std::TimeFormatSpec`), as `at:` gives its clock time | 2026-10-16 |
-| What formatting takes (chosen in chunk 5.2b) | `format` shows an `Instant`, a `CalendarDate` or a `ZonedTime`, and `format_relative` an `Instant` or a `ZonedTime` against `now:`, an `Instant`. `zone:` is given exactly for an `Instant` (`type.temporal_zone_required`), and with a date or a local time is `type.temporal_option_unused`. A date takes only a date format: a `time_` or `date_time_` one, or a part `hour`, `minute`, `second` or `zone_name`, is `type.temporal_format_requires_time`, which names that now rather than an instant without a zone. `locale:` is any `Locale` until chunk 5.3 checks it against the supported ones. `type.temporal_format_choice` is gone: `format:` replaced `style:` and `components:` (Option B) | 2026-10-16 |
+| What formatting takes (chosen in chunk 5.2b) | `format` shows an `Instant`, a `CalendarDate` or a `ZonedTime`, and `format_relative` an `Instant` or a `ZonedTime` against `now:`, an `Instant`. `zone:` is given exactly for an `Instant` (`type.temporal_zone_required`), and with a date or a local time is `type.temporal_option_unused`. A date takes only a date format: a `time_` or `date_time_` one, or a part `hour`, `minute`, `second` or `zone_name`, is `type.temporal_format_requires_time`, which names that now rather than an instant without a zone. `locale:` was any `Locale` until chunk 5.3, which checks it against the supported ones. `type.temporal_format_choice` is gone: `format:` replaced `style:` and `components:` (Option B) | 2026-10-16 |
 | `PresentationText` (chosen in chunk 5.2b) | A built-in type that is its own representation, so no constructor turns it into `Text` or back, and nothing orders it, adds to it or reads a time from it; `==` and `!=` compare it. A signature may use it directly, as `Email`, and text in quotes may stand for one, which is how a test compares formatted text. An `Output` holds it, sent as a JSON string, and a request may send one as text. An entity field holding it, directly or through a named type, a collection, an object's field or a variant's data, is `type.presentation_text_persistence`; a setting of it is `configuration.type_unsupported` | 2026-10-16 |
-| Not built here (chosen in chunk 5.2b) | The text: a call to `temporal.format` or `format_relative` that checks is `toolchain.not_built_yet`, naming chunk 5.3, so a program never reaches a run-time fault for it. Both are in the standard-library table with their kinds, and the call is lowered with its format as text; chunk 5.3 implements them in `jadpo-value` over locale data, checks `locale:` against the supported locales, and removes the refusal | 2026-10-16 |
+| Not built here (chosen in chunk 5.2b) | The text: a call to `temporal.format` or `format_relative` that checked was `toolchain.not_built_yet`, naming chunk 5.3. Chunk 5.3 built it (below) and removed the refusal | 2026-10-16 |
+| `locales { }` (chosen in chunk 5.3) | An unnamed singleton declaration in `app.jadpo` (as area 1 reserves the word), not a member of `application { }`: the page's `locales: { ... }` was written with a colon and is amended to `locales { default: Locale.en_gb supported: [Locale.en_gb, ...] }`, each once and no others, entries written `Locale.<tag>` (`type.locale_invalid` for text, a non-list, a variant `Locale` has not; the fix for `"fr-FR"` is one edit), none twice (`type.locale_duplicate`), the default among them (`type.locale_default_unsupported`). A missing option is `syntax.locales_default_required` or `syntax.locales_supported_required`, a given-twice option `syntax.locales_duplicate_option`, any other name `syntax.locales_unknown_option` (`unsupported:` among them: there is no such setting), a second `locales { }` `semantic.multiple_locale_declarations`. `syntax.locales_unsupported_required` and `syntax.locales_unsupported_invalid` are gone with `unsupported:` | 2026-10-16 |
+| What a locale is checked against (chosen in chunk 5.3) | A project formats text for people only with `locales { }` declared (`type.temporal_locales_required`, at the call); files handed to the compiler on their own have no application to declare them, so the rule does not apply. A `Locale.x` written as `locale:`, or as the `default:` or `test:` of a `Locale` setting, that is not supported is `type.locale_unsupported`. A `Locale` passed in is read through the wire or a setting, which accept only the supported tags (`invalid_value`, rule `variant`; OpenAPI lists only those); with no `locales { }` every `Locale` is accepted as before. A problem in the declaration is reported once, and the call is not also reported | 2026-10-16 |
+| Locale data (chosen in chunk 5.3) | ICU4X 2.3 with Unicode CLDR 48 compiled into the binary (`icu_datetime`, `icu_calendar`, `icu_time`, `icu_locale` 2.3 and `icu_experimental` 0.6 for the relative-time words, pinned exactly; pure Rust, builds for wasm32): the interpreter, native deployables and Workers write the same text. A WebAssembly module that formats is about 3.5 MB larger than one that does not (3.9 MB against 0.35 MB; 1.2 MB against 0.1 MB compressed with gzip, 0.8 MB with Brotli), because the data holds every locale `Locale` lists. The next lever, if a deployable needs it, is data exported for the supported locales only | 2026-10-16 |
+| Writing a time (chosen in chunk 5.3) | Always the Gregorian calendar (as `Intl.DateTimeFormat` with `calendar: "gregory"`), the locale's own digits, CLDR's narrow no-break space written as a plain space. A built-in format is the locale's pattern at CLDR's four lengths (`date_full` with the weekday), so `date_time_long` is "27 September 2026 at 14:30:05 BST" in `en_gb`, with seconds as `timeStyle: "long"` has. A declared format takes the locale's pattern for its parts (a month as a name from the long or medium date pattern, a number from the short one; a date and a time joined as the locale joins them for that month) and sets each part's width: `numeric` leaves a number as the locale writes it, `two_digit` makes it at least two. Parts with no pattern together are written one after another with a space, and `zone_name` alone is the name alone | 2026-10-16 |
+| `format_relative` (chosen in chunk 5.3) | Against `now:`, in the zone the value is seen in: under a minute either way "just now" (English; the locale's "now" elsewhere); under an hour whole minutes, a past value rounded down and a future one up; the same local date "Today at" and the short time; the date before or after "Yesterday at" or "Tomorrow at"; two to six days away the weekday and the short time; anything else the long date. The words are the locale's, the first letter a capital; a locale with no word for yesterday or tomorrow shows the long date | 2026-10-16 |
+| Not built here (chosen in chunk 5.3) | Translations (`translations/`, ICU MessageFormat, typed calls, their errors) and choosing a locale from an `Accept-Language` header, which the page calls a library call without naming it, are chunks 5.3b and 5.3c | 2026-10-16 |

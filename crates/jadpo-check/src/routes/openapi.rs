@@ -188,7 +188,10 @@ pub fn document(
     if routes.is_empty() {
         return None;
     }
-    let wire = Wire { graph };
+    let wire = Wire {
+        graph,
+        locales: crate::locales::locales(db, project).plan.as_ref(),
+    };
     let declared = super::api_table(db, project).get(api);
     let required = declared.is_some_and(|api| api.idempotency == jadpo_std::Idempotency::Required);
     let identity = crate::identity::identity(db, project);

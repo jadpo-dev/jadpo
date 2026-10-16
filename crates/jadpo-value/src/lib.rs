@@ -37,6 +37,7 @@ pub mod integer;
 pub mod json;
 pub mod ops;
 pub mod order;
+pub mod present;
 mod rounding;
 pub mod shape;
 pub mod temporal;
@@ -113,10 +114,14 @@ pub fn run(
             | Op::TemporalZone,
             _,
         ) => run_temporal(op, args),
-        // The text these give in each locale comes with locales (area 10,
-        // "Locales", roadmap chunk 5.3); until then the checker refuses
-        // every call to them (`toolchain.not_built_yet`), so a program
-        // that runs never reaches here.
+        // The text for people, over locale data (area 10, "Showing dates
+        // and times to people").
+        (Op::TemporalFormat, [value, zone, locale, format]) => {
+            present::format_value(value, zone, locale, format)
+        }
+        (Op::TemporalFormatRelative, [value, now, zone, locale]) => {
+            present::format_relative_value(value, now, zone, locale)
+        }
         (Op::TemporalFormat | Op::TemporalFormatRelative, _) => Err(Fault::Shape),
     }
 }
@@ -226,6 +231,12 @@ mod tests {
         let london = temporal::zone_value(
             jadpo_std::variant_ordinal(jadpo_std::ZONE, "europe_london").unwrap_or(0),
         );
+        let english = Value::variant(
+            jadpo_std::LOCALE,
+            jadpo_std::locale_ordinal("en_gb").unwrap_or(0),
+            "en_gb",
+            Vec::new(),
+        );
         let date = Value::Date(jadpo_std::date_number("2026-10-25").unwrap_or(0));
         let zoned = Value::Zoned(Zoned {
             millis: 0,
@@ -238,8 +249,22 @@ mod tests {
         };
         for operation in jadpo_std::OPERATIONS {
             let args: Vec<Value> = match operation.op {
-                // Refused while checking until locales come (chunk 5.3).
-                Op::TemporalFormat | Op::TemporalFormatRelative => continue,
+                Op::TemporalFormat => {
+                    vec![
+                        Value::Instant(0),
+                        london.clone(),
+                        english.clone(),
+                        Value::text("date_long"),
+                    ]
+                }
+                Op::TemporalFormatRelative => {
+                    vec![
+                        Value::Instant(0),
+                        Value::Instant(1000),
+                        london.clone(),
+                        english.clone(),
+                    ]
+                }
                 Op::CollectionContains => vec![items.clone(), Value::Int(2)],
                 Op::CollectionCount | Op::CollectionFilter | Op::CollectionMap => {
                     vec![items.clone()]
