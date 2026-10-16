@@ -289,6 +289,10 @@ reference only).
   (area 8, decided 2026-10-16).
 - [ ] **4.4 Policy:** `opus · xhigh` grants compiled into queries, tenancy, the permissions
   report.
+- [ ] **4.4b Listing tokens and keys from a `GET`** `sonnet · high`
+  (area 8, decided 2026-10-16): a `GET` route runs `sessions.tokens` and
+  `Service.keys` as generated queries, and `IssuedToken` and `IssuedKey`
+  can be held in an `Output`, so a "signed-in devices" screen is one route.
 - [ ] **4.6 Teaching examples for Phase 4** `opus · high`: bring
   `examples/` up to date with routes, identity and policy, and pass
   `tools/verify.py --require-examples`.
