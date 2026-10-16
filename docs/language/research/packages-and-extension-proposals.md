@@ -34,23 +34,92 @@ program, and how is a feature turned on, off or replaced?
 | Development | Provider calls faked by default, let through by name, logged; `jadpo watch` |
 | Built in or a package | Agreed as input to chunk 5.4 |
 
-**Open**, in the order they are being worked through:
+**Open**, in the order they are being worked through. Each is settled
+with Richard one at a time, recorded on this page as decided, and only
+then built. No design is left for implementation.
 
-| # | Part | Where it stands |
-|---|---|---|
-| 1 | The golden rule: a package can do nothing the app cannot, and the app can do everything a package can | Proposed |
-| 2 | Translations | Format decided in area 10 (ICU JSON per locale, typed calls); the rest undesigned; chunk 5.3 is close |
-| 3 | Authentication: magic links built in, consistency with area 8, switching sign-in methods | Area 8 designed except magic links |
-| 4 | Side effects and packages, explained end to end | Decided; to walk through |
-| 5 | Overriding: settings and events only ([scenarios](override-scenarios.md)) | Proposed |
-| 6 | Each override scenario, one at a time, with what it looks like | Sketched in the scenarios page |
-| 7 | Receiving from queues (SQS, SNS, Cloudflare Queues): directly or only through webhooks | Undesigned |
-| 8 | What a library package may also carry | Proposed |
-| 9 | Software and disk: disk driver, image variants, scanning, PDFs | Proposed |
-| 10 | Packages generated from your own Jadpo apps | Proposed |
-| 11 | Private packages | Proposed |
-| 12 | Choosing a provider when deploying | Proposed |
-| 13 | Then: move every decision onto the area pages and the roadmap | — |
+1. **The golden rule.** *Question:* adopt "a package can do nothing the
+   app cannot, and the app can do everything a package can"? It already
+   holds by construction (own integrations in `shared/providers/` use the
+   package format, `runs:` included). *Recommendation:* yes.
+2. **Translations** (chunk 5.3 is close). *Decided:* area 10 question 9,
+   one ICU MessageFormat JSON file per locale, typed calls from the default
+   locale's keys, missing keys and placeholders are compile errors, built
+   in from the start. *To design:* key naming and nesting; whether keys
+   live per domain or in one root folder; translations shipped by packages;
+   overriding Jadpo's own text (`jadpo.` keys, proposed in the scenarios
+   page); plurals, gender and select; fallback to the default locale;
+   choosing a locale from a request; failure messages translated on the
+   client by code; how translation services (Crowdin, Lokalise) sync; the
+   dev tooling. Read area 10's Locales and Translations sections and area
+   16's email templates.
+3. **Authentication.** *Decided:* area 8 (principal, browser sessions, API
+   tokens, service keys, `external_token`, `sign_in_providers:`,
+   `on_first_sign_in`, acting as an OAuth provider); area 8 leaves magic
+   links to the app. *To design:* magic-link sign-in built in (Jadpo owns
+   the token, expiry, single use, rate limits, a confirm page against link
+   scanners, sessions; the app's email named by a setting, `pick:`ing the
+   built-in message's fields); whether it is consistent with the rest of
+   area 8; how easily an app switches or combines sign-in methods (built
+   in, Google, Auth0, magic links); the scenarios page's sign-in answers
+   (`on_first_sign_in` on `external_token`, `SignInProfile.verified_email`,
+   the shape of `sign_in_providers`). Read area 8 and scenario 5 and 11 of
+   the scenarios page.
+4. **Side effects and packages, end to end.** Decided ("no code with side
+   effects in packages", below); Richard wants it walked through: what a
+   package can and cannot cause, where every effect happens (the app's
+   actions, the runtime, after commit), and how decoding, capabilities and
+   services fit.
+5. **Overriding: settings and events only.** *Question:* adopt the model
+   in [the scenarios page](override-scenarios.md) (typed settings whose
+   value is a plain value, a connection, the app's template or the app's
+   action; events to react; no general hooks; a generated route replaced
+   by switching it off and writing one over the same operations)? Also
+   from there: flags stay in the database (no capability), audit goes out
+   as an event through `publishing`, outgoing webhooks get one guarded
+   network exception. *Recommendation:* yes to all.
+6. **Each override scenario, one at a time.** The eighteen in the
+   scenarios page (files, cache, schedules, search, sign-in, flags, audit,
+   rate limits, built-in emails and text, generated routes, decision
+   points, erasure at providers, bot protection, outgoing webhooks,
+   publishing targets, telemetry, failure format, what cannot be
+   overridden), each shown simply and decided, with its smaller answers:
+   erasure keys, webhook handshakes, telemetry as a connection, RFC 9457
+   per API, `search`, `bot_check` and `scanning` capabilities, disk and
+   memory drivers in production.
+7. **Receiving from queues and topics** (SQS, SNS, Cloudflare Queues,
+   Kafka, EventBridge). *To design:* whether an app consumes a queue
+   directly (a connection the runtime polls, each message arriving as an
+   event) or only through webhooks (SNS's HTTP delivery, which needs a
+   handshake); how it fits area 12's events and area 11's webhooks;
+   retries, ordering and dead letters; Workers' queue consumers.
+8. **What a library package may also carry**: email partials and layouts,
+   translations, a usage guide for agents. *Recommendation:* yes to all
+   three.
+9. **Software and disk**: a disk driver for files on one native server,
+   image variants made by the runtime, virus scanning, a `documents`
+   capability rendering typed templates to PDF.
+10. **Packages generated from your own Jadpo apps.** Four calls: generated
+    from the API record, read-only, in `packages/`; `jadpo package add
+    ../orders` within one repository, the path in the lock; breaking
+    changes (already needing sign-off) become a new major version;
+    `jadpo check` reports what a change breaks in other apps in the same
+    repository. *Recommendation:* yes to all four.
+11. **Private packages**: a company's shared packages live in their own
+    repositories (decided); where apps install them from (a private
+    registry or a git repository) and whether the publishing bar applies
+    in full.
+12. **Choosing a provider when deploying**: only if Jadpo apps will be run
+    by people who did not write them; every candidate declared, a setting
+    picks one.
+13. **Then**: move every decision onto the area pages (1, 2, 7, 8, 10,
+    11, 12, 14, 15, 16, 17, 18) and the roadmap's chunks, through one pull
+    request.
+
+Research behind this page: [package layouts](package-layout-options.md),
+[capability providers](capability-providers-options.md),
+[override scenarios](override-scenarios.md),
+[capabilities](capabilities-proposals.md).
 
 ## Decided before this: swapping a provider
 
