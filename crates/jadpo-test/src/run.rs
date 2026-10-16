@@ -11,12 +11,16 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use jadpo_interp::{CallError, Prepared, Program, STACK_BYTES};
-use jadpo_runtime::{Ctx, Executor, FaultKind, Frame, Outcome, Sources, block_on};
+use jadpo_runtime::config::Mode;
+use jadpo_runtime::{Ctx, Executor, FaultKind, Frame, Host, Outcome, Sources, block_on};
 
 use crate::database::{TestDatabases, TestHost};
 use crate::env::{TestDatabase, TestEnv};
 use crate::outcome::{self, TestFailure};
 use crate::{Rerun, Test, TestKind};
+
+/// A test run reads no environment variable.
+const NO_VARIABLES: fn(&str) -> Option<String> = |_| None;
 
 /// Runs `tests`, in order, on the interpreter: what each failed with, by
 /// its place in `tests`.
@@ -28,8 +32,21 @@ pub(crate) fn run_all(
     databases: Option<&TestDatabases>,
 ) -> Vec<Option<Box<TestFailure>>> {
     let sources = prepared.plan().files();
+    // Every test reads the same settings: each field's `test:` value, its
+    // default, and throwaway secrets made for this run (area 10).
+    let settings = prepared
+        .config(&NO_VARIABLES, Mode::Test, &|bytes: &mut [u8]| {
+            jadpo_host_native::NativeHost::new().random(bytes)
+        })
+        .ok();
     spread(
-        || Program::new(Arc::clone(prepared)),
+        || {
+            let program = Program::new(Arc::clone(prepared));
+            match &settings {
+                Some(values) => program.with_config(values),
+                None => program,
+            }
+        },
         tests,
         seed,
         rerun,

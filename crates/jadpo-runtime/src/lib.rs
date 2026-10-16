@@ -54,6 +54,7 @@
 )]
 
 mod boundary;
+pub mod config;
 mod ctx;
 mod env;
 mod executor;

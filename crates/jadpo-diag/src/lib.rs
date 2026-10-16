@@ -117,6 +117,12 @@ rules! {
         "14-tooling.html#command-errors", "Check command has invalid arguments";
     CLI_COMPLETIONS_ARGUMENTS: "cli.completions_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Completions command has invalid arguments";
+    CLI_CONFIG_ARGUMENTS: "cli.config_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Config command has invalid arguments";
+    CLI_CONFIG_PROMPT_FAILED: "cli.config_prompt_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Secure configuration prompt failed";
+    CLI_CONFIG_TTY_REQUIRED: "cli.config_tty_required", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Configuration entry requires an interactive terminal";
     CLI_DEV_ARGUMENTS: "cli.dev_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Dev command has invalid arguments";
     CLI_DEV_PORT_INVALID: "cli.dev_port_invalid", area 14, Error, Agent,
@@ -145,6 +151,54 @@ rules! {
         "14-tooling.html#command-errors", "Unknown flag";
     CLI_VERSION_ARGUMENTS: "cli.version_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Version command has invalid arguments";
+    CONFIGURATION_BINDING_EMPTY: "configuration.binding_empty", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-binding-empty", "Setting names an empty environment variable";
+    CONFIGURATION_BINDING_INVALID: "configuration.binding_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-binding-invalid", "Setting names a variable that is not in capitals";
+    CONFIGURATION_DEFAULT_INVALID: "configuration.default_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-default-invalid", "Setting value breaks its type's rules";
+    CONFIGURATION_DEFAULT_LITERAL_REQUIRED: "configuration.default_literal_required", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-default-literal-required", "Setting value is not a literal";
+    CONFIGURATION_DEFAULT_TYPE: "configuration.default_type", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-default-type", "Setting value is the wrong kind of value for its type";
+    CONFIGURATION_DUPLICATE_BINDING: "configuration.duplicate_binding", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-duplicate-binding", "Two settings read the same environment variable";
+    CONFIGURATION_DUPLICATE_OPTION: "configuration.duplicate_option", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-duplicate-option", "Setting option is given twice";
+    CONFIGURATION_EXPECTED_FIELD: "configuration.expected_field", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-expected-field", "Configuration holds something that is not a setting";
+    CONFIGURATION_FIELD_UNKNOWN: "configuration.field_unknown", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-field-unknown", "Configuration has no setting with this name";
+    CONFIGURATION_LOCAL_CHANGED: "configuration.local_changed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Local configuration changed during the update";
+    CONFIGURATION_LOCAL_INVALID_ENCODING: "configuration.local_invalid_encoding", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Local configuration is not UTF-8 text";
+    CONFIGURATION_LOCAL_READ_FAILED: "configuration.local_read_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Local configuration could not be read";
+    CONFIGURATION_LOCAL_SYNTAX: "configuration.local_syntax", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Local configuration syntax is invalid";
+    CONFIGURATION_LOCAL_UNSAFE_TARGET: "configuration.local_unsafe_target", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Local configuration target is unsafe";
+    CONFIGURATION_LOCAL_WRITE_FAILED: "configuration.local_write_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Local configuration could not be saved";
+    CONFIGURATION_MULTIPLE_DECLARATIONS: "configuration.multiple_declarations", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-multiple-declarations", "Configuration is declared more than once";
+    CONFIGURATION_SECRET_DEFAULT: "configuration.secret_default", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-secret-default", "Secret setting has a value in source";
+    CONFIGURATION_SECRET_FLOW: "configuration.secret_flow", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-secret-flow", "Secret setting is used where it could leave the server";
+    CONFIGURATION_SECRET_INVALID: "configuration.secret_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-secret-invalid", "Secret option is not true or false";
+    CONFIGURATION_TYPE_UNSUPPORTED: "configuration.type_unsupported", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-type-unsupported", "Setting type cannot be read from one variable";
+    CONFIGURATION_UNKNOWN_OPTION: "configuration.unknown_option", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-unknown-option", "Setting option is not one a setting takes";
+    CONFIGURATION_URL_TYPE: "configuration.url_type", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-url-type", "Connection address is not a setting of the type its driver needs";
+    CONFIGURATION_VALUE_INVALID: "configuration.value_invalid", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Configuration value is invalid";
+    CONFIGURATION_VALUE_MISSING: "configuration.value_missing", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Required configuration is missing";
     DATA_CLEARED_REQUIRED_REFERENCE: "data.cleared_required_reference", area 5, Error, Agent,
         "05-data.html#data-cleared-required-reference", "A reference that can never be `none` is cleared on delete";
     DATA_CONFLICT_CANNOT_BREAK: "data.conflict_cannot_break", area 6, Error, Agent,

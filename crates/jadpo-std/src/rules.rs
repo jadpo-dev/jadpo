@@ -274,9 +274,20 @@ pub fn check_builtin_text(builtin: Builtin, text: &str) -> Result<(), String> {
             Err("isn't a UUID, written as 32 hexadecimal digits in groups of 8-4-4-4-12".into())
         }
         Builtin::Email if !is_email(text) => Err("isn't an email address".into()),
-        Builtin::Url if !is_url(text) => {
-            Err("isn't a URL with a scheme and a host, such as `https://example.com`".into())
+        Builtin::Url if !is_url(text) => Err(
+            "isn't an `http://` or `https://` URL with a host, such as `https://example.com`"
+                .into(),
+        ),
+        Builtin::PostgresUrl if !is_connection_url(text, &["postgres", "postgresql"]) => {
+            Err("isn't a PostgreSQL address, which starts `postgres://` or `postgresql://`".into())
         }
+        Builtin::RedisUrl if !is_connection_url(text, &["redis", "rediss"]) => {
+            Err("isn't a Redis address, which starts `redis://` or `rediss://`".into())
+        }
+        Builtin::SigningKey if !is_signing_key(text) => Err(format!(
+            "isn't a signing key, which is at least {} characters with no spaces",
+            crate::builtin::SIGNING_KEY_MIN
+        )),
         Builtin::IpAddress if !is_ip_address(text) => Err("isn't an IPv4 or IPv6 address".into()),
         Builtin::Instant => crate::time::check_instant(text),
         Builtin::CalendarDate => crate::time::check_calendar_date(text),
@@ -318,20 +329,35 @@ pub fn is_email(text: &str) -> bool {
         && !text.chars().any(char::is_whitespace)
 }
 
-/// A URL with a scheme and a host, and no spaces.
+/// An `http://` or `https://` URL with a host, and no spaces (area 10:
+/// `Url` holds a web address, so a database address has types of its own).
 pub fn is_url(text: &str) -> bool {
+    is_connection_url(text, &["http", "https"])
+}
+
+/// A URL whose scheme is one of `schemes` (compared in lower case), with
+/// something after `://` and no spaces. A database address may have no
+/// host (`postgres:///app` is a local socket), so only its rest is
+/// required to be there; a web address's host must be.
+fn is_connection_url(text: &str, schemes: &[&str]) -> bool {
     let Some((scheme, rest)) = text.split_once("://") else {
         return false;
     };
-    !scheme.is_empty()
-        && scheme
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
-        && rest
-            .split(['/', '?', '#'])
-            .next()
-            .is_some_and(|host| !host.is_empty())
+    let web = schemes.contains(&"http");
+    schemes.contains(&scheme.to_ascii_lowercase().as_str())
+        && !rest.is_empty()
+        && (!web
+            || rest
+                .split(['/', '?', '#'])
+                .next()
+                .is_some_and(|host| !host.is_empty()))
         && !text.chars().any(char::is_whitespace)
+}
+
+/// At least [`crate::builtin::SIGNING_KEY_MIN`] visible characters.
+pub fn is_signing_key(text: &str) -> bool {
+    text.chars().count() >= crate::builtin::SIGNING_KEY_MIN
+        && text.chars().all(|c| c.is_ascii_graphic())
 }
 
 pub fn is_ip_address(text: &str) -> bool {

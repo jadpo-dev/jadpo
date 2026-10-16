@@ -148,11 +148,13 @@ fn a_generated_namespace_member_not_built_yet_is_reported() {
         )),
         ["toolchain.not_built_yet"]
     );
+    // A setting is built (chunk 5.1): one that doesn't exist is reported
+    // as that, with the settings it could be.
     assert_eq!(
         check(
             "type Count = Int {}\n\naction limit() -> Count {\n    var x: Count = config.no_such_setting\n    return x\n}\n"
         ),
-        ["toolchain.not_built_yet"]
+        ["configuration.field_unknown"]
     );
     assert_eq!(
         check(&format!(

@@ -711,7 +711,10 @@ impl Walk<'_> {
             return Prov::default();
         };
         match expr {
-            Expr::Literal(_) | Expr::Unchecked | Expr::Propagate { .. } => Prov::default(),
+            // A setting is the deployment's, never a record's (area 10).
+            Expr::Literal(_) | Expr::Config { .. } | Expr::Unchecked | Expr::Propagate { .. } => {
+                Prov::default()
+            }
             // A stored field an update by `id` reads is the record's.
             Expr::Stored { field } => {
                 let mut out = Prov::default();

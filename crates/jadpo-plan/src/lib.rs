@@ -31,6 +31,7 @@
 //! and its SQL text is written by `jadpo-sql` (chunk 3.12). It is shared by
 //! every thread that runs the project.
 
+mod config;
 mod constant;
 mod identity;
 mod policy;
@@ -157,6 +158,9 @@ pub struct Plan {
     /// Every route, with the codecs its types cross the boundary with
     /// (area 7, chunk 4.1).
     routes: RouteTable,
+    /// Every setting `config { }` declares, and the codecs their values
+    /// are read by (area 10, chunk 5.1).
+    config: jadpo_std::config::ConfigPlan,
 }
 
 impl Plan {
@@ -204,6 +208,18 @@ impl Plan {
             .iter()
             .map(|(key, _, _, body)| (key.clone(), body.as_ref()))
             .collect();
+        let config = config::plan(db, project, &mut types);
+        let setting_ids: HashMap<Key, u32> = config
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(i, field)| {
+                (
+                    config::key(jadpo_check::graph::registry(db, project), &field.name),
+                    i as u32,
+                )
+            })
+            .collect();
         let (writes, write_ids) = writes::plans(db, project, &mut types, &bodies);
         let gates = policy::gates(db, project, &mut types);
         let model = jadpo_check::data::data_model(db, project);
@@ -237,6 +253,7 @@ impl Plan {
                 query: &query,
                 entity: &entity,
                 write: &write,
+                setting: &|key: &Key| setting_ids.get(key).copied(),
             }
             .body(&body, text);
             let gate = (kind == Kind::Action)
@@ -283,6 +300,7 @@ impl Plan {
             writes,
             purges,
             routes,
+            config,
         }
     }
 
@@ -375,6 +393,11 @@ impl Plan {
     /// Every route and the codecs its types use (area 7).
     pub fn routes(&self) -> &RouteTable {
         &self.routes
+    }
+
+    /// The settings and their codecs (area 10).
+    pub fn config(&self) -> &jadpo_std::config::ConfigPlan {
+        &self.config
     }
 
     /// The purge of the entity called `entity`, when its lifecycle has one.

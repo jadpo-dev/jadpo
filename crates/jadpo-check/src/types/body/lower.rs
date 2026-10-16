@@ -626,6 +626,14 @@ impl Lower<'_> {
     /// `value.field`, a variant's data's field, or `Enum.variant`.
     fn field(&mut self, expr: &Expr, field: &ast::FieldExpr) -> typed::Expr {
         let key = node_key(expr.syntax());
+        if let Some(name) = self.facts.settings.get(&key) {
+            return typed::Expr::Config {
+                field: self
+                    .names
+                    .registry()
+                    .key(jadpo_graph::Kind::ConfigField, name, None),
+            };
+        }
         if self.facts.stored.contains(&key)
             && let Some((first, rest)) = dotted(expr)
         {

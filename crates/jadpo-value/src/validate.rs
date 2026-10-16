@@ -105,7 +105,13 @@ impl Validator {
             && !self.builtin.is_some_and(|builtin| {
                 matches!(
                     builtin,
-                    Builtin::Uuid | Builtin::Email | Builtin::Url | Builtin::IpAddress
+                    Builtin::Uuid
+                        | Builtin::Email
+                        | Builtin::Url
+                        | Builtin::IpAddress
+                        | Builtin::PostgresUrl
+                        | Builtin::RedisUrl
+                        | Builtin::SigningKey
                 )
             })
     }

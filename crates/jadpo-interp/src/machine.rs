@@ -1569,6 +1569,22 @@ impl<'p> Machine<'p> {
                     id,
                 ));
             }
+            Expr::Config { .. } => match self.decoded(id) {
+                Some(Decoded::Config(Some(setting))) => match self.program.setting(*setting) {
+                    Some(value) => self.values.push(value),
+                    None => {
+                        let name = self.program.setting_name(*setting);
+                        return Err(self.defect(
+                            ctx,
+                            &format!(
+                                "`config.{name}` has no value in this run: give it a `test:` or `default:` value"
+                            ),
+                            id,
+                        ));
+                    }
+                },
+                _ => return Err(self.defect(ctx, "a setting the checker would have refused", id)),
+            },
             Expr::Unchecked => {
                 let written = self.written(id);
                 // `clock.now` reads the invocation's clock, the one a

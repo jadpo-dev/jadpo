@@ -30,7 +30,21 @@ pub enum Builtin {
     ApiToken,
     /// A service key as `Service.issue_key` gives it, once (area 8).
     ServiceKey,
+    /// A PostgreSQL address, `postgres://` or `postgresql://` (area 10,
+    /// "Database and other connection URLs"). Always secret: it normally
+    /// carries a password.
+    PostgresUrl,
+    /// A Redis address, `redis://` or `rediss://` (area 10). Always
+    /// secret.
+    RedisUrl,
+    /// A key sessions and tokens are signed with (area 10, "Signing key
+    /// rotation"): at least [`SIGNING_KEY_MIN`] characters. Always secret.
+    SigningKey,
 }
+
+/// The fewest characters a [`Builtin::SigningKey`] has: 256 bits of a
+/// hexadecimal key, as `jadpo test` generates for a test run.
+pub const SIGNING_KEY_MIN: usize = 32;
 
 /// `PageSize`'s own rules: from 1 to 100 (area 6, "Order and pages").
 static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
@@ -53,7 +67,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
 };
 
 impl Builtin {
-    pub const ALL: [Builtin; 18] = [
+    pub const ALL: [Builtin; 21] = [
         Builtin::Bool,
         Builtin::Int,
         Builtin::Decimal,
@@ -72,6 +86,9 @@ impl Builtin {
         Builtin::PageSize,
         Builtin::ApiToken,
         Builtin::ServiceKey,
+        Builtin::PostgresUrl,
+        Builtin::RedisUrl,
+        Builtin::SigningKey,
     ];
 
     pub fn name(self) -> &'static str {
@@ -94,6 +111,9 @@ impl Builtin {
             Builtin::PageSize => "PageSize",
             Builtin::ApiToken => "ApiToken",
             Builtin::ServiceKey => "ServiceKey",
+            Builtin::PostgresUrl => "PostgresUrl",
+            Builtin::RedisUrl => "RedisUrl",
+            Builtin::SigningKey => "SigningKey",
         }
     }
 
@@ -111,7 +131,10 @@ impl Builtin {
             | Builtin::IpAddress
             | Builtin::PageCursor
             | Builtin::ApiToken
-            | Builtin::ServiceKey => Builtin::Text,
+            | Builtin::ServiceKey
+            | Builtin::PostgresUrl
+            | Builtin::RedisUrl
+            | Builtin::SigningKey => Builtin::Text,
             Builtin::PageSize => Builtin::Int,
             other => other,
         }
@@ -131,6 +154,19 @@ impl Builtin {
                 | Builtin::PageSize
                 | Builtin::ApiToken
                 | Builtin::ServiceKey
+                | Builtin::PostgresUrl
+                | Builtin::RedisUrl
+                | Builtin::SigningKey
+        )
+    }
+
+    /// Whether a configuration value of this type is secret whatever the
+    /// field says (area 10): an address that normally carries a password,
+    /// and a signing key.
+    pub fn is_secret(self) -> bool {
+        matches!(
+            self,
+            Builtin::PostgresUrl | Builtin::RedisUrl | Builtin::SigningKey
         )
     }
 

@@ -352,6 +352,11 @@ pub enum Expr {
         param: Option<LocalId>,
         body: Option<SiteId>,
     },
+    /// `config.<name>`: a setting's value, read when the application
+    /// started (area 10).
+    Config {
+        field: Key,
+    },
     /// Nothing to run: a mistake already reported, or something a later
     /// area builds.
     Unchecked,

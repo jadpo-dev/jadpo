@@ -160,6 +160,11 @@ impl Host for NativeHost {
         Box::pin(async {})
     }
 
+    /// The process's environment.
+    fn variable(&self, name: &str) -> Option<String> {
+        std::env::var(name).ok()
+    }
+
     fn random(&self, bytes: &mut [u8]) -> bool {
         std::fs::File::open("/dev/urandom")
             .and_then(|mut source| source.read_exact(bytes))

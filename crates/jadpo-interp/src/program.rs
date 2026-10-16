@@ -90,6 +90,46 @@ impl Prepared {
     pub fn places(&self) -> &Places {
         &self.places
     }
+
+    /// The plan's validators, compiled, by number.
+    pub fn validators(&self) -> &[Validator] {
+        &self.validators
+    }
+
+    /// How each setting stands against `variables` (area 10): set,
+    /// defaulted, missing or invalid. Never holds a value.
+    pub fn config_standing(
+        &self,
+        variables: &dyn jadpo_runtime::config::Variables,
+        mode: jadpo_runtime::config::Mode,
+        random: &dyn Fn(&mut [u8]) -> bool,
+    ) -> Vec<jadpo_runtime::config::Standing> {
+        jadpo_runtime::config::check(
+            self.plan.config(),
+            &self.validators,
+            variables,
+            mode,
+            random,
+        )
+    }
+
+    /// The settings the application starts with, read from `variables`:
+    /// every one checked against its type, or each that stops it starting
+    /// (area 10, "Checking values before the app starts").
+    pub fn config(
+        &self,
+        variables: &dyn jadpo_runtime::config::Variables,
+        mode: jadpo_runtime::config::Mode,
+        random: &dyn Fn(&mut [u8]) -> bool,
+    ) -> Result<jadpo_runtime::config::ConfigValues, Vec<jadpo_runtime::config::StartProblem>> {
+        jadpo_runtime::config::load(
+            self.plan.config(),
+            &self.validators,
+            variables,
+            mode,
+            random,
+        )
+    }
 }
 
 /// A prepared project on one thread, ready to run its callables.
@@ -103,6 +143,9 @@ pub struct Program {
     /// Whether constructions the checker proved are checked again as they
     /// run ([`Program::with_proof_checks`]).
     proof_checks: bool,
+    /// The settings' values, decoded, by the setting's number in the plan:
+    /// `None` for one no value reached ([`Program::with_config`]).
+    settings: Vec<Option<Value>>,
 }
 
 /// Why a call couldn't start.
@@ -149,6 +192,7 @@ impl Program {
             constants,
             shapes,
             proof_checks: false,
+            settings: Vec::new(),
         }
     }
 
@@ -167,6 +211,38 @@ impl Program {
     pub fn with_proof_checks(mut self) -> Program {
         self.proof_checks = true;
         self
+    }
+
+    /// The same program reading `values` as its settings (area 10): what
+    /// the application started with, or a test run's.
+    pub fn with_config(mut self, values: &jadpo_runtime::config::ConfigValues) -> Program {
+        let config = self.prepared.plan.config();
+        self.settings = config
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(at, field)| {
+                let text = values.text_at(at as u32)?;
+                jadpo_runtime::config::decode(config, &self.prepared.validators, field, text).ok()
+            })
+            .collect();
+        self
+    }
+
+    /// The value of setting number `at`.
+    pub(crate) fn setting(&self, at: u32) -> Option<Value> {
+        self.settings.get(at as usize).cloned().flatten()
+    }
+
+    /// The name of setting number `at`.
+    pub(crate) fn setting_name(&self, at: u32) -> String {
+        self.prepared
+            .plan
+            .config()
+            .fields
+            .get(at as usize)
+            .map(|field| field.name.clone())
+            .unwrap_or_default()
     }
 
     pub fn prepared(&self) -> &Arc<Prepared> {

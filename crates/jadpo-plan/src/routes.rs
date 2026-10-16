@@ -227,7 +227,7 @@ pub(crate) fn table(
 }
 
 /// Numbers the codecs of the types the routes use, once each.
-struct Codecs<'t> {
+pub(crate) struct Codecs<'t> {
     types: &'t mut Types,
     codecs: Vec<Codec>,
     ids: HashMap<TypeRef, CodecId>,
@@ -248,8 +248,22 @@ enum Made {
     Unknown,
 }
 
-impl Codecs<'_> {
-    fn codec(&mut self, ty: &TypeRef) -> CodecId {
+impl<'t> Codecs<'t> {
+    /// No codec numbered yet, over `types`.
+    pub(crate) fn new(types: &'t mut Types) -> Codecs<'t> {
+        Codecs {
+            types,
+            codecs: Vec::new(),
+            ids: HashMap::new(),
+        }
+    }
+
+    /// Every codec numbered, by number.
+    pub(crate) fn into_codecs(self) -> Vec<Codec> {
+        self.codecs
+    }
+
+    pub(crate) fn codec(&mut self, ty: &TypeRef) -> CodecId {
         if let Some(id) = self.ids.get(ty) {
             return *id;
         }

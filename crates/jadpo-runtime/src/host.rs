@@ -219,6 +219,16 @@ pub trait Host {
     /// it. Never called for an action that rolled back.
     fn deliver(&self, events: Vec<Event>) -> LocalFuture<'_, ()>;
 
+    /// The value of the environment variable `name` (area 10): the
+    /// platform's environment, or on Workers a binding. `None` when it
+    /// isn't set, or for a host with no environment, as a test's, whose
+    /// settings come from `test:` values instead. Read only when the
+    /// application starts ([`crate::config::load`]).
+    fn variable(&self, name: &str) -> Option<String> {
+        let _ = name;
+        None
+    }
+
     /// Fills `bytes` from the platform's cryptographically secure source
     /// of randomness (the operating system's, or the Web Crypto API on
     /// Workers): what a deployable's new identities take (area 5). `false`
