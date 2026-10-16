@@ -97,6 +97,19 @@ pub(crate) enum Step {
         args: Vec<Value>,
         at: SiteId,
     },
+    /// It checked the request's deadline, which hasn't passed: the caller
+    /// gives the thread back once ([`jadpo_runtime::yield_now`]), so other
+    /// requests the thread serves carry on, then [`Machine::carry_on`].
+    Yield,
+}
+
+/// What a look at the deadline found.
+enum Deadline {
+    /// Not looked at, or no request is waiting on one.
+    Running,
+    /// Looked at, not passed, and a request has one: give the thread back.
+    Yield,
+    Passed(Stop),
 }
 
 /// What a task leaves the loop to do next.
@@ -356,16 +369,25 @@ impl<'p> Machine<'p> {
         }
     }
 
-    /// The deadline fault, when the request being answered has run out of
-    /// time; checked once every [`DEADLINE_EVERY`] tasks.
-    fn past_deadline(&mut self, ctx: &mut Ctx<'_>) -> Option<Stop> {
+    /// Once every [`DEADLINE_EVERY`] tasks, a look at the request's
+    /// deadline: the deadline fault when it has passed, otherwise, when
+    /// there is one, a turn for whatever else the thread runs.
+    fn deadline(&mut self, ctx: &mut Ctx<'_>) -> Deadline {
         self.steps += 1;
         if self.steps < DEADLINE_EVERY {
-            return None;
+            return Deadline::Running;
         }
         self.steps = 0;
-        ctx.out_of_time()
-            .then(|| Stop::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)))
+        if ctx.out_of_time() {
+            return Deadline::Passed(Stop::Fault(
+                ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY),
+            ));
+        }
+        if ctx.has_deadline() {
+            Deadline::Yield
+        } else {
+            Deadline::Running
+        }
     }
 
     /// Starts callable `callee` with `args`, called from site `at` of the
@@ -397,7 +419,13 @@ impl<'p> Machine<'p> {
         self.run(ctx)
     }
 
-    /// Runs tasks until the invocation ends or pauses.
+    /// Carries on after giving the thread back ([`Step::Yield`]).
+    pub fn carry_on(&mut self, ctx: &mut Ctx<'_>) -> Step {
+        self.run(ctx)
+    }
+
+    /// Runs tasks until the invocation ends, pauses or gives the thread
+    /// back.
     fn run(&mut self, ctx: &mut Ctx<'_>) -> Step {
         loop {
             let Some(task) = self.tasks.pop() else {
@@ -407,9 +435,13 @@ impl<'p> Machine<'p> {
                     SiteId(Frame::ENTRY),
                 )));
             };
-            let stepped = match self.past_deadline(ctx) {
-                Some(stop) => Err(stop),
-                None => self.step(ctx, task),
+            let stepped = match self.deadline(ctx) {
+                Deadline::Passed(stop) => Err(stop),
+                Deadline::Yield => {
+                    self.tasks.push(task);
+                    return Step::Yield;
+                }
+                Deadline::Running => self.step(ctx, task),
             };
             let flow = match stepped {
                 Ok(flow) => flow,
@@ -435,9 +467,11 @@ impl<'p> Machine<'p> {
             let Some(task) = self.tasks.pop() else {
                 return Err(self.defect(ctx, "a walk with nothing left to do", body));
             };
-            let stepped = match self.past_deadline(ctx) {
-                Some(stop) => Err(stop),
-                None => self.step(ctx, task),
+            // An inline function runs inside an operation, so it can't
+            // give the thread back; it only stops at the deadline.
+            let stepped = match self.deadline(ctx) {
+                Deadline::Passed(stop) => Err(stop),
+                Deadline::Yield | Deadline::Running => self.step(ctx, task),
             };
             let flow = match stepped {
                 Ok(flow) => flow,

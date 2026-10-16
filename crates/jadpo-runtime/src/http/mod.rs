@@ -8,8 +8,11 @@
 //! body and `x-request-id`.
 //!
 //! The runtime answers `HEAD` (as `GET`, without the body) and `OPTIONS`
-//! (with `Allow`) itself, and every route has the default rate limits
-//! ([`crate::RateLimits`]). Its request guarantees (chunk 4.2):
+//! (with `Allow`) itself, and every route has the default rate limits,
+//! which the host counts ([`crate::Host::rate_limit`]). A deployable, and
+//! `jadpo dev`, hand each request to [`serve_request`], which makes its
+//! context and request id and answers it; a route test's goes through
+//! [`route_test`]. Its request guarantees (chunk 4.2):
 //!
 //! - a body over 1 MB is refused with 413 `request_too_large`;
 //! - every route has a deadline: when it passes, whatever is running is
@@ -29,8 +32,9 @@
 //! Sign-in (chunk 4.3, [`identity`]): a route that needs a signed-in
 //! caller authenticates the request before its input is read, and what it
 //! runs gets the caller; a signed-in caller's requests count against its
-//! own rate limit and keep their idempotency keys apart. Policy comes with
-//! 4.4.
+//! own rate limit and keep their idempotency keys apart. Policy (chunk
+//! 4.4) is compiled into the statements what a route runs sends, and an
+//! action's gate is checked by the action boundary.
 
 #[cfg(test)]
 mod guarantees;
@@ -42,15 +46,17 @@ use std::cell::Cell;
 use std::collections::BTreeMap;
 
 pub use jadpo_std::http::BODY_LIMIT;
-use jadpo_std::http::{ArgRoot, Codec, CodecId, RoutePlan, RouteTable, Run, Segment};
+use jadpo_std::http::{
+    ADDRESS_LIMIT, ArgRoot, CALLER_LIMIT, Codec, CodecId, RoutePlan, RouteTable, Run, Segment,
+};
 use jadpo_std::types::FailurePlan;
 use jadpo_std::{HttpMethod, Idempotency};
 use jadpo_value::Value;
 use jadpo_value::json::{Codecs, Path, Problem, write_string};
 
 use crate::race::{First, race};
-use crate::ratelimit::{Allowed, RateLimits};
-use crate::{Ctx, Executor, Failure, Frame, Outcome, StoreOp, Stored};
+use crate::ratelimit::Allowed;
+use crate::{Clock, Ctx, Env, Executor, Failure, Fault, Frame, Host, Outcome, StoreOp, Stored};
 use idempotency::{Claim, Guard};
 
 /// A request, as a host hands it over.
@@ -216,18 +222,62 @@ pub fn request_id(ctx: &Ctx<'_>, sequence: u64) -> String {
     format!("req_{n:016x}")
 }
 
+/// What the HTTP component keeps between the requests one worker answers
+/// (natively a worker thread, on Workers an isolate): how many it has
+/// answered, which numbers request ids on a host with no randomness, and
+/// its last readiness check, reused for a second.
+#[derive(Debug, Default)]
+pub struct Worker {
+    answered: Cell<u64>,
+    ready: health::Readiness,
+}
+
+/// Answers `request` as a deployable does: in a context of its own on
+/// `host`, under the host's clock and no seed, with a new request id,
+/// running what a route runs with `executor`. `jadpo dev` and every
+/// deployable call this, so everything around a request but reading and
+/// writing its bytes is the runtime's. The response carries its request id
+/// in `x-request-id`, and the fault behind a 500 for the host's log.
+pub async fn serve_request(
+    app: &App<'_>,
+    executor: &dyn Executor,
+    host: &dyn Host,
+    worker: &Worker,
+    request: &Request,
+) -> Response {
+    let env = Env {
+        seed: None,
+        clock: Clock::fixed(host.now_ms().unwrap_or(0)),
+    };
+    let mut ctx = Ctx::new(executor.places(), host, env);
+    let answered = worker.answered.get().wrapping_add(1);
+    worker.answered.set(answered);
+    let id = request_id(&ctx, answered);
+    answer_request(app, executor, &mut ctx, request, &id, Some(&worker.ready)).await
+}
+
 /// Answers `request` with `app`'s routes, running what a route runs with
-/// `executor` against `ctx`, whose stack is empty. `limits` counts the
-/// request against its caller's allowance when given.
+/// `executor` against `ctx`, whose stack is empty: what a route test's
+/// request goes through, in the test's own context.
 pub async fn handle(
     app: &App<'_>,
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
     request: &Request,
     request_id: &str,
-    limits: Option<&RateLimits>,
 ) -> Response {
-    let mut response = respond(app, executor, ctx, request, request_id, limits).await;
+    answer_request(app, executor, ctx, request, request_id, None).await
+}
+
+async fn answer_request(
+    app: &App<'_>,
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    request: &Request,
+    request_id: &str,
+    ready: Option<&health::Readiness>,
+) -> Response {
+    let mut response = respond(app, executor, ctx, request, request_id, ready).await;
     response
         .headers
         .push(("x-request-id".to_string(), request_id.to_string()));
@@ -243,11 +293,12 @@ async fn respond(
     ctx: &mut Ctx<'_>,
     request: &Request,
     request_id: &str,
-    limits: Option<&RateLimits>,
+    ready: Option<&health::Readiness>,
 ) -> Response {
     let segments = split_path(&request.path);
     if let Some(segments) = &segments
-        && let Some(response) = health::answer(app.table, ctx, request, request_id, segments).await
+        && let Some(response) =
+            health::answer(app.table, ctx, request, request_id, segments, ready).await
     {
         return response;
     }
@@ -255,13 +306,13 @@ async fn respond(
     // in, or against its address if it isn't; every other request against
     // its address, here.
     let deferred = identity::carries_credential(app.table, request);
-    if !deferred && let Some(response) = by_address(limits, ctx, request, request_id) {
+    if !deferred && let Some(response) = by_address(ctx, request, request_id).await {
         return response;
     }
-    let mut response = route_request(app, executor, ctx, request, request_id, limits).await;
+    let mut response = route_request(app, executor, ctx, request, request_id).await;
     if deferred
         && !response.counted
-        && let Some(limited) = by_address(limits, ctx, request, request_id)
+        && let Some(limited) = by_address(ctx, request, request_id).await
     {
         response = limited;
     }
@@ -269,19 +320,14 @@ async fn respond(
     response
 }
 
-/// 429 when `request`'s address has used its allowance.
-fn by_address(
-    limits: Option<&RateLimits>,
-    ctx: &Ctx<'_>,
-    request: &Request,
-    request_id: &str,
-) -> Option<Response> {
-    let limits = limits?;
+/// 429 when `request`'s address has used its allowance, as the host
+/// counts it.
+async fn by_address(ctx: &Ctx<'_>, request: &Request, request_id: &str) -> Option<Response> {
     let key = format!(
         "address {}",
         request.address.as_deref().unwrap_or("unknown")
     );
-    match limits.allow(&key, ctx.now()) {
+    match ctx.host().rate_limit(&key, ADDRESS_LIMIT, ctx.now()).await {
         Allowed::Yes => None,
         Allowed::No { retry_after } => Some(rate_limited(request_id, retry_after)),
     }
@@ -302,7 +348,6 @@ async fn route_request(
     ctx: &mut Ctx<'_>,
     request: &Request,
     request_id: &str,
-    limits: Option<&RateLimits>,
 ) -> Response {
     let segments = split_path(&request.path);
     let Some(segments) = segments else {
@@ -358,10 +403,7 @@ async fn route_request(
     };
     // Work that never waits checks the deadline as it runs.
     ctx.set_deadline(Some(u64::from(route.deadline_ms)));
-    let mut response = run_route(
-        app, executor, ctx, request, request_id, route, &segments, limits,
-    )
-    .await;
+    let mut response = run_route(app, executor, ctx, request, request_id, route, &segments).await;
     ctx.set_deadline(None);
     response.route = Some(route.label());
     response
@@ -464,7 +506,6 @@ fn query_values(query: &str) -> Option<BTreeMap<String, Vec<String>>> {
     Some(out)
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn run_route(
     app: &App<'_>,
     executor: &dyn Executor,
@@ -473,7 +514,6 @@ async fn run_route(
     request_id: &str,
     route: &RoutePlan,
     segments: &[String],
-    limits: Option<&RateLimits>,
 ) -> Response {
     // The deadline counts from here; the timer is made at once.
     let host = ctx.host();
@@ -485,7 +525,7 @@ async fn run_route(
             First::Left(Ok(caller)) => Some(caller),
             First::Left(Err(refused)) => {
                 if refused.credential
-                    && let Some(limited) = by_address(limits, ctx, request, request_id)
+                    && let Some(limited) = by_address(ctx, request, request_id).await
                 {
                     return limited;
                 }
@@ -500,15 +540,18 @@ async fn run_route(
         // credential counts against its address before it runs, as every
         // other does.
         if identity::carries_credential(app.table, request)
-            && let Some(limited) = by_address(limits, ctx, request, request_id)
+            && let Some(limited) = by_address(ctx, request, request_id).await
         {
             return limited;
         }
         None
     };
     let counted = caller.is_none() && identity::carries_credential(app.table, request);
-    if let (Some(caller), Some(limits)) = (&caller, limits)
-        && let Allowed::No { retry_after } = limits.allow_caller(&caller.key, ctx.now())
+    if let Some(caller) = &caller
+        && let Allowed::No { retry_after } = ctx
+            .host()
+            .rate_limit(&caller.key, CALLER_LIMIT, ctx.now())
+            .await
     {
         return rate_limited(request_id, retry_after);
     }
@@ -1001,12 +1044,79 @@ fn declared_failure(app: &App<'_>, failure: &Failure, request_id: &str) -> Respo
 
 // --- route tests ---------------------------------------------------------------
 
-/// The request a route test sends (area 13: "through the real generated
-/// boundary without a network"): route `route`'s method and path, its
+/// A route test's request (area 13: "through the real generated boundary
+/// without a network"), answered by the HTTP component in the test's own
+/// context and read back as a `Response` value: route `route`'s request
+/// built from `args` ([`test_request`]), with `key` as its
+/// `Idempotency-Key` and signed in as `caller` when given. The fault
+/// behind a 500 ends the test with that fault, as one anywhere else in it
+/// would: a 500 is never what a test means to check.
+#[allow(clippy::too_many_arguments)]
+pub async fn route_test(
+    app: &App<'_>,
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    route: u32,
+    args: &[Value],
+    key: Option<&Value>,
+    caller: Option<&Value>,
+) -> Result<Value, Box<Fault>> {
+    let Some(request) = test_request(ctx, app, route, args, key, caller).await? else {
+        return Ok(Value::None);
+    };
+    let id = request_id(ctx, u64::from(ctx.actions()));
+    let mut response = handle(app, executor, ctx, &request, &id).await;
+    if let Some(fault) = response.fault.take() {
+        return Err(fault);
+    }
+    Ok(response_value(app, route, &response))
+}
+
+/// The request a route test sends: route `route`'s method and path, its
 /// placeholders written from `args` (in the route's order), then its input,
 /// the last of `args`, as the query string or the JSON body, its header
-/// fields as headers. `None` when `route` isn't in the table.
-pub fn test_request(app: &App<'_>, route: u32, args: &[Value]) -> Option<Request> {
+/// fields as headers. Every request but a `GET` sends an `Idempotency-Key`,
+/// as a real client would: `key`, the one the test gives, or a fresh one
+/// from the test's seed (chunk 4.7). With `caller` (`as:`), it signs in
+/// through the application's real authentication
+/// ([`identity::test_credentials`]). `None` when `route` isn't in the
+/// table.
+pub async fn test_request(
+    ctx: &mut Ctx<'_>,
+    app: &App<'_>,
+    route: u32,
+    args: &[Value],
+    key: Option<&Value>,
+    caller: Option<&Value>,
+) -> Result<Option<Request>, Box<Fault>> {
+    let Some(mut request) = written_request(app, route, args) else {
+        return Ok(None);
+    };
+    let writes = app
+        .table
+        .routes
+        .get(route as usize)
+        .is_some_and(|plan| plan.method != HttpMethod::Get);
+    if writes && request.header(idempotency::HEADER).is_none() {
+        let key = match key {
+            Some(Value::Text(text)) => Some(text.to_string()),
+            Some(_) => None,
+            None => ctx.new_id().map(|id| crate::uuid_text(&id)),
+        };
+        if let Some(key) = key {
+            request.headers.push(("Idempotency-Key".to_string(), key));
+        }
+    }
+    if let Some(caller) = caller {
+        let headers = identity::test_credentials(ctx, app.table, route, caller).await?;
+        request.headers.extend(headers);
+    }
+    Ok(Some(request))
+}
+
+/// Route `route`'s request as its values write it, before its key and
+/// credentials.
+fn written_request(app: &App<'_>, route: u32, args: &[Value]) -> Option<Request> {
     let plan = app.table.routes.get(route as usize)?;
     let mut values = args.iter();
     let mut path = String::new();

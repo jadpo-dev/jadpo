@@ -88,6 +88,12 @@ pub struct CallablePlan {
     /// doesn't depend on a record: who may call it, checked as it starts
     /// (area 9, "Actions").
     pub gate: Option<jadpo_std::policy::Gate>,
+    /// The parameter whose type is a `Principal` (`Principal.user`,
+    /// `Principal.service` or either, or one of those or `none`), when it
+    /// has one: the caller a test's, fixture's or seed's call of it runs as
+    /// (area 9, chunk 4.10). Read from its signature, never from the value
+    /// passed.
+    pub caller: Option<u32>,
 }
 
 impl CallablePlan {
@@ -97,6 +103,38 @@ impl CallablePlan {
     pub fn is_action(&self) -> bool {
         matches!(self.kind, Kind::Action | Kind::Fixture)
     }
+}
+
+/// Whether a parameter of type `ty` is a caller: `Principal`,
+/// `Principal.user` or `Principal.service`, or one of them or `none`.
+fn holds_caller(ty: &jadpo_graph::TypeRef) -> bool {
+    use jadpo_graph::TypeRef;
+    match ty {
+        TypeRef::Nullable(inner) => holds_caller(inner),
+        TypeRef::Std(name, args) => args.is_empty() && is_principal(name),
+        _ => false,
+    }
+}
+
+/// The same, for a query's parameter as the checker types it.
+pub(crate) fn holds_caller_ty(ty: &jadpo_check::types::Ty) -> bool {
+    use jadpo_check::types::Ty;
+    match ty {
+        Ty::Nullable(inner) => holds_caller_ty(inner),
+        Ty::Opaque(name, args) => args.is_empty() && is_principal(name),
+        _ => false,
+    }
+}
+
+/// `Principal`, or one of its variants' types.
+fn is_principal(name: &str) -> bool {
+    name == jadpo_check::identity::PRINCIPAL
+        || [
+            jadpo_std::http::PrincipalKind::User,
+            jadpo_std::http::PrincipalKind::Service,
+        ]
+        .iter()
+        .any(|kind| kind.type_name() == name)
 }
 
 /// A checked project's plan.
@@ -204,6 +242,15 @@ impl Plan {
             let gate = (kind == Kind::Action)
                 .then(|| gates.get(key.name()).cloned())
                 .flatten();
+            let caller = body
+                .params
+                .iter()
+                .position(|param| {
+                    body.locals
+                        .get(param.0 as usize)
+                        .is_some_and(|local| holds_caller(&local.ty))
+                })
+                .and_then(|at| u32::try_from(at).ok());
             callables.push(CallablePlan {
                 key,
                 kind,
@@ -214,6 +261,7 @@ impl Plan {
                 sites,
                 isolation,
                 gate,
+                caller,
             });
         }
         let mut routes = routes::table(

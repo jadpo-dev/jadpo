@@ -9,7 +9,8 @@
 //! transaction runs SQL with [`SqlValue`] parameters and rows, and a host
 //! gives each store by its connection's name, so the PostgreSQL driver in
 //! `jadpo-drivers` plugs in; since chunk 3.12 a host gives random bytes
-//! for a deployable's new identities. Delivery to subscribers comes with
+//! for a deployable's new identities; since chunk 4.10 its wall clock and
+//! rate limits are capabilities too. Delivery to subscribers comes with
 //! area 12.
 
 use std::future::Future;
@@ -170,6 +171,33 @@ pub trait Database {
     fn begin(&self) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
         self.begin_at(Isolation::RepeatableRead)
     }
+
+    /// Runs one statement on its own, outside any transaction, so the store
+    /// keeps what it did as it runs: one round trip, with no `BEGIN` or
+    /// `COMMIT` to wait on. What the runtime's own short steps use, each a
+    /// single statement already: the sign-in lookup, claiming and giving
+    /// up an idempotency key, the response a failed action keeps, and the
+    /// readiness check (chunk 4.10). A driver that can't run a statement
+    /// on its own runs it in a transaction of its own, as this does.
+    fn query_once<'a>(
+        &'a self,
+        sql: &'a str,
+        params: &'a [SqlValue],
+    ) -> LocalFuture<'a, Result<Vec<Row>, StoreError>> {
+        Box::pin(async move {
+            let mut transaction = self.begin_at(Isolation::ReadCommitted).await?;
+            match transaction.query(sql, params).await {
+                Ok(rows) => {
+                    transaction.commit().await?;
+                    Ok(rows)
+                }
+                Err(error) => {
+                    let _ = transaction.rollback().await;
+                    Err(error)
+                }
+            }
+        })
+    }
 }
 
 /// An event an action emitted, waiting in its outbox until the action
@@ -210,10 +238,38 @@ pub trait Host {
 
     /// Milliseconds on the platform's monotonic clock, from any start it
     /// likes: what a route's deadline is checked against while work runs
-    /// that never waits (area 7, "Time limits"). `None` for a host with no
-    /// timer, as a test's, so nothing runs out of time there.
+    /// that never waits (area 7, "Time limits"), and how old the last
+    /// readiness check is. `None` for a host with no timer, as a test's, so
+    /// nothing runs out of time there.
     fn monotonic_ms(&self) -> Option<u64> {
         None
+    }
+
+    /// The platform's wall clock, in milliseconds since
+    /// 1970-01-01T00:00:00Z: what a request a deployable answers reads as
+    /// `clock.now` ([`crate::http::serve_request`]). `None` for a host with
+    /// no clock, as a test's, whose clock is the test's own (area 13).
+    fn now_ms(&self) -> Option<i64> {
+        None
+    }
+
+    /// Counts a request against `limit` for `key` (`address <ip>`, `user
+    /// <id>` or `service <id>`) at `now`, milliseconds since the epoch,
+    /// and says whether it may go ahead (area 16, "Rate limits"). Natively
+    /// the counters are in bounded memory, each worker's own
+    /// ([`crate::RateLimits`]); on Workers the deployable counts in a Redis
+    /// connection or Cloudflare's rate-limiting binding, and in the
+    /// isolate's memory only while that can't be reached (area 16,
+    /// question 6). A host that counts nothing, as a test's, lets every
+    /// request through.
+    fn rate_limit<'a>(
+        &'a self,
+        key: &'a str,
+        limit: jadpo_std::http::RateLimit,
+        now: i64,
+    ) -> LocalFuture<'a, crate::Allowed> {
+        let _ = (key, limit, now);
+        Box::pin(async { crate::Allowed::Yes })
     }
 }
 

@@ -12,6 +12,7 @@ license.workspace = true
 # tools/verify.py leaves it out of the wasm32 build.
 [dependencies]
 jadpo-runtime.workspace = true
+jadpo-std.workspace = true
 jadpo-drivers = { workspace = true, features = ["postgres"] }
 tokio = { workspace = true, features = ["rt", "net", "sync", "time"] }
 bytes.workspace = true

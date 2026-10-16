@@ -48,6 +48,9 @@ pub struct QueryPlan {
     pub key: Key,
     pub name: String,
     pub read: ReadPlan,
+    /// The parameter whose type is a `Principal`, when it has one: the
+    /// caller a test's, fixture's or seed's call of it runs as (area 9).
+    pub caller: Option<u32>,
 }
 
 /// What an entity's operations run.
@@ -216,13 +219,35 @@ impl Planner<'_> {
             }
             sql
         };
-        let (sql, unpoliced) = both(&write, conditions, policy);
+        // A read of exactly one record selects its grant, so the one
+        // statement tells a hidden record from one that isn't there.
+        let (sql, unpoliced, permitted) = if cardinality == Cardinality::One && limit.is_none() {
+            granted(
+                &borns(entity, &columns.names),
+                entity,
+                conditions,
+                policy,
+                &|sql| {
+                    if let Some(order) = &order {
+                        text::order_by(sql, order, "");
+                    }
+                },
+            )
+        } else {
+            let (sql, unpoliced) = both(&write, conditions, policy);
+            (sql, unpoliced, None)
+        };
         let includes = self.includes(entity, &query.includes, &columns)?;
+        let mut kinds = columns.kinds;
+        if permitted.is_some() {
+            kinds.push(Column::Bool);
+        }
         let select = Select {
             sql,
             unpoliced,
+            permitted,
             params: statement.params,
-            columns: columns.kinds,
+            columns: kinds,
             record,
             includes,
         };
@@ -245,9 +270,15 @@ impl Planner<'_> {
             Some(missing) => Some(self.missing(missing)?),
             None => None,
         };
+        let caller = query
+            .params
+            .iter()
+            .position(|(_, ty)| crate::holds_caller_ty(ty))
+            .and_then(|at| u32::try_from(at).ok());
         Some(QueryPlan {
             key: query.key.clone(),
             name: query.name.clone(),
+            caller,
             read: ReadPlan {
                 store,
                 cardinality,
@@ -395,6 +426,7 @@ impl Planner<'_> {
                 select: Select {
                     sql,
                     unpoliced,
+                    permitted: None,
                     params: statement.params,
                     columns: columns.kinds,
                     record,
@@ -594,12 +626,17 @@ impl Planner<'_> {
         let mut conditions = vec![text::equal("id", &id)];
         conditions.extend(self.access(&mut statement, entity, Reach::Read)?);
         let policy = self.policy(&mut statement, entity, Effect::Read, &Row::Table)?;
-        let write = |conditions: &[String]| {
-            let mut sql = text::select(&borns(entity, &columns.names), &entity.table, "");
-            text::where_clause(&mut sql, conditions, "");
-            sql
-        };
-        let (sql, unpoliced) = both(&write, conditions, policy);
+        let (sql, unpoliced, permitted) = granted(
+            &borns(entity, &columns.names),
+            entity,
+            conditions,
+            policy,
+            &|_| {},
+        );
+        let mut kinds = columns.kinds;
+        if permitted.is_some() {
+            kinds.push(Column::Bool);
+        }
         let not_found = self.not_found(
             entity,
             MissingValue::Arg {
@@ -613,8 +650,9 @@ impl Planner<'_> {
             select: Select {
                 sql,
                 unpoliced,
+                permitted,
                 params: statement.params,
-                columns: columns.kinds,
+                columns: kinds,
                 record: Record {
                     ty: entity.name.clone(),
                     fields: fields.clone(),
@@ -666,6 +704,30 @@ pub(crate) fn both(
     let unpoliced = write(&conditions);
     conditions.push(policy);
     (write(&conditions), Some(unpoliced))
+}
+
+/// The statement of a read of exactly one record: `columns` where
+/// `conditions` hold, then what `finish` adds (its order), with `policy`
+/// selected as the last column, whose position comes back, rather than
+/// tested, unless policy lets anyone in. A call without a caller runs the
+/// same statement, so there is no text without policy.
+fn granted(
+    columns: &[String],
+    entity: &EntityModel,
+    conditions: Vec<String>,
+    policy: String,
+    finish: &dyn Fn(&mut String),
+) -> (String, Option<String>, Option<u32>) {
+    let mut sql = if policy == jadpo_sql::policy::ANYONE {
+        text::select(columns, &entity.table, "")
+    } else {
+        text::select_granted(columns, &policy, &entity.table)
+    };
+    text::where_clause(&mut sql, &conditions, "");
+    finish(&mut sql);
+    let permitted =
+        (policy != jadpo_sql::policy::ANYONE).then(|| u32::try_from(columns.len()).unwrap_or(0));
+    (sql, None, permitted)
 }
 
 // --- columns -------------------------------------------------------------------

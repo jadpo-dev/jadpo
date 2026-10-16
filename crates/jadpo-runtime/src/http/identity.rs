@@ -327,8 +327,8 @@ async fn cookie(
     )
 }
 
-/// The row a credential's verifier finds, with its caller's record: none
-/// when nothing live has it.
+/// The row a credential's verifier finds, with its caller's record, in
+/// one statement of its own: none when nothing live has it.
 async fn look_up(
     ctx: &mut Ctx<'_>,
     plan: &PrincipalPlan,
@@ -340,20 +340,17 @@ async fn look_up(
     let Some(database) = ctx.host().database(&plan.store) else {
         return Err(Refused::new(AUTHENTICATION_UNAVAILABLE));
     };
-    let Ok(mut transaction) = database.begin_at(Isolation::ReadCommitted).await else {
-        return Err(Refused::new(AUTHENTICATION_UNAVAILABLE));
-    };
-    let rows = transaction
-        .query(
+    // One statement of its own: nothing else reads with it.
+    let rows = database
+        .query_once(
             lookup,
             &[
                 SqlValue::Text(verifier(credential)),
                 SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
             ],
         )
-        .await;
-    let _ = transaction.commit().await;
-    let rows = rows.map_err(|_| Refused::new(AUTHENTICATION_UNAVAILABLE))?;
+        .await
+        .map_err(|_| Refused::new(AUTHENTICATION_UNAVAILABLE))?;
     Ok(rows.into_iter().next())
 }
 
@@ -882,8 +879,8 @@ pub(crate) fn refusal(table: &RouteTable, refused: &Refused, request_id: &str) -
 }
 
 /// The headers a route test's request to route number `route` signs in
-/// with as `caller` (area 13, `as:`): a real credential, kept in its own
-/// transaction and sent as a client sends it. A user signs in with a
+/// with as `caller` (area 13, `as:`): a real credential, kept in one
+/// statement of its own and sent as a client sends it. A user signs in with a
 /// browser session, its CSRF token and an `Origin` naming the server, when
 /// the route's API accepts browser sessions, and otherwise with an API
 /// token; a service with a key, as `Service.issue_key` issues one.
@@ -1009,14 +1006,7 @@ pub async fn test_credentials(
     let Some(database) = ctx.host().database(&store) else {
         return Err(unavailable(ctx));
     };
-    let Ok(mut transaction) = database.begin_at(Isolation::ReadCommitted).await else {
-        return Err(unavailable(ctx));
-    };
-    if transaction.execute(statement, &params).await.is_err() {
-        let _ = transaction.rollback().await;
-        return Err(unavailable(ctx));
-    }
-    if transaction.commit().await.is_err() {
+    if database.query_once(statement, &params).await.is_err() {
         return Err(unavailable(ctx));
     }
     Ok(headers)
