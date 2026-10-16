@@ -356,6 +356,7 @@ find_customer
 find_note
 find_todo
 finish_magic_link
+finish_review
 first_loan
 first_page
 first_quantity
@@ -752,6 +753,7 @@ project_view
 projects
 proving_time
 proxy_hops
+publish_appraisal
 published_at
 publisher
 publisher_id

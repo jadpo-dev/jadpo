@@ -659,7 +659,7 @@ impl Walk<'_> {
             .filter(|name| {
                 !changes.contains(name)
                     && !dest.refs.iter().any(|(set, _)| set == name)
-                    && !self.may_change(flow, &dest.entity, name, site)
+                    && !self.could_change(flow, &dest.entity, name, site)
             })
             .collect();
     }
@@ -667,7 +667,7 @@ impl Walk<'_> {
     /// Whether anything this body runs but the site `except` may change
     /// `entity`'s `field`: a write of its own, or one an action it calls
     /// reaches. A called action's patch may change anything.
-    fn may_change(&self, flow: &Flow<'_>, entity: &str, field: &str, except: SiteId) -> bool {
+    fn could_change(&self, flow: &Flow<'_>, entity: &str, field: &str, except: SiteId) -> bool {
         let mut seen = BTreeSet::new();
         self.body.sites.iter().enumerate().any(|(at, site)| {
             if at as u32 == except.0 {

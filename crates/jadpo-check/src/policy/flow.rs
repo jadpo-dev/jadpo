@@ -15,6 +15,11 @@
 //!   fields every caller who reached their record may read. A parameter
 //!   that reaches one is checked where the action or function is called,
 //!   against what the caller passes.
+//! - **What a write stores** (`policy.output_field_unproved`, chunk
+//!   5.1d). Each value a create, update or transition stores may be read
+//!   by everyone who may read the field it goes in (`stores`), followed
+//!   to the record it came from by [`Origin`]: which record a body read,
+//!   created or changed.
 //! - **Creates** (`policy.role_field_create_forbidden`). A create whose
 //!   entity's `create:` names only user fields sets one of them from the
 //!   caller, on every path: set from the request, it could only ever
