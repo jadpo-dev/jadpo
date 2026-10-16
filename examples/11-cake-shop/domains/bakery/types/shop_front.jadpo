@@ -1,8 +1,0 @@
-use bakery/entities { Cake, Shop }
-
-/// A shop open for orders, and the cakes on its menu.
-type ShopFront = Object {
-    shop: Shop
-    lemon: Cake
-    coffee: Cake
-}

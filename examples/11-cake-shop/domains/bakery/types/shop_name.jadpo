@@ -1,5 +1,0 @@
-/// A shop's name, which is also how its counter signs in.
-type ShopName = Text {
-    min_length: 1
-    max_length: 40
-}

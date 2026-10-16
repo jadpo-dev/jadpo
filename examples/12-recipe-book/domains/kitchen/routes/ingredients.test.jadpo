@@ -28,14 +28,14 @@ test "editors list ingredients, and everyone signed in reads them" {
         }
     }
     assert by_editor.status == 201
-    var read: Response = request {
+    var by_counter: Response = request {
         method: HttpMethod.get
         path: "/ingredients"
         as: Principal.user(crew.counter)
     }
-    var names: List<IngredientName> = match read.output {
-        some(listed) -> collection.map(listed, ingredient -> ingredient.name)
+    var ingredient_names: List<IngredientName> = match by_counter.output {
+        some(seen) -> collection.map(seen, ingredient -> ingredient.name)
         none -> []
     }
-    assert names == ["Rye flour"]
+    assert ingredient_names == ["Rye flour"]
 }

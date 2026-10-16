@@ -1,0 +1,14 @@
+use bakery/types { OutletView }
+use bakery/queries { open_outlets }
+
+/// Where cakes are collected.
+routes Outlets {
+    prefix: /outlets
+
+    /// The outlets trading today.
+    GET / {
+        authentication: RouteAuthentication.none
+        output: List<OutletView>
+        run: open_outlets()
+    }
+}

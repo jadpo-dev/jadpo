@@ -1,19 +1,19 @@
-// `as: Principal.service(shop)` signs a shop's counter in with a real key,
+// `as: Principal.service(outlet)` signs an outlet's counter in with a real key,
 // issued for the test and sent as `Authorization: Bearer`.
 
-use bakery/entities { Customer, Shop }
-use bakery/types { CollectionDay, OrderView, ShopFront, ShopKeyRequest }
-use bakery/actions { PlaceOrder, close_shop, open_shop, place_order, register }
+use bakery/entities { Customer, Outlet }
+use bakery/types { CollectionDay, OrderView, OutletKeyRequest, OutletWithMenu }
+use bakery/actions { PlaceOrder, close_outlet, open_outlet, place_order, register }
 use bakery/fixtures { market_street }
 
-test "a counter lists only its own shop's collections" {
-    var front: ShopFront = market_street()
-    var harbour: Shop = attempt open_shop("Harbour")
+test "a counter lists only its own outlet's handovers" {
+    var market: OutletWithMenu = market_street()
+    var harbour: Outlet = attempt open_outlet("Harbour")
     var ann: Customer = attempt register("ann@example.test", "Ann")
     var at_market: OrderView = attempt place_order(
         PlaceOrder {
-            shop_id: front.shop.id
-            cake_id: front.lemon.id
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
             quantity: 1
             collect_on: "2026-11-07"
         },
@@ -21,8 +21,8 @@ test "a counter lists only its own shop's collections" {
     )
     var at_harbour: OrderView = attempt place_order(
         PlaceOrder {
-            shop_id: harbour.id
-            cake_id: front.coffee.id
+            outlet_id: harbour.id
+            cake_id: market.coffee.id
             quantity: 2
             collect_on: "2026-11-07"
         },
@@ -31,8 +31,8 @@ test "a counter lists only its own shop's collections" {
     assert at_harbour.quantity == 2
     var response: Response = request {
         method: HttpMethod.get
-        path: "/counter/collections"
-        as: Principal.service(front.shop)
+        path: "/counter/handovers"
+        as: Principal.service(market.pickup_outlet)
         input: CollectionDay {
             collect_on: "2026-11-07"
         }
@@ -42,35 +42,38 @@ test "a counter lists only its own shop's collections" {
 }
 
 test "a counter rotates its key" {
-    var front: ShopFront = market_street()
-    var issued: Response = request {
+    var market: OutletWithMenu = market_street()
+    var new_key: Response = request {
         method: HttpMethod.post
         path: "/counter/keys"
-        as: Principal.service(front.shop)
-        input: ShopKeyRequest {
-            expires_at: "2027-01-01T00:00:00Z"
+        as: Principal.service(market.pickup_outlet)
+        input: OutletKeyRequest {
+            key_expires_at: "2027-01-01T00:00:00Z"
         }
     }
-    assert issued.status == 201
-    var listed: Response = request {
+    assert new_key.status == 201
+    var seen: Response = request {
         method: HttpMethod.get
         path: "/counter/keys"
-        as: Principal.service(front.shop)
+        as: Principal.service(market.pickup_outlet)
     }
-    var keys: List<IssuedKey> = match listed.output {
+    var outlet_keys: List<IssuedKey> = match seen.output {
         some(found) -> found
         none -> []
     }
     // `as:` signs each request in with a key of its own, as two counters
     // would, so the list also holds those; the new key is the one that
     // lasts until the new year.
-    var rotated: List<IssuedKey> = collection.filter(keys, key -> key.ends_at == "2027-01-01T00:00:00Z")
+    var rotated: List<IssuedKey> = collection.filter(
+        outlet_keys,
+        key -> key.ends_at == "2027-01-01T00:00:00Z"
+    )
     assert collection.count(rotated) == 1
 }
 
-test "a closed shop's counter is refused" {
-    var front: ShopFront = market_street()
-    var closed: Shop = attempt close_shop(front.shop.id)
+test "a closed outlet's counter is refused" {
+    var market: OutletWithMenu = market_street()
+    var closed: Outlet = attempt close_outlet(market.pickup_outlet.id)
     var response: Response = request {
         method: HttpMethod.get
         path: "/counter/keys"

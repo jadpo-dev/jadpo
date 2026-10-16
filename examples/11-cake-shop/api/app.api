@@ -12,7 +12,7 @@ POST /app/orders
     input: PlaceOrder (body)
     output: OrderView
     status: 201
-    fails: cake_not_found 404, cake_off_menu 422, shop_not_found 404
+    fails: cake_not_found 404, cake_off_menu 422, outlet_not_found 404
 
 output CakeView
     id: Uuid
@@ -33,7 +33,7 @@ output OrderView
     cake: CakeView
 
 input PlaceOrder
-    shop_id: Uuid
+    outlet_id: Uuid
     cake_id: Uuid
     quantity: Int { min: 1, max: 12 }
     collect_on: CalendarDate
@@ -44,4 +44,4 @@ failure cake_not_found 404
 failure cake_off_menu 422 "That cake is no longer on the menu."
     cake_id: Uuid
 
-failure shop_not_found 404
+failure outlet_not_found 404

@@ -2,17 +2,17 @@
 // API token sent as `Authorization: Bearer`.
 
 use bakery/entities { Customer }
-use bakery/types { OrderView, ShopFront }
+use bakery/types { OrderView, OutletWithMenu }
 use bakery/actions { PlaceOrder, place_order, register }
 use bakery/fixtures { market_street }
 
 test "the app lists the customer's orders with its token" {
-    var front: ShopFront = market_street()
+    var market: OutletWithMenu = market_street()
     var ann: Customer = attempt register("ann@example.test", "Ann")
     var order: OrderView = attempt place_order(
         PlaceOrder {
-            shop_id: front.shop.id
-            cake_id: front.lemon.id
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
             quantity: 1
             collect_on: "2026-11-07"
             app_version: "2.4.1"
@@ -29,15 +29,15 @@ test "the app lists the customer's orders with its token" {
 }
 
 test "an app write without an Idempotency-Key is refused" {
-    var front: ShopFront = market_street()
+    var market: OutletWithMenu = market_street()
     var ann: Customer = attempt register("ann@example.test", "Ann")
     var response: Response = request {
         method: HttpMethod.post
         path: "/app/orders"
         as: Principal.user(ann)
         input: PlaceOrder {
-            shop_id: front.shop.id
-            cake_id: front.lemon.id
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
             quantity: 1
             collect_on: "2026-11-07"
             app_version: "2.4.1"

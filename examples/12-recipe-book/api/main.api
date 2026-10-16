@@ -136,7 +136,7 @@ failure bakery_not_found 404
 
 failure handle_taken 409 "That handle is taken."
 
-failure ingredient_listed 409 "That ingredient is already listed."
+failure ingredient_listed 409 "That ingredient is already seen."
 
 failure recipe_not_found 404
 

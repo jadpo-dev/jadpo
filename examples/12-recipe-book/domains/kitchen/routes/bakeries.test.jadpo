@@ -8,7 +8,7 @@ use kitchen/fixtures { northwind }
 
 test "anyone signed in may open a bakery, and owns it" {
     var dee: Baker = attempt register("dee")
-    var opened: Response = request {
+    var opening: Response = request {
         method: HttpMethod.post
         path: "/bakeries"
         as: Principal.user(dee)
@@ -16,20 +16,20 @@ test "anyone signed in may open a bakery, and owns it" {
             name: "Southbank"
         }
     }
-    assert opened.status == 201
-    var listed: Response = request {
+    assert opening.status == 201
+    var seen: Response = request {
         method: HttpMethod.get
         path: "/bakeries"
         as: Principal.user(dee)
     }
-    var names: List<BakeryName> = match listed.output {
+    var bakery_names: List<BakeryName> = match seen.output {
         some(bakeries) -> collection.map(bakeries, bakery -> bakery.name)
         none -> []
     }
-    assert names == ["Southbank"]
+    assert bakery_names == ["Southbank"]
 }
 
-test "a bakery is listed only to the people who work there" {
+test "a bakery is seen only to the people who work there" {
     var crew: KitchenStaff = northwind()
     var outsider: Baker = attempt register("eve")
     var by_counter: Response = request {

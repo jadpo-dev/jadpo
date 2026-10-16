@@ -2,7 +2,7 @@
 // listing, `sessions.tokens`, directly, as it runs a query: each token is
 // sent as its `id`, `started_at` and `ends_at`, never the token itself.
 
-use bakery/types { PhoneLinked, TokenId }
+use bakery/types { PhoneLinked, PhoneTokenId }
 use bakery/actions { link_phone, unlink_phone }
 
 /// The phones linked to the signed-in customer.
@@ -23,8 +23,8 @@ routes Devices {
     }
 
     /// Unlinks a phone.
-    DELETE /{token_id: TokenId} {
+    DELETE /{phone_token_id: PhoneTokenId} {
         status: SuccessStatus.no_content
-        run: unlink_phone(token_id)
+        run: unlink_phone(phone_token_id)
     }
 }

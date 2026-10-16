@@ -14,6 +14,6 @@ test "an import keeps the old system's reference" {
         450,
         "R-000123"
     )
-    var stored: Recipe = attempt Recipe.get(rye.id)
-    assert stored.old_reference == "R-000123"
+    var brought_over: Recipe = attempt Recipe.get(rye.id)
+    assert brought_over.old_reference == "R-000123"
 }

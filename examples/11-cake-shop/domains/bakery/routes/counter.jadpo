@@ -1,46 +1,46 @@
-// The counter API is for the shops' own tills, which sign in with a key.
-// `current_principal.service` selects a shop, so a customer is refused.
+// The counter API is for the outlets' own tills, which sign in with a key.
+// `current_principal.service` selects an outlet, so a customer is refused.
 //
 // Issuing a key says `authentication: RouteAuthentication.fresh`, which
-// checks the shop's record on this request even once a revocation delay
-// lets other routes skip that read: a closed shop can't mint itself a
+// checks the outlet's record on this request even once a revocation delay
+// lets other routes skip that read: a closed outlet can't mint itself a
 // new key.
 
-use bakery/entities { Shop }
-use bakery/types { CollectionDay, KeyId, NewShopKey, OrderView, ShopKeyRequest }
-use bakery/actions { issue_shop_key, revoke_shop_key }
-use bakery/queries { collections }
+use bakery/entities { Outlet }
+use bakery/types { CollectionDay, NewOutletKey, OrderView, OutletKeyId, OutletKeyRequest }
+use bakery/actions { issue_outlet_key, revoke_outlet_key }
+use bakery/queries { handovers }
 
-/// A shop's counter.
+/// An outlet's counter.
 routes Counter {
     prefix: /counter
     api: counter
 
-    /// The orders this shop hands over on a day.
-    GET /collections {
+    /// The orders this outlet hands over on a day.
+    GET /handovers {
         input: CollectionDay
         output: List<OrderView>
-        run: collections(input)
+        run: handovers(input)
     }
 
-    /// The shop's keys that haven't expired, oldest first.
+    /// The outlet's keys that haven't expired, oldest first.
     GET /keys {
         output: List<IssuedKey>
-        run: Shop.keys(current_principal.service.id)
+        run: Outlet.keys(current_principal.service.id)
     }
 
     /// Issues a new key, shown once.
     POST /keys {
         authentication: RouteAuthentication.fresh
-        input: ShopKeyRequest
-        output: NewShopKey
+        input: OutletKeyRequest
+        output: NewOutletKey
         status: SuccessStatus.created
-        run: issue_shop_key(input, current_principal.service)
+        run: issue_outlet_key(input, current_principal.service)
     }
 
     /// Revokes a key.
-    DELETE /keys/{key_id: KeyId} {
+    DELETE /keys/{outlet_key_id: OutletKeyId} {
         status: SuccessStatus.no_content
-        run: revoke_shop_key(key_id)
+        run: revoke_outlet_key(outlet_key_id)
     }
 }

@@ -9,18 +9,18 @@
 // policy; the requests then show what each customer may do.
 
 use bakery/entities { Customer }
-use bakery/types { OrderView, ShopFront }
+use bakery/types { OrderView, OutletWithMenu }
 use bakery/actions { ChangeOrder, PlaceOrder, place_order, register, suspend_customer }
 use bakery/fixtures { market_street }
 
 test "ordering needs someone signed in" {
-    var front: ShopFront = market_street()
+    var market: OutletWithMenu = market_street()
     var response: Response = request {
         method: HttpMethod.post
-        path: "/orders"
+        path: "/account/orders"
         input: PlaceOrder {
-            shop_id: front.shop.id
-            cake_id: front.lemon.id
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
             quantity: 1
             collect_on: "2026-11-07"
         }
@@ -30,15 +30,15 @@ test "ordering needs someone signed in" {
 }
 
 test "a signed-in customer places an order" {
-    var front: ShopFront = market_street()
+    var market: OutletWithMenu = market_street()
     var ann: Customer = attempt register("ann@example.test", "Ann")
     var response: Response = request {
         method: HttpMethod.post
-        path: "/orders"
+        path: "/account/orders"
         as: Principal.user(ann)
         input: PlaceOrder {
-            shop_id: front.shop.id
-            cake_id: front.lemon.id
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
             quantity: 2
             collect_on: "2026-11-07"
         }
@@ -48,13 +48,13 @@ test "a signed-in customer places an order" {
 }
 
 test "a customer lists only their own orders" {
-    var front: ShopFront = market_street()
+    var market: OutletWithMenu = market_street()
     var ann: Customer = attempt register("ann@example.test", "Ann")
     var bob: Customer = attempt register("bob@example.test", "Bob")
     var anns: OrderView = attempt place_order(
         PlaceOrder {
-            shop_id: front.shop.id
-            cake_id: front.lemon.id
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
             quantity: 1
             collect_on: "2026-11-07"
         },
@@ -62,31 +62,31 @@ test "a customer lists only their own orders" {
     )
     var bobs: OrderView = attempt place_order(
         PlaceOrder {
-            shop_id: front.shop.id
-            cake_id: front.coffee.id
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.coffee.id
             quantity: 3
             collect_on: "2026-11-08"
         },
         Principal.user(bob)
     )
     assert bobs.quantity == 3
-    var listed: Response = request {
+    var seen: Response = request {
         method: HttpMethod.get
-        path: "/orders"
+        path: "/account/orders"
         as: Principal.user(ann)
     }
-    assert listed.status == 200
-    assert listed.output == [anns]
+    assert seen.status == 200
+    assert seen.output == [anns]
 }
 
 test "another customer's order reads as missing" {
-    var front: ShopFront = market_street()
+    var market: OutletWithMenu = market_street()
     var ann: Customer = attempt register("ann@example.test", "Ann")
     var bob: Customer = attempt register("bob@example.test", "Bob")
     var anns: OrderView = attempt place_order(
         PlaceOrder {
-            shop_id: front.shop.id
-            cake_id: front.lemon.id
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
             quantity: 1
             collect_on: "2026-11-07"
         },
@@ -94,7 +94,7 @@ test "another customer's order reads as missing" {
     )
     var read_by_bob: Response = request {
         method: HttpMethod.get
-        path: "/orders/{order_id}"
+        path: "/account/orders/{order_id}"
         params: {
             order_id: anns.id
         }
@@ -104,7 +104,7 @@ test "another customer's order reads as missing" {
     assert read_by_bob.code == "order_not_found"
     var changed_by_bob: Response = request {
         method: HttpMethod.put
-        path: "/orders/{order_id}"
+        path: "/account/orders/{order_id}"
         params: {
             order_id: anns.id
         }
@@ -117,7 +117,7 @@ test "another customer's order reads as missing" {
     assert changed_by_bob.status == 404
     var changed_by_ann: Response = request {
         method: HttpMethod.put
-        path: "/orders/{order_id}"
+        path: "/account/orders/{order_id}"
         params: {
             order_id: anns.id
         }
@@ -135,7 +135,7 @@ test "a suspended customer is refused" {
     var suspended: Customer = attempt suspend_customer(ann.id)
     var response: Response = request {
         method: HttpMethod.get
-        path: "/orders"
+        path: "/account/orders"
         as: Principal.user(suspended)
     }
     assert response.status == 403

@@ -2,7 +2,7 @@
 // `jadpo check` fails while it disagrees with them.
 version: 1
 
-GET /counter/collections
+GET /counter/handovers
     input: CollectionDay (query)
     output: List<OrderView>
     status: 200
@@ -12,11 +12,11 @@ GET /counter/keys
     status: 200
 
 POST /counter/keys
-    input: ShopKeyRequest (body)
-    output: NewShopKey
+    input: OutletKeyRequest (body)
+    output: NewOutletKey
     status: 201
 
-DELETE /counter/keys/{key_id: Uuid}
+DELETE /counter/keys/{outlet_key_id: Uuid}
     status: 204
 
 output CakeView
@@ -39,7 +39,7 @@ output IssuedKey
     started_at: Instant
     ends_at: Instant
 
-output NewShopKey
+output NewOutletKey
     key: ServiceKey
 
 output OrderView
@@ -48,5 +48,5 @@ output OrderView
     collect_on: CalendarDate
     cake: CakeView
 
-input ShopKeyRequest
-    expires_at: Instant
+input OutletKeyRequest
+    key_expires_at: Instant

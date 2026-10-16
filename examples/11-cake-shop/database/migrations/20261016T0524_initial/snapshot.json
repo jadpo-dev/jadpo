@@ -414,11 +414,17 @@
               "position": 0,
               "type": "uuid"
             },
-            "placed_at": {
+            "ordered_at": {
               "allows": {},
-              "field": "placed_at",
+              "field": "ordered_at",
               "position": 7,
               "type": "timestamptz(3)"
+            },
+            "outlet_id": {
+              "allows": {},
+              "field": "outlet_id",
+              "position": 2,
+              "type": "uuid"
             },
             "placed_with": {
               "allows": {
@@ -439,12 +445,6 @@
               "field": "quantity",
               "position": 4,
               "type": "smallint"
-            },
-            "shop_id": {
-              "allows": {},
-              "field": "shop_id",
-              "position": 2,
-              "type": "uuid"
             }
           },
           "entity": "Order",
@@ -463,12 +463,12 @@
               "on_delete": "cascade",
               "table": "customer"
             },
-            "order_shop_id_fkey": {
+            "order_outlet_id_fkey": {
               "columns": [
-                "shop_id"
+                "outlet_id"
               ],
               "on_delete": "restrict",
-              "table": "shop"
+              "table": "outlet"
             }
           },
           "indexes": {
@@ -485,13 +485,13 @@
               ],
               "reason": "query my_orders"
             },
-            "order_collect_on_placed_at_id_idx": {
+            "order_collect_on_ordered_at_id_idx": {
               "columns": [
                 "collect_on",
-                "placed_at",
+                "ordered_at",
                 "id"
               ],
-              "reason": "query collections"
+              "reason": "query handovers"
             },
             "order_customer_id_idx": {
               "columns": [
@@ -499,11 +499,11 @@
               ],
               "reason": "reference Order.customer_id"
             },
-            "order_shop_id_idx": {
+            "order_outlet_id_idx": {
               "columns": [
-                "shop_id"
+                "outlet_id"
               ],
-              "reason": "reference Order.shop_id"
+              "reason": "reference Order.outlet_id"
             }
           },
           "primary_key": {
@@ -513,7 +513,7 @@
             "name": "order_pkey"
           }
         },
-        "shop": {
+        "outlet": {
           "columns": {
             "id": {
               "allows": {},
@@ -542,9 +542,9 @@
               "type": "text"
             }
           },
-          "entity": "Shop",
+          "entity": "Outlet",
           "indexes": {
-            "shop_status_name_sorted_idx": {
+            "outlet_status_name_sorted_idx": {
               "collate_c": [
                 "name"
               ],
@@ -552,21 +552,21 @@
                 "status",
                 "name"
               ],
-              "reason": "query open_shops"
+              "reason": "query open_outlets"
             }
           },
           "primary_key": {
             "columns": [
               "id"
             ],
-            "name": "shop_pkey"
+            "name": "outlet_pkey"
           },
           "unique": {
-            "shop_name_key": {
+            "outlet_name_key": {
               "columns": [
                 "name"
               ],
-              "rule": "Shop.name"
+              "rule": "Outlet.name"
             }
           }
         }

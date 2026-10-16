@@ -1,8 +1,0 @@
-use bakery/entities { Shop }
-use bakery/types { KeyId }
-
-
-/// Revokes one of the shop's keys, such as the one a rotation replaced.
-action revoke_shop_key(key_id: KeyId) -> Unit {
-    Shop.revoke_key(key_id)
-}

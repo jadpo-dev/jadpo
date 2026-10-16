@@ -1,6 +1,6 @@
 // These routes need a signed-in customer, the default. A route reads the
 // caller as `current_principal` and passes it on like any argument;
-// `.user` selects a customer, so a shop's counter calling it is refused
+// `.user` selects a customer, so an outlet's counter calling it is refused
 // with 403 before the action runs.
 //
 // `output:` must be exactly what the action or query returns, so the
@@ -12,8 +12,8 @@ use bakery/actions { ChangeOrder, PlaceOrder, change_order, place_order }
 use bakery/queries { my_orders, order_by_id }
 
 /// A customer's orders, from the website.
-routes Orders {
-    prefix: /orders
+routes AccountOrders {
+    prefix: /account/orders
 
     /// The signed-in customer's orders.
     GET / {

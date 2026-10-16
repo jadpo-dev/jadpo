@@ -7,15 +7,15 @@
 // caller's own: the compiler checks that `customer_id` comes from the
 // caller, and the database checks it again as it writes.
 
-use bakery/entities { Cake, CakeNotFound, Order, Shop, ShopNotFound }
+use bakery/entities { Cake, CakeNotFound, Order, Outlet, OutletNotFound }
 use bakery/types { AppVersion, CakeCount, CakeView, OrderView }
 use bakery/failures { CakeOffMenu }
 
-/// Orders cakes for collection from a shop.
+/// Orders cakes for collection from an outlet.
 action place_order(
     input: PlaceOrder,
     customer: Principal.user
-) fails CakeNotFound, CakeOffMenu, ShopNotFound -> OrderView {
+) fails CakeNotFound, CakeOffMenu, OutletNotFound -> OrderView {
     var cake: Cake = attempt Cake.get(input.cake_id)
     if (not cake.on_menu) {
         reject CakeOffMenu {
@@ -25,7 +25,7 @@ action place_order(
     var order: Order = attempt Order.create {
         set: {
             customer_id: customer.id
-            shop_id: input.shop_id
+            outlet_id: input.outlet_id
             cake_id: cake.id
             quantity: input.quantity
             collect_on: input.collect_on
@@ -52,7 +52,7 @@ action place_order(
 
 /// What placing an order takes.
 type PlaceOrder = Input {
-    shop_id: Shop.id
+    outlet_id: Outlet.id
     cake_id: Cake.id
     quantity: CakeCount
     collect_on: CalendarDate

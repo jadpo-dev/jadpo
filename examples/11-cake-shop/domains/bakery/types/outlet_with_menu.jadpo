@@ -1,0 +1,8 @@
+use bakery/entities { Cake, Outlet }
+
+/// An outlet open for orders, and the cakes on its menu.
+type OutletWithMenu = Object {
+    pickup_outlet: Outlet
+    lemon: Cake
+    coffee: Cake
+}

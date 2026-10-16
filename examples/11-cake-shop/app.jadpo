@@ -4,12 +4,12 @@
 // `main`, at `/`, accepting every way `authentication.jadpo` declares.
 //
 // `principal` says who a signed-in caller can be: a user is a customer,
-// found by their address, and a service is a shop's counter. A customer
-// or a shop whose `active:` condition stops holding is refused on their
+// found by their address, and a service is an outlet's counter. A customer
+// or an outlet whose `active:` condition stops holding is refused on their
 // next request.
 
-use bakery/entities { Customer, Shop }
-use bakery/types { CustomerStatus, ShopStatus }
+use bakery/entities { Customer, Outlet }
+use bakery/types { CustomerStatus, OutletStatus }
 
 application {
     apis: {
@@ -35,7 +35,7 @@ principal {
         active: Customer.status == CustomerStatus.active
     }
     service: {
-        subject: Shop.name
-        active: Shop.status == ShopStatus.open
+        subject: Outlet.name
+        active: Outlet.status == OutletStatus.open
     }
 }

@@ -1,5 +1,5 @@
 /// The ingredient is already in the list.
 type IngredientListed = Failure {
     kind: FailureKind.conflict
-    message: "That ingredient is already listed."
+    message: "That ingredient is already seen."
 }

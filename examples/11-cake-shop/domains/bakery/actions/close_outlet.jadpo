@@ -1,0 +1,11 @@
+use bakery/entities { Outlet, OutletNotFound }
+use bakery/types { OutletStatus }
+
+/// Closes an outlet: its counter is refused from its next request.
+action close_outlet(outlet_id: Outlet.id) fails OutletNotFound -> Outlet {
+    return attempt Outlet.update(outlet_id) {
+        set: {
+            status: OutletStatus.closed
+        }
+    }
+}

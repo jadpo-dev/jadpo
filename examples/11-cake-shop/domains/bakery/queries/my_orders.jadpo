@@ -1,5 +1,5 @@
 // The query reads every order and names no caller, yet a customer gets
-// only their own and a shop's counter only those collected there: policy
+// only their own and an outlet's counter only those collected there: policy
 // filters the list in its statement, before the limit, so a list never
 // fails for policy, it just holds less.
 

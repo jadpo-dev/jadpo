@@ -303,7 +303,7 @@ reference only).
   (area 8, decided 2026-10-16): a `GET` route runs `sessions.tokens` and
   `Service.keys` as generated queries, and `IssuedToken` and `IssuedKey`
   can be held in an `Output`, so a "signed-in devices" screen is one route.
-- [ ] **4.6 Teaching examples for Phase 4** `opus · high`: bring
+- [x] **4.6 Teaching examples for Phase 4** `opus · high`: bring
   `examples/` up to date with routes, identity and policy, and pass
   `tools/verify.py --require-examples`.
 

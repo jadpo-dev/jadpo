@@ -1,2 +1,2 @@
 /// One of a customer's phone tokens, as `GET /devices` lists it.
-type TokenId = Uuid {}
+type PhoneTokenId = Uuid {}

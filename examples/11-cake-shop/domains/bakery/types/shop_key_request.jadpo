@@ -1,4 +1,0 @@
-/// When a counter's new key should stop working.
-type ShopKeyRequest = Input {
-    expires_at: Instant
-}

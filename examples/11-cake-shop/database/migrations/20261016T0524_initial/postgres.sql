@@ -1,4 +1,4 @@
--- 20261016T0504_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
+-- 20261016T0524_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
 
 -- store: main
 CREATE TABLE "cake" (
@@ -65,29 +65,29 @@ CREATE TABLE "jadpo_sessions" (
 CREATE TABLE "order" (
     "id" uuid NOT NULL,
     "customer_id" uuid NOT NULL,
-    "shop_id" uuid NOT NULL,
+    "outlet_id" uuid NOT NULL,
     "cake_id" uuid NOT NULL,
     "quantity" smallint NOT NULL,
     "collect_on" date NOT NULL,
     "placed_with" text,
-    "placed_at" timestamptz(3) NOT NULL,
+    "ordered_at" timestamptz(3) NOT NULL,
     CONSTRAINT "order_pkey" PRIMARY KEY ("id")
 );
-CREATE TABLE "shop" (
+CREATE TABLE "outlet" (
     "id" uuid NOT NULL,
     "name" text NOT NULL,
     "status" text NOT NULL,
-    CONSTRAINT "shop_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "outlet_pkey" PRIMARY KEY ("id")
 );
 ALTER TABLE "customer" ADD CONSTRAINT "customer_email_key" UNIQUE ("email");
 ALTER TABLE "jadpo_deliveries" ADD CONSTRAINT "jadpo_deliveries_outbox_id_subscriber_key" UNIQUE ("outbox_id", "subscriber");
 ALTER TABLE "jadpo_service_keys" ADD CONSTRAINT "jadpo_service_keys_verifier_key" UNIQUE ("verifier");
 ALTER TABLE "jadpo_sessions" ADD CONSTRAINT "jadpo_sessions_verifier_key" UNIQUE ("verifier");
-ALTER TABLE "shop" ADD CONSTRAINT "shop_name_key" UNIQUE ("name");
+ALTER TABLE "outlet" ADD CONSTRAINT "outlet_name_key" UNIQUE ("name");
 ALTER TABLE "jadpo_deliveries" ADD CONSTRAINT "jadpo_deliveries_outbox_id_fkey" FOREIGN KEY ("outbox_id") REFERENCES "jadpo_outbox" ("id") ON DELETE CASCADE;
 ALTER TABLE "order" ADD CONSTRAINT "order_cake_id_fkey" FOREIGN KEY ("cake_id") REFERENCES "cake" ("id") ON DELETE RESTRICT;
 ALTER TABLE "order" ADD CONSTRAINT "order_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "customer" ("id") ON DELETE CASCADE;
-ALTER TABLE "order" ADD CONSTRAINT "order_shop_id_fkey" FOREIGN KEY ("shop_id") REFERENCES "shop" ("id") ON DELETE RESTRICT;
+ALTER TABLE "order" ADD CONSTRAINT "order_outlet_id_fkey" FOREIGN KEY ("outlet_id") REFERENCES "outlet" ("id") ON DELETE RESTRICT;
 CREATE INDEX "cake_on_menu_name_id_sorted_idx" ON "cake" ("on_menu", "name" COLLATE "C", "id");
 CREATE INDEX "jadpo_deliveries_status_next_attempt_at_idx" ON "jadpo_deliveries" ("status", "next_attempt_at");
 CREATE INDEX "jadpo_idempotency_keys_kept_until_idx" ON "jadpo_idempotency_keys" ("kept_until");
@@ -97,7 +97,7 @@ CREATE INDEX "jadpo_sessions_ends_at_idx" ON "jadpo_sessions" ("ends_at");
 CREATE INDEX "jadpo_sessions_principal_id_idx" ON "jadpo_sessions" ("principal_id");
 CREATE INDEX "order_cake_id_idx" ON "order" ("cake_id");
 CREATE INDEX "order_collect_on_id_idx" ON "order" ("collect_on", "id");
-CREATE INDEX "order_collect_on_placed_at_id_idx" ON "order" ("collect_on", "placed_at", "id");
+CREATE INDEX "order_collect_on_ordered_at_id_idx" ON "order" ("collect_on", "ordered_at", "id");
 CREATE INDEX "order_customer_id_idx" ON "order" ("customer_id");
-CREATE INDEX "order_shop_id_idx" ON "order" ("shop_id");
-CREATE INDEX "shop_status_name_sorted_idx" ON "shop" ("status", "name" COLLATE "C");
+CREATE INDEX "order_outlet_id_idx" ON "order" ("outlet_id");
+CREATE INDEX "outlet_status_name_sorted_idx" ON "outlet" ("status", "name" COLLATE "C");

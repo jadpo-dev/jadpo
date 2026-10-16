@@ -42,7 +42,7 @@ test "one bakery never reaches another's recipes" {
         Principal.user(dee)
     )
     assert southbank.name == "Southbank"
-    var written: Response = request {
+    var by_bo: Response = request {
         method: HttpMethod.post
         path: "/bakeries/{bakery_id}/recipes"
         params: {
@@ -53,7 +53,7 @@ test "one bakery never reaches another's recipes" {
             name: "Rye sourdough"
         }
     }
-    assert written.status == 201
+    assert by_bo.status == 201
     var read_by_dee: Response = request {
         method: HttpMethod.get
         path: "/bakeries/{bakery_id}/recipes"

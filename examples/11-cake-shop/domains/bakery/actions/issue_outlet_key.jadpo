@@ -1,0 +1,14 @@
+// A counter rotates its key without stopping: it asks for a new one while
+// signed in with the old, starts using it, then revokes the old. Keys
+// overlap until each expires, and issuing one needs `update` on the outlet,
+// which `Outlet` grants only to the outlet itself.
+
+use bakery/entities { Outlet }
+use bakery/types { NewOutletKey, OutletKeyRequest }
+
+/// Issues the signed-in counter a new key.
+action issue_outlet_key(input: OutletKeyRequest, counter: Principal.service) -> NewOutletKey {
+    return NewOutletKey {
+        key: Outlet.issue_key(counter.id, input.key_expires_at)
+    }
+}

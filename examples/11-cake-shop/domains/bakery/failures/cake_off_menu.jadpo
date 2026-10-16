@@ -1,6 +1,5 @@
 use bakery/entities { Cake }
 
-
 /// The cake is no longer on the menu, so it can't be ordered.
 type CakeOffMenu = Failure {
     kind: FailureKind.rejected
