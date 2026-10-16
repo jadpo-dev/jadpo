@@ -42,11 +42,7 @@ then built. No design is left for implementation.
 1. ~~The golden rule~~: decided, see "Decided: the golden rule".
 2. ~~Translations~~: decided, see "Translations".
 3. ~~Authentication~~: decided, see "Authentication" and "Built-in emails".
-4. **Side effects and packages, end to end.** Decided ("no code with side
-   effects in packages", below); Richard wants it walked through: what a
-   package can and cannot cause, where every effect happens (the app's
-   actions, the runtime, after commit), and how decoding, capabilities and
-   services fit.
+4. ~~Side effects and packages~~: decided, see "What package code may do".
 5. **Overriding: settings and events only.** *Question:* adopt the model
    in [the scenarios page](override-scenarios.md) (typed settings whose
    value is a plain value, a connection, the app's template or the app's
@@ -78,6 +74,15 @@ then built. No design is left for implementation.
    consumed directly (a connection the runtime reads, each message arriving
    as an event) or only through webhooks (SNS's HTTP delivery); retries and
    dead letters; Workers' queue consumers; how this fits area 12's events.
+7b. **Multi-step provider calls**: an action (the app's or a package's)
+    making several changing calls in order, answers recorded as they
+    happen, a key per step, resuming after a failure, a warning where a
+    step can fail for good after an earlier one took effect; calls without
+    an idempotency key stay alone. Reopens areas 11 and 12's "one changing
+    call per action". Settle before chunk 7.4.
+7c. **Per-user OAuth**: apps acting for each user on Google, Xero or
+    HubSpot need those users' tokens kept and refreshed safely, owned by
+    the runtime like sessions.
 8. **What a library package may also carry**: email partials and layouts,
    translations, a usage guide for agents. *Recommendation:* yes to all
    three. *Translations decided 2026-10-16 (Richard):* see "Translations",
@@ -862,18 +867,53 @@ what is published. Descriptions alone
 are not the bar, because the compiler cannot judge whether one says
 anything; examples are, because they must run.
 
-## Decided: no code with side effects in packages
+## Decided: what package code may do
 
-A package holds no actions, subscribers or calls. An operation is a
-description the runtime performs, and only the app's actions call one.
-That keeps area 11's rules whole: one changing call per action, the call
-before the writes, the provider's failures mapped onto the app's at the
-call, and every outside call visible where it happens. Multi-step flows
-are events and subscribers, which are the app's.
+Decided 2026-10-16 (Richard), replacing "no code with side effects in
+packages": the point of a package is expertise written once by someone
+who knows the API and tested properly, so a provider package may act on
+its own API, but never on the app's data.
 
-A provider package may hold pure functions in its `libraries/`, for
-decoding (below) and for helpers that belong to that API version and
-change with it.
+- **No state and no database**: a package owns no entities or tables and
+  never reads or writes the app's data. Data a package fetches reaches the
+  app as a return value or an event, and the app's own action writes it.
+- **Package actions call only their own API**: a provider package may
+  contain `public action`s in `actions/` that call its own operations in
+  any order, pass answers between them and use its pure functions, and
+  return a result or fail. They cannot emit app events, send email, call
+  any other connection, or read configuration or secrets. The app calls
+  one as `connection.action(input)` (`stripe.start_subscription(...)`),
+  inside its own action; a package action with several changing calls
+  needs the multi-step mechanism (open item 7b). The surface lists each
+  package action with the operations it calls and which change something.
+- **Package subscribers on its own webhooks**: a package may subscribe to
+  its own webhook events, call its own API to enrich them, and emit its
+  own declared events (`Stripe.SubscriptionRenewed`).
+- **Events only about the outside world**: a package emits events for
+  webhooks, enriched webhooks and polls, never as a side effect of the
+  app calling it; the app's action emits its own event there, where a
+  reviewer sees it.
+- **Polling turns APIs without webhooks into events**: `polls:` in
+  `provider.jadpo` names an operation, a default interval and the event
+  emitted when the answer changes; the runtime runs it, keeps what it last
+  saw (runtime state, like webhook de-duplication) and emits only changes;
+  a poll runs only while something subscribes to its event; the connection
+  can change the interval (`polls: { latest_rates: 6h }`).
+- **Services**: a package's own API may be a container it runs (`runs:`),
+  which its actions call; it cannot call another package or connection
+  (no dependencies). **A package's service never starts until approved**
+  (Richard): installing shows the image, its digest and the hosts it asks
+  for; the app names it on the connection, and a new or changed image
+  needs a person's acceptance in the approval report before it runs, so an
+  upgrade cannot swap in a different image unseen.
+- **Recipes**: a package may ship `recipes/`, complete wiring examples
+  (schedules, actions, entities) copied into a domain with
+  `jadpo package recipe <package> <recipe> --into <domain>`, after which
+  they are the app's code; each is compiled and tested against a sample app
+  at publish and listed in the surface.
+- **Full permissions are not built**: a package that owns tables or runs
+  its own schedules waits until a real app needs package-owned data;
+  adding grants later breaks nothing.
 
 ## Decided: decoding and translation
 
