@@ -26,7 +26,8 @@ These types exist without being declared, and their names cannot be reused.
 | Validated text | `Email`, `Url`, `IpAddress` | Ready-made named types built on `Text`. |
 | Time | `Instant`, `CalendarDate`, `Time`, `Duration`, `Zone`, `Locale`, `Weekday` and the formatting types | Described in area 10, Configuration and time. |
 | Containers | `List<T>`, `Set<T>`, `Map<K, V>` | Described below. |
-| Bases | `Object`, `Enum`, `Input`, `Output` | Used only after `=` in a `type` declaration (decided 2026-10-12). |
+| Translation | `Count` | A whole number that picks a message's plural form, used directly as a `Message` field (area 10, Translations; decided 2026-10-16, built in chunk 5.3). |
+| Bases | `Object`, `Enum`, `Input`, `Output` | Used only after `=` in a `type` declaration (decided 2026-10-12). Areas add their own bases the same way: `Failure` (area 4), `Event` (area 12), `EmailMessage` (area 16) and `Message`, a translated message whose fields are its placeholders (area 10, decided 2026-10-16, built in chunk 5.3). |
 | Nothing | `Unit` | What an action returns when it returns nothing. |
 
 Literals are `true` and `false`, whole numbers (`25`, `-3`), decimals (`1.25`),
@@ -754,7 +755,10 @@ An enum cannot be created from text: `TicketStatus("open")` is an error. Text
 from outside becomes a variant only by being decoded at a boundary. On the
 wire a plain variant is its name as a string (`"open"`), and a variant with
 fields is an object with a `tag` naming the variant plus its fields. Enums have
-no methods or display labels.
+no methods or display labels. Wording for people comes from translations: a
+domain's language files may give each value of an enum a wording, which a
+template then writes out (area 10, "Enums with wording", decided
+2026-10-16).
 
 ## Collections
 
@@ -2432,7 +2436,10 @@ each section: construction failures by rule (2.5), conditions as proof
 Not built yet: a map literal, and walking or searching a set or map
 (Collections), which no roadmap chunk builds yet; and the JSON forms of
 sets, maps, large `Int`s and `Decimal`s, which come with routes in chunk
-4.1.
+4.1. The built-in `Count` and the `Message` base come with translations in
+chunk 5.3 (area 10). `Count` is then a built-in name that cannot be reused,
+so the examples on this and other pages that declare their own
+`type Count = Int {}` are renamed in that chunk.
 
 ### Consistency with the rest of the language
 
@@ -3204,3 +3211,4 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | `Object` | Only a base in a `type` declaration; no anonymous inline objects | 2026-10-12 |
 | Field settings | A field's settings go in a block after its type, one per line (`optional: true`, `default: 25`) | 2026-10-12 |
 | Lists | Square brackets are the only way to write a list: `pick: [Todo.id, Todo.title]`, `[create, read]`; braces never hold comma lists; signatures keep their commas (parameters, `fails A, B`) | 2026-10-12 |
+| Messages and `Count` | `Message` is a type base for translated messages, its fields the placeholders; `Count` is a built-in whole number that picks a plural form; enums still have no display labels, and their wording for people lives in translations (Richard, area 10) | 2026-10-16 |

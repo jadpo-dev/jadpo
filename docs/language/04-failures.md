@@ -523,17 +523,24 @@ failure.
 ## Messages and languages
 
 A failure's `message` is fixed English for developers and logs. Clients
-translate by `code`, which is stable (question 12):
+show text by `code`, which is stable (question 12):
 
 ```json
 { "error": { "code": "todo_not_found", "message": "Todo not found.", "request_id": "req_0b1e…" } }
 ```
 
-```json
-{ "todo_not_found": "Tâche introuvable." }
-```
+The text for people is written in the app, keyed by the failure's code in
+its domain's language files (area 10, Translations), with the failure's
+`client: { }` fields as placeholders; `kind:` and `message:` are not
+translated. The compiler exports it per locale beside the OpenAPI document
+for client apps to show (revised 2026-10-16, built in chunk 5.3):
 
-The second block is a client's own French message table.
+```jadpo fragment
+// domains/planning/translations/fr_fr.jadpo
+translations {
+    todo_not_found: "Tâche introuvable."
+}
+```
 
 ## Errors
 
@@ -1253,7 +1260,7 @@ check failed: 1 error, 1 file
 | Authentication failures: `unauthenticated`, the `inactive:` mapping, principal values kept out of failure context (`type.auth_*` rules) | 8 | Input to area 8 |
 | Concealment by policy instead of a declared `not_visible` failure (question 10) | 9 | Depends on question 10 |
 | Data classification of internal fields for log redaction, beyond hashing text | 9 | Input to area 9 |
-| Server-side translation keyed by failure code, if ever needed | 10 | Depends on question 12 |
+| Server-side translation keyed by failure code, if ever needed | 10 | Decided 2026-10-16: keyed by code in the domain's language files and exported per locale (question 12) |
 | Integration failure mapping as a `failures: { provider.x: F }` block; `maps` and `fault` removed; provider timeouts and `outcome_unknown` | 11 | Input to area 11 |
 | Retry, dead-letter and alerting for schedules and subscribers by kind; `outcome_unknown` never retried blindly | 12 | Input to area 12 |
 | Asserting that a call fails with a given failure in tests | 13 | Input to area 13 |
@@ -1356,6 +1363,12 @@ check failed: 1 error, 1 file
     which keeps it a stable part of the API contract. Server-side translation
     can be added later in area 10, keyed by the same code, without changing a
     failure declaration.
+    *Revised 2026-10-16 (Richard, area 10):* the app writes each failure's
+    client text, keyed by its code in its domain's language files like a
+    message, with its client fields as placeholders, and the compiler
+    exports it per locale beside the OpenAPI document for client apps. The
+    server's `message` stays fixed English, as decided here. This resolves
+    area 10's amendment that translations serve client failure messages.
 
 13. **Should a failure be a `type`?** Today `failure TodoNotFound { ... }`
     is its own keyword. *Decided 2026-10-12:* `type TodoNotFound = Failure { ... }`,
@@ -1404,7 +1417,8 @@ Decided by Richard on 2026-10-12. Checked by the new compiler since 2026-10-13 (
 | Overflow and recursion limit | Defects: 500 `internal_fault`, writes rolled back, cause named in the log; not declarable or catchable | 2026-10-12 |
 | Concealment | A record hidden by policy reports the same `not_found` failure; the log records the concealment | 2026-10-12 |
 | Internal fields in logs | Identifiers, numbers, enums, booleans and times as values; text as a keyed hash; secrets never | 2026-10-12 |
-| Message translation | The client translates by `code`; `message` stays fixed English | 2026-10-12 |
+| Message translation | The client translates by `code`; `message` stays fixed English (Revised 2026-10-16: see "Client text per locale".) | 2026-10-12 |
+| Client text per locale | Each failure's text for people is keyed by its code in its domain's language files, client fields as placeholders, and exported per locale beside the OpenAPI document; `message` stays fixed English (Richard, area 10) | 2026-10-16 |
 | Failure declaration form | `type Name = Failure { ... }`, the same form as every other type (Richard: consistency when writing code) | 2026-10-12 |
 | Failure fields | Fields exist only in `client: { }` and `internal: { }`; without `client` the caller gets only the code, message and request id | 2026-10-12 |
 | Request id | Every error response carries `request_id` (also the `x-request-id` header), and every failure, expected ones included, is logged with it, so a client can quote it and a developer can trace it | 2026-10-12 |
