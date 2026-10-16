@@ -251,6 +251,39 @@ long tail, and the largest use is likely private: types and rules shared
 between one company's own apps. Open for 5.4: where fixed reference data
 (a country table, phone formats) can be declared at all.
 
+## Provider packages with code
+
+Decided 2026-10-16 (Richard).
+
+- **Packages never contain code with side effects**: no actions,
+  subscribers or calls. An operation is a description the runtime
+  performs, and only the app's actions call one, so one changing call per
+  action, calls before writes, failures mapped at the call and a call
+  visible where it happens all hold. Multi-step flows are events and
+  subscribers, which are the app's.
+- **Translation functions live in the provider package**, in its
+  `libraries/`, because they belong to one API version and change with it.
+- **Translation is an explicit call** (`Stripe.amounts.intent_for(total)`),
+  not a conversion attached to an operation.
+
+```text
+packages/stripe/v2024_06_20/
+    package.jadpo                          hosts, credential scheme, idempotency, error location
+    resources/payment_intents.jadpo        imported, corrections merged in
+    types/payment_intent.jadpo             imported
+    failures/card_declined.jadpo
+    events/payment_intent_succeeded.jadpo
+    libraries/amounts.jadpo                written: Money to and from Stripe's amounts
+    libraries/amounts.test.jadpo
+    recordings/payment_intents.create.json
+    surface.json
+```
+
+The layout is `shared/`'s plus `resources/`, `events/` and `recordings/`;
+the index no longer lists resource files, since a file is named after its
+resource. A re-import rewrites only imported files; written libraries and
+corrections survive.
+
 ## How far a capability mapping goes
 
 Area 11 question 21 limits a `provide` mapping to field paths, literals,
