@@ -20,7 +20,8 @@ program, and how is a feature turned on, off or replaced?
 | Which kinds of package exist | Decided |
 | Built in or a library package | Agreed as input to chunk 5.4 |
 | Layout inside a package | Decided |
-| Where packages live | Decided |
+| Where packages live, and where your own code lives | Decided |
+| Names | Decided |
 | The package surface | Decided |
 | What publishing requires | Decided |
 | No code with side effects in packages | Decided |
@@ -95,12 +96,14 @@ conformance suite. Packages fill capabilities and never invent them.
 ### Names
 
 - **Provider brand names are reserved**: Jadpo ships the list of curated
-  provider names, and an app's own package cannot take one, so `Stripe` in
+  provider names, and an app's own integration cannot take one, so `Stripe` in
   code always means the official package.
 - **Two packages never share a name in code.** Installing a registry
-  package whose name one of the app's own packages already uses stops and
-  asks for the app's own to be renamed first (`jadpo rename`).
-- Creating a package checks the registry and warns when the name is taken.
+  package whose name one of the app's own integrations or libraries
+  already uses stops and asks for the app's own to be renamed first
+  (`jadpo rename`).
+- Creating an integration checks the registry and warns when the name is
+  taken.
 
 ## Agreed: built in or a library package
 
@@ -170,28 +173,51 @@ stripe/v2024_06_20/
 - **A package's tests run when it is published**, not in every app's
   `jadpo test`; the digest guarantees the code is the code that passed.
 
-## Decided: where packages live
+## Decided: where packages live, and where your own code lives
 
-In the repository, committed, under `packages/<name>/<version>/`. This
-changes where area 11 put registry packages (a cache on the developer's
-machine); the pin by digest and "never fetched during a build" stand.
+One rule, by who wrote the code rather than what kind it is:
+**`packages/` holds only what was installed. Everything the app's authors
+wrote lives where their code already lives, whatever kind it is.**
 
 ```text
 app.jadpo
 domains/
+    shipping/libraries/...           the app's helpers for one domain (as now)
 shared/
-packages/
-    postcodes/v2/           from the registry: digest in jadpo.lock, read-only
-    stripe/v2024_06_20/     a provider package, same place
-    acme_couriers/v1/       a local package: not in the lock, the app's to edit
+    libraries/...                    the app's helpers for several domains (as now)
+    providers/
+        acme_couriers/v1/            the app's own integration, in the package format
+packages/                            installed only: in jadpo.lock, read-only
+    stripe/v2024_06_20/
+    postcodes/v2/
 jadpo.lock
 ```
 
-- Agents read packages with the tools they already use, reviewers see an
-  upgrade as an ordinary diff, and CI needs no fetch step.
-- The compiler refuses a registry package whose files do not match its
-  digest. Changing one means taking it out of the lock, and it becomes a
-  local package the app owns.
+- **Installed packages are committed** under `packages/<name>/<version>/`.
+  This changes where area 11 put registry packages (a cache on the
+  developer's machine); the pin by digest and "never fetched during a
+  build" stand. Agents read them with the tools they already use,
+  reviewers see an upgrade as an ordinary diff, and CI needs no fetch
+  step.
+- **Installed packages are read-only.** The compiler refuses one whose
+  files do not match its digest in `jadpo.lock`.
+- **The app's own integrations live in `shared/providers/<name>/<version>/`**,
+  in exactly the package format, with everything an installed provider can
+  have: types, failures, pure functions, decoding and encoding, recordings,
+  fakes and `provide` mappings. Who may call one is still the connection's
+  `domains:` list. This adds `providers/` to what area 1 allows in
+  `shared/` (today pure types, failures and libraries only).
+- **A `use` line shows where a name comes from**, as area 1 already
+  requires: `use packages/…` is always installed code; anything else is
+  the app's own.
+- **Installed or the app's own, the only differences are where it sits,
+  whether it can be edited, and whether the publishing bar applies.** The
+  compiler treats both the same, so replacing an own integration with an
+  official package later changes `jadpo.lock`, the folder and the `use`
+  lines, not the code that calls it.
+- **Publishing moves code out of the app.** A package other apps depend on
+  gets its own repository and versions, and every app installs it into
+  `packages/`, the one it started in included.
 - Two versions can sit side by side: a provider during an upgrade (area
   11 question 3), a candidate version while the upgrade plan compiles the
   app against it, or two library versions while callers move across.
@@ -216,8 +242,8 @@ scheme, settings and the capabilities it provides.
   and an agent reads one file instead of the package's code (also as
   `jadpo package show <name> --json`).
 - **Generated, never written.** `jadpo package publish` writes it, and the
-  registry refuses a surface that does not match the code. A local
-  package's surface is generated into `build/`.
+  registry refuses a surface that does not match the code. The surface
+  of an app's own integration is generated into `build/`.
 - **It decides the version.** Publishing compares the new surface with the
   last release's and refuses a breaking change (a public name removed, a
   field retyped, a new failure) without a new major version, as Elm's
@@ -239,7 +265,8 @@ scheme, settings and the capabilities it provides.
 7. it declares a licence from a fixed list and the lowest Jadpo version it
    needs.
 
-Local packages skip the bar until they are published. Descriptions alone
+The app's own integrations and libraries skip the bar; it applies only to
+what is published. Descriptions alone
 are not the bar, because the compiler cannot judge whether one says
 anything; examples are, because they must run.
 
@@ -337,9 +364,10 @@ may go, and how an upgrade of a shared requirement is resolved.
 ## Proposed: private packages
 
 A company's own apps sharing types and rules is likely the largest use of
-library packages, so private packages need a home from the start: a
-private registry, or a package fetched from a git repository the company
-controls, under the same publishing bar.
+library packages. Decided so far: such a package lives in its own
+repository and every app installs it, the one it started in included. Open:
+where apps install it from (a private registry, or a git repository the
+company controls) and whether the publishing bar applies in full.
 
 ## Proposed: the model and its rules
 
@@ -349,7 +377,7 @@ Four layers, each extended in exactly one way:
 |---|---|---|
 | Runtime | Drivers, byte formats, built-in encodings, credential and signature schemes, schedule ticks | A Jadpo release |
 | Capabilities | The swap points | A language change through review |
-| Packages | Provider and library packages: Jadpo source | `jadpo package add`, or a local folder |
+| Packages | Provider and library packages: Jadpo source | `jadpo package add`, or the app's own in `shared/providers/` |
 | Wiring | `connections:` and capability settings in `app.jadpo` | The app |
 
 The rules every chunk would follow:
@@ -429,6 +457,6 @@ provider packages: one action per job is the app's swap point for those.
 | Chunk | Follows |
 |---|---|
 | 5.4 Standard library: the plan | The built-in-or-package table and its rule; where reference data is declared |
-| 7.1 Packages and connections | `packages/<name>/<version>/` committed and checked against `jadpo.lock`; `jadpo package` commands; both kinds laid out as `shared/`; `public` as the API; `use` for library packages; the surface and the publishing bar |
-| 7.2 Importing and faking | Imports write into `packages/`; decoding (`wire:`, `decode:`, `wire_output:`) with built-in encodings; recordings checked by decoders; fakes scripting the clean type |
+| 7.1 Packages and connections | `packages/<name>/<version>/` for installed packages only, committed and checked against `jadpo.lock`; the app's own integrations in `shared/providers/`; reserved brand names; `jadpo package` commands; both kinds laid out as `shared/`; `public` as the API; `use` for library packages; the surface and the publishing bar |
+| 7.2 Importing and faking | Imports write into `shared/providers/`; decoding (`wire:`, `decode:`, `wire_output:`) with built-in encodings; recordings checked by decoders; fakes scripting the clean type |
 | 7.3 Email | The `email` capability with SMTP as one driver and a mail package as the second, proving the swap |
