@@ -1,6 +1,6 @@
 // Written by `jadpo api update` from the routes; never edit it by hand.
 // `jadpo check` fails while it disagrees with them.
-version: 2
+version: 1
 
 idempotency: required
 

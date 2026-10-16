@@ -92,7 +92,7 @@ output IngredientView
 
 input ListIngredient
     name: Text { min_length: 1, max_length: 60 }
-    allergen: Allergen?
+    allergen: Allergen optional
 
 input NewBakery
     name: Text { min_length: 1, max_length: 80 }
