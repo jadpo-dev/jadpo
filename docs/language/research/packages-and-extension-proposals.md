@@ -46,7 +46,8 @@ then built. No design is left for implementation.
 5. ~~Overriding~~: decided, see "Decided: overriding built-in behaviour".
 6. ~~Each override scenario~~: decided, see "Override scenarios" (webhook handshakes move to item 7).
 7. ~~Receiving from outside~~: decided, see "Receiving from outside".
-7b. **Multi-step provider calls**: an action (the app's or a package's)
+7b. **Multi-step provider calls** (agreed by Richard on condition that the
+    edge cases are checked first; a stress test is under way): an action (the app's or a package's)
     making several changing calls in order, answers recorded as they
     happen, a key per step, resuming after a failure, a warning where a
     step can fail for good after an earlier one took effect; calls without
@@ -738,9 +739,16 @@ Decided 2026-10-16 (Richard).
   (`handshake: WebhookHandshake.sns`, `.slack`, `.microsoft_graph`),
   answered by the runtime, extended by releases.
 - **Queues are read directly** through a `receiving` capability, the
-  inbound twin of `publishing` (`receiving: { orders_queue:
-  Warehouse.OrderShipped }`): each message becomes that event for the
-  app's subscribers, acknowledged only after the subscriber's transaction
+  inbound twin of `publishing`. A queue names the field giving each
+  message's type, the field giving its id, and the events it may carry
+  (`receiving: { warehouse_queue: { type_at: "type"  id_at: "message_id"
+  events: [Warehouse.OrderShipped, Warehouse.StockLow] } }`); a queue of
+  one kind lists one event and no `type_at`. The events come from another
+  Jadpo app's generated package or are declared by the app (a domain's
+  `events/` or its own integration, each with its `wire_name`); the queue's
+  package knows only how to fetch. A message whose type is not listed is
+  parked for an operator, never dropped. Each message becomes its event for
+  the app's subscribers, acknowledged only after the subscriber's transaction
   commits, repeats dropped by message id stored in the database, a message
   that keeps failing left to the queue's dead-letter queue and parked for
   an operator.
