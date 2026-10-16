@@ -165,7 +165,7 @@ impl Body<'_> {
             self.args_only(call);
             return (
                 Ty::Prim(Prim::Unit),
-                super::CallKind::Other,
+                super::CallKind::Effect(written.to_string()),
                 super::facts::Reach::Unknown,
             );
         }

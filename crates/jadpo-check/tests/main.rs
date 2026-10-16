@@ -32,4 +32,5 @@ mod scale;
 mod signed;
 mod soundness;
 mod stores;
+mod time;
 mod types;

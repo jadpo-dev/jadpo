@@ -851,7 +851,18 @@ impl Body<'_> {
                         .find(|(key, _)| *key == arm.key)
                         .map(|(_, by)| by.as_slice())
                         .unwrap_or_default();
-                    self.rule_cannot_break(arm, rule, written, by);
+                    let settled = match attempt.expr() {
+                        Some(Expr::CallExpr(call)) if self.is_standard(&call) => {
+                            Some(Self::arguments(&call).iter().any(|arg| {
+                                Self::arg_name(arg).as_deref() == rule.strip_suffix(':')
+                            }))
+                        }
+                        _ => None,
+                    };
+                    match settled {
+                        Some(given) => self.condition_cannot_arise(arm, given, written),
+                        None => self.rule_cannot_break(arm, rule, written, by),
+                    }
                     continue;
                 }
             } else {
@@ -943,7 +954,8 @@ impl Body<'_> {
             Diagnostic::new(
                 &rule::FAILURE_RULE_UNMAPPED,
                 format!(
-                    "`{written}` can break {}, and nothing maps {them}",
+                    "`{written}` can {} {}, and nothing maps {them}",
+                    if standard { "fail on" } else { "break" },
                     keys_list(uncovered)
                 ),
             )
@@ -966,6 +978,32 @@ impl Body<'_> {
 
     /// An arm for a rule that can't break: `by` are the comparisons that
     /// prove it, when the declared ranges alone don't.
+    /// An arm for a `temporal` condition the call can't fail on: its
+    /// option is given (`given`), or means nothing for its value.
+    fn condition_cannot_arise(&mut self, arm: &Arm, given: bool, written: &str) {
+        let key = &arm.key;
+        let reason = if given {
+            format!(
+                "The call gives `{key}:` as one of its values other than `reject`, which settles the condition, so this arm could never run."
+            )
+        } else {
+            format!(
+                "`{key}` arises only for a local time, and `{written}` here moves a date, which has no clock time, so this arm could never run."
+            )
+        };
+        let removal = self.arm_removal(arm);
+        self.out.push(
+            Diagnostic::new(
+                &rule::FAILURE_RULE_CANNOT_BREAK,
+                format!("`{written}` can't fail on `{key}`, so it takes no arm"),
+            )
+            .at(arm.key_span.clone(), "never runs")
+            .reason(reason)
+            .next(format!("Remove `{key}: ...`"))
+            .edit(removal, ""),
+        );
+    }
+
     fn rule_cannot_break(&mut self, arm: &Arm, rule: &str, written: &str, by: &[Origin]) {
         let key = &arm.key;
         let reason = if key == "scale" {

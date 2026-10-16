@@ -70,6 +70,36 @@ pub const DATE_MIN: i32 = -719_528;
 /// The last date a `CalendarDate` holds, 9999-12-31.
 pub const DATE_MAX: i32 = 2_932_896;
 
+/// Milliseconds as the wire writes a duration (area 10): ISO 8601 in
+/// hours, minutes and seconds, `PT5M`, `PT1.5S`, `PT720H`, `-PT5M`, `PT0S`.
+pub fn iso_duration(millis: i64) -> String {
+    use std::fmt::Write;
+    let sign = if millis < 0 { "-" } else { "" };
+    let mut rest = millis.unsigned_abs();
+    let hours = rest / 3_600_000;
+    rest %= 3_600_000;
+    let minutes = rest / 60_000;
+    rest %= 60_000;
+    let seconds = rest / 1_000;
+    let ms = rest % 1_000;
+    let mut out = format!("{sign}PT");
+    if hours > 0 {
+        let _ = write!(out, "{hours}H");
+    }
+    if minutes > 0 {
+        let _ = write!(out, "{minutes}M");
+    }
+    if seconds > 0 || ms > 0 || (hours == 0 && minutes == 0) {
+        if ms > 0 {
+            let fraction = format!("{ms:03}");
+            let _ = write!(out, "{seconds}.{}S", fraction.trim_end_matches('0'));
+        } else {
+            let _ = write!(out, "{seconds}S");
+        }
+    }
+    out
+}
+
 /// Why `text` isn't an `Instant`, completing "The value ...": ISO 8601 in
 /// UTC or with an offset, to the millisecond, as `2026-10-25T08:30:00Z`.
 pub fn check_instant(text: &str) -> Result<(), String> {

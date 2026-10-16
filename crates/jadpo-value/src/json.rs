@@ -714,33 +714,7 @@ fn iso_duration(text: &str) -> Option<i64> {
 
 /// Milliseconds as an ISO 8601 duration: `PT5M`, `PT1.5S`, `PT0S`.
 fn iso_duration_text(millis: i64) -> String {
-    let sign = if millis < 0 { "-" } else { "" };
-    let mut rest = millis.unsigned_abs();
-    let hours = rest / 3_600_000;
-    rest %= 3_600_000;
-    let minutes = rest / 60_000;
-    rest %= 60_000;
-    let seconds = rest / 1_000;
-    let ms = rest % 1_000;
-    let mut out = format!("{sign}PT");
-    if hours > 0 {
-        let _ = write!(out, "{hours}H");
-    }
-    if minutes > 0 {
-        let _ = write!(out, "{minutes}M");
-    }
-    if seconds > 0 || ms > 0 || (hours == 0 && minutes == 0) {
-        if ms > 0 {
-            let _ = write!(out, "{seconds}.{ms:03}S");
-            while out.ends_with("0S") && out.contains('.') {
-                out.truncate(out.len() - 2);
-                out.push('S');
-            }
-        } else {
-            let _ = write!(out, "{seconds}S");
-        }
-    }
-    out
+    jadpo_std::iso_duration(millis)
 }
 
 const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -956,6 +930,78 @@ mod tests {
             None
         );
         assert_eq!(problems[0].field, "items.1");
+    }
+
+    #[test]
+    fn a_zoned_time_and_a_zone_are_sent_as_area_10_writes_them() {
+        use jadpo_std::http::VariantCodec;
+        let london = jadpo_std::variant_ordinal(jadpo_std::ZONE, "europe_london").unwrap();
+        let codecs = [
+            Codec::Scalar {
+                builtin: Builtin::ZonedTime,
+                validator: jadpo_std::types::ValidatorId(0),
+                int_as_number: true,
+            },
+            Codec::Enum {
+                ty: jadpo_std::ZONE.into(),
+                variants: vec![VariantCodec {
+                    name: "europe_london".into(),
+                    wire: "Europe/London".into(),
+                    ordinal: london,
+                    fields: None,
+                }],
+            },
+        ];
+        let validators = [Validator::new(Some(Builtin::ZonedTime), Vec::new())];
+        let codecs = Codecs {
+            codecs: &codecs,
+            validators: &validators,
+            shapes: &[],
+        };
+        let zoned = Value::Zoned(crate::Zoned {
+            millis: jadpo_std::instant_millis("2026-10-25T08:30:00Z").unwrap(),
+            zone: london,
+        });
+        let mut out = String::new();
+        codecs.write(CodecId(0), &zoned, &mut out);
+        assert_eq!(
+            out,
+            r#"{"instant":"2026-10-25T08:30:00Z","zone":"Europe/London"}"#
+        );
+        let mut problems = Vec::new();
+        let json: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(
+            codecs.read(CodecId(0), &json, &Path::default(), &mut problems),
+            Some(zoned)
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(r#"{"instant":"noon","zone":"Mars/Olympus","at":1}"#).unwrap();
+        assert_eq!(
+            codecs.read(CodecId(0), &json, &Path::default(), &mut problems),
+            None
+        );
+        let found: Vec<(&str, &str)> = problems
+            .iter()
+            .map(|p| (p.field.as_str(), p.rule.as_str()))
+            .collect();
+        assert_eq!(
+            found,
+            [
+                ("instant", "format"),
+                ("zone", "variant"),
+                ("at", "unknown_field")
+            ]
+        );
+        let zone = crate::temporal::zone_value(london);
+        let mut out = String::new();
+        codecs.write(CodecId(1), &zone, &mut out);
+        assert_eq!(out, r#""Europe/London""#);
+        let mut problems = Vec::new();
+        let json: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(
+            codecs.read(CodecId(1), &json, &Path::default(), &mut problems),
+            Some(zone)
+        );
     }
 
     #[test]

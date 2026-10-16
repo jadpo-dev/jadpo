@@ -491,8 +491,9 @@ The migration's SQL is `UPDATE "parcel" SET "size" = 'medium' WHERE
 | `Decimal { scale: 2 }` | `numeric(p, 2)` |
 | `Bool`, `Text`, `Bytes` | `boolean`, `text`, `bytea` |
 | `Instant`, `CalendarDate` | `timestamptz(3)`, `date` |
+| `Duration` | `bigint`, in milliseconds |
 | `Enum` without data | `text` holding the variant name |
-| `Enum` with data, `Object`, `List`, `Set`, `Map` | `jsonb` |
+| `Enum` with data, `Object`, `List`, `Set`, `Map`, `ZonedTime` (its instant and zone, area 10) | `jsonb` |
 
 ## Migrations
 

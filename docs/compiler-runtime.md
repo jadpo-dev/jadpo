@@ -388,11 +388,24 @@ operators do (so `integer.divide` takes values built on `Int`, and
 divisions' `divisor`) is checked as `/`'s divisor is: a literal isn't `0` and
 a value's type excludes zero (chunk 1.9). A type variable no argument fixes is a checked
 unknown: it accepts anything where it stands, but the container around it
-is still checked, so a `List<T>` parameter takes only a list. Enums that Rust code interprets (`Rounding`, `TextFormat`,
-`UuidVersion`, `Weekday`, and `Zone` and `Locale` from their tables) are
+is still checked, so a `List<T>` parameter takes only a list. Since chunk
+5.2 the table also says what the stubs can't: a parameter of kind `OneOf`
+(a stub's `T`) takes only values built on the types it lists, and a result
+of that kind keeps the argument's named type; an `optional` parameter (a
+stub's `T?`) may be left out and is given `none`; an option `applies_to`
+one built-in type means nothing for others (`type.temporal_option_unused`);
+a `Clock` parameter takes only a clock time written out; and an operation's
+`conditions` are what it fails on unless an option written out settles
+them, mapped by the call's `attempt` as a construction's broken rules are
+(the operation returns `Fault::Broke(key)`, which the interpreter raises as
+the arm's failure). `temporal` runs on jiff with its bundled IANA database,
+in `jadpo-value` only, so every target reads the same zones and none reads
+the platform's (area 10, "Zones and local times"). Enums that Rust code interprets (`Rounding`, `TextFormat`,
+`UuidVersion`, `Weekday`, `Dst`, `InvalidDay`, and `Zone` and `Locale` from their tables) are
 declared once, in `jadpo-std`. The namespaces the compiler fills from the
 project or the platform (`clock`, `config`, `translations`, `sessions`,
-`oauth`) list in `std/names.txt` the members built so far (`clock.now`);
+`oauth`) list in `std/names.txt` the members built so far (`clock.now`,
+and a test's `clock.advance`);
 any other member is `toolchain.not_built_yet`. `config.<name>` is the
 exception: its members are the project's own settings, read from
 `config { }` (chunk 5.1, `jadpo_check::config`), so `names.txt` lists none.
