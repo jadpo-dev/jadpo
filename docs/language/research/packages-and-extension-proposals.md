@@ -223,9 +223,11 @@ message inside another (reused values such as a product name are
 placeholders), because languages that inflect cannot reuse a fragment.
 
 **Failures and emails follow the same rule.** A `Failure`'s client text
-lives under `failures.<code>`, exported per locale beside the OpenAPI
-document for client apps, while the server's `message` stays English (area
-4). An `EmailMessage`'s templates read `translations.` with the email's
+is keyed by its code in its domain's files, like a message (names are
+unique across the project, so a failure and a message never share a key),
+with its client fields as placeholders; it is exported per locale beside
+the OpenAPI document for client apps, while the server's `message` stays
+English (area 4). An `EmailMessage`'s templates read `translations.` with the email's
 locale.
 
 **Jadpo's own text** (privacy pages, built-in emails, generated messages)
