@@ -88,8 +88,10 @@ then built. No design is left for implementation.
    three. *Translations decided 2026-10-16 (Richard):* see "Translations",
    "Packages and strictness".
 9. **Software and disk**: a disk driver for files on one native server,
-   image variants made by the runtime, virus scanning, a `documents`
-   capability rendering typed templates to PDF.
+   image variants made by the runtime, virus scanning, and the `documents`
+   capability rendering typed templates to HTML or PDF, now needed (the
+   invoice scenario in [the scenario sketches](package-scenarios-code.md)
+   has nothing to render its page).
 10. **Packages generated from your own Jadpo apps.** Four calls: generated
     from the API record, read-only, in `packages/`; `jadpo package add
     ../orders` within one repository, the path in the lock; breaking
@@ -911,6 +913,30 @@ its own API, but never on the app's data.
   `jadpo package recipe <package> <recipe> --into <domain>`, after which
   they are the app's code; each is compiled and tested against a sample app
   at publish and listed in the surface.
+- **`public` marks what the app can call** (decided 2026-10-16): a
+  `public resource` and a `public action` are callable through the
+  connection; everything else only by the package's own actions,
+  subscribers and polls. An importer marks every resource public. A
+  package's resources and actions share the connection's namespace, so a
+  clash is an error in the package.
+- **Package code runs only when started**: by the app calling it, or by
+  the outside world through a webhook or a poll the app subscribes to.
+- **An action that emits cannot be `public`**, so the app can never trigger
+  a package's events by calling it; only the package's subscribers and
+  polls run it.
+- **Package events are public or not**: a `public` event can be subscribed
+  to by the app; one without `public` reaches only the package's own
+  subscribers (a raw webhook a package enriches can stay internal, its
+  enriched event public). An importer marks webhook events public;
+  subscribing to a package's non-public event is an error. Package events
+  travel through the app's outbox like any other.
+- **Polls are for feeds that do not depend on the app's data** (rates, a
+  price list); checking each of the app's own records is the app's
+  schedule calling the package, given as a recipe.
+- **`max_concurrent:`** on a provider caps how many calls run at once per
+  app instance, the connection able to lower it; further calls wait, and
+  waiting subscriber deliveries retry later. Heavy work such as PDF
+  rendering runs in subscribers, never in the route.
 - **Full permissions are not built**: a package that owns tables or runs
   its own schedules waits until a real app needs package-owned data;
   adding grants later breaks nothing.
