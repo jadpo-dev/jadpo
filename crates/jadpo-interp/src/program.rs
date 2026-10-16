@@ -166,6 +166,9 @@ pub struct Program {
     /// What signing in reads from them: the signing keys and the browser
     /// session's origin (area 8).
     auth: jadpo_runtime::http::signed::AuthSettings,
+    /// How a request's client address is chosen (area 10, "Client
+    /// addresses").
+    client: jadpo_runtime::http::address::ClientAddress,
 }
 
 /// Why a call couldn't start.
@@ -225,6 +228,10 @@ impl Program {
             .as_ref()
             .map(|values| Self::auth(&prepared, values))
             .unwrap_or_default();
+        let client = values
+            .as_ref()
+            .map(|values| Self::client(&prepared, values))
+            .unwrap_or_default();
         Program {
             prepared,
             constants,
@@ -232,6 +239,7 @@ impl Program {
             proof_checks: false,
             settings,
             auth,
+            client,
         }
     }
 
@@ -257,7 +265,23 @@ impl Program {
     pub fn with_config(mut self, values: &jadpo_runtime::config::ConfigValues) -> Program {
         self.settings = Self::decoded(&self.prepared, values);
         self.auth = Self::auth(&self.prepared, values);
+        self.client = Self::client(&self.prepared, values);
         self
+    }
+
+    /// How the address of a client is chosen with `values` as the
+    /// settings: what `client_address:` says on the native target, or the
+    /// connection's own address.
+    fn client(
+        prepared: &Prepared,
+        values: &jadpo_runtime::config::ConfigValues,
+    ) -> jadpo_runtime::http::address::ClientAddress {
+        jadpo_runtime::http::address::ClientAddress::read(
+            prepared.plan.routes().client_address.as_ref(),
+            values,
+            jadpo_runtime::http::address::Target::Native,
+        )
+        .unwrap_or_default()
     }
 
     /// What signing in reads from `values`.
@@ -401,6 +425,7 @@ impl Program {
             },
             failures: self.plan().types().failures(),
             auth: &self.auth,
+            client: &self.client,
         }
     }
 

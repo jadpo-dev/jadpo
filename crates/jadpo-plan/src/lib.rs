@@ -322,6 +322,9 @@ impl Plan {
             &queries,
         );
         routes.identity = identity;
+        routes.client_address = jadpo_check::client_address::client_address(db, project)
+            .plan
+            .clone();
         Plan {
             callables,
             by_key,

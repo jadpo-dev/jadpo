@@ -16,7 +16,7 @@
 
 use crate::read::{Column, ReadPlan};
 use crate::types::{ShapeId, ValidatorId};
-use crate::{AuthenticationMethod, Builtin, HttpMethod, SuccessStatus};
+use crate::{AuthenticationMethod, Builtin, ClientAddressSource, HttpMethod, SuccessStatus};
 
 /// A route's deadline when it says none (area 7, "Time limits").
 pub const DEFAULT_DEADLINE_MS: u32 = 10_000;
@@ -562,6 +562,29 @@ pub const ADDRESS_LIMIT: RateLimit = RateLimit {
 /// oldest are dropped (area 16: `memory: 16MB` by default).
 pub const RATE_LIMIT_MEMORY: usize = 16 * 1024 * 1024;
 
+/// How many proxies of the deployment's own sit in front of the app
+/// (area 10, "Client addresses").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Hops {
+    /// Written out: a whole number from 1.
+    Count(u32),
+    /// Read from the `Int` setting of this name, which declares `min:` of
+    /// at least 1.
+    Setting(String),
+}
+
+/// Where the client's address is read: `application { client_address: }`
+/// (area 10, "Client addresses"; chosen in chunk 5.1c). The runtime
+/// chooses the address from it, so every host and executor counts a
+/// client the same way.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClientAddressPlan {
+    pub source: ClientAddressSource,
+    /// Present exactly for the sources that count from the right of a
+    /// header: `forwarded_for` and `forwarded`.
+    pub hops: Option<Hops>,
+}
+
 /// Every route of a project, ready to run.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RouteTable {
@@ -575,6 +598,9 @@ pub struct RouteTable {
     pub stores: Vec<String>,
     /// Who can sign in and how; `None` when nothing is declared.
     pub identity: Option<IdentityPlan>,
+    /// Where the client's address is read; `None` takes the host's default
+    /// (the connection's natively, `CF-Connecting-IP` on Workers).
+    pub client_address: Option<ClientAddressPlan>,
 }
 
 impl RouteTable {

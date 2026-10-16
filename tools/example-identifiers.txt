@@ -751,6 +751,7 @@ project_name_taken
 project_view
 projects
 proving_time
+proxy_hops
 published_at
 publisher
 publisher_id

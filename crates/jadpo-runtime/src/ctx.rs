@@ -124,6 +124,9 @@ pub struct Ctx<'p> {
     pub(crate) held: Option<Held>,
     /// The signed-in caller of the request being answered (area 8).
     pub(crate) caller: Option<Caller>,
+    /// The address the request being answered counts as (area 10, "Client
+    /// addresses"); `None` when none is known.
+    client: Option<String>,
     /// Whether the statements it runs leave their policy out: only for a
     /// call a test, fixture or seed makes without a caller (area 9).
     pub(crate) unpoliced: bool,
@@ -165,6 +168,7 @@ impl<'p> Ctx<'p> {
             hold: false,
             held: None,
             caller: None,
+            client: None,
             unpoliced: false,
             draws: 0,
             deadline: None,
@@ -176,6 +180,17 @@ impl<'p> Ctx<'p> {
     /// one (area 8).
     pub fn caller(&self) -> Option<&Caller> {
         self.caller.as_ref()
+    }
+
+    /// The address the request being answered counts as: what the default
+    /// rate limits count, and what its request line and timeline show.
+    pub fn client(&self) -> Option<&str> {
+        self.client.as_deref()
+    }
+
+    /// Sets the address the request being answered counts as.
+    pub fn set_client(&mut self, client: Option<String>) {
+        self.client = client;
     }
 
     /// Sets the request's signed-in caller, for what a route runs; the

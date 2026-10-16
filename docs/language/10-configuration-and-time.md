@@ -6,6 +6,11 @@ checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - configuration.binding_empty
   - configuration.binding_invalid
+  - configuration.client_address_duplicate
+  - configuration.client_address_hops_invalid
+  - configuration.client_address_hops_unused
+  - configuration.client_address_invalid
+  - configuration.client_address_source_unknown
   - configuration.default_invalid
   - configuration.default_literal_required
   - configuration.default_type
@@ -35,7 +40,7 @@ How an application declares its settings and secrets, where their values come
 from, and how code reads the current time, works with dates and zones, and
 shows times to people in their own language.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; the examples marked `check` in those sections and in the configuration errors run with this checkout's `jadpo`. Time and formatting come in chunk 5.2, locales and translations in chunk 5.3.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; chunk 5.1c built the client's address behind trusted proxies (`client_address:`); the examples marked `check` in those sections and in the configuration errors run with this checkout's `jadpo`. Time and formatting come in chunk 5.2, locales and translations in chunk 5.3.
 
 Two rules run through the page. **Code never reads the environment or the
 system clock directly**: settings arrive as typed `config.<field>` values,
@@ -318,6 +323,110 @@ passed. Both are checked when the app starts, and neither is ever printed.
 Authentication reads the key as `signing_key: config.session_signing_key`,
 and with a revocation delay signs sessions and tokens with it (area 8, "The
 application and revocation").
+
+## Client addresses
+
+Rate limits count a request by its address while no one is signed in (areas
+7 and 16), and `jadpo dev`'s request lines and the request timeline (area 17)
+show it. Behind a load balancer or a CDN the connection's own address is the
+proxy's, so every client would share one allowance until the real address is
+read from the header the proxy adds; but a header anyone can send lets a
+caller choose its own address. `client_address:` in `app.jadpo` says, once,
+where the real address is and how many proxies of the deployment's own to
+believe (question 12):
+
+```jadpo check project=client-address file=config.jadpo
+use edge/types { ProxyHops }
+
+config {
+    proxy_hops: ProxyHops {
+        default: 1
+    }
+}
+```
+
+```jadpo check project=client-address file=app.jadpo
+application {
+    client_address: {
+        source: ClientAddressSource.forwarded_for
+        hops: config.proxy_hops
+    }
+}
+```
+
+```jadpo check project=client-address file=domains/edge/types/proxy_hops.jadpo hidden
+type ProxyHops = Int {
+    min: 1
+    max: 8
+}
+```
+
+`ClientAddressSource` is a closed set of four:
+
+| Source | The client's address is | `hops:` |
+|---|---|---|
+| `connection` | the connection's own address; no header is read (the native default) | not allowed |
+| `forwarded_for` | in `X-Forwarded-For` | required |
+| `forwarded` | in RFC 7239's `Forwarded: for=` | required |
+| `cloudflare` | in `CF-Connecting-IP` (the default on Workers, the only source accepted there) | not allowed |
+
+`hops` is how many proxies of the deployment's own sit in front of the app. It
+is a count and not a list of trusted ranges, so it cannot drift when a
+provider's addresses change. Each trusted proxy adds the address it saw to the
+right of the list, and whatever a caller sends sits to the left of that, so
+with `hops: N` the client is the N-th address from the right of the header's
+addresses, every line of the header joined in order: with one proxy,
+`X-Forwarded-For: 203.0.113.9` and with a caller's own claim in front,
+`X-Forwarded-For: 10.9.9.9, 203.0.113.9`, are both `203.0.113.9`. If the header
+has fewer than N addresses, or the one chosen is not an address, the request
+counts as the connection's own address, never as a guess. `hops` is a whole
+number from 1, written out (`hops: 1`) or read from an `Int` setting whose
+type declares `min: 1` or more, so a count below 1 cannot be started with.
+
+The address chosen is the one the default rate limits count, `jadpo dev`'s
+request lines show (after the time, muted, and as `address` with `--json`) and
+the request timeline records. Natively the connection's address comes from the
+host and the rest is the runtime's, so a deployable chooses an address the
+way `jadpo dev` does (`jadpo_runtime::http::ClientAddress`).
+
+On Workers there is no connection address to fall back to, and Cloudflare sets
+`CF-Connecting-IP` on every request from its edge and overwrites a caller's, so
+`cloudflare` is the only source accepted there and what a deployable for
+Workers uses without a `client_address:`. An address Cloudflare did not give
+is unknown there, and requests with no known address share one allowance.
+
+### Chosen in chunk 5.1c
+
+- **What `hops` needs.** `forwarded_for` and `forwarded` need it, because a
+  count of trusted proxies is never guessed; `connection` and `cloudflare`
+  refuse it (`configuration.client_address_hops_unused`), since no header is
+  counted from the right.
+- **An address.** Anything `IpAddress` accepts, as IPv4 or IPv6, and in a
+  header also with a port (`203.0.113.9:4711`) or in brackets
+  (`[2001:db8::17]:4711`, `[2001:db8::17]`). It is kept in one spelling, so a
+  client is one count whichever way a proxy writes it: IPv6 in lower case with
+  the zeros shortened, and an IPv4 address written as IPv6
+  (`::ffff:203.0.113.9`) as IPv4. The connection's own address is spelled the
+  same way. A name, `unknown`, an obfuscated identifier (`_hidden`) or a
+  zone (`fe80::1%eth0`) is not an address.
+- **Reading the lists.** Every header line of the name counts, in the order
+  received, and each is split at commas. An empty entry still takes its place
+  in the count, so a gap never moves the client left, but it is not an address.
+  In `Forwarded`, each element (split at commas outside quotes) gives one
+  entry, from its `for` parameter (any case; a token or a quoted string); an
+  element without one is an entry that is not an address. A `Forwarded` header
+  that does not parse (an unterminated quote, two `for` in one element) is
+  invalid as a whole.
+- **`cloudflare`.** Exactly one `CF-Connecting-IP` line holding one address;
+  anything else falls back, as a header that is short or invalid does.
+- **Falling back is whole.** The connection's address replaces the choice; part
+  of a header is never mixed with it.
+- **Settings.** A setting that `hops:` reads must be an `Int` (or a type built
+  on it) that declares `min:` of at least 1
+  (`configuration.client_address_hops_invalid` otherwise).
+- **Workers.** A source other than `cloudflare` is refused when the project
+  is built for Workers; deployables are declared in chunk 8.2, which makes
+  that check (`ClientAddress::read` already refuses it for that target).
 
 ## Checking values before the app starts
 
@@ -1049,6 +1158,145 @@ error: `config.greeting` has no value in tests
 check failed: 1 error, 1 file
 ```
 
+### `configuration.client_address_duplicate`
+
+`client_address:` is declared once, in `app.jadpo`; a second one:
+
+```jadpo check project=e-client-address-duplicate expect=configuration.client_address_duplicate file=app.jadpo
+application {
+    client_address: {
+        source: ClientAddressSource.connection
+    }
+    client_address: {
+        source: ClientAddressSource.cloudflare
+    }
+}
+```
+
+```text output
+error: `client_address:` is declared twice
+ --> app.jadpo:5:5
+  |
+2 |     client_address: {
+  |     -------------- first declared here
+5 |     client_address: {
+  |     ^^^^^^^^^^^^^^ declared again
+  reason: The client's address is read one way for the whole application, so every request is counted by the same rule.
+  next: Keep one `client_address:` and remove the other (agent)
+  rule: configuration.client_address_duplicate
+  help: docs/language/10-configuration-and-time.html#configuration-client-address-duplicate
+
+check failed: 1 error, 1 file
+```
+
+### `configuration.client_address_invalid`
+
+`client_address:` is a block of `source:` and `hops:` and nothing else:
+
+```jadpo check project=e-client-address-invalid expect=configuration.client_address_invalid file=app.jadpo
+application {
+    client_address: {
+        source: ClientAddressSource.forwarded_for
+        hop: 1
+    }
+}
+```
+
+```text output
+error: `hop` isn't an option of `client_address:`
+ --> app.jadpo:4:9
+  |
+4 |         hop: 1
+  |         ^^^ unknown option
+  reason: `client_address:` takes `source:` and `hops:`, and nothing else; which proxies to trust is a count and not a list. Did you mean `hops`?
+  next: Use `hops` instead of `hop` (agent)
+  rule: configuration.client_address_invalid
+  help: docs/language/10-configuration-and-time.html#configuration-client-address-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `configuration.client_address_source_unknown`
+
+`source:` is one of the four `ClientAddressSource` values:
+
+```jadpo check project=e-client-address-source-unknown expect=configuration.client_address_source_unknown file=app.jadpo
+application {
+    client_address: {
+        source: ClientAddressSource.forward_for
+        hops: 1
+    }
+}
+```
+
+```text output
+error: `ClientAddressSource.forward_for` isn't a source of the client's address
+ --> app.jadpo:3:17
+  |
+3 |         source: ClientAddressSource.forward_for
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not a `ClientAddressSource`
+  reason: `ClientAddressSource` has no value called `forward_for`; the four are `connection`, `forwarded_for`, `forwarded`, `cloudflare`. Did you mean `forwarded_for`?
+  next: Use `ClientAddressSource.forwarded_for` instead (agent)
+  rule: configuration.client_address_source_unknown
+  help: docs/language/10-configuration-and-time.html#configuration-client-address-source-unknown
+
+check failed: 1 error, 1 file
+```
+
+### `configuration.client_address_hops_invalid`
+
+`hops:` counts proxies from 1, a whole number or an `Int` setting that declares `min:` of 1 or more:
+
+```jadpo check project=e-client-address-hops-invalid expect=configuration.client_address_hops_invalid file=app.jadpo
+application {
+    client_address: {
+        source: ClientAddressSource.forwarded_for
+        hops: 0
+    }
+}
+```
+
+```text output
+error: `0` can't be a number of proxies
+ --> app.jadpo:4:15
+  |
+4 |         hops: 0
+  |               ^ below 1
+  reason: `hops:` is how many proxies of the deployment's own sit in front of the app: a whole number from 1, or an `Int` setting whose type declares `min:` of at least 1.
+  next: Write a whole number from 1, such as `hops: 1`, or read an `Int` setting that declares `min: 1` (agent)
+  rule: configuration.client_address_hops_invalid
+  help: docs/language/10-configuration-and-time.html#configuration-client-address-hops-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `configuration.client_address_hops_unused`
+
+`cloudflare` and `connection` count no proxies, so `hops:` means nothing with them:
+
+```jadpo check project=e-client-address-hops-unused expect=configuration.client_address_hops_unused file=app.jadpo
+application {
+    client_address: {
+        source: ClientAddressSource.cloudflare
+        hops: 1
+    }
+}
+```
+
+```text output
+error: `hops:` means nothing with `cloudflare`
+ --> app.jadpo:4:15
+  |
+4 |         hops: 1
+  |               ^ no proxies are counted
+  reason: Cloudflare sets `CF-Connecting-IP` on every request from its edge and overwrites a caller's, so there is no list to count from the right.
+  next: Remove `hops:` (agent)
+  rule: configuration.client_address_hops_unused
+  help: docs/language/10-configuration-and-time.html#configuration-client-address-hops-unused
+
+check failed: 1 error, 1 file
+```
+
 ### `type.clock_context`
 
 ```jadpo check project=e-clock-context expect=type.clock_context
@@ -1293,9 +1541,9 @@ The new compiler has built the time literals and the built-in `Zone`,
 action as `type.clock_context`. Settings, secrets, signing keys, connection
 addresses, `jadpo config`, the check before the app starts and a test's own
 values were built in chunk 5.1 (the readings it chose are in the Decisions
-table). Time arithmetic and formatting come in chunk 5.2, and locales and
-translations in chunk 5.3. Trusted proxies, the addresses a client's address is
-read through, are not decided on any page; they are chunk 5.1c.
+table), and the trusted proxies a client's address is read through in chunk
+5.1c. Time arithmetic and formatting come in chunk 5.2, and locales and
+translations in chunk 5.3.
 
 ### Consistency with the rest of the language
 
@@ -1336,7 +1584,7 @@ read through, are not decided on any page; they are chunk 5.1c.
 | Mail templates using translations and `PresentationText` | 11 | Input to area 11 |
 | `config.typo` should report the configuration field | 10 | Fixed (chunk 5.1): `configuration.field_unknown` |
 | `jadpo fmt` writes `temporal.format (` with a space | 14 | Bug |
-| Trusted proxies: which proxies a deployment trusts to say a client's address (`X-Forwarded-For`, `Forwarded`, Cloudflare's `CF-Connecting-IP`) | 7, 10, 16 | Decided 2026-10-16 (question 12): chunk 5.1c |
+| Trusted proxies: which proxies a deployment trusts to say a client's address (`X-Forwarded-For`, `Forwarded`, Cloudflare's `CF-Connecting-IP`) | 7, 10, 16 | Built (chunk 5.1c, question 12); a source other than `cloudflare` refused for Workers comes with chunk 8.2 |
 | GDPR: retention periods as settings, alongside personal-data marking, erasure and export | 15 | Moved to area 15 |
 
 ### Open questions
@@ -1440,7 +1688,7 @@ read through, are not decided on any page; they are chunk 5.1c.
     is the only source accepted there (and its default); `hops` means nothing
     with it. The address chosen is the one rate limits count, `jadpo dev`'s
     request lines show and the request timeline records (areas 16 and 17).
-    *Decided 2026-10-16:* yes, as recommended; chunk 5.1c builds it.
+    *Decided 2026-10-16:* yes, as recommended. *Built in chunk 5.1c.*
 
 ### Decisions
 
@@ -1477,5 +1725,8 @@ read through, are not decided on any page; they are chunk 5.1c.
 | `jadpo config` (chosen in chunk 5.1) | `check` lists each setting as `set`, `default`, `missing` or `invalid` with its variable, shows each problem as `configuration.value_missing` or `configuration.value_invalid`, exits 1 on any and supports `--json`. `set <field>` needs a terminal and refuses `--json`, hides what is typed for a secret and shows it otherwise, checks the value before writing, and writes `.env.local` only as an ordinary file, through a private temporary file, if unchanged since read, and adds it to `.gitignore` | 2026-10-16 |
 | `jadpo dev` and `jadpo migrate` (chosen in chunk 5.1) | `dev` checks the environment over `.env.local` as the app starts, watches `.env.local` with the source, and keeps the last good version serving through an invalid change; a connection whose address no variable gives gets a database on a disposable PostgreSQL (`--url` still names the database directly). `migrate apply` and `status` use a connection's setting when `--url` is not given | 2026-10-16 |
 | Retention period (chosen in chunk 5.1) | `purge: { after: config.x }` takes a `Duration` setting that is not secret (`data.lifecycle_purge_after` otherwise); the period is the value the app started with, given to a run (`jadpo_runtime::purge_after`), and a period not above zero deletes nothing | 2026-10-16 |
-| Not built here (chosen in chunk 5.1) | A browser session's `origin:` and `signing_key:` reading settings, with signed sessions and tokens, are chunk 5.1b (built there, area 8). Which proxies a deployment trusts for a client's address is decided on no page: chunk 5.1c | 2026-10-16 |
+| Not built here (chosen in chunk 5.1) | A browser session's `origin:` and `signing_key:` reading settings, with signed sessions and tokens, are chunk 5.1b (built there, area 8). Which proxies a deployment trusts for a client's address is chunk 5.1c's, below | 2026-10-16 |
 | Trusted proxies | `client_address: { source: ClientAddressSource.x hops: <Int> }` once in `app.jadpo`; sources `connection` (the native default), `forwarded_for`, `forwarded` and `cloudflare`; the client is the `hops`-th address from the right, falling back to the connection's address when the header is short or invalid; on Workers only `cloudflare` (`CF-Connecting-IP`), its default (question 12, Richard) | 2026-10-16 |
+| Trusted proxies (chosen in chunk 5.1c) | `hops:` is required with `forwarded_for` and `forwarded` and refused with `connection` and `cloudflare` (`configuration.client_address_hops_unused`); written out it is a whole number from 1, and read from a setting that setting is an `Int` (or a type built on it) declaring `min:` of at least 1, so a count below 1 never starts (`configuration.client_address_hops_invalid`). A second `client_address:` is `configuration.client_address_duplicate`, a `client_address:` that is not a block of `source:` and `hops:` is `configuration.client_address_invalid`, and a `source:` that is no `ClientAddressSource` is `configuration.client_address_source_unknown` | 2026-10-16 |
+| Reading the address (chosen in chunk 5.1c) | Every line of the header joined in order, split at commas; `Forwarded` by elements, each giving the entry of its `for`; an empty entry, a name, `unknown`, an obfuscated identifier or a zone takes its place in the count but is no address; a `Forwarded` that does not parse, or a `CF-Connecting-IP` that is not exactly one address, falls back whole. Addresses are accepted with a port or in brackets and kept in one spelling (IPv6 lower case and shortened, an IPv4-mapped address as IPv4), the connection's too. With no `client_address:` the address is the connection's natively and `CF-Connecting-IP` on Workers, where any other source is refused and an address Cloudflare did not give is unknown | 2026-10-16 |
+| Where the address is chosen (chosen in chunk 5.1c) | In the runtime, as plan data (`ClientAddressPlan` in the route table) read with the settings the app started with: `serve_request` counts a request by the address `ClientAddress` chooses from its headers and the connection address the host gives, and carries it on the response, so `jadpo dev` shows it after the time on each request line and as `address` with `--json`. The native host only supplies the connection's address | 2026-10-16 |

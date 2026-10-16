@@ -10,6 +10,7 @@
 //! position so the same source always gives the same output.
 
 mod case;
+pub mod client_address;
 pub mod config;
 pub mod data;
 mod failures;
@@ -125,6 +126,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(config::connection_problems(db, project).iter().cloned());
         out.extend(config::test_value_problems(db, project).iter().cloned());
         out.extend(identity::identity_problems(db, project).iter().cloned());
+        out.extend(
+            client_address::client_address_problems(db, project)
+                .iter()
+                .cloned(),
+        );
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(routes::table_problems(db, project).iter().cloned());
         out.extend(routes::signin_problems(db, project).iter().cloned());
