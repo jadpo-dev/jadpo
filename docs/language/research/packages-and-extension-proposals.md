@@ -505,6 +505,15 @@ Proposed stages, each useful alone:
    telemetry. Kamal's "accessories" and .NET Aspire's app host do parts of
    this.
 
+**How containers run** (proposed): Jadpo is a client, never a container
+runtime. It talks to whatever engine the machine has through the
+Docker-compatible API, which Docker and Podman both serve (Podman without
+a daemon or root), and leaves pulling, isolation and restart policies to
+it. Jadpo's own part is the declaration, the digest pin, locked-down
+defaults, start order, health and telemetry. On a Mac, containers need a
+Linux virtual machine (Docker Desktop, OrbStack, Podman), so `jadpo dev`
+says plainly when none is installed.
+
 On Workers, which runs no containers, a service is hosted elsewhere and
 the connection gives its address. Open: whether the database and cache use
 the same mechanism (they hold state, so volumes, backups and upgrades come
