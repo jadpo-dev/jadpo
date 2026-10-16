@@ -1336,7 +1336,7 @@ read through, are not decided on any page; they are chunk 5.1c.
 | Mail templates using translations and `PresentationText` | 11 | Input to area 11 |
 | `config.typo` should report the configuration field | 10 | Fixed (chunk 5.1): `configuration.field_unknown` |
 | `jadpo fmt` writes `temporal.format (` with a space | 14 | Bug |
-| Trusted proxies: which proxies a deployment trusts to say a client's address (`X-Forwarded-For`, `Forwarded`, Cloudflare's `CF-Connecting-IP`) | 7, 10, 16 | Not decided on any page: chunk 5.1c |
+| Trusted proxies: which proxies a deployment trusts to say a client's address (`X-Forwarded-For`, `Forwarded`, Cloudflare's `CF-Connecting-IP`) | 7, 10, 16 | Decided 2026-10-16 (question 12): chunk 5.1c |
 | GDPR: retention periods as settings, alongside personal-data marking, erasure and export | 15 | Moved to area 15 |
 
 ### Open questions
