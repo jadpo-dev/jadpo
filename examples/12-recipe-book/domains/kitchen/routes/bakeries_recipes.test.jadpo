@@ -1,0 +1,78 @@
+use kitchen/entities { Baker }
+use kitchen/types { BakeryView, KitchenStaff, NewBakery }
+use kitchen/actions { WriteRecipe, open_bakery, register }
+use kitchen/fixtures { northwind }
+
+test "bakers write recipes, counter staff don't" {
+    var crew: KitchenStaff = northwind()
+    var by_counter: Response = request {
+        method: HttpMethod.post
+        path: "/bakeries/{bakery_id}/recipes"
+        params: {
+            bakery_id: crew.bakery.id
+        }
+        as: Principal.user(crew.counter)
+        input: WriteRecipe {
+            name: "Rye sourdough"
+        }
+    }
+    assert by_counter.status == 403
+    assert by_counter.code == "not_permitted"
+    var by_baker: Response = request {
+        method: HttpMethod.post
+        path: "/bakeries/{bakery_id}/recipes"
+        params: {
+            bakery_id: crew.bakery.id
+        }
+        as: Principal.user(crew.baker)
+        input: WriteRecipe {
+            name: "Rye sourdough"
+        }
+    }
+    assert by_baker.status == 201
+}
+
+test "one bakery never reaches another's recipes" {
+    var crew: KitchenStaff = northwind()
+    var dee: Baker = attempt register("dee")
+    var southbank: BakeryView = open_bakery(
+        NewBakery {
+            name: "Southbank"
+        },
+        Principal.user(dee)
+    )
+    assert southbank.name == "Southbank"
+    var by_bo: Response = request {
+        method: HttpMethod.post
+        path: "/bakeries/{bakery_id}/recipes"
+        params: {
+            bakery_id: crew.bakery.id
+        }
+        as: Principal.user(crew.baker)
+        input: WriteRecipe {
+            name: "Rye sourdough"
+        }
+    }
+    assert by_bo.status == 201
+    var read_by_dee: Response = request {
+        method: HttpMethod.get
+        path: "/bakeries/{bakery_id}/recipes"
+        params: {
+            bakery_id: crew.bakery.id
+        }
+        as: Principal.user(dee)
+    }
+    assert read_by_dee.output == []
+    var written_by_dee: Response = request {
+        method: HttpMethod.post
+        path: "/bakeries/{bakery_id}/recipes"
+        params: {
+            bakery_id: crew.bakery.id
+        }
+        as: Principal.user(dee)
+        input: WriteRecipe {
+            name: "Stolen rye"
+        }
+    }
+    assert written_by_dee.status == 403
+}

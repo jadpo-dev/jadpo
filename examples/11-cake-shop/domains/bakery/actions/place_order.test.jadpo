@@ -1,0 +1,56 @@
+// An action test calls the action directly. `Principal.user(record)`
+// makes a caller from a customer, which only tests, fixtures and seeds
+// can do: in the application a caller comes only from signing in. A call
+// that passes a caller runs as that caller, so policy applies to it.
+
+use bakery/entities { Cake, Customer, OutletNotFound }
+use bakery/types { OrderView, OutletWithMenu }
+use bakery/failures { CakeOffMenu }
+use bakery/actions { register, take_off_menu }
+use bakery/fixtures { market_street }
+
+test "an order is placed for the customer who asks" {
+    var market: OutletWithMenu = market_street()
+    var ann: Customer = attempt register("ann@example.test", "Ann")
+    var order: OrderView = attempt place_order(
+        PlaceOrder {
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
+            quantity: 2
+            collect_on: "2026-11-07"
+        },
+        Principal.user(ann)
+    )
+    assert order.quantity == 2
+    assert order.cake.name == "Lemon drizzle"
+}
+
+test "a cake off the menu can't be ordered" {
+    var market: OutletWithMenu = market_street()
+    var ann: Customer = attempt register("ann@example.test", "Ann")
+    var off_menu_cake: Cake = attempt take_off_menu(market.coffee.id)
+    assert off_menu_cake.on_menu == false
+    assert place_order(
+        PlaceOrder {
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.coffee.id
+            quantity: 1
+            collect_on: "2026-11-07"
+        },
+        Principal.user(ann)
+    ) fails CakeOffMenu
+}
+
+test "an order needs an outlet that exists" {
+    var market: OutletWithMenu = market_street()
+    var ann: Customer = attempt register("ann@example.test", "Ann")
+    assert place_order(
+        PlaceOrder {
+            outlet_id: "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e"
+            cake_id: market.lemon.id
+            quantity: 1
+            collect_on: "2026-11-07"
+        },
+        Principal.user(ann)
+    ) fails OutletNotFound
+}

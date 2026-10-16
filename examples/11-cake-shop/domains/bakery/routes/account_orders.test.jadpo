@@ -1,0 +1,143 @@
+// A route test sends a request through the real HTTP boundary, as a
+// client would: the input is encoded and checked, the caller signed in,
+// policy applied and the failure turned into a status and code. `as:`
+// signs in through the route's API's own method, here a real browser
+// session with its cookie and CSRF token, so a suspended customer is
+// refused exactly as their browser would be.
+//
+// Data is set up by calling actions without a caller, which skips
+// policy; the requests then show what each customer may do.
+
+use bakery/entities { Customer }
+use bakery/types { OrderView, OutletWithMenu }
+use bakery/actions { ChangeOrder, PlaceOrder, place_order, register, suspend_customer }
+use bakery/fixtures { market_street }
+
+test "ordering needs someone signed in" {
+    var market: OutletWithMenu = market_street()
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/account/orders"
+        input: PlaceOrder {
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
+            quantity: 1
+            collect_on: "2026-11-07"
+        }
+    }
+    assert response.status == 401
+    assert response.code == "authentication_required"
+}
+
+test "a signed-in customer places an order" {
+    var market: OutletWithMenu = market_street()
+    var ann: Customer = attempt register("ann@example.test", "Ann")
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/account/orders"
+        as: Principal.user(ann)
+        input: PlaceOrder {
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
+            quantity: 2
+            collect_on: "2026-11-07"
+        }
+    }
+    assert response.status == 201
+    assert response.code == none
+}
+
+test "a customer lists only their own orders" {
+    var market: OutletWithMenu = market_street()
+    var ann: Customer = attempt register("ann@example.test", "Ann")
+    var bob: Customer = attempt register("bob@example.test", "Bob")
+    var anns: OrderView = attempt place_order(
+        PlaceOrder {
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
+            quantity: 1
+            collect_on: "2026-11-07"
+        },
+        Principal.user(ann)
+    )
+    var bobs: OrderView = attempt place_order(
+        PlaceOrder {
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.coffee.id
+            quantity: 3
+            collect_on: "2026-11-08"
+        },
+        Principal.user(bob)
+    )
+    assert bobs.quantity == 3
+    var seen: Response = request {
+        method: HttpMethod.get
+        path: "/account/orders"
+        as: Principal.user(ann)
+    }
+    assert seen.status == 200
+    assert seen.output == [anns]
+}
+
+test "another customer's order reads as missing" {
+    var market: OutletWithMenu = market_street()
+    var ann: Customer = attempt register("ann@example.test", "Ann")
+    var bob: Customer = attempt register("bob@example.test", "Bob")
+    var anns: OrderView = attempt place_order(
+        PlaceOrder {
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
+            quantity: 1
+            collect_on: "2026-11-07"
+        },
+        Principal.user(ann)
+    )
+    var read_by_bob: Response = request {
+        method: HttpMethod.get
+        path: "/account/orders/{order_id}"
+        params: {
+            order_id: anns.id
+        }
+        as: Principal.user(bob)
+    }
+    assert read_by_bob.status == 404
+    assert read_by_bob.code == "order_not_found"
+    var changed_by_bob: Response = request {
+        method: HttpMethod.put
+        path: "/account/orders/{order_id}"
+        params: {
+            order_id: anns.id
+        }
+        as: Principal.user(bob)
+        input: ChangeOrder {
+            quantity: 12
+            collect_on: "2026-11-07"
+        }
+    }
+    assert changed_by_bob.status == 404
+    var changed_by_ann: Response = request {
+        method: HttpMethod.put
+        path: "/account/orders/{order_id}"
+        params: {
+            order_id: anns.id
+        }
+        as: Principal.user(ann)
+        input: ChangeOrder {
+            quantity: 12
+            collect_on: "2026-11-07"
+        }
+    }
+    assert changed_by_ann.status == 200
+}
+
+test "a suspended customer is refused" {
+    var ann: Customer = attempt register("ann@example.test", "Ann")
+    var suspended: Customer = attempt suspend_customer(ann.id)
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/account/orders"
+        as: Principal.user(suspended)
+    }
+    assert response.status == 403
+    assert response.code == "user_disabled"
+}

@@ -117,4 +117,4 @@ cd examples/10-library-loans && ../../target/release/jadpo migrate status
   <!-- try {"file": "domains/lending/actions/return_book.jadpo", "replace": "    return attempt Loan.check_in(loan) {\n        conflict: {\n            Loan.check_in: LoanNotOut\n        }\n    }\n", "with": "    return attempt Loan.check_in(loan)\n", "check": ["data.conflict_unmapped"]} -->
 - In `member.jadpo`, change `visible: left_at == none` to `visible: Member.left_at == none`. `jadpo check` reports `data.lifecycle_condition`: a lifecycle's conditions are about the record they are written in, so they name its fields bare.
   <!-- try {"file": "domains/lending/entities/member.jadpo", "replace": "visible: left_at == none", "with": "visible: Member.left_at == none", "check": ["data.lifecycle_condition"]} -->
-- That is the last example. The [language pages](../../docs/language/README.md) hold the full specification.
+- Then read [11-cake-shop](../11-cake-shop/README.md), where routes answer HTTP requests and callers sign in.

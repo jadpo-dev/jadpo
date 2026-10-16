@@ -10,6 +10,7 @@
 //! position so the same source always gives the same output.
 
 mod case;
+pub mod config;
 pub mod data;
 mod failures;
 pub mod graph;
@@ -18,6 +19,7 @@ pub mod imports;
 mod layout;
 pub mod lookups;
 mod naming;
+pub mod policy;
 mod resolve;
 pub mod routes;
 mod std_lib;
@@ -88,6 +90,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .iter()
                     .cloned(),
             );
+            out.extend(config::use_problems(db, project, file).iter().cloned());
             out.extend(types::type_problems(db, project, file).iter().cloned());
             out.extend(failure_problems(db, project, file).iter().cloned());
             out.extend(types::body_problems(db, project, file).iter().cloned());
@@ -101,7 +104,26 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .cloned(),
             );
             out.extend(routes::route_problems(db, project, file).iter().cloned());
+            out.extend(
+                policy::reach::reach_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(policy::policy_problems(db, project, file).iter().cloned());
+            out.extend(
+                policy::outputs::query_policy_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
+                policy::flow::flow_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
         }
+        out.extend(config::config_problems(db, project).iter().cloned());
+        out.extend(config::connection_problems(db, project).iter().cloned());
+        out.extend(config::test_value_problems(db, project).iter().cloned());
         out.extend(identity::identity_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(routes::table_problems(db, project).iter().cloned());

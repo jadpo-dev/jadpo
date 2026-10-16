@@ -1,0 +1,41 @@
+// Three audiences call the shop, so it declares three APIs, each with its
+// own prefix, its own record in `api/`, its own OpenAPI document, and the
+// one way to sign in it accepts. With no `apis:` there would be one,
+// `main`, at `/`, accepting every way `authentication.jadpo` declares.
+//
+// `principal` says who a signed-in caller can be: a user is a customer,
+// found by their address, and a service is an outlet's counter. A customer
+// or an outlet whose `active:` condition stops holding is refused on their
+// next request.
+
+use bakery/entities { Customer, Outlet }
+use bakery/types { CustomerStatus, OutletStatus }
+
+application {
+    apis: {
+        main: {
+            prefix: /
+            authentication: [AuthenticationMethod.browser_session]
+        }
+        app: {
+            prefix: /app
+            authentication: [AuthenticationMethod.api_token]
+            idempotency: Idempotency.required
+        }
+        counter: {
+            prefix: /counter
+            authentication: [AuthenticationMethod.service_key]
+        }
+    }
+}
+
+principal {
+    user: {
+        subject: Customer.email
+        active: Customer.status == CustomerStatus.active
+    }
+    service: {
+        subject: Outlet.name
+        active: Outlet.status == OutletStatus.open
+    }
+}

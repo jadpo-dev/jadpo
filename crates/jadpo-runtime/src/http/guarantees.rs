@@ -1,7 +1,11 @@
 //! The request guarantees (area 7, chunk 4.2), against a store that keeps
 //! `jadpo_idempotency_keys` in memory and writes down every statement, so
 //! each test reads what reached the store and in which transaction: the
-//! body limit, health, deadlines and idempotent writes.
+//! body limit, health, deadlines and idempotent writes (chunk 4.2), and
+//! the soundness fixes of chunk 4.9: a deadline passed by work that never
+//! waits, a concurrent change found at commit, the address limit on a
+//! route anyone may call, unreadable headers, and a query string or body
+//! a route doesn't read.
 
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -12,7 +16,7 @@ use jadpo_std::{HttpMethod, Idempotency, SuccessStatus};
 use jadpo_value::Value;
 use jadpo_value::json::Codecs;
 
-use super::idempotency::{CLAIM, LOOKUP, RELEASE, STORE};
+use super::idempotency::{CLAIM, RELEASE, STORE};
 use super::{App, Request, Response, handle};
 use crate::{
     ActionBody, Ctx, Database, Env, Event, Executor, Failure, Host, Isolation, LocalFuture,
@@ -27,6 +31,9 @@ type Kept = (String, Option<i16>, Option<String>, i64, i64);
 struct State {
     keys: BTreeMap<(String, String), Kept>,
     lines: Vec<String>,
+    /// How many commits to come of the action's writes find a concurrent
+    /// change.
+    changes: u32,
 }
 
 #[derive(Clone, Default)]
@@ -77,6 +84,8 @@ struct Tx {
     store: Store,
     pending: Vec<(String, String, Kept)>,
     ended: bool,
+    /// It ran the action's write.
+    wrote: bool,
 }
 
 impl Tx {
@@ -92,19 +101,19 @@ impl Tx {
             if free {
                 let kept = (text(params.get(2)), None, None, at, time(params.get(4)));
                 state.keys.insert(id, kept);
-                return Ok(vec![vec![SqlValue::Text(scope)]]);
+                return Ok(vec![vec![
+                    SqlValue::Bool(true),
+                    SqlValue::Null(crate::SqlType::Text),
+                    SqlValue::Null(crate::SqlType::Int2),
+                    SqlValue::Null(crate::SqlType::Json),
+                ]]);
             }
-            return Ok(Vec::new());
-        }
-        if sql == LOOKUP {
-            state.lines.push("lookup".into());
-            let now = time(params.get(2));
             return Ok(state
                 .keys
                 .get(&id)
-                .filter(|kept| kept.4 > now)
                 .map(|kept| {
                     vec![vec![
+                        SqlValue::Bool(false),
                         SqlValue::Text(kept.0.clone()),
                         kept.1
                             .map_or(SqlValue::Null(crate::SqlType::Int2), SqlValue::Int2),
@@ -151,6 +160,7 @@ impl Tx {
             }
             return Ok(Vec::new());
         }
+        self.wrote |= sql == "write";
         state.lines.push(sql.to_string());
         Ok(Vec::new())
     }
@@ -191,6 +201,11 @@ impl Transaction for Tx {
     fn commit(mut self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
         self.ended = true;
         let mut state = self.store.0.borrow_mut();
+        if self.wrote && state.changes > 0 {
+            state.changes -= 1;
+            state.lines.push("changed".into());
+            return Box::pin(async { Err(StoreError::ConcurrentChange) });
+        }
         for (scope, key, kept) in self.pending.drain(..) {
             state.keys.insert((scope, key), kept);
         }
@@ -217,8 +232,30 @@ impl Database for Store {
                 store,
                 pending: Vec::new(),
                 ended: false,
+                wrote: false,
             }) as Box<dyn Transaction>)
         })
+    }
+
+    /// One statement on its own: it is kept as it runs, with no `begin`
+    /// or `commit` line.
+    fn query_once<'a>(
+        &'a self,
+        sql: &'a str,
+        params: &'a [SqlValue],
+    ) -> LocalFuture<'a, Result<Vec<Row>, StoreError>> {
+        let mut alone = Tx {
+            store: self.clone(),
+            pending: Vec::new(),
+            ended: true,
+            wrote: false,
+        };
+        let rows = alone.run(sql, params);
+        let mut state = self.0.borrow_mut();
+        for (scope, key, kept) in alone.pending.drain(..) {
+            state.keys.insert((scope, key), kept);
+        }
+        Box::pin(async move { rows })
     }
 }
 
@@ -229,6 +266,14 @@ struct Fake {
     store: Store,
     no_store: bool,
     out_of_time: bool,
+    /// A monotonic clock that moves a second each time it is read, when
+    /// given: work that never waits runs past a deadline on it.
+    clock: Option<Cell<u64>>,
+    /// Counts requests against one a minute, whatever the runtime's
+    /// default, when given.
+    limits: Option<crate::RateLimits>,
+    /// A monotonic clock that moves only when the test moves it.
+    still: Option<Cell<u64>>,
 }
 
 impl Host for Fake {
@@ -251,6 +296,33 @@ impl Host for Fake {
             Box::pin(std::future::pending())
         }
     }
+
+    fn monotonic_ms(&self) -> Option<u64> {
+        if let Some(still) = &self.still {
+            return Some(still.get());
+        }
+        let clock = self.clock.as_ref()?;
+        let now = clock.get();
+        clock.set(now + 1000);
+        Some(now)
+    }
+
+    fn rate_limit<'a>(
+        &'a self,
+        key: &'a str,
+        _limit: jadpo_std::http::RateLimit,
+        now: i64,
+    ) -> LocalFuture<'a, crate::Allowed> {
+        let one = jadpo_std::http::RateLimit {
+            requests: 1,
+            window_ms: 60_000,
+        };
+        let allowed = self
+            .limits
+            .as_ref()
+            .map_or(crate::Allowed::Yes, |limits| limits.allow(key, one, now));
+        Box::pin(async move { allowed })
+    }
 }
 
 /// How the action ends.
@@ -261,6 +333,9 @@ enum Ends {
     Unavailable,
     /// Waits for ever after it writes.
     Hangs,
+    /// Runs without waiting until the deadline has passed, then succeeds,
+    /// as a body whose executor never stopped it would.
+    Spins,
 }
 
 /// Runs the one action: it writes, then ends as `ends` says.
@@ -300,6 +375,10 @@ impl<'p> ActionBody<'p> for Body {
                 }
                 Ends::Unavailable => Outcome::Failed(Box::new(crate::unavailable())),
                 Ends::Hangs => std::future::pending().await,
+                Ends::Spins => {
+                    while !ctx.out_of_time() {}
+                    Outcome::Value(Value::Unit)
+                }
             }
         })
     }
@@ -330,7 +409,7 @@ impl Executor for Program {
     }
 }
 
-/// `POST /widgets`, answering 204, keeping its keys in `keys`; its API
+/// `POST /widgets/{name}`, answering 204, keeping its keys in `keys`; its API
 /// requires a key when `required`.
 fn table(keys: Option<&str>, required: bool) -> RouteTable {
     RouteTable {
@@ -347,7 +426,13 @@ fn table(keys: Option<&str>, required: bool) -> RouteTable {
         routes: vec![RoutePlan {
             key: "route POST /widgets".into(),
             method: HttpMethod::Post,
-            segments: vec![Segment::Fixed("widgets".into())],
+            segments: vec![
+                Segment::Fixed("widgets".into()),
+                Segment::Param {
+                    name: "name".into(),
+                    codec: jadpo_std::http::CodecId(0),
+                },
+            ],
             api: 0,
             input: None,
             output: None,
@@ -366,6 +451,13 @@ fn table(keys: Option<&str>, required: bool) -> RouteTable {
     }
 }
 
+/// The placeholder's codec: text, with no rules.
+const CODECS: [jadpo_std::http::Codec; 1] = [jadpo_std::http::Codec::Scalar {
+    builtin: jadpo_std::Builtin::Text,
+    validator: jadpo_std::types::ValidatorId(0),
+    int_as_number: false,
+}];
+
 fn send(
     table: &RouteTable,
     program: &Program,
@@ -374,9 +466,10 @@ fn send(
     clock: i64,
 ) -> Response {
     let app = App {
+        auth: &super::signed::AuthSettings::NONE,
         table,
         codecs: Codecs {
-            codecs: &[],
+            codecs: &CODECS,
             validators: &[],
             shapes: &[],
         },
@@ -387,14 +480,14 @@ fn send(
         clock: crate::Clock::fixed(clock),
     };
     let mut ctx = Ctx::new(&program.places, host, env);
-    block_on(handle(&app, program, &mut ctx, request, "req_1", None)).expect("nothing waits")
+    block_on(handle(&app, program, &mut ctx, request, "req_1")).expect("nothing waits")
 }
 
-fn post(key: Option<&str>, body: &str) -> Request {
+/// `POST /widgets/<name>`, with no body.
+fn post(key: Option<&str>, name: &str) -> Request {
     let mut request = Request {
         method: "POST".into(),
-        path: "/widgets".into(),
-        body: body.as_bytes().to_vec(),
+        path: format!("/widgets/{name}"),
         ..Request::default()
     };
     if let Some(key) = key {
@@ -415,14 +508,14 @@ fn a_body_past_the_limit_is_refused_before_anything_runs() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Writes);
     let host = Fake::default();
-    let mut request = post(None, "");
+    let mut request = post(None, "a");
     request.body = vec![b' '; super::BODY_LIMIT + 1];
     let refused = send(&table, &program, &host, &request, NOW);
     assert_eq!(
         (refused.status, code(&refused)),
         (413, Some("request_too_large"))
     );
-    let mut cut_short = post(None, "{}");
+    let mut cut_short = post(None, "a");
     cut_short.too_large = true;
     let refused = send(&table, &program, &host, &cut_short, NOW);
     assert_eq!(refused.status, 413, "the host stopped reading");
@@ -451,8 +544,8 @@ fn health_is_answered_by_the_runtime_from_its_stores() {
     );
     assert_eq!(
         host.store.lines(),
-        ["begin", "SELECT 1", "rollback"],
-        "each store runs `SELECT 1`"
+        ["SELECT 1"],
+        "each store runs `SELECT 1`, one statement of its own"
     );
     let gone = Fake {
         no_store: true,
@@ -481,6 +574,66 @@ fn health_is_answered_by_the_runtime_from_its_stores() {
 }
 
 #[test]
+fn a_worker_reuses_its_readiness_check_for_a_second() {
+    let table = table(Some("main"), false);
+    let program = Program::new(Ends::Writes);
+    let app = App {
+        auth: &super::signed::AuthSettings::NONE,
+        table: &table,
+        codecs: Codecs {
+            codecs: &CODECS,
+            validators: &[],
+            shapes: &[],
+        },
+        failures: &[],
+    };
+    let host = Fake {
+        still: Some(Cell::new(5_000)),
+        ..Fake::default()
+    };
+    let worker = super::Worker::default();
+    let ready = Request {
+        method: "GET".into(),
+        path: "/health/ready".into(),
+        ..Request::default()
+    };
+    let probe = || {
+        block_on(super::serve_request(&app, &program, &host, &worker, &ready))
+            .expect("nothing waits")
+    };
+    let first = probe();
+    assert_eq!(first.status, 200);
+    let again = probe();
+    assert_eq!((again.status, &again.body), (200, &first.body));
+    assert_eq!(host.store.lines(), ["SELECT 1"], "checked once");
+    if let Some(still) = &host.still {
+        still.set(5_999);
+    }
+    probe();
+    assert_eq!(host.store.lines(), ["SELECT 1"], "still within the second");
+    if let Some(still) = &host.still {
+        still.set(6_000);
+    }
+    probe();
+    assert_eq!(host.store.lines(), ["SELECT 1", "SELECT 1"], "a second on");
+    // Each answer has its own request id.
+    let ids: Vec<String> = [probe(), probe()]
+        .iter()
+        .filter_map(|response| response.header("x-request-id").map(str::to_string))
+        .collect();
+    assert_eq!(ids.len(), 2);
+    assert_ne!(ids[0], ids[1]);
+    // A route test's requests, which no worker answers, check every time.
+    let host = Fake {
+        still: Some(Cell::new(5_000)),
+        ..Fake::default()
+    };
+    send(&table, &program, &host, &ready, NOW);
+    send(&table, &program, &host, &ready, NOW);
+    assert_eq!(host.store.lines(), ["SELECT 1", "SELECT 1"]);
+}
+
+#[test]
 fn a_passed_deadline_drops_the_work_commits_nothing_and_answers_504() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Hangs);
@@ -488,7 +641,7 @@ fn a_passed_deadline_drops_the_work_commits_nothing_and_answers_504() {
         out_of_time: true,
         ..Fake::default()
     };
-    let timed_out = send(&table, &program, &host, &post(Some("k1"), "{}"), NOW);
+    let timed_out = send(&table, &program, &host, &post(Some("k1"), "a"), NOW);
     assert_eq!(
         (timed_out.status, code(&timed_out)),
         (504, Some("deadline_exceeded"))
@@ -497,9 +650,11 @@ fn a_passed_deadline_drops_the_work_commits_nothing_and_answers_504() {
     assert_eq!(
         lines,
         [
-            "begin", "claim", "commit", // the claim
-            "begin", "write", "dropped", // the action, abandoned
-            "begin", "release", "commit", // the claim given up
+            "claim",   // the claim, one statement
+            "begin",   // the action,
+            "write",   //
+            "dropped", // abandoned
+            "release", // the claim given up, one statement
         ]
     );
     assert_eq!(host.store.kept("k1"), None, "a retry runs again");
@@ -510,44 +665,32 @@ fn a_write_with_a_key_answers_its_repeat_without_running_again() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Writes);
     let host = Fake::default();
-    let first = send(&table, &program, &host, &post(Some("k1"), "{}"), NOW);
+    let first = send(&table, &program, &host, &post(Some("k1"), "a"), NOW);
     assert_eq!(first.status, 204);
     assert_eq!(
         host.store.lines(),
         [
-            "begin", "claim", "commit", // the claim
+            "claim", // the claim, one statement
             "begin", "write", "store", "commit", // the response, with the writes
         ]
     );
     let kept = host.store.kept("k1").expect("kept");
     assert_eq!((kept.1, kept.4), (Some(204), (NOW + DAY) * 1000));
-    let again = send(&table, &program, &host, &post(Some("k1"), "{}"), NOW + 1000);
+    let again = send(&table, &program, &host, &post(Some("k1"), "a"), NOW + 1000);
     assert_eq!(again.status, 204);
     assert_eq!(program.runs.get(), 1, "the repeat didn't run the action");
-    let other = send(
-        &table,
-        &program,
-        &host,
-        &post(Some("k1"), "{\"x\":1}"),
-        NOW + 2000,
-    );
+    let other = send(&table, &program, &host, &post(Some("k1"), "b"), NOW + 2000);
     assert_eq!(
         (other.status, code(&other)),
         (422, Some("idempotency_key_reused"))
     );
     assert_eq!(program.runs.get(), 1);
     // A day later the key is ignored, and the write runs again.
-    let later = send(
-        &table,
-        &program,
-        &host,
-        &post(Some("k1"), "{\"x\":1}"),
-        NOW + DAY,
-    );
+    let later = send(&table, &program, &host, &post(Some("k1"), "b"), NOW + DAY);
     assert_eq!(later.status, 204);
     assert_eq!(program.runs.get(), 2);
     // Without a key, every request runs.
-    send(&table, &program, &host, &post(None, "{}"), NOW);
+    send(&table, &program, &host, &post(None, "a"), NOW);
     assert_eq!(program.runs.get(), 3);
 }
 
@@ -556,12 +699,12 @@ fn a_repeat_while_the_first_runs_is_a_conflict() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Writes);
     let host = Fake::default();
-    let digest = super::idempotency::digest(&post(Some("k1"), "{}"), &table.routes[0]);
+    let digest = super::idempotency::digest(&post(Some("k1"), "a"), &table.routes[0]);
     host.store.keep(
         "k1",
         (digest, None, None, NOW * 1000, (NOW + 15_000) * 1000),
     );
-    let busy = send(&table, &program, &host, &post(Some("k1"), "{}"), NOW + 1000);
+    let busy = send(&table, &program, &host, &post(Some("k1"), "a"), NOW + 1000);
     assert_eq!((busy.status, code(&busy)), (409, Some("conflict")));
     assert_eq!(program.runs.get(), 0);
     // A claim past its deadline was left by a request that never finished.
@@ -569,7 +712,7 @@ fn a_repeat_while_the_first_runs_is_a_conflict() {
         &table,
         &program,
         &host,
-        &post(Some("k1"), "{}"),
+        &post(Some("k1"), "a"),
         NOW + 16_000,
     );
     assert_eq!(after.status, 204);
@@ -581,12 +724,12 @@ fn declared_failures_are_kept_and_unavailable_is_not() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::NotFound);
     let host = Fake::default();
-    let failed = send(&table, &program, &host, &post(Some("k1"), "{}"), NOW);
+    let failed = send(&table, &program, &host, &post(Some("k1"), "a"), NOW);
     assert_eq!((failed.status, code(&failed)), (404, Some("gone")));
     let kept = host.store.kept("k1").expect("kept");
     assert_eq!(kept.1, Some(404));
     program.ends.set(Ends::Writes);
-    let again = send(&table, &program, &host, &post(Some("k1"), "{}"), NOW + 1000);
+    let again = send(&table, &program, &host, &post(Some("k1"), "a"), NOW + 1000);
     assert_eq!(
         (again.status, code(&again), again.body.clone()),
         (404, Some("gone"), failed.body.clone()),
@@ -595,11 +738,11 @@ fn declared_failures_are_kept_and_unavailable_is_not() {
     assert_eq!(program.runs.get(), 1);
 
     program.ends.set(Ends::Unavailable);
-    let unavailable = send(&table, &program, &host, &post(Some("k2"), "{}"), NOW);
+    let unavailable = send(&table, &program, &host, &post(Some("k2"), "a"), NOW);
     assert_eq!(unavailable.status, 503);
     assert_eq!(host.store.kept("k2"), None, "dropped, so a retry runs");
     program.ends.set(Ends::Writes);
-    let retried = send(&table, &program, &host, &post(Some("k2"), "{}"), NOW + 1000);
+    let retried = send(&table, &program, &host, &post(Some("k2"), "a"), NOW + 1000);
     assert_eq!(retried.status, 204);
 }
 
@@ -608,18 +751,18 @@ fn an_api_can_require_the_key_and_a_bad_key_is_refused() {
     let table = table(Some("main"), true);
     let program = Program::new(Ends::Writes);
     let host = Fake::default();
-    let missing = send(&table, &program, &host, &post(None, "{}"), NOW);
+    let missing = send(&table, &program, &host, &post(None, "a"), NOW);
     assert_eq!(
         (missing.status, code(&missing)),
         (400, Some("invalid_request"))
     );
     let long = "k".repeat(256);
     for bad in ["", long.as_str(), "caf\u{e9}"] {
-        let refused = send(&table, &program, &host, &post(Some(bad), "{}"), NOW);
+        let refused = send(&table, &program, &host, &post(Some(bad), "a"), NOW);
         assert_eq!(refused.status, 400, "{bad:?}");
     }
     assert_eq!(program.runs.get(), 0);
-    let sent = send(&table, &program, &host, &post(Some("k1"), "{}"), NOW);
+    let sent = send(&table, &program, &host, &post(Some("k1"), "a"), NOW);
     assert_eq!(sent.status, 204);
 }
 
@@ -628,8 +771,135 @@ fn an_action_that_writes_no_store_keeps_no_key() {
     let table = table(None, false);
     let program = Program::new(Ends::Writes);
     let host = Fake::default();
-    send(&table, &program, &host, &post(Some("k1"), "{}"), NOW);
-    send(&table, &program, &host, &post(Some("k1"), "{}"), NOW);
+    send(&table, &program, &host, &post(Some("k1"), "a"), NOW);
+    send(&table, &program, &host, &post(Some("k1"), "a"), NOW);
     assert_eq!(program.runs.get(), 2, "running it again changes nothing");
     assert!(!host.store.lines().iter().any(|line| line == "claim"));
+}
+
+#[test]
+fn work_that_never_waits_past_its_deadline_commits_nothing_and_answers_504() {
+    let table = table(Some("main"), false);
+    let program = Program::new(Ends::Spins);
+    let host = Fake {
+        clock: Some(Cell::new(0)),
+        ..Fake::default()
+    };
+    let timed_out = send(&table, &program, &host, &post(Some("k1"), "a"), NOW);
+    assert_eq!(
+        (timed_out.status, code(&timed_out)),
+        (504, Some("deadline_exceeded"))
+    );
+    assert_eq!(
+        host.store.lines(),
+        [
+            "claim",   // the claim, one statement
+            "begin",   // the action,
+            "write",   //
+            "dropped", // never committed
+            "release", // the claim given up, one statement
+        ]
+    );
+    assert_eq!(host.store.kept("k1"), None, "a retry runs again");
+}
+
+#[test]
+fn a_concurrent_change_found_at_commit_runs_the_action_again() {
+    let table = table(Some("main"), false);
+    let program = Program::new(Ends::Writes);
+    let host = Fake::default();
+    host.store.0.borrow_mut().changes = 1;
+    let answered = send(&table, &program, &host, &post(Some("k1"), "a"), NOW);
+    assert_eq!(answered.status, 204, "{:?}", host.store.lines());
+    assert_eq!(program.runs.get(), 2, "run again, not answered 503");
+    assert_eq!(
+        host.store.lines(),
+        [
+            "claim", // the claim, one statement
+            "begin", "write", "store", "changed", // the first run
+            "begin", "write", "store", "commit", // the second
+        ]
+    );
+    assert_eq!(host.store.kept("k1").and_then(|kept| kept.1), Some(204));
+    // Past the budget it is unavailable, and the key is given up.
+    let host = Fake::default();
+    host.store.0.borrow_mut().changes = crate::RERUN_ATTEMPTS;
+    let program = Program::new(Ends::Writes);
+    let gave_up = send(&table, &program, &host, &post(Some("k1"), "a"), NOW);
+    assert_eq!((gave_up.status, code(&gave_up)), (503, Some("unavailable")));
+    assert_eq!(program.runs.get(), crate::RERUN_ATTEMPTS);
+    assert_eq!(host.store.kept("k1"), None);
+}
+
+#[test]
+fn a_credential_on_a_route_anyone_may_call_counts_its_address_before_it_runs() {
+    let table = table(Some("main"), false);
+    let program = Program::new(Ends::Writes);
+    let host = Fake {
+        limits: Some(crate::RateLimits::new(1 << 20)),
+        ..Fake::default()
+    };
+    let mut junk = post(None, "a");
+    junk.headers.push(("Authorization".into(), "junk".into()));
+    junk.address = Some("10.0.0.1".into());
+    let first = send(&table, &program, &host, &junk, NOW);
+    assert_eq!(first.status, 204);
+    let limited = send(&table, &program, &host, &junk, NOW);
+    assert_eq!(
+        (limited.status, code(&limited)),
+        (429, Some("rate_limited"))
+    );
+    assert_eq!(program.runs.get(), 1, "the refused request never ran");
+}
+
+#[test]
+fn a_header_that_isnt_printable_ascii_is_refused_never_dropped() {
+    let table = table(Some("main"), false);
+    let program = Program::new(Ends::Writes);
+    let host = Fake::default();
+    for (name, value) in [
+        ("Authorization", "Bearer caf\u{e9}"),
+        ("Idempotency-Key", "caf\u{e9}"),
+        ("X-Anything", "\u{fffd}"),
+    ] {
+        let mut request = post(None, "a");
+        request.headers.push((name.into(), value.into()));
+        let refused = send(&table, &program, &host, &request, NOW);
+        assert_eq!(
+            (refused.status, code(&refused)),
+            (400, Some("invalid_request")),
+            "{name}"
+        );
+    }
+    assert_eq!(program.runs.get(), 0);
+    let mut tabbed = post(None, "a");
+    tabbed.headers.push(("X-Anything".into(), "a\tb c".into()));
+    assert_eq!(send(&table, &program, &host, &tabbed, NOW).status, 204);
+}
+
+#[test]
+fn a_route_without_input_refuses_a_query_string_and_a_body() {
+    let table = table(Some("main"), false);
+    let program = Program::new(Ends::Writes);
+    let host = Fake::default();
+    let mut queried = post(None, "a");
+    queried.query = Some("k1=x&k2=2".into());
+    let refused = send(&table, &program, &host, &queried, NOW);
+    assert_eq!(refused.status, 422);
+    assert_eq!(
+        String::from_utf8_lossy(&refused.body),
+        "{\"error\":{\"code\":\"invalid_input\",\"message\":\"Request input is invalid.\",\"request_id\":\"req_1\",\"details\":{\"problems\":[{\"field\":\"k1\",\"rule\":\"unknown_field\"},{\"field\":\"k2\",\"rule\":\"unknown_field\"}]}}}"
+    );
+    let mut bodied = post(None, "a");
+    bodied.body = b"{}".to_vec();
+    let refused = send(&table, &program, &host, &bodied, NOW);
+    assert_eq!(
+        String::from_utf8_lossy(&refused.body),
+        "{\"error\":{\"code\":\"invalid_input\",\"message\":\"Request input is invalid.\",\"request_id\":\"req_1\",\"details\":{\"problems\":[{\"field\":\"\",\"rule\":\"unknown_field\"}]}}}"
+    );
+    assert_eq!(program.runs.get(), 0);
+    let mut blank = post(None, "a");
+    blank.body = b" \r\n".to_vec();
+    blank.query = Some(String::new());
+    assert_eq!(send(&table, &program, &host, &blank, NOW).status, 204);
 }

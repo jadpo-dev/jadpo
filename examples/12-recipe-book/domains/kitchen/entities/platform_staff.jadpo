@@ -1,0 +1,25 @@
+// A role held across the whole application, rather than in one bakery:
+// `scope: MembershipScope.application`. It belongs to no tenant.
+
+use kitchen/entities { Baker }
+use kitchen/types { PlatformRole }
+
+/// Someone who looks after the recipe book itself.
+entity PlatformStaff {
+    id: Uuid
+    baker_id: Baker.id {
+        on_delete: OnDelete.cascade
+    }
+    role: PlatformRole
+
+    membership: {
+        scope: MembershipScope.application
+        member: baker_id
+        role: role
+    }
+
+    policy: {
+        read: [baker_id]
+        tenant: Tenancy.shared
+    }
+}

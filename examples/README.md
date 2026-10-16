@@ -37,6 +37,15 @@ README saying what it teaches, how to run it and what to try next.
     keep the database in step with them, the queries that read them, and
     the writes that change them: updates, patches, deletes, conflicts and
     a counter.
+11. [11-cake-shop/](11-cake-shop/README.md): HTTP and sign-in: route
+    groups, inputs from the query string, the body and a header,
+    statuses, APIs and their records, deadlines and idempotent writes,
+    browser sessions, API tokens and service keys, the caller passed to
+    actions, simple grants, and route tests that sign in.
+12. [12-recipe-book/](12-recipe-book/README.md): policy for many
+    customers in one application: tenancy, membership roles, actions
+    listed with who may run them, field restrictions, a role across the
+    whole application and the permissions report.
 
 `golden-todo/` is different: it holds the contract and notes for the
 golden todo application the compiler is built against, not a teaching

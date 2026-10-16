@@ -1,0 +1,6 @@
+use kitchen/entities { Ingredient }
+
+/// An ingredient as recipes list it.
+type IngredientView = Output {
+    pick: [Ingredient.id, Ingredient.name, Ingredient.allergen]
+}

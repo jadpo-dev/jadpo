@@ -6,6 +6,7 @@ SET "stage" = 'archived',
 WHERE "id" = $2
   AND ("published_at" IS NOT NULL AND "published_at" <= $1)
   AND "stage" = 'live'
+  AND FALSE
 RETURNING "id", "board_id", "stage", "published_at", "archived_at", "changed_at"
 -- $1: clock.now as Timestamp
 -- $2: input 0.id as Uuid
@@ -16,5 +17,6 @@ RETURNING "id", "board_id", "stage", "published_at", "archived_at", "changed_at"
 --   FROM "card"
 --   WHERE "id" = $1
 --     AND ("published_at" IS NOT NULL AND "published_at" <= $2)
+--     AND FALSE
 --   $1: Field { input: 0, field: "id" } as Uuid
 --   $2: Now as Timestamp

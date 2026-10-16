@@ -12,7 +12,13 @@
 //! transaction's lock, which commits nothing. The project's OpenAPI document is compared
 //! with its golden copy (`JADPO_BLESS=1` rewrites it). Signing in (area 8):
 //! a browser session with its CSRF token, an API token an action issues,
-//! and a service key, each ended or revoked.
+//! and a service key, each ended or revoked. Request soundness (chunk
+//! 4.9): a body read only as JSON, a query string or body a route doesn't
+//! read refused, a header that isn't ASCII refused, work that never waits
+//! stopped at its deadline, a credential on a route anyone may call
+//! counted before it runs, and a handled failure keeping the session. And
+//! work that never waits giving its worker thread to another request
+//! (chunk 4.10).
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips the
@@ -90,6 +96,13 @@ entity Todo {
     id: Uuid
     title: TodoTitle
     status: TodoStatus
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 "#,
     ),
@@ -386,22 +399,35 @@ impl Reply {
     }
 }
 
-/// Sends one HTTP/1.1 request and reads the whole response.
+/// Sends one HTTP/1.1 request and reads the whole response. A body goes
+/// as JSON, with `Content-Type: application/json`, unless `headers` name
+/// a type of their own.
 fn send(port: u16, method: &str, path: &str, headers: &[(&str, &str)], body: &str) -> Reply {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connects");
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .expect("timeout");
     let mut request = format!(
         "{method} {path} HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\ncontent-length: {}\r\n",
         body.len()
     );
+    let typed = headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("content-type"));
+    if !body.is_empty() && !typed {
+        request.push_str("content-type: application/json\r\n");
+    }
     for (name, value) in headers {
         request.push_str(&format!("{name}: {value}\r\n"));
     }
     request.push_str("\r\n");
     request.push_str(body);
-    stream.write_all(request.as_bytes()).expect("sends");
+    send_raw(port, request.as_bytes())
+}
+
+/// Sends `request`'s bytes as they are and reads the whole response.
+fn send_raw(port: u16, request: &[u8]) -> Reply {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connects");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .expect("timeout");
+    stream.write_all(request).expect("sends");
     let mut raw = Vec::new();
     stream.read_to_end(&mut raw).expect("reads");
     let text = String::from_utf8_lossy(&raw).into_owned();
@@ -715,7 +741,7 @@ const NOTES: &[(&str, &str)] = &[
     ("app.jadpo", "application {}\n"),
     (
         "domains/notes/entities/note.jadpo",
-        "use notes/types { NoteText }\n\nentity Note {\n    id: Uuid\n    text: NoteText\n}\n",
+        "use notes/types { NoteText }\n\nentity Note {\n    id: Uuid\n    text: NoteText\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n}\n",
     ),
     (
         "domains/notes/types/note_text.jadpo",
@@ -1058,6 +1084,13 @@ entity Member {
         unique: true
     }
     status: MemberStatus
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 "#,
     ),
@@ -1072,6 +1105,13 @@ entity Note {
         on_delete: OnDelete.cascade
     }
     text: NoteText
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 "#,
     ),
@@ -1408,14 +1448,23 @@ fn openapi_shows_the_session_and_what_signing_in_answers() {
     }
     let refused = write["403"]["content"]["application/json"]["schema"]["oneOf"]
         .as_array()
-        .expect("both refusals");
-    assert_eq!(refused.len(), 2);
+        .expect("every refusal");
+    // A disabled account, a write without its CSRF token, and policy
+    // refusing the create (area 9).
+    assert_eq!(refused.len(), 3);
     let record = std::fs::read_to_string(root.join("api/main.api")).expect("the record");
     assert!(
         record.contains("POST /account/sign-up\n    authentication: none\n"),
         "{record}"
     );
-    assert!(record.contains("POST /notes\n    input:"), "{record}");
+    assert!(
+        record.contains("POST /notes\n    caller: user\n    input:"),
+        "{record}"
+    );
+    assert!(
+        record.contains("\nauthentication: browser_session\n"),
+        "the record says how clients sign in: {record}"
+    );
     let listed = jadpo(&root, &["routes", "--json"]);
     assert_eq!(listed.code, 0, "{}{}", listed.stdout, listed.stderr);
     let listed: serde_json::Value = serde_json::from_str(&listed.stdout).expect("JSON");
@@ -1680,6 +1729,13 @@ entity Member {
         unique: true
     }
     status: MemberStatus
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 "#,
     ),
@@ -1694,6 +1750,13 @@ entity Note {
         on_delete: OnDelete.cascade
     }
     text: NoteText
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 "#,
     ),
@@ -1708,6 +1771,13 @@ entity Partner {
         unique: true
     }
     status: PartnerStatus
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 "#,
     ),
@@ -1773,7 +1843,8 @@ routes Account {
     ),
     (
         "domains/journal/routes/devices.jadpo",
-        r#"use journal/actions { DeviceAdded, DeviceList, add_device, list_devices, revoke_own_keys }
+        r#"use journal/entities { Member }
+use journal/actions { DeviceAdded, DeviceList, add_device, list_devices, revoke_own_keys }
 
 /// A member's devices, and a partner's keys.
 routes Devices {
@@ -1783,6 +1854,19 @@ routes Devices {
         output: DeviceAdded
         status: SuccessStatus.created
         run: add_device(current_principal.user)
+    }
+
+    /// The signed-in member's own tokens, oldest first.
+    GET / {
+        output: List<IssuedToken>
+        run: sessions.tokens(current_principal.user.id)
+    }
+
+    /// Any member's: a list holds only the tokens of members the caller
+    /// may read.
+    GET /{member_id: Member.id} {
+        output: List<IssuedToken>
+        run: sessions.tokens(member_id)
     }
 
     POST /list {
@@ -1817,7 +1901,8 @@ routes Notes {
     ),
     (
         "domains/journal/routes/partners.jadpo",
-        r#"use journal/types { PartnerView }
+        r#"use journal/entities { Partner }
+use journal/types { PartnerView }
 use journal/actions { AddPartner, PartnerAdded, add_partner }
 use journal/queries { this_partner }
 
@@ -1837,6 +1922,12 @@ routes Partners {
     GET /me {
         output: PartnerView
         run: this_partner(current_principal.service)
+    }
+
+    /// The keys a partner holds that haven't expired.
+    GET /{partner_id: Partner.id}/keys {
+        output: List<IssuedKey>
+        run: Partner.keys(partner_id)
     }
 }
 "#,
@@ -2135,6 +2226,207 @@ fn a_service_key_signs_a_service_in_where_services_may_call() {
     assert_eq!(reply.status, 401, "{}", reply.body);
 }
 
+/// The id a member signed up with, read from the database.
+fn member_id(dev: &Dev, handle: &str) -> String {
+    let rows = query(
+        &dev.url,
+        "SELECT \"id\" FROM \"member\" WHERE \"handle\" = $1",
+        vec![jadpo_runtime::SqlValue::Text(handle.to_string())],
+    );
+    let jadpo_runtime::SqlValue::Uuid(id) = &rows[0][0] else {
+        panic!("{:?}", rows[0]);
+    };
+    jadpo_runtime::uuid_text(id)
+}
+
+/// A listing's items: each holds an `id`, `started_at` and `ends_at` and
+/// nothing else, never the credential.
+fn listed(reply: &Reply) -> Vec<serde_json::Value> {
+    assert_eq!(reply.status, 200, "{}", reply.body);
+    let items = reply.json().as_array().expect("a list").clone();
+    for item in &items {
+        let mut fields: Vec<&str> = item
+            .as_object()
+            .expect("an object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        fields.sort_unstable();
+        assert_eq!(fields, ["ends_at", "id", "started_at"], "{item}");
+    }
+    items
+}
+
+#[test]
+fn a_get_route_lists_a_signed_in_users_tokens_and_a_partners_keys() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = tokens_project();
+    let dev = Dev::start(&root);
+    let json = ("content-type", "application/json");
+    let signed = dev.send("POST", "/account/sign-up", &[json], r#"{"handle":"ann"}"#);
+    let first = signed.json()["token"]
+        .as_str()
+        .expect("a token")
+        .to_string();
+    let auth = bearer(&first);
+
+    // One token so far, as `IssuedToken`s: when it started and ends.
+    let one = dev.send("GET", "/devices", &[("authorization", &auth)], "");
+    let items = listed(&one);
+    assert_eq!(items.len(), 1, "{}", one.body);
+    assert!(!one.body.contains(&first), "{}", one.body);
+    assert!(
+        items[0]["started_at"].as_str() < items[0]["ends_at"].as_str(),
+        "{}",
+        one.body
+    );
+    // The id is the session row's, which the member can revoke by.
+    let rows = query(
+        &dev.url,
+        "SELECT \"id\" FROM \"jadpo_sessions\"",
+        Vec::new(),
+    );
+    let jadpo_runtime::SqlValue::Uuid(row) = &rows[0][0] else {
+        panic!("{:?}", rows[0]);
+    };
+    assert_eq!(items[0]["id"], jadpo_runtime::uuid_text(row));
+
+    // Another device adds a token, and the list holds both, oldest first.
+    let added = dev.send("POST", "/devices", &[("authorization", &auth)], "");
+    assert_eq!(added.status, 201, "{}", added.body);
+    let two = listed(&dev.send("GET", "/devices", &[("authorization", &auth)], ""));
+    assert_eq!(two.len(), 2);
+    assert_eq!(two[0]["id"], items[0]["id"], "oldest first");
+    assert_ne!(two[1]["id"], items[0]["id"]);
+
+    // The route lists a member's own through their id as well.
+    let ann = member_id(&dev, "ann");
+    let by_id = dev.send(
+        "GET",
+        &format!("/devices/{ann}"),
+        &[("authorization", &auth)],
+        "",
+    );
+    assert_eq!(listed(&by_id).len(), 2, "{}", by_id.body);
+
+    // A revoked token is no longer listed.
+    let out = dev.send("POST", "/account/sign-out", &[("authorization", &auth)], "");
+    assert_eq!(out.status, 204, "{}", out.body);
+    let other = bearer(added.json()["token"].as_str().expect("a token"));
+    let rest = listed(&dev.send("GET", "/devices", &[("authorization", &other)], ""));
+    assert_eq!(rest.len(), 1);
+
+    // A route needs a signed-in caller like any other.
+    let none = dev.send("GET", "/devices", &[], "");
+    assert_eq!(none.status, 401, "{}", none.body);
+    assert_eq!(none.json()["error"]["code"], "authentication_required");
+
+    // A partner's keys list the same way, for the partner itself.
+    let partner = dev.send(
+        "POST",
+        "/partners",
+        &[json, ("authorization", &other)],
+        r#"{"name":"Acme","key_expires_at":"2100-01-01T00:00:00Z"}"#,
+    );
+    let key = partner.json()["key"].as_str().expect("a key").to_string();
+    let partner_key = bearer(&key);
+    let rows = query(&dev.url, "SELECT \"id\" FROM \"partner\"", Vec::new());
+    let jadpo_runtime::SqlValue::Uuid(partner_id) = &rows[0][0] else {
+        panic!("{:?}", rows[0]);
+    };
+    let partner_id = jadpo_runtime::uuid_text(partner_id);
+    let keys = dev.send(
+        "GET",
+        &format!("/partners/{partner_id}/keys"),
+        &[("authorization", &partner_key)],
+        "",
+    );
+    let listed_keys = listed(&keys);
+    assert_eq!(listed_keys.len(), 1, "{}", keys.body);
+    assert!(!keys.body.contains(&key), "{}", keys.body);
+    assert!(
+        listed_keys[0]["ends_at"]
+            .as_str()
+            .is_some_and(|ends| ends.starts_with("2100-01-01")),
+        "{}",
+        keys.body
+    );
+    // The placeholder is checked like any other: a malformed id is 422.
+    let bad = dev.send(
+        "GET",
+        "/partners/not-an-id/keys",
+        &[("authorization", &partner_key)],
+        "",
+    );
+    assert_eq!(bad.status, 422, "{}", bad.body);
+}
+
+#[test]
+fn another_members_tokens_and_another_partners_keys_are_listed_empty() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = tokens_project();
+    let dev = Dev::start(&root);
+    let json = ("content-type", "application/json");
+    let ann = dev.send("POST", "/account/sign-up", &[json], r#"{"handle":"ann"}"#);
+    let ann = bearer(ann.json()["token"].as_str().expect("a token"));
+    let bob = dev.send("POST", "/account/sign-up", &[json], r#"{"handle":"bob"}"#);
+    let bob = bearer(bob.json()["token"].as_str().expect("a token"));
+    let ann_id = member_id(&dev, "ann");
+    let bob_id = member_id(&dev, "bob");
+
+    // Each member lists their own device; the other's is empty, which is
+    // what a record policy hides reads as: 200 with nothing, not an error.
+    let own = dev.send(
+        "GET",
+        &format!("/devices/{ann_id}"),
+        &[("authorization", &ann)],
+        "",
+    );
+    assert_eq!(listed(&own).len(), 1, "{}", own.body);
+    let theirs = dev.send(
+        "GET",
+        &format!("/devices/{bob_id}"),
+        &[("authorization", &ann)],
+        "",
+    );
+    assert_eq!(theirs.status, 200, "{}", theirs.body);
+    assert_eq!(theirs.json(), serde_json::json!([]));
+    let mine = dev.send(
+        "GET",
+        &format!("/devices/{ann_id}"),
+        &[("authorization", &bob)],
+        "",
+    );
+    assert_eq!(mine.json(), serde_json::json!([]));
+    // And what bob lists is bob's.
+    let bobs = dev.send("GET", "/devices", &[("authorization", &bob)], "");
+    assert_eq!(listed(&bobs).len(), 1, "{}", bobs.body);
+
+    // A partner's keys are listed to the partner and nobody else: a member
+    // who may not read the partner sees none.
+    let partner = dev.send(
+        "POST",
+        "/partners",
+        &[json, ("authorization", &ann)],
+        r#"{"name":"Acme","key_expires_at":"2100-01-01T00:00:00Z"}"#,
+    );
+    let partner = bearer(partner.json()["key"].as_str().expect("a key"));
+    let rows = query(&dev.url, "SELECT \"id\" FROM \"partner\"", Vec::new());
+    let jadpo_runtime::SqlValue::Uuid(partner_id) = &rows[0][0] else {
+        panic!("{:?}", rows[0]);
+    };
+    let path = format!("/partners/{}/keys", jadpo_runtime::uuid_text(partner_id));
+    let own = dev.send("GET", &path, &[("authorization", &partner)], "");
+    assert_eq!(listed(&own).len(), 1, "{}", own.body);
+    let member = dev.send("GET", &path, &[("authorization", &ann)], "");
+    assert_eq!(member.status, 200, "{}", member.body);
+    assert_eq!(member.json(), serde_json::json!([]));
+}
+
 #[test]
 fn openapi_shows_both_bearer_methods_and_who_each_route_refuses() {
     let (_dir, root) = tokens_project();
@@ -2167,4 +2459,848 @@ fn openapi_shows_both_bearer_methods_and_who_each_route_refuses() {
     assert!(!note.contains(&"CsrfRejected".to_string()), "{note:?}");
     let me = codes("/partners/me", "get");
     assert!(me.contains(&"WrongKindOfCaller".to_string()), "{me:?}");
+
+    // A listing sends the built-in `IssuedToken` and `IssuedKey`, which
+    // have schemas of their own.
+    for (path, schema) in [
+        ("/devices", "IssuedToken"),
+        ("/partners/{partner_id}/keys", "IssuedKey"),
+    ] {
+        let listed = &document["paths"][path]["get"]["responses"]["200"]["content"]["application/json"]
+            ["schema"];
+        assert_eq!(listed["type"], "array", "{path}");
+        assert_eq!(
+            listed["items"]["$ref"],
+            format!("#/components/schemas/{schema}"),
+            "{path}"
+        );
+        let built_in = &document["components"]["schemas"][schema];
+        assert_eq!(built_in["type"], "object", "{schema}");
+        assert_eq!(
+            built_in["required"],
+            serde_json::json!(["id", "started_at", "ends_at"]),
+            "{schema}"
+        );
+        assert_eq!(built_in["properties"]["id"]["format"], "uuid", "{schema}");
+        assert_eq!(
+            built_in["properties"]["ends_at"]["format"], "date-time",
+            "{schema}"
+        );
+    }
+}
+
+#[test]
+fn a_body_is_read_only_as_json_and_a_route_refuses_what_it_doesnt_read() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = project();
+    let dev = Dev::start(&root);
+    let body = r#"{"title":"Buy milk"}"#;
+    // A form or plain text a browser could post from another site.
+    for (content_type, sent) in [
+        ("text/plain", body),
+        ("application/x-www-form-urlencoded", "title=Buy+milk"),
+        ("multipart/form-data; boundary=x", body),
+    ] {
+        let refused = dev.send("POST", "/todos", &[("content-type", content_type)], sent);
+        assert_eq!(refused.status, 400, "{content_type}: {refused:?}");
+        assert_eq!(refused.json()["error"]["code"], "invalid_request");
+    }
+    let untyped = send_raw(
+        dev.port,
+        format!(
+            "POST /todos HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        )
+        .as_bytes(),
+    );
+    assert_eq!(untyped.status, 400, "{untyped:?}");
+    let created = dev.send(
+        "POST",
+        "/todos",
+        &[("content-type", "Application/JSON; charset=utf-8")],
+        body,
+    );
+    assert_eq!(created.status, 201, "{created:?}");
+    let id = created.json()["id"].as_str().expect("an id").to_string();
+
+    // A route without `input:` reads no query string and no body.
+    let queried = dev.send("GET", &format!("/todos/{id}?shelf=x"), &[], "");
+    assert_eq!(queried.status, 422, "{queried:?}");
+    assert_eq!(
+        queried.json()["error"]["details"]["problems"],
+        serde_json::json!([{ "field": "shelf", "rule": "unknown_field" }])
+    );
+    let bodied = dev.send("GET", &format!("/todos/{id}"), &[], "{}");
+    assert_eq!(bodied.status, 422, "{bodied:?}");
+    // Nor does one that reads its input from the body read a query string.
+    let both = dev.send("POST", "/todos?title=x", &[], body);
+    assert_eq!(both.status, 422, "{both:?}");
+    assert_eq!(
+        both.json()["error"]["details"]["problems"],
+        serde_json::json!([{ "field": "title", "rule": "unknown_field" }])
+    );
+    let read = dev.send("GET", &format!("/todos/{id}"), &[], "");
+    assert_eq!(read.status, 200, "{read:?}");
+}
+
+#[test]
+fn a_header_that_isnt_ascii_is_refused_rather_than_dropped() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = project();
+    let dev = Dev::start(&root);
+    let body = r#"{"title":"Buy milk"}"#;
+    let mut request = format!(
+        "POST /todos HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\ncontent-type: application/json\r\ncontent-length: {}\r\nidempotency-key: caf",
+        body.len()
+    )
+    .into_bytes();
+    request.extend_from_slice(b"\xc3\xa9\r\n\r\n");
+    request.extend_from_slice(body.as_bytes());
+    let refused = send_raw(dev.port, &request);
+    assert_eq!(refused.status, 400, "{refused:?}");
+    assert_eq!(refused.json()["error"]["code"], "invalid_request");
+    let tagged =
+        b"GET /todos HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\nx-request-tag: \xff\r\n\r\n"
+            .to_vec();
+    let refused = send_raw(dev.port, &tagged);
+    assert_eq!(refused.status, 400, "{refused:?}");
+    let listed = dev.send("GET", "/todos", &[("x-request-tag", "plain")], "");
+    assert_eq!(listed.status, 200, "{listed:?}");
+    let rows = query(&dev.url, "SELECT \"id\" FROM \"todo\"", Vec::new());
+    assert!(rows.is_empty(), "the refused write never ran");
+}
+
+/// A project whose route keeps a mark, then works without waiting for as
+/// long as it is asked, against a one-second deadline.
+const SPIN: &[(&str, &str)] = &[
+    ("app.jadpo", "application {}\n"),
+    (
+        "domains/busy/entities/mark.jadpo",
+        r#"use busy/types { Label }
+
+entity Mark {
+    id: Uuid
+    label: Label
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+"#,
+    ),
+    (
+        "domains/busy/actions/spin.jadpo",
+        r#"use busy/entities { Mark }
+use busy/types { Calls, Depth, Label }
+
+/// Keeps a mark, then counts calls for a while.
+action spin(input: SpinRequest) -> Spun {
+    var mark: Mark = Mark.create {
+        set: {
+            label: input.label
+        }
+    }
+    return Spun {
+        label: mark.label
+        total: busy(input.depth)
+    }
+}
+
+/// How long to spin, and the mark to keep.
+type SpinRequest = Input {
+    label: Label
+    depth: Depth
+}
+
+/// What spinning counted.
+type Spun = Output {
+    label: Label
+    total: Calls
+}
+
+/// Two calls per level.
+function busy(depth: Depth) -> Calls {
+    if (depth == 0) {
+        return 1
+    }
+    return Calls(busy(Depth(depth - 1)) + busy(Depth(depth - 1)))
+}
+"#,
+    ),
+    (
+        "domains/busy/routes/busywork.jadpo",
+        r#"use busy/actions { SpinRequest, Spun, spin }
+
+/// Spinning.
+routes Busywork {
+    prefix: /busywork
+
+    /// Anyone may spin, for a second at most.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: SpinRequest
+        output: Spun
+        deadline: 1s
+        run: spin(input)
+    }
+}
+"#,
+    ),
+    (
+        "domains/busy/types/calls.jadpo",
+        "/// A count of calls.\ntype Calls = Int {\n    min: 0\n}\n",
+    ),
+    (
+        "domains/busy/types/depth.jadpo",
+        "/// A recursion depth.\ntype Depth = Int {\n    min: 0\n    max: 40\n}\n",
+    ),
+    (
+        "domains/busy/types/label.jadpo",
+        "type Label = Text {\n    min_length: 1\n    max_length: 40\n}\n",
+    ),
+];
+
+#[test]
+fn work_that_never_waits_stops_at_its_deadline_and_keeps_nothing() {
+    if skipped() {
+        return;
+    }
+    let dir = tempdir::Dir::new("spin");
+    let root = dir.path().join("busy");
+    for (path, text) in SPIN {
+        write(&root, path, text);
+    }
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["api", "update"],
+        &["check"],
+    ] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let dev = Dev::start(&root);
+    let quick = dev.send("POST", "/busywork", &[], r#"{"label":"quick","depth":3}"#);
+    assert_eq!(quick.status, 200, "{quick:?}");
+    assert_eq!(quick.json()["total"], "8", "an unbounded Int is text");
+    let started = Instant::now();
+    let slow = dev.send(
+        "POST",
+        "/busywork",
+        &[("Idempotency-Key", "spin-1")],
+        r#"{"label":"slow","depth":30}"#,
+    );
+    assert_eq!(slow.status, 504, "{slow:?}");
+    assert_eq!(slow.json()["error"]["code"], "deadline_exceeded");
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "stopped at the deadline: {:?}",
+        started.elapsed()
+    );
+    let labels: Vec<String> = query(&dev.url, "SELECT \"label\" FROM \"mark\"", Vec::new())
+        .into_iter()
+        .filter_map(|row| match row.first() {
+            Some(jadpo_runtime::SqlValue::Text(text)) => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(labels, ["quick"], "the mark kept before the deadline went");
+    // Its key was given up, so a retry runs (and runs out of time again).
+    let retried = dev.send(
+        "POST",
+        "/busywork",
+        &[("Idempotency-Key", "spin-1")],
+        r#"{"label":"slow","depth":30}"#,
+    );
+    assert_eq!(retried.status, 504, "{retried:?}");
+}
+
+#[test]
+fn work_that_never_waits_leaves_its_worker_to_other_requests() {
+    if skipped() {
+        return;
+    }
+    let dir = tempdir::Dir::new("spin-shared");
+    let root = dir.path().join("busy");
+    for (path, text) in SPIN {
+        write(&root, path, text);
+    }
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["api", "update"],
+        &["check"],
+    ] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let dev = Dev::start(&root);
+    let warm = dev.send("POST", "/busywork", &[], r#"{"label":"warm","depth":3}"#);
+    assert_eq!(warm.status, 200, "{warm:?}");
+    // Both come from one address, so one worker thread answers both.
+    let port = dev.port;
+    let slow = std::thread::spawn(move || {
+        send(
+            port,
+            "POST",
+            "/busywork",
+            &[],
+            r#"{"label":"slow","depth":30}"#,
+        )
+    });
+    std::thread::sleep(Duration::from_millis(150));
+    let started = Instant::now();
+    let quick = dev.send("POST", "/busywork", &[], r#"{"label":"quick","depth":3}"#);
+    let waited = started.elapsed();
+    assert_eq!(quick.status, 200, "{quick:?}");
+    let slow = slow.join().expect("the slow request");
+    assert_eq!(slow.status, 504, "{slow:?}");
+    assert!(
+        waited < Duration::from_millis(500),
+        "answered while the other computed, not after its 1 s deadline: {waited:?}"
+    );
+}
+
+#[test]
+fn a_credential_on_a_route_anyone_may_call_is_counted_before_it_runs() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = sign_in_project();
+    let dev = Dev::start(&root);
+    let mut statuses = Vec::new();
+    for n in 0..=jadpo_std::http::ADDRESS_LIMIT.requests {
+        let reply = dev.send(
+            "POST",
+            "/account/sign-up",
+            &[("authorization", "junk")],
+            &format!(r#"{{"handle":"rl{n:03}"}}"#),
+        );
+        statuses.push(reply.status);
+    }
+    let limit = jadpo_std::http::ADDRESS_LIMIT.requests as usize;
+    assert!(
+        statuses[..limit].iter().all(|status| *status == 204),
+        "{statuses:?}"
+    );
+    assert_eq!(statuses[limit], 429);
+    let rows = query(
+        &dev.url,
+        "SELECT \"handle\" FROM \"member\" WHERE \"handle\" = $1",
+        vec![jadpo_runtime::SqlValue::Text(format!("rl{limit:03}"))],
+    );
+    assert!(rows.is_empty(), "the refused sign-up was never kept");
+}
+
+#[test]
+fn a_handled_failure_keeps_the_session_it_tried_to_end() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = sign_in_project();
+    write(
+        &root,
+        "domains/notes/actions/end_then_fail.jadpo",
+        r#"use notes/entities { Member }
+use notes/failures { HandleTaken }
+use notes/actions { register }
+use notes/types { Handle }
+
+/// Ends the request's session, then fails on a taken handle.
+action end_then_fail(handle: Handle) fails HandleTaken -> Member {
+    sessions.end()
+    return attempt register(handle)
+}
+"#,
+    );
+    write(
+        &root,
+        "domains/notes/actions/leave_badly.jadpo",
+        r#"use notes/failures { HandleTaken }
+use notes/actions { end_then_fail }
+use notes/types { Handle, NoteText, NoteView }
+
+/// Signs out through an action whose failure it handles.
+action leave_badly(input: LeaveBadly) -> NoteView {
+    var word: NoteText = match end_then_fail(input.handle) {
+        success -> "kept"
+        HandleTaken -> "rolled back"
+    }
+    return NoteView {
+        text: word
+    }
+}
+
+/// A handle to collide with.
+type LeaveBadly = Input {
+    handle: Handle
+}
+"#,
+    );
+    write(
+        &root,
+        "domains/notes/routes/leaving.jadpo",
+        r#"use notes/types { NoteView }
+use notes/actions { LeaveBadly, leave_badly }
+
+/// Leaving, badly.
+routes Leaving {
+    prefix: /leaving
+
+    POST / {
+        input: LeaveBadly
+        output: NoteView
+        run: leave_badly(input)
+    }
+}
+"#,
+    );
+    for args in [&["api", "update"][..], &["check"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let dev = Dev::start(&root);
+    let signed = dev.send("POST", "/account/sign-up", &[], r#"{"handle":"ann"}"#);
+    assert_eq!(signed.status, 204, "{signed:?}");
+    let (token, csrf, _) = session_cookies(&signed);
+    let cookie = format!("notes_session={token}; notes_session_csrf={csrf}");
+    let signed_in = [
+        ("cookie", cookie.as_str()),
+        ("origin", "http://localhost"),
+        ("x-jadpo-csrf", csrf.as_str()),
+    ];
+    let left = dev.send("POST", "/leaving", &signed_in, r#"{"handle":"ann"}"#);
+    assert_eq!(left.status, 200, "{left:?}");
+    assert_eq!(left.json()["text"], "rolled back");
+    assert!(
+        left.header("set-cookie").is_none(),
+        "the session it tried to end was kept, so nothing clears its cookies: {left:?}"
+    );
+    let written = dev.send("POST", "/notes", &signed_in, r#"{"text":"still here"}"#);
+    assert_eq!(written.status, 201, "{written:?}");
+}
+
+/// A project whose routes send the wire's harder values (a time of day, an
+/// enum with plain and tagged variants), page through a query, patch a
+/// record, and run actions that use no store or call a listed one.
+const WIRE: &[(&str, &str)] = &[
+    ("app.jadpo", "application {}\n"),
+    (
+        "policy.jadpo",
+        "use lab\n\npolicy {\n    actions: {\n        lab.echo: [Access.public]\n    }\n}\n",
+    ),
+    (
+        "domains/lab/entities/item.jadpo",
+        r#"use lab/types { ItemName, Note }
+
+entity Item {
+    id: Uuid
+    name: ItemName
+    note: Note?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+"#,
+    ),
+    (
+        "domains/lab/actions/add_item.jadpo",
+        r#"use lab/entities { Item }
+use lab/types { ItemView }
+
+action add_item(input: AddItem) -> ItemView {
+    var item: Item = Item.create {
+        set: {
+            name: input.name
+            note: input.note
+        }
+    }
+    return ItemView {
+        id: item.id
+        name: item.name
+        note: item.note
+    }
+}
+
+type AddItem = Input {
+    pick: [Item.name, Item.note]
+}
+"#,
+    ),
+    (
+        "domains/lab/actions/edit_item.jadpo",
+        r#"use lab/entities { Item, ItemNotFound }
+use lab/types { ItemView }
+
+action edit_item(item_id: Item.id, input: ItemChanges) fails ItemNotFound -> ItemView {
+    var item: Item = attempt Item.update(item_id) {
+        patch: input
+    }
+    return ItemView {
+        id: item.id
+        name: item.name
+        note: item.note
+    }
+}
+
+type ItemChanges = Input {
+    pick: [Item.name, Item.note]
+    optional: all
+}
+"#,
+    ),
+    (
+        "domains/lab/actions/echo.jadpo",
+        r#"use lab/types { EchoInput, EchoView }
+
+/// Sends back what it was given, using no store.
+action echo(input: EchoInput) -> EchoView {
+    return EchoView {
+        moment: input.moment
+        outcome: input.outcome
+        name: none
+    }
+}
+"#,
+    ),
+    (
+        "domains/lab/types/echo_input.jadpo",
+        r#"use lab/types { Moment, Outcome }
+
+type EchoInput = Input {
+    moment: Moment
+    outcome: Outcome
+}
+"#,
+    ),
+    (
+        "domains/lab/actions/relay.jadpo",
+        r#"use lab/entities { Item, ItemNotFound }
+use lab/types { EchoInput, EchoView }
+use lab/actions { echo }
+
+/// Echoes through the listed action, with the item's name.
+action relay(item_id: Item.id, input: EchoInput) fails ItemNotFound -> EchoView {
+    var item: Item = attempt Item.get(item_id)
+    var echoed: EchoView = echo(input)
+    return EchoView {
+        moment: echoed.moment
+        outcome: echoed.outcome
+        name: item.name
+    }
+}
+"#,
+    ),
+    (
+        "domains/lab/queries/find_item.jadpo",
+        r#"use lab/entities { Item }
+use lab/types { ItemView }
+use lab/failures { ItemMissing }
+
+query find_item(item_id: Item.id) fails ItemMissing -> ItemView {
+    from: Item
+    where: Item.id == item_id
+    missing: ItemMissing {
+        item_id: item_id
+    }
+}
+"#,
+    ),
+    (
+        "domains/lab/queries/list_items.jadpo",
+        r#"use lab/entities { Item }
+use lab/types { ItemView }
+
+/// Items by name, a page at a time.
+query list_items(filter: ListItems) -> Page<ItemView> {
+    from: Item
+    order: [Item.name asc]
+    page: {
+        size: filter.page_size
+        after: filter.after
+    }
+}
+
+/// Which page.
+type ListItems = Input {
+    page_size: PageSize {
+        default: 10
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+"#,
+    ),
+    (
+        "domains/lab/failures/item_missing.jadpo",
+        r#"use lab/entities { Item }
+
+type ItemMissing = Failure {
+    kind: FailureKind.not_found
+    message: "No such item."
+    client: {
+        item_id: Item.id
+    }
+}
+"#,
+    ),
+    (
+        "domains/lab/routes/items.jadpo",
+        r#"use lab/entities { Item }
+use lab/types { EchoInput, EchoView, ItemView }
+use lab/actions { AddItem, ItemChanges, add_item, echo, edit_item, relay }
+use lab/queries { ListItems, find_item, list_items }
+
+routes Items {
+    prefix: /items
+
+    POST / {
+        authentication: RouteAuthentication.none
+        input: AddItem
+        output: ItemView
+        status: SuccessStatus.created
+        run: add_item(input)
+    }
+
+    GET / {
+        authentication: RouteAuthentication.none
+        input: ListItems
+        output: Page<ItemView>
+        run: list_items(input)
+    }
+
+    PATCH /{item_id: Item.id} {
+        authentication: RouteAuthentication.none
+        input: ItemChanges
+        output: ItemView
+        run: edit_item(item_id, input)
+    }
+
+    GET /{item_id: Item.id} {
+        authentication: RouteAuthentication.none
+        output: ItemView
+        run: find_item(item_id)
+    }
+
+    POST /echo {
+        authentication: RouteAuthentication.none
+        input: EchoInput
+        output: EchoView
+        run: echo(input)
+    }
+
+    POST /{item_id: Item.id}/relay {
+        authentication: RouteAuthentication.none
+        input: EchoInput
+        output: EchoView
+        run: relay(item_id, input)
+    }
+}
+"#,
+    ),
+    (
+        "domains/lab/routes/items.test.jadpo",
+        r#"use lab/types { ItemView }
+use lab/actions { AddItem, ItemChanges, add_item }
+use lab/queries { find_item }
+
+test "a patch that leaves the note out keeps it" {
+    var item: ItemView = add_item(AddItem {
+        name: "a"
+        note: "keep me"
+    })
+    var changed: Response = request {
+        method: HttpMethod.patch
+        path: "/items/{item_id}"
+        params: {
+            item_id: item.id
+        }
+        input: ItemChanges {
+            name: "b"
+        }
+    }
+    assert changed.status == 200
+    var after: ItemView = attempt find_item(item.id)
+    assert after.name == "b"
+    assert after.note == "keep me"
+}
+"#,
+    ),
+    (
+        "domains/lab/types/echo_view.jadpo",
+        r#"use lab/types { ItemName, Moment, Outcome }
+
+type EchoView = Output {
+    moment: Moment
+    outcome: Outcome
+    name: ItemName?
+}
+"#,
+    ),
+    (
+        "domains/lab/types/item_name.jadpo",
+        "type ItemName = Text {\n    min_length: 1\n    max_length: 80\n}\n",
+    ),
+    (
+        "domains/lab/types/item_view.jadpo",
+        "use lab/entities { Item }\n\ntype ItemView = Output {\n    pick: [Item.id, Item.name, Item.note]\n}\n",
+    ),
+    ("domains/lab/types/moment.jadpo", "type Moment = Time {}\n"),
+    (
+        "domains/lab/types/note.jadpo",
+        "type Note = Text {\n    max_length: 200\n}\n",
+    ),
+    (
+        "domains/lab/types/outcome.jadpo",
+        "use lab/types { Small }\n\ntype Outcome = Enum {\n    pending\n    paid: {\n        amount: Small\n    }\n}\n",
+    ),
+    (
+        "domains/lab/types/small.jadpo",
+        "type Small = Int {\n    min: 0\n    max: 100\n}\n",
+    ),
+];
+
+/// The wire project, migrated, recorded and checking cleanly.
+fn wire_project() -> (tempdir::Dir, PathBuf) {
+    let dir = tempdir::Dir::new("wire");
+    let root = dir.path().join("lab");
+    for (path, text) in WIRE {
+        write(&root, path, text);
+    }
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["api", "update"],
+        &["check"],
+    ] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    (dir, root)
+}
+
+/// The project's OpenAPI document for `main`.
+fn openapi(root: &Path) -> serde_json::Value {
+    let text = std::fs::read_to_string(root.join("build/openapi/main.json")).expect("written");
+    serde_json::from_str(&text).expect("json")
+}
+
+#[test]
+fn openapi_describes_values_as_they_are_sent() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = wire_project();
+    let document = openapi(&root);
+    let schemas = &document["components"]["schemas"];
+    assert_eq!(
+        schemas["Outcome"]["oneOf"][0],
+        serde_json::json!({ "type": "string", "const": "pending" }),
+        "a plain variant is its name"
+    );
+    assert_eq!(
+        schemas["Outcome"]["oneOf"][1]["properties"]["tag"]["const"],
+        "paid"
+    );
+    let moment = &schemas["EchoInput"]["properties"]["moment"];
+    assert_eq!(moment["type"], "string", "{moment}");
+    // What the runtime sends matches what the document says.
+    let dev = Dev::start(&root);
+    let echoed = dev.send(
+        "POST",
+        "/items/echo",
+        &[],
+        r#"{"moment":"09:30","outcome":"pending"}"#,
+    );
+    assert_eq!(echoed.status, 200, "{echoed:?}");
+    assert_eq!(
+        echoed.json(),
+        serde_json::json!({ "moment": "09:30", "outcome": "pending", "name": null })
+    );
+    let pattern = moment["pattern"].as_str().expect("a pattern");
+    assert_eq!(
+        pattern,
+        "^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]{1,3})?)?$"
+    );
+}
+
+#[test]
+fn openapi_lists_each_routes_responses_from_what_it_runs() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = wire_project();
+    let document = openapi(&root);
+    let responses = |method: &str, path: &str| {
+        let operation = &document["paths"][path][method];
+        let mut statuses: Vec<String> = operation["responses"]
+            .as_object()
+            .unwrap_or_else(|| panic!("{method} {path}"))
+            .keys()
+            .cloned()
+            .collect();
+        statuses.sort();
+        statuses
+    };
+    let key_description = |method: &str, path: &str| {
+        document["paths"][path][method]["parameters"]
+            .as_array()
+            .and_then(|parameters| {
+                parameters
+                    .iter()
+                    .find(|parameter| parameter["name"] == "Idempotency-Key")
+            })
+            .and_then(|parameter| parameter["description"].as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    // Every route can be unreadable, too large or given unknown input.
+    for (method, path) in [("get", "/items/{item_id}"), ("get", "/items")] {
+        let statuses = responses(method, path);
+        for status in ["400", "413", "422", "429", "500", "503", "504"] {
+            assert!(
+                statuses.contains(&status.to_string()),
+                "{method} {path}: {statuses:?}"
+            );
+        }
+    }
+    // A write that keeps its response promises the replay.
+    assert!(key_description("post", "/items").contains("gets the first response"));
+    assert!(responses("post", "/items").contains(&"409".to_string()));
+    // One that uses no store keeps nothing, and can't be unavailable.
+    let echo = responses("post", "/items/echo");
+    assert!(!echo.contains(&"409".to_string()), "{echo:?}");
+    assert!(!echo.contains(&"503".to_string()), "{echo:?}");
+    assert!(key_description("post", "/items/echo").contains("nothing is kept"));
+    // Calling a listed action can be refused.
+    assert!(
+        responses("post", "/items/{item_id}/relay").contains(&"403".to_string()),
+        "{:?}",
+        responses("post", "/items/{item_id}/relay")
+    );
+
+    // A page's bad cursor is bad input in the field it came in.
+    let dev = Dev::start(&root);
+    let bad = dev.send("GET", "/items?after=nonsense", &[], "");
+    assert_eq!(bad.status, 422, "{bad:?}");
+    assert_eq!(
+        bad.json()["error"]["details"]["problems"],
+        serde_json::json!([{ "field": "after", "rule": "format" }])
+    );
+}
+
+#[test]
+fn a_route_test_leaves_an_omitted_field_out() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = wire_project();
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
 }

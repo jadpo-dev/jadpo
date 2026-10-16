@@ -1,0 +1,27 @@
+// Root `policy.jadpo` holds what no single entity can say. `tenant:`
+// names the record every customer's data belongs to: each bakery is a
+// tenant, and every grant on its records applies only to callers who
+// hold a role in it, `Access.authenticated` included. One forgotten
+// filter can't show one bakery another's recipes.
+//
+// An action takes its permission from the entities it reaches. The few
+// that need other people are listed under `actions:`, and for those the
+// list replaces the entities' grants on what the action writes; tenancy
+// and field restrictions still apply.
+
+use kitchen/entities { Bakery, Recipe }
+use kitchen
+
+policy {
+    tenant: Bakery
+    actions: {
+        // A new bakery has no staff yet, so nobody holds the role its
+        // grants name: anyone signed in may open one, and becomes its
+        // owner.
+        kitchen.open_bakery: [Access.authenticated]
+        // `author_id` is named in `Recipe`'s policy, so an ordinary update
+        // can't change it: handing a recipe on is this action, which only
+        // the recipe's current author may run.
+        kitchen.hand_over_recipe: [Recipe.author_id]
+    }
+}

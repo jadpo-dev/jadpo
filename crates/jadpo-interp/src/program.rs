@@ -90,6 +90,63 @@ impl Prepared {
     pub fn places(&self) -> &Places {
         &self.places
     }
+
+    /// The plan's validators, compiled, by number.
+    pub fn validators(&self) -> &[Validator] {
+        &self.validators
+    }
+
+    /// How long a purge waits before it deletes a hidden record, in
+    /// milliseconds: its `after:`, or the value `values` hold for the
+    /// setting it reads (area 10, "Retention periods"). `None` when the
+    /// setting holds no duration.
+    pub fn purge_after(
+        &self,
+        values: &jadpo_runtime::config::ConfigValues,
+        purge: &jadpo_std::write::PurgePlan,
+    ) -> Option<i64> {
+        match purge.after_setting {
+            None => Some(purge.after),
+            Some(at) => {
+                jadpo_runtime::config::duration_ms(self.plan.config(), &self.validators, values, at)
+            }
+        }
+    }
+
+    /// How each setting stands against `variables` (area 10): set,
+    /// defaulted, missing or invalid. Never holds a value.
+    pub fn config_standing(
+        &self,
+        variables: &dyn jadpo_runtime::config::Variables,
+        mode: jadpo_runtime::config::Mode,
+        random: &dyn Fn(&mut [u8]) -> bool,
+    ) -> Vec<jadpo_runtime::config::Standing> {
+        jadpo_runtime::config::check(
+            self.plan.config(),
+            &self.validators,
+            variables,
+            mode,
+            random,
+        )
+    }
+
+    /// The settings the application starts with, read from `variables`:
+    /// every one checked against its type, or each that stops it starting
+    /// (area 10, "Checking values before the app starts").
+    pub fn config(
+        &self,
+        variables: &dyn jadpo_runtime::config::Variables,
+        mode: jadpo_runtime::config::Mode,
+        random: &dyn Fn(&mut [u8]) -> bool,
+    ) -> Result<jadpo_runtime::config::ConfigValues, Vec<jadpo_runtime::config::StartProblem>> {
+        jadpo_runtime::config::load(
+            self.plan.config(),
+            &self.validators,
+            variables,
+            mode,
+            random,
+        )
+    }
 }
 
 /// A prepared project on one thread, ready to run its callables.
@@ -103,6 +160,12 @@ pub struct Program {
     /// Whether constructions the checker proved are checked again as they
     /// run ([`Program::with_proof_checks`]).
     proof_checks: bool,
+    /// The settings' values, decoded, by the setting's number in the plan:
+    /// `None` for one no value reached ([`Program::with_config`]).
+    settings: Vec<Option<Value>>,
+    /// What signing in reads from them: the signing keys and the browser
+    /// session's origin (area 8).
+    auth: jadpo_runtime::http::signed::AuthSettings,
 }
 
 /// Why a call couldn't start.
@@ -144,11 +207,31 @@ impl Program {
             .map(Value::constant)
             .collect();
         let shapes = types.shapes().iter().map(Shape::new).collect();
+        // Until it is given the settings an application started with, a
+        // program reads the ones a test run does: each `test:` value and
+        // default.
+        let values = prepared
+            .config(
+                &|_: &str| None,
+                jadpo_runtime::config::Mode::Test,
+                &|_: &mut [u8]| false,
+            )
+            .ok();
+        let settings = values
+            .as_ref()
+            .map(|values| Self::decoded(&prepared, values))
+            .unwrap_or_default();
+        let auth = values
+            .as_ref()
+            .map(|values| Self::auth(&prepared, values))
+            .unwrap_or_default();
         Program {
             prepared,
             constants,
             shapes,
             proof_checks: false,
+            settings,
+            auth,
         }
     }
 
@@ -167,6 +250,62 @@ impl Program {
     pub fn with_proof_checks(mut self) -> Program {
         self.proof_checks = true;
         self
+    }
+
+    /// The same program reading `values` as its settings (area 10): what
+    /// the application started with, or a test run's.
+    pub fn with_config(mut self, values: &jadpo_runtime::config::ConfigValues) -> Program {
+        self.settings = Self::decoded(&self.prepared, values);
+        self.auth = Self::auth(&self.prepared, values);
+        self
+    }
+
+    /// What signing in reads from `values`.
+    fn auth(
+        prepared: &Prepared,
+        values: &jadpo_runtime::config::ConfigValues,
+    ) -> jadpo_runtime::http::signed::AuthSettings {
+        jadpo_runtime::http::signed::AuthSettings::read(
+            prepared.plan.routes().identity.as_ref(),
+            values,
+        )
+    }
+
+    /// The settings `values` hold, decoded, by their numbers.
+    fn decoded(
+        prepared: &Prepared,
+        values: &jadpo_runtime::config::ConfigValues,
+    ) -> Vec<Option<Value>> {
+        let config = prepared.plan.config();
+        config
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(at, field)| {
+                // Code never reads a secret, so none is held here.
+                if field.secret {
+                    return None;
+                }
+                let text = values.text_at(at as u32)?;
+                jadpo_runtime::config::decode(config, &prepared.validators, field, text).ok()
+            })
+            .collect()
+    }
+
+    /// The value of setting number `at`.
+    pub(crate) fn setting(&self, at: u32) -> Option<Value> {
+        self.settings.get(at as usize).cloned().flatten()
+    }
+
+    /// The name of setting number `at`.
+    pub(crate) fn setting_name(&self, at: u32) -> String {
+        self.prepared
+            .plan
+            .config()
+            .fields
+            .get(at as usize)
+            .map(|field| field.name.clone())
+            .unwrap_or_default()
     }
 
     pub fn prepared(&self) -> &Arc<Prepared> {
@@ -261,6 +400,7 @@ impl Program {
                 shapes: &self.shapes,
             },
             failures: self.plan().types().failures(),
+            auth: &self.auth,
         }
     }
 
@@ -315,6 +455,22 @@ impl Executor for Program {
 
     fn callable(&self, key: &str) -> Option<u32> {
         self.plan().find(key)
+    }
+
+    fn settings(&self, callable: u32) -> Vec<(u32, Value)> {
+        let config = self.plan().config();
+        self.plan()
+            .callable(callable)
+            .into_iter()
+            .flat_map(|plan| plan.settings.iter())
+            .filter_map(|(at, text)| {
+                let field = config.fields.get(*at as usize)?;
+                let value =
+                    jadpo_runtime::config::decode(config, &self.prepared.validators, field, text)
+                        .ok()?;
+                Some((*at, value))
+            })
+            .collect()
     }
 
     fn run<'a, 'p: 'a>(

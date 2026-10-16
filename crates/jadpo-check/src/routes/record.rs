@@ -4,8 +4,10 @@
 //! record disagrees with the routes ([`record_problems`]) and `jadpo api
 //! update` rewrites it, so every change to the API is a diff of one file.
 //!
-//! An API that requires an `Idempotency-Key` on its writes says so at the
-//! top (`idempotency: required`), since every write must then send one.
+//! An API says at the top how clients sign in to it (`authentication:
+//! browser_session, api_token`, chunk 4.9) and whether its writes must
+//! send an `Idempotency-Key` (`idempotency: required`); a route for one
+//! kind of caller says which (`caller: user`).
 //!
 //! The record is the wire contract, so a field shows what a client sends
 //! or reads (`Text { max_length: 200 }`), not the name of the type behind
@@ -82,13 +84,28 @@ pub fn record_bodies(db: &dyn Db, project: Project) -> BTreeMap<String, String> 
     by_api
         .into_iter()
         .map(|(api, routes)| {
-            let mut body = write(&wire, &lookup, routes);
+            // How clients sign in: switching a bearer-only API to cookies
+            // changes what a browser's requests carry (area 8).
+            let methods = super::apis::accepted_methods(db, project, &api);
+            // The exchange the runtime answers where services sign in.
+            let exchange = crate::identity::identity(db, project).exchanges()
+                && methods.contains(&jadpo_std::AuthenticationMethod::ServiceKey);
+            let mut body = write(&wire, &lookup, routes, exchange);
+            let mut head = String::new();
+            if !methods.is_empty() {
+                let names: Vec<&str> = methods.iter().map(|method| method.name()).collect();
+                head.push_str(&format!("authentication: {}\n", names.join(", ")));
+            }
             // Requiring a key changes what every write must send.
             if apis
                 .get(&api)
                 .is_some_and(|api| api.idempotency == jadpo_std::Idempotency::Required)
             {
-                body.insert_str(0, "idempotency: required\n\n");
+                head.push_str("idempotency: required\n");
+            }
+            if !head.is_empty() {
+                head.push('\n');
+                body.insert_str(0, &head);
             }
             (api, body)
         })
@@ -102,16 +119,47 @@ fn method_order(route: &RouteModel) -> usize {
         .unwrap_or(0)
 }
 
+/// The generated `POST /auth/exchange` (area 8, "Ways to sign in"), as
+/// its record lists it: the runtime's, for services.
+fn exchange_entry() -> String {
+    format!(
+        "POST /{}\n    generated: exchange\n    caller: service\n    output: {}\n    status: 200\n\n",
+        jadpo_std::http::EXCHANGE_PATH.join("/"),
+        jadpo_std::http::EXCHANGED_TOKEN
+    )
+}
+
+/// The record's section for what the exchange answers with.
+fn exchanged_section() -> String {
+    format!(
+        "output {}\n    token: ServiceToken\n    expires_at: Instant\n",
+        jadpo_std::http::EXCHANGED_TOKEN
+    )
+}
+
 fn write(
     wire: &Wire<'_>,
     lookup: &Lookup<'_>,
     mut routes: Vec<(&GroupModel, &RouteModel)>,
+    exchange: bool,
 ) -> String {
     routes.sort_by_key(|(_, route)| (route.path(), method_order(route)));
     let mut refs: BTreeSet<Key> = BTreeSet::new();
     let mut failures: BTreeSet<Key> = BTreeSet::new();
     let mut out = String::new();
+    let exchange_at = (
+        format!("/{}", jadpo_std::http::EXCHANGE_PATH.join("/")),
+        jadpo_std::HttpMethod::ALL
+            .iter()
+            .position(|m| *m == jadpo_std::HttpMethod::Post)
+            .unwrap_or(0),
+    );
+    let mut exchange_due = exchange;
     for (_, route) in &routes {
+        if exchange_due && (route.path(), method_order(route)) > exchange_at {
+            out.push_str(&exchange_entry());
+            exchange_due = false;
+        }
         let path: String = route
             .segments
             .iter()
@@ -135,6 +183,10 @@ fn write(
         // reviewer must see (area 8).
         if !route.authentication.needs_caller() {
             out.push_str("    authentication: none\n");
+        }
+        // A route for one kind of caller refuses the other.
+        if let Some(kind) = route.caller {
+            out.push_str(&format!("    caller: {}\n", kind.name()));
         }
         if let Some(input) = &route.input {
             if let Some(key) = declaration_key(lookup, input) {
@@ -180,6 +232,9 @@ fn write(
             out.push_str(&format!("    fails: {}\n", shown.join(", ")));
         }
         out.push('\n');
+    }
+    if exchange_due {
+        out.push_str(&exchange_entry());
     }
     // Failures' client fields name types too.
     let mut failure_text = String::new();
@@ -230,6 +285,10 @@ fn write(
     while let Some(key) = refs.iter().find(|key| !done.contains(*key)).cloned() {
         done.insert(key.clone());
         let name = wire.name(&key);
+        if let Some(issued) = super::wire::issued_of(&key) {
+            sections.insert(name, super::wire::issued_section(issued));
+            continue;
+        }
         let Some(node) = wire.node(&key) else {
             continue;
         };
@@ -294,6 +353,12 @@ fn write(
             }
         }
         sections.insert(name, text);
+    }
+    if exchange {
+        sections.insert(
+            jadpo_std::http::EXCHANGED_TOKEN.to_string(),
+            exchanged_section(),
+        );
     }
     for text in sections.values() {
         out.push_str(text);

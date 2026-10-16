@@ -1,0 +1,9 @@
+use bakery/entities { Cake, CakeNotFound }
+use bakery/types { CakeView }
+
+/// One cake, on the menu or not, for an old order's link.
+query menu_cake(cake_id: Cake.id) fails CakeNotFound -> CakeView {
+    from: Cake
+    where: Cake.id == cake_id
+    missing: CakeNotFound
+}

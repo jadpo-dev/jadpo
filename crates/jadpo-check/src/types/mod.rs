@@ -11,6 +11,7 @@
 
 mod body;
 pub(crate) mod decl;
+mod facts;
 pub(crate) mod literal;
 mod loading;
 mod recursion;
@@ -27,11 +28,15 @@ pub use body::{
     callables_of, failure_set, failure_sets, typed_body,
 };
 pub use decl::type_problems;
+pub use facts::{BodyFacts, Fact, Write, body_facts, fact_of, facts_at, named, resolve};
 pub use loading::{Decided, Loading, Loads, file_loading, has_isolation, isolation};
 pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
 pub use rules::{CONSTRAINTS, Const, FIELD_SETTINGS, Num, Rules};
 pub use shape::{COPY_LINES, FieldsBase, Shape, looks_like_type, type_shapes};
 pub use signatures::{Callables, Sig, callables};
-pub use stores::{Reach as StoreReach, store_problems, store_reaches, written_stores};
+pub use stores::{
+    Reach as StoreReach, store_problems, store_reaches, unkept_responses, used_stores,
+    written_stores,
+};
 pub use table::{Def, FieldDef, TypeTable, TypeView, VariantDef, type_table};
 pub use ty::{BASES, Prim, Ty, TypeRef, container_arity};

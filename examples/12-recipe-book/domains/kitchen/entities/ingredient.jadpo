@@ -1,0 +1,21 @@
+// One list of ingredients every bakery shares, so it belongs to no
+// tenant. Anyone signed in may read it; only the recipe book's editors,
+// a role held across the whole application, change it.
+
+use kitchen/types { Allergen, IngredientName, PlatformRole }
+
+/// An ingredient, with the allergen its label names.
+entity Ingredient {
+    id: Uuid
+    name: IngredientName {
+        unique: true
+    }
+    allergen: Allergen?
+
+    policy: {
+        create: [PlatformRole.editor]
+        read: [Access.authenticated]
+        update: [PlatformRole.editor]
+        tenant: Tenancy.shared
+    }
+}

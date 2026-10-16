@@ -8,43 +8,56 @@
 //! body and `x-request-id`.
 //!
 //! The runtime answers `HEAD` (as `GET`, without the body) and `OPTIONS`
-//! (with `Allow`) itself, and every route has the default rate limits
-//! ([`crate::RateLimits`]). Its request guarantees (chunk 4.2):
+//! (with `Allow`) itself, and every route has the default rate limits,
+//! which the host counts ([`crate::Host::rate_limit`]). A deployable, and
+//! `jadpo dev`, hand each request to [`serve_request`], which makes its
+//! context and request id and answers it; a route test's goes through
+//! [`route_test`]. Its request guarantees (chunk 4.2):
 //!
 //! - a body over 1 MB is refused with 413 `request_too_large`;
 //! - every route has a deadline: when it passes, whatever is running is
 //!   dropped, its transaction with it, so nothing commits, and the answer
-//!   is 504 `deadline_exceeded`. An action's commit happens after its body,
-//!   outside the deadline ([`crate::Ctx::hold`]), so a request that
-//!   committed is never answered 504;
+//!   is 504 `deadline_exceeded`. Work that never waits checks it as it runs
+//!   ([`crate::Ctx::out_of_time`]), and a body that finishes past it is
+//!   answered the same way (chunk 4.9). An action's commit happens after
+//!   its body, outside the deadline ([`crate::Ctx::hold`]), so a request
+//!   that committed is never answered 504; a concurrent change found as it
+//!   commits runs the action again;
+//! - a header the runtime can't read as printable ASCII is 400, a body is
+//!   read only as JSON, and a query string or body a route doesn't read is
+//!   422 `invalid_input` (chunk 4.9);
 //! - `GET /health/live` and `GET /health/ready` ([`health`]);
 //! - `Idempotency-Key` on every route but a `GET` ([`idempotency`]).
 //!
 //! Sign-in (chunk 4.3, [`identity`]): a route that needs a signed-in
 //! caller authenticates the request before its input is read, and what it
 //! runs gets the caller; a signed-in caller's requests count against its
-//! own rate limit and keep their idempotency keys apart. Policy comes with
-//! 4.4.
+//! own rate limit and keep their idempotency keys apart. Policy (chunk
+//! 4.4) is compiled into the statements what a route runs sends, and an
+//! action's gate is checked by the action boundary.
 
 #[cfg(test)]
 mod guarantees;
 mod health;
 pub mod idempotency;
 pub mod identity;
+pub mod signed;
 
 use std::cell::Cell;
 use std::collections::BTreeMap;
 
 pub use jadpo_std::http::BODY_LIMIT;
-use jadpo_std::http::{ArgRoot, Codec, CodecId, RoutePlan, RouteTable, Run, Segment};
+use jadpo_std::http::{
+    ADDRESS_LIMIT, ArgRoot, CALLER_LIMIT, Codec, CodecId, RoutePlan, RouteTable, Run, Segment,
+};
 use jadpo_std::types::FailurePlan;
 use jadpo_std::{HttpMethod, Idempotency};
 use jadpo_value::Value;
 use jadpo_value::json::{Codecs, Path, Problem, write_string};
 
 use crate::race::{First, race};
-use crate::ratelimit::{Allowed, RateLimits};
-use crate::{Ctx, Executor, Failure, Frame, Outcome, StoreOp, Stored};
+use crate::ratelimit::Allowed;
+use crate::{Clock, Ctx, Env, Executor, Failure, Fault, Frame, Host, Outcome, StoreOp, Stored};
 use idempotency::{Claim, Guard};
 
 /// A request, as a host hands it over.
@@ -112,12 +125,26 @@ pub struct App<'a> {
     pub table: &'a RouteTable,
     pub codecs: Codecs<'a>,
     pub failures: &'a [FailurePlan],
+    /// What signing in reads from the settings the application started
+    /// with: each method's signing key and the browser session's origin
+    /// (area 8; area 10, "Signing keys").
+    pub auth: &'a signed::AuthSettings,
 }
 
 /// The failures the runtime answers with itself (area 7, "How failures
 /// reach the client").
 const INVALID_REQUEST: (u16, &str, &str) = (400, "invalid_request", "Request could not be read.");
 const INVALID_INPUT: (u16, &str, &str) = (422, "invalid_input", "Request input is invalid.");
+const HEADER_UNREADABLE: (u16, &str, &str) = (
+    400,
+    "invalid_request",
+    "A header's value isn't printable ASCII.",
+);
+const BODY_NOT_JSON: (u16, &str, &str) = (
+    400,
+    "invalid_request",
+    "A request body is JSON, sent with `Content-Type: application/json`.",
+);
 const ROUTE_NOT_FOUND: (u16, &str, &str) =
     (404, "route_not_found", "No route matches this request.");
 pub(crate) const METHOD_NOT_ALLOWED: (u16, &str, &str) = (
@@ -200,18 +227,62 @@ pub fn request_id(ctx: &Ctx<'_>, sequence: u64) -> String {
     format!("req_{n:016x}")
 }
 
+/// What the HTTP component keeps between the requests one worker answers
+/// (natively a worker thread, on Workers an isolate): how many it has
+/// answered, which numbers request ids on a host with no randomness, and
+/// its last readiness check, reused for a second.
+#[derive(Debug, Default)]
+pub struct Worker {
+    answered: Cell<u64>,
+    ready: health::Readiness,
+}
+
+/// Answers `request` as a deployable does: in a context of its own on
+/// `host`, under the host's clock and no seed, with a new request id,
+/// running what a route runs with `executor`. `jadpo dev` and every
+/// deployable call this, so everything around a request but reading and
+/// writing its bytes is the runtime's. The response carries its request id
+/// in `x-request-id`, and the fault behind a 500 for the host's log.
+pub async fn serve_request(
+    app: &App<'_>,
+    executor: &dyn Executor,
+    host: &dyn Host,
+    worker: &Worker,
+    request: &Request,
+) -> Response {
+    let env = Env {
+        seed: None,
+        clock: Clock::fixed(host.now_ms().unwrap_or(0)),
+    };
+    let mut ctx = Ctx::new(executor.places(), host, env);
+    let answered = worker.answered.get().wrapping_add(1);
+    worker.answered.set(answered);
+    let id = request_id(&ctx, answered);
+    answer_request(app, executor, &mut ctx, request, &id, Some(&worker.ready)).await
+}
+
 /// Answers `request` with `app`'s routes, running what a route runs with
-/// `executor` against `ctx`, whose stack is empty. `limits` counts the
-/// request against its caller's allowance when given.
+/// `executor` against `ctx`, whose stack is empty: what a route test's
+/// request goes through, in the test's own context.
 pub async fn handle(
     app: &App<'_>,
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
     request: &Request,
     request_id: &str,
-    limits: Option<&RateLimits>,
 ) -> Response {
-    let mut response = respond(app, executor, ctx, request, request_id, limits).await;
+    answer_request(app, executor, ctx, request, request_id, None).await
+}
+
+async fn answer_request(
+    app: &App<'_>,
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    request: &Request,
+    request_id: &str,
+    ready: Option<&health::Readiness>,
+) -> Response {
+    let mut response = respond(app, executor, ctx, request, request_id, ready).await;
     response
         .headers
         .push(("x-request-id".to_string(), request_id.to_string()));
@@ -227,11 +298,12 @@ async fn respond(
     ctx: &mut Ctx<'_>,
     request: &Request,
     request_id: &str,
-    limits: Option<&RateLimits>,
+    ready: Option<&health::Readiness>,
 ) -> Response {
     let segments = split_path(&request.path);
     if let Some(segments) = &segments
-        && let Some(response) = health::answer(app.table, ctx, request, request_id, segments).await
+        && let Some(response) =
+            health::answer(app.table, ctx, request, request_id, segments, ready).await
     {
         return response;
     }
@@ -239,13 +311,13 @@ async fn respond(
     // in, or against its address if it isn't; every other request against
     // its address, here.
     let deferred = identity::carries_credential(app.table, request);
-    if !deferred && let Some(response) = by_address(limits, ctx, request, request_id) {
+    if !deferred && let Some(response) = by_address(ctx, request, request_id).await {
         return response;
     }
-    let mut response = route_request(app, executor, ctx, request, request_id, limits).await;
+    let mut response = route_request(app, executor, ctx, request, request_id).await;
     if deferred
         && !response.counted
-        && let Some(limited) = by_address(limits, ctx, request, request_id)
+        && let Some(limited) = by_address(ctx, request, request_id).await
     {
         response = limited;
     }
@@ -253,19 +325,14 @@ async fn respond(
     response
 }
 
-/// 429 when `request`'s address has used its allowance.
-fn by_address(
-    limits: Option<&RateLimits>,
-    ctx: &Ctx<'_>,
-    request: &Request,
-    request_id: &str,
-) -> Option<Response> {
-    let limits = limits?;
+/// 429 when `request`'s address has used its allowance, as the host
+/// counts it.
+async fn by_address(ctx: &Ctx<'_>, request: &Request, request_id: &str) -> Option<Response> {
     let key = format!(
         "address {}",
         request.address.as_deref().unwrap_or("unknown")
     );
-    match limits.allow(&key, ctx.now()) {
+    match ctx.host().rate_limit(&key, ADDRESS_LIMIT, ctx.now()).await {
         Allowed::Yes => None,
         Allowed::No { retry_after } => Some(rate_limited(request_id, retry_after)),
     }
@@ -286,12 +353,14 @@ async fn route_request(
     ctx: &mut Ctx<'_>,
     request: &Request,
     request_id: &str,
-    limits: Option<&RateLimits>,
 ) -> Response {
     let segments = split_path(&request.path);
     let Some(segments) = segments else {
         return runtime_failure(INVALID_REQUEST, request_id, None);
     };
+    if !headers_readable(request) {
+        return runtime_failure(HEADER_UNREADABLE, request_id, None);
+    }
     if request.too_large || request.body.len() > BODY_LIMIT {
         return runtime_failure(REQUEST_TOO_LARGE, request_id, None);
     }
@@ -337,12 +406,41 @@ async fn route_request(
         response.headers.push(("allow".to_string(), allow));
         return response;
     };
-    let mut response = run_route(
-        app, executor, ctx, request, request_id, route, &segments, limits,
-    )
-    .await;
+    // Work that never waits checks the deadline as it runs.
+    ctx.set_deadline(Some(u64::from(route.deadline_ms)));
+    let mut response = run_route(app, executor, ctx, request, request_id, route, &segments).await;
+    ctx.set_deadline(None);
     response.route = Some(route.label());
     response
+}
+
+/// Whether every header's value is printable ASCII, spaces and tabs
+/// included: a value a host couldn't read as such reaches the runtime as
+/// it came, and is refused rather than dropped, so a credential or an
+/// `Idempotency-Key` is never silently left out.
+fn headers_readable(request: &Request) -> bool {
+    request.headers.iter().all(|(_, value)| {
+        value
+            .bytes()
+            .all(|byte| byte == b'\t' || (b' '..=b'~').contains(&byte))
+    })
+}
+
+/// Whether the request says its body is JSON: `application/json`, or
+/// another `application/…+json` type, with any parameters. Only such a
+/// body is read, so a form a browser posts across sites never reaches an
+/// action.
+fn json_content(request: &Request) -> bool {
+    request.header("content-type").is_some_and(|value| {
+        let essence = value
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        essence == "application/json"
+            || (essence.starts_with("application/") && essence.ends_with("+json"))
+    })
 }
 
 /// Each `1` bit a fixed segment, the first segment highest, so the route
@@ -413,7 +511,6 @@ fn query_values(query: &str) -> Option<BTreeMap<String, Vec<String>>> {
     Some(out)
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn run_route(
     app: &App<'_>,
     executor: &dyn Executor,
@@ -422,19 +519,24 @@ async fn run_route(
     request_id: &str,
     route: &RoutePlan,
     segments: &[String],
-    limits: Option<&RateLimits>,
 ) -> Response {
     // The deadline counts from here; the timer is made at once.
     let host = ctx.host();
     let mut deadline = host.sleep(u64::from(route.deadline_ms));
     // Who is calling, before the input is read or anything runs (area 8).
+    let mut reissued = None;
+    let mut exchanged = None;
     let caller = if route.authentication.needs_caller() {
-        let checked = identity::authenticate(app.table, ctx, request, route);
+        let checked = identity::authenticate(app, ctx, request, route);
         match race(checked, &mut deadline).await {
-            First::Left(Ok(caller)) => Some(caller),
+            First::Left(Ok(admitted)) => {
+                reissued = admitted.reissued;
+                exchanged = admitted.exchanged;
+                Some(admitted.caller)
+            }
             First::Left(Err(refused)) => {
                 if refused.credential
-                    && let Some(limited) = by_address(limits, ctx, request, request_id)
+                    && let Some(limited) = by_address(ctx, request, request_id).await
                 {
                     return limited;
                 }
@@ -445,10 +547,22 @@ async fn run_route(
             First::Right(()) => return runtime_failure(DEADLINE_EXCEEDED, request_id, None),
         }
     } else {
+        // A route anyone may call runs as no one, so a request with a
+        // credential counts against its address before it runs, as every
+        // other does.
+        if identity::carries_credential(app.table, request)
+            && let Some(limited) = by_address(ctx, request, request_id).await
+        {
+            return limited;
+        }
         None
     };
-    if let (Some(caller), Some(limits)) = (&caller, limits)
-        && let Allowed::No { retry_after } = limits.allow_caller(&caller.key, ctx.now())
+    let counted = caller.is_none() && identity::carries_credential(app.table, request);
+    if let Some(caller) = &caller
+        && let Allowed::No { retry_after } = ctx
+            .host()
+            .rate_limit(&caller.key, CALLER_LIMIT, ctx.now())
+            .await
     {
         return rate_limited(request_id, retry_after);
     }
@@ -456,13 +570,54 @@ async fn run_route(
         || idempotency::ANONYMOUS.to_string(),
         |caller| caller.key.clone(),
     );
-    let mut response = run_with_caller(
-        app, executor, ctx, request, request_id, route, segments, deadline, caller, scope,
-    )
-    .await;
-    response.counted = response.counted || ctx.caller().is_some();
+    let mut response = match exchanged {
+        // The exchange runs nothing: the key's read signed its token.
+        Some(exchanged) => exchange(request, request_id, exchanged),
+        None => {
+            run_with_caller(
+                app, executor, ctx, request, request_id, route, segments, deadline, caller, scope,
+                reissued,
+            )
+            .await
+        }
+    };
+    response.counted = response.counted || counted || ctx.caller().is_some();
     ctx.set_caller(None);
     response
+}
+
+/// `POST /auth/exchange`'s answer (area 8, "Ways to sign in"): the token
+/// the key signed in with is traded for, and when it expires. Like any
+/// route that takes no input, it refuses a query string or a body.
+fn exchange(request: &Request, request_id: &str, (token, expires): (String, i64)) -> Response {
+    if request
+        .query
+        .as_deref()
+        .is_some_and(|query| !query.is_empty())
+        || !request.body.iter().all(u8::is_ascii_whitespace)
+    {
+        return invalid_input(
+            request_id,
+            &[Problem {
+                field: String::new(),
+                rule: "unknown_field".to_string(),
+            }],
+        );
+    }
+    let mut body = String::from("{\"token\":");
+    write_string(&token, &mut body);
+    body.push_str(",\"expires_at\":");
+    write_string(&jadpo_std::format_instant(expires), &mut body);
+    body.push('}');
+    Response {
+        status: 200,
+        headers: vec![
+            ("content-type".to_string(), "application/json".to_string()),
+            ("cache-control".to_string(), "no-store".to_string()),
+        ],
+        body: body.into_bytes(),
+        ..Response::default()
+    }
 }
 
 /// The rest of a route's run, once its caller is known: `deadline` is the
@@ -479,6 +634,7 @@ async fn run_with_caller(
     deadline: crate::LocalFuture<'_, ()>,
     caller: Option<crate::Caller>,
     scope: String,
+    reissued: Option<identity::Reissued>,
 ) -> Response {
     let caller_value = caller.as_ref().map(|caller| caller.value.clone());
     ctx.set_caller(caller);
@@ -490,6 +646,27 @@ async fn run_with_caller(
         if let Segment::Param { name, codec } = segment {
             params.push(codecs.read_text(*codec, written, &Path::field(name), &mut problems));
         }
+    }
+    // A query string or a body the route doesn't read is refused, as an
+    // unknown field is: the query's keys each, the body as a whole.
+    let reads_query = route.input.as_ref().is_some_and(|plan| plan.query);
+    let reads_body = route.input.as_ref().is_some_and(|plan| !plan.query);
+    if !reads_query && let Some(query) = request.query.as_deref() {
+        let Some(values) = query_values(query) else {
+            return runtime_failure(INVALID_REQUEST, request_id, None);
+        };
+        for key in values.into_keys() {
+            problems.push(Problem {
+                field: key,
+                rule: "unknown_field".to_string(),
+            });
+        }
+    }
+    if !reads_body && !request.body.iter().all(u8::is_ascii_whitespace) {
+        problems.push(Problem {
+            field: String::new(),
+            rule: "unknown_field".to_string(),
+        });
     }
     // The input.
     let input = match &route.input {
@@ -520,6 +697,9 @@ async fn run_with_caller(
                     object.insert(key, value);
                 }
             } else {
+                if !json_content(request) {
+                    return runtime_failure(BODY_NOT_JSON, request_id, None);
+                }
                 if request.body.iter().all(u8::is_ascii_whitespace) {
                     return runtime_failure(INVALID_REQUEST, request_id, None);
                 }
@@ -603,95 +783,137 @@ async fn run_with_caller(
         }
     }
     let claimed = Cell::new(false);
-    let work = async {
-        if let Some(guard) = &guard {
-            match idempotency::claim(ctx, guard, route.deadline_ms).await {
-                Claim::Claimed => claimed.set(true),
-                Claim::Replay(response) => return Err(response),
-                Claim::Reused => return Err(runtime_failure(KEY_REUSED, request_id, None)),
-                Claim::InFlight => return Err(runtime_failure(KEY_IN_FLIGHT, request_id, None)),
-                Claim::Unavailable => return Err(runtime_failure(UNAVAILABLE, request_id, None)),
-            }
-        }
-        Ok(match &route.run {
-            Run::Action(callable) => {
-                // Its commit waits until the deadline can't interrupt it.
-                ctx.hold();
-                executor.run(ctx, *callable, args).await
-            }
-            Run::Query(plan) => {
-                match crate::store(ctx, StoreOp::Read(plan), app.failures, &args, Frame::ENTRY)
-                    .await
-                {
-                    Stored::Value(value) => Outcome::Value(value),
-                    Stored::Failed(failure) => Outcome::Failed(failure),
-                    Stored::Conflict { cause, .. } => Outcome::Failed(cause),
-                    Stored::Fault(fault) => Outcome::Fault(fault),
+    let mut deadline = deadline;
+    let mut attempt = 1;
+    loop {
+        let first = attempt == 1;
+        let work = async {
+            if first && let Some(guard) = &guard {
+                match idempotency::claim(ctx, guard, route.deadline_ms).await {
+                    Claim::Claimed => claimed.set(true),
+                    Claim::Replay(response) => return Err(response),
+                    Claim::Reused => return Err(runtime_failure(KEY_REUSED, request_id, None)),
+                    Claim::InFlight => {
+                        return Err(runtime_failure(KEY_IN_FLIGHT, request_id, None));
+                    }
+                    Claim::Unavailable => {
+                        return Err(runtime_failure(UNAVAILABLE, request_id, None));
+                    }
                 }
             }
-        })
-    };
-    let outcome = match race(work, deadline).await {
-        First::Left(Ok(outcome)) => outcome,
-        First::Left(Err(response)) => return response,
-        First::Right(()) => {
-            // Whatever was running is dropped, its transaction with it.
-            ctx.abandon();
-            if claimed.get()
-                && let Some(guard) = &guard
-            {
-                idempotency::release(ctx, guard).await;
-            }
-            return runtime_failure(DEADLINE_EXCEEDED, request_id, None);
-        }
-    };
-    let held = ctx.take_held();
-    // A session the action started or ended sets its cookies once it
-    // commits; such a response isn't kept for a repeat, so a retry signs
-    // in again rather than getting an answer without its cookies.
-    let session = held.as_ref().and_then(|held| held.session.clone());
-    // Nor is one that carries an API token or a service key, which is
-    // shown once and kept only as its verifier.
-    let issued = held.as_ref().is_some_and(|held| held.issued);
-    // Successes and the failures the action returns are kept for a
-    // repeat; `unavailable` and faults are not, so a retry runs again.
-    let storable = session.is_none()
-        && !issued
-        && match &outcome {
-            Outcome::Value(_) => true,
-            Outcome::Failed(failure) => failure.kind.as_deref() != Some("unavailable"),
-            Outcome::Fault(_) | Outcome::Assertion(_) => false,
+            Ok(match &route.run {
+                Run::Action(callable) => {
+                    // Its commit waits until the deadline can't interrupt it.
+                    ctx.hold();
+                    executor.run(ctx, *callable, args.clone()).await
+                }
+                Run::Listing { keys } => {
+                    let holder = args.first().cloned().unwrap_or(Value::None);
+                    match identity::list(ctx, app.table.identity.as_ref(), *keys, &holder).await {
+                        Stored::Value(value) => Outcome::Value(value),
+                        Stored::Failed(failure) => Outcome::Failed(failure),
+                        Stored::Conflict { cause, .. } => Outcome::Failed(cause),
+                        Stored::Fault(fault) => Outcome::Fault(fault),
+                    }
+                }
+                // Answered once signed in, without running anything.
+                Run::Exchange => Outcome::Fault(ctx.fault(
+                    crate::FaultKind::Defect("an exchange with no key to trade".into()),
+                    Frame::ENTRY,
+                )),
+                Run::Query(plan) => {
+                    match crate::store(ctx, StoreOp::Read(plan), app.failures, &args, Frame::ENTRY)
+                        .await
+                    {
+                        Stored::Value(value) => Outcome::Value(value),
+                        Stored::Failed(failure) => Outcome::Failed(failure),
+                        Stored::Conflict { cause, .. } => Outcome::Failed(cause),
+                        Stored::Fault(fault) => Outcome::Fault(fault),
+                    }
+                }
+            })
         };
-    let mut response = answer(app, route, request_id, outcome);
-    let guard = guard.filter(|_| claimed.get());
-    let keep = guard.as_ref().filter(|_| storable);
-    let params = keep.map(|guard| idempotency::store_params(guard, &response));
-    let then = match (keep, &params) {
-        (Some(guard), Some(params)) => {
-            Some((guard.store.as_str(), idempotency::STORE, params.as_slice()))
+        let outcome = match race(work, &mut deadline).await {
+            // A body that ran past the deadline without waiting, stopped
+            // by its executor or not, is answered as one that waited past it.
+            First::Left(Ok(outcome)) if !ctx.out_of_time() => outcome,
+            First::Left(Err(response)) => return response,
+            First::Left(Ok(_)) | First::Right(()) => {
+                // Whatever was running is dropped, its transaction with it.
+                ctx.abandon();
+                if claimed.get()
+                    && let Some(guard) = &guard
+                {
+                    idempotency::release(ctx, guard).await;
+                }
+                return runtime_failure(DEADLINE_EXCEEDED, request_id, None);
+            }
+        };
+        let held = ctx.take_held();
+        // A session the action started or ended sets its cookies once it
+        // commits; such a response isn't kept for a repeat, so a retry signs
+        // in again rather than getting an answer without its cookies.
+        let session = held.as_ref().and_then(|held| held.session.clone());
+        // Nor is one that carries an API token or a service key, which is
+        // shown once and kept only as its verifier.
+        let issued = held.as_ref().is_some_and(|held| held.issued);
+        // Successes and the failures the action returns are kept for a
+        // repeat; `unavailable` and faults are not, so a retry runs again.
+        let storable = session.is_none()
+            && !issued
+            && match &outcome {
+                Outcome::Value(_) => true,
+                Outcome::Failed(failure) => failure.kind.as_deref() != Some("unavailable"),
+                Outcome::Fault(_) | Outcome::Assertion(_) => false,
+            };
+        let mut response = answer(app, route, request_id, outcome);
+        let guard = guard.as_ref().filter(|_| claimed.get());
+        let keep = guard.filter(|_| storable);
+        let params = keep.map(|guard| idempotency::store_params(guard, &response));
+        let then = match (keep, &params) {
+            (Some(guard), Some(params)) => {
+                Some((guard.store.as_str(), idempotency::STORE, params.as_slice()))
+            }
+            _ => None,
+        };
+        let committed = match held {
+            Some(held) => crate::commit_held(ctx, held, then).await,
+            None if then.is_some() => crate::commit_held(ctx, crate::Held::default(), then).await,
+            None => Ok(()),
+        };
+        match committed {
+            Ok(()) => {}
+            // Another transaction changed what the action read, found as
+            // it commits: the whole action runs again, as the boundary
+            // reruns one (area 6), within the same budget and deadline.
+            Err(crate::StoreError::ConcurrentChange)
+                if attempt < crate::RERUN_ATTEMPTS && matches!(route.run, Run::Action(_)) =>
+            {
+                attempt += 1;
+                continue;
+            }
+            Err(_) => {
+                if let Some(guard) = guard {
+                    idempotency::release(ctx, guard).await;
+                }
+                return runtime_failure(UNAVAILABLE, request_id, None);
+            }
         }
-        _ => None,
-    };
-    let committed = match held {
-        Some(held) => crate::commit_held(ctx, held, then).await,
-        None if then.is_some() => crate::commit_held(ctx, crate::Held::default(), then).await,
-        None => Ok(()),
-    };
-    if committed.is_err() {
-        if let Some(guard) = &guard {
+        if let (Some(effect), Some(plan)) = (&session, &app.table.identity) {
+            response.headers.extend(identity::set_cookies(plan, effect));
+        }
+        // A credential signing in reissued goes back with the response,
+        // unless what ran started or ended the session it came with.
+        if let (None, Some(reissued), Some(plan)) = (&session, &reissued, &app.table.identity) {
+            response.headers.extend(identity::renewal(plan, reissued));
+        }
+        if keep.is_none()
+            && let Some(guard) = guard
+        {
             idempotency::release(ctx, guard).await;
         }
-        return runtime_failure(UNAVAILABLE, request_id, None);
+        return response;
     }
-    if let (Some(effect), Some(plan)) = (&session, &app.table.identity) {
-        response.headers.extend(identity::set_cookies(plan, effect));
-    }
-    if keep.is_none()
-        && let Some(guard) = &guard
-    {
-        idempotency::release(ctx, guard).await;
-    }
-    response
 }
 
 /// The response `outcome` gives: the output with the route's status, or
@@ -714,6 +936,15 @@ fn answer(app: &App<'_>, route: &RoutePlan, request_id: &str, outcome: Outcome) 
                 ..Response::default()
             },
         },
+        // A page's cursor that isn't one of this query's is bad input in
+        // the field it came in (area 6).
+        Outcome::Failed(failure) if failure.key == crate::invalid_cursor().key => invalid_input(
+            request_id,
+            &[Problem {
+                field: cursor_field(route),
+                rule: "format".to_string(),
+            }],
+        ),
         Outcome::Failed(failure) => declared_failure(app, &failure, request_id),
         Outcome::Fault(fault) => {
             let mut response = runtime_failure(INTERNAL_FAULT, request_id, None);
@@ -722,6 +953,40 @@ fn answer(app: &App<'_>, route: &RoutePlan, request_id: &str, outcome: Outcome) 
         }
         Outcome::Assertion(_) => runtime_failure(INTERNAL_FAULT, request_id, None),
     }
+}
+
+/// The field a route's page cursor comes in, by its path in the input
+/// (`after`, `filter.after`) or the placeholder's name; empty when it
+/// doesn't come straight from the request.
+fn cursor_field(route: &RoutePlan) -> String {
+    let Run::Query(plan) = &route.run else {
+        return String::new();
+    };
+    let Some(jadpo_std::read::Source::Arg { index, path }) =
+        plan.page.as_ref().map(|page| &page.after)
+    else {
+        return String::new();
+    };
+    let Some(arg) = route.args.get(*index as usize) else {
+        return String::new();
+    };
+    let mut parts: Vec<String> = match &arg.root {
+        ArgRoot::Input => Vec::new(),
+        ArgRoot::Param(at) => route
+            .segments
+            .iter()
+            .filter_map(|segment| match segment {
+                Segment::Param { name, .. } => Some(name.clone()),
+                Segment::Fixed(_) => None,
+            })
+            .nth(*at as usize)
+            .into_iter()
+            .collect(),
+        ArgRoot::Caller => return String::new(),
+    };
+    parts.extend(arg.path.iter().cloned());
+    parts.extend(path.iter().cloned());
+    parts.join(".")
 }
 
 /// The names of an input's fields whose type is a list or a set, which
@@ -842,12 +1107,79 @@ fn declared_failure(app: &App<'_>, failure: &Failure, request_id: &str) -> Respo
 
 // --- route tests ---------------------------------------------------------------
 
-/// The request a route test sends (area 13: "through the real generated
-/// boundary without a network"): route `route`'s method and path, its
+/// A route test's request (area 13: "through the real generated boundary
+/// without a network"), answered by the HTTP component in the test's own
+/// context and read back as a `Response` value: route `route`'s request
+/// built from `args` ([`test_request`]), with `key` as its
+/// `Idempotency-Key` and signed in as `caller` when given. The fault
+/// behind a 500 ends the test with that fault, as one anywhere else in it
+/// would: a 500 is never what a test means to check.
+#[allow(clippy::too_many_arguments)]
+pub async fn route_test(
+    app: &App<'_>,
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    route: u32,
+    args: &[Value],
+    key: Option<&Value>,
+    caller: Option<&Value>,
+) -> Result<Value, Box<Fault>> {
+    let Some(request) = test_request(ctx, app, route, args, key, caller).await? else {
+        return Ok(Value::None);
+    };
+    let id = request_id(ctx, u64::from(ctx.actions()));
+    let mut response = handle(app, executor, ctx, &request, &id).await;
+    if let Some(fault) = response.fault.take() {
+        return Err(fault);
+    }
+    Ok(response_value(app, route, &response))
+}
+
+/// The request a route test sends: route `route`'s method and path, its
 /// placeholders written from `args` (in the route's order), then its input,
 /// the last of `args`, as the query string or the JSON body, its header
-/// fields as headers. `None` when `route` isn't in the table.
-pub fn test_request(app: &App<'_>, route: u32, args: &[Value]) -> Option<Request> {
+/// fields as headers. Every request but a `GET` sends an `Idempotency-Key`,
+/// as a real client would: `key`, the one the test gives, or a fresh one
+/// from the test's seed (chunk 4.7). With `caller` (`as:`), it signs in
+/// through the application's real authentication
+/// ([`identity::test_credentials`]). `None` when `route` isn't in the
+/// table.
+pub async fn test_request(
+    ctx: &mut Ctx<'_>,
+    app: &App<'_>,
+    route: u32,
+    args: &[Value],
+    key: Option<&Value>,
+    caller: Option<&Value>,
+) -> Result<Option<Request>, Box<Fault>> {
+    let Some(mut request) = written_request(app, route, args) else {
+        return Ok(None);
+    };
+    let writes = app
+        .table
+        .routes
+        .get(route as usize)
+        .is_some_and(|plan| plan.method != HttpMethod::Get);
+    if writes && request.header(idempotency::HEADER).is_none() {
+        let key = match key {
+            Some(Value::Text(text)) => Some(text.to_string()),
+            Some(_) => None,
+            None => ctx.new_id().map(|id| crate::uuid_text(&id)),
+        };
+        if let Some(key) = key {
+            request.headers.push(("Idempotency-Key".to_string(), key));
+        }
+    }
+    if let Some(caller) = caller {
+        let headers = identity::test_credentials(ctx, app.table, app.auth, route, caller).await?;
+        request.headers.extend(headers);
+    }
+    Ok(Some(request))
+}
+
+/// Route `route`'s request as its values write it, before its key and
+/// credentials.
+fn written_request(app: &App<'_>, route: u32, args: &[Value]) -> Option<Request> {
     let plan = app.table.routes.get(route as usize)?;
     let mut values = args.iter();
     let mut path = String::new();

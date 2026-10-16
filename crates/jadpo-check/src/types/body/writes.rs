@@ -722,6 +722,15 @@ impl Body<'_> {
             }
         }
         let mut skip: Vec<&str> = generated.iter().copied().collect();
+        if op == WriteOp::Update {
+            for (name, _) in &given {
+                let Some(field) = tree::name_text(name) else {
+                    continue;
+                };
+                let span = self.span(name);
+                self.fixed_field(entity, &field, span, written, rules);
+            }
+        }
         for (name, _) in &given {
             let Some(field) = tree::name_text(name) else {
                 continue;
@@ -761,6 +770,60 @@ impl Body<'_> {
                 }
             }
         }
+    }
+
+    /// An update changing a field that never changes (`immutable: true`),
+    /// or one policy reaches the caller or the tenant through, which only
+    /// an action listed in root `policy { actions: }` changes (area 9).
+    /// Whether it reported one.
+    fn fixed_field(
+        &mut self,
+        entity: &str,
+        field: &str,
+        span: Span,
+        written: &str,
+        rules: &WriteRules,
+    ) -> bool {
+        let immutable = rules.immutable.iter().any(|f| f == field);
+        let fixed = rules.fixed.iter().any(|f| f == field)
+            && !self
+                .action
+                .as_deref()
+                .is_some_and(|action| crate::policy::listed(self.db, self.project, action));
+        if !immutable && !fixed {
+            return false;
+        }
+        let problem = Diagnostic::new(
+            &rule::TYPE_FIELD_UPDATE_FORBIDDEN,
+            format!("`{written}` changes `{entity}.{field}`, which an update can't change"),
+        )
+        .at(
+            span,
+            if immutable {
+                "immutable"
+            } else {
+                "named in policy"
+            },
+        );
+        self.out.push(if immutable {
+            problem
+                .reason(format!(
+                    "`{entity}.{field}` says `immutable: true`: it keeps the value its record was created with."
+                ))
+                .next(format!("Remove `{field}` from the update, or `immutable: true` from the field"))
+        } else {
+            problem
+                .reason(format!(
+                    "`{entity}`'s policy reaches the caller or the tenant through `{field}`, so changing it hands the record to someone else. That is a named action, listed with who may call it under `actions:` in `policy.jadpo`."
+                ))
+                .next(match &self.action {
+                    Some(action) => format!(
+                        "Remove `{field}` from the update, or list `{action}` under `actions:` in `policy.jadpo`"
+                    ),
+                    None => format!("Remove `{field}` from the update"),
+                })
+        });
+        true
     }
 
     /// A write giving a field only the lifecycle's transitions change
@@ -963,6 +1026,9 @@ impl Body<'_> {
                 );
                 continue;
             };
+            if self.fixed_field(entity, &field.name, span.clone(), written, rules) {
+                continue;
+            }
             if !field.optional {
                 self.out.push(
                     Diagnostic::new(
@@ -1063,6 +1129,9 @@ impl Body<'_> {
                     continue;
                 };
                 let span = self.span(&field_name);
+                if self.fixed_field(entity, &field, span.clone(), &written, rules) {
+                    continue;
+                }
                 if patched.contains(&field) {
                     let input_name = input.map_or("", |(name, _)| name);
                     self.out.push(

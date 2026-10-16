@@ -133,6 +133,14 @@ pub enum Run {
     Action(u32),
     /// A named query's read.
     Query(Box<ReadPlan>),
+    /// `sessions.tokens` (or the service entity's `keys` when `keys`) run
+    /// by a `GET` itself (area 8): the holder's tokens or keys that
+    /// haven't ended, limited by its record's `read` grants (area 9).
+    Listing { keys: bool },
+    /// `POST /auth/exchange`, generated with a revocation delay and
+    /// service keys (area 8, "Ways to sign in"): the service key the
+    /// request signed in with, traded for a short-lived signed token.
+    Exchange,
 }
 
 /// What one argument of the call is made from.
@@ -312,6 +320,22 @@ pub const API_TOKEN_PREFIX: &str = "jadpo_token_";
 /// What a service key starts with, before its 64 hexadecimal digits.
 pub const SERVICE_KEY_PREFIX: &str = "jadpo_key_";
 
+/// What the token `POST /auth/exchange` gives a service starts with,
+/// before its signed part (area 8, chosen in chunk 5.1b).
+pub const SERVICE_TOKEN_PREFIX: &str = "jadpo_service_token_";
+
+/// The path of the generated exchange (area 8, "Ways to sign in").
+pub const EXCHANGE_PATH: [&str; 2] = ["auth", "exchange"];
+
+/// What `POST /auth/exchange` answers with: the token and when it
+/// expires.
+pub const EXCHANGED_TOKEN: &str = "ExchangedToken";
+
+/// The response header a renewed API token comes back in (area 8, chosen
+/// in chunk 5.1b): a client that keeps it signs in without a read until
+/// it expires.
+pub const TOKEN_HEADER: &str = "x-jadpo-token";
+
 /// How long a browser session lasts from when it starts (area 8, chosen
 /// in chunk 4.3): 30 days, after which the caller signs in again.
 pub const SESSION_LIFETIME_MS: i64 = 30 * 24 * 60 * 60 * 1000;
@@ -337,6 +361,39 @@ pub struct IdentityPlan {
     pub api_tokens: bool,
     pub user: Option<PrincipalPlan>,
     pub service: Option<PrincipalPlan>,
+    /// The credential statements the owning record's grants limit (area
+    /// 9, question 8), each `None` when nothing declares what it needs.
+    pub gated: GatedStatements,
+    /// `application { revocation_delay: }`, in milliseconds (area 8, "The
+    /// application and revocation"): with one, sessions, API tokens and
+    /// exchanged service tokens carry a signed part that signs them in
+    /// without a read until it expires, at most this long after the
+    /// record was last read. `None` checks the record on every request.
+    pub revocation_delay_ms: Option<i64>,
+    /// The setting each method's `signing_key:` reads (area 10, "Signing
+    /// keys"), by method.
+    pub signing_keys: Vec<(AuthenticationMethod, String)>,
+    /// The setting a browser session's `origin:` reads: a cookie write's
+    /// `Origin` must be exactly it. `None` takes the server's own, the one
+    /// the `Host` header names.
+    pub origin: Option<String>,
+}
+
+/// Listing, issuing and revoking credentials, limited to holders whose
+/// record the caller may read (to list) or update (to issue or revoke).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GatedStatements {
+    /// `sessions.tokens(user_id)`: `$1` the user, `$2` the time now.
+    pub tokens: Option<crate::policy::Gated>,
+    /// `sessions.revoke_token(token_id)`: `$1` the token.
+    pub revoke_token: Option<crate::policy::Gated>,
+    /// `Service.issue_key(...)`: `$1` the key's `id`, `$2` the service,
+    /// `$3` its verifier, `$4` the time now and `$5` when it expires.
+    pub issue_key: Option<crate::policy::Gated>,
+    /// `Service.keys(service_id)`: `$1` the service, `$2` the time now.
+    pub keys: Option<crate::policy::Gated>,
+    /// `Service.revoke_key(key_id)`: `$1` the key.
+    pub revoke_key: Option<crate::policy::Gated>,
 }
 
 impl IdentityPlan {
@@ -350,6 +407,14 @@ impl IdentityPlan {
             PrincipalKind::User => self.user.as_ref(),
             PrincipalKind::Service => self.service.as_ref(),
         }
+    }
+
+    /// The setting `method`'s `signing_key:` reads.
+    pub fn signing_key(&self, method: AuthenticationMethod) -> Option<&str> {
+        self.signing_keys
+            .iter()
+            .find(|(found, _)| *found == method)
+            .map(|(_, setting)| setting.as_str())
     }
 
     /// The store `jadpo_service_keys` lives in, when service keys are
@@ -377,8 +442,9 @@ pub struct PrincipalPlan {
     /// How a credential finds it, `$1` the credential's verifier and `$2`
     /// the time now: for a user, a session's lookup, one row of the
     /// session's id, its CSRF token's verifier (`NULL` for an API token),
-    /// the record's `id` and subject, and whether its `active:` holds; for
-    /// a service, a key's, the same without the CSRF token's verifier.
+    /// the record's `id` and subject, whether its `active:` holds and when
+    /// the session ends; for a service, a key's, the same without the CSRF
+    /// token's verifier.
     /// None when no live session or key or visible record has it. `None`
     /// when nothing signs this kind of caller in.
     pub lookup: Option<String>,

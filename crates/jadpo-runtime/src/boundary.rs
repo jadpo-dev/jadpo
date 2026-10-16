@@ -16,7 +16,9 @@
 //! fails, what it wrote and emitted is undone and the caller carries on,
 //! since the action is all-or-nothing whoever calls it (area 6).
 
-use crate::{Ctx, Failure, Isolation, LocalFuture, Outcome, StoreError};
+use jadpo_std::policy::Gate;
+
+use crate::{Ctx, Failure, Isolation, LocalFuture, Outcome, StoreError, Stored};
 
 /// How many times a body runs before a concurrent change gives up with
 /// `unavailable` (area 6: "after three attempts within a second, the
@@ -42,6 +44,34 @@ pub trait ActionBody<'p> {
     fn caught(&self) -> bool {
         false
     }
+
+    /// Who may call it, for an action whose line under root `policy {
+    /// actions: }` needs no record (area 9, "Actions"), as its plan says:
+    /// checked as it starts, before its body runs, however it is called.
+    fn gate(&self) -> Option<&Gate> {
+        None
+    }
+
+    /// The site it is called from, in the frame on top of the context:
+    /// where its gate's refusal is raised.
+    fn site(&self) -> u32 {
+        crate::Frame::ENTRY
+    }
+}
+
+/// Runs `body` once, its gate checked first, so a caller the gate refuses
+/// never reaches the body, whichever executor supplies it.
+async fn gated<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
+    if let Some(gate) = body.gate() {
+        match crate::admit(ctx, gate, body.site()).await {
+            Stored::Value(_) => {}
+            Stored::Failed(failure) | Stored::Conflict { cause: failure, .. } => {
+                return Outcome::Failed(failure);
+            }
+            Stored::Fault(fault) => return Outcome::Fault(fault),
+        }
+    }
+    body.run(ctx).await
 }
 
 /// What the runtime raises when an action can't finish because its store
@@ -75,7 +105,7 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
         return if body.caught() {
             caught(ctx, body).await
         } else {
-            body.run(ctx).await
+            gated(ctx, body).await
         };
     }
     ctx.actions += 1;
@@ -87,7 +117,7 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
             isolation,
             ..Default::default()
         });
-        let outcome = body.run(ctx).await;
+        let outcome = gated(ctx, body).await;
         let boundary = ctx.boundary.take().unwrap_or_default();
         let succeeded = matches!(outcome, Outcome::Value(_));
         if hold && succeeded && !boundary.concurrent_change {
@@ -139,41 +169,52 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
     }
 }
 
-/// Commits what a held boundary left open, first running `then` in its
-/// transaction (beginning one in `store` when the body began none and
-/// `then` has something to write), and delivers its events once it has
+/// Commits what a held boundary left open, first running `then`, one
+/// statement that changes one row, in its transaction, or on its own in
+/// `store` when the body began none, and delivers its events once it has
 /// committed. `Err` when the store couldn't commit: nothing it wrote is
-/// kept, and the caller answers `unavailable`.
+/// kept, and the caller runs the action again on a concurrent change and
+/// answers `unavailable` otherwise.
 pub async fn commit_held(
     ctx: &mut Ctx<'_>,
     held: crate::ctx::Held,
     then: Option<(&str, &str, &[crate::SqlValue])>,
 ) -> Result<(), StoreError> {
     let crate::ctx::Held {
-        mut transaction,
+        transaction,
         outbox,
         ..
     } = held;
     if let Some((store, sql, params)) = then {
-        if transaction.is_none() {
-            let database = ctx
-                .host()
-                .database(store)
-                .ok_or_else(|| StoreError::Fault(format!("no store called `{store}`")))?;
-            transaction = Some(database.begin_at(Isolation::ReadCommitted).await?);
-        }
-        if let Some(open) = transaction.as_mut() {
-            let changed = open.execute(sql, params).await;
-            if !matches!(changed, Ok(1)) {
-                if let Some(open) = transaction {
+        // A claim that lapsed and was taken by another request can't be
+        // written over: nothing is kept, and a retry runs again.
+        let lapsed = |changed: Result<u64, StoreError>| match changed {
+            Ok(1) => Ok(()),
+            Ok(_) => Err(StoreError::Unavailable),
+            Err(error) => Err(error),
+        };
+        match transaction {
+            Some(mut open) => {
+                if let Err(error) = lapsed(open.execute(sql, params).await) {
                     let _ = open.rollback().await;
+                    return Err(error);
                 }
-                return Err(match changed {
-                    Err(error) => error,
-                    Ok(_) => StoreError::ConcurrentChange,
-                });
+                open.commit().await?;
+            }
+            // Nothing else to keep with it: the one statement, on its own.
+            None => {
+                let database = ctx
+                    .host()
+                    .database(store)
+                    .ok_or_else(|| StoreError::Fault(format!("no store called `{store}`")))?;
+                let changed = database.query_once(sql, params).await;
+                lapsed(changed.map(|rows| rows.len() as u64))?;
             }
         }
+        if !outbox.is_empty() {
+            ctx.host().deliver(outbox).await;
+        }
+        return Ok(());
     }
     if let Some(open) = transaction {
         open.commit().await?;
@@ -189,16 +230,24 @@ pub async fn commit_held(
 /// are undone back to a savepoint taken before it ran (a refused statement
 /// among them, so the transaction carries on), or, when it began the
 /// transaction itself, the transaction is rolled back and the caller's
-/// next store operation begins a fresh one; what it emitted is dropped.
+/// next store operation begins a fresh one; what it emitted is dropped,
+/// and what it did to the request's session (a `sessions.start` or
+/// `sessions.end`, or a token or key it issued) is forgotten, so the
+/// response sets no cookie for a session that was never kept.
 async fn caught<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
-    let (open, emitted) = match &mut ctx.boundary {
-        Some(boundary) => (boundary.transaction.is_some(), boundary.outbox.len()),
-        None => (false, 0),
+    let (open, emitted, session, issued) = match &mut ctx.boundary {
+        Some(boundary) => (
+            boundary.transaction.is_some(),
+            boundary.outbox.len(),
+            boundary.session.clone(),
+            boundary.issued,
+        ),
+        None => (false, 0, None, false),
     };
     if open && let Some(Err(error)) = savepoint(ctx, Mark::Take).await {
         return lost(ctx, error);
     }
-    let outcome = body.run(ctx).await;
+    let outcome = gated(ctx, body).await;
     let failed = matches!(outcome, Outcome::Failed(_));
     if open {
         let mark = if failed { Mark::Return } else { Mark::Release };
@@ -213,6 +262,8 @@ async fn caught<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome
     }
     if failed && let Some(boundary) = &mut ctx.boundary {
         boundary.outbox.truncate(emitted);
+        boundary.session = session;
+        boundary.issued = issued;
     }
     outcome
 }
@@ -380,6 +431,14 @@ mod tests {
         isolation: Isolation,
         /// The level of the transaction it found itself in.
         found: Option<Isolation>,
+        /// Its caller handles its failure.
+        caught: bool,
+        /// What it does to the request's session, and whether it issues a
+        /// token, before it ends.
+        session: Option<crate::SessionEffect>,
+        issues: bool,
+        /// Who may call it, as its plan would say.
+        gate: Option<Gate>,
     }
 
     impl<'i> Write<'i> {
@@ -391,6 +450,10 @@ mod tests {
                 runs: 0,
                 isolation: Isolation::RepeatableRead,
                 found: None,
+                caught: false,
+                session: None,
+                issues: false,
+                gate: None,
             }
         }
     }
@@ -398,6 +461,14 @@ mod tests {
     impl<'p> ActionBody<'p> for Write<'_> {
         fn isolation(&self) -> Isolation {
             self.isolation
+        }
+
+        fn caught(&self) -> bool {
+            self.caught
+        }
+
+        fn gate(&self) -> Option<&Gate> {
+            self.gate.as_ref()
         }
 
         fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
@@ -411,9 +482,16 @@ mod tests {
                     key: format!("type Ran{}", self.runs),
                     value: Value::Unit,
                 });
+                if let Some(effect) = self.session.clone() {
+                    ctx.session(effect);
+                }
+                if self.issues {
+                    ctx.issued();
+                }
                 if let Some(inner) = self.inner.as_deref_mut() {
+                    let caught = inner.caught;
                     let outcome = action(ctx, inner).await;
-                    if !matches!(outcome, Outcome::Value(_)) {
+                    if !caught && !matches!(outcome, Outcome::Value(_)) {
                         return outcome;
                     }
                 }
@@ -424,6 +502,10 @@ mod tests {
 
     fn ok() -> Outcome {
         Outcome::Value(Value::Unit)
+    }
+
+    fn refused() -> Outcome {
+        Outcome::Failed(Box::new(Failure::new("type Refused", "Refused", "refused")))
     }
 
     fn fault() -> Outcome {
@@ -498,6 +580,104 @@ mod tests {
             host.lines(),
             ["begin", "commit", "deliver type Ran1", "deliver type Ran1"],
             "one transaction, both actions' events after it commits"
+        );
+    }
+
+    #[test]
+    fn a_caught_failure_forgets_what_it_did_to_the_session() {
+        let held = |inner_end: fn() -> Outcome| {
+            let host = Recorded::new(0);
+            let mut inner = Write::new(true, inner_end);
+            inner.caught = true;
+            inner.session = Some(crate::SessionEffect::Start {
+                token: "t".into(),
+                csrf: "c".into(),
+            });
+            inner.issues = true;
+            let mut outer = Write::new(true, ok);
+            outer.inner = Some(&mut inner);
+            let places = Places::new();
+            let mut ctx = Ctx::new(&places, &host, Env::default());
+            ctx.hold();
+            assert_eq!(
+                block_on(action(&mut ctx, &mut outer)).expect("nothing waits"),
+                ok()
+            );
+            let held = ctx.take_held().expect("held");
+            (held.session.is_some(), held.issued)
+        };
+        assert_eq!(held(refused), (false, false), "undone with its writes");
+        assert_eq!(held(ok), (true, true), "kept when it succeeds");
+        // Ending the request's session, then failing, leaves it running.
+        let host = Recorded::new(0);
+        let mut inner = Write::new(true, refused);
+        inner.caught = true;
+        inner.session = Some(crate::SessionEffect::End);
+        let mut outer = Write::new(true, ok);
+        outer.inner = Some(&mut inner);
+        let places = Places::new();
+        let mut ctx = Ctx::new(&places, &host, Env::default());
+        ctx.hold();
+        block_on(action(&mut ctx, &mut outer)).expect("nothing waits");
+        assert_eq!(ctx.take_held().expect("held").session, None);
+    }
+
+    #[test]
+    fn the_boundary_checks_an_actions_gate_whichever_executor_supplies_it() {
+        let refused = |gate: Gate, set: fn(&mut Ctx<'_>)| {
+            let host = Recorded::new(0);
+            let mut body = Write::new(true, ok);
+            body.gate = Some(gate);
+            let places = Places::new();
+            let mut ctx = Ctx::new(&places, &host, Env::default());
+            set(&mut ctx);
+            let outcome = block_on(action(&mut ctx, &mut body)).expect("nothing waits");
+            let code = match outcome {
+                Outcome::Failed(failure) => Some(failure.code),
+                _ => None,
+            };
+            (code, body.runs)
+        };
+        let nobody = |_: &mut Ctx<'_>| {};
+        let signed_in = |ctx: &mut Ctx<'_>| {
+            ctx.set_caller(Some(crate::Caller {
+                value: Value::Unit,
+                key: "user 1".into(),
+                session: None,
+            }));
+        };
+        assert_eq!(
+            refused(Gate::Signed, nobody),
+            (Some("not_permitted".into()), 0),
+            "no caller: the body never runs"
+        );
+        assert_eq!(refused(Gate::Signed, signed_in), (None, 1));
+        assert_eq!(
+            refused(Gate::Nobody, signed_in),
+            (Some("not_permitted".into()), 0)
+        );
+        assert_eq!(
+            refused(Gate::Nobody, |ctx| ctx.set_unpoliced()),
+            (None, 1),
+            "a test's call without a caller isn't checked"
+        );
+        // Called inside another action, and caught, it is checked too.
+        let host = Recorded::new(0);
+        let mut inner = Write::new(true, ok);
+        inner.gate = Some(Gate::Nobody);
+        inner.caught = true;
+        let mut outer = Write::new(true, ok);
+        outer.inner = Some(&mut inner);
+        let places = Places::new();
+        let mut ctx = Ctx::new(&places, &host, Env::default());
+        assert_eq!(
+            block_on(action(&mut ctx, &mut outer)).expect("nothing waits"),
+            ok()
+        );
+        assert_eq!(
+            host.lines(),
+            ["begin", "commit", "deliver type Ran1"],
+            "only the caller's event: the refused action never ran"
         );
     }
 

@@ -4,11 +4,13 @@
 //! never names it, so the error names the write that brings in the second
 //! store, and through which call.
 //!
-//! Each file's actions and fixtures are read from their typed bodies, by
-//! name and without positions: the entities each writes and reads, the
-//! queries and the actions it calls. The stores each one writes, and those
-//! it uses at all, through every call, are worked out once for the
-//! project, and each file reads its own actions' share by name.
+//! Each file's actions and fixtures are read from what their bodies do
+//! (`body_facts`, by name and without positions, chunk 4.11): the
+//! entities each writes and reads, the queries and the actions it calls.
+//! The stores each one writes, and those it uses at all, through every
+//! call, are worked out once for the project, and each file reads its own
+//! actions' share by name. Only a problem's position reads the typed body
+//! again.
 //!
 //! An action may read another store outside its transaction (area 6), but
 //! that isn't built yet: the runtime runs all of an action's store
@@ -21,9 +23,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use jadpo_db::{Db, File, Project};
 use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_graph::Kind;
-use jadpo_graph::body::{Callee, Node};
 
 use super::body::{callables_of, typed_body};
+use super::facts::{Fact, body_facts, facts_at};
 use crate::lookups::Name;
 
 /// What one action or fixture does that reaches a store, in source order:
@@ -44,10 +46,25 @@ pub enum Reach {
     ReadsSessions(bool),
 }
 
+/// What `fact` reaches of a store, if anything.
+fn reach_of(fact: &Fact) -> Option<Reach> {
+    Some(match fact {
+        Fact::Writes(write) => Reach::Writes(write.entity.clone()),
+        Fact::Action(callee) => Reach::Calls(callee.name().to_string()),
+        Fact::Gets(entity) => Reach::Reads(entity.clone()),
+        Fact::Queries(query) => Reach::Queries(query.clone()),
+        Fact::Session(op) if op.reads_only() => Reach::ReadsSessions(op.on_service()),
+        Fact::Session(op) => Reach::Sessions(op.on_service()),
+        Fact::Fixture(_) | Fact::Function(_) => return None,
+    })
+}
+
 /// One action's or fixture's name and what it reaches, each with its
 /// site's range.
 type Reaches = (String, Vec<(Reach, (u32, u32))>);
 
+/// What each action and fixture in `file` reaches, with where: for a
+/// problem's position, so it reads the typed bodies.
 fn reaches(db: &dyn Db, project: Project, file: File) -> Vec<Reaches> {
     let mut out = Vec::new();
     for callable in callables_of(db, file) {
@@ -59,36 +76,10 @@ fn reaches(db: &dyn Db, project: Project, file: File) -> Vec<Reaches> {
         else {
             continue;
         };
-        let mut found = Vec::new();
-        for site in &checked.body.sites {
-            let reach = match &site.node {
-                Node::Expr(jadpo_graph::body::Expr::Write { entity, .. }) => {
-                    Reach::Writes(entity.name().to_string())
-                }
-                Node::Expr(jadpo_graph::body::Expr::Call {
-                    callee: Callee::Action(callee),
-                    ..
-                }) => Reach::Calls(callee.name().to_string()),
-                Node::Expr(jadpo_graph::body::Expr::Call {
-                    callee: Callee::Entity { entity, operation },
-                    ..
-                }) if operation == "get" => Reach::Reads(entity.name().to_string()),
-                Node::Expr(jadpo_graph::body::Expr::Call {
-                    callee: Callee::Query(query),
-                    ..
-                }) => Reach::Queries(query.name().to_string()),
-                Node::Expr(jadpo_graph::body::Expr::Call {
-                    callee: Callee::Session(op),
-                    ..
-                }) if op.reads_only() => Reach::ReadsSessions(op.on_service()),
-                Node::Expr(jadpo_graph::body::Expr::Call {
-                    callee: Callee::Session(op),
-                    ..
-                }) => Reach::Sessions(op.on_service()),
-                _ => continue,
-            };
-            found.push((reach, (site.start, site.end)));
-        }
+        let found = facts_at(&checked.body)
+            .into_iter()
+            .filter_map(|(fact, at)| Some((reach_of(&fact)?, at)))
+            .collect();
         out.push((key.name().to_string(), found));
     }
     out
@@ -102,9 +93,82 @@ pub fn store_reaches(
     project: Project,
     file: File,
 ) -> BTreeMap<String, BTreeSet<Reach>> {
-    reaches(db, project, file)
-        .into_iter()
-        .map(|(name, found)| (name, found.into_iter().map(|(reach, _)| reach).collect()))
+    let mut out = BTreeMap::new();
+    for callable in callables_of(db, file) {
+        let facts = body_facts(db, project, callable);
+        let Some(key) = facts.key_of(&[Kind::Action, Kind::Fixture]) else {
+            continue;
+        };
+        out.insert(
+            key.name().to_string(),
+            facts.facts.iter().filter_map(reach_of).collect(),
+        );
+    }
+    out
+}
+
+/// The actions and fixtures in `file` whose own body starts or ends a
+/// session or issues an API token or a service key (area 8).
+#[salsa::tracked(returns(ref))]
+fn session_effects(db: &dyn Db, project: Project, file: File) -> BTreeSet<String> {
+    use jadpo_std::http::SessionOp;
+    let mut out = BTreeSet::new();
+    for callable in callables_of(db, file) {
+        let facts = body_facts(db, project, callable);
+        let Some(key) = facts.key.as_ref() else {
+            continue;
+        };
+        let affects = facts.facts.iter().any(|fact| {
+            matches!(
+                fact,
+                Fact::Session(
+                    SessionOp::Start | SessionOp::End | SessionOp::IssueToken | SessionOp::IssueKey
+                )
+            )
+        });
+        if affects {
+            out.insert(key.name().to_string());
+        }
+    }
+    out
+}
+
+/// The actions whose response is never kept for an idempotent repeat:
+/// each one that starts or ends a session, or issues a token or a key,
+/// itself or through an action it calls (area 7, "Idempotency keys").
+#[salsa::tracked(returns(ref))]
+pub fn unkept_responses(db: &dyn Db, project: Project) -> BTreeSet<String> {
+    let mut calls: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut direct: BTreeSet<String> = BTreeSet::new();
+    for &file in project.files(db) {
+        direct.extend(session_effects(db, project, file).iter().cloned());
+        for (name, found) in store_reaches(db, project, file) {
+            let callees = calls.entry(name.clone()).or_default();
+            for reach in found {
+                if let Reach::Calls(callee) = reach {
+                    callees.insert(callee.clone());
+                }
+            }
+        }
+    }
+    calls
+        .keys()
+        .filter(|name| {
+            let mut seen = BTreeSet::from([(*name).clone()]);
+            let mut queue = vec![(*name).clone()];
+            while let Some(current) = queue.pop() {
+                if direct.contains(&current) {
+                    return true;
+                }
+                for callee in calls.get(&current).into_iter().flatten() {
+                    if seen.insert(callee.clone()) {
+                        queue.push(callee.clone());
+                    }
+                }
+            }
+            false
+        })
+        .cloned()
         .collect()
 }
 

@@ -1,0 +1,18 @@
+// A `GET` route runs a query, never an action, so reading the menu can
+// never write. `Cake`'s `read:` grants `Access.public`, so anyone may run
+// it, signed in or not.
+
+use bakery/entities { Cake }
+use bakery/types { CakeView, MenuFilter }
+
+/// The cakes on the menu, by name, a page at a time.
+query menu(filter: MenuFilter) -> Page<CakeView> {
+    from: Cake
+    where: Cake.on_menu == true
+    where_present: Cake.flavour in filter.flavours
+    order: [Cake.name asc]
+    page: {
+        size: filter.page_size
+        after: filter.after
+    }
+}

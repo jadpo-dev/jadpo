@@ -9,9 +9,11 @@
 //! is), the bodies (`Principal.user`, `sessions.start`), the schema (the
 //! sessions and service keys tables) and `jadpo-plan` read. Built in
 //! chunk 4.3: browser sessions; in chunk 4.3b: API tokens and service
-//! keys. The revocation delay comes with signing keys (chunk 5.1b),
-//! external tokens, sign-in providers and acting as an OAuth provider
-//! after them: each is `toolchain.not_built_yet` where it is written.
+//! keys; in chunk 5.1b: the revocation delay, with each method's
+//! `signing_key:` and a browser session's `origin:` read from settings
+//! (area 10), and the generated `POST /auth/exchange`. External tokens,
+//! sign-in providers and acting as an OAuth provider come after the
+//! first build: each is `toolchain.not_built_yet` where it is written.
 
 use std::sync::Arc;
 
@@ -30,6 +32,46 @@ use crate::types::{Const, Def, Prim, Ty, TypeView};
 
 /// The fields every caller has, built in (area 8, question 2).
 pub const PRINCIPAL_FIELDS: [&str; 3] = ["id", "subject", "strength"];
+
+/// `type.auth_sessions_context` for an operation whose sign-in method
+/// `authentication { }` doesn't declare: `sessions.issue_token` with no
+/// `api_token:`. `ends` is `sessions.end`, which either browser sessions or
+/// API tokens serve.
+pub fn needs_method(
+    written: &str,
+    method: AuthenticationMethod,
+    ends: bool,
+    span: Span,
+) -> Diagnostic {
+    let (needs, declare) = match method {
+        AuthenticationMethod::BrowserSession if ends => (
+            "browser sessions or API tokens",
+            "A session is a browser session, which `authentication { browser_session: { cookie: \"<name>\" } }` declares, or an API token, which `api_token: {}` declares.",
+        ),
+        AuthenticationMethod::BrowserSession => (
+            "browser sessions",
+            "A session is a browser session, which `authentication { browser_session: { cookie: \"<name>\" } }` declares.",
+        ),
+        AuthenticationMethod::ApiToken => (
+            "API tokens",
+            "An API token signs a user in from the application's own clients, which `authentication { api_token: {} }` declares.",
+        ),
+        _ => (
+            "service keys",
+            "A service key signs a service in, which `authentication { service_key: {} }` declares.",
+        ),
+    };
+    Diagnostic::new(
+        &rule::TYPE_AUTH_SESSIONS_CONTEXT,
+        format!("`{written}` needs {needs}"),
+    )
+    .at(span, format!("no `{}` declared", method.name()))
+    .reason(declare)
+    .next(format!(
+        "Declare `{}:` in `authentication.jadpo`",
+        method.name()
+    ))
+}
 
 /// The type of the whole caller, either kind: `Principal`.
 pub const PRINCIPAL: &str = "Principal";
@@ -73,6 +115,10 @@ pub struct Method {
     pub built: bool,
     /// `browser_session`'s cookie.
     pub cookie: Option<String>,
+    /// The setting its `signing_key:` reads (area 10, "Signing keys").
+    pub signing_key: Option<String>,
+    /// The setting a browser session's `origin:` reads.
+    pub origin: Option<String>,
 }
 
 /// Area 8's declarations, read.
@@ -86,6 +132,9 @@ pub struct Identity {
     pub written: Vec<PrincipalKind>,
     /// Each declared method, in written order.
     pub methods: Vec<Method>,
+    /// `application { revocation_delay: }` in milliseconds, when it is a
+    /// duration above zero.
+    pub revocation_delay: Option<i64>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -163,6 +212,13 @@ impl Identity {
             .then(|| self.variant(PrincipalKind::Service))
             .flatten()
             .map(|variant| variant.store.as_str())
+    }
+
+    /// Whether the runtime answers `POST /auth/exchange` (area 8, "Ways to
+    /// sign in"): with a revocation delay and service keys, a service
+    /// trades its key for a short-lived signed token there.
+    pub fn exchanges(&self) -> bool {
+        self.revocation_delay.is_some() && self.keys_store().is_some()
     }
 }
 
@@ -303,12 +359,9 @@ impl Reader<'_> {
             );
             let millis = jadpo_std::Dur::parse(&written).map(|dur| dur.millis);
             match millis {
-                Some(millis) if millis > 0 => self.out.problems.push(
-                    Diagnostic::new(&rule::TOOLCHAIN_NOT_BUILT_YET, "`revocation_delay:` isn't built yet")
-                        .at(node_span(&found.path, key.syntax()), "decided, not built")
-                        .reason("A revocation delay signs sessions and tokens with a key from secret configuration, which comes with configuration (area 10, roadmap chunk 5.1b); until then every request checks the caller's record, the strict behaviour leaving it out gives.")
-                        .next("Leave `revocation_delay:` out for now"),
-                ),
+                Some(millis) if millis > 0 => {
+                    self.out.revocation_delay = Some(i64::try_from(millis).unwrap_or(i64::MAX));
+                }
                 _ => self.out.problems.push(
                     Diagnostic::new(
                         &rule::SEMANTIC_REVOCATION_DELAY_INVALID,
@@ -663,6 +716,9 @@ impl Reader<'_> {
             .chain(LATER_BLOCKS.iter().map(|(name, _)| *name))
             .collect();
         let mut seen: Vec<(String, Span)> = Vec::new();
+        // The built methods with no `signing_key:`, which a revocation
+        // delay needs.
+        let mut unsigned: Vec<(AuthenticationMethod, Span)> = Vec::new();
         for item in found.list.iter().flat_map(|list| list.member_items()) {
             let (word, span, member) = match &item {
                 MemberItem::Member(member) => match member.member_key() {
@@ -735,26 +791,19 @@ impl Reader<'_> {
                 continue;
             };
             let read = match method {
-                AuthenticationMethod::BrowserSession => {
-                    let cookie = member
-                        .as_ref()
-                        .and_then(|member| self.browser_session(&path, &span, member));
-                    cookie.map(|cookie| Method {
-                        method,
-                        built: true,
-                        cookie: Some(cookie),
-                    })
-                }
-                AuthenticationMethod::ApiToken | AuthenticationMethod::ServiceKey => {
-                    let ok = member
-                        .as_ref()
-                        .is_some_and(|member| self.bearer(&path, &span, method, member));
-                    ok.then_some(Method {
+                AuthenticationMethod::BrowserSession => member
+                    .as_ref()
+                    .and_then(|member| self.browser_session(&path, &span, member)),
+                AuthenticationMethod::ApiToken | AuthenticationMethod::ServiceKey => member
+                    .as_ref()
+                    .and_then(|member| self.bearer(&path, &span, method, member))
+                    .map(|signing_key| Method {
                         method,
                         built: true,
                         cookie: None,
-                    })
-                }
+                        signing_key,
+                        origin: None,
+                    }),
                 other => {
                     let why = match other {
                         AuthenticationMethod::ExternalToken => {
@@ -769,10 +818,15 @@ impl Reader<'_> {
                         method,
                         built: false,
                         cookie: None,
+                        signing_key: None,
+                        origin: None,
                     })
                 }
             };
             let Some(read) = read else { continue };
+            if read.built && read.signing_key.is_none() {
+                unsigned.push((method, span.clone()));
+            }
             let kind = if method == AuthenticationMethod::ServiceKey {
                 PrincipalKind::Service
             } else {
@@ -806,17 +860,126 @@ impl Reader<'_> {
             }
             self.out.methods.push(read);
         }
+        // With a revocation delay every method signs what it gives, with a
+        // key from secret configuration.
+        if self.out.revocation_delay.is_some() {
+            for (method, span) in unsigned {
+                let word = method.name();
+                let what = match method {
+                    AuthenticationMethod::BrowserSession => "a browser session",
+                    AuthenticationMethod::ApiToken => "an API token",
+                    _ => "a token exchanged for a service key",
+                };
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                        format!("`{word}:` has no `signing_key:`"),
+                    )
+                    .at(span, "no `signing_key:`")
+                    .reason(format!(
+                        "With `revocation_delay:`, {what} is signed, so a request signs in without reading the database, with a key from secret configuration (area 10)."
+                    ))
+                    .next("Add `signing_key: config.<name>`, reading a `SigningKey` setting"),
+                );
+            }
+        }
+    }
+
+    /// A member that reads a setting of type `needs`: `config.<name>`,
+    /// whose name it gives. A literal, anything else, or a setting of
+    /// another type is `semantic.auth_setting_invalid`; a name no setting
+    /// has is reported where it is read (area 10), and still given, so the
+    /// member doesn't also count as missing.
+    fn setting(
+        &mut self,
+        path: &str,
+        key: &Span,
+        member: &str,
+        value: Option<&Expr>,
+        needs: jadpo_std::Builtin,
+    ) -> Option<String> {
+        let at = value.map_or_else(|| key.clone(), |v| node_span(path, v.syntax()));
+        let signing = needs == jadpo_std::Builtin::SigningKey;
+        let declare = format!(
+            "Declare `<name>: {}` in `config.jadpo`, and write `{member}: config.<name>`",
+            needs.name()
+        );
+        let read = value
+            .and_then(dotted)
+            .filter(|(first, rest)| {
+                tree::name_ref_text(first).as_deref() == Some("config") && rest.len() == 1
+            })
+            .and_then(|(_, rest)| rest.first().and_then(tree::name_ref_text));
+        let Some(name) = read else {
+            let literal = matches!(value, Some(Expr::Literal(_)));
+            let (message, label, reason) = match (signing, literal) {
+                (true, true) => (
+                    "A signing key is written in the source".to_string(),
+                    "a secret in source",
+                    "A signing key comes only from secret configuration (area 10), so it never lands in the repository, a log or a review.",
+                ),
+                (false, true) => (
+                    "A browser session's origin is written in the source".to_string(),
+                    "written in source",
+                    "A browser session's origin is the address its pages are served from, which differs from one deployment to the next, so it is a `Url` setting (area 10).",
+                ),
+                (true, false) => (
+                    "`signing_key:` doesn't read a setting".to_string(),
+                    "not `config.<name>`",
+                    "A signing key comes only from secret configuration (area 10): a `SigningKey` setting, read as `config.<name>`.",
+                ),
+                (false, false) => (
+                    "`origin:` doesn't read a setting".to_string(),
+                    "not `config.<name>`",
+                    "A browser session's origin is a `Url` setting (area 10), read as `config.<name>`.",
+                ),
+            };
+            self.out.problems.push(
+                Diagnostic::new(&rule::SEMANTIC_AUTH_SETTING_INVALID, message)
+                    .at(at, label)
+                    .reason(reason)
+                    .next(declare),
+            );
+            return None;
+        };
+        let config = crate::config::config(self.db, self.project);
+        if let Some(found) = config.setting(&name) {
+            let lookup = Lookup::new(self.db, self.project);
+            if lookup.base_prim(&found.ty) != Some(needs) {
+                let reason = if signing {
+                    "A signing key is a `SigningKey` setting: secret, at least 32 characters, and rotates by moving the old value to the variable with `_PREVIOUS` after its name (area 10)."
+                } else {
+                    "A browser session's origin is a `Url` setting: the scheme, host and port its pages are served from, such as `https://app.example`, which a cookie write's `Origin` must be."
+                };
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                        format!(
+                            "`{member}:` reads `{name}`, which isn't a `{}`",
+                            needs.name()
+                        ),
+                    )
+                    .at(at, format!("`{name}` is `{}`", found.ty))
+                    .reason(reason)
+                    .next(declare),
+                );
+                return None;
+            }
+        }
+        Some(name)
     }
 
     /// `api_token: {}` or `service_key: {}`: a bearer credential, whose
-    /// only setting, `signing_key:`, waits for the revocation delay.
+    /// only setting, `signing_key:`, signs its tokens with a revocation
+    /// delay. `None` when it doesn't read cleanly; otherwise the setting
+    /// its `signing_key:` reads, if it has one.
     fn bearer(
         &mut self,
         path: &str,
         span: &Span,
         method: AuthenticationMethod,
         member: &ast::Member,
-    ) -> bool {
+    ) -> Option<Option<String>> {
         let word = method.name();
         let what = if method == AuthenticationMethod::ApiToken {
             "An API token"
@@ -835,9 +998,10 @@ impl Reader<'_> {
                 ))
                 .next(format!("Write `{word}: {{}}`")),
             );
-            return false;
+            return None;
         };
         let mut ok = true;
+        let mut signing_key = None;
         for (key, setting) in tree::members(Some(list)) {
             let Some(name) = tree::name_text(&key) else {
                 continue;
@@ -845,29 +1009,16 @@ impl Reader<'_> {
             let key_span = node_span(path, key.syntax());
             let value = setting.value();
             match name.as_str() {
-                "signing_key" if matches!(value, Some(Expr::Literal(_))) => {
-                    ok = false;
-                    let value_span = value
-                        .as_ref()
-                        .map_or_else(|| key_span.clone(), |v| node_span(path, v.syntax()));
-                    self.out.problems.push(
-                        Diagnostic::new(
-                            &rule::SEMANTIC_AUTH_SETTING_INVALID,
-                            "A signing key is written in the source",
-                        )
-                        .at(value_span, "a secret in source")
-                        .reason("A signing key comes only from secret configuration (area 10), so it never lands in the repository, a log or a review.")
-                        .next(format!(
-                            "Remove `signing_key:`; {} needs none until a revocation delay signs it",
-                            what.to_lowercase()
-                        )),
+                "signing_key" => {
+                    signing_key = self.setting(
+                        path,
+                        &key_span,
+                        "signing_key",
+                        value.as_ref(),
+                        jadpo_std::Builtin::SigningKey,
                     );
+                    ok &= signing_key.is_some();
                 }
-                "signing_key" => self.later(
-                    key_span,
-                    "`signing_key:`",
-                    "A signing key comes from secret configuration (area 10, roadmap chunk 5.1b), and only a revocation delay signs tokens and keys",
-                ),
                 other => {
                     ok = false;
                     let near = nearest(other, ["signing_key"]);
@@ -892,11 +1043,12 @@ impl Reader<'_> {
                 }
             }
         }
-        ok
+        ok.then_some(signing_key)
     }
 
-    /// `browser_session: { cookie: ... }`: its cookie's name.
-    fn browser_session(&mut self, path: &str, span: &Span, member: &ast::Member) -> Option<String> {
+    /// `browser_session: { cookie: ... }`: its cookie's name, and the
+    /// settings its `signing_key:` and `origin:` read.
+    fn browser_session(&mut self, path: &str, span: &Span, member: &ast::Member) -> Option<Method> {
         let Some(list) = member.block() else {
             self.out.problems.push(
                 Diagnostic::new(
@@ -910,6 +1062,8 @@ impl Reader<'_> {
             return None;
         };
         let mut cookie = None;
+        let mut signing_key = None;
+        let mut origin = None;
         let mut ok = true;
         for (key, setting) in tree::members(Some(list)) {
             let Some(name) = tree::name_text(&key) else {
@@ -936,28 +1090,25 @@ impl Reader<'_> {
                         );
                     }
                 },
-                "signing_key" if matches!(value, Some(Expr::Literal(_))) => {
-                    ok = false;
-                    self.out.problems.push(
-                        Diagnostic::new(
-                            &rule::SEMANTIC_AUTH_SETTING_INVALID,
-                            "A signing key is written in the source",
-                        )
-                        .at(value_span, "a secret in source")
-                        .reason("A signing key comes only from secret configuration (area 10), so it never lands in the repository, a log or a review.")
-                        .next("Remove `signing_key:`; a session needs none until a revocation delay signs it"),
+                "signing_key" => {
+                    signing_key = self.setting(
+                        path,
+                        &key_span,
+                        "signing_key",
+                        value.as_ref(),
+                        jadpo_std::Builtin::SigningKey,
                     );
+                    ok &= signing_key.is_some();
                 }
-                "origin" | "signing_key" => {
-                    self.later(
-                        key_span,
-                        &format!("`{name}:`"),
-                        if name == "origin" {
-                            "A browser session's origin comes from configuration (area 10, roadmap chunk 5.1); until then a cookie write's `Origin` must be the server's own"
-                        } else {
-                            "A signing key comes from secret configuration (area 10, roadmap chunk 5.1b), and only a revocation delay signs sessions"
-                        },
+                "origin" => {
+                    origin = self.setting(
+                        path,
+                        &key_span,
+                        "origin",
+                        value.as_ref(),
+                        jadpo_std::Builtin::Url,
                     );
+                    ok &= origin.is_some();
                 }
                 other => {
                     ok = false;
@@ -992,7 +1143,13 @@ impl Reader<'_> {
             );
             return None;
         }
-        cookie.filter(|_| ok)
+        Some(Method {
+            method: AuthenticationMethod::BrowserSession,
+            built: true,
+            cookie: Some(cookie.filter(|_| ok)?),
+            signing_key,
+            origin,
+        })
     }
 
     fn later(&mut self, span: Span, what: &str, why: &str) {

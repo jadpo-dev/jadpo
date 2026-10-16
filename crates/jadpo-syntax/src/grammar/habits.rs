@@ -1237,7 +1237,8 @@ pub(super) fn postfix_habit(
     chain: &mut Option<u32>,
 ) -> bool {
     match p.current() {
-        QUESTION if p.nth(1) == DOT && p.nth_adjacent(1) => {
+        // `?.`, or `? .` with spaces between, which would format to `?.`.
+        QUESTION if p.nth(1) == DOT && !p.nth_on_new_line(1) => {
             chain.get_or_insert(p.range().0);
             p.skip_token();
             true
@@ -1302,8 +1303,10 @@ pub(super) fn postfix_habit(
 /// whose edit writes the `match` it means.
 pub(super) fn optional_chaining(p: &mut Parser<'_>, start: u32, chain: u32) {
     let end = p.prev_end();
-    let subject = source(p, start, chain);
-    let rest = source(p, chain + 1, end);
+    let subject = source(p, start, chain).trim_end().to_string();
+    let after = source(p, chain + 1, end);
+    let rest = after.trim_start().to_string();
+    let dot = chain + 1 + (after.len() - rest.len()) as u32;
     let bind = binding_for(&subject);
     let jadpo = match_text(
         p,
@@ -1322,7 +1325,7 @@ pub(super) fn optional_chaining(p: &mut Parser<'_>, start: u32, chain: u32) {
         p,
         &h::OPTIONAL_CHAINING,
         ("?.", &summary),
-        (chain, chain + 2),
+        (chain, dot + 1),
         vec![TextEdit::replace(start, end, jadpo.clone())],
         false,
     );

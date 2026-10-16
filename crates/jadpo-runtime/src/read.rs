@@ -12,6 +12,7 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+use jadpo_std::policy::CallerPart;
 use jadpo_std::read::{Cardinality, Column, Field, IncludeShape, ReadPlan, Select, Size, Source};
 use jadpo_value::Value;
 
@@ -24,8 +25,39 @@ use crate::{
 pub(crate) enum Found {
     Value(Value),
     /// A read for exactly one record found none: [`crate::store`] raises
-    /// the read's not-found failure, which its plan names.
-    Missing,
+    /// the read's not-found failure, which its plan names. With `true`,
+    /// the record is there and policy hid it from the caller, which the
+    /// failure's log says (area 4, "Concealing records").
+    Missing(bool),
+}
+
+/// The failure policy refusing a caller raises (area 9, "When policy says
+/// no"): 403 `not_permitted`, never listed in `fails`.
+pub fn not_permitted() -> Failure {
+    let mut failure = Failure::new("runtime not_permitted", "NotPermitted", "not_permitted");
+    failure.kind = Some("not_permitted".to_string());
+    failure.status = Some(403);
+    failure.message = Some("Not permitted.".to_string());
+    failure
+}
+
+/// The caller's parts a statement's policy reads, in [`CallerPart`]'s
+/// order.
+fn callers(ctx: &Ctx<'_>) -> [SqlValue; 3] {
+    [
+        ctx.caller_param(CallerPart::User),
+        ctx.caller_param(CallerPart::Service),
+        ctx.caller_param(CallerPart::Signed),
+    ]
+}
+
+/// The value of caller part `part` among `callers`.
+pub(crate) fn caller_of(callers: &[SqlValue; 3], part: CallerPart) -> SqlValue {
+    match part {
+        CallerPart::User => callers[0].clone(),
+        CallerPart::Service => callers[1].clone(),
+        CallerPart::Signed => callers[2].clone(),
+    }
 }
 
 /// What stops a read or a write before it gives a value.
@@ -53,6 +85,8 @@ pub(crate) async fn read(
         size: 0,
         cursor: Vec::new(),
         keys: None,
+        callers: callers(ctx),
+        unpoliced: ctx.unpoliced(),
     };
     if let Some(page) = &plan.page {
         env.size = match &page.size {
@@ -78,15 +112,20 @@ pub(crate) async fn read(
         };
         run_read(transaction, plan, &env).await
     };
-    let (rows, values) = match result {
+    let (rows, values, hidden) = match result {
         Ok(found) => found,
         Err(Problem::Store(error)) => return Err(refused(ctx, error, site)),
         Err(Problem::Defect(what)) => return Err(defect(ctx, &what, site)),
+        Err(Problem::Refused) => {
+            return Err(Interrupt::Failed(ctx.fail(not_permitted(), site)));
+        }
     };
     Ok(match plan.cardinality {
         Cardinality::One => match values.into_iter().next() {
             Some(value) => Found::Value(value),
-            None => Found::Missing,
+            // Whether policy hid it: the statement selected the grant of
+            // every record it found.
+            None => Found::Missing(hidden),
         },
         Cardinality::Optional => Found::Value(values.into_iter().next().unwrap_or(Value::None)),
         Cardinality::List => Found::Value(Value::list(values)),
@@ -186,22 +225,61 @@ struct Env<'a> {
     cursor: Vec<SqlValue>,
     /// An include's keys.
     keys: Option<SqlValue>,
+    /// The caller's parts its policy reads.
+    callers: [SqlValue; 3],
+    /// Whether it runs its statements without their policy.
+    unpoliced: bool,
 }
 
 enum Problem {
     Store(StoreError),
     Defect(String),
+    /// A required reference's record that policy hides from the caller.
+    Refused,
 }
 
-/// The main statement's rows, and the values they become.
+/// One parameter's value.
+fn bind(param: &jadpo_std::read::Param, env: &Env<'_>) -> Result<SqlValue, Problem> {
+    Ok(match &param.source {
+        Source::Arg { .. } => {
+            let value = value_at(&param.source, env.args)
+                .ok_or_else(|| Problem::Defect("a parameter the read wasn't given".into()))?;
+            to_sql(&value, param.ty).map_err(Problem::Defect)?
+        }
+        Source::Now => SqlValue::Timestamp(env.now.saturating_mul(1000)),
+        Source::Keys => env
+            .keys
+            .clone()
+            .ok_or_else(|| Problem::Defect("an include without keys".into()))?,
+        Source::Cursor(i) => env
+            .cursor
+            .get(*i as usize)
+            .cloned()
+            .unwrap_or(SqlValue::Null(param.ty)),
+        Source::SizePlusOne => SqlValue::Int8(env.size.saturating_add(1)),
+        Source::Caller(part) => caller_of(&env.callers, *part),
+    })
+}
+
+/// The main statement's rows, the values they become, and whether it found
+/// a record the caller may not read, which is left out before anything
+/// else reads it.
 async fn run_read(
     transaction: &mut dyn Transaction,
     plan: &ReadPlan,
     env: &Env<'_>,
-) -> Result<(Vec<Row>, Vec<Value>), Problem> {
-    let rows = run(transaction, &plan.select, env).await?;
+) -> Result<(Vec<Row>, Vec<Value>, bool), Problem> {
+    let mut rows = run(transaction, &plan.select, env).await?;
+    let mut hidden = false;
+    if let Some(at) = plan.select.permitted
+        && !env.unpoliced
+    {
+        let found = rows.len();
+        rows.retain(|row| matches!(row.get(at as usize), Some(SqlValue::Bool(true))));
+        hidden = rows.len() < found;
+    }
     let values = records(transaction, &plan.select, &rows, env).await?;
-    Ok((rows, values))
+    Ok((rows, values, hidden))
 }
 
 async fn run(
@@ -211,28 +289,14 @@ async fn run(
 ) -> Result<Vec<Row>, Problem> {
     let mut params = Vec::with_capacity(select.params.len());
     for param in &select.params {
-        let value = match &param.source {
-            Source::Arg { .. } => {
-                let value = value_at(&param.source, env.args)
-                    .ok_or_else(|| Problem::Defect("a parameter the read wasn't given".into()))?;
-                to_sql(&value, param.ty).map_err(Problem::Defect)?
-            }
-            Source::Now => SqlValue::Timestamp(env.now.saturating_mul(1000)),
-            Source::Keys => env
-                .keys
-                .clone()
-                .ok_or_else(|| Problem::Defect("an include without keys".into()))?,
-            Source::Cursor(i) => env
-                .cursor
-                .get(*i as usize)
-                .cloned()
-                .unwrap_or(SqlValue::Null(param.ty)),
-            Source::SizePlusOne => SqlValue::Int8(env.size.saturating_add(1)),
-        };
-        params.push(value);
+        params.push(bind(param, env)?);
     }
+    let sql = match (&select.unpoliced, env.unpoliced) {
+        (Some(unpoliced), true) => unpoliced,
+        _ => &select.sql,
+    };
     transaction
-        .query(&select.sql, &params)
+        .query(sql, &params)
         .await
         .map_err(Problem::Store)
 }
@@ -266,6 +330,8 @@ fn records<'a>(
                     size: env.size,
                     cursor: Vec::new(),
                     keys: Some(SqlValue::Array(element, keys)),
+                    callers: env.callers.clone(),
+                    unpoliced: env.unpoliced,
                 };
                 let child_rows = run(&mut *transaction, &include.select, &inner).await?;
                 let values =
@@ -308,6 +374,11 @@ fn records<'a>(
                             }
                             IncludeShape::One => match records.into_iter().next() {
                                 Some(value) => value,
+                                // The reference holds, so policy hid its
+                                // record from the caller (area 9).
+                                None if include.select.unpoliced.is_some() && !env.unpoliced => {
+                                    return Err(Problem::Refused);
+                                }
                                 None => {
                                     return Err(Problem::Defect(
                                         "a required reference whose record isn't there".into(),

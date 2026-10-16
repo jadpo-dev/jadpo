@@ -12,7 +12,7 @@ kinds that decide how each one reaches a client, listing, raising, passing on
 and mapping failures, the faults the runtime raises by itself, and what is
 logged.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 4. Built in the new compiler in roadmap chunk 1.6, with constructions' rule arms in chunks 2.5 and 2.6, overflow and the recursion limit in the interpreter (chunk 2.1), and a query's `missing:` in chunk 3.2. Writes' mappings come with chunk 3.3, the client's envelope and OpenAPI with routes (chunk 4.1), and concealment with policy (chunk 4.4).
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 4. Built in the new compiler in roadmap chunk 1.6, with constructions' rule arms in chunks 2.5 and 2.6, overflow and the recursion limit in the interpreter (chunk 2.1), and a query's `missing:` in chunk 3.2. Writes' mappings come with chunk 3.3, the client's envelope and OpenAPI with routes (chunk 4.1), and concealment with policy in chunk 4.4.
 
 The rule behind all of it, from the failure model: **application code says
 what failed; the compiler and runtime decide how that fact is shown at each
@@ -1230,7 +1230,7 @@ check failed: 1 error, 1 file
 | Mapping | A construction's rule arms and `invalid:`, and proof that a construction cannot break, in chunks 2.5 and 2.6; a query's `missing:` and its kind check (`failure.mapping_kind`) in chunk 3.2. Writes' `conflict:` and `empty:` come with chunk 3.3. |
 | Faults from code | Built in the interpreter (chunk 2.1): `Int` and `Decimal` overflow and the recursion limit are faults at their site, and a failure keeps the path it travelled and the failure it was mapped from. |
 | What the client sees | The envelope, the validation details and the OpenAPI responses come with routes (chunk 4.1). |
-| Concealing records | Comes with policy (chunk 4.4). |
+| Concealing records | Built in chunk 4.4: a record policy hides reports the code's own not-found failure, and its log says `concealed_by: policy` (area 9). |
 | Logging | Not built yet. |
 
 ### Consistency with the rest of the language

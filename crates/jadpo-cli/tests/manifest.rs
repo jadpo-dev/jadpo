@@ -34,6 +34,8 @@ const DERIVED: &[&str] = &[
     "build/catalogue/libraries.json",
     "build/catalogue/failures.md",
     "build/catalogue/failures.json",
+    "build/report/permissions.md",
+    "build/report/permissions.json",
 ];
 
 use crate::support;
@@ -193,7 +195,12 @@ fn help_json_documents_the_manifest_schema() {
     assert!(
         kinds
             .iter()
-            .any(|k| k["kind"] == "grant" && k["status"] == "reserved")
+            .any(|k| k["kind"] == "grant" && k["status"] == "built")
+    );
+    assert!(
+        kinds
+            .iter()
+            .any(|k| k["kind"] == "oauth_scope" && k["status"] == "reserved")
     );
     assert!(schema["nodeFields"]["digest"].is_string());
 }

@@ -1,0 +1,6 @@
+use kitchen/entities { StaffMember }
+
+/// Someone's place in a bakery.
+type StaffView = Output {
+    pick: [StaffMember.id, StaffMember.baker_id, StaffMember.role]
+}

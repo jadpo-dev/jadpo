@@ -4,11 +4,18 @@
 //! errors, the last good version keeps serving. Each request it answers is
 //! one line, with its request id (area 17, "The request timeline").
 //!
-//! The database is the one `--url` names (until configuration gives each
-//! connection its URL, area 10), or else a disposable PostgreSQL started
-//! for the session, as `jadpo test` starts one; its pending migrations are
-//! applied when it starts and after each save that adds one. With
-//! `--no-run` it only checks on every save and writes `build/`.
+//! The settings `config.jadpo` declares are read first, from the process's
+//! environment over `.env.local`, and every one is checked against its type:
+//! a missing or invalid value stops the app starting, naming the setting and
+//! its variable and never the value, and a save of `.env.local` is checked
+//! like a save of source (area 10, "Checking values before the app
+//! starts"). Each database store opens at the address its connection's
+//! `url:` setting holds; `--url` names the database instead, and a store
+//! whose address no variable gives gets a database on a disposable
+//! PostgreSQL started for the session, as `jadpo test` starts one; its
+//! pending migrations are applied when it starts and after each save that
+//! adds one. With `--no-run` it only checks on every save and writes
+//! `build/`.
 //!
 //! The screen follows the CLI design language: a command header, a status
 //! line saying where it listens, one line per request (id, method and
@@ -16,7 +23,7 @@
 //! for each save, and errors drawn as `jadpo check` draws them. With
 //! `--json`, every step is one envelope on one line.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::net::TcpListener;
@@ -31,8 +38,9 @@ use jadpo_diag::{Diagnostic, rule};
 use jadpo_host_native::http::{Handler, MakeHandler, Server};
 use jadpo_host_native::{NativeHost, Runtime, postgres};
 use jadpo_interp::{Prepared, Program};
-use jadpo_runtime::http::{Request, Response, handle, request_id};
-use jadpo_runtime::{Clock, Ctx, Env, LocalFuture, RateLimits};
+use jadpo_runtime::LocalFuture;
+use jadpo_runtime::config::{ConfigValues, Mode, Variables};
+use jadpo_runtime::http::{Request, Response, Worker, serve_request};
 use jadpo_term::{
     Block, ColorChoice, Environment, Fact, Json, Outcome, Screen, Stream, Style, Token, envelope,
 };
@@ -101,20 +109,20 @@ struct Line {
 /// What every worker reads: the version being served and where its
 /// stores are.
 struct Shared {
-    current: Mutex<Arc<Prepared>>,
+    current: Mutex<(Arc<Prepared>, Arc<ConfigValues>)>,
     generation: AtomicU64,
     urls: BTreeMap<String, String>,
     log: Mutex<Sender<Line>>,
 }
 
 /// A worker's handler: its view of the program, rebuilt when a save
-/// swaps in a new version, its stores and its rate-limit counters.
+/// swaps in a new version, its host (its stores and rate-limit counters)
+/// and what the runtime keeps between its requests.
 struct DevHandler {
     shared: Arc<Shared>,
     program: RefCell<Option<(u64, Rc<Program>)>>,
     host: NativeHost,
-    limits: RateLimits,
-    count: Cell<u64>,
+    worker: Worker,
 }
 
 impl DevHandler {
@@ -125,11 +133,14 @@ impl DevHandler {
         {
             return Rc::clone(program);
         }
-        let prepared = match self.shared.current.lock() {
-            Ok(current) => Arc::clone(&current),
-            Err(poisoned) => Arc::clone(&poisoned.into_inner()),
+        let (prepared, values) = match self.shared.current.lock() {
+            Ok(current) => (Arc::clone(&current.0), Arc::clone(&current.1)),
+            Err(poisoned) => {
+                let current = poisoned.into_inner();
+                (Arc::clone(&current.0), Arc::clone(&current.1))
+            }
         };
-        let program = Rc::new(Program::new(prepared));
+        let program = Rc::new(Program::new(prepared).with_config(&values));
         *self.program.borrow_mut() = Some((generation, Rc::clone(&program)));
         program
     }
@@ -140,30 +151,15 @@ impl Handler for DevHandler {
         Box::pin(async move {
             let started = Instant::now();
             let program = self.program();
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |elapsed| elapsed.as_millis() as i64);
-            let env = Env {
-                seed: None,
-                clock: Clock::fixed(now),
-            };
-            let mut ctx = Ctx::new(program.places(), &self.host, env);
-            let count = self.count.get() + 1;
-            self.count.set(count);
-            let id = request_id(&ctx, count);
             let app = program.app();
-            let response = handle(
-                &app,
-                program.as_ref(),
-                &mut ctx,
-                &request,
-                &id,
-                Some(&self.limits),
-            )
-            .await;
+            let response =
+                serve_request(&app, program.as_ref(), &self.host, &self.worker, &request).await;
             if let Ok(log) = self.shared.log.lock() {
                 let _ = log.send(Line {
-                    id,
+                    id: response
+                        .header("x-request-id")
+                        .unwrap_or_default()
+                        .to_string(),
                     method: request.method.clone(),
                     path: request.path.clone(),
                     status: response.status,
@@ -320,9 +316,9 @@ pub fn serve_to(
         out.screen(Screen::new().with(Block::header("jadpo dev", [format!("started {started}")])));
     }
     // The first version that checks cleanly; until then, what's wrong.
-    let mut poller = Poller::new(&root, true);
+    let mut poller = Poller::new(&root, true).watching(crate::local::FILE);
     let first = loop {
-        match prepare(&root) {
+        match prepare(&root, env, !args.no_run) {
             Ok(ready) => break ready,
             Err((problems, sources)) => {
                 report_errors(&mut out, &root, &args.cwd, &problems, &sources, false);
@@ -333,8 +329,8 @@ pub fn serve_to(
         }
     };
     if args.no_run {
-        report_ready(&mut out, None, &first, None);
-        return watch_only(&mut out, &root, &args.cwd, &mut poller, stop);
+        report_ready(&mut out, None, &first, Databases::Disposable);
+        return watch_only(&mut out, &root, &args.cwd, env, &mut poller, stop);
     }
     // The stores, and their migrations applied.
     let mut disposable = None;
@@ -376,7 +372,7 @@ pub fn serve_to(
         .map_or(args.port, |address| address.port());
     let (sender, receiver): (Sender<Line>, Receiver<Line>) = channel();
     let shared = Arc::new(Shared {
-        current: Mutex::new(Arc::clone(&first.prepared)),
+        current: Mutex::new((Arc::clone(&first.prepared), Arc::clone(&first.config))),
         generation: AtomicU64::new(0),
         urls: urls.clone(),
         log: Mutex::new(sender),
@@ -393,8 +389,7 @@ pub fn serve_to(
             shared: Arc::clone(&make_shared),
             program: RefCell::new(None),
             host,
-            limits: RateLimits::default(),
-            count: Cell::new(0),
+            worker: Worker::default(),
         }) as Box<dyn Handler>
     });
     let workers = std::thread::available_parallelism().map_or(2, |n| n.get().min(8));
@@ -411,12 +406,17 @@ pub fn serve_to(
         }
     };
     let url = format!("http://localhost:{port}");
-    report_ready(
-        &mut out,
-        Some(&url),
-        &first,
-        disposable.as_ref().map(|_| ()),
-    );
+    let databases = match (
+        args.url.is_some(),
+        disposable.is_some(),
+        first.configured.is_empty(),
+    ) {
+        (true, ..) => Databases::Url,
+        (false, true, false) => Databases::Mixed,
+        (false, true, true) => Databases::Disposable,
+        (false, false, _) => Databases::Configured,
+    };
+    report_ready(&mut out, Some(&url), &first, databases);
     let mut current = first;
     // Request lines are written as they come, between looks for saves.
     loop {
@@ -454,7 +454,7 @@ pub fn serve_to(
                 )
             })
             .collect();
-        match prepare(&root) {
+        match prepare(&root, env, true) {
             Err((problems, sources)) => {
                 rule_line(&mut out, &time, &saved, "not reloaded");
                 report_errors(&mut out, &root, &args.cwd, &problems, &sources, true);
@@ -471,7 +471,7 @@ pub fn serve_to(
                     }
                 }
                 if let Ok(mut slot) = shared.current.lock() {
-                    *slot = Arc::clone(&ready.prepared);
+                    *slot = (Arc::clone(&ready.prepared), Arc::clone(&ready.config));
                 }
                 shared.generation.fetch_add(1, Ordering::SeqCst);
                 rule_line(&mut out, &time, &saved, "reloaded");
@@ -494,6 +494,7 @@ fn watch_only(
     out: &mut Out<'_>,
     root: &Path,
     cwd: &Path,
+    env: &Environment,
     poller: &mut Poller,
     stop: &dyn Fn() -> bool,
 ) -> u8 {
@@ -503,7 +504,7 @@ fn watch_only(
             .iter()
             .map(|edit| format!("saved {}", edit.path))
             .collect();
-        match prepare(root) {
+        match prepare(root, env, false) {
             Ok(_) => rule_line(out, &time, &saved, "checked"),
             Err((problems, sources)) => {
                 rule_line(out, &time, &saved, "errors");
@@ -522,11 +523,20 @@ struct Ready {
     /// The stores its entities live in.
     stores: Vec<String>,
     routes: usize,
+    /// The settings it starts with (area 10).
+    config: Arc<ConfigValues>,
+    /// The address each database store's connection reads, where a
+    /// variable gives one.
+    configured: BTreeMap<String, String>,
 }
 
 /// Loads and checks the project, writes `build/`, and prepares it to run;
 /// the problems that stop it otherwise.
-fn prepare(root: &Path) -> Result<Ready, (Vec<Diagnostic>, BTreeMap<String, String>)> {
+fn prepare(
+    root: &Path,
+    env: &Environment,
+    run: bool,
+) -> Result<Ready, (Vec<Diagnostic>, BTreeMap<String, String>)> {
     let loaded = jadpo_db::load(root);
     let (db, project) = (&loaded.db, loaded.project);
     let diagnostics = jadpo_check::check(db, project);
@@ -536,7 +546,9 @@ fn prepare(root: &Path) -> Result<Ready, (Vec<Diagnostic>, BTreeMap<String, Stri
         .count();
     let graph = jadpo_check::graph::graph(db, project);
     let openapi = jadpo_check::routes::openapi::documents(db, project, &crate::check::title(root));
-    let _ = crate::derived::write(root, graph, errors, &openapi);
+    let permissions = jadpo_check::policy::policy_clean(db, project)
+        .then(|| jadpo_check::policy::report::report(db, project));
+    let _ = crate::derived::write(root, graph, errors, &openapi, permissions.as_ref());
     let blocking: Vec<Diagnostic> = diagnostics
         .into_iter()
         .filter(jadpo_check::blocks_running)
@@ -563,16 +575,103 @@ fn prepare(root: &Path) -> Result<Ready, (Vec<Diagnostic>, BTreeMap<String, Stri
     stores.dedup();
     let prepared = Prepared::checked(db, project);
     let routes = prepared.plan().routes().routes.len();
+    let (config, configured) = if run {
+        let model = jadpo_check::config::config(db, project);
+        let types = |field: &str| {
+            model
+                .setting(field)
+                .map_or_else(String::new, |setting| setting.ty.to_string())
+        };
+        start_config(&prepared, root, env, &stores, &types)
+            .map_err(|problems| (problems, BTreeMap::new()))?
+    } else {
+        (Arc::new(ConfigValues::default()), BTreeMap::new())
+    };
     Ok(Ready {
         prepared,
         steps,
         stores,
         routes,
+        config,
+        configured,
     })
 }
 
-/// Each store's database URL: `--url` for the one store, or a database
-/// of its own on a disposable server.
+/// The settings the app starts with and the address each database store's
+/// connection reads, where a variable gives one.
+type StartConfig = (Arc<ConfigValues>, BTreeMap<String, String>);
+
+/// The settings the app starts with, every one checked: from the
+/// environment over `.env.local`. A database store's address that no
+/// variable gives is not a problem here: `jadpo dev` gives that store a
+/// disposable database, which is what a project with a fresh clone wants
+/// (area 14); any other missing or invalid value is, and stops the app
+/// starting.
+fn start_config(
+    prepared: &Prepared,
+    root: &Path,
+    env: &Environment,
+    stores: &[String],
+    types: &dyn Fn(&str) -> String,
+) -> Result<StartConfig, Vec<Diagnostic>> {
+    let plan = prepared.plan().config();
+    if plan.is_empty() {
+        return Ok((Arc::new(ConfigValues::default()), BTreeMap::new()));
+    }
+    let layered = crate::config::Layered::new(root, env).map_err(|problem| vec![*problem])?;
+    // The addresses of the stores this project uses that a variable doesn't
+    // give: a placeholder stands in so the rest can be checked, and the
+    // store gets a database of its own.
+    let wanted: Vec<_> = plan
+        .connections
+        .iter()
+        .filter(|connection| stores.contains(&connection.connection))
+        .filter_map(|connection| {
+            let field = plan.fields.get(connection.field as usize)?;
+            let missing = field.default.is_none() && layered.variable(&field.variable).is_none();
+            Some((
+                connection.connection.clone(),
+                field.variable.clone(),
+                missing,
+            ))
+        })
+        .collect();
+    let placeholders: BTreeMap<String, String> = wanted
+        .iter()
+        .filter(|(_, _, missing)| *missing)
+        .map(|(_, variable, _)| {
+            (
+                variable.clone(),
+                "postgres://disposable.invalid/dev".to_string(),
+            )
+        })
+        .collect();
+    let stand_in = |name: &str| {
+        layered
+            .variable(name)
+            .or_else(|| placeholders.get(name).cloned())
+    };
+    let values = prepared
+        .config(&stand_in, Mode::Environment, &crate::config::random)
+        .map_err(|problems| crate::config::start_diagnostics(&problems, types))?;
+    let configured = wanted
+        .iter()
+        .filter(|(_, _, missing)| !*missing)
+        .filter_map(|(store, ..)| {
+            let connection = plan
+                .connections
+                .iter()
+                .find(|connection| &connection.connection == store)?;
+            let text = values.text_at(connection.field)?;
+            Some((store.clone(), text.to_string()))
+        })
+        .collect();
+    Ok((Arc::new(values), configured))
+}
+
+/// Each store's database URL: `--url` for the one store, else the address
+/// its connection's setting holds, else a database of its own on a
+/// disposable server.
 fn stores(
     ready: &Ready,
     url: Option<&str>,
@@ -590,10 +689,10 @@ fn stores(
                     "`--url` names one database, and the project has several stores",
                 )
                 .reason(format!(
-                    "The stores {} each need a database; configuration gives each connection its URL (area 10), which comes later.",
+                    "The stores {} each need a database, and each connection takes its address from a setting: `url: config.<name>` in `app.jadpo`, with the value in `.env.local`.",
                     crate::run::both(&ready.stores)
                 ))
-                .next("Leave out `--url`, and `jadpo dev` starts a disposable PostgreSQL for them"),
+                .next("Leave out `--url`, and give each connection a `url:`; stores with none get a disposable PostgreSQL"),
             ));
         }
         for store in &ready.stores {
@@ -601,16 +700,29 @@ fn stores(
         }
         return Ok(out);
     }
+    for store in &ready.stores {
+        if let Some(configured) = ready.configured.get(store) {
+            out.insert(store.clone(), configured.clone());
+        }
+    }
+    let wanting: Vec<&String> = ready
+        .stores
+        .iter()
+        .filter(|store| !out.contains_key(*store))
+        .collect();
+    if wanting.is_empty() {
+        return Ok(out);
+    }
     let server = jadpo_test::postgres::Server::start().map_err(|error| {
         Box::new(
             Diagnostic::new(&rule::CLI_DEV_START_FAILED, "No PostgreSQL to run the app on")
                 .reason(format!(
-                    "`jadpo dev` starts a disposable PostgreSQL when `--url` names no database, and starting one failed: {error}."
+                    "`jadpo dev` starts a disposable PostgreSQL for a store whose address no setting gives and `--url` doesn't name, and starting one failed: {error}."
                 ))
-                .next("Install PostgreSQL, or name a database with `--url`"),
+                .next("Install PostgreSQL, set the connection's address with `jadpo config set`, or name a database with `--url`"),
         )
     })?;
-    for store in &ready.stores {
+    for store in wanting {
         let url = server
             .create_database(&format!("dev_{store}"))
             .map_err(|error| {
@@ -664,7 +776,40 @@ fn migrate_all(
     Ok(ran)
 }
 
-fn report_ready(out: &mut Out<'_>, url: Option<&str>, ready: &Ready, disposable: Option<()>) {
+/// Where the databases the app runs on came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Databases {
+    /// The one `--url` names.
+    Url,
+    /// The addresses the connections' settings hold.
+    Configured,
+    /// A disposable PostgreSQL, for every store.
+    Disposable,
+    /// Some stores configured, the rest on a disposable PostgreSQL.
+    Mixed,
+}
+
+impl Databases {
+    fn word(self) -> &'static str {
+        match self {
+            Databases::Url => "url",
+            Databases::Configured => "config",
+            Databases::Disposable => "disposable",
+            Databases::Mixed => "mixed",
+        }
+    }
+
+    fn describe(self) -> &'static str {
+        match self {
+            Databases::Url => "the one --url names",
+            Databases::Configured => "from the connections' settings",
+            Databases::Disposable => "disposable PostgreSQL, gone when dev stops",
+            Databases::Mixed => "from settings, and a disposable PostgreSQL for the rest",
+        }
+    }
+}
+
+fn report_ready(out: &mut Out<'_>, url: Option<&str>, ready: &Ready, databases: Databases) {
     if out.json {
         let data = Json::object([
             ("event", "listening".into()),
@@ -674,12 +819,11 @@ fn report_ready(out: &mut Out<'_>, url: Option<&str>, ready: &Ready, disposable:
                 "database",
                 if ready.stores.is_empty() {
                     Json::Null
-                } else if disposable.is_some() {
-                    "disposable".into()
                 } else {
-                    "url".into()
+                    databases.word().into()
                 },
             ),
+            ("settings", Json::from(ready.config.len())),
         ]);
         out.json(data, &[], &BTreeMap::new());
         return;
@@ -690,15 +834,14 @@ fn report_ready(out: &mut Out<'_>, url: Option<&str>, ready: &Ready, disposable:
         format!("{} routes", ready.routes)
     };
     let mut rows = vec![("routes".to_string(), routes)];
-    if !ready.stores.is_empty() {
+    if !ready.config.is_empty() {
         rows.push((
-            "database".to_string(),
-            if disposable.is_some() {
-                "disposable PostgreSQL, gone when dev stops".to_string()
-            } else {
-                "the one --url names".to_string()
-            },
+            "settings".to_string(),
+            format!("{} checked", ready.config.len()),
         ));
+    }
+    if !ready.stores.is_empty() && url.is_some() {
+        rows.push(("database".to_string(), databases.describe().to_string()));
     }
     let text = match url {
         Some(url) => format!("listening on {url}"),

@@ -10,6 +10,7 @@ mod support;
 
 mod bodies;
 mod conditions;
+mod config;
 mod determinism;
 mod examples;
 mod failures;
@@ -23,8 +24,10 @@ mod logic;
 mod lookup;
 mod named_collections;
 mod one_error;
+mod policy;
 mod project;
 mod review;
 mod scale;
+mod signed;
 mod soundness;
 mod types;

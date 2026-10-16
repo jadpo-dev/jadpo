@@ -31,7 +31,9 @@ jadpo-test.workspace = true
 jadpo-value.workspace = true
 
 [dev-dependencies]
+jadpo-drivers.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true

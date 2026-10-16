@@ -1,0 +1,6 @@
+use kitchen/types { BakeryName }
+
+/// What opening a bakery takes.
+type NewBakery = Input {
+    name: BakeryName
+}

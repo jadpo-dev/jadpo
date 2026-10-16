@@ -1,0 +1,8 @@
+use kitchen/entities { Baker }
+use kitchen/types { StaffRole }
+
+/// Whom to take on, and in what role.
+type NewStaff = Input {
+    baker_id: Baker.id
+    role: StaffRole
+}

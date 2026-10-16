@@ -10,7 +10,9 @@
 //! - [`postgres`]: a PostgreSQL store over that transport.
 //! - [`NativeHost`]: the runtime's `Host` for a deployable or `jadpo dev`:
 //!   each store by its connection's name, the operating system's
-//!   randomness, and tokio's timer for deadlines (chunk 4.2).
+//!   randomness, tokio's timer and the monotonic clock for deadlines
+//!   (chunks 4.2 and 4.9), the system clock, and rate limits counted in
+//!   the worker's own bounded memory (chunk 4.10).
 //! - [`http`]: the listener and its worker threads, each a current-thread
 //!   runtime answering with its own handler (chunk 4.1).
 //!
@@ -42,7 +44,8 @@ use std::io::Read as _;
 use std::rc::Rc;
 
 use jadpo_drivers::{Endpoint, Stream, Transport};
-use jadpo_runtime::{Database, Event, Host, LocalFuture, StoreError};
+use jadpo_runtime::{Allowed, Database, Event, Host, LocalFuture, RateLimits, StoreError};
+use jadpo_std::http::RateLimit;
 use tokio::task::LocalSet;
 
 pub use jadpo_drivers::postgres::Postgres;
@@ -124,13 +127,16 @@ pub fn postgres(url: &str) -> Result<Postgres, StoreError> {
     Postgres::new(url, Rc::new(NativeTransport))
 }
 
-/// The runtime's host natively: each store by its connection's name, and
-/// the operating system's randomness for new identities and request ids.
-/// Events are delivered by area 12's workers; until then a committed
-/// action's events go nowhere.
+/// The runtime's host natively, one per worker thread: each store by its
+/// connection's name, the operating system's randomness for new identities
+/// and request ids, the system clock, and the worker's rate-limit counters
+/// in bounded memory, the native default until a Redis connection is
+/// named (area 16). Events are delivered by area 12's workers; until then
+/// a committed action's events go nowhere.
 #[derive(Debug, Default)]
 pub struct NativeHost {
     stores: BTreeMap<String, Postgres>,
+    limits: RateLimits,
 }
 
 impl NativeHost {
@@ -154,6 +160,11 @@ impl Host for NativeHost {
         Box::pin(async {})
     }
 
+    /// The process's environment.
+    fn variable(&self, name: &str) -> Option<String> {
+        std::env::var(name).ok()
+    }
+
     fn random(&self, bytes: &mut [u8]) -> bool {
         std::fs::File::open("/dev/urandom")
             .and_then(|mut source| source.read_exact(bytes))
@@ -163,6 +174,39 @@ impl Host for NativeHost {
     /// tokio's timer, which runs inside [`Runtime::block_on`].
     fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {
         Box::pin(tokio::time::sleep(std::time::Duration::from_millis(millis)))
+    }
+
+    /// tokio's yield, which wakes the task only after the I/O driver is
+    /// polled: a task that wakes itself is polled again first, up to a
+    /// `LocalSet`'s whole tick, so other requests' replies would wait.
+    fn yield_now(&self) -> LocalFuture<'_, ()> {
+        Box::pin(tokio::task::yield_now())
+    }
+
+    /// The process's monotonic clock, from when it was first read.
+    fn monotonic_ms(&self) -> Option<u64> {
+        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let start = START.get_or_init(std::time::Instant::now);
+        u64::try_from(start.elapsed().as_millis()).ok()
+    }
+
+    /// The system clock.
+    fn now_ms(&self) -> Option<i64> {
+        let elapsed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?;
+        i64::try_from(elapsed.as_millis()).ok()
+    }
+
+    /// Counted in this worker's memory.
+    fn rate_limit<'a>(
+        &'a self,
+        key: &'a str,
+        limit: RateLimit,
+        now: i64,
+    ) -> LocalFuture<'a, Allowed> {
+        let allowed = self.limits.allow(key, limit, now);
+        Box::pin(async move { allowed })
     }
 }
 

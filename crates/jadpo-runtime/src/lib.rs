@@ -54,6 +54,7 @@
 )]
 
 mod boundary;
+pub mod config;
 mod ctx;
 mod env;
 mod executor;
@@ -65,6 +66,7 @@ mod limits;
 mod migrate;
 mod outcome;
 mod places;
+mod policy;
 mod purge;
 mod race;
 mod ratelimit;
@@ -76,7 +78,7 @@ mod write;
 pub use boundary::{ActionBody, RERUN_ATTEMPTS, action, commit_held, unavailable};
 pub use ctx::{Caller, Ctx, Held, SessionEffect};
 pub use env::{Clock, Env};
-pub use executor::{Executor, Stalled, block_on};
+pub use executor::{Executor, Stalled, YieldNow, block_on, yield_now};
 pub use failure::Failure;
 pub use fault::{Fault, FaultKind};
 pub use host::{
@@ -88,8 +90,9 @@ pub use limits::MAX_DEPTH;
 pub use migrate::{MIGRATIONS_TABLE, MigrateError, Migration, Standing, migrate, standing};
 pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};
-pub use purge::{PURGE_BATCHES, Purged, purge};
+pub use policy::{admit, call_as};
+pub use purge::{PURGE_BATCHES, Purged, purge, purge_after};
 pub use ratelimit::{Allowed, RateLimits};
-pub use read::{PAGE, cursor, from_sql, invalid_cursor, to_sql, uuid_text};
+pub use read::{PAGE, cursor, from_sql, invalid_cursor, not_permitted, to_sql, uuid_text};
 pub use report::{Detail, Location, Report, ReportRule, Sources, fields_text};
 pub use store::{StoreOp, Stored, store};

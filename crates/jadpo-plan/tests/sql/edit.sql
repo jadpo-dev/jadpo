@@ -6,6 +6,7 @@ SET "title" = CASE WHEN $1 THEN $2 ELSE "title" END,
     "status" = CASE WHEN $1 THEN $7 ELSE "status" END,
     "updated_at" = CASE WHEN $9 THEN $8 ELSE "updated_at" END
 WHERE "id" = $10
+  AND "todo"."owner_id" = $11
 RETURNING "id", "owner_id", "project_id", "title", "status", "score", "due_at", "created_at", "updated_at"
 -- $1: whether input 1 supplied title as Bool
 -- $2: input 1.title as Text
@@ -17,5 +18,6 @@ RETURNING "id", "owner_id", "project_id", "title", "status", "score", "due_at", 
 -- $8: clock.now as Timestamp
 -- $9: whether input 1 supplied any of title, due_at, project_id as Bool
 -- $10: input 0.id as Uuid
+-- $11: caller User as Uuid
 -- returns: uuid, uuid, uuid, text, enum TodoStatus, int, instant, instant, instant
 -- refused by todo_project_id_fkey: not found, failure 0

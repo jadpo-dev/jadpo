@@ -1,0 +1,4 @@
+/// A recipe's number in the bakery's old system.
+type OldReference = Text {
+    pattern: "R-[0-9]{6}"
+}

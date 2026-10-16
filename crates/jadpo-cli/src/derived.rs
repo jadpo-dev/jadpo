@@ -9,7 +9,9 @@
 //! The other views come with their areas: the schema, query and
 //! permissions reports in `build/report/` (5, 6, 9) and the monitoring
 //! rules (16). Since chunk 4.1 each API's OpenAPI document is written to
-//! `build/openapi/<api>.json` once its routes read cleanly (area 7).
+//! `build/openapi/<api>.json` once its routes read cleanly (area 7), and
+//! since chunk 4.4 the permissions report to `build/report/permissions.md`
+//! and `.json` once policy reads cleanly (area 9).
 
 use std::path::Path;
 
@@ -25,6 +27,7 @@ pub fn write(
     graph: &Graph,
     errors: usize,
     openapi: &[(String, jadpo_graph::json::Value)],
+    permissions: Option<&jadpo_check::policy::report::Report>,
 ) -> Result<Vec<String>, Box<Diagnostic>> {
     let stamp = Stamp {
         compiler: VERSION.to_string(),
@@ -54,6 +57,17 @@ pub fn write(
     // One OpenAPI document per API (area 7), once its routes read cleanly.
     for (api, document) in openapi {
         files.push((format!("build/openapi/{api}.json"), document.to_document()));
+    }
+    // Who may do what to every entity (area 9), once policy reads cleanly.
+    if let Some(report) = permissions {
+        files.push((
+            "build/report/permissions.md".to_string(),
+            report.markdown.clone(),
+        ));
+        files.push((
+            "build/report/permissions.json".to_string(),
+            report.json.to_document(),
+        ));
     }
     let mut written = Vec::new();
     for (path, text) in files {

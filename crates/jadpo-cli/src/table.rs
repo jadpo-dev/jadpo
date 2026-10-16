@@ -635,6 +635,64 @@ pub static COMMANDS: &[Command] = &[
         run: commands::api,
     },
     Command {
+        name: "config",
+        synonyms: &[],
+        group: "Set up",
+        summary: "Check and set local settings",
+        description: "Settings are what `config.jadpo` declares: values a deployment provides, \
+                      each read from the environment variable named after it in capitals. `check` \
+                      lists every setting as set, default, missing or invalid against this \
+                      machine's values, the process's environment over `.env.local`, and shows \
+                      each problem with the command that fixes it; it never prints a value. \
+                      `set` asks for one setting's value at a prompt, hidden when it is secret, \
+                      checks it against the setting's type and stores it in `.env.local`, which \
+                      it keeps out of git. A value is never an argument, so it cannot reach a \
+                      shell history, a log or a chat.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do",
+                required: true,
+                values: Values::Fixed(crate::config::ACTIONS),
+            },
+            Argument {
+                name: "field",
+                description: "The setting to store a value for",
+                required: false,
+                values: Values::Fixed(&[]),
+            },
+        ],
+        flags: &[],
+        examples: &[
+            Example {
+                description: "See which settings still need a value",
+                command: "jadpo config check",
+            },
+            Example {
+                description: "Store a secret without typing it anywhere it is kept",
+                command: "jadpo config set session_signing_key",
+            },
+            Example {
+                description: "List the settings as data for tools",
+                command: "jadpo config check --json",
+            },
+        ],
+        arguments_rule: &rule::CLI_CONFIG_ARGUMENTS,
+        raises: &[
+            &rule::CONFIGURATION_VALUE_MISSING,
+            &rule::CONFIGURATION_VALUE_INVALID,
+            &rule::CLI_CONFIG_TTY_REQUIRED,
+            &rule::CLI_CONFIG_PROMPT_FAILED,
+            &rule::CONFIGURATION_LOCAL_READ_FAILED,
+            &rule::CONFIGURATION_LOCAL_INVALID_ENCODING,
+            &rule::CONFIGURATION_LOCAL_SYNTAX,
+            &rule::CONFIGURATION_LOCAL_UNSAFE_TARGET,
+            &rule::CONFIGURATION_LOCAL_CHANGED,
+            &rule::CONFIGURATION_LOCAL_WRITE_FAILED,
+        ],
+        run: commands::config,
+    },
+    Command {
         name: "completions",
         synonyms: &["completion"],
         group: "Set up",

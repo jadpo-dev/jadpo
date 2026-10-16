@@ -1,0 +1,16 @@
+use bakery/entities { Outlet }
+use bakery/types { OutletName, OutletStatus }
+use bakery/failures { OutletNameTaken }
+
+/// Opens an outlet for collections.
+action open_outlet(name: OutletName) fails OutletNameTaken -> Outlet {
+    return attempt Outlet.create {
+        set: {
+            name: name
+            status: OutletStatus.open
+        }
+        conflict: {
+            Outlet.name: OutletNameTaken
+        }
+    }
+}

@@ -1,0 +1,27 @@
+// A prefix may hold typed placeholders, which every route in the group
+// receives. The file is named after the prefix's fixed segments,
+// `/bakeries/.../staff`, so a URL still leads to one file.
+
+use kitchen/entities { Bakery }
+use kitchen/types { NewStaff, StaffView }
+use kitchen/actions { take_on }
+use kitchen/queries { team }
+
+/// A bakery's staff.
+routes BakeriesStaff {
+    prefix: /bakeries/{bakery_id: Bakery.id}/staff
+
+    /// The staff the signed-in baker may see.
+    GET / {
+        output: List<StaffView>
+        run: team(bakery_id)
+    }
+
+    /// Takes a baker on; only owners may.
+    POST / {
+        input: NewStaff
+        output: StaffView
+        status: SuccessStatus.created
+        run: take_on(bakery_id, input)
+    }
+}

@@ -1,0 +1,166 @@
+use kitchen/entities { Baker }
+use kitchen/types { KitchenStaff, NewStaff, RecipeCard, StaffRole, StaffView }
+use kitchen/actions {
+    CostRecipe,
+    HandOver,
+    RenameRecipe,
+    WriteRecipe,
+    register,
+    take_on,
+    write_recipe
+}
+use kitchen/fixtures { northwind }
+
+test "a recipe is renamed by its author or an owner, and missing to other bakers" {
+    var crew: KitchenStaff = northwind()
+    var dee: Baker = attempt register("dee")
+    var dees_place: StaffView = attempt take_on(
+        crew.bakery.id,
+        NewStaff {
+            baker_id: dee.id
+            role: StaffRole.baker
+        }
+    )
+    assert dees_place.role == StaffRole.baker
+    var rye: RecipeCard = attempt write_recipe(
+        crew.bakery.id,
+        WriteRecipe {
+            name: "Rye sourdough"
+        },
+        Principal.user(crew.baker)
+    )
+    var by_dee: Response = request {
+        method: HttpMethod.patch
+        path: "/recipes/{recipe_id}"
+        params: {
+            recipe_id: rye.id
+        }
+        as: Principal.user(dee)
+        input: RenameRecipe {
+            name: "Dee's rye"
+        }
+    }
+    assert by_dee.status == 404
+    assert by_dee.code == "recipe_not_found"
+    var by_owner: Response = request {
+        method: HttpMethod.patch
+        path: "/recipes/{recipe_id}"
+        params: {
+            recipe_id: rye.id
+        }
+        as: Principal.user(crew.owner)
+        input: RenameRecipe {
+            name: "Northwind rye"
+        }
+    }
+    assert by_owner.status == 200
+}
+
+test "only an owner sets what a batch costs" {
+    var crew: KitchenStaff = northwind()
+    var rye: RecipeCard = attempt write_recipe(
+        crew.bakery.id,
+        WriteRecipe {
+            name: "Rye sourdough"
+        },
+        Principal.user(crew.baker)
+    )
+    // The author may change the recipe, but not this field: the whole
+    // write is refused.
+    var by_author: Response = request {
+        method: HttpMethod.put
+        path: "/recipes/{recipe_id}/cost"
+        params: {
+            recipe_id: rye.id
+        }
+        as: Principal.user(crew.baker)
+        input: CostRecipe {
+            batch_cost: 450
+        }
+    }
+    assert by_author.status == 403
+    assert by_author.code == "not_permitted"
+    var by_owner: Response = request {
+        method: HttpMethod.put
+        path: "/recipes/{recipe_id}/cost"
+        params: {
+            recipe_id: rye.id
+        }
+        as: Principal.user(crew.owner)
+        input: CostRecipe {
+            batch_cost: 450
+        }
+    }
+    assert by_owner.status == 200
+}
+
+test "only a recipe's author hands it over" {
+    var crew: KitchenStaff = northwind()
+    var dee: Baker = attempt register("dee")
+    var dees_place: StaffView = attempt take_on(
+        crew.bakery.id,
+        NewStaff {
+            baker_id: dee.id
+            role: StaffRole.baker
+        }
+    )
+    assert dees_place.role == StaffRole.baker
+    var rye: RecipeCard = attempt write_recipe(
+        crew.bakery.id,
+        WriteRecipe {
+            name: "Rye sourdough"
+        },
+        Principal.user(crew.baker)
+    )
+    // An owner may change the recipe, but `hand_over_recipe`'s line in
+    // `policy.jadpo` replaces the record's grants: only its author may.
+    var by_owner: Response = request {
+        method: HttpMethod.post
+        path: "/recipes/{recipe_id}/hand-over"
+        params: {
+            recipe_id: rye.id
+        }
+        as: Principal.user(crew.owner)
+        input: HandOver {
+            to: dee.id
+        }
+    }
+    assert by_owner.status == 404
+    var by_author: Response = request {
+        method: HttpMethod.post
+        path: "/recipes/{recipe_id}/hand-over"
+        params: {
+            recipe_id: rye.id
+        }
+        as: Principal.user(crew.baker)
+        input: HandOver {
+            to: dee.id
+        }
+    }
+    assert by_author.status == 200
+    // Dee is its author now, and Bo no longer is.
+    var renamed_by_bo: Response = request {
+        method: HttpMethod.patch
+        path: "/recipes/{recipe_id}"
+        params: {
+            recipe_id: rye.id
+        }
+        as: Principal.user(crew.baker)
+        input: RenameRecipe {
+            name: "Bo's rye"
+        }
+    }
+    assert renamed_by_bo.status == 404
+    var renamed_by_dee: Response = request {
+        method: HttpMethod.patch
+        path: "/recipes/{recipe_id}"
+        params: {
+            recipe_id: rye.id
+        }
+        as: Principal.user(dee)
+        input: RenameRecipe {
+            name: "Dee's rye"
+        }
+    }
+    assert renamed_by_dee.status == 200
+}

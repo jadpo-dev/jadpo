@@ -22,6 +22,9 @@ pub enum Shape {
     /// An enum, by its key, or a standard-library enum by name.
     Enum(Key),
     StdEnum(String),
+    /// `IssuedToken` or `IssuedKey` (area 8): built in, with the three
+    /// fields `jadpo_std::http::ISSUED_FIELDS` lists.
+    Issued(&'static str),
     List(TypeRef, Rules),
     Set(TypeRef, Rules),
     Map(TypeRef, TypeRef, Rules),
@@ -137,7 +140,12 @@ impl<'g> Wire<'g> {
                 TypeRef::Std(name, args) if name == "Page" && args.len() == 1 => {
                     return Shape::Page(args.into_iter().next().unwrap_or(TypeRef::None));
                 }
-                TypeRef::Std(name, args) if args.is_empty() => return Shape::StdEnum(name),
+                TypeRef::Std(name, args) if args.is_empty() => {
+                    return match issued_name(&name) {
+                        Some(issued) => Shape::Issued(issued),
+                        None => Shape::StdEnum(name),
+                    };
+                }
                 other => return Shape::Other(other.to_string()),
             }
         }
@@ -215,6 +223,10 @@ impl<'g> Wire<'g> {
                 self.name(&key)
             }
             Shape::StdEnum(name) => name,
+            Shape::Issued(name) => {
+                refs.insert(issued_key(name));
+                name.to_string()
+            }
             Shape::List(inner, rules) => {
                 format!("List<{}>{}", self.render(&inner, refs), rules_text(&rules))
             }
@@ -247,6 +259,10 @@ impl<'g> Wire<'g> {
             Shape::Object(key) | Shape::Enum(key) => {
                 refs.insert(key.clone());
                 reference(&self.name(&key))
+            }
+            Shape::Issued(name) => {
+                refs.insert(issued_key(name));
+                reference(name)
             }
             Shape::StdEnum(name) => {
                 let mut out = Value::object();
@@ -310,6 +326,60 @@ impl<'g> Wire<'g> {
             schema
         }
     }
+}
+
+/// `IssuedToken` or `IssuedKey` as the built-in type `name` names.
+pub fn issued_name(name: &str) -> Option<&'static str> {
+    [jadpo_std::http::ISSUED_TOKEN, jadpo_std::http::ISSUED_KEY]
+        .into_iter()
+        .find(|issued| *issued == name)
+}
+
+/// The key a built-in `IssuedToken` or `IssuedKey` is referred to by,
+/// which no node holds.
+pub fn issued_key(name: &str) -> Key {
+    Key::new(Kind::Type, name)
+}
+
+/// The built-in type a key refers to, when it is `IssuedToken` or
+/// `IssuedKey`.
+pub fn issued_of(key: &Key) -> Option<&'static str> {
+    (key.kind() == Some(Kind::Type))
+        .then(|| issued_name(key.name()))
+        .flatten()
+}
+
+/// The record's section for a built-in `IssuedToken` or `IssuedKey`.
+pub fn issued_section(name: &str) -> String {
+    let mut text = format!("output {name}\n");
+    for (field, builtin) in jadpo_std::http::ISSUED_FIELDS {
+        text.push_str(&format!("    {field}: {}\n", builtin.name()));
+    }
+    text
+}
+
+/// The JSON Schema of a built-in `IssuedToken` or `IssuedKey`.
+pub fn issued_schema(name: &str) -> Value {
+    let mut out = Value::object();
+    out.set(
+        "description",
+        if name == jadpo_std::http::ISSUED_KEY {
+            "A service key as it is listed: when it started and when it ends, never the key itself."
+        } else {
+            "An API token as it is listed: when it started and when it ends, never the token itself."
+        },
+    );
+    out.set("type", "object");
+    let mut properties = Value::object();
+    let mut required = Vec::new();
+    for (field, builtin) in jadpo_std::http::ISSUED_FIELDS {
+        properties.set(field, scalar_schema(builtin, &Rules::default()));
+        required.push(Value::from(field));
+    }
+    out.set("properties", properties);
+    out.set("required", required);
+    out.set("additionalProperties", false);
+    out
 }
 
 /// A reference to a schema in the document's components.
@@ -384,8 +454,14 @@ fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
         Builtin::Instant => string(&mut out, Some("date-time")),
         Builtin::CalendarDate => string(&mut out, Some("date")),
         Builtin::Duration => string(&mut out, Some("duration")),
+        // A time of day as it is sent: `09:30`, with seconds and up to
+        // three decimal places when it has them.
         Builtin::Time => {
-            out.set("type", "object");
+            string(&mut out, None);
+            out.set(
+                "pattern",
+                "^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]{1,3})?)?$",
+            );
         }
         Builtin::Unit => out.set("type", "null"),
         _ => string(&mut out, None),

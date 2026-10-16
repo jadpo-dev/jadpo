@@ -3,6 +3,7 @@ SELECT "id", "name"
 FROM "board"
 WHERE "id" = $1
   AND "deleted_at" IS NULL
+  AND FALSE
 -- $1: argument 0 as Uuid
 -- columns: uuid, text
 -- record BoardWithCards: id = column 0, name = column 1, cards = include 0
@@ -15,6 +16,7 @@ WHERE "id" = $1
     FROM "card"
     WHERE "board_id" = "key"."id"
       AND ("published_at" IS NOT NULL AND "published_at" <= $2)
+      AND FALSE
     ORDER BY "published_at" DESC, "id" DESC
     LIMIT 20
   ) AS "row"

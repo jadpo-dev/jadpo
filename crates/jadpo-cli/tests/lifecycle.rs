@@ -107,20 +107,27 @@ entity Member {
             since: left_at
         }
     }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 ",
     ),
     (
         "domains/club/entities/visit.jadpo",
-        "use club/entities { Member }\nuse club/types { Name }\n\n/// A member's visit.\nentity Visit {\n    id: Uuid\n    member_id: Member.id {\n        on_delete: OnDelete.cascade\n    }\n    note: Name\n}\n",
+        "use club/entities { Member }\nuse club/types { Name }\n\n/// A member's visit.\nentity Visit {\n    id: Uuid\n    member_id: Member.id {\n        on_delete: OnDelete.cascade\n    }\n    note: Name\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n}\n",
     ),
     (
         "domains/club/entities/badge.jadpo",
-        "use club/entities { Member }\n\n/// A badge a member holds, which keeps them from being purged.\nentity Badge {\n    id: Uuid\n    member_id: Member.id {\n        on_delete: OnDelete.restricted\n    }\n}\n",
+        "use club/entities { Member }\n\n/// A badge a member holds, which keeps them from being purged.\nentity Badge {\n    id: Uuid\n    member_id: Member.id {\n        on_delete: OnDelete.restricted\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n}\n",
     ),
     (
         "domains/club/entities/notice.jadpo",
-        "use club/types { Name }\n\n/// A notice shown from its time.\nentity Notice {\n    id: Uuid\n    title: Name\n    published_at: Instant?\n\n    lifecycle: {\n        visible: published_at != none and published_at <= clock.now\n    }\n}\n",
+        "use club/types { Name }\n\n/// A notice shown from its time.\nentity Notice {\n    id: Uuid\n    title: Name\n    published_at: Instant?\n\n    lifecycle: {\n        visible: published_at != none and published_at <= clock.now\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n}\n",
     ),
     (
         "domains/club/types/member_view.jadpo",
@@ -468,6 +475,104 @@ fn purge_deletes_records_hidden_long_enough_and_keeps_the_rest() {
 }
 
 #[test]
+fn purge_waits_as_long_as_a_setting_says() {
+    if skipped() {
+        return;
+    }
+    let root = project("purge-setting");
+    // The period is a setting (area 10, "Retention periods"), not a
+    // duration written in place.
+    let member = root.join("domains/club/entities/member.jadpo");
+    let text = fs::read_to_string(&member).expect("the entity");
+    assert!(text.contains("after: 30d"));
+    write(
+        &root,
+        "domains/club/entities/member.jadpo",
+        &text.replacen("after: 30d", "after: config.retention", 1),
+    );
+    write(
+        &root,
+        "config.jadpo",
+        "config {\n    retention: Duration {\n        default: 30d\n    }\n}\n",
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let plan = program
+        .plan()
+        .purge("Member")
+        .expect("Member's purge")
+        .clone();
+    assert_eq!(plan.after_setting, Some(0));
+    let values = program
+        .prepared()
+        .config(
+            &|_: &str| None,
+            jadpo_runtime::config::Mode::Environment,
+            &|_: &mut [u8]| false,
+        )
+        .expect("the default holds");
+    assert_eq!(
+        program.prepared().purge_after(&values, &plan),
+        Some(30 * DAY)
+    );
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let host = Store(postgres(&url).expect("store"), std::cell::Cell::new(0));
+    let check = postgres(&url).expect("store");
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let bob = call(&program, &host, "join", vec![Value::text("Bob")]).await;
+        call(&program, &host, "leave", vec![id_of(&bob)]).await;
+        // Without the period it is given, a purge deletes nothing.
+        assert!(
+            jadpo_runtime::purge(&host, &plan, Clock::TEST.now() + 31 * DAY, PURGE_BATCHES)
+                .await
+                .is_err()
+        );
+        let after = program
+            .prepared()
+            .purge_after(&values, &plan)
+            .expect("a period");
+        let early = jadpo_runtime::purge_after(
+            &host,
+            &plan,
+            Clock::TEST.now() + 29 * DAY,
+            PURGE_BATCHES,
+            after,
+        )
+        .await
+        .expect("purge");
+        assert_eq!(early.removed(), 0, "{early:?}");
+        let purged = jadpo_runtime::purge_after(
+            &host,
+            &plan,
+            Clock::TEST.now() + 31 * DAY,
+            PURGE_BATCHES,
+            after,
+        )
+        .await
+        .expect("purge");
+        assert_eq!(purged.removed(), 1, "{purged:?}");
+        assert!(names(&check, "member").await.is_empty());
+        // A period that is nothing would delete at once: it deletes nothing.
+        assert!(
+            jadpo_runtime::purge_after(&host, &plan, Clock::TEST.now(), PURGE_BATCHES, 0)
+                .await
+                .is_err()
+        );
+    });
+    drop(host);
+    drop(check);
+    databases.release(copy, false);
+}
+
+#[test]
 fn purge_works_in_batches() {
     if skipped() {
         return;
@@ -557,12 +662,19 @@ entity Folder {
             since: deleted_at
         }
     }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 ",
     ),
     (
         "domains/files/entities/doc.jadpo",
-        "use files/entities { Folder }\nuse files/types { Label }\n\n/// A document, which keeps its folder from going.\nentity Doc {\n    id: Uuid\n    folder_id: Folder.id {\n        on_delete: OnDelete.restricted\n    }\n    name: Label\n}\n",
+        "use files/entities { Folder }\nuse files/types { Label }\n\n/// A document, which keeps its folder from going.\nentity Doc {\n    id: Uuid\n    folder_id: Folder.id {\n        on_delete: OnDelete.restricted\n    }\n    name: Label\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n}\n",
     ),
 ];
 

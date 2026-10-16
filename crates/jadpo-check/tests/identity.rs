@@ -243,3 +243,272 @@ test "a robot reads itself" {
         "{found:?}"
     );
 }
+
+/// Like [`with`], with entities whose policy lets each record be read by
+/// itself, so a route that lists a holder's tokens or keys has the grant it
+/// needs (area 9, question 8).
+fn listing(authentication: &str, code: &str) -> Vec<String> {
+    let text = format!(
+        r#"principal {{
+    user: {{
+        subject: Member.handle
+    }}
+    service: {{
+        subject: Robot.name
+    }}
+}}
+
+{authentication}
+
+type Handle = Text {{
+    max_length: 40
+}}
+
+entity Member {{
+    id: Uuid
+    handle: Handle {{
+        unique: true
+    }}
+
+    policy: {{
+        read: [id]
+    }}
+}}
+
+entity Robot {{
+    id: Uuid
+    name: Handle {{
+        unique: true
+    }}
+
+    policy: {{
+        read: [id]
+    }}
+}}
+
+{code}"#
+    );
+    support::problems(Layout::Loose, &[("main.jadpo", text.as_str())])
+}
+
+const DEVICES: &str = r#"routes Devices {
+    prefix: /devices
+
+    GET / {
+        output: List<IssuedToken>
+        run: sessions.tokens(current_principal.user.id)
+    }
+
+    GET /{member_id: Member.id} {
+        output: List<IssuedToken>
+        run: sessions.tokens(member_id)
+    }
+}
+
+routes Robots {
+    prefix: /robots
+
+    GET /keys {
+        output: List<IssuedKey>
+        run: Robot.keys(current_principal.service.id)
+    }
+}
+"#;
+
+#[test]
+fn a_get_route_lists_tokens_and_keys() {
+    let found = listing(BOTH, DEVICES);
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn an_output_holds_issued_tokens_and_keys() {
+    let found = listing(
+        BOTH,
+        r#"type Credentials = Output {
+    tokens: List<IssuedToken>
+    keys: List<IssuedKey>
+}
+
+action list(member: Principal.user, robot: Robot) -> Credentials {
+    return Credentials {
+        tokens: sessions.tokens(member.id)
+        keys: Robot.keys(robot.id)
+    }
+}
+"#,
+    );
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn only_a_get_route_runs_them() {
+    let found = listing(
+        BOTH,
+        r#"routes Devices {
+    prefix: /devices
+
+    POST / {
+        output: List<IssuedToken>
+        run: sessions.tokens(current_principal.user.id)
+    }
+}
+"#,
+    );
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("route.run_kind: `POST /devices` runs query `sessions.tokens`")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_route_runs_only_what_reads() {
+    let found = listing(
+        BOTH,
+        r#"routes Devices {
+    prefix: /devices
+
+    GET / {
+        output: List<IssuedToken>
+        run: sessions.issue_token(current_principal.user.id)
+    }
+}
+"#,
+    );
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("route.run_invalid: `sessions.issue_token` writes")),
+        "{found:?}"
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+}
+
+#[test]
+fn a_listing_route_needs_its_method_and_its_holders_id() {
+    let found = listing(
+        "authentication {\n    service_key: {}\n}",
+        r#"routes Devices {
+    prefix: /devices
+
+    GET / {
+        output: List<IssuedToken>
+        run: sessions.tokens(current_principal.service.id)
+    }
+}
+"#,
+    );
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("type.auth_sessions_context: `sessions.tokens` needs API tokens")),
+        "{found:?}"
+    );
+    let found = listing(
+        BOTH,
+        r#"routes Devices {
+    prefix: /devices
+
+    GET / {
+        output: List<IssuedToken>
+        run: sessions.tokens(current_principal.service.id)
+    }
+}
+"#,
+    );
+    assert!(
+        found.iter().any(|p| p.contains("type.mismatch")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_listing_route_sends_what_it_lists() {
+    let found = listing(
+        BOTH,
+        r#"routes Devices {
+    prefix: /devices
+
+    GET / {
+        output: List<IssuedKey>
+        run: sessions.tokens(current_principal.user.id)
+    }
+}
+"#,
+    );
+    assert!(
+        found.iter().any(|p| p.contains(
+            "route.output_mismatch: `GET /devices` sends `List<IssuedKey>`, but `sessions.tokens` returns `List<IssuedToken>`"
+        )),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn listing_needs_read_on_the_holders_record() {
+    // The holder grants nobody a read.
+    let text = DEVICES;
+    let found = support::problems(
+        Layout::Loose,
+        &[(
+            "main.jadpo",
+            format!(
+                r#"principal {{
+    user: {{
+        subject: Member.handle
+    }}
+}}
+
+authentication {{
+    api_token: {{}}
+}}
+
+type Handle = Text {{
+    max_length: 40
+}}
+
+entity Member {{
+    id: Uuid
+    handle: Handle {{
+        unique: true
+    }}
+}}
+
+{}"#,
+                text.split("routes Robots").next().unwrap_or_default()
+            )
+            .as_str(),
+        )],
+    );
+    assert!(
+        found.iter().any(|p| p.contains(
+            "policy.effect_ungranted: `GET /devices` reads `Member` records, which nobody may do"
+        )),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_route_anyone_may_call_lists_only_what_everyone_may_read() {
+    let found = listing(
+        BOTH,
+        r#"routes Devices {
+    prefix: /devices
+
+    GET /{member_id: Member.id} {
+        authentication: RouteAuthentication.none
+        output: List<IssuedToken>
+        run: sessions.tokens(member_id)
+    }
+}
+"#,
+    );
+    assert!(
+        found.iter().any(|p| p.contains(
+            "policy.public_grant_missing: `GET /devices/{member_id}` lets anyone call it, but not everyone may read `Member`"
+        )),
+        "{found:?}"
+    );
+}

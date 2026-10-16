@@ -19,6 +19,11 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
     Ok(match &structure {
         // A token or a key is kept only as its verifier, by the runtime
         // (area 8).
+        // And a configuration value is a secret, which never leaves the
+        // server (area 10).
+        Ty::Prim(prim) if prim.is_secret() => {
+            return Err(prim.name().to_string());
+        }
         Ty::Prim(prim @ (Builtin::ApiToken | Builtin::ServiceKey)) => {
             return Err(prim.name().to_string());
         }
@@ -43,7 +48,10 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
             | Builtin::PageCursor
             | Builtin::PageSize
             | Builtin::ApiToken
-            | Builtin::ServiceKey => {
+            | Builtin::ServiceKey
+            | Builtin::PostgresUrl
+            | Builtin::RedisUrl
+            | Builtin::SigningKey => {
                 return Err(prim.name().to_string());
             }
         },

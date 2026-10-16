@@ -1,0 +1,6 @@
+use kitchen/entities { Recipe }
+
+/// A recipe with what a batch costs, for its bakery's owners.
+type RecipeCosting = Output {
+    pick: [Recipe.id, Recipe.name, Recipe.batch_cost]
+}

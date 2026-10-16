@@ -1,0 +1,9 @@
+use kitchen/entities { Baker }
+
+application {}
+
+principal {
+    user: {
+        subject: Baker.handle
+    }
+}

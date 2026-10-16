@@ -1,0 +1,25 @@
+// `update:` names owners and the recipe's author, and policy is part of
+// the update's `WHERE`: for any other baker the recipe isn't there, and
+// they get `RecipeNotFound`, exactly as if it didn't exist.
+
+use kitchen/entities { Recipe, RecipeNotFound }
+use kitchen/types { RecipeCard, RecipeName }
+
+/// Renames a recipe.
+action rename_recipe(recipe_id: Recipe.id, input: RenameRecipe) fails RecipeNotFound -> RecipeCard {
+    var recipe: Recipe = attempt Recipe.update(recipe_id) {
+        set: {
+            name: input.name
+        }
+    }
+    return RecipeCard {
+        id: recipe.id
+        name: recipe.name
+        author_id: recipe.author_id
+    }
+}
+
+/// A recipe's new name.
+type RenameRecipe = Input {
+    name: RecipeName
+}

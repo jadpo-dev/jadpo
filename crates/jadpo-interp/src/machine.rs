@@ -73,7 +73,13 @@ pub(crate) enum Target {
     Write(u32),
     /// A route test's request, by the route's place in the route table;
     /// `signed` when its last value is the caller it signs in as.
-    Request { route: u32, signed: bool },
+    /// A route test's request: with `keyed`, the `Idempotency-Key` it
+    /// sends comes before the caller, which `signed` says it has.
+    Request {
+        route: u32,
+        keyed: bool,
+        signed: bool,
+    },
     /// `sessions.start` or `sessions.end` (area 8).
     Session(jadpo_std::http::SessionOp),
 }
@@ -91,6 +97,19 @@ pub(crate) enum Step {
         args: Vec<Value>,
         at: SiteId,
     },
+    /// It checked the request's deadline, which hasn't passed: the caller
+    /// gives the thread back once ([`jadpo_runtime::Host::yield_now`]), so other
+    /// requests the thread serves carry on, then [`Machine::carry_on`].
+    Yield,
+}
+
+/// What a look at the deadline found.
+enum Deadline {
+    /// Not looked at, or no request is waiting on one.
+    Running,
+    /// Looked at, not passed, and a request has one: give the thread back.
+    Yield,
+    Passed(Stop),
 }
 
 /// What a task leaves the loop to do next.
@@ -330,7 +349,14 @@ pub(crate) struct Machine<'p> {
     activations: Vec<Activation<'p>>,
     tasks: Vec<Task<'p>>,
     values: Vec<Value>,
+    /// Tasks run since the deadline was last checked.
+    steps: u32,
 }
+
+/// How many tasks run between looks at the request's deadline: work that
+/// never waits is stopped within this many of the deadline passing (area
+/// 7, "Time limits"), at the cost of one read of the clock per batch.
+const DEADLINE_EVERY: u32 = 4096;
 
 impl<'p> Machine<'p> {
     pub fn new(program: &'p Program) -> Machine<'p> {
@@ -339,6 +365,28 @@ impl<'p> Machine<'p> {
             activations: Vec::new(),
             tasks: Vec::new(),
             values: Vec::new(),
+            steps: 0,
+        }
+    }
+
+    /// Once every [`DEADLINE_EVERY`] tasks, a look at the request's
+    /// deadline: the deadline fault when it has passed, otherwise, when
+    /// there is one, a turn for whatever else the thread runs.
+    fn deadline(&mut self, ctx: &mut Ctx<'_>) -> Deadline {
+        self.steps += 1;
+        if self.steps < DEADLINE_EVERY {
+            return Deadline::Running;
+        }
+        self.steps = 0;
+        if ctx.out_of_time() {
+            return Deadline::Passed(Stop::Fault(
+                ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY),
+            ));
+        }
+        if ctx.has_deadline() {
+            Deadline::Yield
+        } else {
+            Deadline::Running
         }
     }
 
@@ -371,7 +419,13 @@ impl<'p> Machine<'p> {
         self.run(ctx)
     }
 
-    /// Runs tasks until the invocation ends or pauses.
+    /// Carries on after giving the thread back ([`Step::Yield`]).
+    pub fn carry_on(&mut self, ctx: &mut Ctx<'_>) -> Step {
+        self.run(ctx)
+    }
+
+    /// Runs tasks until the invocation ends, pauses or gives the thread
+    /// back.
     fn run(&mut self, ctx: &mut Ctx<'_>) -> Step {
         loop {
             let Some(task) = self.tasks.pop() else {
@@ -381,7 +435,15 @@ impl<'p> Machine<'p> {
                     SiteId(Frame::ENTRY),
                 )));
             };
-            let flow = match self.step(ctx, task) {
+            let stepped = match self.deadline(ctx) {
+                Deadline::Passed(stop) => Err(stop),
+                Deadline::Yield => {
+                    self.tasks.push(task);
+                    return Step::Yield;
+                }
+                Deadline::Running => self.step(ctx, task),
+            };
+            let flow = match stepped {
                 Ok(flow) => flow,
                 Err(stop) => self.unwind(ctx, stop),
             };
@@ -405,7 +467,13 @@ impl<'p> Machine<'p> {
             let Some(task) = self.tasks.pop() else {
                 return Err(self.defect(ctx, "a walk with nothing left to do", body));
             };
-            let flow = match self.step(ctx, task) {
+            // An inline function runs inside an operation, so it can't
+            // give the thread back; it only stops at the deadline.
+            let stepped = match self.deadline(ctx) {
+                Deadline::Passed(stop) => Err(stop),
+                Deadline::Yield | Deadline::Running => self.step(ctx, task),
+            };
+            let flow = match stepped {
                 Ok(flow) => flow,
                 Err(stop) => self.unwind(ctx, stop),
             };
@@ -1328,6 +1396,7 @@ impl<'p> Machine<'p> {
                 route,
                 params,
                 input,
+                idempotency_key,
                 caller,
             } => {
                 let Some(index) = self
@@ -1344,11 +1413,13 @@ impl<'p> Machine<'p> {
                     .iter()
                     .copied()
                     .chain(*input)
+                    .chain(*idempotency_key)
                     .chain(*caller)
                     .collect();
                 self.tasks.push(Task::Invoke {
                     target: Target::Request {
                         route: index as u32,
+                        keyed: idempotency_key.is_some(),
                         signed: caller.is_some(),
                     },
                     count: parts.len(),
@@ -1498,6 +1569,26 @@ impl<'p> Machine<'p> {
                     id,
                 ));
             }
+            Expr::Config { .. } => match self.decoded(id) {
+                Some(Decoded::Config(Some(setting))) => match ctx
+                    .setting(*setting)
+                    .cloned()
+                    .or_else(|| self.program.setting(*setting))
+                {
+                    Some(value) => self.values.push(value),
+                    None => {
+                        let name = self.program.setting_name(*setting);
+                        return Err(self.defect(
+                            ctx,
+                            &format!(
+                                "`config.{name}` has no value in this run: give it a `test:` or `default:` value"
+                            ),
+                            id,
+                        ));
+                    }
+                },
+                _ => return Err(self.defect(ctx, "a setting the checker would have refused", id)),
+            },
             Expr::Unchecked => {
                 let written = self.written(id);
                 // `clock.now` reads the invocation's clock, the one a

@@ -7,7 +7,9 @@
 //! - `/health/ready` asks each store the application's entities live in to
 //!   run `SELECT 1`, all within two seconds, and answers 200 when every one
 //!   did, 503 otherwise; integrations are reported as unchecked, by name,
-//!   when area 11 builds them.
+//!   when area 11 builds them. A worker reuses its last answer for a
+//!   second ([`Readiness`]), so probes, which no rate limit counts, cost
+//!   each store at most one statement a second on each worker.
 //!
 //! Both answer `HEAD` as `GET` and `OPTIONS` with `Allow`; another method
 //! is 405.
@@ -29,14 +31,24 @@ enum Store {
     Unavailable,
 }
 
+/// How long a worker reuses its last readiness check.
+pub(crate) const READY_REUSED_MS: u64 = 1_000;
+
+/// One worker's last readiness check: when it was made, on the host's
+/// monotonic clock, and its answer.
+#[derive(Debug, Default)]
+pub(crate) struct Readiness(RefCell<Option<(u64, Response)>>);
+
 /// The health check `segments` names, answered, or `None` when it names
-/// none.
+/// none; `/health/ready` from `ready` when it checked within the last
+/// second.
 pub async fn answer(
     table: &RouteTable,
     ctx: &Ctx<'_>,
     request: &Request,
     request_id: &str,
     segments: &[String],
+    ready_cache: Option<&Readiness>,
 ) -> Option<Response> {
     let ready = if segments == HEALTH_LIVE {
         false
@@ -51,7 +63,7 @@ pub async fn answer(
         "GET /health/live"
     };
     let mut response = match request.method.as_str() {
-        "GET" | "HEAD" if ready => readiness(table, ctx.host()).await,
+        "GET" | "HEAD" if ready => reused(table, ctx.host(), ready_cache).await,
         "GET" | "HEAD" => json(200, "{\"status\":\"live\"}".to_string()),
         "OPTIONS" => Response {
             status: 204,
@@ -82,6 +94,24 @@ fn json(status: u16, body: String) -> Response {
         body: body.into_bytes(),
         ..Response::default()
     }
+}
+
+/// The readiness answer, from `cache` when it is under a second old on the
+/// host's monotonic clock, otherwise checked again and kept there. A host
+/// with no such clock, as a test's, checks every time.
+async fn reused(table: &RouteTable, host: &dyn Host, cache: Option<&Readiness>) -> Response {
+    let now = host.monotonic_ms();
+    if let (Some(cache), Some(now)) = (cache, now)
+        && let Some((at, answer)) = &*cache.0.borrow()
+        && now.saturating_sub(*at) < READY_REUSED_MS
+    {
+        return answer.clone();
+    }
+    let answer = readiness(table, host).await;
+    if let (Some(cache), Some(now)) = (cache, now) {
+        *cache.0.borrow_mut() = Some((now, answer.clone()));
+    }
+    answer
 }
 
 /// `{"status":"ready","stores":{"main":"ready"},"integrations":{}}`, 200
@@ -119,19 +149,13 @@ async fn readiness(table: &RouteTable, host: &dyn Host) -> Response {
     )
 }
 
-/// Whether store `name` runs `SELECT 1`.
+/// Whether store `name` runs `SELECT 1`, one statement of its own.
 async fn check(host: &dyn Host, name: &str) -> Store {
     let Some(database) = host.database(name) else {
         return Store::Unavailable;
     };
-    let Ok(mut transaction) = database.begin().await else {
-        return Store::Unavailable;
-    };
-    let answered = transaction.query("SELECT 1", &[]).await.is_ok();
-    let ended = transaction.rollback().await.is_ok();
-    if answered && ended {
-        Store::Ready
-    } else {
-        Store::Unavailable
+    match database.query_once("SELECT 1", &[]).await {
+        Ok(_) => Store::Ready,
+        Err(_) => Store::Unavailable,
     }
 }

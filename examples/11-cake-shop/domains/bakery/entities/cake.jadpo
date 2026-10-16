@@ -1,0 +1,20 @@
+// Policy is always on: every create, read, update and delete a route
+// reaches needs a grant in the entity's `policy:`, and anything not listed
+// is refused. The menu is for anyone, signed in or not, so `read` names
+// `Access.public`. Nothing grants `create`, so no request can add a cake;
+// the bakery's own tools do that, and the tests call `add_cake` directly.
+
+use bakery/types { CakeName, Flavour, Pence }
+
+/// A cake on the menu.
+entity Cake {
+    id: Uuid
+    name: CakeName
+    flavour: Flavour
+    price: Pence
+    on_menu: Bool
+
+    policy: {
+        read: [Access.public]
+    }
+}

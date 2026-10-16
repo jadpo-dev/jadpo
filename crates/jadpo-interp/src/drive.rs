@@ -11,6 +11,7 @@
 //! never allocates one, and functions, which never pause, run on the
 //! machine without awaiting anything.
 
+use jadpo_graph::Kind;
 use jadpo_graph::body::SiteId;
 use jadpo_runtime::{
     ActionBody, Ctx, Fault, FaultKind, Isolation, LocalFuture, Outcome, StoreOp, Stored,
@@ -31,18 +32,45 @@ async fn body(
 ) -> Result<Value, Stop> {
     let mut machine = Machine::new(program);
     let mut step = machine.start(ctx, callee, args, SiteId(at));
+    // A test, fixture or seed runs each call as the caller it passes
+    // (area 9): policy then applies as to that caller.
+    let plan = program.plan();
+    let test_like = plan
+        .callable(callee)
+        .is_some_and(|callable| matches!(callable.kind, Kind::Test | Kind::Fixture | Kind::Seed));
     loop {
         match step {
             Step::Done(result) => return result,
+            // Work that never waits gives the thread back as it checks the
+            // request's deadline.
+            Step::Yield => {
+                ctx.host().yield_now().await;
+                step = machine.carry_on(ctx);
+            }
             Step::Pause { target, args, at } => {
+                if test_like {
+                    // The parameter the callee's plan names as its caller.
+                    let caller = match target {
+                        Target::Callable(id) => plan.callable(id).map(|callable| callable.caller),
+                        Target::Query(id) => plan.query(id).map(|query| query.caller),
+                        Target::Get(_) => Some(None),
+                        _ => None,
+                    };
+                    if let Some(caller) = caller {
+                        let passed = caller.and_then(|at| args.get(at as usize));
+                        jadpo_runtime::call_as(ctx, passed);
+                    }
+                }
                 let result = match target {
                     Target::Callable(callee) => {
                         let caught = machine.catching();
                         invoke(program, ctx, callee, args, at.0, caught).await
                     }
-                    Target::Request { route, signed } => {
-                        request(program, ctx, route, &args, signed).await
-                    }
+                    Target::Request {
+                        route,
+                        keyed,
+                        signed,
+                    } => request(program, ctx, route, &args, keyed, signed).await,
                     Target::Session(op) => session(program, ctx, op, &args, at.0).await,
                     effect => store(program, ctx, effect, args, at.0).await,
                 };
@@ -125,38 +153,29 @@ fn store<'a, 'p: 'a>(
 }
 
 /// A route test's request (area 13), through the runtime's HTTP component
-/// as a client's would go, answered as a `Response` value.
-/// A defect behind the response ends the test with that fault, as one
-/// anywhere else in it would: a 500 is never what a test means to check.
+/// as a client's would go, answered as a `Response` value
+/// ([`jadpo_runtime::http::route_test`]). The site's values are the
+/// route's arguments, then, when `keyed`, the `Idempotency-Key` the test
+/// gives, then, when `signed`, the caller it signs in as.
 async fn request(
     program: &Program,
     ctx: &mut Ctx<'_>,
     route: u32,
     args: &[Value],
+    keyed: bool,
     signed: bool,
 ) -> Result<Value, Stop> {
-    let app = program.app();
     let (args, caller) = match (signed, args.split_last()) {
         (true, Some((caller, rest))) => (rest, Some(caller)),
         _ => (args, None),
     };
-    let Some(mut request) = jadpo_runtime::http::test_request(&app, route, args) else {
-        return Ok(Value::None);
+    let (args, key) = match (keyed, args.split_last()) {
+        (true, Some((key, rest))) => (rest, Some(key)),
+        _ => (args, None),
     };
-    if let Some(caller) = caller {
-        // `as:` signs in through the application's real authentication.
-        let headers =
-            jadpo_runtime::http::identity::test_credentials(ctx, app.table, route, caller)
-                .await
-                .map_err(Stop::Fault)?;
-        request.headers.extend(headers);
-    }
-    let id = jadpo_runtime::http::request_id(ctx, u64::from(ctx.actions()));
-    let mut response = jadpo_runtime::http::handle(&app, program, ctx, &request, &id, None).await;
-    if let Some(fault) = response.fault.take() {
-        return Err(Stop::Fault(fault));
-    }
-    Ok(jadpo_runtime::http::response_value(&app, route, &response))
+    jadpo_runtime::http::route_test(&program.app(), program, ctx, route, args, key, caller)
+        .await
+        .map_err(Stop::Fault)
 }
 
 /// `sessions.start(user_id)`, `sessions.end()`, an API token's or a
@@ -221,6 +240,18 @@ impl<'p> ActionBody<'p> for Action<'_> {
 
     fn caught(&self) -> bool {
         self.caught
+    }
+
+    /// Who may call it, as its plan says; the boundary checks it.
+    fn gate(&self) -> Option<&jadpo_std::policy::Gate> {
+        self.program
+            .plan()
+            .callable(self.callee)
+            .and_then(|callable| callable.gate.as_ref())
+    }
+
+    fn site(&self) -> u32 {
+        self.at
     }
 
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {

@@ -1,0 +1,30 @@
+// A customer's "linked phones" screen. A `GET` runs the language's own
+// listing, `sessions.tokens`, directly, as it runs a query: each token is
+// sent as its `id`, `started_at` and `ends_at`, never the token itself.
+
+use bakery/types { PhoneLinked, PhoneTokenId }
+use bakery/actions { link_phone, unlink_phone }
+
+/// The phones linked to the signed-in customer.
+routes Devices {
+    prefix: /devices
+
+    /// The phone tokens that haven't ended, oldest first.
+    GET / {
+        output: List<IssuedToken>
+        run: sessions.tokens(current_principal.user.id)
+    }
+
+    /// Gives the phone app a token, shown once.
+    POST / {
+        output: PhoneLinked
+        status: SuccessStatus.created
+        run: link_phone(current_principal.user)
+    }
+
+    /// Unlinks a phone.
+    DELETE /{phone_token_id: PhoneTokenId} {
+        status: SuccessStatus.no_content
+        run: unlink_phone(phone_token_id)
+    }
+}

@@ -123,7 +123,14 @@ pub(crate) fn table(
             .output
             .as_ref()
             .map(|ty| codecs.codec(&jadpo_check::graph::type_ref(&lookup, ty)));
-        let (run, keys) = if route.run.query {
+        let (run, keys) = if let Some(op) = route.run.generated {
+            (
+                Run::Listing {
+                    keys: op.on_service(),
+                },
+                None,
+            )
+        } else if route.run.query {
             let Some(query) = queries.iter().find(|query| query.name == route.run.name) else {
                 continue;
             };
@@ -215,12 +222,43 @@ pub(crate) fn table(
             line,
         });
     }
+    // The exchange the runtime answers (area 8, "Ways to sign in"): in
+    // the first API that accepts service keys, which the token it gives
+    // signs in to, as every API that accepts them is.
+    let exchange_api = out.apis.iter().position(|api| {
+        api.methods
+            .contains(&jadpo_std::AuthenticationMethod::ServiceKey)
+    });
+    if identity.exchanges()
+        && let Some(api) = exchange_api
+    {
+        out.routes.push(RoutePlan {
+            key: format!("route POST /{}", jadpo_std::http::EXCHANGE_PATH.join("/")),
+            method: jadpo_std::HttpMethod::Post,
+            segments: jadpo_std::http::EXCHANGE_PATH
+                .iter()
+                .map(|text| Segment::Fixed(text.to_string()))
+                .collect(),
+            api: api as u32,
+            input: None,
+            output: None,
+            status: jadpo_std::SuccessStatus::Ok,
+            deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
+            run: Run::Exchange,
+            keys: None,
+            args: Vec::new(),
+            authentication: jadpo_std::http::Authentication::Required,
+            caller: Some(jadpo_std::http::PrincipalKind::Service),
+            file: "generated".to_string(),
+            line: 0,
+        });
+    }
     out.codecs = codecs.codecs;
     out
 }
 
 /// Numbers the codecs of the types the routes use, once each.
-struct Codecs<'t> {
+pub(crate) struct Codecs<'t> {
     types: &'t mut Types,
     codecs: Vec<Codec>,
     ids: HashMap<TypeRef, CodecId>,
@@ -236,11 +274,27 @@ enum Made {
     Set(TypeRef),
     Map(TypeRef, TypeRef),
     Page(TypeRef),
+    /// `IssuedToken` or `IssuedKey` (area 8).
+    Issued(&'static str),
     Unknown,
 }
 
-impl Codecs<'_> {
-    fn codec(&mut self, ty: &TypeRef) -> CodecId {
+impl<'t> Codecs<'t> {
+    /// No codec numbered yet, over `types`.
+    pub(crate) fn new(types: &'t mut Types) -> Codecs<'t> {
+        Codecs {
+            types,
+            codecs: Vec::new(),
+            ids: HashMap::new(),
+        }
+    }
+
+    /// Every codec numbered, by number.
+    pub(crate) fn into_codecs(self) -> Vec<Codec> {
+        self.codecs
+    }
+
+    pub(crate) fn codec(&mut self, ty: &TypeRef) -> CodecId {
         if let Some(id) = self.ids.get(ty) {
             return *id;
         }
@@ -389,6 +443,14 @@ impl Codecs<'_> {
             Made::Page(item) => Codec::Page {
                 item: self.codec(&item),
             },
+            Made::Issued(name) => {
+                let shape = self.types.issued_shape(name);
+                let fields = jadpo_std::http::ISSUED_FIELDS
+                    .iter()
+                    .map(|(_, builtin)| self.codec(&TypeRef::Builtin(*builtin)))
+                    .collect();
+                Codec::Object { shape, fields }
+            }
             Made::Unknown => self.made_unknown(),
         }
     }
@@ -439,7 +501,12 @@ impl Codecs<'_> {
                 TypeRef::Std(name, mut args) if name == "Page" && args.len() == 1 => {
                     return Made::Page(args.remove(0));
                 }
-                TypeRef::Std(name, args) if args.is_empty() => return Made::StdEnum(name),
+                TypeRef::Std(name, args) if args.is_empty() => {
+                    return match routes::wire::issued_name(&name) {
+                        Some(issued) => Made::Issued(issued),
+                        None => Made::StdEnum(name),
+                    };
+                }
                 _ => return Made::Unknown,
             }
         }

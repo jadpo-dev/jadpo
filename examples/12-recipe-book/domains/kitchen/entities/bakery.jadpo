@@ -1,0 +1,15 @@
+// The tenant: every other record belongs to a bakery. Its grants name the
+// roles its staff hold in it, which apply to it through its own `id`.
+
+use kitchen/types { BakeryName, StaffRole }
+
+/// A bakery that keeps its recipes here.
+entity Bakery {
+    id: Uuid
+    name: BakeryName
+
+    policy: {
+        read: [StaffRole.owner, StaffRole.baker, StaffRole.counter]
+        update: [StaffRole.owner]
+    }
+}

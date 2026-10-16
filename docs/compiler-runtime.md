@@ -298,6 +298,16 @@ API record (`routes::record`) and OpenAPI (`routes::openapi`, written by
 `jadpo check` to `build/openapi/<api>.json`) all read; the record and
 OpenAPI render types through one view of the graph (`routes::wire`).
 
+Since chunk 5.1 the plan also holds the settings
+(`jadpo_std::config::ConfigPlan`, `Plan::config`): each setting's name, the
+environment variable it is read from, whether it is secret, the codec its
+value is read and checked by (numbered with the route table's, sharing the
+type plans' validators), its default and test value in the spelling a
+variable has, and how `jadpo test` makes a secret; and for each database
+connection the setting holding its address. A body's `config.<name>` is its
+own graph expression (`Expr::Config`, decoded to the setting's number), and
+a test's `config:` the values the test's callable plan gives that test.
+
 Since chunk 3.12 everything the runtime needs of a plan is that kind of
 plain data in `jadpo-std`: type plans (`jadpo_std::types`: a type's
 validator chain, a shape's fields in declared order with what a field
@@ -383,7 +393,9 @@ is still checked, so a `List<T>` parameter takes only a list. Enums that Rust co
 declared once, in `jadpo-std`. The namespaces the compiler fills from the
 project or the platform (`clock`, `config`, `translations`, `sessions`,
 `oauth`) list in `std/names.txt` the members built so far (`clock.now`);
-any other member is `toolchain.not_built_yet`.
+any other member is `toolchain.not_built_yet`. `config.<name>` is the
+exception: its members are the project's own settings, read from
+`config { }` (chunk 5.1, `jadpo_check::config`), so `names.txt` lists none.
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from
@@ -705,12 +717,26 @@ and invalidation is where hand-rolled caches go wrong.
 | `symbols` | project | an item tree changes |
 | `signature`, `type_def`, `name_facts`, `failure_info` (per-name lookups) | name | that name's entry in its project table changes |
 | `typed_body` (resolved, typed, diagnostics) | callable | its file's text, or a name it reads, changes |
+| `body_facts` (records it reads, creates, changes and deletes, fields set, calls, queries, session operations; no positions) | callable | what its typed body does past its own values changes; never for a comment (chunk 4.11) |
 | `import_problems` | file | its text, or the entry of a name it writes or imports, changes |
 | `effects` | callable | its body or a callee's effects change |
 | `entity_read`, `query_read` (model, positions, problems) | entity, query | its file's text, or a name it reads, changes |
 | `entity_model`, `query_model`, `write_rules` (no positions) | entity, query | that model, or a model it reads, changes; never for a comment |
 | `data_problems`, `query_problems` | file | a read of what the file declares changes |
 | `schema`, `migration_problems` | project | any entity's or query's model changes |
+| `identity`, `api_table` | project | `app.jadpo`'s or `authentication.jadpo`'s declarations change (chunks 4.1 and 4.3) |
+| `group_read` (model, positions, problems), `groups`, `group_names` | route group, project | the group's file, or a name it reads, changes |
+| `route_at` (what a test's `request` reads of its route) | route, by label | that route's key, placeholders, input, output or need of a caller changes (chunk 4.11) |
+| `route_problems`, `table_problems`, `signin_problems`, `record_bodies`, `record_problems` | file, project | a group's model, the identity, or a type a route sends changes; the record waits on every route reading cleanly |
+| `policy_read`, `membership_read` | entity | that entity's `policy:` or `membership:`, or a name it reads, changes (chunk 4.4) |
+| `entity_policy` (no positions) | entity | that entity's resolved policy changes; never for a comment (chunk 4.11) |
+| `root_read`, `root_policy`, `memberships`, `access`, `policy_clean` | project | root `policy { }`, or any entity's policy or membership, changes; `root_policy` holds no positions |
+| `policy_problems`, `query_policy_problems` | file | a read of what the file declares, or the policy of an entity its queries read, changes |
+| `acts_of` | action, by name | the `body_facts` of its declarations change |
+| `reach_problems` | file | its route groups, the `acts_of` of an action they reach, or the policy of an entity they reach, changes (chunk 4.11) |
+| `flow_summary` (what flows to its result and its outputs, by parameter; no positions) | callable | its typed body, a callee's summary, or the policy of an entity it reaches, changes; calls that go round are a cycle, solved by fixpoint iteration (chunk 4.11) |
+| `flow_problems` | file | its bodies, a summary they call, or the policy of an entity they reach, changes |
+| `client_fields` | failure | that failure's `client:` block changes |
 | `graph`, `diagnostics` | project, file | anything above; assembly only |
 
 The plan (SQL, codecs, sites; `Plan::build` in `jadpo-plan`) is not a
@@ -771,6 +797,54 @@ own file, as before (11 + 7 ms). A new file nothing reads also reran
 every file's one-store check, which read the whole table of what each
 action writes; each file now reads its own actions' entries, and the new
 file is the only one checked (39 ms to check before, 25 ms now). The test
+asserts the counts.
+
+**Policy, routes and flow by name (chunk 4.11).** Areas 7 to 9's checks
+read what they need the same way. What a body does past its own values
+(the records it reads with `get`, creates, changes and deletes, the fields
+each write sets, the queries, actions, fixtures and functions it calls
+and its session operations) is one query per callable, `body_facts`,
+holding no positions; isolation (`file_loading`), the one-store rule
+(`store_reaches`), policy's reach (`acts_of`) and the lines the flow
+check reads under `actions:` all build on it, where each walked the typed
+bodies itself. Each entity's policy is read by name (`entity_policy`,
+through the `Policies` view, which the proofs' `Prover` reads lazily, an
+entity and a membership's roles at a time), so a check depends on the
+entities it proves against, not on `access` whole. Each route group's
+file checks its own routes (`reach_problems`, from the project-wide
+`policy::reach::route_problems`). The flow check is a summary per action
+and function (`flow_summary`), in terms of its parameters, which a caller
+reads, and each file's problems walk that file's bodies (`flow_problems`),
+where one project-wide `flow_report` walked every body again on any edit.
+Calls that go round (a function calling itself, or functions calling
+each other) are a cycle of summaries, which salsa solves by fixpoint
+iteration: a summary starts empty, each round is joined with the last, so
+it only grows, and a part followed deeper than eight fields, which only a
+recursive type gives, is widened to everything inside it, so the rounds
+end. The summary a caller then reads holds everything that may flow
+through the cycle, never less; before, a call back into a function being
+walked read as nothing, so `pick(first, second, swap)`, giving back
+`second` only through its call to itself, seemed never to give back what
+it was passed second (crates/jadpo-check/tests/policy.rs). A test body
+reads the route a `request` names, by label (`route_at`), and the whole
+table only to list the paths when there is none, where every test body
+read every route. The scale test now has 2,376 files: beside the above, a
+principal signing in with a browser session, ten entities with policies,
+each with a field only its owner reads, a query, an action creating its
+records and a route group running both, with two tests each, one sending
+a request, and a route anyone may call. Before and after, by what ran
+again: a comment above an action that writes a note walked every action's
+and function's flow again (`flow_report`), and now checks its own file,
+its flow included, and nothing else; a field's own policy on one entity
+rechecked every query file (110), every route and every action's flow,
+and now rechecks the four files that read that entity's policy (its own,
+its query's, the action creating its records and its routes'); a route no
+test sends a request to rechecked all 21 test bodies and now none; a route
+one test requests rechecks that test's body alone. A test file also
+checked that its subject is beside it by reading every file's path, so a
+new file rechecked the layout of every test file; it now reads its
+subject's path alone. Every page's and example's diagnostics, positions
+included, were compared before and after and are the same. The test
 asserts the counts.
 
 **The plan is built whole.** `Plan::build` is not incremental: each run
@@ -875,8 +949,9 @@ the body names (`ActionBody::isolation`), which both executors take from
 the plan: an action or fixture that loads no record, itself or through any
 action it calls, runs at read committed, and every other at repeatable
 read (area 6, "Counters and other one-step updates"). `jadpo-check` decides
-it: each file's actions and fixtures are read once from their typed
-bodies, without positions (`file_loading`: whether one reads a record with
+it: each file's actions and fixtures are read once from what their bodies
+do, without positions (`file_loading`, from `body_facts` since chunk 4.11:
+whether one reads a record with
 `get` or a query, is handed one in a parameter, writes one back rather than
 by `id`, or runs a transition whose `when:` can refuse a visible record,
 and which actions and fixtures it calls), and the project's decision closes
@@ -1051,7 +1126,9 @@ interpreter builds the request a client would send from the route table
 (`jadpo_runtime::http::test_request`), hands it to the runtime's HTTP
 component in the test's own context and database, and reads the response
 back as a `Response` value (`response_value`); a defect behind a 500 ends
-the test with that fault. Schedule tests (`--kind
+the test with that fault. Since chunk 4.10 all of that is the runtime's
+`http::route_test`, which takes the test's `Idempotency-Key` and caller
+too, so the interpreter only hands over the site's values. Schedule tests (`--kind
 schedule`) are `toolchain.not_built_yet`.
 
 **Differential test.** Every test runs interpreted and compiled, as Gleam
@@ -1224,7 +1301,8 @@ hands it a `Request` (method, path, query string, headers, body, the
 client's address) and sends the `Response` it gives. It counts the request
 against the default rate limits (`RateLimits`: 120 a minute per address,
 and since chunk 4.3 600 a minute per signed-in caller, fixed windows in a bounded amount of memory, the oldest
-counters dropped first), routes by the route table (a fixed segment beats
+counters dropped first; since chunk 4.10 the host counts them,
+`Host::rate_limit`), routes by the route table (a fixed segment beats
 a placeholder; 404 `route_not_found`, 405 `method_not_allowed` with
 `Allow`; `HEAD` as `GET` without the body, `OPTIONS` with `Allow`),
 decodes each placeholder and the input with the route's codecs
@@ -1258,8 +1336,9 @@ route asks the boundary to hold an action's commit (`Ctx::hold`): the
 boundary leaves a succeeding body's transaction and outbox open, and the
 component commits them (`commit_held`) after the race, first writing the
 request's idempotency key into the same transaction. Keys
-(`http::idempotency`) are claimed in a short transaction of their own
-before the action runs and kept in the `jadpo_idempotency_keys` table of
+(`http::idempotency`) are claimed before the action runs (in a short
+transaction of their own until chunk 4.10, one statement since) and kept
+in the `jadpo_idempotency_keys` table of
 the store the action writes, as the plan's `RoutePlan::keys` names it; the
 SQL for that table is the runtime's own, like `jadpo_migrations`'.
 
@@ -1284,8 +1363,9 @@ the kind the route selects; the caller rides on `Ctx` for what the route
 runs and for `sessions.end`. `sessions.start` writes `jadpo_sessions` in
 the action's transaction and records a `SessionEffect` on the boundary,
 which a held commit hands back so the response sets or clears the cookies
-once the action commits. A signed-in caller counts against
-`RateLimits::allow_caller`, and keys its idempotency as `user <id>`.
+once the action commits. A signed-in caller counts against a caller's
+limit (`RateLimits::allow_caller`; `Host::rate_limit` with `CALLER_LIMIT`
+since chunk 4.10), and keys its idempotency as `user <id>`.
 
 Built in chunk 4.3b: API tokens and service keys (area 8). The identity
 reads `api_token:` and `service_key:`, and `jadpo_std::http::SessionOp`
@@ -1308,10 +1388,241 @@ wrong kind for the route with `not_permitted`; a service caller is keyed
 repeat. A route test's `as:` keeps a real credential of the kind the
 route's API accepts (`http::identity::test_credentials`).
 
+Built in chunk 5.1b: signed sessions (area 8). The identity reads
+`revocation_delay:`, each method's `signing_key:` (a `SigningKey`
+setting) and a browser session's `origin:` (a `Url` setting) into the
+`IdentityPlan` by setting name, and each lookup returns when its session
+or key ends. `http::signed` is the runtime's host-agnostic signing:
+`Settings::read` derives each method's key (BLAKE3 `derive_key`) from the
+values the application started with, current and `_PREVIOUS`, held by the
+program and handed to the HTTP component in `App::auth`, never in a value
+code reads; a signed part is base64url JSON `Claims` and a keyed BLAKE3
+tag, compared in constant time, the same natively and on wasm32. With a
+delay, `http::identity::authenticate` signs a request in from a good
+signed part without a statement, unless the route is `fresh`; otherwise it
+runs the lookup and returns a `Renewed` credential, which the response
+carries in `Set-Cookie` or `X-Jadpo-Token` unless the action started or
+ended the session. The plan appends a `RoutePlan` with `Run::Exchange` for
+`POST /auth/exchange` in the first API that accepts service keys, whose
+sign-in signs the token the response gives; the API record, OpenAPI and
+`jadpo routes` list it from `Identity::exchanges`.
+
+Built in chunk 4.4: policy (area 9). `jadpo_check::policy` reads each
+entity's `policy:` and `membership:` by name (`policy_read`,
+`membership_read`) and root `policy { }` once (`root_read`), resolving
+every entry of a grant list into a `Grant` (a field pointing at the
+caller, a membership role through the reference it applies through, or
+`Access`), each entity's tenancy and the fields only a listed action
+changes; `access` gathers them for the plan and the report, and
+`policy::reach` follows what each action and query reaches (`acts_of`,
+by name from `body_facts`, like the store rules) to check each route
+group's file (`reach_problems`). `jadpo-plan`'s `policy`
+module compiles the grants into every statement at the one place
+`Planner::access` already joined the lifecycle: a read's and an
+update's or delete's `WHERE`, and a create's `INSERT ... SELECT ...
+WHERE` over the new record's values (`jadpo_sql::policy`), with the
+caller as parameters (`jadpo_std::policy::CallerPart`, `Source::Caller`,
+`WriteSource::Caller`); each statement policy limits also keeps its text
+without policy (`unpoliced`), which a test's call without a caller runs
+(`Ctx::set_unpoliced`) and which tells a hidden record from a missing
+one (since chunk 4.10 a read of one record selects its grant instead). A
+write's `PolicyRefusal` says what writing no row means, a listed
+action's record-free line becomes a `Gate` checked as it starts
+(`jadpo_runtime::admit`, by the action boundary since chunk 4.10), and the identity plan's `GatedStatements` limit
+listing, issuing and revoking credentials by the holder's grants. The
+runtime raises `not_permitted` (`jadpo_runtime::not_permitted`) and marks
+a concealed not-found failure `concealed_by: policy`; the interpreter sets
+the caller of each call a test, fixture or seed makes from the
+`Principal` it passes (since chunk 4.10 the runtime's `call_as`, with the
+parameter the plan names). `jadpo check` writes `build/report/permissions.md`
+and `.json` (`policy::report`).
+
+Built in chunk 4.4b: field restrictions (area 9). `policy_read` also reads
+each field's own `policy:` into `EntityPolicy::fields` (`FieldPolicy`:
+`FieldAccess.server_only`, or the lists it narrows), refusing one that
+widens its record (`policy.field_widens_entity`). `policy::proof` decides
+who may read what from the grants alone: what is known of a caller on a
+record (`Fact`: a grant they pass, a membership held in the record, the
+tenant), moved along a reference (`Prover::along`), for each check they
+passed to reach it (`Reached`). `policy::outputs` proves each query's
+output fields and the parent every include reads; `policy::flow` walks
+every action's typed body for where each value came from (`Prov`, flow-
+insensitive per local, with a summary per action of what its result carries
+and which parameters reach an output it builds) and checks every `Output`
+and failure `client:` field it builds and every create's user fields
+(`policy.role_field_create_forbidden`); `policy::reach` refuses a route
+whose action always sets a field nobody may change. The plan adds each
+restricted field's grants to the statement that changes it
+(`Planner::field_policy`, beside `granted`, whose tenancy is now
+`in_tenant`), and an update's `PolicyRefusal::Probe` asks again under the
+record's grants (`FieldProbe`) to tell a field's refusal, 403
+`not_permitted`, from a hidden record. The report gives each restricted
+field a row and `fields` in its JSON, and `graph::policy_nodes` adds
+`grant`, `field_restriction`, `tenancy` and `action_exception` nodes with
+`grants` and `scopes` edges.
+
+Built in chunk 4.4c: listing tokens and keys from a `GET` (area 8). A
+route's `Run` has a `generated` field: `sessions.tokens` or the service
+entity's `keys`, which no declaration holds, so it has no `Runs` edge. The
+checker reads the call in `routes::Reader::generated_run` (one argument,
+the holder's `id`; any other method is `route.run_kind`, a write is
+`route.run_invalid`), types it `List<IssuedToken>` or `List<IssuedKey>`,
+and `policy::reach` gives the route the holder's `read`
+(`session_act`). `IssuedToken` and `IssuedKey` are `routes::wire::Shape::
+Issued`: an object of `ISSUED_FIELDS` with no node in the graph, which the
+record and OpenAPI write as a section and a schema of their own and
+`jadpo-plan` gives a shape (`Types::issued_shape`) and an object codec.
+The table's `Run::Listing { keys }` is run by `http::identity::list`, a
+one-statement read in a boundary of its own at repeatable read that calls
+the same `issued` an action does, so the plan's policy-limited statement
+(`GatedStatements`) decides the list.
+
+Built in chunk 4.7: three Phase 4 decisions (areas 9 and 13).
+`jadpo_check::policy::Access::kept_in_tenant` says when a reference stays
+inside the tenant; `Prover::along` moves the tenant, and a role held
+through the record's tenancy, along it, so an include of a tenant's parent
+proves. `Planner::kept_in_tenant` compiles each such reference a write sets
+into its own statement as `jadpo_sql::policy::outside_tenant` (`NOT
+EXISTS` a record with that `id` in another tenant), in the policed and the
+unpoliced text alike, and `WritePlan::kept_in_tenant` tells the runtime
+that writing no row without policy is `not_permitted` too, a create's or a
+found record's. `policy::outputs` proves each field a query's or an
+include's `where:`, `where_present:` and `order:` tests, and
+`policy::flow` a `get`'s `id` and a transition's `when:`, like an output.
+A route test's `request { }` takes `idempotency_key:` (graph
+`Expr::Request::idempotency_key`), and the interpreter's `request` sends it,
+or a fresh one from the test's seed, with every request but a `GET` (the
+runtime's `http::test_request` since chunk 4.10).
+
+Built in chunk 4.8: the Phase 4 review's policy findings (areas 8 and 9).
+`ActionGrants::gate` decides who a listed line lets call its action as it
+starts (`LineGate`), from the entities its own body writes
+(`policy::reach::own_writes`, `line_gate`): the checker refuses a route
+whose line lets nobody in, `policy::flow` counts on it, and the plan's
+`gates` compiles it, refusing every caller when it can't build one, as
+`http::identity::policed` refuses a credential statement with no policed
+twin. `policy::flow` walks functions as well as actions; `Src::Decided`
+carries what an `if`, a `match`, a loop or a filter tested into every value
+made under it (`Walk::pc`), `Src::Record::given` keeps what a write set
+in the record it gives back, `Src::Param` names the part of a parameter a
+summary sends, and each value that finds a record is checked like an
+output (`Walk::lookup`). `Prover::field_readable` asks the record's `read:`
+too, except of a created record (`Fact::Fresh`) or its `id`; an update's
+record is proved once for each record its target may be (`targets`);
+`Fact::MaybeHidden` keeps a membership read as a parent from proving a
+role, `Prover::proves_on` proves a list naming every role held in the
+tenant from the tenant alone, and an optional `role:` proves none.
+`policy::outputs` checks each include's reference (`Unproved::Via`). The
+plan founds a tenant only while `jadpo_sql::policy::unheld` holds for every
+membership held in it (`Planner::nobody_in`), adds the caller's membership
+in the new tenant to a move (`Planner::moved_to`), and asks a guarded
+transition's probe with its fields' grants, so a field's refusal is 403
+before the condition's 409. `types::decl::holds_principal` follows named
+types.
+
+Built in chunk 4.9: the Phase 4 review's request findings (areas 6, 7, 8
+and 13), each in the runtime or the native host. A route sets the
+request's deadline on `Ctx` (`set_deadline`, read from
+`Host::monotonic_ms`, which a test's host leaves `None`); the
+interpreter's machine checks `Ctx::out_of_time` once every 4,096 tasks and
+stops with `FaultKind::DeadlineExceeded`, and the component answers any
+body that finished past the deadline as one the timer stopped: abandoned,
+its claim given up, 504. A held commit that finds a concurrent change runs
+the action again within `RERUN_ATTEMPTS` and the same deadline; a claim
+that lapsed before the commit is `unavailable`. A route anyone may call
+counts a request with a credential against its address before it runs;
+`boundary::caught` restores the session effect and `issued` with the
+outbox when a handled action fails. Before routing, a header value that
+isn't printable ASCII is 400 (the native host passes every value, as
+`from_utf8_lossy` reads it); a route refuses a query string or a body it
+doesn't read as `unknown_field`, and reads a body only with a JSON
+`Content-Type`. `jadpo_value::json` leaves an omitted `Input` field out
+when it writes one, so a route test's body is the one a client sends. A
+page's bad cursor answers `invalid_input` naming its field
+(`http::cursor_field`). Natively, hyper has tokio's timer and a 10-second
+header timeout, a body has 30 seconds, the listener holds at most 1,024
+connections (`http::MAX_CONNECTIONS`), and each worker's `Postgres` opens
+at most 10 connections (`MAX_OPEN`), a transaction past that waiting for
+one to go idle or close. `jadpo-check` derives each route's OpenAPI
+responses from what it runs (`openapi::facts`: policy reach through calls,
+`types::used_stores` for 503, `types::written_stores` and
+`types::unkept_responses` for what an `Idempotency-Key` keeps), writes
+`Time` and a mixed enum's plain variants as they are sent, and puts each
+API's sign-in methods (`apis::accepted_methods`) and each route's caller
+kind in the record.
+
+Built in chunk 4.10: the Phase 4 review's runtime findings. What compiled
+code must share is the runtime's or the plan's, as chunk 3.12 made reads
+and writes. The action boundary checks an action's gate before its body
+runs, whichever executor supplies the body (`ActionBody::gate` and
+`site`, from `CallablePlan::gate`); a test's, fixture's or seed's call
+runs as the argument the callee's plan names as its caller, the parameter
+typed `Principal`, `Principal.user` or `Principal.service`
+(`CallablePlan::caller`, `QueryPlan::caller`, run by `jadpo_runtime::
+call_as`), never a value's type name; a route test's request, its
+`Idempotency-Key` and its credentials are built by `http::test_request`
+and sent by `http::route_test`; and a deployable hands each request to
+`http::serve_request(app, executor, host, worker, request)`, which makes
+the context under the host's wall clock (`Host::now_ms`), the request id
+and the answer, as `jadpo dev` now does (`http::Worker` is what the
+component keeps between one worker's requests). Rate limits are a host
+capability (`Host::rate_limit(key, limit, now)`, a future, as Redis or a
+Workers binding needs): natively `NativeHost` counts in its worker's
+bounded memory, `RateLimits`, and a test's host counts nothing. On Workers
+there is no native default: area 16 keeps counts in memory only where
+memory lasts, and its question 6 requires a Redis connection or
+Cloudflare's rate-limiting binding there, with the isolate's memory
+counting only while that can't be reached, which is the one reading both
+give. Round trips: the sign-in lookup, an idempotency key's claim (one
+`INSERT ... ON CONFLICT` that also gives back what the key is kept with)
+and its release, the response a failed action keeps, and `SELECT 1` each
+run as one statement on their own (`Database::query_once`, autocommit),
+and the PostgreSQL driver sends a transaction's `BEGIN` with its first
+statement, both written before either answer is read; an idle connection
+found closed at that first round trip ran nothing, so it is sent again on
+another, as `begin` did. A `get` or a query for one record that policy
+limits selects its grant as a column (`Select::permitted`) and filters
+only on what it asks and the record's visibility, so one statement tells
+a hidden record (`concealed_by: policy`) from one that isn't there; rows
+the caller may not read are dropped before its includes run. Counted at
+the transport against live PostgreSQL once connections are open
+(`crates/jadpo-cli/tests/round_trips.rs`): a signed-in write with an
+`Idempotency-Key` took 10 round trips and takes 5 (the lookup, the claim,
+`BEGIN` with the insert, the response kept, `COMMIT`), and a signed-in
+`GET` policy hides took 7 and takes 3 (the lookup, `BEGIN` with the read,
+`ROLLBACK`); the write's repeat takes 2.
+`/health/ready` is answered from the worker's last check for a second
+(`Host::monotonic_ms`), so probes cost each store at most one statement a
+second per worker. The interpreter's machine gives the thread back each
+time it checks a request's deadline (`Step::Yield`,
+`jadpo_runtime::yield_now`), so a route that computes without waiting no
+longer holds the requests its worker serves until its deadline; an inline
+function inside a collection operation still only stops there.
+
+**Configuration** (chunk 5.1). Starting is one function, `jadpo_runtime::
+config::load`, given the plan's settings, their compiled validators and a
+source of variables (`Variables`, a host capability: `Host::variable` is the
+process's environment natively and would be the Worker's bindings on
+Workers). It reads only the variables the settings name, decodes each with
+the setting's codec, and gives the checked values or every setting that
+stops the start, as the setting, its variable and the rule it breaks, never
+the value; `check` gives the same readings as `set`, `default`, `missing`
+or `invalid` for `jadpo config check`. A test run reads `test:` values,
+defaults and secrets it makes at random (`Mode::Test`). The checked values
+are text, `Send`, so every worker thread decodes them into its own values
+(`Program::with_config`), and a secret's text is held there and nowhere
+else (its `Debug` leaves it out); the interpreter reads a setting like a
+constant. Nothing here is interpreter-only, so the compiled deployables
+(Phase 8) call the same function with the Worker's bindings.
+
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
 runs one current-thread tokio runtime per core, each with its own
-connection pools, behind one listener. One code path serves both targets,
+connection pools and rate-limit counters, behind one listener that hands
+each connection to the worker its client's address hashes to, so an
+address is counted on one thread. Work that never waits gives its
+thread back as it checks the deadline, so one request can't hold the
+others a worker serves. One code path serves both targets,
 with `Rc` instead of `Arc` and no locks on the request path. *Rejected:*
 multi-threaded tokio with `Send` bounds switched off on wasm32, which
 doubles the async signatures and lets bugs hide on one target.
@@ -1322,18 +1633,20 @@ doubles the async signatures and lets bugs hide on one target.
 | Identity | Sessions, CSRF, API tokens, service keys, OIDC sign-in, revocation delay | same |
 | Policy | Principal, tenancy and memberships; predicates arrive compiled in the plan's SQL and the runtime binds the caller | same |
 | Transactions | Read committed or repeatable read by what the action does, revision checks, rerun within the budget | same |
-| Idempotency | Keys and stored responses in the action's transaction | same |
+| Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
 | Outbox | Delivery, retries, circuit breaker, dead letters; native delivery workers | `waitUntil` after commit, swept by the minute tick |
 | Scheduler | Due times in the schedule's state row from its first tick, leases, run records, tick adapters; native timer | Cloudflare cron |
-| Rate limits, caches | Redis or bounded memory; cache reads with timeout, invalidation after commit | Redis or a binding required |
+| Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise each worker's bounded memory; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6); the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
 | Flags, privacy | Evaluation; export and erasure flows | same |
 | Development | Request timeline, local inbox and disk, published-event log | none |
 
 **Capability drivers.** One trait per capability: `Database` (begin,
-query, execute, commit, rollback), `Cache`, `Email`, `Sms`, `Files`,
-`Publishing` and `ScheduleTick` (ticks and an optional lease). Drivers
+query, execute, commit, rollback, and one statement on its own),
+`Cache`, `Email`, `Sms`, `Files`, `Publishing` and `ScheduleTick` (ticks
+and an optional lease); rate limits and the wall clock are `Host`
+methods (chunk 4.10). Drivers
 classify their own errors into the runtime's fixed set (conflict with the
 constraint name, serialisation failure, unavailable, fault), so executors
 and targets agree; the experiments found exactly this classification

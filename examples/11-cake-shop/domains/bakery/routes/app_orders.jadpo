@@ -1,0 +1,35 @@
+// `api: app` puts the group in the phone app's API: its prefix starts
+// with the API's, `/app`, and it signs in with the app's token. That API
+// requires an `Idempotency-Key` on every write, so a phone that loses its
+// signal and sends an order again gets the first answer back instead of
+// a second order.
+//
+// `deadline:` stops the route after 5 seconds rather than the default 10:
+// the app gives up and retries then, and the server stops at the same
+// point without committing, so the retry never races a request still
+// running.
+
+use bakery/types { OrderView }
+use bakery/actions { PlaceOrder, place_order }
+use bakery/queries { my_orders }
+
+/// A customer's orders, from the phone app.
+routes AppOrders {
+    prefix: /app/orders
+    api: app
+
+    /// The signed-in customer's orders.
+    GET / {
+        output: List<OrderView>
+        run: my_orders()
+    }
+
+    /// Places an order.
+    POST / {
+        input: PlaceOrder
+        output: OrderView
+        status: SuccessStatus.created
+        deadline: 5s
+        run: place_order(input, current_principal.user)
+    }
+}

@@ -1,0 +1,41 @@
+use kitchen/entities { Baker, PlatformStaff }
+use kitchen/types { Allergen, IngredientName, KitchenStaff, PlatformRole }
+use kitchen/actions { ListIngredient, appoint_editor, register }
+use kitchen/fixtures { northwind }
+
+test "editors list ingredients, and everyone signed in reads them" {
+    var crew: KitchenStaff = northwind()
+    var eve: Baker = attempt register("eve")
+    var editor: PlatformStaff = attempt appoint_editor(eve.id)
+    assert editor.role == PlatformRole.editor
+    var by_baker: Response = request {
+        method: HttpMethod.post
+        path: "/ingredients"
+        as: Principal.user(crew.baker)
+        input: ListIngredient {
+            name: "Rye flour"
+            allergen: Allergen.gluten
+        }
+    }
+    assert by_baker.status == 403
+    var by_editor: Response = request {
+        method: HttpMethod.post
+        path: "/ingredients"
+        as: Principal.user(eve)
+        input: ListIngredient {
+            name: "Rye flour"
+            allergen: Allergen.gluten
+        }
+    }
+    assert by_editor.status == 201
+    var by_counter: Response = request {
+        method: HttpMethod.get
+        path: "/ingredients"
+        as: Principal.user(crew.counter)
+    }
+    var ingredient_names: List<IngredientName> = match by_counter.output {
+        some(seen) -> collection.map(seen, ingredient -> ingredient.name)
+        none -> []
+    }
+    assert ingredient_names == ["Rye flour"]
+}

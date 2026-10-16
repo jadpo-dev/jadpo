@@ -84,6 +84,9 @@ pub enum Decoded {
         plan: Option<u32>,
         arms: Vec<Option<Raise>>,
     },
+    /// `config.<name>`: the number of the setting in the plan's settings;
+    /// `None` when it has none, which the checker rules out.
+    Config(Option<u32>),
     /// Something a later area builds, as written up to its arguments or
     /// block: `clock.now`, `query open_todos`, `Todo.update`.
     Written(String),
@@ -130,6 +133,8 @@ pub(crate) struct Decoder<'a> {
     pub entity: &'a dyn Fn(&Key) -> Option<u32>,
     /// The number of the plan of the write at each site of this body.
     pub write: &'a dyn Fn(u32) -> Option<u32>,
+    /// The number of each setting, by its key (area 10).
+    pub setting: &'a dyn Fn(&Key) -> Option<u32>,
 }
 
 impl Decoder<'_> {
@@ -294,6 +299,7 @@ impl Decoder<'_> {
             }) => Decoded::AssertFails {
                 expected: self.types.name(expected).to_string(),
             },
+            Node::Expr(Expr::Config { field }) => Decoded::Config((self.setting)(field)),
             Node::Expr(Expr::Unchecked) => Decoded::Written(written(site, text)),
             _ => Decoded::Nothing,
         }

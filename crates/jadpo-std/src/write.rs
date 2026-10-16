@@ -50,6 +50,9 @@ pub enum WriteSource {
     NewId,
     /// The operation's clock, for a generated field (area 5).
     Now,
+    /// Who is calling, for the policy compiled into the statement (area
+    /// 9).
+    Caller(crate::policy::CallerPart),
 }
 
 /// One parameter: `$1` is the first.
@@ -75,6 +78,12 @@ pub struct WritePlan {
     pub store: String,
     pub op: WriteOp,
     pub sql: String,
+    /// The statement without the policy compiled into `sql`, when policy
+    /// limits it: what a test's call without a caller runs (area 9). It
+    /// takes the same parameters.
+    pub unpoliced: Option<String>,
+    /// When policy limits it: what writing no row means (area 9).
+    pub policy: Option<PolicyRefusal>,
     pub params: Vec<WriteParam>,
     /// The record a `create` or `update` gives; `None` for a `delete`.
     pub returns: Option<Returned>,
@@ -93,6 +102,11 @@ pub struct WritePlan {
     /// A write by `id` that finds no record: the entity's not-found
     /// failure, given the `id`.
     pub missing: Option<MissingPlan>,
+    /// Whether its statement, with policy or without, also writes no row
+    /// when a reference it sets points into another tenant (area 9,
+    /// "References stay inside the tenant"): then writing no row without
+    /// policy, a create or a record that is there, is `not_permitted` too.
+    pub kept_in_tenant: bool,
 }
 
 /// A constraint whose refusal a write maps (area 6, "When a write is
@@ -124,12 +138,47 @@ pub enum Raises {
 /// its `when:` refused it.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Guard {
-    /// `SELECT 1` of the record by `id`, under the lifecycle's `visible:`.
+    /// `SELECT 1` of the record by `id`, under the lifecycle's `visible:`
+    /// and policy.
     pub sql: String,
+    /// The same without policy.
+    pub unpoliced: Option<String>,
     /// Its parameters, from the write's inputs.
     pub params: Vec<WriteParam>,
     /// The position in `refusals` its refusal takes.
     pub refusal: u32,
+}
+
+/// What a write that policy limits means when it changed no row (area 9,
+/// "When policy says no").
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PolicyRefusal {
+    /// A create policy refused, the record's grants or a field's own:
+    /// `not_permitted`.
+    Create,
+    /// An update or delete: `SELECT 1` of the record by `id` under its
+    /// lifecycle but not policy. Found, policy refused it: a write by `id`
+    /// reports the record's not-found failure, logged as concealed by
+    /// policy, and one of a record loaded earlier `not_permitted`.
+    Probe {
+        sql: String,
+        params: Vec<WriteParam>,
+        /// For an update changing a field whose own `policy:` narrows the
+        /// record's grants (area 9, "Field restrictions"): `SELECT 1` of
+        /// the record under its lifecycle and the record's grants, but not
+        /// the fields'. Found, the caller may change the record but not a
+        /// field the request changes, so the whole write is refused with
+        /// `not_permitted`, by `id` or not.
+        fields: Option<FieldProbe>,
+    },
+}
+
+/// The statement that tells a field's policy refusing a write from the
+/// record's (see [`PolicyRefusal::Probe`]).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FieldProbe {
+    pub sql: String,
+    pub params: Vec<WriteParam>,
 }
 
 /// How many records one purge batch deletes at most (area 5: "in small
@@ -167,6 +216,11 @@ pub struct PurgePlan {
     /// no `restricted` reference holds, oldest first.
     pub sql: String,
     pub params: Vec<PurgeParam>,
-    /// The lifecycle's `after:`, in milliseconds.
+    /// The lifecycle's `after:`, in milliseconds; 0 when a setting gives it
+    /// (`after_setting`).
     pub after: i64,
+    /// The setting `after:` reads, by its number in the plan's settings
+    /// (area 10, "Retention periods"): the period is what the application
+    /// started with, so a run is given it (`purge_after`).
+    pub after_setting: Option<u32>,
 }

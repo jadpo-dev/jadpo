@@ -248,6 +248,47 @@ std_enum! {
     }
 }
 
+std_enum! {
+    /// The callers a grant can name besides a user field and a membership
+    /// role (area 9, "Anyone signed in, or anyone").
+    Access: "Access" {
+        /// Anyone signed in, a user or a service.
+        Authenticated: "authenticated",
+        /// Anyone at all, signed in or not.
+        Public: "public",
+        /// Schedules and subscribers (area 12), within their event's
+        /// tenant.
+        System: "system",
+    }
+}
+
+std_enum! {
+    /// What an entity's `tenant:` says when it belongs to no tenant (area
+    /// 9, "Tenancy").
+    Tenancy: "Tenancy" {
+        /// Shared by every tenant, such as a list of countries.
+        Shared: "shared",
+    }
+}
+
+std_enum! {
+    /// What a field's `policy:` says when no client may read or write it
+    /// (area 9, "Field restrictions").
+    FieldAccess: "FieldAccess" {
+        /// No client: no request reads or writes it.
+        ServerOnly: "server_only",
+    }
+}
+
+std_enum! {
+    /// What a membership's `scope:` says when the role is held across the
+    /// whole application (area 9, "A membership role").
+    MembershipScope: "MembershipScope" {
+        /// The whole application, such as staff.
+        Application: "application",
+    }
+}
+
 impl HttpMethod {
     /// As a route entry and HTTP write it: `GET`.
     pub fn word(self) -> &'static str {
@@ -304,6 +345,10 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
             AuthenticationStrength::NAME,
             AuthenticationStrength::NAMES.to_vec(),
         ),
+        (Access::NAME, Access::NAMES.to_vec()),
+        (Tenancy::NAME, Tenancy::NAMES.to_vec()),
+        (MembershipScope::NAME, MembershipScope::NAMES.to_vec()),
+        (FieldAccess::NAME, FieldAccess::NAMES.to_vec()),
         (ZONE, names(crate::zones::ZONES)),
         (LOCALE, names(crate::zones::LOCALES)),
     ]
@@ -329,6 +374,10 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         RouteAuthentication::NAME => position(RouteAuthentication::NAMES),
         AuthenticationMethod::NAME => position(AuthenticationMethod::NAMES),
         AuthenticationStrength::NAME => position(AuthenticationStrength::NAMES),
+        Access::NAME => position(Access::NAMES),
+        Tenancy::NAME => position(Tenancy::NAMES),
+        MembershipScope::NAME => position(MembershipScope::NAMES),
+        FieldAccess::NAME => position(FieldAccess::NAMES),
         ZONE => crate::zones::ZONES.iter().position(|(v, _)| *v == variant),
         LOCALE => crate::zones::LOCALES
             .iter()

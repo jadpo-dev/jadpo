@@ -1,0 +1,128 @@
+// The app's API accepts only its tokens, so `as:` signs in with a real
+// API token sent as `Authorization: Bearer`. It also refuses a write
+// without an `Idempotency-Key`; a route test sends a fresh one with every
+// request but a `GET`, as the app does, so an order is tested through the
+// route like any other request.
+
+use bakery/entities { Customer }
+use bakery/types { OutletWithMenu }
+use bakery/actions { PlaceOrder, register }
+use bakery/fixtures { market_street }
+
+test "the app places an order and lists it with its token" {
+    var market: OutletWithMenu = market_street()
+    var ann: Customer = attempt register("ann@example.test", "Ann")
+    var placed: Response = request {
+        method: HttpMethod.post
+        path: "/app/orders"
+        as: Principal.user(ann)
+        input: PlaceOrder {
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
+            quantity: 2
+            collect_on: "2026-11-07"
+            app_version: "2.4.1"
+        }
+    }
+    assert placed.status == 201
+    var on_file: Response = request {
+        method: HttpMethod.get
+        path: "/app/orders"
+        as: Principal.user(ann)
+    }
+    assert on_file.status == 200
+    match placed.output {
+        some(order) -> {
+            assert on_file.output == [order]
+        }
+        none -> {
+            assert placed.output != none
+        }
+    }
+}
+
+// A phone that loses its signal sends the same order again with the same
+// key. `idempotency_key:` gives the key a request sends, so the test can
+// send it twice: the second gets the first answer back, and the customer
+// has one order.
+test "an order sent again with its key gets the first answer back" {
+    var market: OutletWithMenu = market_street()
+    var ann: Customer = attempt register("ann@example.test", "Ann")
+    var first: Response = request {
+        method: HttpMethod.post
+        path: "/app/orders"
+        idempotency_key: "order-1"
+        as: Principal.user(ann)
+        input: PlaceOrder {
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
+            quantity: 1
+            collect_on: "2026-11-07"
+            app_version: "2.4.1"
+        }
+    }
+    var resent: Response = request {
+        method: HttpMethod.post
+        path: "/app/orders"
+        idempotency_key: "order-1"
+        as: Principal.user(ann)
+        input: PlaceOrder {
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
+            quantity: 1
+            collect_on: "2026-11-07"
+            app_version: "2.4.1"
+        }
+    }
+    assert resent.status == 201
+    assert resent.output == first.output
+    var on_file: Response = request {
+        method: HttpMethod.get
+        path: "/app/orders"
+        as: Principal.user(ann)
+    }
+    match first.output {
+        some(order) -> {
+            assert on_file.output == [order]
+        }
+        none -> {
+            assert first.output != none
+        }
+    }
+}
+
+// The same key with a different order is a mistake in the app, which the
+// API refuses rather than guess which order was meant.
+test "a key sent again with a different order is refused" {
+    var market: OutletWithMenu = market_street()
+    var ann: Customer = attempt register("ann@example.test", "Ann")
+    var first: Response = request {
+        method: HttpMethod.post
+        path: "/app/orders"
+        idempotency_key: "order-1"
+        as: Principal.user(ann)
+        input: PlaceOrder {
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
+            quantity: 1
+            collect_on: "2026-11-07"
+            app_version: "2.4.1"
+        }
+    }
+    assert first.status == 201
+    var changed: Response = request {
+        method: HttpMethod.post
+        path: "/app/orders"
+        idempotency_key: "order-1"
+        as: Principal.user(ann)
+        input: PlaceOrder {
+            outlet_id: market.pickup_outlet.id
+            cake_id: market.lemon.id
+            quantity: 4
+            collect_on: "2026-11-07"
+            app_version: "2.4.1"
+        }
+    }
+    assert changed.status == 422
+    assert changed.code == "idempotency_key_reused"
+}

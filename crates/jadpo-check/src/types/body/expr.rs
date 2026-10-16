@@ -20,6 +20,7 @@ use crate::tree::{self, dotted};
 
 /// The generated namespace whose one member is the time (area 10).
 const CLOCK: &str = "clock";
+const CONFIG: &str = "config";
 
 /// Which fields a block must give.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -436,6 +437,9 @@ impl Body<'_> {
         let members: Vec<String> = rest.iter().map(text).collect();
         let written = format!("{head}.{}", members.join("."));
         let span = self.span(expr);
+        if head == CONFIG {
+            return self.setting_read(rest, expr);
+        }
         match members.as_slice() {
             [member] if StdNames::get().generated_member(head, member) => {
                 if head == CLOCK {
@@ -450,6 +454,43 @@ impl Body<'_> {
                 Ty::Error
             }
         }
+    }
+
+    /// `config.<name>`: the setting's type. Anyone may read one, functions
+    /// included, because a setting cannot change while the app runs (area
+    /// 10); a name that is no setting, and a secret read where it could
+    /// leave the server, are reported once per file by
+    /// [`crate::config::use_problems`].
+    fn setting_read(&mut self, rest: &[ast::NameRef], expr: &Expr) -> Ty {
+        let Some(first) = rest.first() else {
+            return Ty::Error;
+        };
+        let name = text(first);
+        let fact = crate::config::setting_fact(
+            self.db,
+            self.project,
+            crate::lookups::Name::new(self.db, name.clone()),
+        );
+        let Some(fact) = fact else {
+            return Ty::Error;
+        };
+        let mut ty = fact.ty.clone();
+        // `config.name.field` reads a field of the setting's value.
+        let fields: Vec<ast::FieldExpr> = expr
+            .syntax()
+            .descendants()
+            .filter_map(ast::FieldExpr::cast)
+            .collect();
+        for (field, node) in rest.iter().zip(fields.iter().rev()).skip(1) {
+            if ty.is_error() {
+                break;
+            }
+            ty = self.select(&ty, field, node);
+        }
+        if rest.len() == 1 {
+            self.facts.settings.insert(node_key(expr.syntax()), name);
+        }
+        ty
     }
 
     /// `clock.now` is an effect only actions have (areas 3 and 10).

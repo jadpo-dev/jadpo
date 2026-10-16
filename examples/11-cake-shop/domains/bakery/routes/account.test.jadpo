@@ -1,0 +1,23 @@
+use bakery/actions { SignUp }
+
+test "signing up twice with one address is a conflict" {
+    var first: Response = request {
+        method: HttpMethod.post
+        path: "/account/sign-up"
+        input: SignUp {
+            email: "ann@example.test"
+            name: "Ann"
+        }
+    }
+    assert first.status == 204
+    var second: Response = request {
+        method: HttpMethod.post
+        path: "/account/sign-up"
+        input: SignUp {
+            email: "ann@example.test"
+            name: "Another Ann"
+        }
+    }
+    assert second.status == 409
+    assert second.code == "email_taken"
+}

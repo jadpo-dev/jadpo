@@ -1,0 +1,5 @@
+authentication {
+    browser_session: {
+        cookie: "recipe_book_session"
+    }
+}

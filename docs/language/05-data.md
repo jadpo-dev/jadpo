@@ -74,9 +74,11 @@ entity Order {
 }
 ```
 
-Each connection's settings, such as its URL from configuration, come with
-areas 10 and 11; until then `jadpo migrate apply` takes the database's URL
-with `--url`.
+A database connection's address is a setting of the type its driver needs,
+`url: config.database_url` with `database_url: PostgresUrl` in `config.jadpo`
+(area 10, built in chunk 5.1); `jadpo migrate apply` and `status` read it from
+the environment over `.env.local`, or take the database's URL with `--url`.
+The other settings of a connection come with area 11.
 
 ## Entities and the `id`
 
@@ -325,9 +327,9 @@ below):
   A `when:` that asks only what `visible:` asks already can't refuse a
   record that is there; any other `when:` can, and its callers map that
   refusal in `conflict:` (area 6).
-- **Purge.** `after:` takes a duration written in place (`30d`) until
-  configuration comes with chunk 5.1, when `config.soft_delete_retention`
-  works too. A record is purged once `visible:` doesn't hold and its
+- **Purge.** `after:` takes a duration written in place (`30d`) or a
+  `Duration` setting (`config.soft_delete_retention`, area 10, chunk 5.1),
+  whose value the app started with. A record is purged once `visible:` doesn't hold and its
   `since:` field is older than the run's time less `after:`; each batch
   deletes at most 500 records, oldest first, in its own transaction.
   References that `cascade` and those `cleared` do what they do for any
@@ -1300,7 +1302,7 @@ error: `identity` isn't something an entity holds
   |
 4 |     identity: id
   |     ^^^^^^^^ not a field or a section
-  reason: An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:` and `policy:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.
+  reason: An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:`, `policy:` and `membership:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.
   next: Remove it from `Note`, or move it where it belongs (agent)
   rule: data.unknown_section
   help: docs/language/05-data.html#data-unknown-section
@@ -1973,8 +1975,8 @@ Not built yet, and said so where it is used (`toolchain.not_built_yet`):
   record caches (`caches:`), and indexes with a `kind:` option. A database
   implied only when something needs one (question 14, revised 2026-10-16)
   comes with the first feature that can run without one.
-- `policy:` is read but not checked: area 9 builds it. Seeds and `jadpo
-  seed` are not built.
+- Seeds and `jadpo seed` are not built. An entity's `policy:` and
+  `membership:` are area 9's, built in chunk 4.4.
 - A lifecycle's `purge: { after: config.<setting> }` waits for configuration
   (chunk 5.1), and the hourly purge schedule for schedules (chunk 6.2).
 - `jadpo rename`, which writes the identity registry (area 18), comes with
@@ -2169,7 +2171,7 @@ Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says ot
 | Lifecycle conditions on bare fields | Chosen in chunk 3.4: `visible:` and `when:` name the record's fields bare, as this page writes them; `in` and `not` aren't among the decided operators | 2026-10-15 |
 | What a lifecycle owns | Chosen in chunk 3.4: every field a transition sets or `initial:` gives changes only through transitions; a new record takes its `initial:` value or `none`, and a required field a transition sets needs one; `set:` and `initial:` values are literals, enum values, `none` and `clock.now` | 2026-10-15 |
 | Deleting a record with a lifecycle | Chosen in chunk 3.4: `delete` runs the `delete` transition; with none, code can't delete the record, nor remove one whose delete would cascade to an entity with a lifecycle; only purge removes them | 2026-10-15 |
-| Purge's period and batches | Chosen in chunk 3.4: `after:` takes a duration in place until configuration (chunk 5.1); a batch deletes at most 500 hidden records, oldest `since:` first, each batch its own transaction; a record a `restricted` reference holds stays without stopping the rest; the runtime's entry point runs it, area 12's hourly schedule calls it (chunk 6.2) | 2026-10-15 |
+| Purge's period and batches | Chosen in chunk 3.4: `after:` takes a duration in place, or a `Duration` setting (chunk 5.1; `jadpo_runtime::purge_after` is given its value); a batch deletes at most 500 hidden records, oldest `since:` first, each batch its own transaction; a record a `restricted` reference holds stays without stopping the rest; the runtime's entry point runs it, area 12's hourly schedule calls it (chunk 6.2) | 2026-10-15 |
 | Partial indexes | Chosen in chunk 3.4: the indexes an entity's queries need hold only the records `visible:` lets through, unless it reads `clock.now`; a reference's own index stays beside a partial one | 2026-10-15 |
 | Computed backfills | `backfill:` may be an expression over each row's own stored fields (`Todo.legacy_flag`), constants and pure functions, including a field this migration retires; filled in batches, one `UPDATE` each where the expression has a SQL form and by `jadpo migrate apply` otherwise, then made required; no freeform SQL (Richard, from an outside review) | 2026-10-15 |
 | Redis entity updates | Updates by `id` include counters, done as one Redis `increment`; no lifecycles on a Redis entity, expiry taking their place (decided for Richard) | 2026-10-16 |

@@ -355,3 +355,21 @@ fn read_idempotency(value: Option<&Expr>) -> Result<Idempotency, String> {
         .and_then(|name| Idempotency::from_name(&name))
         .ok_or_else(written)
 }
+
+/// The sign-in methods API `api` accepts (area 8): its own
+/// `authentication:` list, or every method `authentication.jadpo`
+/// declares when it names none.
+pub fn accepted_methods(
+    db: &dyn Db,
+    project: Project,
+    api: &str,
+) -> Vec<jadpo_std::AuthenticationMethod> {
+    match api_table(db, project).get(api) {
+        Some(declared) if !declared.methods.is_empty() => declared.methods.clone(),
+        _ => crate::identity::identity(db, project)
+            .methods
+            .iter()
+            .map(|method| method.method)
+            .collect(),
+    }
+}

@@ -20,6 +20,10 @@ fn folder() -> PathBuf {
 
 fn plan() -> Plan {
     let source = std::fs::read_to_string(folder().join("project.jadpo")).expect("the fixture");
+    planned(source)
+}
+
+fn planned(source: String) -> Plan {
     let db = Database::default();
     let file = File::new(&db, "main.jadpo".to_string(), source);
     let project = Project::new(
@@ -43,6 +47,7 @@ fn source(source: &Source) -> String {
         Source::Keys => "keys".to_string(),
         Source::Cursor(i) => format!("cursor {i}"),
         Source::SizePlusOne => "page size + 1".to_string(),
+        Source::Caller(part) => format!("caller {part:?}"),
     }
 }
 
@@ -68,6 +73,11 @@ fn select(out: &mut String, select: &Select, depth: usize) {
     }
     let columns: Vec<String> = select.columns.iter().map(column).collect();
     out.push_str(&format!("{indent}-- columns: {}\n", columns.join(", ")));
+    if let Some(at) = select.permitted {
+        out.push_str(&format!(
+            "{indent}-- the caller may read a row: column {at}\n"
+        ));
+    }
     let fields: Vec<String> = select
         .record
         .fields
@@ -143,6 +153,7 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
             }
             WriteSource::NewId => "a new identity".to_string(),
             WriteSource::Now => "clock.now".to_string(),
+            WriteSource::Caller(part) => format!("caller {part:?}"),
         };
         out.push_str(&format!("-- ${}: {source} as {:?}\n", i + 1, param.ty));
     }
@@ -167,6 +178,26 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
             out.push_str(&format!("--   {line}\n"));
         }
         for (i, param) in guard.params.iter().enumerate() {
+            out.push_str(&format!(
+                "--   ${}: {:?} as {:?}\n",
+                i + 1,
+                param.source,
+                param.ty
+            ));
+        }
+    }
+    if let Some(jadpo_std::write::PolicyRefusal::Probe {
+        fields: Some(probe),
+        ..
+    }) = &plan.policy
+    {
+        out.push_str(
+            "-- no row: asks, refused by a field's own policy when the record's grants let the caller in\n",
+        );
+        for line in probe.sql.lines() {
+            out.push_str(&format!("--   {line}\n"));
+        }
+        for (i, param) in probe.params.iter().enumerate() {
             out.push_str(&format!(
                 "--   ${}: {:?} as {:?}\n",
                 i + 1,
@@ -249,4 +280,37 @@ fn every_query_shape_matches_its_golden_sql() {
         "the SQL changed; review it and run with JADPO_BLESS=1:\n\n{}",
         different.join("\n")
     );
+}
+
+/// The caller a test's, fixture's or seed's call runs as is the argument
+/// the callee's signature types as a `Principal`, wherever it comes, which
+/// the plan names (chunk 4.10), never a value's type name.
+#[test]
+fn the_plan_names_each_callables_caller_parameter() {
+    let mut source = std::fs::read_to_string(folder().join("project.jadpo")).expect("the fixture");
+    source.push_str(
+        r#"
+query own_projects(name: Project.name, owner: Principal.user?) -> List<Project> {
+    from: Project
+    where: Project.name == name
+    order: [Project.name asc]
+    limit: 10
+}
+"#,
+    );
+    let plan = planned(source);
+    let caller = |name: &str| {
+        let id = plan.find(name).unwrap_or_else(|| panic!("`{name}`"));
+        plan.callable(id).expect("a callable").caller
+    };
+    assert_eq!(caller("open_ledger"), Some(0));
+    assert_eq!(caller("add_todo"), Some(0));
+    assert_eq!(
+        caller("set_balance"),
+        None,
+        "no caller: runs without policy"
+    );
+    let query = |name: &str| plan.query_named(name).expect("a query").caller;
+    assert_eq!(query("own_projects"), Some(1), "an optional caller, second");
+    assert_eq!(query("project_by_id"), None);
 }

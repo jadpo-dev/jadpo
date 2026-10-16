@@ -247,6 +247,9 @@ sign_out
 browser_session
 fresh
 user_disabled
+# the toolchain's own error code, `toolchain.project_not_found` (area 14),
+# which a project's failure code for an entity called Project matches
+project_not_found
 
 # Generic names the language rejects for a domain or library (area 1)
 helpers
@@ -286,3 +289,12 @@ high
 # protocol words the runtime and OpenAPI must write as they are.
 details
 title
+
+# The standard library's `IssuedToken` and `IssuedKey` (area 8), which the
+# API record writes as `output` sections of their own.
+issued_token
+issued_key
+
+# What the generated `POST /auth/exchange` answers with (area 8), which the
+# API record writes as an `output` section of its own.
+exchanged_token

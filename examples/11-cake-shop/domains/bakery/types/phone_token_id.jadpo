@@ -1,0 +1,2 @@
+/// One of a customer's phone tokens, as `GET /devices` lists it.
+type PhoneTokenId = Uuid {}

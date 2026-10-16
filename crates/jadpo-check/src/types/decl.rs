@@ -472,7 +472,7 @@ impl Decls<'_> {
                     if declared.has_error() {
                         continue;
                     }
-                    if holds_principal(&declared) {
+                    if holds_principal(self.table, &declared, &mut Vec::new()) {
                         self.principal_field(base, host, name, &value);
                         continue;
                     }
@@ -1233,6 +1233,20 @@ impl Decls<'_> {
             return;
         }
         let lower = name.to_ascii_lowercase();
+        // The runtime reads `Idempotency-Key` to answer a retried write
+        // once (area 7, question 17); the action never sees it.
+        if lower == "idempotency-key" {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_HEADER_CREDENTIAL,
+                    format!("`{name}` belongs to the runtime"),
+                )
+                .at(span, "read by the runtime")
+                .reason("The runtime reads `Idempotency-Key` to answer a retried write once, before anything runs, so the action never sees the key (area 7).")
+                .next("Remove the field; a retry with the same key is answered by the runtime"),
+            );
+            return;
+        }
         if matches!(
             lower.as_str(),
             "authorization" | "proxy-authorization" | "cookie" | "set-cookie"
@@ -1300,26 +1314,57 @@ struct FieldCtx {
 /// Settings later areas give an entity's or event's fields: data (area 5),
 /// policy (area 9) and personal data (area 15). They are checked when
 /// those areas are built.
-const LATER_FIELD_SETTINGS: [&str; 8] = [
+const LATER_FIELD_SETTINGS: [&str; 9] = [
     "erase",
     "generated",
     "immutable",
     "on_delete",
     "personal",
+    "policy",
     "retention",
     "role",
     "unique",
 ];
 
-/// Whether a type is a caller, or holds one (area 8).
-fn holds_principal(ty: &Ty) -> bool {
+/// Whether a type is a caller, or holds one (area 8): in a list, a map or
+/// an option, or in a field of an object or a variant's data, however
+/// deep. An input, output or failure holding one is reported at its own
+/// declaration, so it isn't followed again.
+fn holds_principal(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> bool {
     match ty {
         Ty::Opaque(name, _) => {
             name == crate::identity::PRINCIPAL
                 || name.starts_with(&format!("{}.", crate::identity::PRINCIPAL))
         }
-        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => holds_principal(inner),
-        Ty::Map(key, value) => holds_principal(key) || holds_principal(value),
+        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => {
+            holds_principal(table, inner, seen)
+        }
+        Ty::Map(key, value) => {
+            holds_principal(table, key, seen) || holds_principal(table, value, seen)
+        }
+        Ty::Named(name) => {
+            if seen.contains(name) {
+                return false;
+            }
+            seen.push(name.clone());
+            match table.def(name) {
+                Some(super::table::Def::Fields { base, fields, .. })
+                    if !matches!(
+                        base,
+                        FieldsBase::Input | FieldsBase::Output | FieldsBase::Failure
+                    ) =>
+                {
+                    fields
+                        .iter()
+                        .any(|field| holds_principal(table, &field.declared, seen))
+                }
+                Some(super::table::Def::Enum { variants }) => variants
+                    .iter()
+                    .flat_map(|variant| variant.fields.iter().flatten())
+                    .any(|field| holds_principal(table, &field.declared, seen)),
+                _ => false,
+            }
+        }
         _ => false,
     }
 }

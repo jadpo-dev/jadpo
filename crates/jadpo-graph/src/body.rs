@@ -341,6 +341,9 @@ pub enum Expr {
         route: Key,
         params: Vec<SiteId>,
         input: Option<SiteId>,
+        /// `idempotency_key:`: the `Idempotency-Key` it sends instead of a
+        /// fresh one (area 13, "Idempotency keys in route tests").
+        idempotency_key: Option<SiteId>,
         /// `as:`: the caller it signs in as (area 8).
         caller: Option<SiteId>,
     },
@@ -348,6 +351,11 @@ pub enum Expr {
     Inline {
         param: Option<LocalId>,
         body: Option<SiteId>,
+    },
+    /// `config.<name>`: a setting's value, read when the application
+    /// started (area 10).
+    Config {
+        field: Key,
     },
     /// Nothing to run: a mistake already reported, or something a later
     /// area builds.

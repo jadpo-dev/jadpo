@@ -1,0 +1,6 @@
+use kitchen/entities { Bakery }
+
+/// A bakery as its staff see it.
+type BakeryView = Output {
+    pick: [Bakery.id, Bakery.name]
+}

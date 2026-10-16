@@ -3,26 +3,29 @@
 //! the action never sees it. Keys live in the `jadpo_idempotency_keys`
 //! system table of the store the action writes (area 5, "System tables").
 //!
-//! - Before the action runs, the key is claimed for the caller in a short
-//!   transaction of its own: a row with no response yet, kept only as long
-//!   as the route's deadline (and a margin), so a repeat that arrives
-//!   meanwhile is told the first is still running (409 `conflict`), and a
-//!   claim a crashed process left behind lapses by itself.
+//! - Before the action runs, the key is claimed for the caller in one
+//!   statement of its own ([`CLAIM`], run with `Database::query_once`): a
+//!   row with no response yet, kept only as long as the route's deadline
+//!   (and a margin), so a repeat that arrives meanwhile is told the first
+//!   is still running (409 `conflict`), and a claim a crashed process left
+//!   behind lapses by itself. The same statement gives back what the key is
+//!   already kept with when it can't claim it.
 //! - A key already kept answers instead of the action: the stored response
 //!   when the request's digest matches, 422 `idempotency_key_reused` when
 //!   it doesn't.
 //! - After the action, its response is written over the claim, kept for 24
 //!   hours: a success in the action's own transaction, before it commits;
-//!   a failure the action returned (whose writes were rolled back) in a
-//!   transaction of its own. `unavailable`, a fault or a passed deadline
-//!   stores nothing and drops the claim, so a retry runs again.
+//!   a failure the action returned (whose writes were rolled back) in one
+//!   statement of its own. `unavailable`, a fault or a passed deadline
+//!   stores nothing and drops the claim, in one statement of its own, so a
+//!   retry runs again.
 //! - A lookup ignores a row past its `kept_until`; deleting such rows comes
 //!   with the runtime's minute tick (area 12, roadmap chunk 6.2).
 
 use jadpo_std::http::{IDEMPOTENCY_KEEP_MS, IDEMPOTENCY_KEY_MAX, RoutePlan};
 
 use super::{Request, Response};
-use crate::{Ctx, Isolation, SqlValue};
+use crate::{Ctx, SqlValue};
 
 /// The header a client sends its key in.
 pub const HEADER: &str = "idempotency-key";
@@ -31,8 +34,9 @@ pub const HEADER: &str = "idempotency-key";
 /// follows the action.
 const CLAIM_MARGIN_MS: i64 = 5_000;
 
-/// The scope keys are kept under until sign-in (area 8, roadmap chunk
-/// 4.3): with no one signed in, every caller is the same anonymous one.
+/// The scope a request no one signed in to keeps its keys under: every
+/// such caller is the same anonymous one (area 8 keeps a signed-in
+/// caller's under `user <id>` or `service <id>`).
 pub const ANONYMOUS: &str = "anonymous";
 
 /// A request's key, as the runtime keeps it.
@@ -103,12 +107,19 @@ pub enum Claim {
     Unavailable,
 }
 
-pub(crate) const CLAIM: &str = "INSERT INTO \"jadpo_idempotency_keys\" (\"scope\", \"key\", \"request_digest\", \"status\", \"response\", \"stored_at\", \"kept_until\") VALUES ($1, $2, $3, NULL, NULL, $4, $5) ON CONFLICT (\"scope\", \"key\") DO UPDATE SET \"request_digest\" = EXCLUDED.\"request_digest\", \"status\" = NULL, \"response\" = NULL, \"stored_at\" = EXCLUDED.\"stored_at\", \"kept_until\" = EXCLUDED.\"kept_until\" WHERE \"jadpo_idempotency_keys\".\"kept_until\" <= EXCLUDED.\"stored_at\" RETURNING \"scope\"";
+/// Claims the key, or, when another request holds it or kept a response
+/// with it, gives back what it is kept with: a first column `true` when
+/// this request claimed it, otherwise `false` and the kept row's digest,
+/// status and response. A row past its `kept_until` is claimed over. All
+/// of it reads the one snapshot the statement starts with, so a claim
+/// another request made after that is found as neither, which is a request
+/// still running.
+pub(crate) const CLAIM: &str = "WITH \"claimed\" AS (INSERT INTO \"jadpo_idempotency_keys\" (\"scope\", \"key\", \"request_digest\", \"status\", \"response\", \"stored_at\", \"kept_until\") VALUES ($1, $2, $3, NULL, NULL, $4, $5) ON CONFLICT (\"scope\", \"key\") DO UPDATE SET \"request_digest\" = EXCLUDED.\"request_digest\", \"status\" = NULL, \"response\" = NULL, \"stored_at\" = EXCLUDED.\"stored_at\", \"kept_until\" = EXCLUDED.\"kept_until\" WHERE \"jadpo_idempotency_keys\".\"kept_until\" <= EXCLUDED.\"stored_at\" RETURNING \"scope\") SELECT TRUE, NULL::text, NULL::smallint, NULL::jsonb FROM \"claimed\" UNION ALL SELECT FALSE, \"request_digest\", \"status\", \"response\" FROM \"jadpo_idempotency_keys\" WHERE \"scope\" = $1 AND \"key\" = $2 AND \"kept_until\" > $4 AND NOT EXISTS (SELECT 1 FROM \"claimed\")";
 
-pub(crate) const LOOKUP: &str = "SELECT \"request_digest\", \"status\", \"response\" FROM \"jadpo_idempotency_keys\" WHERE \"scope\" = $1 AND \"key\" = $2 AND \"kept_until\" > $3";
-
-/// Writes the response over this request's claim.
-pub const STORE: &str = "UPDATE \"jadpo_idempotency_keys\" SET \"status\" = $4, \"response\" = $5, \"kept_until\" = $6 WHERE \"scope\" = $1 AND \"key\" = $2 AND \"stored_at\" = $3 AND \"status\" IS NULL";
+/// Writes the response over this request's claim, giving back the row it
+/// wrote, so on its own it says whether the claim was still this
+/// request's.
+pub const STORE: &str = "UPDATE \"jadpo_idempotency_keys\" SET \"status\" = $4, \"response\" = $5, \"kept_until\" = $6 WHERE \"scope\" = $1 AND \"key\" = $2 AND \"stored_at\" = $3 AND \"status\" IS NULL RETURNING \"scope\"";
 
 pub(crate) const RELEASE: &str = "DELETE FROM \"jadpo_idempotency_keys\" WHERE \"scope\" = $1 AND \"key\" = $2 AND \"stored_at\" = $3 AND \"status\" IS NULL";
 
@@ -117,20 +128,17 @@ fn micros(millis: i64) -> SqlValue {
 }
 
 /// Claims `guard`'s key for a request whose route's deadline is
-/// `deadline_ms`, or finds what it is already kept with.
+/// `deadline_ms`, or finds what it is already kept with, in one statement.
 pub async fn claim(ctx: &mut Ctx<'_>, guard: &Guard, deadline_ms: u32) -> Claim {
     let Some(database) = ctx.host().database(&guard.store) else {
-        return Claim::Unavailable;
-    };
-    let Ok(mut transaction) = database.begin_at(Isolation::ReadCommitted).await else {
         return Claim::Unavailable;
     };
     let lease = guard
         .at
         .saturating_add(i64::from(deadline_ms))
         .saturating_add(CLAIM_MARGIN_MS);
-    let claimed = transaction
-        .query(
+    let found = database
+        .query_once(
             CLAIM,
             &[
                 SqlValue::Text(guard.scope.clone()),
@@ -141,40 +149,28 @@ pub async fn claim(ctx: &mut Ctx<'_>, guard: &Guard, deadline_ms: u32) -> Claim 
             ],
         )
         .await;
-    let found = match claimed {
-        Ok(rows) if !rows.is_empty() => Claim::Claimed,
-        Ok(_) => {
-            let kept = transaction
-                .query(
-                    LOOKUP,
-                    &[
-                        SqlValue::Text(guard.scope.clone()),
-                        SqlValue::Text(guard.key.clone()),
-                        micros(guard.at),
-                    ],
-                )
-                .await;
-            match kept {
-                Ok(rows) => match rows.first().map(Vec::as_slice) {
-                    Some([SqlValue::Text(digest), status, response]) => {
-                        if *digest != guard.digest {
-                            Claim::Reused
-                        } else {
-                            replay(status, response).map_or(Claim::InFlight, Claim::Replay)
-                        }
-                    }
-                    // Released between the two statements: still running,
-                    // as far as this request can tell.
-                    _ => Claim::InFlight,
-                },
-                Err(_) => Claim::Unavailable,
+    let Ok(rows) = found else {
+        return Claim::Unavailable;
+    };
+    match rows.first().map(Vec::as_slice) {
+        Some([SqlValue::Bool(true), ..]) => Claim::Claimed,
+        Some(
+            [
+                SqlValue::Bool(false),
+                SqlValue::Text(digest),
+                status,
+                response,
+            ],
+        ) => {
+            if *digest != guard.digest {
+                Claim::Reused
+            } else {
+                replay(status, response).map_or(Claim::InFlight, Claim::Replay)
             }
         }
-        Err(_) => Claim::Unavailable,
-    };
-    match transaction.commit().await {
-        Ok(()) => found,
-        Err(_) => Claim::Unavailable,
+        // Claimed by a request the statement's snapshot doesn't see yet:
+        // still running, as far as this request can tell.
+        _ => Claim::InFlight,
     }
 }
 
@@ -232,17 +228,15 @@ pub fn store_params(guard: &Guard, response: &Response) -> Vec<SqlValue> {
     ]
 }
 
-/// Drops `guard`'s claim, so a retry runs the action again. Best effort:
-/// a claim that can't be dropped lapses with its deadline.
+/// Drops `guard`'s claim, so a retry runs the action again, in one
+/// statement of its own. Best effort: a claim that can't be dropped lapses
+/// with its deadline.
 pub async fn release(ctx: &mut Ctx<'_>, guard: &Guard) {
     let Some(database) = ctx.host().database(&guard.store) else {
         return;
     };
-    let Ok(mut transaction) = database.begin_at(Isolation::ReadCommitted).await else {
-        return;
-    };
-    let dropped = transaction
-        .execute(
+    let _ = database
+        .query_once(
             RELEASE,
             &[
                 SqlValue::Text(guard.scope.clone()),
@@ -251,8 +245,4 @@ pub async fn release(ctx: &mut Ctx<'_>, guard: &Guard) {
             ],
         )
         .await;
-    let _ = match dropped {
-        Ok(_) => transaction.commit().await,
-        Err(_) => transaction.rollback().await,
-    };
 }

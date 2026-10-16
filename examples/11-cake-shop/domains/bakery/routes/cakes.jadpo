@@ -1,0 +1,39 @@
+// A route group is one file in a domain's `routes/` folder: every route
+// in it starts with the group's `prefix:`, and the prefix's fixed
+// segments give the file's name, so a URL from a log leads to one file.
+//
+// A route is a thin door. It says which method and path, what comes in,
+// what goes out and what runs; the logic lives in the query or action.
+// Every route needs someone signed in unless it says
+// `authentication: RouteAuthentication.none`, as these two do: anyone may
+// read the menu. `///` comments become the route's description in the
+// API's OpenAPI document.
+
+use bakery/entities { Cake }
+use bakery/types { CakeView, MenuFilter }
+use bakery/queries { menu, menu_cake }
+
+/// The menu.
+routes Cakes {
+    prefix: /cakes
+
+    /// The cakes on the menu, filtered by flavour, a page at a time.
+    GET / {
+        authentication: RouteAuthentication.none
+        input: MenuFilter
+        output: Page<CakeView>
+        run: menu(input)
+    }
+
+    // A placeholder is typed where it appears. The segment is decoded
+    // and checked before anything runs, so `/cakes/not-a-uuid` is a 422
+    // and the query gets a `Cake.id`. A failure's kind sets its status:
+    // `CakeNotFound` is a 404.
+
+    /// One cake.
+    GET /{cake_id: Cake.id} {
+        authentication: RouteAuthentication.none
+        output: CakeView
+        run: menu_cake(cake_id)
+    }
+}

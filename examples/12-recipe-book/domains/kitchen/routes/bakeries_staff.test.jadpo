@@ -1,0 +1,62 @@
+use kitchen/entities { Baker }
+use kitchen/types { KitchenStaff, NewStaff, StaffRole, StaffView }
+use kitchen/actions { register }
+use kitchen/fixtures { northwind }
+
+test "only an owner takes people on" {
+    var crew: KitchenStaff = northwind()
+    var dee: Baker = attempt register("dee")
+    var by_baker: Response = request {
+        method: HttpMethod.post
+        path: "/bakeries/{bakery_id}/staff"
+        params: {
+            bakery_id: crew.bakery.id
+        }
+        as: Principal.user(crew.baker)
+        input: NewStaff {
+            baker_id: dee.id
+            role: StaffRole.baker
+        }
+    }
+    assert by_baker.status == 403
+    assert by_baker.code == "not_permitted"
+    var by_owner: Response = request {
+        method: HttpMethod.post
+        path: "/bakeries/{bakery_id}/staff"
+        params: {
+            bakery_id: crew.bakery.id
+        }
+        as: Principal.user(crew.owner)
+        input: NewStaff {
+            baker_id: dee.id
+            role: StaffRole.baker
+        }
+    }
+    assert by_owner.status == 201
+}
+
+test "an owner sees the whole team, anyone else only their own place" {
+    var crew: KitchenStaff = northwind()
+    var by_owner: Response = request {
+        method: HttpMethod.get
+        path: "/bakeries/{bakery_id}/staff"
+        params: {
+            bakery_id: crew.bakery.id
+        }
+        as: Principal.user(crew.owner)
+    }
+    var whole_team: List<StaffView> = match by_owner.output {
+        some(team) -> team
+        none -> []
+    }
+    assert collection.count(whole_team) == 3
+    var by_baker: Response = request {
+        method: HttpMethod.get
+        path: "/bakeries/{bakery_id}/staff"
+        params: {
+            bakery_id: crew.bakery.id
+        }
+        as: Principal.user(crew.baker)
+    }
+    assert by_baker.output == [crew.baker_place]
+}

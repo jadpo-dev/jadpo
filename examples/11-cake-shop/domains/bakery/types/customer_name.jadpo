@@ -1,0 +1,5 @@
+/// What a customer is called on their order.
+type CustomerName = Text {
+    min_length: 1
+    max_length: 80
+}

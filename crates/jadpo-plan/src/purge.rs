@@ -52,7 +52,11 @@ impl Bind for Purging {
 }
 
 /// `entity`'s purge, when its lifecycle has one.
-pub(crate) fn plan(model: &DataModel, entity: &EntityModel) -> Option<PurgePlan> {
+pub(crate) fn plan(
+    model: &DataModel,
+    entity: &EntityModel,
+    setting: &dyn Fn(&str) -> Option<u32>,
+) -> Option<PurgePlan> {
     let lifecycle = entity.lifecycle.as_ref()?;
     let purge = lifecycle.purge.as_ref()?;
     let visible = lifecycle.visible.as_ref()?;
@@ -80,6 +84,10 @@ pub(crate) fn plan(model: &DataModel, entity: &EntityModel) -> Option<PurgePlan>
         sql,
         params: purging.params,
         after: i64::try_from(purge.after).ok()?,
+        after_setting: match &purge.setting {
+            Some(name) => Some(setting(name)?),
+            None => None,
+        },
     })
 }
 

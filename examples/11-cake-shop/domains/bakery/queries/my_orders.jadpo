@@ -1,0 +1,17 @@
+// The query reads every order and names no caller, yet a customer gets
+// only their own and an outlet's counter only those collected there: policy
+// filters the list in its statement, before the limit, so a list never
+// fails for policy, it just holds less.
+
+use bakery/entities { Order }
+use bakery/types { OrderView }
+
+/// The caller's orders, soonest collected first.
+query my_orders() -> List<OrderView> {
+    from: Order
+    order: [Order.collect_on asc]
+    limit: 100
+    include: {
+        cake: Order.cake_id
+    }
+}

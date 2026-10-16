@@ -14,8 +14,8 @@ use jadpo_value::Value;
 
 use crate::outcome::{Assertion, AssertionDetail, Part};
 use crate::{
-    Env, Event, Failure, Fault, FaultKind, Frame, Host, Isolation, MAX_DEPTH, Places, StoreError,
-    Transaction,
+    Env, Event, Failure, Fault, FaultKind, Frame, Host, Isolation, MAX_DEPTH, Places, SqlType,
+    SqlValue, StoreError, Transaction,
 };
 
 /// The values an `assert`'s condition gave, site by site, while it runs.
@@ -124,8 +124,17 @@ pub struct Ctx<'p> {
     pub(crate) held: Option<Held>,
     /// The signed-in caller of the request being answered (area 8).
     pub(crate) caller: Option<Caller>,
+    /// Whether the statements it runs leave their policy out: only for a
+    /// call a test, fixture or seed makes without a caller (area 9).
+    pub(crate) unpoliced: bool,
     /// How many random values it has made from its seed.
     draws: u64,
+    /// When the request being answered runs out of time, on the host's
+    /// monotonic clock (area 7, "Time limits").
+    deadline: Option<u64>,
+    /// The settings a test gives its own values (area 13): each by its
+    /// number in the plan.
+    settings: Vec<(u32, Value)>,
 }
 
 impl fmt::Debug for Ctx<'_> {
@@ -156,7 +165,10 @@ impl<'p> Ctx<'p> {
             hold: false,
             held: None,
             caller: None,
+            unpoliced: false,
             draws: 0,
+            deadline: None,
+            settings: Vec::new(),
         }
     }
 
@@ -166,9 +178,52 @@ impl<'p> Ctx<'p> {
         self.caller.as_ref()
     }
 
-    /// Sets the request's signed-in caller, for what a route runs.
+    /// Sets the request's signed-in caller, for what a route runs; the
+    /// policy compiled into each statement applies to it (area 9).
     pub fn set_caller(&mut self, caller: Option<Caller>) {
         self.caller = caller;
+        self.unpoliced = false;
+    }
+
+    /// Runs what follows with no caller and without policy: a call a test,
+    /// fixture or seed makes without passing a caller, which proves
+    /// behaviour and data, as a route test or a call with a caller proves
+    /// policy (areas 9 and 13). Nothing a request runs does this.
+    pub fn set_unpoliced(&mut self) {
+        self.caller = None;
+        self.unpoliced = true;
+    }
+
+    /// Whether statements leave their policy out ([`Ctx::set_unpoliced`]).
+    pub fn unpoliced(&self) -> bool {
+        self.unpoliced
+    }
+
+    /// The value of part `part` of the caller, for the policy compiled into
+    /// a statement: the signed-in user's or service's `id`, `NULL` for
+    /// anyone else, and whether anyone is signed in.
+    pub fn caller_param(&self, part: jadpo_std::policy::CallerPart) -> SqlValue {
+        use jadpo_std::policy::CallerPart;
+        let held = self.caller.as_ref().and_then(|caller| match &caller.value {
+            Value::Record(record) => Some((record.ty.to_string(), record.get("id").cloned()?)),
+            _ => None,
+        });
+        match part {
+            CallerPart::Signed => SqlValue::Bool(held.is_some()),
+            CallerPart::User | CallerPart::Service => {
+                let wanted = if part == CallerPart::User {
+                    jadpo_std::http::PrincipalKind::User
+                } else {
+                    jadpo_std::http::PrincipalKind::Service
+                };
+                match held {
+                    Some((ty, id)) if ty == wanted.type_name() => {
+                        crate::to_sql(&id, SqlType::Uuid).unwrap_or(SqlValue::Null(SqlType::Uuid))
+                    }
+                    _ => SqlValue::Null(SqlType::Uuid),
+                }
+            }
+        }
     }
 
     /// Fills `out` with random bytes: the host's, or under a seed (a
@@ -394,11 +449,53 @@ impl<'p> Ctx<'p> {
         self.boundary.as_ref().map(|boundary| boundary.isolation)
     }
 
+    /// Gives the invocation its own values for some settings, by their
+    /// numbers in the plan: what a test's `config:` says (area 13), read
+    /// instead of the values the application started with.
+    pub fn set_settings(&mut self, settings: Vec<(u32, Value)>) {
+        self.settings = settings;
+    }
+
+    /// The value this invocation gives setting number `at`, if it has its
+    /// own.
+    pub fn setting(&self, at: u32) -> Option<&Value> {
+        self.settings
+            .iter()
+            .find(|(number, _)| *number == at)
+            .map(|(_, value)| value)
+    }
+
     /// `clock.now`: the time the invocation's clock reads, in milliseconds
     /// since 1970-01-01T00:00:00Z. A test's clock is fixed (area 13); the
     /// same source fills generated fields and a query's `clock.now`.
     pub fn now(&self) -> i64 {
         self.env.clock.now()
+    }
+
+    /// Sets the request being answered to run out of time `millis` from
+    /// now on the host's monotonic clock, or with `None` to have no
+    /// deadline. A host without that clock, as a test's, sets none.
+    pub fn set_deadline(&mut self, millis: Option<u64>) {
+        self.deadline = millis.and_then(|millis| {
+            self.host
+                .monotonic_ms()
+                .map(|now| now.saturating_add(millis))
+        });
+    }
+
+    /// Whether the invocation answers a request with a deadline: then an
+    /// executor gives the thread back as it checks the deadline
+    /// ([`crate::yield_now`]), so other requests the thread serves carry on.
+    pub fn has_deadline(&self) -> bool {
+        self.deadline.is_some()
+    }
+
+    /// Whether the request's deadline has passed: what an executor checks
+    /// as it runs work that never waits, and the route once its work ends
+    /// (area 7, "Time limits").
+    pub fn out_of_time(&self) -> bool {
+        self.deadline
+            .is_some_and(|at| self.host.monotonic_ms().is_some_and(|now| now >= at))
     }
 
     /// The running action's transaction in `store`, begun at the first

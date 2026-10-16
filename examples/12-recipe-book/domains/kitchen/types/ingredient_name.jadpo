@@ -1,0 +1,5 @@
+/// What an ingredient is called.
+type IngredientName = Text {
+    min_length: 1
+    max_length: 60
+}

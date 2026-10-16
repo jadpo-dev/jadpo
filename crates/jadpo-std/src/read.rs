@@ -134,6 +134,9 @@ pub enum Source {
     Cursor(u32),
     /// A page: one more than its size, to see whether a next page exists.
     SizePlusOne,
+    /// Who is calling, for the policy compiled into the statement (area
+    /// 9).
+    Caller(crate::policy::CallerPart),
 }
 
 /// One parameter: `$1` is the first.
@@ -186,6 +189,19 @@ pub struct Record {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Select {
     pub sql: String,
+    /// The statement without the policy compiled into `sql`, when policy
+    /// limits it: what a test's call without a caller runs (area 9). It
+    /// takes the same parameters.
+    pub unpoliced: Option<String>,
+    /// For a read of exactly one record that policy limits: the column of
+    /// `sql` that says whether the caller may read each row. Such a
+    /// statement filters only on what the read asks and the record's
+    /// visibility, and selects the grant rather than testing it, so one
+    /// statement tells a record policy hid from one that isn't there (area
+    /// 4, "Concealing records"); a row the caller may not read is dropped
+    /// before anything else reads it. A call without a caller reads every
+    /// row, as `unpoliced` would.
+    pub permitted: Option<u32>,
     pub params: Vec<Param>,
     /// What each selected column becomes, in order.
     pub columns: Vec<Column>,

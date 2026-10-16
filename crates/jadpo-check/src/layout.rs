@@ -2,8 +2,6 @@
 //! where a `.jadpo` file may sit, which declarations each folder holds,
 //! file names, test subjects and route prefixes.
 
-use std::collections::BTreeSet;
-
 use jadpo_db::{
     Db, File, Folder, Item, ItemKind, Layout, Location, Ownership, Place, Project, RootFile, Stray,
     item_tree, location,
@@ -121,9 +119,12 @@ pub fn layout_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
             for item in items.iter().filter(|item| !in_tests(&item.kind)) {
                 out.push(not_test_content(path, location, &source, item));
             }
+            // By path, so a test file depends on its subject alone, not on
+            // every file the project adds or removes.
             let subject = path.replace(".test.jadpo", ".jadpo");
-            let known: BTreeSet<&String> = project.files(db).iter().map(|f| f.path(db)).collect();
-            if !known.contains(&subject) {
+            if crate::lookups::file_at(db, project, crate::lookups::Name::new(db, subject))
+                .is_none()
+            {
                 out.push(without_subject(path, location, *folder));
             }
         }

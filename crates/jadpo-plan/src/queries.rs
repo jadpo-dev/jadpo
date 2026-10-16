@@ -37,7 +37,9 @@ use jadpo_std::read::{
 };
 
 use crate::constant::Constant;
+use crate::policy::Row;
 use crate::types::Types;
+use jadpo_check::policy::Effect;
 
 /// A query's plan: its read, with the failure when a query for exactly
 /// one record finds none (`ReadPlan::missing`).
@@ -46,6 +48,9 @@ pub struct QueryPlan {
     pub key: Key,
     pub name: String,
     pub read: ReadPlan,
+    /// The parameter whose type is a `Principal`, when it has one: the
+    /// caller a test's, fixture's or seed's call of it runs as (area 9).
+    pub caller: Option<u32>,
 }
 
 /// What an entity's operations run.
@@ -76,6 +81,11 @@ pub(crate) struct Planner<'a> {
     pub model: &'a DataModel,
     pub lookup: &'a Lookup<'a>,
     pub types: &'a mut Types,
+    /// Every entity's policy (area 9).
+    pub access: &'a jadpo_check::policy::Access,
+    /// The action whose writes are being planned, whose line under root
+    /// `policy { actions: }` replaces its entities' grants on them.
+    pub action: Option<String>,
 }
 
 /// One statement being written: its parameters, deduplicated, so a value
@@ -86,6 +96,11 @@ pub(crate) struct Statement {
 }
 
 impl Statement {
+    /// Its parameters, in order.
+    pub(crate) fn into_params(self) -> Vec<Param> {
+        self.params
+    }
+
     /// `$n` for `source` sent as `ty`.
     pub(crate) fn param(&mut self, source: Source, ty: SqlType) -> String {
         let param = Param { source, ty };
@@ -162,6 +177,7 @@ impl Planner<'_> {
             conditions.push(self.condition(&mut statement, entity, line, false)?);
         }
         conditions.extend(self.access(&mut statement, entity, Reach::Read)?);
+        let policy = self.policy(&mut statement, entity, Effect::Read, &Row::Table)?;
         let size = match &query.limit {
             Some(Bound::Value(value)) => Some(self.source(value)?),
             _ => None,
@@ -173,30 +189,65 @@ impl Planner<'_> {
         if page {
             conditions.push(self.after(&mut statement, entity, &query.order)?);
         }
-        let mut sql = text::select(&borns(entity, &columns.names), &entity.table, "");
-        text::where_clause(&mut sql, &conditions, "");
-        if !query.order.is_empty() {
-            text::order_by(&mut sql, &self.order(entity, &query.order)?, "");
-        }
-        match (&query.limit, page) {
-            (Some(Bound::Literal(n)), true) => text::limit(&mut sql, &(n + 1).to_string(), ""),
+        let order = if query.order.is_empty() {
+            None
+        } else {
+            Some(self.order(entity, &query.order)?)
+        };
+        let limit = match (&query.limit, page) {
+            (Some(Bound::Literal(n)), true) => Some((n + 1).to_string()),
             (Some(Bound::Value(_)), true) => {
-                let n = statement.param(Source::SizePlusOne, SqlType::Int8);
-                text::limit(&mut sql, &n, "");
+                Some(statement.param(Source::SizePlusOne, SqlType::Int8))
             }
-            (Some(Bound::Literal(n)), false) => text::limit(&mut sql, &n.to_string(), ""),
+            (Some(Bound::Literal(n)), false) => Some(n.to_string()),
             (Some(Bound::Value(value)), false) => {
                 let source = self.source(value)?;
-                let n = statement.param(source, SqlType::Int8);
-                text::limit(&mut sql, &n, "");
+                Some(statement.param(source, SqlType::Int8))
             }
-            (None, _) => {}
-        }
+            (None, _) => None,
+        };
+        // The statement with its policy, and without, which a test's call
+        // without a caller runs.
+        let write = |conditions: &[String]| {
+            let mut sql = text::select(&borns(entity, &columns.names), &entity.table, "");
+            text::where_clause(&mut sql, conditions, "");
+            if let Some(order) = &order {
+                text::order_by(&mut sql, order, "");
+            }
+            if let Some(n) = &limit {
+                text::limit(&mut sql, n, "");
+            }
+            sql
+        };
+        // A read of exactly one record selects its grant, so the one
+        // statement tells a hidden record from one that isn't there.
+        let (sql, unpoliced, permitted) = if cardinality == Cardinality::One && limit.is_none() {
+            granted(
+                &borns(entity, &columns.names),
+                entity,
+                conditions,
+                policy,
+                &|sql| {
+                    if let Some(order) = &order {
+                        text::order_by(sql, order, "");
+                    }
+                },
+            )
+        } else {
+            let (sql, unpoliced) = both(&write, conditions, policy);
+            (sql, unpoliced, None)
+        };
         let includes = self.includes(entity, &query.includes, &columns)?;
+        let mut kinds = columns.kinds;
+        if permitted.is_some() {
+            kinds.push(Column::Bool);
+        }
         let select = Select {
             sql,
+            unpoliced,
+            permitted,
             params: statement.params,
-            columns: columns.kinds,
+            columns: kinds,
             record,
             includes,
         };
@@ -219,9 +270,15 @@ impl Planner<'_> {
             Some(missing) => Some(self.missing(missing)?),
             None => None,
         };
+        let caller = query
+            .params
+            .iter()
+            .position(|(_, ty)| crate::holds_caller_ty(ty))
+            .and_then(|at| u32::try_from(at).ok());
         Some(QueryPlan {
             key: query.key.clone(),
             name: query.name.clone(),
+            caller,
             read: ReadPlan {
                 store,
                 cardinality,
@@ -305,7 +362,7 @@ impl Planner<'_> {
             let matched = field(target, match_field)?;
             columns.add(&matched.name, self.column(target, matched)?);
             let record = self.record(target, &include.element, &include.includes, &mut columns)?;
-            let sql = match include.kind {
+            let (sql, unpoliced) = match include.kind {
                 IncludeKind::Parent | IncludeKind::Child => {
                     let mut conditions = vec![text::any(&matched.born, &keys)];
                     for line in &include.filter {
@@ -317,9 +374,14 @@ impl Planner<'_> {
                         Reach::Read
                     };
                     conditions.extend(self.access(&mut statement, target, reach)?);
-                    let mut sql = text::select(&borns(target, &columns.names), &target.table, "");
-                    text::where_clause(&mut sql, &conditions, "");
-                    sql
+                    let policy = self.policy(&mut statement, target, Effect::Read, &Row::Table)?;
+                    let write = |conditions: &[String]| {
+                        let mut sql =
+                            text::select(&borns(target, &columns.names), &target.table, "");
+                        text::where_clause(&mut sql, conditions, "");
+                        sql
+                    };
+                    both(&write, conditions, policy)
                 }
                 IncludeKind::Children => {
                     // Each record's list ordered and limited on its own.
@@ -332,25 +394,29 @@ impl Planner<'_> {
                         conditions.push(self.condition(&mut statement, target, line, false)?);
                     }
                     conditions.extend(self.access(&mut statement, target, Reach::Read)?);
+                    let policy = self.policy(&mut statement, target, Effect::Read, &Row::Table)?;
                     let inner_columns = borns(target, &columns.names);
-                    let mut inner = text::select(&inner_columns, &target.table, "  ");
-                    text::where_clause(&mut inner, &conditions, "  ");
                     let order = self.order(target, &include.order)?;
-                    text::order_by(&mut inner, &order, "  ");
-                    match &include.limit {
-                        Some(Bound::Literal(n)) => text::limit(&mut inner, &n.to_string(), "  "),
+                    let limit = match &include.limit {
+                        Some(Bound::Literal(n)) => n.to_string(),
                         Some(Bound::Value(value)) => {
                             let source = self.source(value)?;
-                            let n = statement.param(source, SqlType::Int8);
-                            text::limit(&mut inner, &n, "  ");
+                            statement.param(source, SqlType::Int8)
                         }
                         None => return None,
-                    }
+                    };
                     // The outer statement gives the key, then each of the
                     // inner columns but the first, which is the key again.
                     let rest: Vec<&str> =
                         inner_columns.iter().skip(1).map(String::as_str).collect();
-                    text::children(&keys, &rest, &inner, &order)
+                    let write = |conditions: &[String]| {
+                        let mut inner = text::select(&inner_columns, &target.table, "  ");
+                        text::where_clause(&mut inner, conditions, "  ");
+                        text::order_by(&mut inner, &order, "  ");
+                        text::limit(&mut inner, &limit, "  ");
+                        text::children(&keys, &rest, &inner, &order)
+                    };
+                    both(&write, conditions, policy)
                 }
             };
             let includes = self.includes(target, &include.includes, &columns)?;
@@ -359,6 +425,8 @@ impl Planner<'_> {
                 key,
                 select: Select {
                     sql,
+                    unpoliced,
+                    permitted: None,
                     params: statement.params,
                     columns: columns.kinds,
                     record,
@@ -557,8 +625,18 @@ impl Planner<'_> {
         );
         let mut conditions = vec![text::equal("id", &id)];
         conditions.extend(self.access(&mut statement, entity, Reach::Read)?);
-        let mut sql = text::select(&borns(entity, &columns.names), &entity.table, "");
-        text::where_clause(&mut sql, &conditions, "");
+        let policy = self.policy(&mut statement, entity, Effect::Read, &Row::Table)?;
+        let (sql, unpoliced, permitted) = granted(
+            &borns(entity, &columns.names),
+            entity,
+            conditions,
+            policy,
+            &|_| {},
+        );
+        let mut kinds = columns.kinds;
+        if permitted.is_some() {
+            kinds.push(Column::Bool);
+        }
         let not_found = self.not_found(
             entity,
             MissingValue::Arg {
@@ -571,8 +649,10 @@ impl Planner<'_> {
             cardinality: Cardinality::One,
             select: Select {
                 sql,
+                unpoliced,
+                permitted,
                 params: statement.params,
-                columns: columns.kinds,
+                columns: kinds,
                 record: Record {
                     ty: entity.name.clone(),
                     fields: fields.clone(),
@@ -610,6 +690,46 @@ impl Planner<'_> {
     }
 }
 
+/// A statement written by `write` with `policy` among its `conditions`,
+/// and without it, which a test's call without a caller runs; just the
+/// one when policy lets anyone in.
+pub(crate) fn both(
+    write: &dyn Fn(&[String]) -> String,
+    mut conditions: Vec<String>,
+    policy: String,
+) -> (String, Option<String>) {
+    if policy == jadpo_sql::policy::ANYONE {
+        return (write(&conditions), None);
+    }
+    let unpoliced = write(&conditions);
+    conditions.push(policy);
+    (write(&conditions), Some(unpoliced))
+}
+
+/// The statement of a read of exactly one record: `columns` where
+/// `conditions` hold, then what `finish` adds (its order), with `policy`
+/// selected as the last column, whose position comes back, rather than
+/// tested, unless policy lets anyone in. A call without a caller runs the
+/// same statement, so there is no text without policy.
+fn granted(
+    columns: &[String],
+    entity: &EntityModel,
+    conditions: Vec<String>,
+    policy: String,
+    finish: &dyn Fn(&mut String),
+) -> (String, Option<String>, Option<u32>) {
+    let mut sql = if policy == jadpo_sql::policy::ANYONE {
+        text::select(columns, &entity.table, "")
+    } else {
+        text::select_granted(columns, &policy, &entity.table)
+    };
+    text::where_clause(&mut sql, &conditions, "");
+    finish(&mut sql);
+    let permitted =
+        (policy != jadpo_sql::policy::ANYONE).then(|| u32::try_from(columns.len()).unwrap_or(0));
+    (sql, None, permitted)
+}
+
 // --- columns -------------------------------------------------------------------
 
 pub(crate) use jadpo_check::data::{field, sql_type as column_type};
@@ -644,10 +764,13 @@ pub(crate) fn plans(
     let model = jadpo_check::data::data_model(db, project);
     let queries = jadpo_check::data::queries::query_models(db, project);
     let lookup = Lookup::new(db, project);
+    let access = jadpo_check::policy::access(db, project);
     let mut planner = Planner {
         model,
         lookup: &lookup,
         types,
+        access,
+        action: None,
     };
     let mut query_plans: Vec<QueryPlan> = queries
         .queries

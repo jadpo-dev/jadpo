@@ -1,0 +1,5 @@
+/// What a bakery is called.
+type BakeryName = Text {
+    min_length: 1
+    max_length: 80
+}

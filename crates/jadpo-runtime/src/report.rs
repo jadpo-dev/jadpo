@@ -251,6 +251,7 @@ impl Report {
             FaultKind::IntOverflow => "out of range".to_string(),
             FaultKind::DecimalOverflow => "past 38 digits".to_string(),
             FaultKind::RecursionLimit => format!("{MAX_DEPTH} calls deep"),
+            FaultKind::DeadlineExceeded => "out of time".to_string(),
             FaultKind::NotBuiltYet(_) => "not built yet".to_string(),
             FaultKind::Defect(_) => "here".to_string(),
             FaultKind::Store(_) => "the store refused".to_string(),
@@ -280,6 +281,11 @@ impl Report {
                     "The call stack reached {MAX_DEPTH} frames, the most Jadpo allows, so the recursion stopped here instead of exhausting the stack."
                 ),
                 "Make the recursion end sooner, or recurse over smaller values".to_string(),
+                "agent",
+            ),
+            FaultKind::DeadlineExceeded => (
+                "The route's deadline passed while this ran, so it stopped here and nothing it did was kept.".to_string(),
+                "Do less in one request, or give the route a longer `deadline:`".to_string(),
                 "agent",
             ),
             FaultKind::NotBuiltYet(what) => (

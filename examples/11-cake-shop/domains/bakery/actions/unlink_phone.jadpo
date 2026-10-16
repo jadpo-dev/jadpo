@@ -1,0 +1,10 @@
+use bakery/types { PhoneTokenId }
+
+// Revoking a token needs `update` on the customer who holds it, so a
+// customer can end only their own devices; an `id` no token of theirs has
+// ends nothing.
+
+/// Ends one of the customer's phone tokens.
+action unlink_phone(phone_token_id: PhoneTokenId) -> Unit {
+    sessions.revoke_token(phone_token_id)
+}

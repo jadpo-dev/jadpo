@@ -14,7 +14,9 @@
 //! grid ends with what each refusal raises: the constraint and the
 //! failure its `conflict:` arm names, the not-found failure, or the fault.
 //! A transition whose `when:` can refuse a record shows the statement that
-//! asks, under `when no row changed`. A success prints nothing more, as
+//! asks, under `when no row changed`, and a write policy limits the one
+//! that asks whether policy refused the caller, under `when policy may
+//! have refused` (area 9). A success prints nothing more, as
 //! the design language's calm default asks; `--json` gives the same as
 //! data.
 
@@ -255,6 +257,12 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
         if let Some(failure) = &not_found {
             fields.push(("no row".to_string(), failure.clone()));
         }
+        if write.plan.policy == Some(jadpo_std::write::PolicyRefusal::Create) {
+            fields.push((
+                "no row".to_string(),
+                "policy refused the caller → not_permitted".to_string(),
+            ));
+        }
         let heading = format!("write {operation}");
         screen.push(Block::section(heading.clone(), write.plan.sql.lines()));
         screen.push(Block::fields(fields));
@@ -265,8 +273,8 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
             ("params", Json::array(params)),
             ("refusals", Json::array(refusals)),
         ];
-        if let Some(failure) = not_found {
-            statement.push(("noRow", failure.into()));
+        if let Some(failure) = &not_found {
+            statement.push(("noRow", failure.as_str().into()));
         }
         if let Some(guard) = &write.plan.guard {
             let refused = write
@@ -299,6 +307,70 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
                     ("params", Json::array(guard_params)),
                 ]),
             ));
+        }
+        if let Some(jadpo_std::write::PolicyRefusal::Probe {
+            sql,
+            params,
+            fields: field_probe,
+        }) = &write.plan.policy
+        {
+            let then = match &not_found {
+                Some(failure) => format!(
+                    "a row means policy refused the caller → {failure}, logged as concealed"
+                ),
+                None => "a row means policy refused the caller → not_permitted".to_string(),
+            };
+            let mut asked = vec![("then".to_string(), then)];
+            let mut probe_params = Vec::new();
+            for (n, param) in params.iter().enumerate() {
+                let source = inputs(&param.source);
+                let ty = pg_type(param.ty);
+                asked.push((format!("${}", n + 1), format!("{source} · {ty}")));
+                probe_params.push(param_json(n, &source, &ty));
+            }
+            screen.push(Block::section("when policy may have refused", sql.lines()));
+            screen.push(Block::fields(asked));
+            statement.push((
+                "whenPolicyMayHaveRefused",
+                Json::object([
+                    ("sql", sql.as_str().into()),
+                    ("params", Json::array(probe_params)),
+                ]),
+            ));
+            if let Some(probe) = field_probe {
+                // A reference into another tenant refuses it the same way
+                // (area 9, "References stay inside the tenant").
+                let refused_by = if write.plan.kept_in_tenant {
+                    "a field's own policy or a reference into another tenant"
+                } else {
+                    "a field's own policy"
+                };
+                let mut asked = vec![(
+                    "then".to_string(),
+                    format!(
+                        "a row means the record's grants let the caller in, so {refused_by} refused them → not_permitted"
+                    ),
+                )];
+                let mut probe_params = Vec::new();
+                for (n, param) in probe.params.iter().enumerate() {
+                    let source = inputs(&param.source);
+                    let ty = pg_type(param.ty);
+                    asked.push((format!("${}", n + 1), format!("{source} · {ty}")));
+                    probe_params.push(param_json(n, &source, &ty));
+                }
+                screen.push(Block::section(
+                    "when a field may have refused",
+                    probe.sql.lines(),
+                ));
+                screen.push(Block::fields(asked));
+                statement.push((
+                    "whenAFieldMayHaveRefused",
+                    Json::object([
+                        ("sql", probe.sql.as_str().into()),
+                        ("params", Json::array(probe_params)),
+                    ]),
+                ));
+            }
         }
         statements.push(Json::object(statement));
     }
@@ -348,7 +420,19 @@ fn input_name(source: &WriteSource, write: &WriteSitePlan, body: &Body, text: &s
         ),
         WriteSource::NewId => "a new identity".to_string(),
         WriteSource::Now => "clock.now".to_string(),
+        WriteSource::Caller(part) => caller(*part),
     }
+}
+
+/// How a caller parameter of a statement's policy reads (area 9).
+fn caller(part: jadpo_std::policy::CallerPart) -> String {
+    use jadpo_std::policy::CallerPart;
+    match part {
+        CallerPart::User => "the signed-in user's id, or none",
+        CallerPart::Service => "the signed-in service's id, or none",
+        CallerPart::Signed => "whether anyone is signed in",
+    }
+    .to_string()
 }
 
 /// The names of the actions in the project at `root`: each action is its
@@ -489,6 +573,7 @@ impl Names<'_> {
                     .join(".")
             }
             Source::Now => "clock.now".to_string(),
+            Source::Caller(part) => caller(*part),
             Source::Keys => self.include.unwrap_or("the keys").to_string(),
             Source::Cursor(i) => {
                 let field = self

@@ -6,12 +6,32 @@
 //! a session, an API token or a service key is read with its caller's
 //! record in one lookup by its verifier (area 8, question 12).
 
+use jadpo_check::policy::Effect;
 use jadpo_db::{Db, Project};
 use jadpo_sql::{Bind, Value, ident};
-use jadpo_std::http::{IdentityPlan, PrincipalKind, PrincipalPlan};
+use jadpo_std::http::{GatedStatements, IdentityPlan, PrincipalKind, PrincipalPlan};
 use jadpo_std::read::SqlType;
 
 use crate::queries::{Planner, Reach};
+
+/// A user's API tokens that haven't ended, oldest first, whose user the
+/// caller may read.
+const TOKENS: &str = "SELECT \"id\", \"started_at\", \"ends_at\" FROM \"jadpo_sessions\" WHERE \"principal_id\" = $1 AND \"csrf_verifier\" IS NULL AND \"ends_at\" > $2 AND {held} ORDER BY \"started_at\", \"id\"";
+
+/// Ends one API token, never a browser session, whose user the caller may
+/// update.
+const REVOKE_TOKEN: &str =
+    "DELETE FROM \"jadpo_sessions\" WHERE \"id\" = $1 AND \"csrf_verifier\" IS NULL AND {held}";
+
+/// Keeps a new service key, for a service the caller may update.
+const ISSUE_KEY: &str = "INSERT INTO \"jadpo_service_keys\" (\"id\", \"principal_id\", \"verifier\", \"started_at\", \"ends_at\") SELECT $1, $2, $3, $4, $5 WHERE {held}";
+
+/// A service's keys that haven't expired, oldest first, whose service the
+/// caller may read.
+const KEYS: &str = "SELECT \"id\", \"started_at\", \"ends_at\" FROM \"jadpo_service_keys\" WHERE \"principal_id\" = $1 AND \"ends_at\" > $2 AND {held} ORDER BY \"started_at\", \"id\"";
+
+/// Deletes one service key, whose service the caller may update.
+const REVOKE_KEY: &str = "DELETE FROM \"jadpo_service_keys\" WHERE \"id\" = $1 AND {held}";
 
 /// Binds `clock.now` in a caller's lookup to its `$2`, the time now.
 struct Lookup;
@@ -31,6 +51,22 @@ impl Planner<'_> {
         let user = identity.variant(PrincipalKind::User);
         let service = identity.variant(PrincipalKind::Service);
         let store = user.or(service)?.store.clone();
+        let mut gated = GatedStatements::default();
+        if let Some(entity) = user.and_then(|variant| self.model.entity(&variant.entity))
+            && sessions
+        {
+            gated.tokens = self.gated(entity, Effect::Read, 2, "\"principal_id\"", TOKENS);
+            gated.revoke_token =
+                self.gated(entity, Effect::Update, 1, "\"principal_id\"", REVOKE_TOKEN);
+        }
+        if let Some(entity) = service.and_then(|variant| self.model.entity(&variant.entity))
+            && keys
+        {
+            gated.issue_key = self.gated(entity, Effect::Update, 5, "$2", ISSUE_KEY);
+            gated.keys = self.gated(entity, Effect::Read, 2, "\"principal_id\"", KEYS);
+            gated.revoke_key =
+                self.gated(entity, Effect::Update, 1, "\"principal_id\"", REVOKE_KEY);
+        }
         Some(IdentityPlan {
             store,
             signs_in: identity.signs_in(),
@@ -38,6 +74,17 @@ impl Planner<'_> {
             api_tokens: identity.built(jadpo_std::AuthenticationMethod::ApiToken),
             user: user.and_then(|variant| self.principal(variant, sessions)),
             service: service.and_then(|variant| self.principal(variant, keys)),
+            gated,
+            revocation_delay_ms: identity.revocation_delay,
+            signing_keys: identity
+                .methods
+                .iter()
+                .filter(|method| method.built)
+                .filter_map(|method| Some((method.method, method.signing_key.clone()?)))
+                .collect(),
+            origin: identity
+                .method(jadpo_std::AuthenticationMethod::BrowserSession)
+                .and_then(|method| method.origin.clone()),
         })
     }
 
@@ -83,7 +130,7 @@ impl Planner<'_> {
             PrincipalKind::Service => (jadpo_check::data::SERVICE_KEYS, String::new()),
         };
         plan.lookup = Some(format!(
-            "SELECT s.{id}, {csrf}u.{id}, u.{subject}, u.{active} FROM {table} AS s CROSS JOIN LATERAL (SELECT {id}, {column} AS {subject}, {active_sql} AS {active} FROM {entity_table} WHERE {wheres}) AS u WHERE s.{verifier} = $1 AND s.{ends} > $2",
+            "SELECT s.{id}, {csrf}u.{id}, u.{subject}, u.{active}, s.{ends} FROM {table} AS s CROSS JOIN LATERAL (SELECT {id}, {column} AS {subject}, {active_sql} AS {active} FROM {entity_table} WHERE {wheres}) AS u WHERE s.{verifier} = $1 AND s.{ends} > $2",
             id = ident("id"),
             subject = ident("subject"),
             active = ident("active"),

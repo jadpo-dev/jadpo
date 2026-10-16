@@ -1,0 +1,16 @@
+// One order with the cake it is for. The query names no customer: policy
+// adds the caller to its `WHERE`, so an order that isn't theirs is
+// `OrderNotFound`, exactly as if it didn't exist.
+
+use bakery/entities { Order, OrderNotFound }
+use bakery/types { OrderView }
+
+/// One of the caller's orders.
+query order_by_id(order_id: Order.id) fails OrderNotFound -> OrderView {
+    from: Order
+    where: Order.id == order_id
+    missing: OrderNotFound
+    include: {
+        cake: Order.cake_id
+    }
+}

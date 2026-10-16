@@ -117,6 +117,12 @@ rules! {
         "14-tooling.html#command-errors", "Check command has invalid arguments";
     CLI_COMPLETIONS_ARGUMENTS: "cli.completions_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Completions command has invalid arguments";
+    CLI_CONFIG_ARGUMENTS: "cli.config_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Config command has invalid arguments";
+    CLI_CONFIG_PROMPT_FAILED: "cli.config_prompt_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Secure configuration prompt failed";
+    CLI_CONFIG_TTY_REQUIRED: "cli.config_tty_required", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Configuration entry requires an interactive terminal";
     CLI_DEV_ARGUMENTS: "cli.dev_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Dev command has invalid arguments";
     CLI_DEV_PORT_INVALID: "cli.dev_port_invalid", area 14, Error, Agent,
@@ -145,6 +151,56 @@ rules! {
         "14-tooling.html#command-errors", "Unknown flag";
     CLI_VERSION_ARGUMENTS: "cli.version_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Version command has invalid arguments";
+    CONFIGURATION_BINDING_EMPTY: "configuration.binding_empty", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-binding-empty", "Setting names an empty environment variable";
+    CONFIGURATION_BINDING_INVALID: "configuration.binding_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-binding-invalid", "Setting names a variable that is not in capitals";
+    CONFIGURATION_DEFAULT_INVALID: "configuration.default_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-default-invalid", "Setting value breaks its type's rules";
+    CONFIGURATION_DEFAULT_LITERAL_REQUIRED: "configuration.default_literal_required", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-default-literal-required", "Setting value is not a literal";
+    CONFIGURATION_DEFAULT_TYPE: "configuration.default_type", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-default-type", "Setting value is the wrong kind of value for its type";
+    CONFIGURATION_DUPLICATE_BINDING: "configuration.duplicate_binding", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-duplicate-binding", "Two settings read the same environment variable";
+    CONFIGURATION_DUPLICATE_OPTION: "configuration.duplicate_option", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-duplicate-option", "Setting option is given twice";
+    CONFIGURATION_EXPECTED_FIELD: "configuration.expected_field", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-expected-field", "Configuration holds something that is not a setting";
+    CONFIGURATION_FIELD_UNKNOWN: "configuration.field_unknown", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-field-unknown", "Configuration has no setting with this name";
+    CONFIGURATION_LOCAL_CHANGED: "configuration.local_changed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Local configuration changed during the update";
+    CONFIGURATION_LOCAL_INVALID_ENCODING: "configuration.local_invalid_encoding", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Local configuration is not UTF-8 text";
+    CONFIGURATION_LOCAL_READ_FAILED: "configuration.local_read_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Local configuration could not be read";
+    CONFIGURATION_LOCAL_SYNTAX: "configuration.local_syntax", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Local configuration syntax is invalid";
+    CONFIGURATION_LOCAL_UNSAFE_TARGET: "configuration.local_unsafe_target", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Local configuration target is unsafe";
+    CONFIGURATION_LOCAL_WRITE_FAILED: "configuration.local_write_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Local configuration could not be saved";
+    CONFIGURATION_MULTIPLE_DECLARATIONS: "configuration.multiple_declarations", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-multiple-declarations", "Configuration is declared more than once";
+    CONFIGURATION_SECRET_DEFAULT: "configuration.secret_default", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-secret-default", "Secret setting has a value in source";
+    CONFIGURATION_SECRET_FLOW: "configuration.secret_flow", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-secret-flow", "Secret setting is used where it could leave the server";
+    CONFIGURATION_SECRET_INVALID: "configuration.secret_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-secret-invalid", "Secret option is not true or false";
+    CONFIGURATION_TEST_VALUE_MISSING: "configuration.test_value_missing", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-test-value-missing", "Setting read by a test has no value in tests";
+    CONFIGURATION_TYPE_UNSUPPORTED: "configuration.type_unsupported", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-type-unsupported", "Setting type cannot be read from one variable";
+    CONFIGURATION_UNKNOWN_OPTION: "configuration.unknown_option", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-unknown-option", "Setting option is not one a setting takes";
+    CONFIGURATION_URL_TYPE: "configuration.url_type", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-url-type", "Connection address is not a setting of the type its driver needs";
+    CONFIGURATION_VALUE_INVALID: "configuration.value_invalid", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Configuration value is invalid";
+    CONFIGURATION_VALUE_MISSING: "configuration.value_missing", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Required configuration is missing";
     DATA_CLEARED_REQUIRED_REFERENCE: "data.cleared_required_reference", area 5, Error, Agent,
         "05-data.html#data-cleared-required-reference", "A reference that can never be `none` is cleared on delete";
     DATA_CONFLICT_CANNOT_BREAK: "data.conflict_cannot_break", area 6, Error, Agent,
@@ -365,6 +421,42 @@ rules! {
         "01-project-layout-and-modules.html#naming-generic-name", "Domain or library has a generic name";
     NAMING_ROUND_TRIP: "naming.round_trip", area 1, Error, Agent,
         "01-project-layout-and-modules.html#naming-round-trip", "Name does not survive conversion to its file name";
+    POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
+        "09-policy.html#policy-binding-invalid", "Policy names something that can't say who";
+    POLICY_DECLARATION_DUPLICATE: "policy.declaration_duplicate", area 9, Error, Agent,
+        "09-policy.html#policy-declaration-duplicate", "Policy is declared twice";
+    POLICY_EFFECT_DUPLICATE: "policy.effect_duplicate", area 9, Error, Agent,
+        "09-policy.html#policy-effect-duplicate", "Policy gives the same list twice";
+    POLICY_EFFECT_UNGRANTED: "policy.effect_ungranted", area 9, Error, Human,
+        "09-policy.html#policy-effect-ungranted", "Route reaches something no grant allows";
+    POLICY_EFFECT_UNKNOWN: "policy.effect_unknown", area 9, Error, Agent,
+        "09-policy.html#policy-effect-unknown", "Policy holds something that isn't a grant or a setting";
+    POLICY_FIELD_WIDENS_ENTITY: "policy.field_widens_entity", area 9, Error, Agent,
+        "09-policy.html#policy-field-widens-entity", "Field policy lets in someone its record's grants don't";
+    POLICY_MEMBERSHIP_DUPLICATE: "policy.membership_duplicate", area 9, Error, Agent,
+        "09-policy.html#policy-membership-duplicate", "Entity declares a membership twice, or gives one of its parts twice";
+    POLICY_MEMBERSHIP_MEMBER_REQUIRED: "policy.membership_member_required", area 9, Error, Agent,
+        "09-policy.html#policy-membership-member-required", "Membership doesn't say who holds it";
+    POLICY_MEMBERSHIP_ROLE_REQUIRED: "policy.membership_role_required", area 9, Error, Agent,
+        "09-policy.html#policy-membership-role-required", "Membership doesn't say which field holds the role";
+    POLICY_MEMBERSHIP_SCOPE_REQUIRED: "policy.membership_scope_required", area 9, Error, Agent,
+        "09-policy.html#policy-membership-scope-required", "Membership doesn't say what it is held in";
+    POLICY_OUTPUT_FIELD_UNPROVED: "policy.output_field_unproved", area 9, Error, Agent,
+        "09-policy.html#policy-output-field-unproved", "Output carries a value not every caller may read";
+    POLICY_PUBLIC_GRANT_MISSING: "policy.public_grant_missing", area 9, Error, Human,
+        "09-policy.html#policy-public-grant-missing", "Route anyone may call reaches what not everyone may do";
+    POLICY_ROLE_FIELD_CREATE_FORBIDDEN: "policy.role_field_create_forbidden", area 9, Error, Agent,
+        "09-policy.html#policy-role-field-create-forbidden", "Create sets the user field its grant needs from the request, not the caller";
+    POLICY_ROLE_UNBOUND: "policy.role_unbound", area 9, Error, Agent,
+        "09-policy.html#policy-role-unbound", "Grant names a role no membership holds";
+    POLICY_SCOPE_AMBIGUOUS: "policy.scope_ambiguous", area 9, Error, Agent,
+        "09-policy.html#policy-scope-ambiguous", "Grant doesn't say which reference a role or the tenant applies through";
+    POLICY_SCOPE_DUPLICATE: "policy.scope_duplicate", area 9, Error, Agent,
+        "09-policy.html#policy-scope-duplicate", "A scope or tenant is given twice";
+    POLICY_SCOPE_MISSING: "policy.scope_missing", area 9, Error, Agent,
+        "09-policy.html#policy-scope-missing", "Entity has no reference a role or the tenant applies through";
+    POLICY_SUBJECT_DUPLICATE: "policy.subject_duplicate", area 9, Error, Agent,
+        "09-policy.html#policy-subject-duplicate", "Grant names the same caller twice";
     QUERY_CONDITION_UNSUPPORTED: "query.condition_unsupported", area 6, Error, Agent,
         "06-reads-and-writes.html#query-condition-unsupported", "Query condition is not one an index can serve";
     QUERY_FROM_NOT_ENTITY: "query.from_not_entity", area 6, Error, Agent,
@@ -705,6 +797,8 @@ rules! {
         "02-values-and-types.html#type-field-on-non-record", "Field is read from a value without fields";
     TYPE_FIELD_UNPROVED: "type.field_unproved", area 2, Error, Agent,
         "02-values-and-types.html#type-field-unproved", "Object field value may break the field's rules";
+    TYPE_FIELD_UPDATE_FORBIDDEN: "type.field_update_forbidden", area 9, Error, Agent,
+        "09-policy.html#type-field-update-forbidden", "Update changes a field that never changes";
     TYPE_FOREIGN_TYPE: "type.foreign_type", area 2, Error, Agent,
         "02-values-and-types.html#type-foreign-type", "Type named as another language names it";
     TYPE_FOREIGN_VALUE: "type.foreign_value", area 2, Error, Agent,

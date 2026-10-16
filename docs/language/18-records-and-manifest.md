@@ -137,7 +137,12 @@ that path numbers decode against, and each deployable's build id.
 > areas 1 to 4; the build stamp (`source`, `deployables`, build ids),
 > routes, schedules, hosts, policy, personal fields and thresholds join as
 > their areas are built. `jadpo help --json` prints the schema with every
-> node and edge kind and whether it is built yet.
+> node and edge kind and whether it is built yet. Since chunk 4.4b policy is
+> in it (area 9): a `grant` node for each list an entity's `policy:`
+> writes, a `field_restriction` for each field's own policy, a `tenancy` for
+> each entity that belongs to the tenant and an `action_exception` for each
+> line under root `policy { actions: }`, with `grants` edges to what each
+> decides and `scopes` edges from each tenancy to its entity.
 
 ## Stable identity
 
@@ -371,7 +376,7 @@ that the path number cannot be decoded.
 
 | Feature | Status |
 |---|---|
-| Manifest | Built (chunk 1.7): `jadpo check` writes `build/manifest.json` at `format` 1, with nodes for areas 1 to 4 and their `calls`, `uses` and `raises` edges. The build stamp, routes, schedules, hosts, policy, personal fields and thresholds join as their areas are built. |
+| Manifest | Built (chunk 1.7): `jadpo check` writes `build/manifest.json` at `format` 1, with nodes for areas 1 to 4 and their `calls`, `uses` and `raises` edges. Policy's grants, field restrictions, tenancies and listed actions joined in chunk 4.4b, with `grants` and `scopes` edges. The build stamp, schedules, hosts, personal fields and thresholds join as their areas are built. |
 | Views of it | The library and failure catalogues are built (chunk 1.7), and one OpenAPI document per API in `build/openapi/` (chunk 4.1); the other reports and the monitoring rules come with their areas. |
 | Migrations | Built (chunk 3.1): `jadpo migrate new` writes each folder, and `jadpo check` fails while the entities and the latest snapshot disagree. Each folder is a `migration_snapshot` node in the manifest. |
 | Stable identity | Built (chunk 1.7): a key is the kind and the born name, and a test's key is the file it sits beside and its sentence (chunk 1.9). The registry is read once `jadpo rename` writes it (area 14). |

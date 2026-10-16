@@ -31,8 +31,10 @@
 //! and its SQL text is written by `jadpo-sql` (chunk 3.12). It is shared by
 //! every thread that runs the project.
 
+mod config;
 mod constant;
 mod identity;
+mod policy;
 mod purge;
 mod queries;
 mod routes;
@@ -83,6 +85,20 @@ pub struct CallablePlan {
     /// (area 6, "Counters and other one-step updates"). Every other
     /// callable says repeatable read, and never begins one.
     pub isolation: Isolation,
+    /// For an action listed under root `policy { actions: }` whose line
+    /// doesn't depend on a record: who may call it, checked as it starts
+    /// (area 9, "Actions").
+    pub gate: Option<jadpo_std::policy::Gate>,
+    /// The parameter whose type is a `Principal` (`Principal.user`,
+    /// `Principal.service` or either, or one of those or `none`), when it
+    /// has one: the caller a test's, fixture's or seed's call of it runs as
+    /// (area 9, chunk 4.10). Read from its signature, never from the value
+    /// passed.
+    pub caller: Option<u32>,
+    /// For a test: the settings its `config:` changes, each by its number
+    /// in the plan's settings with its value in a variable's spelling
+    /// (area 13, "Configuration in tests").
+    pub settings: Vec<(u32, String)>,
 }
 
 impl CallablePlan {
@@ -92,6 +108,38 @@ impl CallablePlan {
     pub fn is_action(&self) -> bool {
         matches!(self.kind, Kind::Action | Kind::Fixture)
     }
+}
+
+/// Whether a parameter of type `ty` is a caller: `Principal`,
+/// `Principal.user` or `Principal.service`, or one of them or `none`.
+fn holds_caller(ty: &jadpo_graph::TypeRef) -> bool {
+    use jadpo_graph::TypeRef;
+    match ty {
+        TypeRef::Nullable(inner) => holds_caller(inner),
+        TypeRef::Std(name, args) => args.is_empty() && is_principal(name),
+        _ => false,
+    }
+}
+
+/// The same, for a query's parameter as the checker types it.
+pub(crate) fn holds_caller_ty(ty: &jadpo_check::types::Ty) -> bool {
+    use jadpo_check::types::Ty;
+    match ty {
+        Ty::Nullable(inner) => holds_caller_ty(inner),
+        Ty::Opaque(name, args) => args.is_empty() && is_principal(name),
+        _ => false,
+    }
+}
+
+/// `Principal`, or one of its variants' types.
+fn is_principal(name: &str) -> bool {
+    name == jadpo_check::identity::PRINCIPAL
+        || [
+            jadpo_std::http::PrincipalKind::User,
+            jadpo_std::http::PrincipalKind::Service,
+        ]
+        .iter()
+        .any(|kind| kind.type_name() == name)
 }
 
 /// A checked project's plan.
@@ -114,6 +162,9 @@ pub struct Plan {
     /// Every route, with the codecs its types cross the boundary with
     /// (area 7, chunk 4.1).
     routes: RouteTable,
+    /// Every setting `config { }` declares, and the codecs their values
+    /// are read by (area 10, chunk 5.1).
+    config: jadpo_std::config::ConfigPlan,
 }
 
 impl Plan {
@@ -123,6 +174,8 @@ impl Plan {
         let graph = Arc::clone(jadpo_check::graph::graph(db, project));
         let mut files = BTreeMap::new();
         let mut found: Vec<(Key, Kind, String, Arc<Body>)> = Vec::new();
+        // What each test's `config:` changes, by the test's key.
+        let mut overrides: HashMap<Key, Vec<(String, String)>> = HashMap::new();
         for &file in project.files(db) {
             let path = file.path(db).clone();
             files.insert(path.clone(), file.text(db).clone());
@@ -132,6 +185,12 @@ impl Plan {
                     continue;
                 };
                 let Some(kind) = key.kind() else { continue };
+                if kind == Kind::Test {
+                    let given = jadpo_check::config::test_settings(db, project, callable);
+                    if !given.overrides.is_empty() {
+                        overrides.insert(key.clone(), given.overrides.clone());
+                    }
+                }
                 found.push((key, kind, path.clone(), Arc::clone(&checked.body)));
             }
         }
@@ -161,12 +220,33 @@ impl Plan {
             .iter()
             .map(|(key, _, _, body)| (key.clone(), body.as_ref()))
             .collect();
+        let config = config::plan(db, project, &mut types);
+        let setting_ids: HashMap<Key, u32> = config
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(i, field)| {
+                (
+                    config::key(jadpo_check::graph::registry(db, project), &field.name),
+                    i as u32,
+                )
+            })
+            .collect();
         let (writes, write_ids) = writes::plans(db, project, &mut types, &bodies);
+        let gates = policy::gates(db, project, &mut types);
         let model = jadpo_check::data::data_model(db, project);
         let purges: Vec<PurgePlan> = model
             .entities
             .iter()
-            .filter_map(|entity| purge::plan(model, entity))
+            .filter_map(|entity| {
+                purge::plan(model, entity, &|name| {
+                    config
+                        .fields
+                        .iter()
+                        .position(|field| field.name == name)
+                        .and_then(|at| u32::try_from(at).ok())
+                })
+            })
             .collect();
         let mut constants = Vec::new();
         let mut callables = Vec::with_capacity(found.len());
@@ -193,8 +273,33 @@ impl Plan {
                 query: &query,
                 entity: &entity,
                 write: &write,
+                setting: &|key: &Key| setting_ids.get(key).copied(),
             }
             .body(&body, text);
+            let gate = (kind == Kind::Action)
+                .then(|| gates.get(key.name()).cloned())
+                .flatten();
+            let caller = body
+                .params
+                .iter()
+                .position(|param| {
+                    body.locals
+                        .get(param.0 as usize)
+                        .is_some_and(|local| holds_caller(&local.ty))
+                })
+                .and_then(|at| u32::try_from(at).ok());
+            let settings = overrides
+                .get(&key)
+                .into_iter()
+                .flatten()
+                .filter_map(|(name, text)| {
+                    let at = setting_ids.get(&config::key(
+                        jadpo_check::graph::registry(db, project),
+                        name,
+                    ))?;
+                    Some((*at, text.clone()))
+                })
+                .collect();
             callables.push(CallablePlan {
                 key,
                 kind,
@@ -204,6 +309,9 @@ impl Plan {
                 body,
                 sites,
                 isolation,
+                gate,
+                caller,
+                settings,
             });
         }
         let mut routes = routes::table(
@@ -225,6 +333,7 @@ impl Plan {
             writes,
             purges,
             routes,
+            config,
         }
     }
 
@@ -317,6 +426,11 @@ impl Plan {
     /// Every route and the codecs its types use (area 7).
     pub fn routes(&self) -> &RouteTable {
         &self.routes
+    }
+
+    /// The settings and their codecs (area 10).
+    pub fn config(&self) -> &jadpo_std::config::ConfigPlan {
+        &self.config
     }
 
     /// The purge of the entity called `entity`, when its lifecycle has one.
