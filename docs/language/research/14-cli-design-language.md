@@ -116,7 +116,10 @@ long one gets a line of its own so it copies whole.
   belong on the `rule` line.
 - **Errors and warnings.** Area 14's fields in its order: path, code frame,
   `reason`, `next` (`(agent)` muted, `(human)` in decision colour),
-  `impact` only when it says something, `rule`, `help`. Failed tests and
+  `in use` when a rename needs the names taken (area 1's
+  `semantic.duplicate_declaration`: one name and its file per line, in
+  two columns, the files muted as paths in lists are), `impact` only when
+  it says something, `rule`, `help`. Failed tests and
   incidents use the same headline and labels.
 - **Code frames.** A muted `│` gutter with right-aligned line numbers, the
   source as written, and `^` carets in the severity colour with a label of a

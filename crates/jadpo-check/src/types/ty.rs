@@ -153,7 +153,15 @@ impl fmt::Display for Ty {
 /// domain's contested private type as `<domain>.<name>` (area 1, "Files
 /// and names"), which is shown as `<name>`.
 pub fn shown(name: &str) -> &str {
-    name.rsplit_once('.').map_or(name, |(_, name)| name)
+    match name.split_once('.') {
+        Some((domain, rest))
+            if domain.starts_with(|c: char| c.is_ascii_lowercase())
+                && rest.starts_with(|c: char| c.is_ascii_uppercase()) =>
+        {
+            rest
+        }
+        _ => name,
+    }
 }
 
 /// A type as written, before its names are looked up: `List<Tag>`,
