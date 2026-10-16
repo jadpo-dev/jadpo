@@ -392,7 +392,7 @@ is still checked, so a `List<T>` parameter takes only a list. Since chunk
 5.2 the table also says what the stubs can't: a parameter of kind `OneOf`
 (a stub's `T`) takes only values built on the types it lists, and a result
 of that kind keeps the argument's named type; an `optional` parameter (a
-stub's `T?`) may be left out and is given `none`; an option `applies_to`
+stub's `T?`) may be left out and is given `none`; an option `only_for`
 one built-in type means nothing for others (`type.temporal_option_unused`);
 a `Clock` parameter takes only a clock time written out; and an operation's
 `conditions` are what it fails on unless an option written out settles

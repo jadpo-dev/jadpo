@@ -1467,11 +1467,11 @@ action misuse_test_boundary() -> ClockReading {
 Application code cannot move the clock:
 
 ```jadpo check project=e-clock-context expect=type.test_clock_context
-type Stamp = Instant {}
+type ShiftEnd = Instant {}
 
-action later() -> Stamp {
+action end_shift() -> ShiftEnd {
     clock.advance(5m)
-    return Stamp(clock.now)
+    return ShiftEnd(clock.now)
 }
 ```
 

@@ -50,7 +50,7 @@ pub struct Param {
     pub optional: bool,
     /// An option that means something only when the call's first argument
     /// is built on this type, as `dst:` only for a `ZonedTime`.
-    pub applies_to: Option<Builtin>,
+    pub only_for: Option<Builtin>,
 }
 
 /// A condition an operation fails on unless an option settles it (area
@@ -127,7 +127,7 @@ const fn param(name: &'static str, kind: Kind) -> Param {
         kind,
         never_zero: false,
         optional: false,
-        applies_to: None,
+        only_for: None,
     }
 }
 
@@ -149,9 +149,9 @@ const fn option(name: &'static str, kind: Kind) -> Param {
 
 /// An option that means something only for a first argument built on
 /// `builtin`.
-const fn option_for(name: &'static str, kind: Kind, builtin: Builtin) -> Param {
+const fn option_only_for(name: &'static str, kind: Kind, builtin: Builtin) -> Param {
     Param {
-        applies_to: Some(builtin),
+        only_for: Some(builtin),
         ..option(name, kind)
     }
 }
@@ -178,7 +178,7 @@ pub const INSTANT_RANGE_FIELDS: [(&str, Builtin); 2] =
     [("start", Builtin::Instant), ("end", Builtin::Instant)];
 
 /// `dst:` on a local time.
-const DST: Param = option_for("dst", Kind::Enum(Dst::NAME), Builtin::ZonedTime);
+const DST: Param = option_only_for("dst", Kind::Enum(Dst::NAME), Builtin::ZonedTime);
 /// `invalid_day:` on a calendar move.
 const INVALID_DAY: Param = option("invalid_day", Kind::Enum(InvalidDay::NAME));
 

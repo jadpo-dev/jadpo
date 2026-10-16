@@ -3172,7 +3172,10 @@ type EchoView = Output {
         "domains/lab/types/item_view.jadpo",
         "use lab/entities { Item }\n\ntype ItemView = Output {\n    pick: [Item.id, Item.name, Item.note]\n}\n",
     ),
-    ("domains/lab/types/moment.jadpo", "type Moment = Time {}\n"),
+    (
+        "domains/lab/types/moment.jadpo",
+        "type Moment = ZonedTime {}\n",
+    ),
     (
         "domains/lab/types/note.jadpo",
         "type Note = Text {\n    max_length: 200\n}\n",
@@ -3228,26 +3231,38 @@ fn openapi_describes_values_as_they_are_sent() {
         schemas["Outcome"]["oneOf"][1]["properties"]["tag"]["const"],
         "paid"
     );
+    // A `ZonedTime` is its instant and its zone (area 10).
     let moment = &schemas["EchoInput"]["properties"]["moment"];
-    assert_eq!(moment["type"], "string", "{moment}");
+    assert_eq!(moment["type"], "object", "{moment}");
+    assert_eq!(
+        moment["properties"]["instant"]["format"], "date-time",
+        "{moment}"
+    );
+    assert_eq!(moment["required"], serde_json::json!(["instant", "zone"]));
     // What the runtime sends matches what the document says.
     let dev = Dev::start(&root);
     let echoed = dev.send(
         "POST",
         "/items/echo",
         &[],
-        r#"{"moment":"09:30","outcome":"pending"}"#,
+        r#"{"moment":{"instant":"2026-10-25T09:30:00+01:00","zone":"Europe/London"},"outcome":"pending"}"#,
     );
     assert_eq!(echoed.status, 200, "{echoed:?}");
     assert_eq!(
         echoed.json(),
-        serde_json::json!({ "moment": "09:30", "outcome": "pending", "name": null })
+        serde_json::json!({
+            "moment": { "instant": "2026-10-25T08:30:00Z", "zone": "Europe/London" },
+            "outcome": "pending",
+            "name": null
+        })
     );
-    let pattern = moment["pattern"].as_str().expect("a pattern");
-    assert_eq!(
-        pattern,
-        "^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]{1,3})?)?$"
+    let refused = dev.send(
+        "POST",
+        "/items/echo",
+        &[],
+        r#"{"moment":{"instant":"2026-10-25T08:30:00Z","zone":"europe_london"},"outcome":"pending"}"#,
     );
+    assert_eq!(refused.status, 422, "{refused:?}");
 }
 
 #[test]

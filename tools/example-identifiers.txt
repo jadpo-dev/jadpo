@@ -276,7 +276,6 @@ customer_reference
 customer_status
 cyd
 day_count
-days
 days_left
 days_overdue
 declare_lost
@@ -286,10 +285,14 @@ dees_place
 deleted_at
 deliver_to
 delivered
+deliveries_in
+deliveries_on
 delivery
 delivery_cost
 delivery_id
+delivery_note
 delivery_state
+delivery_view
 destination_company_id
 devices
 disable_user
@@ -301,6 +304,7 @@ discount_loaf
 discount_too_large
 display_name
 display_word
+done_at
 double_if_room
 double_order
 double_quantity
@@ -335,6 +339,8 @@ emma
 emptied
 empty_patch
 end_of_day
+end_of_january
+end_shift
 enrol
 entered
 entry_count
@@ -433,6 +439,7 @@ invalid_success
 invited
 invoice
 invoice_address
+invoice_date
 invoice_transfer
 is_overdue
 isbn
@@ -474,6 +481,7 @@ last_token
 last_tray
 last_viewed_at
 late
+lateness
 latest_due_at
 launch
 laurel
@@ -571,7 +579,6 @@ missing_failure
 missing_success
 misuse_test_boundary
 mix_dough
-move_production_clock
 my_bakeries
 my_orders
 nearly
@@ -582,8 +589,11 @@ new_key
 new_outlet_key
 new_staff
 new_todo
+next_day
 next_page
 nickname
+night_opening
+night_opening_anyway
 no_guests
 no_subtitle
 normal
@@ -623,6 +633,7 @@ open_outlets
 open_project_with_board
 open_todos
 opening_hours
+opening_unclear
 order_by_id
 order_empty
 order_for
@@ -782,6 +793,7 @@ recipe_id
 recipe_label
 recipe_name
 recipes
+record_delivery
 record_payment
 record_payment_webhook
 redeem_card
@@ -796,6 +808,7 @@ reminder_cutoff
 reminder_intent_id
 reminder_mail
 reminder_message
+reminder_notice
 reminder_receipt
 reminder_recipient_rejected
 reminder_run_at
@@ -860,7 +873,6 @@ second_loan
 second_use
 secret_to_public
 send_completion_email
-send_due_reminders
 send_order_confirmation
 send_overdue_reminder
 send_reminder
@@ -874,8 +886,10 @@ shelf_empty
 shelf_name
 shelf_size
 shelvable
+shift_end
 shipment
 shipped
+shop_day
 shop_time
 shopping_list
 short_date
@@ -989,7 +1003,6 @@ todo_title
 todo_view
 todos
 todos_by_ids
-todos_due_before
 todos_for_owner
 together
 too_big

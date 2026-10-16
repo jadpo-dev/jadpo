@@ -298,3 +298,12 @@ issued_key
 # What the generated `POST /auth/exchange` answers with (area 8), which the
 # API record writes as an `output` section of its own.
 exchanged_token
+
+# Words the language defines for time (area 10): `temporal.add_days`'s
+# `days`, `Dst.later`, the `Weekday` variants, and an `InstantRange`, which
+# is also ordinary programming vocabulary (rowan's `text_range`).
+days
+later
+saturday
+sunday
+range

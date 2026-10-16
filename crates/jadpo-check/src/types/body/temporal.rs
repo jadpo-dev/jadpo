@@ -81,8 +81,7 @@ impl Body<'_> {
                 .map(|(arg, _)| arg)
         };
         for (slot, param) in table.params.iter().enumerate() {
-            let (Some(needs), Some(arg), Some(built_on)) =
-                (param.applies_to, given(slot), built_on)
+            let (Some(needs), Some(arg), Some(built_on)) = (param.only_for, given(slot), built_on)
             else {
                 continue;
             };
@@ -118,10 +117,7 @@ impl Body<'_> {
                 continue;
             };
             let param = &table.params[slot];
-            if param
-                .applies_to
-                .is_some_and(|needs| built_on != Some(needs))
-            {
+            if param.only_for.is_some_and(|needs| built_on != Some(needs)) {
                 continue;
             }
             let settled = given(slot)
@@ -148,7 +144,7 @@ impl Body<'_> {
     ) -> (Ty, super::CallKind, super::facts::Reach) {
         if !self.test {
             let span = self.span(callee);
-            let article = if self.word.starts_with(['a', 'e', 'i', 'o', 'u']) {
+            let a_or_an = if self.word.starts_with(['a', 'e', 'i', 'o', 'u']) {
                 "An"
             } else {
                 "A"
@@ -156,7 +152,7 @@ impl Body<'_> {
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_TEST_CLOCK_CONTEXT,
-                    format!("{article} {} can't move the clock", self.word),
+                    format!("{a_or_an} {} can't move the clock", self.word),
                 )
                 .at(span, "moves the clock")
                 .reason("Only a test moves its clock: elsewhere the time is the operation's `clock.now`, fixed while it runs, and a later request or schedule run reads a later one.")

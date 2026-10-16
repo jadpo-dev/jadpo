@@ -544,8 +544,8 @@ type ReminderNotice = Duration {
 }
 
 test "durations are written with a unit, and add up" {
-    var timeout: RequestTimeout = 5s
-    assert timeout + 500ms == 5500ms
+    var allowed: RequestTimeout = 5s
+    assert allowed + 500ms == 5500ms
     var notice: ReminderNotice = 2h
     assert notice - 30m == 90m
 }
