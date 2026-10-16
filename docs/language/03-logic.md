@@ -216,8 +216,9 @@ also what "constants" already means in the places that allow them:
   stored fields (area 6).
 - **A computed backfill** may use the row's stored fields, constants and
   pure functions (area 5).
-- **A setting's `default:`** may be a constant, which counts as a literal
-  there (area 10, `configuration.default_literal_required`).
+
+A setting's `default:` and `test:` take a literal but never a constant
+(revised 2026-10-16, Richard; see [A constant or a setting](#a-constant-or-a-setting)).
 
 ### Two constants holding one value
 
@@ -235,6 +236,35 @@ If a deployment could ever need a different value, it is a setting in
 `config.jadpo` (area 10); otherwise it is a constant. A page size an
 operator might tune is `config`; the number of pence in a pound is a
 constant. The agent skill gives the same rule (area 14).
+
+A value is one or the other, never both, so it has one source and one way
+to read it: a constant is fixed and read as `security.max_login_attempts`,
+a setting is chosen per deployment and read as `config.max_login_attempts`.
+A setting's `default:` therefore never names a constant (area 10,
+`configuration.default_literal_required`; revised 2026-10-16, Richard). If
+a constant could seed a setting, code reading the constant directly would
+quietly ignore the environment: with `security.standard_attempts` (5) as
+`max_login_attempts`'s default, someone sets `MAX_LOGIN_ATTEMPTS=10`, and
+code reading `security.standard_attempts` still allows 5. That is the
+familiar `DEFAULT_PORT` bug of TypeScript and pydantic code, and Jadpo has
+no need for the pattern, because `default:` on the field already names the
+default.
+
+The three tiers, from fixed to live: a `constant` is fixed in code; a
+`config` setting is chosen per deployment (area 10); a flag in `flags { }`
+changes while the app runs (area 16).
+
+**Making a constant a setting** is a move a tool makes, `jadpo config move
+<constant>` or the editor's "Make this a setting" (area 14). It adds a field
+of the same name and type to `config.jadpo` whose `default:` is the
+constant's value, deletes the constant, and rewrites every read
+(`security.max_login_attempts` becomes `config.max_login_attempts`), so the
+reviewer sees each place whose behaviour can now differ per deployment. It
+refuses, editing nothing, a constant whose type a setting can't hold, one
+whose name a setting already has, and one read where a setting can't be (a
+query, an update by `id`, a backfill or another constant's value). Decided
+2026-10-16 (Richard), not built until chunk 5.3e; the details are in
+area 10, [A constant or a setting](10-configuration-and-time.md#a-constant-or-a-setting).
 
 ### Values that change on a known date
 
@@ -3426,4 +3456,5 @@ Decided by Richard on 2026-10-12. Built in the new compiler on 2026-10-13 (roadm
 | Callable settings | None: every action is all-or-nothing, writes always check for concurrent change, reads are current unless they read a declared cache; policy is area 9 | 2026-10-12 |
 | Generics and unions | None for your own code; a parameter accepting several types takes an `Enum` whose variants carry them | 2026-10-12 |
 | Colon rule (language-wide) | Every member inside braces is `name: value`, and a value is one thing or a `{ ... }` block (`paid: { ... }`, `persistence: { ... }`); a variant with no data is just its name; a field's own settings still follow its type (`name: ProductName { optional: true }`); top-level declarations, statements and `match` arms are not members; route entries inside a `routes` group, keyed by method and path, are the one exception (area 7) (Richard; Terraform's block-versus-attribute split is a known source of confusion) | 2026-10-12 |
-| Constants | `constant name: Type = value`, only at the top of a file or in a library (in a body it is always `var`); a named type, as in signatures; a value worked out while compiling from literals, enum values, other constants, constructions and operators, never a call, `config` or `clock`, checked against the type's rules; no mutable form; unused is an error; placed and shared as helper functions are, read as `pricing.vat_rate` from a library, a private one unique within its domain; what "constants" means in queries, updates by `id`, backfills and setting defaults; two of one type with one value warn `constant.similar_exists`; `config` when a deployment could ever need another value, otherwise a constant; dated values are a dated list constant behind a library function. Rejected: a top-level `var`, functions with no arguments, values attached to their type, a root `constants { }` block (Richard). Not built until chunk 5.3e | 2026-10-16 |
+| Constants | `constant name: Type = value`, only at the top of a file or in a library (in a body it is always `var`); a named type, as in signatures; a value worked out while compiling from literals, enum values, other constants, constructions and operators, never a call, `config` or `clock`, checked against the type's rules; no mutable form; unused is an error; placed and shared as helper functions are, read as `pricing.vat_rate` from a library, a private one unique within its domain; what "constants" means in queries, updates by `id` and backfills (setting defaults dropped: revised 2026-10-16 (Richard), a `default:` never names a constant); two of one type with one value warn `constant.similar_exists`; `config` when a deployment could ever need another value, otherwise a constant; dated values are a dated list constant behind a library function. Rejected: a top-level `var`, functions with no arguments, values attached to their type, a root `constants { }` block (Richard). Not built until chunk 5.3e | 2026-10-16 |
+| A constant or a setting | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both, so it has one source and one way to read it; a setting's `default:` is a literal and never a constant, so code reading the constant can't silently ignore the environment variable (the `DEFAULT_PORT` bug). `jadpo config move <constant>` and the editor's "Make this a setting" turn one into a setting, rewriting every read; the tiers are `constant`, `config`, `flags { }` (area 16). Details and the rejected alternatives in area 10. Decided, not built (chunk 5.3e) (Richard) | 2026-10-16 |
