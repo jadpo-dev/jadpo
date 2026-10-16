@@ -391,7 +391,7 @@ fn every_stub_matches_the_operation_table() {
                     (
                         param.name.to_string(),
                         Some(stub_kind(param.kind)),
-                        param.optional,
+                        param.optional || param.nullable,
                     )
                 })
                 .collect(),

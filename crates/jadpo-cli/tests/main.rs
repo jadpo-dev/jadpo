@@ -4,6 +4,7 @@
 
 mod support;
 
+mod accept_language;
 mod binary;
 mod check;
 mod cli;

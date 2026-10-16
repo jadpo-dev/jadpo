@@ -20,7 +20,7 @@ fn check(source: &str) -> Vec<String> {
 /// A function that formats `value` of `ty` with the arguments `args`.
 fn formats(ty: &str, args: &str) -> Vec<String> {
     check(&format!(
-        "function label(value: {ty}, locale: Locale) -> PresentationText {{\n    return temporal.format(value, {args})\n}}\n"
+        "function label(value: {ty}, reader_locale: Locale) -> PresentationText {{\n    return temporal.format(value, {args})\n}}\n"
     ))
 }
 
@@ -81,14 +81,17 @@ fn an_instant_is_formatted_in_a_zone() {
         assert_eq!(
             formats(
                 "OrderedAt",
-                &format!("zone: Zone.europe_london, locale: locale, format: {format}")
+                &format!("zone: Zone.europe_london, locale: reader_locale, format: {format}")
             ),
             Vec::<String>::new(),
             "{format}"
         );
     }
     assert_eq!(
-        formats("OrderedAt", "locale: locale, format: TimeFormat.date_long"),
+        formats(
+            "OrderedAt",
+            "locale: reader_locale, format: TimeFormat.date_long"
+        ),
         ["type.temporal_zone_required"]
     );
     // Given in order, without names, it is the same call.
@@ -101,18 +104,21 @@ fn an_instant_is_formatted_in_a_zone() {
 #[test]
 fn a_local_time_or_a_date_carries_no_zone() {
     assert_eq!(
-        formats("Opening", "locale: locale, format: TimeFormat.time_short"),
+        formats(
+            "Opening",
+            "locale: reader_locale, format: TimeFormat.time_short"
+        ),
         Vec::<String>::new()
     );
     assert_eq!(
-        formats("ShopDay", "locale: locale, format: ShortDate"),
+        formats("ShopDay", "locale: reader_locale, format: ShortDate"),
         Vec::<String>::new()
     );
     for ty in ["Opening", "ShopDay"] {
         assert_eq!(
             formats(
                 ty,
-                "zone: Zone.utc, locale: locale, format: TimeFormat.date_long"
+                "zone: Zone.utc, locale: reader_locale, format: TimeFormat.date_long"
             ),
             ["type.temporal_option_unused"],
             "{ty}"
@@ -128,7 +134,10 @@ fn a_date_has_no_clock_time_to_show() {
         "ShortTime",
     ] {
         assert_eq!(
-            formats("ShopDay", &format!("locale: locale, format: {format}")),
+            formats(
+                "ShopDay",
+                &format!("locale: reader_locale, format: {format}")
+            ),
             ["type.temporal_format_requires_time"],
             "{format}"
         );
@@ -160,7 +169,7 @@ fn the_format_is_written_out() {
         ["type.argument_count"]
     );
     assert_eq!(
-        formats("OrderedAt", "zone: Zone.utc, locale: locale"),
+        formats("OrderedAt", "zone: Zone.utc, locale: reader_locale"),
         ["type.argument_count"]
     );
 }
@@ -169,30 +178,33 @@ fn the_format_is_written_out() {
 fn relative_text_takes_an_instant_or_a_local_time() {
     let relative = |ty: &str, args: &str| {
         check(&format!(
-            "action seen(value: {ty}, locale: Locale) -> PresentationText {{\n    return temporal.format_relative(value, {args})\n}}\n"
+            "action seen(value: {ty}, reader_locale: Locale) -> PresentationText {{\n    return temporal.format_relative(value, {args})\n}}\n"
         ))
     };
     assert_eq!(
         relative(
             "OrderedAt",
-            "now: clock.now, zone: Zone.europe_london, locale: locale"
+            "now: clock.now, zone: Zone.europe_london, locale: reader_locale"
         ),
         Vec::<String>::new()
     );
     assert_eq!(
-        relative("Opening", "now: clock.now, locale: locale"),
+        relative("Opening", "now: clock.now, locale: reader_locale"),
         Vec::<String>::new()
     );
     assert_eq!(
-        relative("OrderedAt", "now: clock.now, locale: locale"),
+        relative("OrderedAt", "now: clock.now, locale: reader_locale"),
         ["type.temporal_zone_required"]
     );
     assert_eq!(
-        relative("Opening", "now: clock.now, zone: Zone.utc, locale: locale"),
+        relative(
+            "Opening",
+            "now: clock.now, zone: Zone.utc, locale: reader_locale"
+        ),
         ["type.temporal_option_unused"]
     );
     assert_eq!(
-        relative("ShopDay", "now: clock.now, locale: locale"),
+        relative("ShopDay", "now: clock.now, locale: reader_locale"),
         ["type.mismatch"]
     );
 }
@@ -262,7 +274,7 @@ fn a_format_is_given_to_its_operation_as_text() {
     use jadpo_graph::body::{Callee, Expr, Literal, Node};
     let db = jadpo_db::Database::default();
     let source = format!(
-        "{TYPES}function label(value: Opening, locale: Locale) -> PresentationText {{\n    return temporal.format(value, locale: locale, format: ShortDate)\n}}\n"
+        "{TYPES}function label(value: Opening, reader_locale: Locale) -> PresentationText {{\n    return temporal.format(value, locale: reader_locale, format: ShortDate)\n}}\n"
     );
     let project = support::project(&db, Layout::Loose, &[("main.jadpo", source.as_str())]);
     let file = project.files(&db)[0];

@@ -74,22 +74,11 @@ impl Body<'_> {
     ) {
         let locales = crate::locales::locales(self.db, self.project);
         if !locales.declared {
-            // Files handed to the compiler on their own have no
-            // application to declare locales (area 1).
-            if self.project.layout(self.db) == jadpo_db::Layout::Project {
-                let span = call
-                    .expr()
-                    .map_or_else(|| self.span(call), |callee| self.span(&callee));
-                self.out.push(
-                    Diagnostic::new(
-                        &rule::TYPE_TEMPORAL_LOCALES_REQUIRED,
-                        format!("`{written}` needs the application's locales"),
-                    )
-                    .at(span, "no locales declared")
-                    .reason("Text for a person is written in one of the locales the application supports. None is declared, so there is nothing to check `locale:` against, and nothing for a request with no usable `Accept-Language` to fall back to.")
-                    .next("Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }`"),
-                );
-            }
+            self.locales_required(
+                call,
+                written,
+                "Text for a person is written in one of the locales the application supports. None is declared, so there is nothing to check `locale:` against, and nothing for a request with no usable `Accept-Language` to fall back to.",
+            );
             return;
         }
         let Some(plan) = &locales.plan else { return };
@@ -112,6 +101,39 @@ impl Body<'_> {
             .next(format!(
                 "Add `Locale.{variant}` to `supported:` in `app.jadpo`, or use a locale that is listed"
             )),
+        );
+    }
+
+    /// `locale.from_accept_language`: the locale it gives is one of those
+    /// the application supports, so it declares them.
+    pub(super) fn locales_for_choosing(&mut self, call: &ast::CallExpr, written: &str) {
+        if !crate::locales::locales(self.db, self.project).declared {
+            self.locales_required(
+                call,
+                written,
+                "`locale.from_accept_language` chooses among the locales the application supports and falls back to its `default:`. None is declared, so there is nothing to choose among and nothing to fall back to.",
+            );
+        }
+    }
+
+    /// A call that needs the application's `locales { }` when it has none
+    /// declared (files handed to the compiler on their own have no
+    /// application to declare them, area 1).
+    fn locales_required(&mut self, call: &ast::CallExpr, written: &str, reason: &str) {
+        if self.project.layout(self.db) != jadpo_db::Layout::Project {
+            return;
+        }
+        let span = call
+            .expr()
+            .map_or_else(|| self.span(call), |callee| self.span(&callee));
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_TEMPORAL_LOCALES_REQUIRED,
+                format!("`{written}` needs the application's locales"),
+            )
+            .at(span, "no locales declared")
+            .reason(reason)
+            .next("Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }`"),
         );
     }
 

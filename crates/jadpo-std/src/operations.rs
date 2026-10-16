@@ -53,6 +53,10 @@ pub struct Param {
     /// An option a call may leave out: its stub writes it `T?`, and the
     /// operation is given `none` for it.
     pub optional: bool,
+    /// A value that may be `none` but is still given: its stub writes it
+    /// `T?` and a call must pass it, as `locale.from_accept_language`'s
+    /// `header`, which a header read with `optional: true` fills.
+    pub nullable: bool,
     /// An option that means something only when the call's first argument
     /// is built on this type, as `dst:` only for a `ZonedTime`.
     pub only_for: Option<Builtin>,
@@ -81,6 +85,7 @@ pub enum Op {
     CollectionMap,
     DecimalDivide,
     IntegerDivide,
+    LocaleFromAcceptLanguage,
     TemporalAddDays,
     TemporalAddMonths,
     TemporalAddYears,
@@ -137,8 +142,17 @@ const fn param(name: &'static str, kind: Kind) -> Param {
         kind,
         never_zero: false,
         optional: false,
+        nullable: false,
         only_for: None,
         needed: false,
+    }
+}
+
+/// A parameter that is given but may be `none`.
+const fn nullable(name: &'static str, kind: Kind) -> Param {
+    Param {
+        nullable: true,
+        ..param(name, kind)
     }
 }
 
@@ -314,6 +328,19 @@ pub const OPERATIONS: &[Operation] = &[
         at_least: None,
         conditions: &[],
         rust: "integer::divide",
+    },
+    // The locale a request's `Accept-Language` header asks for, of the ones
+    // the application supports (area 10, "Locales"): `jadpo-value`'s
+    // `locale` module, given the application's `LocalePlan`.
+    Operation {
+        op: Op::LocaleFromAcceptLanguage,
+        namespace: "locale",
+        name: "from_accept_language",
+        params: &[nullable("header", Kind::Builtin(Builtin::Text))],
+        result: LOCALE,
+        at_least: None,
+        conditions: &[],
+        rust: "locale::from_accept_language",
     },
     Operation {
         conditions: &[ON_DST],
