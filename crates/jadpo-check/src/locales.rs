@@ -28,6 +28,11 @@ pub struct Locales {
     /// when what is declared has a problem.
     pub plan: Option<LocalePlan>,
     pub problems: Vec<Diagnostic>,
+    /// The `locales` keyword, for a problem about the declaration as a
+    /// whole.
+    pub keyword: Option<Span>,
+    /// Each locale `supported:` lists and where it is written, in order.
+    pub entries: Vec<(u32, Span)>,
 }
 
 /// The `locales { }` of `app.jadpo`.
@@ -39,6 +44,7 @@ pub fn locales(db: &dyn Db, project: Project) -> Locales {
         return out;
     };
     out.declared = true;
+    out.keyword = Some(first.keyword.clone());
     for other in all {
         out.problems.push(
             Diagnostic::new(
@@ -54,8 +60,12 @@ pub fn locales(db: &dyn Db, project: Project) -> Locales {
     let mut reader = Reader {
         path: &first.path,
         problems: &mut out.problems,
+        entries: Vec::new(),
     };
-    out.plan = reader.read(&first);
+    let plan = reader.read(&first);
+    let entries = std::mem::take(&mut reader.entries);
+    out.plan = plan;
+    out.entries = entries;
     out
 }
 
@@ -67,6 +77,7 @@ pub fn locale_problems(db: &dyn Db, project: Project) -> &[Diagnostic] {
 struct Reader<'a> {
     path: &'a str,
     problems: &'a mut Vec<Diagnostic>,
+    entries: Vec<(u32, Span)>,
 }
 
 /// The entries of a `supported:` list that read as locales, whether all
@@ -191,6 +202,9 @@ impl Reader<'_> {
                     });
                 }
             }
+        }
+        if let Some((entries, ..)) = &supported {
+            self.entries = entries.clone();
         }
         let missing_default = default.is_none();
         let missing_supported = supported.is_none();

@@ -119,15 +119,16 @@ impl Server {
     }
 
     /// What to send once the editor has said it is ready: a request to
-    /// watch the project's `.jadpo` files, so changes made outside the
-    /// editor (a `git checkout`, another tool) are checked too.
+    /// watch the project's `.jadpo` files and its translation files, so
+    /// changes made outside the editor (a `git checkout`, another tool) are
+    /// checked too.
     pub fn started(&self) -> Vec<Message> {
         if !self.can_watch {
             return Vec::new();
         }
         let watchers = DidChangeWatchedFilesRegistrationOptions {
             watchers: vec![FileSystemWatcher {
-                glob_pattern: GlobPattern::String("**/*.jadpo".to_string()),
+                glob_pattern: GlobPattern::String("**/{*.jadpo,translations/*.json}".to_string()),
                 kind: None,
             }],
         };
@@ -223,6 +224,12 @@ impl Server {
                         if self.open.contains(&path) {
                             continue;
                         }
+                        // A translation file (area 10): read from disk as
+                        // it is, added, changed or gone.
+                        if path.ends_with(".json") {
+                            self.edit(|loaded| loaded.refresh(&path));
+                            continue;
+                        }
                         if change.typ == FileChangeType::DELETED {
                             self.edit(|loaded| loaded.remove(&path));
                         } else {
@@ -259,12 +266,7 @@ impl Server {
             return Vec::new();
         };
         let db = &loaded.db;
-        let texts: BTreeMap<String, String> = loaded
-            .project
-            .files(db)
-            .iter()
-            .map(|file| (file.path(db).clone(), file.text(db).clone()))
-            .collect();
+        let texts: BTreeMap<String, String> = jadpo_db::source_texts(db, loaded.project);
         let mut by_file: BTreeMap<String, Vec<lsp_types::Diagnostic>> = BTreeMap::new();
         for problem in jadpo_check::check(db, loaded.project) {
             let Some(label) = &problem.primary else {

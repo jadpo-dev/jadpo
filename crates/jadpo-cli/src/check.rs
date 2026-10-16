@@ -97,10 +97,7 @@ pub fn check(call: &Call) -> Reply {
     }
     let elapsed = started.elapsed();
     let files = loaded.project.files(db);
-    let sources: BTreeMap<String, String> = files
-        .iter()
-        .map(|file| (file.path(db).clone(), file.text(db).clone()))
-        .collect();
+    let sources: BTreeMap<String, String> = jadpo_db::source_texts(db, loaded.project);
     let paths: Vec<&String> = files.iter().map(|file| file.path(db)).collect();
     let root = jadpo_db::shown_root(&cwd, &loaded.root);
     report(

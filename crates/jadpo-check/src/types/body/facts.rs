@@ -60,6 +60,12 @@ pub(crate) enum Reach {
     Session(jadpo_std::http::SessionOp),
     /// `clock.advance(duration)` in a test (area 13).
     AdvanceClock,
+    /// `translations.<key>(locale:, ...)` (area 10), with the number of
+    /// arguments it takes: the locale and each placeholder.
+    Translation {
+        key: String,
+        arity: usize,
+    },
     Unknown,
 }
 

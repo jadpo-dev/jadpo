@@ -200,6 +200,7 @@ impl Decoder<'_> {
                 | Callee::Caller(_)
                 | Callee::Session(_)
                 | Callee::AdvanceClock
+                | Callee::Translation(_)
                 | Callee::Unknown => Decoded::Nothing,
             },
             Node::Expr(Expr::Build {

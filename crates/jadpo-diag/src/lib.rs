@@ -753,6 +753,34 @@ rules! {
         "14-tooling.html#the-jadpo-command", "Project could not be found";
     TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,
         "14-tooling.html#the-jadpo-command", "Jadpo source file could not be read";
+    TRANSLATION_FILE_INVALID: "translation.file_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-file-invalid", "A translation file is not a JSON object of messages";
+    TRANSLATION_FILE_MISSING: "translation.file_missing", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-file-missing", "A supported locale has no translation file";
+    TRANSLATION_FILE_NAME_INVALID: "translation.file_name_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-file-name-invalid", "A translation file is not named for a locale";
+    TRANSLATION_KEY_DUPLICATE: "translation.key_duplicate", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-key-duplicate", "A translation key is written twice in a file";
+    TRANSLATION_KEY_EXTRA: "translation.key_extra", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-key-extra", "A translation file has a key the default locale's file lacks";
+    TRANSLATION_KEY_INVALID: "translation.key_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-key-invalid", "A translation key is not a name a call can use";
+    TRANSLATION_KEY_MISSING: "translation.key_missing", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-key-missing", "A translation file lacks a key the default locale's file has";
+    TRANSLATION_KEY_UNKNOWN: "translation.key_unknown", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-key-unknown", "A translation call names a key no file defines";
+    TRANSLATION_LOCALE_UNSUPPORTED: "translation.locale_unsupported", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-locale-unsupported", "A translation file is for a locale the application does not support";
+    TRANSLATION_LOCALES_REQUIRED: "translation.locales_required", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-locales-required", "Translations without declared locales";
+    TRANSLATION_MESSAGE_INVALID: "translation.message_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-message-invalid", "A translation message is not valid MessageFormat";
+    TRANSLATION_OTHER_MISSING: "translation.other_missing", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-other-missing", "A plural or select has no other case";
+    TRANSLATION_PLACEHOLDER_MISMATCH: "translation.placeholder_mismatch", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-placeholder-mismatch", "A translation's placeholders differ from the default locale's";
+    TRANSLATION_PLACEHOLDER_TYPE: "translation.placeholder_type", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-placeholder-type", "A placeholder takes a different kind of value than in the default locale";
     TYPE_ABSENT_FIELD: "type.absent_field", area 2, Error, Agent,
         "02-values-and-types.html#type-absent-field", "Omitted or optional field is not present";
     TYPE_ARGUMENT_COUNT: "type.argument_count", area 3, Error, Agent,

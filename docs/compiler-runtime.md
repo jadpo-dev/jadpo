@@ -410,7 +410,18 @@ over ICU4X with Unicode CLDR compiled in (pure Rust, pinned exactly, built
 for wasm32 like the rest; area 10, "Chosen in chunk 5.3"): the format
 arrives as `TimeFormatSpec` text, the locale as the `Locale` variant, and
 the locales an application supports (`locales { }`, `LocalePlan`) reach the
-wire through the codecs, which accept only those. Enums that Rust code interprets (`Rounding`, `TextFormat`,
+wire through the codecs, which accept only those. Translations (area 10,
+"Chosen in chunk 5.3b") are read in `jadpo-check`'s `translations` module
+from `translations/<locale>.json`, a salsa input of the project of its own
+(`Project::translations`): the messages are parsed into `jadpo-std`'s
+`Message` while compiling, a call is typed by a per-key `lookup` that sees
+only the key's placeholders, and the project's `TranslationPlan` (each key,
+its placeholders and its message in every supported locale) goes into the
+plan, so the interpreter's `Callee::Translation` and generated code both
+write the text with `jadpo_value::present::translate`, over `icu_plurals`
+and `icu_decimal` beside `icu_datetime`. Each key is a `translation_key`
+graph node, so a save of a translation file reaches the tests that call it.
+Enums that Rust code interprets (`Rounding`, `TextFormat`,
 `UuidVersion`, `Weekday`, `Dst`, `InvalidDay`, `ComponentStyle`, and `Zone` and `Locale` from their tables) are
 declared once, in `jadpo-std`. The namespaces the compiler fills from the
 project or the platform (`clock`, `config`, `translations`, `sessions`,

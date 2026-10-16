@@ -168,6 +168,9 @@ pub struct Plan {
     /// Every setting `config { }` declares, and the codecs their values
     /// are read by (area 10, chunk 5.1).
     config: jadpo_std::config::ConfigPlan,
+    /// Every translation key and its message in each supported locale
+    /// (area 10, chunk 5.3b), which the runtime formats a call from.
+    translations: jadpo_std::translation::TranslationPlan,
 }
 
 impl Plan {
@@ -347,6 +350,7 @@ impl Plan {
             purges,
             routes,
             config,
+            translations: jadpo_check::translations::plan(db, project),
         }
     }
 
@@ -444,6 +448,11 @@ impl Plan {
     /// The settings and their codecs (area 10).
     pub fn config(&self) -> &jadpo_std::config::ConfigPlan {
         &self.config
+    }
+
+    /// The translation keys and their messages (area 10).
+    pub fn translations(&self) -> &jadpo_std::translation::TranslationPlan {
+        &self.translations
     }
 
     /// The purge of the entity called `entity`, when its lifecycle has one.

@@ -24,5 +24,6 @@ mod signed;
 mod sql;
 #[path = "test.rs"]
 mod test_command;
+mod translations;
 mod watch;
 mod writes;

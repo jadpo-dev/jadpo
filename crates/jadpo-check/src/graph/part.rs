@@ -387,6 +387,16 @@ impl Part<'_> {
             .collect();
         // Its `create`, `update` and `delete` write the entity (area 6).
         let writes: BTreeSet<Key> = body.writes().map(|(_, entity, _)| entity.clone()).collect();
+        // The translation keys it shows people (area 10): a change to one
+        // reaches it.
+        let registry = self.lookup.registry();
+        let mut uses = uses;
+        uses.extend(body.calls().filter_map(|(_, callee)| match callee {
+            jadpo_graph::body::Callee::Translation(name) => {
+                Some(registry.key(Kind::TranslationKey, name, None))
+            }
+            _ => None,
+        }));
         self.edges(key, EdgeKind::Uses, uses);
         self.edges(key, EdgeKind::Calls, calls);
         self.edges(key, EdgeKind::Reads, reads);

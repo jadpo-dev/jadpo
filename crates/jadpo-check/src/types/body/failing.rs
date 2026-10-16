@@ -125,7 +125,12 @@ impl Body<'_> {
             // A caller made from a record, or a session started or ended,
             // never fails with a declared failure; a store that can't be
             // reached is the runtime's `unavailable`.
-            Some(Reach::Caller(_) | Reach::Session(_) | Reach::AdvanceClock) => Fallible::Never,
+            Some(
+                Reach::Caller(_)
+                | Reach::Session(_)
+                | Reach::AdvanceClock
+                | Reach::Translation { .. },
+            ) => Fallible::Never,
             Some(Reach::Entity { entity, operation }) => self.entity_fallible(entity, operation),
             Some(Reach::Construct(_) | Reach::Unknown) | None => Fallible::Unknown,
         }
