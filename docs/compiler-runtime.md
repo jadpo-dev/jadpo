@@ -298,6 +298,16 @@ API record (`routes::record`) and OpenAPI (`routes::openapi`, written by
 `jadpo check` to `build/openapi/<api>.json`) all read; the record and
 OpenAPI render types through one view of the graph (`routes::wire`).
 
+Since chunk 5.1 the plan also holds the settings
+(`jadpo_std::config::ConfigPlan`, `Plan::config`): each setting's name, the
+environment variable it is read from, whether it is secret, the codec its
+value is read and checked by (numbered with the route table's, sharing the
+type plans' validators), its default and test value in the spelling a
+variable has, and how `jadpo test` makes a secret; and for each database
+connection the setting holding its address. A body's `config.<name>` is its
+own graph expression (`Expr::Config`, decoded to the setting's number), and
+a test's `config:` the values the test's callable plan gives that test.
+
 Since chunk 3.12 everything the runtime needs of a plan is that kind of
 plain data in `jadpo-std`: type plans (`jadpo_std::types`: a type's
 validator chain, a shape's fields in declared order with what a field
@@ -383,7 +393,9 @@ is still checked, so a `List<T>` parameter takes only a list. Enums that Rust co
 declared once, in `jadpo-std`. The namespaces the compiler fills from the
 project or the platform (`clock`, `config`, `translations`, `sessions`,
 `oauth`) list in `std/names.txt` the members built so far (`clock.now`);
-any other member is `toolchain.not_built_yet`.
+any other member is `toolchain.not_built_yet`. `config.<name>` is the
+exception: its members are the project's own settings, read from
+`config { }` (chunk 5.1, `jadpo_check::config`), so `names.txt` lists none.
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from
@@ -1567,6 +1579,22 @@ time it checks a request's deadline (`Step::Yield`,
 `jadpo_runtime::yield_now`), so a route that computes without waiting no
 longer holds the requests its worker serves until its deadline; an inline
 function inside a collection operation still only stops there.
+
+**Configuration** (chunk 5.1). Starting is one function, `jadpo_runtime::
+config::load`, given the plan's settings, their compiled validators and a
+source of variables (`Variables`, a host capability: `Host::variable` is the
+process's environment natively and would be the Worker's bindings on
+Workers). It reads only the variables the settings name, decodes each with
+the setting's codec, and gives the checked values or every setting that
+stops the start, as the setting, its variable and the rule it breaks, never
+the value; `check` gives the same readings as `set`, `default`, `missing`
+or `invalid` for `jadpo config check`. A test run reads `test:` values,
+defaults and secrets it makes at random (`Mode::Test`). The checked values
+are text, `Send`, so every worker thread decodes them into its own values
+(`Program::with_config`), and a secret's text is held there and nowhere
+else (its `Debug` leaves it out); the interpreter reads a setting like a
+constant. Nothing here is interpreter-only, so the compiled deployables
+(Phase 8) call the same function with the Worker's bindings.
 
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
