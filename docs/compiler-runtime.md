@@ -1335,6 +1335,30 @@ the caller of each call a test, fixture or seed makes from the
 `Principal` it passes. `jadpo check` writes `build/report/permissions.md`
 and `.json` (`policy::report`).
 
+Built in chunk 4.4b: field restrictions (area 9). `policy_read` also reads
+each field's own `policy:` into `EntityPolicy::fields` (`FieldPolicy`:
+`FieldAccess.server_only`, or the lists it narrows), refusing one that
+widens its record (`policy.field_widens_entity`). `policy::proof` decides
+who may read what from the grants alone: what is known of a caller on a
+record (`Fact`: a grant they pass, a membership held in the record, the
+tenant), moved along a reference (`Prover::along`), for each check they
+passed to reach it (`Reached`). `policy::outputs` proves each query's
+output fields and the parent every include reads; `policy::flow` walks
+every action's typed body for where each value came from (`Prov`, flow-
+insensitive per local, with a summary per action of what its result carries
+and which parameters reach an output it builds) and checks every `Output`
+and failure `client:` field it builds and every create's user fields
+(`policy.role_field_create_forbidden`); `policy::reach` refuses a route
+whose action always sets a field nobody may change. The plan adds each
+restricted field's grants to the statement that changes it
+(`Planner::field_policy`, beside `granted`, whose tenancy is now
+`in_tenant`), and an update's `PolicyRefusal::Probe` asks again under the
+record's grants (`FieldProbe`) to tell a field's refusal, 403
+`not_permitted`, from a hidden record. The report gives each restricted
+field a row and `fields` in its JSON, and `graph::policy_nodes` adds
+`grant`, `field_restriction`, `tenancy` and `action_exception` nodes with
+`grants` and `scopes` edges.
+
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
 runs one current-thread tokio runtime per core, each with its own

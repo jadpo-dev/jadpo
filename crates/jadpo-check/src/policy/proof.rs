@@ -339,7 +339,7 @@ impl<'a> Prover<'a> {
     }
 
     /// For a reason: the first grant of the first way that doesn't prove
-    /// `holds`, as written.
+    /// `holds`, described.
     pub fn counterexample(
         &self,
         reached: &Reached,
@@ -348,36 +348,59 @@ impl<'a> Prover<'a> {
         let way = reached.ways.first()?;
         way.iter().find(|facts| !holds(facts)).and_then(|facts| {
             facts.iter().find_map(|fact| match fact {
-                Fact::Grant(grant) => Some(super::written_grant(self.access, grant)),
+                Fact::Grant(grant) => Some(self.described(grant)),
                 _ => None,
             })
         })
     }
 
-    /// Who may read field `field` of `entity`, as written, for a reason.
+    /// A grant as a reason says who it lets in: "the user `owner_id`
+    /// points at", `CompanyRole.editor`, "anyone signed in".
+    pub fn described(&self, grant: &Grant) -> String {
+        match grant {
+            Grant::Caller { field, kind } => {
+                let who = match kind {
+                    PrincipalKind::User => "user",
+                    PrincipalKind::Service => "service",
+                };
+                if field == "id" {
+                    format!("the {who} the record is")
+                } else {
+                    format!("the {who} `{field}` points at")
+                }
+            }
+            Grant::Role { .. } => format!("`{}`", super::written_grant(self.access, grant)),
+            Grant::Signed => "anyone signed in".to_string(),
+            Grant::Public => "anyone at all".to_string(),
+            Grant::System => "schedules and subscribers".to_string(),
+        }
+    }
+
+    /// Who may read field `field` of `entity`, for a reason: "only the
+    /// user `reviewer_id` points at may read".
     pub fn readers(&self, entity: &str, field: &str) -> String {
         let Some(policy) = self.access.entity(entity) else {
-            return "nobody".to_string();
+            return "nobody may read".to_string();
         };
         match policy.field(field) {
             Some(own) if own.server_only => {
-                "no client: it is `FieldAccess.server_only`".to_string()
+                "no client may read it, as it is `FieldAccess.server_only`".to_string()
             }
             Some(own) => match own.lists.get(&Effect::Read) {
-                Some(list) if !list.written.is_empty() => format!(
-                    "only {}",
+                Some(list) if !list.grants.is_empty() => format!(
+                    "only {} may read",
                     crate::and_list(
                         &list
-                            .written
+                            .grants
                             .iter()
-                            .map(|w| format!("`{w}`"))
+                            .map(|grant| self.described(grant))
                             .collect::<Vec<_>>()
                     )
                 ),
-                Some(_) => "nobody".to_string(),
-                None => "whoever may read the record".to_string(),
+                Some(_) => "nobody may read".to_string(),
+                None => "whoever may read the record may read".to_string(),
             },
-            None => "whoever may read the record".to_string(),
+            None => "whoever may read the record may read".to_string(),
         }
     }
 }

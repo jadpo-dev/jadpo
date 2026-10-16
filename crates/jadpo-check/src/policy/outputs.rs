@@ -125,10 +125,10 @@ fn query(
                 });
                 let reason = match &who {
                     Some(who) => format!(
-                        "A caller `{from}`'s `read:` lets in as `{who}` isn't shown to be one `{to}`'s `read:` lets in, so the `{to}` this `{from}` refers to could be one they may not read. A proof follows the grants' shape, never the data: two records that each refer to a company may refer to different ones."
+                        "`{from}`'s `read:` lets in {who}, who isn't shown to be someone `{to}`'s `read:` lets in, so the `{to}` a `{from}` refers to could be one its reader may not read. The proof follows the grants, not the data: two records that each refer to a company may refer to different ones."
                     ),
                     None => format!(
-                        "Not every caller `{from}`'s `read:` lets in is shown to be one `{to}`'s `read:` lets in, so the `{to}` this `{from}` refers to could be one they may not read."
+                        "Not everyone `{from}`'s `read:` lets in is shown to be someone `{to}`'s `read:` lets in, so the `{to}` a `{from}` refers to could be one its reader may not read."
                     ),
                 };
                 out.push(
@@ -161,16 +161,13 @@ fn query(
         let who =
             prover.counterexample(reached, |facts| prover.field_readable(entity, field, facts));
         let readers = prover.readers(entity, field);
-        let reason = match &who {
-            Some(who) => format!(
-                "Anyone `{entity}`'s `read:` lets in may call `{}`, `{who}` among them, and {readers} may read `{field}`. An output has one shape for everyone, so a field some callers may not read can't be in it.",
-                model.name
-            ),
-            None => format!(
-                "Not everyone who may call `{}` may read `{field}`: {readers} may. An output has one shape for everyone, so a field some callers may not read can't be in it.",
-                model.name
-            ),
-        };
+        let among = who
+            .map(|who| format!(", {who} among them,"))
+            .unwrap_or_default();
+        let reason = format!(
+            "Anyone `{entity}`'s `read:` lets in may call `{}`{among} and {readers} `{field}`. An output has one shape for everyone, so a field some callers may not read can't be in it.",
+            model.name
+        );
         out.push(
             Diagnostic::new(
                 &rule::POLICY_OUTPUT_FIELD_UNPROVED,
@@ -183,8 +180,8 @@ fn query(
             .at(result, format!("carries `{field}`"))
             .reason(reason)
             .next(format!(
-                "Leave `{field}` out of `{}`, and read it in a second query for the callers who may",
-                model.element.ty
+                "Return an output without `{field}` from `{}`",
+                model.name
             )),
         );
     }

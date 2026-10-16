@@ -1082,3 +1082,605 @@ fn the_report_and_jadpo_sql_show_the_policy() {
         shown.stdout
     );
 }
+
+// --- field restrictions (chunk 4.4b) ---------------------------------------------
+
+/// A company's projects, whose budget only editors read and change and
+/// whose import reference no client may write (area 9, "Field
+/// restrictions").
+const LEDGER: &[(&str, &str)] = &[
+    (
+        "app.jadpo",
+        r#"use ledger/entities { Member }
+
+application {}
+
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+"#,
+    ),
+    (
+        "authentication.jadpo",
+        r#"authentication {
+    browser_session: {
+        cookie: "ledger_session"
+    }
+}
+"#,
+    ),
+    (
+        "policy.jadpo",
+        r#"use ledger
+use ledger/entities { Company }
+
+policy {
+    tenant: Company
+    actions: {
+        ledger.found_company: [Access.authenticated]
+    }
+}
+"#,
+    ),
+    (
+        "domains/ledger/types/handle.jadpo",
+        r#"type Handle = Text {
+    min_length: 3
+    max_length: 40
+}
+"#,
+    ),
+    (
+        "domains/ledger/types/label.jadpo",
+        r#"type Label = Text {
+    min_length: 1
+    max_length: 80
+}
+"#,
+    ),
+    (
+        "domains/ledger/types/amount.jadpo",
+        r#"type Amount = Int {
+    min: 0
+}
+"#,
+    ),
+    (
+        "domains/ledger/types/company_role.jadpo",
+        r#"type CompanyRole = Enum {
+    owner
+    editor
+    viewer
+}
+"#,
+    ),
+    (
+        "domains/ledger/types/project_card.jadpo",
+        r#"use ledger/entities { Project }
+
+type ProjectCard = Output {
+    pick: [Project.id, Project.name]
+}
+"#,
+    ),
+    (
+        "domains/ledger/types/budget_view.jadpo",
+        r#"use ledger/entities { Project }
+
+type BudgetView = Output {
+    pick: [Project.id, Project.budget]
+}
+"#,
+    ),
+    (
+        "domains/ledger/entities/member.jadpo",
+        r#"use ledger/types { Handle }
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+"#,
+    ),
+    (
+        "domains/ledger/entities/company.jadpo",
+        r#"use ledger/types { CompanyRole, Label }
+
+entity Company {
+    id: Uuid
+    name: Label
+
+    policy: {
+        read: [CompanyRole.owner, CompanyRole.editor, CompanyRole.viewer]
+    }
+}
+"#,
+    ),
+    (
+        "domains/ledger/entities/company_membership.jadpo",
+        r#"use ledger/entities { Company, Member }
+use ledger/types { CompanyRole }
+
+entity CompanyMembership {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    member_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+    role: CompanyRole
+
+    membership: {
+        scope: company_id
+        member: member_id
+        role: role
+    }
+
+    policy: {
+        create: [CompanyRole.owner]
+        read: [CompanyRole.owner, member_id]
+    }
+}
+"#,
+    ),
+    (
+        "domains/ledger/entities/project.jadpo",
+        r#"use ledger/entities { Company }
+use ledger/types { Amount, CompanyRole, Label }
+
+entity Project {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    name: Label
+    budget: Amount {
+        policy: {
+            read: [CompanyRole.editor]
+            update: [CompanyRole.editor]
+        }
+    }
+    import_reference: Label? {
+        policy: FieldAccess.server_only
+    }
+
+    policy: {
+        create: [CompanyRole.owner, CompanyRole.editor]
+        read: [CompanyRole.owner, CompanyRole.editor, CompanyRole.viewer]
+        update: [CompanyRole.owner, CompanyRole.editor]
+    }
+}
+"#,
+    ),
+    (
+        "domains/ledger/failures/handle_taken.jadpo",
+        r#"type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+"#,
+    ),
+    (
+        "domains/ledger/actions/register.jadpo",
+        r#"use ledger/entities { Member }
+use ledger/types { Handle }
+use ledger/failures { HandleTaken }
+
+action register(handle: Handle) fails HandleTaken -> Member {
+    return attempt Member.create {
+        set: {
+            handle: handle
+        }
+        conflict: {
+            Member.handle: HandleTaken
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/ledger/actions/found_company.jadpo",
+        r#"use ledger/entities { Company, CompanyMembership }
+use ledger/types { CompanyRole, Label }
+
+action found_company(name: Label, founder: Principal.user) -> Company {
+    var company: Company = Company.create {
+        set: {
+            name: name
+        }
+    }
+    var held: CompanyMembership = CompanyMembership.create {
+        set: {
+            company_id: company.id
+            member_id: founder.id
+            role: CompanyRole.owner
+        }
+    }
+    assert held.role == CompanyRole.owner
+    return company
+}
+"#,
+    ),
+    (
+        "domains/ledger/actions/add_member.jadpo",
+        r#"use ledger/entities { Company, CompanyMembership, CompanyNotFound, Member, MemberNotFound }
+use ledger/types { CompanyRole }
+
+action add_member(
+    company_id: Company.id,
+    member_id: Member.id,
+    role: CompanyRole
+) fails CompanyNotFound, MemberNotFound -> CompanyMembership {
+    return attempt CompanyMembership.create {
+        set: {
+            company_id: company_id
+            member_id: member_id
+            role: role
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/ledger/actions/start_project.jadpo",
+        r#"use ledger/entities { Company, CompanyNotFound, Project }
+use ledger/types { Label, ProjectCard }
+
+action start_project(input: StartProject) fails CompanyNotFound -> ProjectCard {
+    var project: Project = attempt Project.create {
+        set: {
+            company_id: input.company_id
+            name: input.name
+            budget: 0
+            import_reference: input.reference
+        }
+    }
+    return ProjectCard {
+        id: project.id
+        name: project.name
+    }
+}
+
+type StartProject = Input {
+    company_id: Company.id
+    name: Label
+    reference: Label?
+}
+"#,
+    ),
+    (
+        "domains/ledger/actions/rename_project.jadpo",
+        r#"use ledger/entities { Project, ProjectNotFound }
+use ledger/types { Label, ProjectCard }
+
+action rename_project(project_id: Project.id, input: Rename) fails ProjectNotFound -> ProjectCard {
+    var project: Project = attempt Project.update(project_id) {
+        set: {
+            name: input.name
+        }
+    }
+    return ProjectCard {
+        id: project.id
+        name: project.name
+    }
+}
+
+type Rename = Input {
+    name: Label
+}
+"#,
+    ),
+    (
+        "domains/ledger/actions/set_budget.jadpo",
+        r#"use ledger/entities { Project, ProjectNotFound }
+use ledger/types { Amount, BudgetView }
+
+action set_budget(project_id: Project.id, input: SetBudget) fails ProjectNotFound -> BudgetView {
+    var project: Project = attempt Project.update(project_id) {
+        set: {
+            budget: input.budget
+        }
+    }
+    return BudgetView {
+        id: project.id
+        budget: project.budget
+    }
+}
+
+type SetBudget = Input {
+    budget: Amount
+}
+"#,
+    ),
+    (
+        "domains/ledger/queries/company_projects.jadpo",
+        r#"use ledger/entities { Company, Project }
+use ledger/types { ProjectCard }
+
+query company_projects(company_id: Company.id) -> List<ProjectCard> {
+    from: Project
+    where: Project.company_id == company_id
+    order: [Project.name asc]
+    limit: 100
+}
+"#,
+    ),
+    (
+        "domains/ledger/routes/projects.jadpo",
+        r#"use ledger/entities { Company, Project }
+use ledger/types { BudgetView, ProjectCard }
+use ledger/actions { Rename, SetBudget, StartProject, rename_project, set_budget, start_project }
+use ledger/queries { company_projects }
+
+routes Projects {
+    prefix: /projects
+
+    POST / {
+        input: StartProject
+        output: ProjectCard
+        status: SuccessStatus.created
+        run: start_project(input)
+    }
+
+    GET /{company_id: Company.id} {
+        output: List<ProjectCard>
+        run: company_projects(company_id)
+    }
+
+    PATCH /{project_id: Project.id} {
+        input: Rename
+        output: ProjectCard
+        run: rename_project(project_id, input)
+    }
+
+    PUT /{project_id: Project.id}/budget {
+        input: SetBudget
+        output: BudgetView
+        run: set_budget(project_id, input)
+    }
+}
+"#,
+    ),
+];
+
+const LEDGER_TESTS: &str = r#"use ledger/entities { Company, CompanyMembership, Member }
+use ledger/types { BudgetView, CompanyRole, ProjectCard }
+use ledger/actions { Rename, SetBudget, StartProject, add_member, found_company, register, start_project }
+
+test "only an editor changes a budget, and the whole write is refused for anyone else" {
+    var ann: Member = attempt register("ann")
+    var bob: Member = attempt register("bob")
+    var cyd: Member = attempt register("cyd")
+    var acme: Company = found_company("Acme", Principal.user(ann))
+    var editor: CompanyMembership = attempt add_member(acme.id, bob.id, CompanyRole.editor)
+    var viewer: CompanyMembership = attempt add_member(acme.id, cyd.id, CompanyRole.viewer)
+    assert editor.role == CompanyRole.editor
+    assert viewer.role == CompanyRole.viewer
+    var launch: ProjectCard = attempt start_project(
+        StartProject {
+            company_id: acme.id
+            name: "Launch"
+            reference: none
+        }
+    )
+    var by_owner: Response = request {
+        method: HttpMethod.put
+        path: "/projects/{project_id}/budget"
+        params: {
+            project_id: launch.id
+        }
+        as: Principal.user(ann)
+        input: SetBudget {
+            budget: 500
+        }
+    }
+    assert by_owner.status == 403
+    assert by_owner.code == "not_permitted"
+    var by_viewer: Response = request {
+        method: HttpMethod.put
+        path: "/projects/{project_id}/budget"
+        params: {
+            project_id: launch.id
+        }
+        as: Principal.user(cyd)
+        input: SetBudget {
+            budget: 500
+        }
+    }
+    assert by_viewer.status == 404
+    assert by_viewer.code == "project_not_found"
+    var renamed: Response = request {
+        method: HttpMethod.patch
+        path: "/projects/{project_id}"
+        params: {
+            project_id: launch.id
+        }
+        as: Principal.user(ann)
+        input: Rename {
+            name: "Liftoff"
+        }
+    }
+    assert renamed.status == 200
+    var by_editor: Response = request {
+        method: HttpMethod.put
+        path: "/projects/{project_id}/budget"
+        params: {
+            project_id: launch.id
+        }
+        as: Principal.user(bob)
+        input: SetBudget {
+            budget: 500
+        }
+    }
+    assert by_editor.status == 200
+    assert by_editor.output == BudgetView {
+        id: launch.id
+        budget: 500
+    }
+    var listed: Response = request {
+        method: HttpMethod.get
+        path: "/projects/{company_id}"
+        params: {
+            company_id: acme.id
+        }
+        as: Principal.user(cyd)
+    }
+    assert listed.output == [
+        ProjectCard {
+            id: launch.id
+            name: "Liftoff"
+        }
+    ]
+}
+
+test "a request can't write a field only the server writes" {
+    var ann: Member = attempt register("ann")
+    var acme: Company = found_company("Acme", Principal.user(ann))
+    var tagged: Response = request {
+        method: HttpMethod.post
+        path: "/projects"
+        as: Principal.user(ann)
+        input: StartProject {
+            company_id: acme.id
+            name: "Imported"
+            reference: "X-1"
+        }
+    }
+    assert tagged.status == 403
+    assert tagged.code == "not_permitted"
+    var plain: Response = request {
+        method: HttpMethod.post
+        path: "/projects"
+        as: Principal.user(ann)
+        input: StartProject {
+            company_id: acme.id
+            name: "Plain"
+            reference: none
+        }
+    }
+    assert plain.status == 201
+}
+"#;
+
+fn ledger(name: &str) -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("policy-{name}"));
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in LEDGER {
+        write(&root, path, text);
+    }
+    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    let recorded = jadpo(&root, &["api", "update"]);
+    assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
+    root
+}
+
+#[test]
+fn a_field_the_caller_may_not_change_refuses_the_whole_write() {
+    if skipped() {
+        return;
+    }
+    let root = ledger("ledger");
+    write(
+        &root,
+        "domains/ledger/routes/projects.test.jadpo",
+        LEDGER_TESTS,
+    );
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(tested.stdout.contains("2 passed"), "{}", tested.stdout);
+}
+
+#[test]
+fn an_output_never_carries_a_field_not_every_caller_may_read() {
+    let root = ledger("ledger-views");
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    // The report's field rows.
+    let report = fs::read_to_string(root.join("build/report/permissions.md")).expect("the report");
+    for line in [
+        "| `budget` | as the record | `CompanyRole.editor` | `CompanyRole.editor` | as the record |",
+        "| `import_reference` | server only | server only | server only | as the record |",
+    ] {
+        assert!(report.contains(line), "{line}\n\n{report}");
+    }
+    let json: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(root.join("build/report/permissions.json")).expect("the twin"),
+    )
+    .expect("JSON");
+    let project = json["entities"]
+        .as_array()
+        .and_then(|all| all.iter().find(|e| e["entity"] == "ledger.Project"))
+        .expect("the project");
+    assert_eq!(
+        project["fields"],
+        serde_json::json!([
+            { "field": "budget", "grants": { "read": ["CompanyRole.editor"], "update": ["CompanyRole.editor"] } },
+            { "field": "import_reference", "serverOnly": true }
+        ])
+    );
+    // Policy in the manifest: its grants, field restrictions, tenancy and
+    // listed action, each with the edge to what it decides.
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(root.join("build/manifest.json")).expect("the manifest"),
+    )
+    .expect("JSON");
+    let node = |id: &str| {
+        manifest["nodes"]
+            .as_array()
+            .and_then(|nodes| nodes.iter().find(|n| n["id"] == id))
+            .cloned()
+            .unwrap_or_else(|| panic!("no node {id}"))
+    };
+    let read = node("grant Project.read");
+    assert_eq!(read["effect"], "read");
+    assert_eq!(read["grants"], serde_json::json!(["entity Project"]));
+    let budget = node("field_restriction Project.budget");
+    assert_eq!(
+        budget["grants"],
+        serde_json::json!(["field Project.budget"])
+    );
+    let tenancy = node("tenancy Project");
+    assert_eq!(tenancy["via"], "company_id");
+    assert_eq!(tenancy["scopes"], serde_json::json!(["entity Project"]));
+    let listed = node("action_exception ledger.found_company");
+    assert_eq!(listed["who"], serde_json::json!(["Access.authenticated"]));
+    // A query sending the budget to everyone who may read a project.
+    write(
+        &root,
+        "domains/ledger/queries/company_projects.jadpo",
+        r#"use ledger/entities { Company, Project }
+use ledger/types { BudgetView }
+
+query company_projects(company_id: Company.id) -> List<BudgetView> {
+    from: Project
+    where: Project.company_id == company_id
+    order: [Project.name asc]
+    limit: 100
+}
+"#,
+    );
+    let refused = jadpo(&root, &["check"]);
+    assert_eq!(refused.code, 1, "{}", refused.stdout);
+    assert!(
+        refused
+            .stdout
+            .contains("rule: policy.output_field_unproved")
+            && refused
+                .stdout
+                .contains("`company_projects` sends `Project.budget`"),
+        "{}",
+        refused.stdout
+    );
+}

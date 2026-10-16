@@ -256,7 +256,10 @@ impl Flow<'_> {
             report: false,
             problems: Vec::new(),
         };
-        walk.gate = walk.line.as_ref().and_then(gate_way);
+        walk.gate = walk
+            .line
+            .as_ref()
+            .and_then(|line| gate_way(self.prover.access, line));
         for (at, param) in body.params.iter().enumerate() {
             let ty = &body.local(*param).ty;
             let start = match caller_kind(ty) {
@@ -310,17 +313,26 @@ fn caller_kind(ty: &TypeRef) -> Option<PrincipalKind> {
 }
 
 /// What a listed action's line checks as the action starts, when it
-/// depends on no record (area 9, "Actions"): every caller passed one of
-/// its entries.
-fn gate_way(line: &super::ActionGrants) -> Option<Way> {
-    if line.who.contains(&ActionWho::Public) {
-        return None;
-    }
+/// depends on no record (area 9, "Actions": anyone signed in, or roles
+/// held across the whole application): every caller passed one of its
+/// entries.
+fn gate_way(access: &super::Access, line: &super::ActionGrants) -> Option<Way> {
     let mut way = Vec::new();
     for who in &line.who {
         match who {
             ActionWho::Signed => way.push(vec![Fact::Grant(Grant::Signed)]),
             ActionWho::System => way.push(vec![Fact::Grant(Grant::System)]),
+            ActionWho::Role { membership, role }
+                if access
+                    .membership(membership)
+                    .is_some_and(|held| held.scope.is_none()) =>
+            {
+                way.push(vec![Fact::Grant(Grant::Role {
+                    membership: membership.clone(),
+                    role: role.clone(),
+                    via: None,
+                })]);
+            }
             ActionWho::Role { .. } | ActionWho::Field { .. } | ActionWho::Public => return None,
         }
     }
@@ -429,7 +441,7 @@ impl Walk<'_> {
             }
             Expr::Local(id) => self.locals.get(id.0 as usize).cloned().unwrap_or_default(),
             Expr::Field { receiver, field } => self.eval(flow, receiver).field(&field_name(&field)),
-            Expr::Call { callee, args, .. } => self.call(flow, site, &callee, &args),
+            Expr::Call { callee, args, .. } => self.call(flow, &callee, &args),
             Expr::Build { callee, fields, .. } => {
                 let mut out = Prov::default();
                 let mut given = Vec::new();
@@ -486,18 +498,21 @@ impl Walk<'_> {
             }
             Expr::Attempt { inner, arms } => {
                 for arm in &arms {
-                    for (_, value) in &arm.fields {
-                        self.eval(flow, *value);
-                    }
+                    self.failure(flow, &arm.failure, &arm.fields);
                 }
                 match inner {
                     Some(inner) => self.eval(flow, inner),
                     None => Prov::default(),
                 }
             }
-            Expr::Reject { fields, .. } => {
-                for (_, value) in fields {
-                    self.eval(flow, value);
+            Expr::Reject { failure, fields } => {
+                match &failure {
+                    Some(failure) => self.failure(flow, failure, &fields),
+                    None => {
+                        for (_, value) in fields {
+                            self.eval(flow, value);
+                        }
+                    }
                 }
                 Prov::default()
             }
@@ -508,8 +523,12 @@ impl Walk<'_> {
                 set,
                 patch,
                 when_supplied,
+                conflicts,
                 ..
             } => {
+                for arm in &conflicts {
+                    self.failure(flow, &arm.failure, &arm.fields);
+                }
                 let target = target.map(|target| self.eval(flow, target));
                 let mut values: Vec<(String, SiteId, Prov)> = Vec::new();
                 for (key, value) in &set {
@@ -603,13 +622,7 @@ impl Walk<'_> {
         }
     }
 
-    fn call(
-        &mut self,
-        flow: &mut Flow<'_>,
-        site: SiteId,
-        callee: &Callee,
-        args: &[Option<SiteId>],
-    ) -> Prov {
+    fn call(&mut self, flow: &mut Flow<'_>, callee: &Callee, args: &[Option<SiteId>]) -> Prov {
         // An inline function's parameter holds the list it is given.
         let first = match args.first() {
             Some(Some(first)) => self.eval(flow, *first),
@@ -663,7 +676,6 @@ impl Walk<'_> {
                         }
                     }
                 }
-                let _ = site;
                 summary.returns.substitute(&provs)
             }
             Callee::Caller(kind) => Prov::of(Src::Caller(*kind)),
@@ -779,7 +791,19 @@ impl Walk<'_> {
         out
     }
 
-    /// An `Output`'s field `field` built from `value`.
+    /// A failure given `fields`: its client fields are sent to the caller,
+    /// as an output's are.
+    fn failure(&mut self, flow: &mut Flow<'_>, failure: &Key, fields: &[(Key, SiteId)]) {
+        for (key, value) in fields {
+            let prov = self.eval(flow, *value);
+            if self.report && client_field(flow, key) {
+                self.output(flow, failure.name(), &field_name(key), *value, &prov);
+            }
+        }
+    }
+
+    /// An `Output`'s or a failure's client field `field` built from
+    /// `value`.
     fn output(&mut self, flow: &Flow<'_>, output: &str, field: &str, value: SiteId, prov: &Prov) {
         for src in prov.flat() {
             if let Src::Param(at) = src {
@@ -793,14 +817,13 @@ impl Walk<'_> {
             flow.prover.field_readable(&entity, &from, facts)
         });
         let readers = flow.prover.readers(&entity, &from);
-        let reason = match &who {
-            Some(who) => format!(
-                "The `{entity}` it comes from is one a caller could reach as `{who}`, and {readers} may read `{from}`. An output has one shape for everyone, and a value passed through a variable or another type keeps its field's rules."
-            ),
-            None => format!(
-                "Not every caller who could reach the `{entity}` it comes from may read `{from}`: {readers} may. An output has one shape for everyone, and a value passed through a variable or another type keeps its field's rules."
-            ),
-        };
+        let among = who
+            .map(|who| format!(", {who} among them,"))
+            .unwrap_or_default();
+        let reason = format!(
+            "`{}` reaches the `{entity}` it comes from for anyone its grants let in{among} and {readers} `{from}`. What a caller is sent has one shape for everyone, and a value passed through a variable or another type keeps its field's rules.",
+            self.name
+        );
         self.problems.push(
             Diagnostic::new(
                 &rule::POLICY_OUTPUT_FIELD_UNPROVED,
@@ -830,9 +853,12 @@ impl Walk<'_> {
             flow.prover.field_readable(&entity, &from, facts)
         });
         let readers = flow.prover.readers(&entity, &from);
+        let among = who
+            .map(|who| format!(", {who} among them,"))
+            .unwrap_or_default();
         let reason = format!(
-            "`{callee}` puts what it is given here in the output it returns, and the `{entity}` this comes from is one a caller could reach{}, while {readers} may read `{from}`. A value passed to another action keeps its field's rules.",
-            who.map(|who| format!(" as `{who}`")).unwrap_or_default()
+            "`{callee}` puts what it is given here in the output it returns, and `{}` reaches the `{entity}` it comes from for anyone its grants let in{among} while {readers} `{from}`. A value passed to another action keeps its field's rules.",
+            self.name
         );
         self.problems.push(
             Diagnostic::new(
@@ -912,6 +938,21 @@ impl Walk<'_> {
             )),
         );
     }
+}
+
+/// Whether the failure field `key` is one of its `client:` fields, which
+/// the caller is sent.
+fn client_field(flow: &Flow<'_>, key: &Key) -> bool {
+    let graph = crate::graph::graph(flow.db, flow.project);
+    graph.get(key).is_some_and(|node| {
+        matches!(
+            node.detail,
+            jadpo_graph::Detail::Field {
+                section: Some(jadpo_graph::Section::Client),
+                ..
+            }
+        )
+    })
 }
 
 /// Whether the type called `name` is an `Output`.
