@@ -152,8 +152,8 @@ with the default locale's file defining the keys; both are replaced below.
 
 **Where they live.** In the domain that uses them, as its emails do; a
 message a second domain uses moves to `shared/`, under area 1's promotion
-rule. The root `translations/` holds app-wide text and the app's wording
-for Jadpo's own text (`jadpo.` keys). This changes area 1, which made
+rule. The root `translations/` holds only the app's wording for Jadpo's
+own text (`jadpo.` keys); text several domains use is in `shared/`. This changes area 1, which made
 `translations/` a root-only folder.
 
 ```text
@@ -163,7 +163,7 @@ domains/shipping/translations/
     en_gb.json
     de_de.json
 shared/translations/          messages several domains use
-translations/                 app-wide text; jadpo.* overrides
+translations/                 jadpo.* overrides only
 ```
 
 **Each message is a type.** `Message` is a type base beside `Failure`,
@@ -209,9 +209,28 @@ in code with `temporal.format` and passed in as text.
 ```
 
 ```text
-translations.shipping.order_shipped(shop.tone, name: customer.first_name)    // in code
+translations.shipping.order_shipped(tone: shop.tone, name: customer.first_name, locale: customer.locale)    // in code
 {{ translations.shipping.parcels(count: parcel_count) }}                     // in a template
 ```
+
+**How a type maps to its strings**:
+
+| In the type | In each language's file |
+|---|---|
+| The type's name, `OrderShipped` | The key, `order_shipped`, in the files of the type's own folder |
+| No fields | A plain string |
+| A `Text`, `PresentationText`, `Int` or `Decimal` field | A `{field}` placeholder; numbers are written in the language's digits |
+| One enum field | An object with one key per value of the enum; the field is not a placeholder |
+| One `Count` field | An object with one key per plural form the language needs; `{count}` is available in each |
+| Any other field type (`Instant`, an object) | A compile error: format it in code and pass text |
+| More than one enum or `Count` field | A compile error: split the message, so a translator never fills a grid of combinations |
+
+A `Failure` maps the same way: its code is the key, its client fields are
+the placeholders, and `kind:` and `message:` are not. The generated call
+takes every field by name plus `locale:` (in templates the email's
+locale), and returns `PresentationText`. A placeholder that is not a field
+is an error; a field that no wording in a language uses is a warning, and
+one variant leaving a field out is normal.
 
 **Checked by the compiler**: a key no message type declares, a variant
 that is not a value of the enum, a missing variant or plural form, and a
