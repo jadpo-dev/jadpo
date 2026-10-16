@@ -41,18 +41,7 @@ then built. No design is left for implementation.
 
 1. ~~The golden rule~~: decided, see "Decided: the golden rule".
 2. ~~Translations~~: decided, see "Translations".
-3. **Authentication.** *Decided:* area 8 (principal, browser sessions, API
-   tokens, service keys, `external_token`, `sign_in_providers:`,
-   `on_first_sign_in`, acting as an OAuth provider); area 8 leaves magic
-   links to the app. *To design:* magic-link sign-in built in (Jadpo owns
-   the token, expiry, single use, rate limits, a confirm page against link
-   scanners, sessions; the app's email named by a setting, `pick:`ing the
-   built-in message's fields); whether it is consistent with the rest of
-   area 8; how easily an app switches or combines sign-in methods (built
-   in, Google, Auth0, magic links); the scenarios page's sign-in answers
-   (`on_first_sign_in` on `external_token`, `SignInProfile.verified_email`,
-   the shape of `sign_in_providers`). Read area 8 and scenario 5 and 11 of
-   the scenarios page.
+3. ~~Authentication~~: decided, see "Authentication" (built-in emails' flexibility in progress).
 4. **Side effects and packages, end to end.** Decided ("no code with side
    effects in packages", below); Richard wants it walked through: what a
    package can and cannot cause, where every effect happens (the app's
@@ -435,6 +424,46 @@ open item 8's translations part:
     (an object, a list) is a compile error for a placeholder, as for
     messages.
 13. An `in_progress` locale not in `supported` is a compile error.
+
+## Authentication (open item 3)
+
+Decided 2026-10-16 (Richard). Area 8 keeps its two layers: checking the
+person, then a session (`sessions.start` for a browser, `sessions.issue_token`
+for the app's own clients).
+
+- **Magic-link sign-in is built in**, beside the providers, replacing area
+  8's "how the person is checked stays in the application".
+- **`sign_in_providers:` becomes `sign_in:`**, one list of every way to
+  check a person (`magic_link:`, `google:` ...), in `authentication.jadpo`
+  at the project root.
+- **`on_first_sign_in` is the one decision point for every way in**,
+  external tokens included: create, link or refuse; a refusal looks the
+  same to the person.
+- **The flow**: `POST /auth/magic-link` answers the same whether or not an
+  account exists; the email carries a link and a six-digit code, both
+  single-use, either working; the link opens a one-click confirm page
+  (mail scanners open links), worded from translations; confirming starts
+  a browser session, and an app client posts the code to
+  `POST /auth/magic-link/redeem` for an API token. Only verifiers are kept.
+  The email goes through the app's `email:` connection; magic links without
+  one are a compile error. In development the link works from the local
+  inbox; tests read it from `email.sent`.
+- **Settings, with defaults**: `address: User.email`, `expires_after: 15m`,
+  `code_attempts: 5`, `codes_per_hour: 10`, `failed_codes_per_day: 20`,
+  `resend_after: 1m`, `same_browser: false`. Tightening is free; loosening
+  past a ceiling (more than 10 attempts per code, an expiry over an hour,
+  more than 50 failed codes a day) needs an acceptance in the approval
+  report.
+- **Wrong codes**: five wrong guesses end that code; every wrong guess gets
+  the same answer, never a count; after the day's failures codes stop
+  working for that address until the next day but links still work; no
+  account lockouts, so an attacker cannot lock a person out.
+- **Other rules**: only the latest link and code are valid; sends are
+  rate-limited per address with identical answers for unknown addresses;
+  after signing in a person is sent only to a path on the app's own site;
+  signing in by link or code makes the address verified for
+  `on_first_sign_in`; built-in events `SignedIn`, `SignInRefused` and
+  `SignInCodesDisabled` for monitoring.
 
 ## Decided: the golden rule
 
