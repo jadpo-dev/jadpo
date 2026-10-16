@@ -288,7 +288,8 @@ reference only).
   `api_token:` with `sessions.issue_token`, `.tokens` and `.revoke_token`
   (area 8, decided 2026-10-16).
 - [ ] **4.4 Policy:** `opus · xhigh` grants compiled into queries, tenancy, the permissions
-  report.
+  report, and `sessions.revoke_token` and `Service.revoke_key` gated by
+  the owning record's grants (today they revoke any id, area 8).
 - [ ] **4.6 Teaching examples for Phase 4** `opus · high`: bring
   `examples/` up to date with routes, identity and policy, and pass
   `tools/verify.py --require-examples`.
