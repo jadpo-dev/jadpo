@@ -1480,13 +1480,22 @@ action note_budget(project_id: Project.id) fails ProjectNotFound -> JotView {
 }
 "#,
     );
+    // Storing it is refused too, since a viewer may read the jot later
+    // (chunk 5.1d).
     assert_eq!(
         rules_of(&found),
-        ["policy.output_field_unproved"],
+        [
+            "policy.output_field_unproved",
+            "policy.output_field_unproved"
+        ],
         "{found:#?}"
     );
     assert!(
-        found[0].contains(
+        found[0].contains("`note_budget` stores `Project.budget` in `Jot.amount`"),
+        "{found:#?}"
+    );
+    assert!(
+        found[1].contains(
             "`JotView.amount` carries `Project.budget`, which not every caller of `note_budget`"
         ),
         "{found:#?}"

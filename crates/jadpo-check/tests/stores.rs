@@ -177,8 +177,8 @@ fn messages(found: &[String]) -> String {
 }
 
 /// Every problem is `policy.output_field_unproved`, each `expected` is
-/// among them, there are no more than those, and no action in `clean` is
-/// named.
+/// among them, there are no more than those, and none is about an action
+/// in `clean`.
 fn assert_stores(found: &[String], expected: &[&str], clean: &[&str]) {
     let all = messages(found);
     for problem in found {
@@ -192,7 +192,9 @@ fn assert_stores(found: &[String], expected: &[&str], clean: &[&str]) {
     }
     assert_eq!(found.len(), expected.len(), "{all}");
     for name in clean {
-        assert!(!all.contains(&format!("`{name}`")), "{name}\n{all}");
+        for problem in found {
+            assert!(!problem.contains(&format!(": `{name}` ")), "{name}\n{all}");
+        }
     }
 }
 
@@ -327,7 +329,12 @@ action borrow_name(company_id: Company.id, project_id: Project.id, other_id: Pro
             "`budget_task` stores `Project.budget` in `Task.cost`, which not everyone who may read `cost` may read",
             "`borrow_name` stores `Project.name` in `Task.title`, which not everyone who may read `title` may read",
         ],
-        &["plan_task", "plan_found_task", "plan_tenant_task", "price_task"],
+        &[
+            "plan_task",
+            "plan_found_task",
+            "plan_tenant_task",
+            "price_task",
+        ],
     );
 }
 
@@ -370,8 +377,15 @@ action forecast_budget(project_id: Project.id) fails ProjectNotFound -> Project 
 
 #[test]
 fn what_decides_a_stored_value_is_stored_with_it() {
+    // An action is all-or-nothing, so what a `reject` tests decides every
+    // value it stores, before it or after.
     let found = stores(
-        r#"action flag_budget(project_id: Project.id) fails ProjectNotFound -> Project {
+        r#"type OverBudget = Failure {
+    kind: FailureKind.conflict
+    message: "The project is over budget."
+}
+
+action flag_budget(project_id: Project.id) fails ProjectNotFound -> Project {
     var project: Project = attempt Project.get(project_id)
     if (project.budget > 100) {
         return Project.update(project) {
@@ -404,6 +418,32 @@ action close_over_budget(task_id: Task.id) fails TaskNotFound, ProjectNotFound -
     return task
 }
 
+action spend_unless_over(project_id: Project.id) fails ProjectNotFound, OverBudget -> Project {
+    var project: Project = attempt Project.get(project_id)
+    var spent: Project = Project.update(project) {
+        set: {
+            spent: project.spent
+        }
+    }
+    if (project.budget > 100) {
+        reject OverBudget
+    }
+    return spent
+}
+
+action forecast_unless_over(project_id: Project.id) fails ProjectNotFound, OverBudget -> Project {
+    var project: Project = attempt Project.get(project_id)
+    var forecast: Project = Project.update(project) {
+        set: {
+            forecast: project.forecast
+        }
+    }
+    if (project.budget > 100) {
+        reject OverBudget
+    }
+    return forecast
+}
+
 action close_over_spent(task_id: Task.id) fails TaskNotFound, ProjectNotFound -> Task {
     var task: Task = attempt Task.get(task_id)
     var project: Project = attempt Project.get(task.project_id)
@@ -419,6 +459,9 @@ action close_over_spent(task_id: Task.id) fails TaskNotFound, ProjectNotFound ->
         &[
             "`flag_budget` stores a value decided by `Project.budget` in `Project.spent`, which not everyone who may read `spent` may read",
             "`close_over_budget` stores a value decided by `Project.budget` in `Task.closed`, which not everyone who may read `closed` may read",
+            "`spend_unless_over` stores a value decided by `Project.budget` in `Project.spent`, which not everyone who may read `spent` may read",
+            "`spend_unless_over` raises `OverBudget` on a condition that tests `Project.budget`, which not every caller may read",
+            "`forecast_unless_over` raises `OverBudget` on a condition that tests `Project.budget`, which not every caller may read",
         ],
         &["flag_spent", "close_over_spent"],
     );
@@ -606,6 +649,42 @@ action plan_crossed(company_id: Company.id) {
         }
     }
 }
+
+action plan_carried(company_id: Company.id) {
+    var projects: List<Project> = company_projects(company_id)
+    var mut title: Label = "First"
+    for project in projects {
+        var task: Task = Task.create {
+            set: {
+                company_id: project.company_id
+                project_id: project.id
+                title: title
+                cost: 0
+            }
+        }
+        assert task.closed == false
+        title = project.name
+    }
+}
+
+action plan_until_funded(company_id: Company.id) -> Amount {
+    var projects: List<Project> = company_projects(company_id)
+    for project in projects {
+        var task: Task = Task.create {
+            set: {
+                company_id: project.company_id
+                project_id: project.id
+                title: project.name
+                cost: 0
+            }
+        }
+        assert task.closed == false
+        if (project.budget > 100) {
+            return 1
+        }
+    }
+    return 0
+}
 "#,
     );
     assert_stores(
@@ -614,6 +693,8 @@ action plan_crossed(company_id: Company.id) {
             "`cost_all` stores `Project.budget` in `Task.cost`, which not everyone who may read `cost` may read",
             "`plan_funded` stores a value decided by `Project.budget` in `Task.company_id`, which not everyone who may read `company_id` may read",
             "`plan_crossed` stores `Project.spent` in `Task.cost`, which not everyone who may read `cost` may read",
+            "`plan_carried` stores `Project.name` in `Task.title`, which not everyone who may read `title` may read",
+            "`plan_until_funded` stores a value decided by `Project.budget` in `Task.company_id`, which not everyone who may read `company_id` may read",
         ],
         &["plan_all", "plan_spent"],
     );
