@@ -45,20 +45,7 @@ then built. No design is left for implementation.
 4. ~~Side effects and packages~~: decided, see "What package code may do".
 5. ~~Overriding~~: decided, see "Decided: overriding built-in behaviour".
 6. ~~Each override scenario~~: decided, see "Override scenarios" (webhook handshakes move to item 7).
-7. **Receiving from outside: webhooks and queues.** *Decided* (area 11
-   question 11): a connection with a webhook secret generates
-   `POST /webhooks/<connection>`, checks the signature, drops repeats by
-   event id and publishes each as a Jadpo event that subscribers take with
-   `on: Stripe.PaymentIntentSucceeded`. *To walk through and design:* the
-   whole Stripe flow end to end; webhooks for the app's own integrations
-   and for senders with no package (a partner posting to the app); webhooks
-   that need a reply body rather than `200` (Twilio's TwiML, Slack's
-   interactive replies), which an event cannot give; handshakes (Slack,
-   Microsoft Graph, SNS); ordering and out-of-date events; whether queues
-   and topics (SQS, SNS, Cloudflare Queues, Kafka, EventBridge) are
-   consumed directly (a connection the runtime reads, each message arriving
-   as an event) or only through webhooks (SNS's HTTP delivery); retries and
-   dead letters; Workers' queue consumers; how this fits area 12's events.
+7. ~~Receiving from outside~~: decided, see "Receiving from outside".
 7b. **Multi-step provider calls**: an action (the app's or a package's)
     making several changing calls in order, answers recorded as they
     happen, a key per step, resuming after a failure, a warning where a
@@ -723,6 +710,48 @@ unless something uses one; area 5's implied PostgreSQL `main` becomes "only
 when needed", and `jadpo check` is an error naming the feature that needs
 one when none is declared (sign-in, events and the outbox, idempotency
 keys, webhook de-duplication, flags, audit, any database entity).
+
+## Receiving from outside (open item 7)
+
+Decided 2026-10-16 (Richard).
+
+- **Webhooks, end to end** (area 11 as decided): a connection with a
+  webhook secret generates `POST /webhooks/<connection>`; the runtime
+  checks the signature with a five-minute tolerance, drops repeats by the
+  provider's event id and writes the event (public or not, as the package
+  marks it) to the app's outbox, and subscribers run after commit. Every
+  event carries the provider's `occurred_at`; out-of-order delivery is the
+  app's to handle by ignoring an event older than what it stored, stated
+  on the page with a recipe.
+- **A sender with no package**: a system that signs webhooks gets the app's
+  own integration in `shared/providers/` (the golden rule); a partner with
+  an agreement is a `Service` with a service key calling an ordinary route
+  (area 8).
+- **Webhooks that need a reply** (Twilio's call instructions, Slack's
+  messages): the package marks the webhook as replying, with request and
+  reply types; the connection names the app's action that answers
+  (`webhooks: { replies: { incoming_call: phone.answer_call } }`), which
+  runs inside the request after the signature check and may read and write
+  like any action; repeats get the stored reply; the package encodes the
+  reply (Twilio's XML waits for an XML byte format in a Jadpo release).
+- **Handshakes**: built-in rules named in the package
+  (`handshake: WebhookHandshake.sns`, `.slack`, `.microsoft_graph`),
+  answered by the runtime, extended by releases.
+- **Queues are read directly** through a `receiving` capability, the
+  inbound twin of `publishing` (`receiving: { orders_queue:
+  Warehouse.OrderShipped }`): each message becomes that event for the
+  app's subscribers, acknowledged only after the subscriber's transaction
+  commits, repeats dropped by message id stored in the database, a message
+  that keeps failing left to the queue's dead-letter queue and parked for
+  an operator.
+- **Which are packages**: by the usual rule, an HTTP API is a package and
+  anything needing its own protocol or a platform binding is a built-in
+  driver. Amazon SQS and Google Pub/Sub (pull) are packages; SNS and
+  Pub/Sub (push) are webhooks through a package with a handshake;
+  Cloudflare Queues on Workers is a built-in driver (a binding, Workers
+  only) and from a native server a package (its HTTP pull API); Kafka is a
+  built-in driver in a later release. On Workers the queue consumer is
+  generated into the Wrangler configuration.
 
 ## Decided: the golden rule
 
