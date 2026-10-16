@@ -429,6 +429,17 @@ entity Memo {
 /// A company-scoped project with members, a budget only editors read and
 /// change, a reference no client may touch, and whatever follows.
 fn company(code: &str) -> Vec<String> {
+    company_listing("", code)
+}
+
+/// [`company`], with `actions` (the lines under `actions:`) in its root
+/// `policy { }`.
+fn company_listing(actions: &str, code: &str) -> Vec<String> {
+    let actions = if actions.is_empty() {
+        String::new()
+    } else {
+        format!("\n    actions: {{\n{actions}    }}")
+    };
     let text = format!(
         r#"principal {{
     user: {{
@@ -441,7 +452,7 @@ authentication {{
 }}
 
 policy {{
-    tenant: Company
+    tenant: Company{actions}
 }}
 
 type Handle = Text {{
@@ -1119,6 +1130,852 @@ action close_ticket(ticket_id: Ticket.id) fails TicketNotFound, Closed -> Unit {
         found[0].contains(
             "`close_ticket` runs `Ticket.close`, whose `when:` tests `Ticket.stage`, which not every caller may read"
         ),
+        "{found:#?}"
+    );
+}
+
+// --- chunk 4.8: the Phase 4 review's policy findings ---------------------------
+
+#[test]
+fn a_line_held_in_a_record_lets_nobody_call_an_action_that_changes_none() {
+    // `report` changes no record a company's role or a membership's member
+    // could be checked on, so its line lets nobody in; anyone signed in, or
+    // a line whose role applies to the project `start` creates, does.
+    let found = company_listing(
+        "        report: [Role.owner]\n        seat_report: [Membership.person_id]\n        open_report: [Role.owner, Access.authenticated]\n        start: [Role.owner]\n",
+        r#"type Report = Output {
+    ok: Bool
+}
+
+action report() -> Report {
+    return Report {
+        ok: true
+    }
+}
+
+action seat_report() -> Report {
+    return Report {
+        ok: true
+    }
+}
+
+action open_report() -> Report {
+    return Report {
+        ok: true
+    }
+}
+
+type Start = Input {
+    company_id: Company.id
+    name: Label
+}
+
+action start(input: Start) fails CompanyNotFound -> ProjectCard {
+    var project: Project = attempt Project.create {
+        set: {
+            company_id: input.company_id
+            name: input.name
+            budget: 0
+            import_reference: none
+        }
+    }
+    return ProjectCard {
+        id: project.id
+        name: project.name
+    }
+}
+
+routes Reports {
+    prefix: /reports
+
+    POST / {
+        output: Report
+        run: report()
+    }
+
+    POST /seats {
+        output: Report
+        run: seat_report()
+    }
+
+    POST /open {
+        output: Report
+        run: open_report()
+    }
+
+    POST /projects {
+        input: Start
+        output: ProjectCard
+        status: SuccessStatus.created
+        run: start(input)
+    }
+}
+"#,
+    );
+    assert_eq!(
+        rules_of(&found),
+        ["policy.effect_ungranted", "policy.effect_ungranted"],
+        "{found:#?}"
+    );
+    assert!(
+        found[0].contains("`POST /reports` runs `report`, which nobody may call"),
+        "{found:#?}"
+    );
+    assert!(
+        found[1].contains("`POST /reports/seats` runs `seat_report`, which nobody may call"),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn an_output_a_function_builds_is_checked_where_it_is_called() {
+    let found = company(
+        r#"function budget_of(project: Project) -> BudgetView {
+    return BudgetView {
+        id: project.id
+        budget: project.budget
+    }
+}
+
+action peek(project_id: Project.id) fails ProjectNotFound -> BudgetView {
+    var project: Project = attempt Project.get(project_id)
+    return budget_of(project)
+}
+
+function card_of(project: Project) -> ProjectCard {
+    return ProjectCard {
+        id: project.id
+        name: project.name
+    }
+}
+
+action glance(project_id: Project.id) fails ProjectNotFound -> ProjectCard {
+    var project: Project = attempt Project.get(project_id)
+    return card_of(project)
+}
+"#,
+    );
+    assert_eq!(
+        rules_of(&found),
+        ["policy.output_field_unproved"],
+        "{found:#?}"
+    );
+    assert!(
+        found[0].contains("`peek` passes `Project.budget` to `budget_of`"),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_value_an_if_a_match_a_filter_or_a_count_decides_keeps_what_decided_it() {
+    // Each output below is built from constants, but which one, or the
+    // number counted, shows whether a budget is over a line, which only
+    // editors may read.
+    let found = company(
+        r#"type Flag = Output {
+    high: Bool
+}
+
+type Tally = Output {
+    funded: Int
+}
+
+query company_records(company_id: Company.id) -> List<Project> {
+    from: Project
+    where: Project.company_id == company_id
+    order: [Project.name asc]
+    limit: 100
+}
+
+action flag_if(project_id: Project.id) fails ProjectNotFound -> Flag {
+    var project: Project = attempt Project.get(project_id)
+    if (project.budget > 100) {
+        return Flag {
+            high: true
+        }
+    }
+    return Flag {
+        high: false
+    }
+}
+
+action flag_match(project_id: Project.id) fails ProjectNotFound -> Flag {
+    var project: Project = attempt Project.get(project_id)
+    return match project.budget > 100 {
+        true -> Flag {
+            high: true
+        }
+        false -> Flag {
+            high: false
+        }
+    }
+}
+
+action count_funded(company_id: Company.id) -> Tally {
+    var projects: List<Project> = company_records(company_id)
+    return Tally {
+        funded: collection.count(collection.filter(projects, project -> project.budget > 0))
+    }
+}
+
+action funded_cards(company_id: Company.id) -> List<ProjectCard> {
+    var projects: List<Project> = company_records(company_id)
+    var funded: List<Project> = collection.filter(projects, project -> project.budget > 0)
+    return collection.map(funded, project -> ProjectCard {
+        id: project.id
+        name: project.name
+    })
+}
+
+action count_loop(company_id: Company.id) -> Tally {
+    var projects: List<Project> = company_records(company_id)
+    var mut funded: Int = 0
+    for project in projects {
+        if (project.budget > 0) {
+            funded = funded + 1
+        }
+    }
+    return Tally {
+        funded: funded
+    }
+}
+
+action count_all(company_id: Company.id) -> Tally {
+    var projects: List<Project> = company_records(company_id)
+    return Tally {
+        funded: collection.count(projects)
+    }
+}
+
+query find_record(project_id: Project.id) -> Project? {
+    from: Project
+    where: Project.id == project_id
+}
+
+action flag_found(project_id: Project.id) -> Flag {
+    var found: Project? = find_record(project_id)
+    if (found == none) {
+        return Flag {
+            high: false
+        }
+    }
+    return Flag {
+        high: true
+    }
+}
+"#,
+    );
+    let all = found.join("\n");
+    assert_eq!(
+        rules_of(&found),
+        [
+            "policy.output_field_unproved",
+            "policy.output_field_unproved",
+            "policy.output_field_unproved",
+            "policy.output_field_unproved",
+            "policy.output_field_unproved",
+            "policy.output_field_unproved",
+            "policy.output_field_unproved"
+        ],
+        "{all}"
+    );
+    for expected in [
+        "`Flag.high` carries `Project.budget`, which not every caller of `flag_if` may read",
+        "`Flag.high` carries `Project.budget`, which not every caller of `flag_match` may read",
+        "`Tally.funded` carries `Project.budget`, which not every caller of `count_funded` may read",
+        "`ProjectCard.id` carries `Project.budget`, which not every caller of `funded_cards` may read",
+        "`ProjectCard.name` carries `Project.budget`, which not every caller of `funded_cards` may read",
+        "`Tally.funded` carries `Project.budget`, which not every caller of `count_loop` may read",
+    ] {
+        assert!(all.contains(expected), "{expected}\n{all}");
+    }
+    assert!(!all.contains("`count_all`"), "{all}");
+    assert!(!all.contains("`flag_found`"), "{all}");
+}
+
+#[test]
+fn a_failure_raised_under_a_condition_shows_what_it_tests() {
+    let found = company(
+        r#"type OverBudget = Failure {
+    kind: FailureKind.conflict
+    message: "That is over budget."
+}
+
+action spend(project_id: Project.id, amount: Amount) fails ProjectNotFound, OverBudget -> ProjectCard {
+    var project: Project = attempt Project.get(project_id)
+    if (amount > project.budget) {
+        reject OverBudget
+    }
+    return ProjectCard {
+        id: project.id
+        name: project.name
+    }
+}
+"#,
+    );
+    assert_eq!(
+        rules_of(&found),
+        ["policy.output_field_unproved"],
+        "{found:#?}"
+    );
+    assert!(
+        found[0].contains("`spend` refuses with `OverBudget` when `Project.budget` decides, which not every caller may read"),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_value_stored_with_set_keeps_its_rules_in_the_record_written() {
+    let found = company(
+        r#"entity Jot {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    amount: Amount
+
+    policy: {
+        create: [Role.owner, Role.editor, Role.viewer]
+        read: [Role.owner, Role.editor, Role.viewer]
+    }
+}
+
+type JotView = Output {
+    pick: [Jot.id, Jot.amount]
+}
+
+action note_budget(project_id: Project.id) fails ProjectNotFound -> JotView {
+    var project: Project = attempt Project.get(project_id)
+    var jot: Jot = Jot.create {
+        set: {
+            company_id: project.company_id
+            amount: project.budget
+        }
+    }
+    return JotView {
+        id: jot.id
+        amount: jot.amount
+    }
+}
+"#,
+    );
+    assert_eq!(
+        rules_of(&found),
+        ["policy.output_field_unproved"],
+        "{found:#?}"
+    );
+    assert!(
+        found[0].contains("`JotView.amount` carries `Project.budget`, which not every caller of `note_budget`"),
+        "{found:#?}"
+    );
+}
+
+/// A brief whose project only editors may know, and whatever follows.
+const BRIEF: &str = r#"entity Brief {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    project_id: Project.id {
+        on_delete: OnDelete.cascade
+        policy: {
+            read: [Role.editor]
+        }
+    }
+
+    policy: {
+        read: [Role.owner, Role.editor, Role.viewer]
+    }
+}
+
+type BriefCard = Output {
+    pick: [Brief.id]
+}
+"#;
+
+#[test]
+fn a_restricted_id_used_to_find_a_record_is_sent_like_an_output() {
+    let found = company(&format!(
+        r#"{BRIEF}
+query project_card(project_id: Project.id) -> ProjectCard? {{
+    from: Project
+    where: Project.id == project_id
+}}
+
+action brief_project(brief_id: Brief.id) fails BriefNotFound, ProjectNotFound -> ProjectCard {{
+    var brief: Brief = attempt Brief.get(brief_id)
+    var project: Project = attempt Project.get(brief.project_id)
+    return ProjectCard {{
+        id: project.id
+        name: project.name
+    }}
+}}
+
+action brief_card(brief_id: Brief.id) fails BriefNotFound -> ProjectCard? {{
+    var brief: Brief = attempt Brief.get(brief_id)
+    return project_card(brief.project_id)
+}}
+"#
+    ));
+    assert_eq!(
+        rules_of(&found),
+        [
+            "policy.output_field_unproved",
+            "policy.output_field_unproved"
+        ],
+        "{found:#?}"
+    );
+    let all = found.join("\n");
+    for expected in [
+        "`brief_project` finds a `Project` by `Brief.project_id`, which not every caller may read",
+        "`brief_card` runs `project_card` with `Brief.project_id`, which not every caller may read",
+    ] {
+        assert!(all.contains(expected), "{expected}\n{all}");
+    }
+}
+
+#[test]
+fn an_include_through_a_restricted_reference_shows_it() {
+    let found = company(&format!(
+        r#"{BRIEF}
+type BriefView = Output {{
+    pick: [Brief.id]
+    project: ProjectCard
+}}
+
+query brief_view(brief_id: Brief.id) -> BriefView? {{
+    from: Brief
+    where: Brief.id == brief_id
+    include: {{
+        project: Brief.project_id
+    }}
+}}
+
+type ProjectBriefs = Output {{
+    pick: [Project.id]
+    briefs: List<BriefCard>
+}}
+
+query project_briefs(project_id: Project.id) -> ProjectBriefs? {{
+    from: Project
+    where: Project.id == project_id
+    include: {{
+        briefs: {{
+            via: Brief.project_id
+            order: [Brief.id asc]
+            limit: 50
+        }}
+    }}
+}}
+"#
+    ));
+    assert_eq!(
+        rules_of(&found),
+        [
+            "policy.output_field_unproved",
+            "policy.output_field_unproved"
+        ],
+        "{found:#?}"
+    );
+    let all = found.join("\n");
+    for expected in [
+        "`brief_view` includes the `Project` each `Brief` refers to through `project_id`, which not every caller may read",
+        "`project_briefs` includes the `Brief`s that refer to each `Project` through `project_id`, which not every caller may read",
+    ] {
+        assert!(all.contains(expected), "{expected}\n{all}");
+    }
+}
+
+#[test]
+fn the_record_an_update_returns_is_proved_against_its_read_even_with_no_field_policy() {
+    // No field has a policy of its own, and no create is for user fields
+    // only: a helper may change a board, but only its owner may read it.
+    let found = support::problems(
+        Layout::Loose,
+        &[(
+            "main.jadpo",
+            r#"principal {
+    user: {
+        subject: Person.handle
+    }
+}
+
+authentication {
+    api_token: {}
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+type Words = Text {
+    max_length: 200
+}
+
+entity Person {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+    }
+}
+
+entity Board {
+    id: Uuid
+    owner_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    helper_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Words
+    secret: Words
+
+    policy: {
+        create: [Access.authenticated]
+        read: [owner_id]
+        update: [owner_id, helper_id]
+    }
+}
+
+type BoardView = Output {
+    pick: [Board.id, Board.secret]
+}
+
+type BoardTitle = Output {
+    pick: [Board.id, Board.title]
+}
+
+type Retitle = Input {
+    title: Words
+}
+
+action bump_board(board_id: Board.id, input: Retitle) fails BoardNotFound -> BoardView {
+    var board: Board = attempt Board.update(board_id) {
+        set: {
+            title: input.title
+        }
+    }
+    return BoardView {
+        id: board.id
+        secret: board.secret
+    }
+}
+
+action open_board(input: OpenBoard) fails PersonNotFound -> BoardTitle {
+    var board: Board = attempt Board.create {
+        set: {
+            owner_id: input.owner_id
+            helper_id: input.helper_id
+            title: input.title
+            secret: input.title
+        }
+    }
+    return BoardTitle {
+        id: board.id
+        title: board.title
+    }
+}
+
+type OpenBoard = Input {
+    owner_id: Person.id
+    helper_id: Person.id
+    title: Words
+}
+"#,
+        )],
+    );
+    assert_eq!(
+        rules_of(&found),
+        ["policy.output_field_unproved"],
+        "{found:#?}"
+    );
+    assert!(
+        found[0].contains("`BoardView.secret` carries `Board.secret`, which not every caller of `bump_board` may read"),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn an_update_whose_record_may_come_from_several_places_is_proved_for_each() {
+    // Only editors may create a ledger, and only they read its total; anyone
+    // in the company reads and changes one.
+    let found = company(
+        r#"entity Ledger {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    name: Label
+    total: Amount {
+        policy: {
+            read: [Role.editor]
+        }
+    }
+
+    policy: {
+        create: [Role.editor]
+        read: [Role.owner, Role.editor, Role.viewer]
+        update: [Role.owner, Role.editor, Role.viewer]
+    }
+}
+
+type TotalView = Output {
+    pick: [Ledger.id, Ledger.total]
+}
+
+action fresh_total(company_id: Company.id) fails CompanyNotFound -> TotalView {
+    var ledger: Ledger = attempt Ledger.create {
+        set: {
+            company_id: company_id
+            name: "New"
+            total: 0
+        }
+    }
+    var changed: Ledger = Ledger.update(ledger) {
+        set: {
+            name: "Renamed"
+        }
+    }
+    return TotalView {
+        id: changed.id
+        total: changed.total
+    }
+}
+
+type Fresh = Bool {}
+
+action either_total(ledger_id: Ledger.id, company_id: Company.id, fresh: Fresh) fails LedgerNotFound, CompanyNotFound -> TotalView {
+    var mut ledger: Ledger = attempt Ledger.get(ledger_id)
+    if (fresh) {
+        ledger = attempt Ledger.create {
+            set: {
+                company_id: company_id
+                name: "New"
+                total: 0
+            }
+        }
+    }
+    var changed: Ledger = Ledger.update(ledger) {
+        set: {
+            name: "Renamed"
+        }
+    }
+    return TotalView {
+        id: changed.id
+        total: changed.total
+    }
+}
+"#,
+    );
+    assert_eq!(
+        rules_of(&found),
+        ["policy.output_field_unproved"],
+        "{found:#?}"
+    );
+    assert!(
+        found[0].contains("`TotalView.total` carries `Ledger.total`, which not every caller of `either_total` may read"),
+        "{found:#?}"
+    );
+}
+
+/// A club whose seats hold a role, `optional` or not, and a query of a
+/// person's seats with each one's club.
+fn club(optional: bool) -> Vec<String> {
+    let role = if optional { "ClubRole?" } else { "ClubRole" };
+    let text = format!(
+        r#"principal {{
+    user: {{
+        subject: Person.handle
+    }}
+}}
+
+authentication {{
+    api_token: {{}}
+}}
+
+type Handle = Text {{
+    max_length: 40
+}}
+
+type ClubRole = Enum {{
+    chair
+    member
+}}
+
+entity Person {{
+    id: Uuid
+    handle: Handle {{
+        unique: true
+    }}
+
+    policy: {{
+        read: [id]
+    }}
+}}
+
+entity Club {{
+    id: Uuid
+    handle: Handle
+
+    policy: {{
+        read: [ClubRole.chair, ClubRole.member]
+    }}
+}}
+
+entity ClubSeat {{
+    id: Uuid
+    club_id: Club.id {{
+        on_delete: OnDelete.cascade
+    }}
+    person_id: Person.id {{
+        on_delete: OnDelete.cascade
+    }}
+    role: {role}
+
+    membership: {{
+        scope: club_id
+        member: person_id
+        role: role
+    }}
+
+    policy: {{
+        read: [person_id]
+    }}
+}}
+
+type ClubCard = Output {{
+    pick: [Club.id, Club.handle]
+}}
+
+type SeatView = Output {{
+    pick: [ClubSeat.id]
+    club: ClubCard
+}}
+
+query my_seats(person_id: Person.id) -> List<SeatView> {{
+    from: ClubSeat
+    where: ClubSeat.person_id == person_id
+    order: [ClubSeat.id asc]
+    limit: 50
+    include: {{
+        club: ClubSeat.club_id
+    }}
+}}
+"#
+    );
+    support::problems(Layout::Loose, &[("main.jadpo", text.as_str())])
+}
+
+#[test]
+fn a_membership_whose_role_may_be_none_holds_no_role_a_proof_can_count_on() {
+    assert_eq!(club(false), Vec::<String>::new());
+    let found = club(true);
+    assert_eq!(
+        rules_of(&found),
+        ["policy.output_field_unproved"],
+        "{found:#?}"
+    );
+    assert!(
+        found[0].contains("`my_seats` includes the `Club` each `ClubSeat` refers to"),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_caller_inside_a_named_type_never_reaches_a_client_or_a_failure() {
+    let found = with(
+        r#"type Wrapper = Object {
+    who: Principal.user
+}
+
+type Nested = Object {
+    inner: List<Wrapper>
+}
+
+type WhoView = Output {
+    wrapper: Wrapper
+}
+
+type WhoInput = Input {
+    nested: Nested
+}
+
+type WhoFailed = Failure {
+    kind: FailureKind.conflict
+    message: "No."
+    client: {
+        wrapper: Wrapper?
+    }
+}
+"#,
+    );
+    assert_eq!(
+        rules_of(&found),
+        [
+            "type.auth_principal_failure_context",
+            "type.auth_principal_input",
+            "type.auth_principal_output"
+        ],
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_create_sets_its_user_field_from_the_caller_on_every_path() {
+    let found = with(
+        r#"entity Draft {
+    id: Uuid
+    owner_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    text: NoteText
+
+    policy: {
+        create: [owner_id]
+        read: [owner_id]
+    }
+}
+
+type Mine = Bool {}
+
+action draft_either(me: Principal.user, other: Person.id, mine: Mine, text: NoteText) fails PersonNotFound -> Draft {
+    var mut owner: Person.id = me.id
+    if (mine == false) {
+        owner = other
+    }
+    return attempt Draft.create {
+        set: {
+            owner_id: owner
+            text: text
+        }
+    }
+}
+
+action draft_maybe(me: Principal.user, mine: Mine, text: NoteText) -> Draft? {
+    if (mine) {
+        return Draft.create {
+            set: {
+                owner_id: me.id
+                text: text
+            }
+        }
+    }
+    return none
+}
+"#,
+    );
+    assert_eq!(
+        rules_of(&found),
+        ["policy.role_field_create_forbidden"],
+        "{found:#?}"
+    );
+    assert!(
+        found[0].contains("`draft_either` sets `Draft.owner_id` from the request"),
         "{found:#?}"
     );
 }

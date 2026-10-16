@@ -2132,3 +2132,662 @@ query company_projects(company_id: Company.id) -> List<ProjectCard> {
         refused.stdout
     );
 }
+
+// --- chunk 4.8: tenancy, moves, transitions and listed lines ------------------
+
+/// A guild application: anyone signed in founds a guild and takes a seat
+/// in it, or gives one to someone else in a guild they sit in; a job is
+/// closed by a master, since only masters set when it closed; a master
+/// moves a job between guilds; and a tally is listed for masters, though
+/// it changes no record a master's role could be checked on.
+const GUILD: &[(&str, &str)] = &[
+    (
+        "app.jadpo",
+        r#"use craft/entities { Member }
+
+application {}
+
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+"#,
+    ),
+    (
+        "authentication.jadpo",
+        r#"authentication {
+    browser_session: {
+        cookie: "guild_session"
+    }
+}
+"#,
+    ),
+    (
+        "policy.jadpo",
+        r#"use craft
+use craft/entities { Guild }
+use craft/types { GuildRole }
+
+policy {
+    tenant: Guild
+    actions: {
+        craft.move_job: [GuildRole.master]
+        craft.tally: [GuildRole.master]
+    }
+}
+"#,
+    ),
+    (
+        "domains/craft/types/handle.jadpo",
+        r#"type Handle = Text {
+    min_length: 3
+    max_length: 40
+}
+"#,
+    ),
+    (
+        "domains/craft/types/label.jadpo",
+        r#"type Label = Text {
+    min_length: 1
+    max_length: 80
+}
+"#,
+    ),
+    (
+        "domains/craft/types/guild_role.jadpo",
+        r#"type GuildRole = Enum {
+    master
+    hand
+}
+"#,
+    ),
+    (
+        "domains/craft/types/job_status.jadpo",
+        r#"type JobStatus = Enum {
+    open
+    closed
+}
+"#,
+    ),
+    (
+        "domains/craft/types/guild_card.jadpo",
+        r#"use craft/entities { Guild }
+
+type GuildCard = Output {
+    pick: [Guild.id, Guild.name]
+}
+"#,
+    ),
+    (
+        "domains/craft/types/seat_view.jadpo",
+        r#"use craft/entities { GuildSeat }
+
+type SeatView = Output {
+    pick: [GuildSeat.id, GuildSeat.role]
+}
+"#,
+    ),
+    (
+        "domains/craft/types/job_card.jadpo",
+        r#"use craft/entities { Job }
+
+type JobCard = Output {
+    pick: [Job.id, Job.title]
+}
+"#,
+    ),
+    (
+        "domains/craft/types/tally_view.jadpo",
+        r#"type TallyView = Output {
+    ok: Bool
+}
+"#,
+    ),
+    (
+        "domains/craft/entities/member.jadpo",
+        r#"use craft/types { Handle }
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+"#,
+    ),
+    (
+        "domains/craft/entities/guild.jadpo",
+        r#"use craft/types { GuildRole, Label }
+
+entity Guild {
+    id: Uuid
+    name: Label
+
+    policy: {
+        create: [Access.authenticated]
+        read: [GuildRole.master, GuildRole.hand]
+    }
+}
+"#,
+    ),
+    (
+        "domains/craft/entities/guild_seat.jadpo",
+        r#"use craft/entities { Guild, Member }
+use craft/types { GuildRole }
+
+entity GuildSeat {
+    id: Uuid
+    guild_id: Guild.id {
+        on_delete: OnDelete.cascade
+    }
+    member_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+    role: GuildRole
+
+    membership: {
+        scope: guild_id
+        member: member_id
+        role: role
+    }
+
+    policy: {
+        create: [Access.authenticated]
+        read: [GuildRole.master, member_id]
+    }
+}
+"#,
+    ),
+    (
+        "domains/craft/entities/job.jadpo",
+        r#"use craft/entities { Guild }
+use craft/types { GuildRole, JobStatus, Label }
+
+entity Job {
+    id: Uuid
+    guild_id: Guild.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Label
+    status: JobStatus
+    closed_at: Instant? {
+        policy: {
+            update: [GuildRole.master]
+        }
+    }
+
+    lifecycle: {
+        initial: {
+            status: JobStatus.open
+        }
+        transitions: {
+            close: {
+                when: status == JobStatus.open
+                set: {
+                    status: JobStatus.closed
+                    closed_at: clock.now
+                }
+            }
+        }
+    }
+
+    policy: {
+        create: [GuildRole.master, GuildRole.hand]
+        read: [GuildRole.master, GuildRole.hand]
+        update: [GuildRole.master, GuildRole.hand]
+    }
+}
+"#,
+    ),
+    (
+        "domains/craft/failures/handle_taken.jadpo",
+        r#"type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+"#,
+    ),
+    (
+        "domains/craft/failures/job_closed.jadpo",
+        r#"type JobClosed = Failure {
+    kind: FailureKind.conflict
+    message: "That job is closed."
+}
+"#,
+    ),
+    (
+        "domains/craft/actions/register.jadpo",
+        r#"use craft/entities { Member }
+use craft/types { Handle }
+use craft/failures { HandleTaken }
+
+action register(handle: Handle) fails HandleTaken -> Member {
+    return attempt Member.create {
+        set: {
+            handle: handle
+        }
+        conflict: {
+            Member.handle: HandleTaken
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/craft/actions/found_guild.jadpo",
+        r#"use craft/entities { Guild, GuildSeat }
+use craft/types { GuildCard, GuildRole, Label }
+
+action found_guild(name: Label, founder: Principal.user) -> GuildCard {
+    var guild: Guild = Guild.create {
+        set: {
+            name: name
+        }
+    }
+    var seat: GuildSeat = GuildSeat.create {
+        set: {
+            guild_id: guild.id
+            member_id: founder.id
+            role: GuildRole.master
+        }
+    }
+    assert seat.role == GuildRole.master
+    return GuildCard {
+        id: guild.id
+        name: guild.name
+    }
+}
+"#,
+    ),
+    (
+        "domains/craft/actions/take_seat.jadpo",
+        r#"use craft/entities { Guild, GuildNotFound, GuildSeat, Member, MemberNotFound }
+use craft/types { GuildRole, SeatView }
+
+action take_seat(guild_id: Guild.id, input: NewSeat) fails GuildNotFound, MemberNotFound -> SeatView {
+    var seat: GuildSeat = attempt GuildSeat.create {
+        set: {
+            guild_id: guild_id
+            member_id: input.member_id
+            role: input.role
+        }
+    }
+    return SeatView {
+        id: seat.id
+        role: seat.role
+    }
+}
+
+type NewSeat = Input {
+    member_id: Member.id
+    role: GuildRole
+}
+"#,
+    ),
+    (
+        "domains/craft/actions/open_job.jadpo",
+        r#"use craft/entities { Guild, GuildNotFound, Job }
+use craft/types { JobCard, Label }
+
+action open_job(input: OpenJob) fails GuildNotFound -> JobCard {
+    var job: Job = attempt Job.create {
+        set: {
+            guild_id: input.guild_id
+            title: input.title
+        }
+    }
+    return JobCard {
+        id: job.id
+        title: job.title
+    }
+}
+
+type OpenJob = Input {
+    guild_id: Guild.id
+    title: Label
+}
+"#,
+    ),
+    (
+        "domains/craft/actions/close_job.jadpo",
+        r#"use craft/entities { Job, JobNotFound }
+use craft/failures { JobClosed }
+use craft/types { JobCard }
+
+action close_job(job_id: Job.id) fails JobNotFound, JobClosed -> JobCard {
+    var job: Job = attempt Job.close(job_id) {
+        conflict: {
+            Job.close: JobClosed
+        }
+    }
+    return JobCard {
+        id: job.id
+        title: job.title
+    }
+}
+"#,
+    ),
+    (
+        "domains/craft/actions/move_job.jadpo",
+        r#"use craft/entities { Guild, GuildNotFound, Job, JobNotFound }
+use craft/types { JobCard }
+
+action move_job(job_id: Job.id, input: MoveJob) fails JobNotFound, GuildNotFound -> JobCard {
+    var job: Job = attempt Job.update(job_id) {
+        set: {
+            guild_id: input.to
+        }
+    }
+    return JobCard {
+        id: job.id
+        title: job.title
+    }
+}
+
+type MoveJob = Input {
+    to: Guild.id
+}
+"#,
+    ),
+    (
+        "domains/craft/actions/tally.jadpo",
+        r#"use craft/types { TallyView }
+
+action tally() -> TallyView {
+    return TallyView {
+        ok: true
+    }
+}
+"#,
+    ),
+    (
+        "domains/craft/queries/guild_jobs.jadpo",
+        r#"use craft/entities { Guild, Job }
+use craft/types { JobCard }
+
+query guild_jobs(guild_id: Guild.id) -> List<JobCard> {
+    from: Job
+    where: Job.guild_id == guild_id
+    order: [Job.title asc]
+    limit: 100
+}
+"#,
+    ),
+    (
+        "domains/craft/routes/guilds.jadpo",
+        r#"use craft/entities { Guild }
+use craft/types { SeatView }
+use craft/actions { NewSeat, take_seat }
+
+routes Guilds {
+    prefix: /guilds
+
+    POST /{guild_id: Guild.id}/seats {
+        input: NewSeat
+        output: SeatView
+        status: SuccessStatus.created
+        run: take_seat(guild_id, input)
+    }
+}
+"#,
+    ),
+    (
+        "domains/craft/routes/jobs.jadpo",
+        r#"use craft/entities { Guild, Job }
+use craft/types { JobCard }
+use craft/actions { MoveJob, OpenJob, close_job, move_job, open_job }
+use craft/queries { guild_jobs }
+
+routes Jobs {
+    prefix: /jobs
+
+    POST / {
+        input: OpenJob
+        output: JobCard
+        status: SuccessStatus.created
+        run: open_job(input)
+    }
+
+    GET /in/{guild_id: Guild.id} {
+        output: List<JobCard>
+        run: guild_jobs(guild_id)
+    }
+
+    POST /{job_id: Job.id}/close {
+        output: JobCard
+        run: close_job(job_id)
+    }
+
+    POST /{job_id: Job.id}/move {
+        input: MoveJob
+        output: JobCard
+        run: move_job(job_id, input)
+    }
+}
+"#,
+    ),
+];
+
+const GUILD_TESTS: &str = r#"use craft/entities { Member }
+use craft/types { GuildCard, GuildRole, JobCard, SeatView }
+use craft/actions { MoveJob, NewSeat, OpenJob, found_guild, open_job, register, take_seat }
+
+test "anyone founds a guild, and nobody seats themselves in someone else's" {
+    var ann: Member = attempt register("ann")
+    var eve: Member = attempt register("eve")
+    var forge: GuildCard = found_guild("Forge", Principal.user(ann))
+    var seized: Response = request {
+        method: HttpMethod.post
+        path: "/guilds/{guild_id}/seats"
+        params: {
+            guild_id: forge.id
+        }
+        as: Principal.user(eve)
+        input: NewSeat {
+            member_id: eve.id
+            role: GuildRole.master
+        }
+    }
+    assert seized.status == 403
+    assert seized.code == "not_permitted"
+    var own: GuildCard = found_guild("Anvil", Principal.user(eve))
+    assert own.name == "Anvil"
+    var given: Response = request {
+        method: HttpMethod.post
+        path: "/guilds/{guild_id}/seats"
+        params: {
+            guild_id: forge.id
+        }
+        as: Principal.user(ann)
+        input: NewSeat {
+            member_id: eve.id
+            role: GuildRole.hand
+        }
+    }
+    assert given.status == 201
+}
+
+test "moving a job to another guild needs a seat in it" {
+    var ann: Member = attempt register("ann")
+    var bob: Member = attempt register("bob")
+    var forge: GuildCard = found_guild("Forge", Principal.user(ann))
+    var anvil: GuildCard = found_guild("Anvil", Principal.user(bob))
+    var job: JobCard = attempt open_job(
+        OpenJob {
+            guild_id: forge.id
+            title: "Hinge"
+        }
+    )
+    var away: Response = request {
+        method: HttpMethod.post
+        path: "/jobs/{job_id}/move"
+        params: {
+            job_id: job.id
+        }
+        as: Principal.user(ann)
+        input: MoveJob {
+            to: anvil.id
+        }
+    }
+    assert away.status == 403
+    assert away.code == "not_permitted"
+    var hand: SeatView = attempt take_seat(
+        anvil.id,
+        NewSeat {
+            member_id: ann.id
+            role: GuildRole.hand
+        }
+    )
+    assert hand.role == GuildRole.hand
+    var moved: Response = request {
+        method: HttpMethod.post
+        path: "/jobs/{job_id}/move"
+        params: {
+            job_id: job.id
+        }
+        as: Principal.user(ann)
+        input: MoveJob {
+            to: anvil.id
+        }
+    }
+    assert moved.status == 200
+    var seen: Response = request {
+        method: HttpMethod.get
+        path: "/jobs/in/{guild_id}"
+        params: {
+            guild_id: anvil.id
+        }
+        as: Principal.user(bob)
+    }
+    assert seen.output == [job]
+}
+
+test "a hand can't close a job only a master may mark closed, and closing twice conflicts" {
+    var ann: Member = attempt register("ann")
+    var cyd: Member = attempt register("cyd")
+    var forge: GuildCard = found_guild("Forge", Principal.user(ann))
+    var hand: SeatView = attempt take_seat(
+        forge.id,
+        NewSeat {
+            member_id: cyd.id
+            role: GuildRole.hand
+        }
+    )
+    assert hand.role == GuildRole.hand
+    var job: JobCard = attempt open_job(
+        OpenJob {
+            guild_id: forge.id
+            title: "Hinge"
+        }
+    )
+    var by_hand: Response = request {
+        method: HttpMethod.post
+        path: "/jobs/{job_id}/close"
+        params: {
+            job_id: job.id
+        }
+        as: Principal.user(cyd)
+    }
+    assert by_hand.status == 403
+    assert by_hand.code == "not_permitted"
+    var by_master: Response = request {
+        method: HttpMethod.post
+        path: "/jobs/{job_id}/close"
+        params: {
+            job_id: job.id
+        }
+        as: Principal.user(ann)
+    }
+    assert by_master.status == 200
+    var again: Response = request {
+        method: HttpMethod.post
+        path: "/jobs/{job_id}/close"
+        params: {
+            job_id: job.id
+        }
+        as: Principal.user(ann)
+    }
+    assert again.status == 409
+    assert again.code == "job_closed"
+    var hand_again: Response = request {
+        method: HttpMethod.post
+        path: "/jobs/{job_id}/close"
+        params: {
+            job_id: job.id
+        }
+        as: Principal.user(cyd)
+    }
+    assert hand_again.status == 403
+}
+"#;
+
+fn guild(name: &str) -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("policy-{name}"));
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in GUILD {
+        write(&root, path, text);
+    }
+    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    let recorded = jadpo(&root, &["api", "update"]);
+    assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
+    root
+}
+
+#[test]
+fn tenancy_seats_only_founders_moves_need_a_seat_and_a_field_refusal_comes_first() {
+    if skipped() {
+        return;
+    }
+    let root = guild("guild");
+    write(&root, "domains/craft/routes/guilds.test.jadpo", GUILD_TESTS);
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(tested.stdout.contains("3 passed"), "{}", tested.stdout);
+}
+
+#[test]
+fn a_listed_line_held_in_a_record_refuses_an_action_that_changes_none() {
+    if skipped() {
+        return;
+    }
+    let root = guild("guild-tally");
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let host = Store(postgres(&url).expect("store"), std::cell::Cell::new(0));
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let ann = value(call(&program, &host, "register", vec![Value::text("ann")], None).await);
+        let ann_in = signed_in(&ann);
+        value(
+            call(
+                &program,
+                &host,
+                "found_guild",
+                vec![Value::text("Forge"), ann_in.clone()],
+                Some(&ann_in),
+            )
+            .await,
+        );
+        // Ann is a master of a guild, but `tally` changes no record her
+        // role could be checked on: its line lets nobody call it.
+        let refused = call(&program, &host, "tally", Vec::new(), Some(&ann_in)).await;
+        assert!(
+            matches!(&refused, Outcome::Failed(failure) if failure.code == "not_permitted"),
+            "{refused:?}"
+        );
+    });
+}
