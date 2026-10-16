@@ -222,6 +222,40 @@ pub(crate) fn table(
             line,
         });
     }
+    // The exchange the runtime answers (area 8, "Ways to sign in"): in
+    // the first API that accepts service keys, which the token it gives
+    // signs in to, as every API that accepts them is.
+    let exchange_api = out.apis.iter().position(|api| {
+        api.methods
+            .contains(&jadpo_std::AuthenticationMethod::ServiceKey)
+    });
+    if identity.exchanges()
+        && let Some(api) = exchange_api
+    {
+        out.routes.push(RoutePlan {
+            key: format!(
+                "route POST /{}",
+                jadpo_std::http::EXCHANGE_PATH.join("/")
+            ),
+            method: jadpo_std::HttpMethod::Post,
+            segments: jadpo_std::http::EXCHANGE_PATH
+                .iter()
+                .map(|text| Segment::Fixed(text.to_string()))
+                .collect(),
+            api: api as u32,
+            input: None,
+            output: None,
+            status: jadpo_std::SuccessStatus::Ok,
+            deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
+            run: Run::Exchange,
+            keys: None,
+            args: Vec::new(),
+            authentication: jadpo_std::http::Authentication::Required,
+            caller: Some(jadpo_std::http::PrincipalKind::Service),
+            file: "generated".to_string(),
+            line: 0,
+        });
+    }
     out.codecs = codecs.codecs;
     out
 }

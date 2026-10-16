@@ -84,11 +84,14 @@ pub fn record_bodies(db: &dyn Db, project: Project) -> BTreeMap<String, String> 
     by_api
         .into_iter()
         .map(|(api, routes)| {
-            let mut body = write(&wire, &lookup, routes);
-            let mut head = String::new();
             // How clients sign in: switching a bearer-only API to cookies
             // changes what a browser's requests carry (area 8).
             let methods = super::apis::accepted_methods(db, project, &api);
+            // The exchange the runtime answers where services sign in.
+            let exchange = crate::identity::identity(db, project).exchanges()
+                && methods.contains(&jadpo_std::AuthenticationMethod::ServiceKey);
+            let mut body = write(&wire, &lookup, routes, exchange);
+            let mut head = String::new();
             if !methods.is_empty() {
                 let names: Vec<&str> = methods.iter().map(|method| method.name()).collect();
                 head.push_str(&format!("authentication: {}\n", names.join(", ")));
@@ -116,16 +119,47 @@ fn method_order(route: &RouteModel) -> usize {
         .unwrap_or(0)
 }
 
+/// The generated `POST /auth/exchange` (area 8, "Ways to sign in"), as
+/// its record lists it: the runtime's, for services.
+fn exchange_entry() -> String {
+    format!(
+        "POST /{}\n    generated: exchange\n    caller: service\n    output: {}\n    status: 200\n\n",
+        jadpo_std::http::EXCHANGE_PATH.join("/"),
+        jadpo_std::http::EXCHANGED_TOKEN
+    )
+}
+
+/// The record's section for what the exchange answers with.
+fn exchanged_section() -> String {
+    format!(
+        "output {}\n    token: ServiceToken\n    expires_at: Instant\n",
+        jadpo_std::http::EXCHANGED_TOKEN
+    )
+}
+
 fn write(
     wire: &Wire<'_>,
     lookup: &Lookup<'_>,
     mut routes: Vec<(&GroupModel, &RouteModel)>,
+    exchange: bool,
 ) -> String {
     routes.sort_by_key(|(_, route)| (route.path(), method_order(route)));
     let mut refs: BTreeSet<Key> = BTreeSet::new();
     let mut failures: BTreeSet<Key> = BTreeSet::new();
     let mut out = String::new();
+    let exchange_at = (
+        format!("/{}", jadpo_std::http::EXCHANGE_PATH.join("/")),
+        jadpo_std::HttpMethod::ALL
+            .iter()
+            .position(|m| *m == jadpo_std::HttpMethod::Post)
+            .unwrap_or(0),
+    );
+    let mut exchange_due = exchange;
     for (_, route) in &routes {
+        if exchange_due && (route.path(), method_order(route)) > exchange_at {
+            out.push_str(&exchange_entry());
+            exchange_due = false;
+        }
         let path: String = route
             .segments
             .iter()
@@ -198,6 +232,9 @@ fn write(
             out.push_str(&format!("    fails: {}\n", shown.join(", ")));
         }
         out.push('\n');
+    }
+    if exchange_due {
+        out.push_str(&exchange_entry());
     }
     // Failures' client fields name types too.
     let mut failure_text = String::new();
@@ -316,6 +353,12 @@ fn write(
             }
         }
         sections.insert(name, text);
+    }
+    if exchange {
+        sections.insert(
+            jadpo_std::http::EXCHANGED_TOKEN.to_string(),
+            exchanged_section(),
+        );
     }
     for text in sections.values() {
         out.push_str(text);

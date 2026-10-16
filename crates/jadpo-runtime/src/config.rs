@@ -205,6 +205,24 @@ impl ConfigValues {
     fn entry(&self, name: &str) -> Option<&Entry> {
         self.entries.iter().find(|entry| entry.name == name)
     }
+
+    /// Values set straight from `(name, text)` pairs, for the runtime's
+    /// own tests.
+    #[cfg(test)]
+    pub(crate) fn for_test(pairs: &[(&str, &str)]) -> ConfigValues {
+        ConfigValues {
+            entries: pairs
+                .iter()
+                .map(|(name, text)| Entry {
+                    name: name.to_string(),
+                    secret: false,
+                    text: Some(text.to_string()),
+                    previous: None,
+                    source: Some(Source::Test),
+                })
+                .collect(),
+        }
+    }
 }
 
 /// How each setting stands against `variables`: set, defaulted, missing or

@@ -5,7 +5,10 @@
 //! that reads the caller's record now (area 8).
 //!
 //! The screen is one block per API, its name and prefix in bold, then a
-//! row per route in the order a URL is read; the footer counts them.
+//! row per route in the order a URL is read; the footer counts them. A
+//! route the runtime answers itself, the key exchange a revocation delay
+//! and service keys bring (area 8), is listed in each API that accepts
+//! service keys, running `generated exchange`, written `generated`.
 
 use std::path::PathBuf;
 
@@ -35,7 +38,25 @@ pub fn routes(call: &Call) -> Reply {
     let apis = api_table(db, project);
     let groups: &Groups = groups(db, project);
     let graph = jadpo_check::graph::graph(db, project);
-    let lines = listing(groups, graph);
+    let mut lines = listing(groups, graph);
+    if jadpo_check::identity::identity(db, project).exchanges() {
+        for api in &apis.apis {
+            let methods = jadpo_check::routes::apis::accepted_methods(db, project, &api.name);
+            if methods.contains(&jadpo_std::AuthenticationMethod::ServiceKey) {
+                lines.push(Line {
+                    api: api.name.clone(),
+                    method: "POST".to_string(),
+                    path: format!("/{}", jadpo_std::http::EXCHANGE_PATH.join("/")),
+                    runs: "generated exchange".to_string(),
+                    authentication: "required",
+                    file: String::new(),
+                    line: 0,
+                    place: "generated".to_string(),
+                });
+            }
+        }
+        lines.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
+    }
     let mut screen = Screen::new();
     let mut data = Vec::new();
     let mut count = 0usize;
@@ -84,6 +105,7 @@ pub fn routes(call: &Call) -> Reply {
                 ("authentication", Json::from(r.authentication)),
                 ("file", Json::from(r.file.as_str())),
                 ("line", Json::from(r.line as usize)),
+                ("generated", Json::from(r.file.is_empty())),
             ]));
         }
     }

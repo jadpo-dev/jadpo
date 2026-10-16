@@ -14,7 +14,9 @@
 //! and in no document. The sign-in methods the API accepts are its
 //! security schemes (area 8; area 7, question 12): a route anyone may call
 //! says `security: []`, and every other answers 401, 403 and 503 for the
-//! ways signing in fails.
+//! ways signing in fails. With a revocation delay and service keys, an API
+//! that accepts them lists the runtime's `POST /auth/exchange`, marked
+//! `x-jadpo-generated` (area 7, question 12).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -213,6 +215,14 @@ pub fn document(
         let entry = paths.entry(route.path()).or_insert_with(Value::object);
         entry.set(&route.method.word().to_ascii_lowercase(), operation);
     }
+    let exchange = identity.exchanges()
+        && methods.contains(&jadpo_std::AuthenticationMethod::ServiceKey);
+    if exchange {
+        let entry = paths
+            .entry(format!("/{}", jadpo_std::http::EXCHANGE_PATH.join("/")))
+            .or_insert_with(Value::object);
+        entry.set("post", exchange_operation(&methods, &mut failure_schemas));
+    }
 
     // Every object and enum the routes name, until none is new.
     let mut schemas: BTreeMap<String, Value> = BTreeMap::new();
@@ -225,6 +235,12 @@ pub fn document(
             None => type_schema(&wire, &key, &mut refs),
         };
         schemas.insert(name, schema);
+    }
+    if exchange {
+        schemas.insert(
+            jadpo_std::http::EXCHANGED_TOKEN.to_string(),
+            exchanged_schema(),
+        );
     }
     for (_, name, code, description) in SHARED {
         schemas.insert(
@@ -270,13 +286,20 @@ pub fn document(
         if *method == jadpo_std::AuthenticationMethod::BrowserSession
             && let Some(cookie) = identity.cookie()
         {
+            let configured = identity
+                .method(jadpo_std::AuthenticationMethod::BrowserSession)
+                .is_some_and(|method| method.origin.is_some());
             let mut scheme = Value::object();
             scheme.set("type", "apiKey");
             scheme.set("in", "cookie");
             scheme.set("name", cookie);
             scheme.set(
                 "description",
-                "A browser session, which a route whose action calls `sessions.start` begins. A write also sends `X-Jadpo-CSRF` with the token from the `_csrf` cookie, and an `Origin` naming this server.",
+                if configured {
+                    "A browser session, which a route whose action calls `sessions.start` begins. A write also sends `X-Jadpo-CSRF` with the token from the `_csrf` cookie, and an `Origin` that is the application's configured origin."
+                } else {
+                    "A browser session, which a route whose action calls `sessions.start` begins. A write also sends `X-Jadpo-CSRF` with the token from the `_csrf` cookie, and an `Origin` naming this server."
+                },
             );
             schemes.set(method.name(), scheme);
             let mut requirement = Value::object();
@@ -294,6 +317,114 @@ pub fn document(
     out.set("paths", Value::Object(paths));
     out.set("components", components);
     Some(out)
+}
+
+/// The runtime's `POST /auth/exchange` (area 8, "Ways to sign in"): a
+/// service key in, a short-lived token out, with what signing in with the
+/// key can answer.
+fn exchange_operation(
+    methods: &[jadpo_std::AuthenticationMethod],
+    failure_schemas: &mut BTreeMap<String, Value>,
+) -> Value {
+    use jadpo_std::AuthenticationMethod as M;
+    let mut out = Value::object();
+    out.set("operationId", "post_auth_exchange");
+    out.set(
+        "description",
+        "Trades the service key the request signs in with for a token that signs the service in without a read until it expires, within the application's revocation delay; once it has, exchange the key again.",
+    );
+    out.set("x-jadpo-generated", true);
+    let mut requirement = Value::object();
+    requirement.set(M::ServiceKey.name(), Vec::<Value>::new());
+    out.set("security", vec![requirement]);
+    let mut responses = Value::object();
+    let mut json = Value::object();
+    json.set("schema", reference(jadpo_std::http::EXCHANGED_TOKEN));
+    let mut content = Value::object();
+    content.set("application/json", json);
+    let mut success = Value::object();
+    success.set("description", "The token, and when it expires.");
+    success.set("content", content);
+    responses.set("200", success);
+    let users = methods
+        .iter()
+        .any(|method| matches!(method, M::BrowserSession | M::ApiToken));
+    let mut by_status: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
+    for (status, name, code, description, when) in SIGN_IN {
+        let answers = match when {
+            When::Always | When::Services => true,
+            When::OtherKind => users,
+            When::CookieWrite => methods.contains(&M::BrowserSession),
+            When::Users => false,
+        };
+        if !answers {
+            continue;
+        }
+        failure_schemas.insert(name.to_string(), envelope(code, description, None));
+        by_status.entry(status).or_default().push((code, name));
+    }
+    for (status, mut failures) in by_status {
+        failures.sort();
+        let mut schemas: Vec<Value> = failures.iter().map(|(_, name)| reference(name)).collect();
+        let codes: Vec<String> = failures
+            .iter()
+            .map(|(code, _)| format!("`{code}`"))
+            .collect();
+        let schema = if schemas.len() == 1 {
+            schemas.remove(0)
+        } else {
+            let mut any = Value::object();
+            any.set("oneOf", schemas);
+            any
+        };
+        responses.set(
+            status,
+            response(
+                &format!("Fails with {}.", crate::and_list(&codes)),
+                Some(schema),
+            ),
+        );
+    }
+    responses.set("400", shared_response("InvalidRequest"));
+    responses.set("413", shared_response("RequestTooLarge"));
+    responses.set("422", shared_response("InvalidInput"));
+    responses.set("429", shared_response("RateLimited"));
+    responses.set("500", shared_response("InternalFault"));
+    responses.set("504", shared_response("DeadlineExceeded"));
+    out.set("responses", responses);
+    out
+}
+
+/// The JSON Schema of what the exchange answers with.
+fn exchanged_schema() -> Value {
+    let mut out = Value::object();
+    out.set(
+        "description",
+        "A short-lived token for a service, sent as `Authorization: Bearer`, and when it expires.",
+    );
+    out.set("type", "object");
+    let mut properties = Value::object();
+    let mut token = Value::object();
+    token.set("type", "string");
+    token.set(
+        "description",
+        format!(
+            "`{}` and a signed part.",
+            jadpo_std::http::SERVICE_TOKEN_PREFIX
+        ),
+    );
+    properties.set("token", token);
+    let mut expires = Value::object();
+    expires.set("type", "string");
+    expires.set("format", "date-time");
+    properties.set("expires_at", expires);
+    out.set("properties", properties);
+    out.set(
+        "required",
+        vec![Value::from("token"), Value::from("expires_at")],
+    );
+    out.set("additionalProperties", false);
+    out
 }
 
 /// What a route's responses follow from in what it runs.
