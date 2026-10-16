@@ -405,10 +405,12 @@ them, mapped by the call's `attempt` as a construction's broken rules are
 the arm's failure). `temporal` runs on jiff with its bundled IANA database,
 in `jadpo-value` only, so every target reads the same zones and none reads
 the platform's (area 10, "Zones and local times"). `temporal.format` and
-`format_relative` are in the table and checked, but `jadpo-value` has no
-locale data to give their text until chunk 5.3, so the checker refuses a
-call that checks (`toolchain.not_built_yet`) and their entry in
-`jadpo-value` is never reached. Enums that Rust code interprets (`Rounding`, `TextFormat`,
+`format_relative` write text for people in `jadpo-value`'s `present` module
+over ICU4X with Unicode CLDR compiled in (pure Rust, pinned exactly, built
+for wasm32 like the rest; area 10, "Chosen in chunk 5.3"): the format
+arrives as `TimeFormatSpec` text, the locale as the `Locale` variant, and
+the locales an application supports (`locales { }`, `LocalePlan`) reach the
+wire through the codecs, which accept only those. Enums that Rust code interprets (`Rounding`, `TextFormat`,
 `UuidVersion`, `Weekday`, `Dst`, `InvalidDay`, `ComponentStyle`, and `Zone` and `Locale` from their tables) are
 declared once, in `jadpo-std`. The namespaces the compiler fills from the
 project or the platform (`clock`, `config`, `translations`, `sessions`,

@@ -407,12 +407,26 @@ reference only).
   a value is expected, checks clean today; it is an error with its own
   rule, a checked example and the one-step fix where one exists (a
   construction, a variant), and every place a value is read is covered.
-- [ ] **5.3 Translations and locales.** `sonnet · high` Besides locales and
-  translations, it gives the text 5.2b left refused: `temporal::format`
-  and `format_relative` in `jadpo-value` over locale data (the format
-  arrives as `TimeFormatSpec` text), `locale:` checked against the
-  supported locales, and the `toolchain.not_built_yet` refusal in
-  `jadpo-check` removed.
+- [x] **5.3 Locales and the text for people** `sonnet · high` (area 10,
+  "Locales" and "Showing dates and times to people"), the first half of
+  "Translations and locales": `locales { }` and its errors, `locale:`
+  checked against it, a `Locale` on the wire and in a setting limited to the
+  supported ones, and `temporal::format` and `format_relative` in
+  `jadpo-value` over ICU4X's compiled CLDR data, with the
+  `toolchain.not_built_yet` refusal removed. The second half, translations,
+  is 5.3b.
+- [ ] **5.3b Translations** `sonnet · high` (area 10, "Translations"): the
+  root `translations/` folder, one JSON file per supported locale of ICU
+  MessageFormat messages (plurals through CLDR's rules, selects, numbers and
+  dates), one typed `translations.<key>(locale:, ...)` call per key of the
+  default locale's file, every other file checked for the same keys and
+  placeholders (their errors, with real output), and the interpreter and
+  runtime running them.
+- [ ] **5.3c Choosing a locale from a request** `sonnet · high` (area 10,
+  "Locales"): the library call that picks a supported `Locale` from an
+  `Accept-Language` header and falls back to `default`. **Needs Richard**
+  to name it before it is built: no page does. Recommendation:
+  `locale.from_accept_language(header)`, giving a `Locale`.
 - [ ] **5.4 Standard library: the plan** `opus · high`. Only `collection`
   and `temporal` are specified, piecemeal across areas 2, 3 and 10, and
   real code keeps needing more: splitting and trimming text, formatting and

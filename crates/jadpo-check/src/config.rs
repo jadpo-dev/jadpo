@@ -674,6 +674,27 @@ impl Reader<'_> {
             });
             return None;
         }
+        // A `Locale` setting starts the application only with a locale it
+        // supports (area 10, "Locales").
+        if reads == Reads::Locale
+            && let Some(plan) = &crate::locales::locales(self.db, self.project).plan
+            && jadpo_std::locale_ordinal(variant).is_some_and(|at| !plan.supports(at))
+        {
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::TYPE_LOCALE_UNSUPPORTED,
+                    format!("`{shown}` isn't a locale this application supports"),
+                )
+                .at(at.clone(), "not in `locales`")
+                .reason(format!(
+                    "`{name}` is read when the application starts, and only the locales listed in `locales {{ supported: }}`, in `app.jadpo`, are accepted there; a {word} outside them could never start."
+                ))
+                .next(format!(
+                    "Add `{shown}` to `supported:` in `app.jadpo`, or use a locale that is listed"
+                )),
+            );
+            return None;
+        }
         let spelling = match reads {
             Reads::Zone => jadpo_std::config::Spelling::Zone,
             Reads::Locale => jadpo_std::config::Spelling::Locale,

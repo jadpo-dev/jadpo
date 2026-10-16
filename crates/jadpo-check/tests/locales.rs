@@ -235,3 +235,16 @@ fn an_application_that_formats_declares_its_locales() {
     );
     assert_eq!(project_rules(""), ["type.temporal_locales_required"]);
 }
+
+#[test]
+fn a_setting_of_type_locale_starts_with_a_supported_one() {
+    let config = "config {\n    ui_locale: Locale {\n        default: Locale.fr_fr\n    }\n}\n";
+    assert_eq!(rules(&format!("{PAGE}\n{config}")), CLEAN);
+    let config = "config {\n    ui_locale: Locale {\n        default: Locale.de_de\n    }\n}\n";
+    assert_eq!(
+        rules(&format!("{PAGE}\n{config}")),
+        ["type.locale_unsupported"]
+    );
+    // With no locales declared there is nothing to start from.
+    assert_eq!(rules(config), CLEAN);
+}
