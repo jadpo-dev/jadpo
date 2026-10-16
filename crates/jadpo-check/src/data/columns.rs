@@ -17,6 +17,11 @@ const DECIMAL_DIGITS: u32 = 38;
 pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
     let structure = table.structure(ty);
     Ok(match &structure {
+        // A token or a key is kept only as its verifier, by the runtime
+        // (area 8).
+        Ty::Prim(prim @ (Builtin::ApiToken | Builtin::ServiceKey)) => {
+            return Err(prim.name().to_string());
+        }
         Ty::Prim(prim) => match prim.representation() {
             Builtin::Uuid => "uuid".into(),
             Builtin::Bool => "boolean".into(),
@@ -36,7 +41,9 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
             | Builtin::Url
             | Builtin::IpAddress
             | Builtin::PageCursor
-            | Builtin::PageSize => {
+            | Builtin::PageSize
+            | Builtin::ApiToken
+            | Builtin::ServiceKey => {
                 return Err(prim.name().to_string());
             }
         },
@@ -156,8 +163,8 @@ fn column(position: u32, sql_type: &str, nullable: bool) -> Column {
 
 /// A system table's columns and keys (area 5, "System tables"): the event
 /// outbox, the delivery records of each event to each subscriber, and the
-/// stored responses of idempotent requests, and browser sessions. Areas 7,
-/// 8 and 12 give them their behaviour.
+/// stored responses of idempotent requests, browser sessions and API
+/// tokens, and service keys. Areas 7, 8 and 12 give them their behaviour.
 pub fn system_table(name: &str) -> Table {
     let table = format!("jadpo_{name}");
     let mut columns = BTreeMap::new();
@@ -223,12 +230,13 @@ pub fn system_table(name: &str) -> Table {
             );
         }
         "sessions" => {
-            // Browser sessions (area 8): each found by its token's
-            // verifier, never the token itself, with its CSRF token's.
+            // Browser sessions and API tokens (area 8): each found by its
+            // token's verifier, never the token itself, with a browser
+            // session's CSRF token's; an API token has none.
             add("id", "uuid", false);
             add("principal_id", "uuid", false);
             add("verifier", "text", false);
-            add("csrf_verifier", "text", false);
+            add("csrf_verifier", "text", true);
             add("started_at", "timestamptz(3)", false);
             add("ends_at", "timestamptz(3)", false);
             unique.insert(
@@ -252,6 +260,31 @@ pub fn system_table(name: &str) -> Table {
                 jadpo_graph::schema::Index {
                     columns: vec!["ends_at".into()],
                     reason: "system sessions".into(),
+                    predicate: None,
+                    collate: Vec::new(),
+                },
+            );
+        }
+        "service_keys" => {
+            // Service keys (area 8): each found by its verifier, never the
+            // key itself, with the service it signs in and when it expires.
+            add("id", "uuid", false);
+            add("principal_id", "uuid", false);
+            add("verifier", "text", false);
+            add("started_at", "timestamptz(3)", false);
+            add("ends_at", "timestamptz(3)", false);
+            unique.insert(
+                object_name(&[&table, "verifier"], "key"),
+                jadpo_graph::schema::Unique {
+                    columns: vec!["verifier".into()],
+                    rule: "system service keys".into(),
+                },
+            );
+            indexes.insert(
+                object_name(&[&table, "principal_id"], "idx"),
+                jadpo_graph::schema::Index {
+                    columns: vec!["principal_id".into()],
+                    reason: "system service keys".into(),
                     predicate: None,
                     collate: Vec::new(),
                 },

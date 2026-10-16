@@ -774,6 +774,32 @@ impl Reader<'_> {
             self.lookup,
             &Ty::Field(entity.to_string(), vec![name.to_string()]),
         );
+        // A token or a key is shown once and kept only as its verifier, by
+        // the runtime (area 8).
+        if let Ty::Prim(credential @ (jadpo_std::Builtin::ApiToken | jadpo_std::Builtin::ServiceKey)) =
+            self.lookup.structure(&ty)
+        {
+            let what = if credential == jadpo_std::Builtin::ApiToken {
+                "An API token"
+            } else {
+                "A service key"
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_AUTH_CREDENTIAL_STORED,
+                    format!("`{entity}.{name}` keeps a `{}`", credential.name()),
+                )
+                .at(node_span(path, value.syntax()), "a secret, stored")
+                .reason(format!(
+                    "{what} is shown once, in the output of the action that issues it, and the runtime keeps only its verifier, so a copy of the database signs no one in."
+                ))
+                .next(format!(
+                    "Remove `{name}`, and give the {} in the output of the action that issues it",
+                    if credential == jadpo_std::Builtin::ApiToken { "token" } else { "key" }
+                )),
+            );
+            return Some(field);
+        }
         match column_type(self.lookup, &ty) {
             // A structured field is stored as `jsonb` in the API's JSON
             // (area 5), whose codec comes with area 7.
@@ -1456,9 +1482,13 @@ fn holds_entity(lookup: &dyn TypeView, ty: &Ty) -> Option<String> {
 /// areas 7 and 12; their schema is here so migrations create them.
 pub const SYSTEM_TABLES: [&str; 3] = ["outbox", "deliveries", "idempotency_keys"];
 
-/// The browser sessions' table, in the store the principal's users live in
-/// when anything signs in (area 8).
+/// The table of browser sessions and API tokens, in the store the
+/// principal's users live in when anything signs one in (area 8).
 pub const SESSIONS: &str = "jadpo_sessions";
+
+/// The service keys' table, in the store the principal's services live in
+/// when service keys are declared (area 8).
+pub const SERVICE_KEYS: &str = "jadpo_service_keys";
 
 /// The physical schema the source asks for: every entity's table in its
 /// store, and the system tables. Fields that can't be stored and entities
@@ -1502,6 +1532,14 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
         found
             .tables
             .insert(SESSIONS.to_string(), columns::system_table("sessions"));
+    }
+    if let Some(store) = crate::identity::identity(db, project).keys_store()
+        && let Some(found) = schema.stores.get_mut(store)
+    {
+        found.tables.insert(
+            SERVICE_KEYS.to_string(),
+            columns::system_table("service_keys"),
+        );
     }
     Arc::new(schema)
 }

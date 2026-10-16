@@ -1011,6 +1011,11 @@ impl Names<'_> {
         {
             return;
         }
+        // The service entity's key operations are checked with the body,
+        // which knows the principal (area 8).
+        if jadpo_std::http::SessionOp::key_op(&name).is_some() {
+            return;
+        }
         let mut operations: Vec<String> =
             ENTITY_OPERATIONS.iter().map(|op| op.to_string()).collect();
         operations.extend(symbol.transitions.iter().cloned());

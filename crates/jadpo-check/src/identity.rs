@@ -7,11 +7,11 @@
 //! Read once per project ([`identity`]) into an [`Identity`], which the
 //! routes (whether anything signs anyone in, what `current_principal`
 //! is), the bodies (`Principal.user`, `sessions.start`), the schema (the
-//! sessions table) and `jadpo-plan` read. Built in chunk 4.3: browser
-//! sessions. API tokens and service keys come with chunk 4.3b, the
-//! revocation delay with signing keys (chunk 5.1b), external tokens,
-//! sign-in providers and acting as an OAuth provider after them: each is
-//! `toolchain.not_built_yet` where it is written.
+//! sessions and service keys tables) and `jadpo-plan` read. Built in
+//! chunk 4.3: browser sessions; in chunk 4.3b: API tokens and service
+//! keys. The revocation delay comes with signing keys (chunk 5.1b),
+//! external tokens, sign-in providers and acting as an OAuth provider
+//! after them: each is `toolchain.not_built_yet` where it is written.
 
 use std::sync::Arc;
 
@@ -141,10 +141,26 @@ impl Identity {
             .and_then(|method| method.cookie.as_deref())
     }
 
-    /// The store sessions are kept in: the user entity's.
+    /// Whether `method` is declared and built.
+    pub fn built(&self, method: AuthenticationMethod) -> bool {
+        self.method(method).is_some_and(|found| found.built)
+    }
+
+    /// The store sessions and API tokens are kept in, when anything signs
+    /// a user in: the user entity's.
     pub fn sessions_store(&self) -> Option<&str> {
-        self.signs_in()
-            .then(|| self.variant(PrincipalKind::User))
+        (self.built(AuthenticationMethod::BrowserSession)
+            || self.built(AuthenticationMethod::ApiToken))
+        .then(|| self.variant(PrincipalKind::User))
+        .flatten()
+        .map(|variant| variant.store.as_str())
+    }
+
+    /// The store service keys are kept in, when service keys are declared:
+    /// the service entity's.
+    pub fn keys_store(&self) -> Option<&str> {
+        self.built(AuthenticationMethod::ServiceKey)
+            .then(|| self.variant(PrincipalKind::Service))
             .flatten()
             .map(|variant| variant.store.as_str())
     }
@@ -729,14 +745,18 @@ impl Reader<'_> {
                         cookie: Some(cookie),
                     })
                 }
+                AuthenticationMethod::ApiToken | AuthenticationMethod::ServiceKey => {
+                    let ok = member
+                        .as_ref()
+                        .is_some_and(|member| self.bearer(&path, &span, method, member));
+                    ok.then_some(Method {
+                        method,
+                        built: true,
+                        cookie: None,
+                    })
+                }
                 other => {
                     let why = match other {
-                        AuthenticationMethod::ApiToken => {
-                            "API tokens come with service keys (area 8, roadmap chunk 4.3b), once how an application issues one is decided"
-                        }
-                        AuthenticationMethod::ServiceKey => {
-                            "Service keys come with API tokens (area 8, roadmap chunk 4.3b)"
-                        }
                         AuthenticationMethod::ExternalToken => {
                             "Tokens from another provider need its issuer and audience from configuration (area 10), and come after the first build"
                         }
@@ -753,26 +773,123 @@ impl Reader<'_> {
                 }
             };
             let Some(read) = read else { continue };
-            if read.built && !self.out.written.contains(&PrincipalKind::User) {
+            let kind = if method == AuthenticationMethod::ServiceKey {
+                PrincipalKind::Service
+            } else {
+                PrincipalKind::User
+            };
+            if read.built && !self.out.written.contains(&kind) {
                 let declared = self.out.principal_declared;
-                {
-                    self.out.problems.push(
-                        Diagnostic::new(
-                            &rule::SEMANTIC_AUTH_PRINCIPAL_REQUIRED,
-                            format!("`{word}:` signs in users, but no `user:` is declared"),
+                let who = kind.name();
+                let what = match method {
+                    AuthenticationMethod::BrowserSession => "A browser session",
+                    AuthenticationMethod::ApiToken => "An API token",
+                    _ => "A service key",
+                };
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_PRINCIPAL_REQUIRED,
+                        format!("`{word}:` signs in {who}s, but no `{who}:` is declared"),
+                    )
+                    .at(span.clone(), "nobody to sign in")
+                    .reason(format!(
+                        "{what} signs in a {who}, looked up through the principal's `{who}:` in `app.jadpo`, which names the entity and the unique field that identify one."
+                    ))
+                    .next(if declared {
+                        format!("Add `{who}: {{ subject: <Entity>.<field> }}` to `principal {{ }}`")
+                    } else {
+                        format!(
+                            "Declare `principal {{ {who}: {{ subject: <Entity>.<field> }} }}` in `app.jadpo`"
                         )
-                        .at(span.clone(), "nobody to sign in")
-                        .reason("A browser session signs in a user, looked up through the principal's `user:` in `app.jadpo`, which names the entity and the unique field that identify one.")
-                        .next(if declared {
-                            "Add `user: { subject: <Entity>.<field> }` to `principal { }`"
-                        } else {
-                            "Declare `principal { user: { subject: <Entity>.<field> } }` in `app.jadpo`"
-                        }),
-                    );
-                }
+                    }),
+                );
             }
             self.out.methods.push(read);
         }
+    }
+
+    /// `api_token: {}` or `service_key: {}`: a bearer credential, whose
+    /// only setting, `signing_key:`, waits for the revocation delay.
+    fn bearer(
+        &mut self,
+        path: &str,
+        span: &Span,
+        method: AuthenticationMethod,
+        member: &ast::Member,
+    ) -> bool {
+        let word = method.name();
+        let what = if method == AuthenticationMethod::ApiToken {
+            "An API token"
+        } else {
+            "A service key"
+        };
+        let Some(list) = member.block() else {
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                    format!("`{word}:` isn't a block"),
+                )
+                .at(span.clone(), "a block goes here")
+                .reason(format!(
+                    "{what} is declared as a block of its settings, empty when it takes none."
+                ))
+                .next(format!("Write `{word}: {{}}`")),
+            );
+            return false;
+        };
+        let mut ok = true;
+        for (key, setting) in tree::members(Some(list)) {
+            let Some(name) = tree::name_text(&key) else {
+                continue;
+            };
+            let key_span = node_span(path, key.syntax());
+            let value = setting.value();
+            match name.as_str() {
+                "signing_key" if matches!(value, Some(Expr::Literal(_))) => {
+                    ok = false;
+                    let value_span = value
+                        .as_ref()
+                        .map_or_else(|| key_span.clone(), |v| node_span(path, v.syntax()));
+                    self.out.problems.push(
+                        Diagnostic::new(
+                            &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                            "A signing key is written in the source",
+                        )
+                        .at(value_span, "a secret in source")
+                        .reason("A signing key comes only from secret configuration (area 10), so it never lands in the repository, a log or a review.")
+                        .next(format!(
+                            "Remove `signing_key:`; {} needs none until a revocation delay signs it",
+                            what.to_lowercase()
+                        )),
+                    );
+                }
+                "signing_key" => self.later(
+                    key_span,
+                    "`signing_key:`",
+                    "A signing key comes from secret configuration (area 10, roadmap chunk 5.1b), and only a revocation delay signs tokens and keys",
+                ),
+                other => {
+                    ok = false;
+                    let near = nearest(other, ["signing_key"]);
+                    let problem = Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_UNKNOWN,
+                        format!("`{other}` isn't an `{word}` setting"),
+                    )
+                    .at(key_span.clone(), "unknown setting")
+                    .reason(format!(
+                        "{what} takes only `signing_key:`; the language sets its format, its lifetime and where it travels.{}",
+                        near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
+                    ));
+                    self.out.problems.push(match near {
+                        Some(near) => problem
+                            .next(format!("Use `{near}` instead of `{other}`"))
+                            .edit(key_span, near),
+                        None => problem.next(format!("Remove `{other}:`")),
+                    });
+                }
+            }
+        }
+        ok
     }
 
     /// `browser_session: { cookie: ... }`: its cookie's name.

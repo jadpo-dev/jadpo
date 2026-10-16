@@ -241,6 +241,12 @@ impl Body<'_> {
                     self.walk(|walk| walk.member_values(block));
                     return (Ty::Error, CallKind::Effect(written), Reach::Unknown);
                 }
+                // The service entity's keys (area 8, question 7).
+                if let Some(op) = jadpo_std::http::SessionOp::key_op(&rest[0]) {
+                    let block = self.pending_block.take();
+                    self.walk(|walk| walk.member_values(block));
+                    return self.key_call(&head, op, call, callee, &written);
+                }
                 let block = self.pending_block.take();
                 if self.context.is_pure() {
                     self.persistence(span, &written);

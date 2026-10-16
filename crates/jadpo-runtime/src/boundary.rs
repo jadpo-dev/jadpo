@@ -95,6 +95,7 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
                 transaction: boundary.transaction,
                 outbox: boundary.outbox,
                 session: boundary.session,
+                issued: boundary.issued,
             });
             return outcome;
         }

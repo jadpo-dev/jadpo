@@ -651,6 +651,8 @@ rules! {
         "03-logic.html#type-assign-immutable", "Value that never changes is assigned";
     TYPE_ASSIGN_UNKNOWN: "type.assign_unknown", area 3, Error, Agent,
         "03-logic.html#type-assign-unknown", "Assignment target is not declared";
+    TYPE_AUTH_CREDENTIAL_STORED: "type.auth_credential_stored", area 8, Error, Agent,
+        "08-identity.html#type-auth-credential-stored", "Entity field holds an API token or a service key";
     TYPE_AUTH_PRINCIPAL_CONSTRUCTION: "type.auth_principal_construction", area 8, Error, Agent,
         "08-identity.html#type-auth-principal-construction", "Caller is made from a record outside tests, fixtures and seeds";
     TYPE_AUTH_PRINCIPAL_FAILURE_CONTEXT: "type.auth_principal_failure_context", area 8, Error, Agent,
@@ -664,7 +666,7 @@ rules! {
     TYPE_AUTH_PUBLIC_PRINCIPAL: "type.auth_public_principal", area 8, Error, Human,
         "08-identity.html#type-auth-public-principal", "Public route passes a caller it never reads";
     TYPE_AUTH_SESSIONS_CONTEXT: "type.auth_sessions_context", area 8, Error, Agent,
-        "08-identity.html#type-auth-sessions-context", "Session started or ended outside an action";
+        "08-identity.html#type-auth-sessions-context", "Session, API token or service key operation outside an action, or without its sign-in method";
     TYPE_BASE_OUTSIDE_DECLARATION: "type.base_outside_declaration", area 2, Error, Agent,
         "02-values-and-types.html#type-base-outside-declaration", "Base is used outside a type declaration";
     TYPE_CLOCK_CONTEXT: "type.clock_context", area 10, Error, Agent,

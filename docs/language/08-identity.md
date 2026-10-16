@@ -19,7 +19,7 @@ ways a caller proves who they are, how code reads the caller, service
 credentials, revocation, and the failures authentication produces. Who may do
 what is policy, area 9.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 8. Built in the new compiler in roadmap chunk 4.3: the principal, browser sessions, routes signed in by default, `current_principal`, starting and ending a session, and signing in from a route test. API tokens and service keys come with 4.3b, the revocation delay with signing keys (5.1b); "Status" below lists the rest.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 8. Built in the new compiler in roadmap chunk 4.3: the principal, browser sessions, routes signed in by default, `current_principal`, starting and ending a session, and signing in from a route test; in chunk 4.3b: API tokens, service keys and service callers. The revocation delay comes with signing keys (5.1b); "Status" below lists the rest.
 
 The rules underneath all of it were accepted in the AUTH-001 contract and are
 not reopened here:
@@ -141,6 +141,15 @@ authentication {
   of the same name with `_csrf` after it, which the application's pages
   read and send back in `X-Jadpo-CSRF` on every write. A session lasts 30
   days from when it starts.
+- `api_token:` and `service_key:` take only `signing_key:`, which waits
+  for the revocation delay, so they are written `api_token: {}` and
+  `service_key: {}`. An API token signs in a user, so it needs the
+  principal's `user:`; a service key signs in a service and needs its
+  `service:`. Each travels as `Authorization: Bearer <value>`: an API
+  token is `jadpo_token_` and 64 hexadecimal digits, a service key
+  `jadpo_key_` and 64, so the runtime knows which it was sent and secret
+  scanners can find one that leaks. Both are 32 random bytes kept only as
+  their BLAKE3 digests, like a session's.
 - A bearer token is never accepted from the URL, and the cookie name and
   `Authorization` header can never be ordinary route input.
 - `external_token` adds one pinned dependency; applications without it
@@ -255,6 +264,27 @@ operations to issue, list and revoke them (`Service.issue_key(service_id,
 expires_at)`, `Service.keys(service_id)`, `Service.revoke_key(key_id)`); the
 application declares only `Service` (question 7).
 
+- The operations belong to the entity the principal's `service:` names,
+  once `authentication { }` declares `service_key:`, and only an action
+  calls them (`type.auth_sessions_context`), as it calls `sessions.start`.
+- `Service.issue_key(service_id, expires_at)` takes the service's `id`
+  and an `Instant`, keeps the new key in the action's transaction and
+  gives it once as a `ServiceKey`, text an `Output` can send; the
+  response that carries it is never kept for an idempotent repeat, and a
+  `ServiceKey` can't be stored in an entity.
+- `Service.keys(service_id)` lists the service's keys that haven't
+  expired, oldest first, as `IssuedKey`s, which code reads `id`,
+  `started_at` and `ends_at` from, never the key itself.
+- `Service.revoke_key(key_id)` deletes one by its `id`; an `id` no key
+  has revokes nothing.
+- Keys live in the `jadpo_service_keys` system table, in the store the
+  service entity lives in (area 5), and a key is looked up with its
+  service's record, `active:` and all, in one statement, so a disabled
+  service is refused (`service_disabled`) on its next request. A service
+  key signs in only a service: a route that selects
+  `current_principal.user` refuses it with 403 `not_permitted`, and one
+  that selects `current_principal.service` refuses a user the same way.
+
 ## Starting and ending a session
 
 An action run by a route starts or ends a session, and the compiler sets and
@@ -288,6 +318,39 @@ application or an integration (area 11).
 - Only verifiers are kept: a session's token and its CSRF token are 32
   random bytes each, stored as their digests, so a copy of the database
   signs no one in.
+
+### API tokens
+
+The application's own mobile and command-line clients sign in with an API
+token, which an action issues once it has checked the person and returns
+in its output, the one time anyone sees it (decided 2026-10-16, like
+Laravel Sanctum's `createToken`):
+
+```jadpo fragment
+action sign_in_app(token: MagicLinkToken) fails LinkExpired -> AppSignedIn {
+    var user: User = attempt magic_links.redeem(token)
+    return AppSignedIn {
+        token: sessions.issue_token(user.id)    // an ApiToken, shown once
+    }
+}
+```
+
+- `sessions.issue_token(user_id)` takes the user entity's `id` and gives
+  an `ApiToken`, text an `Output` can send. The token is a session without
+  a cookie: kept as a verifier in `jadpo_sessions` in the action's
+  transaction, lasting 30 days from when it is issued, with no CSRF token,
+  since a browser never sends it by itself. The response that carries it
+  is never kept for an idempotent repeat, and an `ApiToken` can't be
+  stored in an entity.
+- `sessions.end()` ends the token a request came with, as it ends a
+  browser session.
+- `sessions.tokens(user_id)` lists the user's tokens that haven't ended,
+  oldest first, as `IssuedToken`s, which code reads `id`, `started_at`
+  and `ends_at` from; `sessions.revoke_token(token_id)` ends one by its
+  `id`, and an `id` no token has ends nothing. Together they let an
+  application end a user's other devices.
+- Like `sessions.start`, only an action calls them; each needs `api_token:`
+  in `authentication { }`.
 
 ### Signing in, end to end
 
@@ -579,6 +642,495 @@ test "a suspended member is refused" {
     }
     assert response.status == 403
     assert response.code == "user_disabled"
+}
+```
+
+### Tokens and keys, end to end
+
+The same notes, written from the members' app with an API token, and a
+partner system that reads itself with a service key. Both kinds of caller
+are declared, and both bearer methods:
+
+```jadpo check project=tokens-and-keys file=app.jadpo
+use journal/entities { Member, Partner }
+use journal/types { MemberStatus, PartnerStatus }
+
+application {}
+
+principal {
+    user: {
+        subject: Member.handle
+        active: Member.status == MemberStatus.active
+    }
+    service: {
+        subject: Partner.name
+        active: Partner.status == PartnerStatus.active
+    }
+}
+```
+
+```jadpo check project=tokens-and-keys file=authentication.jadpo
+authentication {
+    api_token: {}
+    service_key: {}
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/types/handle.jadpo hidden
+type Handle = Text {
+    min_length: 3
+    max_length: 40
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/types/member_status.jadpo hidden
+type MemberStatus = Enum {
+    active
+    suspended
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/types/note_text.jadpo hidden
+type NoteText = Text {
+    min_length: 1
+    max_length: 500
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/types/note_view.jadpo hidden
+use journal/types { NoteText }
+
+type NoteView = Output {
+    text: NoteText
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/types/partner_name.jadpo hidden
+type PartnerName = Text {
+    min_length: 1
+    max_length: 60
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/types/partner_status.jadpo hidden
+type PartnerStatus = Enum {
+    active
+    suspended
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/types/partner_view.jadpo hidden
+use journal/types { PartnerName }
+
+type PartnerView = Output {
+    name: PartnerName
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/entities/member.jadpo hidden
+use journal/types { Handle, MemberStatus }
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+    status: MemberStatus
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/entities/note.jadpo hidden
+use journal/entities { Member }
+use journal/types { NoteText }
+
+entity Note {
+    id: Uuid
+    author_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+    text: NoteText
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/entities/partner.jadpo
+use journal/types { PartnerName, PartnerStatus }
+
+/// Another system that reads the journal with its keys.
+entity Partner {
+    id: Uuid
+    name: PartnerName {
+        unique: true
+    }
+    status: PartnerStatus
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/failures/handle_taken.jadpo hidden
+type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/failures/partner_name_taken.jadpo hidden
+type PartnerNameTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That partner already exists."
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/actions/register.jadpo hidden
+use journal/entities { Member }
+use journal/types { Handle, MemberStatus }
+use journal/failures { HandleTaken }
+
+action register(handle: Handle) fails HandleTaken -> Member {
+    return attempt Member.create {
+        set: {
+            handle: handle
+            status: MemberStatus.active
+        }
+        conflict: {
+            Member.handle: HandleTaken
+        }
+    }
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/actions/create_partner.jadpo hidden
+use journal/entities { Partner }
+use journal/types { PartnerName, PartnerStatus }
+use journal/failures { PartnerNameTaken }
+
+action create_partner(name: PartnerName) fails PartnerNameTaken -> Partner {
+    return attempt Partner.create {
+        set: {
+            name: name
+            status: PartnerStatus.active
+        }
+        conflict: {
+            Partner.name: PartnerNameTaken
+        }
+    }
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/actions/suspend_partner.jadpo hidden
+use journal/entities { Partner, PartnerNotFound }
+use journal/types { PartnerStatus }
+
+action suspend_partner(partner_id: Partner.id) fails PartnerNotFound -> Partner {
+    return attempt Partner.update(partner_id) {
+        set: {
+            status: PartnerStatus.suspended
+        }
+    }
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/actions/sign_out.jadpo hidden
+/// Ends the token the request came with.
+action sign_out() -> Unit {
+    sessions.end()
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/actions/write_note.jadpo hidden
+use journal/entities { Note }
+use journal/types { NoteText, NoteView }
+
+/// Writes a note as the signed-in member.
+action write_note(input: WriteNote, author: Principal.user) -> NoteView {
+    var note: Note = Note.create {
+        set: {
+            author_id: author.id
+            text: input.text
+        }
+    }
+    return NoteView {
+        text: note.text
+    }
+}
+
+/// What writing a note takes.
+type WriteNote = Input {
+    text: NoteText
+}
+```
+
+Signing up issues the app's token and answers with it, once; ending
+every device lists the member's tokens and revokes each:
+
+```jadpo check project=tokens-and-keys file=domains/journal/actions/sign_up.jadpo
+use journal/entities { Member }
+use journal/types { Handle }
+use journal/failures { HandleTaken }
+use journal/actions { register }
+
+/// Registers a member and gives their app a token, shown once.
+action sign_up(input: SignUp) fails HandleTaken -> SignedUp {
+    var member: Member = attempt register(input.handle)
+    return SignedUp {
+        token: sessions.issue_token(member.id)
+    }
+}
+
+/// What signing up takes.
+type SignUp = Input {
+    handle: Handle
+}
+
+/// The app's token, which it sends back as `Authorization: Bearer`.
+type SignedUp = Output {
+    token: ApiToken
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/actions/sign_out_everywhere.jadpo
+/// Ends every token the member's apps hold, this one's too.
+action sign_out_everywhere(member: Principal.user) -> Unit {
+    for token in sessions.tokens(member.id) {
+        sessions.revoke_token(token.id)
+    }
+}
+```
+
+Adding a partner issues its first key, which expires when the input
+says; the partner reads itself with it:
+
+```jadpo check project=tokens-and-keys file=domains/journal/actions/add_partner.jadpo
+use journal/entities { Partner }
+use journal/types { PartnerName }
+use journal/failures { PartnerNameTaken }
+use journal/actions { create_partner }
+
+/// Adds a partner and gives its first key, shown once.
+action add_partner(input: AddPartner) fails PartnerNameTaken -> PartnerAdded {
+    var partner: Partner = attempt create_partner(input.name)
+    return PartnerAdded {
+        key: Partner.issue_key(partner.id, input.key_expires_at)
+    }
+}
+
+/// What adding a partner takes.
+type AddPartner = Input {
+    name: PartnerName
+    key_expires_at: Instant
+}
+
+/// The partner's key, which it sends as `Authorization: Bearer`.
+type PartnerAdded = Output {
+    key: ServiceKey
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/queries/this_partner.jadpo
+use journal/entities { Partner, PartnerNotFound }
+use journal/types { PartnerView }
+
+/// The partner a key belongs to.
+query this_partner(partner: Principal.service) fails PartnerNotFound -> PartnerView {
+    from: Partner
+    where: Partner.id == partner.id
+    missing: PartnerNotFound
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/routes/account.jadpo
+use journal/actions { SignUp, SignedUp, sign_out, sign_out_everywhere, sign_up }
+
+/// Signing up and out, from the app.
+routes Account {
+    prefix: /account
+
+    /// Anyone may sign up; the response holds the app's token.
+    POST /sign-up {
+        authentication: RouteAuthentication.none
+        input: SignUp
+        output: SignedUp
+        status: SuccessStatus.created
+        run: sign_up(input)
+    }
+
+    /// Ends the token the request came with.
+    POST /sign-out {
+        status: SuccessStatus.no_content
+        run: sign_out()
+    }
+
+    /// Ends every token the member's apps hold.
+    POST /sign-out-everywhere {
+        status: SuccessStatus.no_content
+        run: sign_out_everywhere(current_principal.user)
+    }
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/routes/notes.jadpo hidden
+use journal/types { NoteView }
+use journal/actions { WriteNote, write_note }
+
+/// The signed-in member's notes.
+routes Notes {
+    prefix: /notes
+
+    POST / {
+        input: WriteNote
+        output: NoteView
+        status: SuccessStatus.created
+        run: write_note(input, current_principal.user)
+    }
+}
+```
+
+```jadpo check project=tokens-and-keys file=domains/journal/routes/partners.jadpo migrate=initial
+use journal/types { PartnerView }
+use journal/actions { AddPartner, PartnerAdded, add_partner }
+use journal/queries { this_partner }
+
+/// Partners and their keys.
+routes Partners {
+    prefix: /partners
+
+    /// A signed-in member adds a partner; the response holds its key.
+    POST / {
+        input: AddPartner
+        output: PartnerAdded
+        status: SuccessStatus.created
+        run: add_partner(input)
+    }
+
+    /// A partner reads itself, signed in with its key.
+    GET /me {
+        output: PartnerView
+        run: this_partner(current_principal.service)
+    }
+}
+```
+
+```jadpo check project=tokens-and-keys file=api/main.api hidden
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 1
+
+POST /account/sign-out
+    status: 204
+
+POST /account/sign-out-everywhere
+    status: 204
+
+POST /account/sign-up
+    authentication: none
+    input: SignUp (body)
+    output: SignedUp
+    status: 201
+    fails: handle_taken 409
+
+POST /notes
+    input: WriteNote (body)
+    output: NoteView
+    status: 201
+
+POST /partners
+    input: AddPartner (body)
+    output: PartnerAdded
+    status: 201
+    fails: partner_name_taken 409
+
+GET /partners/me
+    output: PartnerView
+    status: 200
+    fails: partner_not_found 404
+
+input AddPartner
+    name: Text { min_length: 1, max_length: 60 }
+    key_expires_at: Instant
+
+output NoteView
+    text: Text { min_length: 1, max_length: 500 }
+
+output PartnerAdded
+    key: ServiceKey
+
+output PartnerView
+    name: Text { min_length: 1, max_length: 60 }
+
+input SignUp
+    handle: Text { min_length: 3, max_length: 40 }
+
+output SignedUp
+    token: ApiToken
+
+input WriteNote
+    text: Text { min_length: 1, max_length: 500 }
+
+failure handle_taken 409 "That handle is taken."
+
+failure partner_name_taken 409 "That partner already exists."
+
+failure partner_not_found 404
+```
+
+A route test signs in with `as:` through the method the route's API
+accepts: a member with an API token here, since nothing declares browser
+sessions, and a partner with a key from `Partner.issue_key`, each kept for
+real and sent as `Authorization: Bearer`:
+
+```jadpo check project=tokens-and-keys file=domains/journal/routes/partners.test.jadpo
+use journal/entities { Member, Partner }
+use journal/types { PartnerView }
+use journal/actions { WriteNote, create_partner, register, suspend_partner }
+
+test "a member writes a note with the app's token" {
+    var member: Member = attempt register("ann")
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/notes"
+        as: Principal.user(member)
+        input: WriteNote {
+            text: "Buy milk"
+        }
+    }
+    assert response.status == 201
+}
+
+test "a partner reads itself with its key" {
+    var partner: Partner = attempt create_partner("Acme")
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/partners/me"
+        as: Principal.service(partner)
+    }
+    assert response.status == 200
+    assert response.output == PartnerView {
+        name: "Acme"
+    }
+}
+
+test "a partner can't write a member's note" {
+    var partner: Partner = attempt create_partner("Acme")
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/notes"
+        as: Principal.service(partner)
+        input: WriteNote {
+            text: "Buy milk"
+        }
+    }
+    assert response.status == 403
+    assert response.code == "not_permitted"
+}
+
+test "a suspended partner is refused" {
+    var partner: Partner = attempt create_partner("Acme")
+    var suspended: Partner = attempt suspend_partner(partner.id)
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/partners/me"
+        as: Principal.service(suspended)
+    }
+    assert response.status == 403
+    assert response.code == "service_disabled"
 }
 ```
 

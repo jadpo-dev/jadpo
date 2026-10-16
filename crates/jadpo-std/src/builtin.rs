@@ -25,6 +25,11 @@ pub enum Builtin {
     PageCursor,
     /// How many records a page holds: an `Int` from 1 to 100 (area 6).
     PageSize,
+    /// An API token as `sessions.issue_token` gives it, once (area 8):
+    /// text an `Output` can send, which no entity can keep.
+    ApiToken,
+    /// A service key as `Service.issue_key` gives it, once (area 8).
+    ServiceKey,
 }
 
 /// `PageSize`'s own rules: from 1 to 100 (area 6, "Order and pages").
@@ -48,7 +53,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
 };
 
 impl Builtin {
-    pub const ALL: [Builtin; 16] = [
+    pub const ALL: [Builtin; 18] = [
         Builtin::Bool,
         Builtin::Int,
         Builtin::Decimal,
@@ -65,6 +70,8 @@ impl Builtin {
         Builtin::Unit,
         Builtin::PageCursor,
         Builtin::PageSize,
+        Builtin::ApiToken,
+        Builtin::ServiceKey,
     ];
 
     pub fn name(self) -> &'static str {
@@ -85,6 +92,8 @@ impl Builtin {
             Builtin::Unit => "Unit",
             Builtin::PageCursor => "PageCursor",
             Builtin::PageSize => "PageSize",
+            Builtin::ApiToken => "ApiToken",
+            Builtin::ServiceKey => "ServiceKey",
         }
     }
 
@@ -97,9 +106,12 @@ impl Builtin {
     /// What its values are made of: the validated text types are text.
     pub fn representation(self) -> Builtin {
         match self {
-            Builtin::Email | Builtin::Url | Builtin::IpAddress | Builtin::PageCursor => {
-                Builtin::Text
-            }
+            Builtin::Email
+            | Builtin::Url
+            | Builtin::IpAddress
+            | Builtin::PageCursor
+            | Builtin::ApiToken
+            | Builtin::ServiceKey => Builtin::Text,
             Builtin::PageSize => Builtin::Int,
             other => other,
         }
@@ -117,6 +129,8 @@ impl Builtin {
                 | Builtin::Unit
                 | Builtin::PageCursor
                 | Builtin::PageSize
+                | Builtin::ApiToken
+                | Builtin::ServiceKey
         )
     }
 

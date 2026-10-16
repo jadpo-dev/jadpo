@@ -260,22 +260,46 @@ impl Body<'_> {
                         ),
                     );
                 }
-                Some(jadpo_std::http::PrincipalKind::User) => {}
-                Some(jadpo_std::http::PrincipalKind::Service) => {
-                    ok = false;
-                    self.out.push(
-                        Diagnostic::new(&rule::TOOLCHAIN_NOT_BUILT_YET, "Signing in as a service isn't built yet")
-                            .at(key_span, "decided, not built")
-                            .reason("A route test signs in as a service with a key from `Service.issue_key`, which comes with service keys (area 8, roadmap chunk 4.3b).")
-                            .next("Sign in as a user for now"),
-                    );
+                Some(kind) => {
+                    // A caller signs in through a method that signs its
+                    // kind in: a browser session or an API token for a
+                    // user, a service key for a service (area 8).
+                    let identity = self.identity();
+                    let signs_in = match kind {
+                        jadpo_std::http::PrincipalKind::User => identity.sessions_store().is_some(),
+                        jadpo_std::http::PrincipalKind::Service => identity.keys_store().is_some(),
+                    };
+                    if !signs_in {
+                        ok = false;
+                        let (methods, declare) = match kind {
+                            jadpo_std::http::PrincipalKind::User => (
+                                "a browser session or an API token",
+                                "`browser_session:` or `api_token:`",
+                            ),
+                            jadpo_std::http::PrincipalKind::Service => {
+                                ("a service key", "`service_key:`")
+                            }
+                        };
+                        self.out.push(
+                            Diagnostic::new(
+                                &rule::SEMANTIC_REQUEST_INVALID,
+                                format!("Nothing signs a {} in for `as:`", kind.name()),
+                            )
+                            .at(key_span, "nothing to sign in with")
+                            .reason(format!(
+                                "A request signs in as its caller through the application's real authentication: a {} with {methods}, which `authentication {{ }}` doesn't declare.",
+                                kind.name()
+                            ))
+                            .next(format!("Declare {declare} in `authentication.jadpo`")),
+                        );
+                    }
                 }
                 None => {
                     ok = false;
                     self.out.push(
                         Diagnostic::new(&rule::SEMANTIC_REQUEST_INVALID, format!("`as:` takes a caller, not a `{ty}`"))
                             .at(self.span(&value), format!("a `{ty}`"))
-                            .reason("A request signs in as a caller made with `Principal.user(user)`, through the route's real authentication.")
+                            .reason("A request signs in as a caller made with `Principal.user(user)` or `Principal.service(service)`, through the route's real authentication.")
                             .next("Pass a `Principal.user`, made from the user's record with `Principal.user(user)`"),
                     );
                 }
