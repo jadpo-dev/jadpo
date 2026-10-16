@@ -9,7 +9,7 @@ use crate::support;
 use jadpo_db::Layout;
 use support::rules;
 
-const TYPES: &str = "type PlacedAt = Instant {}\n\ntype ShopDay = CalendarDate {}\n\ntype Opening = ZonedTime {}\n\ntype ShortDate = TimeFormat {\n    day: ComponentStyle.numeric\n    month: ComponentStyle.short\n    year: ComponentStyle.numeric\n}\n\ntype ShortTime = TimeFormat {\n    hour: ComponentStyle.two_digit\n    minute: ComponentStyle.two_digit\n}\n\n";
+const TYPES: &str = "type OrderedAt = Instant {}\n\ntype ShopDay = CalendarDate {}\n\ntype Opening = ZonedTime {}\n\ntype ShortDate = TimeFormat {\n    day: ComponentStyle.numeric\n    month: ComponentStyle.short\n    year: ComponentStyle.numeric\n}\n\ntype ShortTime = TimeFormat {\n    hour: ComponentStyle.two_digit\n    minute: ComponentStyle.two_digit\n}\n\n";
 
 fn check(source: &str) -> Vec<String> {
     rules(
@@ -83,7 +83,7 @@ fn an_instant_is_formatted_in_a_zone() {
     for format in ["TimeFormat.date_time_long", "ShortDate", "ShortTime"] {
         assert_eq!(
             formats(
-                "PlacedAt",
+                "OrderedAt",
                 &format!("zone: Zone.europe_london, locale: locale, format: {format}")
             ),
             NOT_BUILT,
@@ -91,12 +91,12 @@ fn an_instant_is_formatted_in_a_zone() {
         );
     }
     assert_eq!(
-        formats("PlacedAt", "locale: locale, format: TimeFormat.date_long"),
+        formats("OrderedAt", "locale: locale, format: TimeFormat.date_long"),
         ["type.temporal_zone_required"]
     );
     // Given in order, without names, it is the same call.
     assert_eq!(
-        formats("PlacedAt", "Zone.utc, Locale.en_gb, TimeFormat.date_long"),
+        formats("OrderedAt", "Zone.utc, Locale.en_gb, TimeFormat.date_long"),
         NOT_BUILT
     );
 }
@@ -150,20 +150,20 @@ fn the_format_is_written_out() {
         "TimeFormat.date_huge",
         "\"date_long\"",
         "shown",
-        "PlacedAt",
+        "OrderedAt",
         "Zone.utc",
     ] {
         let found = check(&format!(
-            "function label(value: PlacedAt, shown: Locale) -> PresentationText {{\n    return temporal.format(value, zone: Zone.utc, locale: shown, format: {format})\n}}\n"
+            "function label(value: OrderedAt, shown: Locale) -> PresentationText {{\n    return temporal.format(value, zone: Zone.utc, locale: shown, format: {format})\n}}\n"
         ));
         assert_eq!(found, ["type.temporal_format_invalid"], "{format}");
     }
     assert_eq!(
-        formats("PlacedAt", "zone: Zone.utc, format: TimeFormat.date_long"),
+        formats("OrderedAt", "zone: Zone.utc, format: TimeFormat.date_long"),
         ["type.argument_count"]
     );
     assert_eq!(
-        formats("PlacedAt", "zone: Zone.utc, locale: locale"),
+        formats("OrderedAt", "zone: Zone.utc, locale: locale"),
         ["type.argument_count"]
     );
 }
@@ -177,7 +177,7 @@ fn relative_text_takes_an_instant_or_a_local_time() {
     };
     assert_eq!(
         relative(
-            "PlacedAt",
+            "OrderedAt",
             "now: clock.now, zone: Zone.europe_london, locale: locale"
         ),
         NOT_BUILT
@@ -187,7 +187,7 @@ fn relative_text_takes_an_instant_or_a_local_time() {
         NOT_BUILT
     );
     assert_eq!(
-        relative("PlacedAt", "now: clock.now, locale: locale"),
+        relative("OrderedAt", "now: clock.now, locale: locale"),
         ["type.temporal_zone_required"]
     );
     assert_eq!(

@@ -188,7 +188,7 @@ const INT: Kind = Kind::Builtin(Builtin::Int);
 const ZONE: Kind = Kind::Enum(crate::ZONE);
 const RANGE: Kind = Kind::Std(INSTANT_RANGE);
 const LOCALE: Kind = Kind::Enum(crate::LOCALE);
-const TEXT_FOR_PEOPLE: Kind = Kind::Builtin(Builtin::PresentationText);
+const SHOWN_TEXT: Kind = Kind::Builtin(Builtin::PresentationText);
 
 /// What `temporal.format` shows: an instant in a zone, a date, or a local
 /// time.
@@ -393,7 +393,7 @@ pub const OPERATIONS: &[Operation] = &[
             param("locale", LOCALE),
             param("format", Kind::Format),
         ],
-        TEXT_FOR_PEOPLE,
+        SHOWN_TEXT,
         "temporal::format",
     ),
     temporal(
@@ -405,7 +405,7 @@ pub const OPERATIONS: &[Operation] = &[
             SHOWN_IN,
             param("locale", LOCALE),
         ],
-        TEXT_FOR_PEOPLE,
+        SHOWN_TEXT,
         "temporal::format_relative",
     ),
     Operation {

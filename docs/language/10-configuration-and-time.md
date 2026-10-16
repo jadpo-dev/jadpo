@@ -883,7 +883,7 @@ three, with the format either built in or declared once as a named type:
 
 ```jadpo check project=format-call expect=toolchain.not_built_yet
 /// When an order was placed.
-type PlacedAt = Instant {}
+type OrderedAt = Instant {}
 
 /// A date as "25 Oct 2026" in `Locale.en_gb`.
 type ShortDate = TimeFormat {
@@ -898,9 +898,9 @@ type OrderPlaced = Output {
 }
 
 /// The order's placing, in the customer's zone and language.
-function order_placed(placed_at: PlacedAt, zone: Zone, locale: Locale) -> OrderPlaced {
+function order_placed(ordered_at: OrderedAt, zone: Zone, locale: Locale) -> OrderPlaced {
     return OrderPlaced {
-        placed: temporal.format(placed_at, zone: zone, locale: locale, format: ShortDate)
+        placed: temporal.format(ordered_at, zone: zone, locale: locale, format: ShortDate)
     }
 }
 ```
@@ -909,7 +909,7 @@ function order_placed(placed_at: PlacedAt, zone: Zone, locale: Locale) -> OrderP
 error: `temporal.format` is checked, but its text isn't built yet
  --> main.jadpo:19:17
    |
-19 |         placed: temporal.format(placed_at, zone: zone, locale: locale, format: ShortDate)
+19 |         placed: temporal.format(ordered_at, zone: zone, locale: locale, format: ShortDate)
    |                 ^^^^^^^^^^^^^^^ checked, not built
   reason: This call is right, but the text `temporal.format` gives in each language comes from locale data, which comes with locales and translations (area 10, roadmap chunk 5.3); until then a program that calls it couldn't run.
   next: Send the `Instant` for the client to format for now, or do without this text (agent)
@@ -1713,21 +1713,21 @@ check failed: 1 error, 1 file
 ### `type.temporal_zone_required`
 
 ```jadpo check project=e-zone-required expect=type.temporal_zone_required
-type PlacedAt = Instant {}
+type OrderedAt = Instant {}
 
-function placed_label(placed_at: PlacedAt, locale: Locale) -> PresentationText {
-    return temporal.format(placed_at, locale: locale, format: TimeFormat.date_long)
+function placed_label(ordered_at: OrderedAt, locale: Locale) -> PresentationText {
+    return temporal.format(ordered_at, locale: locale, format: TimeFormat.date_long)
 }
 ```
 
 ```text output
-error: `temporal.format` needs the zone to show `PlacedAt` in
+error: `temporal.format` needs the zone to show `OrderedAt` in
  --> main.jadpo:4:12
   |
-4 |     return temporal.format(placed_at, locale: locale, format: TimeFormat.date_long)
+4 |     return temporal.format(ordered_at, locale: locale, format: TimeFormat.date_long)
   |            ^^^^^^^^^^^^^^^ no `zone:`
   reason: An `Instant` is one moment for everyone, and its date and clock time depend on where it is read; the server never guesses a zone, so `zone:` says which.
-  next: Add `zone: ...` with the reader's zone, such as `zone: customer.zone` or `zone: Zone.europe_london` (agent)
+  next: Add `zone: ...` with the reader's zone, such as `zone: Zone.europe_london` (agent)
   rule: type.temporal_zone_required
   help: docs/language/10-configuration-and-time.html#type-temporal-zone-required
 
@@ -1737,19 +1737,19 @@ check failed: 1 error, 1 file
 ### `type.temporal_format_invalid`
 
 ```jadpo check project=e-format-invalid expect=type.temporal_format_invalid
-type PlacedAt = Instant {}
+type OrderedAt = Instant {}
 
-function placed_label(placed_at: PlacedAt, zone: Zone, locale: Locale) -> PresentationText {
-    return temporal.format(placed_at, zone: zone, locale: locale, format: TimeFormat.date_longest)
+function placed_label(ordered_at: OrderedAt, zone: Zone, locale: Locale) -> PresentationText {
+    return temporal.format(ordered_at, zone: zone, locale: locale, format: TimeFormat.date_longest)
 }
 ```
 
 ```text output
 error: `TimeFormat.date_longest` isn't a time format
- --> main.jadpo:4:75
+ --> main.jadpo:4:76
   |
-4 |     return temporal.format(placed_at, zone: zone, locale: locale, format: TimeFormat.date_longest)
-  |                                                                           ^^^^^^^^^^^^^^^^^^^^^^^ not a format
+4 |     return temporal.format(ordered_at, zone: zone, locale: locale, format: TimeFormat.date_longest)
+  |                                                                            ^^^^^^^^^^^^^^^^^^^^^^^ not a format
   reason: `temporal.format`'s `format:` is written out: a built-in format, `TimeFormat.` followed by `date_`, `time_` or `date_time_` and `full`, `long`, `medium` or `short`, or the name of a format declared as `type Name = TimeFormat { ... }`.
   next: Write a built-in format such as `TimeFormat.date_long`, or declare one with `type Name = TimeFormat { ... }` (agent)
   rule: type.temporal_format_invalid

@@ -282,8 +282,8 @@ impl Body<'_> {
                     param.name
                 ))
                 .next(format!(
-                    "Add `{}: ...` with the reader's zone, such as `{}: customer.zone` or `{}: Zone.europe_london`",
-                    param.name, param.name, param.name
+                    "Add `{}: ...` with the reader's zone, such as `{}: Zone.europe_london`",
+                    param.name, param.name
                 )),
             );
         }

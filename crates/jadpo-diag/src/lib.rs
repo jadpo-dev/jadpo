@@ -864,7 +864,7 @@ rules! {
     TYPE_ORDERING_OPERAND: "type.ordering_operand", area 3, Error, Agent,
         "03-logic.html#type-ordering-operand", "Values cannot be ordered";
     TYPE_PRESENTATION_TEXT_PERSISTENCE: "type.presentation_text_persistence", area 10, Error, Agent,
-        "10-configuration-and-time.html#type-presentation-text-persistence", "Text for people is stored";
+        "10-configuration-and-time.html#type-presentation-text-persistence", "Formatted text is stored";
     TYPE_PRIMITIVE_SIGNATURE: "type.primitive_signature", area 2, Error, Agent,
         "02-values-and-types.html#type-primitive-signature", "Signature uses a built-in type directly";
     TYPE_PRINCIPAL_ACTIVE_INVALID: "type.principal_active_invalid", area 8, Error, Agent,
