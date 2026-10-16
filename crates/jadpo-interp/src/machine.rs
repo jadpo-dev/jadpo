@@ -170,6 +170,13 @@ enum Task<'p> {
     AdvanceClock(SiteId),
     /// `none`, for an option a standard-library call leaves out.
     PushNone,
+    /// `translations.<key>(locale:, ...)` (area 10): the locale and the
+    /// placeholders' values on the stack, in the key's order.
+    Translate {
+        key: &'p str,
+        count: usize,
+        at: SiteId,
+    },
     IfCheck {
         arms: &'p [IfArm],
         otherwise: &'p [SiteId],
@@ -692,6 +699,19 @@ impl<'p> Machine<'p> {
                 self.values.push(Value::Unit);
             }
             Task::PushNone => self.values.push(Value::None),
+            Task::Translate { key, count, at } => {
+                let values = self.take(count);
+                let Some((locale, rest)) = values.split_first() else {
+                    return Err(self.defect(ctx, "a translation without its locale", at));
+                };
+                let Some((_, entry)) = self.program.plan().translations().key(key) else {
+                    return Err(self.defect(ctx, "a translation key the plan doesn't have", at));
+                };
+                match jadpo_value::present::translate(entry, locale, rest) {
+                    Ok(text) => self.values.push(text),
+                    Err(fault) => return Err(self.value_fault(ctx, fault, at)),
+                }
+            }
             Task::IfCheck {
                 arms,
                 otherwise,
@@ -1727,6 +1747,22 @@ impl<'p> Machine<'p> {
                     then: None,
                 });
                 self.arguments(args, id);
+            }
+            // A translation, formatted in the locale given (area 10).
+            Callee::Translation(key) => {
+                let mut work: Vec<Task<'p>> = Vec::new();
+                for arg in args {
+                    let Some(arg) = arg else {
+                        return Err(self.defect(ctx, "a translation without one of its values", id));
+                    };
+                    work.push(Task::Expr(*arg));
+                }
+                self.tasks.push(Task::Translate {
+                    key,
+                    count: work.len(),
+                    at: id,
+                });
+                self.tasks.extend(work.into_iter().rev());
             }
             // A test's clock moved on (area 13).
             Callee::AdvanceClock => {

@@ -39,6 +39,8 @@ pub struct Entry {
     pub key_span: Span,
     /// The message with its quotes, in the file.
     pub message_span: Span,
+    /// The message as written, with its escapes read.
+    pub text: String,
     /// The message, when it read.
     pub message: Option<Message>,
     /// Its placeholders, when the message read and they agree.
@@ -276,6 +278,7 @@ fn read_file(record: &Record) -> File {
             key: pair.key,
             key_span,
             message_span,
+            text: pair.message,
             message,
             placeholders,
         });
@@ -625,6 +628,34 @@ pub fn lookup<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Lookup
             None => Lookup::Unknown,
         },
     }
+}
+
+/// The default locale's file, when the project has one that reads.
+pub fn default_translation_file(db: &dyn Db, project: Project) -> Option<&File> {
+    default_file(db, project).ok().flatten()
+}
+
+/// The text of every message of a key, in each supported locale's file in
+/// the order the locales are listed: what a change to any of them changes.
+pub fn messages_of<'a>(
+    db: &'a dyn Db,
+    project: Project,
+    key: &str,
+) -> Vec<(&'a str, &'a str)> {
+    let supported = locales(db, project)
+        .plan
+        .as_ref()
+        .map(|plan| plan.supported.clone())
+        .unwrap_or_default();
+    let files = translation_files(db, project);
+    supported
+        .iter()
+        .filter_map(|&ordinal| {
+            let file = files.iter().find(|file| file.locale == Some(ordinal))?;
+            let entry = file.entry(key)?;
+            Some((file.tag.as_str(), entry.text.as_str()))
+        })
+        .collect()
 }
 
 /// Every key the default locale's file defines, for the nearest name a

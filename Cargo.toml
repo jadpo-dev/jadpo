@@ -81,6 +81,11 @@ jiff = { version = "=0.2.38", default-features = false, features = ["std", "tzdb
 # "yesterday"). `fixed_decimal` and `writeable` are the types they speak.
 icu_calendar = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
 icu_datetime = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+# Plural categories and numbers in a translation's messages (area 10,
+# "Translations"): the same ICU4X release and CLDR data, already underneath
+# `icu_datetime` and `icu_experimental`, now used directly.
+icu_decimal = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+icu_plurals = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
 icu_experimental = { version = "=0.6.0", default-features = false, features = ["compiled_data"] }
 icu_locale = { version = "=2.3.1", default-features = false, features = ["compiled_data"] }
 icu_time = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }

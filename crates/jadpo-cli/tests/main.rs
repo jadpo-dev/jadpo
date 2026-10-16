@@ -22,6 +22,7 @@ mod queries;
 mod round_trips;
 mod signed;
 mod sql;
+mod translations;
 #[path = "test.rs"]
 mod test_command;
 mod watch;

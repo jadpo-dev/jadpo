@@ -81,12 +81,7 @@ pub(crate) fn blocked(
     headline: &str,
 ) -> Reply {
     let db = &loaded.db;
-    let sources: BTreeMap<String, String> = loaded
-        .project
-        .files(db)
-        .iter()
-        .map(|file| (file.path(db).clone(), file.text(db).clone()))
-        .collect();
+    let sources: BTreeMap<String, String> = jadpo_db::source_texts(db, loaded.project);
     let root = jadpo_db::shown_root(cwd, &loaded.root);
     let mut screen = Screen::new();
     for problem in &problems {

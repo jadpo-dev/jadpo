@@ -258,13 +258,7 @@ pub(crate) struct Checked {
 
 /// The project's sources by path, for the code frames of its errors.
 pub(crate) fn sources(loaded: &jadpo_db::Loaded) -> BTreeMap<String, String> {
-    let db = &loaded.db;
-    loaded
-        .project
-        .files(db)
-        .iter()
-        .map(|file| (file.path(db).clone(), file.text(db).clone()))
-        .collect()
+    jadpo_db::source_texts(&loaded.db, loaded.project)
 }
 
 /// Checks what `loaded` holds and loads its program, or refuses with its

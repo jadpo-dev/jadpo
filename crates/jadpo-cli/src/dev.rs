@@ -564,12 +564,7 @@ fn prepare(
         .filter(jadpo_check::blocks_running)
         .collect();
     if !blocking.is_empty() {
-        let sources = loaded
-            .project
-            .files(db)
-            .iter()
-            .map(|file| (file.path(db).clone(), file.text(db).clone()))
-            .collect();
+        let sources = jadpo_db::source_texts(db, project);
         return Err((blocking, sources));
     }
     let set = jadpo_check::data::migrations::migrations(db, project);
