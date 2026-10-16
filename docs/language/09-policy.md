@@ -3075,8 +3075,9 @@ Not yet:
 
 - A value stored with `set:` keeps its rules in the record the write gives
   back, but not once it is stored: anyone who may read the field it is
-  stored in may read it later, from another request. Whether such a write
-  is refused waits on a decision (chunk 4.8).
+  stored in may read it later, from another request. Decided 2026-10-16:
+  such a write is refused unless every caller who may read the field it is
+  stored in may read the value; chunk 5.1d builds it.
 
 - A restricted field read only in an event isn't an output: an event's
   subscribers (area 12) are server work. Area 15's log redaction covers
@@ -3261,4 +3262,5 @@ Not yet:
 | Finding records (chosen in chunk 4.8) | A `get`'s `id`, each argument a query is run with, and a write's target are checked like an output field, at the value: a record passed whole finds by its `id`. An include's reference is checked like a field the query reads: a parent's on the record that refers to it, a child's on the child | 2026-10-16 |
 | What a write gives back (chosen in chunk 4.8) | An update's record is proved against its entity's `read:` as well as its fields' own, for every record its target may be (a `get`'s, a create's, one passed in or found by `id`); its `id`, and what its `set:` gave each field, are the caller's own, and a stored field an update by `id` reads is the record's. A create's record holds what the caller set and what is new, so only its fields' own `read:` apply. The values a `set:` gives stay in the record given back. The check runs whether or not any field has a policy | 2026-10-16 |
 | Proofs from memberships (chosen in chunk 4.8) | A membership whose `role:` may be `none` holds no role a proof counts on, though it still makes its member one of the tenant's people. A membership read as an include's parent, which its lifecycle may hide, proves no role. A caller who belongs to a record's tenant passes a list naming every role of every membership held in the tenant, through the record's tenancy | 2026-10-16 |
+| Restricted values stored in another record | A create or update may store a value in a field only when every caller who may read that field may read the value, proved as an output is; otherwise `policy.output_field_unproved` names the `set:`, so copies between fields read by the same callers stay allowed (Richard) | 2026-10-16 |
 | User fields on creates (chosen in chunk 4.8) | The user field a create sets from the caller is set from the caller on every path: every value it may hold, whatever an `if` or `match` decided, is the caller's `id`; otherwise `policy.role_field_create_forbidden` | 2026-10-16 |
