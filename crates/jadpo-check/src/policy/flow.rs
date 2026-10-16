@@ -1108,7 +1108,7 @@ impl Walk<'_> {
                     }
                 }
                 // What it stores, for everyone who may read each field.
-                let dest = Dest::of(
+                let mut dest = Dest::of(
                     flow,
                     &entity,
                     target.as_ref(),
@@ -1120,6 +1120,11 @@ impl Walk<'_> {
                         .unwrap_or_default(),
                     &supplied,
                 );
+                let changes = transition
+                    .as_ref()
+                    .map(|t| stores::transition_sets(flow, &entity, t))
+                    .unwrap_or_default();
+                self.hold(flow, &mut dest, site, &changes, None);
                 for (name, value, prov) in values.iter().chain(&supplied) {
                     self.store(flow, &dest, name, *value, prov, None);
                 }
@@ -1395,7 +1400,7 @@ impl Walk<'_> {
                     }
                 }
                 for store in &summary.stores {
-                    self.passed_store(flow, key.name(), store, args, &provs);
+                    self.passed_store(flow, site, key.name(), store, args, &provs);
                 }
                 summary.returns.substitute(&provs)
             }

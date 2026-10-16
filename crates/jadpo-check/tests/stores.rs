@@ -444,6 +444,20 @@ action forecast_unless_over(project_id: Project.id) fails ProjectNotFound, OverB
     return forecast
 }
 
+action move_and_close(task_id: Task.id, to: Project.id) fails TaskNotFound, ProjectNotFound -> Task {
+    var task: Task = attempt Task.get(task_id)
+    var project: Project = attempt Project.get(task.project_id)
+    var moved: Task = attempt Task.update(task) {
+        set: {
+            project_id: to
+        }
+    }
+    if (project.spent > 100) {
+        return Task.close(moved)
+    }
+    return moved
+}
+
 action close_over_spent(task_id: Task.id) fails TaskNotFound, ProjectNotFound -> Task {
     var task: Task = attempt Task.get(task_id)
     var project: Project = attempt Project.get(task.project_id)
@@ -462,6 +476,7 @@ action close_over_spent(task_id: Task.id) fails TaskNotFound, ProjectNotFound ->
             "`spend_unless_over` stores a value decided by `Project.budget` in `Project.spent`, which not everyone who may read `spent` may read",
             "`spend_unless_over` raises `OverBudget` on a condition that tests `Project.budget`, which not every caller may read",
             "`forecast_unless_over` raises `OverBudget` on a condition that tests `Project.budget`, which not every caller may read",
+            "`move_and_close` stores a value decided by `Project.spent` in `Task.closed`, which not everyone who may read `closed` may read",
         ],
         &["flag_spent", "close_over_spent"],
     );

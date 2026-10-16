@@ -25,14 +25,14 @@
 use std::collections::BTreeSet;
 
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_graph::Key;
-use jadpo_graph::TypeRef;
-use jadpo_graph::body::SiteId;
+use jadpo_graph::body::{Callee, Expr, Node, SiteId};
+use jadpo_graph::{Key, TypeRef};
+use jadpo_std::write::WriteOp;
 
-use super::{Flow, Origin, Prov, Src, Walk, erased, shallow, widen};
+use super::{Flow, Origin, Prov, Src, Walk, erased, field_name, shallow, widen};
 use crate::policy::proof::{Fact, Facts, Reached};
 use crate::policy::{Effect, Grant};
-use crate::types::TypeView;
+use crate::types::{Fact as Did, TypeView, body_facts, resolve};
 
 /// One value known exactly: a parameter's part, or a field of a record
 /// the body knows ([`Origin`]); a whole record stands for its `id`.
@@ -99,15 +99,18 @@ fn values(srcs: &[Src]) -> Vec<Src> {
 }
 
 /// The record a write stores values in: its entity, which record it is
-/// (its own [`Origin`], and the target an update was given), and each
-/// reference the write sets with what it is set from; a reference it may
-/// or may not set (a patch's, or one `when_supplied:` sets) has nothing.
+/// (its own [`Origin`], and the target an update was given), each
+/// reference the write sets with what it is set from (a reference it may
+/// or may not set, a patch's or one `when_supplied:` sets, has nothing),
+/// and the references it holds that nothing else the body runs may
+/// change, so a record found by one is still the one it refers to.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Dest {
     entity: String,
     own: Origin,
     target: Vec<Src>,
     refs: Vec<(String, Vec<Src>)>,
+    held: Vec<String>,
 }
 
 impl Dest {
@@ -148,6 +151,7 @@ impl Dest {
             own,
             target: target.map(|t| values(&t.whole)).unwrap_or_default(),
             refs,
+            held: Vec::new(),
         }
     }
 
@@ -162,6 +166,7 @@ impl Dest {
                 .iter()
                 .map(|(name, srcs)| (name.clone(), srcs.iter().map(erased).collect()))
                 .collect(),
+            held: self.held.clone(),
         }
     }
 
@@ -183,6 +188,7 @@ impl Dest {
                 .iter()
                 .map(|(name, srcs)| (name.clone(), over(srcs)))
                 .collect(),
+            held: self.held.clone(),
         }
     }
 
@@ -197,6 +203,7 @@ impl Dest {
                 .iter()
                 .map(|(name, srcs)| (name.clone(), cut(srcs)))
                 .collect(),
+            held: self.held.clone(),
         }
     }
 }
@@ -341,7 +348,7 @@ impl Walk<'_> {
             if let Some(Ident::Field(entity, name, of)) = self.found.get(&origin)
                 && *entity == dest.entity
                 && refers(name)
-                && !dest.refs.iter().any(|(set, _)| set == name)
+                && dest.held.contains(name)
                 && self.is_dest(dest, *of)
             {
                 let rel = Rel::Ref(name.clone());
@@ -620,11 +627,88 @@ impl Walk<'_> {
             .next(next)
     }
 
-    /// A call passing `args` to `callee`, which stores a part of one of
-    /// them: checked here, with what was passed.
+    /// The references of `dest` it keeps through the write at `site`,
+    /// which sets `changes` itself, that nothing else this body runs may
+    /// change: of `among` when given (what a called action kept), else
+    /// every reference its entity has.
+    pub(super) fn hold(
+        &self,
+        flow: &Flow<'_>,
+        dest: &mut Dest,
+        site: SiteId,
+        changes: &[String],
+        among: Option<&[String]>,
+    ) {
+        let all: Vec<String> = match among {
+            Some(among) => among.to_vec(),
+            None => flow
+                .entities
+                .get(&dest.entity)
+                .map(|model| {
+                    model
+                        .fields
+                        .iter()
+                        .filter(|field| field.reference.is_some())
+                        .map(|field| field.name.clone())
+                        .collect()
+                })
+                .unwrap_or_default(),
+        };
+        dest.held = all
+            .into_iter()
+            .filter(|name| {
+                !changes.contains(name)
+                    && !dest.refs.iter().any(|(set, _)| set == name)
+                    && !self.may_change(flow, &dest.entity, name, site)
+            })
+            .collect();
+    }
+
+    /// Whether anything this body runs but the site `except` may change
+    /// `entity`'s `field`: a write of its own, or one an action it calls
+    /// reaches. A called action's patch may change anything.
+    fn may_change(&self, flow: &Flow<'_>, entity: &str, field: &str, except: SiteId) -> bool {
+        let mut seen = BTreeSet::new();
+        self.body.sites.iter().enumerate().any(|(at, site)| {
+            if at as u32 == except.0 {
+                return false;
+            }
+            match &site.node {
+                Node::Expr(Expr::Write {
+                    entity: key,
+                    op,
+                    transition,
+                    set,
+                    patch,
+                    when_supplied,
+                    ..
+                }) if key.name() == entity && *op != WriteOp::Create => {
+                    set.iter().any(|(key, _)| field_name(key) == field)
+                        || patch.is_some_and(|patch| {
+                            self.patch_fields(flow, patch).iter().any(|f| f == field)
+                        })
+                        || when_supplied.iter().any(|(_, fields)| {
+                            fields.iter().any(|(key, _)| field_name(key) == field)
+                        })
+                        || transition.as_ref().is_some_and(|t| {
+                            transition_sets(flow, entity, t).iter().any(|f| f == field)
+                        })
+                }
+                Node::Expr(Expr::Call {
+                    callee: Callee::Action(key),
+                    ..
+                }) => reaches_change(flow, key, entity, field, &mut seen),
+                _ => false,
+            }
+        })
+    }
+
+    /// A call at `site` passing `args` to `callee`, which stores a part of
+    /// one of them: checked here, with what was passed.
     pub(super) fn passed_store(
         &mut self,
         flow: &Flow<'_>,
+        site: SiteId,
         callee: &str,
         store: &Store,
         args: &[Option<SiteId>],
@@ -636,7 +720,9 @@ impl Walk<'_> {
         let Some(Some(arg)) = args.get(at) else {
             return;
         };
-        let dest = store.dest.substitute(provs);
+        let mut dest = store.dest.substitute(provs);
+        let kept = store.dest.held.clone();
+        self.hold(flow, &mut dest, site, &[], Some(&kept));
         let value = Prov::of(store.value.clone()).substitute(provs);
         self.store(flow, &dest, &store.field, *arg, &value, Some(callee));
     }
@@ -697,4 +783,51 @@ impl Walk<'_> {
             .map(|fields| fields.iter().map(|field| field.name.clone()).collect())
             .unwrap_or_default()
     }
+}
+
+/// The fields the transition `transition` of `entity` sets.
+pub(super) fn transition_sets(flow: &Flow<'_>, entity: &str, transition: &Key) -> Vec<String> {
+    let Some((_, short)) = transition.name().split_once('.') else {
+        return Vec::new();
+    };
+    flow.entities
+        .get(entity)
+        .and_then(|model| model.lifecycle.as_ref())
+        .and_then(|lifecycle| lifecycle.transition(short))
+        .map(|t| t.set.iter().map(|(field, _)| field.clone()).collect())
+        .unwrap_or_default()
+}
+
+/// Whether the action `key`, or one it calls, may change `entity`'s
+/// `field`; `seen` holds those already looked at.
+fn reaches_change(
+    flow: &Flow<'_>,
+    key: &Key,
+    entity: &str,
+    field: &str,
+    seen: &mut BTreeSet<String>,
+) -> bool {
+    if !seen.insert(key.name().to_string()) {
+        return false;
+    }
+    let Some(callable) = resolve(flow.db, flow.project, key) else {
+        return false;
+    };
+    body_facts(flow.db, flow.project, callable)
+        .facts
+        .iter()
+        .any(|fact| match fact {
+            Did::Writes(write) if write.entity == entity && write.op != WriteOp::Create => {
+                write.set.iter().any(|f| f == field)
+                    || match &write.transition {
+                        Some(transition) => transition_sets(flow, entity, transition)
+                            .iter()
+                            .any(|f| f == field),
+                        // Changing what a patch supplies.
+                        None => write.op == WriteOp::Update && write.set.is_empty(),
+                    }
+            }
+            Did::Action(key) => reaches_change(flow, key, entity, field, seen),
+            _ => false,
+        })
 }
