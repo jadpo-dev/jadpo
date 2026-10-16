@@ -627,6 +627,22 @@ webhook routes can change path but cannot be switched off; generated
 response shapes are fixed. This removes the confirm page, its wording and
 any page layout from the earlier decisions.
 
+**Erasing a person at providers.** A provider package declares its erasure
+operation in `provider.jadpo` (`erasure: { call: customers.delete  by:
+CustomerId }`, area 15's package-level declaration, not a capability
+mapping); the connection names the app field holding the key
+(`erasure: { key: User.stripe_customer_id }`). Order: Jadpo copies each
+key into the erasure event, the app erases the person in one transaction,
+then a generated subscriber calls each provider after commit, retried
+until it confirms; area 15's erasure-completed email goes only once every
+provider has confirmed, and a delivery that gives up is parked for an
+operator and shown, never quietly incomplete. A copied key that is
+personal data (an email address) stays only in the outbox until delivered,
+listed in the personal-data report. A connection that receives personal
+data but cannot erase it is an error unless an acceptance states why the
+data stays (tax records), listed in the personal-data report. The app may
+add its own `PersonErased` subscribers.
+
 **Redis entities and running without a database.** An entity may live in
 a Redis store and must expire: `expires_after: 2h`, measured from its last
 write, expired records hidden as area 6 says (answering area 5 question
