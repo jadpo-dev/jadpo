@@ -279,6 +279,35 @@ any call other than translations and formatting are compile errors. A field
 the template never uses is a warning. Values are escaped; HTML goes in
 unescaped only as the safe-HTML type (input to chunk 5.4).
 
+**Only text and numbers are written out** (Richard, 2026-10-16), in
+templates as in placeholders: `{{ value }}` takes `Text`,
+`PresentationText`, `Int` or `Decimal` (numbers written the locale's
+way). Anything else must be formatted first, and writing it out directly
+is a compile error that names how: an `Instant` or `Money` with
+`temporal.format` or the money formatter, an enum through a message with
+one wording per value, a `Bool` is a condition for `if`, a list is walked
+with `for`, an object's fields are written one by one.
+
+**Also decided on translations** (2026-10-16, as recommended):
+
+- **The default language is complete**: a message missing from it is an
+  error, since every other language falls back to it.
+- **Regional fallback**: a message missing from `fr_ca` tries `fr_fr`, if
+  supported, before the default language.
+- **Stale translations are flagged**: each translation records which
+  version of the default wording it was made from; when that wording
+  changes, the others become warnings until updated, listed by
+  `jadpo translations missing`.
+- **Agent translations can need review**: an app may mark translations an
+  agent wrote as not yet reviewed, listed in the approval report until a
+  person accepts them.
+- **Text direction**: every locale knows its direction, and templates read
+  it (`<html dir="{{ locale.direction }}">`).
+- **Out of scope**: the app's own data (product names, articles) is not a
+  translation; an app models translated content as ordinary fields.
+- Waiting for open item 8: a library package's own messages, and whether
+  the app can reword them.
+
 ## Decided: the golden rule
 
 Decided 2026-10-16 (Richard): **a package can do nothing the app cannot,
