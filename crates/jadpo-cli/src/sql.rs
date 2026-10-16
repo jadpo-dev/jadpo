@@ -340,7 +340,7 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
             if let Some(probe) = field_probe {
                 let mut asked = vec![(
                     "then".to_string(),
-                    "a row means a field's own policy refused the caller → not_permitted"
+                    "a row means the record's grants let the caller in, so a field's own policy refused them → not_permitted"
                         .to_string(),
                 )];
                 let mut probe_params = Vec::new();
@@ -351,12 +351,12 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
                     probe_params.push(param_json(n, &source, &ty));
                 }
                 screen.push(Block::section(
-                    "when the record was there",
+                    "when a field may have refused",
                     probe.sql.lines(),
                 ));
                 screen.push(Block::fields(asked));
                 statement.push((
-                    "whenTheRecordWasThere",
+                    "whenAFieldMayHaveRefused",
                     Json::object([
                         ("sql", probe.sql.as_str().into()),
                         ("params", Json::array(probe_params)),

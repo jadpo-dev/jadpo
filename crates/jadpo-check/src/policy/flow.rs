@@ -164,6 +164,20 @@ pub fn flow_report(db: &dyn Db, project: Project) -> BTreeMap<String, Vec<Diagno
     if !super::policy_clean(db, project) {
         return BTreeMap::new();
     }
+    // Nothing to follow without a field's own policy or a create only
+    // user fields may make.
+    let access = super::access(db, project);
+    let needed = access.entities.values().any(|policy| {
+        let create = policy.grants(Effect::Create);
+        !policy.fields.is_empty()
+            || (!create.is_empty()
+                && create
+                    .iter()
+                    .all(|grant| matches!(grant, Grant::Caller { .. })))
+    });
+    if !needed {
+        return BTreeMap::new();
+    }
     let mut actions: BTreeMap<Key, Action> = BTreeMap::new();
     for &file in project.files(db) {
         for callable in callables_of(db, file) {

@@ -1656,6 +1656,14 @@ fn an_output_never_carries_a_field_not_every_caller_may_read() {
     assert_eq!(tenancy["scopes"], serde_json::json!(["entity Project"]));
     let listed = node("action_exception ledger.found_company");
     assert_eq!(listed["who"], serde_json::json!(["Access.authenticated"]));
+    // `jadpo sql` shows how a field's refusal is told from the record's.
+    let shown = jadpo(&root, &["sql", "set_budget"]);
+    assert_eq!(shown.code, 0, "{}{}", shown.stdout, shown.stderr);
+    assert!(
+        shown.stdout.contains("when a field may have refused"),
+        "{}",
+        shown.stdout
+    );
     // A query sending the budget to everyone who may read a project.
     write(
         &root,
