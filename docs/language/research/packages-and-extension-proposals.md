@@ -643,6 +643,19 @@ data but cannot erase it is an error unless an acceptance states why the
 data stays (tax records), listed in the personal-data report. The app may
 add its own `PersonErased` subscribers.
 
+**Bot protection.** `bot_check` becomes a capability (Jadpo checks it on
+its own public endpoints: magic-link and privacy requests), filled by a
+package (Turnstile, hCaptcha, reCAPTCHA) with one operation, check a token,
+pass or fail; `bot_check: { connection: turnstile }` in `application { }`
+and `bot_check: true` on a route or a generated feature. The frontend shows
+the widget; the token travels in the `X-Bot-Check` header, never in the
+route's input, checked before the action within the request's deadline. A
+failed check is `bot_check_failed` (403), worded from translations;
+reCAPTCHA's score gets a threshold setting on the connection. An
+unreachable provider refuses the request (fails closed), and loosening that
+needs an acceptance. Development and tests pass every check through a local
+driver; a test can script `bot_check_failed`.
+
 **Redis entities and running without a database.** An entity may live in
 a Redis store and must expire: `expires_after: 2h`, measured from its last
 write, expired records hidden as area 6 says (answering area 5 question
