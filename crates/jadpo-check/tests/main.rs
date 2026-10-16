@@ -10,6 +10,7 @@ mod support;
 
 mod bodies;
 mod conditions;
+mod config;
 mod determinism;
 mod examples;
 mod failures;

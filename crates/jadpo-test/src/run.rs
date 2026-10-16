@@ -162,6 +162,7 @@ fn one<E: Executor>(
         let host = TestHost::new(databases);
         let outcome = {
             let mut ctx = Ctx::new(places, &host, env.env);
+            ctx.set_settings(executor.settings(callable));
             runtime.block_on(executor.run(&mut ctx, callable, Vec::new()))
         };
         let failure = match outcome {
@@ -178,6 +179,7 @@ fn one<E: Executor>(
     }
     let host = env.host();
     let mut ctx = Ctx::new(places, &host, env.env);
+    ctx.set_settings(executor.settings(callable));
     let ran = block_on(executor.run(&mut ctx, callable, Vec::new()));
     let outcome = ran.unwrap_or_else(|_| {
         Outcome::Fault(ctx.fault(

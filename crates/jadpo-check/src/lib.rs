@@ -123,6 +123,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         }
         out.extend(config::config_problems(db, project).iter().cloned());
         out.extend(config::connection_problems(db, project).iter().cloned());
+        out.extend(config::test_value_problems(db, project).iter().cloned());
         out.extend(identity::identity_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(routes::table_problems(db, project).iter().cloned());

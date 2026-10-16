@@ -27,7 +27,10 @@ use crate::data::ConnectionKind;
 use crate::lookups::{Lookup, Name};
 use crate::tree::{self, dotted, name_text, node_span, written};
 use crate::types::literal::{self, Problem};
-use crate::types::{Const, Def, Prim, Ty, TypeRef, TypeView};
+use crate::types::{
+    Callable, Const, Def, Fact, Prim, Ty, TypeRef, TypeView, body_facts, callables_of, resolve,
+    typed_body,
+};
 
 /// What a setting's block may hold.
 const OPTIONS: [&str; 4] = ["secret", "default", "binding", "test"];
@@ -863,6 +866,9 @@ pub fn use_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
     };
     let path = file.path(db);
     let mut out = Vec::new();
+    for callable in callables_of(db, file) {
+        out.extend(test_settings(db, project, callable).problems.iter().cloned());
+    }
     for (name, field) in reads_in(&source) {
         let span = node_span(path, field.syntax());
         let fact = setting_fact(db, project, Name::new(db, name.clone()));
@@ -1087,4 +1093,220 @@ fn url_type(connection: &str, needs: Prim, at: Span, label: &str, reason: &str) 
 /// The problems with the connections' addresses.
 pub fn connection_problems(db: &dyn Db, project: Project) -> &Vec<Diagnostic> {
     &connection_urls(db, project).problems
+}
+
+// --- settings tested code reads ------------------------------------------------------
+
+/// A test reads each setting's `test:` value, or else its `default:`, and
+/// a secret's value is made for the run; one that tested code reads with
+/// none of them has nothing to read (area 13, "Configuration in tests").
+/// Only the calls a test makes are followed, through the functions,
+/// actions and fixtures it reaches; a request it sends through a route
+/// runs what the route does, which the run reports instead.
+pub fn test_value_problems(db: &dyn Db, project: Project) -> &Vec<Diagnostic> {
+    test_values(db, project)
+}
+
+#[salsa::tracked(returns(ref))]
+fn test_values(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    use std::collections::BTreeSet;
+
+    use jadpo_graph::Kind;
+    use jadpo_graph::body::{Expr, Node};
+
+    let config = config(db, project);
+    let wanting: BTreeSet<&str> = config
+        .settings
+        .iter()
+        .filter(|setting| !setting.secret && setting.test.is_none() && setting.default.is_none())
+        .map(|setting| setting.name.as_str())
+        .collect();
+    let mut out = Vec::new();
+    if wanting.is_empty() {
+        return out;
+    }
+    let mut reported: BTreeSet<(String, u32)> = BTreeSet::new();
+    for &file in project.files(db) {
+        for root in callables_of(db, file) {
+            let facts = body_facts(db, project, root);
+            if facts.key_of(&[Kind::Test]).is_none() {
+                continue;
+            }
+            // A test's key reads `<file> "<sentence>"`.
+            let sentence = facts.key.as_ref().map_or_else(String::new, |key| {
+                let name = key.name();
+                name.split_once('"')
+                    .map_or(name, |(_, rest)| rest.trim_end_matches('"'))
+                    .to_string()
+            });
+            let given: BTreeSet<&str> = test_settings(db, project, root)
+                .overrides
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect();
+            let mut visited = BTreeSet::new();
+            let mut queue = vec![root];
+            while let Some(current) = queue.pop() {
+                let checked = typed_body(db, project, current);
+                if !visited.insert((current.file(db).path(db).clone(), current.index(db), current.function(db))) {
+                    continue;
+                }
+                let path = current.file(db).path(db).clone();
+                for site in &checked.body.sites {
+                    let Node::Expr(Expr::Config { field }) = &site.node else {
+                        continue;
+                    };
+                    let name = field.name();
+                    if !wanting.contains(name)
+                        || given.contains(name)
+                        || !reported.insert((path.clone(), site.start))
+                    {
+                        continue;
+                    }
+                    out.push(
+                        Diagnostic::new(
+                            &rule::CONFIGURATION_TEST_VALUE_MISSING,
+                            format!("`config.{name}` has no value in tests"),
+                        )
+                        .at(Span::new(&path, site.start, site.end), "no `test:` or `default:`")
+                        .reason(format!(
+                            "The test \"{sentence}\" reaches this read. A test reads each setting's `test:` value, or its `default:`, and `{name}` has neither; only a secret is made up for a run, and `{name}` isn't one."
+                        ))
+                        .next(format!("Give `{name}` a `test:` value, or a `default:`, in `config.jadpo`")),
+                    );
+                }
+                for fact in &body_facts(db, project, current).facts {
+                    if let Fact::Action(key) | Fact::Fixture(key) | Fact::Function(key) = fact
+                        && let Some(next) = resolve(db, project, key)
+                    {
+                        queue.push(next);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+// --- a test's own values ---------------------------------------------------------------
+
+/// What a test's `config:` setting gives (area 13, "Configuration in
+/// tests"): the settings it changes, each with its value in the spelling a
+/// variable has, and what is wrong with it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TestSettings {
+    pub overrides: Vec<(String, String)>,
+    pub problems: Vec<Diagnostic>,
+}
+
+/// The `config: { name: value }` at the top of a test: each name a setting
+/// that isn't secret, each value a literal of the setting's type. Secrets
+/// never appear in test source: a run makes its own.
+#[salsa::tracked(returns(ref))]
+pub fn test_settings<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    callable: Callable<'db>,
+) -> TestSettings {
+    let mut out = TestSettings::default();
+    if callable.function(db).is_some() {
+        return out;
+    }
+    let file = callable.file(db);
+    let Some(source) = tree::source(db, file) else {
+        return out;
+    };
+    let Some(ast::Decl::TestDecl(decl)) = tree::decl_at(&source, callable.index(db)) else {
+        return out;
+    };
+    let path = file.path(db).clone();
+    let model = config(db, project);
+    let mut reader = Reader {
+        db,
+        project,
+        lookup: Lookup::new(db, project),
+        out: Config::default(),
+    };
+    let mut seen: Vec<(String, Span)> = Vec::new();
+    for item in decl.block().iter().flat_map(|block| block.block_items()) {
+        let ast::BlockItem::Member(member) = item else {
+            continue;
+        };
+        let Some(key) = member.member_key() else {
+            continue;
+        };
+        if tree::written(key.syntax()) != "config" {
+            continue;
+        }
+        for (name_node, entry) in tree::members(member.block()) {
+            let Some(name) = name_text(&name_node) else {
+                continue;
+            };
+            let span = node_span(&path, name_node.syntax());
+            if let Some((_, first)) = seen.iter().find(|(seen, _)| *seen == name) {
+                reader.out.problems.push(
+                    Diagnostic::new(
+                        &rule::CONFIGURATION_DUPLICATE_OPTION,
+                        format!("`{name}` is given twice in `config:`"),
+                    )
+                    .at(span, "given again")
+                    .also(first.clone(), "first given here")
+                    .reason("A test says each setting's value once, so there is one answer to read.")
+                    .next(format!("Remove one `{name}:`")),
+                );
+                continue;
+            }
+            seen.push((name.clone(), span.clone()));
+            let Some(setting) = model.setting(&name) else {
+                if !model.written.contains(&name) {
+                    reader.out.problems.push(unknown_in_test(model, &name, span));
+                }
+                continue;
+            };
+            if setting.secret {
+                reader.out.problems.push(
+                    Diagnostic::new(
+                        &rule::CONFIGURATION_SECRET_DEFAULT,
+                        format!("`{name}` is secret, and a test gives it a value"),
+                    )
+                    .at(span, "a secret written in source")
+                    .reason("Secrets never appear in test source: every test run makes its own throwaway value, which is enough because a secret can only reach the places the compiler owns.")
+                    .next(format!("Remove `{name}:` from `config:`")),
+                );
+                continue;
+            }
+            if let Some(Some(text)) = reader.given(
+                &path,
+                &name,
+                "config",
+                &setting.ty,
+                setting.reads,
+                &span,
+                &entry,
+            ) {
+                out.overrides.push((name, text));
+            }
+        }
+    }
+    out.problems = reader.out.problems;
+    out
+}
+
+fn unknown_in_test(model: &Config, name: &str, span: Span) -> Diagnostic {
+    let near = nearest(name, model.written.iter().map(String::as_str));
+    let problem = Diagnostic::new(
+        &rule::CONFIGURATION_FIELD_UNKNOWN,
+        format!("`{name}` isn't a setting"),
+    )
+    .at(span.clone(), "no such setting")
+    .reason(format!(
+        "`config {{ }}` declares no setting called `{name}`, so a test has nothing to change.{}",
+        near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
+    ));
+    match near {
+        Some(near) => problem
+            .next(format!("Use `{near}` instead of `{name}`"))
+            .edit(span, near),
+        None => problem.next(format!("Declare `{name}: <Type>` in `config.jadpo`, or remove it")),
+    }
 }

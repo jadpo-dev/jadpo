@@ -503,7 +503,7 @@ pub fn set(args: &SetArgs, env: &Environment) -> u8 {
 /// Checks `typed` against setting `args.field`'s type, the same reading the
 /// app starts with, so what is stored is what will be accepted, and stores
 /// it in `.env.local`. The screen that says so; never the value.
-pub(crate) fn store(args: &SetArgs, typed: &str) -> Result<Screen, Box<Diagnostic>> {
+pub fn store(args: &SetArgs, typed: &str) -> Result<Screen, Box<Diagnostic>> {
     let loaded = jadpo_db::load(&args.root);
     let prepared = Prepared::load(&loaded.db, loaded.project).map_err(|_| {
         Box::new(

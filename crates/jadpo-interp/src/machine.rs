@@ -1570,7 +1570,11 @@ impl<'p> Machine<'p> {
                 ));
             }
             Expr::Config { .. } => match self.decoded(id) {
-                Some(Decoded::Config(Some(setting))) => match self.program.setting(*setting) {
+                Some(Decoded::Config(Some(setting))) => match ctx
+                    .setting(*setting)
+                    .cloned()
+                    .or_else(|| self.program.setting(*setting))
+                {
                     Some(value) => self.values.push(value),
                     None => {
                         let name = self.program.setting_name(*setting);

@@ -393,6 +393,26 @@ impl Executor for Program {
         self.plan().find(key)
     }
 
+    fn settings(&self, callable: u32) -> Vec<(u32, Value)> {
+        let config = self.plan().config();
+        self.plan()
+            .callable(callable)
+            .into_iter()
+            .flat_map(|plan| plan.settings.iter())
+            .filter_map(|(at, text)| {
+                let field = config.fields.get(*at as usize)?;
+                let value = jadpo_runtime::config::decode(
+                    config,
+                    &self.prepared.validators,
+                    field,
+                    text,
+                )
+                .ok()?;
+                Some((*at, value))
+            })
+            .collect()
+    }
+
     fn run<'a, 'p: 'a>(
         &'a self,
         ctx: &'a mut Ctx<'p>,

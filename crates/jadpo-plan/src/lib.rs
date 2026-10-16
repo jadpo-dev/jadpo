@@ -95,6 +95,10 @@ pub struct CallablePlan {
     /// (area 9, chunk 4.10). Read from its signature, never from the value
     /// passed.
     pub caller: Option<u32>,
+    /// For a test: the settings its `config:` changes, each by its number
+    /// in the plan's settings with its value in a variable's spelling
+    /// (area 13, "Configuration in tests").
+    pub settings: Vec<(u32, String)>,
 }
 
 impl CallablePlan {
@@ -170,6 +174,8 @@ impl Plan {
         let graph = Arc::clone(jadpo_check::graph::graph(db, project));
         let mut files = BTreeMap::new();
         let mut found: Vec<(Key, Kind, String, Arc<Body>)> = Vec::new();
+        // What each test's `config:` changes, by the test's key.
+        let mut overrides: HashMap<Key, Vec<(String, String)>> = HashMap::new();
         for &file in project.files(db) {
             let path = file.path(db).clone();
             files.insert(path.clone(), file.text(db).clone());
@@ -179,6 +185,12 @@ impl Plan {
                     continue;
                 };
                 let Some(kind) = key.kind() else { continue };
+                if kind == Kind::Test {
+                    let given = jadpo_check::config::test_settings(db, project, callable);
+                    if !given.overrides.is_empty() {
+                        overrides.insert(key.clone(), given.overrides.clone());
+                    }
+                }
                 found.push((key, kind, path.clone(), Arc::clone(&checked.body)));
             }
         }
@@ -268,6 +280,18 @@ impl Plan {
                         .is_some_and(|local| holds_caller(&local.ty))
                 })
                 .and_then(|at| u32::try_from(at).ok());
+            let settings = overrides
+                .get(&key)
+                .into_iter()
+                .flatten()
+                .filter_map(|(name, text)| {
+                    let at = setting_ids.get(&config::key(
+                        jadpo_check::graph::registry(db, project),
+                        name,
+                    ))?;
+                    Some((*at, text.clone()))
+                })
+                .collect();
             callables.push(CallablePlan {
                 key,
                 kind,
@@ -279,6 +303,7 @@ impl Plan {
                 isolation,
                 gate,
                 caller,
+                settings,
             });
         }
         let mut routes = routes::table(

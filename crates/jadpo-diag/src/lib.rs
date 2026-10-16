@@ -191,6 +191,8 @@ rules! {
         "10-configuration-and-time.html#configuration-secret-invalid", "Secret option is not true or false";
     CONFIGURATION_TYPE_UNSUPPORTED: "configuration.type_unsupported", area 10, Error, Agent,
         "10-configuration-and-time.html#configuration-type-unsupported", "Setting type cannot be read from one variable";
+    CONFIGURATION_TEST_VALUE_MISSING: "configuration.test_value_missing", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-test-value-missing", "Setting read by a test has no value in tests";
     CONFIGURATION_UNKNOWN_OPTION: "configuration.unknown_option", area 10, Error, Agent,
         "10-configuration-and-time.html#configuration-unknown-option", "Setting option is not one a setting takes";
     CONFIGURATION_URL_TYPE: "configuration.url_type", area 10, Error, Agent,

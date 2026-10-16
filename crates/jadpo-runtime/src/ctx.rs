@@ -132,6 +132,9 @@ pub struct Ctx<'p> {
     /// When the request being answered runs out of time, on the host's
     /// monotonic clock (area 7, "Time limits").
     deadline: Option<u64>,
+    /// The settings a test gives its own values (area 13): each by its
+    /// number in the plan.
+    settings: Vec<(u32, Value)>,
 }
 
 impl fmt::Debug for Ctx<'_> {
@@ -165,6 +168,7 @@ impl<'p> Ctx<'p> {
             unpoliced: false,
             draws: 0,
             deadline: None,
+            settings: Vec::new(),
         }
     }
 
@@ -443,6 +447,22 @@ impl<'p> Ctx<'p> {
     /// `None` outside an action.
     pub fn isolation(&self) -> Option<Isolation> {
         self.boundary.as_ref().map(|boundary| boundary.isolation)
+    }
+
+    /// Gives the invocation its own values for some settings, by their
+    /// numbers in the plan: what a test's `config:` says (area 13), read
+    /// instead of the values the application started with.
+    pub fn set_settings(&mut self, settings: Vec<(u32, Value)>) {
+        self.settings = settings;
+    }
+
+    /// The value this invocation gives setting number `at`, if it has its
+    /// own.
+    pub fn setting(&self, at: u32) -> Option<&Value> {
+        self.settings
+            .iter()
+            .find(|(number, _)| *number == at)
+            .map(|(_, value)| value)
     }
 
     /// `clock.now`: the time the invocation's clock reads, in milliseconds
