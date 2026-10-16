@@ -149,7 +149,7 @@ postcodes/v2/
     libraries/uk.jadpo              library uk { public parse(...)  normalise(...) }
     libraries/uk.test.jadpo         tests beside the file, as in an app
     CHANGELOG.md
-    surface.json                    generated
+    package.surface                 generated
 ```
 
 A provider package adds `provider.jadpo`, `resources/`, `events/`,
@@ -166,7 +166,7 @@ stripe/v2024_06_20/
     libraries/tables.jadpo                 written: decoders and translation helpers
     libraries/tables.test.jadpo
     recordings/payment_intents.create.json real responses that confirm the types
-    surface.json
+    package.surface
 ```
 
 - **`public` marks the package's API**, as it marks what a domain offers
@@ -309,16 +309,31 @@ jadpo.lock
 ## Decided: the package surface
 
 Richard's idea. The compiler works out a package's public surface and
-writes it to `surface.json`: every public type with its fields and
+writes it to `package.surface`, beside `package.jadpo`: the package's
+description, licence and version, every public type with its fields and
 constraints, every failure with its kind and code, every function's
-signature, failures and description, the requirements and licence, and for
-a provider its operations (wire and output types both), hosts, credential
-scheme, settings and the capabilities it provides.
+signature, failures and description, and for a provider its operations
+(wire and output types both), hosts or container, credential scheme,
+settings and the capabilities it provides.
 
+- **Readable, in the API record's format** (area 7's `api/main.api`), not
+  JSON (decided 2026-10-16, Richard). Installed packages are committed, so
+  every upgrade's pull request carries the surface diff, and a reviewer
+  reads "removed `bookings.cancel`, new failure `PostcodeNotServed`" in
+  plain text.
+- **Every entry points at its file** (`types/booking.jadpo`), so an agent
+  reads the surface first and opens only what it needs. A file is named
+  after what it declares, so the pointer never goes stale.
+- **Kept out of `package.jadpo`**, which a person writes; the descriptions
+  stay in the source as `///` comments, where the author edits them.
+- **`jadpo package show <name>`** prints the description, licence,
+  version, kind and public surface, and `jadpo package show <name>
+  <declaration>` one operation, type or function with its description and
+  file; `--json` gives tools and agents the same. It works for installed
+  packages and an app's own integrations alike, and its screens follow the
+  CLI design language and are designed before they are built.
 - **One source for documentation.** The registry renders every package's
-  pages from its surface, so every package is documented the same way,
-  and an agent reads one file instead of the package's code (also as
-  `jadpo package show <name> --json`).
+  pages from its surface, so every package is documented the same way.
 - **Generated, never written.** `jadpo package publish` writes it, and the
   registry refuses a surface that does not match the code. The surface
   of an app's own integration is generated into `build/`.
