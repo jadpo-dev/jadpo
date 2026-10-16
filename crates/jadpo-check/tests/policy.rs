@@ -2002,3 +2002,118 @@ action draft_maybe(me: Principal.user, mine: Mine, text: NoteText) -> Draft? {
         "{found:#?}"
     );
 }
+
+#[test]
+fn a_value_passed_round_a_recursive_call_keeps_its_rules() {
+    // `pick` gives back `second` only through its call to itself, `there`
+    // only through `back`, which calls it, `show_first` sends `second`
+    // only through its call to itself, and `last` gives back a link's
+    // amount at any depth: the summary each call reads is worked out until
+    // it stops changing (chunk 4.11), where a call back into a function
+    // being followed once read as nothing.
+    let found = company(
+        r#"type Swap = Bool {}
+
+type Shown = Output {
+    amount: Amount
+}
+
+type Link = Object {
+    amount: Amount
+    next: Link?
+}
+
+function pick(first: Amount, second: Amount, swap: Swap) -> Amount {
+    if (swap) {
+        return pick(second, first, false)
+    }
+    return first
+}
+
+function last(link: Link) -> Amount {
+    return match link.next {
+        some(next) -> last(next)
+        none -> link.amount
+    }
+}
+
+function there(first: Amount, second: Amount, swap: Swap) -> Amount {
+    if (swap) {
+        return back(second, first)
+    }
+    return first
+}
+
+function back(first: Amount, second: Amount) -> Amount {
+    return there(first, second, false)
+}
+
+function show_first(first: Amount, second: Amount, swap: Swap) -> Shown {
+    if (swap) {
+        return show_first(second, first, false)
+    }
+    return Shown {
+        amount: first
+    }
+}
+
+action peek(project_id: Project.id) fails ProjectNotFound -> Shown {
+    var project: Project = attempt Project.get(project_id)
+    return Shown {
+        amount: pick(0, project.budget, true)
+    }
+}
+
+action tail(project_id: Project.id) fails ProjectNotFound -> Shown {
+    var project: Project = attempt Project.get(project_id)
+    var link: Link = Link {
+        amount: 0
+        next: Link {
+            amount: project.budget
+            next: none
+        }
+    }
+    return Shown {
+        amount: last(link)
+    }
+}
+
+action round(project_id: Project.id) fails ProjectNotFound -> Shown {
+    var project: Project = attempt Project.get(project_id)
+    return Shown {
+        amount: there(0, project.budget, true)
+    }
+}
+
+action shown(project_id: Project.id) fails ProjectNotFound -> Shown {
+    var project: Project = attempt Project.get(project_id)
+    return show_first(0, project.budget, true)
+}
+
+action safe() -> Shown {
+    return Shown {
+        amount: pick(0, 1, false)
+    }
+}
+"#,
+    );
+    let all = found.join("\n");
+    assert_eq!(
+        rules_of(&found),
+        [
+            "policy.output_field_unproved",
+            "policy.output_field_unproved",
+            "policy.output_field_unproved",
+            "policy.output_field_unproved"
+        ],
+        "{all}"
+    );
+    for expected in [
+        "`Shown.amount` carries `Project.budget`, which not every caller of `peek` may read",
+        "`Shown.amount` carries `Project.budget`, which not every caller of `tail` may read",
+        "`Shown.amount` carries `Project.budget`, which not every caller of `round` may read",
+        "`shown` passes `Project.budget` to `show_first`, which sends it",
+    ] {
+        assert!(all.contains(expected), "{expected}\n{all}");
+    }
+}
