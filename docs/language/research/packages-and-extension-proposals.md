@@ -444,6 +444,7 @@ for the app's own clients).
 - **The flow**: `POST /auth/magic-link` answers the same whether or not an
   account exists; the email carries a link and a six-digit code, both
   single-use, either working; the link opens a one-click confirm page
+  (superseded: "Generated routes; no pages" below)
   (mail scanners open links), worded from translations; confirming starts
   a browser session, and an app client posts the code to
   `POST /auth/magic-link/redeem` for an API token. Only verifiers are kept.
@@ -489,8 +490,8 @@ from areas 10, 11 and 15.
   `magic_link_heading`, `magic_link_intro` (`address`),
   `magic_link_button`, `magic_link_code_line` (`code`),
   `magic_link_expiry_line` (`expires_in`) and `magic_link_ignore_line`;
-  the confirm page's `magic_link_confirm_heading` (`address`) and
-  `magic_link_confirm_button`; and the failures' wording.
+  and the failures' wording (the confirm page's messages were removed by
+  "Generated routes; no pages").
 - **Level 3, branding**: built-in emails are wrapped in the app's shared
   email layout automatically.
 - **Level 4, the app's own email**: `magic_link: { email: accounts.SignInEmail }`
@@ -533,7 +534,7 @@ from areas 10, 11 and 15.
   translations, under the strict template rules; it wraps every email,
   and Jadpo's plain layout is used without it.
 - **Display name** (decided for Richard): `application { display_name:
-  "Acme" }`, plain text, required once any built-in email or page is on;
+  "Acme" }`, plain text, required once any built-in email is on;
   `{{ app.display_name }}` in templates, `{app_name}` in Jadpo's wording;
   an app that needs it translated rewords Jadpo's messages.
 - **Still to decide**: which roadmap chunk builds `sign_in:` (raised with

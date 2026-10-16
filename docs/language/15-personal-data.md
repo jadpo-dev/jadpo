@@ -464,7 +464,23 @@ work after the first build.
     `email:` or `send:`, never both; their fields are in area 16. An entity
     marked `Erasure.retained` needs a wording in its domain's language
     files, which the completion email lists as what was kept. The privacy
-    page and emails need `application { display_name: }` (area 16).
+    emails need `application { display_name: }` (area 16).
+    *Revised 2026-10-16 (Richard, no pages):* Jadpo generates endpoints
+    only, never pages, so the generated `/privacy` page is replaced by
+    endpoints the app's frontend calls; the frontend builds the page, and a
+    recipe can show one. `POST /privacy/requests` (`address`) answers `202`
+    for every address and sends the address-check email, whose link opens
+    the frontend path `self_service: { link: "/privacy/confirm" }` at the
+    browser origin with a token; the frontend posts
+    `POST /privacy/requests/confirm` (`token`, `kind`: `export` or
+    `erasure`) to create the request, and the erasure confirmation's cancel
+    link opens `self_service: { cancel_link: "/privacy/cancel" }`, which
+    posts `POST /privacy/requests/cancel` (`token`). Loading a frontend page
+    consumes nothing, so mail scanners cancel and confirm nothing. These
+    routes take `path:` and `routes: false` like every generated route
+    (area 7), over generated `privacy.request`, `privacy.confirm` and
+    `privacy.cancel` operations that keep every protection; the signed-in
+    `POST /privacy/export` and `/privacy/erasure` stay as they are.
 14. **How is personal data that erasure cannot reach prevented?** Raised by
     Richard (2026-10-13): no siloed data left behind. *Recommendation:* a
     compile error for any marked personal field on an entity that is not a
@@ -517,7 +533,7 @@ work after the first build.
 | Logs of marked fields | Every marked field hashed in logs, whatever its type (amends area 4) | 2026-10-13 |
 | Purpose and consent | Not in the language | 2026-10-13 |
 | Report and residency | `build/report/personal-data.md` and `.json`, shown in review when it changes; residency by deployment per region | 2026-10-13 |
-| Data request routes | (Revised 2026-10-16: the emails are area 16's built-in emails, sent through the app's one `email:` connection; `self_service: {}`, and `emails: { address_check: export_ready: erasure_confirmed: erasure_completed: }` each taking `email:` or `send:`.) `privacy: { self_service: { email: } exports: { store: keep: } }`: a generated `/privacy` page with email verification, export by expiring link, erasure after a cooling-off period, events at every step, API routes for the person only, staff actions granted in policy | 2026-10-13 |
+| Data request routes | (Revised 2026-10-16: endpoints only, no `/privacy` page: `POST /privacy/requests`, `/confirm` and `/cancel`, the emails linking to the frontend's `link:` and `cancel_link:` paths. The emails are area 16's built-in emails, sent through the app's one `email:` connection; `self_service: {}`, and `emails: { address_check: export_ready: erasure_confirmed: erasure_completed: }` each taking `email:` or `send:`.) `privacy: { self_service: { email: } exports: { store: keep: } }`: a generated `/privacy` page with email verification, export by expiring link, erasure after a cooling-off period, events at every step, API routes for the person only, staff actions granted in policy | 2026-10-13 |
 | Unreachable personal data | A marked field that belongs to no person is a compile error; every reference into a person's records has an erasure outcome | 2026-10-13 |
 | Provider copies | Erasure emits `PersonErased`; every connection receiving marked fields needs a deleting subscriber or an accepted reason | 2026-10-13 |
 | Coverage and gaps | The report states what the language covers, what is the app's choice and what is not code; breach-notification and transfer support to add | 2026-10-13 |

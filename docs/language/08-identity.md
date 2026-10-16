@@ -94,7 +94,7 @@ application {
 This is the only revocation setting (question 4), and leaving it out gives
 the strict behaviour. `application { }` also holds `display_name:`, the
 application's name as people see it, required once magic links or another
-built-in email or page is switched on (area 16, "Built-in emails"). Three paths always
+built-in email is switched on (area 16, "Built-in emails"). Three paths always
 check the record whatever the setting: external OIDC tokens, service keys used
 directly, and routes marked `authentication: RouteAuthentication.fresh` (below).
 
@@ -185,6 +185,7 @@ authentication {
     sign_in: {
         magic_link: {
             address: Member.email
+            link: "/sign-in/confirm"
         }
         google: { ... }                         // a provider preset (question 11)
     }
@@ -200,9 +201,10 @@ person the app checks some other way (an invitation it issued, below).
 ### Magic links
 
 A person gives their email address and receives one email holding a link
-and a six-digit code. Either signs them in, once: the link in the browser
-that opens it, the code typed into the app's own sign-in page or posted by
-the app's own client for an API token.
+and a six-digit code. Either signs them in, once: the link through a page
+of the app's frontend, the code typed into the app's own sign-in page or
+posted by the app's own client for an API token. Jadpo generates endpoints
+only, never pages (decided 2026-10-16): the frontend owns every page.
 
 | Setting | Default | Loosening past this needs an acceptance |
 |---|---|---|
@@ -213,6 +215,9 @@ the app's own client for an API token.
 | `failed_codes_per_day:` | `20` wrong guesses per address | more than `50` |
 | `resend_after:` | `1m` between sends to one address | |
 | `same_browser:` | `false` | |
+| `link:` | required: the frontend path the email's link opens, such as `"/sign-in/confirm"` | |
+| `path:` | `"/auth/magic-link"`, where the generated routes go | |
+| `routes:` | `true`; `false` generates none | |
 | `email:` | Jadpo's built-in email | (area 16, "Built-in emails", level 4) |
 | `send:` | none | (area 16, "Built-in emails", level 5) |
 
@@ -226,12 +231,12 @@ the app's own client for an API token.
   session), and the app's `email:` connection unless it names `send:`
   (area 16).
 
-**The routes.** The compiler generates four routes anyone may call:
+**The routes.** The compiler generates three routes anyone may call, under
+`path:`:
 
 ```text
 POST /auth/magic-link            ask for a link and a code
-GET  /auth/magic-link/confirm    the one-click confirm page the link opens
-POST /auth/magic-link/confirm    confirm: starts a browser session
+POST /auth/magic-link/confirm    a link's token or a code: starts a browser session
 POST /auth/magic-link/redeem     a code for an API token (needs api_token:)
 ```
 
@@ -260,23 +265,24 @@ POST /auth/magic-link
 - Each send makes the earlier link and code for that address invalid: only
   the latest is ever valid.
 
-The link is `<origin>/auth/magic-link/confirm?token=<64 hexadecimal
-digits>`, the `origin:` of `browser_session:`. Opening it shows a small
-page, worded from translations (area 16, level 2), with one button. The
-`GET` changes nothing, because mail scanners open links; the button posts
-the token back:
+The link is `<origin><link>?token=<64 hexadecimal digits>`: the
+`origin:` of `browser_session:` and the frontend path `link:` names, for
+example `https://notes.example/sign-in/confirm?token=3f9a...c1`. The
+frontend page reads the token and posts it. Loading the page consumes
+nothing, so a mail scanner that opens the link signs no one in; only the
+`POST` does:
 
 ```text
-POST /auth/magic-link/confirm     (from the confirm page, form-encoded)
-token=3f9a...c1
+POST /auth/magic-link/confirm
+{ "token": "3f9a...c1" }
 
-303 See Other
-Location: /notes                   (the request's return_to)
+200 OK
+{ "return_to": "/notes" }          (the request's return_to)
 Set-Cookie: notes_session=...; notes_session_csrf=...
 ```
 
-The app's own sign-in page posts the code instead, as JSON, and gets the
-same answer:
+The app's own sign-in page posts the code instead and gets the same
+answer:
 
 ```text
 POST /auth/magic-link/confirm
@@ -294,9 +300,9 @@ POST /auth/magic-link/redeem
 ```
 
 - A confirm `POST` needs an `Origin` naming the app's own site, as a
-  cookie write does. A failure from the confirm page's form shows the page
-  again with the failure's wording; a JSON request gets the usual
-  envelope.
+  cookie write does. A failure is the usual envelope; the frontend shows
+  its wording, which the per-locale failure export carries (area 10).
+- Each route's response shape is fixed (area 7, "Generated routes").
 - Link tokens are 32 random bytes; codes six random digits, kept as text
   so a leading `0` stays. Both are kept only as verifiers, with a digest of
   the address rather than the address, in the `jadpo_sign_in_requests`
@@ -314,10 +320,39 @@ POST /auth/magic-link/redeem
   (`HttpOnly`, `Secure`, `SameSite=Lax`, lasting `expires_after:`), and the
   confirm refuses a link from any other browser
   (`sign_in_link_other_browser`). The code still works anywhere.
-- After signing in the person is sent only to the `return_to` path given
-  when they asked, never to an address the link carries.
+- After signing in the frontend is given only the `return_to` path stored
+  when the person asked, never an address the link carries.
 - A person signed in by link or code has proved they control the address:
   it reaches `on_first_sign_in` as verified.
+
+**Writing the routes yourself.** `path:` moves the generated routes;
+`routes: false` generates none, and the app writes its own routes over the
+generated operations, which keep every protection above (limits, only the
+latest valid, wrong-code rules, `same_browser:`, `on_first_sign_in`):
+
+| Operation | Does |
+|---|---|
+| `magic_links.request(address: Email, locale: Locale, return_to: Text?)` | Sends the link and code after commit, as `POST /auth/magic-link` does; fails with `rate_limited`, and with `sign_in_return_invalid` (`invalid_value`, 422) for a `return_to` that is not a path on the app's site |
+| `magic_links.redeem(token: SignInToken)` | Uses a link's token; gives a `MagicLinkRedeemed` (`user_id`, `return_to: Text`) or fails with a `sign_in_` failure |
+| `magic_links.redeem_code(address: Email, code: SignInCode)` | The same for a code |
+
+The app's action then calls `sessions.start(redeemed.user_id)` or
+`sessions.issue_token(redeemed.user_id)`. Only actions call them, as with
+`sessions.start`; `same_browser:`'s cookie is set on the response of the
+route whose action calls `magic_links.request`.
+
+```jadpo fragment
+// domains/accounts/actions/confirm_sign_in.jadpo
+action confirm_sign_in(input: ConfirmSignIn) -> SignedInView {
+    var redeemed: MagicLinkRedeemed = magic_links.redeem(input.token)
+    sessions.start(redeemed.user_id)
+    ...
+}
+```
+
+The `sign_in_` failures are built in and raised by the runtime, so, like
+every authentication failure, they pass through an action without being
+listed in its `fails` (area 4).
 
 ### A person the app has not seen
 
@@ -386,7 +421,9 @@ No event carries an address, a link or a code.
 ### In development and tests
 
 In `jadpo dev` the email lands in the local inbox (area 16), and its link
-and code work there, so `jadpo email open <id> <link>` signs an agent in.
+and code work there: the link opens the frontend's page, and an agent
+reads the token or code with `jadpo email links <id>` or `show <id>` and
+posts it to `POST /auth/magic-link/confirm` itself.
 A route test asks for a link with `POST /auth/magic-link`, reads the email
 from `email.sent` and follows its link or posts its code; `as:` still
 signs a test in directly.
@@ -2533,7 +2570,7 @@ builds it.
 | Which callers may issue, list and revoke service keys | 9 | Depends on question 7 |
 | Signing keys, OIDC issuer and audience as secret and plain configuration; key rotation | 10 | Input to area 10 |
 | Verifying a person before `sessions.start` (magic links, OIDC code exchange) as integrations | 11 | Depends on question 9 (Superseded 2026-10-16: magic links and providers are built in, `sign_in:` above.) |
-| The magic-link email and confirm page, their wording, and the five levels of changing a built-in email | 16, 10 | Decided 2026-10-16 (area 16, "Built-in emails") |
+| The magic-link email, its wording, and the five levels of changing a built-in email | 16, 10 | Decided 2026-10-16 (area 16, "Built-in emails") |
 | Schedules and subscribers run with no caller | 12 | Input to area 12 |
 | Signing in as a user or service in tests | 13 | Input to area 13 |
 | `toolchain.target_auth_not_implemented`, raised only by `jadpo build`; moving the "protected routes but no authentication" check into `jadpo check` | 14 | Built in chunk 4.3: `semantic.auth_not_set_up` |
@@ -2705,7 +2742,7 @@ builds it.
 | Signing in from a route test (chosen in chunk 4.3b) | `as: Principal.user(...)` signs in through a browser session when the route's API accepts one, otherwise through an API token; `as: Principal.service(...)` through a key issued as `issue_key` issues one, lasting 30 days. Each is kept for real in its own transaction and sent as a client sends it. With nothing declared that signs that kind of caller in, `as:` is `semantic.request_invalid` | 2026-10-16 |
 | Checking the person | `sign_in:` in `authentication { }` lists every way to check a person (`magic_link:`, provider presets), replacing `sign_in_providers:`; magic links are built in; `on_first_sign_in:` on `authentication { }` is the one decision point for every way in, external tokens included (Richard) | 2026-10-16 |
 | Magic-link settings | `address:` (default the user entity's `email`, a unique `Email` field), `expires_after: 15m`, `code_attempts: 5`, `codes_per_hour: 10`, `failed_codes_per_day: 20`, `resend_after: 1m`, `same_browser: false`; loosening past 10 attempts, an hour's expiry or 50 failed codes a day needs an acceptance; needs `browser_session:` and the `email:` connection unless `send:` is set (Richard's record of 2026-10-16; the details written out for the spec) | 2026-10-16 |
-| Magic-link routes | `POST /auth/magic-link` (`address`, optional `return_to` and `locale`) answers 202 for every address; `GET /auth/magic-link/confirm?token=` shows a one-click page; `POST /auth/magic-link/confirm` takes the token or `address` and `code` and starts a browser session, 303 to `return_to` (a path on the app's own site, default `/`); `POST /auth/magic-link/redeem` trades `address` and `code` for an API token (Richard's record of 2026-10-16; the details written out for the spec) | 2026-10-16 |
+| Magic-link routes | (Revised 2026-10-16: no confirm page; endpoints only.) `POST /auth/magic-link` (`address`, optional `return_to` and `locale`) answers 202 for every address; the email links to the frontend path `link:` at the browser origin with the token; `POST /auth/magic-link/confirm` takes the token or `address` and `code`, starts a browser session and answers `{ return_to }` (a path on the app's own site, default `/`); `POST /auth/magic-link/redeem` trades `address` and `code` for an API token; `path:` moves them, `routes: false` leaves the app to write them over `magic_links.request`, `.redeem` and `.redeem_code` (Richard's record of 2026-10-16; the details written out for the spec) | 2026-10-16 |
 | Links and codes | One email carries a 32-byte link token and a six-digit code, single-use, either working, only the latest valid, kept as verifiers with a digest of the address in `jadpo_sign_in_requests`; wrong guesses all answer `sign_in_code_invalid`; after the day's failed codes (UTC) codes stop for that address but links work; no lockouts; sends limited per address with identical answers; `same_browser:` ties the link to a cookie (Richard's record of 2026-10-16; the details written out for the spec) | 2026-10-16 |
 | First sign-in | `on_first_sign_in:` names an action taking one `FirstSignIn` (`method`, `address`, `address_verified`, `subject`, `name`) and returning the user entity's `id`; any failure refuses and the person sees `sign_in_refused`; provider and token links kept in `jadpo_sign_in_links`; without it only existing users sign in (Richard's record of 2026-10-16; the details written out for the spec) | 2026-10-16 |
 | Sign-in failures and events | Built-in `sign_in_link_expired`, `sign_in_link_other_browser`, `sign_in_code_invalid` (401), `sign_in_codes_disabled` (429), `sign_in_refused` (403); events `SignedIn`, `SignInRefused` (with `SignInRefusal`) and `SignInCodesDisabled`, none carrying an address, link or code (Richard's record of 2026-10-16; the details written out for the spec) | 2026-10-16 |

@@ -325,6 +325,41 @@ supported locale, keyed by its code with its client fields as placeholders,
 and client fields that are dates or numbers stay values on the wire for the
 client to format in its own language.
 
+## Generated routes
+
+Some features generate routes: magic-link sign-in (area 8), the privacy
+requests (area 15), `POST /auth/exchange` (area 8), `GET /flags` (area 16)
+and a provider package's webhooks (area 11). Jadpo generates endpoints
+only, never pages: the app's frontend owns every page (decided
+2026-10-16). Generated routes appear in `jadpo routes`, the API record and
+OpenAPI like any route, marked generated (question 12).
+
+- A generated route takes a `path:` setting where its feature is
+  configured (`magic_link: { path: "/login" }`), or `routes: false`,
+  after which the app writes its own routes over the feature's generated
+  operations (`magic_links.request`, `magic_links.redeem`,
+  `sessions.start`), which keep every protection.
+- Webhook routes can change path but cannot be switched off.
+- A generated route's response shape is fixed; only its path changes.
+
+## Rate-limited requests
+
+A request over a rate limit (area 16) gets `429` with the usual envelope,
+code `rate_limited`, a `Retry-After` header giving the seconds to wait,
+and the standard `RateLimit` and `RateLimit-Policy` headers (the IETF
+draft `draft-ietf-httpapi-ratelimit-headers`; its current version still to
+check). Its wording for people comes from translations, as every failure's
+does (area 10), and is in the per-locale failure export.
+
+```text
+HTTP/1.1 429 Too Many Requests
+Retry-After: 42
+RateLimit-Policy: "default";q=5;w=3600
+RateLimit: "default";r=0;t=42
+
+{ "error": { "code": "rate_limited", "message": "Too many requests.", "request_id": "req_0b1e…" } }
+```
+
 ## OpenAPI
 
 The compiler writes one OpenAPI 3.1 document per API into `build/openapi/`:
@@ -2466,3 +2501,5 @@ is written.
 | Waiting for follow-on work | `settle: { answer: <query>(result...) within: <duration> }`: after commit the runtime delivers the action's events and their follow-ons at once and waits until each has succeeded, failed for good or been parked, then answers with the query and the route's status; past `within:` the same query answers 202; `output:` is the query's result; a repeat with the same `Idempotency-Key` reruns the query (Richard, from an outside review) | 2026-10-15 |
 | Route authentication (chosen in chunk 4.3) | A route's `authentication:` takes `RouteAuthentication.none` or `.fresh`; anything else is `route.authentication_invalid`, which offers both without an edit, since one opens the route. An API's `authentication:` is a list of `AuthenticationMethod`s `authentication.jadpo` declares, each once, else `api.authentication_invalid`; an API that names none accepts every declared method. Area 8's Decisions hold the rest | 2026-10-16 |
 | Failure wording for clients | Every failure a route can produce is worded in every supported locale in the app's language files; `jadpo build` writes `<api>.failures.<locale>.json` beside each OpenAPI document; dates and numbers stay values for the client to format; `message` stays English (Richard, area 10) | 2026-10-16 |
+| Generated routes | Endpoints only, never pages; `path:` where the feature is configured or `routes: false` over generated operations that keep every protection; webhook routes change path but cannot be switched off; response shapes fixed (Richard) | 2026-10-16 |
+| Rate-limited response | `429`, code `rate_limited`, `Retry-After` and the IETF `RateLimit` and `RateLimit-Policy` headers, wording from translations (Richard) | 2026-10-16 |

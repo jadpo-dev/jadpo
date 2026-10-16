@@ -601,8 +601,8 @@ translations {
 
 ### Jadpo's and packages' text
 
-Text Jadpo writes itself (the generated privacy pages, built-in emails,
-generated messages) is Jadpo's own messages. Jadpo ships their wording in
+Text Jadpo writes itself (built-in emails and its failures' wording; it
+generates endpoints only, never pages) is Jadpo's own messages. Jadpo ships their wording in
 `en_gb` and `en_us` at first, and releases add locales; an app supporting
 any other locale must word them itself, and until it does `jadpo check`
 fails with one error listing the missing messages (an `in_progress:`
@@ -612,8 +612,8 @@ wording without `magic_link:`) is an error saying the feature is off, and
 `jadpo translations builtin` lists only the switched-on features'
 messages, with their fields. Every Jadpo message may use `{app_name}`,
 the application's `display_name:`; an app that needs the name translated
-rewords the messages. The magic-link email's and confirm page's messages
-are listed in area 16, "Built-in emails".
+rewords the messages. The magic-link email's messages are listed in area
+16, "Built-in emails".
 
 A library package carries translations as a domain does: a
 `translations/` folder with its message types, its failures' wording and
