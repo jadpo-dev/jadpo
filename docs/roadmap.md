@@ -367,6 +367,12 @@ reference only).
   packages, generated fakes, `jadpo provider record`.
 - [ ] **7.3 Email:** `opus · high` the capability, SMTP driver, `emails/` templates, the dev
   inbox, the health score.
+- [ ] **7.3b Magic-link sign-in** `opus · high` (area 8, decided
+  2026-10-16): `sign_in:` with `magic_link:`, the generated routes and
+  confirm page, link and six-digit code, the wrong-code and send limits,
+  `on_first_sign_in` for every way in, the built-in emails' five levels
+  (area 16), the sign-in failures and events. Google and other providers
+  stay after the first build.
 - [ ] **7.4 Outside calls hold no transaction** `opus · xhigh` (areas 6 and
   11, 2026-10-15): reads before a call in a read-only snapshot closed before
   it, the transaction opened after it, a write to a record loaded before the
