@@ -220,7 +220,10 @@ pub fn document(
     while let Some(key) = refs.iter().find(|key| !done.contains(*key)).cloned() {
         done.insert(key.clone());
         let name = wire.name(&key);
-        let schema = type_schema(&wire, &key, &mut refs);
+        let schema = match super::wire::issued_of(&key) {
+            Some(issued) => super::wire::issued_schema(issued),
+            None => type_schema(&wire, &key, &mut refs),
+        };
         schemas.insert(name, schema);
     }
     for (_, name, code, description) in SHARED {

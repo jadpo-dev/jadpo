@@ -31,6 +31,46 @@ use crate::types::{Const, Def, Prim, Ty, TypeView};
 /// The fields every caller has, built in (area 8, question 2).
 pub const PRINCIPAL_FIELDS: [&str; 3] = ["id", "subject", "strength"];
 
+/// `type.auth_sessions_context` for an operation whose sign-in method
+/// `authentication { }` doesn't declare: `sessions.issue_token` with no
+/// `api_token:`. `ends` is `sessions.end`, which either browser sessions or
+/// API tokens serve.
+pub fn needs_method(
+    written: &str,
+    method: AuthenticationMethod,
+    ends: bool,
+    span: Span,
+) -> Diagnostic {
+    let (needs, declare) = match method {
+        AuthenticationMethod::BrowserSession if ends => (
+            "browser sessions or API tokens",
+            "A session is a browser session, which `authentication { browser_session: { cookie: \"<name>\" } }` declares, or an API token, which `api_token: {}` declares.",
+        ),
+        AuthenticationMethod::BrowserSession => (
+            "browser sessions",
+            "A session is a browser session, which `authentication { browser_session: { cookie: \"<name>\" } }` declares.",
+        ),
+        AuthenticationMethod::ApiToken => (
+            "API tokens",
+            "An API token signs a user in from the application's own clients, which `authentication { api_token: {} }` declares.",
+        ),
+        _ => (
+            "service keys",
+            "A service key signs a service in, which `authentication { service_key: {} }` declares.",
+        ),
+    };
+    Diagnostic::new(
+        &rule::TYPE_AUTH_SESSIONS_CONTEXT,
+        format!("`{written}` needs {needs}"),
+    )
+    .at(span, format!("no `{}` declared", method.name()))
+    .reason(declare)
+    .next(format!(
+        "Declare `{}:` in `authentication.jadpo`",
+        method.name()
+    ))
+}
+
 /// The type of the whole caller, either kind: `Principal`.
 pub const PRINCIPAL: &str = "Principal";
 

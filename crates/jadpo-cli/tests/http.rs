@@ -1706,7 +1706,7 @@ entity Member {
 
     policy: {
         create: [Access.public]
-        read: [Access.public]
+        read: [id]
         update: [Access.public]
         delete: [Access.public]
     }
@@ -1748,7 +1748,7 @@ entity Partner {
 
     policy: {
         create: [Access.public]
-        read: [Access.public]
+        read: [id]
         update: [Access.public]
         delete: [Access.public]
     }
@@ -1817,7 +1817,8 @@ routes Account {
     ),
     (
         "domains/journal/routes/devices.jadpo",
-        r#"use journal/actions { DeviceAdded, DeviceList, add_device, list_devices, revoke_own_keys }
+        r#"use journal/entities { Member }
+use journal/actions { DeviceAdded, DeviceList, add_device, list_devices, revoke_own_keys }
 
 /// A member's devices, and a partner's keys.
 routes Devices {
@@ -1827,6 +1828,19 @@ routes Devices {
         output: DeviceAdded
         status: SuccessStatus.created
         run: add_device(current_principal.user)
+    }
+
+    /// The signed-in member's own tokens, oldest first.
+    GET / {
+        output: List<IssuedToken>
+        run: sessions.tokens(current_principal.user.id)
+    }
+
+    /// Any member's: a list holds only the tokens of members the caller
+    /// may read.
+    GET /{member_id: Member.id} {
+        output: List<IssuedToken>
+        run: sessions.tokens(member_id)
     }
 
     POST /list {
@@ -1861,7 +1875,8 @@ routes Notes {
     ),
     (
         "domains/journal/routes/partners.jadpo",
-        r#"use journal/types { PartnerView }
+        r#"use journal/entities { Partner }
+use journal/types { PartnerView }
 use journal/actions { AddPartner, PartnerAdded, add_partner }
 use journal/queries { this_partner }
 
@@ -1881,6 +1896,12 @@ routes Partners {
     GET /me {
         output: PartnerView
         run: this_partner(current_principal.service)
+    }
+
+    /// The keys a partner holds that haven't expired.
+    GET /{partner_id: Partner.id}/keys {
+        output: List<IssuedKey>
+        run: Partner.keys(partner_id)
     }
 }
 "#,
@@ -2179,6 +2200,207 @@ fn a_service_key_signs_a_service_in_where_services_may_call() {
     assert_eq!(reply.status, 401, "{}", reply.body);
 }
 
+/// The id a member signed up with, read from the database.
+fn member_id(dev: &Dev, handle: &str) -> String {
+    let rows = query(
+        &dev.url,
+        "SELECT \"id\" FROM \"member\" WHERE \"handle\" = $1",
+        vec![jadpo_runtime::SqlValue::Text(handle.to_string())],
+    );
+    let jadpo_runtime::SqlValue::Uuid(id) = &rows[0][0] else {
+        panic!("{:?}", rows[0]);
+    };
+    jadpo_runtime::uuid_text(id)
+}
+
+/// A listing's items: each holds an `id`, `started_at` and `ends_at` and
+/// nothing else, never the credential.
+fn listed(reply: &Reply) -> Vec<serde_json::Value> {
+    assert_eq!(reply.status, 200, "{}", reply.body);
+    let items = reply.json().as_array().expect("a list").clone();
+    for item in &items {
+        let mut fields: Vec<&str> = item
+            .as_object()
+            .expect("an object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        fields.sort_unstable();
+        assert_eq!(fields, ["ends_at", "id", "started_at"], "{item}");
+    }
+    items
+}
+
+#[test]
+fn a_get_route_lists_a_signed_in_users_tokens_and_a_partners_keys() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = tokens_project();
+    let dev = Dev::start(&root);
+    let json = ("content-type", "application/json");
+    let signed = dev.send("POST", "/account/sign-up", &[json], r#"{"handle":"ann"}"#);
+    let first = signed.json()["token"]
+        .as_str()
+        .expect("a token")
+        .to_string();
+    let auth = bearer(&first);
+
+    // One token so far, as `IssuedToken`s: when it started and ends.
+    let one = dev.send("GET", "/devices", &[("authorization", &auth)], "");
+    let items = listed(&one);
+    assert_eq!(items.len(), 1, "{}", one.body);
+    assert!(!one.body.contains(&first), "{}", one.body);
+    assert!(
+        items[0]["started_at"].as_str() < items[0]["ends_at"].as_str(),
+        "{}",
+        one.body
+    );
+    // The id is the session row's, which the member can revoke by.
+    let rows = query(
+        &dev.url,
+        "SELECT \"id\" FROM \"jadpo_sessions\"",
+        Vec::new(),
+    );
+    let jadpo_runtime::SqlValue::Uuid(row) = &rows[0][0] else {
+        panic!("{:?}", rows[0]);
+    };
+    assert_eq!(items[0]["id"], jadpo_runtime::uuid_text(row));
+
+    // Another device adds a token, and the list holds both, oldest first.
+    let added = dev.send("POST", "/devices", &[("authorization", &auth)], "");
+    assert_eq!(added.status, 201, "{}", added.body);
+    let two = listed(&dev.send("GET", "/devices", &[("authorization", &auth)], ""));
+    assert_eq!(two.len(), 2);
+    assert_eq!(two[0]["id"], items[0]["id"], "oldest first");
+    assert_ne!(two[1]["id"], items[0]["id"]);
+
+    // The route lists a member's own through their id as well.
+    let ann = member_id(&dev, "ann");
+    let by_id = dev.send(
+        "GET",
+        &format!("/devices/{ann}"),
+        &[("authorization", &auth)],
+        "",
+    );
+    assert_eq!(listed(&by_id).len(), 2, "{}", by_id.body);
+
+    // A revoked token is no longer listed.
+    let out = dev.send("POST", "/account/sign-out", &[("authorization", &auth)], "");
+    assert_eq!(out.status, 204, "{}", out.body);
+    let other = bearer(added.json()["token"].as_str().expect("a token"));
+    let rest = listed(&dev.send("GET", "/devices", &[("authorization", &other)], ""));
+    assert_eq!(rest.len(), 1);
+
+    // A route needs a signed-in caller like any other.
+    let none = dev.send("GET", "/devices", &[], "");
+    assert_eq!(none.status, 401, "{}", none.body);
+    assert_eq!(none.json()["error"]["code"], "authentication_required");
+
+    // A partner's keys list the same way, for the partner itself.
+    let partner = dev.send(
+        "POST",
+        "/partners",
+        &[json, ("authorization", &other)],
+        r#"{"name":"Acme","key_expires_at":"2100-01-01T00:00:00Z"}"#,
+    );
+    let key = partner.json()["key"].as_str().expect("a key").to_string();
+    let partner_key = bearer(&key);
+    let rows = query(&dev.url, "SELECT \"id\" FROM \"partner\"", Vec::new());
+    let jadpo_runtime::SqlValue::Uuid(partner_id) = &rows[0][0] else {
+        panic!("{:?}", rows[0]);
+    };
+    let partner_id = jadpo_runtime::uuid_text(partner_id);
+    let keys = dev.send(
+        "GET",
+        &format!("/partners/{partner_id}/keys"),
+        &[("authorization", &partner_key)],
+        "",
+    );
+    let listed_keys = listed(&keys);
+    assert_eq!(listed_keys.len(), 1, "{}", keys.body);
+    assert!(!keys.body.contains(&key), "{}", keys.body);
+    assert!(
+        listed_keys[0]["ends_at"]
+            .as_str()
+            .is_some_and(|ends| ends.starts_with("2100-01-01")),
+        "{}",
+        keys.body
+    );
+    // The placeholder is checked like any other: a malformed id is 422.
+    let bad = dev.send(
+        "GET",
+        "/partners/not-an-id/keys",
+        &[("authorization", &partner_key)],
+        "",
+    );
+    assert_eq!(bad.status, 422, "{}", bad.body);
+}
+
+#[test]
+fn another_members_tokens_and_another_partners_keys_are_listed_empty() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = tokens_project();
+    let dev = Dev::start(&root);
+    let json = ("content-type", "application/json");
+    let ann = dev.send("POST", "/account/sign-up", &[json], r#"{"handle":"ann"}"#);
+    let ann = bearer(ann.json()["token"].as_str().expect("a token"));
+    let bob = dev.send("POST", "/account/sign-up", &[json], r#"{"handle":"bob"}"#);
+    let bob = bearer(bob.json()["token"].as_str().expect("a token"));
+    let ann_id = member_id(&dev, "ann");
+    let bob_id = member_id(&dev, "bob");
+
+    // Each member lists their own device; the other's is empty, which is
+    // what a record policy hides reads as: 200 with nothing, not an error.
+    let own = dev.send(
+        "GET",
+        &format!("/devices/{ann_id}"),
+        &[("authorization", &ann)],
+        "",
+    );
+    assert_eq!(listed(&own).len(), 1, "{}", own.body);
+    let theirs = dev.send(
+        "GET",
+        &format!("/devices/{bob_id}"),
+        &[("authorization", &ann)],
+        "",
+    );
+    assert_eq!(theirs.status, 200, "{}", theirs.body);
+    assert_eq!(theirs.json(), serde_json::json!([]));
+    let mine = dev.send(
+        "GET",
+        &format!("/devices/{ann_id}"),
+        &[("authorization", &bob)],
+        "",
+    );
+    assert_eq!(mine.json(), serde_json::json!([]));
+    // And what bob lists is bob's.
+    let bobs = dev.send("GET", "/devices", &[("authorization", &bob)], "");
+    assert_eq!(listed(&bobs).len(), 1, "{}", bobs.body);
+
+    // A partner's keys are listed to the partner and nobody else: a member
+    // who may not read the partner sees none.
+    let partner = dev.send(
+        "POST",
+        "/partners",
+        &[json, ("authorization", &ann)],
+        r#"{"name":"Acme","key_expires_at":"2100-01-01T00:00:00Z"}"#,
+    );
+    let partner = bearer(partner.json()["key"].as_str().expect("a key"));
+    let rows = query(&dev.url, "SELECT \"id\" FROM \"partner\"", Vec::new());
+    let jadpo_runtime::SqlValue::Uuid(partner_id) = &rows[0][0] else {
+        panic!("{:?}", rows[0]);
+    };
+    let path = format!("/partners/{}/keys", jadpo_runtime::uuid_text(partner_id));
+    let own = dev.send("GET", &path, &[("authorization", &partner)], "");
+    assert_eq!(listed(&own).len(), 1, "{}", own.body);
+    let member = dev.send("GET", &path, &[("authorization", &ann)], "");
+    assert_eq!(member.status, 200, "{}", member.body);
+    assert_eq!(member.json(), serde_json::json!([]));
+}
+
 #[test]
 fn openapi_shows_both_bearer_methods_and_who_each_route_refuses() {
     let (_dir, root) = tokens_project();
@@ -2211,4 +2433,32 @@ fn openapi_shows_both_bearer_methods_and_who_each_route_refuses() {
     assert!(!note.contains(&"CsrfRejected".to_string()), "{note:?}");
     let me = codes("/partners/me", "get");
     assert!(me.contains(&"WrongKindOfCaller".to_string()), "{me:?}");
+
+    // A listing sends the built-in `IssuedToken` and `IssuedKey`, which
+    // have schemas of their own.
+    for (path, schema) in [
+        ("/devices", "IssuedToken"),
+        ("/partners/{partner_id}/keys", "IssuedKey"),
+    ] {
+        let listed = &document["paths"][path]["get"]["responses"]["200"]["content"]["application/json"]
+            ["schema"];
+        assert_eq!(listed["type"], "array", "{path}");
+        assert_eq!(
+            listed["items"]["$ref"],
+            format!("#/components/schemas/{schema}"),
+            "{path}"
+        );
+        let built_in = &document["components"]["schemas"][schema];
+        assert_eq!(built_in["type"], "object", "{schema}");
+        assert_eq!(
+            built_in["required"],
+            serde_json::json!(["id", "started_at", "ends_at"]),
+            "{schema}"
+        );
+        assert_eq!(built_in["properties"]["id"]["format"], "uuid", "{schema}");
+        assert_eq!(
+            built_in["properties"]["ends_at"]["format"], "date-time",
+            "{schema}"
+        );
+    }
 }

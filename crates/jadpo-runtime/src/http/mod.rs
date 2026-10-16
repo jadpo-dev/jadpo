@@ -619,6 +619,15 @@ async fn run_with_caller(
                 ctx.hold();
                 executor.run(ctx, *callable, args).await
             }
+            Run::Listing { keys } => {
+                let holder = args.first().cloned().unwrap_or(Value::None);
+                match identity::list(ctx, app.table.identity.as_ref(), *keys, &holder).await {
+                    Stored::Value(value) => Outcome::Value(value),
+                    Stored::Failed(failure) => Outcome::Failed(failure),
+                    Stored::Conflict { cause, .. } => Outcome::Failed(cause),
+                    Stored::Fault(fault) => Outcome::Fault(fault),
+                }
+            }
             Run::Query(plan) => {
                 match crate::store(ctx, StoreOp::Read(plan), app.failures, &args, Frame::ENTRY)
                     .await

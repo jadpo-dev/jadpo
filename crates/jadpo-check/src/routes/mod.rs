@@ -29,7 +29,7 @@ use std::sync::Arc;
 use jadpo_db::{Db, File, ItemKind, Project, Symbol, item_tree, location};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_graph::{Key, Kind};
-use jadpo_std::http::{Authentication, PrincipalKind};
+use jadpo_std::http::{Authentication, PrincipalKind, SessionOp};
 use jadpo_std::{HttpMethod, RouteAuthentication, SuccessStatus};
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr, MemberItem};
 
@@ -123,8 +123,14 @@ pub struct Arg {
 pub struct Run {
     /// A named query, rather than an action.
     pub query: bool,
+    /// What it calls as written: `todo_view`, or `sessions.tokens` for a
+    /// generated query.
     pub name: String,
     pub args: Vec<Arg>,
+    /// For a generated query (area 8, "Listing tokens and keys from a
+    /// `GET`"): `sessions.tokens` or the service entity's `keys`, which
+    /// no declaration holds.
+    pub generated: Option<jadpo_std::http::SessionOp>,
 }
 
 /// One route, without positions.
@@ -505,6 +511,34 @@ struct Reader<'a> {
     path: &'a str,
     out: Vec<Diagnostic>,
     spans: Vec<(String, Span)>,
+}
+
+/// What a route's call returns and the failures it can raise.
+struct RunSig {
+    result: Ty,
+    fails: Vec<String>,
+}
+
+/// What a generated query returns: `List<IssuedToken>` or
+/// `List<IssuedKey>` (area 8).
+fn generated_result(op: SessionOp) -> Ty {
+    let name = if op.on_service() {
+        jadpo_std::http::ISSUED_KEY
+    } else {
+        jadpo_std::http::ISSUED_TOKEN
+    };
+    Ty::List(Box::new(Ty::Opaque(name.to_string(), Vec::new())))
+}
+
+/// Whether `ty` is an `IssuedToken` or an `IssuedKey`, which an output
+/// holds (area 8).
+pub fn is_issued(ty: &Ty) -> bool {
+    matches!(
+        ty,
+        Ty::Opaque(name, args)
+            if args.is_empty()
+                && (name == jadpo_std::http::ISSUED_TOKEN || name == jadpo_std::http::ISSUED_KEY)
+    )
 }
 
 /// A route entry's items, as written.
@@ -1054,7 +1088,19 @@ impl Reader<'_> {
             (_, input) => input,
         };
         let run = self.run(method, run_member, &segments, input.as_deref(), &label)?;
-        let sig = self.lookup.signature(&run.name)?.clone();
+        let sig = match run.generated {
+            Some(op) => RunSig {
+                result: generated_result(op),
+                fails: Vec::new(),
+            },
+            None => {
+                let sig = self.lookup.signature(&run.name)?;
+                RunSig {
+                    result: sig.result.clone(),
+                    fails: sig.fails.clone(),
+                }
+            }
+        };
 
         // What comes out.
         match (status, output) {
@@ -1359,6 +1405,8 @@ impl Reader<'_> {
         };
         match element {
             Ty::Named(name) if self.lookup.base(name) == Some(FieldsBase::Output) => Some(ty),
+            // The values `sessions.tokens` and `Service.keys` list (area 8).
+            issued if is_issued(issued) => Some(ty),
             other => {
                 self.out.push(
                     Diagnostic::new(&rule::ROUTE_OUTPUT_NOT_OUTPUT, format!("`{other}` isn't an `Output`"))
@@ -1407,6 +1455,9 @@ impl Reader<'_> {
             return None;
         };
         let callee_span = self.run_span(member);
+        if let Some(op) = self.generated(&call) {
+            return self.generated_run(method, &call, op, segments, input, label, callee_span);
+        }
         // Resolution: an unknown callee, another domain's private one.
         let mut problems = Vec::new();
         self.names.callee(&call, false, &mut problems);
@@ -1466,7 +1517,155 @@ impl Reader<'_> {
         }
         let sig = self.lookup.signature(&name)?.clone();
 
-        // Arguments.
+        let params: Vec<(String, Ty)> = sig.params.clone();
+        let args = self.call_arguments(
+            &call,
+            &name,
+            &params,
+            segments,
+            input,
+            callee_span,
+            label,
+            "is declared with",
+        )?;
+        Some(Run {
+            query: is_query,
+            name,
+            args,
+            generated: None,
+        })
+    }
+
+    /// `sessions.tokens(...)` or the service entity's `keys(...)`: the
+    /// generated queries a `GET` runs (area 8, "Listing tokens and keys
+    /// from a `GET`"), and the generated writes beside them, which a
+    /// route can't run.
+    fn generated(&self, call: &ast::CallExpr) -> Option<SessionOp> {
+        let callee = call.expr()?;
+        let (first, rest) = tree::dotted(&callee)?;
+        let [member] = rest.as_slice() else {
+            return None;
+        };
+        let head = tree::name_ref_text(&first)?;
+        let member = tree::name_ref_text(member)?;
+        if head == "sessions" {
+            return SessionOp::from_name(&member);
+        }
+        let op = SessionOp::key_op(&member)?;
+        let identity = crate::identity::identity(self.db, self.project);
+        identity
+            .variant(PrincipalKind::Service)
+            .filter(|variant| variant.entity == head)
+            .map(|_| op)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn generated_run(
+        &mut self,
+        method: HttpMethod,
+        call: &ast::CallExpr,
+        op: SessionOp,
+        segments: &[Segment],
+        input: Option<&str>,
+        label: &str,
+        callee_span: Span,
+    ) -> Option<Run> {
+        let written = tree::written(call.expr()?.syntax());
+        if !op.reads_only() {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_RUN_INVALID,
+                    format!("`{written}` writes, and a route doesn't run it"),
+                )
+                .at(callee_span, "a generated write")
+                .reason(format!(
+                    "A route runs a named action, or a named query for a `GET`, and may run the generated listings `sessions.tokens` and the service entity's `keys` itself; `{written}` writes the tokens or keys the runtime keeps, in the transaction of the action that calls it."
+                ))
+                .next(format!("Call `{written}` in an action, and run that")),
+            );
+            return None;
+        }
+        if method != HttpMethod::Get {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_RUN_KIND,
+                    format!("`{label}` runs query `{written}`"),
+                )
+                .at(callee_span, "a query")
+                .reason(format!(
+                    "A `{}` route runs a named action, which owns the writes and the transaction; a query only reads, and answers a `GET`.",
+                    method.word()
+                ))
+                .next("Run an action here, or make the route a `GET`"),
+            );
+            return None;
+        }
+        let identity = crate::identity::identity(self.db, self.project);
+        let needed = op.method();
+        let kind = if op.on_service() {
+            PrincipalKind::Service
+        } else {
+            PrincipalKind::User
+        };
+        let variant = identity
+            .variant(kind)
+            .filter(|_| identity.built(needed))
+            .cloned();
+        let Some(variant) = variant else {
+            // What is missing is reported where it is declared, or here
+            // when nothing is.
+            if !identity.methods.iter().any(|m| m.method == needed) {
+                self.out.push(crate::identity::needs_method(
+                    &written,
+                    needed,
+                    false,
+                    callee_span,
+                ));
+            }
+            return None;
+        };
+        let holder = if op.on_service() {
+            "service_id"
+        } else {
+            "user"
+        };
+        let params = vec![(
+            holder.to_string(),
+            Ty::Field(variant.entity.clone(), vec!["id".to_string()]),
+        )];
+        let args = self.call_arguments(
+            call,
+            &written,
+            &params,
+            segments,
+            input,
+            callee_span,
+            label,
+            "takes",
+        )?;
+        Some(Run {
+            query: true,
+            name: written,
+            args,
+            generated: Some(op),
+        })
+    }
+
+    /// The arguments of a route's call: its placeholders, `input` and the
+    /// caller, each typed against `expected_params`, with every
+    /// placeholder and the input passed on.
+    #[allow(clippy::too_many_arguments)]
+    fn call_arguments(
+        &mut self,
+        call: &ast::CallExpr,
+        name: &str,
+        expected_params: &[(String, Ty)],
+        segments: &[Segment],
+        input: Option<&str>,
+        callee_span: Span,
+        label: &str,
+        verb: &str,
+    ) -> Option<Vec<Arg>> {
         let params: Vec<(&str, &Ty)> = segments
             .iter()
             .filter_map(|segment| match segment {
@@ -1502,11 +1701,11 @@ impl Reader<'_> {
         if !ok {
             return None;
         }
-        if typed.len() != sig.params.len() {
+        if typed.len() != expected_params.len() {
             let span = call
                 .arg_list()
                 .map_or_else(|| callee_span.clone(), |list| self.span(&list));
-            let expected = sig.params.len();
+            let expected = expected_params.len();
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_ARGUMENT_COUNT,
@@ -1522,8 +1721,8 @@ impl Reader<'_> {
                 )
                 .at(span, format!("{} given", typed.len()))
                 .reason(format!(
-                    "`{name}` is declared with ({}).",
-                    sig.params
+                    "`{name}` {verb} ({}).",
+                    expected_params
                         .iter()
                         .map(|(param, ty)| format!("{param}: {ty}"))
                         .collect::<Vec<_>>()
@@ -1536,7 +1735,7 @@ impl Reader<'_> {
             );
             return None;
         }
-        for ((expr, actual), (param, expected)) in typed.iter().zip(&sig.params) {
+        for ((expr, actual), (param, expected)) in typed.iter().zip(expected_params) {
             if !self.lookup.assignable(actual, expected) {
                 self.out.push(
                     Diagnostic::new(
@@ -1581,11 +1780,7 @@ impl Reader<'_> {
             );
             return None;
         }
-        Some(Run {
-            query: is_query,
-            name,
-            args,
-        })
+        Some(args)
     }
 
     /// `current_principal`, a kind of caller selected from it

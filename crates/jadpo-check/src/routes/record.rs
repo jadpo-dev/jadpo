@@ -230,6 +230,10 @@ fn write(
     while let Some(key) = refs.iter().find(|key| !done.contains(*key)).cloned() {
         done.insert(key.clone());
         let name = wire.name(&key);
+        if let Some(issued) = super::wire::issued_of(&key) {
+            sections.insert(name, super::wire::issued_section(issued));
+            continue;
+        }
         let Some(node) = wire.node(&key) else {
             continue;
         };

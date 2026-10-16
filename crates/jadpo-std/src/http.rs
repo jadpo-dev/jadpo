@@ -133,6 +133,10 @@ pub enum Run {
     Action(u32),
     /// A named query's read.
     Query(Box<ReadPlan>),
+    /// `sessions.tokens` (or the service entity's `keys` when `keys`) run
+    /// by a `GET` itself (area 8): the holder's tokens or keys that
+    /// haven't ended, limited by its record's `read` grants (area 9).
+    Listing { keys: bool },
 }
 
 /// What one argument of the call is made from.

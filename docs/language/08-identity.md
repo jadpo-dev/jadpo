@@ -19,7 +19,7 @@ ways a caller proves who they are, how code reads the caller, service
 credentials, revocation, and the failures authentication produces. Who may do
 what is policy, area 9.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 8. Built in the new compiler in roadmap chunk 4.3: the principal, browser sessions, routes signed in by default, `current_principal`, starting and ending a session, and signing in from a route test; in chunk 4.3b: API tokens, service keys and service callers. The revocation delay comes with signing keys (5.1b); "Status" below lists the rest.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 8. Built in the new compiler in roadmap chunk 4.3: the principal, browser sessions, routes signed in by default, `current_principal`, starting and ending a session, and signing in from a route test; in chunk 4.3b: API tokens, service keys and service callers; in chunk 4.4c: a `GET` route listing tokens and keys. The revocation delay comes with signing keys (5.1b); "Status" below lists the rest.
 
 The rules underneath all of it were accepted in the AUTH-001 contract and are
 not reopened here:
@@ -266,7 +266,8 @@ application declares only `Service` (question 7).
 
 - The operations belong to the entity the principal's `service:` names,
   once `authentication { }` declares `service_key:`, and only an action
-  calls them (`type.auth_sessions_context`), as it calls `sessions.start`.
+  calls them (`type.auth_sessions_context`), as it calls `sessions.start`;
+  a `GET` route also runs `keys` itself (below).
 - `Service.issue_key(service_id, expires_at)` takes the service's `id`
   and an `Instant`, keeps the new key in the action's transaction and
   gives it once as a `ServiceKey`, text an `Output` can send; the
@@ -274,7 +275,8 @@ application declares only `Service` (question 7).
   `ServiceKey` can't be stored in an entity.
 - `Service.keys(service_id)` lists the service's keys that haven't
   expired, oldest first, as `IssuedKey`s, which code reads `id`,
-  `started_at` and `ends_at` from, never the key itself.
+  `started_at` and `ends_at` from, never the key itself. A `GET` route
+  runs it too, and an `Output` can send the list (below).
 - `Service.revoke_key(key_id)` deletes one by its `id`; an `id` no key
   has revokes nothing.
 - Keys live in the `jadpo_service_keys` system table, in the store the
@@ -349,8 +351,43 @@ action sign_in_app(token: MagicLinkToken) fails LinkExpired -> AppSignedIn {
   and `ends_at` from; `sessions.revoke_token(token_id)` ends one by its
   `id`, and an `id` no token has ends nothing. Together they let an
   application end a user's other devices.
-- Like `sessions.start`, only an action calls them; each needs `api_token:`
-  in `authentication { }`.
+- Like `sessions.start`, only an action calls them, except that a `GET`
+  route runs `sessions.tokens` itself (below); each needs `api_token:` in
+  `authentication { }`.
+
+#### Listing from a `GET` route
+
+An application's "signed-in devices" screen is one route. A `GET` runs
+`sessions.tokens(user_id)`, and `Service.keys(service_id)` for a service's
+keys, directly, as generated queries that read what the runtime keeps
+(decided 2026-10-16):
+
+```jadpo fragment
+routes Devices {
+    prefix: /devices
+
+    GET / {
+        output: List<IssuedToken>
+        run: sessions.tokens(current_principal.user.id)
+    }
+}
+```
+
+- `run:` passes the holder's `id`, from a placeholder or from
+  `current_principal`, and nothing else; the route's `output:` is
+  `List<IssuedToken>` (`List<IssuedKey>` for keys), exactly what the
+  listing returns. Any other method is `route.run_kind`, and the writes
+  (`sessions.issue_token`, `.revoke_token`, `issue_key`, `revoke_key`) are
+  `route.run_invalid`: an action calls those.
+- `IssuedToken` and `IssuedKey` are built-in values an `Output` can hold
+  (`tokens: List<IssuedToken>`) and a route can send. On the wire each is
+  an object of its `id`, `started_at` and `ends_at`, never the credential;
+  the API record and OpenAPI give it a section of its own.
+- The list goes through policy like any query's (area 9, question 8): it
+  holds the tokens or keys of a holder whose record the caller may `read`,
+  and is empty for any other. A route that lists a holder nobody may read
+  is `policy.effect_ungranted`, and one anyone may call needs
+  `Access.public` on the holder's `read:`.
 
 ### Signing in, end to end
 
@@ -1003,6 +1040,33 @@ routes Account {
 }
 ```
 
+A member's own devices are one `GET` route, and so are another member's,
+for whoever may read their record (area 9): the list is limited the way a
+query's records are, so it is empty for a member the caller may not read.
+`Member` grants a read of itself (`read: [id]`):
+
+```jadpo check project=tokens-and-keys file=domains/journal/routes/devices.jadpo
+use journal/entities { Member }
+
+/// The devices that hold a token for a member.
+routes Devices {
+    prefix: /devices
+
+    /// The signed-in member's own, oldest first.
+    GET / {
+        output: List<IssuedToken>
+        run: sessions.tokens(current_principal.user.id)
+    }
+
+    /// Another member's: a list holds only the tokens of members the
+    /// caller may read, so it is empty for anyone else's.
+    GET /{member_id: Member.id} {
+        output: List<IssuedToken>
+        run: sessions.tokens(member_id)
+    }
+}
+```
+
 ```jadpo check project=tokens-and-keys file=domains/journal/routes/notes.jadpo hidden
 use journal/types { NoteView }
 use journal/actions { WriteNote, write_note }
@@ -1021,6 +1085,7 @@ routes Notes {
 ```
 
 ```jadpo check project=tokens-and-keys file=domains/journal/routes/partners.jadpo migrate=initial
+use journal/entities { Partner }
 use journal/types { PartnerView }
 use journal/actions { AddPartner, PartnerAdded, add_partner }
 use journal/queries { this_partner }
@@ -1042,13 +1107,20 @@ routes Partners {
         output: PartnerView
         run: this_partner(current_principal.service)
     }
+
+    /// The keys a partner holds that haven't expired, for the member who
+    /// owns it.
+    GET /{partner_id: Partner.id}/keys {
+        output: List<IssuedKey>
+        run: Partner.keys(partner_id)
+    }
 }
 ```
 
 ```jadpo check project=tokens-and-keys file=api/main.api hidden
 // Written by `jadpo api update` from the routes; never edit it by hand.
 // `jadpo check` fails while it disagrees with them.
-version: 1
+version: 4
 
 POST /account/sign-out
     status: 204
@@ -1062,6 +1134,14 @@ POST /account/sign-up
     output: SignedUp
     status: 201
     fails: handle_taken 409
+
+GET /devices
+    output: List<IssuedToken>
+    status: 200
+
+GET /devices/{member_id: Uuid}
+    output: List<IssuedToken>
+    status: 200
 
 POST /notes
     input: WriteNote (body)
@@ -1079,9 +1159,23 @@ GET /partners/me
     status: 200
     fails: partner_not_found 404
 
+GET /partners/{partner_id: Uuid}/keys
+    output: List<IssuedKey>
+    status: 200
+
 input AddPartner
     name: Text { min_length: 1, max_length: 60 }
     key_expires_at: Instant
+
+output IssuedKey
+    id: Uuid
+    started_at: Instant
+    ends_at: Instant
+
+output IssuedToken
+    id: Uuid
+    started_at: Instant
+    ends_at: Instant
 
 output NoteView
     text: Text { min_length: 1, max_length: 500 }
@@ -1171,6 +1265,95 @@ test "a suspended partner is refused" {
     }
     assert response.status == 403
     assert response.code == "service_disabled"
+}
+```
+
+A route test lists as each member and partner would: a signed-in caller's
+request keeps a real token or key, so there is one to list, and policy
+decides whose:
+
+```jadpo check project=tokens-and-keys file=domains/journal/routes/devices.test.jadpo
+use journal/entities { Member, Partner }
+use journal/actions { create_partner, register }
+
+test "a member lists the devices that hold a token" {
+    var ann: Member = attempt register("ann")
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/devices"
+        as: Principal.user(ann)
+    }
+    assert response.status == 200
+    assert response.output != []
+}
+
+test "a member's tokens are listed to no one else" {
+    var ann: Member = attempt register("ann")
+    var bob: Member = attempt register("bob")
+    var by_bob: Response = request {
+        method: HttpMethod.get
+        path: "/devices"
+        as: Principal.user(bob)
+    }
+    assert by_bob.output != []
+    var by_ann: Response = request {
+        method: HttpMethod.get
+        path: "/devices/{member_id}"
+        params: {
+            member_id: ann.id
+        }
+        as: Principal.user(ann)
+    }
+    assert by_ann.output != []
+    var ann_on_bob: Response = request {
+        method: HttpMethod.get
+        path: "/devices/{member_id}"
+        params: {
+            member_id: bob.id
+        }
+        as: Principal.user(ann)
+    }
+    assert ann_on_bob.status == 200
+    assert ann_on_bob.output == []
+}
+
+test "a partner's keys are listed to the partner and its owner" {
+    var ann: Member = attempt register("ann")
+    var bob: Member = attempt register("bob")
+    var partner: Partner = attempt create_partner("Acme", Principal.user(ann))
+    var by_bob: Response = request {
+        method: HttpMethod.get
+        path: "/devices"
+        as: Principal.user(bob)
+    }
+    assert by_bob.output != []
+    var by_partner: Response = request {
+        method: HttpMethod.get
+        path: "/partners/{partner_id}/keys"
+        params: {
+            partner_id: partner.id
+        }
+        as: Principal.service(partner)
+    }
+    assert by_partner.output != []
+    var by_owner: Response = request {
+        method: HttpMethod.get
+        path: "/partners/{partner_id}/keys"
+        params: {
+            partner_id: partner.id
+        }
+        as: Principal.user(ann)
+    }
+    assert by_owner.output != []
+    var by_member: Response = request {
+        method: HttpMethod.get
+        path: "/partners/{partner_id}/keys"
+        params: {
+            partner_id: partner.id
+        }
+        as: Principal.user(bob)
+    }
+    assert by_member.output == []
 }
 ```
 
@@ -2229,7 +2412,8 @@ and a route test signs in with `as:`, through a browser session, an API
 token or a service key. The runtime authenticates a request before its
 input is read, refuses it as "Failures" lists, checks a cookie write's
 `Origin` and CSRF token, starts and ends sessions and issues, lists and
-revokes API tokens and service keys from actions, and keeps sessions and
+revokes API tokens and service keys from actions (and lists them for a
+`GET` route), and keeps sessions and
 tokens in the `jadpo_sessions` system table beside the principal's users
 and keys in `jadpo_service_keys` beside its services. Since chunk 4.4 the
 owning record's grants decide who may list (`read`) and revoke or issue
@@ -2248,17 +2432,14 @@ Not yet, each `toolchain.not_built_yet` where it is written:
 - Deleting ended sessions, tokens and expired keys from the runtime's
   minute tick (area 12, chunk 6.2): a lookup ignores one past its end.
 
-**Listing tokens and keys from a `GET`** (decided 2026-10-16).
-`sessions.tokens(user_id)` and `Service.keys(service_id)` are for an
-application's own "signed-in devices" and key screens, but only an
-action calls them, and a `GET` route runs a query (area 7), so today a
-screen lists them through a `POST` route or another action, and copies
-each `IssuedToken`'s fields into an `Output` of its own. *Recommendation:*
-let a `GET` route run them directly, as generated queries, and make
-`IssuedToken` and `IssuedKey` types an `Output` can hold, so
+**Listing tokens and keys from a `GET`** (decided 2026-10-16, built in
+chunk 4.4c). `sessions.tokens(user_id)` and `Service.keys(service_id)` are
+for an application's own "signed-in devices" and key screens. A `GET`
+route runs them directly, as generated queries, and `IssuedToken` and
+`IssuedKey` are types an `Output` can hold, so
 `GET /devices { run: sessions.tokens(current_principal.user.id) }` works
-the way an entity's own queries do. *Decided 2026-10-16:* yes, as
-recommended; chunk 4.4c builds it.
+the way a named query does, with no action to copy each `IssuedToken`'s
+fields into an `Output` of its own.
 
 **How an API token is issued** (decided 2026-10-16). The page says `api_token`
 travels as `Authorization: Bearer` for the application's own mobile and
@@ -2464,5 +2645,8 @@ builds it.
 | Bearer credentials (chosen in chunk 4.3b) | `api_token:` and `service_key:` take only `signing_key:` (a literal is `semantic.auth_setting_invalid`, a configuration value waits for 5.1b), so each is written `{}`; `api_token:` needs the principal's `user:` and `service_key:` its `service:` (`semantic.auth_principal_required`). Each travels as `Authorization: Bearer <value>`, the scheme in any case: an API token is `jadpo_token_` and 64 hexadecimal digits, a service key `jadpo_key_` and 64, 32 random bytes kept only as their BLAKE3 verifiers. The prefix says which method a credential is; one the route's API doesn't accept, or any other value, is 401 `invalid_credentials` without clearing cookies. A bearer credential needs no `Origin` or CSRF token | 2026-10-16 |
 | API tokens (chosen in chunk 4.3b) | A token is a session without a cookie: a `jadpo_sessions` row with no CSRF verifier, lasting 30 days from `sessions.issue_token(user_id) -> ApiToken`, with no sliding renewal; a cookie never signs in with a token's row, nor a bearer with a session's. `sessions.end()` ends the token or session a request came with, needing either method. `sessions.tokens(user_id) -> List<IssuedToken>` lists the user's tokens that haven't ended, oldest first; `sessions.revoke_token(token_id)` takes a `Uuid` and deletes only a token, never a browser session; an unknown `id` revokes nothing | 2026-10-16 |
 | Service keys (chosen in chunk 4.3b) | `issue_key`, `keys` and `revoke_key` belong to the entity the principal's `service:` names, once `service_key:` is declared; on any other entity they are `semantic.unknown_callee`. `issue_key(service_id, expires_at: Instant) -> ServiceKey` keeps the key until `expires_at`, `keys(service_id) -> List<IssuedKey>` lists those that haven't expired, oldest first, and `revoke_key(key_id: Uuid)` deletes one. Keys live in `jadpo_service_keys` (`id`, `principal_id`, `verifier`, `started_at`, `ends_at`) in the service entity's store, read with the service's record, `active:` and lifecycle in one statement. A service caller's rate limit and idempotency keys are its own (`service <id>`) | 2026-10-16 |
-| Issued credentials in code (chosen in chunk 4.3b) | `ApiToken` and `ServiceKey` are built-in text types an `Output` can send; an entity field of either is `type.auth_credential_stored`. A response from an action that issued one is never kept for an idempotent repeat, so a retry runs again. `IssuedToken` and `IssuedKey` are built-in values with `id: Uuid`, `started_at: Instant` and `ends_at: Instant` that code reads; they don't cross the boundary themselves. None of the six operations fails: like `sessions.start`, each takes an `id` the action has already loaded, and only an action calls them (`type.auth_sessions_context`), the reads included, writing or reading the store their table lives in | 2026-10-16 |
+| Issued credentials in code (chosen in chunk 4.3b) | `ApiToken` and `ServiceKey` are built-in text types an `Output` can send; an entity field of either is `type.auth_credential_stored`. A response from an action that issued one is never kept for an idempotent repeat, so a retry runs again. `IssuedToken` and `IssuedKey` are built-in values with `id: Uuid`, `started_at: Instant` and `ends_at: Instant` that code reads. None of the six operations fails: like `sessions.start`, each takes an `id` the action has already loaded, and an action calls them (`type.auth_sessions_context`), writing or reading the store their table lives in; the two reads are also run by a `GET` route (chunk 4.4c) | 2026-10-16 |
 | Signing in from a route test (chosen in chunk 4.3b) | `as: Principal.user(...)` signs in through a browser session when the route's API accepts one, otherwise through an API token; `as: Principal.service(...)` through a key issued as `issue_key` issues one, lasting 30 days. Each is kept for real in its own transaction and sent as a client sends it. With nothing declared that signs that kind of caller in, `as:` is `semantic.request_invalid` | 2026-10-16 |
+| Listing from a `GET` route (chosen in chunk 4.4c) | `run: sessions.tokens(...)` and `run: <Service>.keys(...)` are the only generated calls a route runs, each on a `GET` and passing one argument, the holder's `id` (a placeholder, `input`'s field or `current_principal.user.id`); the call is `List<IssuedToken>` or `List<IssuedKey>`, so `output:` is exactly that. On another method it is `route.run_kind`, and `issue_token`, `revoke_token`, `issue_key` and `revoke_key` are `route.run_invalid`; with the method undeclared it is `type.auth_sessions_context`, as in an action | 2026-10-16 |
+| `IssuedToken` and `IssuedKey` in an `Output` (chosen in chunk 4.4c) | An `Output` field, and a route's `output:` as a `List`, may be either; on the wire each is an object of `id` (a UUID), `started_at` and `ends_at` (timestamps), never the credential. The API record gives each an `output IssuedToken` section and OpenAPI a schema of its own. They are made only by listing, so an entity can't store one (as any structured stored field, `toolchain.not_built_yet`) | 2026-10-16 |
+| Policy on a listing route (chosen in chunk 4.4c) | A route that lists reaches a `read` of the holder's entity, the same grant `sessions.tokens` needs in an action: no one granted is `policy.effect_ungranted`, and a route anyone may call needs `Access.public` (`policy.public_grant_missing`). The runtime runs it as a one-statement read at repeatable read with the statement the plan limited by those grants, so it lists the tokens or keys of holders the caller may read, and a list for any other holder is `[]` with 200, never a failure. There is nothing to prove for the output: its three fields belong to the credential, whose holder's `read` already decided the list | 2026-10-16 |

@@ -139,6 +139,36 @@ impl Types {
         Some(id)
     }
 
+    /// The number of the built-in `IssuedToken`'s or `IssuedKey`'s shape
+    /// (area 8), numbering it on first use. Neither is in the graph, so
+    /// the shape is written from the fields the standard library lists.
+    pub(crate) fn issued_shape(&mut self, name: &str) -> ShapeId {
+        let key = Key::new(Kind::Type, name);
+        if let Some(id) = self.shape_ids.get(&key) {
+            return *id;
+        }
+        let fields = jadpo_std::http::ISSUED_FIELDS
+            .iter()
+            .map(|(field, builtin)| FieldPlan {
+                key: format!("field {name}.{field}"),
+                name: (*field).to_string(),
+                validator: self.validator_id(&TypeRef::Builtin(*builtin)),
+                absent: None,
+                omittable: false,
+                none_left_out: false,
+                section: None,
+            })
+            .collect();
+        let id = ShapeId(self.shapes.len() as u32);
+        self.shapes.push(ShapePlan {
+            ty: name.to_string(),
+            variant: None,
+            fields,
+        });
+        self.shape_ids.insert(key, id);
+        id
+    }
+
     /// The number of failure `key`'s plan, numbering it on first use.
     pub(crate) fn failure_id(&mut self, key: &Key) -> Option<FailureId> {
         if let Some(id) = self.failure_ids.get(key) {
