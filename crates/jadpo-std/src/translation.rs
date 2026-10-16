@@ -123,11 +123,20 @@ pub enum Piece {
     /// `{name}`.
     Argument(String),
     /// `{name, number}` and `{name, number, integer}`.
-    Number { name: String, style: NumberStyle },
+    Number {
+        name: String,
+        style: NumberStyle,
+    },
     /// `{name, date, short}`.
-    Date { name: String, length: FormatLength },
+    Date {
+        name: String,
+        length: FormatLength,
+    },
     /// `{name, time, short}`.
-    Time { name: String, length: FormatLength },
+    Time {
+        name: String,
+        length: FormatLength,
+    },
     /// `{name, plural, ...}` and `{name, selectordinal, ...}`.
     Plural {
         name: String,
@@ -188,10 +197,7 @@ impl Message {
                 Piece::Date { name, .. } => add(found, name, ParamKind::Date)?,
                 Piece::Time { name, .. } => add(found, name, ParamKind::Time)?,
                 Piece::Plural {
-                    name,
-                    cases,
-                    other,
-                    ..
+                    name, cases, other, ..
                 } => {
                     add(found, name, ParamKind::Number)?;
                     for case in cases {
@@ -335,13 +341,13 @@ impl Parser {
                         opened + 1,
                         "never closed",
                         "Every `{` is closed by a `}`.",
-                        "Add the `}` this `{` needs, or quote the brace as `'{'`",
+                        "Add the `}` this `{` needs, or write the brace between apostrophes, `'{'`",
                     ));
                 }
                 break;
             };
             match c {
-                '\'' => self.quote(&mut text, in_plural),
+                '\'' => self.apostrophe(&mut text, in_plural),
                 '{' => {
                     flush(&mut text, &mut pieces);
                     let piece = self.argument(in_plural)?;
@@ -357,7 +363,7 @@ impl Parser {
                         at + 1,
                         "no `{` before it",
                         "A `}` closes a `{`; this one closes nothing.",
-                        "Remove the `}`, or quote it as `'}'`",
+                        "Remove the `}`, or write it between apostrophes, `'}'`",
                     ));
                 }
                 '#' if in_plural => {
@@ -377,7 +383,7 @@ impl Parser {
 
     /// An apostrophe: `''` is one; one before a brace (or `#` in a plural)
     /// quotes up to the next single apostrophe; any other is itself.
-    fn quote(&mut self, text: &mut String, in_plural: bool) {
+    fn apostrophe(&mut self, text: &mut String, in_plural: bool) {
         self.at += 1;
         match self.peek() {
             Some('\'') => {
@@ -522,7 +528,7 @@ impl Parser {
                 start,
                 start + 1,
                 "no name",
-                "A placeholder is a name in braces, `{order_number}`: the call gives each one an argument of the same name.",
+                "A placeholder is a name in braces, `{recipient}`: the call gives each one an argument of the same name.",
                 "Write the placeholder's name between the braces",
             ));
         };
@@ -535,7 +541,7 @@ impl Parser {
         }
         let reason = if first.is_ascii_digit() {
             format!(
-                "`{word}` is a number, but placeholders are named: the call gives each one an argument of the same name, as `order_number: ...`."
+                "`{word}` is a number, but placeholders are named: the call gives each one an argument of the same name, as `recipient: ...`."
             )
         } else {
             format!(
@@ -547,7 +553,7 @@ impl Parser {
             end,
             "not a name",
             &reason,
-            "Name the placeholder in lower_snake_case, such as `{order_number}`",
+            "Name the placeholder in lower_snake_case, such as `{recipient}`",
         ))
     }
 
@@ -646,7 +652,7 @@ impl Parser {
                         start,
                         self.offset_before(),
                         "not a whole number",
-                        "`offset:` is the whole number taken off the count before its case is chosen.",
+                        "`offset:` is the whole number subtracted from the count before its case is chosen.",
                         "Write a whole number after `offset:`, such as `offset:1`",
                     ));
                 }
@@ -947,10 +953,7 @@ mod tests {
         assert_eq!(ok("Don't").pieces, vec![Piece::Text("Don't".into())]);
         assert_eq!(ok("It''s").pieces, vec![Piece::Text("It's".into())]);
         assert_eq!(ok("'{'x'}'").pieces, vec![Piece::Text("{x}".into())]);
-        assert_eq!(
-            ok("a '{b}' c").pieces,
-            vec![Piece::Text("a {b} c".into())]
-        );
+        assert_eq!(ok("a '{b}' c").pieces, vec![Piece::Text("a {b} c".into())]);
     }
 
     #[test]
@@ -960,8 +963,14 @@ mod tests {
             panic!("not a plural: {message:?}");
         };
         assert_eq!(cases.len(), 2);
-        assert_eq!(other.pieces, vec![Piece::Count, Piece::Text(" items".into())]);
-        assert_eq!(names("{count, plural, one {#} other {#}}"), [("count".into(), ParamKind::Number)]);
+        assert_eq!(
+            other.pieces,
+            vec![Piece::Count, Piece::Text(" items".into())]
+        );
+        assert_eq!(
+            names("{count, plural, one {#} other {#}}"),
+            [("count".into(), ParamKind::Number)]
+        );
     }
 
     #[test]
@@ -1002,9 +1011,13 @@ mod tests {
 
     #[test]
     fn syntax_errors_say_where() {
-        let error = parse("Hello {name").err().unwrap_or_else(|| syntax(0, 0, "", "", ""));
+        let error = parse("Hello {name")
+            .err()
+            .unwrap_or_else(|| syntax(0, 0, "", "", ""));
         assert_eq!((error.kind, error.start), (MessageErrorKind::Syntax, 6));
-        let error = parse("Hello {0}").err().unwrap_or_else(|| syntax(0, 0, "", "", ""));
+        let error = parse("Hello {0}")
+            .err()
+            .unwrap_or_else(|| syntax(0, 0, "", "", ""));
         assert_eq!((error.start, error.end), (7, 8));
         assert!(parse("a } b").is_err());
         assert!(parse("{n, plurl, other {x}}").is_err());

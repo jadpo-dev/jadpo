@@ -8,8 +8,8 @@ use jadpo_diag::{Diagnostic, nearest, rule};
 use jadpo_std::translation::Placeholder;
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
-use super::facts::Reach;
 use super::calls::plural;
+use super::facts::Reach;
 use super::{Body, CallKind, is_literal, node_key};
 use crate::lookups::Name;
 use crate::translations::{Lookup, accepts, keys, lookup};
@@ -56,12 +56,16 @@ impl Body<'_> {
             "Translations are keys of `translations/<locale>.json`, one file per supported locale, and the default locale's file defines them. The project has no such files.".to_string()
         } else if all.is_empty() {
             format!("`{key}` is not a key of the default locale's file, which defines no keys.")
+        } else if near.is_some() {
+            format!(
+                "`{key}` is not a key of the default locale's file.{}",
+                super::did_you_mean(near)
+            )
         } else {
             let listed: Vec<String> = all.iter().map(|name| format!("`{name}`")).collect();
             format!(
-                "`{key}` is not a key of the default locale's file. Its keys are {}.{}",
-                crate::and_list(&listed),
-                super::did_you_mean(near)
+                "`{key}` is not a key of the default locale's file. Its keys are {}.",
+                crate::and_list(&listed)
             )
         };
         let problem = Diagnostic::new(

@@ -148,20 +148,25 @@ fn the_text_is_written_in_the_locale_a_request_names() {
     let (_dir, root) = project();
     let dev = Dev::start_without_database(&root);
     for (locale, count, shipped, shown) in [
-        ("en-GB", 1, "Your order A-17 has shipped.", "1 item in your cart"),
-        ("en-GB", 1200, "Your order A-17 has shipped.", "1,200 items in your cart"),
+        (
+            "en-GB",
+            1,
+            "Your order A-17 has shipped.",
+            "1 item in your cart",
+        ),
+        (
+            "en-GB",
+            1200,
+            "Your order A-17 has shipped.",
+            "1,200 items in your cart",
+        ),
         (
             "fr-FR",
             2,
             "Votre commande A-17 a été expédiée.",
             "2 articles dans votre panier",
         ),
-        (
-            "ar-EG",
-            3,
-            "تم شحن طلبك A-17.",
-            "\u{663} عناصر في سلتك",
-        ),
+        ("ar-EG", 3, "تم شحن طلبك A-17.", "\u{663} عناصر في سلتك"),
         ("ar-EG", 2, "تم شحن طلبك A-17.", "عنصران في سلتك"),
     ] {
         let reply = cart(&dev, locale, count);
@@ -196,13 +201,17 @@ fn a_mistake_in_a_translation_file_shows_its_line_in_that_file() {
     write(
         &root,
         "translations/fr_fr.json",
-        FILES[11].1.replace("{order_number} a", "{order_number a").as_str(),
+        FILES[11]
+            .1
+            .replace("{order_number} a", "{order_number a")
+            .as_str(),
     );
     let done = jadpo(&root, &["check"]);
     assert_eq!(done.code, 1);
     let out = format!("{}{}", done.stdout, done.stderr);
     assert!(
-        out.contains("--> translations/fr_fr.json:2:36") && out.contains("rule: translation.message_invalid"),
+        out.contains("--> translations/fr_fr.json:2:36")
+            && out.contains("rule: translation.message_invalid"),
         "{out}"
     );
     // Nothing runs while a file is wrong.

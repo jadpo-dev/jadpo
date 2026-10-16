@@ -31,6 +31,13 @@ impl Example {
     }
 }
 
+/// Whether a project-relative path is a translation file (area 10), which
+/// a project holds beside its code.
+fn jadpo_db_translation(path: &str) -> bool {
+    path.strip_prefix("translations/")
+        .is_some_and(|name| name.ends_with(".json") && !name.contains('/'))
+}
+
 pub fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
@@ -146,7 +153,7 @@ pub fn projects() -> Vec<(String, Vec<(String, String)>)> {
         };
         let project = attr("project").unwrap_or_else(|| format!("example-{n}"));
         let file = attr("file").unwrap_or_else(|| "main.jadpo".to_string());
-        if !file.ends_with(".jadpo") {
+        if !file.ends_with(".jadpo") && !jadpo_db_translation(&file) {
             continue;
         }
         // A later block of the same file replaces it, as the page's

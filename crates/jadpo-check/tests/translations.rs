@@ -92,7 +92,12 @@ fn position(text: &str, offset: u32) -> (usize, usize) {
 fn pointed_at(translations: &[(&str, &str)]) -> (String, (usize, usize), String) {
     let all = files(APP, translations, CALLS);
     let found = diagnostics(&all);
-    assert_eq!(found.len(), 1, "{:#?}", found.iter().map(|d| &d.message).collect::<Vec<_>>());
+    assert_eq!(
+        found.len(),
+        1,
+        "{:#?}",
+        found.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
     let label = found[0].primary.as_ref().expect("a primary label");
     let text = &all
         .iter()
@@ -125,7 +130,10 @@ fn a_project_with_no_translations_is_not_asked_for_any() {
 fn the_other_locales_may_word_a_plural_differently() {
     // French has `many`, English doesn't; `#` and the cases are the
     // translator's.
-    let fr = FR.replace("one {# article} many {# articles} other", "one {# article} other");
+    let fr = FR.replace(
+        "one {# article} many {# articles} other",
+        "one {# article} other",
+    );
     assert_eq!(rules(&[("en_gb.json", EN), ("fr_fr.json", &fr)]), CLEAN);
 }
 
@@ -151,7 +159,10 @@ fn a_key_only_another_file_has_is_extra() {
         ["translation.key_extra"]
     );
     let (path, at, text) = pointed_at(&[("en_gb.json", EN), ("fr_fr.json", &fr)]);
-    assert_eq!((path.as_str(), at, text.as_str()), ("translations/fr_fr.json", (5, 3), "\"order_cancelled\""));
+    assert_eq!(
+        (path.as_str(), at, text.as_str()),
+        ("translations/fr_fr.json", (5, 3), "\"order_cancelled\"")
+    );
 }
 
 #[test]
@@ -159,7 +170,10 @@ fn a_key_is_a_name_a_call_can_use() {
     let en = EN.replace("order_shipped", "Order-Shipped");
     let fr = FR.replace("order_shipped", "Order-Shipped");
     assert_eq!(
-        rules_with_calls(&[("en_gb.json", &en), ("fr_fr.json", &fr)], "subject: \"a\"\n        cart: translations.items_in_cart(locale: locale, count: count)"),
+        rules_with_calls(
+            &[("en_gb.json", &en), ("fr_fr.json", &fr)],
+            "subject: \"a\"\n        cart: translations.items_in_cart(locale: locale, count: count)"
+        ),
         ["translation.key_invalid", "translation.key_invalid"]
     );
 }
@@ -180,7 +194,10 @@ fn a_key_written_twice_in_a_file_is_an_error() {
 
 #[test]
 fn a_placeholder_the_default_message_has_and_another_lacks_is_a_mismatch() {
-    let fr = FR.replace("Votre commande {order_number} a été expédiée.", "Votre commande a été expédiée.");
+    let fr = FR.replace(
+        "Votre commande {order_number} a été expédiée.",
+        "Votre commande a été expédiée.",
+    );
     assert_eq!(
         rules(&[("en_gb.json", EN), ("fr_fr.json", &fr)]),
         ["translation.placeholder_mismatch"]
@@ -273,9 +290,12 @@ fn a_message_error_after_an_escape_still_points_at_the_right_character() {
 fn a_placeholder_is_named_not_numbered() {
     let en = EN.replace("{order_number}", "{0}");
     assert_eq!(
-        rules_with_calls(&[("en_gb.json", &en), ("fr_fr.json", FR)], "subject: \"a\"\n        cart: \"b\"")
-            .first()
-            .map(String::as_str),
+        rules_with_calls(
+            &[("en_gb.json", &en), ("fr_fr.json", FR)],
+            "subject: \"a\"\n        cart: \"b\""
+        )
+        .first()
+        .map(String::as_str),
         Some("translation.message_invalid")
     );
 }
@@ -304,25 +324,23 @@ fn a_file_is_named_for_a_locale() {
 
 #[test]
 fn a_supported_locale_with_no_file_is_an_error() {
-    assert_eq!(
-        rules(&[("en_gb.json", EN)]),
-        ["translation.file_missing"]
-    );
+    assert_eq!(rules(&[("en_gb.json", EN)]), ["translation.file_missing"]);
 }
 
 #[test]
 fn the_default_locales_file_is_the_one_that_defines_the_keys() {
-    let all = rules_with_calls(
-        &[("fr_fr.json", FR)],
-        "subject: \"a\"\n        cart: \"b\"",
-    );
+    let all = rules_with_calls(&[("fr_fr.json", FR)], "subject: \"a\"\n        cart: \"b\"");
     assert_eq!(all, ["translation.file_missing"]);
 }
 
 #[test]
 fn translations_need_the_locales_declared() {
     let app = "application {\n}\n";
-    let all = files(app, &[("en_gb.json", EN)], "subject: \"a\"\n        cart: \"b\"");
+    let all = files(
+        app,
+        &[("en_gb.json", EN)],
+        "subject: \"a\"\n        cart: \"b\"",
+    );
     assert_eq!(rules_of(&all), ["translation.locales_required"]);
 }
 
@@ -341,15 +359,21 @@ fn a_file_that_is_not_json_points_at_the_slip() {
 fn a_message_is_a_string() {
     let en = EN.replace("\"Your order {order_number} has shipped.\"", "42");
     assert_eq!(
-        rules_with_calls(&[("en_gb.json", &en), ("fr_fr.json", FR)], "subject: \"a\"\n        cart: \"b\"")
-            .first()
-            .map(String::as_str),
+        rules_with_calls(
+            &[("en_gb.json", &en), ("fr_fr.json", FR)],
+            "subject: \"a\"\n        cart: \"b\""
+        )
+        .first()
+        .map(String::as_str),
         Some("translation.file_invalid")
     );
     assert_eq!(
-        rules_with_calls(&[("en_gb.json", "[]"), ("fr_fr.json", FR)], "subject: \"a\"\n        cart: \"b\"")
-            .first()
-            .map(String::as_str),
+        rules_with_calls(
+            &[("en_gb.json", "[]"), ("fr_fr.json", FR)],
+            "subject: \"a\"\n        cart: \"b\""
+        )
+        .first()
+        .map(String::as_str),
         Some("translation.file_invalid")
     );
 }
@@ -386,17 +410,26 @@ fn a_call_gives_the_locale_and_each_placeholder() {
     let both = &[("en_gb.json", EN), ("fr_fr.json", FR)];
     // No placeholder.
     assert_eq!(
-        rules_with_calls(both, "subject: translations.order_shipped(locale: locale)\n        cart: translations.items_in_cart(locale: locale, count: count)"),
+        rules_with_calls(
+            both,
+            "subject: translations.order_shipped(locale: locale)\n        cart: translations.items_in_cart(locale: locale, count: count)"
+        ),
         ["type.argument_count"]
     );
     // An argument the message has no placeholder for.
     assert_eq!(
-        rules_with_calls(both, "subject: translations.order_shipped(locale: locale, order_number: number, extra: number)\n        cart: translations.items_in_cart(locale: locale, count: count)"),
+        rules_with_calls(
+            both,
+            "subject: translations.order_shipped(locale: locale, order_number: number, extra: number)\n        cart: translations.items_in_cart(locale: locale, count: count)"
+        ),
         ["type.named_argument_unknown"]
     );
     // No locale.
     assert_eq!(
-        rules_with_calls(both, "subject: translations.order_shipped(order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: count)"),
+        rules_with_calls(
+            both,
+            "subject: translations.order_shipped(order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: count)"
+        ),
         ["type.argument_count"]
     );
 }
@@ -406,11 +439,17 @@ fn an_argument_is_the_kind_its_placeholder_takes() {
     let both = &[("en_gb.json", EN), ("fr_fr.json", FR)];
     // A number where text is wanted, and text where a count is.
     assert_eq!(
-        rules_with_calls(both, "subject: translations.order_shipped(locale: locale, order_number: count)\n        cart: translations.items_in_cart(locale: locale, count: count)"),
+        rules_with_calls(
+            both,
+            "subject: translations.order_shipped(locale: locale, order_number: count)\n        cart: translations.items_in_cart(locale: locale, count: count)"
+        ),
         ["type.mismatch"]
     );
     assert_eq!(
-        rules_with_calls(both, "subject: translations.order_shipped(locale: locale, order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: number)"),
+        rules_with_calls(
+            both,
+            "subject: translations.order_shipped(locale: locale, order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: number)"
+        ),
         ["type.mismatch"]
     );
 }
@@ -419,11 +458,17 @@ fn an_argument_is_the_kind_its_placeholder_takes() {
 fn a_locale_written_out_is_a_supported_one() {
     let both = &[("en_gb.json", EN), ("fr_fr.json", FR)];
     assert_eq!(
-        rules_with_calls(both, "subject: translations.order_shipped(locale: Locale.fr_fr, order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: count)"),
+        rules_with_calls(
+            both,
+            "subject: translations.order_shipped(locale: Locale.fr_fr, order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: count)"
+        ),
         CLEAN
     );
     assert_eq!(
-        rules_with_calls(both, "subject: translations.order_shipped(locale: Locale.de_de, order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: count)"),
+        rules_with_calls(
+            both,
+            "subject: translations.order_shipped(locale: Locale.de_de, order_number: number)\n        cart: translations.items_in_cart(locale: locale, count: count)"
+        ),
         ["type.locale_unsupported"]
     );
 }
@@ -472,7 +517,9 @@ fn a_number_a_date_and_a_choice_take_their_own_kinds() {
     };
     let found = rules_of(&action("PlacedAt"));
     assert!(
-        found.iter().all(|rule| !rule.starts_with("translation.") && !rule.starts_with("type.")),
+        found
+            .iter()
+            .all(|rule| !rule.starts_with("translation.") && !rule.starts_with("type.")),
         "{found:?}"
     );
     // A date alone takes either; shown as a time as well it needs a clock.
@@ -526,14 +573,24 @@ mod incremental {
         assert!(count(&cold, "typed_body") >= 1, "{cold:?}");
 
         // The words of the default locale's message: no call reads them.
-        set(&mut db, project, "en_gb.json", &EN.replace("has shipped", "is on its way"));
+        set(
+            &mut db,
+            project,
+            "en_gb.json",
+            &EN.replace("has shipped", "is on its way"),
+        );
         assert!(jadpo_check::check(&db, project).is_empty());
         let log = db.take_executions();
         assert_eq!(count(&log, "typed_body"), 0, "{log:?}");
         assert_eq!(count(&log, "translation_files"), 1, "{log:?}");
 
         // The words of another locale's.
-        set(&mut db, project, "fr_fr.json", &FR.replace("expédiée", "envoyée"));
+        set(
+            &mut db,
+            project,
+            "fr_fr.json",
+            &FR.replace("expédiée", "envoyée"),
+        );
         assert!(jadpo_check::check(&db, project).is_empty());
         let log = db.take_executions();
         assert_eq!(count(&log, "typed_body"), 0, "{log:?}");
@@ -552,7 +609,12 @@ mod incremental {
         set(&mut db, project, "en_gb.json", &en);
         set(&mut db, project, "fr_fr.json", &fr);
         let found = jadpo_check::check(&db, project);
-        assert!(found.iter().any(|d| d.rule.id == "type.named_argument_unknown"), "{found:#?}");
+        assert!(
+            found
+                .iter()
+                .any(|d| d.rule.id == "type.named_argument_unknown"),
+            "{found:#?}"
+        );
         let log = db.take_executions();
         assert_eq!(count(&log, "typed_body"), 1, "{log:?}");
     }

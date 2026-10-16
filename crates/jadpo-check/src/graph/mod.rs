@@ -332,7 +332,11 @@ pub fn translation_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
             entry.key.clone(),
         );
         if let Some(lines) = &lines {
-            let last = entry.message_span.end.saturating_sub(1).max(entry.key_span.start);
+            let last = entry
+                .message_span
+                .end
+                .saturating_sub(1)
+                .max(entry.key_span.start);
             node.place = Some(jadpo_graph::Place {
                 file: file.path.clone(),
                 start: entry.key_span.start,

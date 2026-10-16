@@ -1753,7 +1753,11 @@ impl<'p> Machine<'p> {
                 let mut work: Vec<Task<'p>> = Vec::new();
                 for arg in args {
                     let Some(arg) = arg else {
-                        return Err(self.defect(ctx, "a translation without one of its values", id));
+                        return Err(self.defect(
+                            ctx,
+                            "a translation without one of its values",
+                            id,
+                        ));
                     };
                     work.push(Task::Expr(*arg));
                 }

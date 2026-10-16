@@ -79,11 +79,7 @@ pub fn translation_files(db: &dyn Db, project: Project) -> Vec<File> {
     if project.layout(db) != jadpo_db::Layout::Project {
         return Vec::new();
     }
-    project
-        .translations(db)
-        .iter()
-        .map(read_file)
-        .collect()
+    project.translations(db).iter().map(read_file).collect()
 }
 
 /// A key a call can use: lower_snake_case, as every name in a call is.
@@ -205,11 +201,13 @@ fn read_file(record: &Record) -> File {
             .at(key_span.clone(), "not lower_snake_case")
             .reason(format!(
                 "Each key becomes a call, `translations.{}(...)`, so a key is a lower_snake_case name: lower-case letters, digits and single underscores, starting with a letter.",
-                suggestion.as_deref().unwrap_or("order_shipped")
+                suggestion.as_deref().unwrap_or("recipient_name")
             ));
             file.problems.push(match suggestion {
                 Some(name) => problem
-                    .next(format!("Rename the key to `{name}`, here and in every locale's file"))
+                    .next(format!(
+                        "Rename the key to `{name}`, here and in every locale's file"
+                    ))
                     .edit(key_span, format!("\"{name}\"")),
                 None => problem.next("Rename the key to a lower_snake_case name"),
             });
@@ -451,7 +449,10 @@ fn compare(default: &File, file: &File) -> Vec<Diagnostic> {
                     "Add `\"{}\"` to `{}`; `{near}` may be it, misspelt",
                     entry.key, file.path
                 )),
-                None => problem.next(format!("Add `\"{}\"` and its message to `{}`", entry.key, file.path)),
+                None => problem.next(format!(
+                    "Add `\"{}\"` and its message to `{}`",
+                    entry.key, file.path
+                )),
             };
             out.push(problem);
             continue;
@@ -484,7 +485,10 @@ fn compare(default: &File, file: &File) -> Vec<Diagnostic> {
         ));
         out.push(match near {
             Some(near) => problem
-                .next(format!("Rename it to `{near}`, which `{}` has", default.path))
+                .next(format!(
+                    "Rename it to `{near}`, which `{}` has",
+                    default.path
+                ))
                 .edit(entry.key_span.clone(), format!("\"{near}\"")),
             None => problem.next(format!(
                 "Remove it, or add `\"{}\"` to `{}` first",
@@ -519,13 +523,21 @@ fn placeholders(
         };
         let (title, label) = match (missing.is_empty(), extra.is_empty()) {
             (false, true) => (
-                format!("The message for `{}` in `{}` has no {}", entry.key, file.path, braces(&missing)),
+                format!(
+                    "The message for `{}` in `{}` has no {}",
+                    entry.key,
+                    file.path,
+                    braces(&missing)
+                ),
                 format!("no {}", braces(&missing)),
             ),
             (true, false) => (
                 format!(
                     "The message for `{}` in `{}` has {}, which `{}` doesn't",
-                    entry.key, file.path, braces(&extra), default.path
+                    entry.key,
+                    file.path,
+                    braces(&extra),
+                    default.path
                 ),
                 format!("{} isn't in the default message", braces(&extra)),
             ),
@@ -637,11 +649,7 @@ pub fn default_translation_file(db: &dyn Db, project: Project) -> Option<&File> 
 
 /// The text of every message of a key, in each supported locale's file in
 /// the order the locales are listed: what a change to any of them changes.
-pub fn messages_of<'a>(
-    db: &'a dyn Db,
-    project: Project,
-    key: &str,
-) -> Vec<(&'a str, &'a str)> {
+pub fn messages_of<'a>(db: &'a dyn Db, project: Project, key: &str) -> Vec<(&'a str, &'a str)> {
     let supported = locales(db, project)
         .plan
         .as_ref()

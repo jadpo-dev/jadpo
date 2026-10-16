@@ -80,7 +80,12 @@ impl<'a> Writer<'a> {
             .ok_or(Fault::Shape)
     }
 
-    fn write(&mut self, message: &Message, count: Count<'_>, out: &mut String) -> Result<(), Fault> {
+    fn write(
+        &mut self,
+        message: &Message,
+        count: Count<'_>,
+        out: &mut String,
+    ) -> Result<(), Fault> {
         for piece in &message.pieces {
             match piece {
                 Piece::Text(text) => out.push_str(text),
@@ -224,14 +229,17 @@ fn equals(value: &Value, n: i64) -> bool {
 /// A number less a plural's offset.
 fn minus(value: &Value, offset: i64) -> Result<Value, Fault> {
     match value {
-        Value::Int(n) => n.checked_sub(offset).map(Value::Int).ok_or(Fault::IntOverflow),
+        Value::Int(n) => n
+            .checked_sub(offset)
+            .map(Value::Int)
+            .ok_or(Fault::IntOverflow),
         Value::Decimal(decimal) => {
             let unit = 10i128
                 .checked_pow(decimal.scale)
                 .ok_or(Fault::DecimalOverflow)?;
             let mantissa = unit
                 .checked_mul(i128::from(offset))
-                .and_then(|taken| decimal.mantissa.checked_sub(taken))
+                .and_then(|offset_units| decimal.mantissa.checked_sub(offset_units))
                 .ok_or(Fault::DecimalOverflow)?;
             Ok(Value::Decimal(Decimal::new(mantissa, decimal.scale)))
         }
@@ -276,7 +284,12 @@ mod tests {
         }))
     }
 
-    fn say(messages: &[(&str, &str)], params: &[(&str, ParamKind)], at: &str, args: Vec<Value>) -> String {
+    fn say(
+        messages: &[(&str, &str)],
+        params: &[(&str, ParamKind)],
+        at: &str,
+        args: Vec<Value>,
+    ) -> String {
         match translate(&key(messages, params), &locale(at), &args) {
             Ok(Value::Text(text)) => text.to_string(),
             other => format!("{other:?}"),
@@ -289,16 +302,34 @@ mod tests {
     fn a_plural_follows_the_locales_rules() {
         let count = [("count", ParamKind::Number)];
         let m = [("en_gb", PLURAL)];
-        assert_eq!(say(&m, &count, "en_gb", vec![Value::Int(0)]), "nothing in your cart");
-        assert_eq!(say(&m, &count, "en_gb", vec![Value::Int(1)]), "1 item in your cart");
-        assert_eq!(say(&m, &count, "en_gb", vec![Value::Int(1234)]), "1,234 items in your cart");
+        assert_eq!(
+            say(&m, &count, "en_gb", vec![Value::Int(0)]),
+            "nothing in your cart"
+        );
+        assert_eq!(
+            say(&m, &count, "en_gb", vec![Value::Int(1)]),
+            "1 item in your cart"
+        );
+        assert_eq!(
+            say(&m, &count, "en_gb", vec![Value::Int(1234)]),
+            "1,234 items in your cart"
+        );
         // French counts 0 and 1 as one, and groups with a narrow no-break space.
-        let fr = [("fr_fr", "{count, plural, one {# article} many {# d'articles} other {# articles}}")];
+        let fr = [(
+            "fr_fr",
+            "{count, plural, one {# article} many {# d'articles} other {# articles}}",
+        )];
         assert_eq!(say(&fr, &count, "fr_fr", vec![Value::Int(0)]), "0 article");
         assert_eq!(say(&fr, &count, "fr_fr", vec![Value::Int(2)]), "2 articles");
-        assert_eq!(say(&fr, &count, "fr_fr", vec![Value::Int(1_000_000)]), "1\u{202f}000\u{202f}000 d'articles");
+        assert_eq!(
+            say(&fr, &count, "fr_fr", vec![Value::Int(1_000_000)]),
+            "1\u{202f}000\u{202f}000 d'articles"
+        );
         // Russian has four forms.
-        let ru = [("ru", "{n, plural, one {# книга} few {# книги} many {# книг} other {# книги}}")];
+        let ru = [(
+            "ru",
+            "{n, plural, one {# книга} few {# книги} many {# книг} other {# книги}}",
+        )];
         let n = [("n", ParamKind::Number)];
         assert_eq!(say(&ru, &n, "ru", vec![Value::Int(1)]), "1 книга");
         assert_eq!(say(&ru, &n, "ru", vec![Value::Int(3)]), "3 книги");
@@ -308,56 +339,122 @@ mod tests {
 
     #[test]
     fn an_offset_is_taken_off_before_the_category_and_the_count() {
-        let m = [("en_gb", "{n, plural, offset:1 =0 {nobody} =1 {just you} one {you and # other} other {you and # others}}")];
+        let m = [(
+            "en_gb",
+            "{n, plural, offset:1 =0 {nobody} =1 {just you} one {you and # other} other {you and # others}}",
+        )];
         let n = [("n", ParamKind::Number)];
         assert_eq!(say(&m, &n, "en_gb", vec![Value::Int(0)]), "nobody");
         assert_eq!(say(&m, &n, "en_gb", vec![Value::Int(1)]), "just you");
         assert_eq!(say(&m, &n, "en_gb", vec![Value::Int(2)]), "you and 1 other");
-        assert_eq!(say(&m, &n, "en_gb", vec![Value::Int(4)]), "you and 3 others");
+        assert_eq!(
+            say(&m, &n, "en_gb", vec![Value::Int(4)]),
+            "you and 3 others"
+        );
     }
 
     #[test]
     fn an_ordinal_has_its_own_rules() {
-        let m = [("en_gb", "{n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}")];
+        let m = [(
+            "en_gb",
+            "{n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}",
+        )];
         let n = [("n", ParamKind::Number)];
         let say_n = |n_: i64| say(&m, &n, "en_gb", vec![Value::Int(n_)]);
-        assert_eq!([say_n(1), say_n(2), say_n(3), say_n(4), say_n(11), say_n(22)], ["1st", "2nd", "3rd", "4th", "11th", "22nd"]);
+        assert_eq!(
+            [say_n(1), say_n(2), say_n(3), say_n(4), say_n(11), say_n(22)],
+            ["1st", "2nd", "3rd", "4th", "11th", "22nd"]
+        );
     }
 
     #[test]
     fn numbers_use_the_locales_digits_and_separators() {
-        let m = [("en_gb", "{n, number}"), ("de_de", "{n, number}"), ("ar_eg", "{n, number}")];
+        let m = [
+            ("en_gb", "{n, number}"),
+            ("de_de", "{n, number}"),
+            ("ar_eg", "{n, number}"),
+        ];
         let n = [("n", ParamKind::Number)];
         let d = Value::decimal("1234.50").unwrap_or(Value::Unit);
         assert_eq!(say(&m, &n, "en_gb", vec![d.clone()]), "1,234.50");
         assert_eq!(say(&m, &n, "de_de", vec![d.clone()]), "1.234,50");
-        assert_eq!(say(&m, &n, "ar_eg", vec![Value::Int(123)]), "\u{661}\u{662}\u{663}");
+        assert_eq!(
+            say(&m, &n, "ar_eg", vec![Value::Int(123)]),
+            "\u{661}\u{662}\u{663}"
+        );
         let whole = [("en_gb", "{n, number, integer}")];
-        assert_eq!(say(&whole, &n, "en_gb", vec![Value::decimal("2.5").unwrap_or(Value::Unit)]), "2");
-        assert_eq!(say(&whole, &n, "en_gb", vec![Value::decimal("3.5").unwrap_or(Value::Unit)]), "4");
+        assert_eq!(
+            say(
+                &whole,
+                &n,
+                "en_gb",
+                vec![Value::decimal("2.5").unwrap_or(Value::Unit)]
+            ),
+            "2"
+        );
+        assert_eq!(
+            say(
+                &whole,
+                &n,
+                "en_gb",
+                vec![Value::decimal("3.5").unwrap_or(Value::Unit)]
+            ),
+            "4"
+        );
     }
 
     #[test]
     fn a_select_picks_its_word_or_other() {
-        let m = [("en_gb", "{kind, select, gift {a gift for {who}} other {an order for {who}}}")];
+        let m = [(
+            "en_gb",
+            "{kind, select, gift {a gift for {who}} other {an order for {who}}}",
+        )];
         let p = [("kind", ParamKind::Text), ("who", ParamKind::Text)];
-        assert_eq!(say(&m, &p, "en_gb", vec![Value::text("gift"), Value::text("Ana")]), "a gift for Ana");
-        assert_eq!(say(&m, &p, "en_gb", vec![Value::text("bulk"), Value::text("Ana")]), "an order for Ana");
+        assert_eq!(
+            say(
+                &m,
+                &p,
+                "en_gb",
+                vec![Value::text("gift"), Value::text("Ana")]
+            ),
+            "a gift for Ana"
+        );
+        assert_eq!(
+            say(
+                &m,
+                &p,
+                "en_gb",
+                vec![Value::text("bulk"), Value::text("Ana")]
+            ),
+            "an order for Ana"
+        );
     }
 
     #[test]
     fn a_plural_inside_a_select_keeps_its_count() {
-        let m = [("en_gb", "{kind, select, gift {{n, plural, one {# gift} other {# gifts}}} other {{n, plural, one {# order} other {# orders}}}}")];
+        let m = [(
+            "en_gb",
+            "{kind, select, gift {{n, plural, one {# gift} other {# gifts}}} other {{n, plural, one {# order} other {# orders}}}}",
+        )];
         let p = [("kind", ParamKind::Text), ("n", ParamKind::Number)];
-        assert_eq!(say(&m, &p, "en_gb", vec![Value::text("gift"), Value::Int(2)]), "2 gifts");
+        assert_eq!(
+            say(&m, &p, "en_gb", vec![Value::text("gift"), Value::Int(2)]),
+            "2 gifts"
+        );
     }
 
     #[test]
     fn a_date_and_a_time_are_the_locales() {
-        let m = [("en_gb", "{when, date, long} at {when, time, short}"), ("fr_fr", "{when, date, long} à {when, time, short}")];
+        let m = [
+            ("en_gb", "{when, date, long} at {when, time, short}"),
+            ("fr_fr", "{when, date, long} à {when, time, short}"),
+        ];
         let p = [("when", ParamKind::Time)];
         let zone = jadpo_std::variant_ordinal(jadpo_std::ZONE, "europe_paris").unwrap_or(0);
-        let when = Value::Zoned(crate::Zoned { millis: 1_790_000_000_000, zone });
+        let when = Value::Zoned(crate::Zoned {
+            millis: 1_790_000_000_000,
+            zone,
+        });
         let en = say(&m, &p, "en_gb", vec![when.clone()]);
         let fr = say(&m, &p, "fr_fr", vec![when]);
         assert!(en.contains(" at "), "{en}");
@@ -369,6 +466,9 @@ mod tests {
     fn quoted_braces_and_apostrophes_are_text() {
         let m = [("en_gb", "Use '{name}' in {tool}; don't")];
         let p = [("tool", ParamKind::Text)];
-        assert_eq!(say(&m, &p, "en_gb", vec![Value::text("Jadpo")]), "Use {name} in Jadpo; don't");
+        assert_eq!(
+            say(&m, &p, "en_gb", vec![Value::text("Jadpo")]),
+            "Use {name} in Jadpo; don't"
+        );
     }
 }

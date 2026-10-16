@@ -87,7 +87,10 @@ impl Reader {
         if self.at == 0 && self.peek() == Some('\u{feff}') {
             self.at += 1;
         }
-        while self.peek().is_some_and(|c| matches!(c, ' ' | '\t' | '\n' | '\r')) {
+        while self
+            .peek()
+            .is_some_and(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))
+        {
             self.at += 1;
         }
     }
@@ -287,7 +290,7 @@ impl Reader {
                     start,
                     start + 1,
                     "never closed",
-                    "A string ends with a closing double quote.",
+                    "A string ends with a closing `\"`.",
                     "Close the string with `\"`",
                 ));
             };
@@ -363,7 +366,8 @@ impl Reader {
     fn unicode(&mut self, escape_at: usize) -> Read<char> {
         let first = self.hex4(escape_at)?;
         if (0xD800..0xDC00).contains(&first) {
-            if self.peek() == Some('\\') && self.chars.get(self.at + 1).map(|(_, c)| *c) == Some('u')
+            if self.peek() == Some('\\')
+                && self.chars.get(self.at + 1).map(|(_, c)| *c) == Some('u')
             {
                 self.at += 2;
                 let second = self.hex4(escape_at)?;
@@ -436,18 +440,27 @@ mod tests {
             [("a".into(), "x\né\"y".into()), ("b".into(), String::new())]
         );
         assert_eq!(pairs("{}"), []);
-        assert_eq!(pairs("\u{feff} { \"a\" : \"b\" } \n"), [("a".into(), "b".into())]);
+        assert_eq!(
+            pairs("\u{feff} { \"a\" : \"b\" } \n"),
+            [("a".into(), "b".into())]
+        );
     }
 
     #[test]
     fn a_surrogate_pair_is_one_character() {
-        assert_eq!(pairs("{\"a\": \"\\ud83d\\ude00\"}"), [("a".into(), "😀".into())]);
+        assert_eq!(
+            pairs("{\"a\": \"\\ud83d\\ude00\"}"),
+            [("a".into(), "😀".into())]
+        );
     }
 
     #[test]
     fn offsets_follow_the_file() {
         let text = "{\"a\": \"c\\u00e9!\"}";
-        let object = read(text).ok().unwrap_or(Object { open: 0, pairs: vec![] });
+        let object = read(text).ok().unwrap_or(Object {
+            open: 0,
+            pairs: vec![],
+        });
         let pair = &object.pairs[0];
         // `c` at 7, `é` (two bytes) from the escape at 8, `!` after it, the
         // closing quote last.
@@ -460,10 +473,25 @@ mod tests {
         assert_eq!(at("[]"), Some(((0, 1), "not an object".into())));
         assert_eq!(at(""), Some(((0, 0), "empty".into())));
         assert_eq!(at("{\"a\": 1}").map(|(r, _)| r.0), Some(6));
-        assert_eq!(at("{\"a\": \"b\",}").map(|(_, l)| l), Some("trailing comma".into()));
-        assert_eq!(at("{\"a\" \"b\"}").map(|(_, l)| l), Some("expected `:`".into()));
-        assert_eq!(at("{\"a\": \"b\"").map(|(_, l)| l), Some("never closed".into()));
-        assert_eq!(at("{\"a\": \"b\"} x").map(|(_, l)| l), Some("after the object".into()));
-        assert_eq!(at("{\"a\": \"b\nc\"}").map(|(_, l)| l), Some("a line break in a string".into()));
+        assert_eq!(
+            at("{\"a\": \"b\",}").map(|(_, l)| l),
+            Some("trailing comma".into())
+        );
+        assert_eq!(
+            at("{\"a\" \"b\"}").map(|(_, l)| l),
+            Some("expected `:`".into())
+        );
+        assert_eq!(
+            at("{\"a\": \"b\"").map(|(_, l)| l),
+            Some("never closed".into())
+        );
+        assert_eq!(
+            at("{\"a\": \"b\"} x").map(|(_, l)| l),
+            Some("after the object".into())
+        );
+        assert_eq!(
+            at("{\"a\": \"b\nc\"}").map(|(_, l)| l),
+            Some("a line break in a string".into())
+        );
     }
 }

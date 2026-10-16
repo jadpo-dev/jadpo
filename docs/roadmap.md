@@ -415,7 +415,7 @@ reference only).
   `jadpo-value` over ICU4X's compiled CLDR data, with the
   `toolchain.not_built_yet` refusal removed. The second half, translations,
   is 5.3b.
-- [ ] **5.3b Translations** `sonnet · high` (area 10, "Translations"): the
+- [x] **5.3b Translations** `sonnet · high` (area 10, "Translations"): the
   root `translations/` folder, one JSON file per supported locale of ICU
   MessageFormat messages (plurals through CLDR's rules, selects, numbers and
   dates), one typed `translations.<key>(locale:, ...)` call per key of the

@@ -20,11 +20,11 @@ pub use items::{items_of, primary};
 pub use load::{
     Loaded, PROJECT_FILE, Unreadable, files_under, find_root, load, load_into, shown_root,
 };
-pub use texts::source_texts;
 pub use places::{
     Folder, Location, Ownership, Place, RootFile, Stray, locate, name_words, to_snake,
 };
 pub use table::{Symbol, Symbols, symbols};
+pub use texts::source_texts;
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};

@@ -46,6 +46,20 @@ rules:
   - syntax.locales_unknown_option
   - semantic.multiple_locale_declarations
   - type.presentation_text_persistence
+  - translation.file_invalid
+  - translation.file_missing
+  - translation.file_name_invalid
+  - translation.key_duplicate
+  - translation.key_extra
+  - translation.key_invalid
+  - translation.key_missing
+  - translation.key_unknown
+  - translation.locale_unsupported
+  - translation.locales_required
+  - translation.message_invalid
+  - translation.other_missing
+  - translation.placeholder_mismatch
+  - translation.placeholder_type
 ---
 
 # Configuration and time
@@ -54,7 +68,7 @@ How an application declares its settings and secrets, where their values come
 from, and how code reads the current time, works with dates and zones, and
 shows times to people in their own language.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; chunk 5.1c built the client's address behind trusted proxies (`client_address:`). Chunk 5.2 built time: `ZonedTime`, durations, arithmetic and comparison, the `temporal` library over a bundled time zone database, and a test's clock; chunk 5.2b built the formats and `PresentationText`, and checks `temporal.format` and `format_relative`. The examples marked `check` in those sections and their errors run with this checkout's `jadpo`. Chunk 5.3 built locales (`locales { }`, checked wherever a locale is written) and the text `temporal.format` and `format_relative` give, in each locale's own words, order and digits; translations come in chunk 5.3b, and choosing a language from `Accept-Language` in chunk 5.3c.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; chunk 5.1c built the client's address behind trusted proxies (`client_address:`). Chunk 5.2 built time: `ZonedTime`, durations, arithmetic and comparison, the `temporal` library over a bundled time zone database, and a test's clock; chunk 5.2b built the formats and `PresentationText`, and checks `temporal.format` and `format_relative`. The examples marked `check` in those sections and their errors run with this checkout's `jadpo`. Chunk 5.3 built locales (`locales { }`, checked wherever a locale is written) and the text `temporal.format` and `format_relative` give, in each locale's own words, order and digits; chunk 5.3b built translations (`translations/`, ICU MessageFormat messages, one typed call per key, the checks between locales' files), and choosing a language from `Accept-Language` comes in chunk 5.3c.
 
 Two rules run through the page. **Code never reads the environment or the
 system clock directly**: settings arrive as typed `config.<field>` values,
@@ -1204,8 +1218,8 @@ format for themselves receive the `Instant`.
   A locale with no word for yesterday or tomorrow shows the long date.
   "Two to six days away" is a weekday and the time, in the past or the
   future alike; a week or more is the long date, with no time.
-- **Not here.** Translations (below) are chunk 5.3b, and choosing a locale
-  from an `Accept-Language` header is chunk 5.3c.
+- **Not here.** Translations are chunk 5.3b ("Translations", below), and
+  choosing a locale from an `Accept-Language` header is chunk 5.3c.
 
 ## Locales
 
@@ -1242,31 +1256,320 @@ an `Accept-Language` header is a library call that falls back to `default`
 
 ## Translations
 
+> Built in chunk 5.3b: the files, the typed calls, their checks and errors,
+> and the interpreter and runtime writing the text. The examples marked
+> `check` run with this checkout's `jadpo`.
+
 Failure messages are translated by the client using the failure's `code`
 (decided in area 4); `message` stays fixed English. Text the server writes
-for people, such as emails and server-rendered pages, needs translating on
-the server, and area 1 reserved the root `translations/` folder for it.
-It comes in chunk 5.3b.
+for people, such as emails and server-rendered pages, is translated on the
+server, and area 1 reserved the root `translations/` folder for it. The
+folder holds one JSON file per supported locale, named for the locale as
+`Locale.<tag>` spells it (`translations/en_gb.json`, `translations/fr_fr.json`),
+and each file is one object of keys and messages written in ICU
+MessageFormat, the format translation services already import. The default
+locale's file defines the keys; each becomes one typed call,
+`translations.<key>(locale:, ...)`, and every other file is checked to have
+the same keys and, for each key, the same placeholders.
 
-Proposed (question 9): one file per supported locale, `translations/en_gb.json`,
-holding keys and messages in ICU MessageFormat, the format translation
-services already import. The default locale's file defines the keys; the
-compiler generates one typed call per key and checks every other file has
-the same keys and placeholders:
+```jadpo check project=translations file=app.jadpo
+application {}
 
-```json
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=translations file=translations/en_gb.json
 {
   "order_shipped": "Your order {order_number} has shipped.",
   "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
 }
 ```
 
-```jadpo fragment
-var subject: PresentationText = translations.order_shipped(
-    locale: customer.locale,
-    order_number: order.number
-)
+```jadpo check project=translations file=translations/fr_fr.json
+{
+  "order_shipped": "Votre commande {order_number} a été expédiée.",
+  "items_in_cart": "{count, plural, one {# article} many {# d'articles} other {# articles}} dans votre panier"
+}
 ```
+
+A call gives the `locale:` and one argument for each placeholder of the key's
+message in the default locale's file, by the placeholder's name, and gives
+back `PresentationText`: text for a person, which can go into a response, an
+email or a page, and not into a store, as for a formatted time
+(`type.presentation_text_persistence`). A call computes its text from its
+arguments, so a function may make it.
+
+```jadpo check project=translations file=domains/shop/types/order_number.jadpo
+/// An order's number, as the customer reads it.
+type OrderNumber = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=translations file=domains/shop/types/item_count.jadpo
+/// How many items a cart holds.
+type ItemCount = Int {
+    min: 0
+}
+```
+
+```jadpo check project=translations file=domains/shop/types/cart_text.jadpo
+/// What a customer is told about their order.
+type CartText = Output {
+    shipped: PresentationText
+    cart: PresentationText
+}
+```
+
+```jadpo check project=translations file=domains/shop/actions/describe_order.jadpo
+use shop/types { CartText, ItemCount, OrderNumber }
+
+/// The order, in the customer's language.
+action describe_order(number: OrderNumber, count: ItemCount, locale: Locale) -> CartText {
+    return CartText {
+        shipped: translations.order_shipped(locale: locale, order_number: number)
+        cart: translations.items_in_cart(locale: locale, count: count)
+    }
+}
+```
+
+```jadpo check project=translations file=domains/shop/actions/describe_order.test.jadpo
+test "an order is described in the customer's language" {
+    assert describe_order("A-17", 1, Locale.en_gb).shipped == "Your order A-17 has shipped."
+    assert describe_order("A-17", 1200, Locale.en_gb).cart == "1,200 items in your cart"
+    assert describe_order("A-17", 1, Locale.fr_fr).shipped == "Votre commande A-17 a été expédiée."
+    assert describe_order("A-17", 0, Locale.fr_fr).cart == "0 article dans votre panier"
+}
+```
+
+### The messages
+
+A message is text with placeholders in braces, each named in lower_snake_case
+(`{order_number}`, never `{0}`). What a placeholder is written as decides the
+kind of value its argument must be built on:
+
+| Written | Shows | The argument |
+|---|---|---|
+| `{name}` | the text as it is | built on `Text` (or a `PresentationText`) |
+| `{n, number}` | the number in the locale's digits, grouping and decimal separator, with the places it has | built on `Int` or `Decimal` |
+| `{n, number, integer}` | the same, rounded to a whole number (half to even) | built on `Int` or `Decimal` |
+| `{when, date, short}` | the date, as `temporal.format`'s `date_short`; `short`, `medium` (the default), `long` or `full` | a `CalendarDate` or a `ZonedTime` |
+| `{when, time, short}` | the clock time, as `time_short`; the same four lengths | a `ZonedTime` |
+| `{n, plural, one {...} other {...}}` | the case CLDR's cardinal rules choose for `n` | built on `Int` or `Decimal` |
+| `{n, selectordinal, one {...} other {...}}` | the same with CLDR's ordinal rules ("1st", "2nd") | built on `Int` or `Decimal` |
+| `{kind, select, gift {...} other {...}}` | the case whose word `kind` is, else `other` | built on `Text` |
+
+A plural's cases are `=0`, `=1` (that exact number) or one of CLDR's six
+categories, `zero`, `one`, `two`, `few`, `many` and `other`; the locale's
+rules say which a number is in, so Russian has four forms and Arabic six.
+Inside a case `#` is the number, written like `{n, number}`, and
+`offset:1` before the cases takes one off the number before its category is
+chosen and before `#` shows it ("you and 3 others"). A plural, a
+`selectordinal` and a `select` must each have an `other` case
+(`translation.other_missing`), which is what is shown when no other case
+matches, and a case may hold more placeholders and plurals.
+
+An apostrophe quotes a brace only where it comes right before one: `'{'` is
+a brace, `''` an apostrophe, and "don't" needs nothing. A time is shown in
+the zone its `ZonedTime` carries, so a message takes a `ZonedTime` rather
+than an `Instant`; the caller says where with `temporal.in_zone(...)`, and
+the server never guesses.
+
+```jadpo check project=translation-messages file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=translation-messages file=translations/en_gb.json
+{
+  "invited": "{host} invited {guests, plural, offset:1 =0 {nobody} =1 {{first}} one {{first} and # other} other {{first} and # others}}.",
+  "finished": "You finished {rank, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} of {total, number, integer}.",
+  "balance": "{owner}'s balance: {amount, number}",
+  "pickup": "{kind, select, gift {Gift pickup} other {Pickup}} on {day, date, long}"
+}
+```
+
+```jadpo check project=translation-messages file=translations/fr_fr.json
+{
+  "invited": "{host} a invité {guests, plural, offset:1 =0 {personne} =1 {{first}} one {{first} et # autre} other {{first} et # autres}}.",
+  "finished": "Vous avez terminé {rank, selectordinal, one {#er} other {#e}} sur {total, number, integer}.",
+  "balance": "Solde de {owner} : {amount, number}",
+  "pickup": "{kind, select, gift {Retrait du cadeau} other {Retrait}} le {day, date, long}"
+}
+```
+
+```jadpo check project=translation-messages file=tests/messages.test.jadpo
+test "a plural takes its offset off before it chooses" {
+    assert translations.invited(
+        locale: Locale.en_gb,
+        host: "Ana",
+        first: "Bo",
+        guests: 0
+    ) == "Ana invited nobody."
+    assert translations.invited(
+        locale: Locale.en_gb,
+        host: "Ana",
+        first: "Bo",
+        guests: 1
+    ) == "Ana invited Bo."
+    assert translations.invited(
+        locale: Locale.en_gb,
+        host: "Ana",
+        first: "Bo",
+        guests: 2
+    ) == "Ana invited Bo and 1 other."
+    assert translations.invited(
+        locale: Locale.fr_fr,
+        host: "Ana",
+        first: "Bo",
+        guests: 4
+    ) == "Ana a invité Bo et 3 autres."
+}
+
+test "an ordinal and a whole number follow the locale" {
+    assert translations.finished(
+        locale: Locale.en_gb,
+        rank: 1,
+        total: 22
+    ) == "You finished 1st of 22."
+    assert translations.finished(
+        locale: Locale.en_gb,
+        rank: 22,
+        total: 30
+    ) == "You finished 22nd of 30."
+    assert translations.finished(
+        locale: Locale.fr_fr,
+        rank: 1,
+        total: 22
+    ) == "Vous avez terminé 1er sur 22."
+    assert translations.finished(
+        locale: Locale.fr_fr,
+        rank: 2,
+        total: 22
+    ) == "Vous avez terminé 2e sur 22."
+}
+
+test "a number is shown with the places it has, in the locale's separator" {
+    assert translations.balance(
+        locale: Locale.en_gb,
+        owner: "Ana",
+        amount: 12.50
+    ) == "Ana's balance: 12.50"
+    assert translations.balance(
+        locale: Locale.fr_fr,
+        owner: "Ana",
+        amount: 12.50
+    ) == "Solde de Ana : 12,50"
+}
+
+test "a select picks its word and a date is the locale's" {
+    var day: ZonedTime = temporal.in_zone("2026-10-25T09:30:00Z", Zone.europe_london)
+    assert translations.pickup(
+        locale: Locale.en_gb,
+        kind: "gift",
+        day: day
+    ) == "Gift pickup on 25 October 2026"
+    assert translations.pickup(
+        locale: Locale.fr_fr,
+        kind: "bulk",
+        day: day
+    ) == "Retrait le 25 octobre 2026"
+}
+```
+
+Numbers are shown with the places they have, so `12.50` stays `12.50`; where a
+whole number is wanted, `integer` rounds it. A number is not formatted as a
+currency or a percentage: `percent`, `currency`, number skeletons
+(`::currency/EUR`) and `date` or `time` patterns are not part of what
+messages can say, and are `translation.message_invalid` with the styles that
+are.
+
+### What is checked
+
+- **Every supported locale has a file, and every file is for one.** A file is
+  named `<tag>.json`, the tag a `Locale` variant is (`translation.file_name_invalid`
+  for any other name), for a locale `locales { supported: }` lists
+  (`translation.locale_unsupported`), and each supported locale has its
+  file (`translation.file_missing`), the default locale's first, since it
+  defines the keys. A project with translation files and no
+  `locales { }` is `translation.locales_required`.
+- **Each file is an object of messages.** Anything else, or JSON that does
+  not read, is `translation.file_invalid`, at the character it went wrong;
+  a key is a lower_snake_case name (`translation.key_invalid`), once
+  (`translation.key_duplicate`), because each key is a call.
+- **Each message is MessageFormat.** One that is not is
+  `translation.message_invalid`, pointing at the character inside the string
+  in the JSON file, escapes counted, as an editor would show it.
+- **The other files match the default locale's.** The same keys
+  (`translation.key_missing`, `translation.key_extra`); for each, the same
+  placeholders (`translation.placeholder_mismatch`) used as the same kind of
+  value (`translation.placeholder_type`), which is also what a placeholder
+  used as text and as a number in one message breaks.
+- **A call names a key and gives what it needs.** A key no default message
+  has is `translation.key_unknown`, with the nearest key; the arguments are
+  checked as a standard-library call's are: a missing or extra one is
+  `type.argument_count` or `type.named_argument_unknown`, one of the wrong
+  kind `type.mismatch`, and a `Locale` written out that the application
+  does not support `type.locale_unsupported`.
+
+Editing a translation file rechecks what it affects and nothing else. The
+files are read once into messages; a call depends on its key's placeholders
+alone, not on any message's words, so changing the words of a message, in
+any locale, checks no call again, and changing a placeholder checks only the
+callables that call that key. For `jadpo test --watch`, each key is a node of
+the graph (`translation_key`), digested with its message in every supported
+locale and used by the callables that call it, so a save of a translation file
+reruns the tests that reach the key.
+
+### Chosen in chunk 5.3b
+
+- **The files.** `translations/<tag>.json`, where `<tag>` is the `Locale`
+  variant (`en_gb`, not `en-GB`), one flat JSON object of keys to message
+  strings, strictly: no comments, trailing commas, nested objects or
+  non-string values (`translation.file_invalid`). A byte-order mark is
+  allowed. Files elsewhere in `translations/` are ignored. `jadpo fmt` does
+  not format JSON, and the language server reports a file's problems at the
+  file; it does not yet jump from a call to its key.
+- **The keys.** A key is a single lower_snake_case name, since it is the name
+  of a call. Area 16's email messages are written under the type's name
+  with a dot, `"welcome_email.subject"`; how a dotted key is called is the
+  email chunk's to say, so a dotted key is `translation.key_invalid` until
+  then.
+- **The call.** Named arguments, as for a standard-library call: `locale:`
+  and one for each placeholder, and by position in that order with the
+  placeholders sorted by name, so a placeholder added to the file changes
+  no argument's place by being written earlier in a sentence. Its type is
+  `PresentationText`, and it is a pure call, allowed in a function. Whatever
+  provenance its arguments carry (area 9) the text carries.
+- **Placeholder kinds.** Four: text, number, date and time, as the table says.
+  A placeholder used as a date and a time is a time. Kinds must be equal
+  in every locale's message, since the call has one argument for each. A
+  `select` takes text; an enum is turned into text by the caller. A time is
+  never an `Instant`, because the server does not choose a zone.
+- **MessageFormat.** ICU4J's apostrophe rule (a quote only before a brace, or
+  `#` in a plural); names, not numbers; `number` with no style or `integer`;
+  `date` and `time` with `short`, `medium`, `long` or `full`; `plural`
+  (cardinal), `selectordinal` and `select`; `offset:`; `=N`. A category the
+  locale never uses (`few` in English) is accepted and never chosen, so a
+  translator's file is not rejected for being richer than the default's.
+- **Where the words come from.** The same ICU4X 2.3 and CLDR 48 data as
+  `temporal.format` (`icu_plurals` and `icu_decimal` joined `icu_datetime`
+  in `jadpo-value`, pinned the same), so the interpreter, a native deployable
+  and WebAssembly write the same text. The messages are parsed while
+  compiling into `jadpo-std`'s `Message`, carried to the runtime as plan
+  data (`TranslationPlan`), and written by one function in `jadpo-value`
+  (`present::translate`) that the interpreter calls now and generated code
+  will.
+- **Not here.** Percentages, currencies, number skeletons and date patterns;
+  `choice`; a plural category checked against the locale; keys no code
+  calls (no warning for them); and the typed email messages of area 16.
 
 ## Retention periods
 
@@ -2418,6 +2721,563 @@ error: `locales { }` is declared twice
 check failed: 1 error, 1 file
 ```
 
+### `translation.file_invalid`
+
+A translation file is one JSON object of messages, strictly: here a colon is missing after the key.
+
+```jadpo check project=e-tr-file-invalid file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-file-invalid file=translations/en_gb.json expect=translation.file_invalid
+{
+  "order_shipped" "Your order {order_number} has shipped."
+}
+```
+
+```text output
+error: `translations/en_gb.json` isn't a JSON object of messages
+ --> translations/en_gb.json:2:19
+  |
+2 |   "order_shipped" "Your order {order_number} has shipped."
+  |                   ^ expected `:`
+  reason: A key is followed by a colon and its message.
+  next: Write `:` after the key (agent)
+  rule: translation.file_invalid
+  help: docs/language/10-configuration-and-time.html#translation-file-invalid
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.file_name_invalid`
+
+A translation file is named for the locale it is for, the tag written as `Locale` writes it: lower case, with `_` for `-`.
+
+```jadpo check project=e-tr-file-name-invalid file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=e-tr-file-name-invalid file=translations/en_gb.json hidden
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```jadpo check project=e-tr-file-name-invalid file=translations/fr_fr.json hidden
+{
+  "order_shipped": "Votre commande {order_number} a été expédiée.",
+  "items_in_cart": "{count, plural, one {# article} many {# d'articles} other {# articles}} dans votre panier"
+}
+```
+
+```jadpo check project=e-tr-file-name-invalid file=translations/pt-BR.json expect=translation.file_name_invalid
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```text output
+error: `translations/pt-BR.json` isn't named for a locale
+ --> translations/pt-BR.json:1:1
+  |
+1 | {
+  | ^ `pt-BR` is no `Locale`
+  reason: A translation file is named for the locale it translates into, the tag in lower case with `_` for `-`: `en_gb.json` is `Locale.en_gb`. Did you mean `pt_br`?
+  next: Rename the file to `translations/pt_br.json` (agent)
+  rule: translation.file_name_invalid
+  help: docs/language/10-configuration-and-time.html#translation-file-name-invalid
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.locale_unsupported`
+
+A file for a locale the application doesn't list in `locales { supported: }` would never be used.
+
+```jadpo check project=e-tr-locale-unsupported file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=e-tr-locale-unsupported file=translations/en_gb.json hidden
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```jadpo check project=e-tr-locale-unsupported file=translations/fr_fr.json hidden
+{
+  "order_shipped": "Votre commande {order_number} a été expédiée.",
+  "items_in_cart": "{count, plural, one {# article} many {# d'articles} other {# articles}} dans votre panier"
+}
+```
+
+```jadpo check project=e-tr-locale-unsupported file=translations/de_de.json expect=translation.locale_unsupported
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```text output
+error: `translations/de_de.json` is for a locale this application doesn't support
+ --> translations/de_de.json:1:1
+  |
+1 | {
+  | ^ `Locale.de_de` isn't supported
+  reason: Translations are written in the locales listed in `locales { supported: }`, in `app.jadpo`; a file for another is never used, and the server never guesses a language.
+  next: Add `Locale.de_de` to `supported:` in `app.jadpo`, or remove the file (agent)
+  rule: translation.locale_unsupported
+  help: docs/language/10-configuration-and-time.html#translation-locale-unsupported
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.file_missing`
+
+Each supported locale has a file, so a call with that locale has a message to show.
+
+```jadpo check project=e-tr-file-missing file=app.jadpo expect=translation.file_missing
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```text output
+error: `Locale.fr_fr` is supported but has no translation file
+ --> app.jadpo:5:31
+  |
+5 |     supported: [Locale.en_gb, Locale.fr_fr]
+  |                               ^^^^^^^^^^^^ no `translations/fr_fr.json`
+  reason: There is one file for each supported locale, so a call with `locale: Locale.fr_fr` has a message to show.
+  next: Add `translations/fr_fr.json` with the same keys as the default locale's file (agent)
+  rule: translation.file_missing
+  help: docs/language/10-configuration-and-time.html#translation-file-missing
+
+check failed: 1 error, 1 file
+```
+
+```jadpo check project=e-tr-file-missing file=translations/en_gb.json hidden
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+
+### `translation.locales_required`
+
+Translation files are for the locales the application supports; with none declared there is nothing to check them against.
+
+```jadpo check project=e-tr-locales-required file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-tr-locales-required file=translations/en_gb.json expect=translation.locales_required
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```text output
+error: Translations need the application's locales
+ --> translations/en_gb.json:1:1
+  |
+1 | {
+  | ^ no locales declared
+  reason: Each translation file is for one of the locales the application supports, and the default locale's file defines the keys. None is declared, so there is nothing to check the files against.
+  next: Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }` (agent)
+  rule: translation.locales_required
+  help: docs/language/10-configuration-and-time.html#translation-locales-required
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.key_invalid`
+
+A key is the name of a call, so it is lower_snake_case.
+
+```jadpo check project=e-tr-key-invalid file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-key-invalid file=translations/en_gb.json expect=translation.key_invalid
+{
+  "Order-Shipped": "Your order {order_number} has shipped."
+}
+```
+
+```text output
+error: `Order-Shipped` isn't a key a call can use
+ --> translations/en_gb.json:2:3
+  |
+2 |   "Order-Shipped": "Your order {order_number} has shipped."
+  |   ^^^^^^^^^^^^^^^ not lower_snake_case
+  reason: Each key becomes a call, `translations.order_shipped(...)`, so a key is a lower_snake_case name: lower-case letters, digits and single underscores, starting with a letter.
+  next: Rename the key to `order_shipped`, here and in every locale's file (agent)
+  rule: translation.key_invalid
+  help: docs/language/10-configuration-and-time.html#translation-key-invalid
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.key_duplicate`
+
+A key is written once in a file.
+
+```jadpo check project=e-tr-key-duplicate file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-key-duplicate file=translations/en_gb.json expect=translation.key_duplicate
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "order_shipped": "Your order {order_number} is on its way."
+}
+```
+
+```text output
+error: `order_shipped` is written twice in `translations/en_gb.json`
+ --> translations/en_gb.json:3:3
+  |
+2 |   "order_shipped": "Your order {order_number} has shipped.",
+  |   --------------- first written here
+3 |   "order_shipped": "Your order {order_number} is on its way."
+  |   ^^^^^^^^^^^^^^^ written again
+  reason: A key names one message; the second would be dropped or the first, whichever a reader of the file believed.
+  next: Remove one `order_shipped`, or give it another name (agent)
+  rule: translation.key_duplicate
+  help: docs/language/10-configuration-and-time.html#translation-key-duplicate
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.key_missing`
+
+The default locale's file defines the keys, and every other locale's file has all of them.
+
+```jadpo check project=e-tr-key-missing file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=e-tr-key-missing file=translations/en_gb.json hidden
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```jadpo check project=e-tr-key-missing file=translations/fr_fr.json expect=translation.key_missing
+{
+  "order_shipped": "Votre commande {order_number} a été expédiée."
+}
+```
+
+```text output
+error: `translations/fr_fr.json` has no translation for `items_in_cart`
+ --> translations/fr_fr.json:1:1
+  |
+1 | {
+  | ^ no `items_in_cart`
+  reason: `translations/en_gb.json` defines the keys, and every locale's file has all of them: a call of `translations.items_in_cart` in this locale would have no message.
+  next: Add `"items_in_cart"` and its message to `translations/fr_fr.json` (agent)
+  rule: translation.key_missing
+  help: docs/language/10-configuration-and-time.html#translation-key-missing
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.key_extra`
+
+A key the default locale's file doesn't have has no call, so nothing would show its message.
+
+```jadpo check project=e-tr-key-extra file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=e-tr-key-extra file=translations/en_gb.json hidden
+{
+  "order_shipped": "Your order {order_number} has shipped."
+}
+```
+
+```jadpo check project=e-tr-key-extra file=translations/fr_fr.json expect=translation.key_extra
+{
+  "order_shipped": "Votre commande {order_number} a été expédiée.",
+  "order_cancelled": "Commande {order_number} annulée."
+}
+```
+
+```text output
+error: `translations/fr_fr.json` has `order_cancelled`, which `translations/en_gb.json` doesn't
+ --> translations/fr_fr.json:3:3
+  |
+3 |   "order_cancelled": "Commande {order_number} annulée."
+  |   ^^^^^^^^^^^^^^^^^ not in the default locale's file
+  reason: `translations/en_gb.json` defines the keys, and a key that file lacks has no call, so nothing would ever show this message.
+  next: Remove it, or add `"order_cancelled"` to `translations/en_gb.json` first (agent)
+  rule: translation.key_extra
+  help: docs/language/10-configuration-and-time.html#translation-key-extra
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.key_unknown`
+
+A call names a key of the default locale's file.
+
+```jadpo check project=e-tr-key-unknown file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-key-unknown file=domains/shop/types/order_number.jadpo hidden
+/// An order's number.
+type OrderNumber = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=e-tr-key-unknown file=translations/en_gb.json hidden
+{
+  "order_shipped": "Your order {order_number} has shipped."
+}
+```
+
+```jadpo check project=e-tr-key-unknown file=domains/shop/types/shipped_text.jadpo hidden
+/// What a customer is told.
+type ShippedText = Output {
+    subject: PresentationText
+}
+```
+
+```jadpo check project=e-tr-key-unknown file=domains/shop/actions/show_shipped.jadpo expect=translation.key_unknown
+use shop/types { OrderNumber, ShippedText }
+
+/// The text, in the customer's language.
+action show_shipped(number: OrderNumber, locale: Locale) -> ShippedText {
+    return ShippedText {
+        subject: translations.order_shiped(locale: locale, order_number: number)
+    }
+}
+```
+
+```text output
+error: `translations.order_shiped` is not a translation key
+ --> domains/shop/actions/show_shipped.jadpo:6:18
+  |
+6 |         subject: translations.order_shiped(locale: locale, order_number: number)
+  |                  ^^^^^^^^^^^^^^^^^^^^^^^^^ no such key
+  reason: `order_shiped` is not a key of the default locale's file. Did you mean `order_shipped`?
+  next: Use `translations.order_shipped` (agent)
+  rule: translation.key_unknown
+  help: docs/language/10-configuration-and-time.html#translation-key-unknown
+
+check failed: 1 error, 4 files
+```
+
+
+### `translation.message_invalid`
+
+A message is written in ICU MessageFormat; the error points at the character inside the string in the JSON file.
+
+```jadpo check project=e-tr-message-invalid file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-message-invalid file=translations/en_gb.json expect=translation.message_invalid
+{
+  "order_shipped": "Your order {order_number has shipped."
+}
+```
+
+```text output
+error: The message for `order_shipped` isn't valid MessageFormat
+ --> translations/en_gb.json:2:32
+  |
+2 |   "order_shipped": "Your order {order_number has shipped."
+  |                                ^ never closed
+  reason: After its name a placeholder is closed by `}` or continues with `,` and a type.
+  next: Close the placeholder with `}`, or add a type such as `, number` (agent)
+  rule: translation.message_invalid
+  help: docs/language/10-configuration-and-time.html#translation-message-invalid
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.other_missing`
+
+A plural, `selectordinal` or `select` ends with an `other` case, which is shown when no other case matches.
+
+```jadpo check project=e-tr-other-missing file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-other-missing file=translations/en_gb.json expect=translation.other_missing
+{
+  "items_in_cart": "{count, plural, one {# item} two {# items}} in your cart"
+}
+```
+
+```text output
+error: The message for `items_in_cart` has a case list with no `other`
+ --> translations/en_gb.json:2:21
+  |
+2 |   "items_in_cart": "{count, plural, one {# item} two {# items}} in your cart"
+  |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `other` case
+  reason: `count`'s plural must end with an `other` case: it is what is shown when no other case matches, which a language with more plural forms than the sentence was written with will need.
+  next: Add an `other {...}` case to the plural on `count` (agent)
+  rule: translation.other_missing
+  help: docs/language/10-configuration-and-time.html#translation-other-missing
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.placeholder_mismatch`
+
+Every locale's message has the placeholders of the default locale's, since the call gives one argument for each.
+
+```jadpo check project=e-tr-placeholder-mismatch file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=e-tr-placeholder-mismatch file=translations/en_gb.json hidden
+{
+  "order_shipped": "Your order {order_number} has shipped."
+}
+```
+
+```jadpo check project=e-tr-placeholder-mismatch file=translations/fr_fr.json expect=translation.placeholder_mismatch
+{
+  "order_shipped": "Votre commande a été expédiée."
+}
+```
+
+```text output
+error: The message for `order_shipped` in `translations/fr_fr.json` has no `{order_number}`
+ --> translations/fr_fr.json:2:20
+  |
+2 |   "order_shipped": "Votre commande a été expédiée."
+  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `{order_number}`
+  reason: A call gives one argument for each placeholder of the default locale's message, here `{order_number}`, and every locale's message is shown with those and no others.
+  next: Use `{order_number}` in the message, in its place in the sentence (agent)
+  rule: translation.placeholder_mismatch
+  help: docs/language/10-configuration-and-time.html#translation-placeholder-mismatch
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.placeholder_type`
+
+A placeholder takes the same kind of value in every locale: here `count` is a number in the default message and text in French.
+
+```jadpo check project=e-tr-placeholder-type file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=e-tr-placeholder-type file=translations/en_gb.json hidden
+{
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```jadpo check project=e-tr-placeholder-type file=translations/fr_fr.json expect=translation.placeholder_type
+{
+  "items_in_cart": "{count} dans votre panier"
+}
+```
+
+```text output
+error: `{count}` is a number in `translations/en_gb.json` but text in `translations/fr_fr.json`
+ --> translations/fr_fr.json:2:20
+  |
+2 |   "items_in_cart": "{count} dans votre panier"
+  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^ used as text
+  reason: The call gives `count:` one argument, the kind the default locale's message uses it as, so every locale's message uses it the same way.
+  next: Use `count` as a number in `translations/fr_fr.json` (agent)
+  rule: translation.placeholder_type
+  help: docs/language/10-configuration-and-time.html#translation-placeholder-type
+
+check failed: 1 error, 1 file
+```
+
+
 ## Review
 
 ### Status
@@ -2439,9 +3299,10 @@ readings are in the Decisions table too. Chunk 5.3 built locales
 (`locales { }` with its errors, `locale:` checked against it, a `Locale` on
 the wire or in a setting limited to the supported ones) and the text
 `temporal.format` and `format_relative` give, over CLDR data compiled into
-every target. Translations (`translations/`, ICU MessageFormat and typed
-calls) are chunk 5.3b, and choosing a language from `Accept-Language`
-chunk 5.3c.
+every target. Chunk 5.3b built translations (`translations/`, ICU
+MessageFormat messages, one typed call per key, the checks between the
+locales' files, and the interpreter and runtime writing the text); choosing
+a language from `Accept-Language` is chunk 5.3c.
 
 ### Consistency with the rest of the language
 
@@ -2543,7 +3404,7 @@ chunk 5.3c.
    email template needs it (area 11), not before. *Decided 2026-10-12:* yes, as recommended.
    *Amended 2026-10-13 (Richard):* translations are supported out of the box
    from the first build, not deferred: mail, the generated privacy pages,
-   client failure messages and any generated page use them. *Chunk 5.3b.*
+   client failure messages and any generated page use them. *Built in chunk 5.3b* (the Decisions table says how).
 10. **How are signing keys rotated?** (carried from area 8) Area 8 keeps
     signing keys, the OIDC issuer and audience in configuration. How does a
     deployment replace a signing key without signing everyone out?
@@ -2648,3 +3509,11 @@ chunk 5.3c.
 | Writing a time (chosen in chunk 5.3) | Always the Gregorian calendar (as `Intl.DateTimeFormat` with `calendar: "gregory"`), the locale's own digits, CLDR's narrow no-break space written as a plain space. A built-in format is the locale's pattern at CLDR's four lengths (`date_full` with the weekday), so `date_time_long` is "27 September 2026 at 14:30:05 BST" in `en_gb`, with seconds as `timeStyle: "long"` has. A declared format takes the locale's pattern for its parts (a month as a name from the long or medium date pattern, a number from the short one; a date and a time joined as the locale joins them for that month) and sets each part's width: `numeric` leaves a number as the locale writes it, `two_digit` makes it at least two. Parts with no pattern together are written one after another with a space, and `zone_name` alone is the name alone | 2026-10-16 |
 | `format_relative` (chosen in chunk 5.3) | Against `now:`, in the zone the value is seen in: under a minute either way "just now" (English; the locale's "now" elsewhere); under an hour whole minutes, a past value rounded down and a future one up; the same local date "Today at" and the short time; the date before or after "Yesterday at" or "Tomorrow at"; two to six days away the weekday and the short time; anything else the long date. The words are the locale's, the first letter a capital; a locale with no word for yesterday or tomorrow shows the long date | 2026-10-16 |
 | Not built here (chosen in chunk 5.3) | Translations (`translations/`, ICU MessageFormat, typed calls, their errors) and choosing a locale from an `Accept-Language` header, which the page calls a library call without naming it, are chunks 5.3b and 5.3c | 2026-10-16 |
+| Translation files (chosen in chunk 5.3b) | `translations/<tag>.json`, the tag a `Locale` variant (`en_gb`), one flat object of keys to ICU MessageFormat strings, read strictly (no comments, trailing commas, nesting or non-string values: `translation.file_invalid`, at the character it fails on). A name that is no `Locale` variant is `translation.file_name_invalid`, a locale not supported `translation.locale_unsupported`, a supported locale without a file `translation.file_missing` (the default locale's first), files with no `locales { }` `translation.locales_required`. `jadpo fmt` leaves the JSON alone, and the language server reports its problems at the file | 2026-10-16 |
+| Keys and calls (chosen in chunk 5.3b) | The default locale's file defines the keys; a key is one lower_snake_case name, once (`translation.key_invalid`, `translation.key_duplicate`), and is the call `translations.<key>(locale:, ...)`, with an argument for each placeholder by its name (by position: the locale, then the placeholders sorted by name). Another locale's file has the same keys (`translation.key_missing`, `translation.key_extra`) and each key the same placeholders (`translation.placeholder_mismatch`) of the same kind (`translation.placeholder_type`). A call of a key no default message has is `translation.key_unknown`, with the nearest key. Area 16's email messages under the type's name with a dot (`welcome_email.subject`) are `translation.key_invalid` until the email chunk says how a dotted key is called | 2026-10-16 |
+| What a call is (chosen in chunk 5.3b) | `PresentationText`, from a pure call (allowed in a function) that carries its arguments' provenance. Its arguments are checked as a standard-library call's: `type.argument_count`, `type.named_argument_unknown`, `type.mismatch`, and a `Locale` written out that is not supported `type.locale_unsupported` (or `type.temporal_locales_required` with none declared) | 2026-10-16 |
+| Placeholder kinds (chosen in chunk 5.3b) | Four, from how a placeholder is written: `{x}` and a `select`'s choice take text (built on `Text`, or a `PresentationText`), `{x, number}` and a plural's count a number (built on `Int` or `Decimal`), `{x, date}` a `CalendarDate` or a `ZonedTime`, `{x, time}` a `ZonedTime`, and a placeholder used as both date and time is a time. Used as two other kinds in one message is `translation.placeholder_type`. A time is never an `Instant`: the server does not choose a zone, so the caller makes a `ZonedTime` with `temporal.in_zone`. A number is not text, so `{order_number}` for a number is a type error and `{order_number, number}` groups its digits | 2026-10-16 |
+| MessageFormat (chosen in chunk 5.3b) | ICU4J's apostrophe rule (a quote only before a brace, or `#` in a plural; `''` is an apostrophe); placeholders named in lower_snake_case, not numbered; `number` with no style or `integer`; `date` and `time` with `short`, `medium` (the default), `long` or `full`, as the built-in formats of the same names; `plural`, `selectordinal` and `select`, with `offset:`, `=N`, `#`, and the six CLDR categories; an `other` case required in each (`translation.other_missing`). Anything else is `translation.message_invalid`, pointing into the JSON file at the character, escapes counted: `percent`, `currency`, skeletons and patterns are not built. A category the locale never uses is accepted and never chosen | 2026-10-16 |
+| Writing a message (chosen in chunk 5.3b) | A number is written with the places it has (`12.50` stays `12.50`) in the locale's digits, grouping and decimal separator; `integer` rounds half to even. A plural's category is CLDR 48's cardinal rule for the locale (ordinal for `selectordinal`) on the number less the `offset:`, an `=N` case matches the number as given, and `#` is the number less the offset written as `{n, number}`. A date or time is `temporal.format`'s built-in format of that length. A `select` with a word that is no case shows `other` | 2026-10-16 |
+| Where messages run (chosen in chunk 5.3b) | Messages are parsed while compiling into `jadpo_std::translation::Message` and carried to the runtime as plan data (`TranslationPlan`: each key, its placeholders and its message in every supported locale); `jadpo_value::present::translate` writes one, over `icu_plurals` and `icu_decimal` 2.3 (pinned with the other ICU4X crates, CLDR 48, already underneath `icu_datetime`), so the interpreter, a native deployable and WebAssembly write the same text and the code generator will call the same function. The call is `Callee::Translation` in the typed body | 2026-10-16 |
+| Watching translations (chosen in chunk 5.3b) | The files are a salsa input of their own (`Project::translations`), read once into messages (`translation_files`); a call asks `lookup` for its key's placeholders alone, so editing the words of any message in any locale checks no call again and a placeholder edit checks only the callables that call that key. Each key is a `translation_key` graph node digested with its message in every supported locale and used by the callables that call it, so `jadpo test --watch` reruns the tests that reach it; `jadpo dev` reloads on a save, and the language server watches `translations/*.json` | 2026-10-16 |

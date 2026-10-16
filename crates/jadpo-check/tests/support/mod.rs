@@ -73,15 +73,9 @@ pub fn project_in_path_order(db: &Database, layout: Layout, files: &[(&str, &str
         .map(|(path, text)| File::new(db, path.to_string(), text.to_string()))
         .collect();
     inputs.sort_by(|a, b| a.path(db).cmp(b.path(db)));
-    Project::builder(
-        inputs,
-        Vec::new(),
-        layout,
-        Default::default(),
-        Vec::new(),
-    )
-    .translations(translations(files))
-    .new(db)
+    Project::builder(inputs, Vec::new(), layout, Default::default(), Vec::new())
+        .translations(translations(files))
+        .new(db)
 }
 
 /// Each problem as `path rule: message`.

@@ -806,7 +806,8 @@ impl Lower<'_> {
                 }
                 self.node(last.syntax(), callee.key().cloned(), false);
             }
-            Reach::Std(_) | Reach::Session(_) | Reach::AdvanceClock | Reach::Translation { .. } => {}
+            Reach::Std(_) | Reach::Session(_) | Reach::AdvanceClock | Reach::Translation { .. } => {
+            }
             Reach::Caller(_) => {
                 self.scan(head.syntax());
             }

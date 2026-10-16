@@ -173,6 +173,7 @@ cards
 carrot
 cart
 cart_id
+cart_text
 catalogue_filter
 catalogue_name
 category_id
@@ -296,6 +297,7 @@ delivery_id
 delivery_note
 delivery_state
 delivery_view
+describe_order
 destination_company_id
 devices
 disable_user
@@ -648,6 +650,7 @@ order_line_view
 order_locked
 order_not_found
 order_note
+order_number
 order_placed
 order_product
 order_shelf
@@ -897,6 +900,7 @@ shelvable
 shift_end
 shipment
 shipped
+shipped_text
 shop_day
 shop_time
 shopping_list
@@ -908,6 +912,7 @@ show_note
 show_on_menu
 show_placed
 show_sent
+show_shipped
 sign_in_app
 sign_in_link
 sign_out_everywhere
