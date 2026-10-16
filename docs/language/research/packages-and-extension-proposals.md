@@ -54,8 +54,7 @@ then built. No design is left for implementation.
     an idempotency key stay alone. Reopens areas 11 and 12's "one changing
     call per action". Settle before chunk 7.4.
 7c. ~~Per-user OAuth~~: decided, see "Acting for each user: OAuth grants".
-7d. **Redis entity queries**: which reads a Redis entity supports beyond
-    get, create, update and delete by id (lists, filters), with area 6.
+7d. ~~Redis entity queries~~: decided, see "Redis entities".
 8. **What a library package may also carry**: email partials and layouts,
    translations, a usage guide for agents. *Recommendation:* yes to all
    three. *Translations decided 2026-10-16 (Richard):* see "Translations",
@@ -797,6 +796,19 @@ Slack workspace install).
 - **Later, each when an app needs it**: several accounts per owner,
   incremental scopes, provider notifications per grant, GitHub App
   installation tokens (a credential scheme in the runtime).
+
+## Redis entities (open item 7d)
+
+Decided 2026-10-16 (Richard). A Redis entity supports: get, create, update
+and delete by `id`; lookup by a `unique:` field (Jadpo keeps a key per
+unique field); listing by equality on one field declared in `indexes:`
+(a set per value, pages in creation order) and counting by it; required
+`expires_after:`, expired records hidden; concurrent-change checks through
+a revision field, as in area 3. Policy grants that are equality on the
+record's own fields are checked after reading. Joins and `include`,
+ranges, ordering by other fields, `matches`, and grants beyond simple
+equality are compile errors naming the reason and PostgreSQL as the
+alternative.
 
 ## Decided: the golden rule
 
