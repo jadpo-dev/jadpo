@@ -53,9 +53,7 @@ then built. No design is left for implementation.
     step can fail for good after an earlier one took effect; calls without
     an idempotency key stay alone. Reopens areas 11 and 12's "one changing
     call per action". Settle before chunk 7.4.
-7c. **Per-user OAuth**: apps acting for each user on Google, Xero or
-    HubSpot need those users' tokens kept and refreshed safely, owned by
-    the runtime like sessions.
+7c. ~~Per-user OAuth~~: decided, see "Acting for each user: OAuth grants".
 7d. **Redis entity queries**: which reads a Redis entity supports beyond
     get, create, update and delete by id (lists, filters), with area 6.
 8. **What a library package may also carry**: email partials and layouts,
@@ -760,6 +758,45 @@ Decided 2026-10-16 (Richard).
   only) and from a native server a package (its HTTP pull API); Kafka is a
   built-in driver in a later release. On Workers the queue consumer is
   generated into the Wrangler configuration.
+
+## Acting for each user: OAuth grants (open item 7c)
+
+Decided 2026-10-16 (Richard). For apps acting on another service for each
+user or organisation (a user's Google Calendar, an organisation's Xero, a
+Slack workspace install).
+
+- **A connection's credential may be a grant owned by one of the app's
+  records**: `credential: OAuthGrant { owner: User  client_id:  client_secret:
+  scopes: [...]  return_to: "/settings/integrations" }`; the owner is `User`
+  or any entity (`Organisation`). The provider's facts (authorize, token and
+  revoke addresses) are `oauth:` in the package's `provider.jadpo`, and each
+  operation declares the scope it needs. Nothing is specific to one
+  provider; the connection's name is the app's.
+- **Connecting is endpoints, not pages**: `POST /connections/<name>/start`
+  for the signed-in caller returns the provider's consent address; the
+  provider returns to a generated callback, which exchanges the code (PKCE,
+  state bound to the caller's session), stores the grant and redirects to
+  the frontend's `return_to` with success or failure.
+- **Grants are held by the runtime**, like sessions, their tokens encrypted
+  with a key from configuration and never readable by code.
+- **Every call names whose grant it uses**: `on_behalf_of: owner_id`;
+  `grant_missing` and `grant_revoked` are failures the app maps.
+- **Refresh is automatic**: renewed before expiry, once when calls race,
+  rotated refresh tokens kept; a revoked grant gives `grant_revoked` and a
+  `GrantRevoked` event so the app can ask the owner to reconnect.
+- **Scopes are checked at compile time**: calling an operation whose scope
+  the connection does not request is an error.
+- **Policy decides who may connect** for an owner (area 9): a user their
+  own account, an organisation's grant as its grants say.
+- **Disconnecting** is a generated endpoint and operation, revoking at the
+  provider when the package declares how; erasing a person or record (area
+  15) deletes and revokes its grants.
+- **Development and tests**: calls faked by default (decided);
+  `jadpo dev grants add <connection> --owner <id>` makes a fake grant;
+  tests declare grants as fixtures.
+- **Later, each when an app needs it**: several accounts per owner,
+  incremental scopes, provider notifications per grant, GitHub App
+  installation tokens (a credential scheme in the runtime).
 
 ## Decided: the golden rule
 
