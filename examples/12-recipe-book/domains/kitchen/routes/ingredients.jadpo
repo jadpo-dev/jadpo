@@ -1,0 +1,22 @@
+use kitchen/types { IngredientView }
+use kitchen/actions { ListIngredient, list_ingredient }
+use kitchen/queries { ingredient_list }
+
+/// The ingredients every bakery shares.
+routes Ingredients {
+    prefix: /ingredients
+
+    /// Every ingredient, for anyone signed in.
+    GET / {
+        output: List<IngredientView>
+        run: ingredient_list()
+    }
+
+    /// Lists an ingredient; the recipe book's editors only.
+    POST / {
+        input: ListIngredient
+        output: IngredientView
+        status: SuccessStatus.created
+        run: list_ingredient(input)
+    }
+}

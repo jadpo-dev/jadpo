@@ -1,0 +1,4 @@
+/// What someone does for the whole recipe book, across every bakery.
+type PlatformRole = Enum {
+    editor
+}

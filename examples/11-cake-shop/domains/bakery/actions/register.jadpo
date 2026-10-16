@@ -1,0 +1,17 @@
+use bakery/entities { Customer }
+use bakery/types { CustomerName, CustomerStatus }
+use bakery/failures { EmailTaken }
+
+/// Makes someone a customer.
+action register(email: Customer.email, name: CustomerName) fails EmailTaken -> Customer {
+    return attempt Customer.create {
+        set: {
+            email: email
+            name: name
+            status: CustomerStatus.active
+        }
+        conflict: {
+            Customer.email: EmailTaken
+        }
+    }
+}

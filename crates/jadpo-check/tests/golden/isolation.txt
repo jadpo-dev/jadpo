@@ -13,3 +13,33 @@
   action vouch                       repeatable_read: is handed a record in `voucher`
   action withdraw_copy               read_committed
   fixture ada_borrows_two            repeatable_read: calls `issue_card`, which loads a record
+11-cake-shop
+  action add_cake                    read_committed
+  action change_order                repeatable_read: calls the query `order_by_id`
+  action close_outlet                read_committed
+  action issue_outlet_key            read_committed
+  action link_phone                  read_committed
+  action open_outlet                 read_committed
+  action place_order                 repeatable_read: reads `Cake` with `get`
+  action register                    read_committed
+  action revoke_outlet_key           read_committed
+  action sign_out                    read_committed
+  action sign_up                     read_committed
+  action suspend_customer            read_committed
+  action take_off_menu               read_committed
+  action unlink_phone                read_committed
+  fixture market_street              read_committed
+12-recipe-book
+  action appoint_editor              read_committed
+  action cost_recipe                 read_committed
+  action hand_over_recipe            read_committed
+  action import_recipe               read_committed
+  action let_go                      read_committed
+  action list_ingredient             read_committed
+  action open_bakery                 read_committed
+  action register                    read_committed
+  action rename_recipe               read_committed
+  action sign_up                     read_committed
+  action take_on                     read_committed
+  action write_recipe                read_committed
+  fixture northwind                  read_committed

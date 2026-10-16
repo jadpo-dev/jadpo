@@ -1,0 +1,29 @@
+// Listed under `actions:` in `policy.jadpo`, so anyone signed in may run
+// it, though `Bakery` grants no one `create` and `StaffMember` grants it only
+// to owners. Creating a tenant's own record checks no tenancy, since
+// nobody belongs to it yet; the owner's membership then makes the founder
+// one of its people.
+
+use kitchen/entities { Bakery, StaffMember }
+use kitchen/types { BakeryView, NewBakery, StaffRole }
+
+/// Opens a bakery with its founder as its owner.
+action open_bakery(input: NewBakery, founder: Principal.user) -> BakeryView {
+    var bakery: Bakery = Bakery.create {
+        set: {
+            name: input.name
+        }
+    }
+    var owner: StaffMember = StaffMember.create {
+        set: {
+            bakery_id: bakery.id
+            baker_id: founder.id
+            role: StaffRole.owner
+        }
+    }
+    assert owner.role == StaffRole.owner
+    return BakeryView {
+        id: bakery.id
+        name: bakery.name
+    }
+}

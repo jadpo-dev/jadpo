@@ -1,0 +1,73 @@
+use bakery/entities { Customer }
+use bakery/types { PhoneLinked, PhoneTokenId }
+use bakery/actions { link_phone, register }
+
+test "a linked phone is seen until it is unlinked" {
+    var ann: Customer = attempt register("ann@example.test", "Ann")
+    var linked: Response = request {
+        method: HttpMethod.post
+        path: "/devices"
+        as: Principal.user(ann)
+    }
+    assert linked.status == 201
+    var seen: Response = request {
+        method: HttpMethod.get
+        path: "/devices"
+        as: Principal.user(ann)
+    }
+    var phone_tokens: List<IssuedToken> = match seen.output {
+        some(found) -> found
+        none -> []
+    }
+    assert collection.count(phone_tokens) == 1
+    for token in phone_tokens {
+        var unlinked: Response = request {
+            method: HttpMethod.delete
+            path: "/devices/{phone_token_id}"
+            params: {
+                phone_token_id: PhoneTokenId(token.id)
+            }
+            as: Principal.user(ann)
+        }
+        assert unlinked.status == 204
+    }
+    var after: Response = request {
+        method: HttpMethod.get
+        path: "/devices"
+        as: Principal.user(ann)
+    }
+    assert after.output == []
+}
+
+test "a customer can't unlink someone else's phone" {
+    var ann: Customer = attempt register("ann@example.test", "Ann")
+    var bob: Customer = attempt register("bob@example.test", "Bob")
+    var phone: PhoneLinked = link_phone(Principal.user(ann))
+    assert phone.token != ""
+    var seen: Response = request {
+        method: HttpMethod.get
+        path: "/devices"
+        as: Principal.user(ann)
+    }
+    var phone_tokens: List<IssuedToken> = match seen.output {
+        some(found) -> found
+        none -> []
+    }
+    for token in phone_tokens {
+        var by_bob: Response = request {
+            method: HttpMethod.delete
+            path: "/devices/{phone_token_id}"
+            params: {
+                phone_token_id: PhoneTokenId(token.id)
+            }
+            as: Principal.user(bob)
+        }
+        assert by_bob.status == 204
+    }
+    var afterwards: Response = request {
+        method: HttpMethod.get
+        path: "/devices"
+        as: Principal.user(ann)
+    }
+    assert afterwards.output == seen.output
+}

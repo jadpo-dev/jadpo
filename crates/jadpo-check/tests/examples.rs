@@ -12,7 +12,8 @@
 //! status, the isolation levels an action runs at, the type bases, the constraints, input field settings, failure
 //! members and declarable kinds, the copying lines, the standard library's
 //! operation table and the enums its operations take, the generated
-//! namespaces' built members, and the layout's root files and folders.
+//! namespaces' built members, the values areas 7 to 9's settings take,
+//! and the layout's root files and folders.
 //! The typed body's statements, expressions, callees, patterns and locals
 //! are listed by exhaustive matches below, so a new variant doesn't
 //! compile until it is named here.
@@ -54,9 +55,9 @@ use jadpo_std::{Builtin, FieldChange, Generated, OPERATIONS, OnDelete, Rules};
 use jadpo_syntax::SyntaxKind;
 use jadpo_syntax::ast::{self, AstNode};
 
-/// The areas built so far (roadmap Phases 1 and 2). A graph kind these
+/// The areas built so far (roadmap Phases 1 to 4). A graph kind these
 /// areas decide counts once nodes of it are declared.
-const BUILT_AREAS: [u8; 7] = [1, 2, 3, 4, 5, 6, 13];
+const BUILT_AREAS: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 13];
 
 /// Features no valid, runnable example can use yet, and why.
 const EXEMPT: &[(&str, &str)] = &[
@@ -122,12 +123,6 @@ const EXEMPT: &[(&str, &str)] = &[
         "data migration decision FieldChange.dropped",
         "not built: a drop needs a person's acceptance (area 18)",
     ),
-    ("syntax ROUTES_DECL", "not built: routes (area 7)"),
-    ("syntax ROUTE_ENTRY", "not built: routes (area 7)"),
-    ("syntax ROUTE_PATH", "not built: routes (area 7)"),
-    ("syntax ROUTE_SEGMENT", "not built: routes (area 7)"),
-    ("syntax PATH_PARAM", "not built: routes (area 7)"),
-    ("syntax ROUTE_PATH_EXPR", "not built: routes (area 7)"),
     (
         "syntax PACKAGE_DECL",
         "not built: provider packages (area 11)",
@@ -162,17 +157,38 @@ const EXEMPT: &[(&str, &str)] = &[
         "body fallible unknown",
         "a mistake already reported, which no example has",
     ),
+    // Values of the settings areas 7 to 9 read that no example can write
+    // yet, or never needs to.
+    (
+        "setting SuccessStatus.ok",
+        "the status a route answers when it says none",
+    ),
+    (
+        "setting SuccessStatus.accepted",
+        "not built: the background work a 202 hands over to (area 12)",
+    ),
+    (
+        "setting Idempotency.optional",
+        "what an API does when it says nothing",
+    ),
+    (
+        "setting AuthenticationMethod.external_token",
+        "not built: tokens from another provider, after the first build (area 8)",
+    ),
+    (
+        "setting AuthenticationMethod.oauth_token",
+        "not built: acting as an OAuth provider, after the first build (area 8)",
+    ),
+    (
+        "setting Access.system",
+        "not built: schedules and subscribers (area 12)",
+    ),
     // Layout places later areas fill.
     (
         "root file config.jadpo",
         "not built: configuration (area 10)",
     ),
-    (
-        "root file authentication.jadpo",
-        "not built: sign-in (area 8)",
-    ),
     ("root file flags.jadpo", "not built: flags (area 16)"),
-    ("domain folder routes", "not built: routes (area 7)"),
     ("domain folder schedules", "not built: schedules (area 12)"),
     ("domain folder events", "not built: events (area 12)"),
     (
@@ -340,6 +356,13 @@ fn built() -> BTreeSet<String> {
             .iter()
             .map(|level| format!("isolation {}", level.word())),
     );
+    // Areas 7 to 9: the values a route, an API, a grant or a membership
+    // names, and the methods a route test sends.
+    out.extend(SETTINGS.iter().flat_map(|(name, values)| {
+        values
+            .iter()
+            .map(move |value| format!("setting {name}.{value}"))
+    }));
     out.insert("data migration decision backfill".to_string());
     out.extend(
         FieldChange::NAMES
@@ -348,6 +371,32 @@ fn built() -> BTreeSet<String> {
     );
     out
 }
+
+/// The enums whose values a route, an API, `authentication`, a grant or a
+/// membership names (areas 7 to 9), or a route test's `method:` takes.
+const SETTINGS: [(&str, &[&str]); 9] = [
+    (
+        jadpo_std::SuccessStatus::NAME,
+        jadpo_std::SuccessStatus::NAMES,
+    ),
+    (jadpo_std::HttpMethod::NAME, jadpo_std::HttpMethod::NAMES),
+    (jadpo_std::Idempotency::NAME, jadpo_std::Idempotency::NAMES),
+    (
+        jadpo_std::RouteAuthentication::NAME,
+        jadpo_std::RouteAuthentication::NAMES,
+    ),
+    (
+        jadpo_std::AuthenticationMethod::NAME,
+        jadpo_std::AuthenticationMethod::NAMES,
+    ),
+    (jadpo_std::Access::NAME, jadpo_std::Access::NAMES),
+    (jadpo_std::Tenancy::NAME, jadpo_std::Tenancy::NAMES),
+    (jadpo_std::FieldAccess::NAME, jadpo_std::FieldAccess::NAMES),
+    (
+        jadpo_std::MembershipScope::NAME,
+        jadpo_std::MembershipScope::NAMES,
+    ),
+];
 
 /// The members of the generated namespaces built so far, from the
 /// standard library's names list (`clock: now`).
@@ -398,6 +447,7 @@ const BODY: &[&str] = &[
     "literal none",
     "expr local",
     "expr field",
+    "expr request",
     "call function",
     "call action",
     "call query",
@@ -1021,6 +1071,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                 ty,
                 optional,
                 default,
+                header,
                 replaces,
                 rules: own,
                 ..
@@ -1043,6 +1094,9 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                 }
                 if replaces.is_some() {
                     used.insert("copy line written field replaces a copied one".to_string());
+                }
+                if header.is_some() {
+                    used.insert("field setting header".to_string());
                 }
             }
             Detail::Callable { signature, .. } => {
@@ -1210,6 +1264,23 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             && graph.outgoing(id, EdgeKind::Writes).next().is_some()
         {
             used.insert(format!("isolation {}", level.word()));
+        }
+    }
+    // A setting's value is used where a file names it, as written; a
+    // route test's `HttpMethod.post` is a typed body's variant too, which
+    // [`body_features`] counts as `std`.
+    for (name, values) in SETTINGS {
+        for value in values {
+            let written = format!("{name}.{value}");
+            let named = project.files(db).iter().any(|file| {
+                file.text(db).match_indices(&written).any(|(at, _)| {
+                    !file.text(db)[at + written.len()..]
+                        .starts_with(|c: char| c.is_alphanumeric() || c == '_')
+                })
+            });
+            if named || used.remove(&format!("std {written}")) {
+                used.insert(format!("setting {written}"));
+            }
         }
     }
     // A generated member is used where a body names it, as written.

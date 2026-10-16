@@ -1,0 +1,11 @@
+use bakery/entities { Customer, CustomerNotFound }
+use bakery/types { CustomerStatus }
+
+/// Suspends a customer: they are refused from their next request.
+action suspend_customer(customer_id: Customer.id) fails CustomerNotFound -> Customer {
+    return attempt Customer.update(customer_id) {
+        set: {
+            status: CustomerStatus.suspended
+        }
+    }
+}

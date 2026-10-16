@@ -229,9 +229,41 @@ impl Codecs<'_> {
                 }
                 self.checked(*validator, Value::Map(Rc::new(map)), path, problems)
             }
-            Codec::Page { .. } => {
-                Self::problem(problems, path, "type");
-                None
+            // A page is only ever an output, read back by a route test as
+            // `Response.output`: `items` and the `next` cursor, as written.
+            Codec::Page { item } => {
+                let serde_json::Value::Object(entries) = json else {
+                    Self::problem(problems, path, "type");
+                    return None;
+                };
+                let Some(serde_json::Value::Array(listed)) = entries.get("items") else {
+                    Self::problem(problems, &path.with("items"), "type");
+                    return None;
+                };
+                let before = problems.len();
+                let mut items = Vec::with_capacity(listed.len());
+                for (at, entry) in listed.iter().enumerate() {
+                    let at = path.with("items").with(at.to_string());
+                    if let Some(value) = self.read(*item, entry, &at, problems) {
+                        items.push(value);
+                    }
+                }
+                if problems.len() > before {
+                    return None;
+                }
+                let items = Value::list(items);
+                let next = match entries.get("next") {
+                    Some(serde_json::Value::String(cursor)) => Value::text(cursor),
+                    None | Some(serde_json::Value::Null) => Value::None,
+                    Some(_) => {
+                        Self::problem(problems, &path.with("next"), "type");
+                        return None;
+                    }
+                };
+                Some(Value::record(
+                    "Page",
+                    vec![(Rc::from("items"), items), (Rc::from("next"), next)],
+                ))
             }
         }
     }
@@ -788,6 +820,49 @@ mod tests {
                 ("total".to_string(), "type".to_string())
             ]
         );
+    }
+
+    #[test]
+    fn a_page_reads_back_as_it_was_written() {
+        let codecs = [
+            Codec::Scalar {
+                builtin: Builtin::Int,
+                validator: jadpo_std::types::ValidatorId(0),
+                int_as_number: true,
+            },
+            Codec::Page { item: CodecId(0) },
+        ];
+        let validators = [Validator::new(Some(Builtin::Int), Vec::new())];
+        let codecs = Codecs {
+            codecs: &codecs,
+            validators: &validators,
+            shapes: &[],
+        };
+        let page = Value::record(
+            "Page",
+            vec![
+                (
+                    Rc::from("items"),
+                    Value::list(vec![Value::Int(1), Value::Int(2)]),
+                ),
+                (Rc::from("next"), Value::text("cursor")),
+            ],
+        );
+        let mut out = String::new();
+        codecs.write(CodecId(1), &page, &mut out);
+        assert_eq!(out, r#"{"items":[1,2],"next":"cursor"}"#);
+        let json: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let mut problems = Vec::new();
+        let read = codecs.read(CodecId(1), &json, &Path::default(), &mut problems);
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(read, Some(page));
+        let json: serde_json::Value =
+            serde_json::from_str(r#"{"items":[1,"x"],"next":null}"#).unwrap();
+        assert_eq!(
+            codecs.read(CodecId(1), &json, &Path::default(), &mut problems),
+            None
+        );
+        assert_eq!(problems[0].field, "items.1");
     }
 
     #[test]

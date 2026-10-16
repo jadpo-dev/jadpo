@@ -1,0 +1,21 @@
+use kitchen/types { KitchenStaff }
+use kitchen/fixtures { northwind }
+
+test "someone let go loses the bakery on their next request" {
+    var crew: KitchenStaff = northwind()
+    var let_go: Response = request {
+        method: HttpMethod.delete
+        path: "/staff/{staff_id}"
+        params: {
+            staff_id: crew.baker_place.id
+        }
+        as: Principal.user(crew.owner)
+    }
+    assert let_go.status == 204
+    var bakeries: Response = request {
+        method: HttpMethod.get
+        path: "/bakeries"
+        as: Principal.user(crew.baker)
+    }
+    assert bakeries.output == []
+}

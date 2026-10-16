@@ -1,0 +1,10 @@
+use bakery/entities { Cake, CakeNotFound }
+
+/// Takes a cake off the menu; past orders keep it.
+action take_off_menu(cake_id: Cake.id) fails CakeNotFound -> Cake {
+    return attempt Cake.update(cake_id) {
+        set: {
+            on_menu: false
+        }
+    }
+}

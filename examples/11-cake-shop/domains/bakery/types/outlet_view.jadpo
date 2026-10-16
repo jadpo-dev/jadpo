@@ -1,0 +1,6 @@
+use bakery/entities { Outlet }
+
+/// An outlet a customer can collect from.
+type OutletView = Output {
+    pick: [Outlet.id, Outlet.name]
+}

@@ -1,0 +1,7 @@
+/// What a cake mostly tastes of.
+type Flavour = Enum {
+    chocolate
+    lemon
+    carrot
+    coffee
+}

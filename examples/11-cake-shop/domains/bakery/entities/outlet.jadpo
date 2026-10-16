@@ -1,0 +1,20 @@
+// The principal's service entity: each outlet's counter signs in with a key
+// the language issues, keeps and checks. `update: [id]` lets an outlet's own
+// counter issue and revoke its keys, which is what rotating one needs;
+// customers may read every outlet, to choose where to collect.
+
+use bakery/types { OutletName, OutletStatus }
+
+/// An outlet of the bakery where customers collect their cakes.
+entity Outlet {
+    id: Uuid
+    name: OutletName {
+        unique: true
+    }
+    status: OutletStatus
+
+    policy: {
+        read: [Access.public]
+        update: [id]
+    }
+}

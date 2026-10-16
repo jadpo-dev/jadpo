@@ -1,0 +1,2 @@
+/// One of an outlet's keys, as `GET /counter/keys` lists it.
+type OutletKeyId = Uuid {}

@@ -1,0 +1,10 @@
+use bakery/entities { Outlet }
+use bakery/types { OutletStatus, OutletView }
+
+/// The outlets a customer can collect from, by name.
+query open_outlets() -> List<OutletView> {
+    from: Outlet
+    where: Outlet.status == OutletStatus.open
+    order: [Outlet.name asc]
+    limit: 50
+}

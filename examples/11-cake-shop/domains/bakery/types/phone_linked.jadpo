@@ -1,0 +1,7 @@
+// `ApiToken` is the built-in text `sessions.issue_token` gives. An
+// `Output` can send it, once; no entity can keep it.
+
+/// The phone app's token, which it sends back as `Authorization: Bearer`.
+type PhoneLinked = Output {
+    token: ApiToken
+}

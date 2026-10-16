@@ -1,0 +1,5 @@
+/// What a recipe is called.
+type RecipeName = Text {
+    min_length: 1
+    max_length: 80
+}

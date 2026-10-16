@@ -1,0 +1,22 @@
+use kitchen/types { BakeryView, NewBakery }
+use kitchen/actions { open_bakery }
+use kitchen/queries { my_bakeries }
+
+/// The bakeries a baker works in.
+routes Bakeries {
+    prefix: /bakeries
+
+    /// The bakeries the signed-in baker has a role in.
+    GET / {
+        output: List<BakeryView>
+        run: my_bakeries()
+    }
+
+    /// Opens a bakery, owned by the signed-in baker.
+    POST / {
+        input: NewBakery
+        output: BakeryView
+        status: SuccessStatus.created
+        run: open_bakery(input, current_principal.user)
+    }
+}

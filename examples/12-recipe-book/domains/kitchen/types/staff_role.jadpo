@@ -1,0 +1,10 @@
+// A role exists only where it is stored: in a membership entity, with its
+// enum beside it. There is no hierarchy, so an owner who may also bake is
+// listed wherever a baker is.
+
+/// What someone may do in a bakery.
+type StaffRole = Enum {
+    owner
+    baker
+    counter
+}

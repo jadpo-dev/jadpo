@@ -1,0 +1,5 @@
+/// Another outlet already has that name.
+type OutletNameTaken = Failure {
+    kind: FailureKind.conflict
+    message: "An outlet already has that name."
+}

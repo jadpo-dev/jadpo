@@ -1,0 +1,4 @@
+/// A counter's new key, which it sends as `Authorization: Bearer`.
+type NewOutletKey = Output {
+    key: ServiceKey
+}

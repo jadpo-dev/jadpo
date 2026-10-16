@@ -1,0 +1,6 @@
+use bakery/entities { Order }
+
+/// Which day's collections a counter lists.
+type CollectionDay = Input {
+    pick: [Order.collect_on]
+}

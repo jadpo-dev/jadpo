@@ -1,0 +1,7 @@
+/// An allergen a label must name.
+type Allergen = Enum {
+    gluten
+    milk
+    eggs
+    nuts
+}

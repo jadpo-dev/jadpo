@@ -1,0 +1,44 @@
+// These routes need a signed-in customer, the default. A route reads the
+// caller as `current_principal` and passes it on like any argument;
+// `.user` selects a customer, so an outlet's counter calling it is refused
+// with 403 before the action runs.
+//
+// `output:` must be exactly what the action or query returns, so the
+// route shows its contract without opening either.
+
+use bakery/entities { Order }
+use bakery/types { OrderView }
+use bakery/actions { ChangeOrder, PlaceOrder, change_order, place_order }
+use bakery/queries { my_orders, order_by_id }
+
+/// A customer's orders, from the website.
+routes AccountOrders {
+    prefix: /account/orders
+
+    /// The signed-in customer's orders.
+    GET / {
+        output: List<OrderView>
+        run: my_orders()
+    }
+
+    /// Places an order.
+    POST / {
+        input: PlaceOrder
+        output: OrderView
+        status: SuccessStatus.created
+        run: place_order(input, current_principal.user)
+    }
+
+    /// One of the customer's orders.
+    GET /{order_id: Order.id} {
+        output: OrderView
+        run: order_by_id(order_id)
+    }
+
+    /// Changes an order's quantity and collection day.
+    PUT /{order_id: Order.id} {
+        input: ChangeOrder
+        output: OrderView
+        run: change_order(order_id, input)
+    }
+}

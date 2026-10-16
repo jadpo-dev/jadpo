@@ -1,0 +1,7 @@
+use bakery/entities { Outlet }
+use bakery/types { OutletKeyId }
+
+/// Revokes one of the outlet's keys, such as the one a rotation replaced.
+action revoke_outlet_key(outlet_key_id: OutletKeyId) -> Unit {
+    Outlet.revoke_key(outlet_key_id)
+}

@@ -1,0 +1,9 @@
+use kitchen/entities { Ingredient }
+use kitchen/types { IngredientView }
+
+/// Every ingredient, by name.
+query ingredient_list() -> List<IngredientView> {
+    from: Ingredient
+    order: [Ingredient.name asc]
+    limit: 500
+}

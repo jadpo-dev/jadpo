@@ -1,0 +1,35 @@
+// A route anyone may call takes no `as:`: nobody signs in.
+
+use bakery/types { CakeName, MenuFilter, OutletWithMenu }
+use bakery/fixtures { market_street }
+
+test "the menu filters by flavour" {
+    var market: OutletWithMenu = market_street()
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/cakes"
+        input: MenuFilter {
+            flavours: [market.lemon.flavour]
+        }
+    }
+    assert response.status == 200
+    // `output` is `none` unless the route succeeded, so `match` reaches
+    // the page inside.
+    var cake_names: List<CakeName> = match response.output {
+        some(page) -> collection.map(page.items, cake -> cake.name)
+        none -> []
+    }
+    assert cake_names == ["Lemon drizzle"]
+}
+
+test "a cake nobody has is a 404" {
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/cakes/{cake_id}"
+        params: {
+            cake_id: "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e"
+        }
+    }
+    assert response.status == 404
+    assert response.code == "cake_not_found"
+}

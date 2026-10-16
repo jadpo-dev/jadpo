@@ -1,0 +1,6 @@
+use kitchen/entities { StaffMember, StaffMemberNotFound }
+
+/// Ends someone's place in a bakery: an owner's choice, or their own.
+action let_go(staff_id: StaffMember.id) fails StaffMemberNotFound -> Unit {
+    attempt StaffMember.delete(staff_id)
+}

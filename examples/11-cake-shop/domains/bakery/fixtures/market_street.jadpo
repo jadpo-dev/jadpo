@@ -1,0 +1,19 @@
+// The fixture calls actions without a caller, which runs them without
+// policy: nothing grants `create` on a cake or an outlet, and the test still
+// needs a menu.
+
+use bakery/entities { Cake, Outlet }
+use bakery/types { Flavour, OutletWithMenu }
+use bakery/actions { add_cake, open_outlet }
+
+/// The Market Street outlet, with lemon and coffee cakes on the menu.
+fixture market_street() -> OutletWithMenu {
+    var pickup_outlet: Outlet = attempt open_outlet("Market Street")
+    var lemon: Cake = add_cake("Lemon drizzle", Flavour.lemon, 1800)
+    var coffee: Cake = add_cake("Coffee and walnut", Flavour.coffee, 2200)
+    return OutletWithMenu {
+        pickup_outlet: pickup_outlet
+        lemon: lemon
+        coffee: coffee
+    }
+}

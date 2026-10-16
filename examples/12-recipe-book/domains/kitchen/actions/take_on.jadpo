@@ -1,0 +1,25 @@
+// The code says nothing about who may take someone on: `StaffMember`'s
+// `create:` names only owners, so the create is refused, 403, for anyone
+// else, in the same statement that writes it.
+
+use kitchen/entities { BakerNotFound, Bakery, BakeryNotFound, StaffMember }
+use kitchen/types { NewStaff, StaffView }
+
+/// Gives a baker a role in a bakery.
+action take_on(
+    bakery_id: Bakery.id,
+    input: NewStaff
+) fails BakeryNotFound, BakerNotFound -> StaffView {
+    var staff: StaffMember = attempt StaffMember.create {
+        set: {
+            bakery_id: bakery_id
+            baker_id: input.baker_id
+            role: input.role
+        }
+    }
+    return StaffView {
+        id: staff.id
+        baker_id: staff.baker_id
+        role: staff.role
+    }
+}

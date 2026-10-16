@@ -1,0 +1,5 @@
+/// An outlet's name, which is also how its counter signs in.
+type OutletName = Text {
+    min_length: 1
+    max_length: 40
+}

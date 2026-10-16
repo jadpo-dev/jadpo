@@ -1,0 +1,18 @@
+// A `GET` route reads its input from the query string, so every field is
+// a scalar, an enum or a list of them: `?flavours=lemon&flavours=coffee`
+// is a list of two. A field left out takes its default or is absent.
+
+use bakery/types { Flavour }
+
+/// Which cakes to list, a page at a time.
+type MenuFilter = Input {
+    flavours: List<Flavour> {
+        optional: true
+    }
+    page_size: PageSize {
+        default: 20
+    }
+    after: PageCursor {
+        optional: true
+    }
+}

@@ -1,0 +1,46 @@
+// The counter API is for the outlets' own tills, which sign in with a key.
+// `current_principal.service` selects an outlet, so a customer is refused.
+//
+// Issuing a key says `authentication: RouteAuthentication.fresh`, which
+// checks the outlet's record on this request even once a revocation delay
+// lets other routes skip that read: a closed outlet can't mint itself a
+// new key.
+
+use bakery/entities { Outlet }
+use bakery/types { CollectionDay, NewOutletKey, OrderView, OutletKeyId, OutletKeyRequest }
+use bakery/actions { issue_outlet_key, revoke_outlet_key }
+use bakery/queries { handovers }
+
+/// An outlet's counter.
+routes Counter {
+    prefix: /counter
+    api: counter
+
+    /// The orders this outlet hands over on a day.
+    GET /handovers {
+        input: CollectionDay
+        output: List<OrderView>
+        run: handovers(input)
+    }
+
+    /// The outlet's keys that haven't expired, oldest first.
+    GET /keys {
+        output: List<IssuedKey>
+        run: Outlet.keys(current_principal.service.id)
+    }
+
+    /// Issues a new key, shown once.
+    POST /keys {
+        authentication: RouteAuthentication.fresh
+        input: OutletKeyRequest
+        output: NewOutletKey
+        status: SuccessStatus.created
+        run: issue_outlet_key(input, current_principal.service)
+    }
+
+    /// Revokes a key.
+    DELETE /keys/{outlet_key_id: OutletKeyId} {
+        status: SuccessStatus.no_content
+        run: revoke_outlet_key(outlet_key_id)
+    }
+}

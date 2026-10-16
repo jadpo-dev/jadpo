@@ -1,0 +1,4 @@
+/// An amount of money in pence, never negative.
+type Pence = Int {
+    min: 0
+}

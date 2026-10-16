@@ -1,0 +1,23 @@
+use kitchen/entities { Bakery }
+use kitchen/types { RecipeCard }
+use kitchen/actions { WriteRecipe, write_recipe }
+use kitchen/queries { bakery_recipes }
+
+/// A bakery's recipes.
+routes BakeriesRecipes {
+    prefix: /bakeries/{bakery_id: Bakery.id}/recipes
+
+    /// Every recipe of the bakery's, for its staff.
+    GET / {
+        output: List<RecipeCard>
+        run: bakery_recipes(bakery_id)
+    }
+
+    /// Writes a recipe; owners and bakers may.
+    POST / {
+        input: WriteRecipe
+        output: RecipeCard
+        status: SuccessStatus.created
+        run: write_recipe(bakery_id, input, current_principal.user)
+    }
+}

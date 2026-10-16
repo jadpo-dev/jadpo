@@ -1,0 +1,20 @@
+// The principal's user entity. Bakers belong to no one bakery, so their
+// records are shared by every tenant: `tenant: Tenancy.shared` says so,
+// where any other entity without a reference to `Bakery` would fail to
+// compile.
+
+use kitchen/types { Handle }
+
+/// Someone who signs in to the recipe book.
+entity Baker {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}

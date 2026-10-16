@@ -1,0 +1,36 @@
+use kitchen/entities { Recipe }
+use kitchen/types { RecipeCard, RecipeCosting }
+use kitchen/actions {
+    CostRecipe,
+    HandOver,
+    RenameRecipe,
+    cost_recipe,
+    hand_over_recipe,
+    rename_recipe
+}
+
+/// One recipe.
+routes Recipes {
+    prefix: /recipes
+
+    /// Renames a recipe; its bakery's owners and its author may.
+    PATCH /{recipe_id: Recipe.id} {
+        input: RenameRecipe
+        output: RecipeCard
+        run: rename_recipe(recipe_id, input)
+    }
+
+    /// Sets what a batch costs; owners only.
+    PUT /{recipe_id: Recipe.id}/cost {
+        input: CostRecipe
+        output: RecipeCosting
+        run: cost_recipe(recipe_id, input)
+    }
+
+    /// Hands the recipe to another baker; its author only.
+    POST /{recipe_id: Recipe.id}/hand-over {
+        input: HandOver
+        output: RecipeCard
+        run: hand_over_recipe(recipe_id, input)
+    }
+}
