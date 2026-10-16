@@ -1,8 +1,7 @@
 //! Area 10, "Showing dates and times to people": declared and built-in
 //! time formats, `PresentationText`, and what `temporal.format` and
-//! `temporal.format_relative` check while compiling. The text they give
-//! comes with locales (chunk 5.3), so a call that checks is refused as
-//! `toolchain.not_built_yet` until then.
+//! `temporal.format_relative` check while compiling. The text they give is
+//! `jadpo-value`'s; the locales they accept are `locales.rs`'s.
 
 use crate::support;
 
@@ -24,8 +23,6 @@ fn formats(ty: &str, args: &str) -> Vec<String> {
         "function label(value: {ty}, locale: Locale) -> PresentationText {{\n    return temporal.format(value, {args})\n}}\n"
     ))
 }
-
-const NOT_BUILT: [&str; 1] = ["toolchain.not_built_yet"];
 
 #[test]
 fn a_declared_format_names_components_and_their_styles() {
@@ -86,7 +83,7 @@ fn an_instant_is_formatted_in_a_zone() {
                 "OrderedAt",
                 &format!("zone: Zone.europe_london, locale: locale, format: {format}")
             ),
-            NOT_BUILT,
+            Vec::<String>::new(),
             "{format}"
         );
     }
@@ -97,7 +94,7 @@ fn an_instant_is_formatted_in_a_zone() {
     // Given in order, without names, it is the same call.
     assert_eq!(
         formats("OrderedAt", "Zone.utc, Locale.en_gb, TimeFormat.date_long"),
-        NOT_BUILT
+        Vec::<String>::new()
     );
 }
 
@@ -105,11 +102,11 @@ fn an_instant_is_formatted_in_a_zone() {
 fn a_local_time_or_a_date_carries_no_zone() {
     assert_eq!(
         formats("Opening", "locale: locale, format: TimeFormat.time_short"),
-        NOT_BUILT
+        Vec::<String>::new()
     );
     assert_eq!(
         formats("ShopDay", "locale: locale, format: ShortDate"),
-        NOT_BUILT
+        Vec::<String>::new()
     );
     for ty in ["Opening", "ShopDay"] {
         assert_eq!(
@@ -180,11 +177,11 @@ fn relative_text_takes_an_instant_or_a_local_time() {
             "OrderedAt",
             "now: clock.now, zone: Zone.europe_london, locale: locale"
         ),
-        NOT_BUILT
+        Vec::<String>::new()
     );
     assert_eq!(
         relative("Opening", "now: clock.now, locale: locale"),
-        NOT_BUILT
+        Vec::<String>::new()
     );
     assert_eq!(
         relative("OrderedAt", "now: clock.now, locale: locale"),

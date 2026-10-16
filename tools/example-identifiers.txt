@@ -727,6 +727,7 @@ pin_note
 ping
 place_order
 placed_label
+placed_text
 placed_with
 plan_effort
 platform_role
@@ -882,6 +883,8 @@ send_order_confirmation
 send_overdue_reminder
 send_reminder
 send_reminders
+sent_at
+sent_text
 service_fake_identity
 set_oven
 severe
@@ -903,6 +906,8 @@ shortbread
 shout
 show_note
 show_on_menu
+show_placed
+show_sent
 sign_in_app
 sign_in_link
 sign_out_everywhere

@@ -381,9 +381,9 @@ pub const OPERATIONS: &[Operation] = &[
         RANGE,
         "temporal::day_bounds",
     ),
-    // The text these give comes with locales (area 10, "Locales", chunk
-    // 5.3): until then the checker refuses every call, so `jadpo-value`
-    // is never asked to run them.
+    // The text these give is `jadpo-value`'s `present` module, over the
+    // locale data of the locales the application supports (area 10,
+    // "Locales").
     temporal(
         Op::TemporalFormat,
         "format",

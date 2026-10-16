@@ -583,6 +583,8 @@ rules! {
         "08-identity.html#semantic-multiple-applications", "Project declares more than one application";
     SEMANTIC_MULTIPLE_AUTHENTICATION: "semantic.multiple_authentication", area 8, Error, Agent,
         "08-identity.html#semantic-multiple-authentication", "Project declares more than one authentication block";
+    SEMANTIC_MULTIPLE_LOCALE_DECLARATIONS: "semantic.multiple_locale_declarations", area 10, Error, Agent,
+        "10-configuration-and-time.html#semantic-multiple-locale-declarations", "Locales are declared more than once";
     SEMANTIC_MULTIPLE_PRINCIPALS: "semantic.multiple_principals", area 8, Error, Agent,
         "08-identity.html#semantic-multiple-principals", "Project declares more than one principal";
     SEMANTIC_NAME_CASE: "semantic.name_case", area 1, Error, Agent,
@@ -667,6 +669,14 @@ rules! {
         "03-logic.html#syntax-inline-function-arrow", "Inline function written in another language's form";
     SYNTAX_INVALID_ESCAPE: "syntax.invalid_escape", area 1, Error, Agent,
         "01-project-layout-and-modules.html#syntax-invalid-escape", "Unknown escape in a string";
+    SYNTAX_LOCALES_DEFAULT_REQUIRED: "syntax.locales_default_required", area 10, Error, Agent,
+        "10-configuration-and-time.html#syntax-locales-default-required", "Locales declaration has no default";
+    SYNTAX_LOCALES_DUPLICATE_OPTION: "syntax.locales_duplicate_option", area 10, Error, Agent,
+        "10-configuration-and-time.html#syntax-locales-duplicate-option", "Locales option is given twice";
+    SYNTAX_LOCALES_SUPPORTED_REQUIRED: "syntax.locales_supported_required", area 10, Error, Agent,
+        "10-configuration-and-time.html#syntax-locales-supported-required", "Locales declaration lists no supported locales";
+    SYNTAX_LOCALES_UNKNOWN_OPTION: "syntax.locales_unknown_option", area 10, Error, Agent,
+        "10-configuration-and-time.html#syntax-locales-unknown-option", "Locales declaration has no such option";
     SYNTAX_LOGICAL_OPERATOR: "syntax.logical_operator", area 3, Error, Agent,
         "03-logic.html#syntax-logical-operator", "Logical operator written in another language's form";
     SYNTAX_MAPPING_BLOCK_REQUIRED: "syntax.mapping_block_required", area 4, Error, Agent,
@@ -821,6 +831,14 @@ rules! {
         "02-values-and-types.html#type-invalid-literal", "Literal breaks its type's rules";
     TYPE_INVALID_PATTERN: "type.invalid_pattern", area 2, Error, Agent,
         "02-values-and-types.html#type-invalid-pattern", "Pattern is not a supported regular expression";
+    TYPE_LOCALE_DEFAULT_UNSUPPORTED: "type.locale_default_unsupported", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-locale-default-unsupported", "Default locale is not a supported one";
+    TYPE_LOCALE_DUPLICATE: "type.locale_duplicate", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-locale-duplicate", "Locale is listed twice";
+    TYPE_LOCALE_INVALID: "type.locale_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-locale-invalid", "Locale is not written as a Locale";
+    TYPE_LOCALE_UNSUPPORTED: "type.locale_unsupported", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-locale-unsupported", "Locale is not one the application supports";
     TYPE_LOGICAL_OPERAND: "type.logical_operand", area 3, Error, Agent,
         "03-logic.html#type-logical-operand", "Logical operator needs Bool operands";
     TYPE_MAP_KEY_BOUNDARY: "type.map_key_boundary", area 2, Error, Agent,
@@ -895,6 +913,8 @@ rules! {
         "10-configuration-and-time.html#type-temporal-format-invalid", "Format is not a written-out time format";
     TYPE_TEMPORAL_FORMAT_REQUIRES_TIME: "type.temporal_format_requires_time", area 10, Error, Agent,
         "10-configuration-and-time.html#type-temporal-format-requires-time", "Format shows a clock time a date doesn't have";
+    TYPE_TEMPORAL_LOCALES_REQUIRED: "type.temporal_locales_required", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-locales-required", "Formatting needs declared locales";
     TYPE_TEMPORAL_OPTION_UNUSED: "type.temporal_option_unused", area 10, Error, Agent,
         "10-configuration-and-time.html#type-temporal-option-unused", "Option means nothing for this value";
     TYPE_TEMPORAL_ZONE_REQUIRED: "type.temporal_zone_required", area 10, Error, Agent,

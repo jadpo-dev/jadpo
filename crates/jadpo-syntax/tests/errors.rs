@@ -237,6 +237,16 @@ fn unsupported_throw() {
 }
 
 #[test]
+fn a_throw_with_nothing_after_it_is_not_a_clean_habit() {
+    // `reject }` would be a second error, so the edit is not offered as
+    // one that makes the file right.
+    let (error, _) =
+        one_error("function fail_now(note: Note) -> Note {\n    if (true) { throw }\n}\n");
+    assert_eq!(error.rule.id, "syntax.unsupported_throw");
+    assert!(!error.clean, "{error:?}");
+}
+
+#[test]
 fn colon_required() {
     let text = "type ContactEmail = Text {\n    format TextFormat.email\n}\n";
     let (error, covered) = one_error(text);

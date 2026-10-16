@@ -55,6 +55,7 @@ mod format;
 pub mod http;
 mod isolation;
 mod literal;
+mod locale;
 mod migration;
 mod num;
 mod operations;
@@ -77,6 +78,7 @@ pub use enums::{
 pub use format::{BuiltinFormat, Component, FormatLength, FormatPart, TimeFormatSpec};
 pub use isolation::Isolation;
 pub use literal::Literal;
+pub use locale::{LocalePlan, locale_ordinal};
 pub use migration::Migration;
 pub use num::{Num, compare_exact};
 pub use operations::{

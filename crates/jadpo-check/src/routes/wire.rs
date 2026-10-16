@@ -62,6 +62,9 @@ pub fn int_as_number(rules: &Rules) -> bool {
 #[derive(Clone, Copy, Debug)]
 pub struct Wire<'g> {
     pub graph: &'g Graph,
+    /// The locales the application supports, when it declares them: a
+    /// `Locale` is sent and read as one of these (area 10, "Locales").
+    pub locales: Option<&'g jadpo_std::LocalePlan>,
 }
 
 /// How far a chain is followed; only a defect gets this far.
@@ -188,12 +191,21 @@ impl<'g> Wire<'g> {
     }
 
     /// A standard-library enum's variants.
-    pub fn std_variants(name: &str) -> Vec<&'static str> {
-        jadpo_std::enums()
+    pub fn std_variants(&self, name: &str) -> Vec<&'static str> {
+        let variants = jadpo_std::enums()
             .into_iter()
             .find(|(written, _)| *written == name)
             .map(|(_, variants)| variants)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        match (name, self.locales) {
+            (jadpo_std::LOCALE, Some(plan)) => variants
+                .into_iter()
+                .enumerate()
+                .filter(|(at, _)| u32::try_from(*at).is_ok_and(|at| plan.supports(at)))
+                .map(|(_, variant)| variant)
+                .collect(),
+            _ => variants,
+        }
     }
 
     /// The fields of an object type or entity, in declared order.
@@ -272,7 +284,7 @@ impl<'g> Wire<'g> {
                 let spelling = jadpo_std::config::Spelling::of(&name);
                 out.set(
                     "enum",
-                    Wire::std_variants(&name)
+                    self.std_variants(&name)
                         .into_iter()
                         .map(|variant| Value::from(spelling.spelling(variant)))
                         .collect::<Vec<_>>(),
