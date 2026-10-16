@@ -43,14 +43,7 @@ then built. No design is left for implementation.
 2. ~~Translations~~: decided, see "Translations".
 3. ~~Authentication~~: decided, see "Authentication" and "Built-in emails".
 4. ~~Side effects and packages~~: decided, see "What package code may do".
-5. **Overriding: settings and events only.** *Question:* adopt the model
-   in [the scenarios page](override-scenarios.md) (typed settings whose
-   value is a plain value, a connection, the app's template or the app's
-   action; events to react; no general hooks; a generated route replaced
-   by switching it off and writing one over the same operations)? Also
-   from there: flags stay in the database (no capability), audit goes out
-   as an event through `publishing`, outgoing webhooks get one guarded
-   network exception. *Recommendation:* yes to all.
+5. ~~Overriding~~: decided, see "Decided: overriding built-in behaviour".
 6. **Each override scenario, one at a time.** The eighteen in the
    scenarios page (files, cache, schedules, search, sign-in, flags, audit,
    rate limits, built-in emails and text, generated routes, decision
@@ -543,6 +536,31 @@ from areas 10, 11 and 15.
   an app that needs it translated rewords Jadpo's messages.
 - **Still to decide**: which roadmap chunk builds `sign_in:` (raised with
   Richard).
+
+## Decided: overriding built-in behaviour
+
+Decided 2026-10-16 (Richard), from [the scenarios](override-scenarios.md).
+
+- **Two mechanisms only.** Typed settings decide how a built-in feature
+  behaves; a setting's value is a plain value, a connection, one of the
+  app's templates or types, or one of the app's actions (a decision point
+  with a fixed signature, one handler). Events react after something
+  happened, any number of subscribers, unable to change it. No general
+  hooks or before/after callbacks.
+- **A generated route or page is replaced** by switching it off with a
+  setting and writing the app's own route over the same generated
+  operations.
+- **A built-in feature emits events only for what it does without the
+  app's code.**
+- **Feature flags stay in the app's database**, not a capability; a
+  `Driver.ofrep` store (OpenFeature's remote evaluation), evaluation only,
+  waits for an app that must use a vendor.
+- **Audit entries can go out** as a built-in `AuditEntryRecorded` event,
+  emitted only when something listens, through `publishing`; the database
+  stays the record of truth.
+- **Outgoing webhooks get one runtime-owned network exception** with fixed
+  guards (HTTPS only, no private addresses, no redirects), listed once in
+  the network report.
 
 ## Decided: the golden rule
 
