@@ -16,7 +16,7 @@ input a route takes, its output and status, time limits, health endpoints,
 separate APIs and versions, webhooks, how failures reach the client,
 OpenAPI, and how a breaking change to the API is caught.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2; route authentication, each API's sign-in methods and `current_principal` in chunk 4.3 (area 8). Policy comes with 4.4 and `settle:` with 6.3.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2; route authentication, each API's sign-in methods and `current_principal` in chunk 4.3 (area 8); policy on what each route reaches, and the 403 it can answer in OpenAPI, in chunk 4.4 (area 9). `settle:` comes with 6.3.
 
 The rule behind all of it: **a route is a thin door.** It says which method
 and URL, what comes in, what goes out and what runs. Logic lives in actions
@@ -2264,9 +2264,11 @@ Since chunk 4.3 (area 8) every route needs a signed-in caller unless it
 says `authentication: RouteAuthentication.none`, each API lists the sign-in
 methods it accepts, a route passes `current_principal` to what it runs, a
 signed-in caller's requests count against its own rate limit, and its
-idempotency keys are its own.
+idempotency keys are its own. Since chunk 4.4 (area 9) policy decides what
+each route reaches, and OpenAPI lists the 403 `not_permitted` on every
+route that runs an action that writes or is listed under `actions:`.
 
-Not yet: policy (4.4); deleting
+Not yet: deleting
 expired idempotency keys from the runtime's minute tick (6.2), and the
 `events: { store: }` an action that writes no store needs before it keeps a
 key (area 12); `settle:` (6.3); a route's own `rate_limit:` and the Redis

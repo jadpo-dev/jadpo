@@ -299,6 +299,35 @@
         ],
         "type": "object"
       },
+      "PolicyRefused": {
+        "description": "Policy doesn't let the caller do this.",
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "const": "not_permitted",
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
       "RateLimited": {
         "description": "Too many requests from this caller; wait as `Retry-After` says.",
         "properties": {
@@ -543,6 +572,16 @@
           },
           "400": {
             "$ref": "#/components/responses/InvalidRequest"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyRefused"
+                }
+              }
+            },
+            "description": "Fails with `not_permitted`."
           },
           "409": {
             "content": {

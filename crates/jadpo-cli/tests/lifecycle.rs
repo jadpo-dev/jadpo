@@ -107,20 +107,27 @@ entity Member {
             since: left_at
         }
     }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 ",
     ),
     (
         "domains/club/entities/visit.jadpo",
-        "use club/entities { Member }\nuse club/types { Name }\n\n/// A member's visit.\nentity Visit {\n    id: Uuid\n    member_id: Member.id {\n        on_delete: OnDelete.cascade\n    }\n    note: Name\n}\n",
+        "use club/entities { Member }\nuse club/types { Name }\n\n/// A member's visit.\nentity Visit {\n    id: Uuid\n    member_id: Member.id {\n        on_delete: OnDelete.cascade\n    }\n    note: Name\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n}\n",
     ),
     (
         "domains/club/entities/badge.jadpo",
-        "use club/entities { Member }\n\n/// A badge a member holds, which keeps them from being purged.\nentity Badge {\n    id: Uuid\n    member_id: Member.id {\n        on_delete: OnDelete.restricted\n    }\n}\n",
+        "use club/entities { Member }\n\n/// A badge a member holds, which keeps them from being purged.\nentity Badge {\n    id: Uuid\n    member_id: Member.id {\n        on_delete: OnDelete.restricted\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n}\n",
     ),
     (
         "domains/club/entities/notice.jadpo",
-        "use club/types { Name }\n\n/// A notice shown from its time.\nentity Notice {\n    id: Uuid\n    title: Name\n    published_at: Instant?\n\n    lifecycle: {\n        visible: published_at != none and published_at <= clock.now\n    }\n}\n",
+        "use club/types { Name }\n\n/// A notice shown from its time.\nentity Notice {\n    id: Uuid\n    title: Name\n    published_at: Instant?\n\n    lifecycle: {\n        visible: published_at != none and published_at <= clock.now\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n}\n",
     ),
     (
         "domains/club/types/member_view.jadpo",
@@ -557,12 +564,19 @@ entity Folder {
             since: deleted_at
         }
     }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 ",
     ),
     (
         "domains/files/entities/doc.jadpo",
-        "use files/entities { Folder }\nuse files/types { Label }\n\n/// A document, which keeps its folder from going.\nentity Doc {\n    id: Uuid\n    folder_id: Folder.id {\n        on_delete: OnDelete.restricted\n    }\n    name: Label\n}\n",
+        "use files/entities { Folder }\nuse files/types { Label }\n\n/// A document, which keeps its folder from going.\nentity Doc {\n    id: Uuid\n    folder_id: Folder.id {\n        on_delete: OnDelete.restricted\n    }\n    name: Label\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n}\n",
     ),
 ];
 

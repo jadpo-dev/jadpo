@@ -2,7 +2,10 @@
 SELECT "id", "name", "owner_id"
 FROM "project"
 WHERE "id" = $1
+  AND ("project"."owner_id" = $2 OR $3)
 -- $1: argument 0 as Uuid
+-- $2: caller User as Uuid
+-- $3: caller Signed as Bool
 -- columns: uuid, text, uuid
 -- record ProjectBoardView: id = column 0, name = column 1, owner = include 0, todos = include 1
 
@@ -10,7 +13,10 @@ WHERE "id" = $1
   SELECT "id", "name"
   FROM "user"
   WHERE "id" = ANY($1)
+    AND ("user"."id" = $2 OR $3)
   -- $1: keys as Array(Uuid)
+  -- $2: caller User as Uuid
+  -- $3: caller Signed as Bool
   -- columns: uuid, text
   -- record UserCard: id = column 0, name = column 1, profile = include 0
 
@@ -18,7 +24,9 @@ WHERE "id" = $1
     SELECT "user_id", "bio"
     FROM "profile"
     WHERE "user_id" = ANY($1)
+      AND "profile"."user_id" = $2
     -- $1: keys as Array(Uuid)
+    -- $2: caller User as Uuid
     -- columns: uuid, text
     -- record ProfileView: bio = column 1
 
@@ -30,11 +38,13 @@ WHERE "id" = $1
     FROM "todo"
     WHERE "project_id" = "key"."id"
       AND "status" <> 'done'
+      AND "todo"."owner_id" = $2
     ORDER BY "created_at" ASC, "id" ASC
     LIMIT 50
   ) AS "row"
   ORDER BY "key"."id", "row"."created_at" ASC, "row"."id" ASC
   -- $1: keys as Array(Uuid)
+  -- $2: caller User as Uuid
   -- columns: uuid, uuid, text, uuid, instant
   -- record TodoWithOwner: id = column 1, title = column 2, owner = include 0
 
@@ -42,6 +52,9 @@ WHERE "id" = $1
     SELECT "id", "name"
     FROM "user"
     WHERE "id" = ANY($1)
+      AND ("user"."id" = $2 OR $3)
     -- $1: keys as Array(Uuid)
+    -- $2: caller User as Uuid
+    -- $3: caller Signed as Bool
     -- columns: uuid, text
     -- record UserView: id = column 0, name = column 1

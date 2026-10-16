@@ -3,6 +3,7 @@ SELECT "id", "name"
 FROM "board"
 WHERE "name" = $1
   AND "deleted_at" IS NULL
+  AND FALSE
 ORDER BY "id" ASC
 LIMIT 10
 -- $1: argument 0 as Text

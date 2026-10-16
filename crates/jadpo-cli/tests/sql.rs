@@ -38,12 +38,12 @@ fn project(name: &str) -> PathBuf {
     write(
         &root,
         "domains/notes/entities/author.jadpo",
-        "use notes/types { AuthorName }\n\n/// Someone who writes notes.\nentity Author {\n    id: Uuid\n    name: AuthorName\n}\n",
+        "use notes/types { AuthorName }\n\n/// Someone who writes notes.\nentity Author {\n    id: Uuid\n    name: AuthorName\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
     );
     write(
         &root,
         "domains/notes/entities/note.jadpo",
-        "use notes/entities { Author }\nuse notes/types { NoteBody }\n\n/// A note.\nentity Note {\n    id: Uuid\n    author_id: Author.id {\n        on_delete: OnDelete.cascade\n    }\n    body: NoteBody\n    archived_at: Instant?\n\n    lifecycle: {\n        transitions: {\n            archive: {\n                when: archived_at == none\n                set: {\n                    archived_at: clock.now\n                }\n            }\n        }\n    }\n}\n",
+        "use notes/entities { Author }\nuse notes/types { NoteBody }\n\n/// A note.\nentity Note {\n    id: Uuid\n    author_id: Author.id {\n        on_delete: OnDelete.cascade\n    }\n    body: NoteBody\n    archived_at: Instant?\n\n    policy: {\n        read: [Access.public]\n        update: [Access.public]\n    }\n\n    lifecycle: {\n        transitions: {\n            archive: {\n                when: archived_at == none\n                set: {\n                    archived_at: clock.now\n                }\n            }\n        }\n    }\n}\n",
     );
     write(
         &root,

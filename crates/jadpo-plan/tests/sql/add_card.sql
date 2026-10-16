@@ -1,6 +1,7 @@
 -- action add_card: create, store main
 INSERT INTO "card" ("id", "board_id", "stage", "published_at", "archived_at", "changed_at")
-VALUES ($1, $2, 'draft', $3, NULL, $4)
+SELECT $1, $2, 'draft', $3, NULL, $4
+WHERE FALSE
 RETURNING "id", "board_id", "stage", "published_at", "archived_at", "changed_at"
 -- $1: a new identity as Uuid
 -- $2: input 0 as Uuid

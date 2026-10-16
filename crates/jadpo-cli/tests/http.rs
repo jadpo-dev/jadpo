@@ -90,6 +90,13 @@ entity Todo {
     id: Uuid
     title: TodoTitle
     status: TodoStatus
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 "#,
     ),
@@ -715,7 +722,7 @@ const NOTES: &[(&str, &str)] = &[
     ("app.jadpo", "application {}\n"),
     (
         "domains/notes/entities/note.jadpo",
-        "use notes/types { NoteText }\n\nentity Note {\n    id: Uuid\n    text: NoteText\n}\n",
+        "use notes/types { NoteText }\n\nentity Note {\n    id: Uuid\n    text: NoteText\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n}\n",
     ),
     (
         "domains/notes/types/note_text.jadpo",
@@ -1058,6 +1065,13 @@ entity Member {
         unique: true
     }
     status: MemberStatus
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 "#,
     ),
@@ -1072,6 +1086,13 @@ entity Note {
         on_delete: OnDelete.cascade
     }
     text: NoteText
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 "#,
     ),
@@ -1408,8 +1429,10 @@ fn openapi_shows_the_session_and_what_signing_in_answers() {
     }
     let refused = write["403"]["content"]["application/json"]["schema"]["oneOf"]
         .as_array()
-        .expect("both refusals");
-    assert_eq!(refused.len(), 2);
+        .expect("every refusal");
+    // A disabled account, a write without its CSRF token, and policy
+    // refusing the create (area 9).
+    assert_eq!(refused.len(), 3);
     let record = std::fs::read_to_string(root.join("api/main.api")).expect("the record");
     assert!(
         record.contains("POST /account/sign-up\n    authentication: none\n"),
@@ -1680,6 +1703,13 @@ entity Member {
         unique: true
     }
     status: MemberStatus
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 "#,
     ),
@@ -1694,6 +1724,13 @@ entity Note {
         on_delete: OnDelete.cascade
     }
     text: NoteText
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 "#,
     ),
@@ -1708,6 +1745,13 @@ entity Partner {
         unique: true
     }
     status: PartnerStatus
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
 }
 "#,
     ),

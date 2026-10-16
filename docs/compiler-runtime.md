@@ -1308,6 +1308,33 @@ wrong kind for the route with `not_permitted`; a service caller is keyed
 repeat. A route test's `as:` keeps a real credential of the kind the
 route's API accepts (`http::identity::test_credentials`).
 
+Built in chunk 4.4: policy (area 9). `jadpo_check::policy` reads each
+entity's `policy:` and `membership:` by name (`policy_read`,
+`membership_read`) and root `policy { }` once (`root_read`), resolving
+every entry of a grant list into a `Grant` (a field pointing at the
+caller, a membership role through the reference it applies through, or
+`Access`), each entity's tenancy and the fields only a listed action
+changes; `access` gathers them for the plan and the report, and
+`policy::reach` follows what each action and query reaches (`acts`, per
+file, like the store rules) to check each route. `jadpo-plan`'s `policy`
+module compiles the grants into every statement at the one place
+`Planner::access` already joined the lifecycle: a read's and an
+update's or delete's `WHERE`, and a create's `INSERT ... SELECT ...
+WHERE` over the new record's values (`jadpo_sql::policy`), with the
+caller as parameters (`jadpo_std::policy::CallerPart`, `Source::Caller`,
+`WriteSource::Caller`); each statement policy limits also keeps its text
+without policy (`unpoliced`), which a test's call without a caller runs
+(`Ctx::set_unpoliced`) and which tells a hidden record from a missing
+one. A write's `PolicyRefusal` says what writing no row means, a listed
+action's record-free line becomes a `Gate` checked as it starts
+(`jadpo_runtime::admit`), and the identity plan's `GatedStatements` limit
+listing, issuing and revoking credentials by the holder's grants. The
+runtime raises `not_permitted` (`jadpo_runtime::not_permitted`) and marks
+a concealed not-found failure `concealed_by: policy`; the interpreter sets
+the caller of each call a test, fixture or seed makes from the
+`Principal` it passes. `jadpo check` writes `build/report/permissions.md`
+and `.json` (`policy::report`).
+
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
 runs one current-thread tokio runtime per core, each with its own

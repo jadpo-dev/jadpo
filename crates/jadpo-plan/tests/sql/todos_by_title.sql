@@ -3,12 +3,14 @@
 SELECT "id", "title", "status", "score"
 FROM "todo"
 WHERE "owner_id" = $1
-  AND ($2 IS NULL OR ("title" COLLATE "C" > $2 COLLATE "C" OR ("title" COLLATE "C" = $2 COLLATE "C" AND "score" < $3) OR ("title" COLLATE "C" = $2 COLLATE "C" AND "score" = $3 AND "id" < $4)))
+  AND ($3 IS NULL OR ("title" COLLATE "C" > $3 COLLATE "C" OR ("title" COLLATE "C" = $3 COLLATE "C" AND "score" < $4) OR ("title" COLLATE "C" = $3 COLLATE "C" AND "score" = $4 AND "id" < $5)))
+  AND "todo"."owner_id" = $2
 ORDER BY "title" COLLATE "C" ASC, "score" DESC, "id" DESC
 LIMIT 21
 -- $1: argument 0 as Uuid
--- $2: cursor 0 as Text
--- $3: cursor 1 as Int8
--- $4: cursor 2 as Uuid
+-- $2: caller User as Uuid
+-- $3: cursor 0 as Text
+-- $4: cursor 1 as Int8
+-- $5: cursor 2 as Uuid
 -- columns: uuid, text, enum TodoStatus, int
 -- record TodoView: id = column 0, title = column 1, status = column 2

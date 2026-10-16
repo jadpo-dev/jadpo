@@ -2231,7 +2231,9 @@ input is read, refuses it as "Failures" lists, checks a cookie write's
 `Origin` and CSRF token, starts and ends sessions and issues, lists and
 revokes API tokens and service keys from actions, and keeps sessions and
 tokens in the `jadpo_sessions` system table beside the principal's users
-and keys in `jadpo_service_keys` beside its services. OpenAPI shows each
+and keys in `jadpo_service_keys` beside its services. Since chunk 4.4 the
+owning record's grants decide who may list (`read`) and revoke or issue
+(`update`) a token or a key (area 9, question 8). OpenAPI shows each
 API's security schemes, the API record marks the routes anyone may call,
 and `jadpo routes` lists each route's authentication.
 
@@ -2245,12 +2247,6 @@ Not yet, each `toolchain.not_built_yet` where it is written:
   first build.
 - Deleting ended sessions, tokens and expired keys from the runtime's
   minute tick (area 12, chunk 6.2): a lookup ignores one past its end.
-- Who may issue, list and revoke a token or a key: the owning record's
-  grants (area 9, question 8), with policy in chunk 4.4. Until then
-  `sessions.revoke_token(token_id)` and `Service.revoke_key(key_id)` end
-  whichever token or key has that `id`, so an action that takes an `id`
-  from a request checks it is among the caller's own (`sessions.tokens`,
-  `Service.keys`) first.
 
 **Listing tokens and keys from a `GET`** (open, raised in chunk 4.3b).
 `sessions.tokens(user_id)` and `Service.keys(service_id)` are for an

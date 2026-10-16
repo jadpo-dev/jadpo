@@ -150,6 +150,9 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         # over TCP, the failure envelope, query and header input, rate
         # limits and reloading; and the golden OpenAPI document (area 7).
         ('live PostgreSQL: routes over HTTP', [('jadpo-cli', 'http')], []),
+        # Policy through `jadpo test`: tenancy, roles, owner fields, listed
+        # actions and credentials; concealment through the runtime (area 9).
+        ('live PostgreSQL: policy', [('jadpo-cli', 'policy')], []),
     ]
     latency_test = 'a_save_shows_the_tests_it_reaches_within_the_target'
     own_steps = [

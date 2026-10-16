@@ -318,7 +318,11 @@ test "bob cannot complete alice's todo" {
 ```
 
 Policy reports a hidden record as the same `not_found` failure (area 4), so
-the test checks exactly what Bob would see.
+the test checks exactly what Bob would see. A call a test, fixture or seed
+makes runs as the caller it passes, as `complete_todo` runs as Bob here; a
+call that passes none, such as one setting up data, runs without policy, so
+it proves behaviour and data, and a route test or a call with a caller
+proves policy (chosen in chunk 4.4, area 9).
 
 ## Controlling time
 
@@ -1442,7 +1446,7 @@ with when it comes.
 |---|---|---|
 | The `request { }` form in route tests, the `Response` type, its `status`, `code` and typed output | 7 | Input to area 7 |
 | `Principal.user(user)` in tests, fixtures and seeds, and `as:` signing in through the real authentication method (question 10); a service caller in tests | 8 | Built in chunk 4.3 for users and chunk 4.3b for services |
-| Policy tests are ordinary tests: call as another user and `assert … fails` with the failure policy reports | 9 | Follows from question 6 |
+| Policy tests are ordinary tests: call as another user and `assert … fails` with the failure policy reports | 9 | Built in chunk 4.4: a call passing a caller runs as that caller; one passing none runs without policy |
 | `test:` values on configuration fields, and the `5m` duration literal | 10 | Input to area 10 |
 | Fake responses name the provider conditions in the integration's `failures:` block; checking a fake against the provider's contract or sandbox | 11 | Input to area 11 |
 | `overdue_reminders.run()` in tests, subscriber delivery order, and retries of a failing subscriber in tests | 12 | Input to area 12 |
