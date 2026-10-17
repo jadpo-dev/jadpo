@@ -6,3 +6,4 @@ mod lists;
 mod numbers;
 mod sets_maps;
 mod standard_types;
+mod text;

@@ -122,8 +122,6 @@ pub struct StdNames {
     /// Namespaces the compiler fills, with the members built so far.
     generated: BTreeMap<&'static str, BTreeSet<&'static str>>,
     generic: BTreeSet<&'static str>,
-    /// Standard namespaces not reserved yet.
-    unreserved: BTreeSet<&'static str>,
 }
 
 /// What a lower-case qualifier is in the standard library.
@@ -185,7 +183,6 @@ impl StdNames {
                         .extend(members.split_whitespace());
                 }
                 "generic" => table.generic.extend(line.split_whitespace()),
-                "unreserved" => table.unreserved.extend(line.split_whitespace()),
                 _ => {}
             }
         }
@@ -450,10 +447,10 @@ impl StdNames {
             .is_some_and(|members| members.contains(member))
     }
 
-    /// Every reserved namespace name: standard and generated, but for a
-    /// standard namespace whose name stays free until a later chunk.
+    /// Every reserved namespace name: standard and generated (area 19,
+    /// question 30).
     pub fn reserved(&self, name: &str) -> bool {
-        self.namespace(name).is_some() && !self.unreserved.contains(name)
+        self.namespace(name).is_some()
     }
 
     pub fn is_generic(&self, name: &str) -> bool {

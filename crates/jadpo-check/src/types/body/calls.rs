@@ -772,8 +772,19 @@ impl Body<'_> {
             let is_format = slot
                 .and_then(|slot| table.and_then(|op| op.params.get(slot)))
                 .is_some_and(|p| matches!(p.kind, jadpo_std::Kind::Format | jadpo_std::Kind::Type));
-            if is_literal(&value) || matches!(value, Expr::ListExpr(_)) || is_function || is_format
-            {
+            // A list written out takes the parameter's type, unless every
+            // item is a value of its own, which then fixes the item type
+            // (`list.sort_by([rye, bap], ...)`).
+            let written_list = match &value {
+                Expr::ListExpr(list) => {
+                    list.exprs().next().is_none()
+                        || list
+                            .exprs()
+                            .any(|item| is_literal(&item) || matches!(item, Expr::ListExpr(_)))
+                }
+                _ => false,
+            };
+            if is_literal(&value) || written_list || is_function || is_format {
                 actual.push(None);
                 continue;
             }
@@ -838,6 +849,14 @@ impl Body<'_> {
                 self.written_out_argument(&value, written, &name);
                 continue;
             }
+            if table
+                .and_then(|op| op.params.get(*slot))
+                .is_some_and(|p| p.character)
+            {
+                let name = params[*slot].0.clone();
+                self.character_argument(&value, written, &name);
+                continue;
+            }
             if let Some(jadpo_std::Kind::OneOf(accepts)) = kind {
                 let name = params[*slot].0.clone();
                 self.built_on_argument(&value, ty, accepts, written, &name);
@@ -884,6 +903,19 @@ impl Body<'_> {
                 summed = self.numbers_argument(&value, &given, written, &name);
                 continue;
             }
+            // A list of text (`text.join`): any list whose items are
+            // built on `Text`.
+            if let Ty::List(item) = &param
+                && **item == Ty::Prim(Prim::Text)
+            {
+                let given = match ty {
+                    Some(ty) => ty,
+                    None => self.infer(&value),
+                };
+                let name = params[*slot].0.clone();
+                self.texts_argument(&value, &given, written, &name);
+                continue;
+            }
             let expected = substitute(&param, &bound);
             // A value that may be `none` (`header: Text?`) takes a value
             // built on the type, or one that may be `none`.
@@ -912,12 +944,17 @@ impl Body<'_> {
                 .and_then(|op| op.params.get(slot))
                 .is_some_and(|param| param.ordered)
             {
-                self.ordered_key(&lambda, &substitute(&to, &bound), written);
+                let key = substitute(&to, &bound);
+                self.ordered_key(&lambda, &key, written);
+                if let Some(table) = table {
+                    self.sort_locale(table, &args, &slots, &key, written);
+                }
             }
         }
         self.divisors(&args, &slots, written);
         if let Some(table) = table {
             self.counts(table, &args, &slots, written);
+            self.never_empty(table, &args, &slots, written);
         }
         if let Some(table) = table {
             self.std_options(table, call, &args, &slots, written);

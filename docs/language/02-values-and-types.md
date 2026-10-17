@@ -272,8 +272,8 @@ type NotWork = Failure {
     kind: FailureKind.invalid_value
 }
 
-function work_email(text: ContactText) fails NotAnAddress, NotWork -> WorkEmail {
-    var email: WorkEmail = attempt WorkEmail(text) {  // any text, so the address check can break
+function work_email(contact: ContactText) fails NotAnAddress, NotWork -> WorkEmail {
+    var email: WorkEmail = attempt WorkEmail(contact) {  // any text, so the address check can break
         format: NotAnAddress
         pattern: NotWork
     }
@@ -838,7 +838,8 @@ entries; a map literal with entries is still to design.
 > the canonical order above; a map is walked through `map.keys`; and `[]`
 > written where a map is expected is an empty map (built in chunk 5.5c). A map
 > literal with entries is still this area's to design. Text from outside
-> is normalised to NFC as it is decoded at a boundary (chunk 5.5f), and
+> is normalised to NFC as it is decoded at a boundary (built in chunk
+> 5.5f: every text a request carries, before its rules are checked), and
 > named rules across an object's fields are a change to this area, built
 > in chunk 5.5t.
 

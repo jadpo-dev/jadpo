@@ -59,8 +59,9 @@ public library list {
     function max_by(items: List<T>, key: Function<T, K>) -> T? {}
 
     /// A new list ordered by `key`, smallest first; items with equal keys
-    /// keep their order.
-    function sort_by(items: List<T>, key: Function<T, K>) -> List<T> {}
+    /// keep their order. Text keys go by code point, or by `locale`'s
+    /// rules when it is given.
+    function sort_by(items: List<T>, key: Function<T, K>, locale: Locale?) -> List<T> {}
 
     /// A new list with the last item first.
     function reverse(items: List<T>) -> List<T> {}

@@ -113,9 +113,10 @@ GET / {
 
 > Amended 2026-10-17 by area 19 (question 21): text in a request is
 > normalised to Unicode NFC as it is decoded, so equal text compares
-> equal (chunk 5.5f). The page examples that name a variable or argument
-> `text` are renamed in that chunk, since `text` becomes a reserved
-> standard namespace.
+> equal (built in chunk 5.5f, for the body, the path, the query string
+> and headers alike, before the input's rules are checked). The page
+> examples that named a variable `text` were renamed in that chunk, since
+> `text` is a reserved standard namespace.
 
 ## Output and status
 
@@ -1469,8 +1470,8 @@ type AddMemo = Input {
 }
 
 action add_memo(input: AddMemo) -> Unit {
-    var text: Memo = input.text
-    assert text != ""
+    var memo: Memo = input.text
+    assert memo != ""
 }
 
 routes Memos {

@@ -92,6 +92,15 @@ icu_time = { version = "=2.3.0", default-features = false, features = ["compiled
 # A duration's units for people are joined as a list of units (area 19,
 # `text.format`).
 icu_list = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+# Text (area 19, "Text"): case mapping with a locale's rules (`İ` in
+# Turkish), collation for `list.sort_by`'s `locale:`, and NFC for text
+# decoded at a boundary, and NFD and the marks' general category for
+# `text.slug`'s accents, from the same
+# ICU4X release and its compiled Unicode and CLDR data.
+icu_casemap = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+icu_collator = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+icu_normalizer = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+icu_properties = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
 fixed_decimal = { version = "=0.7.2", default-features = false }
 writeable = { version = "=0.6.4", default-features = false }
 # Pinned exactly and confined to jadpo-db and jadpo-check (docs/compiler-runtime.md §2.4).

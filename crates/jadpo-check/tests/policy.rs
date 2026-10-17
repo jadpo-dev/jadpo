@@ -950,30 +950,30 @@ entity Memo {
     }
 }
 
-action start_draft(me: Principal.user, text: NoteText) fails PersonNotFound -> Draft {
+action start_draft(me: Principal.user, body: NoteText) fails PersonNotFound -> Draft {
     var mine: Person.id = me.id
     return attempt Draft.create {
         set: {
             owner_id: mine
-            text: text
+            text: body
         }
     }
 }
 
-action draft_for(owner: Person.id, text: NoteText) fails PersonNotFound -> Draft {
+action draft_for(owner: Person.id, body: NoteText) fails PersonNotFound -> Draft {
     return attempt Draft.create {
         set: {
             owner_id: owner
-            text: text
+            text: body
         }
     }
 }
 
-action memo_for(owner: Person.id, text: NoteText) fails PersonNotFound -> Memo {
+action memo_for(owner: Person.id, body: NoteText) fails PersonNotFound -> Memo {
     return attempt Memo.create {
         set: {
             owner_id: owner
-            text: text
+            text: body
         }
     }
 }
@@ -1975,7 +1975,7 @@ fn a_create_sets_its_user_field_from_the_caller_on_every_path() {
 
 type Mine = Bool {}
 
-action draft_either(me: Principal.user, other: Person.id, mine: Mine, text: NoteText) fails PersonNotFound -> Draft {
+action draft_either(me: Principal.user, other: Person.id, mine: Mine, body: NoteText) fails PersonNotFound -> Draft {
     var mut owner: Person.id = me.id
     if (mine == false) {
         owner = other
@@ -1983,17 +1983,17 @@ action draft_either(me: Principal.user, other: Person.id, mine: Mine, text: Note
     return attempt Draft.create {
         set: {
             owner_id: owner
-            text: text
+            text: body
         }
     }
 }
 
-action draft_maybe(me: Principal.user, mine: Mine, text: NoteText) -> Draft? {
+action draft_maybe(me: Principal.user, mine: Mine, body: NoteText) -> Draft? {
     if (mine) {
         return Draft.create {
             set: {
                 owner_id: me.id
-                text: text
+                text: body
             }
         }
     }

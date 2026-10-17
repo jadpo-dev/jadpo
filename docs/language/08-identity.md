@@ -2589,8 +2589,8 @@ type AddMemo = Input {
 }
 
 action add_memo(input: AddMemo) -> Unit {
-    var text: Memo = input.text
-    assert text != ""
+    var memo: Memo = input.text
+    assert memo != ""
 }
 
 routes Memos {

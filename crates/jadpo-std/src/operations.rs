@@ -107,6 +107,21 @@ pub struct Param {
     /// type's `scale` is, so the places a result keeps are read while
     /// compiling.
     pub written_out: bool,
+    /// Text that is never empty (area 19, "What every operation follows"):
+    /// the checker rules `""` out while compiling, as `never_zero` rules
+    /// out a zero divisor: a literal isn't `""` and a value's type has a
+    /// `min_length` of at least 1, so `text.replace` never searches for
+    /// nothing and `text.split` never splits on it.
+    pub never_empty: bool,
+    /// One character written out at the call, never a value (area 19,
+    /// "Text"): `text.pad_start`'s `fill:`, a text literal of exactly one
+    /// code point.
+    pub character: bool,
+    /// The text whose length the result never passes (area 19, question
+    /// 29, `at_most_length_of`): the result is never longer than this
+    /// argument, so constructing a type from it can't break a
+    /// `max_length` the argument's own type keeps.
+    pub bounds_length: bool,
 }
 
 /// A condition an operation fails on unless an option settles it (area
@@ -201,9 +216,26 @@ pub enum Op {
     TemporalYear,
     TemporalYearBounds,
     TemporalZone,
+    TextContains,
+    TextDropFirst,
+    TextDropLast,
+    TextEndsWith,
     TextFormat,
     TextFrom,
+    TextJoin,
+    TextKeepFirst,
+    TextKeepLast,
+    TextLength,
+    TextLower,
+    TextPadStart,
     TextParse,
+    TextReplace,
+    TextSlice,
+    TextSlug,
+    TextSplit,
+    TextStartsWith,
+    TextTrim,
+    TextUpper,
 }
 
 /// One standard-library operation.
@@ -247,6 +279,9 @@ const fn param(name: &'static str, kind: Kind) -> Param {
         ordered: false,
         implicit: false,
         written_out: false,
+        never_empty: false,
+        character: false,
+        bounds_length: false,
     }
 }
 
@@ -515,6 +550,46 @@ const fn range(
     }
 }
 
+const TEXT: Kind = Kind::Builtin(Builtin::Text);
+
+/// Text an operation reads: any value built on `Text`.
+const VALUE: Param = param("value", TEXT);
+
+/// The text whose length a result never passes (`at_most_length_of`).
+const CUT: Param = Param {
+    bounds_length: true,
+    ..VALUE
+};
+
+/// Text that is never empty.
+const fn never_empty(name: &'static str) -> Param {
+    Param {
+        never_empty: true,
+        ..param(name, TEXT)
+    }
+}
+
+/// A `text` operation that never fails (area 19, "Text"), by its
+/// parameters and result. Text is counted, cut and padded in code points.
+const fn text(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace: "text",
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: &[],
+        rust,
+    }
+}
+
 /// Every operation, sorted by namespace and name.
 pub const OPERATIONS: &[Operation] = &[
     // The number operations (area 19, "Numbers"), each one function in
@@ -758,10 +833,13 @@ pub const OPERATIONS: &[Operation] = &[
         Kind::List,
         "list::slice",
     ),
+    // Text keys go by code point, as queries sort them, or by a locale's
+    // rules with `locale:`, through ICU4X's collator (area 19, question
+    // 26); `locale:` means nothing for a key that isn't text.
     list(
         Op::ListSortBy,
         "sort_by",
-        &[ITEMS, key()],
+        &[ITEMS, key(), option("locale", LOCALE)],
         Kind::List,
         "list::sort_by",
     ),
@@ -1144,6 +1222,37 @@ pub const OPERATIONS: &[Operation] = &[
         ZONE,
         "temporal::zone",
     ),
+    // The text operations (area 19, "Text"), each one function in
+    // `jadpo-value`'s `text` module; the contract's three are among them,
+    // in order.
+    text(
+        Op::TextContains,
+        "contains",
+        &[VALUE, param("part", TEXT)],
+        BOOL,
+        "text::contains",
+    ),
+    text(
+        Op::TextDropFirst,
+        "drop_first",
+        &[CUT, count("n")],
+        TEXT,
+        "text::drop_first",
+    ),
+    text(
+        Op::TextDropLast,
+        "drop_last",
+        &[CUT, count("n")],
+        TEXT,
+        "text::drop_last",
+    ),
+    text(
+        Op::TextEndsWith,
+        "ends_with",
+        &[VALUE, param("suffix", TEXT)],
+        BOOL,
+        "text::ends_with",
+    ),
     // The standard type contract's three operations (area 19, "Every
     // standard type meets one contract"), each one implementation in
     // `jadpo-value`'s `standard` module over the data entries in
@@ -1174,6 +1283,55 @@ pub const OPERATIONS: &[Operation] = &[
         conditions: &[],
         rust: "standard::from",
     },
+    text(
+        Op::TextJoin,
+        "join",
+        &[ITEMS, param("separator", TEXT)],
+        TEXT,
+        "text::join",
+    ),
+    text(
+        Op::TextKeepFirst,
+        "keep_first",
+        &[CUT, count("n")],
+        TEXT,
+        "text::keep_first",
+    ),
+    text(
+        Op::TextKeepLast,
+        "keep_last",
+        &[CUT, count("n")],
+        TEXT,
+        "text::keep_last",
+    ),
+    Operation {
+        at_least: Some(0),
+        ..text(Op::TextLength, "length", &[VALUE], INT, "text::length")
+    },
+    // Unicode's default case mapping, or a locale's with `locale:`
+    // (`İ` in Turkish), through ICU4X; either can lengthen text (`ß`
+    // becomes `SS`), so neither bounds its length.
+    text(
+        Op::TextLower,
+        "lower",
+        &[VALUE, option("locale", LOCALE)],
+        TEXT,
+        "text::lower",
+    ),
+    text(
+        Op::TextPadStart,
+        "pad_start",
+        &[
+            VALUE,
+            param("length", INT),
+            Param {
+                character: true,
+                ..param("fill", TEXT)
+            },
+        ],
+        TEXT,
+        "text::pad_start",
+    ),
     // Fails `malformed` for text that isn't the type at all, and by the
     // rules of the type `as:` names, which the checker works out per call.
     Operation {
@@ -1189,6 +1347,43 @@ pub const OPERATIONS: &[Operation] = &[
         conditions: &[],
         rust: "standard::parse",
     },
+    text(
+        Op::TextReplace,
+        "replace",
+        &[VALUE, never_empty("find"), param("with", TEXT)],
+        TEXT,
+        "text::replace",
+    ),
+    text(
+        Op::TextSlice,
+        "slice",
+        &[CUT, count("from"), count("count")],
+        TEXT,
+        "text::slice",
+    ),
+    text(Op::TextSlug, "slug", &[VALUE], TEXT, "text::slug"),
+    text(
+        Op::TextSplit,
+        "split",
+        &[VALUE, never_empty("separator")],
+        Kind::List,
+        "text::split",
+    ),
+    text(
+        Op::TextStartsWith,
+        "starts_with",
+        &[VALUE, param("prefix", TEXT)],
+        BOOL,
+        "text::starts_with",
+    ),
+    text(Op::TextTrim, "trim", &[CUT], TEXT, "text::trim"),
+    text(
+        Op::TextUpper,
+        "upper",
+        &[VALUE, option("locale", LOCALE)],
+        TEXT,
+        "text::upper",
+    ),
 ];
 
 /// Operations that moved, by their old name and their new one: a call by
@@ -1293,6 +1488,11 @@ mod tests {
                 assert!(
                     !param.written_out || param.kind == INT,
                     "a scale is a whole number"
+                );
+                assert!(
+                    !(param.never_empty || param.character || param.bounds_length)
+                        || param.kind == TEXT,
+                    "never empty, one character and a length bound are text's"
                 );
             }
         }

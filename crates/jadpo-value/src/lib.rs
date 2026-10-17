@@ -46,6 +46,7 @@ pub mod set;
 pub mod shape;
 pub mod standard;
 pub mod temporal;
+pub mod text;
 pub mod validate;
 mod value;
 
@@ -231,6 +232,83 @@ pub fn run(
         (Op::TextFrom, [value]) => standard::from(value),
         (Op::TextParse, [Value::Text(raw), Value::Text(ty)]) => standard::parse(raw, ty),
         (Op::TextFormat | Op::TextFrom | Op::TextParse, _) => Err(Fault::Shape),
+        (
+            Op::TextContains
+            | Op::TextDropFirst
+            | Op::TextDropLast
+            | Op::TextEndsWith
+            | Op::TextJoin
+            | Op::TextKeepFirst
+            | Op::TextKeepLast
+            | Op::TextLength
+            | Op::TextLower
+            | Op::TextPadStart
+            | Op::TextReplace
+            | Op::TextSlice
+            | Op::TextSlug
+            | Op::TextSplit
+            | Op::TextStartsWith
+            | Op::TextTrim
+            | Op::TextUpper,
+            _,
+        ) => run_text(op, args),
+    }
+}
+
+/// A `text` operation (area 19, "Text"): [`text`] holds what each does.
+/// Every one but `join` takes text first.
+fn run_text(op: Op, args: &[Value]) -> Result<Value, Fault> {
+    if let (Op::TextJoin, [Value::List(pieces), Value::Text(separator)]) = (op, args) {
+        let pieces = pieces
+            .iter()
+            .map(|piece| match piece {
+                Value::Text(piece) => Ok(&**piece),
+                _ => Err(Fault::Shape),
+            })
+            .collect::<Result<Vec<&str>, Fault>>()?;
+        return Ok(Value::text(&text::join(pieces, separator)));
+    }
+    let Some((Value::Text(value), rest)) = args.split_first() else {
+        return Err(Fault::Shape);
+    };
+    let shown = |text: String| Value::text(&text);
+    let locale = |given: &Value| match given {
+        Value::None => Ok(None),
+        given => present::tag_of(given).map(Some),
+    };
+    match (op, rest) {
+        (Op::TextLength, []) => Ok(Value::Int(text::length(value))),
+        (Op::TextTrim, []) => Ok(Value::text(text::trim(value))),
+        (Op::TextLower, [given]) => text::lower(value, locale(given)?).map(shown),
+        (Op::TextUpper, [given]) => text::upper(value, locale(given)?).map(shown),
+        (Op::TextContains, [Value::Text(part)]) => Ok(Value::Bool(text::contains(value, part))),
+        (Op::TextStartsWith, [Value::Text(prefix)]) => {
+            Ok(Value::Bool(text::starts_with(value, prefix)))
+        }
+        (Op::TextEndsWith, [Value::Text(suffix)]) => {
+            Ok(Value::Bool(text::ends_with(value, suffix)))
+        }
+        (Op::TextReplace, [Value::Text(find), Value::Text(with)]) => {
+            text::replace(value, find, with).map(shown)
+        }
+        (Op::TextSplit, [Value::Text(separator)]) => Ok(Value::list(
+            text::split(value, separator)?
+                .into_iter()
+                .map(Value::text)
+                .collect(),
+        )),
+        (Op::TextSlice, [Value::Int(from), Value::Int(count)]) => {
+            text::slice(value, *from, *count).map(shown)
+        }
+        (Op::TextKeepFirst, [Value::Int(n)]) => text::keep_first(value, *n).map(shown),
+        (Op::TextKeepLast, [Value::Int(n)]) => text::keep_last(value, *n).map(shown),
+        (Op::TextDropFirst, [Value::Int(n)]) => text::drop_first(value, *n).map(shown),
+        (Op::TextDropLast, [Value::Int(n)]) => text::drop_last(value, *n).map(shown),
+        (Op::TextPadStart, [Value::Int(length), Value::Text(fill)]) => {
+            text::pad_start(value, *length, fill).map(shown)
+        }
+        (Op::TextSlug, []) => Ok(shown(text::slug(value))),
+        _ => Err(Fault::Shape),
     }
 }
 
@@ -263,7 +341,10 @@ fn run_list(
         (Op::ListAt, [_]) => list::at(items, n(0)?),
         (Op::ListMinBy, []) => list::min_by(items, each),
         (Op::ListMaxBy, []) => list::max_by(items, each),
-        (Op::ListSortBy, []) => list::sort_by(items, each).map(Value::list),
+        (Op::ListSortBy, [Value::None]) => list::sort_by(items, each).map(Value::list),
+        (Op::ListSortBy, [locale]) => {
+            list::sort_by_locale(items, each, present::tag_of(locale)?).map(Value::list)
+        }
         (Op::ListReverse, []) => Ok(Value::list(list::reverse(items))),
         (Op::ListDistinct, []) => Ok(Value::list(list::distinct(items))),
         (Op::ListSlice, [_, _]) => list::slice(items, n(0)?, n(1)?).map(Value::list),
@@ -496,8 +577,27 @@ mod tests {
                 | Op::ListMap
                 | Op::ListMaxBy
                 | Op::ListMinBy
-                | Op::ListReverse
-                | Op::ListSortBy => vec![items.clone()],
+                | Op::ListReverse => vec![items.clone()],
+                Op::ListSortBy => vec![items.clone(), Value::None],
+                Op::TextLength | Op::TextTrim | Op::TextSlug => vec![Value::text("Rye loaf")],
+                Op::TextLower | Op::TextUpper => vec![Value::text("Rye"), english.clone()],
+                Op::TextContains | Op::TextStartsWith | Op::TextEndsWith | Op::TextSplit => {
+                    vec![Value::text("Rye loaf"), Value::text(" ")]
+                }
+                Op::TextReplace => vec![
+                    Value::text("Rye loaf"),
+                    Value::text("Rye"),
+                    Value::text("Spelt"),
+                ],
+                Op::TextJoin => vec![
+                    Value::list(vec![Value::text("Rye"), Value::text("loaf")]),
+                    Value::text(" "),
+                ],
+                Op::TextSlice => vec![Value::text("Rye loaf"), Value::Int(1), Value::Int(2)],
+                Op::TextKeepFirst | Op::TextKeepLast | Op::TextDropFirst | Op::TextDropLast => {
+                    vec![Value::text("Rye loaf"), Value::Int(3)]
+                }
+                Op::TextPadStart => vec![Value::text("42"), Value::Int(6), Value::text("0")],
                 Op::SetCount => vec![tags.clone()],
                 Op::SetContains | Op::SetWith | Op::SetWithout => {
                     vec![tags.clone(), Value::Int(2)]
