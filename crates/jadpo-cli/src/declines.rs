@@ -236,9 +236,12 @@ fn list(loaded: &jadpo_db::Loaded, cwd: &Path, filter: &Filter) -> Reply {
         .zip(&places)
         .map(|(decline, place)| {
             let reason = decline.reason.as_deref().unwrap_or("");
-            format!("{:rule_width$}  {place:place_width$}  {reason}", decline.rule)
-                .trim_end()
-                .to_string()
+            format!(
+                "{:rule_width$}  {place:place_width$}  {reason}",
+                decline.rule
+            )
+            .trim_end()
+            .to_string()
         })
         .collect();
     // When any reason doesn't fit beside its row, every reason goes on the
@@ -250,7 +253,11 @@ fn list(loaded: &jadpo_db::Loaded, cwd: &Path, filter: &Filter) -> Reply {
         for (decline, place) in found.iter().zip(&places) {
             lines.push(format!("{:rule_width$}  {place}", decline.rule));
             let reason = decline.reason.as_deref().unwrap_or("");
-            lines.extend(wrap(reason, WIDTH - 4).into_iter().map(|line| format!("  {line}")));
+            lines.extend(
+                wrap(reason, WIDTH - 4)
+                    .into_iter()
+                    .map(|line| format!("  {line}")),
+            );
         }
         lines
     };

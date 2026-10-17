@@ -315,7 +315,7 @@ fn a_read_in_another_constants_value_is_refused() {
 #[test]
 fn every_refusal_is_given_at_once() {
     let text = format!(
-        "{PENCE}config {{\n    fees: Pence {{\n        default: 20\n    }}\n}}\n\nconstant fees: List<Pence> = [250, 500]\nconstant first: List<Pence> = fees\n\nfunction first_fee() -> Pence {{\n    for fee in first {{\n        return Pence(fee + config.fees)\n    }}\n    return 0\n}}\n"
+        "{PENCE}config {{\n    fees: Pence {{\n        default: 20\n    }}\n}}\n\nconstant fees: List<Pence> = [250, 500]\ndecline constant.similar_exists: \"The first fees, which may differ\"\nconstant first: List<Pence> = fees\n\nfunction first_fee() -> Pence {{\n    for fee in first {{\n        return Pence(fee + config.fees)\n    }}\n    return 0\n}}\n"
     );
     let loaded = loaded(Layout::Loose, &[("main.jadpo", &text)]);
     assert_eq!(errors(&loaded), Vec::<String>::new());

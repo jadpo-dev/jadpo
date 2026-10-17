@@ -638,7 +638,7 @@ pub static COMMANDS: &[Command] = &[
         name: "declines",
         synonyms: &[],
         group: "Change safely",
-        summary: "List or clear declined errors",
+        summary: "List or clear declines",
         description: "A judgement-call error, such as a helper like a library's, can be declined with \
                       a reason: a `decline <rule>: \"<reason>\"` line above the declaration it is \
                       on. `list` shows every decline with its rule, place and reason, so each can \

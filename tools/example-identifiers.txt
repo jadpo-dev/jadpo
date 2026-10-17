@@ -290,6 +290,7 @@ days_left
 days_overdue
 declare_lost
 decline_reason
+declined_payment
 dee
 dees_place
 deleted_at

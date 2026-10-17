@@ -568,7 +568,7 @@ what other areas carried here and where this page answers it.
 
 | Item | Area | Status |
 |---|---|---|
-| Formatter owns layout; promotion through the editor or `fmt --layout`; catalogue, impact, similar-helper warning, domain commands | 1 | Formatting, Tools for agents; questions 8 and 10 |
+| Formatter owns layout; promotion through the editor or `fmt --layout`; catalogue, impact, similar-helper check, domain commands | 1 | Formatting, Tools for agents; questions 8 and 10 |
 | `runtime.unhandled_fault`, `runtime.outcome_unknown`, `runtime.startup_failed` | 4 | Errors only the running app or a build raises |
 | `migrate` and rename commands; `migration.*`, `index.*`, `cli.schema_*` errors; `toolchain.target_store_not_implemented` | 5 | Questions 4 and 5; Command errors |
 | The query report (store or cache, row bound, query count, indexes) | 6 | The `build/` folder; question 10 |

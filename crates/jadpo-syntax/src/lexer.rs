@@ -414,7 +414,10 @@ impl Lexer<'_> {
                     let before = self.text[..start].chars().next_back();
                     let after = self.peek();
                     let mut replacement = String::new();
-                    if written != "!" && !spaced(before) {
+                    // `!` keeps whatever bracket it follows (`(!a)`), but
+                    // not a word it would run into (`not!a`).
+                    let word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_');
+                    if (written != "!" && !spaced(before)) || (written == "!" && word(before)) {
                         replacement.push(' ');
                     }
                     replacement.push_str(jadpo);

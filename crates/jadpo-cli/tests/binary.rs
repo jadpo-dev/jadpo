@@ -114,6 +114,7 @@ fn bash_completes_commands_and_values() {
             "sql",
             "routes",
             "api",
+            "declines",
             "config",
             "completions",
             "lsp",

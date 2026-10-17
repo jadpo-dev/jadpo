@@ -40,7 +40,7 @@ pub struct Decline {
     /// Where the rule is written, or the `decline` keyword without one.
     pub rule_span: Span,
     /// The range of the declaration or member it stands above.
-    pub owner: (u32, u32),
+    pub target: (u32, u32),
     /// What it declines on: the declaration's or member's name, when it has
     /// one (`cap_total`, `rounding.capped` for a library's).
     pub subject: Option<String>,
@@ -126,7 +126,7 @@ fn read(decline: &ast::Decline, path: &str, text: &str) -> Decline {
         }
         (None, None) => Span::new(path, start, end),
     };
-    let owner = node.parent();
+    let target = node.parent();
     Decline {
         path: path.to_string(),
         rule,
@@ -134,11 +134,11 @@ fn read(decline: &ast::Decline, path: &str, text: &str) -> Decline {
         line: line_of(text, start),
         span: Span::new(path, start, end),
         rule_span,
-        owner: owner.as_ref().map_or((start, end), |owner| {
-            let r = owner.text_range();
+        target: target.as_ref().map_or((start, end), |target| {
+            let r = target.text_range();
             (r.start().into(), r.end().into())
         }),
-        subject: owner.as_ref().and_then(subject),
+        subject: target.as_ref().and_then(subject),
     }
 }
 
@@ -172,7 +172,7 @@ fn subject(node: &SyntaxNode) -> Option<String> {
 }
 
 /// Whether a `decline` line may stand above a node of this kind.
-fn is_owner(kind: SyntaxKind) -> bool {
+fn is_target(kind: SyntaxKind) -> bool {
     matches!(
         kind,
         TYPE_DECL
@@ -200,9 +200,9 @@ fn is_owner(kind: SyntaxKind) -> bool {
 
 /// The declaration or member a finding at `offset` is on: the innermost
 /// one around it.
-fn owner_at(root: &SyntaxNode, offset: u32) -> Option<SyntaxNode> {
+fn target_at(root: &SyntaxNode, offset: u32) -> Option<SyntaxNode> {
     let token = root.token_at_offset(offset.into()).right_biased()?;
-    token.parent_ancestors().find(|node| is_owner(node.kind()))
+    token.parent_ancestors().find(|node| is_target(node.kind()))
 }
 
 /// The findings `found` leaves once each declined one is dropped, with
@@ -230,18 +230,18 @@ pub(crate) fn answer(
     for diagnostic in found {
         let declined = diagnostic.rule.declinable
             && diagnostic.primary.as_ref().is_some_and(|label| {
-                let Some(owner) = roots
+                let Some(target) = roots
                     .get(&label.span.path)
-                    .and_then(|root| owner_at(root, label.span.start))
+                    .and_then(|root| target_at(root, label.span.start))
                 else {
                     return false;
                 };
-                let range = owner.text_range();
-                let owner = (u32::from(range.start()), u32::from(range.end()));
+                let range = target.text_range();
+                let target = (u32::from(range.start()), u32::from(range.end()));
                 let found = all.iter().enumerate().find(|(i, decline)| {
                     !used[*i]
                         && decline.path == label.span.path
-                        && decline.owner == owner
+                        && decline.target == target
                         && decline.rule == diagnostic.rule.id
                 });
                 match found {
@@ -342,10 +342,10 @@ pub fn insertion(db: &dyn Db, project: Project, diagnostic: &Diagnostic) -> Opti
         .copied()
         .find(|file| file.path(db) == &label.span.path)?;
     let root = jadpo_db::parse(db, file).syntax();
-    let owner = owner_at(&root, label.span.start)?;
+    let target = target_at(&root, label.span.start)?;
     let text = file.text(db);
-    // The first token after the owner's `decline` lines and comments.
-    let first = owner
+    // The first token after the target's `decline` lines and comments.
+    let first = target
         .children_with_tokens()
         .filter(|element| element.kind() != DECLINE && !element.kind().is_trivia())
         .find_map(|element: SyntaxElement| match element {
