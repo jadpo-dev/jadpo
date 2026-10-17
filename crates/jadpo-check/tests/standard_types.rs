@@ -204,3 +204,48 @@ fn the_contract_refuses_what_has_no_contract() {
         assert_eq!(&check(&format!("{types}{source}")), expected, "{source}");
     }
 }
+
+/// Area 19's "Names each release adds", the release notes' list, is every
+/// data entry by its release (question 4).
+#[test]
+fn the_release_notes_list_each_release_s_names() {
+    let page = include_str!("../../../docs/language/19-standard-library.md");
+    let start = page
+        .find("| Release | Standard types it adds |")
+        .expect("the release notes' table");
+    let listed: Vec<(String, Vec<String>)> = page[start..]
+        .lines()
+        .skip(2)
+        .take_while(|line| line.starts_with('|'))
+        .map(|line| {
+            let cells: Vec<&str> = line.trim_matches('|').split('|').map(str::trim).collect();
+            let names = cells[1]
+                .split(", ")
+                .map(|name| name.trim_matches('`').to_string())
+                .collect();
+            (cells[0].to_string(), names)
+        })
+        .collect();
+    let entries: Vec<(String, Vec<String>)> = jadpo_std::standard::releases()
+        .into_iter()
+        .map(|(release, names)| {
+            (
+                release.to_string(),
+                names.into_iter().map(str::to_string).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(listed, entries);
+}
+
+/// A field declared `InstantRange` is read through, as a value of the type
+/// is (chunk 5.5a2).
+#[test]
+fn an_instant_range_field_has_its_start_and_end() {
+    let source = "type Booking = Object {\n    slot: InstantRange\n    held: InstantRange?\n}\n\ntype SlotStart = Instant {}\n\nfunction start_of(booking: Booking) -> SlotStart {\n    return SlotStart(booking.slot.start)\n}\n";
+    assert_eq!(check(source), Vec::<String>::new());
+    let unknown = source.replace("booking.slot.start", "booking.slot.begin");
+    assert_eq!(check(&unknown), ["type.unknown_field"]);
+    let nullable = source.replace("booking.slot.start", "booking.held.start");
+    assert_eq!(check(&nullable), ["type.nullable_selection"]);
+}

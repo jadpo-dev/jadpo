@@ -11,13 +11,16 @@
 //! disagree. Code actions: "Make this a setting" on a constant runs the
 //! code `jadpo config move` runs (chunk 5.3f), and "Decline with a reason"
 //! on a declinable finding and "Remove decline" on a `decline` line run the
-//! code `jadpo declines` runs (chunk 5.4b). Completion, references, rename,
+//! code `jadpo declines` runs (chunk 5.4b); "Swap for the standard ..." on
+//! `type.standard_clash` and `type.standard_exists` runs the code `jadpo
+//! fix` runs (chunk 5.5a2). Completion, references, rename,
 //! formatting and other quick fixes come later (area 14), and checking
 //! runs between messages rather than in the background with salsa's
 //! cancellation.
 
 mod convert;
 mod declines;
+mod fixes;
 mod hover;
 mod make_setting;
 mod server;
@@ -28,6 +31,7 @@ use lsp_server::{Connection, Message};
 
 pub use convert::Encoding;
 pub use declines::{DECLINE, REMOVE as REMOVE_DECLINE};
+pub use fixes::SWAP;
 pub use make_setting::TITLE as MAKE_SETTING;
 pub use server::Server;
 
