@@ -527,7 +527,11 @@ for every type that shares it. Operations that move are listed in
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from
 the layer table, less the crates `[workspace.metadata.targets]` lists as
 native only (`jadpo-host-native`); `jadpo-drivers` builds with every driver
-feature on. `rust-toolchain.toml` pins the target with the toolchain. Compiler crates do no I/O below `jadpo-db`, which
+feature on. `rust-toolchain.toml` pins the target with the toolchain. The
+maths on `Decimal` runs there too, not only builds (chunk 5.5e): the gate
+builds `jadpo-value`'s `decimal_maths` example for wasm32 and runs it under
+Node (`tools/run_wasm.mjs`), holding it to the reference values the native
+test checks. Compiler crates do no I/O below `jadpo-db`, which
 keeps a browser playground possible later without gating on it now.
 
 ### 2.2 Source to graph

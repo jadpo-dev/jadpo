@@ -6,7 +6,7 @@ here, so this script stays the single gate that CI and every session run
 (docs/compiler-runtime.md §2.7).
 
   python3 tools/verify.py                  # everything
-  python3 tools/verify.py --profile quick  # without live PostgreSQL or the wasm32 build
+  python3 tools/verify.py --profile quick  # without live PostgreSQL or the wasm32 steps
   python3 tools/verify.py --group lint     # one CI job's share (repeatable)
   python3 tools/verify.py --require-examples  # fail on a feature no example uses
 
@@ -124,6 +124,10 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
              [python, 'tools/examples.py', '--export-corpus'], jadpo=True,
              postgres=full, env=no_postgres, show='skipped:'),
         Step('example names', 'lint', [python, 'tools/example_names.py', '--check']),
+        # The maths on `Decimal`'s reference values are what their
+        # generator writes (area 19, chunk 5.5e).
+        Step('Decimal maths reference values in step with their generator', 'lint',
+             [python, 'tools/decimal_maths_reference.py', '--check']),
         # The VS Code extension's highlighting names every word the lexer
         # reserves and no other (editors/vscode; needs no Node).
         Step('editor grammar in step with the lexer', 'lint',
@@ -219,6 +223,17 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         checks.append(Step('shared and runtime crates for wasm32', 'wasm32',
                            ['cargo', 'build', '--locked', '--target', WASM, *packages, *features],
                            lane='cargo'))
+        # The maths on `Decimal` runs under WebAssembly, not only builds
+        # (area 19, chunk 5.5e): its reference check, built for wasm32 and
+        # run under Node, gives the digits the native test does.
+        checks += [
+            Step('Decimal maths check for wasm32', 'wasm32',
+                 ['cargo', 'build', '--locked', '--target', WASM, '-p', 'jadpo-value',
+                  '--example', 'decimal_maths'], lane='cargo'),
+            Step('Decimal maths gives the reference digits under wasm32', 'wasm32',
+                 ['node', 'tools/run_wasm.mjs',
+                  f'target/{WASM}/debug/examples/decimal_maths.wasm'], lane='cargo'),
+        ]
     coverage = next(step for step in checks if step.name == 'teaching examples cover every built feature')
     coverage.args, coverage.show = ['--nocapture'], 'note:'
     if require_examples:

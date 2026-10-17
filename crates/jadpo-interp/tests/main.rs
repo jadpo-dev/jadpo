@@ -17,6 +17,7 @@ mod effects;
 mod failures;
 mod lists;
 mod logic;
+mod maths;
 mod named_collections;
 mod numbers;
 mod proofs;

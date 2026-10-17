@@ -37,6 +37,7 @@ pub mod json;
 pub mod list;
 pub mod locale;
 pub mod map;
+mod maths;
 pub mod ops;
 pub mod order;
 pub mod present;
@@ -118,6 +119,46 @@ pub fn run(
         (Op::DecimalRound, [Value::Decimal(d), Value::Int(scale), rounding]) => {
             decimal::round(*d, *scale, rounding_of(rounding)?).map(Value::Decimal)
         }
+        // The maths on `Decimal` (area 19, question 18).
+        (Op::DecimalSqrt, [value, Value::Int(scale), rounding]) => {
+            decimal::sqrt(decimal_of(value)?, *scale, rounding_of(rounding)?).map(Value::Decimal)
+        }
+        (Op::DecimalPower, [value, Value::Int(exponent)]) => {
+            decimal::power(decimal_of(value)?, *exponent).map(Value::Decimal)
+        }
+        (Op::DecimalExp, [value, Value::Int(scale), rounding]) => {
+            decimal::exp(decimal_of(value)?, *scale, rounding_of(rounding)?).map(Value::Decimal)
+        }
+        (Op::DecimalLn, [value, Value::Int(scale), rounding]) => {
+            decimal::ln(decimal_of(value)?, *scale, rounding_of(rounding)?).map(Value::Decimal)
+        }
+        (Op::DecimalSin, [radians, Value::Int(scale), rounding]) => {
+            decimal::sin(decimal_of(radians)?, *scale, rounding_of(rounding)?).map(Value::Decimal)
+        }
+        (Op::DecimalCos, [radians, Value::Int(scale), rounding]) => {
+            decimal::cos(decimal_of(radians)?, *scale, rounding_of(rounding)?).map(Value::Decimal)
+        }
+        (Op::DecimalAtan2, [y, x, Value::Int(scale), rounding]) => decimal::atan2(
+            decimal_of(y)?,
+            decimal_of(x)?,
+            *scale,
+            rounding_of(rounding)?,
+        )
+        .map(Value::Decimal),
+        (Op::DecimalPi, [Value::Int(scale), rounding]) => {
+            decimal::pi(*scale, rounding_of(rounding)?).map(Value::Decimal)
+        }
+        (
+            Op::DecimalSqrt
+            | Op::DecimalPower
+            | Op::DecimalExp
+            | Op::DecimalLn
+            | Op::DecimalSin
+            | Op::DecimalCos
+            | Op::DecimalAtan2
+            | Op::DecimalPi,
+            _,
+        ) => Err(Fault::Shape),
         (
             Op::IntegerAbs
             | Op::IntegerMin
@@ -389,6 +430,15 @@ fn run_temporal(op: Op, args: &[Value]) -> Result<Value, Fault> {
 }
 
 /// A `Rounding` value as the runtime holds it: a plain variant.
+/// A value built on `Decimal`, or a whole number a literal gave it.
+fn decimal_of(value: &Value) -> Result<Decimal, Fault> {
+    match value {
+        Value::Decimal(d) => Ok(*d),
+        Value::Int(n) => Ok(Decimal::from_int(*n)),
+        _ => Err(Fault::Shape),
+    }
+}
+
 fn rounding_of(value: &Value) -> Result<Rounding, Fault> {
     match value {
         Value::Variant(variant) if variant.fields.is_empty() => {
@@ -522,6 +572,23 @@ mod tests {
                     Value::Int(1),
                     variant("half_up"),
                 ],
+                Op::DecimalSqrt
+                | Op::DecimalExp
+                | Op::DecimalLn
+                | Op::DecimalSin
+                | Op::DecimalCos => vec![
+                    Value::Decimal(Decimal::new(2, 0)),
+                    Value::Int(4),
+                    variant("half_even"),
+                ],
+                Op::DecimalPower => vec![Value::Decimal(Decimal::new(15, 1)), Value::Int(3)],
+                Op::DecimalAtan2 => vec![
+                    Value::Decimal(Decimal::new(1, 0)),
+                    Value::Decimal(Decimal::new(-1, 0)),
+                    Value::Int(4),
+                    variant("half_even"),
+                ],
+                Op::DecimalPi => vec![Value::Int(4), variant("half_even")],
                 Op::TemporalAddDays => vec![date.clone(), Value::Int(1), Value::None],
                 Op::TemporalAddMonths | Op::TemporalAddYears => {
                     vec![zoned.clone(), Value::Int(1), Value::None, Value::None]
