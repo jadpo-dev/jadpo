@@ -30,6 +30,7 @@ mod lists;
 mod locales;
 mod logic;
 mod lookup;
+mod maths;
 mod named_collections;
 mod not_values;
 mod numbers;

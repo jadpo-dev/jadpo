@@ -3,6 +3,7 @@
 //! --test integration <module>::` runs one.
 
 mod lists;
+mod maths;
 mod numbers;
 mod sets_maps;
 mod standard_types;

@@ -1122,7 +1122,8 @@ impl Body<'_> {
 
     /// A count or a position is never negative (area 19, question 7),
     /// checked as a divisor's zero is: a literal isn't below `0`, and a
-    /// value's type has a `min` of at least `0`.
+    /// value's type has a `min` of at least `0`. So are `decimal.sqrt`'s
+    /// value and `decimal.power`'s exponent (area 19, "Numbers").
     fn counts(
         &mut self,
         table: &jadpo_std::Operation,
@@ -1154,7 +1155,10 @@ impl Body<'_> {
                     Some(ty)
                         if !ty.has_error()
                             && !self.table.is_nullable(&ty)
-                            && self.table.representation(&ty) == Some(Prim::Int) =>
+                            && matches!(
+                                self.table.representation(&ty),
+                                Some(Prim::Int | Prim::Decimal)
+                            ) =>
                     {
                         if self.never_below_zero(&ty) {
                             continue;
@@ -1175,15 +1179,46 @@ impl Body<'_> {
                     _ => continue,
                 }
             };
+            let (meaning, next) = match table.op {
+                jadpo_std::Op::DecimalSqrt => (
+                    "is a number whose square root is taken, and one below `0` has none",
+                    "Pass a value whose type has `min: 0`, building it where a negative one is handled",
+                ),
+                jadpo_std::Op::DecimalPower => (
+                    "says how many times `value` is multiplied by itself, so the result stays exact",
+                    "Pass a value whose type has `min: 0`, building it where a negative one is handled",
+                ),
+                _ => (
+                    "counts from the start",
+                    "Pass a value whose type has `min: 0`, building it where a negative one is handled; count from the end with `keep_last` or `drop_last`",
+                ),
+            };
             self.out.push(
                 Diagnostic::new(&rule::TYPE_ARGUMENT_NEGATIVE, message)
                     .at(span, label)
                     .reason(format!(
-                        "`{written}`'s `{}` counts from the start, so it is never negative, which is proved while compiling: a literal isn't below `0` and a value's type has a `min` of at least `0`; {why}",
+                        "`{written}`'s `{}` {meaning}, so it is never negative, which is proved while compiling: a literal isn't below `0` and a value's type has a `min` of at least `0`; {why}",
                         param.name
                     ))
-                    .next("Pass a value whose type has `min: 0`, building it where a negative one is handled; count from the end with `keep_last` or `drop_last`"),
+                    .next(next),
             );
+        }
+    }
+
+    /// Whether a value is proved above zero, as `decimal.ln`'s must be not
+    /// to fail (area 19, "Numbers"): a literal above `0`, or a value whose
+    /// type has a `min` above `0` somewhere along its chain.
+    pub(super) fn above_zero(&self, value: &Expr) -> bool {
+        if is_literal(value) {
+            return matches!(Const::from_expr(value), Const::Number { value: number, .. } if number.mantissa > 0);
+        }
+        match self.facts.types.get(&node_key(value.syntax())) {
+            Some(ty) if !ty.has_error() && !self.table.is_nullable(ty) => self
+                .table
+                .rule_chain(ty)
+                .iter()
+                .any(|(_, rules)| rules.min.is_some_and(|min| min.mantissa > 0)),
+            _ => false,
         }
     }
 

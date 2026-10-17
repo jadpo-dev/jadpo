@@ -51,13 +51,16 @@ pub enum RuleKey {
     /// Text `text.parse` reads isn't the type it was asked for at all
     /// (area 19, "Every standard type meets one contract").
     Malformed,
+    /// A value a `decimal` operation has no result for, such as `ln` of
+    /// a value at or below 0 (area 19, "Numbers").
+    OutOfRange,
 }
 
 impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 11] = [
+    pub const ALL: [RuleKey; 12] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -69,6 +72,7 @@ impl RuleKey {
         RuleKey::Dst,
         RuleKey::InvalidDay,
         RuleKey::Malformed,
+        RuleKey::OutOfRange,
     ];
 
     /// The key as written: `max`, `min_length`.
@@ -85,6 +89,7 @@ impl RuleKey {
             RuleKey::Dst => "dst",
             RuleKey::InvalidDay => "invalid_day",
             RuleKey::Malformed => "malformed",
+            RuleKey::OutOfRange => "out_of_range",
         }
     }
 

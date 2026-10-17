@@ -107,27 +107,42 @@ pub struct Param {
     /// type's `scale` is, so the places a result keeps are read while
     /// compiling.
     pub written_out: bool,
+    /// A value the operation has a result for only above 0, as `ln`'s:
+    /// proved while compiling as `never_negative` is, a literal above 0
+    /// or a value whose type's `min` is, the call never fails; otherwise
+    /// it may fail with the operation's condition that no option settles.
+    pub above_zero: bool,
 }
 
 /// A condition an operation fails on unless an option settles it (area
 /// 10, question 7): the call's `attempt` maps it by `key`, as a
 /// construction's broken rule is mapped (area 2). It applies while the
 /// option named `option` applies and is left out, or given as anything
-/// but a written value other than `reject`.
+/// but a written value other than `reject`. One with no option is
+/// settled only by proof: `decimal.ln`'s `out_of_range`, by a value
+/// proved above 0 ([`Param::above_zero`], area 19, "Numbers").
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Condition {
     pub key: RuleKey,
-    pub option: &'static str,
+    pub option: Option<&'static str>,
 }
 
 /// Which operation, for an exhaustive match in each executor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Op {
     DecimalAbs,
+    DecimalAtan2,
+    DecimalCos,
     DecimalDivide,
+    DecimalExp,
+    DecimalLn,
     DecimalMax,
     DecimalMin,
+    DecimalPi,
+    DecimalPower,
     DecimalRound,
+    DecimalSin,
+    DecimalSqrt,
     IntegerAbs,
     IntegerDivide,
     IntegerFromDecimal,
@@ -247,6 +262,7 @@ const fn param(name: &'static str, kind: Kind) -> Param {
         ordered: false,
         implicit: false,
         written_out: false,
+        above_zero: false,
     }
 }
 
@@ -324,6 +340,24 @@ const SCALE: Param = Param {
     ..param("scale", INT)
 };
 
+/// The maths on `Decimal` (area 19, "Numbers", question 18): each result
+/// is correctly rounded to `scale:` by `rounding:`, the same on every
+/// target, by its parameters before those two.
+const fn maths(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    rust: &'static str,
+) -> Operation {
+    number(op, "decimal", name, params, DECIMAL, rust)
+}
+
+/// `ln`'s value, at or below 0, unless proved above it.
+const ON_OUT_OF_RANGE: Condition = Condition {
+    key: RuleKey::OutOfRange,
+    option: None,
+};
+
 /// What `temporal`'s calendar operations work on: a date, or a local time
 /// in its zone.
 const DATED: Kind = Kind::OneOf(&[Builtin::CalendarDate, Builtin::ZonedTime]);
@@ -351,11 +385,11 @@ const INVALID_DAY: Param = option("invalid_day", Kind::Enum(InvalidDay::NAME));
 
 const ON_DST: Condition = Condition {
     key: RuleKey::Dst,
-    option: "dst",
+    option: Some("dst"),
 };
 const ON_INVALID_DAY: Condition = Condition {
     key: RuleKey::InvalidDay,
-    option: "invalid_day",
+    option: Some("invalid_day"),
 };
 
 /// A `temporal` operation that never fails, by its parameters and result.
@@ -532,7 +566,58 @@ pub const OPERATIONS: &[Operation] = &[
             "decimal::abs",
         )
     },
+    // The maths (area 19, "Numbers", question 18), each one function in
+    // `jadpo-value`'s `decimal` module: an angle is in radians, `sqrt`'s
+    // value and `power`'s exponent are never negative, which the checker
+    // proves, and `ln` fails with `out_of_range` unless its value is
+    // proved above 0. Overflow past 38 digits is a defect.
+    maths(
+        Op::DecimalAtan2,
+        "atan2",
+        &[
+            param("y", DECIMAL),
+            param("x", DECIMAL),
+            SCALE,
+            param("rounding", ROUNDING),
+        ],
+        "decimal::atan2",
+    ),
+    maths(
+        Op::DecimalCos,
+        "cos",
+        &[
+            param("radians", DECIMAL),
+            SCALE,
+            param("rounding", ROUNDING),
+        ],
+        "decimal::cos",
+    ),
     DIVIDE,
+    Operation {
+        at_least: Some(0),
+        ..maths(
+            Op::DecimalExp,
+            "exp",
+            &[param("value", DECIMAL), SCALE, param("rounding", ROUNDING)],
+            "decimal::exp",
+        )
+    },
+    Operation {
+        conditions: &[ON_OUT_OF_RANGE],
+        ..maths(
+            Op::DecimalLn,
+            "ln",
+            &[
+                Param {
+                    above_zero: true,
+                    ..param("value", DECIMAL)
+                },
+                SCALE,
+                param("rounding", ROUNDING),
+            ],
+            "decimal::ln",
+        )
+    },
     number(
         Op::DecimalMax,
         "decimal",
@@ -549,6 +634,27 @@ pub const OPERATIONS: &[Operation] = &[
         SAME_DECIMAL,
         "decimal::min",
     ),
+    Operation {
+        at_least: Some(3),
+        ..maths(
+            Op::DecimalPi,
+            "pi",
+            &[SCALE, param("rounding", ROUNDING)],
+            "decimal::pi",
+        )
+    },
+    maths(
+        Op::DecimalPower,
+        "power",
+        &[
+            param("value", DECIMAL),
+            Param {
+                never_negative: true,
+                ..param("exponent", INT)
+            },
+        ],
+        "decimal::power",
+    ),
     number(
         Op::DecimalRound,
         "decimal",
@@ -557,6 +663,32 @@ pub const OPERATIONS: &[Operation] = &[
         DECIMAL,
         "decimal::round",
     ),
+    maths(
+        Op::DecimalSin,
+        "sin",
+        &[
+            param("radians", DECIMAL),
+            SCALE,
+            param("rounding", ROUNDING),
+        ],
+        "decimal::sin",
+    ),
+    Operation {
+        at_least: Some(0),
+        ..maths(
+            Op::DecimalSqrt,
+            "sqrt",
+            &[
+                Param {
+                    never_negative: true,
+                    ..param("value", DECIMAL)
+                },
+                SCALE,
+                param("rounding", ROUNDING),
+            ],
+            "decimal::sqrt",
+        )
+    },
     // Overflow on the smallest `Int` is a defect, as it is for `-`.
     Operation {
         at_least: Some(0),
@@ -1283,8 +1415,12 @@ mod tests {
             assert!(operation.params[written..].iter().all(|p| p.implicit));
             for param in operation.params {
                 assert!(
-                    !param.never_negative || param.kind == INT,
-                    "a count is an `Int`"
+                    !param.never_negative || param.kind == INT || param.kind == DECIMAL,
+                    "a count is an `Int`; `sqrt`'s value a `Decimal`"
+                );
+                assert!(
+                    !param.above_zero || param.kind == DECIMAL,
+                    "a value above 0 is a `Decimal`"
                 );
                 assert!(
                     !param.ordered || param.kind == Kind::Function,
@@ -1298,13 +1434,16 @@ mod tests {
         }
         for operation in OPERATIONS {
             for condition in operation.conditions {
-                let settled_by = operation
-                    .params
-                    .iter()
-                    .find(|param| param.name == condition.option);
+                let settled = match condition.option {
+                    Some(option) => operation
+                        .params
+                        .iter()
+                        .any(|param| param.name == option && param.optional),
+                    None => operation.params.iter().any(|param| param.above_zero),
+                };
                 assert!(
-                    settled_by.is_some_and(|param| param.optional),
-                    "{}'s `{}` is settled by an option it takes",
+                    settled,
+                    "{}'s `{}` is settled by an option it takes, or a proof",
                     operation.qualified(),
                     condition.key.word()
                 );

@@ -388,11 +388,22 @@ impl Body<'_> {
         }
         let mut open: Vec<String> = Vec::new();
         for condition in table.conditions {
-            let Some(slot) = table
-                .params
-                .iter()
-                .position(|param| param.name == condition.option)
-            else {
+            // One only a proof settles: `decimal.ln`'s value proved above
+            // 0 (area 19, "Numbers").
+            let Some(option) = condition.option else {
+                let proved = table
+                    .params
+                    .iter()
+                    .position(|param| param.above_zero)
+                    .and_then(given)
+                    .and_then(ast::Arg::expr)
+                    .is_some_and(|value| self.above_zero(&value));
+                if !proved {
+                    open.push(condition.key.word().to_string());
+                }
+                continue;
+            };
+            let Some(slot) = table.params.iter().position(|param| param.name == option) else {
                 continue;
             };
             let param = &table.params[slot];

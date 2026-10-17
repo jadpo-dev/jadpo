@@ -7,14 +7,32 @@
 // an operator can't. `T` is a value built on `Decimal`: `min` and `max`
 // take two of one type and give one of them, keeping its named type.
 // `scale:` is a whole number written out, from 0 to 18.
+//
+// The maths, from `sqrt` to `pi` (question 18), gives each result correctly
+// rounded to `scale` places by `rounding`, by Jadpo's own decimal code, so
+// it is the same on every target. Angles are in radians.
 
 public library decimal {
     /// `value` without its sign, at the same scale.
     function abs(value: Decimal) -> Decimal {}
 
+    /// The angle from the positive x axis to the point (`x`, `y`), in
+    /// radians from -π to π; 0 at the origin.
+    function atan2(y: Decimal, x: Decimal, scale: Int, rounding: Rounding) -> Decimal {}
+
+    /// The cosine of `radians`.
+    function cos(radians: Decimal, scale: Int, rounding: Rounding) -> Decimal {}
+
     /// `dividend` divided by `divisor`, to the dividend's scale, rounded as
     /// `rounding` says. The divisor is never zero.
     function divide(dividend: Number, divisor: Number, rounding: Rounding) -> Decimal {}
+
+    /// e to the power `value`. A result past 38 digits is a defect.
+    function exp(value: Decimal, scale: Int, rounding: Rounding) -> Decimal {}
+
+    /// The natural logarithm of `value`. It fails with `out_of_range` for a
+    /// value at or below 0, unless the value is proved above 0.
+    function ln(value: Decimal, scale: Int, rounding: Rounding) -> Decimal {}
 
     /// The larger of `a` and `b`.
     function max(a: T, b: T) -> T {}
@@ -22,6 +40,19 @@ public library decimal {
     /// The smaller of `a` and `b`.
     function min(a: T, b: T) -> T {}
 
+    /// π.
+    function pi(scale: Int, rounding: Rounding) -> Decimal {}
+
+    /// `value` to the power `exponent`, never negative: exact, as repeated
+    /// `*` gives it. A result past 38 digits is a defect.
+    function power(value: Decimal, exponent: Int) -> Decimal {}
+
     /// `value` with at most `scale` places, rounded as `rounding` says.
     function round(value: Decimal, scale: Int, rounding: Rounding) -> Decimal {}
+
+    /// The sine of `radians`.
+    function sin(radians: Decimal, scale: Int, rounding: Rounding) -> Decimal {}
+
+    /// The square root of `value`, never negative.
+    function sqrt(value: Decimal, scale: Int, rounding: Rounding) -> Decimal {}
 }

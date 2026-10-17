@@ -614,7 +614,7 @@ reference only).
   rounding mode gives the same result interpreted and in the runtime.
   `text.format` shows numbers too; what the pages left open is area 19's
   "Chosen in chunk 5.5d".
-- [ ] **5.5e Decimal maths** `opus · high` (area 19, "Numbers", question
+- [x] **5.5e Decimal maths** `opus · high` (area 19, "Numbers", question
   18): `sqrt`, `power`, `exp`, `ln`, `sin`, `cos`, `atan2` and `pi` on
   `Decimal`, correctly rounded to a named scale by Jadpo's own code. Done
   when each is tested against reference values and gives the same digits
