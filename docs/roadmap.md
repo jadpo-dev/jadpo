@@ -816,9 +816,13 @@ reference only).
   constants followed to their values, temporaries followed through the
   graph, exactly equivalent forms such as `x / 0.01` and `x * 100`) and the
   names kept, so `total_price * 100` and `100 * total_price` are one
-  pattern. Signals match its structure and the words in its names; its
-  hash, names included, is what is ignored and shared, so variants count
-  together while a line with a private name stays unique.
+  pattern. Signals match its structure and the words in its names, and an
+  ignore holds the canonical form's hash, so every variant stays quiet.
+  What is shared is simpler: a plain hash of the snippet's text after
+  `jadpo fmt`, comments removed, so it never depends on the canonicaliser's
+  version and only lines written the same way in many projects reach the
+  threshold; Jadpo HQ canonicalises the texts it receives and merges the
+  variants itself.
   - A finding that disappears after a fix is recorded as accepted, from
     the scan's own note of its last findings (local, untracked).
   - `jadpo suggest ignore S3 "<why>"` writes the hash, the signal and the
