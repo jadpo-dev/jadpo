@@ -41,6 +41,7 @@ mod soundness;
 mod stores;
 mod time;
 mod translation_failures;
+mod translation_jadpo;
 mod translation_sources;
 mod translations;
 mod types;

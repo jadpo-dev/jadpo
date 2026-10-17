@@ -94,6 +94,9 @@ pub struct Subject {
     /// A mistake in its declaration, reported; nothing is checked against
     /// it.
     pub broken: bool,
+    /// For one of Jadpo's own messages: the feature that switches it on.
+    /// Such a subject has no declaration in the project.
+    pub builtin: Option<jadpo_std::jadpo_text::Feature>,
 }
 
 impl Subject {
@@ -370,6 +373,7 @@ fn failure_subject(
         mode: Mode::Plain,
         formats,
         broken,
+        builtin: None,
     })
 }
 
@@ -519,6 +523,7 @@ fn enum_subject(
         mode: Mode::Variants(enum_variants(lookup, canonical)),
         formats: Vec::new(),
         broken: false,
+        builtin: None,
     })
 }
 
@@ -613,6 +618,7 @@ fn fields_subject(
         mode,
         formats: Vec::new(),
         broken,
+        builtin: None,
     })
 }
 

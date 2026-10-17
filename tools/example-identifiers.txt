@@ -343,6 +343,7 @@ due_window
 dune
 duplicate_failure
 duplicate_success
+echo_note
 edit_note
 edit_todo
 edited_at
@@ -653,7 +654,9 @@ note_invalid
 note_matches
 note_refused
 note_rejected
+note_request
 note_role
+note_shown
 note_text
 note_tidings
 note_view
@@ -972,7 +975,6 @@ show_on_menu
 show_placed
 show_sent
 sign_in_email
-sign_in_link
 sign_out_everywhere
 sign_up
 sign_up_draft

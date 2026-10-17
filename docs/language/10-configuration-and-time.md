@@ -46,16 +46,19 @@ rules:
   - syntax.locales_unknown_option
   - semantic.multiple_locale_declarations
   - type.presentation_text_persistence
+  - translation.feature_off
   - translation.field_type
   - translation.field_unused
   - translation.file_missing
   - translation.file_name_invalid
+  - translation.jadpo_missing
   - translation.locale_unsupported
   - translation.locales_required
   - translation.member_duplicate
   - translation.member_unknown
   - translation.message_unknown
   - translation.option_unknown
+  - translation.group_unknown
   - translation.placeholder_unknown
   - translation.review_invalid
   - translation.sources_invalid
@@ -1682,10 +1685,11 @@ header and the same `locales { }`:
 > review, `TextDirection`, the `jadpo translations` commands that read and
 > record the project's own wording (`missing`, `unused`, `update`,
 > `accept`), go to definition and the pseudo-locale. The examples marked
-> `check` run with this checkout's `jadpo`. Coming in chunk 5.4e, and
-> marked where they come: Jadpo's own messages and the root file's owner
-> groups, and `jadpo translations builtin`, `export` and `import`. Email
-> templates that read translations come with email in chunk 7.3 (area 16).
+> `check` run with this checkout's `jadpo`. Built in chunk 5.4e: Jadpo's own
+> messages and the root file's owner groups, and `jadpo translations
+> builtin`. Coming in chunk 5.4f, and marked where it comes: `jadpo
+> translations export` and `import`. Email templates that read translations
+> come with email in chunk 7.3 (area 16).
 
 Text the server writes for people (emails, generated pages, a failure's text
 for client apps) is translated in Jadpo itself. Each message is a type, each
@@ -1699,7 +1703,7 @@ emails live in `emails/`. A message a second domain uses moves to
 `layout.promotion_required` learns messages: another domain's call of a
 message is `visibility.private_cross_domain` meanwhile). The root
 `translations/` holds only the app's wording for text it did not write:
-Jadpo's own and its library packages' (below, chunk 5.4e).
+Jadpo's own (below, built in chunk 5.4e) and its library packages' (Phase 7).
 
 ```text
 domains/shipping/translations/
@@ -1709,7 +1713,9 @@ domains/shipping/translations/
     de_de.jadpo               translations { ... }: the German wording
     sources.jadpo_record      generated: what each translation was made from
 shared/translations/          messages several domains use
-translations/                 the app's wording for Jadpo's and packages' text only (5.4e)
+translations/                 the app's wording for Jadpo's and packages' text only
+    fr_fr.jadpo               translations { jadpo: { ... } }: grouped by whose text it is
+    sources.jadpo_record      generated: what each of those was made from
 ```
 
 ### Messages
@@ -1718,7 +1724,7 @@ A message is a type built on `Message`, a type base beside `Failure`,
 `Event` and `EmailMessage`, one per file in the domain's `translations/`
 folder and named after it (area 1). Its fields are the wording's
 placeholders, and its `///` description reaches translators as context,
-in the export below (5.4e). `Message` is a type base, so its name can't
+in the export below (5.4f). `Message` is a type base, so its name can't
 name a type, and message names are unique across the project, as a
 failure's or an email's are.
 
@@ -2211,7 +2217,7 @@ translations {
 `jadpo check` writes, beside each API's OpenAPI document in
 `build/openapi/`, one file per supported locale named
 `<api>.failures.<locale>.json` (`main.failures.fr_fr.json`), for client apps
-to show; an API none of whose failures is worded gets none. It maps each
+to show. It maps each
 failure code to an object of the same shape, so a client has one way to
 read it: `text` is the wording in `{field}` syntax, a literal brace doubled
 as in a language file, and `formats` lists only the placeholders the
@@ -2219,7 +2225,8 @@ wording writes that the client must format, each as one of `number`,
 `decimal`, `date`, `date_time` or `duration`. A locale in progress is sent
 what the server would write for it, its regional sibling's wording and then
 the default's, so a client has text for every code. The example above
-writes this for `fr_fr`:
+writes this for `fr_fr` (only `slot_taken`'s entry is shown; the file also
+holds Jadpo's own failures, below):
 
 ```json
 {
@@ -2234,27 +2241,65 @@ writes this for `fr_fr`:
 ```
 
 The server's `message` stays fixed English for developers and logs (area 4).
+
 Jadpo's own failures (`invalid_input`, `rate_limited` and the rest) are
-worded with Jadpo's own messages in chunk 5.4e, and join each file then.
+worded with Jadpo's own messages (built in chunk 5.4e, "Jadpo's and
+packages' text" below) and join every API's file: the ones its routes can
+meet, which are the request failures for any API with routes, and the
+failures of signing in for one with a route that needs a caller. The app's
+own failure under the same code is sent in place of Jadpo's. An API with
+routes therefore has a file for every supported locale, whether or not the
+app declares failures of its own.
+
+```jadpo check project=translation-failures file=translations/fr_fr.jadpo
+translations {
+    jadpo: {
+        deadline_exceeded: "Cela a pris trop de temps, et rien n'a été enregistré. Réessayez."
+        idempotency_key_reused: "Cette requête a déjà été envoyée avec d'autres détails. Recommencez."
+        internal_fault: "Un problème est survenu de notre côté. Réessayez bientôt."
+        invalid_input: "Certaines informations envoyées ne sont pas valides. Vérifiez-les et réessayez."
+        invalid_request: "La requête n'a pas pu être lue. Réessayez."
+        method_not_allowed: "Cette adresse ne permet pas cette action."
+        rate_limited: "Trop de requêtes. Patientez un instant, puis réessayez."
+        request_too_large: "Ce qui a été envoyé est trop volumineux. Envoyez moins et réessayez."
+        route_not_found: "Nous n'avons pas trouvé ce que vous cherchiez."
+        unavailable: "Un service dont dépend l'application est indisponible pour le moment. Réessayez bientôt."
+    }
+}
+```
 
 ### Jadpo's and packages' text
 
-> Coming in chunk 5.4e (Jadpo's own messages and the root file) and Phase 7
-> (library packages, 7.1).
+> Built in chunk 5.4e: Jadpo's own messages and the root file. Library
+> packages' text comes with packages (Phase 7, 7.1).
 
 Text Jadpo writes itself (built-in emails and its failures' wording; it
 generates endpoints only, never pages) is Jadpo's own messages. Jadpo ships
 their wording in `en_gb` and `en_us` at first, and releases add locales; an
 app supporting any other locale must word them itself, and until it does
-`jadpo check` fails with one error listing the missing messages (an
-`in_progress:` locale falls back instead). Only the messages of features the
-app has switched on count: rewording one of a feature that is off
-(magic-link wording without `magic_link:`) is an error saying the feature is
-off, and `jadpo translations builtin` lists only the switched-on features'
-messages, with their fields. Every Jadpo message may use `{app_name}`, the
-application's `display_name:`; an app that needs the name translated
-rewords the messages. The magic-link email's messages are listed in area
-16, "Built-in emails".
+`jadpo check` fails with one error for each such locale listing the missing
+messages (`translation.jadpo_missing`; an `in_progress:` locale falls back
+instead). Only the messages of features the app has switched on count:
+rewording one of a feature that is off (magic-link wording without
+`magic_link:`) is an error saying the feature is off
+(`translation.feature_off`), and `jadpo translations builtin` lists only the
+switched-on features' messages, with their fields. Every Jadpo message may
+use `{app_name}`, the application's `display_name:`; an app that needs the
+name translated rewords the messages. The magic-link email's messages are
+listed in area 16, "Built-in emails".
+
+A feature is switched on by what the project has, and a message's name is
+its key in the `jadpo: { }` group (a failure's is its code):
+
+| Feature | On when | Its messages |
+|---|---|---|
+| Requests | an API serves routes | `invalid_request`, `invalid_input`, `route_not_found`, `method_not_allowed`, `request_too_large`, `idempotency_key_reused`, `rate_limited`, `unavailable`, `internal_fault`, `deadline_exceeded` |
+| Signing in | a route needs a caller | `authentication_required`, `invalid_credentials`, `ambiguous_credentials`, `not_permitted`, `authentication_unavailable` |
+| Signing users in | an API accepts a browser session or an API token | `user_disabled` |
+| Signing services in | an API accepts a service key | `service_disabled` |
+| Browser sessions | an API accepts browser sessions and a route that needs a caller writes | `csrf_rejected` |
+| Locales | the app declares `locales { }` | `text_direction`, the wording of `TextDirection` |
+| Magic links | the app signs people in with magic links (area 8, not built) | the messages in area 16, "Built-in emails" |
 
 A library package carries translations as a domain does: a
 `translations/` folder with its message types, its failures' wording and
@@ -2267,16 +2312,25 @@ The root `translations/<locale>.jadpo` holds the app's wording for text it
 did not write, grouped by owner: `jadpo: { }` for Jadpo's own and the
 package's name for a package's. This is the one place a language file
 groups, the group being whose text it is, and each group is checked
-against its owner's message and failure types.
+against its owner's message and failure types. A member outside any group
+is `translation.wording_shape`, and a group that names no owner,
+`translation.group_unknown` (library packages are owners from Phase 7). A
+wording of a Jadpo message is checked as any is: only `{app_name}` and the
+message's own fields may be written, and `text_direction`, which is Jadpo's
+wording of its `TextDirection` enum, has one wording for `left_to_right` and
+one for `right_to_left`.
 
-```jadpo fragment
-// translations/fr_fr.jadpo
+Here the booking app above rewords what Jadpo ships in English and gives
+`text_direction` its wording:
+
+```jadpo check project=translation-failures file=translations/en_gb.jadpo
 translations {
     jadpo: {
-        privacy_export_ready: "Votre export de données est prêt."
-    }
-    postcodes: {
-        invalid_postcode: "Ce code postal n'existe pas."
+        rate_limited: "Steady on: {app_name} is busy. Try again in a minute."
+        text_direction: {
+            left_to_right: "ltr"
+            right_to_left: "rtl"
+        }
     }
 }
 ```
@@ -2288,6 +2342,15 @@ order. The app's supported locales must be complete for every package and
 Jadpo message the app can show, so an English-only package in an app that
 supports French is an error until the root file supplies the French.
 
+```jadpo fragment
+// translations/fr_fr.jadpo
+translations {
+    postcodes: {
+        invalid_postcode: "Ce code postal n'existe pas."
+    }
+}
+```
+
 To show a package failure under a different code, not just different
 words, map it to the app's own failure at the call with `attempt`, as for
 any package failure (area 11, Calling).
@@ -2295,7 +2358,11 @@ any package failure (area 11, Calling).
 A package changing a message's or failure's fields is a breaking change by
 its surface diff, so the app's rewording fails to compile until it is
 updated; a package changing its own wording marks the app's rewording
-stale through `sources.jadpo_record`. A library package is published with
+stale through `sources.jadpo_record`, and the same holds for Jadpo's: the
+root folder's `sources.jadpo_record` records, for each wording the app
+gives outside the default locale, a hash of the default wording it was made
+from, which is the app's own default-locale wording of that message or, if
+the app gives none, what Jadpo ships. A library package is published with
 complete wording in its own default locale and a `///` description on
 every public message.
 
@@ -2401,6 +2468,23 @@ translations {
 }
 ```
 
+Built in chunk 5.4e, each with its own error below:
+
+- **Jadpo's messages**: a supported locale that is not in progress, in
+  which Jadpo ships no wording and the root file words none of the
+  messages of a feature the app has on, is one error for the locale listing
+  what is missing (`translation.jadpo_missing`), pointing at `jadpo
+  translations builtin`; a message of a feature that is off
+  (`translation.feature_off`); a group of the root file that is no owner
+  (`translation.group_unknown`). Everything else about a group's wording is
+  checked as a folder's is: `translation.member_unknown` (with the nearest
+  of Jadpo's messages), `member_duplicate`, `wording_shape`,
+  `wording_invalid`, `placeholder_unknown`, `variant_missing` and
+  `variant_unknown`.
+- **Sources**: the root folder has its own `sources.jadpo_record`, kept by
+  the same commands, with the owner in the member name
+  (`translation fr_fr.jadpo.invalid_input from ... wording ...`).
+
 ### Tooling
 
 Built in chunk 5.4d, with `--json` on every command that prints (area 14):
@@ -2460,10 +2544,36 @@ test "the pseudo-locale accents and lengthens the default wording" {
 }
 ```
 
-Coming in chunk 5.4e: `jadpo translations builtin`, which lists Jadpo's
-own messages with their fields, and `jadpo translations export` and
-`import`, which exchange messages, their descriptions and their wording
-with translation services (Crowdin, Lokalise) as XLIFF, or JSON.
+Built in chunk 5.4e, with `--json`: `jadpo translations builtin` lists
+Jadpo's own messages the app can show, by feature, each with the fields it
+may write, the wording Jadpo ships to translate from, and `needs` and the
+locale for each supported locale that is not in progress and still lacks it.
+It succeeds whatever it lists. `jadpo translations missing` and `update`,
+`accept` take the root folder in with the rest: its gaps are listed under
+`translations/<locale>.jadpo` as `jadpo.<message>`, and an in-progress
+locale falls back to what Jadpo ships.
+
+```text
+Requests
+  invalid_request         needs fr_fr
+    The request couldn't be read. Try again.
+  invalid_input           needs fr_fr
+    Some of the information sent isn't valid. Check it and try again.
+  ...
+
+Locales
+  text_direction
+    left_to_right  ltr
+    right_to_left  rtl
+
+11 messages: 10 need wording, 2 features
+
+next: jadpo check  fails until the application words them
+```
+
+Coming in chunk 5.4f: `jadpo translations export` and `import`, which
+exchange messages, their descriptions and their wording with translation
+services (Crowdin, Lokalise) as XLIFF, or JSON.
 
 The app's own data (product names, articles) is not a translation: an app
 models translated content as ordinary fields. Library packages' translations
@@ -2567,12 +2677,13 @@ are built with packages in Phase 7 (open item 8 of the
   the locale spelled as its `Locale` variant (`fr_fr`), keys sorted as
   every generated JSON file's are (`formats` before `text`). `formats` lists
   the placeholders the wording writes that need a format. An API none of
-  whose failures is worded gets no files. Jadpo's own failures join in 5.4e.
+  whose failures is worded gets no files (from 5.4e Jadpo's own failures
+  join every API's, so an API with routes always has files).
 - **Text direction.** `locale.direction(value)` is an operation of the
   `locale` namespace beside `locale.from_accept_language`, since `locale` is
   a namespace in code; the template variable `{{ locale.direction }}` comes
   with templates (7.3). `TextDirection`'s `ltr` and `rtl` wording is Jadpo's
-  own message (5.4e).
+  own message (built in 5.4e).
 - **The pseudo-locale is `Locale.en_xa`.** The tag Android and Chrome use
   for it, a region ISO 3166 leaves for private use, so it can't clash with a
   real locale; `Locale` has 534 variants, 533 from CLDR and this one. It is
@@ -2591,8 +2702,62 @@ are built with packages in Phase 7 (open item 8 of the
   reachable and by the email's own machinery, so they are never listed.
 - **The commands succeed whatever they list**; they answer a question, and
   `jadpo check` is what fails. `update` and `accept` stop on syntax
-  errors. `builtin`, `export` and `import` are `toolchain.not_built_yet`
-  until 5.4e.
+  errors. `export` and `import` are `toolchain.not_built_yet` until 5.4f.
+
+### Chosen in chunk 5.4e
+
+- **Jadpo's catalogue** is data in `jadpo-std` (`jadpo_text`): each message
+  has a key, a kind (a message, a failure or an enum), the feature that
+  switches it on, the fields it may write besides `{app_name}`, a
+  description for translators, and the wording Jadpo ships. Features and
+  their messages are the table in "Jadpo's and packages' text". Failures
+  are keyed by their code, as an app's are.
+- **What a feature is on for.** The request failures are on for any
+  project with routes. The failures of signing in are on for a route that
+  needs a caller, with `user_disabled`, `service_disabled` and
+  `csrf_rejected` only where the API accepts the methods that can give
+  them (the same rule as the OpenAPI document's responses). An API's file
+  for clients carries the Jadpo failures of its own features; the
+  application needs the union over its APIs. The wording of the
+  idempotency key still running (`conflict`, 409) is the app's: `conflict`
+  is a code an app declares too, so Jadpo does not word it.
+- **Magic links are catalogued, not on.** Their twelve messages are in the
+  catalogue as area 16 lists them, and no project has the feature on until
+  area 8's `sign_in:` is built, so none is listed, required or rewordable.
+  Privacy requests' messages (area 15) join the catalogue with that
+  feature.
+- **`TextDirection`'s wording ships in every locale.** `ltr` and `rtl` are
+  HTML values, the same in every language, so requiring each app locale to
+  word them would only copy them; the root file may still reword
+  `text_direction`, one wording for `left_to_right` and one for
+  `right_to_left`. Nothing reads it until templates exist (7.3).
+- **One error for each locale**, pointing at the locale in `supported:` (or
+  at the missing file's name), whose reason lists every missing message. The
+  default locale is held to the same: a default Jadpo does not ship must
+  word the messages itself. `translation.field_unused` does not apply to
+  Jadpo's messages.
+- **The record's member name carries the owner**: `jadpo.<message>`, as a
+  package's will be `postcodes.<message>`. A wording is compared with the
+  app's own wording in its default locale, or, if the app gives none, what
+  Jadpo ships in that locale; a default locale Jadpo does not ship and the
+  app does not word has nothing to compare with, so its translations are
+  not judged. `jadpo translations missing` takes the root folder in with
+  the others, never for the default locale (the error covers it).
+- **Jadpo's failures in the export.** A wording is the app's root wording
+  for the locale, else what Jadpo ships in it, else the in-progress
+  fallback; an API with routes has a file for every supported locale. An
+  app failure with the same code as one of Jadpo's is sent instead of it.
+- **The root folder** is a place, `Place::RootTranslations`: it holds
+  language files and nothing else (`layout.wrong_folder` for any other
+  declaration), and its `sources.jadpo_record` is a record like a domain's.
+  A root file with no `locales { }` is `translation.locales_required`.
+- **No runtime call.** Jadpo's messages are not in the `TranslationPlan`;
+  the email machinery of chunk 7.3 reads them, and `translations.jadpo` is
+  not a scope code can call.
+- **`builtin`** lists `needs` for the locales whose absence fails the
+  check, the default included, and none for a locale in progress. The
+  summary counts messages, the ones that need wording in the problem colour,
+  and features; its one hint is `jadpo check`.
 
 ## Retention periods
 
@@ -4137,6 +4302,23 @@ translations {
 }
 ```
 
+```jadpo check project=e-tr-wording-missing-failure file=translations/fr_fr.jadpo hidden
+translations {
+    jadpo: {
+        deadline_exceeded: "Cela a pris trop de temps, et rien n'a été enregistré. Réessayez."
+        idempotency_key_reused: "Cette requête a déjà été envoyée avec d'autres détails. Recommencez."
+        internal_fault: "Un problème est survenu de notre côté. Réessayez bientôt."
+        invalid_input: "Certaines informations envoyées ne sont pas valides. Vérifiez-les et réessayez."
+        invalid_request: "La requête n'a pas pu être lue. Réessayez."
+        method_not_allowed: "Cette adresse ne permet pas cette action."
+        rate_limited: "Trop de requêtes. Patientez un instant, puis réessayez."
+        request_too_large: "Ce qui a été envoyé est trop volumineux. Envoyez moins et réessayez."
+        route_not_found: "Nous n'avons pas trouvé ce que vous cherchiez."
+        unavailable: "Un service dont dépend l'application est indisponible pour le moment. Réessayez bientôt."
+    }
+}
+```
+
 ```jadpo check project=e-tr-wording-missing-failure file=domains/booking/translations/fr_fr.jadpo expect=translation.wording_missing
 translations {}
 ```
@@ -4152,7 +4334,7 @@ error: `slot_taken` has no wording in `domains/booking/translations/fr_fr.jadpo`
   rule: translation.wording_missing
   help: docs/language/10-configuration-and-time.html#translation-wording-missing
 
-check failed: 1 error, 10 files
+check failed: 1 error, 11 files
 ```
 
 ### `translation.locales_required`
@@ -4782,6 +4964,186 @@ error: `translations.shipping.order_shiped` is not a message
 check failed: 1 error, 6 files
 ```
 
+### `translation.jadpo_missing`
+
+Jadpo ships its own wording in `en_gb` and `en_us`. An application that supports another locale words the messages of the features it has on itself, in the root `translations/<locale>.jadpo` under `jadpo: { }`, so the users and client apps using it are not shown English; here the notes app has a route and French has no root file.
+
+```jadpo check project=e-tr-jadpo-missing file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=e-tr-jadpo-missing file=api/main.api hidden
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 1
+
+POST /notes
+    authentication: none
+    input: NoteRequest (body)
+    output: NoteShown
+    status: 200
+
+input NoteRequest
+    text: Text { max_length: 200 }
+
+output NoteShown
+    text: Text { max_length: 200 }
+```
+
+```jadpo check project=e-tr-jadpo-missing file=policy.jadpo hidden
+use notes
+
+policy {
+    actions: {
+        notes.echo_note: [Access.public]
+    }
+}
+```
+
+```jadpo check project=e-tr-jadpo-missing file=domains/notes/types/note_text.jadpo hidden
+/// A note's text.
+type NoteText = Text {
+    max_length: 200
+}
+```
+
+```jadpo check project=e-tr-jadpo-missing file=domains/notes/types/note_request.jadpo hidden
+use notes/types { NoteText }
+
+/// A note to show.
+type NoteRequest = Input {
+    text: NoteText
+}
+```
+
+```jadpo check project=e-tr-jadpo-missing file=domains/notes/types/note_shown.jadpo hidden
+use notes/types { NoteText }
+
+/// A note shown.
+type NoteShown = Output {
+    text: NoteText
+}
+```
+
+```jadpo check project=e-tr-jadpo-missing file=domains/notes/actions/echo_note.jadpo hidden
+use notes/types { NoteRequest, NoteShown }
+
+/// Gives a note back.
+action echo_note(input: NoteRequest) -> NoteShown {
+    return NoteShown {
+        text: input.text
+    }
+}
+```
+
+```jadpo check project=e-tr-jadpo-missing file=domains/notes/routes/notes.jadpo expect=translation.jadpo_missing
+use notes/types { NoteRequest, NoteShown }
+use notes/actions { echo_note }
+
+routes Notes {
+    prefix: /notes
+
+    POST / {
+        authentication: RouteAuthentication.none
+        input: NoteRequest
+        output: NoteShown
+        run: echo_note(input)
+    }
+}
+```
+
+```text output
+error: `Locale.fr_fr` is supported but Jadpo's own messages aren't worded in it
+ --> app.jadpo:5:31
+  |
+5 |     supported: [Locale.en_gb, Locale.fr_fr]
+  |                               ^^^^^^^^^^^^ no `translations/fr_fr.jadpo`
+  reason: Jadpo ships its own wording in `en_gb` and `en_us` and no other locale, so users and client apps working in `Locale.fr_fr` would be shown English. An application words the messages of the features it has on itself, in the `jadpo: { }` group of the root `translations/fr_fr.jadpo`. Still to word: `invalid_request`, `invalid_input`, `route_not_found`, `method_not_allowed`, `request_too_large`, `idempotency_key_reused`, `rate_limited`, `unavailable`, `internal_fault` and `deadline_exceeded`.
+  next: Run `jadpo translations builtin` to list them with their fields, then word each under `jadpo: { }` in `translations/fr_fr.jadpo` (agent)
+  rule: translation.jadpo_missing
+  help: docs/language/10-configuration-and-time.html#translation-jadpo-missing
+
+check failed: 1 error, 7 files
+```
+
+### `translation.feature_off`
+
+Jadpo writes the messages of a feature only for an application that has it, so wording one of a feature that is off changes nothing and would hide a mistake. Here the application signs no one in with magic links.
+
+```jadpo check project=e-tr-feature-off file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-feature-off file=translations/en_gb.jadpo expect=translation.feature_off
+translations {
+    jadpo: {
+        magic_link_email: "Your link to sign in"
+    }
+}
+```
+
+```text output
+error: `magic_link_email` is a message of a feature this application has off
+ --> translations/en_gb.jadpo:3:9
+  |
+3 |         magic_link_email: "Your link to sign in"
+  |         ^^^^^^^^^^^^^^^^ a feature this application has off
+  reason: `magic_link_email` is part of Jadpo's magic links text, which Jadpo writes when the application signs users in with magic links. This application doesn't, so wording it changes nothing and would hide a mistake.
+  next: Remove `magic_link_email` from `translations/en_gb.jadpo`, or switch the feature on (agent)
+  rule: translation.feature_off
+  help: docs/language/10-configuration-and-time.html#translation-feature-off
+
+check failed: 1 error, 2 files
+```
+
+### `translation.group_unknown`
+
+The root file groups its wording by whose text it is: `jadpo` for Jadpo's own messages, or a library package's name for that package's. A group that names neither words nothing.
+
+```jadpo check project=e-tr-group-unknown file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-group-unknown file=translations/en_gb.jadpo expect=translation.group_unknown
+translations {
+    jadp: {
+        text_direction: {
+            left_to_right: "ltr"
+            right_to_left: "rtl"
+        }
+    }
+}
+```
+
+```text output
+error: `jadp` isn't a group Jadpo reads
+ --> translations/en_gb.jadpo:2:5
+  |
+2 |     jadp: {
+  |     ^^^^ no such group
+  reason: The root file words the text the application did not write, grouped by whose it is: `jadpo` for Jadpo's own messages, or the name of a library package the application uses for that package's (library packages come with Phase 7). Did you mean `jadpo`?
+  next: Rename the group to `jadpo` (agent)
+  rule: translation.group_unknown
+  help: docs/language/10-configuration-and-time.html#translation-group-unknown
+
+check failed: 1 error, 2 files
+```
+
 ### `translation.stale`
 
 A translation is made from the default locale's wording, and `jadpo translations update` records which. When the default wording changes the translation may no longer say the same thing, so it is an error until it is translated again; a locale listed in `in_progress:` is listed by `jadpo translations missing` instead.
@@ -5025,10 +5387,10 @@ generated `translations.<domain>.<message>` calls, enum wording, email
 subjects and `in_progress:` locales (see Translations as messages). Chunk
 5.4d built failures' client text exported per locale, stale translations
 and review, `locale.direction`, the commands `missing`, `unused`, `update`
-and `accept`, go to definition and the pseudo-locale. Not built yet (chunk
-5.4e): Jadpo's own messages and the root file's owner groups, and
-`jadpo translations builtin`, `export` and `import`. Library packages'
-translations come with packages in Phase 7.
+and `accept`, go to definition and the pseudo-locale. Chunk 5.4e built
+Jadpo's own messages, the root file's owner groups and `jadpo translations
+builtin`. Not built yet (chunk 5.4f): `jadpo translations export` and
+`import`. Library packages' translations come with packages in Phase 7.
 
 ### Consistency with the rest of the language
 
@@ -5281,7 +5643,8 @@ translations come with packages in Phase 7.
 | Chosen in 5.4d: failures | The member is the failure's code; required only for a failure some route's `fails` lists, in every supported locale not in progress; client fields of text, `Uuid`, `Email`, `Url` or `IpAddress` are written as they are, numbers, dates, times and durations are formatted by the client (`number`, `decimal`, `date`, `date_time`, `duration`), anything else is `translation.field_type`; `jadpo check` writes `build/openapi/<api>.failures.<locale>.json` with the locale spelled as its variant, keys sorted, and no file for an API with nothing worded | 2026-10-17 |
 | Chosen in 5.4d: text direction | `locale.direction(value)`, an operation of the `locale` namespace giving a `TextDirection`; the template variable comes with 7.3 | 2026-10-17 |
 | Chosen in 5.4d: the pseudo-locale | `Locale.en_xa`, listed in `supported:` like any locale, no language file, never asked for wording; writes the default locale's wording with its letters accented, about two fifths longer and in brackets; values written into it are not accented; failures' client text is exported in it too | 2026-10-17 |
-| Chosen in 5.4d: the commands | `jadpo translations missing [locale]`, `unused`, `update` and `accept <locale>`, each with `--json`; `missing` groups by language file and succeeds whatever it lists; `builtin`, `export` and `import` are `toolchain.not_built_yet` until 5.4e; go to definition lands on the message's type and each language file's member | 2026-10-17 |
+| Chosen in 5.4d: the commands | `jadpo translations missing [locale]`, `unused`, `update` and `accept <locale>`, each with `--json`; `missing` groups by language file and succeeds whatever it lists; go to definition lands on the message's type and each language file's member | 2026-10-17 |
+| Chosen in 5.4e: Jadpo's text | Jadpo's messages are a catalogue in `jadpo-std` gated by feature; the root file's `jadpo: { }` is checked against it; a supported locale Jadpo does not ship is one `translation.jadpo_missing` per locale; `translation.feature_off` and `translation.group_unknown`; the root folder's `sources.jadpo_record` names members `jadpo.<message>`; Jadpo's failures join every API's export; `TextDirection`'s wording ships in every locale; `jadpo translations builtin`; `export` and `import` move to 5.4f | 2026-10-17 |
 | Name of the locale call (Richard, 2026-10-16) | `locale.from_accept_language(header)`, giving a `Locale`, in a new `locale` standard-library namespace beside `temporal`. `header` is `Text?`, so a header read with `header: "Accept-Language"` and `optional: true` passes straight in; the call never fails and picks only from `locales { supported: }`, falling back to `default:`. It is a pure function of the header and the application's locales, so the interpreter and every compiled target agree | 2026-10-16 |
 | Matching an `Accept-Language` header (chosen in chunk 5.3c) | RFC 9110: split at commas, a weight `;q=` of 0 to 1 with up to three decimals, a weight of 0 excluded, `*` ignored, an entry that does not parse skipped (a range is read in any case, `_` as `-`). Tags are taken by descending weight then header order, and the first that matches wins: an exact supported locale, else a supported locale of the same language, the one CLDR likely subtags give for the language (`ICU4X` `LocaleExpander`, extended data) before any other, else the first listed in `supported:`. Only the language is compared when no supported locale has the exact tag, never the script (`zh-TW` with no supported `zh_tw` is answered by whichever supported `zh` locale the rule picks) | 2026-10-16 |
 | What the call is checked against (chosen in chunk 5.3c) | A standard-library call: `header` is a `Text?` parameter the call must pass (the operation table marks it `nullable`, not `optional`), taking a `Text`, a type built on `Text`, `none`, or any of those that may be `none`. With no `locales { }` in a project it is `type.temporal_locales_required` with its reason worded for this call (files on their own have none to require). In a query it is `query.value_unsupported`, as every call is | 2026-10-16 |

@@ -40,6 +40,7 @@ const ROUTE: &str = "use planning/types { FindRequest, Found }\nuse planning/act
 
 const EN: &str =
     "translations {\n    todo_missing: \"No todo {reference}; it was due {due}.\"\n}\n";
+const JADPO_FR: &str = "translations {\n    jadpo: {\n        deadline_exceeded: \"fr: deadline_exceeded.\"\n        idempotency_key_reused: \"fr: idempotency_key_reused.\"\n        internal_fault: \"fr: internal_fault.\"\n        invalid_input: \"fr: invalid_input.\"\n        invalid_request: \"fr: invalid_request.\"\n        method_not_allowed: \"fr: method_not_allowed.\"\n        rate_limited: \"fr: rate_limited.\"\n        request_too_large: \"fr: request_too_large.\"\n        route_not_found: \"fr: route_not_found.\"\n        unavailable: \"fr: unavailable.\"\n    }\n}\n";
 const FR: &str =
     "translations {\n    todo_missing: \"Aucune tâche {reference}, attendue {due}.\"\n}\n";
 
@@ -52,6 +53,7 @@ fn project(replace: &[(&str, &str)]) -> Vec<String> {
         ("domains/planning/routes/todos.jadpo", ROUTE),
         ("domains/planning/translations/en_gb.jadpo", EN),
         ("domains/planning/translations/fr_fr.jadpo", FR),
+        ("translations/fr_fr.jadpo", JADPO_FR),
     ]
     .into_iter()
     .chain(TYPES.iter().copied())
@@ -205,6 +207,7 @@ fn an_unfinished_locale_needs_no_wording_for_a_failure() {
         project(&[
             ("app.jadpo", app),
             ("domains/planning/translations/fr_fr.jadpo", ""),
+            ("translations/fr_fr.jadpo", ""),
         ]),
         CLEAN
     );
@@ -217,6 +220,7 @@ fn a_project_without_locales_words_no_failures() {
             ("app.jadpo", "application {}\n"),
             ("domains/planning/translations/en_gb.jadpo", ""),
             ("domains/planning/translations/fr_fr.jadpo", ""),
+            ("translations/fr_fr.jadpo", ""),
         ]),
         CLEAN
     );
@@ -227,6 +231,7 @@ fn a_project_without_locales_words_no_failures() {
 fn notes(en: &str, fr: &str) -> Vec<String> {
     let files = [
         ("app.jadpo", APP),
+        ("translations/fr_fr.jadpo", JADPO_FR),
         (
             "domains/notes/types/note_text.jadpo",
             "/// A note's text.\ntype NoteText = Text {\n    max_length: 200\n}\n",

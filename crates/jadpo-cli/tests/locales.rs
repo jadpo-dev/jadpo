@@ -65,6 +65,14 @@ routes Placed {
 }
 "#,
     ),
+    (
+        "translations/fr_fr.jadpo",
+        "translations {\n    jadpo: {\n        deadline_exceeded: \"fr: deadline_exceeded.\"\n        idempotency_key_reused: \"fr: idempotency_key_reused.\"\n        internal_fault: \"fr: internal_fault.\"\n        invalid_input: \"fr: invalid_input.\"\n        invalid_request: \"fr: invalid_request.\"\n        method_not_allowed: \"fr: method_not_allowed.\"\n        rate_limited: \"fr: rate_limited.\"\n        request_too_large: \"fr: request_too_large.\"\n        route_not_found: \"fr: route_not_found.\"\n        unavailable: \"fr: unavailable.\"\n    }\n}\n",
+    ),
+    (
+        "translations/ar_eg.jadpo",
+        "translations {\n    jadpo: {\n        deadline_exceeded: \"ar: deadline_exceeded.\"\n        idempotency_key_reused: \"ar: idempotency_key_reused.\"\n        internal_fault: \"ar: internal_fault.\"\n        invalid_input: \"ar: invalid_input.\"\n        invalid_request: \"ar: invalid_request.\"\n        method_not_allowed: \"ar: method_not_allowed.\"\n        rate_limited: \"ar: rate_limited.\"\n        request_too_large: \"ar: request_too_large.\"\n        route_not_found: \"ar: route_not_found.\"\n        unavailable: \"ar: unavailable.\"\n    }\n}\n",
+    ),
 ];
 
 fn project() -> (tempdir::Dir, std::path::PathBuf) {

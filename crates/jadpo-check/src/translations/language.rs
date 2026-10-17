@@ -65,6 +65,15 @@ pub struct Member {
     pub body: Body,
 }
 
+/// One owner's group in the root language file: `jadpo: { }` holds Jadpo's
+/// own messages (area 10, "Jadpo's and packages' text").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Group {
+    pub name: String,
+    pub key_span: Span,
+    pub members: Vec<Member>,
+}
+
 /// A language file, read.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LanguageFile {
@@ -77,11 +86,27 @@ pub struct LanguageFile {
     /// The `translations` keyword.
     pub keyword: Span,
     pub members: Vec<Member>,
+    /// For the root file: the owners' groups, where a folder's file has
+    /// members.
+    pub groups: Vec<Group>,
+    /// Whether this is the root `translations/` folder's file.
+    pub root: bool,
     /// What is wrong with the file by itself.
     pub problems: Vec<Diagnostic>,
 }
 
 impl LanguageFile {
+    pub fn member(&self, name: &str) -> Option<&Member> {
+        self.members.iter().find(|member| member.name == name)
+    }
+
+    /// The group an owner's wording is in.
+    pub fn group(&self, name: &str) -> Option<&Group> {
+        self.groups.iter().find(|group| group.name == name)
+    }
+}
+
+impl Group {
     pub fn member(&self, name: &str) -> Option<&Member> {
         self.members.iter().find(|member| member.name == name)
     }
@@ -126,7 +151,9 @@ pub fn language_file(db: &dyn Db, project: Project, file: File) -> Option<Langua
     let Some(ast::Decl::SingletonDecl(decl)) = tree::decl_at(&source, item.index) else {
         return None;
     };
-    let tag = location(db, project, file).stem.clone();
+    let place = location(db, project, file);
+    let root = place.place == jadpo_db::Place::RootTranslations;
+    let tag = place.stem.clone();
     let keyword = decl.keyword().map_or_else(
         || node_span(&path, decl.syntax()),
         |token| {
@@ -142,6 +169,8 @@ pub fn language_file(db: &dyn Db, project: Project, file: File) -> Option<Langua
         tag,
         keyword,
         members: Vec::new(),
+        groups: Vec::new(),
+        root,
         problems: Vec::new(),
         path,
     };
@@ -150,6 +179,7 @@ pub fn language_file(db: &dyn Db, project: Project, file: File) -> Option<Langua
     };
     for item in list.member_items() {
         match item {
+            MemberItem::Member(member) if out.root => read_group(&mut out, &member),
             MemberItem::Member(member) => read_member(&mut out, &member),
             MemberItem::BareMember(bare) => {
                 let span = node_span(&out.path, bare.syntax());
@@ -185,6 +215,72 @@ fn shape(span: &Span, label: &str, reason: &str, next: &str) -> Diagnostic {
     .next(next)
 }
 
+/// A member of the root file: an owner's group of wordings.
+fn read_group(out: &mut LanguageFile, member: &ast::Member) {
+    let path = out.path.clone();
+    let Some(key) = member.member_key() else {
+        return;
+    };
+    let key_span = node_span(&path, key.syntax());
+    let mut names = key.names();
+    let (Some(first), None) = (names.next(), names.next()) else {
+        out.problems.push(shape(
+            &key_span,
+            "a dotted name",
+            "The root file groups by whose text it is: `jadpo: { }` for Jadpo's own messages, and a library package's name for a package's. A group is one name.",
+            "Write the group's name alone",
+        ));
+        return;
+    };
+    let Some(name) = tree::name_text(&first) else {
+        return;
+    };
+    let key_span = node_span(&path, first.syntax());
+    let Some(block) = member.block().filter(|_| member.value().is_none()) else {
+        out.problems.push(shape(
+            &key_span,
+            "not in a group",
+            "The root file words text the app did not write, and groups it by whose text it is: `jadpo: { name: \"...\" }` for Jadpo's own messages, and a library package's name for a package's.",
+            &format!("Move `{name}` into `jadpo: {{ }}`, or the package's group"),
+        ));
+        return;
+    };
+    let mut scratch = LanguageFile {
+        path: path.clone(),
+        tag: out.tag.clone(),
+        locale: out.locale,
+        keyword: out.keyword.clone(),
+        members: Vec::new(),
+        groups: Vec::new(),
+        root: false,
+        problems: Vec::new(),
+    };
+    for item in block.member_items() {
+        match item {
+            MemberItem::Member(inner) => read_member(&mut scratch, &inner),
+            MemberItem::BareMember(bare) => scratch.problems.push(shape(
+                &node_span(&path, bare.syntax()),
+                "no wording",
+                "A member of a group is a name and its wording, `notice_text: \"...\"`.",
+                "Write the wording after a colon",
+            )),
+            MemberItem::Elision(_) => {}
+            other => scratch.problems.push(shape(
+                &node_span(&path, other.syntax()),
+                "not a member",
+                "A group holds one member for each message it words, and nothing else.",
+                "Remove it",
+            )),
+        }
+    }
+    out.problems.append(&mut scratch.problems);
+    out.groups.push(Group {
+        name,
+        key_span,
+        members: scratch.members,
+    });
+}
+
 fn read_member(out: &mut LanguageFile, member: &ast::Member) {
     let path = out.path.clone();
     let Some(key) = member.member_key() else {
@@ -196,7 +292,7 @@ fn read_member(out: &mut LanguageFile, member: &ast::Member) {
         out.problems.push(shape(
             &key_span,
             "a dotted name",
-            "A language file has no grouping: the domain is the group, so a member is one name. (The root file groups by whose text it is, which comes with Jadpo's own messages.)",
+            "A language file has no grouping: the domain is the group, so a member is one name. (Only the root `translations/` folder's files group, by whose text it is.)",
             "Write the member's name alone",
         ));
         return;
