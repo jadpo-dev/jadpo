@@ -518,14 +518,20 @@ reference only).
   `accept`; go to definition from a call to its message type and its
   wording; and the pseudo-locale `Locale.en_xa`. Email templates follow in
   7.3, library packages' translations in 7.1.
-- [ ] **5.4e Translations: Jadpo's text and exchange** `sonnet · high`
-  (area 10, "Jadpo's and packages' text" and "Tooling"), after 5.4d: Jadpo's
+- [ ] **5.4e Translations: Jadpo's text** `sonnet · high` (area 10,
+  "Jadpo's and packages' text" and "Tooling"), after 5.4d. Split on
+  2026-10-17 because the whole is more than one session: this half is
+  Jadpo's own words, `5.4f` the exchange with translation services. Jadpo's
   own messages, shipped in `en_gb` and `en_us`, and their failures' wording
   in the failures export and `TextDirection`'s `ltr` and `rtl`; the root
   file's owner groups (`translations/<locale>.jadpo`, `jadpo: { }`), kept in
-  `translations/sources.jadpo_record` and listed by `missing`; `jadpo
-  translations builtin`; and `jadpo translations export` and `import` as
-  XLIFF or JSON, which also write the record.
+  `translations/sources.jadpo_record` and listed by `missing`; and `jadpo
+  translations builtin`.
+- [ ] **5.4f Translations: the exchange** `sonnet · high` (area 10,
+  "Tooling"), after 5.4e: `jadpo translations export` and `import`, which
+  exchange messages, their descriptions and their wording with translation
+  services (Crowdin, Lokalise) as XLIFF or JSON, and which also write the
+  record.
 - [ ] **5.5a The standard type contract** `opus · high` (area 19, "Every
   standard type meets one contract", questions 1 to 5): each standard type
   a stub declaration in `crates/jadpo-check/std/` plus a data entry,
