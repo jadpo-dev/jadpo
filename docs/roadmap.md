@@ -532,11 +532,21 @@ reference only).
   generating construction, `text.parse`, `text.format`, `text.from`, JSON,
   storage, `==` and order; named validators; one test harness for every
   type; `temporal.format` moved under `text.format` with its habit error;
-  `type.standard_exists` on app code, declinable through 5.4b; the clash
-  check for a release that adds a standard type, with `jadpo fix`. Done
+  `type.standard_exists` on app code, declinable through 5.4b. Done
   when the 13 built standard types run through the contract and the
   harness, area 10's formatting examples use `text.format`, and
-  `type.standard_exists` has a checked example with real output.
+  `type.standard_exists` has a checked example with real output. Split on
+  2026-10-17 because the whole is more than one session: the clash check
+  and `jadpo fix` are 5.5a2.
+- [ ] **5.5a2 Standard type clashes and `jadpo fix`** `opus · high` (area
+  19, question 4), split from 5.5a: each data entry's release; the first
+  `check` after an upgrade reporting each app type that clashes with a
+  standard type the release added, naming the type and the release, with
+  the swap (as `type.standard_exists`'s) and the rename (`jadpo rename`)
+  as its fixes; `jadpo fix` applying the chosen one through the editor's
+  quick-fix code, designed with the skills in `.agents/skills/` first;
+  release notes listing added names. Done when a clash has a checked
+  example with real output and `jadpo fix` has its CLI tests.
 - [ ] **5.5b Lists** `opus · high` (area 19, "Lists", questions 6, 7 and
   11): `collection.` renamed `list.` everywhere, with its habit error; the
   21 new list operations that need no language change; `never_negative`,
