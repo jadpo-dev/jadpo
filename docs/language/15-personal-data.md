@@ -245,7 +245,8 @@ is listed in the report as "kept until erased".
 
 - **Marked fields nothing reads.** A personal field that no query, output or
   action reads is a warning: you are holding data you do not use (data
-  minimisation, Article 5).
+  minimisation, Article 5). *Amended 2026-10-17 (Richard, area 1, question 11):* a declinable error,
+  since a field kept for a legal reason may be read only by export.
 - **Erasure is complete.** Every reference into a person's tree has an
   erasure outcome; `Erasure.anonymised` and `Erasure.retained` have the
   nullable fields and retention they need.

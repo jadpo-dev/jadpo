@@ -113,6 +113,9 @@ needs a user's variant later puts it in the event it emits.
   `false`, or every variant.
 - A flag past its `expires:` date is a warning naming its owner. Extending it
   means editing the date, so keeping a flag is a reviewed choice.
+  *Amended 2026-10-17 (Richard, area 1, question 11):* an error, not declinable, judged at today's
+  date by `check` and at the commit's date by `jadpo build`, so rebuilding
+  a merged revision is never blocked by a date passing.
 - Whether a flag has sat at 100% or 0% is runtime state the compiler cannot
   see, so `jadpo flags list` marks those flags "ready to remove".
 
@@ -431,7 +434,8 @@ emit WelcomeEmail {
   part, image-only content, broken HTML, links that are not absolute HTTPS,
   link shorteners, an all-capitals subject, a missing unsubscribe header on
   bulk mail, more than 102 KB (Gmail clips it). `jadpo check` warns about
-  templates that would fail. When SpamAssassin is installed its open rules
+  templates that would fail (a declinable error from chunk 5.4b, area 1's
+  question 11). When SpamAssassin is installed its open rules
   are added. `jadpo email check-domain` compares the sending domain's SPF,
   DKIM and DMARC records with what the mail connection needs. What it does
   not do, said on every screen that shows a score: it cannot predict whether
@@ -595,7 +599,8 @@ monitoring thresholds come after the first build (roadmap).
    (`rate_limits: { store: cache }`); without one they are kept in memory
    with a fixed allowance (`memory: 16MB` by default, oldest counters
    dropped first), and `jadpo check` warns that limits are then per
-   instance, multiplied by the number running, and recommends Redis. On
+   instance, multiplied by the number running, and recommends Redis (a
+   declinable error from chunk 5.4b, area 1's question 11). On
    Workers there is no lasting memory, so a Redis connection (or
    Cloudflare's rate-limiting binding as a driver) is required. *Decided 2026-10-13:* as revised.
 7. **Are files a `File` field with a file store, direct uploads through a

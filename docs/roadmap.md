@@ -482,7 +482,9 @@ reference only).
   `library.similar_exists` and `constant.similar_exists` turned into
   declinable errors, each error's checked example rewritten; and the
   time-triggered rule (judged at today's date by `check`, at the commit's
-  date by `jadpo build`) for expired flags when they are built.
+  date by `jadpo build`) for expired flags when they are built. `warning`
+  leaves area 14's error shape and the CLI design language's headline
+  words.
 - [ ] **5.5 Standard library: the build** `opus · high`: the operations 5.4
   decided, in the shared operation table, the interpreter and the runtime,
   each with its page examples as tests. Split here before starting if 5.4's

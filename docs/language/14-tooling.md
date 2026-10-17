@@ -261,7 +261,8 @@ and the similar-helper warning are built (chunk 1.7); the rest are not yet.
 - **Similar-helper warning**: when a new helper looks like an existing one,
   `jadpo check` warns `library.similar_exists` and names it; two constants
   of the same type holding the same value warn `constant.similar_exists`
-  (area 3, 2026-10-16, built in chunk 5.3e).
+  (area 3, 2026-10-16, built in chunk 5.3e). *Amended 2026-10-17 (Richard, area 1, question 11):* no warning
+  severity; both become declinable errors in chunk 5.4b.
 - **Failure catalogue** (`build/catalogue/failures.md`): every failure with
   its code, kind, status and client fields.
 - **Schema and query reports** (`build/report/`): every table, column and
