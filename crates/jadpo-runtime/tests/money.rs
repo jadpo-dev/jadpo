@@ -2,9 +2,11 @@
 //! operations give the page's values as compiled code calls them
 //! (`jadpo_value::run`, which the interpreter calls too), and `split` and
 //! `allocate` never lose a minor unit, over many totals, parts and ratios,
-//! in currencies with 0, 2 and 3 places (`JPY`, `GBP`, `BHD`). The
-//! interpreter's half is crates/jadpo-interp/tests/money.rs and the page's
-//! `project=money` tests.
+//! in currencies with 0, 2 and 3 places (`JPY`, `GBP`, `BHD`). `convert`
+//! (chunk 5.5h2) applies an `ExchangeRate` read as a provider sends it,
+//! only from its own currency. The interpreter's half is
+//! crates/jadpo-interp/tests/money.rs and the page's `project=money` and
+//! `project=money-rates` tests.
 
 use jadpo_std::{Op, RuleKey};
 use jadpo_value::{Fault, Money, Value, run};
@@ -107,6 +109,54 @@ fn the_money_operations_give_the_page_s_values() {
             .map(|share| share.minor)
             .collect::<Vec<_>>(),
         [334, 333, 333]
+    );
+}
+
+/// An exchange rate from its canonical text, as `text.parse` reads one.
+fn rate(text: &str) -> Value {
+    jadpo_value::standard::parse(text, "ExchangeRate")
+        .unwrap_or_else(|fault| panic!("{text}: {fault:?}"))
+}
+
+#[test]
+fn a_rate_converts_from_its_own_currency_only() {
+    let cake = amount("GBP", 1050);
+    let pounds_to_euros = rate("GBP/EUR 1.17 2026-10-18T09:00:00Z");
+    // €12.285, half to even.
+    assert_eq!(
+        ok(Op::MoneyConvert, &[cake.clone(), pounds_to_euros.clone()]),
+        amount("EUR", 1228)
+    );
+    assert_eq!(
+        ok(
+            Op::MoneyConvert,
+            &[cake.clone(), rate("gbp/jpy 190.5 2026-10-18T09:00:00Z")]
+        ),
+        amount("JPY", 2000)
+    );
+    assert_eq!(
+        call(
+            Op::MoneyConvert,
+            &[cake, rate("EUR/GBP 0.85 2026-10-18T09:00:00Z")]
+        ),
+        Err(Fault::Broke(RuleKey::CurrencyMismatch)),
+        "a rate the wrong way round is never applied"
+    );
+    // A rate of 1 between currencies with the same places keeps every
+    // minor unit, over many totals; and its JSON reads back.
+    let even = rate("GBP/EUR 1 2026-10-18T09:00:00Z");
+    let mut cases = Cases(0x5eed_2a7e);
+    for _ in 0..500 {
+        let total = cases.total();
+        let Value::Money(converted) = ok(Op::MoneyConvert, &[amount("GBP", total), even.clone()])
+        else {
+            panic!("an amount");
+        };
+        assert_eq!((converted.code(), converted.minor), ("EUR", total));
+    }
+    assert_eq!(
+        jadpo_value::standard::from(&pounds_to_euros),
+        Ok(Value::text("GBP/EUR 1.17 2026-10-18T09:00:00Z"))
     );
 }
 

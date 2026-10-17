@@ -457,6 +457,10 @@ impl Body<'_> {
                 )),
             );
         }
+        // A rate the wrong way round, where both currencies are known.
+        if table.op == jadpo_std::Op::MoneyConvert {
+            self.inverted_rate(call, written);
+        }
         let mut open: Vec<String> = Vec::new();
         for condition in table.conditions {
             // One only a proof settles: `decimal.ln`'s value proved above

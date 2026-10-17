@@ -107,6 +107,8 @@ pub fn translate(
 /// needed.
 struct Writer<'a> {
     locale: icu_locale::Locale,
+    /// The locale's BCP 47 tag, which the money formatter is given.
+    tag: String,
     args: &'a [(&'a str, ParamKind, &'a Value)],
     numbers: Option<DecimalFormatter>,
     cardinal: Option<PluralRules>,
@@ -123,6 +125,7 @@ impl<'a> Writer<'a> {
     fn new(tag: &str, args: &'a [(&'a str, ParamKind, &'a Value)]) -> Result<Writer<'a>, Fault> {
         Ok(Writer {
             locale: locale_of(tag)?,
+            tag: tag.to_string(),
             args,
             numbers: None,
             cardinal: None,
@@ -140,19 +143,18 @@ impl<'a> Writer<'a> {
             match piece {
                 Piece::Text(text) if self.pseudo => out.push_str(&super::pseudo::accent(text)),
                 Piece::Text(text) => out.push_str(text),
+                // An amount of money, as `text.format` shows it in the
+                // locale (area 19).
+                Piece::Currency(name) => match self.find(name, payload)? {
+                    Value::Money(money) => out.push_str(&super::money::format(
+                        *money,
+                        &self.tag,
+                        &crate::standard::MoneyOptions::default(),
+                    )?),
+                    _ => return Err(Fault::Shape),
+                },
                 Piece::Field(name) => {
-                    let found = self
-                        .args
-                        .iter()
-                        .find(|(seen, kind, _)| seen == name && kind.is_placeholder())
-                        .map(|(_, _, value)| *value)
-                        .or_else(|| {
-                            payload?
-                                .iter()
-                                .find(|(field, _)| &**field == name)
-                                .map(|(_, value)| value)
-                        })
-                        .ok_or(Fault::Shape)?;
+                    let found = self.find(name, payload)?;
                     match found {
                         Value::Text(text) => out.push_str(text),
                         Value::Int(_) | Value::Decimal(_) => {
@@ -165,6 +167,25 @@ impl<'a> Writer<'a> {
             }
         }
         Ok(())
+    }
+
+    /// The value a placeholder writes: the call's argument of that name,
+    /// or the enum value's payload field.
+    fn find<'v>(&self, name: &str, payload: Payload<'v>) -> Result<&'v Value, Fault>
+    where
+        'a: 'v,
+    {
+        self.args
+            .iter()
+            .find(|(seen, kind, _)| *seen == name && kind.is_placeholder())
+            .map(|(_, _, value)| *value)
+            .or_else(|| {
+                payload?
+                    .iter()
+                    .find(|(field, _)| &**field == name)
+                    .map(|(_, value)| value)
+            })
+            .ok_or(Fault::Shape)
     }
 
     fn number(&mut self, number: &Fixed) -> Result<String, Fault> {
@@ -307,6 +328,31 @@ mod tests {
         assert_eq!(
             say(&e, "en_gb", &p, vec![Value::text("Ana"), Value::Int(1234)]),
             "Hi Ana, you have 1,234 things; {done}."
+        );
+    }
+
+    #[test]
+    fn an_amount_of_money_is_written_as_text_format_shows_it() {
+        let e = entry(
+            &[("price", ParamKind::Money)],
+            vec![
+                (
+                    "en_gb",
+                    Wording::Plain(template("Total: {price, number, currency}")),
+                ),
+                (
+                    "de_de",
+                    Wording::Plain(template("Summe: {price, number, currency}")),
+                ),
+            ],
+        );
+        let p = plan("en_gb", &["en_gb", "de_de"], &[]);
+        let gbp = jadpo_std::money::ordinal_of_code("GBP").unwrap_or(0);
+        let price = || crate::money::value(gbp, 123450);
+        assert_eq!(say(&e, "en_gb", &p, vec![price()]), "Total: £1,234.50");
+        assert_eq!(
+            say(&e, "de_de", &p, vec![price()]),
+            "Summe: 1.234,50\u{a0}£"
         );
     }
 

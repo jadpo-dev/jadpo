@@ -192,6 +192,46 @@ fn shared_out(total: Money, ratios: &[i64]) -> Result<Value, Fault> {
     Ok(Value::list(items))
 }
 
+/// `money.convert(value, rate)`: `value` in the rate's `to` currency,
+/// given in its `from` one: the major units times the rate, rounded half
+/// to even to the `to` currency's minor unit. An amount in any other
+/// currency fails `currency_mismatch`, so a rate the wrong way round is
+/// never applied (area 19, "Money and payments").
+pub fn convert(amount: &Value, rate: &Value) -> Result<Value, Fault> {
+    let amount = money_of(amount)?;
+    let Value::Record(record) = rate else {
+        return Err(Fault::Shape);
+    };
+    let field = |name: &str| record.get(name).ok_or(Fault::Shape);
+    let from = currency_of(field("from")?)?;
+    let to = currency_of(field("to")?)?;
+    let rate = decimal_of(field("rate")?)?;
+    if amount.currency != from {
+        return Err(MISMATCH);
+    }
+    let from_places = jadpo_std::money::exponent(from).ok_or(Fault::Shape)?;
+    let to_places = jadpo_std::money::exponent(to).ok_or(Fault::Shape)?;
+    // minor units of `from`, as major units, times the rate, as minor
+    // units of `to`.
+    let exact = Decimal::from_int(amount.minor)
+        .checked_mul(rate)
+        .ok_or(Fault::IntOverflow)?;
+    let exact = if to_places >= from_places {
+        let factor = 10i128
+            .checked_pow(to_places - from_places)
+            .ok_or(Fault::IntOverflow)?;
+        exact
+            .checked_mul(Decimal::new(factor, 0))
+            .ok_or(Fault::IntOverflow)?
+    } else {
+        Decimal::new(exact.mantissa, exact.scale + (from_places - to_places))
+    };
+    let units = exact
+        .rescale(0, Rounding::HalfEven)
+        .ok_or(Fault::IntOverflow)?;
+    Ok(value(to, minor(units.mantissa)?))
+}
+
 /// `a + b` in one currency.
 pub fn add(a: Money, b: Money) -> Result<Money, Fault> {
     if a.currency != b.currency {
@@ -390,6 +430,61 @@ mod tests {
         assert_eq!(
             ratio(pounds(1050), pounds(350)),
             Ok(Value::Decimal(Decimal::new(3, 0)))
+        );
+    }
+
+    fn rate(from: &str, to: &str, rate: &str) -> Value {
+        let code =
+            |code: &str| currency_value(jadpo_std::money::ordinal_of_code(code).unwrap()).unwrap();
+        Value::record(
+            jadpo_std::standard::EXCHANGE_RATE,
+            vec![
+                ("from".into(), code(from)),
+                ("to".into(), code(to)),
+                ("rate".into(), Value::decimal(rate).unwrap()),
+                ("at".into(), Value::Instant(0)),
+            ],
+        )
+    }
+
+    #[test]
+    fn a_rate_converts_from_its_own_currency_only() {
+        let minor_of = |value: Value| match value {
+            Value::Money(money) => (money.code(), money.minor),
+            other => panic!("{other:?}"),
+        };
+        let cake = Value::Money(pounds(1050));
+        // €12.285, half to even.
+        assert_eq!(
+            convert(&cake, &rate("GBP", "EUR", "1.17")).map(minor_of),
+            Ok(("EUR", 1228))
+        );
+        // ¥2000.25 to a whole yen, and 5.250 dinars in three places.
+        assert_eq!(
+            convert(&cake, &rate("GBP", "JPY", "190.5")).map(minor_of),
+            Ok(("JPY", 2000))
+        );
+        assert_eq!(
+            convert(&cake, &rate("GBP", "BHD", "0.5")).map(minor_of),
+            Ok(("BHD", 5250))
+        );
+        let yen = Value::Money(Money {
+            currency: jadpo_std::money::ordinal_of_code("JPY").unwrap(),
+            minor: 2001,
+        });
+        assert_eq!(
+            convert(&yen, &rate("JPY", "GBP", "0.005")).map(minor_of),
+            Ok(("GBP", 1000)),
+            "¥2001 is £10.005, half to even"
+        );
+        assert_eq!(
+            convert(&cake, &rate("EUR", "GBP", "0.85")),
+            Err(MISMATCH),
+            "a rate from euros, the wrong way round"
+        );
+        assert_eq!(
+            convert(&Value::Money(pounds(-1050)), &rate("GBP", "EUR", "1.17")).map(minor_of),
+            Ok(("EUR", -1228))
         );
     }
 

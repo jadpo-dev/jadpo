@@ -4,7 +4,10 @@
 //! [`TranslationPlan`], which `jadpo-value` writes in the caller's locale.
 //!
 //! A wording is a plain string whose only syntax is `{field}`; a literal
-//! brace is doubled, `{{` writing `{` and `}}` writing `}`. Where a
+//! brace is doubled, `{{` writing `{` and `}}` writing `}`. An amount of
+//! money is the one field written with a style, `{price, number,
+//! currency}`, through the same formatter as `text.format` (area 19,
+//! question 16). Where a
 //! message has an enum field or a `PluralCount` field, a language gives one
 //! wording for each value of the enum or each plural form it needs, and
 //! the field picks which is written.
@@ -17,6 +20,9 @@ pub enum ParamKind {
     Text,
     /// A value built on `Int` or `Decimal`: written the locale's way.
     Number,
+    /// A value built on `Money`: written `{price, number, currency}`, as
+    /// `text.format` shows it in the locale (area 19).
+    Money,
     /// A `PluralCount`: picks the plural form, and `{count}` writes it the
     /// locale's way.
     Plural,
@@ -31,6 +37,7 @@ impl ParamKind {
         match self {
             ParamKind::Text => "text",
             ParamKind::Number => "a number",
+            ParamKind::Money => "an amount of money",
             ParamKind::Plural => "a plural count",
             ParamKind::Choice => "an enum",
         }
@@ -146,7 +153,14 @@ pub enum Piece {
     Text(String),
     /// `{field}`.
     Field(String),
+    /// `{field, number, currency}`: an amount of money, as `text.format`
+    /// shows it (area 19).
+    Currency(String),
 }
+
+/// What follows a field's name in `{price, number, currency}`, the one
+/// style a wording writes (area 19, question 16).
+pub const CURRENCY_STYLE: &str = ", number, currency";
 
 /// A wording: its pieces in order.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -176,6 +190,12 @@ impl Template {
                     out.push_str(name);
                     out.push('}');
                 }
+                Piece::Currency(name) => {
+                    out.push('{');
+                    out.push_str(name);
+                    out.push_str(CURRENCY_STYLE);
+                    out.push('}');
+                }
             }
         }
         out
@@ -184,7 +204,7 @@ impl Template {
     /// The fields the wording writes, in order, repeats included.
     pub fn fields(&self) -> impl Iterator<Item = &str> {
         self.pieces.iter().filter_map(|piece| match piece {
-            Piece::Field(name) => Some(name.as_str()),
+            Piece::Field(name) | Piece::Currency(name) => Some(name.as_str()),
             Piece::Text(_) => None,
         })
     }
@@ -197,6 +217,8 @@ pub struct FieldUse {
     pub name: String,
     pub start: usize,
     pub end: usize,
+    /// Written `{name, number, currency}`.
+    pub currency: bool,
 }
 
 /// What is wrong with a wording: where, and the words for it.
@@ -279,13 +301,34 @@ pub fn parse_template(source: &str) -> Result<(Template, Vec<FieldUse>), Templat
                 let reaches = close.map_or(source.len(), |close| {
                     chars.get(close).map_or(source.len(), |(at, _)| *at)
                 });
-                if source[offset + 1..reaches].contains(',') {
+                let inside = &source[offset + 1..reaches];
+                // An amount of money, the one field written with a style.
+                if let Some(name) = inside.strip_suffix(CURRENCY_STYLE)
+                    && is_field_name(name)
+                    && close.is_some_and(|close| {
+                        chars.get(close).is_some_and(|(_, closer)| *closer == '}')
+                    })
+                {
+                    if !text.is_empty() {
+                        pieces.push(Piece::Text(std::mem::take(&mut text)));
+                    }
+                    pieces.push(Piece::Currency(name.to_string()));
+                    uses.push(FieldUse {
+                        name: name.to_string(),
+                        start: offset,
+                        end: reaches + 1,
+                        currency: true,
+                    });
+                    at = close.map_or(chars.len(), |close| close + 1);
+                    continue;
+                }
+                if inside.contains(',') {
                     return Err(error(
                         offset,
                         name_end,
                         "not a field",
-                        "A wording's only syntax is `{field}`: there is no ICU MessageFormat, so a plural or a choice is one wording for each plural form or each value of the enum, written as members, and a number is written the locale's way without a style.",
-                        "Write the field's name alone between the braces, and give each form its own wording",
+                        "A wording's only syntax is `{field}`: there is no ICU MessageFormat, so a plural or a choice is one wording for each plural form or each value of the enum, written as members, and a number is written the locale's way without a style. The one style is an amount of money's, `{price, number, currency}`, written exactly so.",
+                        "Write the field's name alone between the braces (or `{price, number, currency}` for an amount of money), and give each form its own wording",
                     ));
                 }
                 let Some(close) = close else {
@@ -336,6 +379,7 @@ pub fn parse_template(source: &str) -> Result<(Template, Vec<FieldUse>), Templat
                     name: name.to_string(),
                     start: offset,
                     end: end_offset + 1,
+                    currency: false,
                 });
                 at = close + 1;
             }
@@ -468,7 +512,8 @@ mod tests {
             FieldUse {
                 name: "name".into(),
                 start: 6,
-                end: 12
+                end: 12,
+                currency: false,
             }
         );
         assert_eq!(
@@ -500,6 +545,37 @@ mod tests {
         );
         assert!(uses.is_empty());
         assert_eq!(parse_template("").map(|(t, _)| t.pieces).ok(), Some(vec![]));
+    }
+
+    #[test]
+    fn an_amount_of_money_is_written_with_its_style() {
+        let (template, uses) = read("Total: {price, number, currency}.");
+        assert_eq!(
+            template.pieces,
+            vec![
+                Piece::Text("Total: ".into()),
+                Piece::Currency("price".into()),
+                Piece::Text(".".into()),
+            ]
+        );
+        assert_eq!(
+            uses[0],
+            FieldUse {
+                name: "price".into(),
+                start: 7,
+                end: 32,
+                currency: true,
+            }
+        );
+        assert_eq!(template.written(), "Total: {price, number, currency}.");
+        assert_eq!(template.fields().collect::<Vec<_>>(), ["price"]);
+        // Only that style, written exactly so.
+        let at = |source: &str| parse_template(source).err().map(|e| (e.start, e.end));
+        assert_eq!(at("{price, number}"), Some((0, 6)));
+        assert_eq!(at("{price,number,currency}"), Some((0, 6)));
+        assert_eq!(at("{price, number, percent}"), Some((0, 6)));
+        assert_eq!(at("{Price, number, currency}"), Some((0, 1)));
+        assert_eq!(at("{price, number, currency"), Some((0, 6)));
     }
 
     #[test]

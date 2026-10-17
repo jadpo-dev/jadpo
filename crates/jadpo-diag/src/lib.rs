@@ -804,6 +804,8 @@ rules! {
         "10-configuration-and-time.html#translation-message-unknown", "A translation call names no message or enum";
     TRANSLATION_OPTION_UNKNOWN: "translation.option_unknown", area 10, Error, Agent,
         "10-configuration-and-time.html#translation-option-unknown", "An option of translations in app.jadpo is not one it takes";
+    TRANSLATION_PLACEHOLDER_STYLE: "translation.placeholder_style", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-placeholder-style", "A wording writes an amount of money without its style, or a style on another field";
     TRANSLATION_PLACEHOLDER_UNKNOWN: "translation.placeholder_unknown", area 10, Error, Agent,
         "10-configuration-and-time.html#translation-placeholder-unknown", "A wording writes a field the message does not have";
     TRANSLATION_REVIEW_INVALID: "translation.review_invalid", area 10, Error, Agent,

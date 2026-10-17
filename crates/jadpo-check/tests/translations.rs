@@ -604,6 +604,80 @@ fn a_type_built_on_text_or_a_number_is_a_placeholder() {
     );
 }
 
+/// A message with an amount of money, worded in both languages (area 19,
+/// question 16, chunk 5.5h2), and an action calling it.
+fn priced(en_wording: &str, fr_wording: &str, call_with: &str) -> Vec<String> {
+    let price =
+        "/// A price for people.\ntype CakePrice = Money {\n    currency: Currency.gbp\n}\n";
+    let message = "use shipping/types { CakePrice, ParcelCount }\n\n/// What a basket costs, on the checkout page.\ntype BasketTotal = Message {\n    total: CakePrice\n    boxes: ParcelCount\n}\n";
+    let caller = format!(
+        "use shipping/types {{ CakePrice, ParcelCount }}\n\n/// The basket's total, in the customer's language.\naction checkout_line(total: {call_with}, boxes: ParcelCount, reader_locale: Locale) -> PresentationText {{\n    return translations.shipping.basket_total(total: total, boxes: boxes, locale: reader_locale)\n}}\n"
+    );
+    let en = EN.replace(
+        "parcels: {",
+        &format!("basket_total: \"{en_wording}\"\n    parcels: {{"),
+    );
+    let fr = FR.replace(
+        "parcels: {",
+        &format!("basket_total: \"{fr_wording}\"\n    parcels: {{"),
+    );
+    rules(&[
+        ("domains/shipping/types/cake_price.jadpo", price),
+        ("domains/shipping/translations/basket_total.jadpo", message),
+        ("domains/shipping/actions/checkout_line.jadpo", &caller),
+        (EN_PATH, &en),
+        (FR_PATH, &fr),
+    ])
+}
+
+#[test]
+fn an_amount_of_money_is_written_with_its_style() {
+    assert_eq!(
+        priced(
+            "{boxes} boxes: {total, number, currency}",
+            "{boxes} colis : {total, number, currency}",
+            "CakePrice"
+        ),
+        CLEAN
+    );
+    assert_eq!(
+        priced(
+            "{boxes} boxes: {total}",
+            "{boxes} colis : {total, number, currency}",
+            "CakePrice"
+        ),
+        ["translation.placeholder_style"],
+        "money without its style"
+    );
+    assert_eq!(
+        priced(
+            "{boxes, number, currency} boxes: {total, number, currency}",
+            "{boxes} colis : {total, number, currency}",
+            "CakePrice"
+        ),
+        ["translation.placeholder_style"],
+        "a number written as money"
+    );
+    assert_eq!(
+        priced(
+            "{boxes} boxes: {total, number, percent}",
+            "{boxes} colis : {total, number, currency}",
+            "CakePrice"
+        ),
+        ["translation.wording_invalid"],
+        "the one style there is"
+    );
+    assert_eq!(
+        priced(
+            "{boxes} boxes: {total, number, currency}",
+            "{boxes} colis : {total, number, currency}",
+            "ParcelCount"
+        ),
+        ["import.unused", "type.mismatch"],
+        "a call gives the message an amount, and `CakePrice` goes unused"
+    );
+}
+
 #[test]
 fn an_enum_with_data_gives_its_values_fields_to_their_wordings() {
     let status = "use shipping/types { CustomerName }\n\ntype OrderStatus = Enum {\n    pending\n    held: {\n        reason: CustomerName\n    }\n}\n";

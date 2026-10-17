@@ -3,7 +3,9 @@
 //! by the type's `rounding:`, a currency known only while running fails
 //! `currency_mismatch` where its `attempt` maps it, `split` and `allocate`
 //! hand every minor unit out, and an amount is shown, read and written as
-//! the contract says. The runtime's test (crates/jadpo-runtime/tests/
+//! the contract says. Chunk 5.5h2: `money.convert` applies an
+//! `ExchangeRate` from the amount's currency, and fails `currency_mismatch`
+//! for one from another. The runtime's test (crates/jadpo-runtime/tests/
 //! money.rs) holds the operations to the same values over many totals.
 
 use crate::support;
@@ -11,7 +13,7 @@ use crate::support;
 use jadpo_interp::Value;
 use support::{decimal, failure, int, list, main, text, value};
 
-const SOURCE: &str = "type CakePrice = Money {\n    currency: Currency.gbp\n    min: 0\n}\n\ntype TaxedPrice = Money {\n    currency: Currency.gbp\n    rounding: Rounding.half_up\n}\n\ntype Charge = Money {}\n\ntype Pence = Int {}\n\ntype Pounds = Decimal {\n    scale: 3\n}\n\ntype Answer = Bool {}\n\ntype Shown = Text {}\n\ntype Mismatch = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype TooPrecise = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype WrongCurrency = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction total(a: CakePrice, b: CakePrice) -> CakePrice {\n    return CakePrice(a + b)\n}\n\nfunction cheaper(a: CakePrice, b: CakePrice) -> Answer {\n    return Answer(a < b)\n}\n\nfunction even_tax(price: CakePrice) -> Charge {\n    return Charge(price * 0.125)\n}\n\nfunction up_tax(price: TaxedPrice) -> Charge {\n    return Charge(price * 0.125)\n}\n\nfunction net(gross: TaxedPrice) -> Charge {\n    return Charge(gross / 1.20)\n}\n\nfunction thirds(total: CakePrice) -> List<Pence> {\n    return list.map(money.split(total, 3), share -> Pence(money.minor(share)))\n}\n\nfunction shares(total: CakePrice) -> List<Pence> {\n    return list.map(money.allocate(total, [1, 2, 0]), share -> Pence(money.minor(share)))\n}\n\nfunction basket(lines: List<CakePrice>) -> CakePrice {\n    return CakePrice(money.sum(lines, currency: Currency.gbp))\n}\n\nfunction entered(amount: Pounds, currency: Currency) fails TooPrecise -> Charge {\n    var made: Money = attempt money.of(amount, currency) {\n        too_many_places: TooPrecise\n    }\n    return Charge(made)\n}\n\nfunction combined(a: Charge, b: Charge) fails Mismatch -> Charge {\n    var sum: Money = attempt a + b {\n        currency_mismatch: Mismatch\n    }\n    return Charge(sum)\n}\n\nfunction checked(a: Charge, b: Charge) -> Charge {\n    if (money.currency(a) == money.currency(b)) {\n        return Charge(a + b)\n    }\n    return a\n}\n\nfunction priced(amount: Charge) fails WrongCurrency -> TaxedPrice {\n    var price: TaxedPrice = attempt TaxedPrice(amount) {\n        currency: WrongCurrency\n    }\n    return price\n}\n\nfunction shown(price: Charge, reader: Locale) -> PresentationText {\n    return text.format(price, locale: reader)\n}\n\nfunction whole(price: Charge) -> PresentationText {\n    return text.format(price, locale: Locale.en_gb, precision: MoneyPrecision.whole)\n}\n\nfunction canonical(price: Charge) -> Shown {\n    return Shown(text.from(price))\n}\n";
+const SOURCE: &str = "type CakePrice = Money {\n    currency: Currency.gbp\n    min: 0\n}\n\ntype TaxedPrice = Money {\n    currency: Currency.gbp\n    rounding: Rounding.half_up\n}\n\ntype Charge = Money {}\n\ntype Pence = Int {}\n\ntype Pounds = Decimal {\n    scale: 3\n}\n\ntype Answer = Bool {}\n\ntype Shown = Text {}\n\ntype Mismatch = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype TooPrecise = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype WrongCurrency = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction total(a: CakePrice, b: CakePrice) -> CakePrice {\n    return CakePrice(a + b)\n}\n\nfunction cheaper(a: CakePrice, b: CakePrice) -> Answer {\n    return Answer(a < b)\n}\n\nfunction even_tax(price: CakePrice) -> Charge {\n    return Charge(price * 0.125)\n}\n\nfunction up_tax(price: TaxedPrice) -> Charge {\n    return Charge(price * 0.125)\n}\n\nfunction net(gross: TaxedPrice) -> Charge {\n    return Charge(gross / 1.20)\n}\n\nfunction thirds(total: CakePrice) -> List<Pence> {\n    return list.map(money.split(total, 3), share -> Pence(money.minor(share)))\n}\n\nfunction shares(total: CakePrice) -> List<Pence> {\n    return list.map(money.allocate(total, [1, 2, 0]), share -> Pence(money.minor(share)))\n}\n\nfunction basket(lines: List<CakePrice>) -> CakePrice {\n    return CakePrice(money.sum(lines, currency: Currency.gbp))\n}\n\nfunction entered(amount: Pounds, currency: Currency) fails TooPrecise -> Charge {\n    var made: Money = attempt money.of(amount, currency) {\n        too_many_places: TooPrecise\n    }\n    return Charge(made)\n}\n\nfunction combined(a: Charge, b: Charge) fails Mismatch -> Charge {\n    var sum: Money = attempt a + b {\n        currency_mismatch: Mismatch\n    }\n    return Charge(sum)\n}\n\nfunction checked(a: Charge, b: Charge) -> Charge {\n    if (money.currency(a) == money.currency(b)) {\n        return Charge(a + b)\n    }\n    return a\n}\n\nfunction priced(amount: Charge) fails WrongCurrency -> TaxedPrice {\n    var price: TaxedPrice = attempt TaxedPrice(amount) {\n        currency: WrongCurrency\n    }\n    return price\n}\n\nfunction shown(price: Charge, reader: Locale) -> PresentationText {\n    return text.format(price, locale: reader)\n}\n\nfunction whole(price: Charge) -> PresentationText {\n    return text.format(price, locale: Locale.en_gb, precision: MoneyPrecision.whole)\n}\n\nfunction canonical(price: Charge) -> Shown {\n    return Shown(text.from(price))\n}\n\nfunction converted(price: CakePrice, rate: ExchangeRate) fails Mismatch -> Charge {\n    var abroad: Money = attempt money.convert(price, rate) {\n        currency_mismatch: Mismatch\n    }\n    return Charge(abroad)\n}\n\nfunction converted_if_from_pounds(price: CakePrice, rate: ExchangeRate) -> Charge {\n    if (rate.from == Currency.gbp) {\n        return Charge(money.convert(price, rate))\n    }\n    return Charge(price)\n}\n";
 
 fn currency(code: &str) -> Value {
     jadpo_value::money::currency_value(jadpo_std::money::ordinal_of_code(code).unwrap()).unwrap()
@@ -168,5 +170,51 @@ fn an_amount_is_shown_and_written_as_the_contract_says() {
     assert_eq!(
         value(&program, "canonical", vec![amount("JPY", 500)]),
         text("JPY 500")
+    );
+}
+
+fn rate(text: &str) -> Value {
+    jadpo_value::standard::parse(text, "ExchangeRate").unwrap()
+}
+
+#[test]
+fn a_rate_converts_an_amount_in_its_from_currency() {
+    let program = main(SOURCE).with_proof_checks();
+    let to_euros = rate("GBP/EUR 1.17 2026-10-18T09:00:00Z");
+    let to_pounds = rate("EUR/GBP 0.85 2026-10-18T09:00:00Z");
+    // €12.285, half to even.
+    assert_eq!(
+        value(
+            &program,
+            "converted",
+            vec![amount("GBP", 1050), to_euros.clone()]
+        ),
+        amount("EUR", 1228)
+    );
+    assert_eq!(
+        failure(
+            &program,
+            "converted",
+            vec![amount("GBP", 1050), to_pounds.clone()]
+        )
+        .name,
+        "Mismatch",
+        "a rate the wrong way round is never applied"
+    );
+    assert_eq!(
+        value(
+            &program,
+            "converted_if_from_pounds",
+            vec![amount("GBP", 1050), to_euros]
+        ),
+        amount("EUR", 1228)
+    );
+    assert_eq!(
+        value(
+            &program,
+            "converted_if_from_pounds",
+            vec![amount("GBP", 1050), to_pounds]
+        ),
+        amount("GBP", 1050)
     );
 }
