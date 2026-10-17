@@ -409,12 +409,8 @@ impl<'db> Eval<'db> {
             )
             .at(span, "leads back to it")
             .reason(format!(
-                "A constant's value is worked out from the constants it reads, and {} leads back to `{first}`, so it has no value.",
-                names
-                    .iter()
-                    .map(|name| format!("`{name}`"))
-                    .collect::<Vec<_>>()
-                    .join(" → ")
+                "A constant's value is worked out from the constants it reads, and {}, so it has no value.",
+                reads(&names)
             ))
             .next(format!(
                 "Write `{first}`'s value without reading a constant that reads it"
@@ -993,4 +989,19 @@ fn arithmetic(op: &str, a: Num, b: Num, decimal: bool) -> Option<Num> {
         }
         _ => None,
     }
+}
+
+/// `` `a` reads `b`, which reads `a` ``: a loop of constants, each named
+/// with the one it reads.
+fn reads(names: &[String]) -> String {
+    let mut out = String::new();
+    for (i, pair) in names.windows(2).enumerate() {
+        let [from, to] = pair else { continue };
+        if i == 0 {
+            out.push_str(&format!("`{from}` reads `{to}`"));
+        } else {
+            out.push_str(&format!(", which reads `{to}`"));
+        }
+    }
+    out
 }

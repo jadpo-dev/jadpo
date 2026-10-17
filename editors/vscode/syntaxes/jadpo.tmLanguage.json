@@ -306,7 +306,7 @@
         },
         {
           "name": "storage.type.jadpo",
-          "match": "\\b(var)\\b"
+          "match": "\\b(var|constant)\\b"
         },
         {
           "name": "keyword.declaration.jadpo",
