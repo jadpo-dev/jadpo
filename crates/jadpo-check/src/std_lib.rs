@@ -206,10 +206,9 @@ impl StdNames {
                         .into_iter()
                         .flat_map(|list| list.member_items())
                         .filter_map(|item| match item {
-                            MemberItem::BareMember(variant) => Some((
-                                variant.name().as_ref().and_then(tree::name_text)?,
-                                None,
-                            )),
+                            MemberItem::BareMember(variant) => {
+                                Some((variant.name().as_ref().and_then(tree::name_text)?, None))
+                            }
                             _ => None,
                         })
                         .collect();

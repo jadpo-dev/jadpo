@@ -526,7 +526,7 @@ reference only).
   `translations/sources.jadpo_record` and listed by `missing`; `jadpo
   translations builtin`; and `jadpo translations export` and `import` as
   XLIFF or JSON, which also write the record.
-- [ ] **5.5a The standard type contract** `opus · high` (area 19, "Every
+- [x] **5.5a The standard type contract** `opus · high` (area 19, "Every
   standard type meets one contract", questions 1 to 5): each standard type
   a stub declaration in `crates/jadpo-check/std/` plus a data entry,
   generating construction, `text.parse`, `text.format`, `text.from`, JSON,

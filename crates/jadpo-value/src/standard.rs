@@ -234,14 +234,18 @@ pub fn shown(
 ) -> Result<String, Fault> {
     Ok(match (entry.format.key, value) {
         (FormatKey::Canonical, value) => canonical(entry, value)?,
-        (FormatKey::DateTime, value) => text_of(present::format_in(value, zone, tag, format_spec)?)?,
+        (FormatKey::DateTime, value) => {
+            text_of(present::format_in(value, zone, tag, format_spec)?)?
+        }
         (FormatKey::Interval, Value::Record(record)) => {
             let (start, end) = interval(entry, record)?;
             let start = present::format_in(&Value::Instant(start), zone, tag, format_spec)?;
             let end = present::format_in(&Value::Instant(end), zone, tag, format_spec)?;
             format!("{} – {}", text_of(start)?, text_of(end)?)
         }
-        (FormatKey::DurationUnits, Value::Duration(millis)) => present::names::duration(*millis, tag)?,
+        (FormatKey::DurationUnits, Value::Duration(millis)) => {
+            present::names::duration(*millis, tag)?
+        }
         (FormatKey::WeekdayName, Value::Variant(variant)) => {
             present::names::weekday(variant.ordinal, tag)?
         }

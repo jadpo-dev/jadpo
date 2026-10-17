@@ -708,8 +708,8 @@ template never uses is a warning.
 placeholders: `{{ value }}` takes `Text`, `PresentationText`, `Int` or
 `Decimal` (numbers written the locale's way), or an enum whose values have
 wording (area 10). Writing anything else out is a compile error that names
-how to format it: an `Instant` or `Money` with `temporal.format` or the
-money formatter, a `Bool` as a condition for `if`, a list walked with
+how to format it: an `Instant` or `Money` with `text.format` (area 19),
+a `Bool` as a condition for `if`, a list walked with
 `for`, an object's fields one by one, an enum without wording by adding
 it. Values are escaped; HTML goes in unescaped only as the safe-HTML type,
 which the standard library defines (input to chunk 5.4).
@@ -1458,7 +1458,7 @@ the feature they belong to.
    Templates use a small template language, checked by the compiler against
    the email's type: `{{ display_name }}` (escaped), `{{ t.welcome_heading }}`
    for translated text, conditions, loops, partials and the standard
-   formatting functions (`{{ temporal.format(due_at) }}`); the syntax for
+   formatting functions (`{{ text.format(due_at) }}`); the syntax for
    conditions and loops is the open point below.
    Nothing else: values are prepared in the mail's fields, not computed in
    the template.
@@ -1491,7 +1491,7 @@ the feature they belong to.
     and formatting are compile errors, and an unused field is a warning.
     Only text and numbers are written out (`Text`, `PresentationText`,
     `Int`, `Decimal`, and enums with wording); anything else is an error
-    naming how to format it (`temporal.format`, the money formatter, `if`,
+    naming how to format it (`text.format`, area 19, `if`,
     `for`, field by field). Values are escaped, and raw HTML goes in only as
     the safe-HTML type (input to chunk 5.4). An email's subject line is
     its member in its domain's language files (`welcome_email: "Welcome,

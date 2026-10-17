@@ -1,7 +1,7 @@
 //! Declared time formats (area 10, "Showing dates and times to people"):
 //! `type ShortDate = TimeFormat { day: ComponentStyle.numeric ... }` lists
 //! the parts of a date or a local time it shows, each once with a style
-//! that part takes, and is named only in `temporal.format`'s `format:`,
+//! that part takes, and is named only in `text.format`'s `format:`,
 //! since it holds no value.
 
 use std::collections::BTreeMap;
@@ -45,9 +45,9 @@ pub(crate) fn not_a_value(name: &str, span: Span, as_type: bool) -> Diagnostic {
     Diagnostic::new(&rule::TYPE_TEMPORAL_FORMAT_INVALID, message)
         .at(span, "a format")
         .reason(format!(
-            "A format says how `temporal.format` shows a date or a time; it holds no value, so `{name}` is named only as the `format:` of a call, {place}."
+            "A format says how `text.format` shows a date or a time; it holds no value, so `{name}` is named only as the `format:` of a call, {place}."
         ))
-        .next(format!("Give `format: {name}` to `temporal.format`, {next}"))
+        .next(format!("Give `format: {name}` to `text.format`, {next}"))
 }
 
 impl Decls<'_> {

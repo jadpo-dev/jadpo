@@ -862,7 +862,7 @@ impl Body<'_> {
             self.locale_argument(call, &args, &slots, table, written);
         }
         if let (Some(table), Some((shown, entry))) = (table, &contract) {
-            self.contract_options(table, call, &args, &slots, entry, shown, written);
+            self.contract_options(table, call, &args, &slots, (entry, shown), written);
         }
         if let Some((target, _)) = parsed {
             let raw = args

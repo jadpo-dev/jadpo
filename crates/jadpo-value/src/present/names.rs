@@ -5,10 +5,10 @@
 
 use icu_datetime::NoCalendarFormatter;
 use icu_datetime::fieldsets::zone::Location;
-use icu_experimental::displaynames::DisplayNamesOptions;
-use icu_experimental::displaynames::multi::LocaleDisplayNamesFormatter;
 use icu_experimental::dimension::units::categorized_formatter::CategorizedFormatter;
 use icu_experimental::dimension::units::options::{UnitsFormatterOptions, Width};
+use icu_experimental::displaynames::DisplayNamesOptions;
+use icu_experimental::displaynames::multi::LocaleDisplayNamesFormatter;
 use icu_experimental::measure::category::Duration as Unit;
 use icu_list::ListFormatter;
 use icu_list::options::{ListFormatterOptions, ListLength};
@@ -44,14 +44,24 @@ pub fn duration(millis: i64, tag: &str) -> Result<String, Fault> {
         let formatter = CategorizedFormatter::try_new_core((&locale).into(), unit, options)
             .map_err(|_| Fault::Shape)?;
         let amount = fixed_decimal::Decimal::from(amount);
-        shown.push(formatter.format_fixed_decimal(&amount).write_to_string().into_owned());
+        shown.push(
+            formatter
+                .format_fixed_decimal(&amount)
+                .write_to_string()
+                .into_owned(),
+        );
     }
     if shown.is_empty() {
         let formatter =
             CategorizedFormatter::try_new_core((&locale).into(), Unit::second(), options)
                 .map_err(|_| Fault::Shape)?;
         let zero = fixed_decimal::Decimal::from(0u64);
-        shown.push(formatter.format_fixed_decimal(&zero).write_to_string().into_owned());
+        shown.push(
+            formatter
+                .format_fixed_decimal(&zero)
+                .write_to_string()
+                .into_owned(),
+        );
     }
     let mut list = ListFormatterOptions::default();
     list.length = Some(ListLength::Wide);
@@ -82,8 +92,9 @@ pub fn weekday(ordinal: u32, tag: &str) -> Result<String, Fault> {
 pub fn locale(shown: &str, tag: &str) -> Result<String, Fault> {
     let reader = locale_of(tag)?;
     let shown = locale_of(shown)?;
-    let formatter = LocaleDisplayNamesFormatter::try_new((&reader).into(), DisplayNamesOptions::default())
-        .map_err(|_| Fault::Shape)?;
+    let formatter =
+        LocaleDisplayNamesFormatter::try_new((&reader).into(), DisplayNamesOptions::default())
+            .map_err(|_| Fault::Shape)?;
     Ok(formatter.of(&shown).into_owned())
 }
 

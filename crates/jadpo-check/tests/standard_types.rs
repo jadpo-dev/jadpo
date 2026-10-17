@@ -42,7 +42,10 @@ fn every_stub_agrees_with_its_data_entry() {
     let stubs = jadpo_check::standard_stubs();
     let names: Vec<&str> = stubs.keys().map(String::as_str).collect();
     let entries: Vec<&str> = STANDARD_TYPES.iter().map(|entry| entry.name).collect();
-    assert_eq!(names, entries, "a stub for every entry, an entry for every stub");
+    assert_eq!(
+        names, entries,
+        "a stub for every entry, an entry for every stub"
+    );
     for entry in STANDARD_TYPES {
         let StandardStub { base, members } = &stubs[entry.name];
         match entry.holds {
@@ -66,7 +69,11 @@ fn every_stub_agrees_with_its_data_entry() {
                     .find(|(name, _)| *name == entry.name)
                     .map(|(_, variants)| variants)
                     .unwrap_or_default();
-                assert_eq!(known, variants, "{} is the enum the runtime reads", entry.name);
+                assert_eq!(
+                    known, variants,
+                    "{} is the enum the runtime reads",
+                    entry.name
+                );
             }
             Holds::Object(fields) => {
                 assert_eq!(base, "Object", "{}", entry.name);
@@ -108,7 +115,11 @@ fn every_standard_type_meets_the_contract_in_the_checker() {
                 "{declared}function f(value: {value}, shown: Locale) -> PresentationText {{\n    return text.format(value, locale: shown{options})\n}}\n"
             ))
         };
-        assert_eq!(format(&options), Vec::<String>::new(), "{name}: text.format");
+        assert_eq!(
+            format(&options),
+            Vec::<String>::new(),
+            "{name}: text.format"
+        );
         if entry.format_option("zone").is_none() {
             assert_eq!(
                 format(&format!("{options}, zone: Zone.utc")),

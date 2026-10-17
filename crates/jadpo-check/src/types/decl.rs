@@ -454,14 +454,22 @@ impl Decls<'_> {
                 continue;
             }
             let Some(written) = decl.name() else { return };
-            let meanings: Vec<String> = matched.iter().map(|(meaning, _)| (*meaning).to_string()).collect();
+            let meanings: Vec<String> = matched
+                .iter()
+                .map(|(meaning, _)| (*meaning).to_string())
+                .collect();
             let named: Vec<String> = matched
                 .iter()
                 .map(|(meaning, field)| format!("{meaning} (`{field}`)"))
                 .collect();
             let built: Vec<String> = shape
                 .iter()
-                .flat_map(|field| field.built_on.iter().map(|prim| format!("`{}`", prim.name())))
+                .flat_map(|field| {
+                    field
+                        .built_on
+                        .iter()
+                        .map(|prim| format!("`{}`", prim.name()))
+                })
                 .collect::<std::collections::BTreeSet<_>>()
                 .into_iter()
                 .collect();

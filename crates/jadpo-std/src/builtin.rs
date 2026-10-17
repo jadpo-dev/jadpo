@@ -42,7 +42,7 @@ pub enum Builtin {
     /// A key sessions and tokens are signed with (area 10, "Signing key
     /// rotation"): at least [`SIGNING_KEY_MIN`] characters. Always secret.
     SigningKey,
-    /// Text for a person, in their language, as `temporal.format` and
+    /// Text for a person, in their language, as `text.format` and
     /// translations give it (area 10, "Showing dates and times to
     /// people"): it goes into a response, an email or a page, and is never
     /// stored, read back as a time, ordered or rebuilt into `Text`, so it

@@ -312,7 +312,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         validator: None,
         shape: None,
         examples: Examples {
-            valid: &[("image/png", "image/png"), ("application/pdf", "application/pdf")],
+            valid: &[
+                ("image/png", "image/png"),
+                ("application/pdf", "application/pdf"),
+            ],
             format: None,
             malformed: &["png", "image/tiff"],
         },
@@ -400,10 +403,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         validator: None,
         shape: None,
         examples: Examples {
-            valid: &[
-                ("en-GB", "British English"),
-                ("fr-FR", "French (France)"),
-            ],
+            valid: &[("en-GB", "British English"), ("fr-FR", "French (France)")],
             format: None,
             malformed: &["english", "xx-YY"],
         },
@@ -537,7 +537,10 @@ impl StandardType {
 
     /// The format option called `name`, if the type takes it.
     pub fn format_option(&self, name: &str) -> Option<&'static FormatOption> {
-        self.format.options.iter().find(|option| option.name == name)
+        self.format
+            .options
+            .iter()
+            .find(|option| option.name == name)
     }
 
     /// How its column becomes a value, for a type stored in a column of its

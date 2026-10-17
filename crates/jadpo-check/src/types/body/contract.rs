@@ -79,9 +79,7 @@ impl Body<'_> {
                 format!("`{ty}` has no single text form, so it has no canonical text"),
             ),
             // A value built on `Text` already is text (area 19, "Text").
-            (Op::TextFrom, Contract::Standard(entry))
-                if matches!(entry.holds, Holds::Builtin(builtin) if builtin.representation() == Prim::Text) =>
-            {
+            (Op::TextFrom, Contract::Standard(entry)) if matches!(entry.holds, Holds::Builtin(builtin) if builtin.representation() == Prim::Text) => {
                 (
                     false,
                     None,
@@ -244,7 +242,10 @@ impl Body<'_> {
     /// The rules `text.parse` can break, by key and as written: `malformed`
     /// and the type's own.
     pub(super) fn parse_rules(&self, call: &ast::CallExpr) -> Vec<(&'static str, String)> {
-        let mut rules = vec![(RuleKey::Malformed.word(), RuleKey::Malformed.word().to_string())];
+        let mut rules = vec![(
+            RuleKey::Malformed.word(),
+            RuleKey::Malformed.word().to_string(),
+        )];
         if let Some(target) = self.facts.parsed.get(&node_key(call.syntax())) {
             rules.extend(self.rules_of(target));
         }
@@ -260,8 +261,7 @@ impl Body<'_> {
         call: &ast::CallExpr,
         args: &[ast::Arg],
         slots: &[Option<usize>],
-        entry: &'static StandardType,
-        shown: &Ty,
+        (entry, shown): (&'static StandardType, &Ty),
         written: &str,
     ) {
         let given = |slot: usize| {
@@ -313,9 +313,9 @@ impl Body<'_> {
                             format!("`{written}` needs a format to show `{shown}` in"),
                         )
                         .at(span, "no `format:`")
-                        .reason(format!(
-                            "A time is shown to a person in a format written out, which the server never guesses: `format:` names a built-in one, `TimeFormat.` followed by `date_`, `time_` or `date_time_` and `full`, `long`, `medium` or `short`, or the name of a format declared as `type Name = TimeFormat {{ ... }}`."
-                        ))
+                        .reason(
+                            "A time is shown to a person in a format written out, which the server never guesses: `format:` names a built-in one, `TimeFormat.` followed by `date_`, `time_` or `date_time_` and `full`, `long`, `medium` or `short`, or the name of a format declared as `type Name = TimeFormat { ... }`.",
+                        )
                         .next("Add `format: ...`, such as `format: TimeFormat.date_long`")
                     };
                     self.out.push(problem);

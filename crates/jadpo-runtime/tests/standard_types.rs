@@ -159,7 +159,11 @@ fn every_standard_type_meets_the_contract() {
             }
             let mut problems = Vec::new();
             let back = table.read(CodecId(0), &parsed, &Path::default(), &mut problems);
-            assert_eq!(back.as_ref(), Some(&value), "{name}: {json} reads back ({problems:?})");
+            assert_eq!(
+                back.as_ref(),
+                Some(&value),
+                "{name}: {json} reads back ({problems:?})"
+            );
             // Storage, in its own column; a type stored as its JSON is
             // stored as the round trip above writes it.
             if let Some(column) = entry.column() {
@@ -221,7 +225,10 @@ fn representations_read_and_write_as_json_carries_them() {
         standard::parse("yes", "Bool"),
         Err(Fault::Broke(RuleKey::Malformed))
     );
-    assert_eq!(standard::parse(" any text ", "Text"), Ok(Value::text(" any text ")));
+    assert_eq!(
+        standard::parse(" any text ", "Text"),
+        Ok(Value::text(" any text "))
+    );
     assert_eq!(standard::from(&Value::Int(7)), Ok(Value::text("7")));
 }
 

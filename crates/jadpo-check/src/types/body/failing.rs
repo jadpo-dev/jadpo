@@ -822,7 +822,12 @@ impl Body<'_> {
     /// Why `text.parse` can fail as it can (area 19): the text may not be
     /// the type at all, and nothing proves the value follows the rules
     /// written.
-    fn parse_reason(&self, call: &ast::CallExpr, breakable: &[String], tail: &str) -> Option<String> {
+    fn parse_reason(
+        &self,
+        call: &ast::CallExpr,
+        breakable: &[String],
+        tail: &str,
+    ) -> Option<String> {
         let target = self.facts.parsed.get(&node_key(call.syntax()))?;
         let malformed = breakable.iter().any(|key| key == "malformed");
         let rules: Vec<String> = breakable

@@ -238,7 +238,6 @@ const MOMENT: Kind = Kind::OneOf(&[Builtin::Instant, Builtin::ZonedTime]);
 /// carries its own zone or has none.
 const SHOWN_IN: Param = option_needed_for("zone", ZONE, Builtin::Instant);
 
-
 /// `dst:` on a local time.
 const DST: Param = option_only_for("dst", Kind::Enum(Dst::NAME), Builtin::ZonedTime);
 /// `invalid_day:` on a calendar move.
@@ -657,7 +656,10 @@ mod tests {
             Some(Some(0))
         );
         assert!(operation("text", "format").is_some());
-        assert!(operation("temporal", "format").is_none(), "moved to `text.format`");
+        assert!(
+            operation("temporal", "format").is_none(),
+            "moved to `text.format`"
+        );
         assert_eq!(moved("temporal", "format"), Some("text.format"));
         for (_, to) in MOVED {
             let (namespace, name) = to.split_once('.').unwrap_or_default();

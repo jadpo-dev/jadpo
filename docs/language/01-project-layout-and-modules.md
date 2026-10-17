@@ -1494,7 +1494,7 @@ error: `layout.unused_declaration` can't be declined
   |
 5 | decline layout.unused_declaration: "Kept for next quarter"
   |         ^^^^^^^^^^^^^^^^^^^^^^^^^ a plain mistake
-  reason: Only judgement calls can be declined: `constant.similar_exists`, `library.similar_exists` and `translation.field_unused`. `layout.unused_declaration` reports a mistake, which only a fix answers.
+  reason: Only judgement calls can be declined: `constant.similar_exists`, `library.similar_exists`, `translation.field_unused` and `type.standard_exists`. `layout.unused_declaration` reports a mistake, which only a fix answers.
   next: Remove the `decline` line, and fix what `layout.unused_declaration` reports if it fires (agent)
   rule: decline.not_declinable
   help: docs/language/01-project-layout-and-modules.html#decline-not-declinable

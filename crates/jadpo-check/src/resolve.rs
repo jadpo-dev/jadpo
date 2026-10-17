@@ -1153,7 +1153,8 @@ impl Names<'_> {
                 {
                     // An operation that moved (area 19): its edit writes
                     // the new name.
-                    let whole = Span::new(qualifier_span.path.clone(), qualifier_span.start, span.end);
+                    let whole =
+                        Span::new(qualifier_span.path.clone(), qualifier_span.start, span.end);
                     let from = format!("{qualifier}.{member}");
                     out.push(
                         Diagnostic::new(
