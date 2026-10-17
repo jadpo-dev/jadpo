@@ -619,12 +619,14 @@ reference only).
   `Decimal`, correctly rounded to a named scale by Jadpo's own code. Done
   when each is tested against reference values and gives the same digits
   on native and WebAssembly.
-- [ ] **5.5f Text** `opus · high` (area 19, "Text", questions 23, 26, 29
+- [x] **5.5f Text** `opus · high` (area 19, "Text", questions 23, 26, 29
   and 30): the 17 text operations, `locale:` on case and sorting through
   ICU4X, NFC at the boundary, `never_empty`, `fill:` and
   `at_most_length_of`; `text` reserved and the clashing page examples and
   crate snippets renamed. Done when each operation's example passes,
   including the Unicode edge cases, and `text` can't name a variable.
+  Empty text where it never is is a new rule, `type.argument_empty`;
+  what the pages left open is area 19's "Chosen in chunk 5.5f".
 - [ ] **5.5g Hashing, encodings and JSON** `opus · high` (area 19,
   "Hashing and cryptography", "Encodings" and "Data formats", questions
   14 and 24): `hash.sha256`, the 9 `encoding` operations, `json.read` and
