@@ -810,8 +810,15 @@ reference only).
   findings (S1, S2…) and ends with a broad instruction to the agent:
   review the rest of the code against `jadpo suggest --catalogue`
   (generated from the contract), run `jadpo suggest found` before
-  changing anything it finds, and when done run `jadpo suggest share`. A snippet's hash is of the smallest
-  statement or expression at the place, formatted, without comments.
+  changing anything it finds, and when done run `jadpo suggest share`. A snippet is the smallest statement or expression at the place, in
+  canonical form: the structure normalised (operand order for commutative
+  operations, comparison direction, grouping, constant spellings and named
+  constants followed to their values, temporaries followed through the
+  graph, exactly equivalent forms such as `x / 0.01` and `x * 100`) and the
+  names kept, so `total_price * 100` and `100 * total_price` are one
+  pattern. Signals match its structure and the words in its names; its
+  hash, names included, is what is ignored and shared, so variants count
+  together while a line with a private name stays unique.
   - A finding that disappears after a fix is recorded as accepted, from
     the scan's own note of its last findings (local, untracked).
   - `jadpo suggest ignore S3 "<why>"` writes the hash, the signal and the
