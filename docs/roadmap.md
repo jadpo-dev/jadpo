@@ -627,13 +627,29 @@ reference only).
   including the Unicode edge cases, and `text` can't name a variable.
   Empty text where it never is is a new rule, `type.argument_empty`;
   what the pages left open is area 19's "Chosen in chunk 5.5f".
-- [ ] **5.5g Hashing, encodings and JSON** `opus · high` (area 19,
+- [x] **5.5g Hashing, encodings and JSON** `opus · high` (area 19,
   "Hashing and cryptography", "Encodings" and "Data formats", questions
   14 and 24): `hash.sha256`, the 9 `encoding` operations, `json.read` and
   `json.write` in memory with `mismatch`'s problem path. The batch forms
   and `csv`, `tsv` and `json_lines` come with batches (6.4). Done when
   each operation's example passes and `json.write` gives the same text
-  for the same value on every target.
+  for the same value on every target. Split on 2026-10-17 because the
+  whole is more than one session: the `DecodeProblem` a failure mapped
+  from `mismatch` receives is 5.5g2. The wire's `Bytes` is now read as
+  `encoding.from_base64` reads it, padded only; what the pages left open
+  is area 19's "Chosen in chunk 5.5g".
+- [x] **5.5g2 The decode problem on a failure** `opus · high` (area 19,
+  "Data formats", `json`; split from 5.5g): the built-in `DecodeProblem`
+  (the first bad field's path, list positions as numbers, and the rule,
+  never the value), and a failure mapped from `json.read`'s `mismatch`
+  that declares a `problem: DecodeProblem` field receiving it, in the
+  failure's fields, its client JSON and its log. Done when a mapped
+  failure's `problem` names `lines.2.quantity` and `max` for that input,
+  interpreted and in the runtime, with a checked page example. Only the
+  runtime builds a `DecodeProblem` (`type.not_record`, now
+  `IssuedToken`'s too); the log is the failure's report until the hosts
+  write area 4's event; what the pages left open is area 19's "Chosen in
+  chunk 5.5g2".
 - [ ] **5.5h Money** `opus · high` (area 19, "Money and payments" and "The
   standard operator table", question 16): `Money` and `Currency`, the 7
   `money` operations other than `convert`, the operator table's `Money`
@@ -733,6 +749,21 @@ reference only).
   `ai.generate`, streaming, embeddings with pgvector, checked prompt
   files, a fake for tests, limits, area 15's report), and place its build
   on this roadmap. **Needs Richard** to decide the page.
+- [ ] **5.5w Every boundary through the contract** `opus · high` (area 19,
+  "Every standard type meets one contract"; Richard, 2026-10-17), after
+  the standard type groups: audit every place a value enters or leaves a
+  program (HTTP and OpenAPI, storage and migrations, caches, events and job
+  payloads, CSV, TSV and JSON lines, logs and traces, settings, translation
+  placeholders, email, outbound provider calls, records and the manifest,
+  test fixtures and seeds, files, the interpreter and the runtime on native
+  and wasm32) and make each encode a standard type only through its
+  contract's JSON, storage and text shapes, so no type loses its currency,
+  unit or precision on the way out. Compound types store as named columns
+  (`Money` as amount and currency, the currency kept and checked even when
+  the type fixes it), quantities as one SI-unit column with the unit in
+  the column's comment, ranges as native range types. Done when a test per
+  boundary round-trips one value of every standard type, and any boundary
+  with its own encoder is gone.
 - [ ] **5.6 Computed backfills** `opus · high` (area 5, "Computed backfills",
   2026-10-15): `backfill:` as an expression over each row's own fields,
   filled in batches, one `UPDATE` each where it has a SQL form and by
@@ -813,7 +844,12 @@ The design is area 11 as revised on 2026-10-16, with its research in
   and `jadpo package record`, generated fakes, provider calls faked by
   default in `jadpo dev` with `development: { sandbox: }` and the call log
   (`jadpo calls`), and derived provider idempotency keys (app,
-  environment, caller, step), which also close a collision between users.
+  environment, caller, step), which also close a collision between users; and mapping imported types
+  to standard types (area 11, "Mapping imported types to standard types",
+  Richard 2026-10-17): exact format mappings, shape and name detection
+  decoded at the edge, declinable findings with `(agent)` steps, one review
+  instruction scoped to the types the app's operations reach and tracked per
+  type in `jadpo check` and `jadpo approval`, and the import's summary.
 - [ ] **7.3 Email:** `opus · high` the capability under design C (whole:
   Jadpo-rendered, attachments), the SMTP driver and a mail package as a
   second connection proving the swap, `emails/` templates and the shared

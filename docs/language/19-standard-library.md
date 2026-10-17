@@ -20,7 +20,7 @@ own features needed. This page collects them, adds what real applications
 keep reaching for, says which gaps in the language block the rest and how
 to close them, and says what is left out on purpose and why.
 
-> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunk 5.5f: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); and the text operations, with `locale:` and NFC at the boundary (5.5f). The rest is built by chunks 5.5g to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
+> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunk 5.5g2: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); and the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2). The rest is built by chunks 5.5h to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
 
 | Namespace | Holds | Operations | Decided in |
 |---|---|---|---|
@@ -2234,6 +2234,132 @@ Each operation is called as `encoding.<name>`.
   a package) and compression (#88 allows gzip only inside the batch
   helpers, with `max_unpacked_size:`).
 
+A bakery's photos, attachments and links, through `hash.sha256` and each
+encoding (chunk 5.5g). A digest is `Bytes`, written as text by
+`encoding`; writing never fails, and reading fails `malformed` for text
+that isn't the encoding at all, reading only the one form writing gives:
+
+```jadpo check project=hashing-encodings
+type PhotoBytes = Bytes {
+    max_length: 5000000
+}
+
+type PhotoKey = Text {}
+
+type ShareCode = Text {}
+
+type SentAttachment = Text {
+    max_length: 7000000
+}
+
+type RecipeTitle = Text {
+    max_length: 100
+}
+
+type LinkPart = Text {}
+
+type AttachmentUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type AttachmentTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A photo's content key: the same bytes always give the same 64
+/// lowercase hexadecimal digits.
+function photo_key(photo: PhotoBytes) -> PhotoKey {
+    return PhotoKey(encoding.to_hex(hash.sha256(photo)))
+}
+
+/// A short code for a recipe, from its title's UTF-8, safe in a URL.
+function share_code(title: RecipeTitle) -> ShareCode {
+    return ShareCode(encoding.to_base64url(hash.sha256(title)))
+}
+
+/// An attachment a client sends as Base64 text, as its bytes.
+function attachment(
+    sent: SentAttachment
+) fails AttachmentUnreadable, AttachmentTooLarge -> PhotoBytes {
+    var unpacked: Bytes = attempt encoding.from_base64(sent) {
+        malformed: AttachmentUnreadable
+    }
+    return attempt PhotoBytes(unpacked) {
+        max_length: AttachmentTooLarge
+    }
+}
+
+/// A photo sent back as Base64 text.
+function sent_photo(photo: PhotoBytes) -> LinkPart {
+    return LinkPart(encoding.to_base64(photo))
+}
+
+/// A photo's key read back as its 32 bytes, in either case.
+function key_bytes(key: PhotoKey) fails AttachmentUnreadable, AttachmentTooLarge -> PhotoBytes {
+    var unpacked: Bytes = attempt encoding.from_hex(key) {
+        malformed: AttachmentUnreadable
+    }
+    return attempt PhotoBytes(unpacked) {
+        max_length: AttachmentTooLarge
+    }
+}
+
+/// A share code read back as the digest it was written from.
+function code_digest(code: ShareCode) fails AttachmentUnreadable, AttachmentTooLarge -> PhotoBytes {
+    var unpacked: Bytes = attempt encoding.from_base64url(code) {
+        malformed: AttachmentUnreadable
+    }
+    return attempt PhotoBytes(unpacked) {
+        max_length: AttachmentTooLarge
+    }
+}
+
+/// A title through its UTF-8 bytes and back; bytes that aren't UTF-8 are
+/// refused, never replaced.
+function title_again(title: RecipeTitle) fails AttachmentUnreadable -> LinkPart {
+    var title_back: Text = attempt encoding.from_utf8(encoding.to_utf8(title)) {
+        malformed: AttachmentUnreadable
+    }
+    return LinkPart(title_back)
+}
+
+/// A title as it goes in a link a sign-in email carries.
+function link_part(title: RecipeTitle) -> LinkPart {
+    return LinkPart(encoding.to_url_component(title))
+}
+```
+
+The page's values: SHA-256 of "abc" is NIST's FIPS 180-4 example, and
+Base64 of "f", "fo" and "foo" RFC 4648's test vectors:
+
+```jadpo check project=hashing-encodings file=main.test.jadpo
+test "hashing and the encodings give what the page says" {
+    var abc_photo: PhotoBytes = attempt attachment("YWJj")
+    assert photo_key(
+        abc_photo
+    ) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    assert sent_photo(abc_photo) == "YWJj"
+    var f: PhotoBytes = attempt attachment("Zg==")
+    assert sent_photo(f) == "Zg=="
+    var fo: PhotoBytes = attempt attachment("Zm8=")
+    assert sent_photo(fo) == "Zm8="
+    assert attachment("Zg") fails AttachmentUnreadable
+    assert attachment("Zm9v YmFy") fails AttachmentUnreadable
+    var key: PhotoBytes = attempt key_bytes(
+        "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD"
+    )
+    assert sent_photo(key) == "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0="
+    assert key_bytes("ba78z6") fails AttachmentUnreadable
+    assert share_code("Rye loaf") == "_Hbznn1YqQK2jbbPF34hJmf_7AY2WLJKH4ZE68W-z_I"
+    var code_bytes: PhotoBytes = attempt code_digest("_Hbznn1YqQK2jbbPF34hJmf_7AY2WLJKH4ZE68W-z_I")
+    assert sent_photo(code_bytes) == "/Hbznn1YqQK2jbbPF34hJmf/7AY2WLJKH4ZE68W+z/I="
+    assert code_digest("_Hbznn1YqQK2jbbPF34hJmf_7AY2WLJKH4ZE68W-z_I=") fails AttachmentUnreadable
+    var title_back: LinkPart = attempt title_again("Crème brûlée")
+    assert title_back == "Crème brûlée"
+    assert link_part("Crème brûlée & rye") == "Cr%C3%A8me%20br%C3%BBl%C3%A9e%20%26%20rye"
+}
+```
+
 ## Data formats: JSON, CSV, TSV and JSON Lines
 
 The four format namespaces, each in one shape: `json` for one document in
@@ -2335,9 +2461,245 @@ needs them is pointed here. Encodings and gzip are as for `csv`.
   does: the field's path with list positions as numbers
   (`lines.2.quantity`) and the rule (`max`), never the value. A failure
   mapped from it that declares a `problem: DecodeProblem` field receives
-  them.
+  them (chunk 5.5g2): a built-in type holding `field: Text` and
+  `rule: Text`, named as area 7's problems are, which only the runtime
+  builds.
 - **No dynamic JSON value.** No scenario needs a JSON value of no type;
   a payload whose shape isn't known is kept as `Text` and passed on.
+
+An order a supplier's system sends as JSON, read as the bakery's type and
+written back (chunk 5.5g). Reading checks every rule of the type, fills
+`rush`'s default and leaves `note` out; writing gives the fields in
+declared order, with no white space:
+
+```jadpo check project=json-in-memory
+type Sku = Text {
+    max_length: 20
+}
+
+type LineCount = Int {
+    min: 1
+    max: 1000
+}
+
+type LinePrice = Decimal {
+    scale: 2
+    min: 0.00
+}
+
+type ImportedLine = Input {
+    sku: Sku
+    count: LineCount
+    price: LinePrice
+}
+
+type SupplierOrder = Input {
+    reference: Sku
+    lines: List<ImportedLine>
+    rush: Bool {
+        default: false
+    }
+    note: Sku {
+        optional: true
+    }
+}
+
+type SupplierMessage = Text {
+    max_length: 100000
+}
+
+type OrderJson = Text {}
+
+type ImportUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type ImportInvalid = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// The order a supplier's message holds, checked against every rule of
+/// `SupplierOrder` in one step.
+function supplier_order(
+    sent_order: SupplierMessage
+) fails ImportUnreadable, ImportInvalid -> SupplierOrder {
+    return attempt json.read(sent_order, as: SupplierOrder) {
+        malformed: ImportUnreadable
+        mismatch: ImportInvalid
+    }
+}
+
+/// The same order, as the one text `json.write` gives it.
+function order_json(
+    sent_order: SupplierMessage
+) fails ImportUnreadable, ImportInvalid -> OrderJson {
+    var order: SupplierOrder = attempt supplier_order(sent_order)
+    return OrderJson(json.write(order))
+}
+```
+
+Text that isn't JSON fails `malformed`; JSON that isn't a `SupplierOrder`
+(a line's `count` of 0, an unknown field, a missing `lines`) fails
+`mismatch`, and the failure's report names the first problem's path and
+rule, `lines.0.count` and `min`, never the value:
+
+```jadpo check project=json-in-memory file=main.test.jadpo
+test "json reads and writes what the page says" {
+    var order_text: OrderJson = attempt order_json(
+        "{\"lines\": [{\"price\": \"3.5\", \"count\": 2, \"sku\": \"rye\"}], \"reference\": \"A-12\"}"
+    )
+    assert order_text == "{\"reference\":\"A-12\",\"lines\":[{\"sku\":\"rye\",\"count\":2,\"price\":\"3.50\"}],\"rush\":false}"
+    var order_back: OrderJson = attempt order_json(
+        "{\"reference\":\"A-12\",\"lines\":[{\"sku\":\"rye\",\"count\":2,\"price\":\"3.50\"}],\"rush\":false}"
+    )
+    assert order_back == order_text
+    assert supplier_order("{\"reference\": ") fails ImportUnreadable
+    assert supplier_order(
+        "{\"reference\": \"A-12\", \"lines\": [{\"sku\": \"rye\", \"count\": 0, \"price\": \"3.50\"}]}"
+    ) fails ImportInvalid
+    assert supplier_order(
+        "{\"reference\": \"A-12\", \"lines\": [], \"colour\": \"red\"}"
+    ) fails ImportInvalid
+    assert supplier_order("{\"reference\": \"A-12\"}") fails ImportInvalid
+}
+```
+
+A failure that says what was wrong (chunk 5.5g2). One mapped from
+`mismatch` that declares `problem: DecodeProblem`, in its `client` or its
+`internal` block, receives the first problem: its `field`, the path with
+list positions as numbers, and its `rule`, never the value. The arm gives
+every other field and never `problem`, and `invalid:` fills it only when
+it covers `mismatch` alone. Nothing else fills one, so `malformed:`, a
+construction's rule or a `reject` naming such a failure is
+`failure.missing_context_field`. Only the runtime builds a
+`DecodeProblem`; a program reads its two fields, as the outcome `match`
+here does:
+
+```jadpo check project=json-decode-problem
+type ProductCode = Text {
+    max_length: 20
+}
+
+type LineQuantity = Int {
+    min: 1
+    max: 1000
+}
+
+type SupplierLine = Input {
+    sku: ProductCode
+    quantity: LineQuantity
+}
+
+type SupplierOrder = Input {
+    reference: ProductCode
+    lines: List<SupplierLine>
+}
+
+type SupplierMessage = Text {
+    max_length: 100000
+}
+
+type ProblemPart = Text {}
+
+type OrderUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type OrderInvalid = Failure {
+    kind: FailureKind.invalid_value
+    message: "The order breaks a rule."
+    client: {
+        problem: DecodeProblem
+    }
+}
+
+/// The order a supplier's message holds; one that isn't a
+/// `SupplierOrder` fails `OrderInvalid` with its first problem.
+function supplier_order(
+    sent_order: SupplierMessage
+) fails OrderUnreadable, OrderInvalid -> SupplierOrder {
+    return attempt json.read(sent_order, as: SupplierOrder) {
+        malformed: OrderUnreadable
+        mismatch: OrderInvalid
+    }
+}
+
+/// What is wrong with a message that isn't an order: the field's path
+/// and the rule.
+function order_problem(sent_order: SupplierMessage) -> List<ProblemPart> {
+    return match supplier_order(sent_order) {
+        success -> []
+        OrderUnreadable -> []
+        OrderInvalid(invalid) -> [
+            ProblemPart(invalid.problem.field),
+            ProblemPart(invalid.problem.rule)
+        ]
+    }
+}
+```
+
+The first test reads the problem back, the field and the rule even where
+the value is a secret; the second lets the failure through, so `jadpo
+test` shows its report, the problem among the client fields and nothing
+the document held:
+
+```jadpo check project=json-decode-problem file=main.test.jadpo expect=test.unexpected_failure
+test "the problem names the field and the rule, never the value" {
+    assert order_problem(
+        "{\"reference\": \"A-12\", \"lines\": [{\"sku\": \"rye\", \"quantity\": 2}, {\"sku\": \"spelt\", \"quantity\": 1}, {\"sku\": \"oat\", \"quantity\": 1001}]}"
+    ) == ["lines.2.quantity", "max"]
+    assert order_problem("{\"reference\": \"sk_live_51HxQ9eSECRETv4lue\", \"lines\": []}") == [
+        "reference",
+        "max_length"
+    ]
+}
+
+test "an order whose third line is over the maximum" {
+    var order: SupplierOrder = attempt supplier_order(
+        "{\"reference\": \"A-12\", \"lines\": [{\"sku\": \"rye\", \"quantity\": 2}, {\"sku\": \"spelt\", \"quantity\": 1}, {\"sku\": \"oat\", \"quantity\": 1001}]}"
+    )
+    assert order.reference == "A-12"
+}
+```
+
+```text output
+FAIL  an order whose third line is over the maximum
+ --> main.test.jadpo:12
+
+  failure: `OrderInvalid` from function supplier_order
+  at: main.jadpo:43:20
+   |
+43 |     return attempt json.read(sent_order, as: SupplierOrder) {
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ breaks `mismatch` (`max` on `lines.2.quantity`)
+  reason: The value built here breaks `mismatch` (`max` on `lines.2.quantity`), so `attempt` raises the failure its block maps that rule to.
+  code: order_invalid
+  kind: FailureKind.invalid_value
+  message: The order breaks a rule.
+  client: { problem: DecodeProblem { field: "lines.2.quantity", rule: "max" } }
+  path: test "an order whose third line is over the maximum" -> function supplier_order
+
+  rule: test.unexpected_failure
+  rerun: jadpo test main.test.jadpo:12 --seed 1
+
+test failed: 1 failed, 1 passed, 2 pure tests
+```
+
+A route whose action reads an order this way sends the problem in the
+failure's `details` (area 7), under the names area 7's input problems
+use; a `problem` declared in `internal` stays on the server:
+
+```json
+{
+  "error": {
+    "code": "order_invalid",
+    "message": "The order breaks a rule.",
+    "request_id": "req_0b1e…",
+    "details": {
+      "problem": { "field": "lines.2.quantity", "rule": "max" }
+    }
+  }
+}
+```
 
 XML is deferred: it waits for an XML byte format in a later release.
 
@@ -2899,7 +3261,8 @@ check failed: 1 error, 1 file
 | A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2: `type.standard_clash`, `jadpo fix`'s swap and rename, the editor's swap |
 | `Email`, `Url`, `IpAddress`, `FileType`, `InstantRange` | Decided (areas 2, 10, 16) and built |
 | Everything else on this page | Decided 2026-10-17, as recommended; built in chunks 5.5a to 5.5s |
-| The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g |
+| `hash.sha256`, the 9 `encoding` operations | Decided 2026-10-17 (question 24); built in 5.5g |
+| The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
 | SQL forms | Decided; built with computed backfills (chunk 5.6) |
 | Geospatial, AI | Decided as future areas, planned in 5.5u and 5.5v |
 
@@ -3300,6 +3663,91 @@ under "Errors").
 - **`text` is reserved,** and with it every standard namespace from the
   chunk that adds it: the list of names kept free (chunk 5.5a) is gone.
   Areas 2, 3, 7, 8, 9 and 16 and six crate test files renamed theirs.
+
+### Chosen in chunk 5.5g
+
+- **What decodes reads only what encodes writes.** `from_base64` takes
+  standard, padded Base64 only, its length a multiple of four, and
+  `from_base64url` unpadded only, as the page says; both refuse white
+  space, the other alphabet's characters and bits after the last byte
+  that aren't zero (RFC 4648, 3.5), so no two texts read as the same
+  bytes. The wire's `Bytes` (area 2) is the same function both ways, so a
+  request, a response and `json.read` read bytes alike: a request whose
+  Base64 isn't padded now breaks `format` where it was read before.
+  `from_hex` takes an even number of digits in either case; `to_hex` and
+  `to_url_component`'s escapes write their own case, lowercase and
+  uppercase (RFC 3986, 2.1). None of them can be proved while compiling,
+  so `malformed`, and `json.read`'s `mismatch`, are settled only by an
+  `attempt`, never by an option or a proof.
+- **`hash.sha256` and `json.read` take a value built on `Bytes`, or one
+  built on `Text`,** as their `T` in the stubs, so `hash.sha256(email)`
+  hashes the address's UTF-8 and `json.read(upload, as: ...)` reads
+  bytes that are UTF-8; a parameter written `Bytes` takes any value built
+  on `Bytes` (`PhotoBytes`), as one written `Text` takes a value built on
+  `Text`. SHA-256 is RustCrypto's `sha2`, pure Rust on every target,
+  tested against NIST's FIPS 180-4 examples natively and under
+  WebAssembly.
+- **"Any type an `Input` may hold" and "any value an `Output` may hold"**
+  are read as what the wire can carry: values built on the built-in and
+  standard types, enums the application or the standard library
+  declares, and `Object`, `Input` and `Output` types made of them, in
+  lists, sets and maps, nested to any depth. A failure, an event, an
+  email, a message, an entity, `Unit`, a secret (`ApiToken`,
+  `ServiceKey`, `PostgresUrl`, `RedisUrl`, `SigningKey`), a
+  `PluralCount` and the built-in types later areas define (`Page`,
+  `File`, `IssuedToken`) are `type.mismatch` either way, naming the type
+  inside that has no JSON form: an entity reaches a client only through
+  an `Output` that picks what it sends, and a secret only through a
+  route's `Output` or its setting. `as:` is a type written out, never
+  `T?`: a document that may be absent is a `Text?` read only when it is
+  there.
+- **`json.read` reads as a request's body is read,** through the same
+  codec (`jadpo-plan`'s `JsonTable`, numbered per call as the route
+  table's are): one JSON document with white space around it; text that
+  isn't one, or bytes that aren't UTF-8, are `malformed`. A repeated key
+  in an object is read as the wire reads one, the last counting, until
+  the wire refuses them. The first problem is the first the wire's
+  reading finds, an object's fields in declared order before its unknown
+  ones; a problem with the whole document has an empty path.
+- **The failure's report names the problem** beside its caret ("breaks
+  `mismatch` (`min` on `lines.0.count`)"), never its value; since chunk
+  5.5g2 the failure can carry it too, under "Chosen in chunk 5.5g2".
+- **`json.write` is a response body's text,** compact UTF-8 with
+  non-ASCII characters as themselves and only `"`, `\` and the
+  characters below U+0020 escaped, so the same value gives
+  byte-identical text on native and WebAssembly, which the gate checks
+  against one fixed text.
+
+### Chosen in chunk 5.5g2
+
+- **`DecodeProblem` holds `field: Text` and `rule: Text`,** named as area
+  7's input problems are, so a client reads the same `{ field, rule }` in
+  a failure's `details` as in `invalid_input`'s. The path is the one the
+  report names (chunk 5.5g). A map's key and an unknown field's name are
+  parts of the path, as area 7 names them for a request; neither is a
+  field's value.
+- **Only a field written `problem: DecodeProblem` receives it,** by that
+  name and that type exactly (not `DecodeProblem?`); a field of another
+  name or type is an ordinary field the arm gives. An arm that gives
+  `problem` itself is `failure.duplicate_context_field`. A failure that
+  declares it, mapped from anything but `mismatch` (`malformed:`, an
+  `invalid:` that covers `malformed` too, a construction's rule) or
+  raised by `reject`, is `failure.missing_context_field`, its reason
+  naming `mismatch`. No error code is new.
+- **Only the runtime builds a `DecodeProblem`.** `DecodeProblem { ... }`
+  is `type.not_record`, as `IssuedToken { ... }` and `IssuedKey { ... }`
+  now are (they checked without an error before), so a problem never
+  holds a value a program wrote. It has no JSON form of its own for
+  `json.read` or `json.write`, and its name is the language's. Like an
+  issued token it is a built-in object: the API record and the OpenAPI
+  document list it under its own name, its two fields required and no
+  others.
+- **The failure's log is its report** until the runtime's hosts write area
+  4's `failure.rejected` event: the report shows the problem among the
+  fields it is declared in, `client: { problem: DecodeProblem { field:
+  "lines.2.quantity", rule: "max" } }`. That event writes a
+  `DecodeProblem` as itself, not as a keyed hash, since it never holds a
+  value.
 
 ### Decisions
 
@@ -3735,6 +4183,10 @@ first; each group of types then arrives with its baseline and its extras.
 - **5.5g Hashing, encodings and JSON** `opus · high`: `hash`, `encoding`,
   `json.read` and `json.write` in memory with `mismatch`'s problem; the
   batch forms and `csv`, `tsv` and `json_lines` come with batches (6.4).
+  Built; split on 2026-10-17, the rest is 5.5g2.
+- **5.5g2 The decode problem on a failure** `opus · high`: the built-in
+  `DecodeProblem`, and a failure mapped from `mismatch` that declares a
+  `problem: DecodeProblem` field receiving it. Built.
 - **5.5h Money** `opus · high`: `Money`, `Currency`, `ExchangeRate`, the 8
   `money` operations, the operator table's `Money` rows with
   `currency_mismatch`, `rounding:` and `type.money_split`, the two columns, the wire shape, `{price, number,

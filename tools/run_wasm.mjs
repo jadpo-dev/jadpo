@@ -2,7 +2,8 @@
 // has WebAssembly built in: it calls the module's exported `main` and
 // exits with its code, or 1 if it traps (a panic aborts). Used by the gate
 // (tools/verify.py) to run the Decimal maths' reference check
-// (crates/jadpo-value/examples/decimal_maths) on WebAssembly.
+// (crates/jadpo-value/examples/decimal_maths) and the hashing, encodings
+// and JSON check (crates/jadpo-value/examples/formats) on WebAssembly.
 //
 //   node tools/run_wasm.mjs target/wasm32-unknown-unknown/debug/examples/decimal_maths.wasm
 

@@ -233,6 +233,15 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
             Step('Decimal maths gives the reference digits under wasm32', 'wasm32',
                  ['node', 'tools/run_wasm.mjs',
                   f'target/{WASM}/debug/examples/decimal_maths.wasm'], lane='cargo'),
+            # SHA-256, the encodings and `json.write`'s text (area 19,
+            # chunk 5.5g): the same fixed answers the native test checks,
+            # so `json.write` gives byte-identical text on both targets.
+            Step('hashing, encodings and JSON check for wasm32', 'wasm32',
+                 ['cargo', 'build', '--locked', '--target', WASM, '-p', 'jadpo-value',
+                  '--example', 'formats'], lane='cargo'),
+            Step('hashing, encodings and JSON give the fixed answers under wasm32', 'wasm32',
+                 ['node', 'tools/run_wasm.mjs',
+                  f'target/{WASM}/debug/examples/formats.wasm'], lane='cargo'),
         ]
     coverage = next(step for step in checks if step.name == 'teaching examples cover every built feature')
     coverage.args, coverage.show = ['--nocapture'], 'note:'

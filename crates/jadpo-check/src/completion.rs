@@ -964,6 +964,13 @@ impl Place<'_> {
                             "`{}` unless `{option}:` says what to do",
                             condition.key.word()
                         ),
+                        None if matches!(
+                            condition.key,
+                            jadpo_std::RuleKey::Malformed | jadpo_std::RuleKey::Mismatch
+                        ) =>
+                        {
+                            format!("`{}`", condition.key.word())
+                        }
                         None => format!(
                             "`{}` unless its value is proved above 0",
                             condition.key.word()

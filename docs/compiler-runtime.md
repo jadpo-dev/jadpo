@@ -308,6 +308,18 @@ connection the setting holding its address. A body's `config.<name>` is its
 own graph expression (`Expr::Config`, decoded to the setting's number), and
 a test's `config:` the values the test's callable plan gives that test.
 
+Since chunk 5.5g the plan also holds the codecs `json.read` and
+`json.write` run with (`jadpo_std::http::JsonTable`, `Plan::json`): the
+route table's kind of codec for each type a call reads or writes, built by
+the same code, numbered per call through the site's `Decoded::Json`, so a
+document in memory is read and written exactly as a request and a
+response are (area 19, "Data formats").
+Since chunk 5.5g2 an `attempt` arm that maps `json.read`'s `mismatch` to
+a failure declaring `problem: DecodeProblem` carries that field's place
+(`RuleArm::problem` in the graph, `Raise::problem` in the plan), and the
+executor fills it with the first problem the codec found, a built-in
+object like `IssuedToken` (`jadpo_std::http::builtin_object_fields`).
+
 Since chunk 3.12 everything the runtime needs of a plan is that kind of
 plain data in `jadpo-std`: type plans (`jadpo_std::types`: a type's
 validator chain, a shape's fields in declared order with what a field

@@ -1,6 +1,9 @@
 //! Values crossing the boundary as JSON (area 2's forms; area 7, "One
 //! input"), driven by the route table's codecs, so the interpreter and
-//! compiled code read and write a request the same way.
+//! compiled code read and write a request the same way. `json.read` and
+//! `json.write` (area 19, "Data formats") are the same reading and writing
+//! over a document in memory ([`Codecs::read_value`], [`Codecs::write_value`]),
+//! with codecs the plan numbers per call.
 //!
 //! Reading checks as it goes: each problem names the field by its path in
 //! the input, list positions as numbers (`lines.2.quantity`), and the rule
@@ -33,6 +36,16 @@ use crate::{Decimal, Validator, Value};
 pub struct Problem {
     pub field: String,
     pub rule: String,
+}
+
+/// Why `json.read` gave no value (area 19, "Data formats"): the two
+/// conditions its `attempt` maps.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Unread {
+    /// Not one JSON document, or bytes that aren't UTF-8.
+    Malformed,
+    /// A JSON document that isn't the type: the first problem found.
+    Mismatch(Problem),
 }
 
 /// The codecs of a route table, with each type's validator and shape ready
@@ -433,6 +446,43 @@ impl Codecs<'_> {
         }
     }
 
+    /// `json.read` (area 19, "Data formats"): the value of codec `id`'s
+    /// type the JSON document `text` holds, read with an `Input`'s rules
+    /// as a request's body is. `text` is `Text`, or `Bytes` in UTF-8.
+    /// Text that isn't one JSON document, or bytes that aren't UTF-8, are
+    /// `malformed`; a document that isn't the type is `mismatch`, with
+    /// the first problem found, its field's path and the rule, never the
+    /// value.
+    pub fn read_value(&self, id: CodecId, text: &Value) -> Result<Value, Unread> {
+        let text = match text {
+            Value::Text(text) => &**text,
+            Value::Bytes(bytes) => std::str::from_utf8(bytes).map_err(|_| Unread::Malformed)?,
+            _ => return Err(Unread::Malformed),
+        };
+        let json: serde_json::Value = serde_json::from_str(text).map_err(|_| Unread::Malformed)?;
+        let mut problems = Vec::new();
+        let value = self.read(id, &json, &Path::default(), &mut problems);
+        match (value, problems.into_iter().next()) {
+            (Some(value), None) => Ok(value),
+            (_, Some(problem)) => Err(Unread::Mismatch(problem)),
+            (None, None) => Err(Unread::Mismatch(Problem {
+                field: String::new(),
+                rule: "type".to_string(),
+            })),
+        }
+    }
+
+    /// `json.write` (area 19, "Data formats"): `value`, of codec `id`'s
+    /// type, as compact JSON, as a response's body is written: fields in
+    /// declared order, sets and map keys in the canonical order, no white
+    /// space, so the same value always gives the same text, on every
+    /// target.
+    pub fn write_value(&self, id: CodecId, value: &Value) -> String {
+        let mut out = String::new();
+        self.write(id, value, &mut out);
+        out
+    }
+
     /// `value`, of codec `id`'s type, written as JSON onto `out`.
     pub fn write(&self, id: CodecId, value: &Value, out: &mut String) {
         let codec = self.codec(id);
@@ -664,7 +714,7 @@ fn scalar_from_text(builtin: Builtin, text: &str) -> Result<Value, &'static str>
         // A `ZonedTime` is an object (`read`), never text.
         Builtin::ZonedTime => Err("type"),
         Builtin::Duration => iso_duration(text).map(Value::Duration).ok_or("format"),
-        Builtin::Bytes => base64_decode(text)
+        Builtin::Bytes => crate::encoding::from_base64(text)
             .map(|bytes| Value::Bytes(Rc::from(bytes)))
             .ok_or("format"),
         Builtin::Bool => match text {
@@ -714,7 +764,7 @@ fn write_scalar(value: &Value, int_as_number: bool, out: &mut String) {
             write_string(money.code(), out);
             out.push('}');
         }
-        Value::Bytes(bytes) => write_string(&base64_encode(bytes), out),
+        Value::Bytes(bytes) => write_string(&crate::encoding::to_base64(bytes), out),
         Value::None | Value::Unit => out.push_str("null"),
         other => write_string(&other.to_string(), out),
     }
@@ -795,46 +845,6 @@ fn iso_duration_text(millis: i64) -> String {
     jadpo_std::iso_duration(millis)
 }
 
-const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-fn base64_encode(bytes: &[u8]) -> String {
-    let mut out = String::new();
-    for chunk in bytes.chunks(3) {
-        let b = [
-            chunk.first().copied().unwrap_or(0),
-            chunk.get(1).copied().unwrap_or(0),
-            chunk.get(2).copied().unwrap_or(0),
-        ];
-        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
-        for i in 0..4 {
-            if i <= chunk.len() {
-                let index = ((n >> (18 - 6 * i)) & 63) as usize;
-                out.push(BASE64.get(index).copied().map_or('A', char::from));
-            } else {
-                out.push('=');
-            }
-        }
-    }
-    out
-}
-
-fn base64_decode(text: &str) -> Option<Vec<u8>> {
-    let text = text.trim_end_matches('=');
-    let mut out = Vec::new();
-    let mut buffer: u32 = 0;
-    let mut bits = 0;
-    for c in text.bytes() {
-        let value = BASE64.iter().position(|b| *b == c)? as u32;
-        buffer = (buffer << 6) | value;
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            out.push(((buffer >> bits) & 0xFF) as u8);
-        }
-    }
-    Some(out)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -855,11 +865,32 @@ mod tests {
     }
 
     #[test]
-    fn bytes_round_trip_through_base64() {
-        for bytes in [&b""[..], b"a", b"ab", b"abc", b"hello world"] {
-            assert_eq!(base64_decode(&base64_encode(bytes)).as_deref(), Some(bytes));
-        }
-        assert_eq!(base64_encode(b"hello"), "aGVsbG8=");
+    fn bytes_are_padded_base64_both_ways() {
+        let codecs = [Codec::Scalar {
+            builtin: Builtin::Bytes,
+            validator: jadpo_std::types::ValidatorId(0),
+            int_as_number: true,
+        }];
+        let validators = [Validator::new(Some(Builtin::Bytes), Vec::new())];
+        let codecs = Codecs {
+            codecs: &codecs,
+            validators: &validators,
+            shapes: &[],
+        };
+        let hello = Value::Bytes(Rc::from(&b"hello"[..]));
+        assert_eq!(codecs.write_value(CodecId(0), &hello), r#""aGVsbG8=""#);
+        assert_eq!(
+            codecs.read_value(CodecId(0), &Value::text(r#""aGVsbG8=""#)),
+            Ok(hello)
+        );
+        // Only the text `encoding.to_base64` writes reads back.
+        assert_eq!(
+            codecs.read_value(CodecId(0), &Value::text(r#""aGVsbG8""#)),
+            Err(Unread::Mismatch(Problem {
+                field: String::new(),
+                rule: "format".to_string()
+            }))
+        );
     }
 
     #[test]

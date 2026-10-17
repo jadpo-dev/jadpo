@@ -126,6 +126,10 @@ pub(crate) struct Facts {
     /// The failure each arm of an `attempt` on a construction names, by
     /// the rule's key; `None` for `invalid:`, which covers the rest.
     pub mapped: BTreeMap<NodeKey, Vec<(Option<String>, String)>>,
+    /// The arms of an `attempt` on `json.read` whose failure receives the
+    /// first problem in its `problem: DecodeProblem` field (area 19, "Data
+    /// formats"), by the `attempt` and the arm's key as written.
+    pub receives: BTreeSet<(NodeKey, String)>,
     /// The failure each `reject` raises.
     pub rejects: BTreeMap<NodeKey, String>,
     /// The failure each `propagate` passes on.

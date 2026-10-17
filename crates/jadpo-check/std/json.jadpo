@@ -1,0 +1,24 @@
+// The `json` namespace in memory (area 19, "Data formats", question 14):
+// one JSON document read as a type and a value written as one, in the
+// wire's forms (areas 2, 7 and 10), so a document `json.write` gives reads
+// back with `json.read` and a request body reads alike. Each is one
+// function in `jadpo-value`'s `json` module, run with the codec the plan
+// numbers for the call. The batch forms over a stored `File` come with
+// batches (area 12).
+//
+// `as:` in `read` is a type written out, any type an `Input` may hold,
+// read with an `Input`'s rules: unknown fields refused, `optional` and
+// `default` applied. `S` is `Text`, or `Bytes` in UTF-8. Text that isn't
+// one JSON document fails `malformed`; one that isn't the type fails
+// `mismatch`, its first problem named by the field's path and the rule.
+// `T` in `write` is any value an `Output` may hold. There is no JSON value
+// of no type.
+
+public library json {
+    /// The value of type `as` that the JSON document `text` holds.
+    function read(text: S, as: Type) -> T {}
+
+    /// `value` as compact JSON: fields in declared order, sets and map keys
+    /// in canonical order, so the same value always gives the same text.
+    function write(value: T) -> Text {}
+}

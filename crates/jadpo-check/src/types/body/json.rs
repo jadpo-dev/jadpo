@@ -1,0 +1,226 @@
+//! What `json.read` and `json.write` add to an ordinary standard-library
+//! call (area 19, "Data formats", question 14): `json.read`'s `as:` is a
+//! type written out, any type an `Input` may hold, and `json.write`'s
+//! value is any value an `Output` may hold, each read and written in the
+//! wire's forms (areas 2, 7 and 10). There is no JSON value of no type.
+
+use std::collections::BTreeSet;
+
+use jadpo_diag::{Diagnostic, rule};
+use jadpo_std::standard::standard_type;
+use jadpo_syntax::ast::{self, AstNode, Expr};
+
+use super::super::shape::FieldsBase;
+use super::super::table::Def;
+use super::super::ty::{Prim, Ty, TypeRef};
+use super::{Body, Fallible, node_key};
+use crate::resolve::Want;
+use crate::tree;
+
+/// What a document can be read as and a value written from, after "any
+/// type an `Input` may hold": the reason a type that isn't one gives.
+const HOLDS: &str = "values built on the built-in and standard types, enums, and objects, inputs and outputs made of them, in lists, sets and maps";
+
+impl Body<'_> {
+    /// `json.read`'s `as:`: the type written out, when it is one a
+    /// document can be read as; what is wrong is reported.
+    pub(super) fn json_type_argument(&mut self, value: &Expr, written: &str) -> Option<Ty> {
+        let target = match TypeRef::from_expr(value) {
+            TypeRef::Path(names, args)
+                if names
+                    .first()
+                    .is_some_and(|name| name.starts_with(|c: char| c.is_ascii_uppercase())) =>
+            {
+                if !self.resolved_by(|names, out| names.type_expr(value, Want::Type, out)) {
+                    return None;
+                }
+                Some(self.table.resolve(&TypeRef::Path(names, args)))
+            }
+            _ => None,
+        };
+        let Some(target) = target else {
+            if !super::is_literal(value) && !matches!(value, Expr::NullableExpr(_)) {
+                self.infer(value);
+            }
+            let shown = tree::written(value.syntax());
+            let (reason, next) = match value {
+                Expr::NullableExpr(_) => (
+                    format!(
+                        "`{written}` reads a document as a value of the type `as:` names, never `none`; a document that may be absent is a `Text?` read only when it is there."
+                    ),
+                    "Write the type without `?`".to_string(),
+                ),
+                _ => (
+                    format!(
+                        "`{written}` reads a document as the type `as:` names, which is written out, such as `as: OrderImport`: a value can't say which type to read."
+                    ),
+                    "Write the type itself, such as `as: OrderImport`".to_string(),
+                ),
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{written}`'s `as:` is a type written out, not `{shown}`"),
+                )
+                .at(self.span(value), "not a type")
+                .reason(reason)
+                .next(next),
+            );
+            return None;
+        };
+        if target.has_error() {
+            return None;
+        }
+        if let Some((offending, what)) = self.unwritable(&target, &mut BTreeSet::new()) {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{written}` can't read a document as `{target}`"),
+                )
+                .at(
+                    self.span(value),
+                    format!("`{offending}` has no JSON form here"),
+                )
+                .reason(format!(
+                    "`{written}` reads a document as any type an `Input` may hold: {HOLDS}; `{offending}` is {what}."
+                ))
+                .next("Read the document as a type made of those; keep a payload whose shape isn't known as `Text`"),
+            );
+            return None;
+        }
+        // The type is given to the operation as its name, as `text.parse`'s
+        // is; the plan gives the call its codec.
+        let key = node_key(value.syntax());
+        self.facts.types.insert(key, Ty::Prim(Prim::Text));
+        self.facts.formats.insert(key, target.to_string());
+        Some(target)
+    }
+
+    /// `json.read`'s result: the type `as:` names, or `Error` once what is
+    /// wrong with `as:` is reported, when what the call can fail with
+    /// isn't known.
+    pub(super) fn json_read_result(&mut self, call: &ast::CallExpr, target: Option<Ty>) -> Ty {
+        let key = node_key(call.syntax());
+        match target {
+            Some(target) => {
+                // The call's site is the type it gives, however the call is
+                // reached (an `attempt` checks its call without inferring
+                // it), which the plan reads its codec from.
+                self.facts.types.insert(key, target.clone());
+                target
+            }
+            None => {
+                self.facts.constructions.insert(key, Fallible::Unknown);
+                Ty::Error
+            }
+        }
+    }
+
+    /// `json.write`'s value: one an `Output` may hold.
+    pub(super) fn json_value(&mut self, value: &Expr, ty: &Ty, written: &str) {
+        if ty.has_error() {
+            return;
+        }
+        let Some((offending, what)) = self.unwritable(ty, &mut BTreeSet::new()) else {
+            return;
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_MISMATCH,
+                format!("`{written}` can't write `{ty}` as JSON"),
+            )
+            .at(self.span(value), format!("`{offending}` has no JSON form here"))
+            .reason(format!(
+                "`{written}` writes any value an `Output` may hold: {HOLDS}; `{offending}` is {what}."
+            ))
+            .next("Write a value made of those, building an `Output` with the fields to send"),
+        );
+    }
+
+    /// The first type inside `ty` that has no JSON form here, with what it
+    /// is, after "is": a failure, an event, an entity, a secret, `Unit`.
+    fn unwritable(&self, ty: &Ty, seen: &mut BTreeSet<String>) -> Option<(String, String)> {
+        let found = self.table.structure(ty);
+        match &found {
+            Ty::Error | Ty::Unknown(_) | Ty::Var(_) => None,
+            Ty::Prim(prim) => match prim {
+                Prim::Unit => Some((found.to_string(), "no value at all".to_string())),
+                Prim::ApiToken
+                | Prim::ServiceKey
+                | Prim::PostgresUrl
+                | Prim::RedisUrl
+                | Prim::SigningKey => Some((
+                    found.to_string(),
+                    "a secret, which only a route's `Output` or the setting it is read from ever holds".to_string(),
+                )),
+                Prim::PluralCount => Some((
+                    found.to_string(),
+                    "a message's plural count, used only as a `Message` field".to_string(),
+                )),
+                _ => None,
+            },
+            Ty::List(item) | Ty::Set(item) | Ty::Nullable(item) => self.unwritable(item, seen),
+            Ty::Map(key, value) => self
+                .unwritable(key, seen)
+                .or_else(|| self.unwritable(value, seen)),
+            Ty::Named(name) | Ty::Opaque(name, _) => {
+                if standard_type(name).is_some() {
+                    return match &found {
+                        Ty::Opaque(_, args) => {
+                            args.iter().find_map(|arg| self.unwritable(arg, seen))
+                        }
+                        _ => None,
+                    };
+                }
+                if !seen.insert(name.clone()) {
+                    return None;
+                }
+                match self.table.def(name) {
+                    Some(Def::Fields { base, fields, .. }) => match base {
+                        FieldsBase::Object | FieldsBase::Input | FieldsBase::Output => fields
+                            .iter()
+                            .find_map(|field| self.unwritable(&field.declared, seen)),
+                        other => Some((found.to_string(), fields_base(*other).to_string())),
+                    },
+                    Some(Def::Enum { variants }) => variants
+                        .iter()
+                        .flat_map(|variant| variant.fields.iter().flatten())
+                        .find_map(|field| self.unwritable(&field.declared, seen)),
+                    // A refinement is followed to what it is built on.
+                    Some(Def::Scalar { .. }) => None,
+                    Some(Def::Format { .. }) => Some((
+                        found.to_string(),
+                        "a format for showing times, which holds no values".to_string(),
+                    )),
+                    // A standard-library enum (`Rounding`, `Zone`) is its
+                    // variant's name.
+                    None if jadpo_std::enums()
+                        .iter()
+                        .any(|(enum_name, _)| *enum_name == name.as_str()) =>
+                    {
+                        None
+                    }
+                    None => Some((
+                        found.to_string(),
+                        "a built-in type that crosses no boundary as JSON".to_string(),
+                    )),
+                }
+            }
+            other => Some((other.to_string(), "not a value".to_string())),
+        }
+    }
+}
+
+/// What a type with fields that crosses no boundary as JSON is.
+fn fields_base(base: FieldsBase) -> &'static str {
+    match base {
+        FieldsBase::Failure => "a failure, which reaches a client only as area 4's envelope",
+        FieldsBase::Event => "an event, which is emitted, not written",
+        FieldsBase::EmailMessage => "an email, which is sent, not written",
+        FieldsBase::Message => "a message, translated text that is shown, not written",
+        FieldsBase::Entity => {
+            "an entity, whose records reach a client only through an `Output` that picks what it sends"
+        }
+        FieldsBase::Object | FieldsBase::Input | FieldsBase::Output => "an object",
+    }
+}

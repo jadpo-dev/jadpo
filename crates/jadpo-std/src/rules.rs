@@ -59,7 +59,9 @@ pub enum RuleKey {
     /// its `invalid_day:` didn't say what to do instead.
     InvalidDay,
     /// Text `text.parse` reads isn't the type it was asked for at all
-    /// (area 19, "Every standard type meets one contract").
+    /// (area 19, "Every standard type meets one contract"), or text or
+    /// bytes an `encoding` or `json` operation decodes aren't that format
+    /// at all (area 19, "Encodings" and "Data formats").
     Malformed,
     /// A value a `decimal` operation has no result for, such as `ln` of
     /// a value at or below 0 (area 19, "Numbers").
@@ -71,13 +73,16 @@ pub enum RuleKey {
     /// A decimal amount with more places than its currency has, made into
     /// `Money` by `money.of` (area 19, "Money and payments").
     TooManyPlaces,
+    /// A JSON document `json.read` decodes isn't the type `as:` names: a
+    /// field missing, unknown or breaking a rule (area 19, "Data formats").
+    Mismatch,
 }
 
 impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 15] = [
+    pub const ALL: [RuleKey; 16] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -93,6 +98,7 @@ impl RuleKey {
         RuleKey::OutOfRange,
         RuleKey::CurrencyMismatch,
         RuleKey::TooManyPlaces,
+        RuleKey::Mismatch,
     ];
 
     /// The key as written: `max`, `min_length`.
@@ -113,6 +119,7 @@ impl RuleKey {
             RuleKey::OutOfRange => "out_of_range",
             RuleKey::CurrencyMismatch => "currency_mismatch",
             RuleKey::TooManyPlaces => "too_many_places",
+            RuleKey::Mismatch => "mismatch",
         }
     }
 

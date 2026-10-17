@@ -32,6 +32,8 @@
 )]
 
 pub mod decimal;
+pub mod encoding;
+pub mod hash;
 pub mod integer;
 pub mod json;
 pub mod list;
@@ -298,6 +300,45 @@ pub fn run(
         (Op::TextFrom, [value]) => standard::from(value),
         (Op::TextParse, [Value::Text(raw), Value::Text(ty)]) => standard::parse(raw, ty),
         (Op::TextFormat | Op::TextFrom | Op::TextParse, _) => Err(Fault::Shape),
+        // The encodings (area 19, "Encodings"): decoding fails `malformed`.
+        (Op::EncodingToBase64, [Value::Bytes(bytes)]) => {
+            Ok(Value::text(&encoding::to_base64(bytes)))
+        }
+        (Op::EncodingToBase64url, [Value::Bytes(bytes)]) => {
+            Ok(Value::text(&encoding::to_base64url(bytes)))
+        }
+        (Op::EncodingToHex, [Value::Bytes(bytes)]) => Ok(Value::text(&encoding::to_hex(bytes))),
+        (Op::EncodingToUtf8, [Value::Text(text)]) => Ok(bytes_value(text.as_bytes())),
+        (Op::EncodingToUrlComponent, [Value::Text(text)]) => {
+            Ok(Value::text(&encoding::to_url_component(text)))
+        }
+        (Op::EncodingFromBase64, [Value::Text(text)]) => decoded(encoding::from_base64(text)),
+        (Op::EncodingFromBase64url, [Value::Text(text)]) => decoded(encoding::from_base64url(text)),
+        (Op::EncodingFromHex, [Value::Text(text)]) => decoded(encoding::from_hex(text)),
+        (Op::EncodingFromUtf8, [Value::Bytes(bytes)]) => encoding::from_utf8(bytes)
+            .map(|text| Value::text(&text))
+            .ok_or(Fault::Broke(jadpo_std::RuleKey::Malformed)),
+        (
+            Op::EncodingToBase64
+            | Op::EncodingToBase64url
+            | Op::EncodingToHex
+            | Op::EncodingToUtf8
+            | Op::EncodingToUrlComponent
+            | Op::EncodingFromBase64
+            | Op::EncodingFromBase64url
+            | Op::EncodingFromHex
+            | Op::EncodingFromUtf8,
+            _,
+        ) => Err(Fault::Shape),
+        // SHA-256 of bytes, or of text's UTF-8 (area 19, question 24).
+        (Op::HashSha256, [Value::Bytes(bytes)]) => Ok(bytes_value(&hash::sha256(bytes))),
+        (Op::HashSha256, [Value::Text(text)]) => Ok(bytes_value(&hash::sha256(text.as_bytes()))),
+        (Op::HashSha256, _) => Err(Fault::Shape),
+        // `json.read` and `json.write` take the codec the plan numbers for
+        // their call besides their values, so each executor runs them
+        // through [`json::Codecs::read_value`] and
+        // [`json::Codecs::write_value`] over the plan's codecs.
+        (Op::JsonRead | Op::JsonWrite, _) => Err(Fault::Shape),
         (
             Op::TextContains
             | Op::TextDropFirst
@@ -376,6 +417,18 @@ fn run_text(op: Op, args: &[Value]) -> Result<Value, Fault> {
         (Op::TextSlug, []) => Ok(shown(text::slug(value))),
         _ => Err(Fault::Shape),
     }
+}
+
+/// Bytes as a value holds them.
+fn bytes_value(bytes: &[u8]) -> Value {
+    Value::Bytes(std::rc::Rc::from(bytes))
+}
+
+/// What a decoding gave, or `malformed` (area 19, "Encodings").
+fn decoded(bytes: Option<Vec<u8>>) -> Result<Value, Fault> {
+    bytes
+        .map(|bytes| Value::Bytes(std::rc::Rc::from(bytes)))
+        .ok_or(Fault::Broke(jadpo_std::RuleKey::Malformed))
 }
 
 /// A `list` operation (area 19, "Lists"): [`list`] holds what each does.
@@ -611,8 +664,20 @@ mod tests {
             [Value::Int(n)] => Some(Value::Int(n * 2)),
             _ => None,
         };
+        let bytes = Value::Bytes(std::rc::Rc::from(&b"loaf"[..]));
         for operation in jadpo_std::OPERATIONS {
             let args: Vec<Value> = match operation.op {
+                // Run with the plan's codecs (`json`'s own tests).
+                Op::JsonRead | Op::JsonWrite => continue,
+                Op::EncodingToBase64
+                | Op::EncodingToBase64url
+                | Op::EncodingToHex
+                | Op::EncodingFromUtf8
+                | Op::HashSha256 => vec![bytes.clone()],
+                Op::EncodingToUtf8 | Op::EncodingToUrlComponent => vec![Value::text("rye loaf")],
+                Op::EncodingFromBase64 => vec![Value::text("bG9hZg==")],
+                Op::EncodingFromBase64url => vec![Value::text("bG9hZg")],
+                Op::EncodingFromHex => vec![Value::text("6c6f6166")],
                 Op::TextFormat => {
                     vec![
                         Value::Instant(0),

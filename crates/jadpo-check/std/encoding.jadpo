@@ -1,0 +1,40 @@
+// The `encoding` namespace (area 19, "Encodings"): bytes written as text
+// and read back, each one function in `jadpo-value`'s `encoding` module.
+// Writing never fails; reading fails `malformed`, its one condition, for
+// text that isn't the encoding at all, and reads only the form writing
+// gives. There is no `from_url_component`: the runtime decodes paths and
+// query strings before code sees them (area 7).
+
+public library encoding {
+    /// The bytes standard, padded Base64 `text` holds. Fails `malformed`
+    /// for anything else.
+    function from_base64(text: Text) -> Bytes {}
+
+    /// The bytes unpadded Base64url `text` holds; padding is refused.
+    /// Fails `malformed` for anything else.
+    function from_base64url(text: Text) -> Bytes {}
+
+    /// The bytes hexadecimal `text` holds, in either case. Fails
+    /// `malformed` for anything else.
+    function from_hex(text: Text) -> Bytes {}
+
+    /// The text UTF-8 `bytes` hold. Invalid UTF-8 fails `malformed`, never
+    /// replaced.
+    function from_utf8(bytes: Bytes) -> Text {}
+
+    /// `bytes` as Base64 in the standard alphabet, padded.
+    function to_base64(bytes: Bytes) -> Text {}
+
+    /// `bytes` as Base64 in the URL alphabet, unpadded.
+    function to_base64url(bytes: Bytes) -> Text {}
+
+    /// `bytes` as lowercase hexadecimal, two digits a byte.
+    function to_hex(bytes: Bytes) -> Text {}
+
+    /// `text` with everything but RFC 3986's unreserved characters
+    /// percent-encoded as UTF-8: for a link code builds.
+    function to_url_component(text: Text) -> Text {}
+
+    /// `text`'s UTF-8 bytes.
+    function to_utf8(text: Text) -> Bytes {}
+}

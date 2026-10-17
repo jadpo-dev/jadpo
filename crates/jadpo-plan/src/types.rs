@@ -140,10 +140,14 @@ impl Types {
     }
 
     /// The number of the built-in `IssuedToken`'s or `IssuedKey`'s shape
-    /// (area 8), numbering it on first use. Neither is in the graph, so
-    /// the shape is written from the fields the standard library lists.
+    /// (area 8), or `DecodeProblem`'s (area 19), numbering it on first
+    /// use. None is in the graph, so the shape is written from the fields
+    /// the standard library lists.
     pub(crate) fn issued_shape(&mut self, name: &str) -> ShapeId {
-        self.fixed_shape(name, &jadpo_std::http::ISSUED_FIELDS)
+        self.fixed_shape(
+            name,
+            jadpo_std::http::builtin_object_fields(name).unwrap_or_default(),
+        )
     }
 
     /// The shape of a type the language declares with fixed fields, each

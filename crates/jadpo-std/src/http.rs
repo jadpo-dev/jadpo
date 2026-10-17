@@ -320,6 +320,34 @@ pub const ISSUED_FIELDS: [(&str, crate::Builtin); 3] = [
     ("ends_at", crate::Builtin::Instant),
 ];
 
+/// The first problem `json.read`'s `mismatch` found (area 19, "Data
+/// formats"): the field's path, list positions as numbers
+/// (`lines.2.quantity`), and the rule (`max`), never the value. Only the
+/// runtime builds one, for a failure mapped from `mismatch` that declares
+/// a field [`DECODE_PROBLEM_FIELD`] of this type.
+pub const DECODE_PROBLEM: &str = "DecodeProblem";
+
+/// The name of the failure field that receives a [`DECODE_PROBLEM`].
+pub const DECODE_PROBLEM_FIELD: &str = "problem";
+
+/// The fields of a `DecodeProblem`, in order, named as area 7's input
+/// problems are: `{ field, rule }`.
+pub const DECODE_PROBLEM_FIELDS: [(&str, crate::Builtin); 2] = [
+    ("field", crate::Builtin::Text),
+    ("rule", crate::Builtin::Text),
+];
+
+/// The fields of a built-in object type the boundary carries, which the
+/// runtime builds and a program only reads: `IssuedToken` and `IssuedKey`
+/// (area 8), and `DecodeProblem` (area 19).
+pub fn builtin_object_fields(name: &str) -> Option<&'static [(&'static str, crate::Builtin)]> {
+    match name {
+        ISSUED_TOKEN | ISSUED_KEY => Some(&ISSUED_FIELDS),
+        DECODE_PROBLEM => Some(&DECODE_PROBLEM_FIELDS),
+        _ => None,
+    }
+}
+
 /// What an API token starts with, before its 64 hexadecimal digits.
 pub const API_TOKEN_PREFIX: &str = "jadpo_token_";
 
@@ -617,6 +645,24 @@ impl RouteTable {
     /// The client fields of failure `key`.
     pub fn failure(&self, key: &str) -> Option<&FailureCodec> {
         self.failures.iter().find(|failure| failure.key == key)
+    }
+}
+
+/// The codecs `json.read` and `json.write` run with (area 19, "Data
+/// formats"): the wire's codec for each type a call reads or writes,
+/// numbered as [`RouteTable`]'s are, so a document in memory is read and
+/// written exactly as a request and a response are.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct JsonTable {
+    pub codecs: Vec<Codec>,
+    /// Each call's type's codec, by the number its site gives it.
+    pub types: Vec<CodecId>,
+}
+
+impl JsonTable {
+    /// The codec of the type numbered `at`.
+    pub fn codec_of(&self, at: u32) -> Option<CodecId> {
+        self.types.get(at as usize).copied()
     }
 }
 

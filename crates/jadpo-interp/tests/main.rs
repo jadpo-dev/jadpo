@@ -12,6 +12,8 @@ mod assertions;
 mod boundary;
 mod conditions;
 mod constants;
+mod data_formats;
+mod decode_problems;
 mod domain_names;
 mod effects;
 mod failures;
