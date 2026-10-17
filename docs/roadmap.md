@@ -658,7 +658,7 @@ reference only).
   examples that declare their own `Money` renamed. Done when the money
   examples pass, a mismatched currency fails to compile where both types
   fix it, and `split` and `allocate` never lose a minor unit.
-- [ ] **5.5h2 Definition before use** `sonnet · high` (area 1, "Files and
+- [ ] **5.5h3 Definition before use** `sonnet · high` (area 1, "Files and
   names"; Richard, 2026-10-17): `jadpo fmt` orders each file as decided:
   opening comment, `use` lines, then every declaration before the first
   one that uses it, the primary declaration last, ties by kind (constants,
