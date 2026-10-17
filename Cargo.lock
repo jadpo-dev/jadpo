@@ -1094,6 +1094,7 @@ dependencies = [
  "jadpo-std",
  "jiff",
  "serde_json",
+ "sha2",
  "writeable",
 ]
 

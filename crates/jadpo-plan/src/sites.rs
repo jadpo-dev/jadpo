@@ -92,6 +92,10 @@ pub enum Decoded {
     /// `config.<name>`: the number of the setting in the plan's settings;
     /// `None` when it has none, which the checker rules out.
     Config(Option<u32>),
+    /// `json.read` or `json.write` (area 19, "Data formats"): the number
+    /// of the type it reads or writes in the plan's JSON table
+    /// ([`crate::Plan::json`]), whose codec is the wire's for that type.
+    Json(u32),
     /// Something a later area builds, as written up to its arguments or
     /// block: `clock.now`, `query open_todos`, `Todo.update`.
     Written(String),
@@ -140,6 +144,9 @@ pub(crate) struct Decoder<'a> {
     pub write: &'a dyn Fn(u32) -> Option<u32>,
     /// The number of each setting, by its key (area 10).
     pub setting: &'a dyn Fn(&Key) -> Option<u32>,
+    /// The types `json.read` reads and `json.write` writes, numbered as
+    /// they are met (area 19, "Data formats").
+    pub json: &'a mut Vec<TypeRef>,
 }
 
 impl Decoder<'_> {
@@ -148,6 +155,18 @@ impl Decoder<'_> {
         let id = ConstId(self.constants.len() as u32);
         self.constants.push(constant);
         Some(id)
+    }
+
+    /// The number of `ty` in the JSON table, numbering it when it is new.
+    fn json_type(&mut self, ty: TypeRef) -> Decoded {
+        let at = match self.json.iter().position(|known| *known == ty) {
+            Some(at) => at,
+            None => {
+                self.json.push(ty);
+                self.json.len() - 1
+            }
+        };
+        Decoded::Json(at as u32)
     }
 
     fn slots(
@@ -181,7 +200,9 @@ impl Decoder<'_> {
                 Decoded::Constant(self.constant(constant))
             }
             Node::Expr(Expr::Call {
-                callee, fallible, ..
+                callee,
+                fallible,
+                args,
             }) => match callee {
                 Callee::Function(key)
                 | Callee::Action(key)
@@ -199,6 +220,18 @@ impl Decoder<'_> {
                     fallible: matches!(fallible, Fallible::Construction { .. }),
                     set: false,
                 },
+                // JSON in memory (area 19): the type read, which is the
+                // call's, or the type of the value written.
+                Callee::Std(jadpo_std::Op::JsonRead) => self.json_type(site.ty.clone()),
+                Callee::Std(jadpo_std::Op::JsonWrite) => {
+                    let written = args
+                        .first()
+                        .copied()
+                        .flatten()
+                        .and_then(|arg| body.sites.get(arg.0 as usize))
+                        .map_or(TypeRef::None, |arg| arg.ty.clone());
+                    self.json_type(written)
+                }
                 Callee::Query(key) => Decoded::Query((self.query)(key)),
                 Callee::Entity { entity, operation } if operation == "get" => {
                     Decoded::Get((self.entity)(entity))

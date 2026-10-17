@@ -94,6 +94,11 @@ icu_time = { version = "=2.3.0", default-features = false, features = ["compiled
 icu_list = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
 fixed_decimal = { version = "=0.7.2", default-features = false }
 writeable = { version = "=0.6.4", default-features = false }
+# SHA-256 for `hash.sha256` (area 19, "Hashing and cryptography";
+# jadpo-value only): RustCrypto's, pure Rust on wasm32, already in the
+# lock through tokio-postgres's SCRAM. No default features: no `alloc`
+# or OIDs are needed for a one-shot digest.
+sha2 = { version = "=0.11.1", default-features = false }
 # Pinned exactly and confined to jadpo-db and jadpo-check (docs/compiler-runtime.md §2.4).
 salsa = { version = "=0.28.5", default-features = false, features = ["macros", "inventory"] }
 # Node digests (docs/compiler-runtime.md §2.3). `pure` keeps the build free of

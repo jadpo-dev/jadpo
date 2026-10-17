@@ -620,6 +620,24 @@ impl RouteTable {
     }
 }
 
+/// The codecs `json.read` and `json.write` run with (area 19, "Data
+/// formats"): the wire's codec for each type a call reads or writes,
+/// numbered as [`RouteTable`]'s are, so a document in memory is read and
+/// written exactly as a request and a response are.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct JsonTable {
+    pub codecs: Vec<Codec>,
+    /// Each call's type's codec, by the number its site gives it.
+    pub types: Vec<CodecId>,
+}
+
+impl JsonTable {
+    /// The codec of the type numbered `at`.
+    pub fn codec_of(&self, at: u32) -> Option<CodecId> {
+        self.types.get(at as usize).copied()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

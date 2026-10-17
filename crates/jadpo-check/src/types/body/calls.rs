@@ -794,6 +794,8 @@ impl Body<'_> {
         // A number has no entry (area 19, "Numbers").
         let mut contract: Option<(Ty, Option<&'static jadpo_std::StandardType>)> = None;
         let mut parsed: Option<(Ty, Option<Expr>)> = None;
+        // The type `json.read`'s `as:` names (area 19, "Data formats").
+        let mut read_as: Option<Ty> = None;
         // What `list.sum`'s items are built on, which its result is.
         let mut summed: Option<Prim> = None;
         // The range type a `range` call's ranges are, which its result is.
@@ -865,10 +867,25 @@ impl Body<'_> {
                 }
                 continue;
             }
+            if kind == Some(jadpo_std::Kind::Type)
+                && table.is_some_and(|table| table.op == jadpo_std::Op::JsonRead)
+            {
+                read_as = self.json_type_argument(&value, written);
+                continue;
+            }
             if kind == Some(jadpo_std::Kind::Type) {
                 if let Some(target) = self.type_argument(&value, written) {
                     parsed = Some((target, None));
                 }
+                continue;
+            }
+            // `json.write`'s value is one an `Output` may hold.
+            if table.is_some_and(|table| table.op == jadpo_std::Op::JsonWrite) {
+                let given = match ty {
+                    Some(ty) => ty,
+                    None => self.infer(&value),
+                };
+                self.json_value(&value, &given, written);
                 continue;
             }
             // A list of numbers (`list.sum`): any list whose items are
@@ -996,6 +1013,9 @@ impl Body<'_> {
                 self.parse_fallible(call, &raw, &target);
             }
             return target;
+        }
+        if table.is_some_and(|table| table.op == jadpo_std::Op::JsonRead) {
+            return self.json_read_result(call, read_as);
         }
         if table.is_some_and(|table| table.op == jadpo_std::Op::TextParse) {
             // `as:` was missing or isn't a type, which is reported; what
@@ -2036,6 +2056,7 @@ fn built_on(param: &Ty) -> Option<&'static [Prim]> {
         Ty::Prim(Prim::Int) => Some(&[Prim::Int]),
         Ty::Prim(Prim::Decimal) => Some(&[Prim::Decimal]),
         Ty::Prim(Prim::Text) => Some(&[Prim::Text]),
+        Ty::Prim(Prim::Bytes) => Some(&[Prim::Bytes]),
         Ty::Prim(Prim::Instant) => Some(&[Prim::Instant]),
         Ty::Prim(Prim::CalendarDate) => Some(&[Prim::CalendarDate]),
         Ty::Prim(Prim::ZonedTime) => Some(&[Prim::ZonedTime]),

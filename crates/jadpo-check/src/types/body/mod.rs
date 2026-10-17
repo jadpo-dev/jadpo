@@ -23,6 +23,7 @@ mod expr;
 pub(crate) mod facts;
 mod failing;
 mod identity;
+mod json;
 mod known;
 mod lower;
 mod matching;

@@ -10,7 +10,8 @@ license.workspace = true
 # A runtime crate (docs/compiler-runtime.md §2.1): it builds for
 # wasm32-unknown-unknown and depends on no compiler or tooling crate; only on
 # jadpo-std, the leaf crate it shares with the compiler. serde_json reads
-# a request's JSON (area 7); what Jadpo writes it writes itself. jiff
+# a request's JSON (area 7) and `json.read`'s (area 19); what Jadpo writes
+# it writes itself. sha2 is `hash.sha256`'s digest (area 19). jiff
 # holds the time zone database `temporal` works in (area 10), and the ICU4X
 # crates the locale data that formats it for people and the plural rules
 # and numbers of a translation's messages (area 10).
@@ -28,6 +29,7 @@ icu_list.workspace = true
 fixed_decimal.workspace = true
 writeable.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true

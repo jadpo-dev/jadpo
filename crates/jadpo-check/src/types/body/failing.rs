@@ -76,7 +76,11 @@ fn options_named(keys: &[String]) -> String {
 /// or, for one only a proof settles, as `decimal.ln`'s `out_of_range`
 /// (area 19, "Numbers"), what proves it.
 fn condition_clause(keys: &[String]) -> String {
-    if keys.iter().any(|key| key == "out_of_range") {
+    if keys.iter().any(|key| key == "mismatch") {
+        "What a document holds is only known when the program runs: text that isn't one JSON document fails `malformed`, and a document that isn't the type `as:` names fails `mismatch`".to_string()
+    } else if keys.iter().any(|key| key == "malformed") {
+        "What the text or bytes hold is only known when the program runs, and they may not be the encoding at all, which fails `malformed`".to_string()
+    } else if keys.iter().any(|key| key == "out_of_range") {
         "There is no logarithm of a value at or below `0`, and nothing proves this one above `0`, as a literal above `0` or a type whose `min` is above `0` would".to_string()
     } else {
         format!(
@@ -87,13 +91,16 @@ fn condition_clause(keys: &[String]) -> String {
     }
 }
 
-/// What a call can give to settle the conditions itself: the options, or
-/// a value proved above `0`.
+/// What a call can give to settle the conditions itself, after "or": the
+/// options, or a value proved above `0`; nothing settles what decoding
+/// gives (area 19, "Encodings" and "Data formats").
 fn settle_by(keys: &[String]) -> String {
-    if keys.iter().any(|key| key == "out_of_range") {
-        "pass a value whose type has a `min` above `0`".to_string()
+    if keys.iter().any(|key| key == "malformed" || key == "mismatch") {
+        String::new()
+    } else if keys.iter().any(|key| key == "out_of_range") {
+        ", or pass a value whose type has a `min` above `0`".to_string()
     } else {
-        format!("give {}", options_named(keys))
+        format!(", or give {}", options_named(keys))
     }
 }
 
@@ -272,7 +279,7 @@ impl Body<'_> {
                     condition_clause(breakable)
                 ))
                 .next(format!(
-                    "Write `attempt {written}(...) {{ {first}: SomeFailure }}`, mapping each condition to an `invalid_value` failure, or `invalid:` for all of them, or {}",
+                    "Write `attempt {written}(...) {{ {first}: SomeFailure }}`, mapping each condition to an `invalid_value` failure, or `invalid:` for all of them{}",
                     settle_by(breakable)
                 ))
             }
@@ -613,11 +620,12 @@ impl Body<'_> {
             }
             Fallible::Unknown => {
                 self.flow.open = true;
-                // A construction, or `text.parse`, whose type is already
-                // reported as wrong maps rules; nothing more is known.
+                // A construction, `text.parse` or `json.read`, whose type
+                // is already reported as wrong, maps rules; nothing more is
+                // known.
                 let builds = matches!(&inner, Expr::CallExpr(call) if matches!(
                     self.facts.reaches.get(&node_key(call.syntax())),
-                    Some(Reach::Construct(_) | Reach::Std(jadpo_std::Op::TextParse))
+                    Some(Reach::Construct(_) | Reach::Std(jadpo_std::Op::TextParse | jadpo_std::Op::JsonRead))
                 ));
                 for arm in &arms {
                     let failure = arm.value.as_ref().and_then(|v| self.failure_given(v));

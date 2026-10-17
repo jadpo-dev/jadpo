@@ -120,7 +120,9 @@ pub struct Param {
 /// option named `option` applies and is left out, or given as anything
 /// but a written value other than `reject`. One with no option is
 /// settled only by proof: `decimal.ln`'s `out_of_range`, by a value
-/// proved above 0 ([`Param::above_zero`], area 19, "Numbers").
+/// proved above 0 ([`Param::above_zero`], area 19, "Numbers"); or, for
+/// `malformed` and `mismatch` on what an `encoding` or `json` operation
+/// decodes, never while compiling.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Condition {
     pub key: RuleKey,
@@ -143,11 +145,23 @@ pub enum Op {
     DecimalRound,
     DecimalSin,
     DecimalSqrt,
+    EncodingFromBase64,
+    EncodingFromBase64url,
+    EncodingFromHex,
+    EncodingFromUtf8,
+    EncodingToBase64,
+    EncodingToBase64url,
+    EncodingToHex,
+    EncodingToUrlComponent,
+    EncodingToUtf8,
+    HashSha256,
     IntegerAbs,
     IntegerDivide,
     IntegerFromDecimal,
     IntegerMax,
     IntegerMin,
+    JsonRead,
+    JsonWrite,
     ListAll,
     ListAny,
     ListAppend,
@@ -357,6 +371,49 @@ const ON_OUT_OF_RANGE: Condition = Condition {
     key: RuleKey::OutOfRange,
     option: None,
 };
+
+/// Text or bytes that aren't the format an `encoding` or `json` operation
+/// decodes at all (area 19, "Encodings" and "Data formats"): nothing
+/// proves it while compiling, so the call's `attempt` maps it.
+const ON_MALFORMED: Condition = Condition {
+    key: RuleKey::Malformed,
+    option: None,
+};
+
+/// A JSON document that isn't the type `json.read`'s `as:` names.
+const ON_MISMATCH: Condition = Condition {
+    key: RuleKey::Mismatch,
+    option: None,
+};
+
+/// Plain text and plain bytes, as the encodings take and give them.
+const TEXT_VALUE: Kind = Kind::Builtin(Builtin::Text);
+const BYTES_VALUE: Kind = Kind::Builtin(Builtin::Bytes);
+/// A value built on `Bytes`, or a `Text`, taken as its UTF-8 bytes
+/// (`hash.sha256`, `json.read`).
+const TEXT_OR_BYTES: Kind = Kind::OneOf(&[Builtin::Text, Builtin::Bytes]);
+
+/// An `encoding` operation (area 19, "Encodings"), by its parameter, its
+/// result and whether it decodes, failing `malformed`.
+const fn encoding(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    decodes: bool,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace: "encoding",
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: if decodes { &[ON_MALFORMED] } else { &[] },
+        rust,
+    }
+}
 
 /// What `temporal`'s calendar operations work on: a date, or a local time
 /// in its zone.
@@ -689,6 +746,92 @@ pub const OPERATIONS: &[Operation] = &[
             "decimal::sqrt",
         )
     },
+    // The encodings (area 19, "Encodings"), each one function in
+    // `jadpo-value`'s `encoding` module; decoding fails `malformed` only.
+    encoding(
+        Op::EncodingFromBase64,
+        "from_base64",
+        &[param("text", TEXT_VALUE)],
+        BYTES_VALUE,
+        true,
+        "encoding::from_base64",
+    ),
+    encoding(
+        Op::EncodingFromBase64url,
+        "from_base64url",
+        &[param("text", TEXT_VALUE)],
+        BYTES_VALUE,
+        true,
+        "encoding::from_base64url",
+    ),
+    encoding(
+        Op::EncodingFromHex,
+        "from_hex",
+        &[param("text", TEXT_VALUE)],
+        BYTES_VALUE,
+        true,
+        "encoding::from_hex",
+    ),
+    encoding(
+        Op::EncodingFromUtf8,
+        "from_utf8",
+        &[param("bytes", BYTES_VALUE)],
+        TEXT_VALUE,
+        true,
+        "encoding::from_utf8",
+    ),
+    encoding(
+        Op::EncodingToBase64,
+        "to_base64",
+        &[param("bytes", BYTES_VALUE)],
+        TEXT_VALUE,
+        false,
+        "encoding::to_base64",
+    ),
+    encoding(
+        Op::EncodingToBase64url,
+        "to_base64url",
+        &[param("bytes", BYTES_VALUE)],
+        TEXT_VALUE,
+        false,
+        "encoding::to_base64url",
+    ),
+    encoding(
+        Op::EncodingToHex,
+        "to_hex",
+        &[param("bytes", BYTES_VALUE)],
+        TEXT_VALUE,
+        false,
+        "encoding::to_hex",
+    ),
+    encoding(
+        Op::EncodingToUrlComponent,
+        "to_url_component",
+        &[param("text", TEXT_VALUE)],
+        TEXT_VALUE,
+        false,
+        "encoding::to_url_component",
+    ),
+    encoding(
+        Op::EncodingToUtf8,
+        "to_utf8",
+        &[param("text", TEXT_VALUE)],
+        BYTES_VALUE,
+        false,
+        "encoding::to_utf8",
+    ),
+    // SHA-256 (area 19, "Hashing and cryptography", question 24): a
+    // digest is `Bytes`, written as text by `encoding`.
+    Operation {
+        op: Op::HashSha256,
+        namespace: "hash",
+        name: "sha256",
+        params: &[param("value", TEXT_OR_BYTES)],
+        result: BYTES_VALUE,
+        at_least: None,
+        conditions: &[],
+        rust: "hash::sha256",
+    },
     // Overflow on the smallest `Int` is a defect, as it is for `-`.
     Operation {
         at_least: Some(0),
@@ -740,6 +883,33 @@ pub const OPERATIONS: &[Operation] = &[
         SAME_WHOLE,
         "integer::min",
     ),
+    // JSON in memory (area 19, "Data formats", question 14), through the
+    // wire's codecs (areas 2 and 7): `json.read` is given the codec of the
+    // type `as:` names, and `json.write` the codec of its value's type,
+    // which the plan numbers per call, so both run in `jadpo-value`'s
+    // `json` module with the plan's codecs rather than through
+    // [`crate::Op`]'s plain `run`. `as:` is a type written out, as
+    // `text.parse`'s is, read with an `Input`'s rules.
+    Operation {
+        op: Op::JsonRead,
+        namespace: "json",
+        name: "read",
+        params: &[param("text", TEXT_OR_BYTES), param("as", Kind::Type)],
+        result: Kind::Any,
+        at_least: None,
+        conditions: &[ON_MALFORMED, ON_MISMATCH],
+        rust: "json::read_value",
+    },
+    Operation {
+        op: Op::JsonWrite,
+        namespace: "json",
+        name: "write",
+        params: &[param("value", Kind::Any)],
+        result: TEXT_VALUE,
+        at_least: None,
+        conditions: &[],
+        rust: "json::write_value",
+    },
     // The list operations (area 19, "Lists"), each one function in
     // `jadpo-value`'s `list` module. Those whose result is `T`, `T?` or
     // `List<T>` give items of the list unchanged, so they keep the items'
@@ -1439,11 +1609,16 @@ mod tests {
                         .params
                         .iter()
                         .any(|param| param.name == option && param.optional),
+                    // What text or bytes decode to is known only when the
+                    // program runs, so only an `attempt` settles it.
+                    None if matches!(condition.key, RuleKey::Malformed | RuleKey::Mismatch) => {
+                        true
+                    }
                     None => operation.params.iter().any(|param| param.above_zero),
                 };
                 assert!(
                     settled,
-                    "{}'s `{}` is settled by an option it takes, or a proof",
+                    "{}'s `{}` is settled by an option it takes, a proof or an `attempt`",
                     operation.qualified(),
                     condition.key.word()
                 );
