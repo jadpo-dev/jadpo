@@ -822,10 +822,14 @@ reference only).
 - [ ] **5.5y `jadpo suggest share`, against a fake Jadpo HQ** `opus ·
   high` (area 14; decided by Richard, 2026-10-17), after 5.5x: opt-in
   sharing, built in full against a local fake of Jadpo HQ that speaks the
-  same protocol, since HQ doesn't exist yet. Off until the project opts in,
-  which also creates a random anonymous project token tied to nothing (no
-  repo, user or machine), so HQ counts distinct projects without knowing
-  them. `share` sends every hash in `.jadpo/suggest_pending` and every
+  same protocol, since HQ doesn't exist yet. Off until the project opts in:
+  the first `share` asks, and on yes writes `suggestions { share: true,
+  project_token: "…" }` to `app.jadpo`, the token random and tied to
+  nothing (no repo, user or machine). It is committed, so a team is one
+  project and HQ counts distinct projects without knowing them; `share`
+  recreates it when sharing is on and it is missing, and `share
+  --new-token` rotates it (a fork shares its parent's token until it
+  does). `share` sends every hash in `.jadpo/suggest_pending` and every
   ignored hash not sent before (marked sent in
   `ignored_suggestions.jadpo_record`), with the token; HQ replies with the
   hashes whose text it wants (those seen from enough distinct projects).

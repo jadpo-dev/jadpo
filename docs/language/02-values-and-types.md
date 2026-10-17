@@ -35,7 +35,7 @@ These types exist without being declared, and their names cannot be reused.
 
 > Amended 2026-10-17 by area 19: the standard library's 247 vocabulary
 > types are built-in names too, global and in one flat set (`Money`,
-> `Currency`, `Percentage`, `PostalAddress`, `PhysicalLength` ...; the
+> `Currency`, `Percentage`, `PostalAddress`, `Length` ...; the
 > list is area 19's "The standard types"), with `EncryptionKey` and
 > `PasswordCheck`. Each arrives with its chunk (5.5a to 5.5s), and the
 > page and example types that reuse one (`Money`, `Currency`,
