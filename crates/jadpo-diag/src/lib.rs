@@ -770,6 +770,8 @@ rules! {
         "14-tooling.html#the-jadpo-command", "Project could not be found";
     TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,
         "14-tooling.html#the-jadpo-command", "Jadpo source file could not be read";
+    TRANSLATION_FEATURE_OFF: "translation.feature_off", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-feature-off", "A language file words a Jadpo message of a feature the application has off";
     TRANSLATION_FIELD_TYPE: "translation.field_type", area 10, Error, Agent,
         "10-configuration-and-time.html#translation-field-type", "A message field is a type a wording can't hold";
     TRANSLATION_FIELD_UNUSED: "translation.field_unused", area 10, Declinable, Agent,
@@ -778,6 +780,8 @@ rules! {
         "10-configuration-and-time.html#translation-file-missing", "A supported locale has no language file";
     TRANSLATION_FILE_NAME_INVALID: "translation.file_name_invalid", area 10, Error, Agent,
         "10-configuration-and-time.html#translation-file-name-invalid", "A language file is not named for a locale";
+    TRANSLATION_JADPO_MISSING: "translation.jadpo_missing", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-jadpo-missing", "A supported locale lacks wording for Jadpo's own messages";
     TRANSLATION_LOCALE_UNSUPPORTED: "translation.locale_unsupported", area 10, Error, Agent,
         "10-configuration-and-time.html#translation-locale-unsupported", "A language file is for a locale the application does not support";
     TRANSLATION_LOCALES_REQUIRED: "translation.locales_required", area 10, Error, Agent,
@@ -790,6 +794,8 @@ rules! {
         "10-configuration-and-time.html#translation-message-unknown", "A translation call names no message or enum";
     TRANSLATION_OPTION_UNKNOWN: "translation.option_unknown", area 10, Error, Agent,
         "10-configuration-and-time.html#translation-option-unknown", "An option of translations in app.jadpo is not one it takes";
+    TRANSLATION_OWNER_UNKNOWN: "translation.owner_unknown", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-owner-unknown", "A group in the root language file names no owner of text";
     TRANSLATION_PLACEHOLDER_UNKNOWN: "translation.placeholder_unknown", area 10, Error, Agent,
         "10-configuration-and-time.html#translation-placeholder-unknown", "A wording writes a field the message does not have";
     TRANSLATION_REVIEW_INVALID: "translation.review_invalid", area 10, Error, Agent,

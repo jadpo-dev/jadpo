@@ -18,6 +18,7 @@ mod check;
 mod declared;
 pub mod definitions;
 pub mod failures;
+pub mod jadpo;
 mod language;
 pub mod outstanding;
 pub mod sources;
@@ -53,9 +54,7 @@ pub fn translation_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         }
         scopes.sort();
     }
-    if scopes.is_empty() {
-        return out;
-    }
+    let roots = jadpo::root_language_files(db, project);
     for scope in &scopes {
         out.extend(
             subjects(db, project, Name::new(db, scope.clone()))
@@ -66,9 +65,20 @@ pub fn translation_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     }
     let declared = crate::locales::locales(db, project);
     if !declared.declared {
-        out.push(locales_required(db, project, &scopes));
+        if !scopes.is_empty() || !roots.is_empty() {
+            out.push(locales_required(db, project, &scopes));
+        }
         return out;
     }
+    // Jadpo's own messages, worded in the root folder and by what Jadpo
+    // ships, and that folder's record.
+    out.extend(jadpo::analysis(db, project).problems.iter().cloned());
+    out.extend(
+        sources::standings(db, project, Name::new(db, sources::ROOT.to_string()))
+            .problems
+            .iter()
+            .cloned(),
+    );
     for scope in &scopes {
         out.extend(
             analyse(db, project, Name::new(db, scope.clone()))
@@ -107,7 +117,13 @@ fn locales_required(db: &dyn Db, project: Project, scopes: &[String]) -> Diagnos
             break;
         }
     }
-    let at = at.unwrap_or_else(|| Span::new("app.jadpo", 0, 0));
+    let at = at
+        .or_else(|| {
+            jadpo::root_language_files(db, project)
+                .first()
+                .map(|file| file.keyword.clone())
+        })
+        .unwrap_or_else(|| Span::new("app.jadpo", 0, 0));
     Diagnostic::new(
         &rule::TRANSLATION_LOCALES_REQUIRED,
         "Translations need the application's locales",

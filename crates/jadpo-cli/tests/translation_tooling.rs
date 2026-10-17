@@ -75,6 +75,10 @@ const BOOKING: &[(&str, &str)] = &[
         "use booking/types { BookRequest, Booked }\nuse booking/actions { book }\n\nroutes Bookings {\n    prefix: /bookings\n\n    POST / {\n        authentication: RouteAuthentication.none\n        input: BookRequest\n        output: Booked\n        run: book(input.seats)\n    }\n}\n",
     ),
     (
+        "translations/fr_fr.jadpo",
+        "translations {\n    jadpo: {\n        deadline_exceeded: \"fr: deadline_exceeded.\"\n        idempotency_key_reused: \"fr: idempotency_key_reused.\"\n        internal_fault: \"fr: internal_fault.\"\n        invalid_input: \"fr: invalid_input.\"\n        invalid_request: \"fr: invalid_request.\"\n        method_not_allowed: \"fr: method_not_allowed.\"\n        rate_limited: \"fr: rate_limited.\"\n        request_too_large: \"fr: request_too_large.\"\n        route_not_found: \"fr: route_not_found.\"\n        unavailable: \"fr: unavailable.\"\n    }\n}\n",
+    ),
+    (
         "domains/booking/translations/en_gb.jadpo",
         "translations {\n    slot_taken: \"That slot has just gone. The next is {next_slot}, with {seats_left} seats left.\"\n}\n",
     ),
@@ -118,13 +122,17 @@ fn a_failure_a_route_can_answer_with_is_worded_in_every_locale_and_exported() {
     };
     let formats = serde_json::json!({ "next_slot": "date_time", "seats_left": "number" });
     assert_eq!(
-        read("fr_fr"),
+        read("fr_fr")["slot_taken"],
         serde_json::json!({
-            "slot_taken": {
-                "formats": formats,
-                "text": "Ce créneau vient d'être pris. Le prochain est {next_slot}, avec {seats_left} places."
-            }
+            "formats": formats,
+            "text": "Ce créneau vient d'être pris. Le prochain est {next_slot}, avec {seats_left} places."
         })
+    );
+    // Jadpo's own failures join the app's: the French is the app's.
+    assert_eq!(read("fr_fr")["invalid_input"]["text"], "fr: invalid_input.");
+    assert_eq!(
+        read("en_gb")["invalid_input"]["text"],
+        "Some of the information sent isn't valid. Check it and try again."
     );
     assert_eq!(
         read("en_gb")["slot_taken"]["text"],
@@ -538,7 +546,7 @@ fn the_commands_refuse_what_they_cannot_do() {
     assert!(near.contains("Did you mean `fr_fr`?"), "{near}");
     let (_, extra) = plain(&root, &["translations", "unused", "fr_fr"]);
     assert!(extra.contains("takes nothing after it"), "{extra}");
-    for planned in ["builtin", "export", "import"] {
+    for planned in ["export", "import"] {
         let (code, out) = plain(&root, &["translations", planned]);
         assert_ne!(code, 0);
         assert!(

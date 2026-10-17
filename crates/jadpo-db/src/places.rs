@@ -170,6 +170,10 @@ pub enum Place {
     Providers,
     /// `acceptances/` (area 18).
     Acceptances,
+    /// The root `translations/` folder: the app's wording for text it did
+    /// not write, one `translations { }` file for each locale, grouped by
+    /// owner (area 10).
+    RootTranslations,
     /// A loose file: no layout.
     Loose,
     /// Somewhere the layout has no place for a `.jadpo` file.
@@ -219,7 +223,7 @@ impl Location {
 }
 
 /// Root folders whose files are not Jadpo source.
-const RECORD_FOLDERS: [&str; 3] = ["api", "translations", "build"];
+const RECORD_FOLDERS: [&str; 2] = ["api", "build"];
 
 /// Reads a project-relative path (`/` separators) against the layout.
 pub fn locate(path: &str, layout: Layout) -> Location {
@@ -298,6 +302,7 @@ pub fn locate(path: &str, layout: Layout) -> Location {
         ["database", "migrations", _] => at(Ownership::Root, Place::Migration),
         ["providers", ..] => at(Ownership::Root, Place::Providers),
         ["acceptances"] => at(Ownership::Root, Place::Acceptances),
+        ["translations"] => at(Ownership::Root, Place::RootTranslations),
         [first, ..] if RECORD_FOLDERS.contains(first) => at(
             Ownership::Root,
             Place::Stray(Stray::RootFolder(first.to_string())),

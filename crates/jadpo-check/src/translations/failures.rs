@@ -90,15 +90,29 @@ pub fn texts(db: &dyn Db, project: Project) -> BTreeMap<String, Vec<FailureText>
             )
         })
         .collect();
-    reachable(db, project)
+    // Jadpo's own failures join each API's: the ones its routes can meet,
+    // unless the application words a failure under the same code.
+    let jadpo = super::jadpo::failure_texts(db, project);
+    let mut out: BTreeMap<String, Vec<FailureText>> = reachable(db, project)
         .iter()
         .map(|(api, names)| {
-            let mut texts: Vec<FailureText> = names
+            let texts: Vec<FailureText> = names
                 .iter()
                 .filter_map(|name| by_name.get(name).cloned())
                 .collect();
-            texts.sort_by(|a, b| a.code.cmp(&b.code));
             (api.clone(), texts)
         })
-        .collect()
+        .collect();
+    for (api, own) in jadpo {
+        let texts = out.entry(api).or_default();
+        for text in own {
+            if !texts.iter().any(|seen| seen.code == text.code) {
+                texts.push(text);
+            }
+        }
+    }
+    for texts in out.values_mut() {
+        texts.sort_by(|a, b| a.code.cmp(&b.code));
+    }
+    out
 }

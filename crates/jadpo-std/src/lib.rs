@@ -54,6 +54,7 @@ mod enums;
 mod format;
 pub mod http;
 mod isolation;
+pub mod jadpo_text;
 mod literal;
 mod locale;
 mod migration;

@@ -1,9 +1,9 @@
-//! `jadpo translations missing`, `unused`, `update` and `accept` (area 10,
-//! "Tooling"; chunk 5.4d): what is left to translate, which messages
-//! nothing calls, and the record of which default wording each translation
-//! was made from and who accepted it. `builtin`, `export` and `import`
-//! come with Jadpo's own messages and the exchange with translation
-//! services (chunk 5.4e). Every command that prints takes `--json`.
+//! `jadpo translations missing`, `unused`, `update`, `accept` and `builtin`
+//! (area 10, "Tooling"; chunks 5.4d and 5.4e): what is left to translate,
+//! which messages nothing calls, the record of which default wording each
+//! translation was made from and who accepted it, and Jadpo's own
+//! messages. `export` and `import` come with the exchange with translation
+//! services (chunk 5.4f). Every command that prints takes `--json`.
 //!
 //! Designed before it was built (impeccable's shape pass against the CLI
 //! design language, run unattended, so its assumptions are marked):
@@ -39,6 +39,23 @@
 //! - `accept` needs the locale. *Assumption:* it accepts what `update`
 //!   would record for the locale first, so a person need not run both,
 //!   and it never accepts a stale translation.
+//! - `builtin` (5.4e; impeccable's shape pass again, unattended). *Job:*
+//!   an agent or a person who must word Jadpo's messages for a locale
+//!   Jadpo does not ship, or reword what it ships, needs the names, the
+//!   fields each may write and the English to translate from, for the
+//!   messages of the features this app has on. Mode: operate. One bold
+//!   heading for each feature (`Requests`, `Signing in`), a line for each
+//!   message (its name, `{fields}` when it has any, and `needs fr_fr` when
+//!   a supported locale that is not in progress still lacks it), and the
+//!   shipped wording under it, wrapped, never cut, since it is what is
+//!   translated. The footer counts the messages and, in the problem
+//!   colour, how many need wording; the one hint is `jadpo check`, which
+//!   fails until they are worded, and only appears then. Nothing is a
+//!   table: a wording is prose and would be cut. *Assumption:* the
+//!   command succeeds whatever it lists, as `missing` does. `--json`
+//!   carries the description translators read, the fields with their
+//!   kinds, the wording, where Jadpo ships it and the locales that still
+//!   need it.
 //! - *States.* Outstanding work; nothing outstanding (`✓ Nothing
 //!   outstanding`); no translations at all; a locale that is not
 //!   supported, is the default or is missing (`cli.translations_arguments`,
@@ -80,27 +97,27 @@ pub const ACTIONS: &[Value] = &[
         name: "accept",
         description: "Accept a locale's changed wording",
     },
+    Value {
+        name: "builtin",
+        description: "List Jadpo's own messages the app can show",
+    },
 ];
 
-/// Decided, not built yet (chunk 5.4e).
+/// Decided, not built yet (chunk 5.4f).
 const PLANNED: &[(&str, &str)] = &[
     (
-        "builtin",
-        "Jadpo's own messages, which `builtin` lists with their fields, come in chunk 5.4e",
-    ),
-    (
         "export",
-        "Exchanging messages with translation services as XLIFF or JSON comes in chunk 5.4e",
+        "Exchanging messages with translation services as XLIFF or JSON comes in chunk 5.4f",
     ),
     (
         "import",
-        "Exchanging messages with translation services as XLIFF or JSON comes in chunk 5.4e",
+        "Exchanging messages with translation services as XLIFF or JSON comes in chunk 5.4f",
     ),
 ];
 
 pub fn translations(call: &Call) -> Reply {
     let action = match call.arguments.first().map(String::as_str) {
-        Some(action @ ("missing" | "unused" | "update" | "accept")) => action,
+        Some(action @ ("missing" | "unused" | "update" | "accept" | "builtin")) => action,
         Some(other) => {
             if let Some((_, reason)) = PLANNED.iter().find(|(name, _)| *name == other) {
                 return Reply::failed(
@@ -138,7 +155,7 @@ pub fn translations(call: &Call) -> Reply {
                     &rule::CLI_TRANSLATIONS_ARGUMENTS,
                     "`jadpo translations` needs to know what to do",
                 )
-                .reason("`missing` lists what is left to translate, `unused` the messages no code calls, `update` records the wording each translation was made from and `accept` accepts a locale's changed wording.")
+                .reason("`missing` lists what is left to translate, `unused` the messages no code calls, `update` records the wording each translation was made from, `accept` accepts a locale's changed wording and `builtin` lists Jadpo's own messages.")
                 .next("Run `jadpo translations missing`"),
             );
         }
@@ -150,17 +167,17 @@ pub fn translations(call: &Call) -> Reply {
     let loaded = jadpo_db::load(&root);
     let extra = call.arguments.get(1).map(String::as_str);
     if let Some(extra) = extra
-        && matches!(action, "unused" | "update")
+        && matches!(action, "unused" | "update" | "builtin")
     {
         return Reply::failed(
             Diagnostic::new(
                 &rule::CLI_TRANSLATIONS_ARGUMENTS,
                 format!("`jadpo translations {action}` takes nothing after it, not `{extra}`"),
             )
-            .reason(if action == "unused" {
-                "It looks at every message in the project."
-            } else {
-                "It records every locale at once."
+            .reason(match action {
+                "unused" => "It looks at every message in the project.",
+                "builtin" => "It lists every message of Jadpo's the application can show.",
+                _ => "It records every locale at once.",
             })
             .next(format!("Run `jadpo translations {action}`")),
         );
@@ -183,6 +200,7 @@ pub fn translations(call: &Call) -> Reply {
     match action {
         "missing" => missing(&loaded, extra),
         "unused" => unused(&loaded, &cwd),
+        "builtin" => builtin(&loaded),
         "update" => write(&loaded, &cwd, None),
         _ => accept(&loaded, &cwd, extra),
     }
@@ -422,6 +440,7 @@ fn items(db: &dyn Db, project: Project) -> Vec<Item> {
     all.extend(jadpo_check::translations::failures::failure_scopes(
         db, project,
     ));
+    all.insert(sources::ROOT.to_string());
     for scope in all {
         let standings = sources::standings(
             db,
@@ -602,6 +621,7 @@ fn write(loaded: &Loaded, cwd: &Path, accept: Option<String>) -> Reply {
     all.extend(jadpo_check::translations::failures::failure_scopes(
         db, project,
     ));
+    all.insert(sources::ROOT.to_string());
     let mut screen = Screen::new();
     let mut data = Vec::new();
     let mut accepted = 0usize;
@@ -734,4 +754,180 @@ fn write(loaded: &Loaded, cwd: &Path, accept: Option<String>) -> Reply {
             ("stale", stale.into()),
         ]),
     )
+}
+
+// --- builtin ---------------------------------------------------------------
+
+/// The wording wrapped to `width` columns, never cut.
+fn wrap(text: &str, width: usize) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let mut line = String::new();
+    for word in text.split(' ') {
+        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > width {
+            lines.push(std::mem::take(&mut line));
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.push_str(word);
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    lines
+}
+
+/// Jadpo's own messages the application can show, by feature.
+fn builtin(loaded: &Loaded) -> Reply {
+    use jadpo_check::translations::jadpo as owner;
+    use jadpo_std::jadpo_text::{Feature, Shape, Ships};
+    let (db, project) = (&loaded.db, loaded.project);
+    let messages = owner::messages_on(db, project);
+    let needs = owner::needs(db, project);
+    let needing = |key: &str| -> Vec<&'static str> {
+        needs
+            .iter()
+            .filter(|(_, missing)| missing.iter().any(|message| message.key == key))
+            .map(|(locale, _)| tag_of(*locale))
+            .collect()
+    };
+    let mut screen = Screen::new();
+    if messages.is_empty() {
+        screen.push(Block::summary(Outcome::Success, "No messages", []));
+    }
+    let width = messages.iter().map(|m| m.key.len()).max().unwrap_or(0);
+    let mut features = 0usize;
+    for feature in Feature::ALL {
+        let of: Vec<_> = messages
+            .iter()
+            .filter(|message| message.feature == feature)
+            .collect();
+        if of.is_empty() {
+            continue;
+        }
+        features += 1;
+        let mut lines = Vec::new();
+        for message in of {
+            let fields: Vec<String> = message
+                .fields
+                .iter()
+                .map(|(name, _)| format!("{{{name}}}"))
+                .collect();
+            let wanted = needing(message.key);
+            let mut parts = vec![format!("{:width$}", message.key)];
+            if !fields.is_empty() {
+                parts.push(fields.join(" "));
+            }
+            if !wanted.is_empty() {
+                parts.push(format!("needs {}", wanted.join(" ")));
+            }
+            lines.push(parts.join("  ").trim_end().to_string());
+            match message.shape {
+                Shape::Plain(text) => {
+                    lines.extend(wrap(text, 76).into_iter().map(|line| format!("  {line}")));
+                }
+                Shape::Variants(variants) => {
+                    let name_width = variants
+                        .iter()
+                        .map(|(name, _)| name.len())
+                        .max()
+                        .unwrap_or(0);
+                    lines.extend(
+                        variants
+                            .iter()
+                            .map(|(name, text)| format!("  {name:name_width$}  {text}")),
+                    );
+                }
+            }
+        }
+        screen.push(Block::Section {
+            heading: feature.heading().to_string(),
+            lines,
+        });
+    }
+    let needing_count = messages
+        .iter()
+        .filter(|message| !needing(message.key).is_empty())
+        .count();
+    if !messages.is_empty() {
+        let mut facts = Vec::new();
+        if needing_count > 0 {
+            facts.push(Fact::problem(format!("{needing_count} need wording")));
+        }
+        facts.push(Fact::plain(count(features, "feature", "features")));
+        screen.push(Block::summary(
+            Outcome::Success,
+            count(messages.len(), "message", "messages"),
+            facts,
+        ));
+        if needing_count > 0 {
+            screen.push(Block::hint(
+                "jadpo check",
+                "fails until the application words them",
+            ));
+        }
+    }
+    let kind_word = |kind: jadpo_std::jadpo_text::Kind| kind.word();
+    let data = Json::object([
+        (
+            "messages",
+            Json::array(messages.iter().map(|message| {
+                let wording = match message.shape {
+                    Shape::Plain(text) => Json::from(text),
+                    Shape::Variants(variants) => Json::object(
+                        variants
+                            .iter()
+                            .map(|(name, text)| (*name, Json::from(*text)))
+                            .collect::<Vec<_>>(),
+                    ),
+                };
+                Json::object([
+                    ("key", Json::from(message.key)),
+                    ("kind", Json::from(kind_word(message.kind))),
+                    ("feature", Json::from(message.feature.word())),
+                    ("description", Json::from(message.description)),
+                    (
+                        "fields",
+                        Json::array(message.fields.iter().map(|(name, kind)| {
+                            Json::object([
+                                ("name", Json::from(*name)),
+                                ("type", Json::from(kind.word())),
+                            ])
+                        })),
+                    ),
+                    ("wording", wording),
+                    (
+                        "shippedIn",
+                        Json::array(
+                            match message.ships {
+                                Ships::English => jadpo_std::jadpo_text::SHIPPED.to_vec(),
+                                Ships::Everywhere => Vec::new(),
+                            }
+                            .into_iter()
+                            .map(Json::from),
+                        ),
+                    ),
+                    (
+                        "shippedEverywhere",
+                        Json::from(message.ships == Ships::Everywhere),
+                    ),
+                    (
+                        "needs",
+                        Json::array(needing(message.key).into_iter().map(Json::from)),
+                    ),
+                ])
+            })),
+        ),
+        (
+            "features",
+            Json::array(
+                Feature::ALL
+                    .iter()
+                    .filter(|feature| messages.iter().any(|m| m.feature == **feature))
+                    .map(|feature| Json::from(feature.word())),
+            ),
+        ),
+        ("needWording", needing_count.into()),
+    ]);
+    Reply::screen(screen, data)
 }

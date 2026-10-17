@@ -83,6 +83,7 @@ pub fn is_record(path: &str) -> bool {
             "snapshot.json" | "postgres.sql"
         ] | ["domains", _, "translations", "sources.jadpo_record"]
             | ["shared", "translations", "sources.jadpo_record"]
+            | ["translations", "sources.jadpo_record"]
     )
 }
 

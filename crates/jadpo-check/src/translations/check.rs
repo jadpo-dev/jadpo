@@ -66,6 +66,7 @@ pub fn analyse<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Anal
         declared,
         reachable,
         scope: &scope_name,
+        features: None,
         found: BTreeMap::new(),
         problems: Vec::new(),
     };
@@ -106,20 +107,23 @@ pub fn analyse<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Anal
     out
 }
 
-struct Ctx<'a> {
-    subjects: &'a Subjects,
-    plan: &'a LocalePlan,
-    declared: &'a Locales,
+pub(super) struct Ctx<'a> {
+    pub(super) subjects: &'a Subjects,
+    pub(super) plan: &'a LocalePlan,
+    pub(super) declared: &'a Locales,
     /// The failures a route can answer with.
-    reachable: &'a std::collections::BTreeSet<String>,
+    pub(super) reachable: &'a std::collections::BTreeSet<String>,
     /// The scope being checked: `shared` or a domain.
-    scope: &'a str,
+    pub(super) scope: &'a str,
+    /// For Jadpo's own messages (the root file's `jadpo: { }`): the
+    /// features the application has on.
+    pub(super) features: Option<&'a std::collections::BTreeSet<jadpo_std::jadpo_text::Feature>>,
     /// The wording each subject got, complete and clean, in each locale.
-    found: BTreeMap<String, Vec<(u32, Wording)>>,
-    problems: Vec<Diagnostic>,
+    pub(super) found: BTreeMap<String, Vec<(u32, Wording)>>,
+    pub(super) problems: Vec<Diagnostic>,
 }
 
-fn variant_name(ordinal: u32) -> &'static str {
+pub(super) fn variant_name(ordinal: u32) -> &'static str {
     LOCALES
         .get(ordinal as usize)
         .map_or("", |(variant, _)| *variant)
@@ -141,17 +145,37 @@ fn braces(names: &[String]) -> String {
 
 impl Ctx<'_> {
     fn file(&mut self, file: &LanguageFile) {
+        let Some((locale, in_progress)) = self.locale_of(file) else {
+            return;
+        };
+        self.members(file, locale, in_progress, &file.members);
+    }
+
+    /// The file's locale and whether it is in progress, if it is one the
+    /// application supports.
+    pub(super) fn locale_of(&mut self, file: &LanguageFile) -> Option<(u32, bool)> {
         let Some(locale) = file.locale else {
             self.problems.push(not_a_locale(file));
-            return;
+            return None;
         };
         if !self.plan.supports(locale) {
             self.problems.push(unsupported(file, self.declared));
-            return;
+            return None;
         }
         let in_progress = self.plan.in_progress.contains(&locale) || LocalePlan::is_pseudo(locale);
+        Some((locale, in_progress))
+    }
+
+    /// Checks the members of a language file, or of a root file's group.
+    pub(super) fn members(
+        &mut self,
+        file: &LanguageFile,
+        locale: u32,
+        in_progress: bool,
+        members: &[Member],
+    ) {
         let mut seen: BTreeMap<&str, Span> = BTreeMap::new();
-        for member in &file.members {
+        for member in members {
             if let Some(first) = seen.get(member.name.as_str()) {
                 self.problems.push(
                     Diagnostic::new(
@@ -173,6 +197,12 @@ impl Ctx<'_> {
             if subject.broken {
                 continue;
             }
+            if let (Some(on), Some(feature)) = (self.features, subject.builtin)
+                && !on.contains(&feature)
+            {
+                self.problems.push(feature_off(file, member, feature));
+                continue;
+            }
             if let Some(wording) = self.member(file, locale, in_progress, subject, member) {
                 self.found
                     .entry(subject.key.clone())
@@ -183,6 +213,9 @@ impl Ctx<'_> {
     }
 
     fn unknown(&self, file: &LanguageFile, member: &Member) -> Diagnostic {
+        if self.features.is_some() {
+            return self.unknown_jadpo(file, member);
+        }
         let keys: Vec<&str> = self
             .subjects
             .list
@@ -220,6 +253,41 @@ impl Ctx<'_> {
                 .edit(member.key_span.clone(), near),
             None => problem.next(format!(
                 "Remove `{}` from `{}`, or declare the message it words beside the language files",
+                member.name, file.path
+            )),
+        }
+    }
+
+    /// A member of `jadpo: { }` that is none of Jadpo's messages.
+    fn unknown_jadpo(&self, file: &LanguageFile, member: &Member) -> Diagnostic {
+        let keys: Vec<&str> = self
+            .subjects
+            .list
+            .iter()
+            .filter(|subject| {
+                subject
+                    .builtin
+                    .is_some_and(|feature| self.features.is_some_and(|on| on.contains(&feature)))
+            })
+            .map(|subject| subject.key.as_str())
+            .collect();
+        let near = nearest(&member.name, keys.iter().copied());
+        let problem = Diagnostic::new(
+            &rule::TRANSLATION_MEMBER_UNKNOWN,
+            format!("`{}` words nothing of Jadpo's", member.name),
+        )
+        .at(member.key_span.clone(), "no such message of Jadpo's")
+        .reason(format!(
+            "`jadpo: {{ }}` words Jadpo's own messages, by their names; `jadpo translations builtin` lists the ones this application can show. `{}` is none of them.{}",
+            member.name,
+            near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
+        ));
+        match near {
+            Some(near) => problem
+                .next(format!("Rename the member to `{near}`"))
+                .edit(member.key_span.clone(), near),
+            None => problem.next(format!(
+                "Remove `{}` from `{}`, or run `jadpo translations builtin` for the names",
                 member.name, file.path
             )),
         }
@@ -517,7 +585,7 @@ impl Ctx<'_> {
             )
         };
         let plural_s = if missing.len() == 1 { "" } else { "s" };
-        Diagnostic::new(
+        let mut problem = Diagnostic::new(
             &rule::TRANSLATION_VARIANT_MISSING,
             format!(
                 "`{}` in `{}` has no wording for the {what}{plural_s} {}",
@@ -529,10 +597,11 @@ impl Ctx<'_> {
         .at(
             member.key_span.clone(),
             format!("no {}", crate::and_list(&listed)),
-        )
-        .also(subject.name_span.clone(), "declared here")
-        .reason(reason)
-        .next(format!(
+        );
+        if subject.builtin.is_none() {
+            problem = problem.also(subject.name_span.clone(), "declared here");
+        }
+        problem.reason(reason).next(format!(
             "Add a wording for {} to `{}`{}",
             crate::and_list(&listed),
             member.name,
@@ -628,7 +697,7 @@ impl Ctx<'_> {
 
     /// A field no wording of the member writes: a judgement call.
     fn unused(&mut self, subject: &Subject, member: &Member, used: &[String]) {
-        if subject.kind != Kind::Message {
+        if subject.kind != Kind::Message || subject.builtin.is_some() {
             return;
         }
         for (name, _) in &subject.placeholders {
@@ -824,7 +893,7 @@ fn subject_enum(subject: &Subject) -> Option<String> {
         .find_map(|param| param.enum_type.clone())
 }
 
-fn not_a_locale(file: &LanguageFile) -> Diagnostic {
+pub(super) fn not_a_locale(file: &LanguageFile) -> Diagnostic {
     let near = nearest(&file.tag, LOCALES.iter().map(|(name, _)| *name)).map(str::to_string);
     let folded = LOCALES
         .iter()
@@ -851,7 +920,7 @@ fn not_a_locale(file: &LanguageFile) -> Diagnostic {
     }
 }
 
-fn unsupported(file: &LanguageFile, declared: &Locales) -> Diagnostic {
+pub(super) fn unsupported(file: &LanguageFile, declared: &Locales) -> Diagnostic {
     let mut problem = Diagnostic::new(
         &rule::TRANSLATION_LOCALE_UNSUPPORTED,
         format!("`{}` is for a locale this application doesn't support", file.path),
@@ -864,5 +933,35 @@ fn unsupported(file: &LanguageFile, declared: &Locales) -> Diagnostic {
     problem.next(format!(
         "Add `Locale.{}` to `supported:` in `app.jadpo`, or remove the file",
         file.tag
+    ))
+}
+
+/// A member of `jadpo: { }` for a message of a feature the application has
+/// off.
+fn feature_off(
+    file: &LanguageFile,
+    member: &Member,
+    feature: jadpo_std::jadpo_text::Feature,
+) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TRANSLATION_FEATURE_OFF,
+        format!(
+            "`{}` is a message of a feature this application has off",
+            member.name
+        ),
+    )
+    .at(
+        member.key_span.clone(),
+        format!("{} is off", feature.heading().to_lowercase()),
+    )
+    .reason(format!(
+        "`{}` is part of Jadpo's {} text, which an application has when {}. This one doesn't, so wording it changes nothing and would hide a mistake.",
+        member.name,
+        feature.heading().to_lowercase(),
+        feature.when()
+    ))
+    .next(format!(
+        "Remove `{}` from `{}`, or switch the feature on",
+        member.name, file.path
     ))
 }
