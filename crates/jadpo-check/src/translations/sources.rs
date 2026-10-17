@@ -222,6 +222,14 @@ pub struct Standings {
     pub record: Vec<Entry>,
     /// Whether a record exists for the folder.
     pub has_record: bool,
+    /// Whether every translation could be judged: the locales read cleanly
+    /// and the default locale has its language file. A record is only
+    /// brought up to date from standings that are complete.
+    pub complete: bool,
+    /// Every member each locale's language file holds, valid or not, as
+    /// `(locale tag, member)`: a line for one that is still written is kept
+    /// when the wording can't be read for now.
+    pub present: Vec<(String, String)>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -264,13 +272,23 @@ pub fn standings<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> St
         .into_iter()
         .filter_map(|file| language_file(db, project, file).as_ref())
         .collect();
+    for file in &files {
+        for member in &file.members {
+            out.present.push((file.tag.clone(), member.name.clone()));
+        }
+    }
     let Some(default_file) = files.iter().find(|file| file.locale == Some(plan.default)) else {
         return out;
     };
+    out.complete = true;
     let default_tag = default_file.tag.clone();
     for file in &files {
         let Some(locale) = file.locale else { continue };
-        if locale == plan.default || !plan.supports(locale) {
+        // The pseudo-locale has no translation to make or accept.
+        if locale == plan.default
+            || !plan.supports(locale)
+            || jadpo_std::LocalePlan::is_pseudo(locale)
+        {
             continue;
         }
         for member in &file.members {
@@ -498,6 +516,14 @@ pub struct Updated {
 /// error stays until someone translates it again. Accepting a locale
 /// records the acceptance of everything of its that is not stale.
 pub fn updated(standings: &Standings, accept: Option<&str>) -> Updated {
+    // Without the default wording to compare with, nothing can be judged,
+    // and the record is left as it is.
+    if !standings.complete && !standings.record.is_empty() {
+        return Updated {
+            entries: standings.record.clone(),
+            changes: Vec::new(),
+        };
+    }
     let mut entries = Vec::new();
     let mut changes = Vec::new();
     for standing in &standings.list {
@@ -532,10 +558,21 @@ pub fn updated(standings: &Standings, accept: Option<&str>) -> Updated {
         entries.push(entry);
     }
     for gone in &standings.record {
-        if !entries
+        if entries
             .iter()
             .any(|entry| entry.locale == gone.locale && entry.member == gone.member)
         {
+            continue;
+        }
+        // Still written, but not readable just now (a mistake being
+        // fixed): its line waits.
+        if standings
+            .present
+            .iter()
+            .any(|(tag, member)| *tag == gone.locale && *member == gone.member)
+        {
+            entries.push(gone.clone());
+        } else {
             changes.push((gone.locale.clone(), gone.member.clone(), Change::Removed));
         }
     }

@@ -39,7 +39,9 @@ use declared::subjects;
 #[salsa::tracked(returns(ref))]
 pub fn translation_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let mut scopes = scopes(db, project);
-    let mut out = Vec::new();
+    // What `translations:` in `app.jadpo` says is read whether or not the
+    // project words anything yet.
+    let mut out: Vec<Diagnostic> = sources::review(db, project).problems.clone();
     // A failure a route can answer with is worded in every supported
     // locale, wherever its domain keeps no message or language file yet;
     // with no `locales { }` there is nothing to word it for.
@@ -81,7 +83,6 @@ pub fn translation_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .cloned(),
         );
     }
-    out.extend(sources::review(db, project).problems.iter().cloned());
     out
 }
 

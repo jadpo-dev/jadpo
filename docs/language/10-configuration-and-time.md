@@ -55,7 +55,11 @@ rules:
   - translation.member_duplicate
   - translation.member_unknown
   - translation.message_unknown
+  - translation.option_unknown
   - translation.placeholder_unknown
+  - translation.review_invalid
+  - translation.sources_invalid
+  - translation.stale
   - translation.too_many_selectors
   - translation.variant_missing
   - translation.variant_unknown
@@ -744,7 +748,7 @@ not running this version: 1 error, waiting for a save that fixes them
   (`Zone.america_argentina_buenos_aires`); `Locale` has one for each
   locale Unicode CLDR 48.2.3 gives modern coverage, plus the language with
   its likely region for each without one (`Locale.fr` and `Locale.fr_fr`,
-  `Locale.en_gb`; 533 in all), named in lower_snake_case from the BCP 47
+  `Locale.en_gb`; 533 in all, and `Locale.en_xa`, the pseudo-locale), named in lower_snake_case from the BCP 47
   tag. Both tables live in `jadpo-std` (`src/zones.rs`, which says how each
   was made) and change only in a change of their own.
 - An `Instant` holds the years 0000 to 9999, up to
@@ -1508,11 +1512,29 @@ locales {
 }
 ```
 
-Every locale knows its text direction, read as `locale.direction`
-(decided 2026-10-16, not built yet, chunk 5.4d): a value of the built-in
-enum `TextDirection`, `.left_to_right` or `.right_to_left`. Jadpo ships its
-wording as the HTML values, so a template writing
-`<html dir="{{ locale.direction }}">` writes `ltr` or `rtl`.
+Every locale knows its text direction (decided 2026-10-16, built in chunk
+5.4d): `locale.direction(value)` gives a value of the built-in enum
+`TextDirection`, `.left_to_right` or `.right_to_left`, as CLDR's likely
+script for the locale says (`Locale.ar_eg` and `Locale.he_il` read right to
+left, `Locale.en_gb` left to right). Jadpo ships its wording as the HTML
+values, `ltr` and `rtl`, so the email layout's `<html dir="{{
+locale.direction }}">` writes one of them once templates exist (chunk 7.3).
+
+```jadpo check project=locales-direction file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.ar_eg]
+}
+```
+
+```jadpo check project=locales-direction file=tests/direction.test.jadpo
+test "a locale knows which way its text runs" {
+    assert locale.direction(Locale.ar_eg) == TextDirection.right_to_left
+    assert locale.direction(Locale.en_gb) == TextDirection.left_to_right
+}
+```
 
 ### Choosing a locale from a request
 
@@ -1655,13 +1677,15 @@ header and the same `locales { }`:
 > Decided on 2026-10-16 (Richard), replacing question 9's JSON files and ICU
 > MessageFormat, which chunk 5.3b had built the same day. Built in chunk
 > 5.4c: messages, the language files, their checks and errors, the typed
-> calls, enum wording, email subjects and `in_progress:` locales. The
-> examples marked `check` run with this checkout's `jadpo`. Coming in chunk
-> 5.4d, and marked where they come: failures' client text and its export,
-> stale translations and review, `TextDirection`, Jadpo's own messages and
-> the root file's owner groups, the `jadpo translations` commands and the
-> pseudo-locale. Email templates that read translations come with email in
-> chunk 7.3 (area 16).
+> calls, enum wording, email subjects and `in_progress:` locales. Built in
+> chunk 5.4d: failures' client text and its export, stale translations and
+> review, `TextDirection`, the `jadpo translations` commands that read and
+> record the project's own wording (`missing`, `unused`, `update`,
+> `accept`), go to definition and the pseudo-locale. The examples marked
+> `check` run with this checkout's `jadpo`. Coming in chunk 5.4e, and
+> marked where they come: Jadpo's own messages and the root file's owner
+> groups, and `jadpo translations builtin`, `export` and `import`. Email
+> templates that read translations come with email in chunk 7.3 (area 16).
 
 Text the server writes for people (emails, generated pages, a failure's text
 for client apps) is translated in Jadpo itself. Each message is a type, each
@@ -1675,7 +1699,7 @@ emails live in `emails/`. A message a second domain uses moves to
 `layout.promotion_required` learns messages: another domain's call of a
 message is `visibility.private_cross_domain` meanwhile). The root
 `translations/` holds only the app's wording for text it did not write:
-Jadpo's own and its library packages' (below, chunk 5.4d).
+Jadpo's own and its library packages' (below, chunk 5.4e).
 
 ```text
 domains/shipping/translations/
@@ -1683,9 +1707,9 @@ domains/shipping/translations/
     parcels.jadpo             type Parcels = Message { ... }
     en_gb.jadpo               translations { ... }: the English wording
     de_de.jadpo               translations { ... }: the German wording
-    sources.json              generated: what each translation was made from (5.4d)
+    sources.jadpo_record      generated: what each translation was made from
 shared/translations/          messages several domains use
-translations/                 the app's wording for Jadpo's and packages' text only (5.4d)
+translations/                 the app's wording for Jadpo's and packages' text only (5.4e)
 ```
 
 ### Messages
@@ -1694,7 +1718,7 @@ A message is a type built on `Message`, a type base beside `Failure`,
 `Event` and `EmailMessage`, one per file in the domain's `translations/`
 folder and named after it (area 1). Its fields are the wording's
 placeholders, and its `///` description reaches translators as context,
-in the export below (5.4d). `Message` is a type base, so its name can't
+in the export below (5.4e). `Message` is a type base, so its name can't
 name a type, and message names are unique across the project, as a
 failure's or an email's are.
 
@@ -2021,9 +2045,6 @@ test "an enum is worded by its value, with the value's fields" {
 
 ### Failures for client apps
 
-> Coming in chunk 5.4d. The members below are not yet read: a member that
-> words a failure is `translation.member_unknown` until then.
-
 A `Failure`'s text for client apps is keyed by its code in its domain's
 language files, mapped like a message: its `client: { }` fields are the
 placeholders, and `kind:` and `message:` are not. The wording is never
@@ -2031,8 +2052,11 @@ written on the failure type: one rule holds for all text, and Jadpo's and
 packages' failures could not carry the app's wording in place. Names are
 unique across the project, so a failure and a message never share a key.
 Every failure that can reach a response (the compiler knows each route's
-failures) must have wording in every supported locale; a failure that never
-leaves the server needs none.
+failures, their `fails` lists) must have wording in every supported locale;
+a failure that never leaves the server needs none. The not-found failure
+the compiler provides for an entity (area 6) is worded in the entity's
+domain, as one the project declares is. A project that declares no
+`locales { }` words no failures.
 
 A client field that is a date, a time or a number is sent as a value (an
 `Instant` stays an instant on the wire, area 7), and the client formats it
@@ -2044,42 +2068,178 @@ field's type decides how the client formats it:
 |---|---|
 | `CalendarDate` | `date` |
 | `Instant` | `date_time`, shown in the reader's own zone by the client |
-| `Time` (`ZonedTime` once renamed, question 5) | `date_time`, in the zone it carries |
+| `ZonedTime` | `date_time`, in the zone it carries |
 | `Duration` | `duration` |
 | `Int` | `number` |
 | `Decimal` | `decimal` |
-| `Text`, `PresentationText` | none: written as it is |
-| A type the client cannot format (an object, a list) | A compile error, as for a message's placeholder |
+| `Text`, `PresentationText`, `Uuid`, `Email`, `Url`, `IpAddress` | none: written as it is |
+| A type the client cannot format (an object, a list, an enum, `T?`) | `translation.field_type`, as for a message's placeholder |
 
-`jadpo build` writes, beside each API's OpenAPI document, one file per
-locale named `<api>.failures.<locale>.json`, for client apps to show. It
-maps each failure code to an object of the same shape, so a client has one
-way to read it: `text` is the wording in `{field}` syntax, and `formats`
-lists only the placeholders the client must format, each as one of
-`number`, `decimal`, `date`, `date_time` or `duration`.
+A type built on one of these is formatted as the one it is built on.
+
+```jadpo check project=translation-failures file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=translation-failures file=api/main.api hidden
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 1
+
+POST /bookings
+    authentication: none
+    input: BookRequest (body)
+    output: Booked
+    status: 200
+    fails: slot_taken 409
+
+input BookRequest
+    seats: Int { min: 0 }
+
+output Booked
+    seats: Int { min: 0 }
+
+failure slot_taken 409
+    next_slot: Instant
+    seats_left: Int { min: 0 }
+```
+
+```jadpo check project=translation-failures file=policy.jadpo hidden
+use booking
+
+policy {
+    actions: {
+        booking.book: [Access.public]
+    }
+}
+```
+
+```jadpo check project=translation-failures file=domains/booking/types/seat_count.jadpo hidden
+/// How many seats.
+type SeatCount = Int {
+    min: 0
+}
+```
+
+```jadpo check project=translation-failures file=domains/booking/types/slot_time.jadpo hidden
+/// When a table is free.
+type SlotTime = Instant {}
+```
+
+```jadpo check project=translation-failures file=domains/booking/types/book_request.jadpo hidden
+use booking/types { SeatCount }
+
+/// A booking to make.
+type BookRequest = Input {
+    seats: SeatCount
+}
+```
+
+```jadpo check project=translation-failures file=domains/booking/types/booked.jadpo hidden
+use booking/types { SeatCount }
+
+/// A booking made.
+type Booked = Output {
+    seats: SeatCount
+}
+```
+
+```jadpo check project=translation-failures file=domains/booking/failures/slot_taken.jadpo
+use booking/types { SeatCount, SlotTime }
+
+/// The slot was taken while the booking was made.
+type SlotTaken = Failure {
+    kind: FailureKind.conflict
+    client: {
+        next_slot: SlotTime
+        seats_left: SeatCount
+    }
+}
+```
+
+```jadpo check project=translation-failures file=domains/booking/actions/book.jadpo hidden
+use booking/types { Booked, SeatCount }
+use booking/failures { SlotTaken }
+
+/// Books seats, or says when the next slot is.
+action book(seats: SeatCount) fails SlotTaken -> Booked {
+    if (seats > 4) {
+        reject SlotTaken {
+            next_slot: "2026-10-20T18:30:00Z"
+            seats_left: 2
+        }
+    }
+    return Booked {
+        seats: seats
+    }
+}
+```
+
+```jadpo check project=translation-failures file=domains/booking/routes/bookings.jadpo hidden
+use booking/types { BookRequest, Booked }
+use booking/actions { book }
+
+routes Bookings {
+    prefix: /bookings
+
+    POST / {
+        authentication: RouteAuthentication.none
+        input: BookRequest
+        output: Booked
+        run: book(input.seats)
+    }
+}
+```
+
+```jadpo check project=translation-failures file=domains/booking/translations/en_gb.jadpo hidden
+translations {
+    slot_taken: "That slot has just gone. The next is {next_slot}, with {seats_left} seats left."
+}
+```
+
+```jadpo check project=translation-failures file=domains/booking/translations/fr_fr.jadpo
+translations {
+    slot_taken: "Ce créneau vient d'être pris. Le prochain est {next_slot}, avec {seats_left} places."
+}
+```
+
+`jadpo check` writes, beside each API's OpenAPI document in
+`build/openapi/`, one file per supported locale named
+`<api>.failures.<locale>.json` (`main.failures.fr_fr.json`), for client apps
+to show; an API none of whose failures is worded gets none. It maps each
+failure code to an object of the same shape, so a client has one way to
+read it: `text` is the wording in `{field}` syntax, a literal brace doubled
+as in a language file, and `formats` lists only the placeholders the
+wording writes that the client must format, each as one of `number`,
+`decimal`, `date`, `date_time` or `duration`. A locale in progress is sent
+what the server would write for it, its regional sibling's wording and then
+the default's, so a client has text for every code. The example above
+writes this for `fr_fr`:
 
 ```json
 {
   "slot_taken": {
-    "text": "Ce créneau vient d'être pris. Le prochain est {next_slot}.",
-    "formats": { "next_slot": "date_time" }
-  },
-  "todo_not_found": { "text": "Tâche introuvable.", "formats": {} }
+    "formats": {
+      "next_slot": "date_time",
+      "seats_left": "number"
+    },
+    "text": "Ce créneau vient d'être pris. Le prochain est {next_slot}, avec {seats_left} places."
+  }
 }
 ```
 
 The server's `message` stays fixed English for developers and logs (area 4).
-
-```jadpo fragment
-// domains/shipping/translations/fr_fr.jadpo
-translations {
-    slot_taken: "Ce créneau vient d'être pris. Le prochain est {next_slot}."
-}
-```
+Jadpo's own failures (`invalid_input`, `rate_limited` and the rest) are
+worded with Jadpo's own messages in chunk 5.4e, and join each file then.
 
 ### Jadpo's and packages' text
 
-> Coming in chunk 5.4d (Jadpo's own messages and the root file) and Phase 7
+> Coming in chunk 5.4e (Jadpo's own messages and the root file) and Phase 7
 > (library packages, 7.1).
 
 Text Jadpo writes itself (built-in emails and its failures' wording; it
@@ -2135,7 +2295,7 @@ any package failure (area 11, Calling).
 A package changing a message's or failure's fields is a breaking change by
 its surface diff, so the app's rewording fails to compile until it is
 updated; a package changing its own wording marks the app's rewording
-stale through `sources.json`. A library package is published with
+stale through `sources.jadpo_record`. A library package is published with
 complete wording in its own default locale and a `///` description on
 every public message.
 
@@ -2143,7 +2303,7 @@ every public message.
 
 Built in chunk 5.4c, each with its own error below:
 
-- **Errors**: a member no message, enum or email declares
+- **Errors**: a member no message, enum, email or failure declares
   (`translation.member_unknown`, with the nearest name); a member written
   twice (`translation.member_duplicate`); a member in the wrong shape for
   what it words (`translation.wording_shape`: a string where a block of
@@ -2158,9 +2318,9 @@ Built in chunk 5.4c, each with its own error below:
   a locale (`translation.file_name_invalid`) or is for one the application
   does not support (`translation.locale_unsupported`); a call of no message
   (`translation.message_unknown`); a `locale:` that is not a supported
-  locale (`type.locale_unsupported`); and a message, or an enum once any
-  language words it, missing from any supported locale not listed in
-  `in_progress:` (`translation.file_missing` for a locale with no language
+  locale (`type.locale_unsupported`); and a message, a failure a route can
+  answer with, or an enum once any language words it, missing from any
+  supported locale not listed in `in_progress:` (`translation.file_missing` for a locale with no language
   file, `translation.wording_missing` for a file that lacks a member).
   Every supported locale must be complete. The missing wording's `next:`
   names the file and the member to add, with the placeholders to use
@@ -2180,42 +2340,130 @@ Built in chunk 5.4c, each with its own error below:
   Removing the locale from `in_progress:` makes the gaps errors again.
   Quality comes from the review setting below, not from waiting.
   `jadpo translations missing` lists what an in-progress locale falls back
-  on (5.4d).
+  on.
 
-Coming in chunk 5.4d:
+Built in chunk 5.4d, each with its own error below:
 
 - **Sources**: each `translations/` folder has a generated, committed
-  `sources.json` (machine-written, so JSON, and a record in area 18): for
-  each locale and message, a hash of the default wording it was translated
-  from. A translation whose hash no longer matches the default wording is
-  stale, and an error until it is updated: an in-progress locale's stale
-  translation is listed by `jadpo translations missing` instead.
-  `jadpo translations update` and `import` write it.
+  `sources.jadpo_record` (a record in area 18's format, written by `jadpo
+  translations update`): for each translation outside the default locale,
+  a hash of the default wording it was translated from (`from`) and of its
+  own wording when that was recorded (`wording`). A hash covers the
+  member's whole text, every value and plural form, so reordering a block
+  changes nothing. A translation whose `from` no longer matches the default
+  wording today is stale (`translation.stale`), an error until it is
+  translated again and recorded; an in-progress locale's stale translation
+  is listed by `jadpo translations missing` instead. A translation with no
+  line yet is not stale: it was never recorded. A record Jadpo cannot read
+  is `translation.sources_invalid`, which `jadpo translations update`
+  fixes.
 - **Review**: `translations: { review: TranslationReview.required }` in
-  `app.jadpo` (the default is `TranslationReview.none`) makes every new or
-  changed wording outside the default locale unreviewed until a person
-  runs `jadpo translations accept <locale>`, which records the acceptance
-  in the same `sources.json`. Unaccepted wording appears in the approval
-  report. Jadpo cannot tell who wrote a wording, so this is "changed and
-  not yet accepted", not "written by an agent".
+  `application { }` (the default is `TranslationReview.none`) makes every
+  new or changed wording outside the default locale unaccepted until a
+  person runs `jadpo translations accept <locale>`, which records the
+  acceptance in the same record. Unaccepted wording is listed by `jadpo
+  translations missing`, and in the approval report once `jadpo approval`
+  exists (area 17). It is not an error: the host's code review is the gate
+  (area 18). Jadpo cannot tell who wrote a wording, so this is "changed and
+  not yet accepted", not "written by an agent". A `translations:` option
+  other than `review:` is `translation.option_unknown`, and a `review:`
+  that is not a `TranslationReview`, `translation.review_invalid`.
+
+```jadpo check project=translation-review file=app.jadpo
+application {
+    translations: {
+        review: TranslationReview.required
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.de_de]
+}
+```
+
+```jadpo check project=translation-review file=domains/greeting/translations/hello.jadpo hidden
+/// Says hello.
+type Hello = Message {
+    name: Text
+}
+```
+
+```jadpo check project=translation-review file=domains/greeting/translations/en_gb.jadpo hidden
+translations {
+    hello: "Hello, {name}."
+}
+```
+
+```jadpo check project=translation-review file=domains/greeting/translations/de_de.jadpo hidden
+translations {
+    hello: "Hallo, {name}."
+}
+```
 
 ### Tooling
 
-> Coming in chunk 5.4d.
+Built in chunk 5.4d, with `--json` on every command that prints (area 14):
 
-- `jadpo translations missing` lists missing, stale and unaccepted
-  translations, and `jadpo translations unused` messages no code uses.
-  Every `jadpo translations` command that prints takes `--json` (area 14).
-- `jadpo translations update` records each translation's source in
-  `sources.json`; `jadpo translations accept <locale>` accepts a locale's
-  changed wording; `jadpo translations builtin` lists Jadpo's own messages
-  with their fields.
-- `jadpo translations export` and `import` exchange messages, their
-  descriptions and their wording with translation services (Crowdin,
-  Lokalise) as XLIFF, or JSON.
-- Go to definition goes from a call to its message type and to its wording.
-- A pseudo-locale, for development and tests, renders every message
-  accented and lengthened, to expose hard-coded text and tight layouts.
+- `jadpo translations missing [<locale>]` lists, under the language file
+  each is in, the wording a locale lacks (and, for a locale in progress,
+  what it falls back on), the translations made from wording that has since
+  changed, and, with review required, the wording not yet accepted.
+  `jadpo translations unused` lists the messages, and the enums with
+  wording, that no code calls; a test does not count as a user.
+- `jadpo translations update` writes each folder's `sources.jadpo_record`:
+  a translation with no line, or reworded since its line, is recorded as
+  made from today's default wording, and loses its acceptance. One made from
+  wording that changed and was not reworded stays stale, so the error stays
+  until someone translates it again. `jadpo translations accept <locale>`
+  does the same for that locale and then accepts everything of its that is
+  not stale.
+- Go to definition goes from a `translations.<domain>.<message>(...)` call
+  to the message's type and to its wording in each language file.
+- The pseudo-locale, `Locale.en_xa`, renders every message accented and
+  lengthened, for development and tests, to expose text that is hard-coded
+  and layouts that are too tight. It is listed in `supported:` like any
+  locale, needs no language file, and writes the default locale's wording
+  with its letters accented, about two fifths longer, in brackets, so a cut
+  end shows as a missing `]`; the values a wording writes are not
+  accented. Failures' client text is exported in it the same way.
+
+```jadpo check project=translation-pseudo file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.en_xa]
+}
+```
+
+```jadpo check project=translation-pseudo file=domains/shop/translations/parcels.jadpo hidden
+/// How many parcels an order has.
+type Parcels = Message {
+    count: PluralCount
+}
+```
+
+```jadpo check project=translation-pseudo file=domains/shop/translations/en_gb.jadpo hidden
+translations {
+    parcels: {
+        one: "{count} parcel"
+        other: "{count} parcels"
+    }
+}
+```
+
+```jadpo check project=translation-pseudo file=tests/pseudo_locale.test.jadpo
+test "the pseudo-locale accents and lengthens the default wording" {
+    assert translations.shop.parcels(count: 1, locale: Locale.en_xa) == "[1 þáŕçéļ ~~~~]"
+    assert translations.shop.parcels(count: 1234, locale: Locale.en_xa) == "[1,234 þáŕçéļš ~~~~~~]"
+}
+```
+
+Coming in chunk 5.4e: `jadpo translations builtin`, which lists Jadpo's
+own messages with their fields, and `jadpo translations export` and
+`import`, which exchange messages, their descriptions and their wording
+with translation services (Crowdin, Lokalise) as XLIFF, or JSON.
 
 The app's own data (product names, articles) is not a translation: an app
 models translated content as ordinary fields. Library packages' translations
@@ -2275,6 +2523,76 @@ are built with packages in Phase 7 (open item 8 of the
   `translation.placeholder_mismatch` and `translation.placeholder_type`. A
   `.json` file in the root `translations/` folder is ignored, like any
   other file that is not source.
+
+### Chosen in chunk 5.4d
+
+- **The record.** `translations/sources.jadpo_record` is the first
+  `.jadpo_record` built, in the format area 18 decides (`record
+  translations 1`, one line for each locale and member, sorted, merged by
+  git's `union`); a hash is the first 12 hex digits of BLAKE3 over the
+  member's text, values and plural forms in name order. Chunk 7.0 adds the
+  generic header check, `jadpo records` and the hand-edit error for every
+  record; until then a record that doesn't read is
+  `translation.sources_invalid`, and one that reads but was edited by hand
+  is believed.
+- **No line, not stale.** A translation with no line was never recorded, so
+  nothing says what it was made from: it is not stale, and, with review
+  required, it is new and unaccepted. A project that never runs `jadpo
+  translations update` therefore sees no stale error.
+- **`update` can't tell a translation was redone, only that it changed.** A
+  translation whose own wording differs from its line's is recorded as made
+  from today's default wording, and loses its acceptance. One whose wording
+  is as it was stays stale, with its line untouched, so the error stays
+  until someone translates it again; `update` and `accept` say `still
+  stale`.
+- **`accept <locale>` records first.** It does what `update` does for that
+  locale, then accepts everything of it that is not stale, so a person does
+  not run both. It takes a supported locale besides the default and the
+  pseudo-locale; anything else is `cli.translations_arguments` naming the
+  ones it takes.
+- **Review is a list, not an error.** Unaccepted wording is not a finding
+  (area 18's gate is code review), so `jadpo check` passes with it; `jadpo
+  translations missing` lists it, and `jadpo approval` will once it exists.
+  A line says a wording is accepted only while the wording is the one the
+  line hashes.
+- **Failures.** A failure's member is its code (`code:` when given). A
+  failure needs wording only when a route's `fails` lists it, anywhere in
+  the project; one that no route answers with may be worded and needn't be.
+  A client field of a type built on `Uuid`, `Email`, `Url` or `IpAddress` is
+  text on the wire and is written as it is; an enum, a list, an object or
+  `T?` is `translation.field_type`. A failure's field no wording writes is
+  not an error: the client is sent it in `details` anyway.
+- **The export.** There is no `jadpo build` yet, so `jadpo check` writes
+  `build/openapi/<api>.failures.<locale>.json` with the OpenAPI documents,
+  the locale spelled as its `Locale` variant (`fr_fr`), keys sorted as
+  every generated JSON file's are (`formats` before `text`). `formats` lists
+  the placeholders the wording writes that need a format. An API none of
+  whose failures is worded gets no files. Jadpo's own failures join in 5.4e.
+- **Text direction.** `locale.direction(value)` is an operation of the
+  `locale` namespace beside `locale.from_accept_language`, since `locale` is
+  a namespace in code; the template variable `{{ locale.direction }}` comes
+  with templates (7.3). `TextDirection`'s `ltr` and `rtl` wording is Jadpo's
+  own message (5.4e).
+- **The pseudo-locale is `Locale.en_xa`.** The tag Android and Chrome use
+  for it, a region ISO 3166 leaves for private use, so it can't clash with a
+  real locale; `Locale` has 534 variants, 533 from CLDR and this one. It is
+  listed in `supported:` like any locale (an app takes it out of the list
+  before releasing, or keeps it for a staging build), needs no language
+  file, and is never asked for wording. It writes the default locale's
+  wording with that locale's plural rules and number format; the letters
+  of the wording are accented (`a` is `á`), the values it writes are not,
+  and the whole is about two fifths longer and in brackets. A language file
+  `en_xa.jadpo`, if one exists, is written as it is. It has no translations
+  to list or accept.
+- **Go to definition** from a call lands on the message's type first, then
+  its member in each language file in path order; an enum's call the same.
+- **`unused`** counts messages and enums with wording; a call from a test
+  does not make a message used. Failures and emails are used by being
+  reachable and by the email's own machinery, so they are never listed.
+- **The commands succeed whatever they list**; they answer a question, and
+  `jadpo check` is what fails. `update` and `accept` stop on syntax
+  errors. `builtin`, `export` and `import` are `toolchain.not_built_yet`
+  until 5.4e.
 
 ## Retention periods
 
@@ -3714,6 +4032,129 @@ error: `parcels` has no wording in `domains/shipping/translations/fr_fr.jadpo`
 check failed: 1 error, 5 files
 ```
 
+A failure a route can answer with is worded the same way, keyed by its code, so a client app showing French has text for it.
+
+```jadpo check project=e-tr-wording-missing-failure file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=e-tr-wording-missing-failure file=api/main.api hidden
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 1
+
+POST /slots
+    authentication: none
+    input: SlotRequest (body)
+    output: Slot
+    status: 200
+    fails: slot_taken 409
+
+output Slot
+    seats: Int { min: 0 }
+
+input SlotRequest
+    seats: Int { min: 0 }
+
+failure slot_taken 409
+```
+
+```jadpo check project=e-tr-wording-missing-failure file=policy.jadpo hidden
+use booking
+
+policy {
+    actions: {
+        booking.next_slot: [Access.public]
+    }
+}
+```
+
+```jadpo check project=e-tr-wording-missing-failure file=domains/booking/types/seat_count.jadpo hidden
+/// How many seats.
+type SeatCount = Int {
+    min: 0
+}
+```
+
+```jadpo check project=e-tr-wording-missing-failure file=domains/booking/types/slot_request.jadpo hidden
+use booking/types { SeatCount }
+
+/// A slot to ask for.
+type SlotRequest = Input {
+    seats: SeatCount
+}
+```
+
+```jadpo check project=e-tr-wording-missing-failure file=domains/booking/types/slot.jadpo hidden
+use booking/types { SeatCount }
+
+/// A slot shown.
+type Slot = Output {
+    seats: SeatCount
+}
+```
+
+```jadpo check project=e-tr-wording-missing-failure file=domains/booking/failures/slot_taken.jadpo hidden
+type SlotTaken = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=e-tr-wording-missing-failure file=domains/booking/actions/next_slot.jadpo hidden
+use booking/types { SeatCount, Slot }
+use booking/failures { SlotTaken }
+
+/// The next slot, or why there is none.
+action next_slot(seats: SeatCount) fails SlotTaken -> Slot {
+    reject SlotTaken
+}
+```
+
+```jadpo check project=e-tr-wording-missing-failure file=domains/booking/routes/slots.jadpo hidden
+use booking/types { Slot, SlotRequest }
+use booking/actions { next_slot }
+
+routes Slots {
+    prefix: /slots
+
+    POST / {
+        authentication: RouteAuthentication.none
+        input: SlotRequest
+        output: Slot
+        run: next_slot(input.seats)
+    }
+}
+```
+
+```jadpo check project=e-tr-wording-missing-failure file=domains/booking/translations/en_gb.jadpo hidden
+translations {
+    slot_taken: "That slot has just gone."
+}
+```
+
+```jadpo check project=e-tr-wording-missing-failure file=domains/booking/translations/fr_fr.jadpo expect=translation.wording_missing
+translations {}
+```
+
+```text output
+error: `slot_taken` has no wording in `domains/booking/translations/fr_fr.jadpo`
+ --> domains/booking/translations/fr_fr.jadpo:1:1
+  |
+1 | translations {}
+  | ^^^^^^^^^^^^ no `slot_taken`
+  reason: A failure a route can answer with is worded in every supported locale that isn't in progress, so a client app showing `Locale.fr_fr` has text for its code.
+  next: Add `slot_taken: "..."` to `domains/booking/translations/fr_fr.jadpo` (agent)
+  rule: translation.wording_missing
+  help: docs/language/10-configuration-and-time.html#translation-wording-missing
+
+check failed: 1 error, 10 files
+```
+
 ### `translation.locales_required`
 
 Each language file is for one of the locales the application supports, and each supported locale words every message. With no `locales { }` there is nothing to check the wording against.
@@ -3794,7 +4235,7 @@ error: `order_cancelled` words nothing
   |
 3 |     order_cancelled: "La commande est annulée."
   |     ^^^^^^^^^^^^^^^ no such message, enum or email
-  reason: A member of `translations { }` words one message, enum or email of this folder's scope, by its name in lower_snake_case. `order_cancelled` is none of them; the scope has `order_shipped`.
+  reason: A member of `translations { }` words one message, enum or email of this folder's scope, by its name in lower_snake_case, or a failure by its code. `order_cancelled` is none of them; the scope has `order_shipped`.
   next: Remove `order_cancelled` from `domains/shipping/translations/fr_fr.jadpo`, or declare the message it words beside the language files (agent)
   rule: translation.member_unknown
   help: docs/language/10-configuration-and-time.html#translation-member-unknown
@@ -4138,6 +4579,53 @@ error: `LeftAt.when` is typed `Instant`, which a wording can't write
 check failed: 1 error, 2 files
 ```
 
+A failure's `client:` fields are placeholders too, filled by the client app, which formats a date, a time, a number or a duration for its own language. A choice has no such format.
+
+```jadpo check project=e-tr-field-type-failure file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-field-type-failure file=domains/shipping/types/hold_reason.jadpo hidden
+type HoldReason = Enum {
+    customs
+    payment
+}
+```
+
+```jadpo check project=e-tr-field-type-failure file=domains/shipping/translations/en_gb.jadpo hidden
+translations {}
+```
+
+```jadpo check project=e-tr-field-type-failure file=domains/shipping/failures/parcel_held.jadpo expect=translation.field_type
+use shipping/types { HoldReason }
+
+type ParcelHeld = Failure {
+    kind: FailureKind.rejected
+    client: {
+        reason: HoldReason
+    }
+}
+```
+
+```text output
+error: `ParcelHeld.reason` is typed `HoldReason`, which a client can't write into a wording
+ --> domains/shipping/failures/parcel_held.jadpo:6:9
+  |
+6 |         reason: HoldReason
+  |         ^^^^^^ not text, a number, a date, a time or a duration
+  reason: A failure's `client:` fields are the placeholders of its wording, and the client app fills each one: text as it is, and a number, a date, a time or a duration formatted for its own language. A choice, an object, a list or an optional value has no such format.
+  next: Make `reason` text, or send the text in a `PresentationText` field (agent)
+  rule: translation.field_type
+  help: docs/language/10-configuration-and-time.html#translation-field-type
+
+check failed: 1 error, 4 files
+```
+
 ### `translation.too_many_selectors`
 
 An enum field gives one wording for each of its values and a `PluralCount` field one for each plural form; together they would be a grid for a translator to fill.
@@ -4294,6 +4782,158 @@ error: `translations.shipping.order_shiped` is not a message
 check failed: 1 error, 6 files
 ```
 
+### `translation.stale`
+
+A translation is made from the default locale's wording, and `jadpo translations update` records which. When the default wording changes the translation may no longer say the same thing, so it is an error until it is translated again; a locale listed in `in_progress:` is listed by `jadpo translations missing` instead.
+
+```jadpo check project=e-tr-stale file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.de_de]
+}
+```
+
+```jadpo check project=e-tr-stale file=domains/greeting/translations/hello.jadpo hidden
+/// Says hello.
+type Hello = Message {
+    name: Text
+}
+```
+
+```jadpo check project=e-tr-stale file=domains/greeting/translations/en_gb.jadpo hidden
+translations {
+    hello: "Good day, {name}."
+}
+```
+
+```jadpo check project=e-tr-stale file=domains/greeting/translations/sources.jadpo_record hidden
+// Generated by Jadpo from this folder's translations; update it with `jadpo translations update`, never by hand.
+record translations 1
+
+translation de_de.hello from 2e5b444cecc5 wording acb00cba6dc3
+```
+
+```jadpo check project=e-tr-stale file=domains/greeting/translations/de_de.jadpo expect=translation.stale
+translations {
+    hello: "Hallo, {name}."
+}
+```
+
+```text output
+error: `hello` in `de_de` was translated from `en_gb` wording that has since changed
+ --> domains/greeting/translations/de_de.jadpo:2:5
+  |
+2 |     hello: "Hallo, {name}."
+  |     ^^^^^ made from the old `en_gb` wording
+  reason: `jadpo translations update` recorded the `en_gb` wording this message's translation was made from, and the `en_gb` wording has changed since, so the translation may no longer say the same thing.
+  next: Reword `hello` in `domains/greeting/translations/de_de.jadpo` to match the new `en_gb` wording, then run `jadpo translations update` (agent)
+  rule: translation.stale
+  help: docs/language/10-configuration-and-time.html#translation-stale
+
+check failed: 1 error, 4 files
+```
+
+### `translation.sources_invalid`
+
+The record in a `translations/` folder says which wording each translation was made from and who accepted it. Jadpo writes it, and a stale or unaccepted translation is judged from it, so a file Jadpo can't read hides both.
+
+```jadpo check project=e-tr-sources-invalid file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.de_de]
+}
+```
+
+```jadpo check project=e-tr-sources-invalid file=domains/greeting/translations/hello.jadpo hidden
+/// Says hello.
+type Hello = Message {
+    name: Text
+}
+```
+
+```jadpo check project=e-tr-sources-invalid file=domains/greeting/translations/en_gb.jadpo hidden
+translations {
+    hello: "Hello, {name}."
+}
+```
+
+```jadpo check project=e-tr-sources-invalid file=domains/greeting/translations/de_de.jadpo hidden
+translations {
+    hello: "Hallo, {name}."
+}
+```
+
+```jadpo check project=e-tr-sources-invalid file=domains/greeting/translations/sources.jadpo_record expect=translation.sources_invalid
+de_de.hello was made from Hello, {name}.
+```
+
+```text output
+error: `domains/greeting/translations/sources.jadpo_record` can't be read: the first line is not the header Jadpo writes
+ --> domains/greeting/translations/sources.jadpo_record
+  reason: This file records which wording each translation was made from and who accepted it. Jadpo writes it, and a stale or unaccepted translation is judged from it, so a file it can't read hides both.
+  next: Run `jadpo translations update`, which writes it again (agent)
+  rule: translation.sources_invalid
+  help: docs/language/10-configuration-and-time.html#translation-sources-invalid
+
+check failed: 1 error, 4 files
+```
+
+### `translation.option_unknown`
+
+`translations:` in `application { }` takes `review:` and nothing else.
+
+```jadpo check project=e-tr-option-unknown file=app.jadpo expect=translation.option_unknown
+application {
+    translations: {
+        reviews: TranslationReview.required
+    }
+}
+```
+
+```text output
+error: `reviews` isn't an option of `translations`
+ --> app.jadpo:3:9
+  |
+3 |         reviews: TranslationReview.required
+  |         ^^^^^^^ unknown option
+  reason: `translations:` in `application` takes `review:` and nothing else. Did you mean `review`?
+  next: Use `review` instead of `reviews` (agent)
+  rule: translation.option_unknown
+  help: docs/language/10-configuration-and-time.html#translation-option-unknown
+
+check failed: 1 error, 1 file
+```
+
+### `translation.review_invalid`
+
+`review:` says whether wording outside the default locale waits for a person to accept it: `TranslationReview.none`, the default, or `TranslationReview.required`.
+
+```jadpo check project=e-tr-review-invalid file=app.jadpo expect=translation.review_invalid
+application {
+    translations: {
+        review: TranslationReview.always
+    }
+}
+```
+
+```text output
+error: `review:` isn't a `TranslationReview`
+ --> app.jadpo:3:17
+  |
+3 |         review: TranslationReview.always
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^ not `TranslationReview.none` or `.required`
+  reason: `review:` says whether wording outside the default locale waits for a person to accept it: `TranslationReview.none`, the default, or `TranslationReview.required`.
+  next: Write `review: TranslationReview.required`, or leave `review:` out (agent)
+  rule: translation.review_invalid
+  help: docs/language/10-configuration-and-time.html#translation-review-invalid
+
+check failed: 1 error, 1 file
+```
+
 ### `type.locale_in_progress_unsupported`
 
 `in_progress:` names supported locales whose wording isn't finished; a locale that isn't supported isn't written at all.
@@ -4382,11 +5022,13 @@ back to `default:`. Chunk 5.4c replaced 5.3b's JSON files with translations
 as decided on 2026-10-16: `Message` types and the built-in `PluralCount`,
 each domain's `translations { }` language files and their checks, the
 generated `translations.<domain>.<message>` calls, enum wording, email
-subjects and `in_progress:` locales (see Translations as messages). Not
-built yet (chunk 5.4d): failures' client text exported per locale, stale
-translations and review, `locale.direction`, Jadpo's own messages and the
-root file's owner groups, and the `jadpo translations` commands. Library
-packages' translations come with packages in Phase 7.
+subjects and `in_progress:` locales (see Translations as messages). Chunk
+5.4d built failures' client text exported per locale, stale translations
+and review, `locale.direction`, the commands `missing`, `unused`, `update`
+and `accept`, go to definition and the pseudo-locale. Not built yet (chunk
+5.4e): Jadpo's own messages and the root file's owner groups, and
+`jadpo translations builtin`, `export` and `import`. Library packages'
+translations come with packages in Phase 7.
 
 ### Consistency with the rest of the language
 
@@ -4503,7 +5145,7 @@ packages' translations come with packages in Phase 7.
    "client failure messages" against area 4 question 12. See
    [Translations as messages](#translations-as-messages) for the whole design;
    built in chunk 5.4c, which took 5.3b's JSON files out; failures' client
-   text and the export are chunk 5.4d.
+   text and the export in chunk 5.4d.
 10. **How are signing keys rotated?** (carried from area 8) Area 8 keeps
     signing keys, the OIDC issuer and audience in configuration. How does a
     deployment replace a signing key without signing everyone out?
@@ -4634,6 +5276,12 @@ packages' translations come with packages in Phase 7.
 | Chosen in 5.4c: plural forms | One member per CLDR cardinal category the locale has and no other (`translation.variant_unknown`, `translation.variant_missing`); `jadpo-std` holds the table, tested against ICU4X's data; the form is chosen by the locale the wording came from, and `{count}` is written the locale's way | 2026-10-17 |
 | Chosen in 5.4c: calls | `translations.<domain>.<message>(field: value, ..., locale: ...)`, fields by name or in order, `locale:` named; an enum is `translations.<domain>.<enum>(value, locale: ...)`; an email subject is not called; `translations.shared` for `shared/translations/`; a call naming no message is `translation.message_unknown` with the nearest name, one naming another domain's private message `visibility.private_cross_domain` (moving it to `shared/translations/` is by hand until `layout.promotion_required` covers messages) | 2026-10-17 |
 | Chosen in 5.4c: running | The wording is read into `jadpo_std::translation::Template`, carried as `TranslationPlan` entries (parameters, and the wording of each locale that has it complete), and written by `jadpo_value::present::translate`, which walks an in-progress locale's fallback chain (itself, its regional siblings with the CLDR-likely one first, the default) and writes the sentence in the language it found; each message and enum is a `translation_key` graph node digested with its wording in every language file, so a save of a language file reruns the tests that reach it without checking a call again | 2026-10-17 |
+| Chosen in 5.4d: the record | `translations/sources.jadpo_record`, `record translations 1`, one line for each locale and member: `translation de_de.parcels from <12 hex> wording <12 hex> [accepted]`, BLAKE3 over the member's text in name order; a translation with no line is not stale; `update` records a translation that is new or reworded and leaves one whose wording is as it was stale; `accept <locale>` records, then accepts what is not stale; a record that doesn't read is `translation.sources_invalid` (7.0 adds the generic checks) | 2026-10-17 |
+| Chosen in 5.4d: review | `translations: { review: TranslationReview.required }` in `application { }` (`translation.option_unknown`, `translation.review_invalid`); unaccepted wording is listed by `jadpo translations missing`, not an error | 2026-10-17 |
+| Chosen in 5.4d: failures | The member is the failure's code; required only for a failure some route's `fails` lists, in every supported locale not in progress; client fields of text, `Uuid`, `Email`, `Url` or `IpAddress` are written as they are, numbers, dates, times and durations are formatted by the client (`number`, `decimal`, `date`, `date_time`, `duration`), anything else is `translation.field_type`; `jadpo check` writes `build/openapi/<api>.failures.<locale>.json` with the locale spelled as its variant, keys sorted, and no file for an API with nothing worded | 2026-10-17 |
+| Chosen in 5.4d: text direction | `locale.direction(value)`, an operation of the `locale` namespace giving a `TextDirection`; the template variable comes with 7.3 | 2026-10-17 |
+| Chosen in 5.4d: the pseudo-locale | `Locale.en_xa`, listed in `supported:` like any locale, no language file, never asked for wording; writes the default locale's wording with its letters accented, about two fifths longer and in brackets; values written into it are not accented; failures' client text is exported in it too | 2026-10-17 |
+| Chosen in 5.4d: the commands | `jadpo translations missing [locale]`, `unused`, `update` and `accept <locale>`, each with `--json`; `missing` groups by language file and succeeds whatever it lists; `builtin`, `export` and `import` are `toolchain.not_built_yet` until 5.4e; go to definition lands on the message's type and each language file's member | 2026-10-17 |
 | Name of the locale call (Richard, 2026-10-16) | `locale.from_accept_language(header)`, giving a `Locale`, in a new `locale` standard-library namespace beside `temporal`. `header` is `Text?`, so a header read with `header: "Accept-Language"` and `optional: true` passes straight in; the call never fails and picks only from `locales { supported: }`, falling back to `default:`. It is a pure function of the header and the application's locales, so the interpreter and every compiled target agree | 2026-10-16 |
 | Matching an `Accept-Language` header (chosen in chunk 5.3c) | RFC 9110: split at commas, a weight `;q=` of 0 to 1 with up to three decimals, a weight of 0 excluded, `*` ignored, an entry that does not parse skipped (a range is read in any case, `_` as `-`). Tags are taken by descending weight then header order, and the first that matches wins: an exact supported locale, else a supported locale of the same language, the one CLDR likely subtags give for the language (`ICU4X` `LocaleExpander`, extended data) before any other, else the first listed in `supported:`. Only the language is compared when no supported locale has the exact tag, never the script (`zh-TW` with no supported `zh_tw` is answered by whichever supported `zh` locale the rule picks) | 2026-10-16 |
 | What the call is checked against (chosen in chunk 5.3c) | A standard-library call: `header` is a `Text?` parameter the call must pass (the operation table marks it `nullable`, not `optional`), taking a `Text`, a type built on `Text`, `none`, or any of those that may be `none`. With no `locales { }` in a project it is `type.temporal_locales_required` with its reason worded for this call (files on their own have none to require). In a query it is `query.value_unsupported`, as every call is | 2026-10-16 |

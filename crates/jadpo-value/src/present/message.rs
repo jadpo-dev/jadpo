@@ -54,7 +54,11 @@ pub fn translate(
         .zip(args)
         .map(|(param, value)| (param.name.as_str(), param.kind, value))
         .collect();
+    // The pseudo-locale has no wording of its own unless a file gives some:
+    // it writes the default locale's, accented and lengthened.
+    let pseudo = LocalePlan::is_pseudo(variant.ordinal) && source != variant.ordinal;
     let mut writer = Writer::new(tag, &named)?;
+    writer.pseudo = pseudo;
     let mut out = String::new();
     match wording {
         Wording::Plain(template) => writer.write(template, None, &mut out)?,
@@ -93,6 +97,9 @@ pub fn translate(
             writer.write(template, None, &mut out)?;
         }
     }
+    if pseudo {
+        out = super::pseudo::frame(&out);
+    }
     Ok(Value::text(&out))
 }
 
@@ -103,6 +110,9 @@ struct Writer<'a> {
     args: &'a [(&'a str, ParamKind, &'a Value)],
     numbers: Option<DecimalFormatter>,
     cardinal: Option<PluralRules>,
+    /// Whether the wording's own text is written accented (the values it
+    /// writes are not).
+    pseudo: bool,
 }
 
 /// The payload of the enum value a wording is for, whose fields are
@@ -116,6 +126,7 @@ impl<'a> Writer<'a> {
             args,
             numbers: None,
             cardinal: None,
+            pseudo: false,
         })
     }
 
@@ -127,6 +138,7 @@ impl<'a> Writer<'a> {
     ) -> Result<(), Fault> {
         for piece in &template.pieces {
             match piece {
+                Piece::Text(text) if self.pseudo => out.push_str(&super::pseudo::accent(text)),
                 Piece::Text(text) => out.push_str(text),
                 Piece::Field(name) => {
                     let found = self
@@ -402,6 +414,45 @@ mod tests {
             ],
         );
         assert_eq!(say(&e, "fr_ca", &p, vec![]), "Allo");
+    }
+
+    #[test]
+    fn the_pseudo_locale_accents_and_lengthens_the_default_wording() {
+        use PluralCategory::{One, Other};
+        let p = plan("en_gb", &["en_gb", "fr_fr", "en_xa"], &["en_xa"]);
+        let e = entry(
+            &[("name", ParamKind::Text), ("n", ParamKind::Number)],
+            vec![
+                ("en_gb", Wording::Plain(template("Hi {name}, {n} things."))),
+                ("fr_fr", Wording::Plain(template("Salut {name}"))),
+            ],
+        );
+        // The values are not words: they are written as they are, in the
+        // default locale's way.
+        assert_eq!(
+            say(&e, "en_xa", &p, vec![Value::text("Ana"), Value::Int(1234)]),
+            "[Ĥí Ana, 1,234 ţĥíñĝš. ~~~~~~~~~]"
+        );
+        // A plural form is the default locale's rule.
+        let count = [("count", ParamKind::Plural)];
+        let e = entry(
+            &count,
+            vec![(
+                "en_gb",
+                forms(&[(One, "{count} item"), (Other, "{count} items")]),
+            )],
+        );
+        assert_eq!(say(&e, "en_xa", &p, vec![Value::Int(1)]), "[1 íţéɱ ~~~]");
+        assert_eq!(say(&e, "en_xa", &p, vec![Value::Int(2)]), "[2 íţéɱš ~~~]");
+        // Its own wording, when it has any, is written as it is.
+        let own = entry(
+            &[],
+            vec![
+                ("en_gb", Wording::Plain(template("Hello"))),
+                ("en_xa", Wording::Plain(template("Hullo"))),
+            ],
+        );
+        assert_eq!(say(&own, "en_xa", &p, vec![]), "Hullo");
     }
 
     #[test]

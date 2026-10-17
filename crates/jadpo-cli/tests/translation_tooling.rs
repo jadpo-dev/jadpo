@@ -566,3 +566,81 @@ fn a_project_without_locales_has_nothing_to_translate() {
         (0, "Already up to date\n".to_string())
     );
 }
+
+// --- the pseudo-locale ---------------------------------------------------------------
+
+#[test]
+fn the_pseudo_locale_writes_every_message_accented_and_lengthened() {
+    let (_dir, root) = shop("translation-pseudo");
+    // List it, as any locale is; it needs no language file.
+    let app = SHOP[0].1.replace(
+        "supported: [Locale.en_gb, Locale.de_de, Locale.fr_fr, Locale.fr_ca]",
+        "supported: [Locale.en_gb, Locale.de_de, Locale.fr_fr, Locale.fr_ca, Locale.en_xa]",
+    );
+    write(&root, "app.jadpo", &app);
+    write(
+        &root,
+        "domains/shop/actions/describe.test.jadpo",
+        r#"test "every message is accented and lengthened in the pseudo-locale" {
+    assert translations.shop.parcels(count: 1, locale: Locale.en_xa) == "[1 þáŕçéļ ~~~~]"
+    assert translations.shop.parcels(count: 1234, locale: Locale.en_xa) == "[1,234 þáŕçéļš ~~~~~~]"
+    assert translations.shop.order_shipped(name: "Ana", locale: Locale.en_xa) == "[Ĝóóð ðáý Ana, ýóúŕ óŕðéŕ ĥáš šĥíþþéð. ~~~~~~~~~~~~~~~]"
+    assert translations.shop.farewell(locale: Locale.en_xa) == "[Ĝóóðƀýé. ~~~~]"
+}
+"#,
+    );
+    let (code, out) = plain(&root, &["api", "update"]);
+    assert_eq!(code, 0, "{out}");
+    let (code, out) = plain(&root, &["check"]);
+    assert_eq!(code, 0, "{out}");
+    let done = jadpo(&root, &["test"]);
+    assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    // Nothing is left to translate for it, and it takes no acceptance.
+    let (_, listed) = plain(&root, &["translations", "missing"]);
+    assert!(!listed.contains("en_xa"), "{listed}");
+    let (_, refused) = plain(&root, &["translations", "accept", "en_xa"]);
+    assert!(
+        refused.contains("isn't a locale with translations"),
+        "{refused}"
+    );
+}
+
+#[test]
+fn the_pseudo_locale_is_listed_like_any_other() {
+    let (_dir, root) = shop("translation-pseudo-unlisted");
+    write(
+        &root,
+        "domains/shop/actions/describe.test.jadpo",
+        "test \"it is not listed\" {\n    assert translations.shop.farewell(locale: Locale.en_xa) == \"x\"\n}\n",
+    );
+    let (code, out) = plain(&root, &["check"]);
+    assert_eq!(code, 1, "{out}");
+    assert!(out.contains("rule: type.locale_unsupported"), "{out}");
+}
+
+#[test]
+fn the_pseudo_locale_is_exported_for_client_apps_with_its_placeholders_intact() {
+    let (_dir, root) = booking("translation-pseudo-failures");
+    write(
+        &root,
+        "app.jadpo",
+        "application {}\n\nlocales {\n    default: Locale.en_gb\n    supported: [Locale.en_gb, Locale.fr_fr, Locale.fr_ca, Locale.en_xa]\n    in_progress: [Locale.fr_ca]\n}\n",
+    );
+    let done = checked(&root);
+    assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    let text = std::fs::read_to_string(root.join("build/openapi/main.failures.en_xa.json"))
+        .expect("export");
+    let document: serde_json::Value = serde_json::from_str(&text).expect("json");
+    let shown = document["slot_taken"]["text"].as_str().expect("text");
+    assert!(
+        shown.starts_with(
+            "[Ţĥáţ šļóţ ĥáš ĵúšţ ĝóñé. Ţĥé ñéẋţ íš {next_slot}, ŵíţĥ {seats_left} šéáţš ļéƒţ. ~"
+        ),
+        "{shown}"
+    );
+    assert!(shown.ends_with("~]"), "{shown}");
+    assert_eq!(
+        document["slot_taken"]["formats"],
+        serde_json::json!({ "next_slot": "date_time", "seats_left": "number" })
+    );
+}

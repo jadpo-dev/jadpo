@@ -133,6 +133,15 @@ fn is_range(range: &str) -> bool {
 /// first (`fr_fr` for `fr_ca`) and the rest in the order `supported:` lists
 /// them, and then to the default locale.
 pub fn fallback_chain(ordinal: u32, plan: &LocalePlan) -> Vec<u32> {
+    // The pseudo-locale writes the default locale's wording, whichever
+    // locales are around it.
+    if LocalePlan::is_pseudo(ordinal) {
+        return if ordinal == plan.default {
+            vec![ordinal]
+        } else {
+            vec![ordinal, plan.default]
+        };
+    }
     let mut chain = vec![ordinal];
     if !plan.in_progress.contains(&ordinal) {
         return chain;

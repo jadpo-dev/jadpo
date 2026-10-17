@@ -52,7 +52,7 @@ pub fn gaps(db: &dyn Db, project: Project) -> Vec<Gap> {
             .collect();
         let required = required(subjects, &files, reachable);
         for &locale in &plan.supported {
-            if locale == plan.default {
+            if locale == plan.default || jadpo_std::LocalePlan::is_pseudo(locale) {
                 continue;
             }
             let tag = jadpo_std::LOCALES

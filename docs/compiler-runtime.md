@@ -439,9 +439,19 @@ beside `icu_datetime`. The plural forms each locale needs are a table in
 `jadpo-std`, which `jadpo-value`'s tests hold equal to ICU4X's data. Each
 message and enum is a `translation_key` graph node digested with its
 wording in every language file, so a save of one reaches the tests that call
-it.
+it. Chunk 5.4d adds, in the same module: failures as subjects keyed by code
+(`declared`), required when a route's `fails` lists them (`failures`, which
+reads the route model), their wording carried in `Analysis` and written by
+`jadpo-cli` as `build/openapi/<api>.failures.<locale>.json` beside the
+OpenAPI documents; `sources`, each folder's `sources.jadpo_record` against
+the wording (`Standings`, `updated`) and `translations: { review: }` in
+`app.jadpo`; `outstanding`, the gaps and unused messages the commands list;
+and `definitions`, go to definition from a call. The pseudo-locale
+`Locale.en_xa` is a `Locale` variant that `fallback_chain` sends straight to
+the default locale, and `present::pseudo` accents and lengthens the text of
+the wording while the values it writes stay as they are.
 Enums that Rust code interprets (`Rounding`, `TextFormat`,
-`UuidVersion`, `Weekday`, `Dst`, `InvalidDay`, `ComponentStyle`, and `Zone` and `Locale` from their tables) are
+`UuidVersion`, `Weekday`, `Dst`, `InvalidDay`, `ComponentStyle`, `TextDirection`, `TranslationReview`, and `Zone` and `Locale` from their tables) are
 declared once, in `jadpo-std`. The namespaces the compiler fills from the
 project or the platform (`clock`, `config`, `translations`, `sessions`,
 `oauth`) list in `std/names.txt` the members built so far (`clock.now`,

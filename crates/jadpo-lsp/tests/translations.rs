@@ -82,7 +82,9 @@ fn place(root: &Path, location: &Value) -> (String, u64, u64, u64) {
             .trim_start_matches(&format!("file://{}/", root.display()))
             .to_string(),
         location["range"]["start"]["line"].as_u64().expect("line"),
-        location["range"]["start"]["character"].as_u64().expect("start"),
+        location["range"]["start"]["character"]
+            .as_u64()
+            .expect("start"),
         location["range"]["end"]["character"].as_u64().expect("end"),
     )
 }
@@ -108,10 +110,25 @@ fn a_call_goes_to_its_message_and_every_wording() {
         places,
         [
             // The type `Parcels`.
-            ("domains/shop/translations/parcels.jadpo".to_string(), 1, 5, 12),
+            (
+                "domains/shop/translations/parcels.jadpo".to_string(),
+                1,
+                5,
+                12
+            ),
             // Its wording, in each language file.
-            ("domains/shop/translations/de_de.jadpo".to_string(), 1, 4, 11),
-            ("domains/shop/translations/en_gb.jadpo".to_string(), 1, 4, 11),
+            (
+                "domains/shop/translations/de_de.jadpo".to_string(),
+                1,
+                4,
+                11
+            ),
+            (
+                "domains/shop/translations/en_gb.jadpo".to_string(),
+                1,
+                4,
+                11
+            ),
         ]
     );
     // Any part of the call's name does the same; its arguments do not.

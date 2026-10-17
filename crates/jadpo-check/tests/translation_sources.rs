@@ -271,3 +271,56 @@ fn a_review_that_is_not_a_translation_review_is_an_error() {
         ["translation.review_invalid `review:` isn't a `TranslationReview`"]
     );
 }
+
+#[test]
+fn a_record_is_not_cut_down_by_a_project_that_cannot_be_judged_for_now() {
+    use jadpo_check::translations::sources::updated;
+    let db = Database::default();
+    let path = record_path("greeting");
+    let record = recorded("Hello, {name}.", "Bonjour, {name}.", true);
+    let standing = |files: Vec<(&str, &str)>| {
+        let records = [(path.as_str(), record.as_str())];
+        let project = support::project_with_records(&db, Layout::Project, &files, &records);
+        updated(
+            standings(&db, project, Name::new(&db, "greeting".to_string())),
+            None,
+        )
+        .entries
+        .len()
+    };
+    // The default locale's file is gone: nothing can be compared.
+    assert_eq!(
+        standing(vec![
+            ("app.jadpo", APP),
+            ("domains/greeting/translations/hello.jadpo", MESSAGE),
+            ("domains/greeting/translations/fr_fr.jadpo", FR),
+        ]),
+        1
+    );
+    // The French wording is mid-edit and does not read: its line waits.
+    assert_eq!(
+        standing(vec![
+            ("app.jadpo", APP),
+            ("domains/greeting/translations/hello.jadpo", MESSAGE),
+            ("domains/greeting/translations/en_gb.jadpo", EN),
+            (
+                "domains/greeting/translations/fr_fr.jadpo",
+                "translations {\n    hello: \"Bonjour, {name\"\n}\n",
+            ),
+        ]),
+        1
+    );
+    // The member is gone from the file: its line goes.
+    assert_eq!(
+        standing(vec![
+            ("app.jadpo", APP),
+            ("domains/greeting/translations/hello.jadpo", MESSAGE),
+            ("domains/greeting/translations/en_gb.jadpo", EN),
+            (
+                "domains/greeting/translations/fr_fr.jadpo",
+                "translations {\n}\n"
+            ),
+        ]),
+        0
+    );
+}

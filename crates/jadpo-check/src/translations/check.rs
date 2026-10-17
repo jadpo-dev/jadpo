@@ -149,7 +149,7 @@ impl Ctx<'_> {
             self.problems.push(unsupported(file, self.declared));
             return;
         }
-        let in_progress = self.plan.in_progress.contains(&locale);
+        let in_progress = self.plan.in_progress.contains(&locale) || LocalePlan::is_pseudo(locale);
         let mut seen: BTreeMap<&str, Span> = BTreeMap::new();
         for member in &file.members {
             if let Some(first) = seen.get(member.name.as_str()) {
@@ -661,7 +661,11 @@ impl Ctx<'_> {
             return;
         }
         for &locale in &self.plan.supported {
-            if self.plan.in_progress.contains(&locale) && locale != self.plan.default {
+            // A locale in progress falls back, and the pseudo-locale writes
+            // the default's wording, so neither is asked for any.
+            if (self.plan.in_progress.contains(&locale) || LocalePlan::is_pseudo(locale))
+                && locale != self.plan.default
+            {
                 continue;
             }
             let file = files.iter().find(|file| file.locale == Some(locale));

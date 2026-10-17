@@ -383,7 +383,8 @@ order, as Markdown and JSON, and a static web view of the same report:
    allowed to pass when their provider is down (area 16).
    With `translations: { review: TranslationReview.required }`, wording
    changed and not yet accepted with `jadpo translations accept <locale>`
-   is listed here too (area 10, decided 2026-10-16).
+   is listed here too (area 10, decided 2026-10-16); until `jadpo approval`
+   exists, `jadpo translations missing` lists it (chunk 5.4d).
 5. **Source,** grouped by declaration rather than by file.
 
 ```text

@@ -14,6 +14,9 @@
 use jadpo_check::translations::failures::{FailureText, texts};
 use jadpo_db::{Db, Project};
 use jadpo_graph::json::Value;
+use jadpo_std::LocalePlan;
+use jadpo_std::translation::{Piece, Template};
+use jadpo_value::present::pseudo;
 
 /// The documents, named `<api>.failures.<locale>` for the OpenAPI folder.
 pub fn documents(db: &dyn Db, project: Project) -> Vec<(String, Value)> {
@@ -32,7 +35,7 @@ pub fn documents(db: &dyn Db, project: Project) -> Vec<(String, Value)> {
             let chain = jadpo_value::locale::fallback_chain(locale, plan);
             let mut document = Value::object();
             for failure in &failures {
-                if let Some(entry) = entry(failure, &chain) {
+                if let Some(entry) = entry(failure, locale, &chain) {
                     document.set(&failure.code, entry);
                 }
             }
@@ -43,14 +46,16 @@ pub fn documents(db: &dyn Db, project: Project) -> Vec<(String, Value)> {
 }
 
 /// One failure's entry: the first wording along the fallback chain.
-fn entry(failure: &FailureText, chain: &[u32]) -> Option<Value> {
-    let template = chain.iter().find_map(|at| {
+fn entry(failure: &FailureText, locale: u32, chain: &[u32]) -> Option<Value> {
+    let (source, template) = chain.iter().find_map(|at| {
         failure
             .wordings
             .iter()
             .find(|(locale, _)| locale == at)
-            .map(|(_, template)| template)
+            .map(|(locale, template)| (*locale, template))
     })?;
+    // The pseudo-locale is the default's wording, accented and lengthened.
+    let pseudo = LocalePlan::is_pseudo(locale) && source != locale;
     let mut formats = Value::object();
     let written: Vec<&str> = template.fields().collect();
     for (name, format) in &failure.formats {
@@ -59,7 +64,24 @@ fn entry(failure: &FailureText, chain: &[u32]) -> Option<Value> {
         }
     }
     let mut entry = Value::object();
-    entry.set("text", template.written());
+    entry.set(
+        "text",
+        if pseudo {
+            let accented = Template {
+                pieces: template
+                    .pieces
+                    .iter()
+                    .map(|piece| match piece {
+                        Piece::Text(text) => Piece::Text(pseudo::accent(text)),
+                        field => field.clone(),
+                    })
+                    .collect(),
+            };
+            pseudo::frame(&accented.written())
+        } else {
+            template.written()
+        },
+    );
     entry.set("formats", formats);
     Some(entry)
 }

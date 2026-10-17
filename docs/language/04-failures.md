@@ -538,13 +538,12 @@ each route's failures) has wording in every supported locale; one that
 never leaves the server needs none. Client fields that are dates or
 numbers are sent as values (an `Instant` stays an instant on the wire) and
 the client formats them for its own language before filling the
-placeholder. `jadpo build` writes, beside each API's OpenAPI document, one
+placeholder. The compiler writes, beside each API's OpenAPI document, one
 file per locale named `<api>.failures.<locale>.json`, mapping each code to
 its wording in the same `{field}` syntax and saying which placeholders need
 formatting and how (date, time or number), for client apps to show
-(revised 2026-10-16, not built yet: chunk 5.4d; chunk 5.4c built the
-language files for messages, enums and email subjects, and reads no member
-that words a failure):
+(revised 2026-10-16, built in chunk 5.4d; `jadpo check` writes the files
+until `jadpo build` exists):
 
 ```text
 // domains/planning/translations/fr_fr.jadpo

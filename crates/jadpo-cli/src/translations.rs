@@ -207,7 +207,7 @@ fn translated_locales(db: &dyn Db, project: Project) -> Vec<&'static str> {
     plan.supported
         .iter()
         .copied()
-        .filter(|&locale| locale != plan.default)
+        .filter(|&locale| locale != plan.default && !jadpo_std::LocalePlan::is_pseudo(locale))
         .map(tag_of)
         .collect()
 }
