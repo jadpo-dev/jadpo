@@ -13,6 +13,27 @@ pub fn value(ordinal: u32) -> Value {
     Value::variant(jadpo_std::LOCALE, ordinal, name, Vec::new())
 }
 
+/// The way the text of the locale at `ordinal` runs, as a `TextDirection`
+/// value (area 10, "Locales"): CLDR's likely scripts decide, so a locale
+/// written in a right-to-left script such as `ar_eg`, `he_il` or `fa_ir`
+/// reads right to left, and every other left to right.
+pub fn direction(ordinal: u32) -> Value {
+    let tag = jadpo_std::LOCALES
+        .get(ordinal as usize)
+        .map(|(_, tag)| tag.replace('_', "-"))
+        .unwrap_or_default();
+    let right_to_left = tag
+        .parse::<LanguageIdentifier>()
+        .ok()
+        .is_some_and(|id| icu_locale::LocaleDirectionality::new_common().is_right_to_left(&id));
+    let (ordinal, name) = if right_to_left {
+        (1, jadpo_std::TextDirection::RightToLeft.name())
+    } else {
+        (0, jadpo_std::TextDirection::LeftToRight.name())
+    };
+    Value::variant(jadpo_std::TextDirection::NAME, ordinal, name, Vec::new())
+}
+
 /// The place, among `Locale`'s variants, of the supported locale `header`
 /// asks for (area 10, "Locales").
 ///

@@ -73,8 +73,9 @@ pub use constant::Constant;
 pub use enums::{
     Access, AuthenticationMethod, AuthenticationStrength, ClientAddressSource, ComponentStyle,
     Driver, Dst, FieldAccess, FieldChange, Generated, HttpMethod, Idempotency, InvalidDay, LOCALE,
-    MembershipScope, OnDelete, Rounding, RouteAuthentication, SuccessStatus, Tenancy, TextFormat,
-    UuidVersion, Weekday, ZONE, enums, variant_ordinal,
+    MembershipScope, OnDelete, Rounding, RouteAuthentication, SuccessStatus, Tenancy,
+    TextDirection, TextFormat, TranslationReview, UuidVersion, Weekday, ZONE, enums,
+    variant_ordinal,
 };
 pub use format::{BuiltinFormat, Component, FormatLength, FormatPart, TimeFormatSpec};
 pub use isolation::Isolation;
