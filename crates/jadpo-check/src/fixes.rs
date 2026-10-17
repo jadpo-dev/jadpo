@@ -251,6 +251,8 @@ struct Edit {
     /// What it changes, for the change list: the name written, and the
     /// name it was.
     was: String,
+    /// Whether the change list shows it; imports are left to the diff.
+    shown: bool,
 }
 
 /// What [`plan`] decided.
@@ -351,6 +353,7 @@ pub fn plan(
                 text: new.clone(),
                 line: finding.line,
                 was: finding.name.clone(),
+                shown: true,
             });
             let location = jadpo_db::locate(&finding.path, project.layout(db));
             if project.layout(db) == jadpo_db::Layout::Project
@@ -533,6 +536,7 @@ fn references(
                     text: to.to_string(),
                     line: line_of(start),
                     was: name.to_string(),
+                    shown: true,
                 });
             }
             // `Type.field`, written outside a body or inside one.
@@ -557,6 +561,7 @@ fn references(
                             text: (*standard).to_string(),
                             line: line_of(start),
                             was: field.text().to_string(),
+                            shown: true,
                         });
                     }
                 }
@@ -586,9 +591,57 @@ fn references(
                             text: (*standard).to_string(),
                             line: line_of(written.start),
                             was: field.to_string(),
+                            shown: true,
                         });
                     }
                 }
+            }
+        }
+        // A swap's standard type is never imported, so `use` lines lose the
+        // name, and a line that named nothing else goes.
+        if !rename {
+            for line in source.use_decls() {
+                let Some(names) = line.use_names() else {
+                    continue;
+                };
+                let written: Vec<String> = names
+                    .name_refs()
+                    .filter_map(|name| tree::name_ref_text(&name))
+                    .collect();
+                if !written.iter().any(|n| n == name) {
+                    continue;
+                }
+                let rest: Vec<&str> = written
+                    .iter()
+                    .map(String::as_str)
+                    .filter(|n| *n != name)
+                    .collect();
+                let (start, end, replacement) = if rest.is_empty() {
+                    let range = line.syntax().text_range();
+                    let start = text[..usize::from(range.start())]
+                        .rfind('\n')
+                        .map_or(0, |i| i + 1);
+                    let tail = &text[usize::from(range.end())..];
+                    let end =
+                        usize::from(range.end()) + tail.find('\n').map_or(tail.len(), |i| i + 1);
+                    (start as u32, end as u32, String::new())
+                } else {
+                    let range = names.syntax().text_range();
+                    (
+                        u32::from(range.start()),
+                        u32::from(range.end()),
+                        format!("{{ {} }}", rest.join(", ")),
+                    )
+                };
+                out.retain(|edit| !(start <= edit.start && edit.end <= end));
+                out.push(Edit {
+                    start,
+                    end,
+                    text: replacement,
+                    line: line_of(start),
+                    was: name.to_string(),
+                    shown: false,
+                });
             }
         }
         if let Some(range) = skip {
@@ -796,7 +849,7 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Fixed, Stopped> {
             plan.edits.get(&path)
         };
         let mut seen = BTreeSet::new();
-        for edit in edited.into_iter().flatten() {
+        for edit in edited.into_iter().flatten().filter(|edit| edit.shown) {
             if seen.insert((edit.line, edit.text.clone(), edit.was.clone())) {
                 rows.push(Row {
                     mark: Mark::Changed,
