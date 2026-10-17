@@ -676,8 +676,8 @@ pub static COMMANDS: &[Command] = &[
                 command: "jadpo declines clear --rule library.similar_exists",
             },
             Example {
-                description: "List one domain's declines as data for tools",
-                command: "jadpo declines list domains/menu --json",
+                description: "List the declines in shared/ as data for tools",
+                command: "jadpo declines list shared --json",
             },
         ],
         arguments_rule: &rule::CLI_DECLINES_ARGUMENTS,

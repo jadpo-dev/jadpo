@@ -4,7 +4,7 @@
 //! declaration it is on. A decline whose rule no longer fires there is
 //! `decline.unused`; naming a rule that can't be declined is
 //! `decline.not_declinable`; a decline without a reason is
-//! `decline.reason_required`.
+//! `decline.no_reason`.
 
 use crate::support;
 
@@ -109,7 +109,7 @@ fn a_decline_needs_a_reason() {
         let text = format!("{SIMILAR}decline library.similar_exists{reason}\n{CAP}");
         assert_eq!(
             loose(&text),
-            ["main.jadpo decline.reason_required: This decline gives no reason"],
+            ["main.jadpo decline.no_reason: This decline gives no reason"],
             "{reason}"
         );
     }

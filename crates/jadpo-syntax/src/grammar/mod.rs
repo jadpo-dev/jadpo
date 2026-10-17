@@ -591,7 +591,7 @@ fn no_declaration(p: &mut Parser<'_>) {
 }
 
 /// `decline <rule>: "<reason>"`. A missing reason is left to the checker
-/// (`decline.reason_required`), which says what to write.
+/// (`decline.no_reason`), which says what to write.
 fn decline(p: &mut Parser<'_>) {
     let m = p.start();
     p.bump(DECLINE_KW);

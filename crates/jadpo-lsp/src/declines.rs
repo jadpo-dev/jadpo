@@ -6,7 +6,7 @@
 //!
 //! "Decline with a reason" is offered on a finding of a declinable rule:
 //! it writes `decline <rule>: ""` above the declaration the finding is on,
-//! and `decline.reason_required` then asks for the reason until it is
+//! and `decline.no_reason` then asks for the reason until it is
 //! written. "Remove decline" is offered on a `decline` line.
 
 use lsp_types::{

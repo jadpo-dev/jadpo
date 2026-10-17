@@ -136,7 +136,7 @@ function cap_total(total: Pence) -> Pence {
 ```
 
 A decline covers its one rule on its one declaration, and its reason is
-required (`decline.reason_required`). An agent or a person may decline;
+required (`decline.no_reason`). An agent or a person may decline;
 each declinable error's `next:` offers the line. Declinable today:
 [`library.similar_exists`](#library-similar-exists) and area 3's
 [`constant.similar_exists`](03-logic.md#constant-similar-exists); the
@@ -183,7 +183,7 @@ $ jadpo declines clear --rule library.similar_exists
 - **Which declaration a finding is on.** The innermost declaration or
   member around the error's location: a decline on a type covers a
   finding on the type, not one on its field.
-- **The reason.** A missing or blank reason is `decline.reason_required`;
+- **The reason.** A missing or blank reason is `decline.no_reason`;
   the finding stays declined meanwhile, so one error shows, not two.
   "Decline with a reason" in the editor writes an empty reason for the
   author to fill in.
@@ -1502,12 +1502,12 @@ error: `layout.unused_declaration` can't be declined
 check failed: 1 error, 1 file
 ```
 
-### `decline.reason_required`
+### `decline.no_reason`
 
 A decline says why the finding is right to leave, so a reviewer can agree
 or not.
 
-```jadpo check project=e-decline-reason expect=decline.reason_required
+```jadpo check project=e-decline-reason expect=decline.no_reason
 type Pence = Int {
     min: 0
 }
@@ -1539,8 +1539,8 @@ error: This decline gives no reason
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reason needed
   reason: A decline is reviewed like the code it sits on: its reason says why the finding is right to leave, so a reviewer can agree or not.
   next: Write why in the quotes: `decline library.similar_exists: "<why>"` (agent)
-  rule: decline.reason_required
-  help: docs/language/01-project-layout-and-modules.html#decline-reason-required
+  rule: decline.no_reason
+  help: docs/language/01-project-layout-and-modules.html#decline-no-reason
 
 check failed: 1 error, 1 file
 ```
@@ -1813,7 +1813,7 @@ rule's real output under [Errors](#errors).
 | Reserved words | Built: a reserved word can't name anything. |
 | Comments | Built: `//` and `///` documentation comments. |
 | Similar helpers | Built (chunk 1.7): `library.similar_exists`, a declinable error since chunk 5.4b. |
-| Declinable errors | Built (chunk 5.4b): no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.reason_required`; `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline". `jadpo approval` listing declines comes with records (area 18), and the date rule with expired flags (area 16). |
+| Declinable errors | Built (chunk 5.4b): no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline". `jadpo approval` listing declines comes with records (area 18), and the date rule with expired flags (area 16). |
 | Constants | Built (chunk 5.3e): `constant` as a reserved word and a declaration placed and shared as helper functions are, a private one unique within its domain, `constant.similar_exists`, and a top-level `var` pointed at `constant` (area 3). |
 | Imports | Built (chunk 3.5): `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
 | A file holds only what its primary declaration uses, primary first | Built (chunk 3.9): `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another, and `jadpo fmt` moving the primary declaration to the top. |

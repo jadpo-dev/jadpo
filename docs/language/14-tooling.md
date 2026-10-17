@@ -201,7 +201,7 @@ moves errors ask for, never makes it.
 Decided in area 1 (question 11, 2026-10-17) and built in chunk 5.4b:
 "Decline with a reason", a quick fix on a declinable finding, writes
 `decline <rule>: ""` above the declaration the finding is on, and
-`decline.reason_required` asks for the reason until it is written;
+`decline.no_reason` asks for the reason until it is written;
 "Remove decline", on a `decline` line, removes the line. Both go through
 the same code as `jadpo declines clear`.
 

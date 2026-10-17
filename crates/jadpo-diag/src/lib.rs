@@ -314,10 +314,10 @@ rules! {
         "06-reads-and-writes.html#data-write-section-required", "Write doesn't say what it changes";
     DATA_WRITE_SECTION_UNEXPECTED: "data.write_section_unexpected", area 6, Error, Agent,
         "06-reads-and-writes.html#data-write-section-unexpected", "Write has a section it doesn't take";
+    DECLINE_NO_REASON: "decline.no_reason", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#decline-no-reason", "Decline gives no reason";
     DECLINE_NOT_DECLINABLE: "decline.not_declinable", area 1, Error, Agent,
         "01-project-layout-and-modules.html#decline-not-declinable", "Decline names a rule that can't be declined";
-    DECLINE_REASON_REQUIRED: "decline.reason_required", area 1, Error, Agent,
-        "01-project-layout-and-modules.html#decline-reason-required", "Decline gives no reason";
     DECLINE_UNUSED: "decline.unused", area 1, Error, Agent,
         "01-project-layout-and-modules.html#decline-unused", "Decline's rule no longer fires on its declaration";
     EFFECT_FUNCTION_CALLS_ACTION: "effect.function_calls_action", area 3, Error, Agent,

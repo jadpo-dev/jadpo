@@ -6,7 +6,7 @@
 //! [`answer`] runs last in [`crate::check`]: it drops each finding a line
 //! declines, and reports the lines themselves: one naming a rule that
 //! can't be declined (`decline.not_declinable`), one with no reason
-//! (`decline.reason_required`), and one whose rule no longer fires there
+//! (`decline.no_reason`), and one whose rule no longer fires there
 //! (`decline.unused`). The commands (`jadpo declines list` and `clear`)
 //! and the editor's "Decline with a reason" and "Remove decline" read and
 //! write the lines through [`declines`], [`removal`] and [`insertion`], so
@@ -278,7 +278,7 @@ pub(crate) fn answer(
             .as_deref()
             .is_none_or(|reason| reason.trim().is_empty())
         {
-            problems.push(reason_required(decline));
+            problems.push(no_reason(decline));
         }
     }
     // A rule that didn't fire may only have been stopped by another error,
@@ -329,7 +329,7 @@ pub fn without(text: &str, declines: &[&Decline]) -> String {
 
 /// The line declining `diagnostic`'s rule on the declaration or member it
 /// is on, inserted below any declines it already has, with an empty
-/// reason for the author to write (`decline.reason_required` asks for it
+/// reason for the author to write (`decline.no_reason` asks for it
 /// until they do). `None` for a rule that can't be declined.
 pub fn insertion(db: &dyn Db, project: Project, diagnostic: &Diagnostic) -> Option<Edit> {
     if !diagnostic.rule.declinable {
@@ -439,13 +439,13 @@ fn unknown_rule(decline: &Decline) -> Diagnostic {
     }
 }
 
-fn reason_required(decline: &Decline) -> Diagnostic {
+fn no_reason(decline: &Decline) -> Diagnostic {
     let rule = if decline.rule.is_empty() {
         "<rule>"
     } else {
         &decline.rule
     };
-    Diagnostic::new(&rule::DECLINE_REASON_REQUIRED, "This decline gives no reason")
+    Diagnostic::new(&rule::DECLINE_NO_REASON, "This decline gives no reason")
         .at(decline.span.clone(), "reason needed")
         .reason(
             "A decline is reviewed like the code it sits on: its reason says why the finding is right to leave, so a reviewer can agree or not.",
