@@ -120,7 +120,7 @@ fn the_action_on_a_read_makes_the_edit_config_move_makes() {
     let root = project("lsp-make-setting", FILES);
     let mut server = start(&root, true);
     // On `max_login_attempts` in `security.max_login_attempts`.
-    let offered = actions(&mut server, &root, SIGN_IN, 4, 50);
+    let offered = actions(&mut server, &root, SIGN_IN, 4, 57);
     let action = &offered[0];
     assert_eq!(action["title"], MAKE_SETTING);
     assert_eq!(action["kind"], "refactor.rewrite");
@@ -202,7 +202,7 @@ fn a_refused_move_is_offered_unavailable_with_its_reason() {
     );
     let root = project("lsp-make-setting-refused", &files);
     let mut server = start(&root, true);
-    let offered = actions(&mut server, &root, SIGN_IN, 4, 50);
+    let offered = actions(&mut server, &root, SIGN_IN, 4, 57);
     assert_eq!(
         offered[0]["disabled"]["reason"],
         "A setting is already called `max_login_attempts`"

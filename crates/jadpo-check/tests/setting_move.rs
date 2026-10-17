@@ -197,7 +197,7 @@ fn the_editor_finds_the_constant_on_its_declaration_or_a_read() {
         setting_move::at(&loaded.db, loaded.project, file(ACCOUNTS[4].0), read),
         id
     );
-    let elsewhere = action.find("failures").expect("parameter") as u32;
+    let elsewhere = action.find("failed_attempts").expect("parameter") as u32;
     assert_eq!(
         setting_move::at(&loaded.db, loaded.project, file(ACCOUNTS[4].0), elsewhere),
         None
