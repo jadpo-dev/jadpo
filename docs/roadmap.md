@@ -662,13 +662,15 @@ reference only).
   a minor unit. Split on 2026-10-17; the rest is 5.5h2. Stored always in
   two columns, with a check constraint for a fixed currency; what the
   pages left open is area 19's "Chosen in chunk 5.5h".
-- [ ] **5.5h2 Exchange rates and money in messages** `opus · high` (area
+- [x] **5.5h2 Exchange rates and money in messages** `opus · high` (area
   19, "Money and payments", question 16, split from 5.5h): `ExchangeRate`
   and `money.convert`, applying a rate the app holds and failing
   `currency_mismatch` for another currency's rate; `{price, number,
   currency}` in translation messages (area 10's placeholder styles). Done
   when `convert`'s example passes, an inverted rate is a type error, and
-  a message writes a price in two locales.
+  a message writes a price in two locales. Built, with
+  `translation.placeholder_style`; what the pages left open is area 19's
+  "Chosen in chunk 5.5h2".
 - [x] **5.5h3 Definition before use** `sonnet · high` (area 1, "Files and
   names"; Richard, 2026-10-17): `jadpo fmt` orders each file as decided:
   opening comment, `use` lines, then every declaration before the first

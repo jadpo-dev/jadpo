@@ -221,6 +221,7 @@ pub enum Op {
     MapWith,
     MapWithout,
     MoneyAllocate,
+    MoneyConvert,
     MoneyCurrency,
     MoneyFromMinor,
     MoneyMinor,
@@ -1334,6 +1335,22 @@ pub const OPERATIONS: &[Operation] = &[
         Kind::List,
         "money::allocate",
     ),
+    // A rate applied, never fetched: the amount must be in the rate's
+    // `from` currency, and the result is in its `to`, rounded half to
+    // even to a whole minor unit.
+    Operation {
+        conditions: &[ON_CURRENCY_MISMATCH],
+        ..money(
+            Op::MoneyConvert,
+            "convert",
+            &[
+                param("value", MONEY),
+                param("rate", Kind::Std(crate::standard::EXCHANGE_RATE)),
+            ],
+            MONEY,
+            "money::convert",
+        )
+    },
     money(
         Op::MoneyCurrency,
         "currency",
@@ -1963,10 +1980,15 @@ mod tests {
                     // program runs, so only an `attempt` settles it.
                     None if matches!(condition.key, RuleKey::Malformed | RuleKey::Mismatch) => true,
                     // `ln`'s by a value proved above 0; the money
-                    // operations' by a currency the types or the call fix.
+                    // operations' by a currency the types or the call fix,
+                    // and `convert`'s by a rate's currency a condition
+                    // proves.
                     None => {
                         operation.params.iter().any(|param| param.above_zero)
-                            || operation.params.iter().any(|param| param.kind == CURRENCY)
+                            || operation.params.iter().any(|param| {
+                                param.kind == CURRENCY
+                                    || param.kind == Kind::Std(crate::standard::EXCHANGE_RATE)
+                            })
                     }
                 };
                 assert!(

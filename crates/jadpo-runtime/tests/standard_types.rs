@@ -18,6 +18,25 @@ use jadpo_value::json::{Codecs, Path};
 use jadpo_value::shape::Shape;
 use jadpo_value::{Fault, Validator, Value, ops, standard};
 
+/// The codec of a standard enum: its wire text is the variant's spelling.
+fn enum_codec(entry: &StandardType, codes: &[(&str, &str)]) -> Codec {
+    let spelling = Spelling::of(entry.name);
+    let variants = codes
+        .iter()
+        .enumerate()
+        .map(|(ordinal, (name, _))| VariantCodec {
+            name: (*name).to_string(),
+            wire: spelling.spelling(name),
+            ordinal: ordinal as u32,
+            fields: None,
+        })
+        .collect();
+    Codec::Enum {
+        ty: entry.name.to_string(),
+        variants,
+    }
+}
+
 /// The codecs a route table holds for the entry's type, made from the
 /// entry as the plan makes them: a scalar for a built-in type, an enum
 /// whose wire text is the variant's spelling, an object of its fields.
@@ -45,27 +64,7 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
             )],
             Vec::new(),
         ),
-        Holds::Enum(codes) => {
-            let spelling = Spelling::of(entry.name);
-            let variants = codes
-                .iter()
-                .enumerate()
-                .map(|(ordinal, (name, _))| VariantCodec {
-                    name: (*name).to_string(),
-                    wire: spelling.spelling(name),
-                    ordinal: ordinal as u32,
-                    fields: None,
-                })
-                .collect();
-            (
-                vec![Codec::Enum {
-                    ty: entry.name.to_string(),
-                    variants,
-                }],
-                Vec::new(),
-                Vec::new(),
-            )
-        }
+        Holds::Enum(codes) => (vec![enum_codec(entry, codes)], Vec::new(), Vec::new()),
         // Sent as its canonical text (chunk 5.5k).
         Holds::Object(_) if entry.json == Json::Text => (
             vec![Codec::Standard {
@@ -82,11 +81,21 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
             let mut validators = Vec::new();
             let mut plans = Vec::new();
             for (at, (name, part)) in fields.iter().enumerate() {
-                let builtin = part
-                    .builtin()
-                    .expect("an object sent as fields holds built-in types");
-                codecs.push(scalar(builtin, at as u32));
-                validators.push(Validator::new(Some(builtin), Vec::new()));
+                // A built-in type, or a standard enum (`ExchangeRate`'s
+                // currencies).
+                match (part.builtin(), part) {
+                    (Some(builtin), _) => {
+                        codecs.push(scalar(builtin, at as u32));
+                        validators.push(Validator::new(Some(builtin), Vec::new()));
+                    }
+                    (None, jadpo_std::Part::Standard(other)) => {
+                        let other = jadpo_std::standard_type(other).expect("a standard type");
+                        let codes = other.codes().expect("an object's fields hold enums");
+                        codecs.push(enum_codec(other, codes));
+                        validators.push(Validator::new(None, Vec::new()));
+                    }
+                    _ => panic!("{}: an object sent as fields", entry.name),
+                }
                 plans.push(FieldPlan {
                     key: format!("field {}.{name}", entry.name),
                     name: (*name).to_string(),

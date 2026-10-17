@@ -17,6 +17,14 @@ public library money {
     /// 0, at least one of them; a share of ratio 0 is nothing.
     function allocate(total: Money, ratios: List<Int>) -> List<Money> {}
 
+    /// `value` in `rate`'s `to` currency, from its `from` one: the major
+    /// units times `rate.rate`, rounded half to even to a minor unit, so
+    /// £10.50 at a `GBP/EUR` rate of 1.17 is €12.28. It fails with
+    /// `currency_mismatch` when `value` isn't in `rate.from`, unless that is
+    /// known: an inverted rate is then a compile error. The rate is one the
+    /// app holds; nothing here fetches one.
+    function convert(value: Money, rate: ExchangeRate) -> Money {}
+
     /// The currency `value` is in.
     function currency(value: Money) -> Currency {}
 

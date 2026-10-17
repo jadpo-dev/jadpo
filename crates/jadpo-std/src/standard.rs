@@ -133,6 +133,12 @@ pub enum TextForm {
     /// 10.50`, `JPY 500`, `BHD 1.250` (chosen in chunk 5.5h); the code is
     /// read ignoring case.
     Money,
+    /// A rate between two currencies: the pair as ISO 4217 codes, base
+    /// first, a space, the rate as a `Decimal` with the places it was
+    /// given, a space, and the instant it was quoted at, `GBP/EUR 1.17
+    /// 2026-10-18T09:00:00Z`: one pound is 1.17 euros (chosen in chunk
+    /// 5.5h2); the codes are read ignoring case.
+    ExchangeRate,
 }
 
 /// How a standard type is sent and read as JSON.
@@ -515,6 +521,18 @@ pub const CALENDAR_PERIOD_FIELDS: [(&str, Part); 3] = [
 /// "Ranges").
 pub const DATE_RANGE: &str = "DateRange";
 
+/// `ExchangeRate` (area 19, "Money and payments"): one `from` is `rate`
+/// of `to`, as quoted at `at`.
+pub const EXCHANGE_RATE: &str = "ExchangeRate";
+
+/// `ExchangeRate`'s fields, in order.
+pub const EXCHANGE_RATE_FIELDS: [(&str, Part); 4] = [
+    ("from", Part::Standard(crate::CURRENCY)),
+    ("to", Part::Standard(crate::CURRENCY)),
+    ("rate", Part::Of(Builtin::Decimal)),
+    ("at", Part::Of(Builtin::Instant)),
+];
+
 /// `DateRange`'s fields, in order.
 pub const DATE_RANGE_FIELDS: [(&str, Part); 2] = [
     ("start", Part::Of(Builtin::CalendarDate)),
@@ -531,8 +549,8 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// Every standard type built so far, sorted by name: the 13 areas 2, 10
 /// and 16 built, run through the contract in chunk 5.5a, `Range<T>`
 /// (chunk 5.5c2), `Money` and `Currency` (chunk 5.5h), ten of the time
-/// group (chunk 5.5k), and the 17 payment and identity numbers held as
-/// text (chunk 5.5i, in `identifiers`).
+/// group (chunk 5.5k), `ExchangeRate` (chunk 5.5h2), and the 17 payment
+/// and identity numbers held as text (chunk 5.5i, in `identifiers`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     identifiers::BIC,
@@ -689,6 +707,70 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
     ),
+    // A rate between two currencies at an instant (area 19, "Money and
+    // payments"): what `money.convert` applies, never fetched.
+    StandardType {
+        name: EXCHANGE_RATE,
+        holds: Holds::Object(&EXCHANGE_RATE_FIELDS),
+        text: Some(TextForm::ExchangeRate),
+        json: Json::Fields(&["from", "to", "rate", "at"]),
+        // Stored as its JSON, as `InstantRange` is.
+        storage: Storage::Column(SqlType::Json),
+        format: canonical(),
+        ordered: false,
+        validator: None,
+        shape: Some(&[
+            FieldMatch {
+                meaning: "a currency it converts from",
+                names: &["from", "from_currency", "base", "base_currency"],
+                built_on: &[Builtin::Text],
+                or_enum: true,
+            },
+            FieldMatch {
+                meaning: "a currency it converts to",
+                names: &["to", "to_currency"],
+                built_on: &[Builtin::Text],
+                or_enum: true,
+            },
+            FieldMatch {
+                meaning: "a rate",
+                names: &["rate", "exchange_rate"],
+                built_on: &[Builtin::Decimal],
+                or_enum: false,
+            },
+            FieldMatch {
+                meaning: "an instant it was quoted at",
+                names: &["at", "as_of", "quoted_at"],
+                built_on: &[Builtin::Instant],
+                or_enum: false,
+            },
+        ]),
+        examples: Examples {
+            valid: &[
+                (
+                    "GBP/EUR 1.17 2026-10-18T09:00:00Z",
+                    "GBP/EUR 1.17 2026-10-18T09:00:00Z",
+                ),
+                (
+                    "EUR/JPY 162.4031 2026-10-18T09:30:00Z",
+                    "EUR/JPY 162.4031 2026-10-18T09:30:00Z",
+                ),
+            ],
+            format: None,
+            malformed: &[
+                "GBP/EUR 1.17",
+                "GBP-EUR 1.17 2026-10-18T09:00:00Z",
+                "GBP/XYZ 1.17 2026-10-18T09:00:00Z",
+                "GBP/EUR 1,17 2026-10-18T09:00:00Z",
+                "GBP/EUR 1.17 2026-10-18",
+                "GBP/EUR  1.17 2026-10-18T09:00:00Z",
+                "",
+            ],
+            of: None,
+            settings: "",
+        },
+        release: FIRST_RELEASE,
+    },
     StandardType {
         name: FILE_TYPE,
         holds: Holds::Enum(FILE_TYPES),
@@ -1441,7 +1523,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 43, "the 43 standard types built so far");
+        assert_eq!(names.len(), 44, "the 44 standard types built so far");
     }
 
     #[test]

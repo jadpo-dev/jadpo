@@ -244,8 +244,10 @@ pub fn run(
         (Op::MoneySum, [items, currency]) => money::sum(items, currency),
         (Op::MoneySplit, [total, parts]) => money::split(total, parts),
         (Op::MoneyAllocate, [total, ratios]) => money::allocate(total, ratios),
+        (Op::MoneyConvert, [amount, rate]) => money::convert(amount, rate),
         (
-            Op::MoneyFromMinor
+            Op::MoneyConvert
+            | Op::MoneyFromMinor
             | Op::MoneyOf
             | Op::MoneyMinor
             | Op::MoneyCurrency
@@ -712,6 +714,18 @@ mod tests {
                 Op::MoneySum => vec![Value::list(vec![price.clone()]), pounds.clone()],
                 Op::MoneySplit => vec![price.clone(), Value::Int(3)],
                 Op::MoneyAllocate => vec![price.clone(), items.clone()],
+                Op::MoneyConvert => vec![
+                    price.clone(),
+                    Value::record(
+                        jadpo_std::standard::EXCHANGE_RATE,
+                        vec![
+                            ("from".into(), pounds.clone()),
+                            ("to".into(), pounds.clone()),
+                            ("rate".into(), Value::Decimal(Decimal::new(1, 0))),
+                            ("at".into(), Value::Instant(0)),
+                        ],
+                    ),
+                ],
                 Op::TextFrom => vec![Value::Instant(0)],
                 Op::TextParse => vec![Value::text("2026-10-25"), Value::text("CalendarDate")],
                 Op::TemporalFormatRelative => {

@@ -5,8 +5,12 @@
 //! compares currencies ([`super::known`]). `+`, `-`, `/` and ordering on
 //! two amounts read it: two currencies known to differ is a compile error,
 //! one currency known is a plain operator, and anything else can fail with
-//! `currency_mismatch` under `attempt`.
+//! `currency_mismatch` under `attempt`. `money.convert` reads it too: an
+//! amount and a rate's `from` known to differ is a compile error, an
+//! inverted rate caught before it runs, and its result is in the rate's
+//! `to` where that is known (chunk 5.5h2).
 
+use jadpo_diag::{Diagnostic, rule};
 use jadpo_std::Op;
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
@@ -101,17 +105,91 @@ impl Body<'_> {
     }
 
     /// The currency a standard operation makes its amount in, where the
-    /// call writes it out: `money.from_minor`, `money.of` and `money.sum`.
+    /// call writes it out: `money.from_minor`, `money.of` and `money.sum`;
+    /// and `money.convert`'s, the rate's `to`, where that is known.
     fn fixed_by_call(&self, call: &ast::CallExpr) -> Option<Currency> {
         let key = node_key(call.syntax());
         let Some(Reach::Std(op)) = self.facts.reaches.get(&key) else {
             return None;
         };
+        if *op == Op::MoneyConvert {
+            let rate = self.argument(*op, call, "rate")?;
+            return Some(self.rate_currency(&rate, "to"));
+        }
         if !matches!(op, Op::MoneyFromMinor | Op::MoneyOf | Op::MoneySum) {
             return None;
         }
         let code = self.written_currency(*op, call)?;
         Some(Currency::Fixed(code))
+    }
+
+    /// The argument a call gives an operation's parameter `name`.
+    fn argument(&self, op: Op, call: &ast::CallExpr, name: &str) -> Option<Expr> {
+        let key = node_key(call.syntax());
+        let slot = op
+            .operation()
+            .params
+            .iter()
+            .position(|param| param.name == name)?;
+        let slots = self.facts.slots.get(&key)?;
+        call.arg_list()?
+            .args()
+            .zip(slots)
+            .find(|(_, at)| **at == Some(slot))?
+            .0
+            .expr()
+    }
+
+    /// What is known of an exchange rate's `from` or `to` currency (area
+    /// 19): one written out in the rate's own object literal, or, for a
+    /// rate a subject names, what a condition proved of `rate.from`, as
+    /// for an amount's currency.
+    pub(super) fn rate_currency(&self, rate: &Expr, field: &str) -> Currency {
+        match rate {
+            Expr::ParenExpr(paren) => {
+                return paren
+                    .expr()
+                    .map_or(Currency::Unknown, |inner| self.rate_currency(&inner, field));
+            }
+            Expr::RecordExpr(record) => {
+                return crate::tree::members(record.member_list())
+                    .into_iter()
+                    .find(|(name, _)| crate::tree::name_text(name).as_deref() == Some(field))
+                    .and_then(|(_, member)| member.value())
+                    .and_then(
+                        |value| match self.facts.variants.get(&node_key(value.syntax())) {
+                            Some((ty, variant)) if ty == jadpo_std::CURRENCY => {
+                                jadpo_std::money::ordinal_of_variant(variant)
+                            }
+                            _ => None,
+                        },
+                    )
+                    .map_or(Currency::Unknown, Currency::Fixed);
+            }
+            _ => {}
+        }
+        let Some(term) = self.term(rate) else {
+            return Currency::Unknown;
+        };
+        let term = Term::Field(Box::new(term), field.to_string());
+        match self.known.same_as(&term) {
+            Some(same) if let Some(code) = same.currency => Currency::Fixed(code),
+            _ => Currency::Of(term),
+        }
+    }
+
+    /// Whether `money.convert`'s amount is in its rate's `from` currency.
+    pub(super) fn convert_from(&self, call: &ast::CallExpr) -> OneCurrency {
+        let (Some(value), Some(rate)) = (
+            self.argument(Op::MoneyConvert, call, "value"),
+            self.argument(Op::MoneyConvert, call, "rate"),
+        ) else {
+            return OneCurrency::Unknown;
+        };
+        self.same_currency(
+            &self.currency_of(&value),
+            &self.rate_currency(&rate, "from"),
+        )
     }
 
     /// The currency a money operation's `currency` argument writes out, by
@@ -183,6 +261,11 @@ impl Body<'_> {
         key: jadpo_std::RuleKey,
         given: &dyn Fn(usize) -> Option<&'a ast::Arg>,
     ) -> bool {
+        // `convert`'s by a rate known to be from the amount's currency; one
+        // known to be from another is a compile error of its own.
+        if table.op == Op::MoneyConvert {
+            return !matches!(self.convert_from(call), OneCurrency::Unknown);
+        }
         let Some(code) = self.written_currency(table.op, call) else {
             return false;
         };
@@ -241,5 +324,53 @@ impl Body<'_> {
             }
             _ => false,
         }
+    }
+}
+
+impl Body<'_> {
+    /// `money.convert` given an amount in one currency and a rate known to
+    /// be from another (area 19): a compile error, so an inverted rate is
+    /// caught before it runs rather than failing `currency_mismatch` or,
+    /// as a bare `Decimal` would, giving a wrong amount.
+    pub(super) fn inverted_rate(&mut self, call: &ast::CallExpr, written: &str) {
+        let OneCurrency::No(amount_in, rate_from) = self.convert_from(call) else {
+            return;
+        };
+        let (Some(value), Some(rate)) = (
+            self.argument(Op::MoneyConvert, call, "value"),
+            self.argument(Op::MoneyConvert, call, "rate"),
+        ) else {
+            return;
+        };
+        let code = |ordinal: u32| jadpo_std::money::code(ordinal).unwrap_or("?");
+        let shown_value = crate::tree::written(value.syntax());
+        // A rate written out is named as one, not quoted whole.
+        let (lead, shown_rate) = match rate {
+            Expr::RecordExpr(_) => ("This rate".to_string(), "this rate".to_string()),
+            _ => {
+                let quoted = format!("`{}`", crate::tree::written(rate.syntax()));
+                (quoted.clone(), quoted)
+            }
+        };
+        let (amount_code, rate_code) = (code(amount_in), code(rate_from));
+        let label = match self.rate_currency(&rate, "to") {
+            Currency::Fixed(to) => format!("a rate from {rate_code} to {}", code(to)),
+            _ => format!("a rate from {rate_code}"),
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_MISMATCH,
+                format!(
+                    "{lead} converts from {rate_code}, and `{shown_value}` is in {amount_code}"
+                ),
+            )
+            .at(self.span(&rate), label)
+            .reason(format!(
+                "`{written}` applies a rate to an amount in the rate's `from` currency. `{shown_value}` is in {amount_code} and {shown_rate} converts from {rate_code}, as their types, how they were made or a condition around the call fix, so the rate is the wrong way round or for another currency."
+            ))
+            .next(format!(
+                "Pass a rate from {amount_code}, or an amount in {rate_code}"
+            )),
+        );
     }
 }
