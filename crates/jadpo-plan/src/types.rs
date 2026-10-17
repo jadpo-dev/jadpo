@@ -143,11 +143,23 @@ impl Types {
     /// (area 8), numbering it on first use. Neither is in the graph, so
     /// the shape is written from the fields the standard library lists.
     pub(crate) fn issued_shape(&mut self, name: &str) -> ShapeId {
+        self.fixed_shape(name, &jadpo_std::http::ISSUED_FIELDS)
+    }
+
+    /// The shape of a type the language declares with fixed fields, each
+    /// built on a built-in type: an issued token or key (area 8), or a
+    /// standard object type from its data entry (area 19), numbering it
+    /// on first use.
+    pub(crate) fn fixed_shape(
+        &mut self,
+        name: &str,
+        fields: &[(&str, jadpo_std::Builtin)],
+    ) -> ShapeId {
         let key = Key::new(Kind::Type, name);
         if let Some(id) = self.shape_ids.get(&key) {
             return *id;
         }
-        let fields = jadpo_std::http::ISSUED_FIELDS
+        let fields = fields
             .iter()
             .map(|(field, builtin)| FieldPlan {
                 key: format!("field {name}.{field}"),

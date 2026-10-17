@@ -18,6 +18,7 @@
 //! here reports a knock-on of something it doesn't check.
 
 mod calls;
+mod contract;
 mod expr;
 pub(crate) mod facts;
 mod failing;

@@ -449,6 +449,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (FieldAccess::NAME, FieldAccess::NAMES.to_vec()),
         (ZONE, names(crate::zones::ZONES)),
         (LOCALE, names(crate::zones::LOCALES)),
+        (crate::FILE_TYPE, names(crate::FILE_TYPES)),
     ]
 }
 
@@ -486,6 +487,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         LOCALE => crate::zones::LOCALES
             .iter()
             .position(|(v, _)| *v == variant),
+        crate::FILE_TYPE => crate::FILE_TYPES.iter().position(|(v, _)| *v == variant),
         _ => None,
     };
     found.and_then(|at| u32::try_from(at).ok())

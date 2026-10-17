@@ -404,7 +404,8 @@ them, mapped by the call's `attempt` as a construction's broken rules are
 (the operation returns `Fault::Broke(key)`, which the interpreter raises as
 the arm's failure). `temporal` runs on jiff with its bundled IANA database,
 in `jadpo-value` only, so every target reads the same zones and none reads
-the platform's (area 10, "Zones and local times"). `temporal.format` and
+the platform's (area 10, "Zones and local times"). The time types'
+`text.format` (area 19; `temporal.format` until chunk 5.5a) and
 `format_relative` write text for people in `jadpo-value`'s `present` module
 over ICU4X with Unicode CLDR compiled in (pure Rust, pinned exactly, built
 for wasm32 like the rest; area 10, "Chosen in chunk 5.3"): the format
@@ -466,6 +467,40 @@ and a test's `clock.advance`);
 any other member is `toolchain.not_built_yet`. `config.<name>` is the
 exception: its members are the project's own settings, read from
 `config { }` (chunk 5.1, `jadpo_check::config`), so `names.txt` lists none.
+
+**The standard types** (area 19, "Every standard type meets one
+contract"; chunk 5.5a) are the extension point chunks 5.5b to 5.5s add
+type groups through, with no new code path. Each is two things:
+
+- a stub declaration in `crates/jadpo-check/std/standard.jadpo`, global,
+  which `StdNames` reads (`StandardStub`): `= Enum { ... }` for a closed
+  list (its variants, or none when its table in `jadpo-std` is long),
+  `= Object { ... }` for a value with named fields, or its own name for a
+  type built into the language (`jadpo_std::Builtin`);
+- a data entry in `jadpo_std::standard::STANDARD_TYPES` (`StandardType`):
+  what it holds (`Holds`), its canonical text (`TextForm`), its JSON shape
+  (`Json`), its storage column, the locale data it is formatted with
+  (`FormatKey`) and the `text.format` options it takes and needs, whether
+  `<` takes it, its named `Validator` (IBAN's mod-97, Luhn and the like are
+  added to that enum, one function each), the shape `type.standard_exists`
+  matches (`FieldMatch`), and its examples.
+
+Every baseline operation has one implementation over the entries:
+`jadpo_value::standard` (`text.from`, `text.parse`, `text.format`, with
+CLDR names in `present::names`), the plan's codecs (`Made::StdObject` for
+an object), `jadpo_check::data::columns::column_type`, the checker's
+`ordered`, and `types/body/contract.rs`, which decides which values the
+three calls take, the options a type needs and what `text.parse` can fail
+with (`malformed` and the rules of the type `as:` names; the interpreter
+builds that type once the text is read). `jadpo_check::types::decl`
+matches `type.standard_exists`. Two tests hold everything to the entries:
+`crates/jadpo-check/tests/standard_types.rs` (the stub against the entry,
+and what each call and `<` accept) and
+`crates/jadpo-runtime/tests/standard_types.rs` (text both ways, the
+format for people, JSON, storage, `==` and order, per example). A new
+`TextForm` or `FormatKey` variant is the only code a group may need, once,
+for every type that shares it. Operations that move are listed in
+`jadpo_std::MOVED` and reported as `semantic.standard_operation_moved`.
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from

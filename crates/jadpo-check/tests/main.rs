@@ -38,6 +38,7 @@ mod scale;
 mod setting_move;
 mod signed;
 mod soundness;
+mod standard_types;
 mod stores;
 mod time;
 mod translation_exchange;

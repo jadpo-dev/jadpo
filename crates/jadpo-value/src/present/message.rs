@@ -1,6 +1,6 @@
 //! A translation's wording in a locale (area 10, "Translations as
 //! messages"): the pieces of a plain string written out with the arguments a
-//! call gave, over the same CLDR data as `temporal.format`. A plural form is
+//! call gave, over the same CLDR data as `text.format`. A plural form is
 //! decided by CLDR's plural rules for the locale, a number is written with
 //! the locale's digits, grouping and decimal separator, so the interpreter,
 //! a native deployable and WebAssembly write the same text.

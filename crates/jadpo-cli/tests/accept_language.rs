@@ -47,7 +47,7 @@ action show_placed(ordered_at: OrderedAt, accept_language: AcceptLanguage?) -> P
     var chosen: Locale = locale.from_accept_language(accept_language)
     return PlacedText {
         language: chosen
-        placed: temporal.format(ordered_at, zone: Zone.europe_london, locale: chosen, format: TimeFormat.date_long)
+        placed: text.format(ordered_at, zone: Zone.europe_london, locale: chosen, format: TimeFormat.date_long)
     }
 }
 "#,

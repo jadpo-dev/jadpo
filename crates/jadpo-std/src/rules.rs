@@ -48,13 +48,16 @@ pub enum RuleKey {
     /// A date a temporal operation makes has no such day in its month, and
     /// its `invalid_day:` didn't say what to do instead.
     InvalidDay,
+    /// Text `text.parse` reads isn't the type it was asked for at all
+    /// (area 19, "Every standard type meets one contract").
+    Malformed,
 }
 
 impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 10] = [
+    pub const ALL: [RuleKey; 11] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -65,6 +68,7 @@ impl RuleKey {
         RuleKey::Version,
         RuleKey::Dst,
         RuleKey::InvalidDay,
+        RuleKey::Malformed,
     ];
 
     /// The key as written: `max`, `min_length`.
@@ -80,6 +84,7 @@ impl RuleKey {
             RuleKey::Version => "version",
             RuleKey::Dst => "dst",
             RuleKey::InvalidDay => "invalid_day",
+            RuleKey::Malformed => "malformed",
         }
     }
 

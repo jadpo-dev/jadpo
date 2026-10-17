@@ -395,6 +395,9 @@ impl Decls<'_> {
             }
             ShapeKind::Fields { base, lines } => {
                 self.lines(list, *base, &shape.name, lines);
+                if *base == FieldsBase::Object {
+                    self.standard_exists(decl, &shape.name);
+                }
             }
             ShapeKind::Format { .. } => self.format_decl(decl, &shape.name),
             ShapeKind::Enum { variants } => {
@@ -414,6 +417,79 @@ impl Decls<'_> {
                 }
                 self.variants(list, &shape.name);
             }
+        }
+    }
+
+    /// `type.standard_exists` (area 19, "Packages use the standard
+    /// types"): an `Object` whose only fields are a standard type's, by its
+    /// fields' common names in any order and what they are built on, is
+    /// that standard type under another name. Only the distinctive shapes
+    /// the data entries list match (question 5).
+    fn standard_exists(&mut self, decl: &ast::TypeDecl, name: &str) {
+        let Some(fields) = self.table.fields(name).map(<[_]>::to_vec) else {
+            return;
+        };
+        for entry in jadpo_std::STANDARD_TYPES {
+            let Some(shape) = entry.shape else { continue };
+            if shape.len() != fields.len() {
+                continue;
+            }
+            let mut matched: Vec<(&str, &str)> = Vec::new();
+            for wanted in shape {
+                let found = fields.iter().find(|field| {
+                    wanted.names.contains(&field.name.as_str())
+                        && !self.table.is_nullable(&field.declared)
+                        && self
+                            .table
+                            .base_prim(&field.declared)
+                            .is_some_and(|prim| wanted.built_on.contains(&prim))
+                        && !matched.iter().any(|(_, taken)| *taken == field.name)
+                });
+                match found {
+                    Some(field) => matched.push((wanted.meaning, field.name.as_str())),
+                    None => break,
+                }
+            }
+            if matched.len() != shape.len() {
+                continue;
+            }
+            let Some(written) = decl.name() else { return };
+            let meanings: Vec<String> = matched
+                .iter()
+                .map(|(meaning, _)| (*meaning).to_string())
+                .collect();
+            let named: Vec<String> = matched
+                .iter()
+                .map(|(meaning, field)| format!("{meaning} (`{field}`)"))
+                .collect();
+            let built: Vec<String> = shape
+                .iter()
+                .flat_map(|field| {
+                    field
+                        .built_on
+                        .iter()
+                        .map(|prim| format!("`{}`", prim.name()))
+                })
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            let standard = entry.name;
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_STANDARD_EXISTS,
+                    format!("`{name}` is the standard `{standard}` under another name"),
+                )
+                .at(self.span(written.syntax()), crate::and_list(&meanings))
+                .reason(format!(
+                    "`{name}` has only {}, each built on {}, which is the standard `{standard}`. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.",
+                    crate::and_list(&named),
+                    crate::or_list(&built)
+                ))
+                .next(format!(
+                    "Use `{standard}` where `{name}` is used, converting at the edge where data arrives in another shape"
+                )),
+            );
+            return;
         }
     }
 

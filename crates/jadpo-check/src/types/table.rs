@@ -70,7 +70,7 @@ pub enum Def {
         variants: Vec<VariantDef>,
     },
     /// A declared time format and the components it shows (area 10): it
-    /// holds no values, and is named only in `temporal.format`'s
+    /// holds no values, and is named only in `text.format`'s
     /// `format:`.
     Format {
         spec: jadpo_std::TimeFormatSpec,

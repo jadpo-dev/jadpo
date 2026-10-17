@@ -277,6 +277,9 @@ enum Made {
     Page(TypeRef),
     /// `IssuedToken` or `IssuedKey` (area 8).
     Issued(&'static str),
+    /// A standard object type, `InstantRange` (area 19): its fields from
+    /// its data entry.
+    StdObject(&'static jadpo_std::StandardType),
     Unknown,
 }
 
@@ -470,6 +473,17 @@ impl<'t> Codecs<'t> {
                     .collect();
                 Codec::Object { shape, fields }
             }
+            Made::StdObject(entry) => {
+                let jadpo_std::standard::Holds::Object(fields) = entry.holds else {
+                    return self.made_unknown();
+                };
+                let shape = self.types.fixed_shape(entry.name, fields);
+                let fields = fields
+                    .iter()
+                    .map(|(_, builtin)| self.codec(&TypeRef::Builtin(*builtin)))
+                    .collect();
+                Codec::Object { shape, fields }
+            }
             Made::Unknown => self.made_unknown(),
         }
     }
@@ -521,6 +535,11 @@ impl<'t> Codecs<'t> {
                     return Made::Page(args.remove(0));
                 }
                 TypeRef::Std(name, args) if args.is_empty() => {
+                    if let Some(entry) = jadpo_std::standard_type(&name)
+                        && matches!(entry.holds, jadpo_std::standard::Holds::Object(_))
+                    {
+                        return Made::StdObject(entry);
+                    }
                     return match routes::wire::issued_name(&name) {
                         Some(issued) => Made::Issued(issued),
                         None => Made::StdEnum(name),

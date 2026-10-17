@@ -89,6 +89,9 @@ icu_plurals = { version = "=2.3.0", default-features = false, features = ["compi
 icu_experimental = { version = "=0.6.0", default-features = false, features = ["compiled_data"] }
 icu_locale = { version = "=2.3.1", default-features = false, features = ["compiled_data"] }
 icu_time = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+# A duration's units for people are joined as a list of units (area 19,
+# `text.format`).
+icu_list = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
 fixed_decimal = { version = "=0.7.2", default-features = false }
 writeable = { version = "=0.6.4", default-features = false }
 # Pinned exactly and confined to jadpo-db and jadpo-check (docs/compiler-runtime.md §2.4).

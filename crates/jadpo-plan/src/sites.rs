@@ -187,6 +187,13 @@ impl Decoder<'_> {
                     fallible: matches!(fallible, Fallible::Construction { .. }),
                     set: self.types.is_set(ty),
                 },
+                // `text.parse` gives the type `as:` names, whose rules are
+                // checked once the text is read (area 19).
+                Callee::Std(jadpo_std::Op::TextParse) => Decoded::Construct {
+                    validator: self.types.validator_id(&site.ty),
+                    fallible: matches!(fallible, Fallible::Construction { .. }),
+                    set: false,
+                },
                 Callee::Query(key) => Decoded::Query((self.query)(key)),
                 Callee::Entity { entity, operation } if operation == "get" => {
                     Decoded::Get((self.entity)(entity))

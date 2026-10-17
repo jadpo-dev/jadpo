@@ -400,6 +400,7 @@ flour_for
 flour_short
 follow_up
 forget_memos
+form_text
 formal
 formality
 found_company
@@ -570,6 +571,7 @@ locale_for_reader
 locker
 locker_code
 log_level
+log_text
 login_attempts
 london_morning
 long_manuals
@@ -703,6 +705,7 @@ order_too_large
 order_total
 order_view
 ordered_at
+ordered_quantity
 out_of_stock
 outcome_label
 outlet
@@ -759,7 +762,6 @@ payment_intent
 payment_outcome
 payment_refused
 payment_succeeded
-pdf
 pence
 people
 per_kilo
@@ -780,6 +782,7 @@ placed_label
 placed_text
 placed_with
 plan_effort
+planned_shift
 platform_role
 platform_staff
 pong
@@ -829,11 +832,13 @@ publisher
 publisher_id
 publisher_view
 quantity
+quantity_from
 quantity_out_of_range
 quantity_refused
 quantity_too_large
 quantity_too_small
 quantity_unavailable
+quantity_unreadable
 queue_overdue_reminders
 quote
 quote_cake
