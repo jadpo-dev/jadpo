@@ -156,7 +156,7 @@ pub fn language_file(db: &dyn Db, project: Project, file: File) -> Option<Langua
                 out.problems.push(shape(
                     &span,
                     "no wording",
-                    "A member of `translations { }` is a name and its wording, `order_shipped: \"...\"`.",
+                    "A member of `translations { }` is a name and its wording, `notice_text: \"...\"`.",
                     "Write the wording after a colon",
                 ));
             }
@@ -196,7 +196,7 @@ fn read_member(out: &mut LanguageFile, member: &ast::Member) {
         out.problems.push(shape(
             &key_span,
             "a dotted name",
-            "A language file has no grouping: the domain is the group, so a member is one name. (The root file groups by owner, which comes with Jadpo's own messages.)",
+            "A language file has no grouping: the domain is the group, so a member is one name. (The root file groups by whose text it is, which comes with Jadpo's own messages.)",
             "Write the member's name alone",
         ));
         return;
@@ -232,7 +232,7 @@ fn read_member(out: &mut LanguageFile, member: &ast::Member) {
             out.problems.push(shape(
                 &key_span,
                 "no wording",
-                "A member is a name and its wording, `order_shipped: \"...\"`.",
+                "A member is a name and its wording, `notice_text: \"...\"`.",
                 "Write the wording after the colon",
             ));
             Body::Invalid
@@ -245,7 +245,7 @@ fn read_member(out: &mut LanguageFile, member: &ast::Member) {
     });
 }
 
-fn read_variants(out: &mut LanguageFile, owner: &str, block: &ast::MemberList) -> Vec<Variant> {
+fn read_variants(out: &mut LanguageFile, host: &str, block: &ast::MemberList) -> Vec<Variant> {
     let path = out.path.clone();
     let mut variants: Vec<Variant> = Vec::new();
     for item in block.member_items() {
@@ -290,7 +290,7 @@ fn read_variants(out: &mut LanguageFile, owner: &str, block: &ast::MemberList) -
                             &node_span(&path, inner.syntax()),
                             "nested again",
                             &format!(
-                                "`{owner}` holds one level of wordings, one for each value of an enum or each plural form; nesting means variants and plural forms only."
+                                "`{host}` holds one level of wordings, one for each value of an enum or each plural form; nesting means variants and plural forms only."
                             ),
                             "Write each value's wording as a string",
                         ));

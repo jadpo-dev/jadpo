@@ -1087,7 +1087,7 @@ library due_dates {
 ```text output
 error: `helpers/` isn't a folder a domain has
  --> domains/planning/helpers/due_dates.jadpo
-  reason: A domain holds only `entities/`, `types/`, `failures/`, `actions/`, `queries/`, `libraries/`, `routes/`, `schedules/`, `events/`, `subscribers/`, `emails/` and `fixtures/`, each named after what its files declare.
+  reason: A domain holds only `entities/`, `types/`, `failures/`, `actions/`, `queries/`, `libraries/`, `routes/`, `schedules/`, `events/`, `subscribers/`, `emails/`, `translations/` and `fixtures/`, each named after what its files declare.
   next: Move the file to `domains/planning/libraries/due_dates.jadpo` (agent)
   rule: layout.unknown_location
   help: docs/language/01-project-layout-and-modules.html#layout-unknown-location
@@ -1494,7 +1494,7 @@ error: `layout.unused_declaration` can't be declined
   |
 5 | decline layout.unused_declaration: "Kept for next quarter"
   |         ^^^^^^^^^^^^^^^^^^^^^^^^^ a plain mistake
-  reason: Only judgement calls can be declined: `constant.similar_exists` and `library.similar_exists`. `layout.unused_declaration` reports a mistake, which only a fix answers.
+  reason: Only judgement calls can be declined: `constant.similar_exists`, `library.similar_exists` and `translation.field_unused`. `layout.unused_declaration` reports a mistake, which only a fix answers.
   next: Remove the `decline` line, and fix what `layout.unused_declaration` reports if it fires (agent)
   rule: decline.not_declinable
   help: docs/language/01-project-layout-and-modules.html#decline-not-declinable
@@ -2008,7 +2008,7 @@ build/
 | `subscribers/` | Event triggers, including long-running coordination | Replaces durable "workflows" |
 | (none) | Third-party APIs are provider packages: connections in `app.jadpo`; installed packages in root `packages/`, pinned in `jadpo.lock`; the app's own in `shared/providers/` | Amended 2026-10-13 by area 11, revised 2026-10-16; the `integrations/` folder and `integration` keyword are gone |
 | `emails/` | Email types and their templates, one email per name (`welcome_email.jadpo`, `welcome_email.html`, `welcome_email.txt`) | Added 2026-10-13 (Richard, area 16) |
-| `translations/` | One `type X = Message` per file, one `translations { }` language file per locale named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects, and the generated, committed `sources.jadpo_record` (area 18; named `sources.json` until the records are renamed, 2026-10-16) | Added 2026-10-16 (Richard, area 10); a message a second domain uses goes in `shared/translations/`. Chunk 5.4c adds it to the folders `layout.unknown_location` lists |
+| `translations/` | One `type X = Message` per file, one `translations { }` language file per locale named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects, and the generated, committed `sources.jadpo_record` (area 18; named `sources.json` until the records are renamed, 2026-10-16) | Added 2026-10-16 (Richard, area 10); a message a second domain uses goes in `shared/translations/`. Built in chunk 5.4c: the folder is one `layout.unknown_location` lists, and a language file's name is a locale, not its `translations { }` |
 | `documents/` | Document types and their templates, one document per name (`invoice_document.jadpo`, `invoice_document.html`), rendered to HTML or PDF by the `documents` capability | Added 2026-10-16 (Richard, area 16) |
 | `fixtures/` | Test data shared by several test files in the domain | |
 

@@ -181,7 +181,9 @@ pub fn parse_template(source: &str) -> Result<(Template, Vec<FieldUse>), Templat
     let mut text = String::new();
     let mut at = 0;
     while at < chars.len() {
-        let (offset, c) = chars[at];
+        let Some(&(offset, c)) = chars.get(at) else {
+            break;
+        };
         match c {
             '{' if chars.get(at + 1).is_some_and(|(_, next)| *next == '{') => {
                 text.push('{');
@@ -201,7 +203,9 @@ pub fn parse_template(source: &str) -> Result<(Template, Vec<FieldUse>), Templat
                 ));
             }
             '{' => {
-                let close = chars[at + 1..]
+                let close = chars
+                    .get(at + 1..)
+                    .unwrap_or_default()
                     .iter()
                     .position(|(_, next)| matches!(next, '}' | '{'));
                 let close = close.map(|i| at + 1 + i);
@@ -213,7 +217,9 @@ pub fn parse_template(source: &str) -> Result<(Template, Vec<FieldUse>), Templat
                         .take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_')
                         .map(char::len_utf8)
                         .sum::<usize>();
-                let reaches = close.map_or(source.len(), |close| chars[close].0);
+                let reaches = close.map_or(source.len(), |close| {
+                    chars.get(close).map_or(source.len(), |(at, _)| *at)
+                });
                 if source[offset + 1..reaches].contains(',') {
                     return Err(error(
                         offset,
@@ -232,7 +238,9 @@ pub fn parse_template(source: &str) -> Result<(Template, Vec<FieldUse>), Templat
                         "Close the field with `}`, or write `{{` for a literal brace",
                     ));
                 };
-                let (end_offset, closer) = chars[close];
+                let Some(&(end_offset, closer)) = chars.get(close) else {
+                    break;
+                };
                 if closer == '{' {
                     return Err(error(
                         offset,

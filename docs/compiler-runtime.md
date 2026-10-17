@@ -414,17 +414,32 @@ wire through the codecs, which accept only those, and reach `jadpo-value`'s
 `run` as its `locales` argument, which `locale.from_accept_language`
 (chunk 5.3c; `locale` module, a pure function of the header and the plan)
 chooses among; a `nullable` parameter (a stub's `T?` that a call must still
-pass) is the one the table marks apart from an `optional` one. Translations (area 10,
-"Chosen in chunk 5.3b") are read in `jadpo-check`'s `translations` module
-from `translations/<locale>.json`, a salsa input of the project of its own
-(`Project::translations`): the messages are parsed into `jadpo-std`'s
-`Message` while compiling, a call is typed by a per-key `lookup` that sees
-only the key's placeholders, and the project's `TranslationPlan` (each key,
-its placeholders and its message in every supported locale) goes into the
-plan, so the interpreter's `Callee::Translation` and generated code both
-write the text with `jadpo_value::present::translate`, over `icu_plurals`
-and `icu_decimal` beside `icu_datetime`. Each key is a `translation_key`
-graph node, so a save of a translation file reaches the tests that call it.
+pass) is the one the table marks apart from an `optional` one. Translations
+(area 10, "Translations as messages", chunk 5.4c) are read in `jadpo-check`'s
+`translations` module from the project's own source: a `type X = Message`
+in a `translations/` folder (`FieldsBase::Message`, with `PluralCount` a
+built-in beside `PresentationText`), and one unnamed `translations { }` in
+each language file, named for its locale (`SINGLETONS` in the grammar,
+`Folder::Translations`). `declared` reads what can be worded in a scope (a
+domain's or `shared`'s): its messages, the enums of the scope that a
+language file words, and the emails; `language` reads one language file by
+itself, and `check` compares a scope's files with its subjects and the
+application's `locales { }`, giving the project's `TranslationPlan`: for
+each message or enum, its parameters and its wording (`jadpo-std`'s
+`Template`, `{field}` pieces only) in each locale that has it complete. A
+call is typed by a per-name `callable` query that sees only the message's
+parameters, so editing wording checks no body again. The plan reaches the
+interpreter's `Callee::Translation` (and generated code, which will write
+the text with the same function): `jadpo_value::present::translate` walks
+the fallback chain of an `in_progress:` locale (`locale::fallback_chain`:
+itself, its regional siblings with CLDR's likely one first, the default),
+picks the wording by the enum value or by the locale's CLDR plural form,
+and writes numbers the locale's way, over `icu_plurals` and `icu_decimal`
+beside `icu_datetime`. The plural forms each locale needs are a table in
+`jadpo-std`, which `jadpo-value`'s tests hold equal to ICU4X's data. Each
+message and enum is a `translation_key` graph node digested with its
+wording in every language file, so a save of one reaches the tests that call
+it.
 Enums that Rust code interprets (`Rounding`, `TextFormat`,
 `UuidVersion`, `Weekday`, `Dst`, `InvalidDay`, `ComponentStyle`, and `Zone` and `Locale` from their tables) are
 declared once, in `jadpo-std`. The namespaces the compiler fills from the

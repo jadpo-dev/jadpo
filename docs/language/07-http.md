@@ -346,7 +346,7 @@ numbers (question 9):
 
 The envelope's `message` stays fixed English. Text for people in client
 apps comes from the app's language files (area 10, decided 2026-10-16,
-not built yet: chunk 5.4c): every failure a route can produce has wording in every
+not built yet: chunk 5.4d): every failure a route can produce has wording in every
 supported locale, keyed by its code with its client fields as placeholders,
 and client fields that are dates or numbers stay values on the wire for the
 client to format in its own language.

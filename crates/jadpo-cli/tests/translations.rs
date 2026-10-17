@@ -243,6 +243,43 @@ fn a_mistake_in_a_language_file_shows_its_line_in_that_file() {
     assert_eq!(done.code, 1, "{}{}", done.stdout, done.stderr);
 }
 
+#[test]
+fn an_in_progress_locale_falls_back_to_its_sibling_and_then_the_default() {
+    let dir = tempdir::Dir::new("translations-in-progress");
+    let root = dir.path().join("shop");
+    for (path, text) in FILES {
+        let text = if *path == "app.jadpo" {
+            "application {}\n\nlocales {\n    default: Locale.en_gb\n    supported: [Locale.en_gb, Locale.fr_fr, Locale.fr_ca, Locale.pl_pl, Locale.ar_eg]\n    in_progress: [Locale.fr_ca, Locale.pl_pl]\n}\n"
+        } else {
+            text
+        };
+        write(&root, path, text);
+    }
+    // `fr_ca` words only the order; `pl_pl` has no file at all.
+    write(
+        &root,
+        "domains/shop/translations/fr_ca.jadpo",
+        "translations {\n    order_shipped: \"Votre commande {order_number} est partie.\"\n}\n",
+    );
+    write(
+        &root,
+        "domains/shop/actions/show_cart.test.jadpo",
+        r#"test "an in-progress locale falls back where it has no wording" {
+    assert show_cart("A-17", 1, Locale.fr_ca).shipped == "Votre commande A-17 est partie."
+    assert show_cart("A-17", 3, Locale.fr_ca).cart == "3 articles dans votre panier"
+    assert show_cart("A-17", 3, Locale.pl_pl).cart == "3 items in your cart"
+    assert show_cart("A-17", 3, Locale.pl_pl).shipped == "Your order A-17 has shipped."
+}
+"#,
+    );
+    for args in [&["api", "update"][..], &["check"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let done = jadpo(&root, &["test"]);
+    assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+}
+
 // --- watching ----------------------------------------------------------------------------
 
 fn folder() -> PathBuf {

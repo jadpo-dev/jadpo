@@ -132,12 +132,12 @@ pub fn scope_of(ownership: &Ownership) -> Option<String> {
 /// The scope of `shared/translations/`.
 pub const SHARED: &str = "shared";
 
-/// Every scope that declares a message or an enum, an email, or holds a
-/// language file, in name order.
+/// Every scope that declares a message or holds a language file, in name
+/// order: an enum or an email is worded only where a language file says so.
 pub fn scopes(db: &dyn Db, project: Project) -> Vec<String> {
     let mut found: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for symbol in all_symbols(symbols(db, project)) {
-        if subject_kind(symbol).is_some()
+        if subject_kind(symbol) == Some(Kind::Message)
             && let Some(scope) = scope_of(&symbol.ownership)
         {
             found.insert(scope);
@@ -436,7 +436,7 @@ fn unsupported(symbol: &Symbol, field: &FieldDef, span: Span) -> Diagnostic {
     Diagnostic::new(
         &rule::TRANSLATION_FIELD_TYPE,
         format!(
-            "`{}.{}` is a `{ty}`, which a wording can't hold",
+            "`{}.{}` is typed `{ty}`, which a wording can't write",
             symbol.name, field.name
         ),
     )
@@ -458,7 +458,7 @@ fn too_many(symbol: &Symbol, first: &str, second: &str, first_at: Span, at: Span
     )
     .at(at, "a second choice")
     .also(first_at, "the first")
-    .reason("An enum field gives one wording for each of its values, and a `PluralCount` field one for each plural form of the language. Two together would be a grid of combinations for a translator to fill.")
+    .reason("An enum field gives one wording for each of its values, and a `PluralCount` field one for each plural form of the language. Both at once would need a wording for every pairing of a value and a form, which a translator would have to fill in.")
     .next(format!(
         "Split `{}` into two messages, one for each choice, and call both",
         symbol.name

@@ -105,7 +105,7 @@ pub enum Callable {
     Found {
         params: Vec<ParamSpec>,
         type_name: String,
-        symbol: Symbol,
+        symbol: Box<Symbol>,
     },
 }
 
@@ -125,7 +125,7 @@ pub fn callable<'db>(
                 Callable::Found {
                     params: subject.params.clone(),
                     type_name: subject.type_name.clone(),
-                    symbol: subject.symbol.clone(),
+                    symbol: Box::new(subject.symbol.clone()),
                 }
             }
         }

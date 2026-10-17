@@ -486,7 +486,7 @@ reference only).
   date by `jadpo build`) for expired flags when they are built. `warning`
   leaves area 14's error shape and the CLI design language's headline
   words.
-- [ ] **5.4c Translations as messages** `sonnet · high` (area 10,
+- [x] **5.4c Translations as messages** `sonnet · high` (area 10,
   "Translations as messages", decided 2026-10-16 in the packages design
   while 5.3b built JSON files of ICU MessageFormat; reworks 5.3b, whose
   files, calls and `translation.*` errors it replaces). Split on

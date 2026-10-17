@@ -143,7 +143,7 @@ impl Ctx<'_> {
         let near = nearest(&member.name, keys.iter().copied());
         let reason = match near {
             Some(near) => format!(
-                "A member of `translations {{ }}` words one message or email subject of this folder's scope, or one of its enums, by its name in lower_snake_case (`OrderShipped` is `order_shipped`). `{}` is none of them. Did you mean `{near}`?",
+                "A member of `translations {{ }}` words one message or email subject of this folder's scope, or one of its enums, by its name in lower_snake_case (`NoticeText` is `notice_text`). `{}` is none of them. Did you mean `{near}`?",
                 member.name
             ),
             None if keys.is_empty() => format!(
@@ -287,14 +287,14 @@ impl Ctx<'_> {
     }
 
     fn shape(&mut self, subject: &Subject, member: &Member, wanted: &str) {
-        let what = match &member.body {
-            Body::Text(_) => "a string",
-            _ => "a block",
+        let (written, needs) = match &member.body {
+            Body::Text(_) => ("a string", "one wording for each value or plural form"),
+            _ => ("a block", "one wording, a string"),
         };
         self.problems.push(
             Diagnostic::new(
                 &rule::TRANSLATION_WORDING_SHAPE,
-                format!("`{}` is written as {what}, but needs {wanted}", member.name),
+                format!("`{}` is {written}, but needs {needs}", member.name),
             )
             .at(member.key_span.clone(), format!("needs {wanted}"))
             .reason(format!(
@@ -382,14 +382,14 @@ impl Ctx<'_> {
             let is_category = PluralCategory::from_word(&entry.name).is_some();
             if is_category {
                 format!(
-                    "`{}` has no use for the plural form `{}`: CLDR gives it {}, so those are the forms a wording is written for.",
+                    "`Locale.{}` has no use for the plural form `{}`: CLDR gives it {}, so those are the forms a wording is written for.",
                     variant_name(locale),
                     entry.name,
                     crate::and_list(&listed)
                 )
             } else {
                 format!(
-                    "`{}` isn't a plural form. CLDR's forms are `zero`, `one`, `two`, `few`, `many` and `other`, and `{}` needs {}.",
+                    "`{}` isn't a plural form. CLDR's forms are `zero`, `one`, `two`, `few`, `many` and `other`, and `Locale.{}` needs {}.",
                     entry.name,
                     variant_name(locale),
                     crate::and_list(&listed)
@@ -408,7 +408,7 @@ impl Ctx<'_> {
             &rule::TRANSLATION_VARIANT_UNKNOWN,
             if plural {
                 format!(
-                    "`{}` isn't a plural form of `{}`",
+                    "`{}` isn't a plural form of `Locale.{}`",
                     entry.name,
                     variant_name(locale)
                 )
@@ -453,7 +453,7 @@ impl Ctx<'_> {
             (
                 "plural form",
                 format!(
-                    "{} needs a wording for each plural form CLDR gives it, so a count in any of them has words to show.",
+                    "`Locale.{}` needs a wording for each plural form CLDR gives it, so a count in any of them has words to show.",
                     variant_name(locale)
                 ),
             )
@@ -484,10 +484,10 @@ impl Ctx<'_> {
         .also(subject.name_span.clone(), "declared here")
         .reason(reason)
         .next(format!(
-            "Add {} to `{}`, each with its wording{}",
+            "Add a wording for {} to `{}`{}",
             crate::and_list(&listed),
             member.name,
-            fields_note(subject)
+            fields_note(subject, "each")
         ))
     }
 
@@ -688,24 +688,24 @@ fn missing(file: &LanguageFile, subject: &Subject, locale: u32) -> Diagnostic {
         subject.kind.word()
     ))
     .next(format!(
-        "Add {} to `{}`",
+        "Add {} to `{}`{}",
         needs(subject, locale),
-        file.path
+        file.path,
+        fields_note(subject, "which")
     ))
 }
 
 /// The member to add, written out.
 fn needs(subject: &Subject, locale: u32) -> String {
     let key = &subject.key;
-    let fields = fields_note(subject);
     match &subject.mode {
-        Mode::Plain => format!("`{key}: \"...\"`{fields}"),
+        Mode::Plain => format!("`{key}: \"...\"`"),
         Mode::Variants(variants) => {
-            let names: Vec<String> = variants.iter().map(|v| v.name.clone()).collect();
+            let names: Vec<String> = variants.iter().map(|v| format!("`{}`", v.name)).collect();
             format!(
-                "`{key}` with a wording for each value of `{}`: {}{fields}",
+                "`{key}`, with a wording for each value of `{}` ({})",
                 subject_enum(subject).unwrap_or_default(),
-                crate::and_list(&names.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>())
+                crate::and_list(&names)
             )
         }
         Mode::Forms => {
@@ -714,7 +714,7 @@ fn needs(subject: &Subject, locale: u32) -> String {
                 .map(|c| format!("`{}`", c.word()))
                 .collect();
             format!(
-                "`{key}` with a wording for each plural form of the language: {}{fields}",
+                "`{key}`, with a wording for each plural form ({})",
                 crate::and_list(&names)
             )
         }
@@ -722,7 +722,7 @@ fn needs(subject: &Subject, locale: u32) -> String {
 }
 
 /// ", which may write `{name}` and `{count}`", or nothing.
-fn fields_note(subject: &Subject) -> String {
+fn fields_note(subject: &Subject, who: &str) -> String {
     let names: Vec<String> = subject
         .placeholders
         .iter()
@@ -730,8 +730,10 @@ fn fields_note(subject: &Subject) -> String {
         .collect();
     if names.is_empty() {
         String::new()
+    } else if who == "each" {
+        format!(", each able to write {}", braces(&names))
     } else {
-        format!(", which may write {}", braces(&names))
+        format!(", {who} may write {}", braces(&names))
     }
 }
 
