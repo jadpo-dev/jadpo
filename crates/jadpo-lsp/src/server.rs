@@ -377,8 +377,41 @@ impl Server {
         })
     }
 
+    /// A translation call goes to its message and its wording (area 10).
+    fn translation_definition(
+        &self,
+        uri: &Uri,
+        position: lsp_types::Position,
+    ) -> Option<GotoDefinitionResponse> {
+        let loaded = self.loaded.as_ref()?;
+        let file = loaded.file(&self.relative(uri)?)?;
+        let text = file.text(&loaded.db).clone();
+        let offset = convert::offset(&text, position, self.encoding)?;
+        let targets = jadpo_check::translations::definitions::definitions(
+            &loaded.db,
+            loaded.project,
+            file,
+            offset,
+        )?;
+        let mut places = Vec::new();
+        for target in targets {
+            let file = loaded.file(&target.path)?;
+            let text = file.text(&loaded.db);
+            places.push(Location {
+                uri: convert::uri_of(&self.uri_root(loaded).join(&target.path))?,
+                range: convert::range(text, target.start, target.end, self.encoding),
+            });
+        }
+        Some(GotoDefinitionResponse::Array(places))
+    }
+
     fn definition(&self, params: &GotoDefinitionParams) -> Option<GotoDefinitionResponse> {
         let position = &params.text_document_position_params;
+        if let Some(found) =
+            self.translation_definition(&position.text_document.uri, position.position)
+        {
+            return Some(found);
+        }
         let (Found::Node(key), _, _) =
             self.found(&position.text_document.uri, position.position)?
         else {

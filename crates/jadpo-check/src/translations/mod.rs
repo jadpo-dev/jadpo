@@ -16,6 +16,7 @@
 
 mod check;
 mod declared;
+pub mod definitions;
 pub mod failures;
 mod language;
 pub mod outstanding;
