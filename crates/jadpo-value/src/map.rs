@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::Value;
+use crate::{Fault, Value};
 
 /// How many entries a map holds.
 pub fn count(entries: &BTreeMap<Value, Value>) -> i64 {
@@ -63,6 +63,43 @@ pub fn merge(
             .map(|(key, value)| (key.clone(), value.clone())),
     );
     out
+}
+
+/// The entries `keep` accepts, given each entry's key and value in the
+/// canonical order of the keys (area 19); the first entry `keep` gives no
+/// `Bool` for stops it.
+pub fn filter(
+    entries: &BTreeMap<Value, Value>,
+    keep: &mut dyn FnMut(&[Value]) -> Option<Value>,
+) -> Result<BTreeMap<Value, Value>, Fault> {
+    let mut kept = BTreeMap::new();
+    for (key, value) in entries {
+        match keep(&[key.clone(), value.clone()]) {
+            Some(Value::Bool(true)) => {
+                kept.insert(key.clone(), value.clone());
+            }
+            Some(Value::Bool(false)) => {}
+            Some(_) => return Err(Fault::Shape),
+            None => return Err(Fault::Stopped),
+        }
+    }
+    Ok(kept)
+}
+
+/// Each key with the value `each` gives for its key and value, in the
+/// canonical order of the keys (area 19); the first entry `each` gives no
+/// value for stops it.
+pub fn map_values(
+    entries: &BTreeMap<Value, Value>,
+    each: &mut dyn FnMut(&[Value]) -> Option<Value>,
+) -> Result<BTreeMap<Value, Value>, Fault> {
+    entries
+        .iter()
+        .map(|(key, value)| {
+            let given = each(&[key.clone(), value.clone()]).ok_or(Fault::Stopped)?;
+            Ok((key.clone(), given))
+        })
+        .collect()
 }
 
 #[cfg(test)]

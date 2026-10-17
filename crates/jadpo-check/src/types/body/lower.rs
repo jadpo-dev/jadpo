@@ -629,9 +629,12 @@ impl Lower<'_> {
                     .and_then(|failure| self.type_key(failure)),
             },
             Expr::LambdaExpr(lambda) => {
-                let param = lambda.name().and_then(|name| self.declared(&name));
+                let params = lambda
+                    .names()
+                    .filter_map(|name| self.declared(&name))
+                    .collect();
                 let body = lambda.expr().map(|body| self.expr(&body));
-                typed::Expr::Inline { param, body }
+                typed::Expr::Inline { params, body }
             }
             Expr::ParenExpr(_)
             | Expr::OrderedExpr(_)
@@ -950,7 +953,11 @@ impl Lower<'_> {
                     // no declaration in the project: the plan builds its
                     // shape from its data entry.
                     None if jadpo_std::standard_type(name).is_some_and(|entry| {
-                        matches!(entry.holds, jadpo_std::standard::Holds::Object(_))
+                        matches!(
+                            entry.holds,
+                            jadpo_std::standard::Holds::Object(_)
+                                | jadpo_std::standard::Holds::Range
+                        )
                     }) =>
                     {
                         Callee::Object(Key::new(jadpo_graph::Kind::Type, name))

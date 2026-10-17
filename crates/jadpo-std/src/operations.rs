@@ -32,9 +32,13 @@ pub enum Kind {
     /// fixed by the argument, so a result of the same kind keeps the
     /// argument's named type (area 10, question 6).
     OneOf(&'static [Builtin]),
-    /// A standard-library type the checker knows by name, such as
-    /// `InstantRange`, whose fields the runtime builds as a record.
+    /// A standard-library type the checker knows by name, whose fields
+    /// the runtime builds as a record.
     Std(&'static str),
+    /// A range (area 19, "Ranges"): `Range<T>`, or a standard range type
+    /// whose ends are a `T`, `InstantRange`'s instants. A result of this
+    /// kind is the range type its arguments are.
+    Range,
     /// A clock time written as text, `"09:30"`, checked while compiling
     /// (area 10, "Zones and local times"): there is no time-of-day type,
     /// so only a literal gives one.
@@ -154,12 +158,15 @@ pub enum Op {
     ListSlice,
     ListSortBy,
     ListSum,
+    ListZipWith,
     LocaleDirection,
     LocaleFromAcceptLanguage,
     MapCount,
+    MapFilter,
     MapGet,
     MapHas,
     MapKeys,
+    MapMapValues,
     MapMerge,
     MapValues,
     MapWith,
@@ -326,6 +333,7 @@ const ZONED: Kind = Kind::Builtin(Builtin::ZonedTime);
 const INT: Kind = Kind::Builtin(Builtin::Int);
 const BOOL: Kind = Kind::Builtin(Builtin::Bool);
 const ZONE: Kind = Kind::Enum(crate::ZONE);
+/// What `temporal`'s bounds give.
 const RANGE: Kind = Kind::Std(INSTANT_RANGE);
 const LOCALE: Kind = Kind::Enum(crate::LOCALE);
 const SHOWN_TEXT: Kind = Kind::Builtin(Builtin::PresentationText);
@@ -486,8 +494,8 @@ const fn map(
 }
 
 /// A `range` operation that never fails (area 19, "Ranges"), by its
-/// parameters and result: on an `InstantRange` until `Range<T>` comes to
-/// the contract (chunk 5.5c2).
+/// parameters and result: on a `Range<T>` or an `InstantRange`, both of
+/// the same range type.
 const fn range(
     op: Op,
     name: &'static str,
@@ -772,6 +780,19 @@ pub const OPERATIONS: &[Operation] = &[
         Kind::Number,
         "list::sum",
     ),
+    // Items paired by position, as long as the shorter list, each pair
+    // given to a two-parameter inline function (area 19).
+    list(
+        Op::ListZipWith,
+        "zip_with",
+        &[
+            param("first", Kind::List),
+            param("second", Kind::List),
+            param("each", Kind::Function),
+        ],
+        Kind::List,
+        "list::zip_with",
+    ),
     // The way a locale's text runs (area 10, "Locales"), from CLDR.
     Operation {
         op: Op::LocaleDirection,
@@ -803,6 +824,15 @@ pub const OPERATIONS: &[Operation] = &[
         at_least: Some(0),
         ..map(Op::MapCount, "count", &[ENTRIES], INT, "map::count")
     },
+    // An entry's key and value, given to a two-parameter inline function
+    // (area 19).
+    map(
+        Op::MapFilter,
+        "filter",
+        &[ENTRIES, param("keep", Kind::Function)],
+        Kind::Map,
+        "map::filter",
+    ),
     map(
         Op::MapGet,
         "get",
@@ -818,6 +848,13 @@ pub const OPERATIONS: &[Operation] = &[
         "map::has",
     ),
     map(Op::MapKeys, "keys", &[ENTRIES], Kind::Set, "map::keys"),
+    map(
+        Op::MapMapValues,
+        "map_values",
+        &[ENTRIES, param("each", Kind::Function)],
+        Kind::Map,
+        "map::map_values",
+    ),
     map(
         Op::MapMerge,
         "merge",
@@ -847,26 +884,27 @@ pub const OPERATIONS: &[Operation] = &[
         "map::without",
     ),
     // The range operations (area 19, "Ranges"), each one function in
-    // `jadpo-value`'s `range` module, by the range's own end rule: an
-    // `InstantRange` holds its start and not its end.
+    // `jadpo-value`'s `range` module, by the range's own end rule: a
+    // `Range<T>` and an `InstantRange` hold their start and not their end,
+    // and an open end holds everything on its side.
     range(
         Op::RangeContains,
         "contains",
-        &[param("range", RANGE), param("value", INSTANT)],
+        &[param("range", Kind::Range), param("value", Kind::Any)],
         BOOL,
         "range::contains",
     ),
     range(
         Op::RangeIntersection,
         "intersection",
-        &[param("a", RANGE), param("b", RANGE)],
-        RANGE,
+        &[param("a", Kind::Range), param("b", Kind::Range)],
+        Kind::Range,
         "range::intersection",
     ),
     range(
         Op::RangeOverlaps,
         "overlaps",
-        &[param("a", RANGE), param("b", RANGE)],
+        &[param("a", Kind::Range), param("b", Kind::Range)],
         BOOL,
         "range::overlaps",
     ),

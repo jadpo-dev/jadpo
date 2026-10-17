@@ -873,9 +873,40 @@ cannot be stored in variables or passed to your own callables.
 > inline function (`any`, `all`, `find`, `min_by`, `max_by`, `sort_by`,
 > `group_by`; built in chunk 5.5b). For standard operations only, an inline function may take
 > two parameters, `(key, value) -> ...` (`list.zip_with`, `map.filter`,
-> `map.map_values`), widening question 13; to be built in chunk 5.5c2. Question
+> `map.map_values`), widening question 13; built in chunk 5.5c2. Question
 > 6's "text order belongs in a standard function" is `list.sort_by` with a
 > text key.
+
+> Built in chunk 5.5c2: the parameters are written in parentheses,
+> separated by commas, and each takes the type of the value the operation
+> gives it in that place, `list.zip_with` an item from each list and
+> `map.filter` and `map.map_values` an entry's key and its value. An
+> inline function with a different number of parameters than its operation
+> gives is `type.inline_function_parameters`, and one with two anywhere
+> else is `type.inline_function_placement`, as for one:
+
+```jadpo check project=inline-two-parameters
+type Loaf = Text {
+    min_length: 1
+}
+
+type Stock = Int {
+    min: 0
+}
+
+type Sold = Int {}
+
+/// The loaves with some left, given each loaf and its stock.
+function in_stock(stock: Map<Loaf, Stock>) -> Map<Loaf, Stock> {
+    return map.filter(stock, (loaf, count) -> count > 0)
+}
+
+/// How many of each loaf sold, from the morning's and the evening's
+/// counts, taken in the same order.
+function sold(morning: List<Stock>, evening: List<Stock>) -> List<Sold> {
+    return list.zip_with(morning, evening, (before, after) -> Sold(before - after))
+}
+```
 
 No declaration's name is a value. A type, enum, failure, entity,
 function, action, query, library or route group, or a standard namespace such
@@ -2808,6 +2839,40 @@ error: `list.count` has no argument `itmes`
 check failed: 1 error, 1 file
 ```
 
+### `type.inline_function_parameters`
+
+An inline function has as many parameters as its operation gives it
+values: one item at a time, or two for `list.zip_with`, `map.filter` and
+`map.map_values` (area 19):
+
+```jadpo check project=e-inline-function-parameters expect=type.inline_function_parameters
+type Loaf = Text {
+    min_length: 1
+}
+
+type Stock = Int {
+    min: 0
+}
+
+function in_stock(stock: Map<Loaf, Stock>) -> Map<Loaf, Stock> {
+    return map.filter(stock, count -> count > 0)
+}
+```
+
+```text output
+error: `map.filter`'s `keep` takes two parameters, not one
+ --> main.jadpo:10:30
+   |
+10 |     return map.filter(stock, count -> count > 0)
+   |                              ^^^^^^^^^^^^^^^^^^ one parameter
+  reason: `map.filter` gives its function each entry's key and its value, so it is written `(key, value) -> ...`, with a name for each.
+  next: Write `(key, value) -> ...`, naming both (agent)
+  rule: type.inline_function_parameters
+  help: docs/language/03-logic.html#type-inline-function-parameters
+
+check failed: 1 error, 1 file
+```
+
 ### `type.inline_function_placement`
 
 An inline function is written only as an argument to a standard-library collection operation:
@@ -2833,6 +2898,40 @@ error: An inline function is only an argument to a collection operation
 10 |     return same_price(item -> price)
    |                       ^^^^^^^^^^^^^ inline function
   reason: Functions aren't values: `item -> expression` is written only as an argument to a standard-library collection operation, such as `list.map` or `list.filter`.
+  next: Write the expression on its own, or pass it to a collection operation (agent)
+  rule: type.inline_function_placement
+  help: docs/language/03-logic.html#type-inline-function-placement
+
+check failed: 1 error, 1 file
+```
+
+Two parameters, `(a, b) -> expression`, are only for a standard operation
+that gives its function two values (area 19):
+
+```jadpo check project=e-inline-function-two expect=type.inline_function_placement
+type Pence = Int {
+    min: 0
+}
+
+function larger(first: Pence, second: Pence) -> Pence {
+    if (first > second) {
+        return first
+    }
+    return second
+}
+
+function dearer(price: Pence) -> Pence {
+    return larger((a, b) -> a, price)
+}
+```
+
+```text output
+error: An inline function is only an argument to a collection operation
+ --> main.jadpo:13:19
+   |
+13 |     return larger((a, b) -> a, price)
+   |                   ^^^^^^^^^^^ inline function
+  reason: Functions aren't values: `(key, value) -> expression` is written only as an argument to a standard operation that gives its function two values, `list.zip_with`, `map.filter` or `map.map_values`.
   next: Write the expression on its own, or pass it to a collection operation (agent)
   rule: type.inline_function_placement
   help: docs/language/03-logic.html#type-inline-function-placement

@@ -898,6 +898,8 @@ rules! {
         "02-values-and-types.html#type-foreign-value", "Value written as another language writes it";
     TYPE_INCOMPARABLE: "type.incomparable", area 3, Error, Agent,
         "03-logic.html#type-incomparable", "Values cannot be compared for equality";
+    TYPE_INLINE_FUNCTION_PARAMETERS: "type.inline_function_parameters", area 3, Error, Agent,
+        "03-logic.html#type-inline-function-parameters", "Inline function has a different number of parameters than its operation gives";
     TYPE_INLINE_FUNCTION_PLACEMENT: "type.inline_function_placement", area 3, Error, Agent,
         "03-logic.html#type-inline-function-placement", "Inline function is not an argument to a collection operation";
     TYPE_INVALID_LITERAL: "type.invalid_literal", area 2, Error, Agent,

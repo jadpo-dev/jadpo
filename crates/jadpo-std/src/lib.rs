@@ -97,8 +97,8 @@ pub use rules::{
     is_url, uuid_version,
 };
 pub use standard::{
-    FILE_TYPE, FILE_TYPES, INSTANT_RANGE, INSTANT_RANGE_FIELDS, STANDARD_TYPES, StandardType,
-    standard_type,
+    FILE_TYPE, FILE_TYPES, INSTANT_RANGE, INSTANT_RANGE_FIELDS, RANGE, RANGE_FIELDS, RANGE_ITEMS,
+    STANDARD_TYPES, StandardType, standard_type,
 };
 pub use time::{
     DATE_MAX, DATE_MIN, Dur, INSTANT_MAX, INSTANT_MIN, UnitSuffix, check_calendar_date,

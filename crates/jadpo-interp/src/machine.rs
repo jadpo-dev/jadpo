@@ -229,7 +229,7 @@ enum Task<'p> {
     Std {
         op: Op,
         count: usize,
-        inline: Option<(LocalId, SiteId)>,
+        inline: Option<(&'p [LocalId], SiteId)>,
         at: SiteId,
     },
     Construct(SiteId),
@@ -2007,9 +2007,9 @@ impl<'p> Machine<'p> {
             if param.kind == ParamKind::Function {
                 match self.site(*arg).map(|site| &site.node) {
                     Some(Node::Expr(Expr::Inline {
-                        param: Some(param),
+                        params,
                         body: Some(body),
-                    })) => inline = Some((*param, *body)),
+                    })) if !params.is_empty() => inline = Some((params.as_slice(), *body)),
                     _ => {
                         work.push(Task::Defect(
                             "an operation's function that isn't inline",
@@ -2044,7 +2044,7 @@ impl<'p> Machine<'p> {
         ctx: &mut Ctx<'_>,
         op: Op,
         values: &[Value],
-        inline: Option<(LocalId, SiteId)>,
+        inline: Option<(&'p [LocalId], SiteId)>,
         at: SiteId,
     ) -> Result<Value, Stop> {
         let mut stopped: Option<Stop> = None;
@@ -2055,13 +2055,15 @@ impl<'p> Machine<'p> {
             ctx.pause_recording();
         }
         let result = {
-            let mut each = |item: &Value| -> Option<Value> {
-                let (param, body) = inline?;
-                if let Some(slot) = self
-                    .locals()
-                    .and_then(|locals| locals.get_mut(param.0 as usize))
-                {
-                    *slot = item.clone();
+            let mut each = |given: &[Value]| -> Option<Value> {
+                let (params, body) = inline?;
+                for (param, value) in params.iter().zip(given) {
+                    if let Some(slot) = self
+                        .locals()
+                        .and_then(|locals| locals.get_mut(param.0 as usize))
+                    {
+                        *slot = value.clone();
+                    }
                 }
                 match self.nested(ctx, body) {
                     Ok(value) => Some(value),

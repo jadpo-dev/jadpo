@@ -37,9 +37,13 @@ fn field(item: &Value, name: &str) -> Option<Value> {
     }
 }
 
-/// Runs `op` on `args`, its inline function `each`.
+/// Runs `op` on `args`, its inline function `each`, which takes one item.
 fn call(op: Op, args: &[Value], each: &mut dyn FnMut(&Value) -> Option<Value>) -> Value {
-    run(op, args, None, each).unwrap_or_else(|fault| panic!("{op:?}: {fault:?}"))
+    run(op, args, None, &mut |given| match given {
+        [item] => each(item),
+        _ => None,
+    })
+    .unwrap_or_else(|fault| panic!("{op:?}: {fault:?}"))
 }
 
 fn plain(op: Op, args: &[Value]) -> Value {
@@ -170,6 +174,46 @@ fn the_list_operations_give_the_page_s_values() {
     assert_eq!(
         shelves,
         vec![(n(1), list(&[&bap])), (n(2), list(&[&rye, &spelt]))]
+    );
+}
+
+/// `over_plan`: `zip_with` gives its two-parameter function an item from
+/// each list, as long as the shorter (chunk 5.5c2).
+#[test]
+fn zip_with_pairs_items_by_position() {
+    let day = Value::list(vec![
+        batch("Rye", 800, 2, "4.20"),
+        batch("Bap", 90, 1, "0.60"),
+        batch("Spelt", 800, 2, "3.80"),
+    ]);
+    let over = |planned: &[i64]| {
+        run(
+            Op::ListZipWith,
+            &[day.clone(), ints(planned)],
+            None,
+            &mut |given| match given {
+                [batch, Value::Int(plan)] => {
+                    Some(Value::Bool(field(batch, "grams")? > Value::Int(*plan)))
+                }
+                _ => None,
+            },
+        )
+        .unwrap_or_else(|fault| panic!("{fault:?}"))
+    };
+    let yes = Value::Bool(true);
+    let no = Value::Bool(false);
+    assert_eq!(
+        over(&[700, 100, 800]),
+        Value::list(vec![yes.clone(), no.clone(), no])
+    );
+    assert_eq!(
+        over(&[700]),
+        Value::list(vec![yes]),
+        "as long as the shorter"
+    );
+    assert_eq!(
+        run(Op::ListZipWith, &[day, ints(&[1])], None, &mut |_| None),
+        Err(Fault::Stopped)
     );
 }
 

@@ -1299,16 +1299,22 @@ impl Walk<'_> {
             _ => Prov::default(),
         };
         let mut provs: Vec<Prov> = vec![first.clone()];
+        // With two parameters (`zip_with`'s items, a map's key and value),
+        // each holds all the values given before it.
+        let mut given = first.clone();
         for arg in args.iter().skip(1) {
             let prov = match arg {
                 Some(arg) => {
-                    if let Node::Expr(Expr::Inline { param, .. }) = &self.body.site(*arg).node {
-                        self.local(*param, &first);
+                    if let Node::Expr(Expr::Inline { params, .. }) = &self.body.site(*arg).node {
+                        for param in params.clone() {
+                            self.local(Some(param), &given);
+                        }
                     }
                     self.eval(flow, *arg)
                 }
                 None => Prov::default(),
             };
+            given.union(&prov);
             provs.push(prov);
         }
         let all = || {

@@ -3155,8 +3155,14 @@ impl AstNode for LambdaExpr {
 }
 
 impl LambdaExpr {
-    pub fn name(&self) -> Option<Name> {
-        support::child(&self.syntax)
+    pub fn l_paren_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, L_PAREN)
+    }
+    pub fn names(&self) -> AstChildren<Name> {
+        support::children(&self.syntax)
+    }
+    pub fn r_paren_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, R_PAREN)
     }
     pub fn thin_arrow_token(&self) -> Option<SyntaxToken> {
         support::token(&self.syntax, THIN_ARROW)

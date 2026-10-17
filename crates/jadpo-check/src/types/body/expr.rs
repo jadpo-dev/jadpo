@@ -55,6 +55,20 @@ impl Body<'_> {
             self.misplaced_inline(lambda);
             return;
         }
+        // `Range { ... }` where a `Range<T>` is expected: its ends are `T?`.
+        if let Expr::RecordExpr(record) = expr
+            && let Some(head) = record.expr()
+            && tree::written(head.syntax()) == jadpo_std::RANGE
+            && let Ty::Opaque(range, args) = self.table.structure(expected)
+            && range == jadpo_std::RANGE
+            && let [item] = args.as_slice()
+            && !self.table.is_nullable(expected)
+        {
+            self.resolved_by(|names, out| crate::resolve::record_head(names, record, out));
+            let actual = self.range_literal(record, Some(item.clone()));
+            self.facts.types.insert(node_key(expr.syntax()), actual);
+            return;
+        }
         if let Expr::ListExpr(list) = expr {
             match &self.table.structure(expected) {
                 Ty::List(item) | Ty::Set(item) => {
@@ -695,6 +709,24 @@ impl Body<'_> {
                 None => break,
             }
         }
+        // A `Range<T>`'s ends, each `none` when open (area 19).
+        if let Ty::Opaque(range, args) = &through
+            && range == jadpo_std::RANGE
+            && let [item] = args.as_slice()
+        {
+            if !jadpo_std::RANGE_FIELDS.contains(&field.as_str()) {
+                let fields: Vec<FieldDef> = jadpo_std::RANGE_FIELDS
+                    .iter()
+                    .map(|name| plain_field(name, item.clone().nullable()))
+                    .collect();
+                self.unknown_field(range, &field, &fields, span, false);
+                return Ty::Error;
+            }
+            self.facts
+                .fields
+                .insert(node_key(node.syntax()), (range.clone(), vec![field]));
+            return item.clone().nullable();
+        }
         if let Ty::Opaque(range, args) = &through
             && args.is_empty()
             && range == jadpo_std::INSTANT_RANGE
@@ -902,6 +934,9 @@ impl Body<'_> {
                 self.object_built(record);
                 Ty::Named(self.table.canonical(&name))
             }
+            // `Range { start: ..., end: ... }` (area 19), its ends' type
+            // from its first end that isn't `none`.
+            ([], None) if name == jadpo_std::RANGE => self.range_literal(record, None),
             // A standard object type (`InstantRange`, area 19): its fields
             // are its data entry's, each built on a built-in type.
             ([], None) if let Some(fields) = standard_object_fields(&name) => {
@@ -1202,6 +1237,70 @@ impl Body<'_> {
     /// Records that building an object never fails: each field's value is
     /// already known to fit. Entity writes (`create`, `update`'s `set:`)
     /// are checked with area 6.
+    /// `Range { start: ..., end: ... }` (area 19): both ends given, each a
+    /// `T` or `none` for an open end. `item` is `T` where the literal's
+    /// place says; otherwise its first end that isn't `none` gives it.
+    pub(super) fn range_literal(&mut self, record: &ast::RecordExpr, item: Option<Ty>) -> Ty {
+        let head_span = match record.expr() {
+            Some(head) => self.span(&head),
+            None => self.span(record),
+        };
+        let item = match item {
+            Some(item) => item,
+            None => {
+                let first = tree::members(record.member_list())
+                    .into_iter()
+                    .filter(|(name, _)| {
+                        tree::name_text(name)
+                            .is_some_and(|name| jadpo_std::RANGE_FIELDS.contains(&name.as_str()))
+                    })
+                    .find_map(|(_, member)| {
+                        let value = member.value()?;
+                        (Const::from_expr(&value) != Const::None).then_some(value)
+                    });
+                let item = match first {
+                    Some(value) => self.infer(&value).strip_nullable().clone(),
+                    // Two open ends hold everything, of any type.
+                    None => Ty::Error,
+                };
+                if !item.has_error() && !self.range_ordered(&item) {
+                    self.out.push(range_unordered(&item, head_span.clone()));
+                    return Ty::Error;
+                }
+                item
+            }
+        };
+        let fields: Vec<FieldDef> = jadpo_std::RANGE_FIELDS
+            .iter()
+            .map(|name| plain_field(name, item.clone().nullable()))
+            .collect();
+        self.facts.builds.insert(
+            node_key(record.syntax()),
+            super::facts::BuildFact::Object(jadpo_std::RANGE.to_string()),
+        );
+        self.fields_given(
+            record.member_list(),
+            jadpo_std::RANGE,
+            &[],
+            &fields,
+            Required::All,
+            head_span,
+            &[],
+        );
+        self.object_built(record);
+        Ty::Opaque(jadpo_std::RANGE.to_string(), vec![item])
+    }
+
+    /// Whether a range's ends may be `item`: a type built on one that `<`
+    /// orders (area 19, "Ranges").
+    pub(super) fn range_ordered(&self, item: &Ty) -> bool {
+        !self.table.is_nullable(item)
+            && self
+                .table
+                .representation(item)
+                .is_some_and(|prim| jadpo_std::RANGE_ITEMS.contains(&prim))
+    }
+
     fn object_built(&mut self, record: &ast::RecordExpr) {
         self.facts
             .constructions
@@ -1542,6 +1641,15 @@ pub(crate) fn members_of(
             .collect();
     }
     if let Ty::Opaque(range, args) = receiver.strip_nullable()
+        && range == jadpo_std::RANGE
+        && let [item] = args.as_slice()
+    {
+        return jadpo_std::RANGE_FIELDS
+            .iter()
+            .map(|name| plain(name, item.clone().nullable()))
+            .collect();
+    }
+    if let Ty::Opaque(range, args) = receiver.strip_nullable()
         && args.is_empty()
         && range == jadpo_std::INSTANT_RANGE
     {
@@ -1612,4 +1720,17 @@ pub(crate) struct Member {
     pub ty: Ty,
     /// The type it is declared with: `Text`.
     pub declared: Ty,
+}
+
+/// A range of `item`, which has no order (area 19, "Ranges").
+pub(crate) fn range_unordered(item: &Ty, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TYPE_ORDERING_OPERAND,
+        format!("A range of `{item}` has no order to hold its values in"),
+    )
+    .at(span, format!("its ends are `{item}`"))
+    .reason(format!(
+        "A range holds the values from its start up to its end, so its ends are a type `<` orders: a number, an `Instant`, a `CalendarDate` or a `Duration`, or a type built on one; `{item}` isn't."
+    ))
+    .next("Make the range of an ordered type")
 }
