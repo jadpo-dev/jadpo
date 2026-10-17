@@ -237,14 +237,12 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
             };
             raw.split_once('/').and_then(|(from, to)| {
                 let (from, to) = (end_of(from)?, end_of(to)?);
-                (crate::ops::compare(&from, &to) != Some(std::cmp::Ordering::Greater)).then(
-                    || {
-                        Value::record(
-                            entry.name,
-                            vec![((*start).into(), from), ((*end).into(), to)],
-                        )
-                    },
-                )
+                (crate::ops::compare(&from, &to) != Some(std::cmp::Ordering::Greater)).then(|| {
+                    Value::record(
+                        entry.name,
+                        vec![((*start).into(), from), ((*end).into(), to)],
+                    )
+                })
             })
         }
     };
@@ -331,9 +329,7 @@ pub fn shown(
         (FormatKey::MonthName, Value::Variant(variant)) => {
             present::names::month(variant.ordinal, tag)?
         }
-        (FormatKey::YearMonth | FormatKey::Year, value) => {
-            present::names::year_month(value, tag)?
-        }
+        (FormatKey::YearMonth | FormatKey::Year, value) => present::names::year_month(value, tag)?,
         (FormatKey::OffsetName, value) => present::names::offset(value, tag)?,
         (FormatKey::PeriodUnits, value) => {
             present::names::period(crate::calendar::period_parts(value)?, tag)?

@@ -1150,7 +1150,9 @@ fn standard_field(name: &str, part: jadpo_std::Part) -> FieldDef {
                 ..Rules::default()
             },
         ),
-        jadpo_std::Part::Standard(other) => (Ty::Opaque(other.to_string(), Vec::new()), Rules::default()),
+        jadpo_std::Part::Standard(other) => {
+            (Ty::Opaque(other.to_string(), Vec::new()), Rules::default())
+        }
     };
     FieldDef {
         name: name.to_string(),

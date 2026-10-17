@@ -92,7 +92,11 @@ pub fn weekday(ordinal: u32, tag: &str) -> Result<String, Fault> {
 pub fn month(ordinal: u32, tag: &str) -> Result<String, Fault> {
     let month = i64::from(ordinal) + 1;
     let day = jadpo_std::epoch_day(2026, month, 1).ok_or(Fault::Shape)?;
-    shown_parts(day, &[(jadpo_std::Component::Month, jadpo_std::ComponentStyle::Long)], tag)
+    shown_parts(
+        day,
+        &[(jadpo_std::Component::Month, jadpo_std::ComponentStyle::Long)],
+        tag,
+    )
 }
 
 /// A `YearMonth` or a `Year` in CLDR's pattern for the parts it has
@@ -183,7 +187,11 @@ pub fn period((years, months, days): (i64, i64, i64), tag: &str) -> Result<Strin
             .into_owned())
     };
     let mut shown: Vec<String> = Vec::new();
-    let units: [(i64, UnitOf); 3] = [(years, Unit::year), (months, Unit::month), (days, Unit::day)];
+    let units: [(i64, UnitOf); 3] = [
+        (years, Unit::year),
+        (months, Unit::month),
+        (days, Unit::day),
+    ];
     for (amount, unit) in units {
         if amount != 0 {
             shown.push(one(amount, unit)?);
@@ -262,7 +270,10 @@ mod tests {
         assert_eq!(period((0, 0, 10), "en-GB"), Ok("10 days".to_string()));
         assert_eq!(period((0, 2, 0), "en-GB"), Ok("2 months".to_string()));
         assert_eq!(period((1, 0, 0), "en-GB"), Ok("1 year".to_string()));
-        assert_eq!(period((1, 2, 10), "en-GB"), Ok("1 year, 2 months, 10 days".to_string()));
+        assert_eq!(
+            period((1, 2, 10), "en-GB"),
+            Ok("1 year, 2 months, 10 days".to_string())
+        );
         assert_eq!(month(9, "en-GB"), Ok("October".to_string()));
     }
 

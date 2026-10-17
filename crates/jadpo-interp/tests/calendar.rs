@@ -114,11 +114,23 @@ fn a_period_between_local_days_ignores_the_clock_changes() {
             (0, 7, 24),
         ),
     ] {
-        let start = value(&program, "local_day", vec![instant(spring), zone(zone_name)]);
-        let end = value(&program, "local_day", vec![instant(autumn), zone(zone_name)]);
+        let start = value(
+            &program,
+            "local_day",
+            vec![instant(spring), zone(zone_name)],
+        );
+        let end = value(
+            &program,
+            "local_day",
+            vec![instant(autumn), zone(zone_name)],
+        );
         let (years, months, days) = period;
         let between = value(&program, "lived", vec![start.clone(), end.clone()]);
-        assert_eq!(between, calendar::period(years, months, days), "{zone_name}");
+        assert_eq!(
+            between,
+            calendar::period(years, months, days),
+            "{zone_name}"
+        );
         // Adding it reaches the end; the other way round, every part is
         // negative, counted from the end, and adding it reaches the start.
         assert_eq!(value(&program, "moved", vec![start.clone(), between]), end);
@@ -164,7 +176,10 @@ fn a_local_time_is_built_from_parts_that_fit() {
     let program = main(SOURCE).with_proof_checks();
     let nine = value(&program, "opening", vec![int(9)]);
     assert_eq!(nine, calendar::local_time(9, 30, 0));
-    assert_eq!(failure(&program, "opening", vec![int(24)]).name, "NoSuchHour");
+    assert_eq!(
+        failure(&program, "opening", vec![int(24)]).name,
+        "NoSuchHour"
+    );
     assert_eq!(
         value(
             &program,
@@ -201,7 +216,11 @@ fn a_date_range_holds_its_last_day() {
         days("2026-10-31", "2026-10-31")
     );
     assert_eq!(
-        value(&program, "shared", vec![october, days("2026-11-01", "2026-11-30")]),
+        value(
+            &program,
+            "shared",
+            vec![october, days("2026-11-01", "2026-11-30")]
+        ),
         Value::None
     );
 }

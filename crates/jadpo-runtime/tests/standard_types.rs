@@ -70,7 +70,9 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
             let mut validators = Vec::new();
             let mut plans = Vec::new();
             for (at, (name, part)) in fields.iter().enumerate() {
-                let builtin = part.builtin().expect("an object sent as fields holds built-in types");
+                let builtin = part
+                    .builtin()
+                    .expect("an object sent as fields holds built-in types");
                 codecs.push(scalar(builtin, at as u32));
                 validators.push(Validator::new(Some(builtin), Vec::new()));
                 plans.push(FieldPlan {

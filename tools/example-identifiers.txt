@@ -221,6 +221,7 @@ check_out
 check_shelf
 check_title
 checked_note
+checked_on
 checkout
 checkout_unavailable
 checkup
@@ -350,6 +351,7 @@ display_name
 display_word
 divider
 done_at
+doors
 double_booked
 double_if_room
 double_order
@@ -419,6 +421,7 @@ find_customer
 find_note
 find_todo
 finish_review
+first_day
 first_loan
 first_page
 first_placed
@@ -496,6 +499,7 @@ in_band
 in_either
 in_house_uses
 in_name_order
+in_rental
 in_review
 in_shop
 in_stock
@@ -620,6 +624,7 @@ loans_due
 loaves
 loaves_from
 loaves_total
+local_day
 local_due
 locale_for_reader
 locker
@@ -627,7 +632,9 @@ locker_code
 log_level
 log_text
 login_attempts
+london_autumn
 london_morning
+london_spring
 long_manuals
 longer_manuals
 longest_manual
@@ -683,6 +690,7 @@ missing_success
 misuse_test_boundary
 mix_dough
 morning
+moved_in
 my_bakeries
 my_orders
 name_blank
@@ -696,6 +704,8 @@ new_key
 new_outlet_key
 new_staff
 new_todo
+new_york_autumn
+new_york_spring
 next_day
 next_free
 next_page
@@ -751,6 +761,7 @@ open_outlets
 open_project_with_board
 open_todos
 opening_hours
+opening_sign
 opening_unclear
 openings
 order_back
@@ -984,6 +995,10 @@ renamed_by_bo
 renamed_by_dee
 renew
 renewed
+rental
+rental_day
+rental_end
+rental_term
 replies
 reply_count
 reply_locale
@@ -1042,6 +1057,7 @@ seats
 second_loan
 second_use
 secret_to_public
+seen_at
 send_completion_email
 send_invoice
 send_order_confirmation
@@ -1086,6 +1102,7 @@ show_on_menu
 show_placed
 show_sent
 sign_in_email
+sign_locale
 sign_out_everywhere
 sign_up
 sign_up_draft
@@ -1192,6 +1209,7 @@ tier_name
 tier_scale
 tiers_above
 till_total
+time_lived
 times_lent
 tin_area
 title_again

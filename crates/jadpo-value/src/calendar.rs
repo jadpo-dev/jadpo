@@ -104,19 +104,11 @@ pub fn canonical(form: TextForm, value: &Value) -> Option<Result<String, Fault>>
                 format!("{}T{}", jadpo_std::format_date(day), clock_text(clock))
             }
             TextForm::YearMonth => {
-                format!(
-                    "{:04}-{:02}",
-                    whole(value, "year")?,
-                    whole(value, "month")?
-                )
+                format!("{:04}-{:02}", whole(value, "year")?, whole(value, "month")?)
             }
             TextForm::Year => format!("{:04}", whole(value, "year")?),
             TextForm::Quarter => {
-                format!(
-                    "{:04}-Q{}",
-                    whole(value, "year")?,
-                    whole(value, "quarter")?
-                )
+                format!("{:04}-Q{}", whole(value, "year")?, whole(value, "quarter")?)
             }
             TextForm::IsoWeek => {
                 format!("{:04}-W{:02}", whole(value, "year")?, whole(value, "week")?)
@@ -212,9 +204,9 @@ pub fn read(form: TextForm, raw: &str) -> Option<Option<Value>> {
                 )
             })
         }),
-        TextForm::UtcOffset => offset(raw).map(|minutes| {
-            record("UtcOffset", &[("minutes", Value::Int(minutes))])
-        }),
+        TextForm::UtcOffset => {
+            offset(raw).map(|minutes| record("UtcOffset", &[("minutes", Value::Int(minutes))]))
+        }
         TextForm::Period => period_of(raw).map(|(y, m, d)| period(y, m, d)),
         _ => return None,
     })
@@ -287,11 +279,16 @@ fn period_of(text: &str) -> Option<(i64, i64, i64)> {
             return None;
         }
         let amount: i64 = number.parse().ok()?;
-        parts[at] = if negative { amount.checked_neg()? } else { amount };
+        *parts.get_mut(at)? = if negative {
+            amount.checked_neg()?
+        } else {
+            amount
+        };
         next = at + 1;
         rest = after.get(1..)?;
     }
-    Some((parts[0], parts[1], parts[2]))
+    let [years, months, days] = parts;
+    Some((years, months, days))
 }
 
 /// How many weeks ISO week-numbering year `year` has: 53 when it starts
@@ -313,9 +310,7 @@ fn weeks_in(year: i64) -> Option<i64> {
 pub fn add_period(day: i32, (years, months, days): (i64, i64, i64)) -> Result<i32, Fault> {
     let day = shift_months(day, years.checked_mul(12).ok_or(Fault::TimeRange)?)?;
     let day = shift_months(day, months)?;
-    let moved = i64::from(day)
-        .checked_add(days)
-        .ok_or(Fault::TimeRange)?;
+    let moved = i64::from(day).checked_add(days).ok_or(Fault::TimeRange)?;
     i32::try_from(moved)
         .ok()
         .filter(|day| (jadpo_std::DATE_MIN..=jadpo_std::DATE_MAX).contains(day))
@@ -442,10 +437,22 @@ mod tests {
 
     #[test]
     fn a_period_moves_a_date_by_years_then_months_then_days() {
-        assert_eq!(add_period(day("2026-01-31"), (0, 1, 0)), Ok(day("2026-02-28")));
-        assert_eq!(add_period(day("2028-01-31"), (0, 1, 0)), Ok(day("2028-02-29")));
-        assert_eq!(add_period(day("2028-02-29"), (1, 0, 0)), Ok(day("2029-02-28")));
-        assert_eq!(add_period(day("2028-02-29"), (1, 1, 0)), Ok(day("2029-03-28")));
+        assert_eq!(
+            add_period(day("2026-01-31"), (0, 1, 0)),
+            Ok(day("2026-02-28"))
+        );
+        assert_eq!(
+            add_period(day("2028-01-31"), (0, 1, 0)),
+            Ok(day("2028-02-29"))
+        );
+        assert_eq!(
+            add_period(day("2028-02-29"), (1, 0, 0)),
+            Ok(day("2029-02-28"))
+        );
+        assert_eq!(
+            add_period(day("2028-02-29"), (1, 1, 0)),
+            Ok(day("2029-03-28"))
+        );
         assert_eq!(
             subtract_period(day("2026-03-31"), (0, 1, 0)),
             Ok(day("2026-02-28"))
@@ -470,12 +477,14 @@ mod tests {
             (TextForm::Period, "P-1Y2M-3D"),
             (TextForm::Period, "P10D"),
         ] {
-            let value = read(form, text).unwrap().unwrap_or_else(|| panic!("{text}"));
+            let value = read(form, text)
+                .unwrap()
+                .unwrap_or_else(|| panic!("{text}"));
             assert_eq!(canonical(form, &value).unwrap().as_deref(), Ok(text));
         }
         assert_eq!(read(TextForm::IsoWeek, "2021-W53"), Some(None));
         assert_eq!(read(TextForm::Period, "P01M"), Some(None));
         assert_eq!(read(TextForm::Period, "P-0D"), Some(None));
-        assert_eq!(read(TextForm::UtcOffset, "+18:00").flatten().is_some(), true);
+        assert!(read(TextForm::UtcOffset, "+18:00").flatten().is_some());
     }
 }

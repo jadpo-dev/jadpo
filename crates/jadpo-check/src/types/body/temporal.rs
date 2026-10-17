@@ -281,7 +281,10 @@ impl Body<'_> {
             },
             _ => None,
         };
-        if let Some(name) = local.as_deref().filter(|name| *name != jadpo_std::DATE_RANGE) {
+        if let Some(name) = local
+            .as_deref()
+            .filter(|name| *name != jadpo_std::DATE_RANGE)
+        {
             self.format_part_missing(&ty, name, format, spec, written);
             return;
         }
@@ -329,7 +332,9 @@ impl Body<'_> {
     ) {
         let time_only = name == "LocalTime";
         let shows: Vec<String> = match spec {
-            TimeFormatSpec::Builtin(builtin) if time_only && builtin.part != jadpo_std::FormatPart::Time => {
+            TimeFormatSpec::Builtin(builtin)
+                if time_only && builtin.part != jadpo_std::FormatPart::Time =>
+            {
                 vec!["a date".to_string()]
             }
             TimeFormatSpec::Builtin(_) => Vec::new(),

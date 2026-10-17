@@ -10,7 +10,10 @@ use jadpo_db::Layout;
 
 fn check(source: &str) -> Vec<String> {
     let types = "type Day = CalendarDate {}\n\ntype Seen = ZonedTime {}\n\ntype Hour = Int {}\n\ntype Flag = Bool {}\n\ntype Shown = PresentationText {}\n\n";
-    support::rules(Layout::Loose, &[("main.jadpo", &format!("{types}{source}"))])
+    support::rules(
+        Layout::Loose,
+        &[("main.jadpo", &format!("{types}{source}"))],
+    )
 }
 
 #[test]

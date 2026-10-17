@@ -667,7 +667,13 @@ impl Body<'_> {
     /// date moved by a period gives the date's own type, two periods add
     /// and subtract part by part, and a period times an `Int` multiplies
     /// each part. Anything else with a period is refused.
-    fn period_arithmetic(&mut self, binary: &ast::BinExpr, op: &str, a: &Operand, b: &Operand) -> Ty {
+    fn period_arithmetic(
+        &mut self,
+        binary: &ast::BinExpr,
+        op: &str,
+        a: &Operand,
+        b: &Operand,
+    ) -> Ty {
         let period = || Ty::Opaque(jadpo_std::CALENDAR_PERIOD.to_string(), Vec::new());
         let (pa, pb) = (self.is_period(a), self.is_period(b));
         match (op, a, pa, pb) {
@@ -688,7 +694,9 @@ impl Body<'_> {
         let (sa, sb) = (a.shown(), b.shown());
         let span = self.span(binary);
         let reason = if matches!(op, "+" | "-") && pa && self.rep(b) == Some(Prim::CalendarDate) {
-            format!("A date is moved by a period with the date first, `day {op} period`, as the operator table writes it.")
+            format!(
+                "A date is moved by a period with the date first, `day {op} period`, as the operator table writes it."
+            )
         } else if op == "*" && pb && !pa {
             "A period is multiplied with the period first, `period * 2`, as the operator table writes it.".to_string()
         } else if self.rep(a) == Some(Prim::ZonedTime) {

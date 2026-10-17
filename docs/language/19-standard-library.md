@@ -9,6 +9,7 @@ rules:
   - type.argument_negative
   - type.standard_clash
   - type.standard_exists
+  - type.temporal_format_part_missing
 ---
 
 # Standard library
@@ -1689,80 +1690,80 @@ need a `dst:` choice; it uses `temporal.add_months` and its siblings.
 | `DateRange` | `start`, `end`, both `CalendarDate`, the end included | `2026-10-01/2026-10-31`; JSON `{ "start", "end" }` | each end by `format:`, a date format |
 | `CalendarPeriod` | `years`, `months`, `days` | `P1Y2M10D` | "1 year, 2 months, 10 days" |
 
-A lease runs for a calendar period from the day it starts, and how long
+A rental runs for a calendar period from its first day, and how long
 someone has lived somewhere is a period between two days, whatever the
 clocks did in between:
 
 ```jadpo check project=calendar
-type LeaseDay = CalendarDate {}
+type RentalDay = CalendarDate {}
 
 type SeenAt = Instant {}
 
-type Lease = Object {
-    starts: LeaseDay
-    term: CalendarPeriod
+type Rental = Object {
+    first_day: RentalDay
+    rental_term: CalendarPeriod
 }
 
-/// The day a lease ends: its term on from the day it starts, a day past
+/// The day a rental ends: its rental_term on from the day it first_day, a day past
 /// a month's end becoming that month's last day.
-function lease_end(lease: Lease) -> LeaseDay {
-    return lease.starts + lease.term
+function rental_end(rental: Rental) -> RentalDay {
+    return rental.first_day + rental.rental_term
 }
 
 /// The day it is in `zone` at `at`.
-function local_day(at: SeenAt, zone: Zone) -> LeaseDay {
-    return LeaseDay(temporal.date(temporal.in_zone(at, zone)))
+function local_day(at: SeenAt, zone: Zone) -> RentalDay {
+    return RentalDay(temporal.date(temporal.in_zone(at, zone)))
 }
 
 /// How long someone has lived somewhere, in whole years, months and
-/// days, from the day they moved in to `today`.
-function time_lived(moved_in: LeaseDay, today: LeaseDay) -> CalendarPeriod {
-    return temporal.period_between(moved_in, today)
+/// days, from the day they moved in to `checked_on`.
+function time_lived(moved_in: RentalDay, checked_on: RentalDay) -> CalendarPeriod {
+    return temporal.period_between(moved_in, checked_on)
 }
 
-type Covered = Bool {}
+type InRental = Bool {}
 
-/// Whether `day` is one of the days a lease covers, its last included.
-function covers(days: DateRange, day: LeaseDay) -> Covered {
-    return Covered(range.contains(days, day))
+/// Whether `day` is one of the days a rental in_rental, its last included.
+function in_rental(days: DateRange, day: RentalDay) -> InRental {
+    return InRental(range.contains(days, day))
 }
 ```
 
 ```jadpo check project=calendar file=main.test.jadpo
 test "a period counts calendar days, whatever the clocks do" {
-    var london_spring: LeaseDay = local_day("2026-03-29T00:30:00Z", Zone.europe_london)
-    var london_autumn: LeaseDay = local_day("2026-10-25T23:30:00Z", Zone.europe_london)
-    assert london_spring == LeaseDay("2026-03-29")
-    assert london_autumn == LeaseDay("2026-10-25")
+    var london_spring: RentalDay = local_day("2026-03-29T00:30:00Z", Zone.europe_london)
+    var london_autumn: RentalDay = local_day("2026-10-25T23:30:00Z", Zone.europe_london)
+    assert london_spring == RentalDay("2026-03-29")
+    assert london_autumn == RentalDay("2026-10-25")
     assert time_lived(london_spring, london_autumn) == CalendarPeriod {
         years: 0
         months: 6
         days: 26
     }
-    assert lease_end(
-        Lease {
-            starts: london_spring
-            term: time_lived(london_spring, london_autumn)
+    assert rental_end(
+        Rental {
+            first_day: london_spring
+            rental_term: time_lived(london_spring, london_autumn)
         }
     ) == london_autumn
-    var new_york_spring: LeaseDay = local_day("2026-03-08T07:30:00Z", Zone.america_new_york)
-    var new_york_autumn: LeaseDay = local_day("2026-11-02T03:30:00Z", Zone.america_new_york)
-    assert new_york_autumn == LeaseDay("2026-11-01")
+    var new_york_spring: RentalDay = local_day("2026-03-08T07:30:00Z", Zone.america_new_york)
+    var new_york_autumn: RentalDay = local_day("2026-11-02T03:30:00Z", Zone.america_new_york)
+    assert new_york_autumn == RentalDay("2026-11-01")
     assert text.from(time_lived(new_york_spring, new_york_autumn)) == "P7M24D"
     assert text.from(time_lived(new_york_autumn, new_york_spring)) == "P-7M-24D"
 }
 
 test "a month on from the 31st is the month's last day" {
-    var lease: Lease = Lease {
-        starts: "2026-01-31"
-        term: CalendarPeriod {
+    var rental: Rental = Rental {
+        first_day: "2026-01-31"
+        rental_term: CalendarPeriod {
             years: 0
             months: 1
             days: 0
         }
     }
-    assert lease_end(lease) == "2026-02-28"
-    assert lease.term * 12 + lease.term == CalendarPeriod {
+    assert rental_end(rental) == "2026-02-28"
+    assert rental.rental_term * 12 + rental.rental_term == CalendarPeriod {
         years: 0
         months: 13
         days: 0
@@ -1771,9 +1772,9 @@ test "a month on from the 31st is the month's last day" {
         start: "2026-01-31"
         end: "2026-02-28"
     }
-    assert covers(days, "2026-02-28")
-    assert not covers(days, "2026-03-01")
-    assert text.format(lease.term * 3, locale: Locale.en_gb) == "3 months"
+    assert in_rental(days, "2026-02-28")
+    assert not in_rental(days, "2026-03-01")
+    assert text.format(rental.rental_term * 3, locale: Locale.en_gb) == "3 months"
 }
 ```
 
@@ -3163,17 +3164,17 @@ date is refused for a `LocalTime`, and one showing a zone for either, as
 type OpeningSign = PresentationText {}
 
 /// When the shop opens each day, as its sign shows it.
-function opening_sign(opens: LocalTime, shown: Locale) -> OpeningSign {
-    return OpeningSign(text.format(opens, locale: shown, format: TimeFormat.date_time_short))
+function opening_sign(doors: LocalTime, sign_locale: Locale) -> OpeningSign {
+    return OpeningSign(text.format(doors, locale: sign_locale, format: TimeFormat.date_time_short))
 }
 ```
 
 ```text output
 error: `TimeFormat.date_time_short` shows a part `LocalTime` doesn't have
- --> main.jadpo:5:66
+ --> main.jadpo:5:72
   |
-5 |     return OpeningSign(text.format(opens, locale: shown, format: TimeFormat.date_time_short))
-  |                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^ shows a date
+5 |     return OpeningSign(text.format(doors, locale: sign_locale, format: TimeFormat.date_time_short))
+  |                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^ shows a date
   reason: `LocalTime` is a clock time, with no date or zone, so `text.format` can show only the parts it has.
   next: Use a time format such as `TimeFormat.time_short` (agent)
   rule: type.temporal_format_part_missing
