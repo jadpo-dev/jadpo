@@ -11,6 +11,7 @@
 
 mod case;
 pub mod client_address;
+pub mod completion;
 pub mod config;
 pub mod constants;
 pub mod data;

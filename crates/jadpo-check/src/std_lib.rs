@@ -91,6 +91,8 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
 pub struct Operation {
     pub params: Vec<(String, TypeRef)>,
     pub result: TypeRef,
+    /// Its `///` description in the stub, which the editor shows.
+    pub docs: Option<String>,
 }
 
 /// A standard type's stub declaration (area 19): what it is built on, as
@@ -261,7 +263,15 @@ impl StdNames {
                             .ret_type()
                             .and_then(|ret| ret.ty())
                             .map_or(TypeRef::Invalid, |ty| TypeRef::from_type(&ty));
-                        operations.insert(name, Operation { params, result });
+                        let docs = crate::graph::text::doc(function.syntax());
+                        operations.insert(
+                            name,
+                            Operation {
+                                params,
+                                result,
+                                docs,
+                            },
+                        );
                     }
                 }
                 _ => {}
@@ -403,6 +413,33 @@ impl StdNames {
             .into_iter()
             .find(|namespace| self.has_operation(namespace, operation))
             .map(str::to_string)
+    }
+
+    /// Every namespace, standard or generated, in name order.
+    pub fn namespaces(&self) -> Vec<(&str, Namespace)> {
+        let mut found: Vec<(&str, Namespace)> = self
+            .declared
+            .keys()
+            .map(String::as_str)
+            .chain(self.named.keys().copied())
+            .map(|name| (name, Namespace::Standard))
+            .chain(
+                self.generated
+                    .keys()
+                    .map(|name| (*name, Namespace::Generated)),
+            )
+            .collect();
+        found.sort_by_key(|(name, _)| *name);
+        found.dedup_by(|a, b| a.0 == b.0);
+        found
+    }
+
+    /// The members of a generated namespace built so far (`clock.now`).
+    pub fn generated_members(&self, namespace: &str) -> Vec<&'static str> {
+        self.generated
+            .get(namespace)
+            .map(|members| members.iter().copied().collect())
+            .unwrap_or_default()
     }
 
     /// Whether `namespace.member` of a generated namespace is built.

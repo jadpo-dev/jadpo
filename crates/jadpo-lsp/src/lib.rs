@@ -13,11 +13,13 @@
 //! on a declinable finding and "Remove decline" on a `decline` line run the
 //! code `jadpo declines` runs (chunk 5.4b); "Swap for the standard ..." on
 //! `type.standard_clash` and `type.standard_exists` runs the code `jadpo
-//! fix` runs (chunk 5.5a2). Completion, references, rename,
-//! formatting and other quick fixes come later (area 14), and checking
-//! runs between messages rather than in the background with salsa's
-//! cancellation.
+//! fix` runs (chunk 5.5a2). Completion (chunk 5.5a3) offers what
+//! `jadpo_check::completion` reads from the same tables and the checked
+//! body at the cursor. References, rename, formatting and other quick fixes
+//! come later (area 14), and checking runs between messages rather than in
+//! the background with salsa's cancellation.
 
+mod completion;
 mod convert;
 mod declines;
 mod fixes;

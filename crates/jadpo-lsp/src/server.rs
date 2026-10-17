@@ -15,8 +15,8 @@ use lsp_types::notification::{
     Initialized, Notification as _, PublishDiagnostics,
 };
 use lsp_types::request::{
-    CodeActionRequest, CodeActionResolveRequest, GotoDefinition, HoverRequest, RegisterCapability,
-    Request as _,
+    CodeActionRequest, CodeActionResolveRequest, Completion, GotoDefinition, HoverRequest,
+    RegisterCapability, Request as _,
 };
 use lsp_types::{
     DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
@@ -52,6 +52,9 @@ pub struct Server {
     /// Whether the editor asks for a code action's edit only once it is
     /// chosen (`codeAction/resolve`); otherwise the edit comes with it.
     pub(crate) resolves_edits: bool,
+    /// Whether the editor fills in a completion's snippet placeholders;
+    /// otherwise a call is completed as its name.
+    pub(crate) snippets: bool,
 }
 
 impl Server {
@@ -103,6 +106,14 @@ impl Server {
             .and_then(|text| text.code_action.as_ref())
             .and_then(|action| action.resolve_support.as_ref())
             .is_some_and(|support| support.properties.iter().any(|p| p == "edit"));
+        server.snippets = params
+            .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|text| text.completion.as_ref())
+            .and_then(|completion| completion.completion_item.as_ref())
+            .and_then(|item| item.snippet_support)
+            .unwrap_or(false);
         server.can_watch = params
             .capabilities
             .workspace
@@ -124,6 +135,7 @@ impl Server {
             can_watch: false,
             shown_root: None,
             resolves_edits: false,
+            snippets: false,
         }
     }
 
@@ -193,6 +205,12 @@ impl Server {
             GotoDefinition::METHOD => {
                 match serde_json::from_value::<GotoDefinitionParams>(request.params) {
                     Ok(params) => Response::new_ok(id, self.definition(&params)),
+                    Err(error) => invalid(id, &error),
+                }
+            }
+            Completion::METHOD => {
+                match serde_json::from_value::<lsp_types::CompletionParams>(request.params) {
+                    Ok(params) => Response::new_ok(id, self.completion(&params)),
                     Err(error) => invalid(id, &error),
                 }
             }
@@ -468,6 +486,16 @@ fn capabilities(encoding: Encoding) -> InitializeResult {
                 },
             )),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
+            completion_provider: Some(lsp_types::CompletionOptions {
+                trigger_characters: Some(
+                    crate::completion::TRIGGERS
+                        .iter()
+                        .map(|trigger| trigger.to_string())
+                        .collect(),
+                ),
+                resolve_provider: Some(false),
+                ..lsp_types::CompletionOptions::default()
+            }),
             definition_provider: Some(OneOf::Left(true)),
             code_action_provider: Some(lsp_types::CodeActionProviderCapability::Options(
                 lsp_types::CodeActionOptions {

@@ -31,11 +31,13 @@ use jadpo_std::translation::{ParamKind, TranslationPlan};
 use crate::lookups::Name;
 use crate::types::Prim;
 
-pub use declared::{Kind, Mode, ParamSpec, SHARED, Subject, scope_of, scopes};
+pub use declared::{Kind, Mode, ParamSpec, SHARED, Subject, Subjects, scope_of, scopes, subjects};
+
+/// The namespace a message is called through: `translations.<scope>.<key>`.
+pub const TRANSLATIONS: &str = "translations";
 pub use language::{Body, LanguageFile, Member, Variant, language_file};
 
 use check::analyse;
-use declared::subjects;
 
 /// The problems in the project's translations.
 #[salsa::tracked(returns(ref))]

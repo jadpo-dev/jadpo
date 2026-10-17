@@ -1,6 +1,8 @@
 // Starts `jadpo lsp` and connects the editor to it. Everything the editor
-// shows about Jadpo code (errors, hover, go to definition) comes from the
-// compiler through that server; this file contains no parser of its own.
+// shows about Jadpo code (errors, hover, completion, go to definition) comes
+// from the compiler through that server, which also says what starts
+// completion (a word, `.`, `:` or a digit); this file contains no parser of
+// its own.
 
 const vscode = require("vscode");
 const { LanguageClient, TransportKind } = require("vscode-languageclient/node");

@@ -46,15 +46,12 @@ impl Body<'_> {
         if name != RESPONSE {
             return None;
         }
-        Some(match field {
-            "status" => Some(Ty::Prim(Prim::Int)),
-            "code" => Some(Ty::Prim(Prim::Text).nullable()),
-            "output" => Some(match args.first() {
-                Some(output) => output.clone().nullable(),
-                None => Ty::Error,
-            }),
-            _ => None,
-        })
+        Some(
+            response_members(args)
+                .into_iter()
+                .find(|(name, _)| *name == field)
+                .map(|(_, ty)| ty),
+        )
     }
 
     pub(super) fn request(&mut self, record: &ast::RecordExpr) -> Ty {
@@ -361,4 +358,20 @@ impl Body<'_> {
             }
         }
     }
+}
+
+/// A route test's response's fields (`status`, `code`, `output`), with
+/// their types for a response whose output is `args`' one.
+pub(super) fn response_members(args: &[Ty]) -> Vec<(&'static str, Ty)> {
+    vec![
+        ("status", Ty::Prim(Prim::Int)),
+        ("code", Ty::Prim(Prim::Text).nullable()),
+        (
+            "output",
+            match args.first() {
+                Some(output) => output.clone().nullable(),
+                None => Ty::Error,
+            },
+        ),
+    ]
 }

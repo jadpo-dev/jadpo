@@ -16,6 +16,7 @@ pub(crate) mod paths;
 mod similar;
 pub(crate) mod text;
 
+pub(crate) use lookup::callable_at;
 pub use lookup::{Found, lookup};
 pub use part::{FilePart, file_part};
 pub use similar::{FunctionShape, function_shapes, similar_problems};

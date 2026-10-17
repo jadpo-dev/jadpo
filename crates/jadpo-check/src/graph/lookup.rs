@@ -92,9 +92,38 @@ fn in_body(
     source: &ast::SourceFile,
     offset: u32,
 ) -> Option<Found> {
+    let callable = callable_at(db, file, source, offset, false)?;
+    let body = &typed_body(db, project, callable).body;
+    let name = body.name_at(offset)?;
+    Some(match &name.refers {
+        Refers::Local(id) => {
+            let local = body.local(*id);
+            let ty = local.ty.to_string();
+            Found::Local {
+                name: local.name.clone(),
+                ty: (ty != "?").then_some(ty),
+                what: local.kind.word(),
+            }
+        }
+        Refers::Node { key, .. } => Found::Node(key.clone()),
+    })
+}
+
+/// The callable with a body around byte `offset` of `file`: a function,
+/// a constant, an action, a fixture, a test, a seed, or a library's
+/// function or constant. `at_end` counts the byte just past it, where the
+/// editor's cursor stands after its last character.
+pub(crate) fn callable_at<'db>(
+    db: &'db dyn Db,
+    file: File,
+    source: &ast::SourceFile,
+    offset: u32,
+    at_end: bool,
+) -> Option<Callable<'db>> {
     let contains = |node: &SyntaxNode| {
         let range = node.text_range();
-        u32::from(range.start()) <= offset && offset < u32::from(range.end())
+        u32::from(range.start()) <= offset
+            && (offset < u32::from(range.end()) || (at_end && offset == u32::from(range.end())))
     };
     let (index, decl) = source
         .decls()
@@ -114,21 +143,7 @@ fn in_body(
         | Decl::SeedDecl(_) => None,
         _ => return None,
     };
-    let callable = Callable::new(db, file, index as u32, function);
-    let body = &typed_body(db, project, callable).body;
-    let name = body.name_at(offset)?;
-    Some(match &name.refers {
-        Refers::Local(id) => {
-            let local = body.local(*id);
-            let ty = local.ty.to_string();
-            Found::Local {
-                name: local.name.clone(),
-                ty: (ty != "?").then_some(ty),
-                what: local.kind.word(),
-            }
-        }
-        Refers::Node { key, .. } => Found::Node(key.clone()),
-    })
+    Some(Callable::new(db, file, index as u32, function))
 }
 
 struct Names<'a> {
