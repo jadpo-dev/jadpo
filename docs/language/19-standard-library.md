@@ -2936,7 +2936,7 @@ under "Errors").
   function.
 - **`text` is reserved,** and with it every standard namespace from the
   chunk that adds it: the list of names kept free (chunk 5.5a) is gone.
-  Areas 2, 3, 7, 8, 9 and 16 and nine crate tests renamed theirs.
+  Areas 2, 3, 7, 8, 9 and 16 and six crate test files renamed theirs.
 
 ### Decisions
 
