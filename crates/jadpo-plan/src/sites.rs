@@ -117,6 +117,10 @@ pub struct Given {
 pub struct Raise {
     pub failure: FailureId,
     pub slots: Vec<Option<u32>>,
+    /// The place among the failure's fields of its `problem:
+    /// DecodeProblem`, which receives `json.read`'s first problem when the
+    /// arm maps `mismatch` (area 19, "Data formats").
+    pub problem: Option<u32>,
 }
 
 /// What a value `match` arm's pattern compares with.
@@ -286,6 +290,7 @@ impl Decoder<'_> {
                         Some(Raise {
                             failure,
                             slots: self.slots(Some(failure), &arm.fields),
+                            problem: None,
                         })
                     })
                     .collect(),
@@ -313,9 +318,15 @@ impl Decoder<'_> {
                     .iter()
                     .map(|arm| {
                         let failure = self.types.failure_id(&arm.failure)?;
+                        let problem = arm.problem.as_ref().and_then(|field| {
+                            self.types
+                                .failure(failure)
+                                .and_then(|plan| plan.slot(field.as_str()))
+                        });
                         Some(Raise {
                             failure,
                             slots: self.slots(Some(failure), &arm.fields),
+                            problem,
                         })
                     })
                     .collect(),

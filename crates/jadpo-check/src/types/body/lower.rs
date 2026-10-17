@@ -610,11 +610,27 @@ impl Lower<'_> {
                         Some(Some(key)) => Some(key),
                         Some(None) => continue,
                     };
+                    // `json.read`'s first problem, for the failure's
+                    // `problem: DecodeProblem` field (area 19).
+                    let written = rule.map_or("invalid", |key| key.word());
+                    let problem = match &failure {
+                        Some(failure)
+                            if self.facts.receives.contains(&(key, written.to_string())) =>
+                        {
+                            Some(field_key(
+                                self.names,
+                                failure,
+                                &[jadpo_std::http::DECODE_PROBLEM_FIELD.to_string()],
+                            ))
+                        }
+                        _ => None,
+                    };
                     if let Some(failure) = failure_key {
                         arms.push(typed::RuleArm {
                             rule,
                             failure,
                             fields,
+                            problem,
                         });
                     }
                 }

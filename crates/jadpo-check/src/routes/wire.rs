@@ -22,8 +22,9 @@ pub enum Shape {
     /// An enum, by its key, or a standard-library enum by name.
     Enum(Key),
     StdEnum(String),
-    /// `IssuedToken` or `IssuedKey` (area 8): built in, with the three
-    /// fields `jadpo_std::http::ISSUED_FIELDS` lists.
+    /// `IssuedToken` or `IssuedKey` (area 8), or `DecodeProblem` (area
+    /// 19): built in, with the fields `jadpo_std::http::builtin_object_fields`
+    /// lists.
     Issued(&'static str),
     List(TypeRef, Rules),
     Set(TypeRef, Rules),
@@ -343,11 +344,16 @@ impl<'g> Wire<'g> {
     }
 }
 
-/// `IssuedToken` or `IssuedKey` as the built-in type `name` names.
+/// `IssuedToken`, `IssuedKey` or `DecodeProblem` as the built-in object
+/// type `name` names.
 pub fn issued_name(name: &str) -> Option<&'static str> {
-    [jadpo_std::http::ISSUED_TOKEN, jadpo_std::http::ISSUED_KEY]
-        .into_iter()
-        .find(|issued| *issued == name)
+    [
+        jadpo_std::http::ISSUED_TOKEN,
+        jadpo_std::http::ISSUED_KEY,
+        jadpo_std::http::DECODE_PROBLEM,
+    ]
+    .into_iter()
+    .find(|issued| *issued == name)
 }
 
 /// The key a built-in `IssuedToken` or `IssuedKey` is referred to by,
@@ -367,7 +373,7 @@ pub fn issued_of(key: &Key) -> Option<&'static str> {
 /// The record's section for a built-in `IssuedToken` or `IssuedKey`.
 pub fn issued_section(name: &str) -> String {
     let mut text = format!("output {name}\n");
-    for (field, builtin) in jadpo_std::http::ISSUED_FIELDS {
+    for (field, builtin) in jadpo_std::http::builtin_object_fields(name).unwrap_or_default() {
         text.push_str(&format!("    {field}: {}\n", builtin.name()));
     }
     text
@@ -380,6 +386,8 @@ pub fn issued_schema(name: &str) -> Value {
         "description",
         if name == jadpo_std::http::ISSUED_KEY {
             "A service key as it is listed: when it started and when it ends, never the key itself."
+        } else if name == jadpo_std::http::DECODE_PROBLEM {
+            "The first problem a JSON document had: the field's path, list positions as numbers, and the rule it broke, never the value."
         } else {
             "An API token as it is listed: when it started and when it ends, never the token itself."
         },
@@ -387,9 +395,9 @@ pub fn issued_schema(name: &str) -> Value {
     out.set("type", "object");
     let mut properties = Value::object();
     let mut required = Vec::new();
-    for (field, builtin) in jadpo_std::http::ISSUED_FIELDS {
-        properties.set(field, scalar_schema(builtin, &Rules::default()));
-        required.push(Value::from(field));
+    for (field, builtin) in jadpo_std::http::builtin_object_fields(name).unwrap_or_default() {
+        properties.set(field, scalar_schema(*builtin, &Rules::default()));
+        required.push(Value::from(*field));
     }
     out.set("properties", properties);
     out.set("required", required);

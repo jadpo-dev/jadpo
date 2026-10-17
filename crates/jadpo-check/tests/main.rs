@@ -15,6 +15,7 @@ mod config;
 mod constants;
 mod data_formats;
 mod declines;
+mod decode_problems;
 mod determinism;
 mod domain_names;
 mod examples;

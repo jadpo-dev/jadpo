@@ -376,6 +376,15 @@ impl Body<'_> {
     /// The failure a `reject` or a mapping names, with its fields checked;
     /// `None` when it isn't a failure, which resolution reports.
     pub(super) fn failure_given(&mut self, expr: &Expr) -> Option<String> {
+        self.failure_given_from(expr, None)
+    }
+
+    /// As [`Self::failure_given`], for an arm of an `attempt` on
+    /// `json.read`: `fills` is the condition that fills a `problem:
+    /// DecodeProblem` field (area 19, "Data formats"), `mismatch` or the
+    /// `invalid:` covering only it, with its key's span; `None` where
+    /// nothing does.
+    fn failure_given_from(&mut self, expr: &Expr, fills: Option<(&str, Span)>) -> Option<String> {
         let (head, record) = match expr {
             Expr::NameRef(name) => (name.clone(), None),
             Expr::RecordExpr(record) => match record.expr() {
@@ -405,8 +414,21 @@ impl Body<'_> {
             }
         };
         let head_span = self.span(&head);
-        self.context_given(&name, record.as_ref(), &fields, head_span);
+        self.context_given(&name, record.as_ref(), &fields, head_span, fills);
         Some(name)
+    }
+
+    /// Whether failure `name` declares the field a failure mapped from
+    /// `json.read`'s `mismatch` receives: `problem: DecodeProblem`.
+    fn receives_problem(&self, name: &str) -> bool {
+        matches!(
+            self.table.def(name),
+            Some(Def::Fields {
+                base: FieldsBase::Failure,
+                fields,
+                ..
+            }) if fields.iter().any(is_problem_field)
+        )
     }
 
     /// A rejected failure's fields: every one given once, none unknown,
@@ -417,8 +439,14 @@ impl Body<'_> {
         record: Option<&ast::RecordExpr>,
         fields: &[FieldDef],
         head_span: Span,
+        fills: Option<(&str, Span)>,
     ) {
         let mut given: BTreeMap<String, Span> = BTreeMap::new();
+        // The field `json.read`'s `mismatch` fills, when this arm maps it.
+        let filled = fills
+            .as_ref()
+            .and_then(|_| fields.iter().find(|f| is_problem_field(f)))
+            .map(|f| f.name.clone());
         for item in record
             .and_then(ast::RecordExpr::member_list)
             .iter()
@@ -463,6 +491,26 @@ impl Body<'_> {
                 continue;
             }
             given.insert(field.clone(), span.clone());
+            if filled.as_deref() == Some(field.as_str())
+                && let Some((condition, key_span)) = &fills
+            {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::FAILURE_DUPLICATE_CONTEXT_FIELD,
+                        format!("`{field}` is filled in by `{condition}`"),
+                    )
+                    .at(span, "given as well")
+                    .also(key_span.clone(), "fills it")
+                    .reason(format!(
+                        "A failure mapped from `json.read`'s `mismatch` receives the first problem in its `{field}: DecodeProblem` field, so the log and the client always get the problem the document had, never a value written here."
+                    ))
+                    .next(format!("Remove `{field}: ...` from the block")),
+                );
+                if let Some(value) = value {
+                    self.infer(&value);
+                }
+                continue;
+            }
             let Some(declared) = fields.iter().find(|f| f.name == field) else {
                 let names: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
                 let near = nearest(&field, names.iter().copied());
@@ -504,16 +552,31 @@ impl Body<'_> {
         }
         let missing: Vec<String> = fields
             .iter()
-            .filter(|f| !given.contains_key(&f.name))
+            .filter(|f| !given.contains_key(&f.name) && filled.as_deref() != Some(f.name.as_str()))
             .map(|f| format!("`{}`", f.name))
             .collect();
         if missing.is_empty() {
             return;
         }
+        // A `DecodeProblem` only ever comes from `json.read`'s `mismatch`
+        // (area 19), so a failure that declares one is raised nowhere else.
+        let unfilled = fields
+            .iter()
+            .find(|f| is_problem_field(f) && !given.contains_key(&f.name));
         let first = missing[0].trim_matches('`').to_string();
-        let next = match record {
-            Some(_) => format!("Add `{first}: ...` to the block"),
-            None => format!("Give its fields in a block: `{failure} {{ {first}: ... }}`"),
+        let next = match (unfilled, record) {
+            (Some(_), _) => format!(
+                "Map `json.read`'s `mismatch` to `{failure}` on its own, or raise a failure that doesn't declare `problem` here"
+            ),
+            (None, Some(_)) => format!("Add `{first}: ...` to the block"),
+            (None, None) => format!("Give its fields in a block: `{failure} {{ {first}: ... }}`"),
+        };
+        let reason = match unfilled {
+            Some(field) => format!(
+                "`{failure}` declares `{}: DecodeProblem`, which only a failure mapped from `json.read`'s `mismatch` receives, and nothing here fills it.",
+                field.name
+            ),
+            None => "A failure is raised with every field its `client` and `internal` blocks declare, so the client and the log always get them.".to_string(),
         };
         self.out.push(
             Diagnostic::new(
@@ -521,7 +584,7 @@ impl Body<'_> {
                 format!("`{failure}` is missing {}", crate::and_list(&missing)),
             )
             .at(head_span, "fields missing")
-            .reason("A failure is raised with every field its `client` and `internal` blocks declare, so the client and the log always get them.")
+            .reason(reason)
             .next(next),
         );
     }
@@ -630,8 +693,19 @@ impl Body<'_> {
                     self.facts.reaches.get(&node_key(call.syntax())),
                     Some(Reach::Construct(_) | Reach::Std(jadpo_std::Op::TextParse | jadpo_std::Op::JsonRead))
                 ));
+                let reads = matches!(&inner, Expr::CallExpr(call) if matches!(
+                    self.facts.reaches.get(&node_key(call.syntax())),
+                    Some(Reach::Std(jadpo_std::Op::JsonRead))
+                ));
                 for arm in &arms {
-                    let failure = arm.value.as_ref().and_then(|v| self.failure_given(v));
+                    // What a mistyped `json.read` would have filled isn't
+                    // reported as missing too.
+                    let fills = (reads && (arm.key == "mismatch" || arm.key == "invalid"))
+                        .then(|| (arm.key.as_str(), arm.key_span.clone()));
+                    let failure = arm
+                        .value
+                        .as_ref()
+                        .and_then(|v| self.failure_given_from(v, fills));
                     if arm.key == "invalid" && builds {
                         continue;
                     }
@@ -915,8 +989,40 @@ impl Body<'_> {
         // A misspelt or repeated key is reported on its own: what it was
         // meant to cover is unclear, so coverage isn't judged.
         let mut unsure = false;
+        // `json.read`'s `mismatch` fills a `problem: DecodeProblem` field
+        // of the failure it maps to (area 19, "Data formats"): its own
+        // arm's, or `invalid:`'s when that covers `mismatch` alone.
+        let reads = matches!(attempt.expr(), Some(Expr::CallExpr(call)) if matches!(
+            self.facts.reaches.get(&node_key(call.syntax())),
+            Some(Reach::Std(jadpo_std::Op::JsonRead))
+        ));
+        let own: Vec<&str> = arms
+            .iter()
+            .filter(|arm| arm.key != "invalid")
+            .map(|arm| arm.key.as_str())
+            .collect();
+        let rest: Vec<&String> = breakable
+            .iter()
+            .filter(|key| !own.contains(&key.as_str()))
+            .collect();
+        let invalid_fills = !rest.is_empty() && rest.iter().all(|key| *key == "mismatch");
         for arm in arms {
-            let failure = arm.value.as_ref().and_then(|v| self.failure_given(v));
+            let fills = (reads
+                && (arm.key == "mismatch" || (arm.key == "invalid" && invalid_fills)))
+                .then(|| (arm.key.as_str(), arm.key_span.clone()));
+            let filling = fills.is_some();
+            let failure = arm
+                .value
+                .as_ref()
+                .and_then(|v| self.failure_given_from(v, fills));
+            if let Some(failure) = &failure
+                && filling
+                && self.receives_problem(failure)
+            {
+                self.facts
+                    .receives
+                    .insert((node_key(attempt.syntax()), arm.key.clone()));
+            }
             if let Some(failure) = &failure {
                 self.leave(failure, span.clone(), "mapped here");
                 self.mapping_kind(arm, failure, "invalid_value");
@@ -1419,4 +1525,15 @@ impl Body<'_> {
             );
         }
     }
+}
+
+/// Whether `field` is the one a failure mapped from `json.read`'s
+/// `mismatch` receives (area 19, "Data formats"): `problem:
+/// DecodeProblem`.
+fn is_problem_field(field: &FieldDef) -> bool {
+    field.name == jadpo_std::http::DECODE_PROBLEM_FIELD
+        && matches!(
+            &field.declared,
+            Ty::Opaque(name, args) if name == jadpo_std::http::DECODE_PROBLEM && args.is_empty()
+        )
 }
