@@ -65,7 +65,8 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
         ("List", 1) => Some(Kind::List),
         ("Set", 1) => Some(Kind::Set),
         ("Map", 2) => Some(Kind::Map),
-        ("Function", 2) => Some(Kind::Function),
+        ("Function", 2 | 3) => Some(Kind::Function),
+        (jadpo_std::RANGE, 1) => Some(Kind::Range),
         ("Number", 0) => Some(Kind::Number),
         (variable, 0)
             if variable.len() == 1 && variable.chars().all(|c| c.is_ascii_uppercase()) =>

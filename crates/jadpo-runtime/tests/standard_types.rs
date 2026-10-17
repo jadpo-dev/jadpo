@@ -81,6 +81,66 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
             });
             (codecs, validators, vec![shape])
         }
+        // A range of its examples' item type: an object of two ends, each
+        // the item or `null` for an open end.
+        Holds::Range => {
+            let item = entry
+                .examples
+                .of
+                .and_then(jadpo_std::standard_type)
+                .and_then(|item| match item.holds {
+                    Holds::Builtin(builtin) => Some(builtin),
+                    _ => None,
+                })
+                .expect("a range's examples hold a built-in type");
+            let codecs = vec![
+                Codec::Object {
+                    shape: ShapeId(0),
+                    fields: vec![CodecId(1), CodecId(1)],
+                },
+                Codec::Nullable(CodecId(2)),
+                scalar(item, 0),
+            ];
+            let plans = jadpo_std::RANGE_FIELDS
+                .iter()
+                .map(|name| FieldPlan {
+                    key: format!("field {}.{name}", entry.name),
+                    name: (*name).to_string(),
+                    validator: ValidatorId(0),
+                    omittable: false,
+                    absent: None,
+                    none_left_out: false,
+                    section: None,
+                })
+                .collect();
+            let shape = Shape::new(&ShapePlan {
+                ty: entry.name.to_string(),
+                variant: None,
+                fields: plans,
+            });
+            (
+                codecs,
+                vec![Validator::new(Some(item), Vec::new())],
+                vec![shape],
+            )
+        }
+    }
+}
+
+/// The type name `text.parse` is given for the entry's examples: its own,
+/// or with its examples' type argument (`Range<CalendarDate>`).
+fn parsed_as(entry: &StandardType) -> String {
+    match entry.examples.of {
+        Some(item) => format!("{}<{item}>", entry.name),
+        None => entry.name.to_string(),
+    }
+}
+
+/// An example read from its canonical text, as `text.parse` reads it.
+fn read(entry: &StandardType, text: &str) -> Result<Value, Fault> {
+    match entry.holds {
+        Holds::Range => standard::parse(text, &parsed_as(entry)),
+        _ => standard::read(entry, text),
     }
 }
 
@@ -102,7 +162,7 @@ fn every_standard_type_meets_the_contract() {
         let mut values = Vec::new();
         for (text, shown) in entry.examples.valid {
             // Canonical text, both ways.
-            let value = standard::read(entry, text)
+            let value = read(entry, text)
                 .unwrap_or_else(|fault| panic!("{name}: `{text}` reads ({fault:?})"));
             assert_eq!(
                 standard::canonical(entry, &value).as_deref(),
@@ -115,12 +175,18 @@ fn every_standard_type_meets_the_contract() {
                 "{name}: `text.from` gives the canonical text"
             );
             assert_eq!(
-                standard::parse(text, name),
+                standard::parse(text, &parsed_as(entry)),
                 Ok(value.clone()),
                 "{name}: `text.parse` reads it"
             );
-            // For people, in en_gb, with the options the type takes.
-            let zone = if entry.format_option("zone").is_some() {
+            // For people, in en_gb, with the options the type takes: a
+            // range's are its item type's.
+            let formatted = entry
+                .examples
+                .of
+                .and_then(jadpo_std::standard_type)
+                .unwrap_or(entry);
+            let zone = if formatted.format_option("zone").is_some() {
                 london()
             } else {
                 Value::None
@@ -195,7 +261,7 @@ fn every_standard_type_meets_the_contract() {
         }
         for text in entry.examples.malformed {
             assert_eq!(
-                standard::read(entry, text),
+                read(entry, text),
                 Err(Fault::Broke(RuleKey::Malformed)),
                 "{name}: `{text}` is malformed"
             );

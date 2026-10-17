@@ -158,8 +158,8 @@ fn group_by_s_map_is_read_by_key() {
     };
     let (rye, bap, spelt) = (batch("Rye", 2), batch("Bap", 1), batch("Spelt", 2));
     let day = Value::list(vec![rye.clone(), bap.clone(), spelt.clone()]);
-    let shelves = run(Op::ListGroupBy, &[day], None, &mut |item| match item {
-        Value::Record(record) => record
+    let shelves = run(Op::ListGroupBy, &[day], None, &mut |given| match given {
+        [Value::Record(record)] => record
             .fields
             .iter()
             .find(|(field, _)| &**field == "shelf")
@@ -243,5 +243,107 @@ fn the_range_operations_give_the_page_s_values() {
     assert_eq!(
         call(Op::RangeIntersection, &[morning, nothing]),
         Value::None
+    );
+}
+
+/// `on_show` and `restocked`: `map.filter` and `map.map_values` give their
+/// two-parameter function each key and its value, in the canonical order
+/// of the keys (chunk 5.5c2).
+#[test]
+fn filter_and_map_values_are_given_each_key_and_value() {
+    let shop = stock(&[("Bap", 0), ("Rye", 4), ("Spelt", 2)]);
+    let mut seen = Vec::new();
+    let shown = run(
+        Op::MapFilter,
+        std::slice::from_ref(&shop),
+        None,
+        &mut |given| {
+            seen.push(given.to_vec());
+            match given {
+                [loaf, Value::Int(count)] => {
+                    Some(Value::Bool(*count > 0 && *loaf != Value::text("Spelt")))
+                }
+                _ => None,
+            }
+        },
+    )
+    .unwrap_or_else(|fault| panic!("{fault:?}"));
+    assert_eq!(shown, stock(&[("Rye", 4)]));
+    assert_eq!(
+        seen,
+        vec![
+            vec![Value::text("Bap"), Value::Int(0)],
+            vec![Value::text("Rye"), Value::Int(4)],
+            vec![Value::text("Spelt"), Value::Int(2)],
+        ],
+        "in the canonical order of the keys"
+    );
+    let restocked = run(
+        Op::MapMapValues,
+        &[stock(&[("Bap", 0), ("Rye", 4)])],
+        None,
+        &mut |given| match given {
+            [_, Value::Int(count)] => Some(Value::Int(count + 6)),
+            _ => None,
+        },
+    )
+    .unwrap_or_else(|fault| panic!("{fault:?}"));
+    assert_eq!(restocked, stock(&[("Bap", 6), ("Rye", 10)]));
+    for op in [Op::MapFilter, Op::MapMapValues] {
+        assert_eq!(
+            run(op, std::slice::from_ref(&shop), None, &mut |_| None),
+            Err(jadpo_value::Fault::Stopped),
+            "{op:?}"
+        );
+    }
+}
+
+/// `project=generic-ranges`: a `Range<T>` holds its start and not its end,
+/// and an open end holds everything on its side (chunk 5.5c2).
+#[test]
+fn a_range_of_any_ordered_type_gives_the_page_s_values() {
+    let band = |start: Option<i64>, end: Option<i64>| {
+        jadpo_value::range::range_of(start.map(Value::Int), end.map(Value::Int))
+    };
+    let large = band(Some(800), None);
+    let medium = band(Some(400), Some(800));
+    let small = band(None, Some(500));
+    let yes = Value::Bool(true);
+    let no = Value::Bool(false);
+    assert_eq!(
+        call(Op::RangeContains, &[large.clone(), Value::Int(800)]),
+        yes
+    );
+    assert_eq!(
+        call(Op::RangeContains, &[medium.clone(), Value::Int(800)]),
+        no
+    );
+    assert_eq!(
+        call(Op::RangeIntersection, &[medium.clone(), large.clone()]),
+        Value::None
+    );
+    assert_eq!(
+        call(Op::RangeIntersection, &[medium.clone(), small.clone()]),
+        band(Some(400), Some(500))
+    );
+    assert_eq!(call(Op::RangeOverlaps, &[small, medium]), yes);
+    assert_eq!(
+        jadpo_value::standard::from(&large),
+        Ok(Value::text("800/.."))
+    );
+    assert_eq!(
+        jadpo_value::standard::format(
+            &band(Some(1200), None),
+            &jadpo_value::locale::value(
+                jadpo_std::variant_ordinal(jadpo_std::LOCALE, "en_gb").unwrap()
+            ),
+            &Value::None,
+            &Value::None
+        ),
+        Ok(Value::text("1,200 – …"))
+    );
+    assert_eq!(
+        jadpo_value::standard::parse("800/..", "Range<Int>"),
+        Ok(large)
     );
 }

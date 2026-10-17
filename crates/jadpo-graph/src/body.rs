@@ -347,9 +347,10 @@ pub enum Expr {
         /// `as:`: the caller it signs in as (area 8).
         caller: Option<SiteId>,
     },
-    /// `item -> expression`, given to a collection operation.
+    /// `item -> expression`, or `(key, value) -> expression`, given to a
+    /// standard operation: its parameters in order.
     Inline {
-        param: Option<LocalId>,
+        params: Vec<LocalId>,
         body: Option<SiteId>,
     },
     /// `config.<name>`: a setting's value, read when the application

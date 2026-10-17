@@ -6,7 +6,9 @@
 // In these stubs a single capital letter (`T`, `U`, `K`) stands for any
 // type, fixed by the arguments at each call: the standard library's
 // signatures are the only generic ones (area 3). `Function<T, U>` is an
-// argument written inline as `item -> expression` (area 3); `Number` is any
+// argument written inline as `item -> expression` (area 3), and
+// `Function<T, U, V>` one with two parameters, `(a, b) -> expression`,
+// which only a standard operation takes (area 19); `Number` is any
 // type built on `Int` or `Decimal`, and a built-in representation such as
 // `Int` is any type built on it, since operations work on the
 // representation as operators do. Each exists only here. What a stub can't
@@ -92,4 +94,8 @@ public library list {
 
     /// Each key `key` gives, with its items in order.
     function group_by(items: List<T>, key: Function<T, K>) -> Map<K, List<T>> {}
+
+    /// `each` applied to the items of `first` and `second` at each
+    /// position, in order, as long as the shorter list.
+    function zip_with(first: List<T>, second: List<U>, each: Function<T, U, V>) -> List<V> {}
 }

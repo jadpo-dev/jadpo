@@ -51,9 +51,9 @@ to close them, and says what is left out on purpose and why.
 169 operations in all: 28 decided in areas 2, 3 and 10, 8 file helpers decided with batches (area 12), and 133 decided here, beside the operators of the standard operator table. On top of them every
 standard type has the contract's baseline (construction, `text.parse`,
 `text.format`, `text.from`, JSON, storage, `==` and order), generated, not
-counted per type. Of the new operations, 3 wait on two-parameter inline
-functions, 8 on maths on `Decimal` (question 18) and 1 on keys held as
-data. The geospatial and AI areas' operations are counted in those areas.
+counted per type. Of the new operations, 8 wait on maths on `Decimal`
+(question 18) and 1 on keys held as data; the 3 that waited on
+two-parameter inline functions were built in chunk 5.5c2. The geospatial and AI areas' operations are counted in those areas.
 
 ## Shared vocabulary types
 
@@ -95,7 +95,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 13 of them built already (bold); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: three are built, and question 22 decided the other 22.
+Decided 2026-10-17 (Richard): 247 types, 14 of them built already (bold; `Range<T>` in chunk 5.5c2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: three are built, and question 22 decided the other 22.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -117,7 +117,7 @@ exception to the rule.
 | Commerce and logistics (20) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, `HsCode`, `Incoterm` (enum), `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` | `units`, `media` |
 | Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), `LocalTime`, `LocalDateTime`, `Month` (enum), `YearMonth`, `Year`, `Quarter`, `IsoWeek`, `UtcOffset`, `DateRange`, **`InstantRange`**, `CalendarPeriod`, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` | `temporal`, `range` |
 | Physical quantities (17) | `PhysicalLength`, `Area`, `Volume`, `Angle`, `Mass`, `Pressure`, `Energy`, `Power`, `Temperature`, `TemperatureDifference`, `Speed`, `Frequency`, `Voltage`, `Current`, `Illuminance`, `SoundLevel`, `Concentration` | `units` |
-| Maths and data (8) | `Percentage`, `Ratio`, `Fraction`, `Range<T>`, `DataSize`, `Bitrate`, `Vector`, `Embedding` | `range`, `units`; AI area |
+| Maths and data (8) | `Percentage`, `Ratio`, `Fraction`, **`Range<T>`**, `DataSize`, `Bitrate`, `Vector`, `Embedding` | `range`, `units`; AI area |
 | Health (9) | `BloodType` (enum), `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` (enum) | |
 | Media and visual (15) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize` (enum), `ExifOrientation` (enum), `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating` | `colour`, `media` |
 | Web and network (23) | **`Url`**, `UrlPath`, `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `WebOrigin`, `HttpMethod` (enum), `HttpStatus`, `HttpHeaderName`, **`FileType`**, `UserAgent`, `ProblemDetails`, `JsonPointer`, `Cookie`, `UtmParameters`, **`IpAddress`**, `Cidr`, `NetworkPort`, `MacAddress`, `Imei`, `Emoji`, `PushToken` | `web` |
@@ -181,7 +181,9 @@ contract adds 2 names, not 700.
 > `jadpo-std`'s `standard` module, which the three operations, JSON,
 > storage and `<` read, and one harness runs every type through. Each
 > later group arrives as stubs and entries ("Chosen in chunk 5.5a", under
-> "Review").
+> "Review"). Chunk 5.5c2 added `Range<T>`, the first that takes a type
+> argument, whose entry's examples name the type they hold ("Chosen in
+> chunk 5.5c2").
 
 A form sends a quantity as text, an order's time goes into a log line as
 its canonical text, and a day, a duration and a zone are shown to people
@@ -379,7 +381,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `CalendarDate`, `Duration`, `Email`, `FileType`, `Instant`, `InstantRange`, `IpAddress`, `Locale`, `Url`, `Uuid`, `Weekday`, `Zone`, `ZonedTime` |
+| 0.1.0 | `CalendarDate`, `Duration`, `Email`, `FileType`, `Instant`, `InstantRange`, `IpAddress`, `Locale`, `Range`, `Url`, `Uuid`, `Weekday`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -640,7 +642,7 @@ is written inline, `item -> expression` (area 3).
 | `concat(first, second)` | `List<T>`, `first`'s items then `second`'s | | none |
 | `flatten(lists)` | `List<T>` from a `List<List<T>>`, in order | | none |
 | `group_by(items, key)` | `Map<K, List<T>>`: each key with its items in order | | none |
-| `zip_with(first, second, (a, b) -> ...)` | `List<U>`, pairing items by position, as long as the shorter. Waits for two-parameter inline functions | | none |
+| `zip_with(first, second, (a, b) -> ...)` | `List<U>`, pairing items by position, as long as the shorter | | none |
 
 - **No push or pop.** Values never change (area 2), so adding is
   `list.append(items, item)`, a new list, and taking the last off is
@@ -666,8 +668,7 @@ is written inline, `item -> expression` (area 3).
   `reverse` express every order a key can, and a comparator that isn't
   consistent gives different orders on different targets).
 
-A day's baking, through the list operations built so far (chunk 5.5b;
-`zip_with` waits for two-parameter inline functions in 5.5c2):
+A day's baking, through every list operation (chunks 5.5b and 5.5c2):
 
 ```jadpo check project=list-operations
 type BatchName = Text {
@@ -696,6 +697,8 @@ type Batch = Object {
     price: LoafPrice
 }
 
+type OverPlan = Bool {}
+
 /// The flour a day's batches take. Items never below zero add up to a sum
 /// never below zero, so building `Grams` from it needs no arm.
 function flour_needed(batches: List<Batch>) -> Grams {
@@ -716,6 +719,12 @@ function heaviest(batches: List<Batch>) -> Batch? {
 /// The batches on each shelf, in baking order.
 function by_shelf(batches: List<Batch>) -> Map<Shelf, List<Batch>> {
     return list.group_by(batches, batch -> batch.shelf)
+}
+
+/// Whether each batch came out heavier than planned, batch by batch: a
+/// two-parameter inline function is given one item from each list.
+function over_plan(batches: List<Batch>, goals: List<Grams>) -> List<OverPlan> {
+    return list.zip_with(batches, goals, (batch, goal) -> OverPlan(batch.grams > goal))
 }
 ```
 
@@ -770,6 +779,8 @@ test "list operations give new lists and keep the items as they are" {
     assert list.append([rye], bap) == [rye, bap]
     assert list.concat([rye], [bap, spelt]) == day
     assert list.flatten([[rye], [], [bap, spelt]]) == day
+    assert over_plan(day, [700, 100, 800]) == [true, false, false]
+    assert over_plan(day, [700]) == [true]  // as long as the shorter
 }
 
 test "group_by keeps each shelf's batches in baking order" {
@@ -924,8 +935,8 @@ Each operation is called as `map.<name>`. All return a new map.
 | `with(entries, key, value)` | `Map<K, V>` with `key` set to `value`, added or replaced | | none |
 | `without(entries, key)` | `Map<K, V>` without `key` | | none |
 | `merge(first, second)` | `Map<K, V>` with both; `second` wins where both have a key | | none |
-| `filter(entries, (key, value) -> ...)` | `Map<K, V>`, the entries accepted. Waits for two-parameter inline functions | | none |
-| `map_values(entries, (key, value) -> ...)` | `Map<K, U>`. Waits for two-parameter inline functions | | none |
+| `filter(entries, (key, value) -> ...)` | `Map<K, V>`, the entries accepted | | none |
+| `map_values(entries, (key, value) -> ...)` | `Map<K, U>`, each key with the value given for it | | none |
 
 - **A map is walked through its keys:** `for key in map.keys(prices)`,
   in canonical order.
@@ -939,9 +950,9 @@ Each operation is called as `map.<name>`. All return a new map.
   identifiers apart, and hide which field policy and personal-data marks
   apply to. Keys known only while running are what a `Map` is for.
 
-A shop's stock, through the map operations built so far (chunk 5.5c;
-`filter` and `map_values` wait for two-parameter inline functions in
-5.5c2):
+A shop's stock, through every map operation (chunks 5.5c and 5.5c2);
+`filter` and `map_values` give their inline function each entry's key and
+value, in the canonical order of the keys:
 
 ```jadpo check project=map-operations
 type Loaf = Text {
@@ -978,6 +989,16 @@ function sold_out(stock: Map<Loaf, Stock>) -> List<Loaf> {
 function on_shelves(stock: Map<Loaf, Stock>) -> Stock {
     return Stock(list.sum(map.values(stock)))
 }
+
+/// The loaves to put out: any with some left, but never `withdrawn`.
+function on_show(stock: Map<Loaf, Stock>, withdrawn: Loaf) -> Map<Loaf, Stock> {
+    return map.filter(stock, (loaf, count) -> count > 0 and loaf != withdrawn)
+}
+
+/// Each loaf's stock once a tray of `per_tray` more arrives for it.
+function restocked(stock: Map<Loaf, Stock>, per_tray: Stock) -> Map<Loaf, Stock> {
+    return map.map_values(stock, (loaf, count) -> Stock(count + per_tray))
+}
 ```
 
 ```jadpo check project=map-operations file=main.test.jadpo
@@ -1001,6 +1022,9 @@ test "map operations give new maps" {
     assert delivered(stock, "Spelt", 3) == map.with(stock, "Spelt", 3)
     assert sold_out(stock) == ["Bap"]
     assert on_shelves(stock) == 4
+    var three: Map<Loaf, Stock> = map.with(stock, "Spelt", 2)
+    assert on_show(three, "Spelt") == map.with(no_stock, "Rye", 4)
+    assert restocked(stock, 6) == map.with(map.with(no_stock, "Bap", 6), "Rye", 10)
 }
 ```
 
@@ -1021,10 +1045,11 @@ Stored as PostgreSQL's range types (`daterange`, `tstzrange`,
 | `range.overlaps(a, b)` | `Bool`: the two share at least one value | | `a && b` |
 | `range.intersection(a, b)` | `Range<T>?`, the shared part; `none` when they don't overlap | | `NULLIF(a * b, 'empty')` |
 
-The three operations take an `InstantRange` until `Range<T>` comes to the
-contract in chunk 5.5c2 and `DateRange` with the time types in 5.5k. An
+The three operations take a `Range<T>` or an `InstantRange` (chunk
+5.5c2), and `DateRange` with the time types in 5.5k; a call's ranges are
+all one range type, and a range it gives is that type too. An
 `InstantRange` holds every instant from its start up to, not including,
-its end, so two bookings that meet at the hour don't lunch_overlap, and one that
+its end, so two bookings that meet at the hour don't overlap, and one that
 starts and ends together holds nothing:
 
 ```jadpo check project=range-operations
@@ -1100,6 +1125,74 @@ test "ranges include their start and exclude their end" {
     assert not double_booked(morning, nothing)
     assert common_time(morning, lunch) == lunch_overlap
     assert common_time(morning, afternoon) == none
+}
+```
+
+A `Range<T>` is written `Range { start: ..., end: ... }` where a range is
+expected, both ends given, `none` for an open one. It holds its start and
+not its end, as an `InstantRange` does, and an open end holds everything
+on its side; its canonical text writes an open end `..`, as ISO 8601-2
+does (chunk 5.5c2):
+
+```jadpo check project=generic-ranges
+type Grams = Int {
+    min: 0
+}
+
+type LoafName = Text {
+    min_length: 1
+}
+
+type Loaf = Object {
+    name: LoafName
+    weight: Grams
+}
+
+type InBand = Bool {}
+
+/// The weights sold as large: 800 g and up, with no upper limit.
+function large() -> Range<Grams> {
+    return Range {
+        start: 800
+        end: none
+    }
+}
+
+/// Whether a loaf's weight is in `band`.
+function in_band(loaf: Loaf, band: Range<Grams>) -> InBand {
+    return InBand(range.contains(band, loaf.weight))
+}
+
+/// The weights two bands share, if any.
+function common_weights(first: Range<Grams>, second: Range<Grams>) -> Range<Grams>? {
+    return range.intersection(first, second)
+}
+```
+
+```jadpo check project=generic-ranges file=main.test.jadpo
+test "a range of any ordered type, either end open" {
+    var medium: Range<Grams> = Range {
+        start: 400
+        end: 800
+    }
+    var small: Range<Grams> = Range {
+        start: none
+        end: 500
+    }
+    var both: Range<Grams> = Range {
+        start: 400
+        end: 500
+    }
+    var rye: Loaf = Loaf {
+        name: "Rye"
+        weight: 800
+    }
+    assert in_band(rye, large())
+    assert not in_band(rye, medium)  // a range doesn't hold its end
+    assert common_weights(medium, large()) == none  // they meet at 800
+    assert common_weights(medium, small) == both
+    assert range.overlaps(small, medium)
+    assert text.from(large()) == "800/.."
 }
 ```
 
@@ -2093,7 +2186,7 @@ operations it unblocks kept on this page.
 |---|---|---|---|---|
 | `for` can't walk sets or maps | `for` takes a `Set`, in area 2's canonical order; maps through `map.keys` | 2, 3 | 5.5c, built | Walking sets and maps |
 | No map literal | `[]` where a map is expected; a literal with entries designed in area 2 | 2 | 5.5c, built | Building maps |
-| Inline functions take one parameter | Two parameters, `(a, b) -> ...`, for standard operations only (area 3's question 13 widened) | 3 | 5.5c2 | `list.zip_with`, `map.filter`, `map.map_values` |
+| Inline functions take one parameter | Two parameters, `(a, b) -> ...`, for standard operations only (area 3's question 13 widened) | 3 | 5.5c2, built | `list.zip_with`, `map.filter`, `map.map_values` |
 | No `Float` and no maths | Maths on `Decimal` with `scale:` and `rounding:`, deterministic everywhere; still no `Float` | 2 (question 8 there) | 5.5e, built | 8 `decimal` operations; geospatial distance |
 | Code can't read a secret | Opaque key settings, used only as a `crypto` call's `key:` | 10 | 5.5q | `crypto` |
 | Keys held as data (per device, per person) | An encrypted field of a key type, usable only as `key:` | 10, 15 | With encrypted fields, after the first build (personal data) | Per-device signatures, `crypto.verify_totp` |
@@ -2334,12 +2427,12 @@ check failed: 1 error, 1 file
 
 | Feature | Status |
 |---|---|
-| `list.`, formerly `collection.` | `count`, `contains`, `map` and `filter` decided in area 2; renamed from `collection.` (question 6) and joined by the 21 operations that need no language change in 5.5b; `zip_with` in 5.5c2 |
-| `set.`, `map.`, `range.`; `for` over a set; `[]` as an empty map | Decided 2026-10-17 (question 8); built in 5.5c: the 7 `set` operations, the 8 `map` operations that take no inline function, and the 3 `range` operations on `InstantRange`; `map.filter`, `map.map_values` and `Range<T>` in 5.5c2 |
+| `list.`, formerly `collection.` | `count`, `contains`, `map` and `filter` decided in area 2; renamed from `collection.` (question 6) and joined by the 21 operations that need no language change in 5.5b, and `zip_with` in 5.5c2 |
+| `set.`, `map.`, `range.`; `for` over a set; `[]` as an empty map | Decided 2026-10-17 (question 8); built in 5.5c: the 7 `set` operations, the 8 `map` operations that take no inline function, and the 3 `range` operations on `InstantRange`; built in 5.5c2: `map.filter`, `map.map_values`, and `Range<T>` with open ends, which the `range` operations take |
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here, built in 5.5k |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, each group of types in 5.5h to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, each group of types in 5.5h to 5.5s |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2: `type.standard_clash`, `jadpo fix`'s swap and rename, the editor's swap |
 | `Email`, `Url`, `IpAddress`, `FileType`, `InstantRange` | Decided (areas 2, 10, 16) and built |
@@ -2510,9 +2603,10 @@ under "Errors").
 
 ### Chosen in chunk 5.5c
 
-- **The range operations take an `InstantRange`** until `Range<T>` comes
-  to the contract (5.5c2) and `DateRange` with the time types (5.5k): the
-  only range type built. Their stubs are `crates/jadpo-check/std/range.jadpo`.
+- **The range operations take an `InstantRange`**, the only range type
+  built until `Range<T>` came to the contract in 5.5c2; `DateRange` comes
+  with the time types (5.5k). Their stubs are
+  `crates/jadpo-check/std/range.jadpo`.
 - **An empty range holds nothing and overlaps nothing.** An
   `InstantRange` whose start is its end contains no instant, so
   `range.overlaps` is `false` and `range.intersection` `none` for it, as
@@ -2537,6 +2631,57 @@ under "Errors").
 - **`set` and `map` are reserved** with `range` (question 30); no page,
   example or test used either name. `collection.` on a set or a map now
   checks as the `set.` or `map.` operation it moved to.
+
+### Chosen in chunk 5.5c2
+
+- **Two parameters are written in parentheses,** `(key, value) -> ...`,
+  and only that way; one parameter stays `item -> ...`, never `(item) ->`.
+  Each takes the type of the value the operation gives in its place:
+  `list.zip_with` an item from each list, `map.filter` and
+  `map.map_values` an entry's key and its value, in the canonical order of
+  the keys. Their stubs write the function `Function<K, V, U>`, the last
+  type its result. Neither parameter has to be used, as for one.
+- **A different number of parameters than the operation gives** is a new
+  rule, `type.inline_function_parameters` (area 3), in both directions; two
+  parameters anywhere else is `type.inline_function_placement`, whose
+  reason then names the three operations that take two.
+- **`Range<T>` holds its start and not its end,** as `InstantRange` does
+  and as PostgreSQL's canonical ranges do; `DateRange` will include its
+  end, saying so in its own type. An open end (`none`) holds everything on
+  its side, so two open ends hold every value; two ranges that only meet
+  don't overlap; a range whose start is its end holds nothing.
+- **`T` is a type `<` orders:** one built on `Int`, `Decimal`, `Instant`,
+  `CalendarDate` or `Duration`. Any other is area 3's
+  `type.ordering_operand`, where the type is written or where a literal's
+  ends say it; `Range` with no type argument is `type.type_argument_count`.
+  `Text` isn't one: `<` doesn't take it.
+- **A range literal is `Range { start: ..., end: ... }`,** both ends
+  given, `none` for an open one. Where a `Range<T>` is expected its ends
+  are checked as `T?`; elsewhere its first end that isn't `none` gives
+  `T`. Its ends are read as `range.start` and `range.end`, each a `T?`.
+  Nothing checks that the start isn't after the end, as for an
+  `InstantRange`, until named rules across fields (5.5t).
+- **A `range` call's ranges are all one range type,** since each keeps its
+  own end rule: an `InstantRange` and a `Range<Instant>` don't mix
+  (`type.mismatch`). A range it gives is that range type, so
+  `range.intersection` of two `InstantRange`s is an `InstantRange?`.
+  `range.contains`' value is built on the range's item type.
+- **The contract.** Its canonical text is each end's canonical text joined
+  by `/`, an open end written `..` as ISO 8601-2 writes one
+  (`2026-10-01/..`); a start after its end is `malformed`. JSON is an
+  object of `start` and `end`, `null` for an open end. Storage is its JSON,
+  as `InstantRange`'s is. `text.format` shows each end as its item type is
+  shown, with the item type's options, joined by ` – `, and an open end as
+  `…`; a range of numbers shows each end as chunk 5.5d shows a number,
+  and takes no options.
+  `text.parse(raw, as: Range<T>)` reads a range of a standard type or a
+  representation written as itself (`Range<Int>`, `Range<CalendarDate>`):
+  a range of a type with rules of its own (`Range<Grams>`) is
+  `type.mismatch`, since nothing would check those rules on its ends. It
+  isn't ordered, and `type.standard_exists` matches no shape for it, since
+  `InstantRange` already claims a start and an end. Its data entry's
+  examples are ranges of dates (`Examples::of`), and `Holds::Range`,
+  `TextForm::Range` and `FormatKey::Range` are the code it added.
 
 ### Chosen in chunk 5.5d
 
@@ -3069,7 +3214,7 @@ first; each group of types then arrives with its baseline and its extras.
 - **5.5c2 Two-parameter inline functions and `Range<T>`** `opus · high`:
   `(a, b) -> ...` for standard operations, with `list.zip_with`,
   `map.filter` and `map.map_values`; `Range<T>` on the contract, the
-  `range` operations taking it.
+  `range` operations taking it. Built.
 - **5.5d Numbers** `opus · high`: the 8 new `integer` and `decimal`
   operations; `scale:` written out; `Rounding.down`. Built, with
   `text.format` for numbers.

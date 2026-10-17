@@ -57,15 +57,16 @@ pub use value::{Decimal, QUOTIENT_PLACES, Record, Value, Variant, Zoned};
 
 /// Runs one standard-library operation with the values of its parameters
 /// in table order, its inline-function parameter left out; `each` runs the
-/// call's inline function on one item, and gives no value when it stopped
-/// (the caller knows why: it is [`Fault::Stopped`] here). `locales` is
+/// call's inline function on the values it is given, one item or, for a
+/// two-parameter function (area 19), a pair, and gives no value when it
+/// stopped (the caller knows why: it is [`Fault::Stopped`] here). `locales` is
 /// what the application's `locales { }` declares: the operations that
 /// choose among its locales read it, and every other ignores it.
 pub fn run(
     op: Op,
     args: &[Value],
     locales: Option<&LocalePlan>,
-    each: &mut dyn FnMut(&Value) -> Option<Value>,
+    each: &mut dyn FnMut(&[Value]) -> Option<Value>,
 ) -> Result<Value, Fault> {
     match (op, args) {
         // The locale a header asks for, of the ones the application
@@ -197,7 +198,11 @@ pub fn run(
             | Op::ListSortBy
             | Op::ListSum,
             _,
-        ) => run_list(op, args, each),
+        ) => run_list(op, args, &mut |item| each(std::slice::from_ref(item))),
+        (Op::ListZipWith, [Value::List(first), Value::List(second)]) => {
+            list::zip_with(first, second, each).map(Value::list)
+        }
+        (Op::ListZipWith, _) => Err(Fault::Shape),
         (
             Op::SetContains
             | Op::SetCount
@@ -219,6 +224,13 @@ pub fn run(
             | Op::MapWithout,
             _,
         ) => run_map(op, args),
+        (Op::MapFilter, [Value::Map(entries)]) => {
+            map::filter(entries, each).map(|kept| Value::Map(std::rc::Rc::new(kept)))
+        }
+        (Op::MapMapValues, [Value::Map(entries)]) => {
+            map::map_values(entries, each).map(|given| Value::Map(std::rc::Rc::new(given)))
+        }
+        (Op::MapFilter | Op::MapMapValues, _) => Err(Fault::Shape),
         (Op::RangeContains, [span, value]) => range::contains(span, value).map(Value::Bool),
         (Op::RangeOverlaps, [a, b]) => range::overlaps(a, b).map(Value::Bool),
         (Op::RangeIntersection, [a, b]) => range::intersection(a, b),
@@ -486,8 +498,8 @@ mod tests {
         let stock = Value::Map(std::rc::Rc::new(
             [(Value::Int(1), Value::Int(4))].into_iter().collect(),
         ));
-        let mut double = |item: &Value| match item {
-            Value::Int(n) => Some(Value::Int(n * 2)),
+        let mut double = |given: &[Value]| match given {
+            [Value::Int(n)] => Some(Value::Int(n * 2)),
             _ => None,
         };
         for operation in jadpo_std::OPERATIONS {
@@ -520,7 +532,7 @@ mod tests {
                 }
                 Op::ListSlice => vec![items.clone(), Value::Int(1), Value::Int(1)],
                 Op::ListSum => vec![items.clone(), Value::Int(0)],
-                Op::ListConcat => vec![items.clone(), items.clone()],
+                Op::ListConcat | Op::ListZipWith => vec![items.clone(), items.clone()],
                 Op::ListFlatten => vec![Value::list(vec![items.clone(), items.clone()])],
                 Op::ListAll
                 | Op::ListAny
@@ -543,7 +555,9 @@ mod tests {
                 Op::SetUnion | Op::SetIntersection | Op::SetDifference => {
                     vec![tags.clone(), tags.clone()]
                 }
-                Op::MapCount | Op::MapKeys | Op::MapValues => vec![stock.clone()],
+                Op::MapCount | Op::MapFilter | Op::MapKeys | Op::MapMapValues | Op::MapValues => {
+                    vec![stock.clone()]
+                }
                 Op::MapGet | Op::MapHas | Op::MapWithout => vec![stock.clone(), Value::Int(1)],
                 Op::MapWith => vec![stock.clone(), Value::Int(1), Value::Int(2)],
                 Op::MapMerge => vec![stock.clone(), stock.clone()],
@@ -616,8 +630,10 @@ mod tests {
                 | Op::TemporalInstant
                 | Op::TemporalZone => vec![zoned.clone()],
             };
-            let result = run(operation.op, &args, Some(&plan), &mut |item| {
-                Some(Value::Bool(matches!(item, Value::Int(n) if n % 2 == 1)))
+            let result = run(operation.op, &args, Some(&plan), &mut |given| {
+                Some(Value::Bool(
+                    matches!(given.last(), Some(Value::Int(n)) if n % 2 == 1),
+                ))
             });
             assert!(result.is_ok(), "{} runs", operation.qualified());
         }

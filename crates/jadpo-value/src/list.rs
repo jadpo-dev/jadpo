@@ -296,6 +296,21 @@ pub fn group_by(
     Ok(Value::Map(Rc::new(entries)))
 }
 
+/// A new list of `each` applied to the items of `first` and `second` at
+/// each position, in order, as long as the shorter list (area 19); the
+/// first pair `each` gives no value for stops it.
+pub fn zip_with(
+    first: &[Value],
+    second: &[Value],
+    each: &mut dyn FnMut(&[Value]) -> Option<Value>,
+) -> Result<Vec<Value>, Fault> {
+    first
+        .iter()
+        .zip(second)
+        .map(|(a, b)| each(&[a.clone(), b.clone()]).ok_or(Fault::Stopped))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

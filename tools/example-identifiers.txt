@@ -88,6 +88,7 @@ bakery_recipes
 bakery_view
 baking
 balance
+band
 band_rate
 bap
 basket
@@ -240,6 +241,7 @@ collection_day
 combo
 comment_body
 common_time
+common_weights
 company
 company_chores
 company_id
@@ -306,6 +308,7 @@ daily
 day_count
 days_left
 days_overdue
+dearer
 declare_lost
 decline_reason
 declined_payment
@@ -386,6 +389,7 @@ entry_count
 entry_id
 eur
 eve
+evening
 every_name
 expected_delivery
 export_my_data
@@ -434,6 +438,7 @@ from_flag
 gbp
 give_note
 gluten
+goals
 golden
 grain
 grams
@@ -475,10 +480,12 @@ icing_unreadable
 import_products
 import_recipe
 import_reference
+in_band
 in_either
 in_house_uses
 in_review
 in_shop
+in_stock
 in_store
 incoming_call
 incomplete_receipt
@@ -581,6 +588,7 @@ listing_preview
 load_customer
 loaf
 loaf_count
+loaf_name
 loaf_price
 loan
 loan_changes
@@ -716,6 +724,7 @@ on_menu
 on_payment_succeeded
 on_shelf
 on_shelves
+on_show
 open_bakery
 open_outlet
 open_outlets
@@ -767,6 +776,7 @@ oven_temperature
 ovens
 ovens_lit
 over_maximum
+over_plan
 overdue
 overdue_reminders
 owner
@@ -956,6 +966,7 @@ reserve_item
 reserve_stock
 rested
 restock
+restocked
 retag_todo
 return_book
 returned_at
@@ -1048,6 +1059,7 @@ small
 small_order_fee
 snooze_days
 snooze_todo
+sold
 sold_out
 source_company_id
 southbank
@@ -1233,6 +1245,7 @@ wildcard_failure
 with_delivery
 with_todos
 withdraw_copy
+withdrawn
 work_address
 work_email
 worn

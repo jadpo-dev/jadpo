@@ -1607,7 +1607,9 @@ impl<'a> Walk<'a> {
             }
             Expr::LambdaExpr(lambda) => {
                 self.scopes.push(Vec::new());
-                self.declare(lambda.name(), "parameter");
+                for name in lambda.names() {
+                    self.declare(Some(name), "parameter");
+                }
                 if let Some(body) = lambda.expr() {
                     self.expr(&body);
                 }

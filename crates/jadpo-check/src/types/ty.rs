@@ -71,9 +71,10 @@ pub enum Ty {
     /// Any type built on `Int` or `Decimal`; only in standard-library
     /// signatures.
     Number,
-    /// An argument written inline as `item -> expression`; only in
-    /// standard-library signatures.
-    Function(Box<Ty>, Box<Ty>),
+    /// An argument written inline as `item -> expression`, or with two
+    /// parameters as `(key, value) -> expression`: the parameters' types
+    /// and the result's; only in standard-library signatures.
+    Function(Vec<Ty>, Box<Ty>),
     /// The data a payload variant carries, bound by a `match` arm
     /// (`PaymentOutcome.paid(paid)`): its fields are the variant's
     /// (area 3, question 9).
@@ -91,7 +92,8 @@ impl Ty {
         match self {
             Ty::Error | Ty::Unknown(_) => true,
             Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => inner.has_error(),
-            Ty::Map(key, value) | Ty::Function(key, value) => key.has_error() || value.has_error(),
+            Ty::Map(key, value) => key.has_error() || value.has_error(),
+            Ty::Function(from, to) => from.iter().any(Ty::has_error) || to.has_error(),
             Ty::Opaque(_, args) => args.iter().any(Ty::has_error),
             _ => false,
         }
@@ -102,9 +104,8 @@ impl Ty {
         match self {
             Ty::Unknown(_) => true,
             Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => inner.has_unknown(),
-            Ty::Map(key, value) | Ty::Function(key, value) => {
-                key.has_unknown() || value.has_unknown()
-            }
+            Ty::Map(key, value) => key.has_unknown() || value.has_unknown(),
+            Ty::Function(from, to) => from.iter().any(Ty::has_unknown) || to.has_unknown(),
             _ => false,
         }
     }
@@ -144,7 +145,13 @@ impl fmt::Display for Ty {
                 let args: Vec<String> = args.iter().map(Ty::to_string).collect();
                 write!(f, "{name}<{}>", args.join(", "))
             }
-            Ty::Function(from, to) => write!(f, "{from} -> {to}"),
+            Ty::Function(from, to) => match from.as_slice() {
+                [one] => write!(f, "{one} -> {to}"),
+                many => {
+                    let from: Vec<String> = many.iter().map(Ty::to_string).collect();
+                    write!(f, "({}) -> {to}", from.join(", "))
+                }
+            },
             Ty::Variant(host, variant) => write!(f, "{}.{variant}", shown(host)),
         }
     }

@@ -796,6 +796,8 @@ impl Body<'_> {
         let mut parsed: Option<(Ty, Option<Expr>)> = None;
         // What `list.sum`'s items are built on, which its result is.
         let mut summed: Option<Prim> = None;
+        // The range type a `range` call's ranges are, which its result is.
+        let mut ranged: Option<Ty> = None;
         for ((arg, slot), ty) in args.iter().zip(&slots).zip(actual) {
             let Some(value) = arg.expr() else { continue };
             let Some(slot) = slot else {
@@ -808,7 +810,7 @@ impl Body<'_> {
             if let Ty::Function(from, to) = &param {
                 match &value {
                     Expr::LambdaExpr(lambda) => {
-                        inline.push((lambda.clone(), (**from).clone(), (**to).clone(), *slot))
+                        inline.push((lambda.clone(), from.clone(), (**to).clone(), *slot))
                     }
                     other => {
                         let ty = self.infer(other);
@@ -819,6 +821,15 @@ impl Body<'_> {
                 continue;
             }
             let kind = table.and_then(|op| op.params.get(*slot)).map(|p| p.kind);
+            if kind == Some(jadpo_std::Kind::Range) {
+                let given = match ty {
+                    Some(ty) => ty,
+                    None => self.infer(&value),
+                };
+                let name = params[*slot].0.clone();
+                self.range_argument(&value, &given, &mut ranged, (written, &name));
+                continue;
+            }
             if table
                 .and_then(|op| op.params.get(*slot))
                 .is_some_and(|p| p.written_out)
@@ -893,7 +904,10 @@ impl Body<'_> {
             }
         }
         for (lambda, from, to, slot) in inline {
-            self.inline(&lambda, &from, &to, &mut bound);
+            let name = &params[slot].0;
+            if !self.inline(&lambda, &from, &to, &mut bound, (written, name)) {
+                continue;
+            }
             if table
                 .and_then(|op| op.params.get(slot))
                 .is_some_and(|param| param.ordered)
@@ -1011,6 +1025,14 @@ impl Body<'_> {
         // named type is built back from it by construction.
         if result == Ty::Number {
             return summed.map_or(Ty::Error, Ty::Prim);
+        }
+        // A range is the range type the call's ranges are (area 19).
+        if table.is_some_and(|table| table.result == jadpo_std::Kind::Range) {
+            return match ranged {
+                Some(range) if matches!(result, Ty::Nullable(_)) => range.nullable(),
+                Some(range) => range,
+                None => Ty::Error,
+            };
         }
         substitute(&result, &bound)
     }
@@ -1355,12 +1377,78 @@ impl Body<'_> {
         }
         match (param, self.table.structure(actual)) {
             (Ty::List(p), Ty::List(a)) | (Ty::Set(p), Ty::Set(a)) => self.unify(p, &a, bound),
+            // A range's ends, from `Range<T>` or a standard range type
+            // (area 19).
+            (Ty::Opaque(name, args), actual) if name == jadpo_std::RANGE => {
+                if let ([p], Some(item)) = (args.as_slice(), range_item(&actual)) {
+                    self.unify(p, &item, bound);
+                }
+            }
             (Ty::Nullable(p), a) => self.unify(p, &a, bound),
             (Ty::Map(pk, pv), Ty::Map(ak, av)) => {
                 self.unify(pk, &ak, bound);
                 self.unify(pv, &av, bound);
             }
             _ => {}
+        }
+    }
+
+    /// A range given to a `range` operation (area 19): a `Range<T>` or a
+    /// standard range type (`InstantRange`), of the same range type as the
+    /// call's other ranges, since each keeps its own end rule.
+    fn range_argument(
+        &mut self,
+        value: &Expr,
+        given: &Ty,
+        ranged: &mut Option<Ty>,
+        (written, param): (&str, &str),
+    ) {
+        if given.has_error() {
+            return;
+        }
+        let structure = self.table.structure(given);
+        let nullable = self.table.is_nullable(given);
+        let why = if nullable {
+            Some(format!(
+                "`{given}` may be `none`, and `{written}` takes a range"
+            ))
+        } else if range_item(&structure).is_none() {
+            Some(format!(
+                "`{written}`'s `{param}` takes a `Range<T>` or an `InstantRange`; `{given}` is {}",
+                super::super::literal::what(self.table, given)
+            ))
+        } else {
+            None
+        };
+        if let Some(why) = why {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{given}` can't be used where a range is required"),
+                )
+                .at(self.span(value), format!("this is `{given}`"))
+                .reason(format!("{why}."))
+                .next("Pass a range here"),
+            );
+            return;
+        }
+        match ranged {
+            Some(first) if *first != structure && !first.has_error() => {
+                let first = first.clone();
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_MISMATCH,
+                        format!("`{given}` can't be used where `{first}` is required"),
+                    )
+                    .at(self.span(value), format!("this is `{given}`"))
+                    .reason(format!(
+                        "`{written}`'s ranges are all one range type, since each keeps its own end rule; its first is `{first}`."
+                    ))
+                    .next(format!("Pass a range of the same type, `{first}`, here")),
+                );
+            }
+            Some(_) => {}
+            None => *ranged = Some(structure),
         }
     }
 
@@ -1397,24 +1485,37 @@ impl Body<'_> {
 
     /// An inline function, `item -> expression`, given to a collection
     /// operation: its parameter takes the list's item type, its body is
-    /// one pure expression (area 3, question 13).
+    /// one pure expression (area 3, question 13). With two parameters,
+    /// `(key, value) -> expression`, each takes the type of the value the
+    /// operation gives it in that place (area 19). False when it has a
+    /// different number of parameters than the operation gives, which is
+    /// reported, its body checked with them unknown.
     pub(super) fn inline(
         &mut self,
         lambda: &ast::LambdaExpr,
-        from: &Ty,
+        from: &[Ty],
         to: &Ty,
         bound: &mut BTreeMap<String, Ty>,
-    ) {
+        (written, param): (&str, &str),
+    ) -> bool {
+        let names: Vec<ast::Name> = lambda.names().collect();
+        if names.len() != from.len() {
+            self.inline_parameters(lambda, &names, from.len(), written, param);
+            self.misplaced_body(lambda);
+            return false;
+        }
         let previous = self.context;
         self.context = Context::Inline;
         self.scopes.push(Vec::new());
-        self.declare(
-            lambda.name(),
-            substitute(from, bound),
-            LocalKind::Inline,
-            None,
-            "parameter",
-        );
+        for (name, from) in names.into_iter().zip(from) {
+            self.declare(
+                Some(name),
+                substitute(from, bound),
+                LocalKind::Inline,
+                None,
+                "parameter",
+            );
+        }
         if let Some(body) = lambda.expr() {
             match to {
                 Ty::Var(name) if !bound.contains_key(name) => {
@@ -1430,31 +1531,102 @@ impl Body<'_> {
         }
         self.pop_scope();
         self.context = previous;
+        true
+    }
+
+    /// An inline function given to an operation that gives its function a
+    /// different number of values (area 19): one item at a time, or two
+    /// for `list.zip_with`'s pairs and a map's keys and values.
+    fn inline_parameters(
+        &mut self,
+        lambda: &ast::LambdaExpr,
+        names: &[ast::Name],
+        takes: usize,
+        written: &str,
+        param: &str,
+    ) {
+        let span = self.span(lambda);
+        let number = |n: usize| match n {
+            1 => "one".to_string(),
+            2 => "two".to_string(),
+            n => n.to_string(),
+        };
+        let count = |n: usize| match n {
+            1 => "one parameter".to_string(),
+            n => format!("{} parameters", number(n)),
+        };
+        let shown: Vec<String> = names.iter().filter_map(tree::name_text).collect();
+        let (reason, next) = if takes == 1 {
+            let first = shown.first().map_or("item", String::as_str);
+            (
+                format!(
+                    "`{written}` gives its function one value at a time; two parameters, `(a, b) -> ...`, are only for the operations that give two, `list.zip_with`, `map.filter` and `map.map_values`."
+                ),
+                format!("Write `{first} -> ...`, with one parameter"),
+            )
+        } else {
+            (
+                if written.starts_with("map.") {
+                    format!(
+                        "`{written}` gives its function each entry's key and its value, so it is written `(key, value) -> ...`, with a name for each."
+                    )
+                } else {
+                    format!(
+                        "`{written}` gives its function an item from each list at a time, so it is written `(a, b) -> ...`, with a name for each."
+                    )
+                },
+                if written.starts_with("map.") {
+                    "Write `(key, value) -> ...`, naming both".to_string()
+                } else {
+                    "Write `(a, b) -> ...`, naming both".to_string()
+                },
+            )
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_INLINE_FUNCTION_PARAMETERS,
+                format!(
+                    "`{written}`'s `{param}` takes {}, not {}",
+                    count(takes),
+                    number(names.len())
+                ),
+            )
+            .at(span, count(names.len()))
+            .reason(reason)
+            .next(next),
+        );
     }
 
     /// An inline function anywhere but as an argument to a collection
     /// operation.
     pub(super) fn misplaced_inline(&mut self, lambda: &ast::LambdaExpr) {
         let span = self.span(lambda);
+        let reason = if lambda.names().count() > 1 {
+            "Functions aren't values: `(key, value) -> expression` is written only as an argument to a standard operation that gives its function two values, `list.zip_with`, `map.filter` or `map.map_values`."
+        } else {
+            "Functions aren't values: `item -> expression` is written only as an argument to a standard-library collection operation, such as `list.map` or `list.filter`."
+        };
         self.out.push(
             Diagnostic::new(
                 &rule::TYPE_INLINE_FUNCTION_PLACEMENT,
                 "An inline function is only an argument to a collection operation",
             )
             .at(span, "inline function")
-            .reason("Functions aren't values: `item -> expression` is written only as an argument to a standard-library collection operation, such as `list.map` or `list.filter`.")
+            .reason(reason)
             .next("Write the expression on its own, or pass it to a collection operation"),
         );
+        self.misplaced_body(lambda);
+    }
+
+    /// An inline function's body, checked with its parameters unknown once
+    /// what is wrong with the function is reported.
+    fn misplaced_body(&mut self, lambda: &ast::LambdaExpr) {
         let previous = self.context;
         self.context = Context::Inline;
         self.scopes.push(Vec::new());
-        self.declare(
-            lambda.name(),
-            Ty::Error,
-            LocalKind::Inline,
-            None,
-            "parameter",
-        );
+        for name in lambda.names() {
+            self.declare(Some(name), Ty::Error, LocalKind::Inline, None, "parameter");
+        }
         if let Some(body) = lambda.expr() {
             self.infer(&body);
         }
@@ -1843,6 +2015,21 @@ fn collection_words(ty: &Ty) -> String {
 
 /// The built-in types a parameter takes values built on, when it is
 /// `Number` or a built-in representation in a stub.
+/// The type a range's ends are: `T` for a `Range<T>`, `Instant` for an
+/// `InstantRange`; `None` for anything but a range (area 19).
+pub(super) fn range_item(ty: &Ty) -> Option<Ty> {
+    match ty {
+        Ty::Opaque(name, args) if name == jadpo_std::RANGE => match args.as_slice() {
+            [item] => Some(item.clone()),
+            _ => None,
+        },
+        Ty::Opaque(name, args) if name == jadpo_std::INSTANT_RANGE && args.is_empty() => {
+            Some(Ty::Prim(Prim::Instant))
+        }
+        _ => None,
+    }
+}
+
 fn built_on(param: &Ty) -> Option<&'static [Prim]> {
     match param {
         Ty::Number => Some(&[Prim::Int, Prim::Decimal]),
@@ -1873,8 +2060,12 @@ fn substitute(param: &Ty, bound: &BTreeMap<String, Ty>) -> Ty {
             Box::new(substitute(value, bound)),
         ),
         Ty::Function(from, to) => Ty::Function(
-            Box::new(substitute(from, bound)),
+            from.iter().map(|from| substitute(from, bound)).collect(),
             Box::new(substitute(to, bound)),
+        ),
+        Ty::Opaque(name, args) if !args.is_empty() => Ty::Opaque(
+            name.clone(),
+            args.iter().map(|arg| substitute(arg, bound)).collect(),
         ),
         other => other.clone(),
     }

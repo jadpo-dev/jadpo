@@ -240,6 +240,8 @@ impl Decls<'_> {
                 if names.len() == 1 {
                     let arity = match container_arity(first) {
                         Some(arity) => Some(arity),
+                        // `Range<T>` (area 19, "Ranges").
+                        None if first == jadpo_std::RANGE => Some(1),
                         None if Prim::from_name(first).is_some()
                             || self.table.contains(first)
                             || BASES.contains(&first) =>
@@ -265,7 +267,7 @@ impl Decls<'_> {
                             )
                             .at(span, format!("{} given", args.len()))
                             .reason(match arity {
-                                0 => format!("`{first}` isn't generic: only `List`, `Set` and `Map` take types in `< >`."),
+                                0 => format!("`{first}` isn't generic: only `List`, `Set`, `Map` and `Range` take types in `< >`."),
                                 _ => format!("`{first}` holds values of the type in `< >`, so it needs exactly {arity}."),
                             })
                             .next(format!("Write `{first}` with {needs}")),
@@ -283,6 +285,24 @@ impl Decls<'_> {
                 let mut ok = true;
                 for arg in node.args() {
                     ok &= self.type_node(&arg, false);
+                }
+                // A range's ends are a type `<` orders (area 19).
+                if ok
+                    && names.len() == 1
+                    && first == jadpo_std::RANGE
+                    && let [item] = args.as_slice()
+                {
+                    let item_ty = self.table.resolve(item);
+                    let ordered = !self.table.is_nullable(&item_ty)
+                        && self
+                            .table
+                            .representation(&item_ty)
+                            .is_some_and(|prim| jadpo_std::RANGE_ITEMS.contains(&prim));
+                    if !item_ty.has_error() && !ordered {
+                        let span = self.span(node.syntax());
+                        self.out.push(super::body::range_unordered(&item_ty, span));
+                        return false;
+                    }
                 }
                 ok
             }

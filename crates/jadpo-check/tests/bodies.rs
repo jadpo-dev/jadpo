@@ -129,11 +129,14 @@ fn calls_reach_what_the_check_resolved() {
         panic!();
     };
     let Expr::Inline {
-        param: Some(param),
+        params,
         body: Some(inline),
     } = expr(body, *each)
     else {
         panic!("{:?}", expr(body, *each));
+    };
+    let [param] = params.as_slice() else {
+        panic!("{params:?}");
     };
     assert_eq!(
         body.local(*param).ty,

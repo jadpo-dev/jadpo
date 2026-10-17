@@ -234,3 +234,86 @@ fn a_standard_object_is_built_from_its_fields() {
         span("2026-10-26T11:00:00Z", "2026-10-26T12:00:00Z")
     );
 }
+
+const TWO: &str = "type Label = Text {\n    min_length: 1\n}\n\ntype Weight = Int {\n    min: 0\n}\n\ntype Flag = Bool {}\n\nfunction shown(shelves: Map<Label, Weight>, hidden: Label) -> Map<Label, Weight> {\n    return map.filter(shelves, (label, weight) -> weight > 0 and label != hidden)\n}\n\nfunction restocked(shelves: Map<Label, Weight>, more: Weight) -> Map<Label, Weight> {\n    return map.map_values(shelves, (label, weight) -> Weight(weight + more))\n}\n\nfunction labelled(shelves: Map<Label, Weight>) -> Map<Label, Label> {\n    return map.map_values(shelves, (label, weight) -> label)\n}\n\nfunction heavier(first: List<Weight>, second: List<Weight>) -> List<Flag> {\n    return list.zip_with(first, second, (a, b) -> Flag(a > b))\n}\n";
+
+#[test]
+fn two_parameter_inline_functions_are_given_each_pair() {
+    let program = main(TWO).with_proof_checks();
+    let stock = shelves(&[("bap", 0), ("rye", 4), ("spelt", 2)]);
+    assert_eq!(
+        value(&program, "shown", vec![stock.clone(), text("spelt")]),
+        shelves(&[("rye", 4)])
+    );
+    assert_eq!(
+        value(&program, "restocked", vec![stock.clone(), int(6)]),
+        shelves(&[("bap", 6), ("rye", 10), ("spelt", 8)])
+    );
+    assert_eq!(
+        value(&program, "labelled", vec![stock]),
+        Value::Map(Rc::new(
+            [("bap", "bap"), ("rye", "rye"), ("spelt", "spelt")]
+                .iter()
+                .map(|(key, label)| (text(key), text(label)))
+                .collect::<BTreeMap<_, _>>(),
+        ))
+    );
+    let ints = |items: &[i64]| list(items.iter().map(|n| int(*n)).collect());
+    assert_eq!(
+        value(&program, "heavier", vec![ints(&[5, 1, 7]), ints(&[3, 4])]),
+        list(vec![Value::Bool(true), Value::Bool(false)]),
+        "as long as the shorter"
+    );
+}
+
+const RANGES: &str = "type Weight = Int {\n    min: 0\n}\n\ntype Flag = Bool {}\n\ntype Wire = Text {}\n\nfunction large() -> Range<Weight> {\n    return Range {\n        start: 800\n        end: none\n    }\n}\n\nfunction inside(band: Range<Weight>, at: Weight) -> Flag {\n    return Flag(range.contains(band, at))\n}\n\nfunction clash(a: Range<Weight>, b: Range<Weight>) -> Flag {\n    return Flag(range.overlaps(a, b))\n}\n\nfunction shared(a: Range<Weight>, b: Range<Weight>) -> Range<Weight>? {\n    return range.intersection(a, b)\n}\n\nfunction lowest(band: Range<Weight>) -> Weight {\n    return match band.start {\n        some(start) -> start\n        none -> 0\n    }\n}\n\nfunction written(band: Range<Weight>) -> Wire {\n    return Wire(text.from(band))\n}\n";
+
+fn band(start: Option<i64>, end: Option<i64>) -> Value {
+    let end_of = |end: Option<i64>| end.map_or(Value::None, int);
+    Value::record(
+        "Range",
+        vec![
+            (Rc::from("start"), end_of(start)),
+            (Rc::from("end"), end_of(end)),
+        ],
+    )
+}
+
+#[test]
+fn a_range_of_any_ordered_type_with_open_ends_runs() {
+    let program = main(RANGES).with_proof_checks();
+    let large = value(&program, "large", Vec::new());
+    assert_eq!(large, band(Some(800), None));
+    let medium = band(Some(400), Some(800));
+    let small = band(None, Some(500));
+    let yes = Value::Bool(true);
+    let no = Value::Bool(false);
+    assert_eq!(
+        value(&program, "inside", vec![large.clone(), int(5000)]),
+        yes
+    );
+    assert_eq!(
+        value(&program, "inside", vec![medium.clone(), int(800)]),
+        no,
+        "a range doesn't hold its end"
+    );
+    assert_eq!(
+        value(&program, "clash", vec![medium.clone(), large.clone()]),
+        no
+    );
+    assert_eq!(
+        value(&program, "clash", vec![small.clone(), medium.clone()]),
+        yes
+    );
+    assert_eq!(
+        value(&program, "shared", vec![medium.clone(), small.clone()]),
+        band(Some(400), Some(500))
+    );
+    assert_eq!(
+        value(&program, "shared", vec![medium.clone(), large.clone()]),
+        Value::None
+    );
+    assert_eq!(value(&program, "lowest", vec![small]), int(0));
+    assert_eq!(value(&program, "lowest", vec![medium]), int(400));
+    assert_eq!(value(&program, "written", vec![large]), text("800/.."));
+}

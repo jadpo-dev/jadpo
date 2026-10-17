@@ -40,6 +40,14 @@ public type IpAddress = IpAddress {}
 /// A CLDR locale (area 10), written as its BCP 47 tag, `en-GB`.
 public type Locale = Enum {}
 
+/// The values of one ordered type from `start` up to but not including
+/// `end`, either of them `none` for an open end (area 19), written
+/// `2026-10-01/..`. `T` is the type in `< >`: `Range<Grams>`.
+public type Range = Object {
+    start: T?
+    end: T?
+}
+
 /// An `http://` or `https://` URL with a host (area 2).
 public type Url = Url {}
 

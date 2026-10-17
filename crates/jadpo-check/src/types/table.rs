@@ -813,10 +813,11 @@ pub trait TypeView {
         if stub && name == "Number" && args.is_empty() {
             return Ty::Number;
         }
-        if stub && name == "Function" && args.len() == 2 {
+        // `Function<T, U>` takes one parameter, `Function<K, V, U>` two
+        // (area 19): the last type is the result.
+        if stub && name == "Function" && (2..=3).contains(&args.len()) {
             let to = args.pop().unwrap_or(Ty::Error);
-            let from = args.pop().unwrap_or(Ty::Error);
-            return Ty::Function(Box::new(from), Box::new(to));
+            return Ty::Function(args, Box::new(to));
         }
         if let Some(arity) = container_arity(name) {
             if args.len() != arity {
@@ -849,6 +850,11 @@ pub trait TypeView {
             } else {
                 Ty::Error
             };
+        }
+        // `Range<T>` takes one type argument (area 19), which its
+        // declaration's check reports when it is missing.
+        if name == jadpo_std::RANGE && args.len() != 1 {
+            return Ty::Error;
         }
         if StdNames::get().is_opaque(name) {
             return Ty::Opaque(name.to_string(), args);

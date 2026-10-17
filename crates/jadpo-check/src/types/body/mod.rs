@@ -51,7 +51,7 @@ use crate::resolve::{Names, Walk, Want};
 use crate::std_lib::StdNames;
 use crate::tree::{self, node_span};
 
-pub(crate) use expr::members_of;
+pub(crate) use expr::{members_of, range_unordered};
 use facts::{Facts, LocalFact};
 pub(crate) use facts::{NodeKey, node_key};
 pub use failing::Fallible;

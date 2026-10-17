@@ -2707,6 +2707,27 @@ fn arg_list(p: &mut Parser<'_>) {
     m.complete(p, ARG_LIST);
 }
 
+/// How many names `(a, b) ->` lists, when the argument starts with two or
+/// more names in parentheses followed by `->`.
+fn parameters_ahead(p: &Parser<'_>) -> Option<usize> {
+    if !p.at(L_PAREN) {
+        return None;
+    }
+    let mut at = 1;
+    let mut names = 0;
+    loop {
+        if p.nth(at) != IDENT {
+            return None;
+        }
+        names += 1;
+        match p.nth(at + 1) {
+            COMMA => at += 2,
+            R_PAREN if names >= 2 && p.nth(at + 2) == THIN_ARROW => return Some(names),
+            _ => return None,
+        }
+    }
+}
+
 fn arg(p: &mut Parser<'_>, named: &mut Vec<(String, (u32, u32))>) {
     let m = p.start();
     // `x => e`, `lambda x: e`, `|x| e`: inline functions from other
@@ -2742,6 +2763,21 @@ fn arg(p: &mut Parser<'_>, named: &mut Vec<(String, (u32, u32))>) {
     } else if p.at(IDENT) && p.nth(1) == THIN_ARROW {
         let lambda = p.start();
         name(p, "the function's parameter");
+        p.bump(THIN_ARROW);
+        expr(p);
+        lambda.complete(p, LAMBDA_EXPR);
+    } else if let Some(names) = parameters_ahead(p) {
+        // `(key, value) -> ...`: two parameters or more, in parentheses
+        // (area 19); the checker says how many the operation takes.
+        let lambda = p.start();
+        p.bump(L_PAREN);
+        for index in 0..names {
+            if index > 0 {
+                p.bump(COMMA);
+            }
+            name(p, "the function's parameter");
+        }
+        p.bump(R_PAREN);
         p.bump(THIN_ARROW);
         expr(p);
         lambda.complete(p, LAMBDA_EXPR);

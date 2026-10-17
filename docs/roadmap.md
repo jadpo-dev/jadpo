@@ -597,14 +597,17 @@ reference only).
   `Range<T>` are 5.5c2. An `InstantRange` object literal now checks and
   runs, which the range examples needed; what the pages left open is area
   19's "Chosen in chunk 5.5c".
-- [ ] **5.5c2 Two-parameter inline functions and `Range<T>`** `opus ·
+- [x] **5.5c2 Two-parameter inline functions and `Range<T>`** `opus ·
   high` (area 19, "Lists", "Maps", "Ranges" and "Language gaps", split
   from 5.5c): `(a, b) -> ...` for standard operations only (area 3's
   question 13 widened), with `list.zip_with`, `map.filter` and
   `map.map_values`; `Range<T>` on the contract, with open ends, and the 3
   `range` operations taking it. Done when each of those operations'
   examples passes, interpreted and in the runtime, and a two-parameter
-  inline function anywhere else is an error with a checked example.
+  inline function anywhere else is an error with a checked example. A
+  function with the wrong number of parameters is a new rule,
+  `type.inline_function_parameters`; what the pages left open is area
+  19's "Chosen in chunk 5.5c2".
 - [x] **5.5d Numbers** `opus · high` (area 19, "Numbers", question 25): the
   8 new `integer` and `decimal` operations, `scale:` written out, and
   `Rounding.down`. Done when each operation's example passes and every
