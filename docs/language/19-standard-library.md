@@ -60,7 +60,7 @@ two-parameter inline functions were built in chunk 5.5c2. The geospatial and AI 
 
 ## Shared vocabulary types
 
-> Decided 2026-10-17 (Richard): the principle; the check on a package that declares its own equivalent; every standard type global, in one flat set; the list of standard types below, with its three rules; `Point` as the one exception to the naming rule; and that every standard type meets one contract. How the contract is expressed (question 2) and the naming rule (question 3) were decided the same day, as recommended.
+> Decided 2026-10-17 (Richard): the principle; the check on a package that declares its own equivalent; every standard type global, in one flat set; the list of standard types below, with its three rules; `Point` and `Length` as the exceptions to the naming rule; and that every standard type meets one contract. How the contract is expressed (question 2) and the naming rule (question 3) were decided the same day, as recommended.
 
 **The standard library defines the types two packages would otherwise
 each invent**. Geospatial libraries disagree on
@@ -105,7 +105,7 @@ duplicates are merged, and formats and application entities are out. The
 the full reference list behind it: all 1,120 brainstormed entries, each
 with its decision. The names follow question 3's rule, which renamed seven
 of the adopted names (`CountrySubdivision`, `UnitQuantity`,
-`PhysicalLength`, `SecretText`, `NetworkPort`, `WritingScript`,
+`Length`, `SecretText`, `NetworkPort`, `WritingScript`,
 `WebOrigin`) and merged `TimeInterval` into the built-in `InstantRange`;
 the catalogue keeps the names as brainstormed. `Point` is the one
 exception to the rule.
@@ -119,7 +119,7 @@ exception to the rule.
 | Tax and identity numbers (11) | `VatNumber`, `TaxId`, `UkUtr`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin`, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, `NhsNumber` | |
 | Commerce and logistics (20) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, `HsCode`, `Incoterm` (enum), `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` | `units`, `media` |
 | Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), **`LocalTime`**, **`LocalDateTime`**, **`Month`** (enum), **`YearMonth`**, **`Year`**, **`Quarter`**, **`IsoWeek`**, **`UtcOffset`**, **`DateRange`**, **`InstantRange`**, **`CalendarPeriod`**, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` | `temporal`, `range` |
-| Physical quantities (17) | `PhysicalLength`, `Area`, `Volume`, `Angle`, `Mass`, `Pressure`, `Energy`, `Power`, `Temperature`, `TemperatureDifference`, `Speed`, `Frequency`, `Voltage`, `Current`, `Illuminance`, `SoundLevel`, `Concentration` | `units` |
+| Physical quantities (17) | `Length`, `Area`, `Volume`, `Angle`, `Mass`, `Pressure`, `Energy`, `Power`, `Temperature`, `TemperatureDifference`, `Speed`, `Frequency`, `Voltage`, `Current`, `Illuminance`, `SoundLevel`, `Concentration` | `units` |
 | Maths and data (8) | `Percentage`, `Ratio`, `Fraction`, **`Range<T>`**, `DataSize`, `Bitrate`, `Vector`, `Embedding` | `range`, `units`; AI area |
 | Health (9) | `BloodType` (enum), `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` (enum) | |
 | Media and visual (15) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize` (enum), `ExifOrientation` (enum), `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating` | `colour`, `media` |
@@ -150,7 +150,7 @@ catalogue's Decision column):
 | What | Became |
 |---|---|
 | Units (`Metre`, `Mile`, `Kilogram`, `Pound`, `Celsius`, `Litre`, `KilowattHour`, every `...Unit` enum and 17 more) | The quantity type, with a unit at construction and display |
-| Roles: `Height`, `GeoDistance` · `FloorArea` · `WindSpeed` · `BodyTemperature` · `BarometricPressure` · `MediaDuration` · `DateOfBirth`, `ExpiryDate` · `CountryOfOrigin` · `UsState`, `Region` · `Salary` | `PhysicalLength` · `Area` · `Speed` · `Temperature` · `Pressure` · `Duration` · `CalendarDate` · `Country` · `CountrySubdivision` · `Money`: a field of the general type |
+| Roles: `Height`, `GeoDistance` · `FloorArea` · `WindSpeed` · `BodyTemperature` · `BarometricPressure` · `MediaDuration` · `DateOfBirth`, `ExpiryDate` · `CountryOfOrigin` · `UsState`, `Region` · `Salary` | `Length` · `Area` · `Speed` · `Temperature` · `Pressure` · `Duration` · `CalendarDate` · `Country` · `CountrySubdivision` · `Money`: a field of the general type |
 | Duplicates: `Timestamp`, `Uri`, `Ipv4Address`, `Ipv6Address`, `HexColour`, `HslColour`, `Sha256`, `UuidV7`, `Point3D`, `CountryAlpha3`, `LanguageAlpha3`, `UkPostcode`, `UsZipCode`, `UkNumberPlate`, `EuVatNumber`, `UkVatNumber`, `TimeRange`, `MinorUnits`, `MediaType`, `ImageFormat` | The one standard type each duplicates (the catalogue names which) |
 | Also folded in review: `AddressLine`, `BarcodeSymbology`, `DoseFrequency`, `FlightDesignator`, `GitSha`, `Gtin`, `HttpHeaders`, `Humidity`, `PackageDimensions`, `PackageName`, `PhysicalQuantity`, `UnitOfMeasure`, `Ucum`, `Proportion`, `QueryString`, `SubtitleTrack`, `UkBankAccount`, `WebhookSignature`, `WindDirection`, `CarbonDioxideEquivalent` | `PostalAddress`, `Barcode`, `DosageInstruction`, `FlightNumber`, `GitRef`, `Ean13`, `HttpHeaderName`, `Percentage`, `Dimensions`, `PackageUrl`, `UnitQuantity` (three), `Ratio`, `Url`, `SubtitleCue`, `BankAccount`, `Hmac`, `Bearing`, `Mass` |
 | Formats: `Hex`, `Base64`, `Wkt`, `Json`, `CsvDialect`, `MessageFormat`, `VCard`, `OtpAuthUri`, `CssLength` | Out: `encoding.` and `json.` operations |
@@ -1766,17 +1766,17 @@ test "an order keeps its amounts as they were written" {
 
 ## Physical quantities
 
-Each quantity type (`PhysicalLength`, `Mass`, `Temperature` ... and `DataSize`,
+Each quantity type (`Length`, `Mass`, `Temperature` ... and `DataSize`,
 `Bitrate`) holds an exact `Decimal` in its SI base unit at a fixed scale
 per kind. The unit is chosen only when a value is made or shown, so a
-`PhysicalLength` is a `PhysicalLength` whatever unit built it, and `==` and comparisons
+`Length` is a `Length` whatever unit built it, and `==` and comparisons
 work across units: `1km == 1000metre`. Inside a program a quantity has
-no unit, so metres plus centimetres is just `PhysicalLength + PhysicalLength`; units
+no unit, so metres plus centimetres is just `Length + Length`; units
 exist only at construction and display.
 
 | Kind | Base unit | Scale (smallest step) |
 |---|---|---|
-| `PhysicalLength` | metre | 6 (a micrometre) |
+| `Length` | metre | 6 (a micrometre) |
 | `Area` | square metre | 6 |
 | `Volume` | cubic metre | 9 (a cubic millimetre) |
 | `Angle` | radian | 9 |
@@ -1800,7 +1800,7 @@ exist only at construction and display.
 - `units.of(value, unit)` from an `Int` or a `Decimal` and a unit of the
   kind (`units.of(5, LengthUnit.kilometre)`);
 - a unit-suffixed literal, `5km`, `250g`, `2.5kg` (question 17);
-- `text.parse("5 km", as: PhysicalLength)`, through the contract, failing
+- `text.parse("5 km", as: Length)`, through the contract, failing
   `unknown_unit` (a unit that isn't the kind's), `malformed` (no number),
   or a rule of the type;
 - another value of the same kind, by construction into a named type
@@ -1819,14 +1819,14 @@ defined; any other mix is a compile error naming the two kinds:
 
 | Left | Operator | Right | Gives |
 |---|---|---|---|
-| `PhysicalLength` | `*` | `PhysicalLength` | `Area` |
-| `Area` | `*` | `PhysicalLength` | `Volume` |
-| `Area` | `/` | `PhysicalLength` | `PhysicalLength` |
-| `Volume` | `/` | `Area` | `PhysicalLength` |
-| `Volume` | `/` | `PhysicalLength` | `Area` |
-| `PhysicalLength` | `/` | `Duration` | `Speed` |
-| `Speed` | `*` | `Duration` | `PhysicalLength` |
-| `PhysicalLength` | `/` | `Speed` | `Duration` |
+| `Length` | `*` | `Length` | `Area` |
+| `Area` | `*` | `Length` | `Volume` |
+| `Area` | `/` | `Length` | `Length` |
+| `Volume` | `/` | `Area` | `Length` |
+| `Volume` | `/` | `Length` | `Area` |
+| `Length` | `/` | `Duration` | `Speed` |
+| `Speed` | `*` | `Duration` | `Length` |
+| `Length` | `/` | `Speed` | `Duration` |
 | `Energy` | `/` | `Duration` | `Power` |
 | `Power` | `*` | `Duration` | `Energy` |
 | `Voltage` | `*` | `Current` | `Power` |
@@ -4166,10 +4166,11 @@ under "Errors").
 | The standard types | 247 types in 18 groups (245 as adopted, with `CalendarPeriod` and `UkCompanyNumber` added after review) (table under "The standard types"); units folded into their quantity type, roles into the general type, duplicates merged, formats and application entities out; country-specific identifiers are global types; gender and sex at birth stay out; a quantity is stored in its SI base unit, with the unit chosen at construction and display; the catalogue records the decision for each of the 1,120 brainstormed entries (Richard) | 2026-10-17 |
 | Every standard type meets one contract | Every standard type has a library with the same baseline: construction and validation from its parts and from text with failures named by rule; formatting for people as `PresentationText`, through the locale where it matters; a canonical text form where one exists; one JSON shape and one storage shape; `==`, and order where the type is ordered; conversions at named edges. Some groups add extras (Richard) | 2026-10-17 |
 | `Point` | The geographic point is `Point`, the one exception to the naming rule (Richard) | 2026-10-17 |
+| `Length` | The physical length is `Length`, not `PhysicalLength`: a second exception to the naming rule, beside `Point`, so quantities read naturally (`var shelf: Length = 2metre`) (Richard) | 2026-10-17 |
 | `Colour` | A standard type with named channels in one canonical colour space; conversions to and from other spaces are extras. The channels, the space and the extras are question 13's (Richard) | 2026-10-17 |
 | `type.standard_exists` (question 1) | A type whose shape is a standard type's is the declinable error `type.standard_exists` (renamed from `type.standard_equivalent`), in packages' public types and app code alike; it stops `check` and the build until the type is swapped (in one step when not stored or on the wire, otherwise with its data migration through `ApiChange` and `DataChange` acceptances) or declined with area 1's `decline type.standard_exists: "<reason>"` line, which an agent or a person may write and `jadpo approval` lists. On app code in 5.5a after 5.4b; on packages with their publishing bar in 7.1 (Richard, as recommended) | 2026-10-17 |
 | The contract, generated (question 2) | Each standard type is a stub declaration in `crates/jadpo-check/std/` plus a data entry (canonical text grammar, JSON shape, storage columns, CLDR format key and options, order, conversions) and at most one named validator; one implementation of each baseline operation reads the data in the operation table, the interpreter and the runtime, and one harness tests every type. Calls are `text.parse(raw, as: T)`, `text.format(value, locale:)` and `text.from(value)` over every type; area 10's `temporal.format` becomes the time types' `text.format`, with a habit error whose edit writes it; `format_relative` stays in `temporal` (Richard, as recommended) | 2026-10-17 |
-| Precise names (question 3) | A standard type's name is (a) the defining standard's term, qualified until unambiguous, else (b) the noun qualified by what it holds, and (c) never a bare word an app plausibly uses for something else, except a generic container; `Point` is the exception. Renamed: `CountrySubdivision`, `UnitQuantity`, `PhysicalLength`, `SecretText`, `NetworkPort`, `WritingScript`, `WebOrigin`; `TimeInterval` merged into the built-in `InstantRange`. Existing built-in names stay. Page and example types reusing a standard name are renamed in the chunk that builds it (Richard, as recommended) | 2026-10-17 |
+| Precise names (question 3) | A standard type's name is (a) the defining standard's term, qualified until unambiguous, else (b) the noun qualified by what it holds, and (c) never a bare word an app plausibly uses for something else, except a generic container; `Point` and `Length` are the exceptions. Renamed: `CountrySubdivision`, `UnitQuantity`, `SecretText`, `NetworkPort`, `WritingScript`, `WebOrigin`; `TimeInterval` merged into the built-in `InstantRange`. Existing built-in names stay. Page and example types reusing a standard name are renamed in the chunk that builds it (Richard, as recommended) | 2026-10-17 |
 | A release adding a standard type (question 4) | Never a silent break: the first `check` after the upgrade reports each clash with the new type and its release, fixed by swapping (as question 1) or renaming (`jadpo rename`); a new `jadpo fix` applies the chosen fix through the editor's code; release notes list added names (Richard, as recommended) | 2026-10-17 |
 | Distinctive shapes only (question 5) | The shape check matches only distinctive shapes: at least two fields, at least one domain field name (not `name`, `value`, `id`, `code`, `type`, `text`), field types lining up, no extra fields; single values never match by shape; each matching type lists its signature in the catalogue (Richard, as recommended) | 2026-10-17 |
 | One namespace per type (question 6) | `list.`, `set.` and `map.` replace `collection.`, with a habit error; the four built operations renamed (Richard, as recommended) | 2026-10-17 |
@@ -4261,7 +4262,7 @@ Richard's points first, then the first draft's remaining questions. Richard deci
    `List<T>`). `Point` is the decided exception. Applied to the adopted
    list, 8 names change: `Subdivision` to `CountrySubdivision` (a
    housing subdivision), `Quantity` to `UnitQuantity` (an order line's
-   count, area 2's own example), `Length` to `PhysicalLength` (a text's
+   count, area 2's own example), `Length` to `Length` (a text's
    or a video's length), `Secret` to `SecretText` (area 10's `secret:`
    settings), `Port` to `NetworkPort` (a sea port, in logistics),
    `Script` to `WritingScript`, `Origin` to `WebOrigin` (a country of
@@ -4387,7 +4388,7 @@ Richard's points first, then the first draft's remaining questions. Richard deci
     and unit-suffixed literals with the `m` clash?** Sub-choices:
     - Construction: *recommendation:* always with a unit, from an `Int` or
       `Decimal` (`units.of`), a suffixed literal, `text.parse("5 km", as:
-      PhysicalLength)`, or another value of the same kind by construction; inside
+      Length)`, or another value of the same kind by construction; inside
       a program a quantity has no unit, so metres plus centimetres just
       works.
     - A bare number where a quantity is expected: *recommendation:* the
@@ -4410,7 +4411,7 @@ Richard's points first, then the first draft's remaining questions. Richard deci
 
     | Kind | Suffixes | Clash avoided |
     |---|---|---|
-    | `PhysicalLength` | `mm`, `cm`, `metre`, `km`, `inch`, `ft`, `yd`, `mi`, `nmi` | `m` is minutes; `in` is a keyword (`for x in`) |
+    | `Length` | `mm`, `cm`, `metre`, `km`, `inch`, `ft`, `yd`, `mi`, `nmi` | `m` is minutes; `in` is a keyword (`for x in`) |
     | `Mass` | `mcg`, `mg`, `g`, `kg`, `t`, `oz`, `lb` | `µg` isn't typeable everywhere |
     | `Volume` | `ml`, `litre`, `floz`, `ukgal`, `usgal` | `l` reads as `1`; `gal` alone is ambiguous |
     | `Area` | `sqmm`, `sqm`, `sqkm`, `ha`, `sqft`, `acre` | `m2` puts a digit in a suffix |

@@ -11,7 +11,7 @@ shape, one wire shape, one storage shape, one validated construction), all
 global in one flat set; a package's or an app's own equivalent gets the
 declinable error `type.standard_exists` (area 19, question 1, decided
 2026-10-17). Area 19's question 3 renamed seven list names
-(`CountrySubdivision`, `UnitQuantity`, `PhysicalLength`, `SecretText`,
+(`CountrySubdivision`, `UnitQuantity`, `Length`, `SecretText`,
 `NetworkPort`, `WritingScript`, `WebOrigin`) and merged `TimeInterval`
 into `InstantRange`; this catalogue keeps the names as brainstormed.
 
