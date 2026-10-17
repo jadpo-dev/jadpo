@@ -31,10 +31,10 @@
     )
 )]
 
-pub mod list;
 pub mod decimal;
 pub mod integer;
 pub mod json;
+pub mod list;
 pub mod locale;
 pub mod ops;
 pub mod order;
@@ -425,12 +425,7 @@ mod tests {
             assert!(result.is_ok(), "{} runs", operation.qualified());
         }
         assert_eq!(
-            run(
-                Op::ListMap,
-                std::slice::from_ref(&items),
-                None,
-                &mut double
-            ),
+            run(Op::ListMap, std::slice::from_ref(&items), None, &mut double),
             Ok(Value::list(vec![
                 Value::Int(2),
                 Value::Int(4),

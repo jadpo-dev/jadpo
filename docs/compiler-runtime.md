@@ -371,7 +371,7 @@ crates, against these rules, on salsa anywhere but `jadpo-db` and
 but the shared leaf. *Rejected:* v0's single `core` crate, which grew to
 everything and let the generator read the syntax tree.
 
-**The standard library** (`collection`, `temporal`, `decimal` and the rest)
+**The standard library** (`list`, `temporal`, `decimal` and the rest)
 is declared in Jadpo stub files embedded in `jadpo-check`, for programs to
 call, and listed, typed, in `jadpo-std`'s operation table: each operation's
 parameters with their kinds, its result, and the one Rust function in
@@ -402,7 +402,18 @@ parameter takes only a format written out, which the checker reads into
 `conditions` are what it fails on unless an option written out settles
 them, mapped by the call's `attempt` as a construction's broken rules are
 (the operation returns `Fault::Broke(key)`, which the interpreter raises as
-the arm's failure). `temporal` runs on jiff with its bundled IANA database,
+the arm's failure). Since chunk 5.5b (area 19, "Lists") a `never_negative`
+parameter (a count or a position) is checked as a divisor is, a literal
+not below `0` and a value's type with a `min` of at least `0`
+(`type.argument_negative`); an `ordered` inline function's result must be
+a kind `<` orders, or text (`type.ordering_operand`); an `implicit`
+parameter is never written: the checker lowers it from the call's types,
+as `list.sum`'s `zero` of its items' representation, and a result of kind
+`Number` is that representation; a `Map` result is a stub's `Map<K, V>`;
+and `MOVED_NAMESPACES` lists a namespace that moved whole (`collection`,
+reserved with no operations), whose calls the type checker reports with
+an edit by their first value's type, since resolution can't know it.
+`temporal` runs on jiff with its bundled IANA database,
 in `jadpo-value` only, so every target reads the same zones and none reads
 the platform's (area 10, "Zones and local times"). The time types'
 `text.format` (area 19; `temporal.format` until chunk 5.5a) and

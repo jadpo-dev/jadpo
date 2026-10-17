@@ -452,7 +452,9 @@ impl Body<'_> {
         expected: Option<&Ty>,
     ) -> (Ty, CallKind, Reach) {
         let first = Self::arguments(call).first().and_then(ast::Arg::expr);
-        let kind = first.as_ref().map_or("list", |value| self.collection_word(value));
+        let kind = first
+            .as_ref()
+            .map_or("list", |value| self.collection_word(value));
         let space = targets
             .iter()
             .copied()
@@ -804,12 +806,9 @@ impl Body<'_> {
             let param = params[*slot].1.clone();
             if let Ty::Function(from, to) = &param {
                 match &value {
-                    Expr::LambdaExpr(lambda) => inline.push((
-                        lambda.clone(),
-                        (**from).clone(),
-                        (**to).clone(),
-                        *slot,
-                    )),
+                    Expr::LambdaExpr(lambda) => {
+                        inline.push((lambda.clone(), (**from).clone(), (**to).clone(), *slot))
+                    }
                     other => {
                         let ty = self.infer(other);
                         let expected = substitute(&param, &bound);
@@ -1127,7 +1126,7 @@ impl Body<'_> {
                         };
                         (
                             format!("`{shown}` may be negative"),
-                            format!("a `{ty}` can be below `0`"),
+                            format!("`{ty}` can be below `0`"),
                             why,
                         )
                     }

@@ -833,7 +833,7 @@ back, but neither can be walked or searched.
 
 > Amended 2026-10-17 by area 19 (questions 6 and 8): `collection.`
 > becomes `list.`, beside new `set.` and `map.` namespaces, with a habit
-> error whose edit writes the right one (chunk 5.5b); `for` walks a set in
+> error whose edit writes the right one (built in chunk 5.5b); `for` walks a set in
 > the canonical order above; a map is walked through `map.keys`; and `[]`
 > written where a map is expected is an empty map (chunk 5.5c). A map
 > literal with entries is still this area's to design. Text from outside

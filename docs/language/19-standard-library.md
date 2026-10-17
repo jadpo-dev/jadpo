@@ -2,9 +2,10 @@
 title: Standard library
 area: 19
 status: decided
-checked-with: this checkout's jadpo on every gate run, from chunk 5.5a; the other examples are fragments until chunks 5.5b to 5.5s build them
+checked-with: this checkout's jadpo on every gate run, from chunk 5.5a; the other examples are fragments until chunks 5.5c to 5.5s build them
 rules:
   - semantic.standard_operation_moved
+  - type.argument_negative
   - type.standard_exists
 ---
 
@@ -554,9 +555,9 @@ is written inline, `item -> expression` (area 3).
 | `map(items, each)` | `List<U>`, in order (decided) | | none |
 | `filter(items, keep)` | `List<T>`, the items `keep` accepts, in order (decided) | | none |
 | `sum(items)` | `Int` or `Decimal`, the items added; `0` for none. Items built on `Int` or `Decimal`; `Money` uses `money.sum` | overflow is a defect | none |
-| `any(items, test)` | `Bool`: `test` accepts at least one; `false` for none | | none |
-| `all(items, test)` | `Bool`: `test` accepts every one; `true` for none | | none |
-| `find(items, test)` | `T?`, the first item `test` accepts | | none |
+| `any(items, check)` | `Bool`: `check` accepts at least one; `false` for none | | none |
+| `all(items, check)` | `Bool`: `check` accepts every one; `true` for none | | none |
+| `find(items, check)` | `T?`, the first item `check` accepts | | none |
 | `first(items)`, `last(items)` | `T?` | | none |
 | `at(items, position)` | `T?`, the item at `position` (0 is the first); `position` never negative | | none |
 | `min_by(items, key)`, `max_by(items, key)` | `T?`, the item with the smallest or largest key; the first of equal ones | | none |
@@ -595,6 +596,118 @@ is written inline, `item -> expression` (area 3).
   covers the common case); sorting with a comparator (`sort_by` and
   `reverse` express every order a key can, and a comparator that isn't
   consistent gives different orders on different targets).
+
+A day's baking, through the list operations built so far (chunk 5.5b;
+`zip_with` waits for two-parameter inline functions in 5.5c):
+
+```jadpo check project=list-operations
+type BatchName = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type Grams = Int {
+    min: 0
+}
+
+type Shelf = Int {
+    min: 1
+    max: 6
+}
+
+type LoafPrice = Decimal {
+    scale: 2
+    min: 0.00
+}
+
+type Batch = Object {
+    name: BatchName
+    grams: Grams
+    shelf: Shelf
+    price: LoafPrice
+}
+
+/// The flour a day's batches take. Items never below zero add up to a sum
+/// never below zero, so building `Grams` from it needs no arm.
+function flour_needed(batches: List<Batch>) -> Grams {
+    return Grams(list.sum(list.map(batches, batch -> batch.grams)))
+}
+
+/// The day's takings at full price.
+function takings(batches: List<Batch>) -> LoafPrice {
+    return LoafPrice(list.sum(list.map(batches, batch -> batch.price)))
+}
+
+/// The heaviest batch, if there is one: `max_by` reads each batch once,
+/// where sorting would order them all to read one.
+function heaviest(batches: List<Batch>) -> Batch? {
+    return list.max_by(batches, batch -> batch.grams)
+}
+
+/// The batches on each shelf, in baking order.
+function by_shelf(batches: List<Batch>) -> Map<Shelf, List<Batch>> {
+    return list.group_by(batches, batch -> batch.shelf)
+}
+```
+
+Each operation gives a new list, or an item of the list as it is, still
+a `Batch`; `takings([])` is `0.00`, a `Decimal`, because a sum is its
+items' representation even when there are none. `by_shelf`'s map can be
+passed, returned and compared until `map.get` reads it (chunk 5.5c), so
+its test comes with that chunk.
+
+```jadpo check project=list-operations file=main.test.jadpo
+test "list operations give new lists and keep the items as they are" {
+    var rye: Batch = Batch {
+        name: "Rye"
+        grams: 800
+        shelf: 2
+        price: 4.20
+    }
+    var bap: Batch = Batch {
+        name: "Bap"
+        grams: 90
+        shelf: 1
+        price: 0.60
+    }
+    var spelt: Batch = Batch {
+        name: "Spelt"
+        grams: 800
+        shelf: 2
+        price: 3.80
+    }
+    var day: List<Batch> = [rye, bap, spelt]
+    var weights: List<Grams> = [800, 90, 800]
+    assert flour_needed(day) == 1690
+    assert takings(day) == 8.60
+    assert takings([]) == 0.00
+    assert list.any(day, batch -> batch.shelf == 1)
+    assert not list.all(day, batch -> batch.grams > 100)
+    assert list.find(day, batch -> batch.shelf == 2) == rye
+    assert list.first(day) == rye
+    assert list.last(day) == spelt
+    assert list.at(day, 1) == bap
+    assert list.at(day, 3) == none
+    assert heaviest(day) == rye  // the first of equal keys
+    assert list.min_by(day, batch -> batch.price) == bap
+    assert list.sort_by(day, batch -> batch.name) == [bap, rye, spelt]
+    assert list.sort_by(day, batch -> batch.grams) == [bap, rye, spelt]  // equal keys keep their order
+    assert list.reverse(day) == [spelt, bap, rye]
+    assert list.distinct(weights) == [800, 90]
+    assert list.slice(day, 1, 5) == [bap, spelt]
+    assert list.keep_first(day, 2) == [rye, bap]
+    assert list.keep_last(day, 2) == [bap, spelt]
+    assert list.drop_first(day, 1) == [bap, spelt]
+    assert list.drop_last(day, 5) == []
+    assert list.append([rye], bap) == [rye, bap]
+    assert list.concat([rye], [bap, spelt]) == day
+    assert list.flatten([[rye], [], [bap, spelt]]) == day
+}
+```
+
+A count or a position that might be negative is `type.argument_negative`
+(under "Errors"), and a key that gives something with no order, such as a
+`Bool`, is area 3's `type.ordering_operand`.
 
 ## Sets
 
@@ -1557,13 +1670,81 @@ error: `temporal.format` is now `text.format`
 check failed: 1 error, 1 file
 ```
 
+`collection.` became `list.`, `set.` and `map.` (question 6): a call
+through it is reported with an edit to the namespace for its first value,
+a list unless it is a set or a map, and checked as that operation where
+it is built.
+
+```jadpo check project=e-collection-moved expect=semantic.standard_operation_moved
+type BatchName = Text {
+    min_length: 1
+}
+
+type BatchCount = Int {
+    min: 0
+}
+
+function batches_baked(batches: List<BatchName>) -> BatchCount {
+    return BatchCount(collection.count(batches))
+}
+```
+
+```text output
+error: `collection.count` is now `list.count`
+ --> main.jadpo:10:23
+   |
+10 |     return BatchCount(collection.count(batches))
+   |                       ^^^^^^^^^^^^^^^^ moved
+  reason: The standard library has one namespace for each type an operation works on, so `collection.` became `list.`, `set.` and `map.`; `batches` is a list.
+  next: Write `list.count` (agent)
+  rule: semantic.standard_operation_moved
+  help: docs/language/19-standard-library.html#semantic-standard-operation-moved
+
+check failed: 1 error, 1 file
+```
+
+### `type.argument_negative`
+
+A count or a position is never negative (question 7): `list.at`'s
+`position`, `slice`'s `from` and `count`, and the `n` of `keep_first`,
+`keep_last`, `drop_first` and `drop_last`. A literal isn't below `0` and a
+value's type has a `min` of at least `0`, so an off-by-one never reads
+from the other end, as a negative position does in JavaScript.
+
+```jadpo check project=e-argument-negative expect=type.argument_negative
+type BatchName = Text {
+    min_length: 1
+}
+
+type TraysOut = Int {}
+
+/// The batches still to bake once `done` of them are out of the oven.
+function still_to_bake(batches: List<BatchName>, done: TraysOut) -> List<BatchName> {
+    return list.drop_first(batches, done)
+}
+```
+
+```text output
+error: `done` may be negative
+ --> main.jadpo:9:37
+  |
+9 |     return list.drop_first(batches, done)
+  |                                     ^^^^ `TraysOut` can be below `0`
+  reason: `list.drop_first`'s `n` counts from the start, so it is never negative, which is proved while compiling: a literal isn't below `0` and a value's type has a `min` of at least `0`; `TraysOut` allows values below `0`.
+  next: Pass a value whose type has `min: 0`, building it where a negative one is handled; count from the end with `keep_last` or `drop_last` (agent)
+  rule: type.argument_negative
+  help: docs/language/19-standard-library.html#type-argument-negative
+
+check failed: 1 error, 1 file
+```
+
 ## Review
 
 ### Status
 
 | Feature | Status |
 |---|---|
-| `list.count`, `contains`, `map`, `filter` | Decided (area 2) and built; renamed `list.` in 5.5b (question 6) |
+| `list.`, formerly `collection.` | `count`, `contains`, `map` and `filter` decided in area 2; renamed from `collection.` (question 6) and joined by the 21 operations that need no language change in 5.5b; `zip_with` in 5.5c |
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here, built in 5.5k |
 | The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, each group of types in 5.5h to 5.5s |
@@ -1624,13 +1805,12 @@ check failed: 1 error, 1 file
   `currency_mismatch`, `too_many_places`), a `sort_by` key limited to
   ordered kinds, actions-only operations, and a SQL form per operation.
 
-**Renaming `collection`.** `list.count`, `contains`, `map` and
-`filter` are decided in area 2 and built (`crates/jadpo-check/std/collection.jadpo`,
-`jadpo-std`'s operation table). 5.5b renames the stub to `list.jadpo`, the
-four table entries and every call: about 40 files across areas 2, 3, 9, 13
-and this page, examples 04, 06, 08, 09, 10, 11 and 12, and the checker,
-interpreter and CLI tests. `collection.` then gives one error whose edit
-writes `list.`, `set.` or `map.` from the argument's type.
+**Renaming `collection`.** Done in 5.5b: the stub is
+`crates/jadpo-check/std/list.jadpo`, the operation table's entries are
+`list.`, and every call in the pages, the examples and the tests is
+renamed. `collection.` gives one error whose edit writes `list.`, `set.`
+or `map.` from the first value's type (`semantic.standard_operation_moved`,
+under "Errors").
 
 ### Chosen in chunk 5.5a
 
@@ -1687,7 +1867,53 @@ writes `list.`, `set.` or `map.` from the argument's type.
   meanwhile.
 - **Moved operations** are a table in `jadpo-std` (`MOVED`), each reported
   as `semantic.standard_operation_moved` where it is resolved and checked
-  as the operation it moved to; chunk 5.5b adds `collection.`'s.
+  as the operation it moved to; chunk 5.5b added `collection.`'s, a whole
+  namespace (`MOVED_NAMESPACES`).
+
+### Chosen in chunk 5.5b
+
+- **`check`, not `test`.** `test` is a reserved word (area 13's
+  `test "..."`), so `any`, `all` and `find` call their function `check`;
+  it is written by position anyway.
+- **A namespace moved whole.** `collection` stays a reserved namespace
+  with no operations (`MOVED_NAMESPACES` in `jadpo-std`). A call through
+  it is `semantic.standard_operation_moved`, with an edit to `list.`,
+  `set.` or `map.` read from its first value's type when that value is a
+  name or a field, and to `list.` otherwise; it is then checked as the
+  `list` operation, and a `set.` or `map.` one waits for chunk 5.5c.
+- **Counts that may be negative** are `type.argument_negative`: a literal
+  below `0`, or a value whose type has no `min` of at least `0`. A call's
+  result, `list.count`'s included, is a plain `Int` and proves nothing,
+  so a count is built as a type with `min: 0` first. `drop_first` and
+  `drop_last` take a count that is never negative too, as question 7
+  decides for all four.
+- **Ordered keys.** `sort_by`, `min_by` and `max_by` take a key built on
+  a number, `Text`, `Instant`, `CalendarDate` or `Duration`, or a standard
+  type the contract marks ordered, and never `none`; a `ZonedTime` has no
+  order of its own, as for `<` (area 3), so it is ordered by its instant.
+  `Money` keys come with chunk 5.5h and `locale:` with chunk 5.5f. A key
+  that isn't ordered is area 3's `type.ordering_operand`. Keys compare in
+  the canonical order (area 2, "Set order"), so text goes by code point.
+- **`sum`'s zero.** `list.sum` gives `Int` or `Decimal` by its items'
+  representation; the checker fills an implicit `zero` of that
+  representation (`Param::implicit`), so an empty list gives `0` or
+  `0.00` as its type says. Items whose type has a `min` of at least `0`
+  prove the sum is at least `0`, so `Grams(list.sum(...))` needs no arm
+  for `min`; `max` still needs one.
+- **Named types.** An operation giving `T`, `T?` or `List<T>` keeps the
+  items' named type (`Batch`, `Grams`). A named list type isn't kept,
+  since `filter` or `drop_first` can break its `min_length`; it is built
+  back by construction (area 2).
+- **`group_by`** gives `Map<K, List<T>>`, its keys in the canonical order
+  and `==` grouping them, so a key may be any type. Its page test waits
+  for `map.get` (chunk 5.5c); the interpreter's and the runtime's tests
+  read the map meanwhile.
+- **`distinct`** keeps each first occurrence, found through the canonical
+  order, which agrees with `==` for values of one type.
+- **`flatten`** takes a `List<List<T>>`; collections stay invariant, so a
+  list of a named list type isn't one.
+- **`list` is reserved** (question 30). No page or example used the name;
+  one checker test's action was renamed.
 
 ### Decisions
 
@@ -2101,7 +2327,7 @@ first; each group of types then arrives with its baseline and its extras.
 - **5.5b Lists** `opus · high`: `collection.` renamed `list.` everywhere,
   with its habit error; the 21 new list operations that need no language
   change; `never_negative`, the `sort_by` key's ordered kinds, results
-  that keep a named type.
+  that keep a named type. Built.
 - **5.5c Sets, maps and ranges** `opus · high`: the 7 `set`, 8 `map` and 3
   `range` operations and `Range<T>` on the contract; `for` over a set;
   `[]` as an empty map; two-parameter inline functions and the 3

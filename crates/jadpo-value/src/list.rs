@@ -101,7 +101,10 @@ pub fn all(items: &[Value], test: &mut dyn FnMut(&Value) -> Option<Value>) -> Re
 }
 
 /// The first item `test` accepts, or `none`.
-pub fn find(items: &[Value], test: &mut dyn FnMut(&Value) -> Option<Value>) -> Result<Value, Fault> {
+pub fn find(
+    items: &[Value],
+    test: &mut dyn FnMut(&Value) -> Option<Value>,
+) -> Result<Value, Fault> {
     for item in items {
         if accepts(test, item)? {
             return Ok(item.clone());
@@ -330,7 +333,10 @@ mod tests {
             Value::Decimal(Decimal::new(250, 2)),
             Value::Decimal(Decimal::new(125, 2)),
         ];
-        assert_eq!(sum(&prices, &zero), Ok(Value::Decimal(Decimal::new(375, 2))));
+        assert_eq!(
+            sum(&prices, &zero),
+            Ok(Value::Decimal(Decimal::new(375, 2)))
+        );
         assert_eq!(
             sum(&ints(&[i64::MAX, 1]), &Value::Int(0)),
             Err(Fault::IntOverflow)
@@ -405,7 +411,10 @@ mod tests {
         // Text keys sort by code point: upper case before lower.
         let mut itself = |item: &Value| Some(item.clone());
         assert_eq!(
-            sort_by(&[Value::text("b"), Value::text("B"), Value::text("a")], &mut itself),
+            sort_by(
+                &[Value::text("b"), Value::text("B"), Value::text("a")],
+                &mut itself
+            ),
             Ok(vec![Value::text("B"), Value::text("a"), Value::text("b")])
         );
         assert_eq!(sort_by(&words, &mut |_| None), Err(Fault::Stopped));
@@ -419,7 +428,11 @@ mod tests {
         assert_eq!(append(&items[..1], &Value::Int(9)), ints(&[1, 9]));
         assert_eq!(concat(&items[..1], &items[3..]), ints(&[1, 3, 2]));
         assert_eq!(
-            flatten(&[Value::list(ints(&[1, 2])), Value::list(Vec::new()), Value::list(ints(&[3]))]),
+            flatten(&[
+                Value::list(ints(&[1, 2])),
+                Value::list(Vec::new()),
+                Value::list(ints(&[3]))
+            ]),
             Ok(ints(&[1, 2, 3]))
         );
         assert_eq!(flatten(&[Value::Int(1)]), Err(Fault::Shape));

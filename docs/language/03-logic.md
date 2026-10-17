@@ -833,7 +833,7 @@ cannot be stored in variables or passed to your own callables.
 > Amended 2026-10-17 by area 19 (questions 6, 8 and 21): the collection
 > operations are `list.`, `set.` and `map.`, and more of them take an
 > inline function (`any`, `all`, `find`, `min_by`, `max_by`, `sort_by`,
-> `group_by`). For standard operations only, an inline function may take
+> `group_by`; built in chunk 5.5b). For standard operations only, an inline function may take
 > two parameters, `(key, value) -> ...` (`list.zip_with`, `map.filter`,
 > `map.map_values`), widening question 13; built in chunk 5.5c. Question
 > 6's "text order belongs in a standard function" is `list.sort_by` with a
@@ -2758,10 +2758,10 @@ function line_count(lines: List<Pence>) -> Pence {
 
 ```text output
 error: `list.count` has no argument `itmes`
- --> main.jadpo:6:35
+ --> main.jadpo:6:29
   |
 6 |     return Pence(list.count(itmes: lines))
-  |                                   ^^^^^ not a parameter
+  |                             ^^^^^ not a parameter
   reason: Its one argument is `items`.
   next: Use `items:` instead of `itmes:` (agent)
   rule: type.named_argument_unknown
@@ -3465,10 +3465,10 @@ function titles(todos: List<Todo>) -> List<TodoTitle> {
 
 ```text output
 error: Jadpo writes `todo -> todo.title`, not `todo => todo.title`
- --> main.jadpo:10:34
+ --> main.jadpo:10:28
    |
 10 |     return list.map(todos, todo => todo.title)
-   |                                  ^^^^^^^ write `todo -> todo.title`
+   |                            ^^^^^^^ write `todo -> todo.title`
   reason: `x => e` is an arrow function in JavaScript, TypeScript and C#, `lambda x: e` in Python and `|x| e` in Rust; a Jadpo inline function is `item -> expression`.
   next: Write `todo -> todo.title` (agent)
   rule: syntax.inline_function_arrow

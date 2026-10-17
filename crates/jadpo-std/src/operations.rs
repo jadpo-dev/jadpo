@@ -893,15 +893,27 @@ mod tests {
             let (namespace, name) = to.split_once('.').unwrap_or_default();
             assert!(operation(namespace, name).is_some(), "{to} exists");
         }
-        assert_eq!(moved_namespace("collection"), Some(&["list", "set", "map"][..]));
-        assert!(operation("collection", "count").is_none(), "moved to `list.`");
+        assert_eq!(
+            moved_namespace("collection"),
+            Some(&["list", "set", "map"][..])
+        );
+        assert!(
+            operation("collection", "count").is_none(),
+            "moved to `list.`"
+        );
         for operation in OPERATIONS {
             // A value the checker fills comes after every written one.
             let written = operation.params.iter().take_while(|p| !p.implicit).count();
             assert!(operation.params[written..].iter().all(|p| p.implicit));
             for param in operation.params {
-                assert!(!param.never_negative || param.kind == INT, "a count is an `Int`");
-                assert!(!param.ordered || param.kind == Kind::Function, "a key is inline");
+                assert!(
+                    !param.never_negative || param.kind == INT,
+                    "a count is an `Int`"
+                );
+                assert!(
+                    !param.ordered || param.kind == Kind::Function,
+                    "a key is inline"
+                );
             }
         }
         for operation in OPERATIONS {

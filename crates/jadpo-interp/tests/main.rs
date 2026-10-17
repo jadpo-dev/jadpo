@@ -15,6 +15,7 @@ mod constants;
 mod domain_names;
 mod effects;
 mod failures;
+mod lists;
 mod logic;
 mod named_collections;
 mod proofs;
