@@ -216,7 +216,7 @@ declinable error, `type.standard_exists`).
 | `TickerSymbol` | An exchange ticker | `Object { exchange: Mic, symbol: Text }` | — | Same symbol on different exchanges | candidate | maybe | out: no standard |
 | `Mic` | Market identifier code | `Text { pattern: "[A-Z0-9]{4}" }` | ISO 10383 | — | candidate | niche | out: niche |
 | `Cfi` | Instrument classification | `Text { pattern: "[A-Z]{6}" }` | ISO 10962 | — | candidate | niche | out: niche |
-| `UkCompanyNumber` | Companies House number | `Text { pattern: "([0-9]{2}\|[A-Z]{2})[0-9]{6}" }` | Companies House | Leading zeros lost | candidate | likely | out: niche |
+| `UkCompanyNumber` | Companies House number | `Text { pattern: "([0-9]{2}\|[A-Z]{2})[0-9]{6}" }` | Companies House | Leading zeros lost | candidate | likely | standard |
 | `Duns` | D-U-N-S number | `Text { pattern: "[0-9]{9}" }` | Dun & Bradstreet | — | candidate | niche | out: niche |
 | `SwiftMessageType` | MT message type | `Text { pattern: "MT[0-9]{3}" }` | SWIFT | — | candidate | silly | out: silly |
 | `Iso20022MessageId` | ISO 20022 message id | `Text` | ISO 20022 | — | candidate | niche | out: niche |
@@ -343,7 +343,7 @@ declinable error, `type.standard_exists`).
 | `DateRange` | A span of dates | `Object { start: CalendarDate, end: CalendarDate }`, end inclusive | — | Inclusive vs exclusive end | candidate | core | standard |
 | `Interval` | A span between two instants | `Object { start: Instant, end: Instant }`, end exclusive | ISO 8601 intervals | Open-ended and inclusive bugs | candidate | core | standard, as `TimeInterval` |
 | `TimeRange` | A span of local times | `Object { start: LocalTime, end: LocalTime }` | — | Crossing midnight | candidate | likely | folded → `TimeInterval` |
-| `Period` | A calendar amount (1 month, 2 years) | `Object { years, months, days: Int }` | ISO 8601 P1M | Month length vs Duration | candidate | likely | folded → `DateRange` |
+| `Period` | A calendar amount (1 month, 2 years) | `Object { years, months, days: Int }` | ISO 8601 P1M | Month length vs Duration | candidate | likely | standard, as `CalendarPeriod` |
 | `RecurrenceRule` | A repeating schedule | `Object` matching RRULE fields | RFC 5545 RRULE | Every library's own repeat model | candidate | core | standard |
 | `CronExpression` | A cron schedule | `Text` validated | POSIX cron, Quartz | 5 vs 6 vs 7 fields | candidate | likely | out: app entity |
 | `OpeningHours` | Weekly opening times with exceptions | `Object { weekly: Map<Weekday, List<TimeRange>>, exceptions: List<…> }` | OSM opening_hours, schema.org | Midnight crossing; holidays | candidate | likely | standard |
@@ -1356,8 +1356,8 @@ declinable error, `type.standard_exists`).
 
 ## Tally
 
-1,120 types across 42 domains. Decisions: 245 `standard` (12 already
-built), 89 `folded`, 786 `out`.
+1,120 types across 42 domains. Decisions: 247 `standard` (12 already
+built), 88 `folded`, 785 `out`.
 
 | Gut call | Count |
 |---|---|

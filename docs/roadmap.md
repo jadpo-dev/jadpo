@@ -473,6 +473,16 @@ reference only).
   area page: the namespaces, every operation's signature and failures,
   which have a SQL form (for queries and backfills), and what is left out
   on purpose. **Needs Richard** to decide the page before 5.5.
+- [ ] **5.4b Declinable errors** `opus · high` (area 1, question 11,
+  decided 2026-10-17): no warning severity; the generic `decline <rule>:
+  "<reason>"` line above any declaration, with `decline.unused` and
+  `decline.not_declinable`; `jadpo declines list` and `clear` (`--rule`, a
+  path, `--json`) and the editor's decline actions on the same code;
+  `jadpo approval` listing every decline once it is built;
+  `library.similar_exists` and `constant.similar_exists` turned into
+  declinable errors, each error's checked example rewritten; and the
+  time-triggered rule (judged at today's date by `check`, at the commit's
+  date by `jadpo build`) for expired flags when they are built.
 - [ ] **5.5 Standard library: the build** `opus · high`: the operations 5.4
   decided, in the shared operation table, the interpreter and the runtime,
   each with its page examples as tests. Split here before starting if 5.4's

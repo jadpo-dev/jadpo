@@ -25,7 +25,7 @@ to close them, and says what is left out on purpose and why.
 | `range` | Operations on `Range<T>` and the ranges built on it | 3, new | This page |
 | `integer` | Operations on values built on `Int` | 5 (1 decided, 4 new) | [Area 3](03-logic.md), question 7 |
 | `decimal` | Operations on values built on `Decimal` | 13 (1 decided, 12 new) | [Area 3](03-logic.md), question 7 |
-| `money` | `Money` and its rates | 10, new | This page |
+| `money` | `Money` and its rates | 8, new | This page |
 | `units` | Physical quantities, `DataSize` and `Bitrate` | 3, new | This page |
 | `text` | Operations on text, and the contract's `parse`, `format` and `from` for every type | 21, new | This page |
 | `hash` | SHA-256 digests | 1, new | This page |
@@ -33,7 +33,7 @@ to close them, and says what is left out on purpose and why.
 | `crypto` | Encryption, passwords, signatures, message authentication | 10, new | This page |
 | `random` | Tokens, codes, shuffles; actions only | 5, new | This page |
 | `json` | One JSON document in memory; large files through #88's batches | 2, new | This page and #88 |
-| `temporal` | Instants, dates, local times, zones, formats, recurrence | 23 (21 decided, 2 new) | [Area 10](10-configuration-and-time.md#zones-and-local-times) |
+| `temporal` | Instants, dates, local times, zones, formats, recurrence | 24 (21 decided, 3 new) | [Area 10](10-configuration-and-time.md#zones-and-local-times) |
 | `locale` | Choosing a supported locale | 1, unchanged | [Area 10](10-configuration-and-time.md#choosing-a-locale-from-a-request) |
 | `colour` | Converting `Colour` between spaces, contrast | 5, new | This page |
 | `web` | Building URLs, address blocks | 3, new | This page |
@@ -41,7 +41,7 @@ to close them, and says what is left out on purpose and why.
 | `media` | Fitting dimensions | 1, new | This page |
 | `markup` | Markdown and HTML, made safe | 3, new | This page |
 
-162 operations in all: 28 decided, 134 proposed here. On top of them every
+161 operations in all: 28 decided, 133 proposed here, beside the operators of the standard operator table. On top of them every
 standard type has the contract's baseline (construction, `text.parse`,
 `text.format`, `text.from`, JSON, storage, `==` and order), generated, not
 counted per type. Of the new operations, 3 wait on two-parameter inline
@@ -87,7 +87,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 245 types, 12 of them built already (bold).
+Decided 2026-10-17 (Richard): 247 types, 12 of them built already (bold); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -101,9 +101,9 @@ decided.
 | Places (10) | `Country`, `Subdivision`, `Continent`, `UnLocode`, `CallingCode`, `Language`, `Script`, `TextDirection`, **`Locale`**, **`Zone`** | |
 | Geospatial (17) | `Point` (optional altitude), `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` | `geo` (future area) |
 | Money, payments, banking (24) | `Money`, `Currency`, `ExchangeRate`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, `PaymentCardNumber`, `MaskedCardNumber`, `CardBrand`, `CardBin`, `CardExpiry`, `PaymentReference`, `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`, `UkAccountNumber`, `BankAccount`, `AbaRoutingNumber`, `Lei`, `Isin` | `money` |
-| Tax and identity numbers (10) | `VatNumber`, `TaxId`, `UkUtr`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin`, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, `NhsNumber` | |
+| Tax and identity numbers (11) | `VatNumber`, `TaxId`, `UkUtr`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin`, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, `NhsNumber` | |
 | Commerce and logistics (20) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `Quantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, `HsCode`, `Incoterm`, `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` | `units`, `media` |
-| Time and calendar (18) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`**, `LocalTime`, `LocalDateTime`, `Month`, `YearMonth`, `Year`, `Quarter`, `IsoWeek`, `UtcOffset`, `DateRange`, `TimeInterval`, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` | `temporal`, `range` |
+| Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`**, `LocalTime`, `LocalDateTime`, `Month`, `YearMonth`, `Year`, `Quarter`, `IsoWeek`, `UtcOffset`, `DateRange`, `TimeInterval`, `CalendarPeriod`, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` | `temporal`, `range` |
 | Physical quantities (17) | `Length`, `Area`, `Volume`, `Angle`, `Mass`, `Pressure`, `Energy`, `Power`, `Temperature`, `TemperatureDifference`, `Speed`, `Frequency`, `Voltage`, `Current`, `Illuminance`, `SoundLevel`, `Concentration` | `units` |
 | Maths and data (8) | `Percentage`, `Ratio`, `Fraction`, `Range<T>`, `DataSize`, `Bitrate`, `Vector`, `Embedding` | `range`, `units`; AI area |
 | Health (9) | `BloodType`, `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` | |
@@ -136,13 +136,13 @@ catalogue's Decision column):
 |---|---|
 | Units (`Metre`, `Mile`, `Kilogram`, `Pound`, `Celsius`, `Litre`, `KilowattHour`, every `...Unit` enum and 17 more) | The quantity type, with a unit at construction and display |
 | Roles: `Height`, `GeoDistance` · `FloorArea` · `WindSpeed` · `BodyTemperature` · `BarometricPressure` · `MediaDuration` · `DateOfBirth`, `ExpiryDate` · `CountryOfOrigin` · `UsState`, `Region` · `Salary` | `Length` · `Area` · `Speed` · `Temperature` · `Pressure` · `Duration` · `CalendarDate` · `Country` · `Subdivision` · `Money`: a field of the general type |
-| Duplicates: `Timestamp`, `Uri`, `Ipv4Address`, `Ipv6Address`, `HexColour`, `HslColour`, `Sha256`, `UuidV7`, `Point3D`, `CountryAlpha3`, `LanguageAlpha3`, `UkPostcode`, `UsZipCode`, `UkNumberPlate`, `EuVatNumber`, `UkVatNumber`, `TimeRange`, `Period`, `MinorUnits`, `MediaType`, `ImageFormat` | The one standard type each duplicates (the catalogue names which) |
+| Duplicates: `Timestamp`, `Uri`, `Ipv4Address`, `Ipv6Address`, `HexColour`, `HslColour`, `Sha256`, `UuidV7`, `Point3D`, `CountryAlpha3`, `LanguageAlpha3`, `UkPostcode`, `UsZipCode`, `UkNumberPlate`, `EuVatNumber`, `UkVatNumber`, `TimeRange`, `MinorUnits`, `MediaType`, `ImageFormat` | The one standard type each duplicates (the catalogue names which) |
 | Also folded in review: `AddressLine`, `BarcodeSymbology`, `DoseFrequency`, `FlightDesignator`, `GitSha`, `Gtin`, `HttpHeaders`, `Humidity`, `PackageDimensions`, `PackageName`, `PhysicalQuantity`, `UnitOfMeasure`, `Ucum`, `Proportion`, `QueryString`, `SubtitleTrack`, `UkBankAccount`, `WebhookSignature`, `WindDirection`, `CarbonDioxideEquivalent` | `PostalAddress`, `Barcode`, `DosageInstruction`, `FlightNumber`, `GitRef`, `Ean13`, `HttpHeaderName`, `Percentage`, `Dimensions`, `PackageUrl`, `Quantity` (three), `Ratio`, `Url`, `SubtitleCue`, `BankAccount`, `Hmac`, `Bearing`, `Mass` |
 | Formats: `Hex`, `Base64`, `Wkt`, `Json`, `CsvDialect`, `MessageFormat`, `VCard`, `OtpAuthUri`, `CssLength` | Out: `encoding.` and `json.` operations |
 | Application entities: `Recipe`, `HotelStay`, `OrderStatus`, `PaymentStatus`, `Consent`, `SensorReading`, `StoredFile`, `UserId`, `Allergy` and 31 more | Out: an application's own records |
 | `Gender`, `SexAtBirth`, `Cvv` | Out: sensitive (a CVV is never stored) |
 | `HashAlgorithm`, `KeyAlgorithm`; `SessionId`; `AcceptLanguage` | Out: no algorithm choices; the runtime's (area 8); a call, `locale.from_accept_language` |
-| Niche, silly, or a maybe with no published standard | Out: 730 entries, a package's to define |
+| Niche, silly, or a maybe with no published standard | Out: 729 entries, a package's to define |
 
 ### Every standard type meets one contract
 
@@ -168,9 +168,9 @@ contract adds 2 names, not 700.
 
 | Group | Extras | Count |
 |---|---|---|
-| Money and payments | `money.from_minor`, `of`, `minor`, `currency`, `sum`, `multiply`, `divide`, `allocate`, `split`, `convert` (with a given `ExchangeRate`, never fetched) | 10 |
+| Money and payments | `money.from_minor`, `of`, `minor`, `currency`, `sum`, `allocate`, `split`, `convert` (with a given `ExchangeRate`, never fetched) | 8; arithmetic by the operator table |
 | Physical quantities, `DataSize`, `Bitrate` | `units.of`, `in`, `sum`; operators within a kind and the defined products and quotients | 3 |
-| Time and calendar | Area 10's 21, plus `temporal.occurrences(rule, from:, count:)` for a `RecurrenceRule` and `temporal.open_at(hours, at)` for `OpeningHours` | 2 new |
+| Time and calendar | Area 10's 21, plus `temporal.occurrences`, `temporal.open_at` and `temporal.period_between`; `CalendarPeriod` arithmetic by the operator table | 3 new |
 | Ranges (`Range<T>`, `DateRange`, `TimeInterval`) | `range.contains`, `range.overlaps`, `range.intersection` | 3 |
 | Colour | `colour.from_hsl`, `from_oklch`, `mix`, `with_lightness`, `contrast` (WCAG 2) | 5 |
 | Security | `crypto` as tabled below, with `sign`, `verify_signature`, `verify_jwt` and `verify_totp` | 10 |
@@ -337,14 +337,15 @@ type meets one contract", and isn't repeated here.
 
 | Section | Namespace | Operations |
 |---|---|---|
+| The standard operator table | | Operators, not counted |
 | Lists | `list` | 26 |
 | Sets | `set` | 7 |
 | Maps | `map` | 10 |
 | Ranges | `range` | 3 |
 | Numbers | `integer`, `decimal` | 18 |
-| Money and payments | `money` | 10 |
+| Money and payments | `money` | 8 |
 | Physical quantities | `units` | 3 |
-| Time and calendar additions | `temporal` | 2 new, 21 decided |
+| Time and calendar additions | `temporal` | 3 new, 21 decided |
 | Text | `text` | 21 |
 | Text formats | `markup` | 3 |
 | Hashing and cryptography | `hash`, `crypto` | 11 |
@@ -356,6 +357,65 @@ type meets one contract", and isn't repeated here.
 | Web and software | `web`, `semver` | 4 |
 | Groups with the baseline only | | 0 |
 | Locale | `locale` | 1 decided |
+
+## The standard operator table
+
+Operators on standard types follow one fixed, documented table, instead of
+a library function per job. It generalises what area 10 already decided
+for time (`Instant - Instant` gives a `Duration`): the compiler knows each
+row, so `price * 20%` and `distance / 2h` read as they would on paper and
+are checked as strictly as a call. Anything not in the table is a compile
+error naming the two types. Area 3's rules for numbers and `+` on text
+stand.
+
+| Left | Operator | Right | Gives | Notes |
+|---|---|---|---|---|
+| `Instant` | `+`, `-` | `Duration` | `Instant` | Decided (area 10) |
+| `Instant` | `-` | `Instant` | `Duration` | Decided (area 10) |
+| `Duration` | `+`, `-` | `Duration` | `Duration` | Decided (area 10) |
+| `CalendarDate` | `+`, `-` | `CalendarPeriod` | `CalendarDate` | Years, then months, then days; a day past the month's end clamps to its last day |
+| `CalendarPeriod` | `+`, `-` | `CalendarPeriod` | `CalendarPeriod` | Part by part (`P1M + P10D` is `P1M10D`) |
+| `CalendarPeriod` | `*` | `Int` | `CalendarPeriod` | Each part multiplied |
+| A quantity | `+`, `-`, `*`, `/` | as tabled | as tabled | "Physical quantities" below |
+| `Money` | `+`, `-`, `<` ... | `Money` | `Money`, `Bool` | One currency (below) |
+| `Money` | `*` | a number or `Percentage` | `Money` | Rounded by the type's `rounding:` |
+| `Money` | `/` | `Decimal` | `Money` | A rate (`/ 1.20` takes VAT off), rounded by the type's `rounding:` |
+| `Money` | `/` | `Money` | `Decimal` | One currency; as `/` gives for `Decimal` (area 3) |
+| `Money` | `/` | `Int` | refused | `type.money_split`: use `money.split` or `money.allocate` |
+| `Money` | `+`, `-` | `Percentage` | refused | Ambiguous: write `price * 120%` or `price + price * 20%` |
+| `Percentage` | `+`, `-` | `Percentage` | `Percentage` | `20% + 5%` is `25%` |
+| `Percentage` | `*` | a number or `Percentage` | `Percentage` | `50% * 20%` is `10%` |
+| A number or quantity | `*` | `Percentage` | the same kind | `distance * 10%` |
+
+- **Money in one currency.** Where both types fix the currency
+  (`type Price = Money { currency: Currency.gbp }`), adding two currencies
+  is a compile error. Where a currency is known only while running (a
+  SaaS billing each customer in theirs), `+`, `-` and comparisons can fail
+  with the condition `currency_mismatch`, mapped as any construction rule
+  is: `attempt subtotal + line.amount { currency_mismatch:
+  InvoiceCurrencyMismatch }`. Inside `if (money.currency(a) ==
+  money.currency(b))` the checker has the proof and the operator is plain,
+  as a range proves a construction (area 2).
+- **Rounding is the type's.** A Money type may declare `rounding:`
+  (`type Price = Money { currency: Currency.gbp  rounding: Rounding.half_up
+  }`), used by `*` and `/`; without one it is `half_even`, as constructing
+  into a type with a fixed `scale` rounds (area 2). So multiplying needs no
+  call, and `money.multiply` and `money.divide` are gone.
+- **`/` by an `Int` is refused** with a fix to `money.split` or
+  `money.allocate`. Dividing money by a count is almost always sharing it
+  out, and rounding division loses a minor unit (`£10.00 / 3` is `£3.33`,
+  three times `£9.99`); `split` hands every penny to someone. `/` by a
+  `Decimal` stays, because that is a rate, not a share: `gross / 1.20`
+  takes VAT off. Halving a price is `price * 50%`.
+- **The `%` literal.** `20%` is a `Percentage` (`0.20`); `%` as remainder
+  (area 3) is always written with spaces, as the formatter writes every
+  binary operator, so the two never meet in formatted code. `20%3` is an
+  error naming both readings.
+- **No user-defined operators.** An application's types can't declare
+  operators, so `a + b` always means a row of this table or area 3's, and
+  a reviewer never has to find an overload to know what it does, whether
+  it can fail or what it costs. Area 3 already keeps generics to the
+  standard library for the same reason.
 
 ## SQL forms
 
@@ -570,7 +630,7 @@ var entered: Money = attempt money.of(input.amount, input.currency) {
     too_many_places: AmountTooPrecise                                 // 10.505 in GBP
 }
 var total: Price = Price(list_price + delivery)                      // same currency: plain +
-var vat: Price = money.multiply(total, by: 0.20, rounding: Rounding.half_even)
+var vat: Price = total * vat_rate                                    // a Percentage (20%); the type's rounding
 var thirds: List<Money> = money.split(total, 3)                       // 3.50, 3.50, 3.50
 text.format(total, locale: Locale.en_gb)                             // "£10.50"
 ```
@@ -582,22 +642,17 @@ text.format(total, locale: Locale.en_gb)                             // "£10.50
 | `money.minor(value)` | `Int`, the minor units | | the amount column |
 | `money.currency(value)` | `Currency` | | the currency column |
 | `money.sum(items, currency:)` | `Money`; `currency:` gives the zero for an empty list | `currency_mismatch` | none |
-| `money.multiply(value, by:, rounding:)` | `Money` times a number (tax, discount, a rate), rounded to a minor unit | overflow is a defect | none |
-| `money.divide(value, by:, rounding:)` | `Money` divided by a number, rounded to a minor unit; `by` never zero | | none |
 | `money.allocate(total, ratios)` | `List<Money>` in proportion to `ratios` (whole numbers), adding up to `total` exactly: leftover minor units go one each to the first shares | | none |
 | `money.split(total, parts)` | `List<Money>`, `parts` near-equal shares adding up to `total`; `parts` at least 1 | | none |
 | `money.convert(value, rate)` | `Money` in the rate's other currency, rounded half to even to its minor unit; `rate` an `ExchangeRate` the app was given | `currency_mismatch` (the rate is for another currency) | none |
 
-- **`+`, `-` and comparisons** work on two `Money` values of the same
-  currency, as on numbers. Where both types fix the currency, a mismatch
-  is a compile error. Where it is only known while running (a SaaS that
-  bills each customer in theirs), the checker needs it proven, as it
-  proves a range: inside `if (money.currency(a) == money.currency(b))` the
-  `+` is plain, and outside it the error's `next:` says to check first.
-  There is no `money.add`: one way each (question 16).
-- **Multiplying or dividing always names its rounding,** since a third of
-  a penny has to go somewhere. Splitting never rounds: `allocate` and
-  `split` hand every minor unit to some share.
+- **Arithmetic is the standard operator table's:** `+`, `-` and
+  comparisons within one currency (a compile error where both types fix
+  it, `currency_mismatch` under `attempt` where it is known only while
+  running), `*` by a number or a `Percentage` and `/` by a `Decimal`
+  rounded by the type's `rounding:` (`half_even` unless declared), and `/`
+  by an `Int` refused in favour of `split` (question 16). Splitting never
+  rounds: `allocate` and `split` hand every minor unit to some share.
 - **No exchange-rate source.** A rate is outside data with a time and a
   source, fetched by a provider package; `money.convert` only applies an
   `ExchangeRate` the app already holds, so an inverted rate is a type
@@ -631,7 +686,9 @@ Each quantity type (`Length`, `Mass`, `Temperature` ... and `DataSize`,
 `Bitrate`) holds an exact `Decimal` in its SI base unit at a fixed scale
 per kind. The unit is chosen only when a value is made or shown, so a
 `Length` is a `Length` whatever unit built it, and `==` and comparisons
-work across units: `1km == 1000metre`.
+work across units: `1km == 1000metre`. Inside a program a quantity has
+no unit, so metres plus centimetres is just `Length + Length`; units
+exist only at construction and display.
 
 | Kind | Base unit | Scale (smallest step) |
 |---|---|---|
@@ -716,12 +773,26 @@ defined; any other mix is a compile error naming the two kinds:
 
 ## Time and calendar additions
 
-Area 10's 21 `temporal` operations stand. The new time types add two.
+Area 10's 21 `temporal` operations stand. The new time types add three.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
 | `temporal.occurrences(rule, from:, count:)` | `List<ZonedTime>`, the next `count` occurrences of a `RecurrenceRule` (RFC 5545) at or after `from`, in the rule's zone; `count` 1 to 1000 | | none |
 | `temporal.open_at(hours, at)` | `Bool`: an `OpeningHours` is open at the `Instant`, in its zone, across midnight and its exceptions | | none |
+| `temporal.period_between(start, end)` | `CalendarPeriod` in whole years, months and days from one `CalendarDate` to another, so adding it to `start` gives `end`; negative parts when `end` is earlier | | `age(b, a)`, reduced to years, months and days |
+
+`CalendarPeriod` is an amount of calendar time, `P1Y2M10D` in ISO 8601:
+whole years, months and days, unlike a `Duration`, which is exact time,
+and a `DateRange`, which is a span between two dates. It has no order
+(one month and 30 days don't compare) and `==` compares part by part. It
+is stored as an `interval` holding only years, months and days.
+`CalendarDate + CalendarPeriod` (the operator table) applies years, then
+months, then days, and clamps a day past the month's end to its last day,
+so 31 January plus one month is 28 or 29 February. That is area 10's
+`temporal.add_months` with `InvalidDay.last_valid_day`; an application
+that must refuse instead calls `add_months` with `InvalidDay.reject`.
+A `ZonedTime` takes no `CalendarPeriod` by operator, since it would also
+need a `dst:` choice; it uses `temporal.add_months` and its siblings.
 
 ## Text
 
@@ -1027,7 +1098,7 @@ left out with a reason.
 
 | Does | Needs |
 |---|---|
-| Basket total and a 10% discount | `money.sum`, `money.multiply` with `rounding:` |
+| Basket total and a 10% discount | `money.sum`, `total * 90%` |
 | Discount spread across the lines for the receipt | `money.allocate` |
 | Product page address from its title | `text.slug` |
 | Order reference read out on the phone | `random.code` |
@@ -1064,7 +1135,7 @@ left out with a reason.
 | Does | Needs |
 |---|---|
 | Asking price shown in the visitor's locale | `text.format` |
-| Price per square metre | `money.divide` with `rounding:` |
+| Price per square metre | `price / units.in(floor_area, AreaUnit.square_metre, ...)`: `Money` by a `Decimal` |
 | Listing address | `text.slug` |
 | Description preview | `text.trim`, `text.keep_first` |
 | Features filter | `set.contains`, `set.intersection` |
@@ -1076,7 +1147,7 @@ left out with a reason.
 | Does | Needs |
 |---|---|
 | Plan prices per customer's currency | `Money` with a currency known while running |
-| Proration for a mid-month change | `money.multiply` with `rounding:` |
+| Proration for a mid-month change | `price * (days_left / days_in_month)`, the type's rounding |
 | Invoice total of lines | `money.sum` |
 | Signed webhooks to customers | `crypto.hmac`, `json.write` |
 | Customers' third-party tokens kept safe | `crypto.encrypt`, encrypted fields |
@@ -1169,7 +1240,7 @@ packages), TOTP (a package), calendar files (a package, per #88).
 **The example apps** in `examples/` need nothing outside this page: 04's
 allergens become a set once `set.contains` exists; 04's and 09's summing
 loops become `list.sum`; 09's percentage discount becomes
-`money.multiply`; 05's divisions and 10's due dates are already decided.
+`total * discount`, a `Percentage`; 05's divisions and 10's due dates are already decided.
 
 ## Language gaps this page depends on
 
@@ -1270,7 +1341,7 @@ and second ways every one of them has.
   five page examples (area 2's `work_email(text:)`, areas 7's and 8's `var
   text: Memo`, area 9's `edit_note(text:)`, area 16's `search_todos(text:)`)
   and about ten Jadpo snippets in crate tests, renamed in 5.5.
-- **Area 2:** `collection.` becomes `list.` (below); the 233 new standard
+- **Area 2:** `collection.` becomes `list.` (below); the 235 new standard
   types, `EncryptionKey` and `PasswordCheck` become built-in names, and the
   page and example types that reuse one are renamed (question 3 lists
   them); `for` and maps as "Language gaps" says.
@@ -1310,9 +1381,9 @@ writes `list.`, `set.` or `map.` from the argument's type.
 | Topic | Decision | Date |
 |---|---|---|
 | Shared vocabulary types | The standard library defines a type wherever two packages would otherwise each invent their own, even when the heavy operations live in a package or a later area; each has one construction that validates, one wire shape and one storage shape; positional pairs are designed out by named fields, and an axis order exists only in a conversion that names it (`geo.from_lng_lat`) (Richard) | 2026-10-17 |
-| Packages use the standard types | A package's public `Object` whose only fields match a standard type's shape, by the common field names in any order (table under "Packages use the standard types"), is the warning `type.standard_equivalent`, whose `next:` is to use the standard type and convert at the edge; a warning on #88's publishing bar, not a refusal (Richard). Whether it becomes a blocking error with a declared opt-out, for app code too, is open question 1 | 2026-10-17 |
+| Packages use the standard types | A package's public `Object` whose only fields match a standard type's shape, by the common field names in any order (table under "Packages use the standard types"), is the warning `type.standard_equivalent`, whose `next:` is to use the standard type and convert at the edge; a warning on #88's publishing bar, not a refusal (Richard). Area 1 has since removed warnings (its question 11); whether this becomes a declinable error, for app code too, is open question 1 | 2026-10-17 |
 | Standard types are global, in one flat set | Every standard vocabulary type is a global name, with no split between core types and types inside namespaces; functions stay in namespaces. Apps name their own types for purpose and shape (`DeliveryStop { address: PostalAddress }`, `BillingContact`), never re-declaring a standard one (Richard) | 2026-10-17 |
-| The standard types | 245 types in 18 groups (table under "The standard types"); units folded into their quantity type, roles into the general type, duplicates merged, formats and application entities out; country-specific identifiers are global types; gender and sex at birth stay out; a quantity is stored in its SI base unit, with the unit chosen at construction and display; the catalogue records the decision for each of the 1,120 brainstormed entries (Richard) | 2026-10-17 |
+| The standard types | 247 types in 18 groups (245 as adopted, with `CalendarPeriod` and `UkCompanyNumber` added after review) (table under "The standard types"); units folded into their quantity type, roles into the general type, duplicates merged, formats and application entities out; country-specific identifiers are global types; gender and sex at birth stay out; a quantity is stored in its SI base unit, with the unit chosen at construction and display; the catalogue records the decision for each of the 1,120 brainstormed entries (Richard) | 2026-10-17 |
 | Every standard type meets one contract | Every standard type has a library with the same baseline: construction and validation from its parts and from text with failures named by rule; formatting for people as `PresentationText`, through the locale where it matters; a canonical text form where one exists; one JSON shape and one storage shape; `==`, and order where the type is ordered; conversions at named edges. Some groups add extras (Richard) | 2026-10-17 |
 | `Point` | The geographic point is `Point`, the one exception to the naming rule (Richard) | 2026-10-17 |
 
@@ -1328,24 +1399,19 @@ Richard's points first, then the first draft's remaining questions. The vocabula
      apply it. For one already stored or in an API record, the fix writes
      the edit and the data migration, and the change goes through the
      existing `ApiChange` and `DataChange` acceptances (area 18).
-   - **Decline, with a reason, on the type itself:**
-     `not_standard: "Grid squares, not WGS84 degrees"` as a declaration
-     setting in the type's body, as an entity's `store:` sits beside its
-     fields (area 5). It costs one more reserved field name, beside
-     `optional`, `include`, `pick` and `omit` (`type.reserved_field_name`).
-     An agent or a person may decline; the approval report (`jadpo
-     approval`, area 18; there is no `jadpo review`) lists every decline
-     with its reason, so declining by reflex shows. Area 1's question 11
-     proposes the same for every warning in Jadpo: if it is decided,
-     `not_standard:` becomes its generic `decline type.standard_exists:
-     "..."` line.
+   - **Decline, with a reason, on the type itself,** with area 1's
+     decided generic line (question 11 there): `decline
+     type.standard_exists: "Grid squares, not WGS84 degrees"` directly
+     above the declaration. An agent or a person may decline, and `jadpo
+     approval` lists every decline with its reason, so declining by reflex
+     shows. Richard's first form, a `not_standard:` option, is replaced by
+     that line, which needs no reserved field name.
 
    *Recommendation:* yes, with three choices made:
-   - An **error with an opt-out**, not a blocking warning: warnings never
-     fail `check` today (area 1: `library.similar_exists` is "a warning,
-     so `check` still passes"), and a warning that blocks would be the
-     only one. Renamed `type.standard_exists`, to read as an error and
-     match `library.similar_exists` and `constant.similar_exists`.
+   - A **declinable error**, as area 1 now makes every judgement call
+     (its question 11, decided): there are no warnings left to block.
+     Renamed `type.standard_exists`, to read as an error and match
+     `library.similar_exists` and `constant.similar_exists`.
    - **Widened** from packages' public types to every type declaration in
      app code too, since an app's own `Location { lat, lng }` reaches its
      API and its tables exactly as a package's would.
@@ -1354,7 +1420,7 @@ Richard's points first, then the first draft's remaining questions. The vocabula
      matches by shape. The required reason handles them, and review sees
      each one.
 2. **How is the standard type contract expressed and called?** Written
-   per type, 245 times, or generated from each type's declaration and
+   per type, 247 times, or generated from each type's declaration and
    data. *Recommendation:* generated. Each standard type is a stub
    declaration in `crates/jadpo-check/std/` (as `types.jadpo` holds the
    built ones) plus a data entry: its canonical text grammar, JSON shape,
@@ -1366,7 +1432,7 @@ Richard's points first, then the first draft's remaining questions. The vocabula
    the runtime alike, and one harness tests every type the same way:
    valid and invalid examples per rule, and the round trip through text,
    JSON and storage. A new type is then data plus at most one validator,
-   which is how 245 types fit the chunks below. Calls are one name each
+   which is how 247 types fit the chunks below. Calls are one name each
    over every type, `text.parse(raw, as: T)`, `text.format(value,
    locale:)` and `text.from(value)`, rather than a `parse` per namespace.
    That makes area 10's decided `temporal.format` the time types'
@@ -1420,7 +1486,7 @@ Richard's points first, then the first draft's remaining questions. The vocabula
    already an error, and a differently named `Text` says nothing. Each
    standard type that has a distinctive shape lists its match signature
    (fields and their common synonyms) in the catalogue, reviewed with
-   it; of the 245, 99 are objects, and only those with a
+   it; of the 247, 100 are objects, and only those with a
    domain field name carry one.
 6. **One namespace per type: `list.`, `set.` and `map.` replace
    `collection.`?** Costs: `list`, `set`, `map` and `text` can't be
@@ -1472,19 +1538,34 @@ Richard's points first, then the first draft's remaining questions. The vocabula
     values or records; and named rules across an object's fields as an
     area 2 change, after 5.5, since the bookings scenario can't be covered
     without one.
-16. **Built-in `Money` and `Currency` in minor units?** Sub-choices:
-    - Operators or functions: *recommendation:* `+`, `-` and comparisons
-      as operators, one way each, with functions only where a rounding
-      must be named (`multiply`, `divide`).
+16. **Built-in `Money` and `Currency` in minor units, and the standard
+    operator table?** Sub-choices:
+    - Operators or functions: *recommendation:* operators, through the
+      standard operator table, for `+`, `-`, comparisons, `*` and `/`;
+      functions only for what no operator says (`allocate`, `split`,
+      `convert`). `money.add`, `money.multiply` and `money.divide` don't
+      exist.
     - A currency mismatch: *recommendation:* a compile error where both
-      types fix the currency, and proved by an `if` on the currencies
-      where it is known only while running.
+      types fix the currency; otherwise the condition `currency_mismatch`,
+      mapped with `attempt` like a construction rule, and needing no arm
+      inside an `if` that compares the currencies.
+    - Rounding for `*` and `/`: *recommendation:* a `rounding:` setting on
+      the Money type, `half_even` when not declared, matching area 2's
+      construction into a fixed scale, rather than making it required on
+      every Money type.
+    - `/` by an `Int`: *recommendation:* refused as `type.money_split`,
+      with a fix to `split` or `allocate`; `/` by a `Decimal` rate allowed.
     - Wire shape: *recommendation:* fixed, `{"amount": 1050, "currency":
       "GBP"}`; a provider's decimal string is mapped in its package.
     - Formatting: *recommendation:* the contract's `text.format` in code
       and `{price, number, currency}` in messages, one formatter; and
-      `{n, number, percent}` for a `Percentage` (in the adopted list, a
-      `Decimal` where `0.20` is 20%).
+      `{n, number, percent}` for a `Percentage`.
+    - The `%` literal: *recommendation:* `20%` is a `Percentage`; remainder
+      keeps its spaced `%`; `20%3` is an error naming both.
+    - No user-defined operators: *recommendation:* recorded as a rule of
+      the language, in area 3 beside its generics decision: an
+      application's types never declare operators, so every `a + b` is a
+      row a reviewer can look up.
 17. **Unit-suffixed literals for quantities, and the `m` clash?**
     Durations already have `500ms`, `30s`, `5m`, `2h` and `30d` (area 10),
     and `5m` is minutes. *Recommendation:* suffixed literals, with `m`
@@ -1563,7 +1644,7 @@ Richard's points first, then the first draft's remaining questions. The vocabula
 
 ### Building it
 
-5.5 as one chunk is far more than a session: 134 operations and 233 new
+5.5 as one chunk is far more than a session: 133 operations and 235 new
 types. Proposed split, each one session, in order. The contract comes
 first; each group of types then arrives with its baseline and its extras.
 
@@ -1590,17 +1671,20 @@ first; each group of types then arrives with its baseline and its extras.
 - **5.5g Hashing, encodings and JSON** `opus · high`: `hash`, `encoding`,
   `json.read` and `json.write` in memory with `mismatch`'s problem; the
   batch forms come with #88's batches.
-- **5.5h Money** `opus · high`: `Money`, `Currency`, `ExchangeRate`, the 10
-  `money` operations, the two columns, the wire shape, `{price, number,
+- **5.5h Money** `opus · high`: `Money`, `Currency`, `ExchangeRate`, the 8
+  `money` operations, the operator table's `Money` rows with
+  `currency_mismatch`, `rounding:` and `type.money_split`, the two columns, the wire shape, `{price, number,
   currency}`, and area 2's examples renamed.
 - **5.5i Payment and identity numbers** `opus · high`: the money group's
-  other 21 types and the 10 tax and identity numbers, each a pattern or
+  other 21 types and the 11 tax and identity numbers, each a pattern or
   check digit (mod-97, Luhn, mod-11) on the contract.
 - **5.5j Quantities** `opus · high`: the 17 physical quantities with
   `DataSize`, `Bitrate`, `Percentage`, `Ratio` and `Fraction`, their units
-  SI storage at each kind's scale, suffixed literals, the product and
+  SI storage at each kind's scale, the `%` literal and the operator
+  table's `Percentage` rows, suffixed literals, the product and
   quotient table, `type.unit_required`, and the 3 `units` operations.
-- **5.5k Time and calendar** `opus · high`: the 13 new time types,
+- **5.5k Time and calendar** `opus · high`: the 14 new time types,
+  `CalendarPeriod`'s operator rows and `temporal.period_between`,
   `RecurrenceRule` expansion (`temporal.occurrences`) and `OpeningHours`
   (`temporal.open_at`).
 - **5.5l People and places** `opus · high`: the 19 new types, with

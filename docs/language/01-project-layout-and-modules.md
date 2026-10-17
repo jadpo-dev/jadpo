@@ -2192,7 +2192,8 @@ migration workflow (area 5). The layout only reserves their folders.
    change in `acceptances/`, but the decided root list allows only the entries
    above. *Recommendation:* add both folders to the fixed root. *Decided 2026-10-13 (area 18):* yes; the root also gains `providers/` and `jadpo.lock` (area 11).
 11. **No warnings: every finding an error, some of them declinable?**
-   Proposed by Richard (2026-10-17), not decided. Today a warning never
+   *Decided 2026-10-17 (see Decisions):* yes, as recommended; built in
+   chunk 5.4b. Until then a warning never
    fails `check` (`library.similar_exists`, built in chunk 1.7, and
    `constant.similar_exists`, chunk 5.3e), so an agent can leave one in
    place for ever and nobody decides it. The proposal:
@@ -2280,8 +2281,7 @@ migration workflow (area 5). The layout only reserves their folders.
    `decline` line, `decline.unused` and `decline.not_declinable`, the two
    built warnings converted, `jadpo declines list` and `clear`, the
    editor's code actions on the same path, the approval report's list, and
-   the date rule for time-triggered checks. The roadmap isn't edited until
-   this is decided.
+   the date rule for time-triggered checks. Added to the roadmap as 5.4b.
 
 ### Decisions
 
@@ -2328,3 +2328,4 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | The primary declaration first | `jadpo fmt` moves the primary declaration below the file's opening comments, up to their last blank line, and its `use` lines; it takes the comments written above it and the one after it on its line, and everything else keeps its written order. `jadpo fmt --check` fails on a file whose primary declaration isn't first; loose files keep their order (chunk 3.9) | 2026-10-15 |
 | Names per domain | A private function or type (not a failure, an email, or a type an API's record names) needs a name unique only within its domain; everything public, in `shared/` or the root files, and every other kind (entities, failures, events, actions, queries, routes, schedules, subscribers, services, fixtures, emails) stays unique across the project, as do domain, library and standard-library names among themselves. Why: agents in parallel workspaces on different domains would otherwise clash on private helper names at merge; imports stay exact. Rejected: a namespace per domain, which only moves the prefix into tables, error codes, OpenAPI and event names, and makes one name mean different things by folder. The identity key of a function or type declared in a domain carries the domain, and promotion to `shared/` writes a registry move line (amends area 18's question 8). `semantic.duplicate_declaration` says copy or clash, never invents a name, and lists the names in use with the same word; `jadpo rename` refuses a name in use; agents merge `main` and run `jadpo check` before pushing, and generated CI runs `jadpo check` first. Built in chunk 5.3d, but for `jadpo rename`, which comes with the command (Richard) | 2026-10-16 |
 | Constants in the layout | A `constant` (area 3) is placed and shared as a helper function is: used by one file it sits at the top of that file, never as a primary declaration, and used by a second it moves into a library and is read through it (`pricing.vat_rate`), so a library holds functions and constants; a private constant needs a name unique only within its domain; `constant` is reserved; a top-level `var` is `syntax.expected_declaration` whose `next:` writes `constant`; two constants of one type holding one value warn `constant.similar_exists`. Built in chunk 5.3e (Richard) | 2026-10-16 |
+| Declinable errors (question 11) | No warning severity: every finding is an error, and the judgement-call rules (question 11's table) are declinable. A declaration declines one rule with a `decline <rule>: "<reason>"` line directly above it, the reason required; an agent or a person may decline; a decline whose rule no longer fires is `decline.unused`, and naming a rule that can't be declined is `decline.not_declinable`. Plain mistakes are never declinable. `jadpo approval` lists every decline a change adds or edits; `jadpo declines list` and `clear`, with `--rule <id>`, a path and `--json`, show and reset them through the same code as the editor's actions. A rule triggered by time passing (area 16's expired flag) is judged at today's date by `check` and at the commit's date by `jadpo build`, so it blocks new changes but never the rebuild of a merged revision (Richard) | 2026-10-17 |
