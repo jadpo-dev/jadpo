@@ -181,6 +181,20 @@ impl Types {
         id
     }
 
+    /// The shape of the standard object type `key` names (`InstantRange`,
+    /// area 19), which has no declaration in the graph: its data entry's
+    /// fields. `None` for anything else.
+    pub(crate) fn standard_object_shape(&mut self, key: &Key) -> Option<ShapeId> {
+        if key.kind() != Some(Kind::Type) || self.node(key).is_some() {
+            return None;
+        }
+        let entry = jadpo_std::standard_type(key.name())?;
+        let jadpo_std::standard::Holds::Object(fields) = entry.holds else {
+            return None;
+        };
+        Some(self.fixed_shape(entry.name, fields))
+    }
+
     /// The number of failure `key`'s plan, numbering it on first use.
     pub(crate) fn failure_id(&mut self, key: &Key) -> Option<FailureId> {
         if let Some(id) = self.failure_ids.get(key) {
@@ -339,10 +353,17 @@ impl Types {
     /// The `List<T>` or `Set<T>` that `ty` is, or that the named type or
     /// field type `ty` is built on.
     pub fn collection<'t>(&'t self, ty: &'t TypeRef) -> Option<&'t TypeRef> {
+        self.container(ty)
+            .filter(|found| matches!(found, TypeRef::List(_) | TypeRef::Set(_)))
+    }
+
+    /// The `List<T>`, `Set<T>` or `Map<K, V>` that `ty` is, or that the
+    /// named type or field type `ty` is built on.
+    fn container<'t>(&'t self, ty: &'t TypeRef) -> Option<&'t TypeRef> {
         let mut current = ty;
         for _ in 0..CHAIN {
             match current {
-                TypeRef::List(_) | TypeRef::Set(_) => return Some(current),
+                TypeRef::List(_) | TypeRef::Set(_) | TypeRef::Map(..) => return Some(current),
                 TypeRef::Nullable(inner) => current = inner,
                 TypeRef::Field(key) => match self.node(key).map(|node| &node.detail) {
                     Some(Detail::Field { ty, .. }) => current = ty,
@@ -365,6 +386,12 @@ impl Types {
     /// type built on one.
     pub fn is_set(&self, ty: &TypeRef) -> bool {
         matches!(self.collection(ty), Some(TypeRef::Set(_)))
+    }
+
+    /// Whether `ty` is a map: written `Map<K, V>`, or a named type or a
+    /// field type built on one.
+    pub fn is_map(&self, ty: &TypeRef) -> bool {
+        matches!(self.container(ty), Some(TypeRef::Map(..)))
     }
 
     /// A literal as a value of `ty`, the type it goes into (area 2,

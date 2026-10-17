@@ -16,6 +16,8 @@ pub enum Kind {
     Any,
     /// `List<T>`.
     List,
+    /// `Set<T>`.
+    Set,
     /// `Map<K, V>`.
     Map,
     /// An inline function, `item -> expression` (area 3).
@@ -141,6 +143,24 @@ pub enum Op {
     ListSum,
     LocaleDirection,
     LocaleFromAcceptLanguage,
+    MapCount,
+    MapGet,
+    MapHas,
+    MapKeys,
+    MapMerge,
+    MapValues,
+    MapWith,
+    MapWithout,
+    RangeContains,
+    RangeIntersection,
+    RangeOverlaps,
+    SetContains,
+    SetCount,
+    SetDifference,
+    SetIntersection,
+    SetUnion,
+    SetWith,
+    SetWithout,
     TemporalAddDays,
     TemporalAddMonths,
     TemporalAddYears,
@@ -369,6 +389,74 @@ const fn list(
     }
 }
 
+const SET: Param = param("items", Kind::Set);
+
+/// A `set` operation that never fails (area 19, "Sets"), by its
+/// parameters and result.
+const fn set(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace: "set",
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: &[],
+        rust,
+    }
+}
+
+const ENTRIES: Param = param("entries", Kind::Map);
+
+/// A `map` operation that never fails (area 19, "Maps"), by its
+/// parameters and result.
+const fn map(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace: "map",
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: &[],
+        rust,
+    }
+}
+
+/// A `range` operation that never fails (area 19, "Ranges"), by its
+/// parameters and result: on an `InstantRange` until `Range<T>` comes to
+/// the contract (chunk 5.5c2).
+const fn range(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace: "range",
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: &[],
+        rust,
+    }
+}
+
 /// Every operation, sorted by namespace and name.
 pub const OPERATIONS: &[Operation] = &[
     DIVIDE,
@@ -582,6 +670,130 @@ pub const OPERATIONS: &[Operation] = &[
         conditions: &[],
         rust: "locale::from_accept_language",
     },
+    // The map operations (area 19, "Maps"), each one function in
+    // `jadpo-value`'s `map` module. A map keeps its keys in the canonical
+    // order (area 2), so `keys` and `values` come out in it.
+    Operation {
+        at_least: Some(0),
+        ..map(Op::MapCount, "count", &[ENTRIES], INT, "map::count")
+    },
+    map(
+        Op::MapGet,
+        "get",
+        &[ENTRIES, param("key", Kind::Any)],
+        Kind::Any,
+        "map::get",
+    ),
+    map(
+        Op::MapHas,
+        "has",
+        &[ENTRIES, param("key", Kind::Any)],
+        BOOL,
+        "map::has",
+    ),
+    map(Op::MapKeys, "keys", &[ENTRIES], Kind::Set, "map::keys"),
+    map(
+        Op::MapMerge,
+        "merge",
+        &[param("first", Kind::Map), param("second", Kind::Map)],
+        Kind::Map,
+        "map::merge",
+    ),
+    map(
+        Op::MapValues,
+        "values",
+        &[ENTRIES],
+        Kind::List,
+        "map::values",
+    ),
+    map(
+        Op::MapWith,
+        "with",
+        &[ENTRIES, param("key", Kind::Any), param("value", Kind::Any)],
+        Kind::Map,
+        "map::with",
+    ),
+    map(
+        Op::MapWithout,
+        "without",
+        &[ENTRIES, param("key", Kind::Any)],
+        Kind::Map,
+        "map::without",
+    ),
+    // The range operations (area 19, "Ranges"), each one function in
+    // `jadpo-value`'s `range` module, by the range's own end rule: an
+    // `InstantRange` holds its start and not its end.
+    range(
+        Op::RangeContains,
+        "contains",
+        &[param("range", RANGE), param("value", INSTANT)],
+        BOOL,
+        "range::contains",
+    ),
+    range(
+        Op::RangeIntersection,
+        "intersection",
+        &[param("a", RANGE), param("b", RANGE)],
+        RANGE,
+        "range::intersection",
+    ),
+    range(
+        Op::RangeOverlaps,
+        "overlaps",
+        &[param("a", RANGE), param("b", RANGE)],
+        BOOL,
+        "range::overlaps",
+    ),
+    // The set operations (area 19, "Sets"), each one function in
+    // `jadpo-value`'s `set` module. A set is held in the canonical order
+    // without repeats (area 2), and every result is a new one; its items
+    // are the same values, so they keep their named type.
+    set(
+        Op::SetContains,
+        "contains",
+        &[SET, param("item", Kind::Any)],
+        BOOL,
+        "set::contains",
+    ),
+    Operation {
+        at_least: Some(0),
+        ..set(Op::SetCount, "count", &[SET], INT, "set::count")
+    },
+    set(
+        Op::SetDifference,
+        "difference",
+        &[param("a", Kind::Set), param("b", Kind::Set)],
+        Kind::Set,
+        "set::difference",
+    ),
+    set(
+        Op::SetIntersection,
+        "intersection",
+        &[param("a", Kind::Set), param("b", Kind::Set)],
+        Kind::Set,
+        "set::intersection",
+    ),
+    set(
+        Op::SetUnion,
+        "union",
+        &[param("a", Kind::Set), param("b", Kind::Set)],
+        Kind::Set,
+        "set::union",
+    ),
+    set(
+        Op::SetWith,
+        "with",
+        &[SET, param("item", Kind::Any)],
+        Kind::Set,
+        "set::with",
+    ),
+    set(
+        Op::SetWithout,
+        "without",
+        &[SET, param("item", Kind::Any)],
+        Kind::Set,
+        "set::without",
+    ),
     Operation {
         conditions: &[ON_DST],
         ..temporal(

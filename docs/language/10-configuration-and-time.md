@@ -1042,11 +1042,11 @@ action record_delivery(note: Delivery.note) -> Delivery {
 use shop/entities { Delivery }
 use shop/types { DeliveryView }
 
-/// The deliveries that arrived from `range.start` up to `range.end`.
-query deliveries_in(range: InstantRange) -> List<DeliveryView> {
+/// The deliveries that arrived from `arrivals.start` up to `arrivals.end`.
+query deliveries_in(arrivals: InstantRange) -> List<DeliveryView> {
     from: Delivery
-    where: Delivery.arrived_at >= range.start
-    where: Delivery.arrived_at < range.end
+    where: Delivery.arrived_at >= arrivals.start
+    where: Delivery.arrived_at < arrivals.end
     order: [Delivery.arrived_at asc]
     limit: 100
 }

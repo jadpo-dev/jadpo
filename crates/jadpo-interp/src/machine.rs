@@ -734,8 +734,10 @@ impl<'p> Machine<'p> {
                 Value::Bool(false) => self.if_from(arms, otherwise, index + 1, at),
                 _ => return Err(self.defect(ctx, "a condition that isn't a `Bool`", at)),
             },
+            // A set is held in the canonical order, which it is walked in
+            // (area 2, "Set order").
             Task::ForStart { item, body, at } => match self.pop() {
-                Value::List(items) => self.tasks.push(Task::ForNext {
+                Value::List(items) | Value::Set(items) => self.tasks.push(Task::ForNext {
                     item,
                     body,
                     items,
@@ -743,7 +745,11 @@ impl<'p> Machine<'p> {
                     at,
                 }),
                 _ => {
-                    return Err(self.defect(ctx, "a loop over something that isn't a list", at));
+                    return Err(self.defect(
+                        ctx,
+                        "a loop over something that isn't a list or a set",
+                        at,
+                    ));
                 }
             },
             Task::ForNext {
@@ -1014,11 +1020,19 @@ impl<'p> Machine<'p> {
             }
             Task::List { at, count } => {
                 let items = self.take(count);
-                let (set, validator) = match self.decoded(at) {
-                    Some(Decoded::List { set, validator }) => (*set, Some(*validator)),
-                    _ => (false, None),
+                let (set, map, validator) = match self.decoded(at) {
+                    Some(Decoded::List {
+                        set,
+                        map,
+                        validator,
+                    }) => (*set, *map, Some(*validator)),
+                    _ => (false, false, None),
                 };
-                let list = if set {
+                // `[]` where a map goes is an empty map; the checker allows
+                // no items there (area 19, question 8).
+                let list = if map && items.is_empty() {
+                    Value::Map(Rc::default())
+                } else if set {
                     Value::set(items)
                 } else {
                     Value::list(items)

@@ -413,6 +413,10 @@ as `list.sum`'s `zero` of its items' representation, and a result of kind
 and `MOVED_NAMESPACES` lists a namespace that moved whole (`collection`,
 reserved with no operations), whose calls the type checker reports with
 an edit by their first value's type, since resolution can't know it.
+Since chunk 5.5c a `Set` parameter or result is a stub's `Set<T>`, and a
+standard object type an operation takes (`InstantRange`, kind `Std`) can
+be written as an object literal, which the plan builds from its data
+entry's fields (area 19, "Sets", "Maps" and "Ranges").
 `temporal` runs on jiff with its bundled IANA database,
 in `jadpo-value` only, so every target reads the same zones and none reads
 the platform's (area 10, "Zones and local times"). The time types'

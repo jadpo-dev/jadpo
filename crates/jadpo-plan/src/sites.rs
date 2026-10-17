@@ -54,8 +54,13 @@ pub enum Decoded {
         fields: Vec<Given>,
         fallible: bool,
     },
-    /// A list written where a list or a set goes.
-    List { set: bool, validator: ValidatorId },
+    /// A list written where a list or a set goes, or `[]` where a map
+    /// goes, which is an empty map (area 19, question 8).
+    List {
+        set: bool,
+        map: bool,
+        validator: ValidatorId,
+    },
     /// `value.field`: the field's own name, as a value holds it.
     Field { name: String },
     /// `reject Failure { ... }`.
@@ -215,13 +220,20 @@ impl Decoder<'_> {
                 fields,
                 fallible,
             }) => {
-                let shape = self.types.shape_id(key);
+                // A standard object type (area 19) has no declaration: its
+                // shape is its data entry's fields, found by name.
+                let standard = self.types.standard_object_shape(key);
+                let shape = standard.or_else(|| self.types.shape_id(key));
                 let given = fields
                     .iter()
                     .map(|(field, _)| Given {
-                        slot: shape
-                            .and_then(|id| self.types.shape(id))
-                            .and_then(|plan| plan.slot(field.as_str())),
+                        slot: shape.and_then(|id| self.types.shape(id)).and_then(|plan| {
+                            if standard.is_some() {
+                                plan.slot_named(self.types.field_name(field))
+                            } else {
+                                plan.slot(field.as_str())
+                            }
+                        }),
                         name: self.types.field_name(field).to_string(),
                         validator: self.types.validator_id(&TypeRef::Field(field.clone())),
                     })
@@ -247,6 +259,7 @@ impl Decoder<'_> {
             },
             Node::Expr(Expr::List { .. }) => Decoded::List {
                 set: self.types.is_set(&site.ty),
+                map: self.types.is_map(&site.ty),
                 validator: self.types.validator_id(&site.ty),
             },
             Node::Expr(Expr::Field { field, .. }) => Decoded::Field {

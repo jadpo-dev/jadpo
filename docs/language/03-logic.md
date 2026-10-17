@@ -803,6 +803,44 @@ function order_total(lines: List<OrderLine>) -> Pence {
 Decided (question 12): `for` over a list is the only loop: no `while`,
 `break` or `continue`, with `return` allowed inside the body.
 
+> Amended 2026-10-17 by area 19 (question 8), built in chunk 5.5c: `for`
+> also walks a set, in area 2's canonical order, the same on every
+> target, and a map through its keys, `for loaf in map.keys(stock)`. A map
+> itself is not walked, since its keys and values would need a pair; the
+> error's edit writes `map.keys`:
+
+```jadpo check project=e-loop-over-map expect=type.mismatch
+type Loaf = Text {
+    min_length: 1
+}
+
+type Stock = Int {
+    min: 0
+}
+
+function loaves(stock: Map<Loaf, Stock>) -> List<Loaf> {
+    var mut out: List<Loaf> = []
+    for loaf in stock {
+        out = list.append(out, loaf)
+    }
+    return out
+}
+```
+
+```text output
+error: `Map<Loaf, Stock>` can't be looped over
+ --> main.jadpo:11:17
+   |
+11 |     for loaf in stock {
+   |                 ^^^^^ this is `Map<Loaf, Stock>`
+  reason: `for` loops over a `List` or a `Set`; a map is walked through its keys, a `Set<Loaf>`, and each key's value read with `map.get`.
+  next: Loop over `map.keys(stock)` (agent)
+  rule: type.mismatch
+  help: docs/language/02-values-and-types.html#type-mismatch
+
+check failed: 1 error, 1 file
+```
+
 **No outside calls inside `for`** (decided 2026-10-16, Richard, from area
 12's multi-step calls). A provider operation, a package action, a file
 store's `put` or `read`, or a `documents` render inside a loop's body is a
@@ -835,7 +873,7 @@ cannot be stored in variables or passed to your own callables.
 > inline function (`any`, `all`, `find`, `min_by`, `max_by`, `sort_by`,
 > `group_by`; built in chunk 5.5b). For standard operations only, an inline function may take
 > two parameters, `(key, value) -> ...` (`list.zip_with`, `map.filter`,
-> `map.map_values`), widening question 13; built in chunk 5.5c. Question
+> `map.map_values`), widening question 13; to be built in chunk 5.5c2. Question
 > 6's "text order belongs in a standard function" is `list.sort_by` with a
 > text key.
 

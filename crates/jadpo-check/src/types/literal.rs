@@ -38,6 +38,10 @@ pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), P
             let structure = table.structure(expected);
             let element = match &structure {
                 Ty::List(element) | Ty::Set(element) => element,
+                // `[]` where a map is expected is an empty map (area 19,
+                // question 8); a map literal with entries is still area
+                // 2's to design.
+                Ty::Map(..) if items.is_empty() => &Ty::Error,
                 _ => {
                     return Err(Problem::Kind { fix: None });
                 }

@@ -1313,8 +1313,10 @@ impl Body<'_> {
         if items.has_error() {
             return Ty::Error;
         }
+        // A list in its order, a set in the canonical order (area 2, "Set
+        // order"; area 19, question 8).
         if !self.table.is_nullable(&items)
-            && let Ty::List(item) = self.table.structure(&items)
+            && let Ty::List(item) | Ty::Set(item) = self.table.structure(&items)
         {
             return *item;
         }
@@ -1324,16 +1326,25 @@ impl Body<'_> {
             &rule::TYPE_MISMATCH,
             format!("`{items}` can't be looped over"),
         )
-        .at(span, format!("this is `{items}`"));
+        .at(span.clone(), format!("this is `{items}`"));
         self.out.push(if self.table.is_nullable(&items) {
             problem
                 .reason(format!(
-                    "`for` loops over a `List`, and `{written}` may be `none`."
+                    "`for` loops over a `List` or a `Set`, and `{written}` may be `none`."
                 ))
                 .next("Use `match` to handle `none` before the loop")
+        } else if let Ty::Map(key, _) = self.table.structure(&items) {
+            // A map is walked through its keys, a set (area 19, "Maps").
+            let keys = format!("map.keys({written})");
+            problem
+                .reason(format!(
+                    "`for` loops over a `List` or a `Set`; a map is walked through its keys, a `Set<{key}>`, and each key's value read with `map.get`."
+                ))
+                .next(format!("Loop over `{keys}`"))
+                .edit(span, keys)
         } else {
             problem
-                .reason("`for` loops over a `List`, the only loop in Jadpo.")
+                .reason("`for` loops over a `List` or a `Set`, the only loop in Jadpo.")
                 .next(format!("Loop over a `List` instead of `{written}`"))
         });
         Ty::Error
