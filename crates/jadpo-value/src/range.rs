@@ -3,8 +3,9 @@
 //! `InstantRange` hold every value from their start up to, not including,
 //! their end, so one whose start is its end holds nothing and overlaps
 //! nothing, as PostgreSQL's ranges agree. A `Range<T>`'s end may be `none`,
-//! an open end, which holds everything on its side. `DateRange` joins in
-//! chunk 5.5k.
+//! an open end, which holds everything on its side. A `DateRange` holds
+//! its end date too (chunk 5.5k), so one whose start is its end holds that
+//! day, and two that meet on a day overlap on it.
 
 use std::cmp::Ordering;
 
@@ -23,6 +24,11 @@ fn ends(range: &Value) -> Result<(&str, Option<&Value>, Option<&Value>), Fault> 
     Ok((&record.ty, field("start")?, field("end")?))
 }
 
+/// Whether a range of type `ty` holds its end: a `DateRange` does.
+fn holds_end(ty: &str) -> bool {
+    jadpo_std::range_type(ty).is_some_and(|(_, included)| included)
+}
+
 /// The order of two ends of one range type.
 fn order(a: &Value, b: &Value) -> Result<Ordering, Fault> {
     ops::compare(a, b).ok_or(Fault::Shape)
@@ -31,12 +37,13 @@ fn order(a: &Value, b: &Value) -> Result<Ordering, Fault> {
 /// Whether `value` is inside `range`: at its start or after, and before
 /// its end; an open end holds everything on its side.
 pub fn contains(range: &Value, value: &Value) -> Result<bool, Fault> {
-    let (_, start, end) = ends(range)?;
+    let (ty, start, end) = ends(range)?;
     let after_start = match start {
         Some(start) => order(start, value)? != Ordering::Greater,
         None => true,
     };
     let before_end = match end {
+        Some(end) if holds_end(ty) => order(value, end)? != Ordering::Greater,
         Some(end) => order(value, end)? == Ordering::Less,
         None => true,
     };
@@ -74,6 +81,7 @@ fn shared<'v>(
     }
     let (start, end) = (later(a_start, b_start)?, earlier(a_end, b_end)?);
     let holds = match (start, end) {
+        (Some(start), Some(end)) if holds_end(ty) => order(start, end)? != Ordering::Greater,
         (Some(start), Some(end)) => order(start, end)? == Ordering::Less,
         _ => true,
     };

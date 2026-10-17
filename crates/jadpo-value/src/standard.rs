@@ -52,6 +52,9 @@ pub fn from(value: &Value) -> Result<Value, Fault> {
 /// writes it.
 pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
     let form = entry.text.ok_or(Fault::Shape)?;
+    if let Some(text) = crate::calendar::canonical(form, value) {
+        return text;
+    }
     Ok(match (form, value) {
         (TextForm::Checked, Value::Text(text)) => text.to_string(),
         (TextForm::Uuid, Value::Uuid(text)) => text.to_ascii_lowercase(),
@@ -67,11 +70,7 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
             .ok_or(Fault::Shape)?,
         (TextForm::Interval, Value::Record(record)) => {
             let (start, end) = interval(entry, record)?;
-            format!(
-                "{}/{}",
-                jadpo_std::format_instant(start),
-                jadpo_std::format_instant(end)
-            )
+            format!("{}/{}", text_of(from(start)?)?, text_of(from(end)?)?)
         }
         (TextForm::Range, Value::Record(record)) => {
             let (start, end) = range_ends(record)?;
@@ -152,13 +151,18 @@ fn range_item(ty: &str) -> Option<&str> {
         .strip_suffix('>')
 }
 
-/// An interval's two instants, by its entry's fields in order.
-fn interval(entry: &StandardType, record: &crate::Record) -> Result<(i64, i64), Fault> {
+/// An interval's two ends, by its entry's fields in order: an
+/// `InstantRange`'s instants, a `DateRange`'s dates.
+fn interval<'v>(
+    entry: &StandardType,
+    record: &'v crate::Record,
+) -> Result<(&'v Value, &'v Value), Fault> {
     let Holds::Object([(start, _), (end, _)]) = entry.holds else {
         return Err(Fault::Shape);
     };
     match (record.get(start), record.get(end)) {
-        (Some(Value::Instant(start)), Some(Value::Instant(end))) => Ok((*start, *end)),
+        (Some(start @ Value::Instant(_)), Some(end @ Value::Instant(_)))
+        | (Some(start @ Value::Date(_)), Some(end @ Value::Date(_))) => Ok((start, end)),
         _ => Err(Fault::Shape),
     }
 }
@@ -211,6 +215,9 @@ fn decimal(raw: &str) -> Option<Decimal> {
 /// A standard type's value read from its canonical text.
 pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
     let form = entry.text.ok_or(Fault::Shape)?;
+    if let Some(read) = crate::calendar::read(form, raw) {
+        return read.ok_or(MALFORMED);
+    }
     let read = match form {
         TextForm::Checked => entry
             .validator
@@ -232,20 +239,36 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         TextForm::Money => crate::money::read(raw).map(Value::Money),
         // Its ends' type is the range type's argument, which `parse` reads.
         TextForm::Range => return Err(Fault::Shape),
+        // The time group's forms, which `calendar` reads above.
+        TextForm::LocalTime
+        | TextForm::LocalDateTime
+        | TextForm::YearMonth
+        | TextForm::Year
+        | TextForm::Quarter
+        | TextForm::IsoWeek
+        | TextForm::UtcOffset
+        | TextForm::Period => return Err(Fault::Shape),
         TextForm::Interval => {
-            let Holds::Object([(start, _), (end, _)]) = entry.holds else {
+            let Holds::Object([(start, ends), (end, _)]) = entry.holds else {
                 return Err(Fault::Shape);
             };
+            // Each end in its own canonical text: an instant ending in `Z`,
+            // or a date.
+            let end_of = |text: &str| match ends.builtin() {
+                Some(jadpo_std::Builtin::Instant) => {
+                    jadpo_std::instant_millis(text).map(Value::Instant)
+                }
+                Some(jadpo_std::Builtin::CalendarDate) => jadpo_std::date_number(text)
+                    .filter(|_| jadpo_std::check_calendar_date(text).is_ok())
+                    .map(Value::Date),
+                _ => None,
+            };
             raw.split_once('/').and_then(|(from, to)| {
-                let from = jadpo_std::instant_millis(from)?;
-                let to = jadpo_std::instant_millis(to)?;
-                (from <= to).then(|| {
+                let (from, to) = (end_of(from)?, end_of(to)?);
+                (crate::ops::compare(&from, &to) != Some(std::cmp::Ordering::Greater)).then(|| {
                     Value::record(
                         entry.name,
-                        vec![
-                            ((*start).into(), Value::Instant(from)),
-                            ((*end).into(), Value::Instant(to)),
-                        ],
+                        vec![((*start).into(), from), ((*end).into(), to)],
                     )
                 })
             })
@@ -375,9 +398,17 @@ pub fn shown(
         }
         (FormatKey::Interval, Value::Record(record)) => {
             let (start, end) = interval(entry, record)?;
-            let start = present::format_in(&Value::Instant(start), zone, tag, format_spec)?;
-            let end = present::format_in(&Value::Instant(end), zone, tag, format_spec)?;
+            let start = present::format_in(start, zone, tag, format_spec)?;
+            let end = present::format_in(end, zone, tag, format_spec)?;
             format!("{} – {}", text_of(start)?, text_of(end)?)
+        }
+        (FormatKey::MonthName, Value::Variant(variant)) => {
+            present::names::month(variant.ordinal, tag)?
+        }
+        (FormatKey::YearMonth | FormatKey::Year, value) => present::names::year_month(value, tag)?,
+        (FormatKey::OffsetName, value) => present::names::offset(value, tag)?,
+        (FormatKey::PeriodUnits, value) => {
+            present::names::period(crate::calendar::period_parts(value)?, tag)?
         }
         (FormatKey::DurationUnits, Value::Duration(millis)) => {
             present::names::duration(*millis, tag)?

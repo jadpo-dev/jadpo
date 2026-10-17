@@ -31,6 +31,7 @@
     )
 )]
 
+pub mod calendar;
 pub mod decimal;
 pub mod encoding;
 pub mod hash;
@@ -271,6 +272,7 @@ pub fn run(
             | Op::TemporalMinute
             | Op::TemporalMonth
             | Op::TemporalMonthBounds
+            | Op::TemporalPeriodBetween
             | Op::TemporalResolve
             | Op::TemporalWeekBounds
             | Op::TemporalWeekday
@@ -596,6 +598,9 @@ fn run_temporal(op: Op, args: &[Value]) -> Result<Value, Fault> {
         }
         (Op::TemporalMonthBounds, [date, zone]) => bounds(date, zone, Period::Month),
         (Op::TemporalYearBounds, [date, zone]) => bounds(date, zone, Period::Year),
+        (Op::TemporalPeriodBetween, [Value::Date(start), Value::Date(end)]) => {
+            calendar::period_between(*start, *end)
+        }
         _ => Err(Fault::Shape),
     }
 }
@@ -810,6 +815,7 @@ mod tests {
                     vec![zoned.clone(), Value::Int(1), Value::None, Value::None]
                 }
                 Op::TemporalBetween => vec![Value::Instant(0), Value::Instant(1000)],
+                Op::TemporalPeriodBetween => vec![date.clone(), date.clone()],
                 Op::TemporalInZone => vec![Value::Instant(0), london.clone()],
                 Op::TemporalResolve => vec![
                     date.clone(),

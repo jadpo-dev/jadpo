@@ -1158,6 +1158,7 @@ impl Body<'_> {
                 "Give a key that is never `none`".to_string(),
             ),
             Some(prim) if super::ops::ordered(prim) || prim == Prim::Text => return,
+            _ if self.ordered_standard(key) => return,
             Some(Prim::ZonedTime) => (
                 format!("`{written}`'s key gives `{key}`, which has no order of its own"),
                 "A `ZonedTime` is an instant and the zone it is seen in, and two in different zones have no one order; their instants do.".to_string(),
@@ -1532,7 +1533,7 @@ impl Body<'_> {
             ))
         } else if range_item(&structure).is_none() {
             Some(format!(
-                "`{written}`'s `{param}` takes a `Range<T>` or an `InstantRange`; `{given}` is {}",
+                "`{written}`'s `{param}` takes a `Range<T>`, an `InstantRange` or a `DateRange`; `{given}` is {}",
                 super::super::literal::what(self.table, given)
             ))
         } else {
@@ -2134,15 +2135,18 @@ fn collection_words(ty: &Ty) -> String {
 /// The built-in types a parameter takes values built on, when it is
 /// `Number` or a built-in representation in a stub.
 /// The type a range's ends are: `T` for a `Range<T>`, `Instant` for an
-/// `InstantRange`; `None` for anything but a range (area 19).
+/// `InstantRange`, `CalendarDate` for a `DateRange`; `None` for anything
+/// but a range (area 19).
 pub(super) fn range_item(ty: &Ty) -> Option<Ty> {
     match ty {
         Ty::Opaque(name, args) if name == jadpo_std::RANGE => match args.as_slice() {
             [item] => Some(item.clone()),
             _ => None,
         },
-        Ty::Opaque(name, args) if name == jadpo_std::INSTANT_RANGE && args.is_empty() => {
-            Some(Ty::Prim(Prim::Instant))
+        // A standard range type: an `InstantRange`'s instants, a
+        // `DateRange`'s dates.
+        Ty::Opaque(name, args) if args.is_empty() => {
+            jadpo_std::range_type(name).map(|(item, _)| Ty::Prim(item))
         }
         _ => None,
     }

@@ -15,6 +15,22 @@
 /// A calendar day with no time or zone (area 10), written `2026-10-25`.
 public type CalendarDate = CalendarDate {}
 
+/// An amount of calendar time in whole years, months and days (area 19),
+/// written `P1Y2M10D`: unlike a `Duration`, a month is a month, however
+/// many days it has. It has no order, and `==` compares part by part.
+public type CalendarPeriod = Object {
+    years: Int
+    months: Int
+    days: Int
+}
+
+/// The days from `start` to `end`, both included (area 19), written
+/// `2026-10-01/2026-10-31`.
+public type DateRange = Object {
+    start: CalendarDate
+    end: CalendarDate
+}
+
 /// An active ISO 4217 currency (area 19), written as its code, `GBP`.
 public type Currency = Enum {}
 
@@ -40,8 +56,53 @@ public type InstantRange = Object {
 /// An IPv4 or IPv6 address (area 2).
 public type IpAddress = IpAddress {}
 
+/// A week of an ISO 8601 week-numbering year (area 19), written
+/// `2026-W43`: `week` from 1 to 52, or 53 in a year that has one.
+public type IsoWeek = Object {
+    year: Int
+    week: Int
+}
+
+/// A date and a clock time with no zone (area 19), written
+/// `2026-10-25T09:30:00`: not one moment until a zone is chosen.
+public type LocalDateTime = Object {
+    date: CalendarDate
+    time: LocalTime
+}
+
+/// A clock time with no date or zone, to the second (area 19), written
+/// `09:30:00`: `hour` from 0 to 23, `minute` and `second` from 0 to 59.
+public type LocalTime = Object {
+    hour: Int
+    minute: Int
+    second: Int
+}
+
 /// A CLDR locale (area 10), written as its BCP 47 tag, `en-GB`.
 public type Locale = Enum {}
+
+/// A month of the year (area 19).
+public type Month = Enum {
+    january
+    february
+    march
+    april
+    may
+    june
+    july
+    august
+    september
+    october
+    november
+    december
+}
+
+/// A quarter of a calendar year (area 19), written `2026-Q4`: `quarter`
+/// from 1 to 4.
+public type Quarter = Object {
+    year: Int
+    quarter: Int
+}
 
 /// An amount of money (area 19): a whole number of its currency's minor
 /// units and its `Currency`, written `GBP 10.50`.
@@ -58,6 +119,12 @@ public type Range = Object {
 /// An `http://` or `https://` URL with a host (area 2).
 public type Url = Url {}
 
+/// An offset from UTC in minutes (area 19), written `+05:30`, from 18
+/// hours behind to 18 hours ahead.
+public type UtcOffset = Object {
+    minutes: Int
+}
+
 /// A UUID (area 2), written in lowercase hexadecimal with hyphens.
 public type Uuid = Uuid {}
 
@@ -70,6 +137,17 @@ public type Weekday = Enum {
     friday
     saturday
     sunday
+}
+
+/// A calendar year (area 19), written `2026`, from 0 to 9999.
+public type Year = Object {
+    year: Int
+}
+
+/// A month of a year (area 19), written `2026-10`: `month` from 1 to 12.
+public type YearMonth = Object {
+    year: Int
+    month: Int
 }
 
 /// An IANA time zone (area 10), written as its name, `Europe/London`.

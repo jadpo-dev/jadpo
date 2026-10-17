@@ -93,6 +93,11 @@ pub enum Codec {
     Nullable(CodecId),
     /// A page of results (area 6): `{ "items": [...], "next": cursor }`.
     Page { item: CodecId },
+    /// A standard type held as a record of its parts whose JSON is its
+    /// canonical text (area 19, "Time and calendar additions"): a
+    /// `LocalTime` is `"09:30:00"`, read and written by the contract's
+    /// one implementation for the type called `ty`.
+    Standard { ty: String },
 }
 
 /// One variant of an enum codec.

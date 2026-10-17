@@ -269,10 +269,27 @@ impl Body<'_> {
         let Some(ty) = self.facts.types.get(&node_key(value.syntax())).cloned() else {
             return;
         };
-        if ty.has_error()
-            || self.table.representation(&ty) != Some(Prim::CalendarDate)
-            || !spec.needs_time()
+        if ty.has_error() {
+            return;
+        }
+        // A local time or a local date and time shows only the parts it
+        // has (area 19).
+        let local = match self.table.structure(&ty) {
+            Ty::Opaque(name, args) if args.is_empty() => match name.as_str() {
+                "LocalTime" | "LocalDateTime" | jadpo_std::DATE_RANGE => Some(name),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(name) = local
+            .as_deref()
+            .filter(|name| *name != jadpo_std::DATE_RANGE)
         {
+            self.format_part_missing(&ty, name, format, spec, written);
+            return;
+        }
+        let dated = local.is_some() || self.table.representation(&ty) == Some(Prim::CalendarDate);
+        if !dated || !spec.needs_time() {
             return;
         }
         let shown = tree::written(format.syntax());
@@ -300,6 +317,60 @@ impl Body<'_> {
             .next(
                 "Use a date format such as `TimeFormat.date_long`, or format an `Instant` or a `ZonedTime` instead",
             ),
+        );
+    }
+
+    /// A format showing a date, given a `LocalTime`, or a zone, given a
+    /// `LocalTime` or a `LocalDateTime`: neither has the part to show.
+    fn format_part_missing(
+        &mut self,
+        ty: &Ty,
+        name: &str,
+        format: &Expr,
+        spec: &TimeFormatSpec,
+        written: &str,
+    ) {
+        let time_only = name == "LocalTime";
+        let shows: Vec<String> = match spec {
+            TimeFormatSpec::Builtin(builtin)
+                if time_only && builtin.part != jadpo_std::FormatPart::Time =>
+            {
+                vec!["a date".to_string()]
+            }
+            TimeFormatSpec::Builtin(_) => Vec::new(),
+            TimeFormatSpec::Components(parts) => parts
+                .iter()
+                .filter(|(component, _)| {
+                    *component == jadpo_std::Component::ZoneName
+                        || (time_only && !component.needs_time())
+                })
+                .map(|(component, _)| format!("`{}`", component.name()))
+                .collect(),
+        };
+        if shows.is_empty() {
+            return;
+        }
+        let shown = tree::written(format.syntax());
+        let has = if time_only {
+            "a clock time, with no date or zone"
+        } else {
+            "a date and a clock time, with no zone"
+        };
+        let span = self.span(format);
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_TEMPORAL_FORMAT_PART_MISSING,
+                format!("`{shown}` shows a part `{ty}` doesn't have"),
+            )
+            .at(span, format!("shows {}", crate::and_list(&shows)))
+            .reason(format!(
+                "`{ty}` is {has}, so `{written}` can show only the parts it has."
+            ))
+            .next(if time_only {
+                "Use a time format such as `TimeFormat.time_short`"
+            } else {
+                "Use a format without a zone, such as `TimeFormat.date_time_medium`"
+            }),
         );
     }
 

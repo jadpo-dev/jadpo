@@ -998,6 +998,8 @@ rules! {
         "10-configuration-and-time.html#type-temporal-format-components-empty", "Declared format shows nothing";
     TYPE_TEMPORAL_FORMAT_INVALID: "type.temporal_format_invalid", area 10, Error, Agent,
         "10-configuration-and-time.html#type-temporal-format-invalid", "Format is not a written-out time format";
+    TYPE_TEMPORAL_FORMAT_PART_MISSING: "type.temporal_format_part_missing", area 19, Error, Agent,
+        "19-standard-library.html#type-temporal-format-part-missing", "Format shows a part a local time doesn't have";
     TYPE_TEMPORAL_FORMAT_REQUIRES_TIME: "type.temporal_format_requires_time", area 10, Error, Agent,
         "10-configuration-and-time.html#type-temporal-format-requires-time", "Format shows a clock time a date doesn't have";
     TYPE_TEMPORAL_LOCALES_REQUIRED: "type.temporal_locales_required", area 10, Error, Agent,

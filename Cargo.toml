@@ -105,7 +105,8 @@ fixed_decimal = { version = "=0.7.2", default-features = false }
 # Money for people (area 19, "Money and payments"): a currency's CLDR
 # display name ("British Pound") is data `icu_experimental` bakes but reads
 # through no formatter, so it is loaded through the provider trait, from
-# the same release.
+# the same release; units' names are read through it too, without logging
+# the sets a name isn't in (`present::names`).
 icu_provider = { version = "=2.3.1", default-features = false }
 writeable = { version = "=0.6.4", default-features = false }
 # SHA-256 for `hash.sha256` (area 19, "Hashing and cryptography";

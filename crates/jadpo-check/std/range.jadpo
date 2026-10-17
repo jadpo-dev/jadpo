@@ -3,12 +3,13 @@
 // in `jadpo-value` that runs it; a test holds these stubs to that table.
 //
 // `Range<T>` here is any range whose ends are a `T`: a `Range<T>` itself,
-// or `InstantRange`, whose ends are instants. A call's ranges are all of
-// one range type, and a range it gives is of that type too. Each follows
-// the range's own end rule: a `Range<T>` and an `InstantRange` hold every
-// value from their start up to, not including, their end, and an open end
-// (`none`) holds everything on its side. `DateRange` joins with the time
-// types (5.5k).
+// or `InstantRange`, whose ends are instants, or `DateRange`, whose ends
+// are dates. A call's ranges are all of one range type, and a range it
+// gives is of that type too. Each follows the range's own end rule: a
+// `Range<T>` and an `InstantRange` hold every value from their start up
+// to, not including, their end, a `DateRange` every date up to and
+// including its end, and an open end (`none`) holds everything on its
+// side.
 
 public library range {
     /// Whether `value` is inside `range`.

@@ -78,7 +78,7 @@ pub use constant::Constant;
 pub use enums::{
     Access, AuthenticationMethod, AuthenticationStrength, ClientAddressSource, ComponentStyle,
     Driver, Dst, FieldAccess, FieldChange, Generated, HttpMethod, Idempotency, InvalidDay, LOCALE,
-    MembershipScope, MoneyDisplay, MoneyPrecision, MoneySign, OnDelete, Rounding,
+    MembershipScope, MoneyDisplay, MoneyPrecision, MoneySign, Month, OnDelete, Rounding,
     RouteAuthentication, SuccessStatus, Tenancy, TextDirection, TextFormat, TranslationReview,
     UuidVersion, Weekday, ZONE, enums, variant_ordinal,
 };
@@ -99,8 +99,8 @@ pub use rules::{
     is_url, uuid_version,
 };
 pub use standard::{
-    FILE_TYPE, FILE_TYPES, INSTANT_RANGE, INSTANT_RANGE_FIELDS, RANGE, RANGE_FIELDS, RANGE_ITEMS,
-    STANDARD_TYPES, StandardType, standard_type,
+    CALENDAR_PERIOD, DATE_RANGE, FILE_TYPE, FILE_TYPES, INSTANT_RANGE, INSTANT_RANGE_FIELDS, Part,
+    RANGE, RANGE_FIELDS, RANGE_ITEMS, STANDARD_TYPES, StandardType, range_type, standard_type,
 };
 pub use time::{
     DATE_MAX, DATE_MIN, Dur, INSTANT_MAX, INSTANT_MIN, UnitSuffix, check_calendar_date,

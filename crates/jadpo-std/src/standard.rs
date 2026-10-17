@@ -26,13 +26,39 @@ pub enum Holds {
     /// An enum whose variants are a table here or in `jadpo-std` (its stub
     /// lists them, or none when the table is long).
     Enum(&'static [(&'static str, &'static str)]),
-    /// An object with these fields, in declared order, each built on a
-    /// built-in type.
-    Object(&'static [(&'static str, Builtin)]),
+    /// An object with these fields, in declared order, each a [`Part`].
+    Object(&'static [(&'static str, Part)]),
     /// `Range<T>` (area 19, "Ranges"): a `start` and an `end` ([`RANGE_FIELDS`])
     /// of one ordered type, the type argument, either of them `none` for
     /// an open end.
     Range,
+}
+
+/// What one field of a standard object type holds (area 19, chunk 5.5k).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Part {
+    /// A value built on this built-in type, with no rules of its own:
+    /// `InstantRange`'s instants, `CalendarPeriod`'s parts.
+    Of(Builtin),
+    /// A whole number from `min` to `max`, both included: `LocalTime`'s
+    /// `hour` from 0 to 23. Its object literal proves the range as an
+    /// object's field rules are proved (area 2).
+    Whole(i64, i64),
+    /// A value of another standard type, by its name: `LocalDateTime`'s
+    /// `time`, a `LocalTime`.
+    Standard(&'static str),
+}
+
+impl Part {
+    /// The built-in type a field's values are built on; `None` for a
+    /// field holding another standard type.
+    pub const fn builtin(self) -> Option<Builtin> {
+        match self {
+            Part::Of(builtin) => Some(builtin),
+            Part::Whole(..) => Some(Builtin::Int),
+            Part::Standard(_) => None,
+        }
+    }
 }
 
 /// A standard type's canonical text: the one form `text.from` writes and
@@ -56,8 +82,33 @@ pub enum TextForm {
     /// An enum's code (question 22): the variant's entry in the enum's
     /// table, read ignoring case.
     Code,
-    /// ISO 8601's interval of two instants, `<start>/<end>`.
+    /// ISO 8601's interval of two instants, `<start>/<end>`; of two
+    /// dates for a `DateRange`, `2026-10-01/2026-10-31`, its end included
+    /// as its type says.
     Interval,
+    /// ISO 8601's local time, to the second: `09:30:00`, from `00:00:00`
+    /// to `23:59:59`.
+    LocalTime,
+    /// ISO 8601's local date and time with no offset, to the second:
+    /// `2026-10-25T09:30:00`.
+    LocalDateTime,
+    /// ISO 8601's calendar month, `2026-10`.
+    YearMonth,
+    /// ISO 8601's year, in four digits: `2026`.
+    Year,
+    /// A year and its quarter, `2026-Q4`.
+    Quarter,
+    /// ISO 8601's week date without a day, `2026-W43`: a week of an ISO
+    /// week-numbering year, which has 52 or 53.
+    IsoWeek,
+    /// ISO 8601's offset from UTC, a sign and hours and minutes:
+    /// `+01:00`, `-05:30`, and `+00:00` for UTC itself.
+    UtcOffset,
+    /// ISO 8601's period of years, months and days, `P1Y2M10D`: each
+    /// part that isn't zero, in that order, with its own sign when
+    /// negative (`P-1M-3D`), as PostgreSQL writes an interval; nothing at
+    /// all is `P0D`.
+    Period,
     /// A range's two ends, each in its item type's canonical text, joined
     /// by `/`, with an open end written `..` as ISO 8601-2 writes one:
     /// `2026-10-01/..`.
@@ -88,10 +139,12 @@ pub enum FormatKey {
     /// Its canonical text: the locale doesn't change how it is shown.
     Canonical,
     /// CLDR's date and time patterns, in the format `format:` names (area
-    /// 10, "Showing dates and times to people").
+    /// 10, "Showing dates and times to people"); a `LocalTime` or a
+    /// `LocalDateTime` shows only the parts it has.
     DateTime,
     /// Each end in the format `format:` names, joined by CLDR's interval
-    /// fallback, `{0} – {1}`.
+    /// fallback, `{0} – {1}`: an `InstantRange`'s instants, a
+    /// `DateRange`'s dates.
     Interval,
     /// CLDR's duration units, written out in full: "1 hour, 30 minutes".
     DurationUnits,
@@ -101,6 +154,18 @@ pub enum FormatKey {
     LocaleName,
     /// CLDR's generic location format for a zone: "UK Time".
     ZoneName,
+    /// CLDR's stand-alone month names, in full: "October".
+    MonthName,
+    /// CLDR's pattern for a month and its year, the month in full:
+    /// "October 2026".
+    YearMonth,
+    /// CLDR's pattern for a year on its own: "2026".
+    Year,
+    /// CLDR's localized GMT format, in full: "GMT+01:00", "GMT+00:00".
+    OffsetName,
+    /// CLDR's units for years, months and days, written out in full and
+    /// joined as the locale joins a list of units: "1 year, 2 months".
+    PeriodUnits,
     /// Each end as its item type is shown, with the item type's options,
     /// joined by CLDR's interval fallback, `{0} – {1}`; an open end is
     /// `…`.
@@ -305,9 +370,97 @@ const fn checked(
     }
 }
 
+/// A time type held as an object (area 19, "Time and calendar
+/// additions", chunk 5.5k): its fields for code to read, its canonical
+/// text as its JSON, as a `Duration`'s is, and stored as that JSON until
+/// objects get columns of their own.
+const fn time_object(
+    name: &'static str,
+    fields: &'static [(&'static str, Part)],
+    text: TextForm,
+    format: Format,
+    ordered: bool,
+    examples: Examples,
+) -> StandardType {
+    StandardType {
+        name,
+        holds: Holds::Object(fields),
+        text: Some(text),
+        json: Json::Text,
+        storage: Storage::Column(SqlType::Json),
+        format,
+        ordered,
+        validator: None,
+        shape: None,
+        examples,
+        release: FIRST_RELEASE,
+    }
+}
+
+const fn shown_as(key: FormatKey) -> Format {
+    Format {
+        key,
+        options: NO_OPTIONS,
+    }
+}
+
+/// Shown in a format written out, `format:`, as the time types are.
+const IN_A_FORMAT: Format = Format {
+    key: FormatKey::DateTime,
+    options: &[FORMAT],
+};
+
+/// The years a year field holds: those a `CalendarDate` holds (area 10).
+const YEARS: Part = Part::Whole(0, 9999);
+
+/// `Month`'s variants, each its own code, as `Weekday`'s are.
+pub const MONTHS: &[(&str, &str)] = &[
+    ("january", "january"),
+    ("february", "february"),
+    ("march", "march"),
+    ("april", "april"),
+    ("may", "may"),
+    ("june", "june"),
+    ("july", "july"),
+    ("august", "august"),
+    ("september", "september"),
+    ("october", "october"),
+    ("november", "november"),
+    ("december", "december"),
+];
+
+/// `CalendarPeriod` (area 19, "Time and calendar additions").
+pub const CALENDAR_PERIOD: &str = "CalendarPeriod";
+
+/// `CalendarPeriod`'s parts, in order: whole years, months and days,
+/// each of either sign.
+pub const CALENDAR_PERIOD_FIELDS: [(&str, Part); 3] = [
+    ("years", Part::Of(Builtin::Int)),
+    ("months", Part::Of(Builtin::Int)),
+    ("days", Part::Of(Builtin::Int)),
+];
+
+/// `DateRange`: the dates from `start` to `end`, both included (area 19,
+/// "Ranges").
+pub const DATE_RANGE: &str = "DateRange";
+
+/// `DateRange`'s fields, in order.
+pub const DATE_RANGE_FIELDS: [(&str, Part); 2] = [
+    ("start", Part::Of(Builtin::CalendarDate)),
+    ("end", Part::Of(Builtin::CalendarDate)),
+];
+
+/// `LocalTime`'s fields, in order.
+pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
+    ("hour", Part::Whole(0, 23)),
+    ("minute", Part::Whole(0, 59)),
+    ("second", Part::Whole(0, 59)),
+];
+
 /// Every standard type built so far, sorted by name: the 13 areas 2, 10
 /// and 16 built, run through the contract in chunk 5.5a, `Range<T>`
-/// (chunk 5.5c2), and `Money` and `Currency` (chunk 5.5h).
+/// (chunk 5.5c2), `Money` and `Currency` (chunk 5.5h), and ten of the time
+/// group (chunk 5.5k).
 pub const STANDARD_TYPES: &[StandardType] = &[
     // Day-and-month calendar dates, ordered by day.
     StandardType {
@@ -332,6 +485,27 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    // An amount of calendar time, unordered: one month and 30 days don't
+    // compare (area 19, "Time and calendar additions").
+    time_object(
+        CALENDAR_PERIOD,
+        &CALENDAR_PERIOD_FIELDS,
+        TextForm::Period,
+        shown_as(FormatKey::PeriodUnits),
+        false,
+        Examples {
+            valid: &[
+                ("P1Y2M10D", "1 year, 2 months, 10 days"),
+                ("P1M", "1 month"),
+                ("P-1M-3D", "-1 month, -3 days"),
+                ("P0D", "0 days"),
+            ],
+            format: None,
+            malformed: &["1 month", "P", "PT1H", "P1D2M", "P1W", "P1M0D", "P+1M"],
+            of: None,
+            settings: "",
+        },
+    ),
     // The active ISO 4217 codes (area 19, "Money and payments", question
     // 22), written as their codes and shown by CLDR's display names.
     StandardType {
@@ -351,6 +525,51 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             valid: &[("GBP", "British Pound"), ("JPY", "Japanese Yen")],
             format: None,
             malformed: &["pound", "XYZ", "HRK", "GB"],
+            of: None,
+            settings: "",
+        },
+        release: FIRST_RELEASE,
+    },
+    // The dates from `start` to `end`, both included (area 19, "Ranges").
+    StandardType {
+        name: DATE_RANGE,
+        holds: Holds::Object(&DATE_RANGE_FIELDS),
+        text: Some(TextForm::Interval),
+        json: Json::Fields(&["start", "end"]),
+        // Stored as its JSON, as `InstantRange` is.
+        storage: Storage::Column(SqlType::Json),
+        format: Format {
+            key: FormatKey::Interval,
+            options: &[FORMAT],
+        },
+        ordered: false,
+        validator: None,
+        shape: Some(&[
+            FieldMatch {
+                meaning: "a first day",
+                names: &["start", "starts_on", "start_date"],
+                built_on: &[Builtin::CalendarDate],
+                or_enum: false,
+            },
+            FieldMatch {
+                meaning: "a last day",
+                names: &["end", "ends_on", "end_date"],
+                built_on: &[Builtin::CalendarDate],
+                or_enum: false,
+            },
+        ]),
+        examples: Examples {
+            valid: &[
+                ("2026-10-01/2026-10-31", "1 Oct 2026 – 31 Oct 2026"),
+                ("2026-10-25/2026-10-25", "25 Oct 2026 – 25 Oct 2026"),
+            ],
+            format: Some("date_medium"),
+            malformed: &[
+                "2026-10-31/2026-10-01",
+                "2026-10-01",
+                "2026-10-01/..",
+                "2026-10-01T00:00:00Z/2026-10-02T00:00:00Z",
+            ],
             of: None,
             settings: "",
         },
@@ -496,6 +715,69 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
     ),
+    // A week of an ISO week-numbering year, ordered by year and week.
+    time_object(
+        "IsoWeek",
+        &[("year", YEARS), ("week", Part::Whole(1, 53))],
+        TextForm::IsoWeek,
+        // CLDR's week patterns aren't in ICU4X yet (chosen in chunk 5.5k).
+        canonical(),
+        true,
+        Examples {
+            valid: &[("2026-W01", "2026-W01"), ("2026-W53", "2026-W53")],
+            format: None,
+            malformed: &["2027-W53", "2026-W54", "2026-W00", "2026-W1", "2026W01"],
+            of: None,
+            settings: "",
+        },
+    ),
+    // A date and a clock time with no zone: not an instant until a zone
+    // is chosen.
+    time_object(
+        "LocalDateTime",
+        &[
+            ("date", Part::Of(Builtin::CalendarDate)),
+            ("time", Part::Standard("LocalTime")),
+        ],
+        TextForm::LocalDateTime,
+        IN_A_FORMAT,
+        true,
+        Examples {
+            valid: &[
+                ("2026-03-29T01:30:00", "29 Mar 2026, 01:30:00"),
+                ("2026-10-25T01:30:00", "25 Oct 2026, 01:30:00"),
+            ],
+            format: Some("date_time_medium"),
+            malformed: &[
+                "2026-10-25T01:30:00Z",
+                "2026-10-25 01:30:00",
+                "2026-10-25T24:00:00",
+                "2026-10-25T01:30",
+                "2026-02-30T01:30:00",
+            ],
+            of: None,
+            settings: "",
+        },
+    ),
+    // A clock time with no date or zone, to the second.
+    time_object(
+        "LocalTime",
+        &LOCAL_TIME_FIELDS,
+        TextForm::LocalTime,
+        IN_A_FORMAT,
+        true,
+        Examples {
+            valid: &[
+                ("00:00:00", "00:00:00"),
+                ("09:30:00", "09:30:00"),
+                ("23:59:59", "23:59:59"),
+            ],
+            format: Some("time_medium"),
+            malformed: &["24:00:00", "09:30", "9:30:00", "09:30:60", "09:30:00Z"],
+            of: None,
+            settings: "",
+        },
+    ),
     StandardType {
         name: LOCALE,
         holds: Holds::Enum(crate::zones::LOCALES),
@@ -588,6 +870,44 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    // A month of the year (question 22): its own name is its code, as a
+    // `Weekday`'s is.
+    StandardType {
+        name: MONTH,
+        holds: Holds::Enum(MONTHS),
+        text: Some(TextForm::Code),
+        json: Json::Text,
+        storage: Storage::Column(SqlType::Text),
+        format: shown_as(FormatKey::MonthName),
+        ordered: false,
+        validator: None,
+        shape: None,
+        examples: Examples {
+            valid: &[("january", "January"), ("october", "October")],
+            format: None,
+            malformed: &["jan", "10", "smarch"],
+            of: None,
+            settings: "",
+        },
+        release: FIRST_RELEASE,
+    },
+    // A quarter of a calendar year, ordered by year and quarter.
+    time_object(
+        "Quarter",
+        &[("year", YEARS), ("quarter", Part::Whole(1, 4))],
+        TextForm::Quarter,
+        // CLDR's quarter patterns aren't in ICU4X yet (chosen in chunk
+        // 5.5k).
+        canonical(),
+        true,
+        Examples {
+            valid: &[("2026-Q1", "2026-Q1"), ("2026-Q4", "2026-Q4")],
+            format: None,
+            malformed: &["2026-Q5", "2026-Q0", "2026Q1", "Q1 2026", "2026-q1"],
+            of: None,
+            settings: "",
+        },
+    ),
     // A range of any ordered type, either end open (area 19, "Ranges"),
     // holding its start and not its end, as `InstantRange` and
     // PostgreSQL's ranges do. Its examples are ranges of dates.
@@ -637,6 +957,25 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
     ),
+    // An offset from UTC, as a zone has at a moment; unordered.
+    time_object(
+        "UtcOffset",
+        &[("minutes", Part::Whole(-1080, 1080))],
+        TextForm::UtcOffset,
+        shown_as(FormatKey::OffsetName),
+        false,
+        Examples {
+            valid: &[
+                ("+00:00", "GMT+00:00"),
+                ("+05:30", "GMT+05:30"),
+                ("-05:00", "GMT-05:00"),
+            ],
+            format: None,
+            malformed: &["Z", "+0100", "+01", "05:00", "+18:01", "-00:00", "+01:60"],
+            of: None,
+            settings: "",
+        },
+    ),
     StandardType {
         name: "Uuid",
         holds: Holds::Builtin(Builtin::Uuid),
@@ -681,6 +1020,36 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    // A calendar year on its own, ordered.
+    time_object(
+        "Year",
+        &[("year", YEARS)],
+        TextForm::Year,
+        shown_as(FormatKey::Year),
+        true,
+        Examples {
+            valid: &[("1999", "1999"), ("2026", "2026")],
+            format: None,
+            malformed: &["26", "10000", "-2026", "2026-10"],
+            of: None,
+            settings: "",
+        },
+    ),
+    // A month of a year, ordered.
+    time_object(
+        "YearMonth",
+        &[("year", YEARS), ("month", Part::Whole(1, 12))],
+        TextForm::YearMonth,
+        shown_as(FormatKey::YearMonth),
+        true,
+        Examples {
+            valid: &[("2026-02", "February 2026"), ("2026-10", "October 2026")],
+            format: None,
+            malformed: &["2026-13", "2026-00", "2026-1", "202610", "2026-10-01"],
+            of: None,
+            settings: "",
+        },
+    ),
     StandardType {
         name: ZONE,
         holds: Holds::Enum(crate::zones::ZONES),
@@ -742,8 +1111,32 @@ pub const STANDARD_TYPES: &[StandardType] = &[
 pub const INSTANT_RANGE: &str = "InstantRange";
 
 /// `InstantRange`'s fields, in order.
-pub const INSTANT_RANGE_FIELDS: [(&str, Builtin); 2] =
-    [("start", Builtin::Instant), ("end", Builtin::Instant)];
+pub const INSTANT_RANGE_FIELDS: [(&str, Part); 2] = [
+    ("start", Part::Of(Builtin::Instant)),
+    ("end", Part::Of(Builtin::Instant)),
+];
+
+/// `Month` (area 19, question 22).
+pub const MONTH: &str = "Month";
+
+/// The standard range types besides `Range<T>` (area 19, "Ranges"): each
+/// with the built-in type its ends are, and whether it holds its end. An
+/// `InstantRange` holds every instant up to its end and a `DateRange`
+/// every date up to and including its end, each saying so once in its
+/// type.
+pub const RANGE_TYPES: &[(&str, Builtin, bool)] = &[
+    (INSTANT_RANGE, Builtin::Instant, false),
+    (DATE_RANGE, Builtin::CalendarDate, true),
+];
+
+/// The standard range type called `name`, with its ends' type and whether
+/// it holds its end.
+pub fn range_type(name: &str) -> Option<(Builtin, bool)> {
+    RANGE_TYPES
+        .iter()
+        .find(|(range, _, _)| *range == name)
+        .map(|(_, item, included)| (*item, *included))
+}
 
 /// `Range<T>` (area 19, "Ranges"): a range of any ordered type.
 pub const RANGE: &str = "Range";
@@ -917,7 +1310,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 16, "the 16 standard types built so far");
+        assert_eq!(names.len(), 26, "the 26 standard types built so far");
     }
 
     #[test]

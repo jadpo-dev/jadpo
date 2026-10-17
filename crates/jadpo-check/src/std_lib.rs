@@ -77,7 +77,14 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
         {
             Some(Kind::Any)
         }
-        (jadpo_std::INSTANT_RANGE, 0) => Some(Kind::Std(jadpo_std::INSTANT_RANGE)),
+        // A standard object type the runtime builds as a record (area 19).
+        (other, 0)
+            if jadpo_std::standard_type(other).is_some_and(|entry| {
+                matches!(entry.holds, jadpo_std::standard::Holds::Object(_))
+            }) =>
+        {
+            jadpo_std::standard_type(other).map(|entry| Kind::Std(entry.name))
+        }
         (crate::types::TIME_FORMAT, 0) => Some(Kind::Format),
         // A type written out, `as: Email` (area 19); only in stubs.
         ("Type", 0) => Some(Kind::Type),
