@@ -191,6 +191,12 @@ rules! {
         "14-tooling.html#command-errors", "Local configuration target is unsafe";
     CONFIGURATION_LOCAL_WRITE_FAILED: "configuration.local_write_failed", area 14, Error, Human,
         "14-tooling.html#command-errors", "Local configuration could not be saved";
+    CONFIGURATION_MOVE_NAME_TAKEN: "configuration.move_name_taken", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "A setting already has the constant's name";
+    CONFIGURATION_MOVE_READ_UNSUPPORTED: "configuration.move_read_unsupported", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Constant is read where a setting can't be";
+    CONFIGURATION_MOVE_TYPE_UNSUPPORTED: "configuration.move_type_unsupported", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Constant's type can't be a setting";
     CONFIGURATION_MULTIPLE_DECLARATIONS: "configuration.multiple_declarations", area 10, Error, Agent,
         "10-configuration-and-time.html#configuration-multiple-declarations", "Configuration is declared more than once";
     CONFIGURATION_SECRET_DEFAULT: "configuration.secret_default", area 10, Error, Agent,

@@ -26,6 +26,7 @@ mod not_value;
 pub mod policy;
 mod resolve;
 pub mod routes;
+pub mod setting_move;
 mod std_lib;
 pub mod translations;
 mod tree;
