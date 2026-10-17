@@ -17,6 +17,9 @@ use crate::read::SqlType;
 use crate::{Builtin, LOCALE, ZONE};
 
 mod identifiers;
+pub mod opening_hours;
+pub mod recurrence;
+mod schedules;
 
 /// What a standard type's values are held as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -272,6 +275,11 @@ pub enum Validator {
     NhsNumber,
     /// A National Insurance number's prefix, none HMRC never allocates.
     UkNationalInsuranceNumber,
+    /// An RFC 5545 recurrence whose start is its rule's first occurrence
+    /// ([`recurrence`]).
+    RecurrenceRule,
+    /// OpenStreetMap's opening hours with a zone ([`opening_hours`]).
+    OpeningHours,
 }
 
 impl Validator {
@@ -291,6 +299,8 @@ impl Validator {
             Validator::UkNationalInsuranceNumber => {
                 identifiers::is_uk_national_insurance_number(text)
             }
+            Validator::RecurrenceRule => recurrence::Rule::read(text).is_some(),
+            Validator::OpeningHours => opening_hours::OpeningHours::read(text).is_some(),
         }
     }
 }
@@ -549,8 +559,10 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// Every standard type built so far, sorted by name: the 13 areas 2, 10
 /// and 16 built, run through the contract in chunk 5.5a, `Range<T>`
 /// (chunk 5.5c2), `Money` and `Currency` (chunk 5.5h), ten of the time
-/// group (chunk 5.5k), `ExchangeRate` (chunk 5.5h2), and the 17 payment
-/// and identity numbers held as text (chunk 5.5i, in `identifiers`).
+/// group (chunk 5.5k), `ExchangeRate` (chunk 5.5h2), the 17 payment
+/// and identity numbers held as text (chunk 5.5i, in `identifiers`), and
+/// `RecurrenceRule` and `OpeningHours`, held as text (chunk 5.5k2, in
+/// `schedules`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     identifiers::BIC,
@@ -1053,6 +1065,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         release: FIRST_RELEASE,
     },
     identifiers::NHS_NUMBER,
+    schedules::OPENING_HOURS,
     identifiers::PAYMENT_CARD_NUMBER,
     identifiers::PAYMENT_REFERENCE,
     // A quarter of a calendar year, ordered by year and quarter.
@@ -1109,6 +1122,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    schedules::RECURRENCE_RULE,
     identifiers::UK_ACCOUNT_NUMBER,
     identifiers::UK_COMPANY_NUMBER,
     identifiers::UK_NATIONAL_INSURANCE_NUMBER,
@@ -1523,7 +1537,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 44, "the 44 standard types built so far");
+        assert_eq!(names.len(), 46, "the 46 standard types built so far");
     }
 
     #[test]
