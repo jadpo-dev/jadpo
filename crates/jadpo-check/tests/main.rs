@@ -46,6 +46,7 @@ mod signed;
 mod soundness;
 mod standard_types;
 mod stores;
+mod text;
 mod time;
 mod translation_exchange;
 mod translation_failures;

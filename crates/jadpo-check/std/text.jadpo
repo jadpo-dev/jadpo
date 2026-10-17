@@ -1,9 +1,6 @@
-// The `text` namespace's three contract operations (area 19, "Every
-// standard type meets one contract"): each one operation over every
-// standard type, as `json.read` is one over every input type, listed in
-// `jadpo-std`'s operation table and run by `jadpo-value`'s `standard`
-// module over each type's data entry. The rest of `text` comes with
-// chunk 5.5f.
+// The `text` namespace (area 19, "Text"): the standard type contract's
+// three operations, and the operations on text, each listed in
+// `jadpo-std`'s operation table and run by `jadpo-value`.
 //
 // `T` in `format` and `from` is a standard type, or a type built on one;
 // which fit, and how each is shown or written, is the type's data entry,
@@ -13,14 +10,72 @@
 // on one or on `Text`, `Int`, `Decimal` or `Bool`, and the result is that
 // type: text that isn't one at all fails `malformed`, and the type's own
 // rules fail by their names, as a construction's do.
+//
+// The rest take any value built on `Text` and give plain `Text`, counted,
+// cut and padded in code points. A count or a position is never negative,
+// `find` and `separator` are never empty, `fill:` is one character written
+// out, and `trim`, `slice` and the four cuts are never longer than their
+// text, so a type built from one keeps the text's `max_length`.
 
 public library text {
+    /// Text that `part` appears in.
+    function contains(value: Text, part: Text) -> Bool {}
+
+    /// `value` without its first `n` code points.
+    function drop_first(value: Text, n: Int) -> Text {}
+
+    /// `value` without its last `n` code points.
+    function drop_last(value: Text, n: Int) -> Text {}
+
+    /// Text that ends with `suffix`.
+    function ends_with(value: Text, suffix: Text) -> Bool {}
+
     /// `value` shown to a person in `locale`, in the type's own words.
     function format(value: T, locale: Locale, zone: Zone?, format: TimeFormat?) -> PresentationText {}
 
     /// `value`'s canonical text, the form `parse` reads back.
     function from(value: T) -> Text {}
 
+    /// The items with `separator` between them.
+    function join(items: List<Text>, separator: Text) -> Text {}
+
+    /// At most `n` code points from the start.
+    function keep_first(value: Text, n: Int) -> Text {}
+
+    /// At most `n` code points from the end.
+    function keep_last(value: Text, n: Int) -> Text {}
+
+    /// How many code points `value` holds, at least 0.
+    function length(value: Text) -> Int {}
+
+    /// `value` in lower case, by `locale`'s rules when it is given.
+    function lower(value: Text, locale: Locale?) -> Text {}
+
+    /// `value` with `fill` added at the start until it is `length` code
+    /// points long; never cut.
+    function pad_start(value: Text, length: Int, fill: Text) -> Text {}
+
     /// The value of type `as` that `raw`, its canonical text, holds.
     function parse(raw: Text, as: Type) -> T {}
+
+    /// `value` with every `find` replaced by `with`, left to right.
+    function replace(value: Text, find: Text, with: Text) -> Text {}
+
+    /// Up to `count` code points from position `from`, cut short at the end.
+    function slice(value: Text, from: Int, count: Int) -> Text {}
+
+    /// `value` as lowercase ASCII letters, digits and single `-`.
+    function slug(value: Text) -> Text {}
+
+    /// `value` cut at each `separator`, at least one piece.
+    function split(value: Text, separator: Text) -> List<Text> {}
+
+    /// Text that starts with `prefix`.
+    function starts_with(value: Text, prefix: Text) -> Bool {}
+
+    /// `value` without Unicode white space at either end.
+    function trim(value: Text) -> Text {}
+
+    /// `value` in upper case, by `locale`'s rules when it is given.
+    function upper(value: Text, locale: Locale?) -> Text {}
 }

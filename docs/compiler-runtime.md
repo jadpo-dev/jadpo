@@ -437,6 +437,18 @@ Since chunk 5.5d (area 19, "Numbers") a `written_out` parameter
 written at the call, and an operation whose `OneOf` result shares its `T`
 with two parameters (`min`, `max`) takes values of one type there, as `+`
 does, giving that type, or the representation for a plain number.
+Since chunk 5.5f (area 19, "Text") a `never_empty` parameter is text
+checked as a divisor is (a literal not `""`, a value's type with a
+`min_length` of at least 1, `type.argument_empty`); a `character`
+parameter (`text.pad_start`'s `fill:`) takes only a text literal of one
+code point; a `bounds_length` parameter is the text a result is never
+longer than (`at_most_length_of`), which construction proofs read as that
+argument's `max_length`; and a stub's `List<Text>` takes a list of any
+values built on `Text`. `jadpo-value`'s `text` module runs the text
+operations in code points, case mapping, collation (`list.sort_by`'s
+`locale:`) and the slug's decomposition over ICU4X, and the codecs compose
+every text a request carries to NFC before its rules run, in the one
+function both executors decode through.
 `temporal` runs on jiff with its bundled IANA database,
 in `jadpo-value` only, so every target reads the same zones and none reads
 the platform's (area 10, "Zones and local times"). The time types'

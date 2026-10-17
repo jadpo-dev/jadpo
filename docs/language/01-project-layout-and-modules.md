@@ -2238,8 +2238,9 @@ use menu
   when their areas land; `collection.` becomes `list.`, `set.` or
   `map.`. Each is reserved by `semantic.standard_namespace_reserved`
   from the chunk that adds it; fields and named arguments keep every
-  word (`note.text`, `set:`). The names that clash today are renamed in
-  those chunks: `text` in 5.5f, and `range` in 5.5c, which renamed area
+  word (`note.text`, `set:`). The names that clashed were renamed in
+  those chunks: `text` in 5.5f, which renamed the examples in areas 2,
+  3, 7, 8, 9 and 16, and `range` in 5.5c, which renamed area
   10's `deliveries_in(range:)` to `deliveries_in(arrivals:)`.
 - **Calls into another domain keep the domain's name at the call.** `use menu`
   brings in the domain, and its public actions, queries and fixtures are

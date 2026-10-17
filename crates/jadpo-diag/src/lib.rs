@@ -828,6 +828,8 @@ rules! {
         "02-values-and-types.html#type-absent-field", "Omitted or optional field is not present";
     TYPE_ARGUMENT_COUNT: "type.argument_count", area 3, Error, Agent,
         "03-logic.html#type-argument-count", "Call has the wrong number of arguments";
+    TYPE_ARGUMENT_EMPTY: "type.argument_empty", area 19, Error, Agent,
+        "19-standard-library.html#type-argument-empty", "Text that may be empty where it never is";
     TYPE_ARGUMENT_NEGATIVE: "type.argument_negative", area 19, Error, Agent,
         "19-standard-library.html#type-argument-negative", "Count or position may be negative";
     TYPE_ARITHMETIC_OPERAND: "type.arithmetic_operand", area 3, Error, Agent,

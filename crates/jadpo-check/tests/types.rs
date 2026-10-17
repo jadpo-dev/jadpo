@@ -346,7 +346,7 @@ fn built_in_values_are_built_from_literals_only() {
     );
     assert_eq!(
         with_names(
-            "function raw(name: ProductName) -> ProductName {\n    var text: Text = Text(name)\n    return ProductName(text)\n}\n"
+            "function raw(name: ProductName) -> ProductName {\n    var raw: Text = Text(name)\n    return ProductName(raw)\n}\n"
         ),
         // `ProductName(text)` is a second mistake: a `Text` value may break
         // `ProductName`'s rules, so building one can fail (area 4).

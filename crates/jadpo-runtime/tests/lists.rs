@@ -50,10 +50,24 @@ fn plain(op: Op, args: &[Value]) -> Value {
     call(op, args, &mut |_| None)
 }
 
+/// `op` by a key, with every option left out: `sort_by`'s `locale:` is
+/// given `none`, so text keys go by code point.
 fn by(op: Op, items: &Value, key: &str) -> Value {
-    call(op, std::slice::from_ref(items), &mut |item| {
-        field(item, key)
-    })
+    let args = options(op, items);
+    call(op, &args, &mut |item| field(item, key))
+}
+
+/// The list, then `none` for each option `op` takes after its function.
+fn options(op: Op, items: &Value) -> Vec<Value> {
+    let written = op
+        .operation()
+        .params
+        .iter()
+        .filter(|param| param.kind != jadpo_std::Kind::Function)
+        .count();
+    let mut args = vec![items.clone()];
+    args.resize(written, Value::None);
+    args
 }
 
 fn test(op: Op, items: &Value, check: impl Fn(&Value) -> bool) -> Value {
@@ -228,7 +242,7 @@ fn an_inline_function_that_stops_stops_the_operation() {
         Op::ListFind,
     ] {
         assert_eq!(
-            run(op, std::slice::from_ref(&day), None, &mut |_| None),
+            run(op, &options(op, &day), None, &mut |_| None),
             Err(Fault::Stopped),
             "{op:?}"
         );

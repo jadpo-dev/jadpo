@@ -628,11 +628,16 @@ fn zoned_from_json(
     }
 }
 
-/// A scalar read from its text, before its rules are checked.
+/// A scalar read from its text, before its rules are checked. Every
+/// text a request carries comes through here, from a body, a path, a
+/// query string, a header or a map's key, and is composed to NFC first,
+/// so text that looks equal is equal and its rules count the code points
+/// it will be kept as (areas 2, 7 and 19).
 fn scalar_from_text(builtin: Builtin, text: &str) -> Result<Value, &'static str> {
     match builtin.representation() {
+        Builtin::Text => Ok(Value::text(&crate::text::composed(text))),
         // Text for people is sent and read as the text it is (area 10).
-        Builtin::Text | Builtin::PresentationText => Ok(Value::text(text)),
+        Builtin::PresentationText => Ok(Value::text(text)),
         Builtin::Int => text.parse::<i64>().map(Value::Int).map_err(|_| "type"),
         Builtin::Decimal => Decimal::parse(text).map(Value::Decimal).ok_or("type"),
         Builtin::Uuid => {
