@@ -36,13 +36,13 @@ to close them, and says what is left out on purpose and why.
 
 140 operations in all: 28 decided, 112 proposed here. Of the new ones, 3
 wait on a language change this page proposes (two-parameter inline
-functions) and 8 on the choice of maths on `Decimal` (question 13). #88's
+functions) and 8 on the choice of maths on `Decimal` (question 17). #88's
 file helpers (`csv`, `tsv`, `json_lines` and the batch forms of `json`)
 are counted there, not here.
 
 ## Shared vocabulary types
 
-> Decided 2026-10-17 (Richard): the principle, and the warning on a package that declares its own equivalent. The types in the table below are still proposals, each with its own question.
+> Decided 2026-10-17 (Richard): the principle; the warning on a package that declares its own equivalent; and that every standard type is global, in one flat set. Which types get in, and under what names, are still proposals (questions 2 to 5); so is each type in the table below.
 
 **The standard library defines the types two packages would otherwise
 each invent**. Geospatial libraries disagree on
@@ -60,6 +60,17 @@ a package or a later area.
   `Point { latitude: ...  longitude: ... }`, never a pair. An axis order
   exists only at a named conversion edge that says it in its name
   (`geo.from_lng_lat(list)`, `geo.from_lat_lng(list)`, `geo.from_geojson`).
+- **One flat, global set** (decided). Every standard type is a global
+  name, as `Email` and `Instant` are today: `PostalAddress`, never
+  `geo.Point` beside a global `Email`, since two tiers of type would be
+  one more thing to remember and apps should look alike. Functions stay
+  in namespaces (`geo.`, `money.`, `list.`); only the types are global.
+  An app doesn't declare its own `Address`: it names its types for their
+  purpose and shape (`DeliveryStop { address: PostalAddress }`,
+  `BillingContact`), and that forced explicitness is the point. A
+  declaration that reuses a standard name is already an error (built-in
+  names can't be reused, area 2), so the shape check below only has to
+  catch equivalents under other names.
 - **Packages use them** (decided): a package's public API that declares
   its own equivalent of a standard type is warned and pointed at it
   ("Packages use the standard types", below).
@@ -69,15 +80,15 @@ a package or a later area.
 | `Instant`, `CalendarDate`, `ZonedTime`, `Duration`, `Zone`, `Locale`, `Weekday` | As area 10 | Area 7's wire forms | Area 5 | `temporal`, `locale` | Exists (areas 2, 10) |
 | `Email`, `Url`, `IpAddress` | Validated `Text` | A string | `text` | Construction only | Exists (area 2) |
 | `FileType` | Enum of media types | `"image/png"` | `text` | Construction only | Exists (area 16) |
-| `Money`, `Currency` | Minor units (`Int`) and an ISO 4217 currency | `{"amount": 1050, "currency": "GBP"}` | `bigint` and a `char(3)` code | `money`; no exchange rates | Proposed here (question 12); built in per #88 |
+| `Money`, `Currency` | Minor units (`Int`) and an ISO 4217 currency | `{"amount": 1050, "currency": "GBP"}` | `bigint` and a `char(3)` code | `money`; no exchange rates | Proposed here (question 16); built in per #88 |
 | `Country` | Enum of ISO 3166-1 alpha-2 codes, `Country.gb` | `"GB"` | `char(2)` | Construction only; names through translations | Proposed here; built in per #88 |
 | `Language` | BCP 47 language tag (`en`, `pt-BR`), any language, not only the app's supported `Locale`s | `"pt-BR"` | `text` | Construction only | Proposed here; built in per #88 |
 | `PhoneNumber` | E.164 text, `+447700900123` | A string | `text` | Construction, which normalises; formatting for people a package | Proposed here; carried to area 2 by area 11, question 19 |
-| `Percentage` | `Decimal` where `0.20` is 20%, scale chosen by the type | `"0.20"`, as any `Decimal` | `numeric` | `money.multiply`, `decimal` operations; `{n, number, percent}` in messages | Proposed here (question 12) |
-| `Colour` | `red`, `green`, `blue` and `alpha`, each 0 to 255, in sRGB | `"#rrggbb"` or `"#rrggbbaa"` | `text`, the same | Construction from hex; conversions to other spaces a package | Proposed here (question 9); reverses Richard's point 8 |
-| `Point` | `latitude`, `longitude` (WGS84 degrees) | GeoJSON | PostGIS `geography` | Type here; operations in the geospatial area | Proposed for a future area (question 8) |
+| `Percentage` | `Decimal` where `0.20` is 20%, scale chosen by the type | `"0.20"`, as any `Decimal` | `numeric` | `money.multiply`, `decimal` operations; `{n, number, percent}` in messages | Proposed here (question 16) |
+| `Colour` | `red`, `green`, `blue` and `alpha`, each 0 to 255, in sRGB | `"#rrggbb"` or `"#rrggbbaa"` | `text`, the same | Construction from hex; conversions to other spaces a package | Proposed here (question 13); reverses Richard's point 8 |
+| `Point` | `latitude`, `longitude` (WGS84 degrees) | GeoJSON | PostGIS `geography` | Type here; operations in the geospatial area | Proposed for a future area (question 12) |
 | `LineString`, `Polygon`, `MultiPolygon` | Named lists of `Point`s | GeoJSON | PostGIS `geography` | As `Point` | Proposed for a future area |
-| `Vector` | A fixed number of `Decimal`s, `Vector { dimensions: 1536 }` | A JSON array of numbers | pgvector `vector(n)` | Type here; similarity queries in the AI area | Proposed for a future area (question 15) |
+| `Vector` | A fixed number of `Decimal`s, `Vector { dimensions: 1536 }` | A JSON array of numbers | pgvector `vector(n)` | Type here; similarity queries in the AI area | Proposed for a future area (question 19) |
 
 ### Packages use the standard types
 
@@ -128,7 +139,7 @@ applications.
 These hold for every namespace, and are what the decided areas already
 apply to `collection`, `decimal`, `integer` and `temporal`.
 
-- **One namespace per type it works on** (question 2): `list.`, `set.` and
+- **One namespace per type it works on** (question 6): `list.`, `set.` and
   `map.` for `List<T>`, `Set<T>` and `Map<K, V>`, `text.` for text,
   `money.` for `Money`. The name says what the first argument is.
 - **Always called through its namespace** ([area 1](01-project-layout-and-modules.md)):
@@ -141,7 +152,7 @@ apply to `collection`, `decimal`, `integer` and `temporal`.
   be called in a function. The exception is randomness: `random.*`,
   `crypto.encrypt` and `crypto.hash_password` read the generator, so, as
   `clock.now` is, they are called only in actions and are fixed in tests
-  (question 14). Unicode data (case mapping, white space, the slug's
+  (question 18). Unicode data (case mapping, white space, the slug's
   decomposition), CLDR formats and ISO lists are the versions pinned in
   `jadpo-value`, and upgrading them is a reviewed change, as the time-zone
   database is.
@@ -188,7 +199,7 @@ attempt encoding.from_base64(input.attachment) {
 
 ## Validating in the middle of a program
 
-**Construction is the way** (question 11). `Type(value)` checks every rule
+**Construction is the way** (question 15). `Type(value)` checks every rule
 on the type and the types it builds on, and an `attempt` maps each rule
 that can break to the failure the caller gets ([area 2](02-values-and-types.md#construction-failures-by-rule)).
 That holds wherever the value came from: a computation, a part of a
@@ -221,7 +232,7 @@ var order: OrderImport = attempt json.read(message.body, as: OrderImport) {
 Nothing new is needed for single values or whole records. One thing
 construction can't do is a rule across fields ("ends after it starts"),
 because a type has no such rule today: the bookings scenario needs one,
-so cross-field rules are proposed as a language change (question 11,
+so cross-field rules are proposed as a language change (question 15,
 "Language gaps").
 
 ## SQL forms
@@ -234,7 +245,7 @@ reading and writing each batch ([area 5](05-data.md#computed-backfills)).
 Both are correct; the SQL form is only faster. Queries still compute
 nothing and a one-step update's `set:` still works a stored field out only
 with `+` and `-` (area 6); aggregate queries would be their second user
-(question 22, "Language gaps").
+(question 26, "Language gaps").
 
 - An operation that can fail has no SQL form, since a statement can't map
   a failure to a row.
@@ -253,7 +264,7 @@ In the tables below, `x` is the first argument and `a`, `b` the others.
 ## Lists
 
 Each operation is called as `list.<name>`, replacing `collection.`
-(question 2). `T` is the item type, fixed by the list. A function argument
+(question 6). `T` is the item type, fixed by the list. A function argument
 is written inline, `item -> expression` (area 3).
 
 | Operation | Gives | Fails | SQL form |
@@ -288,7 +299,7 @@ is written inline, `item -> expression` (area 3).
   the first draft of this page had to write and which sorts the whole list
   to read one item. In a query it stays `order:` and `limit:`.
 - **Cutting from either end** is `keep_first`, `keep_last`, `drop_first`
-  and `drop_last`, the same four on text (question 3). `slice` stays for a
+  and `drop_last`, the same four on text (question 7). `slice` stays for a
   window in the middle. There are no negative positions: in JavaScript
   `slice(-2)` counts from the end, `substring(-2)` treats it as 0 and
   `substr(-2)` counts from the end again, and an off-by-one that goes
@@ -322,7 +333,7 @@ Each operation is called as `set.<name>`. All return a new set.
 - **These need no walking by code.** Each is one operation in the
   runtime, so none waits for `for`. A named set type is built back from
   the result by construction, as area 2's lengths require.
-- **`for` walks a set** (question 4, "Language gaps"). Area 2 already
+- **`for` walks a set** (question 8, "Language gaps"). Area 2 already
   decided the order: everything that shows a set, iteration "once `for`
   takes sets" included, uses one canonical order by value. So the only
   change is `for` accepting a `Set`, in that order. A set is still never
@@ -354,7 +365,7 @@ Each operation is called as `map.<name>`. All return a new map.
 - **An empty map is `[]` written where a map is expected,** as a list
   literal written where a set is expected is a set (area 2); entries are
   added with `map.with`. A literal with entries is area 2's to design
-  (question 4).
+  (question 8).
 - **Records have no dynamic keys,** on purpose. A record's fields are
   fixed and each is its own type (`Customer.email`), so `record[name]`
   would give a value of no single type, lose the field type that keeps
@@ -396,19 +407,19 @@ what an operator can't.
 - **Parsing takes the wire's form only:** no grouping, no locale's
   decimal comma, no exponent. A spreadsheet's `1.234,50` is a cell
   decoder's job (#88's `decode:`).
-- **Maths on `Decimal`, not a `Float`** (question 13). Each result is
+- **Maths on `Decimal`, not a `Float`** (question 17). Each result is
   correctly rounded to `scale` with the named rounding, by Jadpo's own
   decimal code, so it is the same on every target; a float's `sin` differs
   between platforms' maths libraries, and has `NaN`. Geospatial distance
   and statistics (a standard deviation) are what need them.
 - **PostgreSQL's `round` ties away from zero,** which is `half_up`; the
   other modes are spelled out with a `CASE`, never left to the database.
-- **`Rounding` stays `half_even`, `half_up` and `up`,** unless question 19
+- **`Rounding` stays `half_even`, `half_up` and `up`,** unless question 23
   adds `down`.
 
 ## Money
 
-`Money` is a built-in vocabulary type (question 12): an amount held as a
+`Money` is a built-in vocabulary type (question 16): an amount held as a
 whole number of the currency's minor units (pence, cents) and its
 `Currency`, never a decimal of pounds. Each currency's exponent comes from
 ISO 4217: `jpy` 0, `gbp` 2, `bhd` 3. `Currency` is an enum of the active
@@ -449,7 +460,7 @@ money.format(total, locale: Locale.en_gb)                            // "£10.50
   bills each customer in theirs), the checker needs it proven, as it
   proves a range: inside `if (money.currency(a) == money.currency(b))` the
   `+` is plain, and outside it the error's `next:` says to check first.
-  There is no `money.add`: one way each (question 12).
+  There is no `money.add`: one way each (question 16).
 - **Multiplying or dividing always names its rounding,** since a third of
   a penny has to go somewhere. Splitting never rounds: `allocate` and
   `split` hand every minor unit to some share.
@@ -463,7 +474,7 @@ money.format(total, locale: Locale.en_gb)                            // "£10.50
 - **Wire** is one fixed shape, `{"amount": 1050, "currency": "GBP"}`, in
   integer minor units as Stripe sends it; `json.read` and `json.write` use
   it too. A provider's other shape (`"10.50"`) is mapped in its package
-  (#88's `wire:`) (question 12).
+  (#88's `wire:`) (question 16).
 - **Formatting for people.** `money.format` writes the symbol or code, the
   locale's grouping and decimal separator, the currency's places and the
   symbol's position from CLDR: `£1,234.50`, `1 234,50 €`. `precision:
@@ -483,7 +494,7 @@ money.format(total, locale: Locale.en_gb)                            // "£10.50
 
 Each operation is called as `text.<name>`. Text is counted, cut and
 padded in Unicode code points, as `max_length`
-counts it (area 2) and as PostgreSQL's `char_length` does (question 17).
+counts it (area 2) and as PostgreSQL's `char_length` does (question 21).
 `PresentationText` is its own representation (area 10), so none of these
 take it.
 
@@ -513,7 +524,7 @@ take it.
   2), so showing one is a `match`; a value built on `Text` already is text.
 - **`keep_first` can split a character a person sees as one,** such as an
   emoji with a skin tone, which is two code points. A preview cut this way
-  is still valid text; graphemes are left out (question 17).
+  is still valid text; graphemes are left out (question 21).
 - **Left out by design:** `trim_start`, `trim_end` and `pad_end` (no
   scenario needs them, and each is a second way near one that exists);
   iterating characters (every job the scenarios found, slugs, masks,
@@ -547,12 +558,12 @@ take it.
   any other read stays `configuration.secret_flow`. Both rotate as a
   `SigningKey` does, through `NAME_PREVIOUS`.
 - **A digest is `Bytes`,** and `encoding` writes it as text:
-  `encoding.to_hex` for an ETag or a content key (question 18).
+  `encoding.to_hex` for an ETag or a content key (question 22).
 - **No MD5 or SHA-1.** Both are broken; an outside system that still asks
   for one is reached through a package (area 11). That includes TOTP,
   whose RFC 6238 default is HMAC-SHA-1 and whose per-person secret is a
   key held as data ("Language gaps").
-- **Encrypted fields** (question 6): `notes: ClinicalNote { encrypted:
+- **Encrypted fields** (question 10): `notes: ClinicalNote { encrypted:
   true }` on an entity would store the field sealed with the
   application's `field_encryption_key:`, decrypt it on load, and keep it
   out of unique rules, indexes, filters, ordering, search and logs, as
@@ -562,7 +573,7 @@ take it.
 
 ## Randomness
 
-`random` is a generated namespace like `clock` (question 14): it reads
+`random` is a generated namespace like `clock` (question 18): it reads
 the operating system's cryptographic generator in production, is called
 only in actions, gives the same values on every rerun of a test (seeded
 per test, as the test clock is fixed), and is recorded for replay as
@@ -626,7 +637,7 @@ these, and this page agrees with it rather than redesigning them:
   declared legacy encodings, never guessed.
 - XML is deferred: it waits for an XML byte format in a later release.
 
-**One JSON document in memory** (question 10, Richard's point 10). #88
+**One JSON document in memory** (question 14, Richard's point 10). #88
 keeps `json.decode` for single documents. This page proposes one name per
 direction instead, so there is one namespace and one shape:
 
@@ -667,7 +678,7 @@ function nand(a: Bool, b: Bool) -> Bool {
 ```
 
 Bitwise operations on `Int` and `Bytes` (and, or, xor, not, shifts) are
-left out (question 21): flags are a `Set` of an enum, which a reviewer can
+left out (question 25): flags are a `Set` of an enum, which a reviewer can
 read, and the one scenario with bit-packed data, device payloads, decodes
 them in the provider package that knows the format.
 
@@ -675,7 +686,7 @@ them in the provider package that knows the format.
 
 Geospatial work needs its own area page, not a section here: new stored
 types, PostGIS, query predicates and indexes touch areas 2, 5 and 6, which
-this page doesn't. Proposed scope (question 8):
+this page doesn't. Proposed scope (question 12):
 
 | Part | Proposal |
 |---|---|
@@ -694,7 +705,7 @@ stays. What makes them first class in typed applications is a set of
 standard pieces Jadpo itself does, which is what #88's design C asks of a
 capability: Jadpo renders the prompt from a checked file and decodes the
 answer into a type, as it renders an email and hands it to a sender.
-Proposed scope for its own area page (question 15):
+Proposed scope for its own area page (question 19):
 
 | Part | Proposal |
 |---|---|
@@ -896,12 +907,12 @@ unblocks kept in the proposal.
 | Comparators | A key expresses every order, and an inconsistent comparator differs by target | `sort_by`, `reverse` |
 | `items[i]` | Out of range needs an arm or a defect | `list.at` gives `T?` |
 | Regular expressions as calls | A pattern is a type's rule, in linear time | `pattern:` and construction (area 2) |
-| Graphemes | They'd disagree with `max_length` and PostgreSQL, and change with each Unicode version | Code points (question 17) |
+| Graphemes | They'd disagree with `max_length` and PostgreSQL, and change with each Unicode version | Code points (question 21) |
 | Dynamic keys on records | A field is its own type and carries its own policy and marks | `Map` |
 | A dynamic JSON value | No scenario needs one | `json.read(..., as:)`; `Text` to pass on |
 | CSV in memory | #88: one way to read rows | `csv.read` through a store |
 | MD5, SHA-1 | Broken | A package (area 11) |
-| Bitwise operations | Flags read better as a set; device formats belong in their package | `Set<Enum>`; question 21 |
+| Bitwise operations | Flags read better as a set; device formats belong in their package | `Set<Enum>`; question 25 |
 | Exchange rates | Outside data with a time and a source | A provider package |
 | Colour conversions (HSL, CMYK, contrast) | Specialist, and several defensible formulas | A package on the standard `Colour` |
 | Training models | Needs GPUs, datasets and long jobs | A package or an outside service |
@@ -938,7 +949,7 @@ and second ways every one of them has.
 
 | Feature | Status |
 |---|---|
-| `collection.count`, `contains`, `map`, `filter` | Decided (area 2) and built; renamed `list.` in 5.5 if question 2 holds |
+| `collection.count`, `contains`, `map`, `filter` | Decided (area 2) and built; renamed `list.` in 5.5 if question 6 holds |
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `temporal`, `locale` | Decided (area 10) and built; two parse operations added here |
 | `Email`, `Url`, `IpAddress`, `FileType` | Decided (areas 2, 16) and built |
@@ -996,6 +1007,7 @@ writes `list.`, `set.` or `map.` from the argument's type.
 |---|---|---|
 | Shared vocabulary types | The standard library defines a type wherever two packages would otherwise each invent their own, even when the heavy operations live in a package or a later area; each has one construction that validates, one wire shape and one storage shape; positional pairs are designed out by named fields, and an axis order exists only in a conversion that names it (`geo.from_lng_lat`) (Richard) | 2026-10-17 |
 | Packages use the standard types | A package's public `Object` whose only fields match a standard type's shape, by the common field names in any order (table under "Packages use the standard types"), is the warning `type.standard_equivalent`, whose `next:` is to use the standard type and convert at the edge; a warning on #88's publishing bar, not a refusal (Richard). Whether it becomes a blocking error with a declared opt-out, for app code too, is open question 1 | 2026-10-17 |
+| Standard types are global, in one flat set | Every standard vocabulary type is a global name, with no split between core types and types inside namespaces; functions stay in namespaces. Apps name their own types for purpose and shape (`DeliveryStop { address: PostalAddress }`, `BillingContact`), never re-declaring a standard one (Richard) | 2026-10-17 |
 
 ### Open questions
 
@@ -1034,7 +1046,68 @@ Richard's points first, then the first draft's remaining questions. The vocabula
      cells, or an `amount` and `currency` that are a quote, not money,
      matches by shape. The required reason handles them, and review sees
      each one.
-2. **One namespace per type: `list.`, `set.` and `map.` replace
+2. **Which types get in?** The draft catalogue
+   ([#105](https://github.com/richardwillars/jadpo/pull/105),
+   `docs/language/research/vocabulary-types-catalogue.md`, unmerged)
+   lists 1,120 candidates in 42 domains, tiered core (45), likely (142),
+   maybe (337), niche (425) and silly (171). *Recommendation:* a type gets
+   in when it has a precise definition: an ISO or RFC, a national
+   standard, or a shape packages genuinely disagree on. That is core and
+   likely, the maybe entries with a named standard (208), and none of
+   silly: about **395 types**. Niche goes to packages unless a real
+   standard backs it; 284 niche entries name an authority, but many are
+   proprietary (what3words, Gravatar), so each is reviewed, not taken
+   wholesale. Once decided, the catalogue is cut to the reviewed list
+   and becomes the record of what is standard, each entry with its
+   shape, wire, storage and construction; 5.5i builds it in batches by
+   domain.
+3. **Precise names.** A standard type's name says exactly what it is, so
+   it doesn't take a word an app needs for something else.
+   *Recommendation:* this rule, in order: (a) the defining standard's
+   own term, qualified until it is unambiguous (`PostalAddress`,
+   `RecurrenceRule`, `ProblemDetails`); (b) otherwise the noun qualified
+   by what it holds (`DateRange`, `DataSize`, `ImageDimensions`); (c)
+   never a bare word an app plausibly uses for its own, different thing,
+   except a generic container that takes a type (`Range<T>`, as
+   `List<T>`). Tested against the catalogue's top 30, 23 pass and 7
+   change: `Subdivision` becomes `CountrySubdivision` (a housing
+   subdivision), `Interval` becomes the existing built-in `InstantRange`,
+   `Period` becomes `CalendarPeriod` (a billing or school period),
+   `Quantity` becomes `UnitQuantity` (an order line's quantity, area 2's
+   own example), `Length` becomes `PhysicalLength` (a text's or a
+   video's length), `Secret` becomes `SecretText` (area 10's `secret:`
+   settings), and `StoredFile` is area 16's existing `File`. `Mass` and
+   `Temperature` pass: an app using those words means the standard
+   thing. The rule would also rename question 12's `Point` to
+   `GeoPoint`; decide the two together, keeping `Point` as the one
+   exception, since GeoJSON, PostGIS and OGC all say Point and the
+   geometry family shares the term. Existing built-in names (`File`,
+   `Page`, `Access`) predate the rule and aren't renamed.
+4. **A compiler upgrade that adds a standard type** an app has already
+   named for itself. *Recommendation:* never a silent break. The first
+   `check` after the upgrade reports each clash as an error naming the
+   new standard type and the release that added it, with two fixes:
+   swap to the standard type when the shapes match (the same swap as
+   question 1, data migration and acceptances included), or rename the
+   app's type (`jadpo rename`, decided in area 14, keeping stored data).
+   A new `jadpo fix` applies whichever the author picks, through the
+   same code as the editor's quick fix. Each release's notes list the
+   names it adds.
+5. **Keeping the shape check's false positives low with hundreds of
+   types.** *Recommendation:* match only distinctive shapes, and say
+   which ones in the catalogue. A shape is distinctive when it has at
+   least two fields, at least one field name belongs to the domain
+   rather than being generic (`latitude`, `currency`, `iban` count;
+   `name`, `value`, `id`, `code`, `type`, `text` don't), the field types
+   line up with the standard's (numbers for coordinates, text or an enum
+   for a currency), and the declaration has no fields beyond those.
+   Single-value types never match by shape: a same-named declaration is
+   already an error, and a differently named `Text` says nothing. Each
+   standard type that has a distinctive shape lists its match signature
+   (fields and their common synonyms) in the catalogue, reviewed with
+   it; of the roughly 395, 139 are objects, and only those with a
+   domain field name carry one.
+6. **One namespace per type: `list.`, `set.` and `map.` replace
    `collection.`?** Costs: `list`, `set`, `map` and `text` can't be
    variable or parameter names (`locale` already can't), and the four
    built operations are renamed. *Recommendation:* yes. The namespace says
@@ -1042,29 +1115,29 @@ Richard's points first, then the first draft's remaining questions. The vocabula
    distinct where their behaviour differs (order, repeats), a variable
    called `list` says nothing about what it holds, and only `text`
    clashes today.
-3. **`keep_first`, `keep_last`, `drop_first` and `drop_last` on text and
+7. **`keep_first`, `keep_last`, `drop_first` and `drop_last` on text and
    lists, with no negative positions?** *Recommendation:* yes, `n` never
    negative and proved so, `slice` kept for the middle. Negative positions
    are where JavaScript has three behaviours for one call.
-4. **Sets and maps get their operations, `for` walks a set, and an empty
+8. **Sets and maps get their operations, `for` walks a set, and an empty
    map is `[]`?** *Recommendation:* yes: the seven set and eight map
    operations, all returning new values; `for` over a set in area 2's
    canonical order; maps walked through `map.keys`; a literal with entries
    left to area 2 (`["gbp": 2]`, Swift's form beside the list's brackets,
    is the obvious candidate). No dynamic keys on records.
-5. **A `crypto` namespace with no algorithm choices, keys as opaque
+9. **A `crypto` namespace with no algorithm choices, keys as opaque
    settings?** *Recommendation:* yes, the six operations as tabled:
    XChaCha20-Poly1305 with a required `context:`, Argon2id with
    `PasswordCheck.correct_outdated`, HMAC-SHA-256 with a constant-time
    check; `key: config.<name>` joins area 10's compiler-owned places.
-6. **An `encrypted` field setting?** *Recommendation:* yes, to be decided
+10. **An `encrypted` field setting?** *Recommendation:* yes, to be decided
    in area 15, with one application key and the field kept out of indexes,
    unique rules, filters, ordering, search and logs, as area 16's table
    expects. Per-person keys stay out (area 15, question 5).
-7. **No push or pop; `last`, `at`, `min_by`, `max_by`, `append`,
+11. **No push or pop; `last`, `at`, `min_by`, `max_by`, `append`,
    `flatten`, `group_by` added?** *Recommendation:* yes; the page's own
    `first(reverse(sort_by(...)))` showed `max_by` was missing.
-8. **Geospatial as its own area, and a roadmap entry for it?**
+12. **Geospatial as its own area, and a roadmap entry for it?**
    *Recommendation:* yes, scope as sketched; add **"Geospatial: the plan"
    `opus · high`** right after 5.5, writing the new area page, with its
    build placed by that page. The roadmap isn't edited until you agree.
@@ -1081,20 +1154,20 @@ Richard's points first, then the first draft's remaining questions. The vocabula
      are renamed when the type is built. A `Geo` prefix for the whole
      family (`GeoPoint`, `GeoPolygon`) avoids that but is clunky on every
      use, for a clash few apps have; rejected.
-9. **`Colour` as a standard type?** This reverses your point 8 under the
+13. **`Colour` as a standard type?** This reverses your point 8 under the
     vocabulary principle. *Recommendation:* yes, the type only: named
     channels in sRGB, constructed from `"#rrggbb"`, one wire and storage
     form; conversions to other spaces stay a package.
-10. **`json.read` and `json.write` in memory, one name per direction with
+14. **`json.read` and `json.write` in memory, one name per direction with
     #88's batch forms, no dynamic JSON value?** *Recommendation:* yes;
     #88's `json.decode` renamed `json.read`; `mismatch` carries the first
     problem's path and rule; CSV stays file-only as #88 decided.
-11. **Construction is the way to validate mid-program, plus cross-field
+15. **Construction is the way to validate mid-program, plus cross-field
     rules?** *Recommendation:* yes, construction as shown, nothing new for
     values or records; and named rules across an object's fields as an
     area 2 change, after 5.5, since the bookings scenario can't be covered
     without one.
-12. **Built-in `Money` and `Currency` in minor units?** Sub-choices:
+16. **Built-in `Money` and `Currency` in minor units?** Sub-choices:
     - Operators or functions: *recommendation:* `+`, `-` and comparisons
       as operators, one way each, with functions only where a rounding
       must be named (`multiply`, `divide`).
@@ -1108,20 +1181,20 @@ Richard's points first, then the first draft's remaining questions. The vocabula
     - `Percentage` as a vocabulary type beside it: *recommendation:* yes,
       a `Decimal` where `0.20` is 20%, with `{n, number, percent}` in
       messages.
-13. **Maths on `Decimal` rather than a `Float`?** *Recommendation:* yes,
+17. **Maths on `Decimal` rather than a `Float`?** *Recommendation:* yes,
     the eight operations, correctly rounded to a named scale, the same on
     every target; area 2's "no `Float` until needed" stands, since this
     meets the need.
-14. **Randomness as a generated `random` namespace?** This reverses the
+18. **Randomness as a generated `random` namespace?** This reverses the
     first draft. *Recommendation:* yes, actions only, seeded per test,
     recorded for replay, with `random.token` (your point 6's
     `crypto.random_token`) and `random.code` for references people read.
-15. **AI as its own area, with the standard pieces sketched?**
+19. **AI as its own area, with the standard pieces sketched?**
     *Recommendation:* yes: the `ai` capability, typed `generate`,
     streaming, `Vector` and similarity queries, checked prompt files, a
     fake for tests, limits, and area 15 reporting; training out. Add **"AI:
     the plan" `opus · high`** after the geospatial plan.
-16. **Are the language gaps closed as "Language gaps this page depends
+20. **Are the language gaps closed as "Language gaps this page depends
     on" proposes?** *Recommendation:* yes, row by row: `for` over sets,
     the empty map and two-parameter inline functions in 5.5b; secrets as
     opaque keys and `random` in 5.5h; `locale:` order and case, parsing,
@@ -1129,26 +1202,26 @@ Richard's points first, then the first draft's remaining questions. The vocabula
     own, added once you agree: **"Cross-field rules" `opus · high`** (area
     2) after 5.5, **"Aggregate queries" `opus · high`** (area 6) after 5.6,
     and keys held as data after encrypted fields (area 15).
-17. **Is text counted and cut in code points?** *Recommendation:* yes, as
+21. **Is text counted and cut in code points?** *Recommendation:* yes, as
     Python and PostgreSQL do; graphemes left out.
-18. **Does `hash.sha256` give `Bytes`?** *Recommendation:* yes, written as
+22. **Does `hash.sha256` give `Bytes`?** *Recommendation:* yes, written as
     text by `encoding`.
-19. **Does `Rounding` gain `down`, toward zero?** *Recommendation:* yes,
+23. **Does `Rounding` gain `down`, toward zero?** *Recommendation:* yes,
     with SQL form `trunc`; `floor`, `ceiling` and `half_down` stay out
     until amounts below zero need them.
-20. **Is `text.slug` ASCII-only, and does text sort in code points unless
+24. **Is `text.slug` ASCII-only, and does text sort in code points unless
     `locale:` says otherwise?** *Recommendation:* yes to both, matching
     URLs and queries.
-21. **Bitwise operations as a `bits` namespace?** *Recommendation:* no,
+25. **Bitwise operations as a `bits` namespace?** *Recommendation:* no,
     for now. No scenario but device payloads needs them, and those decode
     in their provider package; flags are a `Set` of an enum. If a protocol
     package needs them, six operations on `Int` fit without changing
     anything else.
-22. **Are SQL forms used by backfills, and later by aggregate queries?**
+26. **Are SQL forms used by backfills, and later by aggregate queries?**
     *Recommendation:* backfills in 5.6; aggregate queries as a new area 6
     chunk after it, using the same SQL forms, which also gives reports
     their `lower` (where a form exists) and time buckets.
-23. **Does the table record `at_most_length_of`?** *Recommendation:* yes,
+27. **Does the table record `at_most_length_of`?** *Recommendation:* yes,
     for `trim`, `slice`, `keep_*` and `drop_*` only; `lower` and `upper`
     can lengthen text (`ß` becomes `SS`).
 
@@ -1166,8 +1239,8 @@ session, in order:
   inline functions and the 3 operations waiting on them.
 - **5.5c Numbers** `opus · high`: the `integer` and `decimal` operations
   except maths, `parse` and `format` included; `scale:` written out;
-  `Rounding.down` if question 19 says so.
-- **5.5d Decimal maths** `opus · high`, if question 13 holds: the eight
+  `Rounding.down` if question 23 says so.
+- **5.5d Decimal maths** `opus · high`, if question 17 holds: the eight
   correctly rounded operations, tested against reference values.
 - **5.5e Text** `opus · high`: the 18 `text` operations, `locale:` on case
   and sorting, `temporal.parse_date` and `parse_instant`, NFC at the
@@ -1184,7 +1257,9 @@ session, in order:
   `PasswordHash`, `PasswordCheck` and `key:` as a compiler-owned place.
 - **5.5i Vocabulary types** `opus · high`: `Country`, `Language`,
   `PhoneNumber` (E.164 normalisation) and `Colour`, each with its
-  construction, wire and storage shape. The `type.standard_equivalent`
+  construction, wire and storage shape. The rest of the reviewed
+  catalogue (question 2) follows in later chunks of about 40 types each,
+  batched by domain, split when question 2 is decided. The `type.standard_equivalent`
   warning comes with package publishing (#88, Phase 7), once the types it
   points at exist.
 - **Later, outside 5.5:** encrypted fields with area 15; cross-field rules
