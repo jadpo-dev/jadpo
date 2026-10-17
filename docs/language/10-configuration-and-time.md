@@ -1079,7 +1079,7 @@ test "a London day has 25 hours when the clocks go back" {
     assert record_delivery("late on the 25th").note == "late on the 25th"
     clock.advance(1h)
     assert record_delivery("the 26th").note == "the 26th"
-    assert collection.map(deliveries_on("2026-10-25"), delivery -> delivery.note) == [
+    assert list.map(deliveries_on("2026-10-25"), delivery -> delivery.note) == [
         "just after midnight",
         "late on the 25th"
     ]

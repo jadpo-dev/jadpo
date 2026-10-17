@@ -87,7 +87,7 @@ fn only_an_action_calls_them() {
         }
     }
     var keys: List<IssuedKey> = Robot.keys(robot.id)
-    assert collection.count(keys) == 0
+    assert list.count(keys) == 0
 }
 "#,
     );
@@ -330,7 +330,7 @@ fn an_output_holds_issued_tokens_and_keys() {
     keys: List<IssuedKey>
 }
 
-action list(member: Principal.user, robot: Robot) -> Credentials {
+action credentials_of(member: Principal.user, robot: Robot) -> Credentials {
     return Credentials {
         tokens: sessions.tokens(member.id)
         keys: Robot.keys(robot.id)

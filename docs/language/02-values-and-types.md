@@ -343,7 +343,7 @@ What counts as proof, exactly (built in chunk 2.6):
   bounded when it is made of locals (parameters, `var` and `var mut`
   variables, loop items, names a `match` arm binds), number literals, their
   fields (`line.quantity`), standard-library calls on them
-  (`collection.count(items)`) and arithmetic. A bound on `collection.count`
+  (`list.count(items)`) and arithmetic. A bound on `list.count`
   of a list bounds that list's `min_length` and `max_length` too.
 - **The same number is written the same way.** A bound on `count * 2`
   proves `CakeCount(count * 2)`, brackets aside, and a bound on `count`
@@ -823,8 +823,8 @@ so it is built from a collection of its items, as the next section shows.
 
 Lists can be built and walked: a list literal is written in square
 brackets, its items taking the list's element type (`["urgent", "home"]`),
-`for` walks a list (area 3, Loops), and `collection.count`,
-`collection.contains`, `collection.map` and `collection.filter` take one
+`for` walks a list (area 3, Loops), and `list.count`,
+`list.contains`, `list.map` and `list.filter` take one
 (Review, question 4). A list literal written where a set is expected is a
 set (question 5). So far `for` and the `collection` operations take only
 lists: a set can be built, passed, returned and compared, and a map,
@@ -833,7 +833,7 @@ back, but neither can be walked or searched.
 
 > Amended 2026-10-17 by area 19 (questions 6 and 8): `collection.`
 > becomes `list.`, beside new `set.` and `map.` namespaces, with a habit
-> error whose edit writes the right one (chunk 5.5b); `for` walks a set in
+> error whose edit writes the right one (built in chunk 5.5b); `for` walks a set in
 > the canonical order above; a map is walked through `map.keys`; and `[]`
 > written where a map is expected is an empty map (chunk 5.5c). A map
 > literal with entries is still this area's to design. Text from outside
@@ -886,9 +886,9 @@ function guest_list(invited: List<GuestName>) fails NoGuests, TooManyGuests -> G
 }
 
 function seated(invited: List<GuestName>) fails NoGuests, TooManyGuests -> Guests {
-    if (collection.count(invited) == 0) {
+    if (list.count(invited) == 0) {
         reject NoGuests
-    } else if (collection.count(invited) > 12) {
+    } else if (list.count(invited) > 12) {
         reject TooManyGuests
     }
     return Guests(invited)  // 1 to 12 names here
@@ -2819,15 +2819,15 @@ built inside the application always states every field.
 
 ```jadpo fragment
 var tags: List<TagName> = ["urgent", "home"]
-var count: TagCount = TagCount(collection.count(tags))
-var has_urgent: Bool = collection.contains(tags, "urgent")
+var count: TagCount = TagCount(list.count(tags))
+var has_urgent: Bool = list.contains(tags, "urgent")
 
 for tag in tags {
     // tag is a TagName
 }
 ```
 
-`collection.map` and `collection.filter` take a function as an argument, which
+`list.map` and `list.filter` take a function as an argument, which
 depends on area 3's answer on passing functions.
 
 #### Q5: sets and maps in JSON
@@ -3080,8 +3080,8 @@ to when that page is written.
    cannot be built, counted or iterated. *Decided 2026-10-12:* build list
    literals (`[a, b]`), `for item in items` (already the recommended loop form
    in the decision register) and a small namespaced set:
-   `collection.count`, `collection.contains`, `collection.map`,
-   `collection.filter`. Keep collections invariant (Kotlin and Rust do;
+   `list.count`, `list.contains`, `list.map`,
+   `list.filter`. Keep collections invariant (Kotlin and Rust do;
    TypeScript's covariant arrays are unsound). Closes TYPE-002 for lists.
 5. **How are `Set` and `Map` written in JSON?** They compile at boundaries but
    are always rejected. *Decided 2026-10-12:* a `Set<T>` is a JSON array that is
@@ -3230,7 +3230,7 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | Object construction | Building an object or creating an entity accepts the declared type or anything that widens to it, and runs each field's own rules at that point. Since 2026-10-14 an object literal never fails: a field whose value might break its rules is built first (built in chunk 2.5) | 2026-10-12 |
 | Construction failures by rule | A runtime construction maps its failures in a block, the form writes and integration calls use: `attempt CakeCount(n) { max: OrderTooLarge }`. Keys are the rules of the type and the types it builds on that the declared ranges can't prove hold; each needs an arm, or `invalid:` covers every rule without its own; an arm for a rule that can't break, or an `invalid:` covering nothing, is an error; every failure is `invalid_value`; a rule the compiler can't reason about (`pattern`) can always break. An `if` condition counts as proof, so after `if (n > 12) { reject OrderTooLarge }` `CakeCount(n)` is plain. Object literals never fail: a field that might break its rules is built first, on its own line. Replaces the trailing `invalid:` clause (Richard). `invalid:` covers only a construction's rules, never a write's or an integration call's conditions (Richard). Built in chunk 2.5, and conditions as proof in chunk 2.6, as "Conditions as proof" describes | 2026-10-14 |
 | `optional` and `default` | Only on `Input` fields; reading an optional field gives `T?`; only the update `patch:` form keeps omitted and `none` apart | 2026-10-12 |
-| Collection operations | List literals, `for item in items`, `collection.count` and `collection.contains` first; `map` and `filter` follow area 3's answer on passing functions; collections stay invariant | 2026-10-12 |
+| Collection operations | List literals, `for item in items`, `list.count` and `list.contains` first; `map` and `filter` follow area 3's answer on passing functions; collections stay invariant | 2026-10-12 |
 | Set order | A set has no order code can use: no index and no first item; where order matters, sort explicitly or use a `List`. Everything that shows a set (JSON, reports, iteration once `for` takes sets) uses one guaranteed canonical order, the same in interpreted and compiled code: by value, numbers numerically, text by Unicode code point, enum variants in declaration order, objects and tagged unions field by field in declared order (Richard) | 2026-10-14 |
 | Named collection construction | A named collection type is built from a collection whose items are already its item type, as an ordinary construction that checks only the collection's own rules: `attempt Names(found) { min_length: NoNames }`, with the usual arms, `invalid:` and proof. Items are never converted in the same step: a `Text` becomes a `Name` where it is built, each with its own arms. `List<T>(xs)` stays an error (Richard). Built in chunk 2.11, which also settled: a list is built only from a list, never a set, which has no order to keep; a set from a set or a list, dropping repeats in the canonical order, with the list proving its `max_length` and a `min_length` of at most 1; a map from a map of the same keys and values; another named collection of the same item type is built like any value, its declared lengths counting as proof; field types with collection rules are built the same way | 2026-10-14 |
 | `Set` and `Map` encoding | A `Set` is a JSON array rejected if it has duplicates; a `Map` is a JSON object with text- or UUID-based keys only | 2026-10-12 |

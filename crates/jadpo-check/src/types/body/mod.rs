@@ -955,7 +955,7 @@ impl Body<'_> {
                 format!(
                     "A value nobody reads is never bound to a name, and the loop never reads `{name}`."
                 ),
-                format!("Use `{name}` in the loop, or count the list with `collection.count`"),
+                format!("Use `{name}` in the loop, or count the list with `list.count`"),
             ),
             _ => (
                 "A value nobody reads is never bound to a name, so a reader never wonders what it was for.".to_string(),

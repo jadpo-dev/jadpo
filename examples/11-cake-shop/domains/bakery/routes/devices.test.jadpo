@@ -19,7 +19,7 @@ test "a linked phone is seen until it is unlinked" {
         some(found) -> found
         none -> []
     }
-    assert collection.count(phone_tokens) == 1
+    assert list.count(phone_tokens) == 1
     for token in phone_tokens {
         var unlinked: Response = request {
             method: HttpMethod.delete

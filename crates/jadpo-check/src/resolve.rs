@@ -1148,6 +1148,12 @@ impl Names<'_> {
         };
         match self.std.namespace(&qualifier) {
             Some(Namespace::Standard) => {
+                // A namespace that moved whole (area 19): where a call
+                // through it moves to depends on its first argument's type,
+                // so the type checker reports it.
+                if jadpo_std::moved_namespace(&qualifier).is_some() {
+                    return;
+                }
                 if let Some((member, span)) = &member
                     && let Some(to) = jadpo_std::moved(&qualifier, member)
                 {

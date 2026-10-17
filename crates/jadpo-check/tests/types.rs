@@ -320,7 +320,7 @@ fn copied_fields_follow_their_source() {
 
 #[test]
 fn standard_library_calls_take_their_types_from_the_arguments() {
-    let source = "type Tag = Text {\n    max_length: 5\n}\n\ntype TagCount = Int {\n    min: 0\n}\n\ntype HasTag = Bool {}\n\nfunction count(tags: List<Tag>) -> TagCount {\n    return TagCount(collection.count(tags))\n}\n\nfunction has(tags: List<Tag>) -> HasTag {\n    return HasTag(collection.contains(tags, \"home\"))\n}\n\nfunction too_long(tags: List<Tag>) -> HasTag {\n    return HasTag(collection.contains(tags, \"kitchen\"))\n}\n";
+    let source = "type Tag = Text {\n    max_length: 5\n}\n\ntype TagCount = Int {\n    min: 0\n}\n\ntype HasTag = Bool {}\n\nfunction count(tags: List<Tag>) -> TagCount {\n    return TagCount(list.count(tags))\n}\n\nfunction has(tags: List<Tag>) -> HasTag {\n    return HasTag(list.contains(tags, \"home\"))\n}\n\nfunction too_long(tags: List<Tag>) -> HasTag {\n    return HasTag(list.contains(tags, \"kitchen\"))\n}\n";
     assert_eq!(check(source), ["type.invalid_literal"]);
 }
 
@@ -384,9 +384,12 @@ fn every_stub_matches_the_operation_table() {
         .iter()
         .map(|operation| StubSignature {
             name: operation.qualified(),
+            // A value the checker fills is never written, so no stub
+            // declares it (`list.sum`'s `zero`).
             params: operation
                 .params
                 .iter()
+                .filter(|param| !param.implicit)
                 .map(|param| {
                     (
                         param.name.to_string(),
@@ -406,11 +409,11 @@ fn standard_operations_check_their_arguments_shape_and_kind() {
     let cases: &[(&str, &[&str])] = &[
         // A list operation takes a list, whatever its items are.
         (
-            "function f(n: Pence) -> Quantity {\n    return Quantity(collection.count(n))\n}\n",
+            "function f(n: Pence) -> Quantity {\n    return Quantity(list.count(n))\n}\n",
             &["type.mismatch"],
         ),
         (
-            "function f(n: Pence) -> List<Pence> {\n    return collection.map(n, x -> x)\n}\n",
+            "function f(n: Pence) -> List<Pence> {\n    return list.map(n, x -> x)\n}\n",
             &["type.mismatch"],
         ),
         // Division takes numbers, built on `Int` for `integer.divide`.
@@ -438,7 +441,7 @@ fn standard_operations_check_their_arguments_shape_and_kind() {
         ),
         // An empty list fixes no type variable, and needs none.
         (
-            "function f() -> Pence {\n    return Pence(collection.count([]))\n}\n",
+            "function f() -> Pence {\n    return Pence(list.count([]))\n}\n",
             &[],
         ),
     ];

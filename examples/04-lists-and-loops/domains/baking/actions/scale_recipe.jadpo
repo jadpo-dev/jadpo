@@ -1,5 +1,5 @@
-// Changing and filtering lists with `collection.map` and
-// `collection.filter`. Each takes an inline function, `item -> result`:
+// Changing and filtering lists with `list.map` and
+// `list.filter`. Each takes an inline function, `item -> result`:
 // one expression, whose parameter takes its type from the list. It may
 // read the variables around it, which is safe because values never
 // change. Inline functions exist only as arguments to these operations;
@@ -11,7 +11,7 @@ use baking/types { Grams, Ingredient, IngredientName, Recipe }
 /// `recipe` made `batches` times over, and which ingredients then go on
 /// the floor scale.
 action scale_recipe(recipe: Recipe, batches: Batches) -> ScaledRecipe {
-    var scaled: List<Ingredient> = collection.map(
+    var scaled: List<Ingredient> = list.map(
         recipe.ingredients,
         ingredient -> Ingredient {
             name: ingredient.name
@@ -44,9 +44,9 @@ type Batches = Int {
 
 /// The names of the ingredients heavier than `over`, in recipe order.
 function heavy_ingredients(recipe: Recipe, over: Grams) -> List<IngredientName> {
-    var heavy: List<Ingredient> = collection.filter(
+    var heavy: List<Ingredient> = list.filter(
         recipe.ingredients,
         ingredient -> ingredient.weight > over
     )
-    return collection.map(heavy, ingredient -> ingredient.name)
+    return list.map(heavy, ingredient -> ingredient.name)
 }

@@ -4,6 +4,7 @@
 
 mod completion;
 mod declines;
+mod fixes;
 mod incremental;
 mod make_setting;
 mod translations;

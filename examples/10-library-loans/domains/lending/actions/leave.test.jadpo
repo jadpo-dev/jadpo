@@ -11,9 +11,9 @@ test "a member who leaves is hidden, and their loans stay on record" {
     assert members_named("Ada") == []
     assert leave(ada.member.id) fails MemberNotFound
     var due: List<LoanView> = loans_due(
-        collection.map(ada.books, book -> book.id),
+        list.map(ada.books, book -> book.id),
         "2026-10-01",
         "2026-11-30"
     )
-    assert collection.map(due, loan -> loan.book.title) == ["Dune", "Emma"]
+    assert list.map(due, loan -> loan.book.title) == ["Dune", "Emma"]
 }

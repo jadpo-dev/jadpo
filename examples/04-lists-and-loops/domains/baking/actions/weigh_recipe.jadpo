@@ -37,11 +37,11 @@ type IngredientCount = Int {
 
 /// How many ingredients `recipe` has.
 function count_ingredients(recipe: Recipe) -> IngredientCount {
-    // `collection.count` gives a plain `Int`. The standard library is
+    // `list.count` gives a plain `Int`. The standard library is
     // always called through its namespace, so `collection.` always means
     // the standard library. The compiler knows a count is never below
     // zero, so `IngredientCount(...)` can't fail.
-    return IngredientCount(collection.count(recipe.ingredients))
+    return IngredientCount(list.count(recipe.ingredients))
 }
 
 /// The weight of the first ingredient called `name`, or `none`.

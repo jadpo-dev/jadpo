@@ -31,10 +31,10 @@
     )
 )]
 
-pub mod collection;
 pub mod decimal;
 pub mod integer;
 pub mod json;
+pub mod list;
 pub mod locale;
 pub mod ops;
 pub mod order;
@@ -81,14 +81,6 @@ pub fn run(
             Ok(locale::direction(variant.ordinal))
         }
         (Op::LocaleDirection, _) => Err(Fault::Shape),
-        (Op::CollectionContains, [Value::List(items), item]) => {
-            Ok(Value::Bool(collection::contains(items, item)))
-        }
-        (Op::CollectionCount, [Value::List(items)]) => Ok(Value::Int(collection::count(items))),
-        (Op::CollectionFilter, [Value::List(items)]) => {
-            collection::filter(items, each).map(Value::list)
-        }
-        (Op::CollectionMap, [Value::List(items)]) => collection::map(items, each).map(Value::list),
         (Op::DecimalDivide, [dividend, divisor, rounding]) => {
             let decimal = |value: &Value| match value {
                 Value::Decimal(d) => Ok(*d),
@@ -105,15 +97,35 @@ pub fn run(
         (Op::IntegerDivide, [Value::Int(dividend), Value::Int(divisor), rounding]) => {
             integer::divide(*dividend, *divisor, rounding_of(rounding)?).map(Value::Int)
         }
+        (Op::DecimalDivide | Op::IntegerDivide, _) => Err(Fault::Shape),
         (
-            Op::CollectionContains
-            | Op::CollectionCount
-            | Op::CollectionFilter
-            | Op::CollectionMap
-            | Op::DecimalDivide
-            | Op::IntegerDivide,
+            Op::ListAll
+            | Op::ListAny
+            | Op::ListAppend
+            | Op::ListAt
+            | Op::ListConcat
+            | Op::ListContains
+            | Op::ListCount
+            | Op::ListDistinct
+            | Op::ListDropFirst
+            | Op::ListDropLast
+            | Op::ListFilter
+            | Op::ListFind
+            | Op::ListFirst
+            | Op::ListFlatten
+            | Op::ListGroupBy
+            | Op::ListKeepFirst
+            | Op::ListKeepLast
+            | Op::ListLast
+            | Op::ListMap
+            | Op::ListMaxBy
+            | Op::ListMinBy
+            | Op::ListReverse
+            | Op::ListSlice
+            | Op::ListSortBy
+            | Op::ListSum,
             _,
-        ) => Err(Fault::Shape),
+        ) => run_list(op, args, each),
         (
             Op::TemporalAddDays
             | Op::TemporalAddMonths
@@ -151,6 +163,51 @@ pub fn run(
         (Op::TextFrom, [value]) => standard::from(value),
         (Op::TextParse, [Value::Text(raw), Value::Text(ty)]) => standard::parse(raw, ty),
         (Op::TextFormat | Op::TextFrom | Op::TextParse, _) => Err(Fault::Shape),
+    }
+}
+
+/// A `list` operation (area 19, "Lists"): [`list`] holds what each does.
+/// Every one takes the list first; the inline function, where there is
+/// one, is `each`.
+fn run_list(
+    op: Op,
+    args: &[Value],
+    each: &mut dyn FnMut(&Value) -> Option<Value>,
+) -> Result<Value, Fault> {
+    let Some((Value::List(items), rest)) = args.split_first() else {
+        return Err(Fault::Shape);
+    };
+    let n = |at: usize| match rest.get(at) {
+        Some(Value::Int(n)) => Ok(*n),
+        _ => Err(Fault::Shape),
+    };
+    match (op, rest) {
+        (Op::ListCount, []) => Ok(Value::Int(list::count(items))),
+        (Op::ListContains, [item]) => Ok(Value::Bool(list::contains(items, item))),
+        (Op::ListMap, []) => list::map(items, each).map(Value::list),
+        (Op::ListFilter, []) => list::filter(items, each).map(Value::list),
+        (Op::ListSum, [zero]) => list::sum(items, zero),
+        (Op::ListAny, []) => list::any(items, each).map(Value::Bool),
+        (Op::ListAll, []) => list::all(items, each).map(Value::Bool),
+        (Op::ListFind, []) => list::find(items, each),
+        (Op::ListFirst, []) => Ok(list::first(items)),
+        (Op::ListLast, []) => Ok(list::last(items)),
+        (Op::ListAt, [_]) => list::at(items, n(0)?),
+        (Op::ListMinBy, []) => list::min_by(items, each),
+        (Op::ListMaxBy, []) => list::max_by(items, each),
+        (Op::ListSortBy, []) => list::sort_by(items, each).map(Value::list),
+        (Op::ListReverse, []) => Ok(Value::list(list::reverse(items))),
+        (Op::ListDistinct, []) => Ok(Value::list(list::distinct(items))),
+        (Op::ListSlice, [_, _]) => list::slice(items, n(0)?, n(1)?).map(Value::list),
+        (Op::ListKeepFirst, [_]) => list::keep_first(items, n(0)?).map(Value::list),
+        (Op::ListKeepLast, [_]) => list::keep_last(items, n(0)?).map(Value::list),
+        (Op::ListDropFirst, [_]) => list::drop_first(items, n(0)?).map(Value::list),
+        (Op::ListDropLast, [_]) => list::drop_last(items, n(0)?).map(Value::list),
+        (Op::ListAppend, [item]) => Ok(Value::list(list::append(items, item))),
+        (Op::ListConcat, [Value::List(second)]) => Ok(Value::list(list::concat(items, second))),
+        (Op::ListFlatten, []) => list::flatten(items).map(Value::list),
+        (Op::ListGroupBy, []) => list::group_by(items, each),
+        _ => Err(Fault::Shape),
     }
 }
 
@@ -305,10 +362,30 @@ mod tests {
                 }
                 Op::LocaleFromAcceptLanguage => vec![Value::text("en-GB, fr;q=0.5")],
                 Op::LocaleDirection => vec![locale::value(0)],
-                Op::CollectionContains => vec![items.clone(), Value::Int(2)],
-                Op::CollectionCount | Op::CollectionFilter | Op::CollectionMap => {
-                    vec![items.clone()]
+                Op::ListContains | Op::ListAppend | Op::ListAt => {
+                    vec![items.clone(), Value::Int(2)]
                 }
+                Op::ListKeepFirst | Op::ListKeepLast | Op::ListDropFirst | Op::ListDropLast => {
+                    vec![items.clone(), Value::Int(1)]
+                }
+                Op::ListSlice => vec![items.clone(), Value::Int(1), Value::Int(1)],
+                Op::ListSum => vec![items.clone(), Value::Int(0)],
+                Op::ListConcat => vec![items.clone(), items.clone()],
+                Op::ListFlatten => vec![Value::list(vec![items.clone(), items.clone()])],
+                Op::ListAll
+                | Op::ListAny
+                | Op::ListCount
+                | Op::ListDistinct
+                | Op::ListFilter
+                | Op::ListFind
+                | Op::ListFirst
+                | Op::ListGroupBy
+                | Op::ListLast
+                | Op::ListMap
+                | Op::ListMaxBy
+                | Op::ListMinBy
+                | Op::ListReverse
+                | Op::ListSortBy => vec![items.clone()],
                 Op::DecimalDivide => vec![
                     Value::Decimal(Decimal::new(1000, 2)),
                     Value::Int(3),
@@ -348,12 +425,7 @@ mod tests {
             assert!(result.is_ok(), "{} runs", operation.qualified());
         }
         assert_eq!(
-            run(
-                Op::CollectionMap,
-                std::slice::from_ref(&items),
-                None,
-                &mut double
-            ),
+            run(Op::ListMap, std::slice::from_ref(&items), None, &mut double),
             Ok(Value::list(vec![
                 Value::Int(2),
                 Value::Int(4),
@@ -384,7 +456,7 @@ mod tests {
             "a zero divisor is a fault"
         );
         assert_eq!(
-            run(Op::CollectionCount, &[Value::Int(1)], None, &mut double),
+            run(Op::ListCount, &[Value::Int(1)], None, &mut double),
             Err(Fault::Shape)
         );
         // The locale a header asks for is a `Locale` variant, and a call

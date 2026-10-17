@@ -5,7 +5,7 @@ use baking/types { IngredientName, Recipe }
 /// The ingredients to buy for `recipe`, each once however often it goes
 /// in.
 action shopping_list(recipe: Recipe) -> ShoppingList {
-    var every_name: List<IngredientName> = collection.map(
+    var every_name: List<IngredientName> = list.map(
         recipe.ingredients,
         ingredient -> ingredient.name
     )

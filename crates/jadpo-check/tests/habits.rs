@@ -273,17 +273,17 @@ const CLEAN: &[(&str, &str, &str)] = &[
     (
         "arrow-function",
         "syntax.inline_function_arrow",
-        "function f(pairs: List<Pair>) -> List<Count> {\n    return collection.map(pairs, pair => pair.left)\n}\n",
+        "function f(pairs: List<Pair>) -> List<Count> {\n    return list.map(pairs, pair => pair.left)\n}\n",
     ),
     (
         "bracketed-arrow",
         "syntax.inline_function_arrow",
-        "function f(pairs: List<Pair>) -> List<Count> {\n    return collection.map(pairs, (pair) => pair.left)\n}\n",
+        "function f(pairs: List<Pair>) -> List<Count> {\n    return list.map(pairs, (pair) => pair.left)\n}\n",
     ),
     (
         "lambda",
         "syntax.inline_function_arrow",
-        "function f(pairs: List<Pair>) -> List<Count> {\n    return collection.map(pairs, lambda pair: pair.left)\n}\n",
+        "function f(pairs: List<Pair>) -> List<Count> {\n    return list.map(pairs, lambda pair: pair.left)\n}\n",
     ),
     (
         "member-equals",

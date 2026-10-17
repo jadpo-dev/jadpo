@@ -1860,7 +1860,7 @@ fn block_item(p: &mut Parser<'_>) {
                 .error_here(&rule::SYNTAX_EXPECTED_STATEMENT, format!("Jadpo has no `{word}` loop"))
                 .label("not a Jadpo statement")
                 .reason("The only loop is `for item in items`, which always ends after its list; stop early with `return`.")
-                .next("Loop over a list with `for`, or narrow it first with `collection.filter`");
+                .next("Loop over a list with `for`, or narrow it first with `list.filter`");
             p.push_error(error);
             skip_statement(p);
             return;

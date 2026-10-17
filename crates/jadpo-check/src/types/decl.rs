@@ -424,73 +424,56 @@ impl Decls<'_> {
     /// types"): an `Object` whose only fields are a standard type's, by its
     /// fields' common names in any order and what they are built on, is
     /// that standard type under another name. Only the distinctive shapes
-    /// the data entries list match (question 5).
+    /// the data entries list match (question 5). A declaration named like
+    /// a standard type is `type.standard_clash` instead, its one error.
     fn standard_exists(&mut self, decl: &ast::TypeDecl, name: &str) {
-        let Some(fields) = self.table.fields(name).map(<[_]>::to_vec) else {
-            return;
-        };
-        for entry in jadpo_std::STANDARD_TYPES {
-            let Some(shape) = entry.shape else { continue };
-            if shape.len() != fields.len() {
-                continue;
-            }
-            let mut matched: Vec<(&str, &str)> = Vec::new();
-            for wanted in shape {
-                let found = fields.iter().find(|field| {
-                    wanted.names.contains(&field.name.as_str())
-                        && !self.table.is_nullable(&field.declared)
-                        && self
-                            .table
-                            .base_prim(&field.declared)
-                            .is_some_and(|prim| wanted.built_on.contains(&prim))
-                        && !matched.iter().any(|(_, taken)| *taken == field.name)
-                });
-                match found {
-                    Some(field) => matched.push((wanted.meaning, field.name.as_str())),
-                    None => break,
-                }
-            }
-            if matched.len() != shape.len() {
-                continue;
-            }
-            let Some(written) = decl.name() else { return };
-            let meanings: Vec<String> = matched
-                .iter()
-                .map(|(meaning, _)| (*meaning).to_string())
-                .collect();
-            let named: Vec<String> = matched
-                .iter()
-                .map(|(meaning, field)| format!("{meaning} (`{field}`)"))
-                .collect();
-            let built: Vec<String> = shape
-                .iter()
-                .flat_map(|field| {
-                    field
-                        .built_on
-                        .iter()
-                        .map(|prim| format!("`{}`", prim.name()))
-                })
-                .collect::<std::collections::BTreeSet<_>>()
-                .into_iter()
-                .collect();
-            let standard = entry.name;
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TYPE_STANDARD_EXISTS,
-                    format!("`{name}` is the standard `{standard}` under another name"),
-                )
-                .at(self.span(written.syntax()), crate::and_list(&meanings))
-                .reason(format!(
-                    "`{name}` has only {}, each built on {}, which is the standard `{standard}`. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.",
-                    crate::and_list(&named),
-                    crate::or_list(&built)
-                ))
-                .next(format!(
-                    "Use `{standard}` where `{name}` is used, converting at the edge where data arrives in another shape"
-                )),
-            );
+        if jadpo_std::standard_type(name).is_some() {
             return;
         }
+        let Some(found) = standard_match(self.table, name, None) else {
+            return;
+        };
+        let Some(written) = decl.name() else { return };
+        let entry = found.standard;
+        let meanings: Vec<String> = found
+            .fields
+            .iter()
+            .map(|field| field.meaning.to_string())
+            .collect();
+        let named: Vec<String> = found
+            .fields
+            .iter()
+            .map(|field| format!("{} (`{}`)", field.meaning, field.written))
+            .collect();
+        let built: Vec<String> = entry
+            .shape
+            .unwrap_or_default()
+            .iter()
+            .flat_map(|field| {
+                field
+                    .built_on
+                    .iter()
+                    .map(|prim| format!("`{}`", prim.name()))
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let standard = entry.name;
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_STANDARD_EXISTS,
+                format!("`{name}` is the standard `{standard}` under another name"),
+            )
+            .at(self.span(written.syntax()), crate::and_list(&meanings))
+            .reason(format!(
+                "`{name}` has only {}, each built on {}, which is the standard `{standard}`. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.",
+                crate::and_list(&named),
+                crate::or_list(&built)
+            ))
+            .next(format!(
+                "Run `jadpo fix {name} swap` to use `{standard}` where `{name}` is used, then convert at the edge where data arrives in another shape"
+            )),
+        );
     }
 
     fn variants(&mut self, list: Option<ast::MemberList>, host: &str) {
@@ -1542,4 +1525,69 @@ fn optional_outside(host: &str, span: Span) -> Diagnostic {
 
 fn did_you_mean(near: Option<&str>) -> String {
     near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
+}
+
+/// A type with a standard type's shape: the standard type, and each of its
+/// fields with the application's field it matched.
+#[derive(Clone, Debug)]
+pub(crate) struct StandardMatch {
+    pub standard: &'static jadpo_std::StandardType,
+    pub fields: Vec<MatchedField>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MatchedField {
+    /// What the field is, as an error says it: "a start".
+    pub meaning: &'static str,
+    /// The application's field.
+    pub written: String,
+    /// The standard type's own name for it: `start`.
+    pub standard: &'static str,
+}
+
+/// The standard type whose shape `name`'s fields are (area 19, question
+/// 5): an `Object` whose fields are exactly a shape's, by their common
+/// names in any order and what each is built on, none of them optional;
+/// `only` keeps to the standard type of that name.
+pub(crate) fn standard_match(
+    table: &dyn TypeView,
+    name: &str,
+    only: Option<&str>,
+) -> Option<StandardMatch> {
+    let fields = table.fields(name)?;
+    for entry in jadpo_std::STANDARD_TYPES {
+        if only.is_some_and(|only| only != entry.name) {
+            continue;
+        }
+        let Some(shape) = entry.shape else { continue };
+        if shape.len() != fields.len() {
+            continue;
+        }
+        let mut matched: Vec<MatchedField> = Vec::new();
+        for wanted in shape {
+            let found = fields.iter().find(|field| {
+                wanted.names.contains(&field.name.as_str())
+                    && !table.is_nullable(&field.declared)
+                    && table
+                        .base_prim(&field.declared)
+                        .is_some_and(|prim| wanted.built_on.contains(&prim))
+                    && !matched.iter().any(|taken| taken.written == field.name)
+            });
+            match found {
+                Some(field) => matched.push(MatchedField {
+                    meaning: wanted.meaning,
+                    written: field.name.clone(),
+                    standard: wanted.names[0],
+                }),
+                None => break,
+            }
+        }
+        if matched.len() == shape.len() {
+            return Some(StandardMatch {
+                standard: entry,
+                fields: matched,
+            });
+        }
+    }
+    None
 }

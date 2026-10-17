@@ -8,7 +8,7 @@ action fill_tray(waiting: List<CakeCount>) fails NothingToBake, TrayFull -> Tray
     // `waiting` already holds `CakeCount`s, so building a `Tray` from it
     // checks only the list's own rules: no orders breaks `min_length`,
     // too many breaks `max_length`, and each gets its arm, as `min` and
-    // `max` do. A bound on `collection.count(waiting)` before it would
+    // `max` do. A bound on `list.count(waiting)` before it would
     // prove them, as a condition proves a number.
     var tray: Tray = attempt Tray(waiting) {
         min_length: NothingToBake

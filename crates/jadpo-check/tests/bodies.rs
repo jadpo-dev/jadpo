@@ -107,7 +107,7 @@ fn sites_are_numbered_in_source_order_with_types_and_literal_targets() {
 #[test]
 fn calls_reach_what_the_check_resolved() {
     let found = bodies(
-        "function double(n: Pence) -> Pence {\n    return Pence(n * 2)\n}\n\nfunction prices(lines: List<Line>) -> List<Pence> {\n    var doubled: List<Pence> = collection.map(lines, line -> double(line.price))\n    return doubled\n}\n",
+        "function double(n: Pence) -> Pence {\n    return Pence(n * 2)\n}\n\nfunction prices(lines: List<Line>) -> List<Pence> {\n    var doubled: List<Pence> = list.map(lines, line -> double(line.price))\n    return doubled\n}\n",
     );
     let (_, body) = &found[1];
     let Stmt::Var {
@@ -117,7 +117,7 @@ fn calls_reach_what_the_check_resolved() {
         panic!();
     };
     let Expr::Call {
-        callee: Callee::Std(Op::CollectionMap),
+        callee: Callee::Std(Op::ListMap),
         args,
         fallible: Fallible::Never,
     } = expr(body, *value)

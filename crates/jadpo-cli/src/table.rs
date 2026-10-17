@@ -688,6 +688,66 @@ pub static COMMANDS: &[Command] = &[
         run: commands::declines,
     },
     Command {
+        name: "fix",
+        synonyms: &[],
+        group: "Change safely",
+        summary: "Fix a standard type's finding",
+        description: "When a Jadpo release adds a standard type the application already names \
+                      for its own, jadpo check reports the clash (type.standard_clash), and a \
+                      type with a standard type's shape under another name is \
+                      type.standard_exists. With no arguments, fix lists each such finding and \
+                      the fixes it takes. `swap` makes every reference use the standard type, \
+                      reading each matched field by the standard field's name, and deletes the \
+                      declaration. `rename` gives the application's declaration a new name, at \
+                      the declaration, every reference that can see it and the file named after \
+                      it. A fix whose result would have an error the project didn't have \
+                      changes nothing and shows that error. The editor's quick fix makes the \
+                      same swap.",
+        arguments: &[
+            Argument {
+                name: "name",
+                description: "The declaration to fix, as its finding names it",
+                required: false,
+                values: Values::Fixed(&[]),
+            },
+            Argument {
+                name: "fix",
+                description: "How to fix it: swap or rename",
+                required: false,
+                values: Values::Fixed(crate::fix::FIXES),
+            },
+            Argument {
+                name: "new-name",
+                description: "The new name, for rename",
+                required: false,
+                values: Values::Fixed(&[]),
+            },
+        ],
+        flags: &[],
+        examples: &[
+            Example {
+                description: "See what can be fixed after an upgrade",
+                command: "jadpo fix",
+            },
+            Example {
+                description: "Use the standard Uuid instead of the app's own",
+                command: "jadpo fix Uuid swap",
+            },
+            Example {
+                description: "Keep the app's own type under another name",
+                command: "jadpo fix Uuid rename RoomReference",
+            },
+        ],
+        arguments_rule: &rule::CLI_FIX_ARGUMENTS,
+        raises: &[
+            &rule::TYPE_STANDARD_CLASH,
+            &rule::TYPE_STANDARD_EXISTS,
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::fix,
+    },
+    Command {
         name: "translations",
         synonyms: &[],
         group: "Change safely",

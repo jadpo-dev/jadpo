@@ -371,7 +371,7 @@ crates, against these rules, on salsa anywhere but `jadpo-db` and
 but the shared leaf. *Rejected:* v0's single `core` crate, which grew to
 everything and let the generator read the syntax tree.
 
-**The standard library** (`collection`, `temporal`, `decimal` and the rest)
+**The standard library** (`list`, `temporal`, `decimal` and the rest)
 is declared in Jadpo stub files embedded in `jadpo-check`, for programs to
 call, and listed, typed, in `jadpo-std`'s operation table: each operation's
 parameters with their kinds, its result, and the one Rust function in
@@ -402,7 +402,18 @@ parameter takes only a format written out, which the checker reads into
 `conditions` are what it fails on unless an option written out settles
 them, mapped by the call's `attempt` as a construction's broken rules are
 (the operation returns `Fault::Broke(key)`, which the interpreter raises as
-the arm's failure). `temporal` runs on jiff with its bundled IANA database,
+the arm's failure). Since chunk 5.5b (area 19, "Lists") a `never_negative`
+parameter (a count or a position) is checked as a divisor is, a literal
+not below `0` and a value's type with a `min` of at least `0`
+(`type.argument_negative`); an `ordered` inline function's result must be
+a kind `<` orders, or text (`type.ordering_operand`); an `implicit`
+parameter is never written: the checker lowers it from the call's types,
+as `list.sum`'s `zero` of its items' representation, and a result of kind
+`Number` is that representation; a `Map` result is a stub's `Map<K, V>`;
+and `MOVED_NAMESPACES` lists a namespace that moved whole (`collection`,
+reserved with no operations), whose calls the type checker reports with
+an edit by their first value's type, since resolution can't know it.
+`temporal` runs on jiff with its bundled IANA database,
 in `jadpo-value` only, so every target reads the same zones and none reads
 the platform's (area 10, "Zones and local times"). The time types'
 `text.format` (area 19; `temporal.format` until chunk 5.5a) and
@@ -483,7 +494,8 @@ type groups through, with no new code path. Each is two things:
   (`FormatKey`) and the `text.format` options it takes and needs, whether
   `<` takes it, its named `Validator` (IBAN's mod-97, Luhn and the like are
   added to that enum, one function each), the shape `type.standard_exists`
-  matches (`FieldMatch`), and its examples.
+  matches (`FieldMatch`), its examples, and the release that added it,
+  which `type.standard_clash` names (chunk 5.5a2).
 
 Every baseline operation has one implementation over the entries:
 `jadpo_value::standard` (`text.from`, `text.parse`, `text.format`, with
@@ -554,8 +566,9 @@ broken files (`crates/jadpo-syntax/tests/broken/`), the parser's fuzz
 test, which also checks that clean edits converge on a file with no
 errors, and a jadpo-check test that checks each clean habit against its
 edited source hold it. The language server shows these errors and their
-edits like any other, offering no quick fix for them yet; its one code
-action is "Make this a setting" (below).
+edits like any other, offering no quick fix for them yet; its code
+actions are "Make this a setting" and the swap for a standard type's
+finding (below), and the declines.
 
 **Formatter.** Syntax tree to a document algebra to a printer, owning
 indentation, blank lines and member order (areas 1 and 14). Every example
@@ -676,6 +689,18 @@ the loaded texts, fixes imports, formats what was formatted and checks
 the result, undoing a move whose result wouldn't check. The command
 writes the files it gives back; the language server sends them as one
 workspace edit and puts its own texts back with `restore`.
+
+**Fixing a standard type's finding.** `jadpo_check::fixes` (chunk
+5.5a2, area 19's question 4) is the code `jadpo fix` and the editor's
+"Swap for the standard ..." share, built as `setting_move` is: `findings`
+reads `type.standard_clash` and `type.standard_exists` from the check,
+`plan` decides each edit (a reference by its name in the files that can
+see the declaration, a matched field by what each body name resolved to
+and by `Type.field` as written, a `use` line, the declaration's file
+moved for a rename) and every refusal, and `apply` makes them, fixes
+imports, formats what was formatted and checks the result, undoing a fix
+that adds an error by rule and headline. Each standard type's data entry
+carries the `release` that added it, which the clash names.
 
 **Types.** Nominal and bidirectional: the expected type flows into
 literals (area 2). Widening is the only implicit conversion; the standard

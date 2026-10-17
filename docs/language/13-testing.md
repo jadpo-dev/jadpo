@@ -498,7 +498,7 @@ test "an overdue todo gets one reminder" {
 
     one_overdue_todo()
     overdue_reminders.run()
-    assert collection.count(ReminderMail.send_overdue_reminder.requests) == 1
+    assert list.count(ReminderMail.send_overdue_reminder.requests) == 1
 }
 ```
 
@@ -564,9 +564,9 @@ test "a todo due in an hour becomes overdue" {
         title: "Pay rent"
         due_at: "2026-01-15T13:00:00Z"
     }, alice)
-    assert collection.count(overdue_todos(alice)) == 0
+    assert list.count(overdue_todos(alice)) == 0
     clock.advance(1h)
-    assert collection.count(overdue_todos(alice)) == 1
+    assert list.count(overdue_todos(alice)) == 1
 }
 ```
 
@@ -641,7 +641,7 @@ test "a rate-limited reminder is retried" {
     }
     ...
     var sent: List<ReminderMessage> = ReminderMail.send_overdue_reminder.requests
-    assert collection.count(sent) == 2
+    assert list.count(sent) == 2
 }
 ```
 
@@ -831,7 +831,7 @@ rerunning it (Richard, 2026-10-13), the same standard as application failures
 FAIL  a rate-limited reminder is retried
       domains/planning/schedules/overdue_reminders.test.jadpo:31
 
-  assert collection.count(sent) == 2
+  assert list.count(sent) == 2
          │                │
          1                [ReminderMessage { to: "alice@example.test", todo_title: "Buy milk", ... }]
 

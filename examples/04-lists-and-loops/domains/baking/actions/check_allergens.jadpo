@@ -30,9 +30,9 @@ type Badge = Enum {
 /// Whether `recipe` avoids every allergen in `avoid`.
 function safe_for(recipe: Recipe, avoid: List<Allergen>) -> SafeToEat {
     for allergen in avoid {
-        // `collection.contains` asks whether a list holds a value equal to
+        // `list.contains` asks whether a list holds a value equal to
         // the one given.
-        if (collection.contains(recipe.allergens, allergen)) {
+        if (list.contains(recipe.allergens, allergen)) {
             return false
         }
     }
@@ -54,11 +54,11 @@ function safe_for(recipe: Recipe, avoid: List<Allergen>) -> SafeToEat {
 /// The badges `recipe` earns; this bakery bakes no meat, so every
 /// recipe is vegetarian.
 function badges(recipe: Recipe) -> Set<Badge> {
-    var animal_free: Bool = not collection.contains(
+    var animal_free: Bool = not list.contains(
         recipe.allergens,
         Allergen.milk
-    ) and not collection.contains(recipe.allergens, Allergen.egg)
-    var nut_free: Bool = not collection.contains(recipe.allergens, Allergen.nuts)
+    ) and not list.contains(recipe.allergens, Allergen.egg)
+    var nut_free: Bool = not list.contains(recipe.allergens, Allergen.nuts)
     if (animal_free and nut_free) {
         return [Badge.vegan, Badge.vegetarian, Badge.nut_free]
     } else if (animal_free) {

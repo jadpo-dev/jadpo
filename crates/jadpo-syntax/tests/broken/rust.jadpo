@@ -5,7 +5,7 @@ pub fn total(items: List<Item>) -> Pence {  // error: syntax.export_keyword
     let count: Quantity = 1;  // error: syntax.variable_keyword
     let mut sum: Pence = 0  // error: syntax.variable_keyword
     var item: Item = load(count)?  // error: syntax.try_catch
-    var names: List<Name> = collection.map(items, |item| item.name)  // error: syntax.inline_function_arrow
+    var names: List<Name> = list.map(items, |item| item.name)  // error: syntax.inline_function_arrow
     var rank: Rank = match item.status {
         Status.open => 1  // error: syntax.match_arrow
         Status.done -> 2

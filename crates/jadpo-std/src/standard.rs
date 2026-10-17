@@ -177,7 +177,16 @@ pub struct StandardType {
     /// others.
     pub shape: Option<&'static [FieldMatch]>,
     pub examples: Examples,
+    /// The Jadpo release that added it (area 19, question 4): an
+    /// application's own declaration of its name then clashes,
+    /// `type.standard_clash` says since when, and the release's notes list
+    /// it under "Names each release adds".
+    pub release: &'static str,
 }
+
+/// The release the standard types built before Jadpo's first release
+/// arrive in: the workspace's version until then.
+pub const FIRST_RELEASE: &str = "0.1.0";
 
 /// `FileType` (area 16): a file's IANA media type. Its variants are the
 /// media types the pages name (chosen in chunk 5.5a); a later chunk adds
@@ -241,6 +250,7 @@ const fn checked(
         validator: Some(validator),
         shape: None,
         examples,
+        release: FIRST_RELEASE,
     }
 }
 
@@ -266,6 +276,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: Some("date_medium"),
             malformed: &["2026-02-30", "25/10/2026", ""],
         },
+        release: FIRST_RELEASE,
     },
     StandardType {
         name: "Duration",
@@ -290,6 +301,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["5 minutes", "P", "PT"],
         },
+        release: FIRST_RELEASE,
     },
     checked(
         "Email",
@@ -319,6 +331,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["png", "image/tiff"],
         },
+        release: FIRST_RELEASE,
     },
     StandardType {
         name: "Instant",
@@ -341,6 +354,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: Some("date_time_medium"),
             malformed: &["2026-10-25", "2026-10-25T09:30:00", "yesterday"],
         },
+        release: FIRST_RELEASE,
     },
     // A half-open range of instants, from `start` up to but not including
     // `end` (area 10, "Zones and local times").
@@ -378,6 +392,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: Some("date_time_medium"),
             malformed: &["2026-10-25T09:00:00Z", "2026-10-25T09:00:00Z/tomorrow"],
         },
+        release: FIRST_RELEASE,
     },
     checked(
         "IpAddress",
@@ -407,6 +422,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["english", "xx-YY"],
         },
+        release: FIRST_RELEASE,
     },
     checked(
         "Url",
@@ -436,6 +452,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["0192f0c4", "not-a-uuid"],
         },
+        release: FIRST_RELEASE,
     },
     StandardType {
         name: crate::Weekday::NAME,
@@ -455,6 +472,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["mon", "funday"],
         },
+        release: FIRST_RELEASE,
     },
     StandardType {
         name: ZONE,
@@ -477,6 +495,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["London", "GMT+1"],
         },
+        release: FIRST_RELEASE,
     },
     StandardType {
         name: "ZonedTime",
@@ -502,6 +521,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: Some("date_time_medium"),
             malformed: &["2026-10-25T09:30:00Z", "2026-10-25T09:30:00+00:00"],
         },
+        release: FIRST_RELEASE,
     },
 ];
 
@@ -517,6 +537,32 @@ pub const INSTANT_RANGE_FIELDS: [(&str, Builtin); 2] =
 /// The standard type called `name`.
 pub fn standard_type(name: &str) -> Option<&'static StandardType> {
     STANDARD_TYPES.iter().find(|entry| entry.name == name)
+}
+
+/// Every release that added a standard type, oldest first, each with the
+/// names it added in name order: the release notes' "Names each release
+/// adds" (area 19, question 4).
+pub fn releases() -> Vec<(&'static str, Vec<&'static str>)> {
+    let mut out: Vec<(&'static str, Vec<&'static str>)> = Vec::new();
+    for entry in STANDARD_TYPES {
+        match out
+            .iter_mut()
+            .find(|(release, _)| *release == entry.release)
+        {
+            Some((_, names)) => names.push(entry.name),
+            None => out.push((entry.release, vec![entry.name])),
+        }
+    }
+    out.sort_by_key(|(release, _)| version(release));
+    out
+}
+
+/// A release's version as numbers, for ordering: `0.1.0` is `[0, 1, 0]`.
+pub fn version(release: &str) -> Vec<u32> {
+    release
+        .split('.')
+        .map(|part| part.parse().unwrap_or(u32::MAX))
+        .collect()
 }
 
 /// The standard type a built-in type is, if one: `Email`, `Instant`.
@@ -647,6 +693,18 @@ mod tests {
             standard_type(INSTANT_RANGE).map(StandardType::column_type),
             Some("jsonb")
         );
+    }
+
+    #[test]
+    fn each_entry_names_a_release_no_later_than_this_one() {
+        let this = version(env!("CARGO_PKG_VERSION"));
+        for entry in STANDARD_TYPES {
+            let release = version(entry.release);
+            assert_eq!(release.len(), 3, "{}: `major.minor.patch`", entry.name);
+            assert!(release <= this, "{} is from a later release", entry.name);
+        }
+        let all: usize = releases().iter().map(|(_, names)| names.len()).sum();
+        assert_eq!(all, STANDARD_TYPES.len());
     }
 
     #[test]

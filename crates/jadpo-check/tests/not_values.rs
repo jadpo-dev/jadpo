@@ -200,12 +200,12 @@ const SITES: &[Site] = &[
     },
     Site {
         name: "an inline function's body",
-        code: "function f(levels: List<Level>) -> List<Level> {\n    return collection.map(levels, level -> helper({X}))\n}\n",
+        code: "function f(levels: List<Level>) -> List<Level> {\n    return list.map(levels, level -> helper({X}))\n}\n",
         good: "1",
     },
     Site {
         name: "a collection operation's list",
-        code: "function f() -> List<Level> {\n    return collection.map({X}, level -> level)\n}\n",
+        code: "function f() -> List<Level> {\n    return list.map({X}, level -> level)\n}\n",
         good: "[Level(1)]",
     },
     Site {
@@ -358,7 +358,7 @@ fn what_is_a_value_stays_one() {
             "a built-in enum's variant",
         ),
         (
-            "function f() -> Level {\n    return collection.count(list: [1, 2])\n}\n",
+            "function f() -> Level {\n    return list.count(list: [1, 2])\n}\n",
             "a call through a namespace",
         ),
     ] {

@@ -87,7 +87,10 @@ pub use literal::Literal;
 pub use locale::{LocalePlan, locale_ordinal};
 pub use migration::Migration;
 pub use num::{Num, compare_exact};
-pub use operations::{Condition, Kind, MOVED, OPERATIONS, Op, Operation, Param, moved, operation};
+pub use operations::{
+    Condition, Kind, MOVED, MOVED_NAMESPACES, OPERATIONS, Op, Operation, Param, moved,
+    moved_namespace, operation,
+};
 pub use read::SqlType;
 pub use rules::{
     Broken, Pattern, RuleKey, Rules, check_builtin_text, compile_pattern, is_email, is_ip_address,

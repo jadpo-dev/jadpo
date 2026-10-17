@@ -33,8 +33,8 @@ export function total(basket: Basket): Pence {  // error: syntax.export_keyword
     var cost: Pence = big ? 10 : 5  // error: syntax.ternary_operator
     var made: Thing = new Thing(1)  // error: syntax.new_keyword
     var got: Thing = await load(1)  // error: syntax.async_await
-    var names: List<Name> = collection.map(items, item => item.name)  // error: syntax.inline_function_arrow
-    var ages: List<Age> = collection.map(items, (item) => item.age)  // error: syntax.inline_function_arrow
+    var names: List<Name> = list.map(items, item => item.name)  // error: syntax.inline_function_arrow
+    var ages: List<Age> = list.map(items, (item) => item.age)  // error: syntax.inline_function_arrow
     switch (basket.status) {  // error: syntax.switch_statement
         case Status.open:  // error: syntax.switch_statement
             return 1
