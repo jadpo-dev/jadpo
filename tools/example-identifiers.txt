@@ -109,6 +109,7 @@ book_has_loans
 book_id
 book_ids
 book_not_found
+book_request
 book_title
 book_titled
 book_view
@@ -285,6 +286,7 @@ customer_note
 customer_number
 customer_reference
 customer_status
+customs
 cyd
 day_count
 days_left
@@ -631,6 +633,7 @@ new_outlet_key
 new_staff
 new_todo
 next_day
+next_free
 next_page
 nickname
 night_opening
@@ -676,6 +679,7 @@ open_project_with_board
 open_todos
 opening_hours
 opening_unclear
+openings
 order_by_id
 order_empty
 order_for
@@ -730,6 +734,7 @@ pale
 pantry
 parcel
 parcel_count
+parcel_held
 parcels
 partner
 partner_added
@@ -925,7 +930,9 @@ scaled
 scaled_recipe
 scone
 search_todos
+seat_count
 seated
+seats
 second_loan
 second_use
 secret_to_public
@@ -978,7 +985,9 @@ sku
 slice_count
 slices
 slices_in
+slot_request
 slot_taken
+slot_time
 small
 small_order_fee
 snooze_days

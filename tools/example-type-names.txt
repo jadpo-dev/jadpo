@@ -49,6 +49,7 @@ Service
 Session
 Settings
 Size
+Slot
 Tag
 Title
 User

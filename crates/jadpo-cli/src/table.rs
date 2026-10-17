@@ -692,7 +692,7 @@ pub static COMMANDS: &[Command] = &[
         synonyms: &[],
         group: "Change safely",
         summary: "Keep translations up to date",
-        description: "Text the server writes for people is translated in Jadpo itself (area 10). \
+        description: "The text the server writes for its readers is translated in Jadpo itself (area 10). \
                       `missing` lists, by language file, the wording a locale lacks (and what an \
                       in-progress locale falls back on), the translations made from default wording \
                       that has since changed, and, with `translations: { review: \

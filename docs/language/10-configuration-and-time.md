@@ -2105,7 +2105,7 @@ output Booked
     seats: Int { min: 0 }
 
 failure slot_taken 409
-    next_slot: Instant
+    next_free: Instant
     seats_left: Int { min: 0 }
 ```
 
@@ -2156,7 +2156,7 @@ use booking/types { SeatCount, SlotTime }
 type SlotTaken = Failure {
     kind: FailureKind.conflict
     client: {
-        next_slot: SlotTime
+        next_free: SlotTime
         seats_left: SeatCount
     }
 }
@@ -2170,7 +2170,7 @@ use booking/failures { SlotTaken }
 action book(seats: SeatCount) fails SlotTaken -> Booked {
     if (seats > 4) {
         reject SlotTaken {
-            next_slot: "2026-10-20T18:30:00Z"
+            next_free: "2026-10-20T18:30:00Z"
             seats_left: 2
         }
     }
@@ -2198,13 +2198,13 @@ routes Bookings {
 
 ```jadpo check project=translation-failures file=domains/booking/translations/en_gb.jadpo hidden
 translations {
-    slot_taken: "That slot has just gone. The next is {next_slot}, with {seats_left} seats left."
+    slot_taken: "That slot has just gone. The next is {next_free}, with {seats_left} seats left."
 }
 ```
 
 ```jadpo check project=translation-failures file=domains/booking/translations/fr_fr.jadpo
 translations {
-    slot_taken: "Ce créneau vient d'être pris. Le prochain est {next_slot}, avec {seats_left} places."
+    slot_taken: "Ce créneau vient d'être pris. Le prochain est {next_free}, avec {seats_left} places."
 }
 ```
 
@@ -2225,10 +2225,10 @@ writes this for `fr_fr`:
 {
   "slot_taken": {
     "formats": {
-      "next_slot": "date_time",
+      "next_free": "date_time",
       "seats_left": "number"
     },
-    "text": "Ce créneau vient d'être pris. Le prochain est {next_slot}, avec {seats_left} places."
+    "text": "Ce créneau vient d'être pris. Le prochain est {next_free}, avec {seats_left} places."
   }
 }
 ```
@@ -4048,7 +4048,7 @@ locales {
 // `jadpo check` fails while it disagrees with them.
 version: 1
 
-POST /slots
+POST /openings
     authentication: none
     input: SlotRequest (body)
     output: Slot
@@ -4069,7 +4069,7 @@ use booking
 
 policy {
     actions: {
-        booking.next_slot: [Access.public]
+        booking.next_free: [Access.public]
     }
 }
 ```
@@ -4105,28 +4105,28 @@ type SlotTaken = Failure {
 }
 ```
 
-```jadpo check project=e-tr-wording-missing-failure file=domains/booking/actions/next_slot.jadpo hidden
+```jadpo check project=e-tr-wording-missing-failure file=domains/booking/actions/next_free.jadpo hidden
 use booking/types { SeatCount, Slot }
 use booking/failures { SlotTaken }
 
 /// The next slot, or why there is none.
-action next_slot(seats: SeatCount) fails SlotTaken -> Slot {
+action next_free(seats: SeatCount) fails SlotTaken -> Slot {
     reject SlotTaken
 }
 ```
 
-```jadpo check project=e-tr-wording-missing-failure file=domains/booking/routes/slots.jadpo hidden
+```jadpo check project=e-tr-wording-missing-failure file=domains/booking/routes/openings.jadpo hidden
 use booking/types { Slot, SlotRequest }
-use booking/actions { next_slot }
+use booking/actions { next_free }
 
-routes Slots {
-    prefix: /slots
+routes Openings {
+    prefix: /openings
 
     POST / {
         authentication: RouteAuthentication.none
         input: SlotRequest
         output: Slot
-        run: next_slot(input.seats)
+        run: next_free(input.seats)
     }
 }
 ```
