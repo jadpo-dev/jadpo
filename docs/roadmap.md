@@ -800,8 +800,8 @@ reference only).
   hashes as the index and a matcher to confirm; it reports numbered
   findings (S1, S2…) and ends with a broad instruction to the agent:
   review the rest of the code against `jadpo suggest --catalogue`
-  (generated from the contract), and run `jadpo suggest found` before
-  changing anything it finds. A snippet's hash is of the smallest
+  (generated from the contract), run `jadpo suggest found` before
+  changing anything it finds, and when done run `jadpo suggest share`. A snippet's hash is of the smallest
   statement or expression at the place, formatted, without comments.
   - A finding that disappears after a fix is recorded as accepted, from
     the scan's own note of its last findings (local, untracked).
@@ -832,17 +832,20 @@ reference only).
   --new-token` rotates it (a fork shares its parent's token until it does).
   `suggestions { share: false }` in `app.jadpo`, or `JADPO_SUGGEST_SHARE=off`
   in the environment for a whole machine or organisation, makes `share`
-  stop at once saying sharing is turned off and where, and removes the
-  report's nudge; the first share says how to turn it off. `share` sends every hash in `.jadpo/suggest_pending` and every
+  stop at once saying sharing is turned off and where, and drops the
+  report's instruction to share. `share` sends every hash in `.jadpo/suggest_pending` and every
   ignored hash not sent before (marked sent in
   `ignored_suggestions.jadpo_record`), with the token; HQ replies with the
   hashes whose text it wants (those seen from enough distinct projects).
-  The command shows those snippets and stops; a person approves, directly
-  or through the agent asking them in its conversation, and only then does
-  `share --approve` send the snippets (HQ recomputes their hashes). The
-  pending file is then wiped, wanted or not. The report nudges the agent to
-  suggest sharing when there is something to share, and stays quiet
-  otherwise. The protocol is written on area 14 so the real HQ, after the
+  The hashes go at once, with no prompt; the agent runs `share` itself
+  at the end of a suggest session, as the report's instruction says. The
+  command then shows the snippets HQ wants and stops: a person approves,
+  directly or through the agent asking them in its conversation, and only
+  then does `share --approve` send the snippets (HQ recomputes their
+  hashes). In an unattended run nobody approves, so only hashes go and the
+  request is skipped; HQ asks the next project that sends that hash. The
+  pending file is then wiped, wanted or not. The first time hashes are
+  sent, `share` says so in one line and how to turn sharing off. The protocol is written on area 14 so the real HQ, after the
   first build with the registry, implements it unchanged, including its
   agent that turns shared patterns into signal data (thresholds, generated
   tests, release notes) and proposes, never builds, language features.
