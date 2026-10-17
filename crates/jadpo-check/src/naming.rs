@@ -368,6 +368,14 @@ fn declaration(
     if let Some(problem) = case(name, &item.kind, span.clone()) {
         return Some(problem);
     }
+    if let Some(standard) = jadpo_std::standard_type(name) {
+        return Some(standard_clash(
+            name,
+            item.kind.word(),
+            standard.release,
+            span,
+        ));
+    }
     if names.is_type(name) {
         return Some(
             Diagnostic::new(
@@ -496,6 +504,34 @@ pub fn name_case(name: &str, fixed: &str, word: &str, form: &str, span: Span) ->
     .reason("Types, entities and route groups are written in UpperCamelCase; functions, actions, queries, fields, variables and the rest in lower_snake_case.")
     .next(format!("Rename `{name}` to `{fixed}`, here and where it's used"))
     .edit(span, fixed)
+}
+
+/// `type.standard_clash` (area 19, question 4): a declaration named like a
+/// standard type, which a release added after the application named its
+/// own. The swap is a type's only, since only a type can be replaced by
+/// the standard one; `jadpo fix` and the editor make either fix.
+pub fn standard_clash(name: &str, word: &str, release: &str, span: Span) -> Diagnostic {
+    let next = if word == "type" {
+        format!(
+            "Run `jadpo fix {name} swap` to use the standard `{name}` in its place, or `jadpo fix {name} rename <NewName>` to keep this one under a name of its own"
+        )
+    } else {
+        format!("Run `jadpo fix {name} rename <NewName>` to give this {word} a name of its own")
+    };
+    Diagnostic::new(
+        &rule::TYPE_STANDARD_CLASH,
+        format!("`{name}` is the name of a standard type"),
+    )
+    .at(span, format!("standard since Jadpo {release}"))
+    .reason(format!(
+        "Jadpo {release} added the standard type `{name}`, and the application's own {word} can't share its name, or `{name}` would mean two things. An upgrade never changes what code means silently, so `check` stops here until this {word} is {}.",
+        if word == "type" {
+            "swapped for the standard type or renamed"
+        } else {
+            "renamed"
+        }
+    ))
+    .next(next)
 }
 
 pub fn reserved(name: &str, span: Span) -> Diagnostic {

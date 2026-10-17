@@ -374,16 +374,22 @@ fn unformatted(shown: &str, text: &str, formatted: &str) -> Diagnostic {
 
 /// No `app.jadpo` at or above the folder a command runs in.
 pub(crate) fn project_not_found(command: &str) -> Reply {
+    not_found(format!(
+        "Run `jadpo {command}` inside a project, or give a file or folder: `jadpo {command} <path>`"
+    ))
+}
+
+/// As [`project_not_found`], for a command that takes no path.
+pub(crate) fn project_needed(command: &str) -> Reply {
+    not_found(format!("Run `jadpo {command}` inside a project"))
+}
+
+fn not_found(next: String) -> Reply {
     let diagnostic = Diagnostic::new(&rule::TOOLCHAIN_PROJECT_NOT_FOUND, "No Jadpo project here")
         .reason(
             "Jadpo looks for `app.jadpo` in this folder and every folder above it, and found none.",
         )
-        .next_for(
-            format!(
-                "Run `jadpo {command}` inside a project, or give a file or folder: `jadpo {command} <path>`"
-            ),
-            Decider::Agent,
-        );
+        .next_for(next, Decider::Agent);
     let screen = Screen::new().with(Block::diagnostic(&diagnostic, &()));
     Reply::Report {
         screen,

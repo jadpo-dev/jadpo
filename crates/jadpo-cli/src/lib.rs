@@ -11,6 +11,7 @@ mod declines;
 mod derived;
 pub mod dev;
 mod failure_text;
+mod fix;
 mod fmt;
 mod help;
 mod local;

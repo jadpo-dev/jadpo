@@ -481,15 +481,20 @@ fn move_command(call: &Call) -> Reply {
             };
         }
     };
-    if let Err(problem) = write_moved(&root, &moved) {
+    if let Err(problem) = write_files(&root, &moved.files, "jadpo config move") {
         return Reply::failed(*problem);
     }
     Reply::screen(moved_screen(&plan, &moved), moved_data(&plan, &moved))
 }
 
-/// Writes what the move changed, deleting a file it emptied.
-fn write_moved(root: &Path, moved: &setting_move::Moved) -> Result<(), Box<Diagnostic>> {
-    for change in &moved.files {
+/// Writes what a change made to each file, deleting a file it emptied;
+/// `command` is the one to run again.
+pub(crate) fn write_files(
+    root: &Path,
+    files: &[setting_move::FileChange],
+    command: &str,
+) -> Result<(), Box<Diagnostic>> {
+    for change in files {
         let path = root.join(&change.path);
         let written = match &change.after {
             Some(text) => path
@@ -509,9 +514,9 @@ fn write_moved(root: &Path, moved: &setting_move::Moved) -> Result<(), Box<Diagn
                     &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
                     format!("`{}` couldn't be written", change.path),
                 )
-                .reason(format!("Writing it failed: {error}. The files before it in the move were written."))
+                .reason(format!("Writing it failed: {error}. The files before it were written."))
                 .next_for(
-                    "Check the folder can be written, then restore the files with git and run `jadpo config move` again",
+                    format!("Check the folder can be written, then restore the files with git and run `{command}` again"),
                     jadpo_diag::Decider::Human,
                 ),
             ));
@@ -520,7 +525,7 @@ fn write_moved(root: &Path, moved: &setting_move::Moved) -> Result<(), Box<Diagn
     Ok(())
 }
 
-fn mark_of(mark: setting_move::Mark) -> ChangeMark {
+pub(crate) fn mark_of(mark: setting_move::Mark) -> ChangeMark {
     match mark {
         setting_move::Mark::Added => ChangeMark::Added,
         setting_move::Mark::Changed => ChangeMark::Changed,
@@ -528,7 +533,7 @@ fn mark_of(mark: setting_move::Mark) -> ChangeMark {
     }
 }
 
-fn mark_word(mark: setting_move::Mark) -> &'static str {
+pub(crate) fn mark_word(mark: setting_move::Mark) -> &'static str {
     match mark {
         setting_move::Mark::Added => "added",
         setting_move::Mark::Changed => "changed",
@@ -538,26 +543,7 @@ fn mark_word(mark: setting_move::Mark) -> &'static str {
 
 /// The change list, file by file, then the one status line.
 fn moved_screen(plan: &setting_move::Plan, moved: &setting_move::Moved) -> Screen {
-    let groups = moved
-        .files
-        .iter()
-        .filter(|change| !change.rows.is_empty())
-        .map(|change| {
-            (
-                change.path.clone(),
-                change
-                    .rows
-                    .iter()
-                    .map(|row| {
-                        (
-                            mark_of(row.mark),
-                            vec![row.subject.clone(), row.note.clone()],
-                        )
-                    })
-                    .collect(),
-            )
-        })
-        .collect();
+    let groups = change_groups(&moved.files);
     Screen::new()
         .with(Block::Changes { note: None, groups })
         .with(Block::Status {
@@ -570,9 +556,10 @@ fn moved_screen(plan: &setting_move::Plan, moved: &setting_move::Moved) -> Scree
         })
 }
 
-fn moved_data(plan: &setting_move::Plan, moved: &setting_move::Moved) -> Json {
-    let files: Vec<Json> = moved
-        .files
+/// Each changed file as data: its path, whether it was added, changed or
+/// removed, and its rows.
+pub(crate) fn files_json(files: &[setting_move::FileChange]) -> Vec<Json> {
+    files
         .iter()
         .map(|change| {
             let state = match (&change.before, &change.after) {
@@ -597,7 +584,36 @@ fn moved_data(plan: &setting_move::Plan, moved: &setting_move::Moved) -> Json {
                 ("rows", Json::array(rows)),
             ])
         })
-        .collect();
+        .collect()
+}
+
+/// Each changed file's rows, as a change list's groups.
+pub(crate) fn change_groups(
+    files: &[setting_move::FileChange],
+) -> Vec<(String, Vec<(ChangeMark, Vec<String>)>)> {
+    files
+        .iter()
+        .filter(|change| !change.rows.is_empty())
+        .map(|change| {
+            (
+                change.path.clone(),
+                change
+                    .rows
+                    .iter()
+                    .map(|row| {
+                        (
+                            mark_of(row.mark),
+                            vec![row.subject.clone(), row.note.clone()],
+                        )
+                    })
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+fn moved_data(plan: &setting_move::Plan, moved: &setting_move::Moved) -> Json {
+    let files = files_json(&moved.files);
     let reads: Vec<Json> = plan
         .reads
         .iter()
