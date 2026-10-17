@@ -532,6 +532,10 @@ pub struct RuleArm {
     pub failure: Key,
     /// The fields given to the failure, as `reject` gives them.
     pub fields: Vec<(Key, SiteId)>,
+    /// The failure's `problem: DecodeProblem` field, which receives the
+    /// first problem when the arm maps `json.read`'s `mismatch` (area 19,
+    /// "Data formats").
+    pub problem: Option<Key>,
 }
 
 impl RuleArm {

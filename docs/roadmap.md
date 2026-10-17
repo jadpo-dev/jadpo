@@ -638,14 +638,18 @@ reference only).
   from `mismatch` receives is 5.5g2. The wire's `Bytes` is now read as
   `encoding.from_base64` reads it, padded only; what the pages left open
   is area 19's "Chosen in chunk 5.5g".
-- [ ] **5.5g2 The decode problem on a failure** `opus · high` (area 19,
+- [x] **5.5g2 The decode problem on a failure** `opus · high` (area 19,
   "Data formats", `json`; split from 5.5g): the built-in `DecodeProblem`
   (the first bad field's path, list positions as numbers, and the rule,
   never the value), and a failure mapped from `json.read`'s `mismatch`
   that declares a `problem: DecodeProblem` field receiving it, in the
   failure's fields, its client JSON and its log. Done when a mapped
   failure's `problem` names `lines.2.quantity` and `max` for that input,
-  interpreted and in the runtime, with a checked page example.
+  interpreted and in the runtime, with a checked page example. Only the
+  runtime builds a `DecodeProblem` (`type.not_record`, now
+  `IssuedToken`'s too); the log is the failure's report until the hosts
+  write area 4's event; what the pages left open is area 19's "Chosen in
+  chunk 5.5g2".
 - [ ] **5.5h Money** `opus · high` (area 19, "Money and payments" and "The
   standard operator table", question 16): `Money`, `Currency`,
   `ExchangeRate`, the 8 `money` operations, the operator table's `Money`

@@ -243,6 +243,7 @@ fn constructions_say_which_rules_break_and_their_failures() {
             rule: None,
             failure: key(Kind::Type, "Refused"),
             fields: Vec::new(),
+            problem: None,
         }],
         "`invalid:` covers what can break"
     );

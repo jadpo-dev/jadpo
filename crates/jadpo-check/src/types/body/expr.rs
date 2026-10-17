@@ -675,28 +675,6 @@ impl Body<'_> {
                 .insert(node_key(node.syntax()), (PAGE.to_string(), vec![field]));
             return ty;
         }
-        // A token or a key as `sessions.tokens` or `Service.keys` lists it
-        // (area 8).
-        if let Ty::Opaque(issued, args) = receiver.strip_nullable()
-            && args.is_empty()
-            && (issued == jadpo_std::http::ISSUED_TOKEN || issued == jadpo_std::http::ISSUED_KEY)
-        {
-            let found = jadpo_std::http::ISSUED_FIELDS
-                .iter()
-                .find(|(name, _)| *name == field);
-            let Some((_, builtin)) = found else {
-                let fields: Vec<FieldDef> = jadpo_std::http::ISSUED_FIELDS
-                    .iter()
-                    .map(|(name, builtin)| plain_field(name, Ty::Prim(*builtin)))
-                    .collect();
-                self.unknown_field(issued, &field, &fields, span, false);
-                return Ty::Error;
-            };
-            self.facts
-                .fields
-                .insert(node_key(node.syntax()), (issued.clone(), vec![field]));
-            return Ty::Prim(*builtin);
-        }
         // The instants a `temporal` bounds call gives (area 10), or a field
         // declared `InstantRange` (area 19, the standard types).
         let mut through = receiver.strip_nullable().clone();
@@ -708,6 +686,27 @@ impl Body<'_> {
                 Some(parent) => through = parent,
                 None => break,
             }
+        }
+        // A token or a key as `sessions.tokens` or `Service.keys` lists it
+        // (area 8), or the problem a failure mapped from `json.read`'s
+        // `mismatch` receives (area 19).
+        if let Ty::Opaque(issued, args) = &through
+            && args.is_empty()
+            && let Some(object) = jadpo_std::http::builtin_object_fields(issued)
+        {
+            let found = object.iter().find(|(name, _)| *name == field);
+            let Some((_, builtin)) = found else {
+                let fields: Vec<FieldDef> = object
+                    .iter()
+                    .map(|(name, builtin)| plain_field(name, Ty::Prim(*builtin)))
+                    .collect();
+                self.unknown_field(issued, &field, &fields, span, false);
+                return Ty::Error;
+            };
+            self.facts
+                .fields
+                .insert(node_key(node.syntax()), (issued.clone(), vec![field]));
+            return Ty::Prim(*builtin);
         }
         // A `Range<T>`'s ends, each `none` when open (area 19).
         if let Ty::Opaque(range, args) = &through
@@ -1029,6 +1028,36 @@ impl Body<'_> {
                     }
                 }
                 Ty::Named(self.table.canonical(&name))
+            }
+            // A built-in object only the runtime builds: an issued token or
+            // key (area 8), or the problem `json.read`'s `mismatch` gives
+            // (area 19), which so never holds a value a program wrote.
+            ([], None) if jadpo_std::http::builtin_object_fields(&name).is_some() => {
+                let reason = if name == jadpo_std::http::DECODE_PROBLEM {
+                    format!(
+                        "Only the runtime builds a `{name}`: a failure mapped from `json.read`'s `mismatch` receives the first problem the document had, its field's path and its rule, never a value."
+                    )
+                } else {
+                    format!(
+                        "Only the runtime builds an `{name}`: it lists what was issued, never the secret itself."
+                    )
+                };
+                let next = if name == jadpo_std::http::DECODE_PROBLEM {
+                    "Map `json.read`'s `mismatch` to a failure that declares `problem: DecodeProblem`, and remove this value"
+                } else {
+                    "Read one from the list the runtime gives, and remove this value"
+                };
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_NOT_RECORD,
+                        format!("`{name}` isn't built with `{{ ... }}`"),
+                    )
+                    .at(self.span(record), "only the runtime builds it")
+                    .reason(reason)
+                    .next(next),
+                );
+                self.walk(|walk| walk.member_values(record.member_list()));
+                Ty::Error
             }
             _ => {
                 self.failure_value(&Expr::RecordExpr(record.clone()));
@@ -1633,9 +1662,9 @@ pub(crate) fn members_of(
     }
     if let Ty::Opaque(issued, args) = receiver.strip_nullable()
         && args.is_empty()
-        && (issued == jadpo_std::http::ISSUED_TOKEN || issued == jadpo_std::http::ISSUED_KEY)
+        && let Some(object) = jadpo_std::http::builtin_object_fields(issued)
     {
-        return jadpo_std::http::ISSUED_FIELDS
+        return object
             .iter()
             .map(|(name, builtin)| plain(name, Ty::Prim(*builtin)))
             .collect();

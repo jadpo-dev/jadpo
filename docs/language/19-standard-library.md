@@ -20,7 +20,7 @@ own features needed. This page collects them, adds what real applications
 keep reaching for, says which gaps in the language block the rest and how
 to close them, and says what is left out on purpose and why.
 
-> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunk 5.5g: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); and `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g). The rest is built by chunks 5.5g2 to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
+> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunk 5.5g2: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); and the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2). The rest is built by chunks 5.5h to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
 
 | Namespace | Holds | Operations | Decided in |
 |---|---|---|---|
@@ -2258,7 +2258,9 @@ needs them is pointed here. Encodings and gzip are as for `csv`.
   does: the field's path with list positions as numbers
   (`lines.2.quantity`) and the rule (`max`), never the value. A failure
   mapped from it that declares a `problem: DecodeProblem` field receives
-  them.
+  them (chunk 5.5g2): a built-in type holding `field: Text` and
+  `rule: Text`, named as area 7's problems are, which only the runtime
+  builds.
 - **No dynamic JSON value.** No scenario needs a JSON value of no type;
   a payload whose shape isn't known is kept as `Text` and passed on.
 
@@ -2356,6 +2358,143 @@ test "json reads and writes what the page says" {
         "{\"reference\": \"A-12\", \"lines\": [], \"colour\": \"red\"}"
     ) fails ImportInvalid
     assert supplier_order("{\"reference\": \"A-12\"}") fails ImportInvalid
+}
+```
+
+A failure that says what was wrong (chunk 5.5g2). One mapped from
+`mismatch` that declares `problem: DecodeProblem`, in its `client` or its
+`internal` block, receives the first problem: its `field`, the path with
+list positions as numbers, and its `rule`, never the value. The arm gives
+every other field and never `problem`, and `invalid:` fills it only when
+it covers `mismatch` alone. Nothing else fills one, so `malformed:`, a
+construction's rule or a `reject` naming such a failure is
+`failure.missing_context_field`. Only the runtime builds a
+`DecodeProblem`; a program reads its two fields, as the outcome `match`
+here does:
+
+```jadpo check project=json-decode-problem
+type ProductCode = Text {
+    max_length: 20
+}
+
+type LineQuantity = Int {
+    min: 1
+    max: 1000
+}
+
+type SupplierLine = Input {
+    sku: ProductCode
+    quantity: LineQuantity
+}
+
+type SupplierOrder = Input {
+    reference: ProductCode
+    lines: List<SupplierLine>
+}
+
+type SupplierMessage = Text {
+    max_length: 100000
+}
+
+type ProblemPart = Text {}
+
+type OrderUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type OrderInvalid = Failure {
+    kind: FailureKind.invalid_value
+    message: "The order breaks a rule."
+    client: {
+        problem: DecodeProblem
+    }
+}
+
+/// The order a supplier's message holds; one that isn't a
+/// `SupplierOrder` fails `OrderInvalid` with its first problem.
+function supplier_order(
+    sent_order: SupplierMessage
+) fails OrderUnreadable, OrderInvalid -> SupplierOrder {
+    return attempt json.read(sent_order, as: SupplierOrder) {
+        malformed: OrderUnreadable
+        mismatch: OrderInvalid
+    }
+}
+
+/// What is wrong with a message that isn't an order: the field's path
+/// and the rule.
+function order_problem(sent_order: SupplierMessage) -> List<ProblemPart> {
+    return match supplier_order(sent_order) {
+        success -> []
+        OrderUnreadable -> []
+        OrderInvalid(invalid) -> [
+            ProblemPart(invalid.problem.field),
+            ProblemPart(invalid.problem.rule)
+        ]
+    }
+}
+```
+
+The first test reads the problem back, the field and the rule even where
+the value is a secret; the second lets the failure through, so `jadpo
+test` shows its report, the problem among the client fields and nothing
+the document held:
+
+```jadpo check project=json-decode-problem file=main.test.jadpo expect=test.unexpected_failure
+test "the problem names the field and the rule, never the value" {
+    assert order_problem(
+        "{\"reference\": \"A-12\", \"lines\": [{\"sku\": \"rye\", \"quantity\": 2}, {\"sku\": \"spelt\", \"quantity\": 1}, {\"sku\": \"oat\", \"quantity\": 1001}]}"
+    ) == ["lines.2.quantity", "max"]
+    assert order_problem("{\"reference\": \"sk_live_51HxQ9eSECRETv4lue\", \"lines\": []}") == [
+        "reference",
+        "max_length"
+    ]
+}
+
+test "an order whose third line is over the maximum" {
+    var order: SupplierOrder = attempt supplier_order(
+        "{\"reference\": \"A-12\", \"lines\": [{\"sku\": \"rye\", \"quantity\": 2}, {\"sku\": \"spelt\", \"quantity\": 1}, {\"sku\": \"oat\", \"quantity\": 1001}]}"
+    )
+    assert order.reference == "A-12"
+}
+```
+
+```text output
+FAIL  an order whose third line is over the maximum
+ --> main.test.jadpo:12
+
+  failure: `OrderInvalid` from function supplier_order
+  at: main.jadpo:43:20
+   |
+43 |     return attempt json.read(sent_order, as: SupplierOrder) {
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ breaks `mismatch` (`max` on `lines.2.quantity`)
+  reason: The value built here breaks `mismatch` (`max` on `lines.2.quantity`), so `attempt` raises the failure its block maps that rule to.
+  code: order_invalid
+  kind: FailureKind.invalid_value
+  message: The order breaks a rule.
+  client: { problem: DecodeProblem { field: "lines.2.quantity", rule: "max" } }
+  path: test "an order whose third line is over the maximum" -> function supplier_order
+
+  rule: test.unexpected_failure
+  rerun: jadpo test main.test.jadpo:12 --seed 1
+
+test failed: 1 failed, 1 passed, 2 pure tests
+```
+
+A route whose action reads an order this way sends the problem in the
+failure's `details` (area 7), under the names area 7's input problems
+use; a `problem` declared in `internal` stays on the server:
+
+```json
+{
+  "error": {
+    "code": "order_invalid",
+    "message": "The order breaks a rule.",
+    "request_id": "req_0b1e…",
+    "details": {
+      "problem": { "field": "lines.2.quantity", "rule": "max" }
+    }
+  }
 }
 ```
 
@@ -2920,7 +3059,7 @@ check failed: 1 error, 1 file
 | `Email`, `Url`, `IpAddress`, `FileType`, `InstantRange` | Decided (areas 2, 10, 16) and built |
 | Everything else on this page | Decided 2026-10-17, as recommended; built in chunks 5.5a to 5.5s |
 | `hash.sha256`, the 9 `encoding` operations | Decided 2026-10-17 (question 24); built in 5.5g |
-| The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives in 5.5g2 |
+| The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
 | SQL forms | Decided; built with computed backfills (chunk 5.6) |
 | Geospatial, AI | Decided as future areas, planned in 5.5u and 5.5v |
 
@@ -3367,13 +3506,45 @@ under "Errors").
   the wire refuses them. The first problem is the first the wire's
   reading finds, an object's fields in declared order before its unknown
   ones; a problem with the whole document has an empty path.
-- **Until 5.5g2, the problem is in the failure's report** ("breaks
-  `mismatch` (`min` on `lines.0.count`)"), never its value.
+- **The failure's report names the problem** beside its caret ("breaks
+  `mismatch` (`min` on `lines.0.count`)"), never its value; since chunk
+  5.5g2 the failure can carry it too, under "Chosen in chunk 5.5g2".
 - **`json.write` is a response body's text,** compact UTF-8 with
   non-ASCII characters as themselves and only `"`, `\` and the
   characters below U+0020 escaped, so the same value gives
   byte-identical text on native and WebAssembly, which the gate checks
   against one fixed text.
+
+### Chosen in chunk 5.5g2
+
+- **`DecodeProblem` holds `field: Text` and `rule: Text`,** named as area
+  7's input problems are, so a client reads the same `{ field, rule }` in
+  a failure's `details` as in `invalid_input`'s. The path is the one the
+  report names (chunk 5.5g). A map's key and an unknown field's name are
+  parts of the path, as area 7 names them for a request; neither is a
+  field's value.
+- **Only a field written `problem: DecodeProblem` receives it,** by that
+  name and that type exactly (not `DecodeProblem?`); a field of another
+  name or type is an ordinary field the arm gives. An arm that gives
+  `problem` itself is `failure.duplicate_context_field`. A failure that
+  declares it, mapped from anything but `mismatch` (`malformed:`, an
+  `invalid:` that covers `malformed` too, a construction's rule) or
+  raised by `reject`, is `failure.missing_context_field`, its reason
+  naming `mismatch`. No error code is new.
+- **Only the runtime builds a `DecodeProblem`.** `DecodeProblem { ... }`
+  is `type.not_record`, as `IssuedToken { ... }` and `IssuedKey { ... }`
+  now are (they checked without an error before), so a problem never
+  holds a value a program wrote. It has no JSON form of its own for
+  `json.read` or `json.write`, and its name is the language's. Like an
+  issued token it is a built-in object: the API record and the OpenAPI
+  document list it under its own name, its two fields required and no
+  others.
+- **The failure's log is its report** until the runtime's hosts write area
+  4's `failure.rejected` event: the report shows the problem among the
+  fields it is declared in, `client: { problem: DecodeProblem { field:
+  "lines.2.quantity", rule: "max" } }`. That event writes a
+  `DecodeProblem` as itself, not as a keyed hash, since it never holds a
+  value.
 
 ### Decisions
 
@@ -3812,7 +3983,7 @@ first; each group of types then arrives with its baseline and its extras.
   Built; split on 2026-10-17, the rest is 5.5g2.
 - **5.5g2 The decode problem on a failure** `opus · high`: the built-in
   `DecodeProblem`, and a failure mapped from `mismatch` that declares a
-  `problem: DecodeProblem` field receiving it.
+  `problem: DecodeProblem` field receiving it. Built.
 - **5.5h Money** `opus · high`: `Money`, `Currency`, `ExchangeRate`, the 8
   `money` operations, the operator table's `Money` rows with
   `currency_mismatch`, `rounding:` and `type.money_split`, the two columns, the wire shape, `{price, number,

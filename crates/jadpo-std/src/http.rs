@@ -320,6 +320,34 @@ pub const ISSUED_FIELDS: [(&str, crate::Builtin); 3] = [
     ("ends_at", crate::Builtin::Instant),
 ];
 
+/// The first problem `json.read`'s `mismatch` found (area 19, "Data
+/// formats"): the field's path, list positions as numbers
+/// (`lines.2.quantity`), and the rule (`max`), never the value. Only the
+/// runtime builds one, for a failure mapped from `mismatch` that declares
+/// a field [`DECODE_PROBLEM_FIELD`] of this type.
+pub const DECODE_PROBLEM: &str = "DecodeProblem";
+
+/// The name of the failure field that receives a [`DECODE_PROBLEM`].
+pub const DECODE_PROBLEM_FIELD: &str = "problem";
+
+/// The fields of a `DecodeProblem`, in order, named as area 7's input
+/// problems are: `{ field, rule }`.
+pub const DECODE_PROBLEM_FIELDS: [(&str, crate::Builtin); 2] = [
+    ("field", crate::Builtin::Text),
+    ("rule", crate::Builtin::Text),
+];
+
+/// The fields of a built-in object type the boundary carries, which the
+/// runtime builds and a program only reads: `IssuedToken` and `IssuedKey`
+/// (area 8), and `DecodeProblem` (area 19).
+pub fn builtin_object_fields(name: &str) -> Option<&'static [(&'static str, crate::Builtin)]> {
+    match name {
+        ISSUED_TOKEN | ISSUED_KEY => Some(&ISSUED_FIELDS),
+        DECODE_PROBLEM => Some(&DECODE_PROBLEM_FIELDS),
+        _ => None,
+    }
+}
+
 /// What an API token starts with, before its 64 hexadecimal digits.
 pub const API_TOKEN_PREFIX: &str = "jadpo_token_";
 

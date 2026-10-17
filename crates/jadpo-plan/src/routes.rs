@@ -293,7 +293,8 @@ enum Made {
     Set(TypeRef),
     Map(TypeRef, TypeRef),
     Page(TypeRef),
-    /// `IssuedToken` or `IssuedKey` (area 8).
+    /// `IssuedToken` or `IssuedKey` (area 8), or `DecodeProblem` (area
+    /// 19).
     Issued(&'static str),
     /// A standard object type, `InstantRange` (area 19): its fields from
     /// its data entry.
@@ -487,7 +488,8 @@ impl<'t> Codecs<'t> {
             },
             Made::Issued(name) => {
                 let shape = self.types.issued_shape(name);
-                let fields = jadpo_std::http::ISSUED_FIELDS
+                let fields = jadpo_std::http::builtin_object_fields(name)
+                    .unwrap_or_default()
                     .iter()
                     .map(|(_, builtin)| self.codec(&TypeRef::Builtin(*builtin)))
                     .collect();

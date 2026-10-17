@@ -45,6 +45,12 @@ These types exist without being declared, and their names cannot be reused.
 > `Float`: maths on `Decimal` (area 19, question 18) meets the need
 > question 8 waited for.
 
+> Amended 2026-10-17 by area 19 (chunk 5.5g2): `DecodeProblem` is built
+> in too, holding `field: Text`, a field's path with list positions as
+> numbers, and `rule: Text`, never the value. It is what a failure mapped
+> from `json.read`'s `mismatch` receives in its `problem` field, and only
+> the runtime builds one.
+
 The batch types' fields (area 12, decided 2026-10-16):
 
 | Type | Fields |

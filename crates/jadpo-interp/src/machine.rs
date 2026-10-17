@@ -46,6 +46,9 @@ pub(crate) enum Stop {
     Invalid {
         rule: RuleKey,
         written: String,
+        /// `json.read`'s first problem, as the `DecodeProblem` a failure
+        /// mapped from `mismatch` receives (area 19, "Data formats").
+        problem: Option<Value>,
     },
     Failed(Box<Failure>),
     Fault(Box<Fault>),
@@ -268,6 +271,7 @@ enum Task<'p> {
         inner: SiteId,
         arm: usize,
         written: String,
+        problem: Option<Value>,
         count: usize,
     },
     /// Raises the failure a write's `conflict:` arm maps the store's
@@ -938,6 +942,7 @@ impl<'p> Machine<'p> {
                         return Err(Stop::Invalid {
                             rule: invalid.key(),
                             written: invalid.broken(None),
+                            problem: None,
                         });
                     }
                 } else if self.program.proof_checks()
@@ -992,6 +997,7 @@ impl<'p> Machine<'p> {
                         return Err(Stop::Invalid {
                             rule: invalid.key(),
                             written: invalid.broken(Some(&given.name)),
+                            problem: None,
                         });
                     }
                 } else if self.program.proof_checks()
@@ -1093,13 +1099,21 @@ impl<'p> Machine<'p> {
                 inner,
                 arm,
                 written,
+                problem,
                 count,
             } => {
-                let values = self.take(count);
+                let mut values = self.take(count);
                 let failure = match self.decoded(at) {
                     Some(Decoded::Attempt { arms }) => {
                         arms.get(arm).and_then(Option::as_ref).and_then(|raise| {
-                            self.program.failure(raise.failure, &raise.slots, values)
+                            // `json.read`'s first problem fills the
+                            // failure's `problem: DecodeProblem` (area 19).
+                            let mut slots = raise.slots.clone();
+                            if let (Some(slot), Some(problem)) = (raise.problem, problem) {
+                                slots.push(Some(slot));
+                                values.push(problem);
+                            }
+                            self.program.failure(raise.failure, &slots, values)
                         })
                     }
                     _ => None,
@@ -1224,7 +1238,12 @@ impl<'p> Machine<'p> {
                     arms,
                     base,
                 } => {
-                    if let Stop::Invalid { rule, written } = stop {
+                    if let Stop::Invalid {
+                        rule,
+                        written,
+                        problem,
+                    } = stop
+                    {
                         self.values.truncate(base);
                         let Some(index) = rule_arm(arms, rule) else {
                             stop = self.defect(
@@ -1242,6 +1261,7 @@ impl<'p> Machine<'p> {
                             inner,
                             arm: index,
                             written,
+                            problem,
                             count: fields.len(),
                         });
                         for (_, site) in fields.iter().rev() {
@@ -2091,6 +2111,7 @@ impl<'p> Machine<'p> {
             (Err(jadpo_value::Fault::Broke(rule)), None) => Err(Stop::Invalid {
                 rule,
                 written: format!("{}:", rule.word()),
+                problem: None,
             }),
             (Err(fault), None) => Err(self.value_fault(ctx, fault, at)),
         }
@@ -2126,16 +2147,31 @@ impl<'p> Machine<'p> {
                         jadpo_value::json::Unread::Malformed => Stop::Invalid {
                             rule: RuleKey::Malformed,
                             written: format!("`{}`", RuleKey::Malformed.word()),
+                            problem: None,
                         },
                         jadpo_value::json::Unread::Mismatch(problem) => Stop::Invalid {
                             rule: RuleKey::Mismatch,
                             written: mismatch_written(&problem),
+                            problem: Some(decode_problem(&problem)),
                         },
                     })
             }
             _ => Err(self.defect(ctx, "a JSON call without its values", at)),
         }
     }
+}
+
+/// `json.read`'s first problem as a `DecodeProblem` (area 19, "Data
+/// formats"): its field's path and its rule, never the value.
+fn decode_problem(problem: &jadpo_value::json::Problem) -> Value {
+    let [(field, _), (rule, _)] = jadpo_std::http::DECODE_PROBLEM_FIELDS;
+    Value::record(
+        jadpo_std::http::DECODE_PROBLEM,
+        vec![
+            (Rc::from(field), Value::text(&problem.field)),
+            (Rc::from(rule), Value::text(&problem.rule)),
+        ],
+    )
 }
 
 /// How a report names `json.read`'s first problem: "`mismatch` (`max` on
