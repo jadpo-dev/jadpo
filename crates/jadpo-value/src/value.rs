@@ -470,7 +470,7 @@ impl Value {
 
 impl fmt::Display for Value {
     /// As Jadpo writes the value: `5.00`, `"Buy milk"`, `[1, 2]`,
-    /// `Money { amount: 5.00 }`, `TicketStatus.open`.
+    /// `PriceTag { amount: 5.00 }`, `TicketStatus.open`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Unit => f.write_str("Unit"),
@@ -573,7 +573,7 @@ mod tests {
     #[test]
     fn equality_compares_contents() {
         let record =
-            |amount: i64| Value::record("Money", vec![("amount".into(), Value::Int(amount))]);
+            |amount: i64| Value::record("PriceTag", vec![("amount".into(), Value::Int(amount))]);
         assert_eq!(record(5), record(5));
         assert_ne!(record(5), record(6));
         assert_eq!(
@@ -685,11 +685,11 @@ mod tests {
             Value::variant("TicketStatus", 0, "open", Vec::new()).to_string(),
             "TicketStatus.open"
         );
-        let money = Value::record(
-            "Money",
+        let tag = Value::record(
+            "PriceTag",
             vec![("amount".into(), Value::Decimal(decimal("5.00")))],
         );
-        assert_eq!(money.to_string(), "Money { amount: 5.00 }");
+        assert_eq!(tag.to_string(), "PriceTag { amount: 5.00 }");
         assert_eq!(
             Value::list(vec![Value::Int(1), Value::None]).to_string(),
             "[1, none]"

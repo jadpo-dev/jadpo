@@ -69,6 +69,10 @@ pub struct Table {
     pub foreign_keys: BTreeMap<String, ForeignKey>,
     /// Indexes that aren't a constraint's, by name.
     pub indexes: BTreeMap<String, Index>,
+    /// Check constraints, by name: a column that holds one of a few
+    /// values, as a `Money` type that fixes its currency gives its
+    /// currency column (area 19).
+    pub checks: BTreeMap<String, Check>,
 }
 
 impl Table {
@@ -177,6 +181,13 @@ pub struct Key {
 pub struct Unique {
     pub columns: Vec<String>,
     pub rule: String,
+}
+
+/// A check constraint: `column` holds one of `values`, written as text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Check {
+    pub column: String,
+    pub values: Vec<String>,
 }
 
 /// A foreign key: the reference a field typed `X.id` makes.
@@ -371,6 +382,14 @@ impl Table {
             indexes.set(name, entry);
         }
         value.set_some("indexes", indexes);
+        let mut checks = Value::object();
+        for (name, check) in &self.checks {
+            let mut entry = Value::object();
+            entry.set("column", &check.column);
+            entry.set("values", strings(&check.values));
+            checks.set(name, entry);
+        }
+        value.set_some("checks", checks);
         value
     }
 
@@ -438,6 +457,16 @@ impl Table {
                 },
             );
         }
+        let mut checks = BTreeMap::new();
+        for (name, entry) in optional_object(value, "checks")? {
+            checks.insert(
+                name.clone(),
+                Check {
+                    column: text_of(entry, "column")?,
+                    values: list_of(entry, "values")?,
+                },
+            );
+        }
         Ok(Table {
             holds,
             columns,
@@ -445,6 +474,7 @@ impl Table {
             unique,
             foreign_keys,
             indexes,
+            checks,
         })
     }
 }
@@ -560,6 +590,16 @@ pub enum Change {
         table: String,
         name: String,
     },
+    AddCheck {
+        store: String,
+        table: String,
+        name: String,
+    },
+    DropCheck {
+        store: String,
+        table: String,
+        name: String,
+    },
 }
 
 /// What differs from `before` to `after`.
@@ -629,6 +669,9 @@ fn table_changes(store: &str, table: &str, was: &Table, now: &Table, out: &mut V
     keyed(&was.indexes, &now.indexes, |name, added| {
         out.push(at(if added { add_index } else { drop_index }, name));
     });
+    keyed(&was.checks, &now.checks, |name, added| {
+        out.push(at(if added { add_check } else { drop_check }, name));
+    });
 }
 
 /// Calls `found(name, false)` for each entry gone or changed, then
@@ -690,6 +733,12 @@ fn add_index(store: String, table: String, name: String) -> Change {
 fn drop_index(store: String, table: String, name: String) -> Change {
     Change::DropIndex { store, table, name }
 }
+fn add_check(store: String, table: String, name: String) -> Change {
+    Change::AddCheck { store, table, name }
+}
+fn drop_check(store: String, table: String, name: String) -> Change {
+    Change::DropCheck { store, table, name }
+}
 
 impl Change {
     /// The store and table it is about.
@@ -706,7 +755,9 @@ impl Change {
             | Change::AddForeignKey { store, table, .. }
             | Change::DropForeignKey { store, table, .. }
             | Change::AddIndex { store, table, .. }
-            | Change::DropIndex { store, table, .. } => (store, Some(table)),
+            | Change::DropIndex { store, table, .. }
+            | Change::AddCheck { store, table, .. }
+            | Change::DropCheck { store, table, .. } => (store, Some(table)),
         }
     }
 
@@ -820,6 +871,31 @@ impl Change {
                     None => format!("{verb} {reason}"),
                 }
             }
+            Change::AddCheck { store, table, name } | Change::DropCheck { store, table, name } => {
+                let check = self::table(after, store, table)
+                    .and_then(|t| t.checks.get(name).cloned())
+                    .or_else(|| {
+                        self::table(before, store, table).and_then(|t| t.checks.get(name).cloned())
+                    });
+                let verb = if matches!(self, Change::AddCheck { .. }) {
+                    "new"
+                } else {
+                    "removed"
+                };
+                match check {
+                    Some(check) => format!(
+                        "{verb} check that `{}` is {}",
+                        check.column,
+                        check
+                            .values
+                            .iter()
+                            .map(|v| format!("`{v}`"))
+                            .collect::<Vec<_>>()
+                            .join(" or ")
+                    ),
+                    None => format!("{verb} check `{name}`"),
+                }
+            }
         }
     }
 }
@@ -868,6 +944,7 @@ mod tests {
             unique: BTreeMap::new(),
             foreign_keys: BTreeMap::new(),
             indexes: BTreeMap::new(),
+            checks: BTreeMap::new(),
         };
         let mut store = Store {
             driver: "postgres".into(),

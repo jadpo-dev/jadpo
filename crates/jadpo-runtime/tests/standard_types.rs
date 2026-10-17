@@ -244,8 +244,8 @@ fn every_standard_type_meets_the_contract() {
                         .unwrap(),
                 ];
                 let columns = [
-                    jadpo_std::read::Column::Money,
-                    jadpo_std::read::Column::Code,
+                    jadpo_std::read::Column::Compound(name.to_string()),
+                    jadpo_std::read::Column::Part,
                 ];
                 assert_eq!(
                     jadpo_runtime::field_value(&row, &columns, 0),

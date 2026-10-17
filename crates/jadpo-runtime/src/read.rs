@@ -483,25 +483,37 @@ pub fn from_sql(sql: &SqlValue, column: &Column) -> Result<Value, String> {
 }
 
 /// The value of the field whose column is at `at` of `row`: the column's
-/// own, or for an amount of money, its minor units and the currency code
-/// in the column after them (area 19, "Money and payments").
+/// own, or for a compound standard type (`Money`, area 19), its value made
+/// from that column and the parts after it.
 pub fn field_value(row: &[SqlValue], columns: &[Column], at: u32) -> Result<Value, String> {
     let at = at as usize;
     let (Some(sql), Some(column)) = (row.get(at), columns.get(at)) else {
         return Err("a row without a column it needs".into());
     };
-    if *column != Column::Money {
+    let Column::Compound(ty) = column else {
         return from_sql(sql, column);
+    };
+    let entry =
+        jadpo_std::standard_type(ty).ok_or_else(|| format!("`{ty}` isn't a standard type"))?;
+    let count = entry.columns.len();
+    let parts = row
+        .get(at..at + count)
+        .ok_or_else(|| format!("a `{ty}` without its {count} columns"))?;
+    if parts.iter().all(|part| matches!(part, SqlValue::Null(_))) {
+        return Ok(Value::None);
     }
-    match (sql, row.get(at + 1)) {
-        (SqlValue::Null(_), Some(SqlValue::Null(_))) => Ok(Value::None),
-        (SqlValue::Int8(minor), Some(SqlValue::Text(code))) => {
-            let currency = jadpo_std::money::ordinal_of_code(code.trim())
-                .ok_or_else(|| format!("`{code}`, which isn't a currency this release knows"))?;
-            Ok(jadpo_value::money::value(currency, *minor))
-        }
-        _ => Err("an amount of money without its two columns".into()),
-    }
+    let values = parts
+        .iter()
+        .map(|part| match part {
+            SqlValue::Int2(n) => Ok(Value::Int(i64::from(*n))),
+            SqlValue::Int4(n) => Ok(Value::Int(i64::from(*n))),
+            SqlValue::Int8(n) => Ok(Value::Int(*n)),
+            SqlValue::Text(text) => Ok(Value::text(text)),
+            other => Err(format!("a `{:?}` column of a `{ty}`", other.ty())),
+        })
+        .collect::<Result<Vec<Value>, String>>()?;
+    jadpo_value::standard::from_parts(entry, &values)
+        .map_err(|_| format!("columns that don't make a `{ty}`"))
 }
 
 /// A whole number of any width as a cursor holds it.

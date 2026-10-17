@@ -167,13 +167,14 @@ pub enum Column {
         ty: String,
         variants: Vec<String>,
     },
-    /// An amount of money's minor units, a `bigint`, read with the column
-    /// after it, its currency's code ([`Column::Code`]): a `Money` field
-    /// is stored in two columns (area 19, "Money and payments").
-    Money,
-    /// A `Money` field's currency code, read by the [`Column::Money`]
+    /// The first of the columns a compound standard type is stored in
+    /// (`Money`'s amount and currency, area 19), by the type's name: the
+    /// value is read from it and the [`Column::Part`]s after it, as the
+    /// type's data entry lists its columns.
+    Compound(String),
+    /// A later column of a compound type, read by the [`Column::Compound`]
     /// before it and never on its own.
-    Code,
+    Part,
 }
 
 /// Where a record's field comes from.

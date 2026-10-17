@@ -207,6 +207,10 @@ pub struct StandardType {
     /// column name with `_`, and its PostgreSQL type, in order. Empty for a
     /// type stored in one.
     pub columns: &'static [(&'static str, &'static str)],
+    /// Of `columns`, the one a type built on it can fix to one value, which
+    /// a check constraint then holds it to: `Money`'s currency, which
+    /// `currency:` fixes.
+    pub fixed_part: Option<&'static str>,
     pub format: Format,
     /// Whether `<` and ordering take it.
     pub ordered: bool,
@@ -285,6 +289,7 @@ const fn checked(
         json: Json::Text,
         storage: SqlType::Text,
         columns: &[],
+        fixed_part: None,
         format: canonical(),
         ordered: false,
         validator: Some(validator),
@@ -306,6 +311,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Text,
         storage: SqlType::Date,
         columns: &[],
+        fixed_part: None,
         format: Format {
             key: FormatKey::DateTime,
             options: &[FORMAT],
@@ -331,6 +337,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Text,
         storage: SqlType::Text,
         columns: &[],
+        fixed_part: None,
         format: Format {
             key: FormatKey::CurrencyName,
             options: NO_OPTIONS,
@@ -355,6 +362,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         // Milliseconds, as the runtime holds a duration.
         storage: SqlType::Int8,
         columns: &[],
+        fixed_part: None,
         format: Format {
             key: FormatKey::DurationUnits,
             options: NO_OPTIONS,
@@ -394,6 +402,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Text,
         storage: SqlType::Text,
         columns: &[],
+        fixed_part: None,
         format: canonical(),
         ordered: false,
         validator: None,
@@ -417,6 +426,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Text,
         storage: SqlType::Timestamp,
         columns: &[],
+        fixed_part: None,
         format: Format {
             key: FormatKey::DateTime,
             options: &[ZONE_OPTION, FORMAT],
@@ -447,6 +457,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         // columns with `Money` (chunk 5.5h).
         storage: SqlType::Json,
         columns: &[],
+        fixed_part: None,
         format: Format {
             key: FormatKey::Interval,
             options: &[ZONE_OPTION, FORMAT],
@@ -498,6 +509,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Text,
         storage: SqlType::Text,
         columns: &[],
+        fixed_part: None,
         format: Format {
             key: FormatKey::LocaleName,
             options: NO_OPTIONS,
@@ -526,6 +538,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Fields(&crate::MONEY_FIELDS),
         storage: SqlType::Int8,
         columns: &[("amount", "bigint"), ("currency", "char(3)")],
+        fixed_part: Some("currency"),
         format: Format {
             key: FormatKey::Money,
             options: &[
@@ -593,6 +606,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         // Stored as its JSON, as `InstantRange` is.
         storage: SqlType::Json,
         columns: &[],
+        fixed_part: None,
         // The options its item type takes (`zone:`, `format:`).
         format: Format {
             key: FormatKey::Range,
@@ -639,6 +653,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Text,
         storage: SqlType::Uuid,
         columns: &[],
+        fixed_part: None,
         format: canonical(),
         ordered: false,
         validator: Some(Validator::Uuid),
@@ -662,6 +677,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Text,
         storage: SqlType::Text,
         columns: &[],
+        fixed_part: None,
         format: Format {
             key: FormatKey::WeekdayName,
             options: NO_OPTIONS,
@@ -685,6 +701,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Text,
         storage: SqlType::Text,
         columns: &[],
+        fixed_part: None,
         format: Format {
             key: FormatKey::ZoneName,
             options: NO_OPTIONS,
@@ -713,6 +730,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         // values), as an object is.
         storage: SqlType::Json,
         columns: &[],
+        fixed_part: None,
         format: Format {
             key: FormatKey::DateTime,
             options: &[FORMAT],

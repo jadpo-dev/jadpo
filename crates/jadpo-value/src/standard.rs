@@ -120,6 +120,28 @@ pub fn read_range(raw: &str, item: &str) -> Result<Value, Fault> {
     Ok(crate::range::range_of(start, end))
 }
 
+/// A compound standard type's value as the columns its entry lists hold
+/// it (area 19): `Money`'s minor units and currency code. `None` for a
+/// type stored in one column.
+pub fn to_parts(value: &Value) -> Option<Vec<Value>> {
+    match value {
+        Value::Money(money) => Some(vec![Value::Int(money.minor), Value::text(money.code())]),
+        _ => None,
+    }
+}
+
+/// A compound standard type's value from its columns' values, in the order
+/// its entry lists them.
+pub fn from_parts(entry: &StandardType, parts: &[Value]) -> Result<Value, Fault> {
+    match (entry.holds, parts) {
+        (Holds::Builtin(jadpo_std::Builtin::Money), [Value::Int(minor), Value::Text(code)]) => {
+            let currency = jadpo_std::money::ordinal_of_code(code.trim()).ok_or(Fault::Shape)?;
+            Ok(crate::money::value(currency, *minor))
+        }
+        _ => Err(Fault::Shape),
+    }
+}
+
 /// The item type a range type's name gives it: `Int` for `Range<Int>`.
 fn range_item(ty: &str) -> Option<&str> {
     ty.strip_prefix(jadpo_std::RANGE)?

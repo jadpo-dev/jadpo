@@ -1489,20 +1489,137 @@ whole number of the currency's minor units (pence, cents) and its
 ISO 4217: `jpy` 0, `gbp` 2, `bhd` 3. `Currency` is an enum of the active
 ISO 4217 codes, written `Currency.gbp`, shipped with each release.
 
-```jadpo fragment
-type Price = Money {
-    currency: Currency.gbp    // fixed: arithmetic with another currency doesn't compile
-    min: 0                    // in minor units
+A bakery prices its cakes in pounds, takes orders from abroad in the
+customer's currency, and shares a bill between friends:
+
+```jadpo check project=money
+type CakePrice = Money {
+    currency: Currency.gbp     // fixed: adding another currency doesn't compile
+    min: 0                     // in minor units: pence
+    rounding: Rounding.half_up // how `*` and `/` round to a penny
 }
 
-var list_price: Price = money.from_minor(1050, Currency.gbp)        // £10.50
-var entered: Money = attempt money.of(input.amount, input.currency) {
-    too_many_places: AmountTooPrecise                                 // 10.505 in GBP
+type Payment = Money {}  // any currency, known only while running
+
+type Pounds = Decimal {
+    scale: 2
 }
-var total: Price = Price(list_price + delivery)                      // same currency: plain +
-var vat: Price = total * vat_rate                                    // a Percentage (20%); the type's rounding
-var thirds: List<Money> = money.split(total, 3)                       // 3.50, 3.50, 3.50
-text.format(total, locale: Locale.en_gb)                             // "£10.50"
+
+type Guests = Int {
+    min: 1
+    max: 12
+}
+
+type AmountTooPrecise = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type MixedCurrencies = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A cake's price, written in pence.
+function list_price() -> CakePrice {
+    return CakePrice(money.from_minor(1050, Currency.gbp))  // £10.50
+}
+
+/// An amount a customer typed, in major units of their currency.
+function entered(amount: Pounds, currency: Currency) fails AmountTooPrecise -> Payment {
+    var made: Money = attempt money.of(amount, currency) {
+        too_many_places: AmountTooPrecise  // 10.50 in yen
+    }
+    return Payment(made)
+}
+
+/// A cake delivered: one currency, so a plain `+`.
+function delivered(price: CakePrice, delivery: CakePrice) -> CakePrice {
+    return CakePrice(price + delivery)
+}
+
+/// The VAT in a price at 20%, rounded half up to a penny.
+function vat(total: CakePrice) -> CakePrice {
+    return CakePrice(total * 0.2)
+}
+
+/// A price before VAT: dividing by a rate.
+function net(gross: CakePrice) -> CakePrice {
+    return CakePrice(gross / 1.20)
+}
+
+/// A bill shared between friends, every penny to someone.
+function shares(total: CakePrice, guests: Guests) -> List<Payment> {
+    return list.map(money.split(total, guests), share -> Payment(share))
+}
+
+/// Payments added up, in whatever currency they share.
+function received(first: Payment, second: Payment) fails MixedCurrencies -> Payment {
+    var total: Money = attempt first + second {
+        currency_mismatch: MixedCurrencies  // a pound and a euro
+    }
+    return Payment(total)
+}
+
+/// A price for people in the reader's locale.
+function shown(price: CakePrice, reader: Locale) -> PresentationText {
+    return text.format(price, locale: reader)
+}
+```
+
+```jadpo check project=money file=main.test.jadpo
+test "amounts add, round and share in minor units" {
+    assert list_price() == money.from_minor(1050, Currency.gbp)
+    assert delivered(list_price(), CakePrice(money.from_minor(250, Currency.gbp))) == money.from_minor(1300, Currency.gbp)
+    assert vat(CakePrice(money.from_minor(1253, Currency.gbp))) == money.from_minor(251, Currency.gbp)
+    assert net(CakePrice(money.from_minor(1200, Currency.gbp))) == money.from_minor(1000, Currency.gbp)
+    assert list.map(shares(CakePrice(money.from_minor(1000, Currency.gbp)), 3), share -> money.minor(share)) == [334, 333, 333]
+}
+
+test "a currency known only while running is checked as it runs" {
+    var yen: Payment = attempt entered(500.00, Currency.jpy)
+    assert yen == money.from_minor(500, Currency.jpy)
+    assert entered(10.50, Currency.jpy) fails AmountTooPrecise
+    var euros: Payment = Payment(money.from_minor(500, Currency.eur))
+    var pounds: Payment = Payment(money.from_minor(250, Currency.gbp))
+    assert received(euros, euros) == money.from_minor(1000, Currency.eur)
+    assert received(euros, pounds) fails MixedCurrencies
+}
+
+test "an amount is shown, written and read one way" {
+    assert shown(CakePrice(money.from_minor(123450, Currency.gbp)), Locale.en_gb) == "£1,234.50"
+    assert text.format(Payment(money.from_minor(123450, Currency.eur)), locale: Locale.en_us) == "€1,234.50"
+    assert text.format(list_price(), locale: Locale.en_gb, precision: MoneyPrecision.whole) == "£11"
+    assert text.from(list_price()) == "GBP 10.50"
+    assert text.format(Currency.jpy, locale: Locale.en_gb) == "Japanese Yen"
+}
+```
+
+Inside `if (money.currency(a) == money.currency(b))` the checker has the
+proof, and `+` needs no `attempt`; a currency compared with one written
+out (`money.currency(a) == Currency.gbp`) proves that currency, so the
+amount builds a type that fixes it with no arm for `currency`:
+
+```jadpo check project=money-proved
+type Payment = Money {}
+
+type SterlingPayment = Money {
+    currency: Currency.gbp
+}
+
+/// Two payments added when they share a currency, the first otherwise.
+function combined(a: Payment, b: Payment) -> Payment {
+    if (money.currency(a) == money.currency(b)) {
+        return Payment(a + b)
+    }
+    return a
+}
+
+/// A payment in pounds, when it is one.
+function sterling(paid: Payment) -> SterlingPayment? {
+    if (money.currency(paid) == Currency.gbp) {
+        return SterlingPayment(paid)
+    }
+    return none
+}
 ```
 
 | Operation | Gives | Fails | SQL form |
@@ -1549,6 +1666,92 @@ text.format(total, locale: Locale.en_gb)                             // "£10.50
   currency }` (Objects, the type reference, question 12's sample) are
   renamed or use the built-in, in chunk 5.5h. Example 09's `Pence` and its
   percentage discount move to `Money` in 5.7.
+
+An order keeps its total, in pounds, and a deposit in the customer's
+currency, each in two columns:
+
+```jadpo check project=money-orders file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=money-orders file=domains/bakery/types/cake_price.jadpo hidden
+/// What a cake costs, in pounds.
+type CakePrice = Money {
+    currency: Currency.gbp
+    min: 0
+}
+```
+
+```jadpo check project=money-orders file=domains/bakery/types/deposit.jadpo hidden
+/// Money paid ahead, in the customer's currency.
+type Deposit = Money {}
+```
+
+```jadpo check project=money-orders file=domains/bakery/entities/order.jadpo migrate=initial
+use bakery/types { CakePrice, Deposit }
+
+/// A cake ordered for collection.
+entity Order {
+    id: Uuid
+    total: CakePrice  // columns `total_amount` and `total_currency`
+    deposit: Deposit?
+}
+```
+
+```jadpo check project=money-orders file=domains/bakery/actions/place_order.jadpo hidden
+use bakery/entities { Order }
+use bakery/types { CakePrice }
+
+/// Takes an order for a cake at `total`, with nothing paid yet.
+action place_order(total: CakePrice) -> Order {
+    return Order.create {
+        set: {
+            total: total
+            deposit: none
+        }
+    }
+}
+```
+
+```jadpo check project=money-orders file=domains/bakery/actions/pay_deposit.jadpo hidden
+use bakery/entities { Order }
+use bakery/types { Deposit }
+
+/// Records a deposit paid on `order`.
+action pay_deposit(order: Order, paid: Deposit) -> Order {
+    return Order.update(order) {
+        set: {
+            deposit: paid
+        }
+    }
+}
+```
+
+```jadpo check project=money-orders file=domains/bakery/actions/place_order.test.jadpo
+use bakery/actions { pay_deposit }
+use bakery/entities { Order, OrderNotFound }
+use bakery/types { CakePrice, Deposit }
+
+test "an order keeps its amounts as they were written" {
+    var placed: Order = place_order(CakePrice(money.from_minor(4250, Currency.gbp)))
+    var found: Order = attempt Order.get(placed.id)
+    assert found.total == money.from_minor(4250, Currency.gbp)
+    assert found.deposit == none
+    var paid: Order = pay_deposit(found, Deposit(money.from_minor(2000, Currency.eur)))
+    var again: Order = attempt Order.get(placed.id)
+    assert again.deposit == paid.deposit
+    assert again.deposit == Deposit(money.from_minor(2000, Currency.eur))
+}
+```
+
+> Built in chunk 5.5h: `Money` and `Currency` on the contract, the
+> operations but `convert`, the operator table's `Money` rows with
+> `currency_mismatch`, `rounding:` and `type.money_split`, the two
+> columns, the wire shape and `text.format` with its options; what the
+> page left open is "Chosen in chunk 5.5h", under "Review".
+> `ExchangeRate`, `money.convert` and `{price, number, currency}` come in
+> chunk 5.5h2, and `Money * Percentage` with `Percentage` in 5.5j; until
+> then `price * 0.2` scales by a `Decimal`.
 
 ## Physical quantities
 

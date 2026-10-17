@@ -1061,19 +1061,24 @@ impl<'a> Reader<'a> {
             && starts_upper(&tree::name_ref_text(&first).unwrap_or_default())
         {
             let field = self.field_ref(scope.path, entity, &lhs)?;
-            // An amount of money is stored in two columns, which a query's
-            // condition doesn't compare yet (area 19).
-            if field.money {
+            // A compound type is stored in several columns, which a
+            // query's condition doesn't compare yet (area 19).
+            if field.compound.is_some() {
                 let written = shown(whole.syntax());
                 self.out.push(
                     Diagnostic::new(
                         &rule::TOOLCHAIN_NOT_BUILT_YET,
                         format!("Comparing `{}.{}` in a query isn't built yet", entity.name, field.name),
                     )
-                    .at(Self::span(scope.path, whole), "an amount of money")
+                    .at(
+                        Self::span(scope.path, whole),
+                        format!("a `{}`", field.compound.unwrap_or_default()),
+                    )
                     .reason(format!(
-                        "`{}.{}` is an amount of money, stored as its minor units and its currency in two columns (area 19), and `{written}` would compare both, which this compiler's queries don't do yet.",
-                        entity.name, field.name
+                        "`{}.{}` is a `{}`, stored in several columns (an amount of money in its minor units and its currency, area 19), and `{written}` would compare them all, which this compiler's queries don't do yet.",
+                        entity.name,
+                        field.name,
+                        field.compound.unwrap_or_default()
                     ))
                     .next("Filter the records after the query for now"),
                 );

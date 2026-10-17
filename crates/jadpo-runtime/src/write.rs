@@ -286,15 +286,16 @@ fn source_value(
         WriteSource::Caller(_) => {
             return Err(defect(ctx, "a caller's part read as a value", site));
         }
-        // One of the two columns an amount of money is stored in (area
+        // One of the columns a compound standard type is stored in (area
         // 19).
-        WriteSource::MoneyPart { of, currency } => {
-            match source_value(ctx, of, inputs, site, now)? {
-                Value::Money(money) if *currency => Value::text(money.code()),
-                Value::Money(money) => Value::Int(money.minor),
-                Value::None => Value::None,
-                _ => return Err(defect(ctx, "an amount of money that isn't one", site)),
-            }
-        }
+        WriteSource::Part { of, index } => match source_value(ctx, of, inputs, site, now)? {
+            Value::None => Value::None,
+            value => match jadpo_value::standard::to_parts(&value)
+                .and_then(|parts| parts.get(*index as usize).cloned())
+            {
+                Some(part) => part,
+                None => return Err(defect(ctx, "a stored value without that part", site)),
+            },
+        },
     })
 }

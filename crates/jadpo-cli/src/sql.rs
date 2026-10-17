@@ -418,13 +418,12 @@ fn input_name(source: &WriteSource, write: &WriteSitePlan, body: &Body, text: &s
         WriteSource::NewId => "a new identity".to_string(),
         WriteSource::Now => "clock.now".to_string(),
         WriteSource::Caller(part) => caller(*part),
-        WriteSource::MoneyPart { of, currency } => {
-            let amount = input_name(of, write, body, text);
-            if *currency {
-                format!("money.currency({amount})")
-            } else {
-                format!("money.minor({amount})")
-            }
+        WriteSource::Part { of, index } => {
+            format!(
+                "part {} of {}",
+                index + 1,
+                input_name(of, write, body, text)
+            )
         }
     }
 }

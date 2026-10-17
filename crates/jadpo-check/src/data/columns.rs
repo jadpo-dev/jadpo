@@ -350,5 +350,6 @@ pub fn system_table(name: &str) -> Table {
         unique,
         foreign_keys,
         indexes,
+        checks: BTreeMap::new(),
     }
 }

@@ -187,22 +187,14 @@ impl Planner<'_> {
                         }
                         WriteSource::Input(*input)
                     };
-                    // An amount of money goes into its two columns (area
+                    // A compound type goes into its several columns (area
                     // 19).
                     let parts = field_columns(&mut writing, field, &source)?;
+                    let first = parts.first().map(|(_, value)| value.clone())?;
                     for (column, value) in parts {
                         names.push(column);
                         values.push(value);
                     }
-                    let first = values.last().cloned().unwrap_or_default();
-                    let first = if field.money {
-                        values
-                            .get(values.len().saturating_sub(2))
-                            .cloned()
-                            .unwrap_or(first)
-                    } else {
-                        first
-                    };
                     new.push((field.name.clone(), first));
                 }
                 // The new record's grants hold of its values, in the
@@ -329,9 +321,9 @@ impl Planner<'_> {
                         let ty = column_type(field)?.param();
                         let validator = self.types.validator_id(&TypeRef::Field(key.clone()));
                         let parts = if *by_id && stored_in(body, *value) {
-                            // The database works an amount of money out in
-                            // neither of its columns (area 19).
-                            if field.money {
+                            // The database works out no compound type in
+                            // its several columns (area 19).
+                            if field.compound.is_some() {
                                 return None;
                             }
                             let sql =
@@ -823,12 +815,11 @@ impl Planner<'_> {
         for field in &entity.fields {
             let at = columns.len() as u32;
             let column = self.column(entity, field)?;
-            // An amount of money's code comes back in the column after it
-            // (area 19).
-            let money = column == jadpo_std::read::Column::Money;
+            // A compound type comes back in its several columns (area 19).
+            let parts = field.columns().len().max(1);
             columns.push(column);
-            if money {
-                columns.push(jadpo_std::read::Column::Code);
+            for _ in 1..parts {
+                columns.push(jadpo_std::read::Column::Part);
             }
             fields.push((field.name.clone(), Field::Column(at)));
         }
@@ -866,8 +857,8 @@ fn all_of(condition: String, fields: Vec<String>) -> String {
     }
 }
 
-/// Every column of an entity, as `RETURNING` lists them: an amount of
-/// money's two (area 19).
+/// Every column of an entity, as `RETURNING` lists them: a compound
+/// type's several (area 19).
 fn returning(entity: &EntityModel) -> Vec<String> {
     entity
         .fields
@@ -877,32 +868,33 @@ fn returning(entity: &EntityModel) -> Vec<String> {
 }
 
 /// The columns `field` is written to with the value from `source`, each
-/// with its value as SQL: one, or an amount of money's minor units and its
-/// currency's code (area 19, "Money and payments").
+/// with its value as SQL: one, or each of a compound type's (`Money`'s
+/// minor units and currency code, area 19).
 fn field_columns(
     writing: &mut Writing,
     field: &jadpo_check::data::FieldModel,
     source: &WriteSource,
 ) -> Option<Vec<(String, String)>> {
     let ty = column_type(field)?.param();
-    if !field.money {
+    if field.compound.is_none() {
         return Some(vec![(
             field.born.clone(),
             writing.param(source.clone(), ty),
         )]);
     }
-    let columns = field.columns();
-    let [(amount, _), (currency, _)] = columns.as_slice() else {
-        return None;
-    };
-    let part = |currency: bool| WriteSource::MoneyPart {
-        of: Box::new(source.clone()),
-        currency,
-    };
-    Some(vec![
-        (amount.clone(), writing.param(part(false), SqlType::Int8)),
-        (currency.clone(), writing.param(part(true), SqlType::Text)),
-    ])
+    field
+        .columns()
+        .into_iter()
+        .enumerate()
+        .map(|(index, (column, sql_type))| {
+            let part = WriteSource::Part {
+                of: Box::new(source.clone()),
+                index: u32::try_from(index).ok()?,
+            };
+            let ty = SqlType::of_column(&sql_type)?.param();
+            Some((column, writing.param(part, ty)))
+        })
+        .collect()
 }
 
 /// Whether the value at `site` reads a stored field.

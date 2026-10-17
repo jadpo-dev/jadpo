@@ -61,22 +61,22 @@ fn an_object_is_built_with_every_field() {
         ("names.jadpo", NAMES),
         (
             "main.jadpo",
-            "type Money = Object {\n    amount: Pence\n}\n\ntype CreateProduct = Input {\n    name: ProductName\n    price: Pence\n}\n\ntype ProductView = Output {\n    name: ProductName\n    price: Money\n}\n",
+            "type PriceTag = Object {\n    amount: Pence\n}\n\ntype CreateProduct = Input {\n    name: ProductName\n    price: Pence\n}\n\ntype ProductView = Output {\n    name: ProductName\n    price: PriceTag\n}\n",
         ),
         (
             "view.jadpo",
-            "function view(name: ProductName, price: Pence) -> ProductView {\n    return ProductView {\n        name: name\n        price: Money {\n            amount: price\n        }\n    }\n}\n",
+            "function view(name: ProductName, price: Pence) -> ProductView {\n    return ProductView {\n        name: name\n        price: PriceTag {\n            amount: price\n        }\n    }\n}\n",
         ),
     ]);
     let view = value(&program, "view", vec![text("Lamp"), int(1299)]);
     assert_eq!(
         view.to_string(),
-        "ProductView { name: \"Lamp\", price: Money { amount: 1299 } }"
+        "ProductView { name: \"Lamp\", price: PriceTag { amount: 1299 } }"
     );
     let money = program
         .codec()
-        .object("Money", vec![("amount", int(1299))])
-        .expect("Money");
+        .object("PriceTag", vec![("amount", int(1299))])
+        .expect("PriceTag");
     let expected = program
         .codec()
         .object(
@@ -339,27 +339,21 @@ fn a_pattern_matches_the_whole_text() {
 fn equality_compares_contents() {
     // Question 12.
     let program = main(
-        "type Amount = Decimal {\n    scale: 2\n}\n\ntype Currency = Enum {\n    gbp\n    eur\n}\n\ntype Money = Object {\n    amount: Amount\n    currency: Currency\n}\n\ntype Same = Bool {}\n\nfunction same() -> Same {\n    var a: Money = Money {\n        amount: 5.00\n        currency: Currency.gbp\n    }\n    var b: Money = Money {\n        currency: Currency.gbp\n        amount: 5.00\n    }\n    return Same(a == b)\n}\n\nfunction differ(a: Money, b: Money) -> Same {\n    return Same(a != b)\n}\n",
+        "type Amount = Decimal {\n    scale: 2\n}\n\ntype Coin = Enum {\n    pound\n    euro\n}\n\ntype Purse = Object {\n    amount: Amount\n    coin: Coin\n}\n\ntype Same = Bool {}\n\nfunction same() -> Same {\n    var a: Purse = Purse {\n        amount: 5.00\n        coin: Coin.pound\n    }\n    var b: Purse = Purse {\n        coin: Coin.pound\n        amount: 5.00\n    }\n    return Same(a == b)\n}\n\nfunction differ(a: Purse, b: Purse) -> Same {\n    return Same(a != b)\n}\n",
     );
     assert_eq!(value(&program, "same", vec![]), Value::Bool(true));
-    let money = |amount: &str, currency: &str| {
-        let currency = program
-            .codec()
-            .variant("Currency", currency, vec![])
-            .expect("Currency");
+    let money = |amount: &str, coin: &str| {
+        let coin = program.codec().variant("Coin", coin, vec![]).expect("Coin");
         program
             .codec()
-            .object(
-                "Money",
-                vec![("amount", decimal(amount)), ("currency", currency)],
-            )
-            .expect("Money")
+            .object("Purse", vec![("amount", decimal(amount)), ("coin", coin)])
+            .expect("Purse")
     };
     assert_eq!(
         value(
             &program,
             "differ",
-            vec![money("5.00", "gbp"), money("5.0", "gbp")]
+            vec![money("5.00", "pound"), money("5.0", "pound")]
         ),
         Value::Bool(false),
         "5.00 and 5.0 are the same amount"
@@ -368,7 +362,7 @@ fn equality_compares_contents() {
         value(
             &program,
             "differ",
-            vec![money("5.00", "gbp"), money("5.00", "eur")]
+            vec![money("5.00", "pound"), money("5.00", "euro")]
         ),
         Value::Bool(true)
     );

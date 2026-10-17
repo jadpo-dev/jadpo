@@ -207,21 +207,28 @@ pub struct FieldModel {
     /// What its type allows beyond its column type, which a migration
     /// snapshot records.
     pub allows: physical::Allows,
-    /// An amount of money, stored in two columns (area 19, "Money and
-    /// payments"): `<column>_amount`, a `bigint` of minor units, which
-    /// `sql_type` is, and `<column>_currency`, the currency's code.
-    pub money: bool,
+    /// A compound standard type stored in more than one column, by name
+    /// (area 19): `Money`, in `<column>_amount`, a `bigint` of minor units
+    /// that `sql_type` is, and `<column>_currency`, the currency's code.
+    pub compound: Option<&'static str>,
 }
 
 impl FieldModel {
+    /// The data entry of the compound standard type the field holds, if it
+    /// holds one.
+    pub fn compound_entry(&self) -> Option<&'static jadpo_std::StandardType> {
+        self.compound.and_then(jadpo_std::standard_type)
+    }
+
     /// The columns the field is stored in, by name, each with its type: one,
-    /// or an amount of money's two, its minor units first.
+    /// or a compound type's, its column suffixes joined to the field's
+    /// column name with `_`, in its entry's order.
     pub fn columns(&self) -> Vec<(String, String)> {
         let Some(sql_type) = &self.sql_type else {
             return Vec::new();
         };
-        match jadpo_std::standard_type("Money").filter(|_| self.money) {
-            Some(money) => money
+        match self.compound_entry() {
+            Some(entry) => entry
                 .columns
                 .iter()
                 .map(|(part, ty)| (format!("{}_{part}", self.born), (*ty).to_string()))
@@ -764,7 +771,7 @@ impl Reader<'_> {
             reference: None,
             immutable: false,
             allows: physical::Allows::default(),
-            money: false,
+            compound: None,
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -881,7 +888,12 @@ impl Reader<'_> {
                 field.sql_type = Some(sql);
             }
             Ok(sql) => {
-                field.money = self.lookup.representation(&ty) == Some(jadpo_std::Builtin::Money);
+                field.compound = self
+                    .lookup
+                    .representation(&ty)
+                    .and_then(jadpo_std::standard::of_builtin)
+                    .filter(|entry| !entry.columns.is_empty())
+                    .map(|entry| entry.name);
                 field.sql_type = Some(sql);
             }
             Err(what) => {
@@ -1830,33 +1842,47 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
         unique: BTreeMap::new(),
         foreign_keys: BTreeMap::new(),
         indexes: BTreeMap::new(),
+        checks: BTreeMap::new(),
     };
-    // A field's columns, by its name: an amount of money's two.
+    // A field's columns, by its name: a compound type's several.
     let column = |name: &str| -> Vec<String> {
         match entity.fields.iter().find(|f| f.name == name) {
-            Some(field) if field.money => field.columns().into_iter().map(|(c, _)| c).collect(),
-            Some(field) => vec![field.born.clone()],
+            Some(field) => field.columns().into_iter().map(|(c, _)| c).collect(),
             None => vec![name.to_string()],
         }
     };
     let mut position = 0u32;
     for field in &entity.fields {
         let columns = field.columns();
+        let entry = field.compound_entry();
         for (at, (name, sql_type)) in columns.iter().enumerate() {
-            // A fixed currency is what its column allows (area 19).
-            let allows = if field.money && at > 0 {
-                physical::Allows {
+            // Of a compound type's columns (area 19), the one its type can
+            // fix holds the values the field allows, under a check
+            // constraint, and the first takes the field's other rules.
+            let fixed = entry
+                .and_then(|entry| entry.fixed_part)
+                .is_some_and(|part| name == &format!("{}_{part}", field.born));
+            let allows = match entry {
+                None => field.allows.clone(),
+                Some(_) if fixed => physical::Allows {
                     values: field.allows.values.clone(),
                     ..physical::Allows::default()
-                }
-            } else if field.money {
-                physical::Allows {
+                },
+                Some(_) if at == 0 => physical::Allows {
                     values: Vec::new(),
                     ..field.allows.clone()
-                }
-            } else {
-                field.allows.clone()
+                },
+                Some(_) => physical::Allows::default(),
             };
+            if fixed && !field.allows.values.is_empty() {
+                out.checks.insert(
+                    physical::object_name(&[table, name], "check"),
+                    physical::Check {
+                        column: name.clone(),
+                        values: field.allows.values.clone(),
+                    },
+                );
+            }
             out.columns.insert(
                 name.clone(),
                 physical::Column {
