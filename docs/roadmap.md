@@ -650,14 +650,25 @@ reference only).
   `IssuedToken`'s too); the log is the failure's report until the hosts
   write area 4's event; what the pages left open is area 19's "Chosen in
   chunk 5.5g2".
-- [ ] **5.5h Money** `opus · high` (area 19, "Money and payments" and "The
-  standard operator table", question 16): `Money`, `Currency`,
-  `ExchangeRate`, the 8 `money` operations, the operator table's `Money`
-  rows with `currency_mismatch`, `rounding:` and `type.money_split`, the
-  two columns, the wire shape, `{price, number, currency}`, and area 2's
-  examples that declare their own `Money` renamed. Done when the money
-  examples pass, a mismatched currency fails to compile where both types
-  fix it, and `split` and `allocate` never lose a minor unit.
+- [x] **5.5h Money** `opus · high` (area 19, "Money and payments" and "The
+  standard operator table", question 16): `Money` and `Currency`, the 7
+  `money` operations other than `convert`, the operator table's `Money`
+  rows with `currency_mismatch`, `rounding:` and `type.money_split` (the
+  rows with `Percentage` come with it, in 5.5j), the two columns, the
+  wire shape, `text.format`, and area 2's examples that declare their
+  own `Money` renamed. Done when the money examples pass, interpreted, in
+  the runtime and stored in PostgreSQL, a mismatched currency fails to
+  compile where both types fix it, and `split` and `allocate` never lose
+  a minor unit. Split on 2026-10-17; the rest is 5.5h2. Stored always in
+  two columns, with a check constraint for a fixed currency; what the
+  pages left open is area 19's "Chosen in chunk 5.5h".
+- [ ] **5.5h2 Exchange rates and money in messages** `opus · high` (area
+  19, "Money and payments", question 16, split from 5.5h): `ExchangeRate`
+  and `money.convert`, applying a rate the app holds and failing
+  `currency_mismatch` for another currency's rate; `{price, number,
+  currency}` in translation messages (area 10's placeholder styles). Done
+  when `convert`'s example passes, an inverted rate is a type error, and
+  a message writes a price in two locales.
 - [ ] **5.5h3 Definition before use** `sonnet · high` (area 1, "Files and
   names"; Richard, 2026-10-17): `jadpo fmt` orders each file as decided:
   opening comment, `use` lines, then every declaration before the first
@@ -676,7 +687,9 @@ reference only).
 - [ ] **5.5j Quantities** `opus · high` (area 19, "Physical quantities",
   question 17): the 17 physical quantities with `DataSize`, `Bitrate`,
   `Percentage`, `Ratio` and `Fraction`; SI storage at each kind's scale;
-  the `%` literal and the operator table's `Percentage` rows; suffixed
+  the `%` literal and the operator table's `Percentage` rows, with
+  `Money * Percentage` and the refused `Money + Percentage` (5.5h built
+  `Money` by a number); suffixed
   literals; the product and quotient table; `type.unit_required`; the 3
   `units` operations; a `Decimal` ratio becomes a `Percentage` by
   construction, `Percentage(ratio)`, 0.25 → 25%. Done when the quantity
@@ -762,7 +775,54 @@ reference only).
   the type fixes it), quantities as one SI-unit column with the unit in
   the column's comment, ranges as native range types. Done when a test per
   boundary round-trips one value of every standard type, and any boundary
-  with its own encoder is gone.
+  with its own encoder is gone. A read-only audit (2026-10-17) found what
+  to fix, beyond what 5.5h fixes for Money (OpenAPI for standard object
+  types, enum spellings from `entry.codes()`, storage as named columns):
+  `json.write`'s map keys use debug text and don't read back
+  (`jadpo-value/src/json.rs` `key_text`); the JSON, schema and enum encoders
+  match on builtins instead of reading the entries; enums are stored by
+  variant name but sent by code; reading is looser than `text.parse` (an
+  `Instant` with an offset, a `CalendarDate` not checked for 30 February);
+  settings take `5m` but not `PT5M`; a `Decimal` quantity's `value` must
+  follow area 2's Decimal-as-string rule; and nothing yet decides the
+  encoding of event, job and batch payloads (with a version rule), CSV
+  cells for types with no single text form, the bytes a personal value's
+  log hash covers, developer reports' value form, and integration fields
+  without `wire:`. Decide each of those on its owning page, then build.
+- [ ] **5.5x `jadpo suggest`** `opus · high` (area 14; decided by Richard,
+  2026-10-17): first write the command's section on area 14 from this
+  design, then build it. A command that hints, never edits, where code
+  could use a standard type or operation. `jadpo suggest` formats, then
+  scans the program graph with signals held as data on each standard
+  type's contract entry (shape, conversion constants, name hints, format
+  literals, validation patterns), matched through canonicalised graph
+  fragments with hashes as the index and a matcher to confirm; it reports
+  numbered findings and ends with a broad instruction to the agent to
+  review the rest against `jadpo suggest --catalogue`, generated from the
+  contract. Acceptance is inferred when a finding disappears. `jadpo
+  suggest mark` records only exceptions in a committed record: ignores as
+  hashes of the formatted snippet (re-examined when the code changes,
+  dropped when stale) and misses taught as project signals (marked before
+  editing). Edits stay with the agent and, for type clashes only, `jadpo
+  fix`. Done when every signal kind has a finding and a non-finding test,
+  an ignored snippet stays quiet until edited, and a taught miss is found
+  by the next scan.
+- [ ] **5.5y `jadpo suggest share`, against a fake Jadpo HQ** `opus ·
+  high` (area 14; decided by Richard, 2026-10-17), after 5.5x: the opt-in
+  sharing client, built in full against a local fake of Jadpo HQ that
+  speaks the same protocol, since HQ doesn't exist yet. `share`, run by a
+  person (refused for agents), sends hashes of flagged snippets; HQ asks
+  for a snippet's text only once its hash has come from enough distinct
+  projects, and the person approves the requested snippets in one batch;
+  the record notes what was shared; the report nudges the agent to suggest
+  sharing when there is something to share, and stays quiet otherwise.
+  The protocol is written on area 14 so the real HQ, after the first build
+  with the registry, implements it unchanged, including its agent that
+  turns shared patterns into signal data (thresholds, generated tests,
+  release notes) and proposes, never builds, language features. Done when
+  the whole exchange runs against the fake in tests, nothing is sent
+  without opt-in and approval, and a hash below the threshold never has
+  its text requested.
 - [ ] **5.6 Computed backfills** `opus · high` (area 5, "Computed backfills",
   2026-10-15): `backfill:` as an expression over each row's own fields,
   filled in batches, one `UPDATE` each where it has a SQL form and by

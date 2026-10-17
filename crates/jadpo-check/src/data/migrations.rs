@@ -312,6 +312,11 @@ pub fn backfill_problem(lookup: &dyn TypeView, ty: &Ty, value: &Const) -> Option
             Some(Def::Enum { .. }) => Some(format!("it isn't a plain variant of `{name}`")),
             _ => Some(format!("a `{name}` can't be written as a literal here")),
         },
+        // An amount of money has no literal, and is stored in two columns
+        // a backfill would have to fill (area 19).
+        (Ty::Prim(Builtin::Money), _) => Some(
+            "an amount of money has no literal, so a required one can't be backfilled yet: add it optional and set it in an action".into(),
+        ),
         (Ty::Prim(prim), _) => Some(format!("it isn't a `{}` literal", prim.name())),
         (other, _) => Some(format!(
             "a `{other}` can't be backfilled with a literal yet"
@@ -325,7 +330,10 @@ pub fn backfill_sql(value: &Const) -> Option<String> {
         Const::Str(text) => jadpo_sql::text_literal(text),
         Const::Bool(value) => value.to_string(),
         Const::Number { value, .. } => number_text(*value),
-        Const::Path(path) if path.len() == 2 => jadpo_sql::text_literal(&path[1]),
+        // A variant as its column holds it: `Currency`'s by code (area 19).
+        Const::Path(path) if path.len() == 2 => {
+            jadpo_sql::text_literal(jadpo_std::standard::stored_variant(&path[0], &path[1]))
+        }
         _ => return None,
     })
 }

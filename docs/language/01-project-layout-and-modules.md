@@ -1911,7 +1911,7 @@ The same rules for a large application:
 ```text
 app.jadpo  config.jadpo  authentication.jadpo  policy.jadpo  flags.jadpo  jadpo.lock
 shared/
-  types/          money.jadpo  country_code.jadpo  address.jadpo
+  types/          pence.jadpo  country_code.jadpo  address.jadpo
   libraries/      rounding.jadpo
   translations/   order_reference.jadpo  en_gb.jadpo  de_de.jadpo  sources.jadpo_record
   emails/         layout.html  layout.txt
@@ -2140,7 +2140,7 @@ build/
 - A helper that depends on one domain's types (`order_math.total(order)`)
   stays in that domain and becomes public when another domain calls it.
   Depending on two domains' types is an error that needs a design decision.
-  Making a helper generic, for example extracting `money.sum(amounts)` for
+  Making a helper generic, for example extracting `pricing.sum(amounts)` for
   `ordering` and `payments` to share, is a deliberate refactor.
 - Two constants of the same type holding the same value get the
   `constant.similar_exists` warning, so parallel agents each inventing
@@ -2217,7 +2217,7 @@ as the code uses them, so finding a name in the page finds its import:
 ```jadpo fragment
 // domains/sales/actions/price_basket.jadpo
 use shared/types { Pence, Percent }
-use shared/libraries { money }
+use shared/libraries { pricing }
 use sales/types { Basket, DiscountCode, Receipt }
 use sales/failures { BasketEmpty, CodeUnknown, DiscountTooLarge }
 use sales/actions { price_lines }

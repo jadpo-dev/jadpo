@@ -922,10 +922,11 @@ impl Body<'_> {
                 summed = self.numbers_argument(&value, &given, written, &name);
                 continue;
             }
-            // A list of text (`text.join`): any list whose items are
-            // built on `Text`.
+            // A list of text (`text.join`), of amounts (`money.sum`) or of
+            // whole numbers (`money.allocate`'s ratios): any list whose
+            // items are built on `Text`, `Money` or `Int`.
             if let Ty::List(item) = &param
-                && **item == Ty::Prim(Prim::Text)
+                && matches!(**item, Ty::Prim(Prim::Text | Prim::Money | Prim::Int))
             {
                 let given = match ty {
                     Some(ty) => ty,
@@ -1197,6 +1198,12 @@ impl Body<'_> {
             let Some(param) = table.params.get(*slot).filter(|p| p.never_negative) else {
                 continue;
             };
+            // A list's items, each never negative: `money.allocate`'s ratios
+            // (area 19).
+            if param.kind == jadpo_std::Kind::List {
+                self.items_never_negative(&value, param.name, written);
+                continue;
+            }
             let span = self.span(&value);
             let shown = tree::written(value.syntax());
             let (message, label, why) = if is_literal(&value) {
@@ -1262,6 +1269,58 @@ impl Body<'_> {
                     .next(next),
             );
         }
+    }
+
+    /// A list whose items are never negative (`money.allocate`'s ratios,
+    /// area 19): each item of a list written out isn't below `0`, and a
+    /// value's item type has a `min` of at least `0`.
+    fn items_never_negative(&mut self, value: &Expr, param: &str, written: &str) {
+        let shown = tree::written(value.syntax());
+        let reason = |why: String| {
+            format!(
+                "`{written}`'s `{param}` are whole numbers never below `0`, which is proved while compiling: an item written out isn't below `0` and a list's item type has a `min` of at least `0`; {why}"
+            )
+        };
+        if let Expr::ListExpr(list) = value {
+            for item in list.exprs() {
+                if let Const::Number { value: number, .. } = Const::from_expr(&item)
+                    && number.mantissa < 0
+                {
+                    let item_shown = tree::written(item.syntax());
+                    self.out.push(
+                        Diagnostic::new(
+                            &rule::TYPE_ARGUMENT_NEGATIVE,
+                            format!("`{written}`'s `{param}` are never negative"),
+                        )
+                        .at(self.span(&item), "below `0`")
+                        .reason(reason(format!("`{item_shown}` is below `0`.")))
+                        .next("Give each item as `0` or more"),
+                    );
+                }
+            }
+            return;
+        }
+        let Some(ty) = self.facts.types.get(&node_key(value.syntax())).cloned() else {
+            return;
+        };
+        if ty.has_error() || self.table.is_nullable(&ty) {
+            return;
+        }
+        let Ty::List(item) = self.table.structure(&ty) else {
+            return;
+        };
+        if self.table.is_nullable(&item) || self.never_below_zero(&item) {
+            return;
+        }
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_ARGUMENT_NEGATIVE,
+                format!("`{shown}`'s items may be negative"),
+            )
+            .at(self.span(value), format!("`{item}` can be below `0`"))
+            .reason(reason(format!("`{item}` allows values below `0`.")))
+            .next("Pass a list whose item type has `min: 0`"),
+        );
     }
 
     /// Whether a value is proved above zero, as `decimal.ln`'s must be not
@@ -2100,6 +2159,7 @@ fn built_on(param: &Ty) -> Option<&'static [Prim]> {
         Ty::Prim(Prim::CalendarDate) => Some(&[Prim::CalendarDate]),
         Ty::Prim(Prim::ZonedTime) => Some(&[Prim::ZonedTime]),
         Ty::Prim(Prim::Duration) => Some(&[Prim::Duration]),
+        Ty::Prim(Prim::Money) => Some(&[Prim::Money]),
         _ => None,
     }
 }

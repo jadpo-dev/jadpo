@@ -13,3 +13,6 @@ PageCursor
 # A standard type (area 19), which `type.standard_clash`'s example declares as
 # an application's own (chunk 5.5a2)
 Uuid
+# A standard type (area 19, chunk 5.5h), which an archived research page's
+# one-page sketch declares as an application's own
+Money

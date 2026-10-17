@@ -2629,6 +2629,17 @@ fn postfix_levels(
             // `attempt Count(n) { max: TooBig }`: the block is the
             // attempt's mappings.
             L_BRACE if p.attempted && lhs.kind() == CALL_EXPR => return lhs,
+            // `attempt subtotal + line.amount { currency_mismatch: ... }`:
+            // only a type builds a value from a block, so a block after a
+            // local's value holds the attempt's mappings (area 19, "The
+            // standard operator table").
+            L_BRACE
+                if p.attempted
+                    && matches!(lhs.kind(), NAME_REF | FIELD_EXPR)
+                    && start.is_some_and(|at| p.lowercase_at(at)) =>
+            {
+                return lhs;
+            }
             L_BRACE if p.records_allowed && !p.on_new_line() => {
                 let m = lhs.precede(p);
                 member_list(p, Members::Record);

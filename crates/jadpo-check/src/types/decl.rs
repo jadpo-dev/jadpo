@@ -465,7 +465,7 @@ impl Decls<'_> {
             .iter()
             .map(|field| format!("{} (`{}`)", field.meaning, field.written))
             .collect();
-        let built: Vec<String> = entry
+        let mut built: Vec<String> = entry
             .shape
             .unwrap_or_default()
             .iter()
@@ -478,6 +478,14 @@ impl Decls<'_> {
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .collect();
+        if entry
+            .shape
+            .unwrap_or_default()
+            .iter()
+            .any(|field| field.or_enum)
+        {
+            built.push("an enum".to_string());
+        }
         let standard = entry.name;
         self.out.push(
             Diagnostic::new(
@@ -1565,6 +1573,18 @@ pub(crate) struct MatchedField {
     pub standard: &'static str,
 }
 
+/// Whether `ty` is an enum without data, as a currency held as a
+/// project's own enum is (area 19).
+fn is_enum(table: &dyn TypeView, ty: &Ty) -> bool {
+    match table.structure(ty) {
+        Ty::Named(name) => matches!(
+            table.def(&name),
+            Some(Def::Enum { variants }) if variants.iter().all(|v| v.fields.is_none())
+        ),
+        _ => false,
+    }
+}
+
 /// The standard type whose shape `name`'s fields are (area 19, question
 /// 5): an `Object` whose fields are exactly a shape's, by their common
 /// names in any order and what each is built on, none of them optional;
@@ -1588,9 +1608,10 @@ pub(crate) fn standard_match(
             let found = fields.iter().find(|field| {
                 wanted.names.contains(&field.name.as_str())
                     && !table.is_nullable(&field.declared)
-                    && table
+                    && (table
                         .base_prim(&field.declared)
                         .is_some_and(|prim| wanted.built_on.contains(&prim))
+                        || (wanted.or_enum && is_enum(table, &field.declared)))
                     && !matched.iter().any(|taken| taken.written == field.name)
             });
             match found {

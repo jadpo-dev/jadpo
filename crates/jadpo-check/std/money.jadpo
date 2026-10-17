@@ -1,0 +1,44 @@
+// The `money` namespace (area 19, "Money and payments", question 16).
+// Each operation is listed, typed, in `jadpo-std`'s operation table, which
+// names the Rust function in `jadpo-value` that runs it; a test holds
+// these stubs to that table.
+//
+// An amount is a whole number of its currency's minor units (pence,
+// cents), and each currency's exponent is ISO 4217's: `JPY` 0, `GBP` 2,
+// `BHD` 3. Arithmetic is the standard operator table's: `+`, `-` and
+// comparisons in one currency, `*` by a number and `/` by a `Decimal`
+// rate, rounded by the amount's type's `rounding:`. These operations say
+// what no operator says. `split` and `allocate` never round: every minor
+// unit goes to some share, the leftover ones one each to the first shares,
+// so the shares always add up to the total.
+
+public library money {
+    /// `total` shared in proportion to `ratios`, whole numbers never below
+    /// 0, at least one of them; a share of ratio 0 is nothing.
+    function allocate(total: Money, ratios: List<Int>) -> List<Money> {}
+
+    /// The currency `value` is in.
+    function currency(value: Money) -> Currency {}
+
+    /// `amount` minor units of `currency`: `money.from_minor(1050,
+    /// Currency.gbp)` is £10.50.
+    function from_minor(amount: Int, currency: Currency) -> Money {}
+
+    /// `value`'s minor units: 1050 for £10.50.
+    function minor(value: Money) -> Int {}
+
+    /// `amount` major units of `currency`, a `Decimal`: `money.of(10.50,
+    /// Currency.gbp)` is £10.50. It fails with `too_many_places` for more
+    /// places than the currency has (10.505 in pounds), unless the
+    /// currency is written out and the amount proved to have no more.
+    function of(amount: Decimal, currency: Currency) -> Money {}
+
+    /// `total` in `parts` near-equal shares, `parts` at least 1: £10.00 in
+    /// 3 is £3.34, £3.33 and £3.33.
+    function split(total: Money, parts: Int) -> List<Money> {}
+
+    /// The items added up in `currency`, the zero an empty list gives. It
+    /// fails with `currency_mismatch` for an item in another currency,
+    /// unless the items' type fixes `currency`.
+    function sum(items: List<Money>, currency: Currency) -> Money {}
+}

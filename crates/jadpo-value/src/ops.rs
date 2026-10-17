@@ -93,6 +93,7 @@ pub fn add(a: &Value, b: &Value) -> Result<Value, Fault> {
         }
         (Value::Duration(x), Value::Duration(y)) => int_add(*x, *y).map(Value::Duration),
         (Value::Text(x), Value::Text(y)) => Ok(Value::text(&format!("{x}{y}"))),
+        (Value::Money(x), Value::Money(y)) => crate::money::add(*x, *y).map(Value::Money),
         _ => {
             let (x, y) = decimals(a, b).ok_or(Fault::Shape)?;
             decimal_result(x.checked_add(y))
@@ -108,6 +109,7 @@ pub fn subtract(a: &Value, b: &Value) -> Result<Value, Fault> {
         (Value::Instant(at), Value::Duration(by)) => moved(at.checked_sub(*by)),
         (Value::Instant(x), Value::Instant(y)) => int_subtract(*x, *y).map(Value::Duration),
         (Value::Duration(x), Value::Duration(y)) => int_subtract(*x, *y).map(Value::Duration),
+        (Value::Money(x), Value::Money(y)) => crate::money::subtract(*x, *y).map(Value::Money),
         _ => {
             let (x, y) = decimals(a, b).ok_or(Fault::Shape)?;
             decimal_result(x.checked_sub(y))
@@ -121,8 +123,23 @@ fn moved(to: Option<i64>) -> Result<Value, Fault> {
     crate::temporal::instant(to).map(Value::Instant)
 }
 
+/// `a * b`: numbers, or an amount of money by a number, rounded half to
+/// even unless the site says otherwise ([`multiply_rounded`]).
 pub fn multiply(a: &Value, b: &Value) -> Result<Value, Fault> {
+    multiply_rounded(a, b, jadpo_std::Rounding::HalfEven)
+}
+
+/// `a * b`, an amount of money rounded to a whole minor unit as
+/// `rounding` says: its type's `rounding:` (area 19).
+pub fn multiply_rounded(
+    a: &Value,
+    b: &Value,
+    rounding: jadpo_std::Rounding,
+) -> Result<Value, Fault> {
     match (a, b) {
+        (Value::Money(amount), factor) => {
+            crate::money::multiply(*amount, factor, rounding).map(Value::Money)
+        }
         (Value::Int(x), Value::Int(y)) => int_multiply(*x, *y).map(Value::Int),
         _ => {
             let (x, y) = decimals(a, b).ok_or(Fault::Shape)?;
@@ -132,7 +149,18 @@ pub fn multiply(a: &Value, b: &Value) -> Result<Value, Fault> {
 }
 
 pub fn divide(a: &Value, b: &Value) -> Result<Value, Fault> {
+    divide_rounded(a, b, jadpo_std::Rounding::HalfEven)
+}
+
+/// `a / b`; an amount of money by a decimal rate is rounded to a whole
+/// minor unit as `rounding` says (its type's `rounding:`, area 19), and
+/// two amounts in one currency give a `Decimal`.
+pub fn divide_rounded(a: &Value, b: &Value, rounding: jadpo_std::Rounding) -> Result<Value, Fault> {
     match (a, b) {
+        (Value::Money(x), Value::Money(y)) => crate::money::ratio(*x, *y),
+        (Value::Money(amount), rate) => {
+            crate::money::divide(*amount, rate, rounding).map(Value::Money)
+        }
         (Value::Int(x), Value::Int(y)) => int_divide(*x, *y).map(Value::Int),
         _ => {
             let (x, y) = decimals(a, b).ok_or(Fault::Shape)?;
@@ -172,10 +200,20 @@ pub fn equal(a: &Value, b: &Value) -> bool {
     }
 }
 
-/// The order of two numbers or two time values of the same kind; `None`
-/// for anything else.
+/// The order `<` gives two values: [`compare`], except that two amounts
+/// of money in different currencies fail `currency_mismatch` (area 19).
+pub fn order(a: &Value, b: &Value) -> Result<Ordering, Fault> {
+    match (a, b) {
+        (Value::Money(x), Value::Money(y)) => crate::money::compare(*x, *y),
+        _ => compare(a, b).ok_or(Fault::Shape),
+    }
+}
+
+/// The order of two numbers, two time values of the same kind, or two
+/// amounts in one currency; `None` for anything else.
 pub fn compare(a: &Value, b: &Value) -> Option<Ordering> {
     match (a, b) {
+        (Value::Money(x), Value::Money(y)) => crate::money::compare(*x, *y).ok(),
         (Value::Int(x), Value::Int(y)) => Some(x.cmp(y)),
         (Value::Instant(x), Value::Instant(y)) | (Value::Duration(x), Value::Duration(y)) => {
             Some(x.cmp(y))

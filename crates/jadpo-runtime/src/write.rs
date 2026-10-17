@@ -18,7 +18,7 @@ use jadpo_std::read::Field;
 use jadpo_std::write::{PolicyRefusal, WriteParam, WritePlan, WriteSource};
 use jadpo_value::Value;
 
-use crate::read::{Interrupt, defect, from_sql, refused, to_sql, uuid_text};
+use crate::read::{Interrupt, defect, field_value, refused, to_sql, uuid_text};
 use crate::{Ctx, Failure, FaultKind, SqlValue, StoreError};
 
 /// What a write did.
@@ -213,15 +213,7 @@ pub(crate) async fn write(
         let Field::Column(at) = field else {
             return Err(defect(ctx, "a written record with an include", site));
         };
-        let (Some(sql), Some(column)) = (row.get(*at as usize), returns.columns.get(*at as usize))
-        else {
-            return Err(defect(
-                ctx,
-                "a returned row without a column it needs",
-                site,
-            ));
-        };
-        match from_sql(sql, column) {
+        match field_value(row, &returns.columns, *at) {
             Ok(value) => fields.push((std::rc::Rc::from(name.as_str()), value)),
             Err(what) => return Err(defect(ctx, &what, site)),
         }
@@ -239,45 +231,71 @@ fn params_of(
 ) -> Result<Vec<SqlValue>, Interrupt> {
     let mut params = Vec::with_capacity(written.len());
     for param in written {
-        let value = match &param.source {
-            WriteSource::Input(at) => match inputs.get(*at as usize) {
-                Some(value) => value.clone(),
-                None => return Err(defect(ctx, "a write without one of its inputs", site)),
-            },
-            WriteSource::Field { input, field } => match inputs.get(*input as usize) {
-                Some(Value::Record(record)) => record.get(field).cloned().unwrap_or(Value::None),
-                _ => return Err(defect(ctx, "a write without the record it names", site)),
-            },
-            WriteSource::Supplied { input, field } => match inputs.get(*input as usize) {
-                Some(Value::Record(record)) => Value::Bool(record.supplied(field)),
-                _ => return Err(defect(ctx, "a patch that isn't a record", site)),
-            },
-            WriteSource::AnySupplied { input, fields } => match inputs.get(*input as usize) {
-                Some(Value::Record(record)) => {
-                    Value::Bool(fields.iter().any(|field| record.supplied(field)))
-                }
-                _ => return Err(defect(ctx, "a patch that isn't a record", site)),
-            },
-            WriteSource::NewId => match ctx.new_id() {
-                Some(id) => Value::uuid(&uuid_text(&id)),
-                None => {
-                    return Err(defect(
-                        ctx,
-                        "a new identity on a host with no randomness and no seed",
-                        site,
-                    ));
-                }
-            },
-            WriteSource::Now => Value::Instant(now),
-            WriteSource::Caller(part) => {
-                params.push(ctx.caller_param(*part));
-                continue;
-            }
-        };
+        if let WriteSource::Caller(part) = &param.source {
+            params.push(ctx.caller_param(*part));
+            continue;
+        }
+        let value = source_value(ctx, &param.source, inputs, site, now)?;
         match to_sql(&value, param.ty) {
             Ok(sql) => params.push(sql),
             Err(what) => return Err(defect(ctx, &what, site)),
         }
     }
     Ok(params)
+}
+
+/// The value a write's parameter is sent, from where its source says.
+fn source_value(
+    ctx: &mut Ctx<'_>,
+    source: &WriteSource,
+    inputs: &[Value],
+    site: u32,
+    now: i64,
+) -> Result<Value, Interrupt> {
+    Ok(match source {
+        WriteSource::Input(at) => match inputs.get(*at as usize) {
+            Some(value) => value.clone(),
+            None => return Err(defect(ctx, "a write without one of its inputs", site)),
+        },
+        WriteSource::Field { input, field } => match inputs.get(*input as usize) {
+            Some(Value::Record(record)) => record.get(field).cloned().unwrap_or(Value::None),
+            _ => return Err(defect(ctx, "a write without the record it names", site)),
+        },
+        WriteSource::Supplied { input, field } => match inputs.get(*input as usize) {
+            Some(Value::Record(record)) => Value::Bool(record.supplied(field)),
+            _ => return Err(defect(ctx, "a patch that isn't a record", site)),
+        },
+        WriteSource::AnySupplied { input, fields } => match inputs.get(*input as usize) {
+            Some(Value::Record(record)) => {
+                Value::Bool(fields.iter().any(|field| record.supplied(field)))
+            }
+            _ => return Err(defect(ctx, "a patch that isn't a record", site)),
+        },
+        WriteSource::NewId => match ctx.new_id() {
+            Some(id) => Value::uuid(&uuid_text(&id)),
+            None => {
+                return Err(defect(
+                    ctx,
+                    "a new identity on a host with no randomness and no seed",
+                    site,
+                ));
+            }
+        },
+        WriteSource::Now => Value::Instant(now),
+        // Answered above, as the caller's own parameter.
+        WriteSource::Caller(_) => {
+            return Err(defect(ctx, "a caller's part read as a value", site));
+        }
+        // One of the columns a compound standard type is stored in (area
+        // 19).
+        WriteSource::Part { of, index } => match source_value(ctx, of, inputs, site, now)? {
+            Value::None => Value::None,
+            value => match jadpo_value::standard::to_parts(&value)
+                .and_then(|parts| parts.get(*index as usize).cloned())
+            {
+                Some(part) => part,
+                None => return Err(defect(ctx, "a stored value without that part", site)),
+            },
+        },
+    })
 }

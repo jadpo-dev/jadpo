@@ -119,6 +119,10 @@ pub(crate) struct Facts {
     pub proofs: BTreeMap<NodeKey, Vec<(String, Vec<Origin>)>>,
     /// What each call can fail with.
     pub fallible: BTreeMap<NodeKey, Fallible>,
+    /// Each operator on two amounts of money whose currencies are known
+    /// only while running, so it can fail with `currency_mismatch` (area
+    /// 19).
+    pub fallible_ops: BTreeSet<NodeKey>,
     /// The failure each arm of an `attempt` on a construction names, by
     /// the rule's key; `None` for `invalid:`, which covers the rest.
     pub mapped: BTreeMap<NodeKey, Vec<(Option<String>, String)>>,

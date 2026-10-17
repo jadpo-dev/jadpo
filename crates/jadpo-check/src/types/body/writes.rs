@@ -1337,6 +1337,32 @@ impl Body<'_> {
                 }
             }
             if self.facts.stored.contains(&node_key(&node)) {
+                // An amount of money is stored in two columns, which the
+                // database doesn't work out in one step yet (area 19).
+                let money = self
+                    .facts
+                    .types
+                    .get(&node_key(&node))
+                    .is_some_and(|ty| self.table.representation(ty) == Some(Prim::Money));
+                if money {
+                    let span = crate::tree::node_span(self.path, &node);
+                    let shown = crate::tree::written(&node);
+                    self.out.push(
+                        Diagnostic::new(
+                            &rule::TOOLCHAIN_NOT_BUILT_YET,
+                            format!("`{written}` by `id` working out `{shown}` isn't built yet"),
+                        )
+                        .at(span, "an amount of money, stored")
+                        .reason(format!(
+                            "`{shown}` is an amount of money, stored as its minor units and its currency in two columns (area 19), which this compiler doesn't have the database work out in one step yet."
+                        ))
+                        .next(format!(
+                            "Load the record and update it, `{written}({}) {{ set: {{ ... }} }}`, for now",
+                            crate::case::to_snake(entity)
+                        )),
+                    );
+                    return;
+                }
                 self.stored_operand(&node, &root, entity, written);
             }
         }

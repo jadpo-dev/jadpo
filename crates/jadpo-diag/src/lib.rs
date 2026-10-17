@@ -950,6 +950,8 @@ rules! {
         "02-values-and-types.html#type-missing-field", "Object is missing a field";
     TYPE_MISSING_VARIANT_FIELD: "type.missing_variant_field", area 2, Error, Agent,
         "02-values-and-types.html#type-missing-variant-field", "Variant is missing a field";
+    TYPE_MONEY_SPLIT: "type.money_split", area 19, Error, Agent,
+        "19-standard-library.html#type-money-split", "Money is divided by a count";
     TYPE_NAMED_ARGUMENT_UNKNOWN: "type.named_argument_unknown", area 3, Error, Agent,
         "03-logic.html#type-named-argument-unknown", "Named argument is not a parameter";
     TYPE_NAMED_ARGUMENT_UNSUPPORTED: "type.named_argument_unsupported", area 3, Error, Agent,

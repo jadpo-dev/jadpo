@@ -40,7 +40,10 @@ These types exist without being declared, and their names cannot be reused.
 > `PasswordCheck`. Each arrives with its chunk (5.5a to 5.5s), and the
 > page and example types that reuse one (`Money`, `Currency`,
 > `PostalCode`, `Sku`, `Dimensions`, `Price`) are renamed or replaced by
-> the built-in in that chunk. A shape that copies a standard type under
+> the built-in in that chunk: chunk 5.5h renamed this page's `Money`
+> objects (`PriceTag`, `OrderLine`) and its `Currency` enum, and gave a
+> `Money` type its `currency:` and `rounding:` settings, with `min:` and
+> `max:` in minor units (area 19, "Money and payments"). A shape that copies a standard type under
 > another name is the declinable error `type.standard_exists`. Still no
 > `Float`: maths on `Decimal` (area 19, question 18) meets the need
 > question 8 waited for.
@@ -239,7 +242,8 @@ function from_count(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {
 
 - **The keys are rules.** Each key names a rule of the type, or of a type it
   builds on, that neither the declared ranges nor a condition proves holds: `min`, `max`,
-  `min_length`, `max_length`, `pattern`, `format` or `version`. Each such
+  `min_length`, `max_length`, `pattern`, `format`, `version`, or a `Money`
+  type's `currency` (area 19). Each such
   rule needs exactly one arm.
 - **`invalid:` is the catch-all.** It covers every rule that can break and
   has no arm of its own, so `{ invalid: OrderTooLarge }` alone covers them
@@ -520,7 +524,7 @@ type Pence = Int {
 ```
 
 ```jadpo check project=objects file=main.jadpo
-type Money = Object {  // used inside the application
+type PriceTag = Object {  // used inside the application
     amount: Pence
 }
 
@@ -531,7 +535,7 @@ type CreateProduct = Input {  // arrives from outside, such as a request body
 
 type ProductView = Output {  // sent back, such as a response
     name: ProductName
-    price: Money
+    price: PriceTag
 }
 ```
 
@@ -545,7 +549,7 @@ An object value is written with its type name and every field:
 function view(name: ProductName, price: Pence) -> ProductView {
     return ProductView {
         name: name
-        price: Money {
+        price: PriceTag {
             amount: price
         }
     }
@@ -1673,7 +1677,7 @@ error: `maxlength` isn't a setting Jadpo knows
   |
 3 |     maxlength: 120
   |     ^^^^^^^^^ unknown setting
-  reason: A type's block holds the constraints `min`, `max`, `min_length`, `max_length`, `pattern`, `format`, `scale` and `version`. Did you mean `max_length`?
+  reason: A type's block holds the constraints `min`, `max`, `min_length`, `max_length`, `pattern`, `format`, `scale`, `version`, `currency` and `rounding`. Did you mean `max_length`?
   next: Use `max_length` instead of `maxlength` (agent)
   rule: type.unknown_setting
   help: docs/language/02-values-and-types.html#type-unknown-setting
@@ -1719,7 +1723,7 @@ error: `min` doesn't apply to a `Text` type
   |
 2 |     min: 1
   |     ^^^ doesn't fit the base
-  reason: `min` constrains `Int`, `Decimal` and `Duration` types.
+  reason: `min` constrains `Int`, `Decimal`, `Duration` and `Money` types.
   next: Remove `min`, or use a constraint that fits (agent)
   rule: type.constraint_base
   help: docs/language/02-values-and-types.html#type-constraint-base
@@ -2536,11 +2540,6 @@ an object, variants for an enum. `entity` stays separate because an entity is
 more than a type (storage, actions, queries and policy).
 
 ```jadpo check project=one-form file=names.jadpo hidden
-type Currency = Enum {
-    gbp
-    eur
-}
-
 type ReceiptId = Uuid {}
 
 type DeclineReason = Text {
@@ -2573,9 +2572,9 @@ type Sku = Text {  // rules on text
 
 type OrderId = Uuid {}  // a new identity type with no extra rules
 
-type Money = Object {  // fields
-    amount: Price
-    currency: Currency
+type OrderLine = Object {  // fields
+    sku: Sku
+    price: Price
 }
 
 type OrderStatus = Enum {  // variants
@@ -2926,13 +2925,13 @@ function tag_all(tags: List<Text>) -> TagSet { ... }            // rejected: ele
 #### Q12: `==` compares contents
 
 ```jadpo fragment
-var a: Money = Money {
-    amount: 5.00
-    currency: Currency.gbp
+var a: OrderLine = OrderLine {
+    sku: "ABC-1234"
+    price: 5.00
 }
-var b: Money = Money {
-    amount: 5.00
-    currency: Currency.gbp
+var b: OrderLine = OrderLine {
+    sku: "ABC-1234"
+    price: 5.00
 }
 var same: Bool = a == b         // true: same contents (false today)
 ```

@@ -60,8 +60,8 @@ fn a_project_with_its_imports_checks_cleanly() {
             "use shared/types { Pence }\n\ntype Basket = Object {\n    total: Pence\n}\n",
         ),
         (
-            "shared/libraries/money.jadpo",
-            "use shared/types { Pence }\n\nlibrary money {\n    function doubled(amount: Pence) -> Pence {\n        return Pence(amount * 2)\n    }\n}\n",
+            "shared/libraries/pricing.jadpo",
+            "use shared/types { Pence }\n\nlibrary pricing {\n    function doubled(amount: Pence) -> Pence {\n        return Pence(amount * 2)\n    }\n}\n",
         ),
         (
             "domains/menu/actions/price_item.jadpo",
@@ -69,7 +69,7 @@ fn a_project_with_its_imports_checks_cleanly() {
         ),
         (
             "domains/sales/actions/price_basket.jadpo",
-            "use shared/types { Pence }\nuse shared/libraries { money }\nuse sales/types { Basket }\nuse menu\n\naction price_basket(basket: Basket) -> Pence {\n    var each: Pence = menu.price_item()\n    return money.doubled(each)\n}\n",
+            "use shared/types { Pence }\nuse shared/libraries { pricing }\nuse sales/types { Basket }\nuse menu\n\naction price_basket(basket: Basket) -> Pence {\n    var each: Pence = menu.price_item()\n    return pricing.doubled(each)\n}\n",
         ),
         (
             "domains/sales/actions/checkout.jadpo",

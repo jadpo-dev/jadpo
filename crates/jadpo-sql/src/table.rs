@@ -148,6 +148,27 @@ pub fn add_unique(table: &str, name: &str, columns: &[String]) -> String {
     )
 }
 
+/// Adds the check constraint `name` that `column` of `table` holds one of
+/// `values`, each text.
+pub fn add_check(table: &str, name: &str, column: &str, values: &[String]) -> String {
+    let condition = match values {
+        [one] => format!("{} = {}", ident(column), text_literal(one)),
+        many => format!(
+            "{} IN ({})",
+            ident(column),
+            many.iter()
+                .map(|v| text_literal(v))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    };
+    format!(
+        "ALTER TABLE {} ADD CONSTRAINT {} CHECK ({condition})",
+        ident(table),
+        ident(name)
+    )
+}
+
 /// Adds the foreign key `name` from `columns` of `table` to `target`'s
 /// `id`, doing `on_delete` (`RESTRICT`, `CASCADE`, `SET NULL`) when the
 /// record it names is deleted.

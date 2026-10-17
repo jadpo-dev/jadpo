@@ -13,6 +13,7 @@ use jadpo_syntax::ast::{self, AstNode, Expr};
 use super::super::literal;
 use super::super::rules::Const;
 use super::super::ty::{Prim, Ty};
+use super::currency::OneCurrency;
 use super::{Body, capital, is_literal, node_key};
 use crate::tree;
 
@@ -458,7 +459,23 @@ impl Body<'_> {
                 return;
             }
         }
+        if self.rep(a) == Some(Prim::Money)
+            && self.rep(b) == Some(Prim::Money)
+            && let OneCurrency::No(x, y) = self.one_currency(lhs, rhs)
+        {
+            self.different_currencies(
+                binary,
+                &rule::TYPE_ORDERING_OPERAND,
+                "ordered",
+                (a, x),
+                (b, y),
+            );
+            return;
+        }
         if self.same_type(a, b) {
+            if self.rep(a) == Some(Prim::Money) && self.rep(b) == Some(Prim::Money) {
+                self.one_currency_or_mapped(binary, op, lhs, rhs);
+            }
             return;
         }
         let (sa, sb) = (a.shown(), b.shown());
@@ -504,6 +521,9 @@ impl Body<'_> {
             }
         }
         let (ra, rb) = (self.rep(a), self.rep(b));
+        if [ra, rb].contains(&Some(Prim::Money)) {
+            return self.money_arithmetic(binary, op, (lhs, a), (rhs, b));
+        }
         if [ra, rb].iter().any(|prim| prim.is_some_and(is_time)) {
             return self.time_arithmetic(binary, op, a, b);
         }
@@ -627,6 +647,200 @@ impl Body<'_> {
         } else {
             Ty::Prim(Prim::Int)
         }
+    }
+
+    /// The operator table's `Money` rows (area 19, "The standard operator
+    /// table"): `+` and `-` of two amounts in one currency, `*` by a
+    /// number, `/` by a `Decimal` rate, each giving a plain `Money`, and
+    /// `/` of two amounts in one currency giving a `Decimal`. `/` by an
+    /// `Int` is `type.money_split`; anything else is refused.
+    fn money_arithmetic(
+        &mut self,
+        binary: &ast::BinExpr,
+        op: &str,
+        (lhs, a): (&Expr, &Operand),
+        (rhs, b): (&Expr, &Operand),
+    ) -> Ty {
+        let (ra, rb) = (self.rep(a), self.rep(b));
+        let (sa, sb) = (a.shown(), b.shown());
+        let span = self.span(binary);
+        let money = Some(Prim::Money);
+        let number = |prim: Option<Prim>| prim.is_some_and(Prim::is_number);
+        let refuse = |body: &mut Self, label: &str, reason: String, next: String| {
+            body.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_ARITHMETIC_OPERAND,
+                    format!("{} and {} can't be {}", capital(&sa), sb, verb(op)),
+                )
+                .at(span.clone(), label.to_string())
+                .reason(reason)
+                .next(next),
+            );
+            Ty::Error
+        };
+        match (op, ra == money, rb == money) {
+            ("+" | "-" | "/", true, true) => {
+                if let OneCurrency::No(x, y) = self.one_currency(lhs, rhs) {
+                    self.different_currencies(
+                        binary,
+                        &rule::TYPE_ARITHMETIC_OPERAND,
+                        verb(op),
+                        (a, x),
+                        (b, y),
+                    );
+                    return Ty::Error;
+                }
+                if !Self::unitless(a) && !Self::unitless(b) && !self.same_type(a, b) {
+                    return refuse(
+                        self,
+                        "different types",
+                        format!(
+                            "`{op}` needs the same named type on both sides, or a plain amount another operator or `money` operation made, because {sa} and {sb} are different kinds of money."
+                        ),
+                        "Use two amounts of the same type".to_string(),
+                    );
+                }
+                if op == "/" {
+                    self.divisor(rhs, b);
+                }
+                self.one_currency_or_mapped(binary, op, lhs, rhs);
+                if op == "/" {
+                    Ty::Prim(Prim::Decimal)
+                } else {
+                    Ty::Prim(Prim::Money)
+                }
+            }
+            ("*", true, false) if number(rb) => Ty::Prim(Prim::Money),
+            ("/", true, false) if rb == Some(Prim::Decimal) => {
+                self.divisor(rhs, b);
+                Ty::Prim(Prim::Money)
+            }
+            ("/", true, false) if rb == Some(Prim::Int) => {
+                let total = tree::written(lhs.syntax());
+                let parts = tree::written(rhs.syntax());
+                let split = format!("money.split({total}, {parts})");
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_MONEY_SPLIT,
+                        format!("{} is divided by a count", capital(&sa)),
+                    )
+                    .at(span.clone(), "money shared out by `/`")
+                    .reason(format!(
+                        "Dividing money by a count is sharing it out, and rounding each share loses minor units: £10.00 / 3 is £3.33, three times £9.99. `money.split` hands every minor unit to some share, and `/` takes only a `Decimal` rate, as `/ 1.20` takes a 20% tax off; `{parts}` is a whole number."
+                    ))
+                    .next(format!(
+                        "Share it with `{split}`, which gives a list of shares adding up to the total, or `money.allocate` for unequal shares; halve an amount with `* 0.5`"
+                    ))
+                    .edit(span, split),
+                );
+                Ty::Error
+            }
+            (_, false, true) if number(ra) || matches!(a, Operand::Literal(_)) => refuse(
+                self,
+                "a number and an amount",
+                format!(
+                    "Amounts of money are written first: `*` scales an amount by a number and `/` divides it by a rate, and {sa} is not an amount."
+                ),
+                if op == "*" {
+                    format!(
+                        "Write the amount first: `{} * {}`",
+                        tree::written(rhs.syntax()),
+                        tree::written(lhs.syntax())
+                    )
+                } else {
+                    "Use an amount on the left of the operator".to_string()
+                },
+            ),
+            ("*", true, true) => refuse(
+                self,
+                "two amounts",
+                "`*` scales an amount of money by a number; one amount times another means nothing."
+                    .to_string(),
+                "Multiply the amount by a number".to_string(),
+            ),
+            _ => refuse(
+                self,
+                "not an operator money takes",
+                format!(
+                    "An amount of money is added to and subtracted from an amount in the same currency, multiplied by a number and divided by a `Decimal` rate or by an amount in the same currency; {sa} and {sb} are none of those."
+                ),
+                "Use an operator the standard operator table gives money".to_string(),
+            ),
+        }
+    }
+
+    /// Two amounts in currencies their types or how they were made fix
+    /// differently, given to `op`: a compile error (area 19).
+    fn different_currencies(
+        &mut self,
+        binary: &ast::BinExpr,
+        rule: &'static jadpo_diag::Rule,
+        done: &str,
+        (a, x): (&Operand, u32),
+        (b, y): (&Operand, u32),
+    ) {
+        let code = |ordinal: u32| jadpo_std::money::code(ordinal).unwrap_or("?");
+        let (sa, sb) = (a.shown(), b.shown());
+        self.out.push(
+            Diagnostic::new(
+                rule,
+                format!("{} and {} can't be {done}: they're in different currencies", capital(&sa), sb),
+            )
+            .at(self.span(binary), format!("{} and {}", code(x), code(y)))
+            .reason(format!(
+                "{} is in {} and {} in {}, as their types or the calls that made them fix; amounts are {done} only in one currency.",
+                capital(&sa),
+                code(x),
+                sb,
+                code(y)
+            ))
+            .next("Use two amounts in the same currency"),
+        );
+    }
+
+    /// `+`, `-`, `/` or an ordering of two amounts not known to differ:
+    /// plain where one currency is known, otherwise an operation that can
+    /// fail with `currency_mismatch`, which an `attempt` around it maps.
+    pub(super) fn one_currency_or_mapped(
+        &mut self,
+        binary: &ast::BinExpr,
+        op: &str,
+        lhs: &Expr,
+        rhs: &Expr,
+    ) {
+        let key = node_key(binary.syntax());
+        match self.one_currency(lhs, rhs) {
+            OneCurrency::Yes(by) => {
+                if !by.is_empty() {
+                    self.facts
+                        .proofs
+                        .insert(key, vec![("currency_mismatch".to_string(), by)]);
+                }
+                return;
+            }
+            OneCurrency::No(..) => return,
+            OneCurrency::Unknown => {}
+        }
+        self.facts.fallible_ops.insert(key);
+        if self.handled.contains(&key) {
+            return;
+        }
+        let written = tree::written(binary.syntax());
+        let (left, right) = (tree::written(lhs.syntax()), tree::written(rhs.syntax()));
+        self.flow.open = true;
+        self.out.push(
+            Diagnostic::new(
+                &rule::FAILURE_ATTEMPT_REQUIRED,
+                format!("`{written}` can fail at runtime, and nothing handles it"),
+            )
+            .at(self.span(binary), "the currencies are known only when it runs")
+            .reason(format!(
+                "`{left}` and `{right}` are amounts whose currencies are known only when the program runs, so `{op}` fails with `currency_mismatch` when they differ."
+            ))
+            .next(format!(
+                "Write `attempt {written} {{ currency_mismatch: SomeFailure }}`, or `{op}` them inside `if (money.currency({left}) == money.currency({right}))`"
+            )),
+        );
     }
 
     /// `+` and `-` on time values (area 10, "Arithmetic and comparison"):

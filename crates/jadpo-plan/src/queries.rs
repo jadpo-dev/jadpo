@@ -137,14 +137,31 @@ struct Columns {
     kinds: Vec<Column>,
 }
 
+/// How a later column of a compound standard type (`Money`, area 19) is
+/// named among a statement's columns, after its field's name and before
+/// its place among the type's columns: `total#part1`.
+const PART_COLUMN: &str = "#part";
+
 impl Columns {
+    /// The field's column, added once; a compound type's every column.
     fn add(&mut self, field: &str, kind: Column) -> u32 {
         let at = match self.names.iter().position(|n| n == field) {
             Some(at) => at,
             None => {
+                let at = self.names.len();
+                let parts = match &kind {
+                    Column::Compound(ty) => {
+                        jadpo_std::standard_type(ty).map_or(1, |entry| entry.columns().len())
+                    }
+                    _ => 1,
+                };
                 self.names.push(field.to_string());
                 self.kinds.push(kind);
-                self.names.len() - 1
+                for part in 1..parts {
+                    self.names.push(format!("{field}{PART_COLUMN}{part}"));
+                    self.kinds.push(Column::Part);
+                }
+                at
             }
         };
         at as u32
@@ -540,6 +557,13 @@ impl Planner<'_> {
                 Prim::Instant => Column::Instant,
                 Prim::CalendarDate => Column::Date,
                 Prim::Duration => Column::Duration,
+                // A compound standard type, read from its several columns
+                // (area 19).
+                prim if let Some(entry) = jadpo_std::standard::of_builtin(prim)
+                    .filter(|entry| !entry.columns().is_empty()) =>
+                {
+                    Column::Compound(entry.name.to_string())
+                }
                 _ => return None,
             });
         }
@@ -737,7 +761,24 @@ pub(crate) use jadpo_check::data::{field, sql_type as column_type};
 fn borns(entity: &EntityModel, names: &[String]) -> Vec<String> {
     names
         .iter()
-        .map(|name| field(entity, name).map_or_else(|| name.to_string(), |f| f.born.clone()))
+        .map(|name| {
+            if let Some((name, part)) = name.split_once(PART_COLUMN)
+                && let Some(field) = field(entity, name)
+            {
+                let part: usize = part.parse().unwrap_or(0);
+                return field
+                    .columns()
+                    .get(part)
+                    .map_or_else(|| field.born.clone(), |(column, _)| column.clone());
+            }
+            match field(entity, name) {
+                Some(field) => field
+                    .columns()
+                    .first()
+                    .map_or_else(|| field.born.clone(), |(column, _)| column.clone()),
+                None => name.to_string(),
+            }
+        })
         .collect()
 }
 
