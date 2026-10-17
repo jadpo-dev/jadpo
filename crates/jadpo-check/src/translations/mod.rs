@@ -18,6 +18,7 @@ mod check;
 mod declared;
 pub mod failures;
 mod language;
+pub mod sources;
 
 use jadpo_db::{Db, Project, Symbol};
 use jadpo_diag::{Diagnostic, Span, rule};
@@ -71,7 +72,14 @@ pub fn translation_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .iter()
                 .cloned(),
         );
+        out.extend(
+            sources::standings(db, project, Name::new(db, scope.clone()))
+                .problems
+                .iter()
+                .cloned(),
+        );
     }
+    out.extend(sources::review(db, project).problems.iter().cloned());
     out
 }
 

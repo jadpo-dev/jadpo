@@ -142,6 +142,8 @@ rules! {
         "14-tooling.html#command-errors", "Sql command has invalid arguments";
     CLI_TEST_ARGUMENTS: "cli.test_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Test command has invalid arguments";
+    CLI_TRANSLATIONS_ARGUMENTS: "cli.translations_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Translations command has invalid arguments";
     CLI_UNKNOWN_COMMAND: "cli.unknown_command", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Unknown Jadpo command";
     CLI_UNKNOWN_FLAG: "cli.unknown_flag", area 14, Error, Agent,
@@ -786,8 +788,16 @@ rules! {
         "10-configuration-and-time.html#translation-member-unknown", "A language file words something that is no message, enum or email";
     TRANSLATION_MESSAGE_UNKNOWN: "translation.message_unknown", area 10, Error, Agent,
         "10-configuration-and-time.html#translation-message-unknown", "A translation call names no message or enum";
+    TRANSLATION_OPTION_UNKNOWN: "translation.option_unknown", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-option-unknown", "An option of translations in app.jadpo is not one it takes";
     TRANSLATION_PLACEHOLDER_UNKNOWN: "translation.placeholder_unknown", area 10, Error, Agent,
         "10-configuration-and-time.html#translation-placeholder-unknown", "A wording writes a field the message does not have";
+    TRANSLATION_REVIEW_INVALID: "translation.review_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-review-invalid", "Translation review is not a TranslationReview";
+    TRANSLATION_SOURCES_INVALID: "translation.sources_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-sources-invalid", "A translations folder's sources record cannot be read";
+    TRANSLATION_STALE: "translation.stale", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-stale", "A translation was made from default wording that has changed";
     TRANSLATION_TOO_MANY_SELECTORS: "translation.too_many_selectors", area 10, Error, Agent,
         "10-configuration-and-time.html#translation-too-many-selectors", "A message has more than one enum or plural field";
     TRANSLATION_VARIANT_MISSING: "translation.variant_missing", area 10, Error, Agent,
