@@ -631,7 +631,17 @@ reference only).
   `json.write` in memory with `mismatch`'s problem path. The batch forms
   and `csv`, `tsv` and `json_lines` come with batches (6.4). Done when
   each operation's example passes and `json.write` gives the same text
-  for the same value on every target.
+  for the same value on every target. Split on 2026-10-17 because the
+  whole is more than one session: the `DecodeProblem` a failure mapped
+  from `mismatch` receives is 5.5g2.
+- [ ] **5.5g2 The decode problem on a failure** `opus · high` (area 19,
+  "Data formats", `json`; split from 5.5g): the built-in `DecodeProblem`
+  (the first bad field's path, list positions as numbers, and the rule,
+  never the value), and a failure mapped from `json.read`'s `mismatch`
+  that declares a `problem: DecodeProblem` field receiving it, in the
+  failure's fields, its client JSON and its log. Done when a mapped
+  failure's `problem` names `lines.2.quantity` and `max` for that input,
+  interpreted and in the runtime, with a checked page example.
 - [ ] **5.5h Money** `opus · high` (area 19, "Money and payments" and "The
   standard operator table", question 16): `Money`, `Currency`,
   `ExchangeRate`, the 8 `money` operations, the operator table's `Money`
