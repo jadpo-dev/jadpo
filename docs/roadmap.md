@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-16. This page is the only list of outstanding work: the
+**Updated:** 2026-10-17. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here.
@@ -437,7 +437,7 @@ reference only).
   names in use that contain the same word, its checked example rewritten.
   `jadpo rename` refusing a name in use comes with `rename` (after the
   first build, item 5).
-- [ ] **5.3e Constants** `opus · high` (area 3, "Constants", decided
+- [x] **5.3e Constants** `opus · high` (area 3, "Constants", decided
   2026-10-16), after 5.3d: `constant name: Type = value` at the top of a
   file or in a library, `constant` reserved; its type named as a
   signature's is; its value worked out and checked while compiling, with
@@ -448,9 +448,8 @@ reference only).
   literals) and updates by `id` (backfills, 5.6, take them as they come),
   but never a setting's `default:` or `test:`, which stay literals
   (revised 2026-10-16, Richard: a value is a constant or a setting, never
-  both), with `configuration.default_literal_required`'s `next:` naming
-  `jadpo config move`; the `constant.similar_exists` warning and constants
-  in the library catalogue. Each new error with a checked example and real
+  both); the `constant.similar_exists` warning and constants in the
+  library catalogue. Each new error with a checked example and real
   output, and area 3's proposal examples made check blocks. Split on
   2026-10-17: the moves are 5.3f.
 - [ ] **5.3f Making a constant a setting** `opus · high` (area 10, "Making
@@ -460,9 +459,11 @@ reference only).
   name, type, value as `default:` and description, the constant deleted,
   every read rewritten to `config.<name>`, refusing a type a setting can't
   hold, a name a setting has and a read in a query, an update by `id`, a
-  backfill or another constant. `jadpo fmt` sorting `config { }` fields by
-  name with their comments, and `--check` failing on one out of order.
-  Area 10's proposal examples made check blocks.
+  backfill or another constant; `configuration.default_literal_required`'s
+  `next:` naming `jadpo config move` when `default:` names a constant.
+  `jadpo fmt` sorting `config { }` fields by name with their comments, and
+  `--check` failing on one out of order. Area 10's proposal examples made
+  check blocks.
 - [ ] **5.4 Standard library: the plan** `opus · high`. Only `collection`
   and `temporal` are specified, piecemeal across areas 2, 3 and 10, and
   real code keeps needing more: splitting and trimming text, formatting and

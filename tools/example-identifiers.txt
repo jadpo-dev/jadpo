@@ -362,6 +362,7 @@ expose_secret
 exposed_secret
 family_basket
 fee
+fee_charged
 fee_for
 fees
 fill_tray
@@ -487,6 +488,7 @@ kitchen_staff
 label_jar
 labelled
 languages_header
+large_order
 large_order_fee
 larger
 last_lent_at

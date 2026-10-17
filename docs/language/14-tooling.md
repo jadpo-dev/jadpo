@@ -49,7 +49,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo domain rename/split/merge` | Moves a domain's files and updates every call | Decided in area 1, not built |
 | `jadpo migrate new <purpose>` / `apply` / `status` | Writes, runs and lists migrations | Built (chunk 3.1): `new` writes the next migration, or finishes the latest once its decisions are written; `apply` and `status` take the database's URL with `--url` (and `--store` when there are several), or read it from the connection's setting in the environment over `.env.local` (chunk 5.1); replaces `schema` (question 4). Prompting for a missing purpose, as the design language draws it, waits for prompts: without one the command names a purpose to use |
 | `jadpo seed <name>` | Runs a seed; refuses production | Decided in area 5, not built |
-| `jadpo config move <constant>` | Makes a constant a setting: a `config` field of its name and type with its value as `default:`, the constant deleted and every read rewritten to `config.<name>` | Decided 2026-10-16 (Richard, area 10), not built: chunk 5.3e |
+| `jadpo config move <constant>` | Makes a constant a setting: a `config` field of its name and type with its value as `default:`, the constant deleted and every read rewritten to `config.<name>` | Decided 2026-10-16 (Richard, area 10), not built: chunk 5.3f |
 | `jadpo config set <field>` / `check` | Sets or checks local configuration in `.env.local` | Built (chunk 5.1): `check` lists each setting as `set`, `default`, `missing` or `invalid` with its variable against the environment over `.env.local`, each problem as `configuration.value_missing` or `configuration.value_invalid`, never printing a value, and supports `--json`; `set` asks for one value at a prompt (hidden for a secret), refuses `--json` and a missing terminal, checks the value against the setting's type, and writes `.env.local` only as an ordinary file, through a private temporary file and only if unchanged since it was read, adding the file to `.gitignore` |
 | `jadpo api update` | Rewrites the committed public API record (`api/main.api`) from the source | Built (chunk 4.1): one record per API with routes, its `version:` raised by one when it changes; a record whose API has no routes is removed. `jadpo check` fails while a record disagrees (`api.record_out_of_date`) |
 | `jadpo approval --before <ref>` | Writes the review report of what changed in behaviour, policy and the API | Decided, not built: comes with records (area 18); sign-off is question 12 |
@@ -96,7 +96,7 @@ reordered, and a section's comments move with it.
 The one exception is `config { }`: its fields are sorted by name, each with
 its comments, so two workspaces that each add a setting rarely touch the
 same lines (area 10, [Fields in name order](10-configuration-and-time.md#fields-in-name-order);
-decided 2026-10-16 by Richard, not built until chunk 5.3e).
+decided 2026-10-16 by Richard, not built until chunk 5.3f).
 
 Inside a project, `jadpo fmt` fixes each file's `use` lines before it lays
 the file out (area 1, Imports): it adds a missing import, removes an unused
@@ -166,7 +166,7 @@ Decided in area 1 and not built: promotion and the similar-helper warning come
 with quick fixes; rename goes through the same code as `jadpo rename`, so an
 entity field renamed in the editor keeps its stored data (question 5).
 
-Decided in area 10 on 2026-10-16 (Richard) and not built until chunk 5.3e:
+Decided in area 10 on 2026-10-16 (Richard) and not built until chunk 5.3f:
 "Make this a setting", a code action on a constant's declaration or any
 read of it, goes through the same code as `jadpo config move <constant>`
 and refuses what it refuses. It is offered, not a fix for an error, so
@@ -216,7 +216,7 @@ Anything a person reviews and keeps, such as the record of the public API
 build/
   app.meta.json               project map (also printed by jadpo inspect)
   catalogue/
-    libraries.md              every library function: signature, description, callers
+    libraries.md              every library function and constant: signature or type and value, description, callers or readers
     failures.md               every failure: code, kind, status, client fields
   report/
     database.md               every table, column and index, with the query that needs it
@@ -256,7 +256,7 @@ and the similar-helper warning are built (chunk 1.7); the rest are not yet.
 - **Similar-helper warning**: when a new helper looks like an existing one,
   `jadpo check` warns `library.similar_exists` and names it; two constants
   of the same type holding the same value warn `constant.similar_exists`
-  (area 3, 2026-10-16, not built until chunk 5.3e).
+  (area 3, 2026-10-16, built in chunk 5.3e).
 - **Failure catalogue** (`build/catalogue/failures.md`): every failure with
   its code, kind, status and client fields.
 - **Schema and query reports** (`build/report/`): every table, column and
@@ -714,6 +714,6 @@ what other areas carried here and where this page answers it.
 | Completion and prompts | Tab completion from the top level of commands, flags (with descriptions) and project names; a missing argument opens a searchable list in a terminal and lists valid values otherwise; the CLI describes itself fully (`--help` with examples, `jadpo help --json`), so nobody needs the docs (Richard) | 2026-10-13 |
 | Incident input | `jadpo incident` reads a file, standard input, or text pasted at a prompt in a terminal; Jadpo events are found inside surrounding log text (timestamps, platform wrappers) and grouped by request; the build's manifest is found by the event's build id (area 18) (Richard) | 2026-10-13 |
 | CLI design language | Approved as designed in the [CLI design language](research/14-cli-design-language.md): six meaning-only colours, single-width symbols with ASCII fallbacks, one layout grid, calm by default; Jadpo's own colours when the background is known, otherwise the terminal theme's; Unicode symbols, no emoji or Nerd Font glyphs (Richard) | 2026-10-13 |
-| Constants for agents | The library catalogue lists library constants with their type, value, description and readers; `constant.similar_exists` warns on two constants of one type holding one value; the agent skill says a value a deployment could ever need to change is `config`, otherwise a `constant` (area 3). Not built: chunk 5.3e adds the warning and the catalogue entries; the skill itself isn't built yet (Richard) | 2026-10-16 |
-| Making a constant a setting | `jadpo config move <constant>`, and the editor's "Make this a setting" code action through the same code, moves a constant into `config.jadpo` and rewrites every read (area 10); offered, never required, so not part of `jadpo fmt --layout`; the agent skill points at it. Decided, not built (chunk 5.3e) (Richard) | 2026-10-16 |
-| Settings in name order | The formatter sorts `config { }` fields by name, the one exception to fields keeping their written order, so parallel workspaces adding settings rarely clash (area 10). Decided, not built (chunk 5.3e) (Richard) | 2026-10-16 |
+| Constants for agents | The library catalogue lists library constants with their type, value, description and readers; `constant.similar_exists` warns on two constants of one type holding one value; the agent skill says a value a deployment could ever need to change is `config`, otherwise a `constant` (area 3). The warning and the catalogue entries built in chunk 5.3e; the skill itself isn't built yet (Richard) | 2026-10-16 |
+| Making a constant a setting | `jadpo config move <constant>`, and the editor's "Make this a setting" code action through the same code, moves a constant into `config.jadpo` and rewrites every read (area 10); offered, never required, so not part of `jadpo fmt --layout`; the agent skill points at it. Decided, not built (chunk 5.3f) (Richard) | 2026-10-16 |
+| Settings in name order | The formatter sorts `config { }` fields by name, the one exception to fields keeping their written order, so parallel workspaces adding settings rarely clash (area 10). Decided, not built (chunk 5.3f) (Richard) | 2026-10-16 |

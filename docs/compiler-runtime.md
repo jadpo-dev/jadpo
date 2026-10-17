@@ -516,6 +516,28 @@ formatted form.
 signatures without bodies (rust-analyzer's `ItemTree`), so editing a body
 never invalidates another file's resolution.
 
+**Constants** (area 3, built in chunk 5.3e). A `constant` is an item like
+a helper function, in the item tree with its type as its signature's
+result and, in a library, among the library's members in source order. Its
+name follows a helper function's scope and identity (a private one beside
+its use is unique within its domain and keyed `constant billing.name`; a
+library's is keyed `constant library.name` under its library). It is a
+callable with a body: `typed_body` types its value as a `return` of its
+type (`Context::Constant`, pure, where a construction never needs
+`attempt`), and lowers it to a body of one `return`. A read is its own
+graph expression, `Expr::Constant`, decoded to the constant's callable, so
+both executors run that body where it is read; it can't fail. The value
+itself is worked out once for the whole project while compiling
+(`jadpo_check::constants::constant_table`), in exact arithmetic that
+follows `jadpo-value`'s, from literals, enum values, other constants,
+constructions, objects, lists and operators: every construction is
+checked against its type's rules there, a call, `config` or `clock` is
+`constant.value_not_fixed`, a loop is `constant.cycle`, and two constants
+of one type holding one value warn `constant.similar_exists`. A query
+reads the worked-out value as a literal (or a plain variant, or a list of
+them), and the graph's constant node, the manifest and the library
+catalogue carry it as Jadpo writes it.
+
 **Resolution.** One project-wide name table, because names are unique
 across the project and across kinds (area 1), except a private function or
 type, which is unique only within its domain (decided 2026-10-16, built in
