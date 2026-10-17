@@ -822,14 +822,18 @@ reference only).
 - [ ] **5.5y `jadpo suggest share`, against a fake Jadpo HQ** `opus ·
   high` (area 14; decided by Richard, 2026-10-17), after 5.5x: opt-in
   sharing, built in full against a local fake of Jadpo HQ that speaks the
-  same protocol, since HQ doesn't exist yet. Off until the project opts in:
-  the first `share` asks, and on yes writes `suggestions { share: true,
-  project_token: "…" }` to `app.jadpo`, the token random and tied to
-  nothing (no repo, user or machine). It is committed, so a team is one
-  project and HQ counts distinct projects without knowing them; `share`
-  recreates it when sharing is on and it is missing, and `share
-  --new-token` rotates it (a fork shares its parent's token until it
-  does). `share` sends every hash in `.jadpo/suggest_pending` and every
+  same protocol, since HQ doesn't exist yet. Sharing is on unless turned
+  off (Richard, 2026-10-17): nothing is ever sent unless someone runs
+  `share`, and snippet text always needs a person's approval. Creating a
+  project writes `suggestions { project_token: "…" }` to `app.jadpo`, the
+  token random and tied to nothing (no repo, user or machine), committed so
+  a team counts as one project and HQ counts distinct projects without
+  knowing them; `share` recreates it when it is missing, and `share
+  --new-token` rotates it (a fork shares its parent's token until it does).
+  `suggestions { share: false }` in `app.jadpo`, or `JADPO_SUGGEST_SHARE=off`
+  in the environment for a whole machine or organisation, makes `share`
+  stop at once saying sharing is turned off and where, and removes the
+  report's nudge; the first share says how to turn it off. `share` sends every hash in `.jadpo/suggest_pending` and every
   ignored hash not sent before (marked sent in
   `ignored_suggestions.jadpo_record`), with the token; HQ replies with the
   hashes whose text it wants (those seen from enough distinct projects).
@@ -843,8 +847,9 @@ reference only).
   agent that turns shared patterns into signal data (thresholds, generated
   tests, release notes) and proposes, never builds, language features.
   Done when the whole exchange runs against the fake in tests, nothing is
-  sent without opt-in and approval, a hash below the threshold never has
-  its text requested, and an ignored hash is sent once.
+  sent when sharing is off, no snippet text is sent without approval, a
+  hash below the threshold never has its text requested, and an ignored
+  hash is sent once.
 - [ ] **5.6 Computed backfills** `opus · high` (area 5, "Computed backfills",
   2026-10-15): `backfill:` as an expression over each row's own fields,
   filled in batches, one `UPDATE` each where it has a SQL form and by
