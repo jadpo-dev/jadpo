@@ -388,45 +388,35 @@ pub fn records(db: &dyn Db, project: Project) -> Vec<Node> {
     out
 }
 
-/// Each translation key of the default locale's file (area 10), with a
-/// digest of its message in every supported locale, so an edit to any
-/// message changes the key and reaches the tests of what calls it.
+/// Each message and enum with wording (area 10), keyed
+/// `<domain>.<message>`, with a digest of its wording in every language
+/// file, so an edit to any wording changes the key and reaches the tests of
+/// what calls it.
 #[salsa::tracked(returns(ref))]
 pub fn translation_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
     let registry = registry(db, project);
-    let Some(file) = crate::translations::default_translation_file(db, project) else {
-        return Vec::new();
-    };
-    let text = project
-        .translations(db)
-        .iter()
-        .find(|record| record.path == file.path)
-        .and_then(|record| record.text.as_ref().ok());
-    let lines = text.map(|text| LineIndex::new(text));
     let mut out = Vec::new();
-    for entry in &file.entries {
+    for facts in crate::translations::entry_facts(db, project) {
         let mut node = Node::new(
-            registry.key(Kind::TranslationKey, &entry.key, None),
+            registry.key(Kind::TranslationKey, &facts.key, None),
             Kind::TranslationKey,
-            entry.key.clone(),
+            facts.key.clone(),
         );
-        if let Some(lines) = &lines {
-            let last = entry
-                .message_span
-                .end
-                .saturating_sub(1)
-                .max(entry.key_span.start);
+        if let Some((path, span)) = &facts.place
+            && let Some(file) =
+                crate::lookups::file_at(db, project, crate::lookups::Name::new(db, path.clone()))
+        {
+            let lines = LineIndex::new(file.text(db));
+            let last = span.end.saturating_sub(1).max(span.start);
             node.place = Some(jadpo_graph::Place {
-                file: file.path.clone(),
-                start: entry.key_span.start,
-                end: entry.message_span.end,
-                lines: (lines.line(entry.key_span.start), lines.line(last)),
+                file: path.clone(),
+                start: span.start,
+                end: span.end,
+                lines: (lines.line(span.start), lines.line(last)),
             });
         }
-        let messages = crate::translations::messages_of(db, project, &entry.key);
         node.digest = Some(jadpo_graph::Digest::of(
-            std::iter::once(entry.key.as_str())
-                .chain(messages.iter().flat_map(|(tag, text)| [*tag, *text])),
+            std::iter::once(facts.key.as_str()).chain(facts.text.iter().map(String::as_str)),
         ));
         out.push(node);
     }

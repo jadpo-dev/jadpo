@@ -85,16 +85,6 @@ pub fn is_record(path: &str) -> bool {
     )
 }
 
-/// Whether a project-relative path is a translation file (area 10,
-/// "Translations"): a `.json` file directly in the root `translations/`
-/// folder, named for the locale it translates into.
-pub fn is_translation(path: &str) -> bool {
-    matches!(
-        path.split('/').collect::<Vec<_>>().as_slice(),
-        ["translations", name] if name.ends_with(".json") && !name.starts_with('.')
-    )
-}
-
 /// The project: its source files in path order, the paths of every other
 /// file inside it (templates and other assets), its layout, the identity
 /// registry's lines (area 18): for each thing renamed since it was born,
@@ -114,13 +104,6 @@ pub struct Project {
     pub identities: BTreeMap<String, String>,
     #[returns(ref)]
     pub records: Vec<Record>,
-    /// The translation files, `translations/<locale>.json` (area 10), in
-    /// path order. An input of their own, so editing a message rechecks
-    /// what reads translations and nothing that reads a migration or an
-    /// API's record.
-    #[default]
-    #[returns(ref)]
-    pub translations: Vec<Record>,
 }
 
 /// The database every compiler query runs against.

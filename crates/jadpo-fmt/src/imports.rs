@@ -14,7 +14,7 @@ use jadpo_syntax::SyntaxNode;
 pub const ROOT_FILES: [&str; 5] = ["app", "config", "authentication", "policy", "flags"];
 
 /// A domain's folders, in the layout's order (area 1, Domains).
-pub const FOLDERS: [&str; 12] = [
+pub const FOLDERS: [&str; 13] = [
     "entities",
     "types",
     "failures",
@@ -26,6 +26,7 @@ pub const FOLDERS: [&str; 12] = [
     "events",
     "subscribers",
     "emails",
+    "translations",
     "fixtures",
 ];
 

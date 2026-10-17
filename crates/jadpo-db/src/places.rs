@@ -72,11 +72,14 @@ pub enum Folder {
     Events,
     Subscribers,
     Emails,
+    /// `type X = Message` files and the `translations { }` language files
+    /// (area 10).
+    Translations,
     Fixtures,
 }
 
 impl Folder {
-    pub const ALL: [Folder; 12] = [
+    pub const ALL: [Folder; 13] = [
         Folder::Entities,
         Folder::Types,
         Folder::Failures,
@@ -88,11 +91,17 @@ impl Folder {
         Folder::Events,
         Folder::Subscribers,
         Folder::Emails,
+        Folder::Translations,
         Folder::Fixtures,
     ];
 
     /// The folders `shared/` may hold.
-    pub const SHARED: [Folder; 3] = [Folder::Types, Folder::Libraries, Folder::Failures];
+    pub const SHARED: [Folder; 4] = [
+        Folder::Types,
+        Folder::Libraries,
+        Folder::Failures,
+        Folder::Translations,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -107,6 +116,7 @@ impl Folder {
             Folder::Events => "events",
             Folder::Subscribers => "subscribers",
             Folder::Emails => "emails",
+            Folder::Translations => "translations",
             Folder::Fixtures => "fixtures",
         }
     }
@@ -122,7 +132,7 @@ impl Folder {
             Folder::Entities => *kind == ItemKind::Entity,
             Folder::Types => matches!(
                 kind,
-                ItemKind::Type(base) if !matches!(base, Base::Failure | Base::Event | Base::EmailMessage)
+                ItemKind::Type(base) if !matches!(base, Base::Failure | Base::Event | Base::EmailMessage | Base::Message)
             ),
             Folder::Failures => *kind == ItemKind::Type(Base::Failure),
             Folder::Actions => *kind == ItemKind::Action,
@@ -133,6 +143,10 @@ impl Folder {
             Folder::Events => *kind == ItemKind::Type(Base::Event),
             Folder::Subscribers => *kind == ItemKind::Subscriber,
             Folder::Emails => *kind == ItemKind::Type(Base::EmailMessage),
+            // A message, or a language file's `translations { }`.
+            Folder::Translations => {
+                matches!(kind, ItemKind::Type(Base::Message) | ItemKind::Singleton)
+            }
             Folder::Fixtures => *kind == ItemKind::Fixture,
         }
     }

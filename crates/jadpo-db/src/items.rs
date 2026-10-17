@@ -41,6 +41,7 @@ impl ItemKind {
             ItemKind::Type(Base::Failure) => "failure",
             ItemKind::Type(Base::Event) => "event",
             ItemKind::Type(Base::EmailMessage) => "email",
+            ItemKind::Type(Base::Message) => "message",
             ItemKind::Type(_) => "type",
             ItemKind::Function => "function",
             ItemKind::Constant => "constant",
@@ -94,6 +95,9 @@ pub enum Base {
     Failure,
     Event,
     EmailMessage,
+    /// `type X = Message { ... }` (area 10, "Translations as messages"):
+    /// text for people, its fields the wording's placeholders.
+    Message,
     /// A built-in representation or another named type, as written.
     Named(String),
 }
@@ -109,6 +113,7 @@ impl Base {
             "Failure" => Base::Failure,
             "Event" => Base::Event,
             "EmailMessage" => Base::EmailMessage,
+            "Message" => Base::Message,
             other => Base::Named(other.to_string()),
         }
     }
@@ -117,7 +122,12 @@ impl Base {
     pub fn has_fields(&self) -> bool {
         matches!(
             self,
-            Base::Object | Base::Input | Base::Output | Base::Event | Base::EmailMessage
+            Base::Object
+                | Base::Input
+                | Base::Output
+                | Base::Event
+                | Base::EmailMessage
+                | Base::Message
         )
     }
 }

@@ -36,6 +36,7 @@ fn the_page_example_declares_cleanly() {
         Some(LocalePlan {
             default: ordinal("en_gb"),
             supported: vec![ordinal("en_gb"), ordinal("en_us"), ordinal("fr_fr")],
+            in_progress: Vec::new(),
         })
     );
     assert_eq!(plan(""), None, "nothing declared");

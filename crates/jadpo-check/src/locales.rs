@@ -16,8 +16,8 @@ use crate::config::singletons;
 use crate::tree::{self, node_span};
 use crate::types::Const;
 
-/// The only options of a `locales { }` declaration.
-const OPTIONS: [&str; 2] = ["default", "supported"];
+/// The only options of a `locales { }` declaration (`in_progress:` is optional).
+const OPTIONS: [&str; 3] = ["default", "supported", "in_progress"];
 
 /// The project's locales declaration, with its problems.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -96,6 +96,7 @@ impl Reader<'_> {
     fn read(&mut self, found: &crate::config::Found) -> Option<LocalePlan> {
         let mut default: Option<(Option<u32>, Span)> = None;
         let mut supported: Option<Listed> = None;
+        let mut in_progress: Option<Listed> = None;
         for (key, member) in tree::members(found.list.clone()) {
             let Some(name) = tree::name_text(&key) else {
                 continue;
@@ -123,58 +124,14 @@ impl Reader<'_> {
                         self.duplicate("supported", key_span, first);
                         continue;
                     }
-                    let Some(value) = member.value() else {
-                        supported = Some((Vec::new(), false, key_span));
+                    supported = Some(self.locale_list("supported", &member, key_span));
+                }
+                "in_progress" => {
+                    if let Some((_, _, first)) = &in_progress {
+                        self.duplicate("in_progress", key_span, first);
                         continue;
-                    };
-                    let span = node_span(self.path, value.syntax());
-                    let Expr::ListExpr(list) = &value else {
-                        self.problems.push(
-                            Diagnostic::new(
-                                &rule::TYPE_LOCALE_INVALID,
-                                format!(
-                                    "`supported:` is a list of locales, not `{}`",
-                                    tree::written(value.syntax())
-                                ),
-                            )
-                            .at(span.clone(), "not a list")
-                            .reason("`supported:` lists every locale the application accepts, in square brackets: `supported: [Locale.en_gb, Locale.fr_fr]`.")
-                            .next("Write the locales in a list, such as `supported: [Locale.en_gb]`"),
-                        );
-                        supported = Some((Vec::new(), false, span));
-                        continue;
-                    };
-                    let mut entries: Vec<(u32, Span)> = Vec::new();
-                    let mut clean = true;
-                    for entry in list.exprs() {
-                        let at = node_span(self.path, entry.syntax());
-                        match self.locale(&entry, &at) {
-                            Written::Locale(ordinal) => {
-                                if let Some((_, first)) =
-                                    entries.iter().find(|(seen, _)| *seen == ordinal)
-                                {
-                                    let tag = LOCALES
-                                        .get(ordinal as usize)
-                                        .map_or("", |(variant, _)| *variant);
-                                    self.problems.push(
-                                        Diagnostic::new(
-                                            &rule::TYPE_LOCALE_DUPLICATE,
-                                            format!("`Locale.{tag}` is listed twice"),
-                                        )
-                                        .at(at, "listed again")
-                                        .also(first.clone(), "first listed here")
-                                        .reason("A locale is supported or it is not; listing it twice says nothing more.")
-                                        .next(format!("Remove the second `Locale.{tag}`")),
-                                    );
-                                    clean = false;
-                                } else {
-                                    entries.push((ordinal, at));
-                                }
-                            }
-                            Written::Bad => clean = false,
-                        }
                     }
-                    supported = Some((entries, clean, span));
+                    in_progress = Some(self.locale_list("in_progress", &member, key_span));
                 }
                 other => {
                     let near = nearest(other, OPTIONS);
@@ -182,7 +139,7 @@ impl Reader<'_> {
                         "There is no `unsupported:` setting. A request field typed `Locale` is decoded like any enum, so a tag the application doesn't support is an `invalid_value` failure, and choosing a language from an `Accept-Language` header falls back to `default:`.".to_string()
                     } else {
                         format!(
-                            "`locales` takes `default:` and `supported:`, and nothing else.{}",
+                            "`locales` takes `default:`, `supported:` and `in_progress:`, and nothing else.{}",
                             near.map_or_else(String::new, |near| format!(
                                 " Did you mean `{near}`?"
                             ))
@@ -267,10 +224,118 @@ impl Reader<'_> {
             return None;
         }
         let default = default_ordinal?;
+        let in_progress_ordinals =
+            self.in_progress_problems(in_progress, &entries, default, default_span, supported_span);
         Some(LocalePlan {
             default,
             supported: entries.into_iter().map(|(ordinal, _)| ordinal).collect(),
+            in_progress: in_progress_ordinals,
         })
+    }
+
+    /// The `in_progress:` locales that are supported and not the default;
+    /// the ones that are not are reported.
+    fn in_progress_problems(
+        &mut self,
+        listed: Option<Listed>,
+        supported: &[(u32, Span)],
+        default: u32,
+        default_span: Option<Span>,
+        supported_span: Option<Span>,
+    ) -> Vec<u32> {
+        let Some((entries, _, _)) = listed else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for (ordinal, at) in entries {
+            let tag = variant_of(ordinal);
+            if ordinal == default {
+                let mut problem = Diagnostic::new(
+                    &rule::TYPE_LOCALE_IN_PROGRESS_DEFAULT,
+                    format!("The default `Locale.{tag}` can't be in progress"),
+                )
+                .at(at, "the default locale");
+                if let Some(default_at) = default_span.clone() {
+                    problem = problem.also(default_at, "the default");
+                }
+                self.problems.push(problem
+                    .reason("An in-progress locale falls back to the default where wording is missing, so the default is worded in full, and the last place a missing wording can come from.")
+                    .next(format!("Remove `Locale.{tag}` from `in_progress:`, or choose another default")));
+                continue;
+            }
+            if !supported.iter().any(|(seen, _)| *seen == ordinal) {
+                let mut problem = Diagnostic::new(
+                    &rule::TYPE_LOCALE_IN_PROGRESS_UNSUPPORTED,
+                    format!("`Locale.{tag}` is in progress but isn't supported"),
+                )
+                .at(at, "not in `supported:`");
+                if let Some(listed) = supported_span.clone() {
+                    problem = problem.also(listed, "the supported locales");
+                }
+                self.problems.push(problem
+                    .reason("`in_progress:` names supported locales whose wording isn't finished: it lets them fall back where wording is missing. A locale that isn't supported isn't written at all.")
+                    .next(format!("Add `Locale.{tag}` to `supported:`, or remove it from `in_progress:`")));
+                continue;
+            }
+            out.push(ordinal);
+        }
+        out
+    }
+
+    /// A list of locales, `supported: [Locale.en_gb, Locale.fr_fr]`, read.
+    fn locale_list(&mut self, option: &str, member: &ast::Member, key_span: Span) -> Listed {
+        let Some(value) = member.value() else {
+            return (Vec::new(), false, key_span);
+        };
+        let span = node_span(self.path, value.syntax());
+        let Expr::ListExpr(list) = &value else {
+            self.problems.push(
+                Diagnostic::new(
+                    &rule::TYPE_LOCALE_INVALID,
+                    format!(
+                        "`{option}:` is a list of locales, not `{}`",
+                        tree::written(value.syntax())
+                    ),
+                )
+                .at(span.clone(), "not a list")
+                .reason(format!(
+                    "`{option}:` lists locales, in square brackets: `{option}: [Locale.en_gb, Locale.fr_fr]`."
+                ))
+                .next(format!(
+                    "Write the locales in a list, such as `{option}: [Locale.en_gb]`"
+                )),
+            );
+            return (Vec::new(), false, span);
+        };
+        let mut entries: Vec<(u32, Span)> = Vec::new();
+        let mut clean = true;
+        for entry in list.exprs() {
+            let at = node_span(self.path, entry.syntax());
+            match self.locale(&entry, &at) {
+                Written::Locale(ordinal) => {
+                    if let Some((_, first)) = entries.iter().find(|(seen, _)| *seen == ordinal) {
+                        let tag = LOCALES
+                            .get(ordinal as usize)
+                            .map_or("", |(variant, _)| *variant);
+                        self.problems.push(
+                            Diagnostic::new(
+                                &rule::TYPE_LOCALE_DUPLICATE,
+                                format!("`Locale.{tag}` is listed twice"),
+                            )
+                            .at(at, "listed again")
+                            .also(first.clone(), "first listed here")
+                            .reason("A locale is listed or it is not; listing it twice says nothing more.")
+                            .next(format!("Remove the second `Locale.{tag}`")),
+                        );
+                        clean = false;
+                    } else {
+                        entries.push((ordinal, at));
+                    }
+                }
+                Written::Bad => clean = false,
+            }
+        }
+        (entries, clean, span)
     }
 
     fn duplicate(&mut self, name: &str, at: Span, first: &Span) {
@@ -336,6 +401,12 @@ impl Reader<'_> {
         });
         Written::Bad
     }
+}
+
+fn variant_of(ordinal: u32) -> &'static str {
+    LOCALES
+        .get(ordinal as usize)
+        .map_or("", |(variant, _)| *variant)
 }
 
 /// Whether `value` is the literal `Locale.<variant>`, and which variant.

@@ -335,11 +335,16 @@ impl Body<'_> {
             self.args_only(call);
             return (Ty::Error, CallKind::Effect(written), Reach::Unknown);
         }
+        let names = StdNames::get();
+        // A message's call takes the domain that words it and the message:
+        // `translations.<domain>.<message>(...)`.
+        if head == "translations" && names.namespace(&head) == Some(Namespace::Generated) {
+            return self.translation_call(call, callee, &rest, &written);
+        }
         let [member] = rest.as_slice() else {
             self.args_only(call);
             return (Ty::Error, CallKind::Effect(written), Reach::Unknown);
         };
-        let names = StdNames::get();
         if names.namespace(&head) == Some(Namespace::Generated) {
             if head == "sessions"
                 && let Some(op) = jadpo_std::http::SessionOp::from_name(member)
@@ -348,10 +353,6 @@ impl Body<'_> {
             }
             if head == "clock" && member == "advance" {
                 return self.advance_clock(call, callee, &written);
-            }
-            // A translation key's call, typed by the default locale's file.
-            if head == "translations" {
-                return self.translation_call(call, callee, member, &written);
             }
             // Nothing else a generated namespace holds is called: `clock.now`
             // is a value, and the rest wait for their areas.

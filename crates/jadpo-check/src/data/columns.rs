@@ -54,8 +54,10 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
             | Builtin::PostgresUrl
             | Builtin::RedisUrl
             | Builtin::SigningKey
-            // Text for people is shown, never stored (area 10).
-            | Builtin::PresentationText => {
+            // Text for people is shown, never stored (area 10), and a
+            // plural count only picks the form of a message's wording.
+            | Builtin::PresentationText
+            | Builtin::PluralCount => {
                 return Err(prim.name().to_string());
             }
         },

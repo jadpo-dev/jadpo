@@ -1135,7 +1135,10 @@ impl Names<'_> {
         let qualifier_span = self.span(first);
         // Only a connection's operations take three names (area 11), and
         // the checker says those aren't built yet.
-        if rest.len() > 1 && !self.table.is_connection(&qualifier) {
+        // A message is `translations.<domain>.<message>` (area 10).
+        let message = qualifier == "translations"
+            && self.std.namespace(&qualifier) == Some(Namespace::Generated);
+        if rest.len() > 1 && !message && !self.table.is_connection(&qualifier) {
             out.push(self.too_many_names(first, rest));
             return;
         }

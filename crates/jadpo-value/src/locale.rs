@@ -104,6 +104,54 @@ fn is_range(range: &str) -> bool {
         })
 }
 
+/// The locales a wording is looked for in, in order, for a call in the
+/// locale at `ordinal` (area 10, "Translations as messages"). A complete
+/// locale has every wording itself, so only it. One whose translations are
+/// in progress goes on to its regional siblings, the supported locales of
+/// the same language, the one CLDR's likely subtags give for the language
+/// first (`fr_fr` for `fr_ca`) and the rest in the order `supported:` lists
+/// them, and then to the default locale.
+pub fn fallback_chain(ordinal: u32, plan: &LocalePlan) -> Vec<u32> {
+    let mut chain = vec![ordinal];
+    if !plan.in_progress.contains(&ordinal) {
+        return chain;
+    }
+    let tag_of = |at: u32| jadpo_std::LOCALES.get(at as usize).map(|(_, tag)| *tag);
+    let language_of = |tag: &str| tag.split('-').next().unwrap_or(tag).to_ascii_lowercase();
+    if let Some(own) = tag_of(ordinal) {
+        let language = language_of(own);
+        let expander = LocaleExpander::new_extended();
+        let maximal = |text: &str| {
+            let mut id = LanguageIdentifier::try_from_str(text).ok()?;
+            expander.maximize(&mut id);
+            Some((id.script, id.region))
+        };
+        let likely = maximal(&language);
+        let mut siblings: Vec<u32> = plan
+            .supported
+            .iter()
+            .copied()
+            .filter(|&at| at != ordinal)
+            .filter(|&at| tag_of(at).is_some_and(|tag| language_of(tag) == language))
+            .collect();
+        // A stable sort puts the likely one first and keeps the rest in
+        // the order they are listed.
+        siblings.sort_by_key(|&at| {
+            let is_likely = likely.is_some() && tag_of(at).map(maximal).unwrap_or(None) == likely;
+            !is_likely
+        });
+        chain.extend(siblings);
+    }
+    chain.push(plan.default);
+    let mut seen = Vec::new();
+    chain.retain(|at| {
+        let first = !seen.contains(at);
+        seen.push(*at);
+        first
+    });
+    chain
+}
+
 /// The supported locale a tag (lower case, `-` separated) matches.
 fn supported_for(tag: &str, plan: &LocalePlan) -> Option<u32> {
     let tag_of = |ordinal: u32| {
@@ -163,6 +211,7 @@ mod tests {
         LocalePlan {
             default: ord(default),
             supported: supported.iter().map(|v| ord(v)).collect(),
+            in_progress: Vec::new(),
         }
     }
 

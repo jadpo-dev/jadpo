@@ -19,6 +19,9 @@ pub enum FieldsBase {
     Output,
     Event,
     EmailMessage,
+    /// `type X = Message { }` (area 10): text for people, its fields the
+    /// wording's placeholders.
+    Message,
     Failure,
     Entity,
 }
@@ -31,6 +34,7 @@ impl FieldsBase {
             "Output" => FieldsBase::Output,
             "Event" => FieldsBase::Event,
             "EmailMessage" => FieldsBase::EmailMessage,
+            "Message" => FieldsBase::Message,
             "Failure" => FieldsBase::Failure,
             _ => return None,
         })

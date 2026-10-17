@@ -170,8 +170,9 @@ enum Task<'p> {
     AdvanceClock(SiteId),
     /// `none`, for an option a standard-library call leaves out.
     PushNone,
-    /// `translations.<key>(locale:, ...)` (area 10): the locale and the
-    /// placeholders' values on the stack, in the key's order.
+    /// `translations.<domain>.<message>(locale:, ...)` (area 10): the
+    /// locale and the message's fields on the stack, in the entry's
+    /// order.
     Translate {
         key: &'p str,
         count: usize,
@@ -704,10 +705,14 @@ impl<'p> Machine<'p> {
                 let Some((locale, rest)) = values.split_first() else {
                     return Err(self.defect(ctx, "a translation without its locale", at));
                 };
-                let Some((_, entry)) = self.program.plan().translations().key(key) else {
+                let plan = self.program.plan();
+                let Some((_, entry)) = plan.translations().entry(key) else {
                     return Err(self.defect(ctx, "a translation key the plan doesn't have", at));
                 };
-                match jadpo_value::present::translate(entry, locale, rest) {
+                let Some(locales) = plan.locales() else {
+                    return Err(self.defect(ctx, "a translation in a project with no locales", at));
+                };
+                match jadpo_value::present::translate(entry, locale, rest, locales) {
                     Ok(text) => self.values.push(text),
                     Err(fault) => return Err(self.value_fault(ctx, fault, at)),
                 }

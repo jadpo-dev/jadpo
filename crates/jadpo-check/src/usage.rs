@@ -109,8 +109,13 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
                 | Callee::Caller(_)
                 | Callee::Session(_)
                 | Callee::AdvanceClock
-                | Callee::Translation(_)
                 | Callee::Unknown => {}
+                // A message is used by what calls it (area 10).
+                Callee::Translation(key) => {
+                    if let Some(name) = crate::translations::type_of_key(db, project, key) {
+                        found.names.insert(contested.canonical(&name, domain));
+                    }
+                }
             }
         }
         for site in &body.sites {
@@ -663,7 +668,7 @@ enum Move<'a> {
 fn is_plain_type(kind: &ItemKind) -> bool {
     matches!(
         kind,
-        ItemKind::Type(base) if !matches!(base, Base::Failure | Base::Event | Base::EmailMessage)
+        ItemKind::Type(base) if !matches!(base, Base::Failure | Base::Event | Base::EmailMessage | Base::Message)
     )
 }
 

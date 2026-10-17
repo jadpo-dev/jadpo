@@ -71,6 +71,8 @@ pub enum Base {
     Failure,
     Event,
     EmailMessage,
+    /// `type X = Message` (area 10).
+    Message,
     /// A refinement of a built-in or named type.
     Refines(TypeRef),
 }
@@ -86,6 +88,7 @@ impl Base {
             Base::Failure => "Failure".to_string(),
             Base::Event => "Event".to_string(),
             Base::EmailMessage => "EmailMessage".to_string(),
+            Base::Message => "Message".to_string(),
             Base::Refines(parent) => parent.render(name),
         }
     }
