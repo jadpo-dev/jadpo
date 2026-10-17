@@ -316,3 +316,14 @@ range
 # Words the language defines for showing time (area 10): `temporal.format`'s
 # `locale:`, a `Locale`.
 locale
+
+# Ordinary programming vocabulary the packages design's examples (2026-10-16)
+# also declare as fields: a file, an import, a step of a multi-step call, a
+# reply, when something started, how many attempts, a session's renewal.
+attempts
+file
+import
+renewal
+reply
+started
+step

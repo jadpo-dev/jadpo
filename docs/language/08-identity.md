@@ -37,7 +37,7 @@ not reopened here:
 |---|---|---|
 | `application { }` | `app.jadpo` | How long a revoked session may keep working |
 | `principal { }` | `app.jadpo` | Which entity is a user, which is a service, and when each is active |
-| `authentication { }` | `authentication.jadpo` | The ways a caller can sign in |
+| `authentication { }` | `authentication.jadpo` | The ways a caller can sign in, and with `sign_in:` how a person is checked |
 | `current_principal` | routes | The signed-in caller, passed to actions |
 
 ## The principal
@@ -91,7 +91,9 @@ application {
   the record. A disabled user may keep working for up to five minutes.
 
 This is the only revocation setting (question 4), and leaving it out gives
-the strict behaviour. Three paths always
+the strict behaviour. `application { }` also holds `display_name:`, the
+application's name as people see it, required once magic links or another
+built-in email is switched on (area 16, "Built-in emails"). Three paths always
 check the record whatever the setting: external OIDC tokens, service keys used
 directly, and routes marked `authentication: RouteAuthentication.fresh` (below).
 
@@ -373,6 +375,298 @@ authentication {
   disabled service is refused there. A route the application writes at
   that path is `route.path_overlap`.
 
+## Checking the person: `sign_in:`
+
+> Decided on 2026-10-16 (Richard), revising question 11. Not built yet and
+> not yet on the roadmap; the errors below come with the chunk that builds
+> sign-in.
+
+Signing in has two layers. The first checks the person; the second gives
+them a session (`sessions.start` for a browser, `sessions.issue_token` for
+the app's own clients). `sign_in:` in `authentication { }` lists every way
+the language checks a person: built-in magic links, and providers such as
+Google (question 11). Each one ends by starting a session the same way, and
+every way in, external tokens included, shares one decision point for a
+person the app has not seen before, `on_first_sign_in:`.
+
+```jadpo fragment
+// authentication.jadpo
+authentication {
+    browser_session: {
+        cookie: "notes_session"
+        origin: config.browser_origin
+    }
+    api_token: {}
+    sign_in: {
+        magic_link: {
+            address: Member.email
+            link: "/sign-in/confirm"
+        }
+        providers: [google, github]             // connections in app.jadpo (question 11)
+    }
+    on_first_sign_in: accounts.create_member
+}
+```
+
+`sign_in:` replaces the earlier `sign_in_providers:`, which is refused with
+its rename. Checking the person stays out of application code: an app no
+longer writes a magic-link action, and `sessions.start` remains for a
+person the app checks some other way (an invitation it issued, below).
+
+> Revised 2026-10-16 (Richard, area 11's "No presets"): sign-in providers
+> are connections. Google, Microsoft and other OpenID Connect providers are
+> each `google: { driver: Driver.oidc  issuer:  client_id:  credential: }`
+> in `app.jadpo`'s `connections:`, whose discovery document gives the
+> rest; GitHub and Apple, which are not plain OpenID Connect, are the built-in
+> `Driver.github` and `Driver.apple`. `sign_in:` names them in `providers: [...]`, as
+> `email:` names its connection.
+
+### Magic links
+
+A person gives their email address and receives one email holding a link
+and a six-digit code. Either signs them in, once: the link through a page
+of the app's frontend, the code typed into the app's own sign-in page or
+posted by the app's own client for an API token. Jadpo generates endpoints
+only, never pages (decided 2026-10-16): the frontend owns every page.
+
+| Setting | Default | Loosening past this needs an acceptance |
+|---|---|---|
+| `address:` | the `email` field of the principal's user entity | |
+| `expires_after:` | `15m` | more than `1h` |
+| `code_attempts:` | `5` wrong guesses end a code | more than `10` |
+| `codes_per_hour:` | `10` sends per address | |
+| `failed_codes_per_day:` | `20` wrong guesses per address | more than `50` |
+| `resend_after:` | `1m` between sends to one address | |
+| `same_browser:` | `false` | |
+| `link:` | required: the frontend path the email's link opens, such as `"/sign-in/confirm"` | |
+| `path:` | `"/auth/magic-link"`, where the generated routes go | |
+| `routes:` | `true`; `false` generates none | |
+| `email:` | Jadpo's built-in email | (area 16, "Built-in emails", level 4) |
+| `send:` | none | (area 16, "Built-in emails", level 5) |
+
+- `address:` names a field of the principal's user entity whose type is
+  built on `Email` and which is `unique: true`. Left out, the entity's
+  `email` field is used; with no such field, `address:` is required.
+- Tightening a setting is free. Loosening one past the limit in the table
+  shows in the approval report and needs an acceptance (area 7's form),
+  like any change that weakens security.
+- `magic_link:` needs `browser_session:` with its `origin:`, which is
+  otherwise optional (chunk 5.1b), since the link starts a browser session
+  at that origin; and the app's `email:` connection unless it names
+  `send:` (area 16).
+
+**The routes.** The compiler generates three routes anyone may call, under
+`path:`:
+
+```text
+POST /auth/magic-link            ask for a link and a code
+POST /auth/magic-link/confirm    a link's token or a code: starts a browser session
+POST /auth/magic-link/redeem     a code for an API token (needs api_token:)
+```
+
+```text
+POST /auth/magic-link
+{ "address": "ada@example.com", "return_to": "/notes", "locale": "fr_fr" }
+
+202 Accepted                      (no body; the same for every address)
+```
+
+- `address` is required; `return_to` and `locale` are optional.
+  `return_to` must be a path on the app's own site: it starts with one
+  `/`, and anything else (`//evil.example`, `https://...`) is a 422
+  `invalid_input`. Without it the person goes to `/`.
+- The email's language is `locale` when it is a supported locale, else the
+  best supported match for the request's `Accept-Language`, else the
+  default locale.
+- The answer is `202` with no body whether or not an account has the
+  address. With an account, or with `on_first_sign_in:` declared, the
+  email is sent after the request commits; without either, nothing is
+  sent.
+- Sends are limited per address, counted the same whether or not an
+  account has it: one per `resend_after:` and `codes_per_hour:` an hour.
+  Over either limit the answer is the built-in `rate_limited` (429, with
+  `Retry-After`), identical for unknown addresses.
+- Each send makes the earlier link and code for that address invalid: only
+  the latest is ever valid.
+
+The link is `<origin><link>?token=<64 hexadecimal digits>`: the
+`origin:` of `browser_session:` and the frontend path `link:` names, for
+example `https://notes.example/sign-in/confirm?token=3f9a...c1`. The
+frontend page reads the token and posts it. Loading the page consumes
+nothing, so a mail scanner that opens the link signs no one in; only the
+`POST` does:
+
+```text
+POST /auth/magic-link/confirm
+{ "token": "3f9a...c1" }
+
+200 OK
+{ "return_to": "/notes" }          (the request's return_to)
+Set-Cookie: notes_session=...; notes_session_csrf=...
+```
+
+The app's own sign-in page posts the code instead and gets the same
+answer:
+
+```text
+POST /auth/magic-link/confirm
+{ "address": "ada@example.com", "code": "042317" }
+```
+
+The app's own client trades the code for an API token:
+
+```text
+POST /auth/magic-link/redeem
+{ "address": "ada@example.com", "code": "042317" }
+
+200 OK
+{ "token": "jadpo_token_9c1e..." }
+```
+
+- A confirm `POST` needs an `Origin` naming the app's own site, as a
+  cookie write does. A failure is the usual envelope; the frontend shows
+  its wording, which the per-locale failure export carries (area 10).
+- Each route's response shape is fixed (area 7, "Generated routes").
+- Link tokens are 32 random bytes; codes six random digits, kept as text
+  so a leading `0` stays. Both are kept only as verifiers, with a digest of
+  the address rather than the address, in the `jadpo_sign_in_requests`
+  system table in the store of the principal's user entity, beside
+  `jadpo_sessions`. Each is single-use, and using either ends the other.
+- **Wrong codes.** `code_attempts:` wrong guesses end that code. Every
+  wrong guess gets the same answer, `sign_in_code_invalid`, never a count,
+  and so does a used, ended, expired or replaced code, or an address with
+  no code. When an address reaches `failed_codes_per_day:` wrong guesses in
+  a day (UTC), codes stop working for it until the next day
+  (`sign_in_codes_disabled`), while links still work. Nothing locks an
+  account, so an attacker cannot lock a person out.
+- **`same_browser: true`** makes a link work only in the browser that asked
+  for it: `POST /auth/magic-link` sets a `<cookie>_sign_in` cookie
+  (`HttpOnly`, `Secure`, `SameSite=Lax`, lasting `expires_after:`), and the
+  confirm refuses a link from any other browser
+  (`sign_in_link_other_browser`). The code still works anywhere.
+- After signing in the frontend is given only the `return_to` path stored
+  when the person asked, never an address the link carries.
+- A person signed in by link or code has proved they control the address:
+  it reaches `on_first_sign_in` as verified.
+
+**Writing the routes yourself.** `path:` moves the generated routes;
+`routes: false` generates none, and the app writes its own routes over the
+generated operations, which keep every protection above (limits, only the
+latest valid, wrong-code rules, `same_browser:`, `on_first_sign_in`):
+
+| Operation | Does |
+|---|---|
+| `magic_links.request(address: Email, locale: Locale, return_to: Text?)` | Sends the link and code after commit, as `POST /auth/magic-link` does; fails with `rate_limited`, and with `sign_in_return_invalid` (`invalid_value`, 422) for a `return_to` that is not a path on the app's site |
+| `magic_links.redeem(token: SignInToken)` | Uses a link's token; gives a `MagicLinkRedeemed` (`user_id`, `return_to: Text`) or fails with a `sign_in_` failure |
+| `magic_links.redeem_code(address: Email, code: SignInCode)` | The same for a code |
+
+The app's action then calls `sessions.start(redeemed.user_id)` or
+`sessions.issue_token(redeemed.user_id)`. Only actions call them, as with
+`sessions.start`; `same_browser:`'s cookie is set on the response of the
+route whose action calls `magic_links.request`.
+
+```jadpo fragment
+// domains/accounts/actions/confirm_sign_in.jadpo
+action confirm_sign_in(input: ConfirmSignIn) -> SignedInView {
+    var redeemed: MagicLinkRedeemed = magic_links.redeem(input.token)
+    sessions.start(redeemed.user_id)
+    ...
+}
+```
+
+The `sign_in_` failures are built in and raised by the runtime, so, like
+every authentication failure, they pass through an action without being
+listed in its `fails` (area 4).
+
+### A person the app has not seen
+
+`on_first_sign_in:` names an action that decides, for every way in, what a
+first sign-in does: create a user, link an existing one, or refuse. It
+runs when a magic link or code is used for an address no user has, when a
+provider returns an account not yet linked, and when an external token
+names a subject not yet linked.
+
+```jadpo fragment
+// domains/accounts/actions/create_member.jadpo
+action create_member(first: FirstSignIn) fails SignUpClosed -> Member.id {
+    if (first.method == SignInMethod.google and not first.address_verified) {
+        reject SignUpClosed
+    }
+    var member: Member = attempt Member.create(...)
+    return member.id
+}
+```
+
+| `FirstSignIn` field | Type | Holds |
+|---|---|---|
+| `method` | `SignInMethod` | The way in: `magic_link`, each provider named under `sign_in:`, or `external_token`; a built-in enum with one value per way the app declares |
+| `address` | `Email?` | For a magic link, the address, verified; for a provider, its email claim; for an external token, none |
+| `address_verified` | `Bool` | `true` for a magic link; the provider's own verified claim for a provider; `false` for an external token |
+| `subject` | `Text?` | The provider's or token's subject; none for a magic link |
+| `name` | `Text?` | The display name a provider's profile gives, when it gives one |
+
+- The action takes exactly one `FirstSignIn` and returns the principal's
+  user entity's `id`, of a user it created or one that already exists. It
+  runs in its own transaction before the session starts.
+- To refuse, it fails with any failure it declares. The person always
+  sees the same built-in `sign_in_refused`, whatever the reason; the log
+  and the `SignInRefused` event keep the real one.
+- For a provider or external token the runtime then records the link
+  (method and subject to the user's `id`) in the `jadpo_sign_in_links`
+  system table, so the next sign-in skips the action. A magic link needs
+  no link: the user is found by `address:`.
+- Linking an existing user by address is the action's choice, and should
+  only happen when `address_verified` is `true` (question 11).
+- Without `on_first_sign_in:`, only existing users sign in: an unknown
+  address gets no email, and an unknown provider account or token subject
+  is `sign_in_refused`.
+
+### Signing in from code the app writes
+
+`sessions.start(user_id)` and `sessions.issue_token(user_id)` stay for a
+person the app checks itself, such as one accepting an invitation it sent
+(see "Starting and ending a session").
+
+### Events
+
+Every sign-in publishes a built-in event, for monitoring and the app's own
+subscribers (area 12):
+
+| Event | Fields | When |
+|---|---|---|
+| `SignedIn` | `user_id` (the user entity's `id`), `method: SignInMethod`, `first_time: Bool` | A session or API token was started by `sign_in:` or an external token's first use |
+| `SignInRefused` | `method: SignInMethod`, `reason: SignInRefusal`, `user_id` (when known) | A link, code or first sign-in was refused |
+| `SignInCodesDisabled` | `user_id` (when the address has an account), `until: Instant` | An address reached `failed_codes_per_day:` |
+
+`SignInRefusal` is a built-in enum: `link_expired`, `link_other_browser`,
+`code_invalid`, `codes_disabled`, `refused_by_app` and `user_disabled`.
+No event carries an address, a link or a code.
+
+### In development and tests
+
+In `jadpo dev` the email lands in the local inbox (area 16), and its link
+and code work there: the link opens the frontend's page, and an agent
+reads the token or code with `jadpo email links <id>` or `show <id>` and
+posts it to `POST /auth/magic-link/confirm` itself.
+A route test asks for a link with `POST /auth/magic-link`, reads the email
+from `email.sent` and follows its link or posts its code; `as:` still
+signs a test in directly.
+
+### What the compiler checks
+
+Coming with the chunk that builds sign-in, as prose until then:
+
+- `sign_in_providers:` is an error whose edit renames it `sign_in:`.
+- `magic_link:` without `browser_session:`, or without the app's `email:`
+  connection and without `send:`, is an error naming what to add.
+- `address:` naming a field that is not on the principal's user entity,
+  not built on `Email` or not `unique: true` is an error.
+- A setting past its limit without an acceptance fails `jadpo check` and
+  appears in the approval report.
+- `on_first_sign_in:` naming anything but an action taking one
+  `FirstSignIn` and returning the user entity's `id` is an error.
+- `email:` and `send:` together on one email are an error (area 16).
+
 ## Who is calling: `current_principal`
 
 A route reads the signed-in caller as `current_principal` and passes it to
@@ -512,9 +806,9 @@ Rails (`start_new_session_for`, `terminate_session`) and Phoenix
 (`log_in_user`) generate the same two calls:
 
 ```jadpo fragment
-action finish_magic_link(token: MagicLinkToken) fails LinkExpired -> SignedIn {
-    var user: User = attempt magic_links.redeem(token)
-    sessions.start(user.id)          // sets the cookie on this route's response
+action accept_invitation(token: InvitationToken) fails InvitationExpired -> Welcome {
+    var invitation: Invitation = attempt Invitation.redeem(token)
+    sessions.start(invitation.member_id)    // sets the cookie on this route's response
     ...
 }
 
@@ -523,8 +817,10 @@ action sign_out() -> Unit {
 }
 ```
 
-How the person is checked (a magic link, an OIDC code exchange) stays in the
-application or an integration (area 11).
+Magic links and providers check the person and start the session
+themselves (`sign_in:`, above). `sessions.start` is for a person the app
+checks some other way, such as an invitation it issued; passwords stay out
+of scope.
 
 - `sessions.start` keeps the session in the action's own transaction, in
   the store the principal's user entity lives in (a `jadpo_sessions` system
@@ -546,13 +842,16 @@ in its output, the one time anyone sees it (decided 2026-10-16, like
 Laravel Sanctum's `createToken`):
 
 ```jadpo fragment
-action sign_in_app(token: MagicLinkToken) fails LinkExpired -> AppSignedIn {
-    var user: User = attempt magic_links.redeem(token)
+action accept_invitation_in_app(token: InvitationToken) fails InvitationExpired -> AppSignedIn {
+    var invitation: Invitation = attempt Invitation.redeem(token)
     return AppSignedIn {
-        token: sessions.issue_token(user.id)    // an ApiToken, shown once
+        token: sessions.issue_token(invitation.member_id)    // an ApiToken, shown once
     }
 }
 ```
+
+A magic-link code is traded for a token by the generated
+`POST /auth/magic-link/redeem` instead (`sign_in:`, above).
 
 - `sessions.issue_token(user_id)` takes the user entity's `id` and gives
   an `ApiToken`, text an `Output` can send. The token is a session without
@@ -609,7 +908,10 @@ routes Devices {
 ### Signing in, end to end
 
 A whole application that signs members up, keeps their notes and refuses a
-suspended member. The principal and its one sign-in method:
+suspended member. These compiled examples show the earlier, app-written
+form: signing up starts a session for a handle without checking the
+person, to exercise sessions on their own. A real application checks the
+person with `sign_in:` (above). The principal and its one sign-in method:
 
 ```jadpo check project=sign-in file=app.jadpo
 use journal/entities { Member }
@@ -1584,6 +1886,76 @@ test "a partner's keys are listed to the partner and its owner" {
 }
 ```
 
+## Acting for a user at another service: OAuth grants
+
+> Decided on 2026-10-16 (Richard), in area 11's "Acting for each user:
+> OAuth grants". Not built yet and not yet on the roadmap.
+
+Signing in (above) proves who a person is to this app. An OAuth grant is
+the other direction: the app acting at another service (a user's Google
+Calendar, an organisation's Xero, a Slack workspace) with that owner's
+consent. It is not a sign-in method, and acting as an OAuth provider
+(question 13) is a third, separate thing. Area 11 owns the connection and
+the calls; this page owns what touches identity.
+
+```text
+// app.jadpo
+calendar: {
+    package: GoogleCalendar.v3
+    domains: [scheduling]
+    credential: OAuthGrant {
+        owner: User
+        client_id: config.google_client_id
+        client_secret: config.google_client_secret
+        scopes: [...]
+        return_to: "/settings/integrations"
+    }
+}
+```
+
+- **A grant is owned by one of the app's records**: `owner:` is the
+  principal's user entity or any other entity (`Organisation`). The grant
+  belongs to that record, not to a session, so it outlives every session
+  and is used from subscribers and schedules, which run with no caller.
+- **Connecting is endpoints, not pages.** `POST /connections/<name>/start`
+  is a generated route that needs a signed-in caller (`authentication:
+  RouteAuthentication.none` is not available on it) and answers with the
+  provider's consent address. It keeps the `state` on the server against
+  the caller's browser session or API token. The provider sends the browser
+  back to the generated `GET /connections/<name>/callback`, which finds the
+  `state` (a consent can complete only once, for the caller who started
+  it), exchanges the code with PKCE, stores the grant and redirects to the
+  frontend's `return_to`, a path on the app's own site, with success or
+  failure. The callback needs no cookie, so the app's own API-token clients
+  connect exactly as browsers do. Both appear in `jadpo routes`, OpenAPI and the API
+  record, marked generated (area 7).
+- **Who may connect for an owner is policy** (area 9): connecting and
+  disconnecting need the `update` grant on the owner's record, so a user
+  connects their own account and an organisation's grant needs whatever
+  lets the caller update the organisation; no new effect is introduced. The
+  start route checks it before answering.
+- **Grants are held by the runtime**, like sessions, in a `jadpo_grants`
+  system table in the owner entity's store, so grants need a database.
+  Their tokens are encrypted with `application { grants: { encryption_key:
+  config.grant_encryption_key } }`, a `SigningKey` setting rotated as a
+  `signing_key:` is (area 10: the current value, and its `_PREVIOUS` value
+  still read), never readable by code, and refreshed before expiry;
+  `encryption_key:` joins the members of `application { }` a secret may be
+  read in (area 10, "Where a secret may go").
+- **Every call names whose grant it uses**, `on_behalf_of: owner_id`, an id
+  of the owner's entity that the action has loaded or been given;
+  `grant_missing` and `grant_revoked` are failures the app maps (area 11).
+  The caller of the route need not be the owner: a scheduled job acting for
+  an organisation names the organisation.
+- **Disconnecting** is the generated `POST /connections/<name>/disconnect`
+  and its operation, revoking at the provider when the package declares
+  how. Erasing a
+  person or record (area 15) deletes and revokes its grants; a revoked
+  grant gives the `GrantRevoked` event so the app can ask the owner to
+  reconnect.
+- **In development and tests**, `jadpo dev grants add <connection> --owner
+  <id>` makes a fake grant, and tests declare grants as fixtures.
+
 ## Failures
 
 Authentication failures are raised by the runtime, never declared or listed in
@@ -1599,9 +1971,16 @@ Authentication failures are raised by the runtime, never declared or listed in
 | A service calls a route that selects `current_principal.user` | `not_permitted` | `not_permitted` | 403 |
 | The database or OIDC provider cannot be reached | `authentication_unavailable` | `unavailable` | 503 |
 | Keys or issuer missing or invalid | `authentication_misconfigured` | `misconfigured` | 500 |
+| A magic link expired, used, replaced or unknown | `sign_in_link_expired` | `unauthenticated` | 401 |
+| A magic link opened in another browser with `same_browser: true` | `sign_in_link_other_browser` | `unauthenticated` | 401 |
+| A code wrong, used, ended, expired or replaced, or no code for the address | `sign_in_code_invalid` | `unauthenticated` | 401 |
+| An address reached `failed_codes_per_day:` | `sign_in_codes_disabled` | `rate_limited` | 429 |
+| `on_first_sign_in` refused, or no user and no `on_first_sign_in:` for a provider or token | `sign_in_refused` | `not_permitted` | 403 |
+| Too many sends to one address | `rate_limited` | `rate_limited` | 429 |
 
 `user_disabled` and `service_disabled` are built in and never declared
-(question 6). With a revocation delay, a disabled caller is
+(question 6), as are the `sign_in_` failures (decided 2026-10-16), whose
+wording for people is Jadpo's own (area 16, "Built-in emails"). With a revocation delay, a disabled caller is
 noticed within that delay. The log records the method, the credential's
 record id and the reason, never the credential.
 
@@ -2661,8 +3040,13 @@ read from a `Url` setting.
 
 Not yet, each `toolchain.not_built_yet` where it is written:
 
-- `external_token`, `sign_in_providers:` and `oauth_provider:`, after the
-  first build.
+- `external_token`, `sign_in:` (magic links and providers),
+  `on_first_sign_in:` and `oauth_provider:`, after the first build; no
+  roadmap chunk builds them yet (magic links since moved to chunk 7.3b).
+- OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting
+  routes and `on_behalf_of:` (decided 2026-10-16, area 11); no roadmap chunk
+  yet. `Driver.oidc` for Google and Microsoft sign-in comes with providers,
+  after the first build.
 - Deleting ended sessions, tokens and expired keys from the runtime's
   minute tick (area 12, chunk 6.2): a lookup ignores one past its end.
 
@@ -2719,7 +3103,8 @@ builds it.
 | Policy reads the caller and the entity named by `subject:`; `Access.public` versus `authentication: none`; custom roles and tenants come from entities, not the principal | 9 | Input to area 9 |
 | Which callers may issue, list and revoke service keys | 9 | Depends on question 7 |
 | Signing keys, OIDC issuer and audience as secret and plain configuration; key rotation | 10 | Input to area 10 |
-| Verifying a person before `sessions.start` (magic links, OIDC code exchange) as integrations | 11 | Depends on question 9 |
+| Verifying a person before `sessions.start` (magic links, OIDC code exchange) as integrations | 11 | Depends on question 9 (Superseded 2026-10-16: magic links and providers are built in, `sign_in:` above.) |
+| The magic-link email, its wording, and the five levels of changing a built-in email | 16, 10 | Decided 2026-10-16 (area 16, "Built-in emails") |
 | Schedules and subscribers run with no caller | 12 | Input to area 12 |
 | Signing in as a user or service in tests | 13 | Input to area 13 |
 | `toolchain.target_auth_not_implemented`, raised only by `jadpo build`; moving the "protected routes but no authentication" check into `jadpo check` | 14 | Built in chunk 4.3: `semantic.auth_not_set_up` |
@@ -2808,6 +3193,14 @@ builds it.
     method is renamed `external_token`, so the two are not confused.
     *Decided 2026-10-12:* yes, as recommended; acting as an OAuth provider is
     built in too (question 13).
+    *Revised 2026-10-16 (Richard):* `sign_in_providers:` becomes `sign_in:`,
+    one list of every way to check a person in `authentication.jadpo`,
+    and magic-link sign-in is built in beside the providers, replacing
+    question 9's "checking the person is the application's job". The
+    first-sign-in action becomes `on_first_sign_in:` on `authentication { }`,
+    the one decision point for every way in, external tokens included:
+    create, link or refuse, with a refusal that looks the same to the
+    person. See "Checking the person: `sign_in:`" above.
 12. **Should authentication checks read a cache?** *Recommendation:* no.
     Area 5 already decided that authentication always reads the database.
     The strict default is one primary-key read of the session joined to the
@@ -2841,6 +3234,17 @@ builds it.
     for remote servers), integrations and marketplaces, and partners acting
     for a customer. Scopes from any token, `oauth_token` or
     `external_token`, narrow what policy allows.
+14. **How does the app act at another service for each user?** Raised
+    2026-10-16 with area 11's packages, for a user's calendar or an
+    organisation's accounting system. *Decided 2026-10-16 (Richard):* an
+    `OAuthGrant` credential on a connection, owned by one of the app's
+    records; generated `start`, `callback` and `disconnect` routes, the
+    start route needing a signed-in caller and keeping the `state` on the
+    server against its session or API token; connecting needs the `update`
+    grant on the owner; grants in `jadpo_grants`, encrypted with
+    `grants: { encryption_key: }`; tokens held and refreshed by the runtime, never readable
+    by code; every call names its owner with `on_behalf_of:`. See "Acting
+    for a user at another service: OAuth grants" above and area 11.
 
 ### Decisions
 
@@ -2863,7 +3267,7 @@ builds it.
 | Route setting spelling | `authentication: RouteAuthentication.none` / `.fresh`; each API lists the methods it accepts | 2026-10-12 |
 | Starting and ending sessions | `sessions.start(user_id)` and `sessions.end()` from actions a route runs; the compiler sets and clears the cookie and CSRF token | 2026-10-12 |
 | Callers in tests, fixtures and seeds | `Principal.user(user)` in tests, fixtures and seeds only, with `as:` | 2026-10-12 |
-| Sign-in providers | Built-in `sign_in_providers:` with presets and generic OpenID Connect; generated start and callback routes; linked accounts stored by the language; `on_first_sign_in:` action decides create or link, email linking only when verified; `oidc` renamed `external_token`; acting as an OAuth provider built in (question 13) | 2026-10-12 |
+| Sign-in providers | (Revised 2026-10-16: `sign_in:` and `on_first_sign_in:`, below.) Built-in `sign_in_providers:` with presets and generic OpenID Connect; generated start and callback routes; linked accounts stored by the language; `on_first_sign_in:` action decides create or link, email linking only when verified; `oidc` renamed `external_token`; acting as an OAuth provider built in (question 13) | 2026-10-12 |
 | Caching authentication | Never: authentication always reads the database; `revocation_delay` is the speed setting | 2026-10-12 |
 | Acting as an OAuth provider | Built in, no third-party server: OAuth 2.1 and OpenID Connect endpoints generated; authorization code with PKCE, rotating refresh tokens, client credentials; clients stored by the language (`OAuthClient.register`, `.list`, `.revoke`); consent screen is an application route calling `oauth.approve`; `AuthenticationMethod.oauth_token`; scopes from any token narrow policy; built after the golden todo (Richard) | 2026-10-12 |
 | Declarations (chosen in chunk 4.3) | `application`, `principal` and `authentication` are each declared once (`semantic.multiple_*`), in any file of a single-file project and in `app.jadpo` and `authentication.jadpo` otherwise. A variant holds `subject:`, a required `unique: true` field of an entity kept in a PostgreSQL store, and an optional `active:`; left out, every record of the entity is active. `active:` is a condition on that entity's own fields named as a query names them (`Member.status == MemberStatus.active`): comparisons with literals, enum values, `none` and `clock.now`, joined with `and` and `or`. A record the entity's lifecycle hides can't sign in. `oidc:` is refused with its rename to `external_token:` | 2026-10-16 |
@@ -2881,6 +3285,14 @@ builds it.
 | Service keys (chosen in chunk 4.3b) | `issue_key`, `keys` and `revoke_key` belong to the entity the principal's `service:` names, once `service_key:` is declared; on any other entity they are `semantic.unknown_callee`. `issue_key(service_id, expires_at: Instant) -> ServiceKey` keeps the key until `expires_at`, `keys(service_id) -> List<IssuedKey>` lists those that haven't expired, oldest first, and `revoke_key(key_id: Uuid)` deletes one. Keys live in `jadpo_service_keys` (`id`, `principal_id`, `verifier`, `started_at`, `ends_at`) in the service entity's store, read with the service's record, `active:` and lifecycle in one statement. A service caller's rate limit and idempotency keys are its own (`service <id>`) | 2026-10-16 |
 | Issued credentials in code (chosen in chunk 4.3b) | `ApiToken` and `ServiceKey` are built-in text types an `Output` can send; an entity field of either is `type.auth_credential_stored`. A response from an action that issued one is never kept for an idempotent repeat, so a retry runs again. `IssuedToken` and `IssuedKey` are built-in values with `id: Uuid`, `started_at: Instant` and `ends_at: Instant` that code reads. None of the six operations fails: like `sessions.start`, each takes an `id` the action has already loaded, and an action calls them (`type.auth_sessions_context`), writing or reading the store their table lives in; the two reads are also run by a `GET` route (chunk 4.4c) | 2026-10-16 |
 | Signing in from a route test (chosen in chunk 4.3b) | `as: Principal.user(...)` signs in through a browser session when the route's API accepts one, otherwise through an API token; `as: Principal.service(...)` through a key issued as `issue_key` issues one, lasting 30 days. Each is kept for real in its own transaction and sent as a client sends it. With nothing declared that signs that kind of caller in, `as:` is `semantic.request_invalid` | 2026-10-16 |
+| Checking the person | (Revised 2026-10-16: providers are connections, named in `sign_in: { providers: [...] }`.) `sign_in:` in `authentication { }` lists every way to check a person (`magic_link:`, provider presets), replacing `sign_in_providers:`; magic links are built in; `on_first_sign_in:` on `authentication { }` is the one decision point for every way in, external tokens included (Richard) | 2026-10-16 |
+| Magic-link settings | `address:` (default the user entity's `email`, a unique `Email` field), `expires_after: 15m`, `code_attempts: 5`, `codes_per_hour: 10`, `failed_codes_per_day: 20`, `resend_after: 1m`, `same_browser: false`; loosening past 10 attempts, an hour's expiry or 50 failed codes a day needs an acceptance; needs `browser_session:` and the `email:` connection unless `send:` is set (Richard's record of 2026-10-16; the details written out for the spec) | 2026-10-16 |
+| Magic-link routes | (Revised 2026-10-16: no confirm page; endpoints only.) `POST /auth/magic-link` (`address`, optional `return_to` and `locale`) answers 202 for every address; the email links to the frontend path `link:` at the browser origin with the token; `POST /auth/magic-link/confirm` takes the token or `address` and `code`, starts a browser session and answers `{ return_to }` (a path on the app's own site, default `/`); `POST /auth/magic-link/redeem` trades `address` and `code` for an API token; `path:` moves them, `routes: false` leaves the app to write them over `magic_links.request`, `.redeem` and `.redeem_code` (Richard's record of 2026-10-16; the details written out for the spec) | 2026-10-16 |
+| Links and codes | One email carries a 32-byte link token and a six-digit code, single-use, either working, only the latest valid, kept as verifiers with a digest of the address in `jadpo_sign_in_requests`; wrong guesses all answer `sign_in_code_invalid`; after the day's failed codes (UTC) codes stop for that address but links work; no lockouts; sends limited per address with identical answers; `same_browser:` ties the link to a cookie (Richard's record of 2026-10-16; the details written out for the spec) | 2026-10-16 |
+| First sign-in | `on_first_sign_in:` names an action taking one `FirstSignIn` (`method`, `address`, `address_verified`, `subject`, `name`) and returning the user entity's `id`; any failure refuses and the person sees `sign_in_refused`; provider and token links kept in `jadpo_sign_in_links`; without it only existing users sign in (Richard's record of 2026-10-16; the details written out for the spec) | 2026-10-16 |
+| Sign-in failures and events | Built-in `sign_in_link_expired`, `sign_in_link_other_browser`, `sign_in_code_invalid` (401), `sign_in_codes_disabled` (429), `sign_in_refused` (403); events `SignedIn`, `SignInRefused` (with `SignInRefusal`) and `SignInCodesDisabled`, none carrying an address, link or code (Richard's record of 2026-10-16; the details written out for the spec) | 2026-10-16 |
+| OAuth grants and identity | A connection's credential may be an `OAuthGrant` owned by a record (a user or any entity), separate from sign-in and from acting as an OAuth provider; `POST /connections/<name>/start` needs a signed-in caller and keeps the `state` on the server against its session or API token, so `GET /connections/<name>/callback` needs no cookie; `POST /connections/<name>/disconnect`; connecting and disconnecting need the `update` grant on the owner's record; grants in the `jadpo_grants` system table in the owner's store, encrypted with `application { grants: { encryption_key: } }`, rotated as a `SigningKey` is; grants are held encrypted by the runtime and outlive sessions; each call names its owner with `on_behalf_of:`; erasure deletes and revokes them (Richard, area 11) | 2026-10-16 |
+| Sign-in providers as connections | Google, Microsoft and other OpenID Connect providers are `Driver.oidc` connections (`issuer:`, `client_id:`, `credential:`) in `connections:`; GitHub and Apple are `Driver.github` and `Driver.apple`; `sign_in: { magic_link: { ... }  providers: [google, github] }` names them (Richard, area 11; settled for him 2026-10-16) | 2026-10-16 |
 | Listing from a `GET` route (chosen in chunk 4.4c) | `run: sessions.tokens(...)` and `run: <Service>.keys(...)` are the only generated calls a route runs, each on a `GET` and passing one argument, the holder's `id` (a placeholder, `input`'s field or `current_principal.user.id`); the call is `List<IssuedToken>` or `List<IssuedKey>`, so `output:` is exactly that. On another method it is `route.run_kind`, and `issue_token`, `revoke_token`, `issue_key` and `revoke_key` are `route.run_invalid`; with the method undeclared it is `type.auth_sessions_context`, as in an action | 2026-10-16 |
 | `IssuedToken` and `IssuedKey` in an `Output` (chosen in chunk 4.4c) | An `Output` field, and a route's `output:` as a `List`, may be either; on the wire each is an object of `id` (a UUID), `started_at` and `ends_at` (timestamps), never the credential. The API record gives each an `output IssuedToken` section and OpenAPI a schema of its own. They are made only by listing, so an entity can't store one (as any structured stored field, `toolchain.not_built_yet`) | 2026-10-16 |
 | Policy on a listing route (chosen in chunk 4.4c) | A route that lists reaches a `read` of the holder's entity, the same grant `sessions.tokens` needs in an action: no one granted is `policy.effect_ungranted`, and a route anyone may call needs `Access.public` (`policy.public_grant_missing`). The runtime runs it as a one-statement read at repeatable read with the statement the plan limited by those grants, so it lists the tokens or keys of holders the caller may read, and a list for any other holder is `[]` with 200, never a failure. There is nothing to prove for the output: its three fields belong to the credential, whose holder's `read` already decided the list | 2026-10-16 |

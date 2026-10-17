@@ -7,8 +7,9 @@ use crate::syntax_examples as examples;
 
 use jadpo_syntax::{parse_file, parse_snippet};
 
-/// Decided examples that are meant not to parse, or show syntax no page
-/// has decided. Each is (file, a line of the block, why).
+/// Decided examples that are meant not to parse, show syntax no page has
+/// decided, or show syntax decided but not parsed yet (naming the chunk
+/// that adds it). Each is (file, a line of the block, why).
 const EXPECTED_TO_FAIL: &[(&str, &str, &str)] = &[
     (
         "docs/language/02-values-and-types.md",
@@ -34,6 +35,26 @@ const EXPECTED_TO_FAIL: &[(&str, &str, &str)] = &[
         "docs/language/16-built-in-services.md",
         "\"welcome_email.subject\"",
         "the block also shows a JSON translations file",
+    ),
+    (
+        "docs/language/03-logic.md",
+        "each: row -> save_product(row, account: import.account_id),",
+        "an inline function as a named argument (`each:`), decided 2026-10-16 (area 3), parses with batches (chunk 6.4)",
+    ),
+    (
+        "docs/language/12-jobs-and-events.md",
+        "each: row -> save_product(row, account: import.account_id),",
+        "an inline function as a named argument (`each:`), decided 2026-10-16 (area 3), parses with batches (chunk 6.4)",
+    ),
+    (
+        "docs/language/16-built-in-services.md",
+        "free_space_floor: 5%",
+        "`5%` as a percentage literal is carried to area 2 and not decided yet",
+    ),
+    (
+        "docs/language/16-built-in-services.md",
+        "metric checkouts_completed = Counter {",
+        "`metric` declarations, decided 2026-10-16 (area 16), parse once telemetry is built; the block also shows a bare statement",
     ),
 ];
 
