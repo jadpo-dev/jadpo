@@ -57,11 +57,11 @@ pub(crate) fn definition_before_use(text: &str, primary: &str) -> Option<String>
     for &at in &order {
         if let Some(before) = previous {
             // Constants written one after another stay together.
-            let together = at == before + 1
+            let adjacent = at == before + 1
                 && decls[before].kind() == CONSTANT_DECL
                 && decls[at].kind() == CONSTANT_DECL
                 && first_token(&decls[at]).is_some_and(|t| !blank_before(&t));
-            out.push_str(if together { "\n" } else { "\n\n" });
+            out.push_str(if adjacent { "\n" } else { "\n\n" });
         }
         out.push_str(&text[chunks[at].clone()]);
         previous = Some(at);
@@ -132,8 +132,8 @@ fn order(decls: &[SyntaxNode], primary: usize) -> Vec<usize> {
     let mut out = Vec::with_capacity(decls.len());
     while let Some((_, g)) = ready.pop_first() {
         out.extend(groups[g].iter().copied());
-        for other in 0..groups.len() {
-            if waiting[other].remove(&g) && waiting[other].is_empty() {
+        for (other, held) in waiting.iter_mut().enumerate() {
+            if held.remove(&g) && held.is_empty() {
                 ready.insert((key(other), other));
             }
         }
