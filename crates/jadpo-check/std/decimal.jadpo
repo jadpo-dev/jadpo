@@ -1,11 +1,27 @@
-// The `decimal` namespace (area 3, question 7). Each operation is listed in
-// `jadpo-std`'s operation table with the Rust function that runs it.
+// The `decimal` namespace (area 3, question 7; area 19, "Numbers"). Each
+// operation is listed in `jadpo-std`'s operation table with the Rust
+// function that runs it.
 //
 // `/` divides two values of the same named type exactly; these operations
-// divide values of different types, or round another way.
+// divide values of different types, or round another way, and cover what
+// an operator can't. `T` is a value built on `Decimal`: `min` and `max`
+// take two of one type and give one of them, keeping its named type.
+// `scale:` is a whole number written out, from 0 to 18.
 
 public library decimal {
+    /// `value` without its sign, at the same scale.
+    function abs(value: Decimal) -> Decimal {}
+
     /// `dividend` divided by `divisor`, to the dividend's scale, rounded as
     /// `rounding` says. The divisor is never zero.
     function divide(dividend: Number, divisor: Number, rounding: Rounding) -> Decimal {}
+
+    /// The larger of `a` and `b`.
+    function max(a: T, b: T) -> T {}
+
+    /// The smaller of `a` and `b`.
+    function min(a: T, b: T) -> T {}
+
+    /// `value` with at most `scale` places, rounded as `rounding` says.
+    function round(value: Decimal, scale: Int, rounding: Rounding) -> Decimal {}
 }

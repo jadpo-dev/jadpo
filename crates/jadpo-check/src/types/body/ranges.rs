@@ -495,6 +495,81 @@ impl Body<'_> {
         })
     }
 
+    /// `min` and `max` (area 19, "Numbers"): the smaller of two values
+    /// lies between the smaller of their lows and the smaller of their
+    /// highs, and the larger likewise, so `integer.min(wanted, 12)` is
+    /// never above 12.
+    fn chosen(&self, call: &ast::CallExpr, reading: &mut Reading) -> Option<Interval> {
+        let super::facts::Reach::Std(op) = self.facts.reaches.get(&node_key(call.syntax()))? else {
+            return None;
+        };
+        let smaller = match op {
+            Op::IntegerMin | Op::DecimalMin => true,
+            Op::IntegerMax | Op::DecimalMax => false,
+            _ => return None,
+        };
+        let args: Vec<ast::Arg> = call.arg_list()?.args().collect();
+        let find = |name: &str, position: usize| {
+            let named = args.iter().find(|arg| {
+                arg.name()
+                    .and_then(|n| n.ident_token())
+                    .is_some_and(|t| t.text() == name)
+            });
+            let positional = args.get(position).filter(|arg| arg.name().is_none());
+            named.or(positional).and_then(ast::Arg::expr)
+        };
+        let a = self.interval(&find("a", 0)?, reading);
+        let b = self.interval(&find("b", 1)?, reading);
+        let pick = |x: End, y: End| {
+            if (x.cmp(y) == Ordering::Less) == smaller {
+                x
+            } else {
+                y
+            }
+        };
+        Some(Interval {
+            low: pick(a.low, b.low),
+            high: pick(a.high, b.high),
+        })
+    }
+
+    /// `integer.from_decimal` and `decimal.round` (area 19, "Numbers"):
+    /// rounding never crosses zero, whichever way it goes, so a value never
+    /// below zero rounds to one never below zero, and one never above zero
+    /// to one never above it; anything finer needs a check.
+    fn rounded(&self, call: &ast::CallExpr, reading: &mut Reading) -> Option<Interval> {
+        let super::facts::Reach::Std(Op::IntegerFromDecimal | Op::DecimalRound) =
+            self.facts.reaches.get(&node_key(call.syntax()))?
+        else {
+            return None;
+        };
+        let value = call
+            .arg_list()?
+            .args()
+            .find(|arg| {
+                arg.name().is_none()
+                    || arg
+                        .name()
+                        .and_then(|n| n.ident_token())
+                        .is_some_and(|t| t.text() == "value")
+            })?
+            .expr()?;
+        let interval = self.interval(&value, reading);
+        let zero = End::At(Num::whole(0));
+        Some(Interval {
+            low: if interval.low.cmp(zero).is_ge() {
+                zero
+            } else {
+                End::Below
+            },
+            high: if interval.high.cmp(zero).is_le() {
+                zero
+            } else {
+                End::Above
+            },
+        })
+    }
+
     fn floor(&self, call: &ast::CallExpr) -> Option<i64> {
         match self.facts.reaches.get(&node_key(call.syntax()))? {
             super::facts::Reach::Std(op) => op.operation().at_least,
@@ -686,6 +761,8 @@ impl Body<'_> {
                 high: End::Above,
             },
             Expr::CallExpr(call) if let Some(summed) = self.summed(call) => summed,
+            Expr::CallExpr(call) if let Some(chosen) = self.chosen(call, reading) => chosen,
+            Expr::CallExpr(call) if let Some(rounded) = self.rounded(call, reading) => rounded,
             // `integer.divide` and `decimal.divide` are bounded as `/` is,
             // whichever way they round: rounding away from zero never
             // passes the dividend while the divisor is at least 1.

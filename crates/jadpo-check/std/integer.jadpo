@@ -1,11 +1,27 @@
-// The `integer` namespace (area 3, question 7). Each operation is listed in
-// `jadpo-std`'s operation table with the Rust function that runs it.
+// The `integer` namespace (area 3, question 7; area 19, "Numbers"). Each
+// operation is listed in `jadpo-std`'s operation table with the Rust
+// function that runs it.
 //
 // `/` divides two values of the same named type and drops the remainder;
-// these operations divide values of different types, or round another way.
+// these operations divide values of different types, or round another
+// way, and cover what an operator can't. `T` is a value built on `Int`:
+// `min` and `max` take two of one type and give one of them, keeping its
+// named type.
 
 public library integer {
+    /// `value` without its sign, never below 0.
+    function abs(value: Int) -> Int {}
+
     /// `dividend` divided by `divisor`, rounded as `rounding` says. The
     /// divisor is never zero.
     function divide(dividend: Int, divisor: Int, rounding: Rounding) -> Int {}
+
+    /// `value` rounded to a whole number as `rounding` says.
+    function from_decimal(value: Decimal, rounding: Rounding) -> Int {}
+
+    /// The larger of `a` and `b`.
+    function max(a: T, b: T) -> T {}
+
+    /// The smaller of `a` and `b`.
+    function min(a: T, b: T) -> T {}
 }

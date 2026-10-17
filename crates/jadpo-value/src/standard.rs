@@ -4,7 +4,9 @@
 //! (`jadpo_std::standard`), so a type added later is an entry, not a new
 //! code path. `text.from` and `text.parse` also take the representations
 //! JSON carries as text (area 19, "Text"): an `Int`'s digits, a `Decimal`
-//! with its places, `true` or `false`, and, for `text.parse`, text itself.
+//! with its places, `true` or `false`, and, for `text.parse`, text itself;
+//! `text.format` shows an `Int` or a `Decimal` in the locale's digits and
+//! separators (area 19, "Numbers").
 
 use jadpo_std::RuleKey;
 use jadpo_std::standard::{FormatKey, Holds, StandardType, TextForm, standard_type};
@@ -219,6 +221,9 @@ pub fn format(
         (Some(entry), value) => shown(entry, value, tag, zone, format_spec)?,
         // `Email`, `Url` and `IpAddress` are shown as they are written.
         (None, Value::Text(text)) => text.to_string(),
+        // A number in the locale's digits and separators (area 19,
+        // "Numbers").
+        (None, Value::Int(_) | Value::Decimal(_)) => present::number(value, tag)?,
         _ => return Err(Fault::Shape),
     };
     Ok(Value::text(&text))

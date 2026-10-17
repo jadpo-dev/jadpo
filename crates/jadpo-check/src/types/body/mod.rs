@@ -26,6 +26,7 @@ mod identity;
 mod known;
 mod lower;
 mod matching;
+mod numbers;
 mod ops;
 mod outcome;
 mod ranges;

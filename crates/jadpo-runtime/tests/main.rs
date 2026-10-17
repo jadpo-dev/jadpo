@@ -3,4 +3,5 @@
 //! --test integration <module>::` runs one.
 
 mod lists;
+mod numbers;
 mod standard_types;

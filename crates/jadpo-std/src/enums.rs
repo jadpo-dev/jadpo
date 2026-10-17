@@ -38,8 +38,8 @@ macro_rules! std_enum {
 }
 
 std_enum! {
-    /// How a division that doesn't come out exact is rounded (area 3,
-    /// question 7).
+    /// How a division or a rounding that doesn't come out exact is rounded
+    /// (area 3, question 7; area 19, "Numbers").
     Rounding: "Rounding" {
         /// To the nearest; a tie goes to the even neighbour.
         HalfEven: "half_even",
@@ -47,6 +47,9 @@ std_enum! {
         HalfUp: "half_up",
         /// Away from zero.
         Up: "up",
+        /// Toward zero: the dropped digits are dropped (area 19, question
+        /// 25).
+        Down: "down",
     }
 }
 
@@ -516,7 +519,8 @@ mod tests {
             Some(7)
         );
         assert_eq!(UuidVersion::NAMES.len(), 8);
-        assert_eq!(Rounding::from_name("down"), None);
+        assert_eq!(Rounding::from_name("down"), Some(Rounding::Down));
+        assert_eq!(Rounding::from_name("floor"), None);
         let all = enums();
         let zone = all.iter().find(|(name, _)| *name == ZONE).expect("Zone");
         assert!(zone.1.contains(&"europe_london") && zone.1.contains(&"utc"));

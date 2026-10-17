@@ -96,6 +96,11 @@ pub struct Param {
     /// `zero` is `0` of its items' representation, so an empty list sums
     /// to the `Int` or the `Decimal` its type says.
     pub implicit: bool,
+    /// A whole number written out at the call, never a value (area 19,
+    /// "Numbers"): `decimal.round`'s `scale:`, from 0 to 18 places as a
+    /// type's `scale` is, so the places a result keeps are read while
+    /// compiling.
+    pub written_out: bool,
 }
 
 /// A condition an operation fails on unless an option settles it (area
@@ -112,8 +117,16 @@ pub struct Condition {
 /// Which operation, for an exhaustive match in each executor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Op {
+    DecimalAbs,
     DecimalDivide,
+    DecimalMax,
+    DecimalMin,
+    DecimalRound,
+    IntegerAbs,
     IntegerDivide,
+    IntegerFromDecimal,
+    IntegerMax,
+    IntegerMin,
     ListAll,
     ListAny,
     ListAppend,
@@ -206,6 +219,7 @@ const fn param(name: &'static str, kind: Kind) -> Param {
         never_negative: false,
         ordered: false,
         implicit: false,
+        written_out: false,
     }
 }
 
@@ -276,6 +290,12 @@ const fn option_needed_for(name: &'static str, kind: Kind, builtin: Builtin) -> 
 }
 
 const ROUNDING: Kind = Kind::Enum(Rounding::NAME);
+
+/// `scale:`, the places a rounding keeps, written out.
+const SCALE: Param = Param {
+    written_out: true,
+    ..param("scale", INT)
+};
 
 /// What `temporal`'s calendar operations work on: a date, or a local time
 /// in its zone.
@@ -348,6 +368,36 @@ const DIVIDE: Operation = Operation {
 
 const ITEMS: Param = param("items", Kind::List);
 
+/// A value built on `Int`, and one built on `Decimal`.
+const WHOLE: Kind = Kind::Builtin(Builtin::Int);
+const DECIMAL: Kind = Kind::Builtin(Builtin::Decimal);
+/// Two values of one type built on `Int` or on `Decimal`, and the result
+/// that is one of them, keeping their named type (area 19, "Numbers").
+const SAME_WHOLE: Kind = Kind::OneOf(&[Builtin::Int]);
+const SAME_DECIMAL: Kind = Kind::OneOf(&[Builtin::Decimal]);
+
+/// A number operation that never fails (area 19, "Numbers"), by its
+/// namespace, parameters and result.
+const fn number(
+    op: Op,
+    namespace: &'static str,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace,
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: &[],
+        rust,
+    }
+}
+
 /// A `list` operation that never fails (area 19, "Lists"), by its
 /// parameters and result.
 const fn list(
@@ -371,7 +421,58 @@ const fn list(
 
 /// Every operation, sorted by namespace and name.
 pub const OPERATIONS: &[Operation] = &[
+    // The number operations (area 19, "Numbers"), each one function in
+    // `jadpo-value`'s `integer` or `decimal` module. `min` and `max` give
+    // one of their two values as it is, so they keep its named type; `abs`
+    // and the roundings give a representation, never below 0 for `abs`.
+    Operation {
+        at_least: Some(0),
+        ..number(
+            Op::DecimalAbs,
+            "decimal",
+            "abs",
+            &[param("value", DECIMAL)],
+            DECIMAL,
+            "decimal::abs",
+        )
+    },
     DIVIDE,
+    number(
+        Op::DecimalMax,
+        "decimal",
+        "max",
+        &[param("a", SAME_DECIMAL), param("b", SAME_DECIMAL)],
+        SAME_DECIMAL,
+        "decimal::max",
+    ),
+    number(
+        Op::DecimalMin,
+        "decimal",
+        "min",
+        &[param("a", SAME_DECIMAL), param("b", SAME_DECIMAL)],
+        SAME_DECIMAL,
+        "decimal::min",
+    ),
+    number(
+        Op::DecimalRound,
+        "decimal",
+        "round",
+        &[param("value", DECIMAL), SCALE, param("rounding", ROUNDING)],
+        DECIMAL,
+        "decimal::round",
+    ),
+    // Overflow on the smallest `Int` is a defect, as it is for `-`.
+    Operation {
+        at_least: Some(0),
+        ..number(
+            Op::IntegerAbs,
+            "integer",
+            "abs",
+            &[param("value", WHOLE)],
+            WHOLE,
+            "integer::abs",
+        )
+    },
     Operation {
         op: Op::IntegerDivide,
         namespace: "integer",
@@ -386,6 +487,31 @@ pub const OPERATIONS: &[Operation] = &[
         conditions: &[],
         rust: "integer::divide",
     },
+    // A whole number past an `Int` is a defect.
+    number(
+        Op::IntegerFromDecimal,
+        "integer",
+        "from_decimal",
+        &[param("value", DECIMAL), param("rounding", ROUNDING)],
+        WHOLE,
+        "integer::from_decimal",
+    ),
+    number(
+        Op::IntegerMax,
+        "integer",
+        "max",
+        &[param("a", SAME_WHOLE), param("b", SAME_WHOLE)],
+        SAME_WHOLE,
+        "integer::max",
+    ),
+    number(
+        Op::IntegerMin,
+        "integer",
+        "min",
+        &[param("a", SAME_WHOLE), param("b", SAME_WHOLE)],
+        SAME_WHOLE,
+        "integer::min",
+    ),
     // The list operations (area 19, "Lists"), each one function in
     // `jadpo-value`'s `list` module. Those whose result is `T`, `T?` or
     // `List<T>` give items of the list unchanged, so they keep the items'
@@ -913,6 +1039,10 @@ mod tests {
                 assert!(
                     !param.ordered || param.kind == Kind::Function,
                     "a key is inline"
+                );
+                assert!(
+                    !param.written_out || param.kind == INT,
+                    "a scale is a whole number"
                 );
             }
         }
