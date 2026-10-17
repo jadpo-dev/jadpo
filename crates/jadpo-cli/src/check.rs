@@ -83,8 +83,7 @@ pub fn check(call: &Call) -> Reply {
     if layout == Layout::Project && loaded.unreadable.is_empty() {
         let errors = diagnostics.len();
         let graph = jadpo_check::graph::graph(db, loaded.project);
-        let openapi =
-            jadpo_check::routes::openapi::documents(db, loaded.project, &title(&loaded.root));
+        let openapi = derived::openapi(db, loaded.project, &title(&loaded.root));
         let permissions = jadpo_check::policy::policy_clean(db, loaded.project)
             .then(|| jadpo_check::policy::report::report(db, loaded.project));
         match derived::write(&loaded.root, graph, errors, &openapi, permissions.as_ref()) {

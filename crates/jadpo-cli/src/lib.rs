@@ -10,6 +10,7 @@ pub mod config;
 mod declines;
 mod derived;
 pub mod dev;
+mod failure_text;
 mod fmt;
 mod help;
 mod local;

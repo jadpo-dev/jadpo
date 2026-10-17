@@ -24,6 +24,22 @@ use crate::lookups::Name;
 pub struct Analysis {
     pub problems: Vec<Diagnostic>,
     pub entries: Vec<TranslationEntry>,
+    /// The wording of each failure, in each supported locale that gave it
+    /// cleanly, for the export client apps read.
+    pub failures: Vec<FailureWords>,
+}
+
+/// One failure's text for client apps.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FailureWords {
+    /// The failure's name.
+    pub name: String,
+    /// Its code, which keys the wording.
+    pub code: String,
+    /// The placeholders a client formats, and how, by name.
+    pub formats: Vec<(String, jadpo_std::translation::ClientFormat)>,
+    /// The wording in each locale (its place among `Locale`'s variants).
+    pub wordings: Vec<(u32, Template)>,
 }
 
 /// One scope's language files checked against its subjects.
@@ -43,10 +59,13 @@ pub fn analyse<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Anal
     let Some(plan) = &declared.plan else {
         return out;
     };
+    let reachable = super::failures::reachable_names(db, project);
     let mut ctx = Ctx {
         subjects,
         plan,
         declared,
+        reachable,
+        scope: &scope_name,
         found: BTreeMap::new(),
         problems: Vec::new(),
     };
@@ -58,6 +77,23 @@ pub fn analyse<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Anal
     for subject in &subjects.list {
         let wordings = ctx.found.remove(&subject.key).unwrap_or_default();
         let worded = !wordings.is_empty();
+        if subject.kind == Kind::Failure {
+            if !subject.broken && worded {
+                out.failures.push(FailureWords {
+                    name: subject.type_name.clone(),
+                    code: subject.key.clone(),
+                    formats: subject.formats.clone(),
+                    wordings: wordings
+                        .into_iter()
+                        .filter_map(|(locale, wording)| match wording {
+                            Wording::Plain(template) => Some((locale, template)),
+                            _ => None,
+                        })
+                        .collect(),
+                });
+            }
+            continue;
+        }
         if subject.broken || (subject.kind != Kind::Message && !worded) {
             continue;
         }
@@ -74,6 +110,10 @@ struct Ctx<'a> {
     subjects: &'a Subjects,
     plan: &'a LocalePlan,
     declared: &'a Locales,
+    /// The failures a route can answer with.
+    reachable: &'a std::collections::BTreeSet<String>,
+    /// The scope being checked: `shared` or a domain.
+    scope: &'a str,
     /// The wording each subject got, complete and clean, in each locale.
     found: BTreeMap<String, Vec<(u32, Wording)>>,
     problems: Vec<Diagnostic>,
@@ -83,6 +123,15 @@ fn variant_name(ordinal: u32) -> &'static str {
     LOCALES
         .get(ordinal as usize)
         .map_or("", |(variant, _)| *variant)
+}
+
+/// What a wording's placeholders are called in an error.
+fn field_word(subject: &Subject) -> &'static str {
+    if subject.kind == Kind::Failure {
+        "client field"
+    } else {
+        "field"
+    }
 }
 
 fn braces(names: &[String]) -> String {
@@ -143,17 +192,17 @@ impl Ctx<'_> {
         let near = nearest(&member.name, keys.iter().copied());
         let reason = match near {
             Some(near) => format!(
-                "A member of `translations {{ }}` words one message or email subject of this folder's scope, or one of its enums, by its name in lower_snake_case (`NoticeText` is `notice_text`). `{}` is none of them. Did you mean `{near}`?",
+                "A member of `translations {{ }}` words one message or email subject of this folder's scope, or one of its enums, by its name in lower_snake_case (`NoticeText` is `notice_text`), or one of its failures by its code. `{}` is none of them. Did you mean `{near}`?",
                 member.name
             ),
             None if keys.is_empty() => format!(
-                "A member of `translations {{ }}` words a message, an enum or an email of this folder's scope, by its name in lower_snake_case. This scope declares none, so `{}` words nothing.",
+                "A member of `translations {{ }}` words a message, an enum or an email of this folder's scope, by its name in lower_snake_case, or a failure by its code. This scope declares none, so `{}` words nothing.",
                 member.name
             ),
             None => {
                 let listed: Vec<String> = keys.iter().map(|key| format!("`{key}`")).collect();
                 format!(
-                    "A member of `translations {{ }}` words one message, enum or email of this folder's scope, by its name in lower_snake_case. `{}` is none of them; the scope has {}.",
+                    "A member of `translations {{ }}` words one message, enum or email of this folder's scope, by its name in lower_snake_case, or a failure by its code. `{}` is none of them; the scope has {}.",
                     member.name,
                     crate::and_list(&listed)
                 )
@@ -535,13 +584,16 @@ impl Ctx<'_> {
                 )
             } else if names.is_empty() {
                 format!(
-                    "`{}` has no field `{}` a wording can write.",
-                    subject.type_name, field.name
+                    "`{}` has no {} `{}` a wording can write.",
+                    subject.type_name,
+                    field_word(subject),
+                    field.name
                 )
             } else {
                 format!(
-                    "`{}` has no field `{}` a wording can write; this wording may write {}.{}",
+                    "`{}` has no {} `{}` a wording can write; this wording may write {}.{}",
                     subject.type_name,
+                    field_word(subject),
                     field.name,
                     braces(&names),
                     near.map_or_else(String::new, |near| format!(" Did you mean `{{{near}}}`?"))
@@ -561,8 +613,13 @@ impl Ctx<'_> {
                     .next(format!("Write `{{{near}}}` instead"))
                     .edit(written.range(field.start, field.end), format!("{{{near}}}")),
                 None => problem.next(format!(
-                    "Remove `{{{}}}`, or add the field to `{}`",
-                    field.name, subject.type_name
+                    "Remove `{{{}}}`, or add the field to {}",
+                    field.name,
+                    if subject.kind == Kind::Failure {
+                        format!("`{}`'s `client:` block", subject.type_name)
+                    } else {
+                        format!("`{}`", subject.type_name)
+                    }
                 )),
             });
         }
@@ -607,6 +664,7 @@ impl Ctx<'_> {
             .filter(|subject| match subject.kind {
                 Kind::Message => true,
                 Kind::Enum => files.iter().any(|file| file.member(&subject.key).is_some()),
+                Kind::Failure => self.reachable.contains(&subject.type_name),
                 Kind::Email => false,
             })
             .collect();
@@ -639,12 +697,11 @@ impl Ctx<'_> {
             .find(|(seen, _)| *seen == locale)
             .map(|(_, at)| at.clone())
             .or_else(|| self.declared.keyword.clone());
-        let first = required.first();
-        let folder = first.map_or_else(String::new, |subject| {
-            let path = &subject.symbol.path;
-            let folder = path.rsplit_once('/').map_or("", |(folder, _)| folder);
-            format!("{folder}/{tag}.jadpo")
-        });
+        let folder = if self.scope == super::declared::SHARED {
+            format!("shared/translations/{tag}.jadpo")
+        } else {
+            format!("domains/{}/translations/{tag}.jadpo", self.scope)
+        };
         let names: Vec<String> = required
             .iter()
             .map(|subject| format!("`{}`", subject.key))
@@ -683,10 +740,15 @@ fn missing(file: &LanguageFile, subject: &Subject, locale: u32) -> Diagnostic {
     )
     .at(file.keyword.clone(), format!("no `{}`", subject.key))
     .also(subject.name_span.clone(), format!("`{}` declared here", subject.type_name))
-    .reason(format!(
-        "A {} is worded in every supported locale that isn't in progress, so a call with `locale: Locale.{tag}` has words to show.",
-        subject.kind.word()
-    ))
+    .reason(match subject.kind {
+        Kind::Failure => format!(
+            "A failure a route can answer with is worded in every supported locale that isn't in progress, so a client app showing `Locale.{tag}` has text for its code."
+        ),
+        _ => format!(
+            "A {} is worded in every supported locale that isn't in progress, so a call with `locale: Locale.{tag}` has words to show.",
+            subject.kind.word()
+        ),
+    })
     .next(format!(
         "Add {} to `{}`{}",
         needs(subject, locale),

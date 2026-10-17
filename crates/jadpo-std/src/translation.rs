@@ -42,6 +42,39 @@ impl ParamKind {
     }
 }
 
+/// How a client app formats a failure's client field before it fills the
+/// field's placeholder (area 10, "Failures for client apps"): the field's
+/// type decides it, and the export says it for the placeholders that need
+/// one. A text field needs none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ClientFormat {
+    /// An `Int`.
+    Number,
+    /// A `Decimal`.
+    Decimal,
+    /// A `CalendarDate`.
+    Date,
+    /// An `Instant`, shown in the reader's own zone by the client, or a
+    /// `ZonedTime`, in the zone it carries.
+    DateTime,
+    /// A `Duration`.
+    Duration,
+}
+
+impl ClientFormat {
+    /// The word the export writes: `number`, `decimal`, `date`,
+    /// `date_time` or `duration`.
+    pub fn word(self) -> &'static str {
+        match self {
+            ClientFormat::Number => "number",
+            ClientFormat::Decimal => "decimal",
+            ClientFormat::Date => "date",
+            ClientFormat::DateTime => "date_time",
+            ClientFormat::Duration => "duration",
+        }
+    }
+}
+
 /// One of CLDR's plural categories.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PluralCategory {
@@ -122,6 +155,32 @@ pub struct Template {
 }
 
 impl Template {
+    /// The wording as it is written in a language file: `{field}` for a
+    /// field and a doubled brace for a literal one. The export for client
+    /// apps carries it, so a client reads the same syntax.
+    pub fn written(&self) -> String {
+        let mut out = String::new();
+        for piece in &self.pieces {
+            match piece {
+                Piece::Text(text) => {
+                    for c in text.chars() {
+                        match c {
+                            '{' => out.push_str("{{"),
+                            '}' => out.push_str("}}"),
+                            other => out.push(other),
+                        }
+                    }
+                }
+                Piece::Field(name) => {
+                    out.push('{');
+                    out.push_str(name);
+                    out.push('}');
+                }
+            }
+        }
+        out
+    }
+
     /// The fields the wording writes, in order, repeats included.
     pub fn fields(&self) -> impl Iterator<Item = &str> {
         self.pieces.iter().filter_map(|piece| match piece {

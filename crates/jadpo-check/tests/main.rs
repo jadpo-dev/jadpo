@@ -40,5 +40,6 @@ mod signed;
 mod soundness;
 mod stores;
 mod time;
+mod translation_failures;
 mod translations;
 mod types;
