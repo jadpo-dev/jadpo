@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use jadpo_std::http::{Codec, CodecId, VariantCodec};
 use jadpo_std::types::{FieldPlan, ShapeId, ShapePlan, ValidatorId};
-use jadpo_std::{Builtin, Constant, Num, Op, Rules, RuleKey};
+use jadpo_std::{Builtin, Constant, Num, Op, RuleKey, Rules};
 use jadpo_value::json::{Codecs, Problem, Unread};
 use jadpo_value::shape::Shape;
 use jadpo_value::{Fault, Validator, Value, run};
@@ -133,8 +133,8 @@ fn table() -> Table {
     let v_duration = validator(Builtin::Duration, Rules::default());
     let v_zoned = validator(Builtin::ZonedTime, Rules::default());
     let v_collection = validator(Builtin::Text, Rules::default());
-    let field = |owner: &str, name: &str, validator: ValidatorId, absent: Option<Constant>| {
-        FieldPlan {
+    let field =
+        |owner: &str, name: &str, validator: ValidatorId, absent: Option<Constant>| FieldPlan {
             key: format!("field {owner}.{name}"),
             name: name.to_string(),
             validator,
@@ -142,8 +142,7 @@ fn table() -> Table {
             absent,
             none_left_out: false,
             section: None,
-        }
-    };
+        };
     let delivery = ShapePlan {
         ty: "Delivery".to_string(),
         variant: None,
@@ -239,7 +238,12 @@ fn table() -> Table {
 }
 
 fn hex(value: &Value) -> String {
-    match run(Op::EncodingToHex, std::slice::from_ref(value), None, &mut |_| None) {
+    match run(
+        Op::EncodingToHex,
+        std::slice::from_ref(value),
+        None,
+        &mut |_| None,
+    ) {
         Ok(Value::Text(text)) => text.to_string(),
         other => format!("{other:?}"),
     }
@@ -312,7 +316,10 @@ pub fn mismatches() -> (Vec<String>, usize) {
         );
         expect(
             format!("from_hex({hexadecimal:?})"),
-            shown(call(Op::EncodingFromHex, Value::text(&hexadecimal.to_uppercase()))),
+            shown(call(
+                Op::EncodingFromHex,
+                Value::text(&hexadecimal.to_uppercase()),
+            )),
             &back,
         );
     }

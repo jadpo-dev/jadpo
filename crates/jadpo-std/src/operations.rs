@@ -1611,9 +1611,7 @@ mod tests {
                         .any(|param| param.name == option && param.optional),
                     // What text or bytes decode to is known only when the
                     // program runs, so only an `attempt` settles it.
-                    None if matches!(condition.key, RuleKey::Malformed | RuleKey::Mismatch) => {
-                        true
-                    }
+                    None if matches!(condition.key, RuleKey::Malformed | RuleKey::Mismatch) => true,
                     None => operation.params.iter().any(|param| param.above_zero),
                 };
                 assert!(

@@ -173,7 +173,9 @@ mod tests {
 
     #[test]
     fn base64_reads_only_the_text_it_writes() {
-        for refused in ["Zg", "Zg=", "Zg===", "Zh==", "Z g==", "Zm9v\n", "-_8=", "=Zg="] {
+        for refused in [
+            "Zg", "Zg=", "Zg===", "Zh==", "Z g==", "Zm9v\n", "-_8=", "=Zg=",
+        ] {
             assert_eq!(from_base64(refused), None, "{refused:?}");
         }
         for refused in ["Zg==", "Zh", "Z", "+/8", "Zm9vY"] {
@@ -210,7 +212,10 @@ mod tests {
             to_url_component("a b&c=d/e?f#g+h"),
             "a%20b%26c%3Dd%2Fe%3Ff%23g%2Bh"
         );
-        assert_eq!(to_url_component("crème brûlée"), "cr%C3%A8me%20br%C3%BBl%C3%A9e");
+        assert_eq!(
+            to_url_component("crème brûlée"),
+            "cr%C3%A8me%20br%C3%BBl%C3%A9e"
+        );
         assert_eq!(to_url_component("🍞"), "%F0%9F%8D%9E");
     }
 }

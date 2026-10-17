@@ -95,7 +95,10 @@ fn condition_clause(keys: &[String]) -> String {
 /// options, or a value proved above `0`; nothing settles what decoding
 /// gives (area 19, "Encodings" and "Data formats").
 fn settle_by(keys: &[String]) -> String {
-    if keys.iter().any(|key| key == "malformed" || key == "mismatch") {
+    if keys
+        .iter()
+        .any(|key| key == "malformed" || key == "mismatch")
+    {
         String::new()
     } else if keys.iter().any(|key| key == "out_of_range") {
         ", or pass a value whose type has a `min` above `0`".to_string()

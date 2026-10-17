@@ -275,7 +275,9 @@ pub fn run(
         (Op::TextParse, [Value::Text(raw), Value::Text(ty)]) => standard::parse(raw, ty),
         (Op::TextFormat | Op::TextFrom | Op::TextParse, _) => Err(Fault::Shape),
         // The encodings (area 19, "Encodings"): decoding fails `malformed`.
-        (Op::EncodingToBase64, [Value::Bytes(bytes)]) => Ok(Value::text(&encoding::to_base64(bytes))),
+        (Op::EncodingToBase64, [Value::Bytes(bytes)]) => {
+            Ok(Value::text(&encoding::to_base64(bytes)))
+        }
         (Op::EncodingToBase64url, [Value::Bytes(bytes)]) => {
             Ok(Value::text(&encoding::to_base64url(bytes)))
         }

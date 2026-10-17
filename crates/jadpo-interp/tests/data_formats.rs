@@ -51,7 +51,11 @@ fn every_encoding_round_trips_and_decoding_fails_malformed() {
         ("from_base64url", "-_8", &[0xfb, 0xff][..]),
         ("from_hex", "FBff", &[0xfb, 0xff][..]),
     ] {
-        assert_eq!(value(&program, name, vec![text(good)]), bytes(wanted), "{name}");
+        assert_eq!(
+            value(&program, name, vec![text(good)]),
+            bytes(wanted),
+            "{name}"
+        );
     }
     for (name, bad) in [
         ("from_base64", "Zm9"),
@@ -65,10 +69,7 @@ fn every_encoding_round_trips_and_decoding_fails_malformed() {
             "{name}({bad:?})"
         );
     }
-    assert_eq!(
-        value(&program, "utf8", vec![text("crème")]),
-        text("crème")
-    );
+    assert_eq!(value(&program, "utf8", vec![text("crème")]), text("crème"));
     assert_eq!(
         failure(&program, "from_utf8", vec![bytes(&[0x63, 0xff])]).name,
         "Unreadable",

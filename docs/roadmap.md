@@ -625,7 +625,7 @@ reference only).
   `at_most_length_of`; `text` reserved and the clashing page examples and
   crate snippets renamed. Done when each operation's example passes,
   including the Unicode edge cases, and `text` can't name a variable.
-- [ ] **5.5g Hashing, encodings and JSON** `opus · high` (area 19,
+- [x] **5.5g Hashing, encodings and JSON** `opus · high` (area 19,
   "Hashing and cryptography", "Encodings" and "Data formats", questions
   14 and 24): `hash.sha256`, the 9 `encoding` operations, `json.read` and
   `json.write` in memory with `mismatch`'s problem path. The batch forms
@@ -633,7 +633,9 @@ reference only).
   each operation's example passes and `json.write` gives the same text
   for the same value on every target. Split on 2026-10-17 because the
   whole is more than one session: the `DecodeProblem` a failure mapped
-  from `mismatch` receives is 5.5g2.
+  from `mismatch` receives is 5.5g2. The wire's `Bytes` is now read as
+  `encoding.from_base64` reads it, padded only; what the pages left open
+  is area 19's "Chosen in chunk 5.5g".
 - [ ] **5.5g2 The decode problem on a failure** `opus · high` (area 19,
   "Data formats", `json`; split from 5.5g): the built-in `DecodeProblem`
   (the first bad field's path, list positions as numbers, and the rule,

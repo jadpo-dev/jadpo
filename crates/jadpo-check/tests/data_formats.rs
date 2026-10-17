@@ -37,11 +37,15 @@ fn every_operation_checks() {
 #[test]
 fn decoding_can_fail_and_its_attempt_maps_it() {
     assert_eq!(
-        check("function f(note: Note) -> Digest {\n    return Digest(encoding.from_hex(note))\n}\n"),
+        check(
+            "function f(note: Note) -> Digest {\n    return Digest(encoding.from_hex(note))\n}\n"
+        ),
         ["failure.attempt_required"]
     );
     assert_eq!(
-        check("function f(note: Note) -> OrderImport {\n    return json.read(note, as: OrderImport)\n}\n"),
+        check(
+            "function f(note: Note) -> OrderImport {\n    return json.read(note, as: OrderImport)\n}\n"
+        ),
         ["failure.attempt_required"]
     );
     // Each condition needs an arm, or `invalid:` for the rest.
@@ -58,7 +62,9 @@ fn decoding_can_fail_and_its_attempt_maps_it() {
         ),
         ["failure.attempt_infallible"]
     );
-    let headline = shown("function f(note: Note) -> Digest {\n    return Digest(encoding.from_base64(note))\n}\n");
+    let headline = shown(
+        "function f(note: Note) -> Digest {\n    return Digest(encoding.from_base64(note))\n}\n",
+    );
     assert_eq!(headline.len(), 1, "{headline:?}");
     assert!(headline[0].contains("can fail at runtime"), "{headline:?}");
 }
@@ -66,7 +72,9 @@ fn decoding_can_fail_and_its_attempt_maps_it() {
 #[test]
 fn a_digest_is_bytes_of_bytes_or_text() {
     assert_eq!(
-        check("function f(quantity: Quantity) -> Digest {\n    return Digest(hash.sha256(quantity))\n}\n"),
+        check(
+            "function f(quantity: Quantity) -> Digest {\n    return Digest(hash.sha256(quantity))\n}\n"
+        ),
         ["type.mismatch"]
     );
     assert_eq!(
@@ -74,12 +82,16 @@ fn a_digest_is_bytes_of_bytes_or_text() {
         ["type.mismatch"]
     );
     assert_eq!(
-        check("function f(body: Body) -> Encoded {\n    return Encoded(encoding.to_hex(body))\n}\n"),
+        check(
+            "function f(body: Body) -> Encoded {\n    return Encoded(encoding.to_hex(body))\n}\n"
+        ),
         NONE,
         "a type built on `Bytes` is bytes"
     );
     assert_eq!(
-        check("function f(note: Note) -> Encoded {\n    return Encoded(encoding.to_hex(note))\n}\n"),
+        check(
+            "function f(note: Note) -> Encoded {\n    return Encoded(encoding.to_hex(note))\n}\n"
+        ),
         ["type.mismatch"]
     );
 }
@@ -99,7 +111,11 @@ fn json_read_takes_a_type_written_out_that_has_a_json_form() {
         let found = check(&format!(
             "function f(note: Note) fails Invalid -> Note {{\n    return attempt json.read(note, as: {refused}) {{\n        invalid: Invalid\n    }}\n}}\n"
         ));
-        assert_eq!(found.first().map(String::as_str), Some("type.mismatch"), "{what}");
+        assert_eq!(
+            found.first().map(String::as_str),
+            Some("type.mismatch"),
+            "{what}"
+        );
         assert!(
             !found.iter().any(|rule| rule.starts_with("failure.")),
             "{what}: {found:?}"
@@ -139,7 +155,9 @@ fn json_write_takes_a_value_an_output_may_hold() {
         1
     );
     assert_eq!(
-        check("function f(quantity: Quantity) -> Encoded {\n    return Encoded(json.write([quantity]))\n}\n"),
+        check(
+            "function f(quantity: Quantity) -> Encoded {\n    return Encoded(json.write([quantity]))\n}\n"
+        ),
         NONE
     );
 }
