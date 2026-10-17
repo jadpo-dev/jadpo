@@ -7,8 +7,9 @@
 // canonical order (area 2), and is walked through them:
 // `for key in map.keys(entries)`. `[]` written where a map is expected is
 // an empty map. Values never change, so every operation that gives a map
-// gives a new one. `filter` and `map_values` come with two-parameter
-// inline functions (chunk 5.5c2).
+// gives a new one. `filter` and `map_values` take a two-parameter inline
+// function, `(key, value) -> expression`, given each entry in the
+// canonical order of its key (chunk 5.5c2).
 
 public library map {
     /// How many entries `entries` holds.
@@ -34,4 +35,10 @@ public library map {
 
     /// Both maps' entries; `second`'s value wins where both have a key.
     function merge(first: Map<K, V>, second: Map<K, V>) -> Map<K, V> {}
+
+    /// The entries `keep` accepts, given each key and its value.
+    function filter(entries: Map<K, V>, keep: Function<K, V, Bool>) -> Map<K, V> {}
+
+    /// Each key with the value `each` gives for it and its value.
+    function map_values(entries: Map<K, V>, each: Function<K, V, U>) -> Map<K, U> {}
 }

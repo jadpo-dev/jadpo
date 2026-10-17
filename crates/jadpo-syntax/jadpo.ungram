@@ -384,9 +384,10 @@ PropagateExpr =
   'propagate'
 
 // `todo -> todo.title`, only as an argument to a standard-library
-// collection operation (area 3).
+// collection operation (area 3); `(key, value) -> ...` with two
+// parameters, only for a standard operation that takes two (area 19).
 LambdaExpr =
-  Name '->' Expr
+  '('? Name (',' Name)* ')'? '->' Expr
 
 // `prefix: /todos/{project_id: Project.id}` (area 7).
 RoutePathExpr =

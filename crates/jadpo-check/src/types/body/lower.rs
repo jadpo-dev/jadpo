@@ -629,9 +629,12 @@ impl Lower<'_> {
                     .and_then(|failure| self.type_key(failure)),
             },
             Expr::LambdaExpr(lambda) => {
-                let param = lambda.name().and_then(|name| self.declared(&name));
+                let params = lambda
+                    .names()
+                    .filter_map(|name| self.declared(&name))
+                    .collect();
                 let body = lambda.expr().map(|body| self.expr(&body));
-                typed::Expr::Inline { param, body }
+                typed::Expr::Inline { params, body }
             }
             Expr::ParenExpr(_)
             | Expr::OrderedExpr(_)

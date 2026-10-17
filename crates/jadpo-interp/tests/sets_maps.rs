@@ -234,3 +234,34 @@ fn a_standard_object_is_built_from_its_fields() {
         span("2026-10-26T11:00:00Z", "2026-10-26T12:00:00Z")
     );
 }
+
+const TWO: &str = "type Label = Text {\n    min_length: 1\n}\n\ntype Weight = Int {\n    min: 0\n}\n\ntype Flag = Bool {}\n\nfunction shown(shelves: Map<Label, Weight>, hidden: Label) -> Map<Label, Weight> {\n    return map.filter(shelves, (label, weight) -> weight > 0 and label != hidden)\n}\n\nfunction restocked(shelves: Map<Label, Weight>, more: Weight) -> Map<Label, Weight> {\n    return map.map_values(shelves, (label, weight) -> Weight(weight + more))\n}\n\nfunction labelled(shelves: Map<Label, Weight>) -> Map<Label, Label> {\n    return map.map_values(shelves, (label, weight) -> label)\n}\n\nfunction heavier(first: List<Weight>, second: List<Weight>) -> List<Flag> {\n    return list.zip_with(first, second, (a, b) -> Flag(a > b))\n}\n";
+
+#[test]
+fn two_parameter_inline_functions_are_given_each_pair() {
+    let program = main(TWO).with_proof_checks();
+    let stock = shelves(&[("bap", 0), ("rye", 4), ("spelt", 2)]);
+    assert_eq!(
+        value(&program, "shown", vec![stock.clone(), text("spelt")]),
+        shelves(&[("rye", 4)])
+    );
+    assert_eq!(
+        value(&program, "restocked", vec![stock.clone(), int(6)]),
+        shelves(&[("bap", 6), ("rye", 10), ("spelt", 8)])
+    );
+    assert_eq!(
+        value(&program, "labelled", vec![stock]),
+        Value::Map(Rc::new(
+            [("bap", "bap"), ("rye", "rye"), ("spelt", "spelt")]
+                .iter()
+                .map(|(key, label)| (text(key), text(label)))
+                .collect::<BTreeMap<_, _>>(),
+        ))
+    );
+    let ints = |items: &[i64]| list(items.iter().map(|n| int(*n)).collect());
+    assert_eq!(
+        value(&program, "heavier", vec![ints(&[5, 1, 7]), ints(&[3, 4])]),
+        list(vec![Value::Bool(true), Value::Bool(false)]),
+        "as long as the shorter"
+    );
+}

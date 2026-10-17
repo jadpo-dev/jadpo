@@ -141,12 +141,15 @@ pub enum Op {
     ListSlice,
     ListSortBy,
     ListSum,
+    ListZipWith,
     LocaleDirection,
     LocaleFromAcceptLanguage,
     MapCount,
+    MapFilter,
     MapGet,
     MapHas,
     MapKeys,
+    MapMapValues,
     MapMerge,
     MapValues,
     MapWith,
@@ -646,6 +649,19 @@ pub const OPERATIONS: &[Operation] = &[
         Kind::Number,
         "list::sum",
     ),
+    // Items paired by position, as long as the shorter list, each pair
+    // given to a two-parameter inline function (area 19).
+    list(
+        Op::ListZipWith,
+        "zip_with",
+        &[
+            param("first", Kind::List),
+            param("second", Kind::List),
+            param("each", Kind::Function),
+        ],
+        Kind::List,
+        "list::zip_with",
+    ),
     // The way a locale's text runs (area 10, "Locales"), from CLDR.
     Operation {
         op: Op::LocaleDirection,
@@ -677,6 +693,15 @@ pub const OPERATIONS: &[Operation] = &[
         at_least: Some(0),
         ..map(Op::MapCount, "count", &[ENTRIES], INT, "map::count")
     },
+    // An entry's key and value, given to a two-parameter inline function
+    // (area 19).
+    map(
+        Op::MapFilter,
+        "filter",
+        &[ENTRIES, param("keep", Kind::Function)],
+        Kind::Map,
+        "map::filter",
+    ),
     map(
         Op::MapGet,
         "get",
@@ -692,6 +717,13 @@ pub const OPERATIONS: &[Operation] = &[
         "map::has",
     ),
     map(Op::MapKeys, "keys", &[ENTRIES], Kind::Set, "map::keys"),
+    map(
+        Op::MapMapValues,
+        "map_values",
+        &[ENTRIES, param("each", Kind::Function)],
+        Kind::Map,
+        "map::map_values",
+    ),
     map(
         Op::MapMerge,
         "merge",

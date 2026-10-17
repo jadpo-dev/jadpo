@@ -158,8 +158,8 @@ fn group_by_s_map_is_read_by_key() {
     };
     let (rye, bap, spelt) = (batch("Rye", 2), batch("Bap", 1), batch("Spelt", 2));
     let day = Value::list(vec![rye.clone(), bap.clone(), spelt.clone()]);
-    let shelves = run(Op::ListGroupBy, &[day], None, &mut |item| match item {
-        Value::Record(record) => record
+    let shelves = run(Op::ListGroupBy, &[day], None, &mut |given| match given {
+        [Value::Record(record)] => record
             .fields
             .iter()
             .find(|(field, _)| &**field == "shelf")
@@ -244,4 +244,56 @@ fn the_range_operations_give_the_page_s_values() {
         call(Op::RangeIntersection, &[morning, nothing]),
         Value::None
     );
+}
+
+/// `on_show` and `restocked`: `map.filter` and `map.map_values` give their
+/// two-parameter function each key and its value, in the canonical order
+/// of the keys (chunk 5.5c2).
+#[test]
+fn filter_and_map_values_are_given_each_key_and_value() {
+    let shop = stock(&[("Bap", 0), ("Rye", 4), ("Spelt", 2)]);
+    let mut seen = Vec::new();
+    let shown = run(
+        Op::MapFilter,
+        std::slice::from_ref(&shop),
+        None,
+        &mut |given| {
+            seen.push(given.to_vec());
+            match given {
+                [loaf, Value::Int(count)] => {
+                    Some(Value::Bool(*count > 0 && *loaf != Value::text("Spelt")))
+                }
+                _ => None,
+            }
+        },
+    )
+    .unwrap_or_else(|fault| panic!("{fault:?}"));
+    assert_eq!(shown, stock(&[("Rye", 4)]));
+    assert_eq!(
+        seen,
+        vec![
+            vec![Value::text("Bap"), Value::Int(0)],
+            vec![Value::text("Rye"), Value::Int(4)],
+            vec![Value::text("Spelt"), Value::Int(2)],
+        ],
+        "in the canonical order of the keys"
+    );
+    let restocked = run(
+        Op::MapMapValues,
+        &[stock(&[("Bap", 0), ("Rye", 4)])],
+        None,
+        &mut |given| match given {
+            [_, Value::Int(count)] => Some(Value::Int(count + 6)),
+            _ => None,
+        },
+    )
+    .unwrap_or_else(|fault| panic!("{fault:?}"));
+    assert_eq!(restocked, stock(&[("Bap", 6), ("Rye", 10)]));
+    for op in [Op::MapFilter, Op::MapMapValues] {
+        assert_eq!(
+            run(op, std::slice::from_ref(&shop), None, &mut |_| None),
+            Err(jadpo_value::Fault::Stopped),
+            "{op:?}"
+        );
+    }
 }

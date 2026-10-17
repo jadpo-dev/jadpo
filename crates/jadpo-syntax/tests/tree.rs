@@ -270,3 +270,33 @@ fn the_keyword_sets_start_what_they_say() {
         );
     }
 }
+
+#[test]
+fn an_inline_function_reads_back_one_or_two_parameters() {
+    let source = file(
+        "function f(a: Thing) -> Thing {\n    return map.filter(list.map(a, item -> item), (key, value) -> key)\n}\n",
+    );
+    let names: Vec<Vec<String>> = source
+        .syntax()
+        .descendants()
+        .filter_map(ast::LambdaExpr::cast)
+        .map(|lambda| {
+            lambda
+                .names()
+                .map(|name| name.syntax().text().to_string())
+                .collect()
+        })
+        .collect();
+    assert_eq!(names, [vec!["item"], vec!["key", "value"]]);
+    // A parenthesised expression is still one: only names followed by `->`
+    // are parameters.
+    let source = file("function f(a: Thing) -> Thing {\n    return g((a), b)\n}\n");
+    assert_eq!(
+        source
+            .syntax()
+            .descendants()
+            .filter_map(ast::LambdaExpr::cast)
+            .count(),
+        0
+    );
+}

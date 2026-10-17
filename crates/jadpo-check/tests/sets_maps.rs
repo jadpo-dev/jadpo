@@ -214,3 +214,68 @@ fn an_instant_range_is_built_from_its_two_instants() {
         ["type.unknown_field"]
     );
 }
+
+#[test]
+fn two_parameter_inline_functions_check_and_keep_named_types() {
+    // Each parameter takes the type of the value given in its place, and
+    // the result keeps the named type it gives (chunk 5.5c2).
+    let source = "function shown(shelves: Map<Label, Weight>) -> Map<Label, Weight> {\n    return map.filter(shelves, (label, weight) -> weight > 0 and label != \"a\")\n}\n\nfunction flagged(shelves: Map<Label, Weight>) -> Map<Label, Flag> {\n    return map.map_values(shelves, (label, weight) -> Flag(weight > 0))\n}\n\nfunction paired(labels: List<Label>, weights: List<Weight>) -> List<Flag> {\n    return list.zip_with(labels, weights, (label, weight) -> Flag(weight > 0 and label != \"b\"))\n}\n";
+    assert_eq!(rules(source), NONE);
+    // The key is the map's key type, not its value's.
+    assert_eq!(
+        rules(
+            "function f(shelves: Map<Label, Weight>) -> Map<Label, Weight> {\n    return map.filter(shelves, (label, weight) -> label > 0)\n}\n"
+        ),
+        ["type.ordering_operand"]
+    );
+    // A named map type's rules can break, so `filter` gives a plain map.
+    assert_eq!(
+        rules(
+            "function f(shelves: Shelves) -> Shelves {\n    return map.filter(shelves, (label, weight) -> weight > 0)\n}\n"
+        ),
+        ["type.mismatch"]
+    );
+}
+
+#[test]
+fn an_inline_function_has_as_many_parameters_as_its_operation_gives() {
+    for source in [
+        "function f(shelves: Map<Label, Weight>) -> Map<Label, Weight> {\n    return map.filter(shelves, weight -> weight > 0)\n}\n",
+        "function f(labels: List<Label>) -> List<Label> {\n    return list.map(labels, (label, other) -> label)\n}\n",
+        "function f(labels: List<Label>, weights: List<Weight>) -> List<Weight> {\n    return list.zip_with(labels, weights, (a, b, c) -> b)\n}\n",
+    ] {
+        assert_eq!(
+            rules(source),
+            ["type.inline_function_parameters"],
+            "{source}"
+        );
+    }
+    let found = diagnostics(
+        "function f(labels: List<Label>) -> List<Label> {\n    return list.map(labels, (label, other) -> label)\n}\n",
+    );
+    assert_eq!(
+        found[0].message,
+        "`list.map`'s `each` takes one parameter, not two"
+    );
+}
+
+#[test]
+fn two_parameters_are_only_for_a_standard_operation() {
+    for source in [
+        "function same(weight: Weight) -> Weight {\n    return weight\n}\n\nfunction f(weight: Weight) -> Weight {\n    return same((a, b) -> a)\n}\n",
+        "function f(labels: List<Label>) -> List<Label> {\n    return list.append(labels, (a, b) -> a)\n}\n",
+    ] {
+        assert_eq!(
+            rules(source),
+            ["type.inline_function_placement"],
+            "{source}"
+        );
+    }
+    // Two parameters can't share a name (area 3, question 3).
+    assert_eq!(
+        rules(
+            "function f(shelves: Map<Label, Weight>) -> Map<Label, Weight> {\n    return map.filter(shelves, (weight, weight) -> weight > 0)\n}\n"
+        ),
+        ["semantic.duplicate_declaration"]
+    );
+}

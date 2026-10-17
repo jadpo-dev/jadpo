@@ -636,7 +636,7 @@ is written inline, `item -> expression` (area 3).
 | `concat(first, second)` | `List<T>`, `first`'s items then `second`'s | | none |
 | `flatten(lists)` | `List<T>` from a `List<List<T>>`, in order | | none |
 | `group_by(items, key)` | `Map<K, List<T>>`: each key with its items in order | | none |
-| `zip_with(first, second, (a, b) -> ...)` | `List<U>`, pairing items by position, as long as the shorter. Waits for two-parameter inline functions | | none |
+| `zip_with(first, second, (a, b) -> ...)` | `List<U>`, pairing items by position, as long as the shorter | | none |
 
 - **No push or pop.** Values never change (area 2), so adding is
   `list.append(items, item)`, a new list, and taking the last off is
@@ -662,8 +662,7 @@ is written inline, `item -> expression` (area 3).
   `reverse` express every order a key can, and a comparator that isn't
   consistent gives different orders on different targets).
 
-A day's baking, through the list operations built so far (chunk 5.5b;
-`zip_with` waits for two-parameter inline functions in 5.5c2):
+A day's baking, through every list operation (chunks 5.5b and 5.5c2):
 
 ```jadpo check project=list-operations
 type BatchName = Text {
@@ -692,6 +691,8 @@ type Batch = Object {
     price: LoafPrice
 }
 
+type OverPlan = Bool {}
+
 /// The flour a day's batches take. Items never below zero add up to a sum
 /// never below zero, so building `Grams` from it needs no arm.
 function flour_needed(batches: List<Batch>) -> Grams {
@@ -712,6 +713,12 @@ function heaviest(batches: List<Batch>) -> Batch? {
 /// The batches on each shelf, in baking order.
 function by_shelf(batches: List<Batch>) -> Map<Shelf, List<Batch>> {
     return list.group_by(batches, batch -> batch.shelf)
+}
+
+/// Whether each batch came out heavier than planned, batch by batch: a
+/// two-parameter inline function is given one item from each list.
+function over_plan(batches: List<Batch>, planned: List<Grams>) -> List<OverPlan> {
+    return list.zip_with(batches, planned, (batch, plan) -> OverPlan(batch.grams > plan))
 }
 ```
 
@@ -766,6 +773,8 @@ test "list operations give new lists and keep the items as they are" {
     assert list.append([rye], bap) == [rye, bap]
     assert list.concat([rye], [bap, spelt]) == day
     assert list.flatten([[rye], [], [bap, spelt]]) == day
+    assert over_plan(day, [700, 100, 800]) == [true, false, false]
+    assert over_plan(day, [700]) == [true]  // as long as the shorter
 }
 
 test "group_by keeps each shelf's batches in baking order" {
@@ -920,8 +929,8 @@ Each operation is called as `map.<name>`. All return a new map.
 | `with(entries, key, value)` | `Map<K, V>` with `key` set to `value`, added or replaced | | none |
 | `without(entries, key)` | `Map<K, V>` without `key` | | none |
 | `merge(first, second)` | `Map<K, V>` with both; `second` wins where both have a key | | none |
-| `filter(entries, (key, value) -> ...)` | `Map<K, V>`, the entries accepted. Waits for two-parameter inline functions | | none |
-| `map_values(entries, (key, value) -> ...)` | `Map<K, U>`. Waits for two-parameter inline functions | | none |
+| `filter(entries, (key, value) -> ...)` | `Map<K, V>`, the entries accepted | | none |
+| `map_values(entries, (key, value) -> ...)` | `Map<K, U>`, each key with the value given for it | | none |
 
 - **A map is walked through its keys:** `for key in map.keys(prices)`,
   in canonical order.
@@ -935,9 +944,9 @@ Each operation is called as `map.<name>`. All return a new map.
   identifiers apart, and hide which field policy and personal-data marks
   apply to. Keys known only while running are what a `Map` is for.
 
-A shop's stock, through the map operations built so far (chunk 5.5c;
-`filter` and `map_values` wait for two-parameter inline functions in
-5.5c2):
+A shop's stock, through every map operation (chunks 5.5c and 5.5c2);
+`filter` and `map_values` give their inline function each entry's key and
+value, in the canonical order of the keys:
 
 ```jadpo check project=map-operations
 type Loaf = Text {
@@ -974,6 +983,16 @@ function sold_out(stock: Map<Loaf, Stock>) -> List<Loaf> {
 function on_shelves(stock: Map<Loaf, Stock>) -> Stock {
     return Stock(list.sum(map.values(stock)))
 }
+
+/// The loaves to put out: any with some left, but never `withdrawn`.
+function on_show(stock: Map<Loaf, Stock>, withdrawn: Loaf) -> Map<Loaf, Stock> {
+    return map.filter(stock, (loaf, count) -> count > 0 and loaf != withdrawn)
+}
+
+/// Each loaf's stock once a tray of `per_tray` more arrives for it.
+function restocked(stock: Map<Loaf, Stock>, per_tray: Stock) -> Map<Loaf, Stock> {
+    return map.map_values(stock, (loaf, count) -> Stock(count + per_tray))
+}
 ```
 
 ```jadpo check project=map-operations file=main.test.jadpo
@@ -997,6 +1016,9 @@ test "map operations give new maps" {
     assert delivered(stock, "Spelt", 3) == map.with(stock, "Spelt", 3)
     assert sold_out(stock) == ["Bap"]
     assert on_shelves(stock) == 4
+    var three: Map<Loaf, Stock> = map.with(stock, "Spelt", 2)
+    assert on_show(three, "Spelt") == map.with(no_stock, "Rye", 4)
+    assert restocked(stock, 6) == map.with(map.with(no_stock, "Bap", 6), "Rye", 10)
 }
 ```
 
