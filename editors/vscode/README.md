@@ -1,8 +1,8 @@
 # Jadpo for VS Code
 
 Highlighting for `.jadpo` files, and the compiler's own view of your project
-through `jadpo lsp`: the errors `jadpo check` gives while you type, hover, and
-go to definition. The extension has no parser of its own; everything but the
+through `jadpo lsp`: the errors `jadpo check` gives while you type, hover,
+completion and go to definition. The extension has no parser of its own; everything but the
 colours comes from the language server (area 14, "Editor support").
 
 ## What works
@@ -12,6 +12,15 @@ colours comes from the language server (area 14, "Editor support").
 - **Hover** over a name: its declaration written as Jadpo, its `///`
   description, the failures a function, action or query can produce, and what
   calls or uses it.
+- **Completion** as you type a word, a `.`, a `:` or a digit: names in
+  scope (with the `use` line a name needs), a value's fields, a namespace's
+  operations with their signatures, failures and descriptions, an enum's
+  variants (a `Locale`'s with its name, "British English"), the units after
+  a number for the type it goes into (`2` then `m` where a `Duration` goes),
+  a call's named arguments, type names, the rules after `decline`,
+  settings after `config.`, messages after `translations.<domain>.`, and
+  keywords. A call with required arguments goes in with a placeholder for
+  each. What fits the type the place needs comes first.
 - **Go to definition** on a name.
 - **Make this a setting** (a refactoring) on a constant's declaration or any
   read of it: the move `jadpo config move` makes, into `config.jadpo`, with
@@ -24,7 +33,7 @@ colours comes from the language server (area 14, "Editor support").
 
 ## What doesn't yet
 
-Completion, find references, rename, formatting, quick fixes, hover on a
+Find references, rename, formatting, most quick fixes, hover on a
 query's SQL, and a command to open generated files. The server doesn't offer
 them yet, and the extension shows only what the server offers.
 Email templates (not `.jadpo` files) aren't highlighted. `use` lines are

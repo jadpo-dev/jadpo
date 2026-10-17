@@ -11,10 +11,11 @@
 //! disagree. Code actions: "Make this a setting" on a constant runs the
 //! code `jadpo config move` runs (chunk 5.3f), and "Decline with a reason"
 //! on a declinable finding and "Remove decline" on a `decline` line run the
-//! code `jadpo declines` runs (chunk 5.4b). Completion, references, rename,
-//! formatting and other quick fixes come later (area 14), and checking
-//! runs between messages rather than in the background with salsa's
-//! cancellation.
+//! code `jadpo declines` runs (chunk 5.4b). Completion (chunk 5.5a3) offers
+//! what `jadpo_check::completion` reads from the same tables and the
+//! checked body at the cursor. References, rename, formatting and other
+//! quick fixes come later (area 14), and checking runs between messages
+//! rather than in the background with salsa's cancellation.
 
 mod completion;
 mod convert;

@@ -1,9 +1,10 @@
 // Drives the real `jadpo lsp` through the protocol library the extension's
-// language client is built on, so the handshake, diagnostics, hover and go
-// to definition are proven to reach a standard client. The server's own
-// behaviour is tested in crates/jadpo-cli/tests/lsp.rs; this only proves
-// the wire. It runs against the binary in JADPO_BIN, or target/debug/jadpo
-// of this checkout (cargo build -p jadpo-cli), and is skipped without one.
+// language client is built on, so the handshake, diagnostics, hover, go to
+// definition and completion are proven to reach a standard client. The
+// server's own behaviour is tested in crates/jadpo-cli/tests/lsp.rs and
+// crates/jadpo-lsp/tests; this only proves the wire. It runs against the
+// binary in JADPO_BIN, or target/debug/jadpo of this checkout (cargo build
+// -p jadpo-cli), and is skipped without one.
 
 const test = require("node:test");
 const assert = require("node:assert");
@@ -60,6 +61,9 @@ test("jadpo lsp answers a standard client", { skip: !fs.existsSync(binary) && `n
     });
     assert.strictEqual(init.capabilities.hoverProvider, true);
     assert.strictEqual(init.capabilities.definitionProvider, true);
+    for (const trigger of [".", ":", "2"]) {
+      assert.ok(init.capabilities.completionProvider.triggerCharacters.includes(trigger), trigger);
+    }
     await connection.sendNotification("initialized", {});
 
     const problems = await published(uri("domains/notes/actions/broken.jadpo"));
@@ -78,6 +82,12 @@ test("jadpo lsp answers a standard client", { skip: !fs.existsSync(binary) && `n
       position: { line: 1, character: 25 },
     });
     assert.strictEqual(definition.uri, uri("domains/notes/types/body.jadpo"));
+
+    const completion = await connection.sendRequest("textDocument/completion", {
+      textDocument: save,
+      position: { line: 2, character: 11 },
+    });
+    assert.ok(completion.items.some((item) => item.label === "body"));
 
     await connection.sendRequest("shutdown");
     await connection.sendNotification("exit");
