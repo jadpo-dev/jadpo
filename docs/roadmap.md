@@ -503,17 +503,25 @@ reference only).
   `PresentationText`; enum wording; email subjects; and the removal of
   5.3b's JSON files, calls and `translation.*` errors, with the section
   of area 10 that described them.
-- [ ] **5.4d Translations: failures, review and tooling** `sonnet · high`
-  (area 10, "Translations as messages", the rest of 5.4c's text), after
-  5.4c: failures that can reach a response worded in every locale and
-  exported as `<api>.failures.<locale>.json`; stale translations through
+- [ ] **5.4d Translations: failures, review and commands** `sonnet · high`
+  (area 10, "Translations as messages", the rest of 5.4c's text). Split on
+  2026-10-17 because the whole is more than one session: this half is the
+  app's own text, `5.4e` Jadpo's and the exchange with translation
+  services. Failures that can reach a response worded in every locale and
+  exported as `<api>.failures.<locale>.json` (the app's own failures;
+  Jadpo's follow in 5.4e); stale translations through
   `sources.jadpo_record`, `TranslationReview` and `accept`; `TextDirection`
-  and `locale.direction`; Jadpo's own messages and the root file's owner
-  groups (`translations/<locale>.jadpo`); `jadpo translations missing`
-  (which also lists what an in-progress locale falls back on), `unused`,
-  `update`, `accept`, `builtin`, `export` and `import`; go to definition
-  from a call to its message type and its wording; and a pseudo-locale.
-  Email templates follow in 7.3, library packages' translations in 7.1.
+  and `locale.direction`; `jadpo translations missing` (which also lists
+  what an in-progress locale falls back on), `unused`, `update` and
+  `accept`; go to definition from a call to its message type and its
+  wording; and a pseudo-locale. Email templates follow in 7.3, library
+  packages' translations in 7.1.
+- [ ] **5.4e Translations: Jadpo's text and exchange** `sonnet · high`
+  (area 10, "Jadpo's and packages' text" and "Tooling"), after 5.4d: Jadpo's
+  own messages, shipped in `en_gb` and `en_us`, and their failures' wording
+  in the failures export; the root file's owner groups
+  (`translations/<locale>.jadpo`, `jadpo: { }`); `jadpo translations
+  builtin`; and `jadpo translations export` and `import` as XLIFF or JSON.
 - [ ] **5.5a The standard type contract** `opus · high` (area 19, "Every
   standard type meets one contract", questions 1 to 5): each standard type
   a stub declaration in `crates/jadpo-check/std/` plus a data entry,
