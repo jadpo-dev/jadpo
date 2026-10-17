@@ -20,7 +20,7 @@ fn warning(name: &str) -> Value {
         .iter()
         .position(|variant| *variant == name)
         .unwrap_or_else(|| panic!("{name} is a warning"));
-    Value::variant("Warning", ordinal as u32, name, Vec::new())
+    Value::variant("Hazard", ordinal as u32, name, Vec::new())
 }
 
 fn warnings(names: &[&str]) -> Value {
