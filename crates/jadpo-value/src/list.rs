@@ -205,6 +205,23 @@ pub fn sort_by(
     Ok(pairs.into_iter().map(|(_, item)| item).collect())
 }
 
+/// [`sort_by`] with text keys ordered by `locale`'s collation (a BCP 47
+/// tag) rather than by code point (area 19, question 26); the checker
+/// gives `locale:` only with a text key.
+pub fn sort_by_locale(
+    items: &[Value],
+    key: &mut dyn FnMut(&Value) -> Option<Value>,
+    locale: &str,
+) -> Result<Vec<Value>, Fault> {
+    let compare = crate::text::collation(locale)?;
+    let mut pairs = keyed(items, key)?;
+    pairs.sort_by(|(a, _), (b, _)| match (a, b) {
+        (Value::Text(a), Value::Text(b)) => compare(a, b),
+        _ => order::compare(a, b),
+    });
+    Ok(pairs.into_iter().map(|(_, item)| item).collect())
+}
+
 /// A new list with the last item first.
 pub fn reverse(items: &[Value]) -> Vec<Value> {
     items.iter().rev().cloned().collect()

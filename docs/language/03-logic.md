@@ -2243,7 +2243,7 @@ type Label = Text {}
 ```jadpo check project=e-match-some expect=type.match_some_non_optional
 function describe(label: Label) -> Label {
     return match label {
-        some(text) -> text
+        some(name) -> name
         _ -> label
     }
 }
@@ -2253,7 +2253,7 @@ function describe(label: Label) -> Label {
 error: `label` is never `none`, so `some(...)` can't match it
  --> main.jadpo:3:9
   |
-3 |         some(text) -> text
+3 |         some(name) -> name
   |         ^^^^^^^^^^ for nullable values
   reason: `some(name)` and `none` match a nullable value, written `T?`; `label` is a `Label`.
   next: Use `label` directly: it always has a value (agent)

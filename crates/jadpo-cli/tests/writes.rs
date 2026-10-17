@@ -135,7 +135,7 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/shop/actions/start_log.jadpo",
-        "use shop/entities { Log }\n\n/// Starts a log.\naction start_log(text: Log.text) -> Log {\n    return Log.create {\n        set: {\n            text: text\n        }\n    }\n}\n",
+        "use shop/entities { Log }\n\n/// Starts a log.\naction start_log(body: Log.text) -> Log {\n    return Log.create {\n        set: {\n            text: body\n        }\n    }\n}\n",
     ),
     (
         "domains/shop/actions/append.jadpo",

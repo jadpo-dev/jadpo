@@ -38,12 +38,6 @@ translations:
 sessions:
 oauth:
 
-# Standard namespaces whose names stay free for parameters, variables and
-# declarations until the chunk that reserves them (area 19, question 30):
-# `text` in 5.5f, which renames the examples that use it.
-[unreserved]
-text
-
 # Names too generic for a domain or a library (area 1).
 [generic]
 misc common utils helpers core

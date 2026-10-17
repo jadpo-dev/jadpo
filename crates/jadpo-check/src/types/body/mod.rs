@@ -32,6 +32,7 @@ mod outcome;
 mod ranges;
 mod request;
 mod temporal;
+mod text;
 mod translation;
 mod writes;
 

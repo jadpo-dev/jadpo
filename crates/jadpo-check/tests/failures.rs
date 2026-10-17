@@ -113,7 +113,7 @@ fn constructions_the_ranges_prove_safe_take_no_attempt() {
     // A shorter text type fits a longer one; the other way round can fail.
     assert_eq!(
         one(
-            "type Short = Text {\n    max_length: 10\n}\n\ntype Long = Text {\n    max_length: 80\n}\n\nfunction widen(text: Short) -> Long {\n    return Long(text)\n}\n\nfunction narrow(text: Long) -> Short {\n    return Short(text)\n}\n"
+            "type Short = Text {\n    max_length: 10\n}\n\ntype Long = Text {\n    max_length: 80\n}\n\nfunction widen(body: Short) -> Long {\n    return Long(body)\n}\n\nfunction narrow(body: Long) -> Short {\n    return Short(body)\n}\n"
         ),
         ["failure.attempt_required"]
     );

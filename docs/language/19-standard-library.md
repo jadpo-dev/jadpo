@@ -5,6 +5,7 @@ status: decided
 checked-with: this checkout's jadpo on every gate run, from chunk 5.5a; the other examples are fragments until chunks 5.5c to 5.5s build them
 rules:
   - semantic.standard_operation_moved
+  - type.argument_empty
   - type.argument_negative
   - type.standard_clash
   - type.standard_exists
@@ -19,7 +20,7 @@ own features needed. This page collects them, adds what real applications
 keep reaching for, says which gaps in the language block the rest and how
 to close them, and says what is left out on purpose and why.
 
-> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Chunk 5.5a built the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code, and chunk 5.5a2 the clash a release's new standard type makes with an app's own, with `jadpo fix`; nothing else on this page beyond what areas 2, 3 and 10 already decided is built, and chunks 5.5b to 5.5s build it, in the order under "Building it". Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
+> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunk 5.5f: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); and the text operations, with `locale:` and NFC at the boundary (5.5f). The rest is built by chunks 5.5g to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
 
 | Namespace | Holds | Operations | Decided in |
 |---|---|---|---|
@@ -1713,6 +1714,222 @@ take it.
   previews, case, is an operation, and character loops are where combining
   marks break). Unicode normalisation is a boundary rule, not a call
   ("Language gaps").
+- **Text from outside is NFC.** Every text a request carries, in its body,
+  path, query string or headers, is composed to Unicode's NFC as it is
+  decoded, before its rules are checked, so `café` typed as `e` and a
+  combining accent equals `café` typed as one character, and `max_length`
+  counts the code points it is kept as (areas 2 and 7). Text written in
+  code is kept as written.
+- **Checked while compiling.** `replace`'s `find` and `split`'s
+  `separator` are never empty (`never_empty`: a literal isn't `""` and a
+  value's type has a `min_length` of at least 1, `type.argument_empty`
+  under "Errors"); counts and positions are never negative, as for lists;
+  `fill:` is one character written out. `trim`, `slice` and the four cuts
+  are never longer than their text (`at_most_length_of`, question 29), so
+  a type built from one keeps the text's `max_length` without an arm;
+  `lower` and `upper` can lengthen it (`ß` becomes `SS`), so they don't.
+- **`locale:`** maps case by a locale's rules (`i` becomes `İ` in Turkish)
+  and orders `list.sort_by`'s text keys as the locale's alphabet does (`Ö`
+  after `Z` in Swedish, beside `O` in German), through ICU4X's case mapping
+  and collation; without it, case is Unicode's default and text sorts by
+  code point, as queries sort it (question 26).
+
+A bakery's product names, through every text operation (chunk 5.5f):
+
+```jadpo check project=text-operations
+type ProductName = Text {
+    min_length: 1
+    max_length: 60
+}
+
+type Caption = Text {
+    max_length: 60
+}
+
+type TagName = Text {
+    min_length: 1
+    max_length: 20
+}
+
+type Divider = Text {
+    min_length: 1
+    max_length: 3
+}
+
+type ProductSlug = Text {}
+
+type ShelfLabel = Text {}
+
+type TagLine = Text {}
+
+type OrderReference = Text {}
+
+type OrderNumber = Int {
+    min: 0
+}
+
+type PieceCount = Int {
+    min: 0
+}
+
+type Product = Object {
+    name: ProductName
+    tags: List<TagName>
+}
+
+type NameBlank = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A product name as it was typed, without the spaces around it. Trimming
+/// never lengthens text, so `max_length` can't break; it can leave
+/// nothing, so `min_length` can.
+function tidy(typed_name: ProductName) fails NameBlank -> ProductName {
+    return attempt ProductName(text.trim(typed_name)) {
+        min_length: NameBlank
+    }
+}
+
+/// The first twelve code points of a name, for a narrow card: never
+/// longer than the name, so building `Caption` needs no arm.
+function caption(name: ProductName) -> Caption {
+    return Caption(text.keep_first(name, 12))
+}
+
+/// The name in a web address: lowercase ASCII letters, digits and `-`.
+function product_slug(name: ProductName) -> ProductSlug {
+    return ProductSlug(text.slug(name))
+}
+
+/// The name for a shelf edge, in capitals by the shopper's own rules.
+function shelf_label(name: ProductName, shopper: Locale) -> ShelfLabel {
+    return ShelfLabel(text.upper(name, locale: shopper))
+}
+
+/// An order's number as six digits, `42` written `000042`.
+function order_reference(number: OrderNumber) -> OrderReference {
+    return OrderReference(text.pad_start(text.from(number), 6, fill: "0"))
+}
+
+/// A product's tags on one line.
+function tag_line(product: Product) -> TagLine {
+    return TagLine(text.join(product.tags, ", "))
+}
+
+/// How many pieces a line holds between separators. A separator is
+/// never empty, which its type's `min_length` proves.
+function count_pieces(line: ProductName, spacer: Divider) -> PieceCount {
+    return PieceCount(list.count(text.split(line, spacer)))
+}
+
+/// The products in the order the shopper's alphabet puts their names.
+function in_name_order(products: List<Product>, shopper: Locale) -> List<Product> {
+    return list.sort_by(products, product -> product.name, locale: shopper)
+}
+```
+
+Text is counted and cut in code points, so a mark written on its own and
+the two halves of an emoji with a skin tone each count as one; text in
+another script is cut the same way.
+
+```jadpo check project=text-operations file=main.test.jadpo
+test "text operations give what the page says" {
+    var tidied: ProductName = attempt tidy("  Rye loaf ")
+    assert tidied == "Rye loaf"
+    assert tidy("   ") fails NameBlank
+    assert caption("Seeded sourdough boule") == "Seeded sourd"
+    assert product_slug("Crème Brûlée & Co.") == "creme-brulee-co"
+    assert order_reference(42) == "000042"
+    assert order_reference(1234567) == "1234567"  // never cut
+    assert text.length("Rye") == 3
+    assert text.lower("RYE Loaf") == "rye loaf"
+    assert text.contains("Rye loaf", "loaf")
+    assert text.starts_with("Rye loaf", "Rye")
+    assert text.ends_with("Rye loaf", "loaf")
+    assert not text.ends_with("Rye loaf", "Rye")
+    assert text.replace("salt & pepper & oil", " & ", ", ") == "salt, pepper, oil"
+    assert text.split("flour,sugar,,eggs", ",") == ["flour", "sugar", "", "eggs"]
+    assert text.split("", ",") == [""]
+    assert text.join(["flour", "sugar"], " and ") == "flour and sugar"
+    assert text.slice("sourdough", 4, 3) == "dou"
+    assert text.slice("sourdough", 7, 10) == "gh"  // cut short at the end
+    assert text.keep_last("sourdough", 5) == "dough"
+    assert text.drop_first("sourdough", 4) == "dough"
+    assert text.drop_last("sourdough", 5) == "sour"
+    assert text.drop_last("rye", 9) == ""
+}
+
+test "text is counted and cut in code points" {
+    assert text.length("café") == 4  // é as one code point
+    assert text.length("café") == 5  // e and a combining acute: two
+    assert text.drop_last("café", 1) == "cafe"  // the mark goes on its own
+    assert text.length("面包") == 2
+    assert text.keep_first("面包店", 2) == "面包"
+    assert text.length("👍🏽") == 2  // a thumb and a skin tone
+    assert text.keep_first("👍🏽", 1) == "👍"
+    assert text.trim("\t rye\n") == "rye"
+    assert text.upper("straße") == "STRASSE"  // longer than it was
+    assert product_slug("面包 Bakery") == "bakery"
+}
+
+test "a locale's case and order" {
+    assert text.upper("istanbul") == "ISTANBUL"
+    assert text.upper("istanbul", locale: Locale.tr_tr) == "İSTANBUL"
+    assert text.lower("DİYARBAKIR", locale: Locale.tr_tr) == "diyarbakır"
+    assert shelf_label("içli köfte", Locale.tr_tr) == "İÇLİ KÖFTE"
+    var oat: Product = Product {
+        name: "Oat"
+        tags: []
+    }
+    var zopf: Product = Product {
+        name: "Zopf"
+        tags: ["Swiss", "plaited"]
+    }
+    var oland: Product = Product {
+        name: "Ölandsbröd"
+        tags: []
+    }
+    assert list.sort_by([zopf, oland, oat], product -> product.name) == [oat, zopf, oland]  // by code point
+    assert in_name_order([zopf, oland, oat], Locale.de_de) == [oat, oland, zopf]
+    assert in_name_order([zopf, oland, oat], Locale.sv_se) == [oat, zopf, oland]
+    assert tag_line(zopf) == "Swiss, plaited"
+    assert count_pieces("Swiss,plaited", ",") == 2
+}
+```
+
+`text` is a standard-library namespace from this chunk on, so it names no
+variable, parameter or declaration, and `text.` always means the standard
+library (question 30); a field or a named argument may still be called
+`text`.
+
+```jadpo check project=e-text-reserved expect=semantic.standard_namespace_reserved
+type Title = Text {
+    min_length: 1
+    max_length: 80
+}
+
+type PosterLine = Text {}
+
+/// A recipe's title, kept for the poster.
+function poster_line(title: Title) -> PosterLine {
+    var text: PosterLine = PosterLine(title)
+    return text
+}
+```
+
+```text output
+error: `text` is a standard-library namespace
+ --> main.jadpo:10:9
+   |
+10 |     var text: PosterLine = PosterLine(title)
+   |         ^^^^ reserved
+  reason: Standard-library namespaces can't name a declaration, domain, library or variable, so `text.` always means the standard library.
+  next: Choose another name than `text` (agent)
+  rule: semantic.standard_namespace_reserved
+  help: docs/language/01-project-layout-and-modules.html#semantic-standard-namespace-reserved
+
+check failed: 1 error, 1 file
+```
 
 ## Text formats
 
@@ -2191,12 +2408,12 @@ operations it unblocks kept on this page.
 | Code can't read a secret | Opaque key settings, used only as a `crypto` call's `key:` | 10 | 5.5q | `crypto` |
 | Keys held as data (per device, per person) | An encrypted field of a key type, usable only as `key:` | 10, 15 | With encrypted fields, after the first build (personal data) | Per-device signatures, `crypto.verify_totp` |
 | No randomness | Generated `random`, actions only, seeded in tests, recorded for replay | 10, 13, 17 | 5.5q | `random.*`, `encrypt`, `hash_password` |
-| Text has no locale order or case | `locale:` on `list.sort_by`, `text.lower` and `text.upper`, through ICU4X's collator and case mapping (two more crates of the pinned ICU4X) | 10 | 5.5f | Locale sorting and case |
+| Text has no locale order or case | `locale:` on `list.sort_by`, `text.lower` and `text.upper`, through ICU4X's collator and case mapping (two more crates of the pinned ICU4X) | 10 | 5.5f, built | Locale sorting and case |
 | Values formatted for people only in translations | The contract's `text.format`, giving `PresentationText`, for every standard type | 10 | 5.5a | Showing numbers, money, quantities and addresses in code |
 | No parsing from text | The contract's `text.parse(raw, as: T)`, canonical forms only | 2 | 5.5a | Text from a person or a file cell |
 | Queries compute nothing | Aggregate queries: `count`, `sum`, `min`, `max`, `average`, grouped by a field or a time bucket, using operations with SQL forms; area 6 already lists counts and sums in queries as deferred | 6 | 5.6c | Reports, dashboards, usage totals |
 | No rule across fields | Named rules on an object type (`rule ends_after_start: ends > starts`), proved or attempted like any rule | 2 | 5.5t | Bookings, date ranges, price bands |
-| Text from outside not normalised | NFC applied as text is decoded at a boundary | 2, 7 | 5.5f | Equal text comparing equal |
+| Text from outside not normalised | NFC applied as text is decoded at a boundary | 2, 7 | 5.5f, built | Equal text comparing equal |
 | `Money` is an application's own object | Built-in `Money` and `Currency` | 2 | 5.5h | `money` |
 | No geospatial types | A future area | New area | 5.5u plans it | Geospatial |
 | No AI pieces | A future area | New area | 5.5v plans it | AI |
@@ -2421,6 +2638,47 @@ error: `done` may be negative
 check failed: 1 error, 1 file
 ```
 
+### `type.argument_empty`
+
+Text an operation never takes empty (`never_empty`): `text.replace`'s
+`find` and `text.split`'s `separator`. A literal isn't `""` and a value's
+type has a `min_length` of at least 1, so a search never looks for
+nothing and a split never cuts between every character, which other
+languages each do differently.
+
+```jadpo check project=e-argument-empty expect=type.argument_empty
+type Ingredients = Text {
+    max_length: 400
+}
+
+type Divider = Text {
+    max_length: 3
+}
+
+type IngredientCount = Int {
+    min: 0
+}
+
+/// How many ingredients a recipe line lists, split where the cook says.
+function ingredient_count(line: Ingredients, spacer: Divider) -> IngredientCount {
+    return IngredientCount(list.count(text.split(line, spacer)))
+}
+```
+
+```text output
+error: `spacer` may be empty
+ --> main.jadpo:15:56
+   |
+15 |     return IngredientCount(list.count(text.split(line, spacer)))
+   |                                                        ^^^^^^ `Divider` can be empty
+  reason: `text.split`'s `separator` is never empty, which is proved while compiling: a literal isn't `""` and a value's type has a `min_length` of at least 1; `Divider` allows empty text.
+  next: Pass a value whose type has `min_length: 1`, building it where empty text is handled (agent)
+  rule: type.argument_empty
+  help: docs/language/19-standard-library.html#type-argument-empty
+
+check failed: 1 error, 1 file
+```
+
 ## Review
 
 ### Status
@@ -2434,6 +2692,7 @@ check failed: 1 error, 1 file
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here, built in 5.5k |
 | The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, each group of types in 5.5h to 5.5s |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
+| The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
 | A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2: `type.standard_clash`, `jadpo fix`'s swap and rename, the editor's swap |
 | `Email`, `Url`, `IpAddress`, `FileType`, `InstantRange` | Decided (areas 2, 10, 16) and built |
 | Everything else on this page | Decided 2026-10-17, as recommended; built in chunks 5.5a to 5.5s |
@@ -2547,8 +2806,8 @@ under "Errors").
   fields are exactly a shape's, none of them optional; `InstantRange`'s is
   the first shape (`start`, `starts_at` or `start_at`, and `end`, `ends_at`
   or `end_at`, each built on `Instant`).
-- **`text` stays free** for parameters and variables until chunk 5.5f
-  reserves it (question 30); a local called `text` hides the namespace
+- **`text` stayed free** for parameters and variables until chunk 5.5f
+  reserved it (question 30); a local called `text` hid the namespace
   meanwhile.
 - **Moved operations** are a table in `jadpo-std` (`MOVED`), each reported
   as `semantic.standard_operation_moved` where it is resolved and checked
@@ -2793,6 +3052,51 @@ under "Errors").
 - **A field declared `InstantRange`** has its `start` and `end` read
   through the field, as a value of the type has; chunk 5.5a read them only
   on a value.
+
+### Chosen in chunk 5.5f
+
+- **Empty text is `type.argument_empty`,** a new rule beside
+  `type.argument_negative`: a literal `""`, or a value whose type has no
+  `min_length` of at least 1, where `never_empty` text is taken
+  (`text.replace`'s `find`, `text.split`'s `separator`).
+- **`fill:` is required and one code point,** written as a text literal;
+  a value, or a literal of any other length, is `type.mismatch`, as a
+  `scale:` that isn't written out is. `pad_start`'s `length` is any
+  `Int`: one at or below the text's own length gives the text back.
+- **`join` takes a list of any text,** its items built on `Text`
+  (`List<TagName>`), as `list.sum` takes any list of numbers; collections
+  stay invariant elsewhere.
+- **`locale:` takes any `Locale`,** not only the ones `locales { }`
+  declares: case mapping and collation are Unicode's and CLDR's data, not
+  the application's translations. On `list.sort_by` it orders text keys
+  only; with any other key it is `type.temporal_option_unused`, whose
+  edit removes it. Collation is the locale's default at CLDR's default
+  strength, so keys equal by its rules keep their order.
+- **Without `locale:`,** `lower` and `upper` are Unicode's full default
+  mapping (`ß` becomes `SS`, `İ` becomes `i` and a combining dot), and
+  white space is Unicode's `White_Space` property.
+- **`slug`** decomposes canonically (NFD) and drops every mark (general
+  category M), so `é` becomes `e`; compatibility characters (`ﬁ`, a
+  full-width `Ａ`) aren't folded, and become `-` like any other
+  character outside ASCII.
+- **NFC at the boundary** is every text a request carries, read through
+  the route's codecs: body, path, query string, headers and a map's keys,
+  for every type built on `Text` (an `Email` included), before its rules
+  are checked. Text written in code and text read back from the database
+  are kept as they are.
+- **`at_most_length_of`** is read from the cut text's type's
+  `max_length`, a literal's length, or a cut inside a cut; a count
+  written out (`keep_first(name, 12)`) bounds nothing, since question 29
+  records the argument only. `split`'s "at least one item" proves no
+  `min_length` either.
+- **A list written out of values fixes the item type** of a standard
+  call it is given to (`list.sort_by([oat, zopf], product -> ...)`); a
+  list with a literal in it still takes the parameter's type. Before
+  this chunk such a call checked and then stopped at the inline
+  function.
+- **`text` is reserved,** and with it every standard namespace from the
+  chunk that adds it: the list of names kept free (chunk 5.5a) is gone.
+  Areas 2, 3, 7, 8, 9 and 16 and six crate test files renamed theirs.
 
 ### Decisions
 
@@ -3224,6 +3528,7 @@ first; each group of types then arrives with its baseline and its extras.
   three come in 5.5a, `text.pick` in 5.5o), `locale:` on case
   and sorting, NFC at the boundary; `never_empty`, `fill:`,
   `at_most_length_of`; `text` reserved and the clashing examples renamed.
+  Built.
 - **5.5g Hashing, encodings and JSON** `opus · high`: `hash`, `encoding`,
   `json.read` and `json.write` in memory with `mismatch`'s problem; the
   batch forms and `csv`, `tsv` and `json_lines` come with batches (6.4).

@@ -24,4 +24,5 @@ mod proofs;
 mod reports;
 mod sets_maps;
 mod soundness;
+mod text;
 mod values;

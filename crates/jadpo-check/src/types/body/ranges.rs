@@ -635,7 +635,10 @@ impl Body<'_> {
         }
         if needs.min_length.is_some() || needs.max_length.is_some() {
             let counted = self.counted(value, actual);
-            let (low, high) = (has.min_length, has.max_length);
+            // A text operation's result is never longer than the text it
+            // cuts (`at_most_length_of`, area 19, question 29).
+            let high = has.max_length.or_else(|| self.length_bound(value));
+            let low = has.min_length;
             let at_least_length = |n: u64, low: Option<u64>, counted: Option<&Counted>| {
                 low.is_some_and(|m| m >= n)
                     || counted
@@ -690,6 +693,46 @@ impl Body<'_> {
             out.push("version".to_string());
         }
         verdict
+    }
+
+    /// The most code points a text expression can hold when its type
+    /// can't say: a literal's own length, or, for a text operation whose
+    /// result is never longer than one of its arguments (`text.trim`,
+    /// `slice` and the four cuts), that argument's.
+    fn length_bound(&self, value: &Expr) -> Option<u64> {
+        match value {
+            Expr::ParenExpr(paren) => self.length_bound(&paren.expr()?),
+            Expr::Literal(_) => match Const::from_expr(value) {
+                Const::Str(text) => u64::try_from(text.chars().count()).ok(),
+                _ => None,
+            },
+            Expr::CallExpr(call) => {
+                let super::facts::Reach::Std(op) =
+                    self.facts.reaches.get(&node_key(call.syntax()))?
+                else {
+                    return None;
+                };
+                let slot = op.operation().params.iter().position(|p| p.bounds_length)?;
+                let slots = self.facts.slots.get(&node_key(call.syntax()))?;
+                let cut = call
+                    .arg_list()?
+                    .args()
+                    .zip(slots)
+                    .find(|(_, at)| **at == Some(slot))?
+                    .0
+                    .expr()?;
+                let own = self
+                    .facts
+                    .types
+                    .get(&node_key(cut.syntax()))
+                    .filter(|ty| !ty.has_error() && !self.table.is_nullable(ty))
+                    .and_then(|ty| {
+                        combine(self.table.rule_chain(ty).into_iter().map(|(_, r)| r)).max_length
+                    });
+                own.or_else(|| self.length_bound(&cut))
+            }
+            _ => None,
+        }
     }
 
     /// What the conditions around a list say about how many items it

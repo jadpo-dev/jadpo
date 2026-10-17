@@ -1608,7 +1608,10 @@ pub(super) fn member_comma(p: &mut Parser<'_>, bare: bool) {
         }
         TextEdit::replace(start, next, format!("\n{indent}"))
     } else if more {
-        TextEdit::replace(start, end, "")
+        // `a: b,c: d` keeps a space where the comma was, so the two
+        // members don't run together.
+        let joined = p.nth_range(1).0 == end;
+        TextEdit::replace(start, end, if joined { " " } else { "" })
     } else {
         let before = p.text()[..start as usize]
             .trim_end_matches([' ', '\t'])

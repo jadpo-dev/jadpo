@@ -208,7 +208,7 @@ fn each_mistake_gives_its_rule() {
             "type.match_non_exhaustive",
         ),
         (
-            "function f(label: Label?) -> Label {\n    return match label {\n        some(text) -> text\n    }\n}\n",
+            "function f(label: Label?) -> Label {\n    return match label {\n        some(name) -> name\n    }\n}\n",
             "type.match_non_exhaustive",
         ),
         (
@@ -216,7 +216,7 @@ fn each_mistake_gives_its_rule() {
             "type.match_pattern_type",
         ),
         (
-            "function f(label: Label) -> Label {\n    return match label {\n        some(text) -> text\n        _ -> label\n    }\n}\n",
+            "function f(label: Label) -> Label {\n    return match label {\n        some(name) -> name\n        _ -> label\n    }\n}\n",
             "type.match_some_non_optional",
         ),
         (
