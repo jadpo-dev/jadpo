@@ -11,7 +11,7 @@ use jadpo_syntax::ast::{self, AstNode, Expr, MemberItem};
 use super::super::literal;
 use super::super::rules::{Const, Rules};
 use super::super::shape::FieldsBase;
-use super::super::table::{Def, FieldDef};
+use super::super::table::{Def, FieldDef, TypeView};
 use super::super::ty::{Prim, Ty};
 use super::{Body, did_you_mean, is_literal, node_key, text};
 use crate::case::starts_upper;
@@ -20,7 +20,7 @@ use crate::tree::{self, dotted};
 
 /// The generated namespace whose one member is the time (area 10).
 const CLOCK: &str = "clock";
-const CONFIG: &str = "config";
+use crate::config::CONFIG;
 
 /// Which fields a block must give.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -166,6 +166,9 @@ impl Body<'_> {
     /// takes there when nothing else did: a literal's is the type it goes
     /// into.
     pub(super) fn check(&mut self, expr: &Expr, expected: &Ty) {
+        self.facts
+            .expected
+            .insert(node_key(expr.syntax()), expected.clone());
         self.check_value(expr, expected);
         self.facts
             .types
@@ -618,17 +621,7 @@ impl Body<'_> {
     /// The object a value's fields come from, following field types to
     /// their declared types.
     pub(super) fn object_of(&self, ty: &Ty) -> Option<String> {
-        let mut current = ty.strip_nullable().clone();
-        for _ in 0..64 {
-            match &current {
-                Ty::Named(name) => {
-                    return self.table.fields(name).map(|_| name.clone());
-                }
-                Ty::Field(..) => current = self.table.parent(&current)?,
-                _ => return None,
-            }
-        }
-        None
+        object_of(self.table, ty)
     }
 
     /// Reads field `name` from a value of type `receiver`.
@@ -1432,4 +1425,128 @@ fn page_fields(item: &Ty) -> Vec<FieldDef> {
         generated: false,
     })
     .collect()
+}
+
+/// The object a value's fields come from, following field types to their
+/// declared types.
+fn object_of(table: &dyn TypeView, ty: &Ty) -> Option<String> {
+    let mut current = ty.strip_nullable().clone();
+    for _ in 0..64 {
+        match &current {
+            Ty::Named(name) => {
+                return table.fields(name).map(|_| name.clone());
+            }
+            Ty::Field(..) => current = table.parent(&current)?,
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// Every field a value of type `receiver` has, with the type reading it
+/// gives, in the order [`Body::select`] tries them: what the editor offers
+/// after `value.` (area 14, "Completion"). Empty where `select` reads no
+/// field: a value that may be `none`, a type a later area defines.
+pub(crate) fn members_of(
+    table: &dyn TypeView,
+    identity: &crate::identity::Identity,
+    receiver: &Ty,
+) -> Vec<Member> {
+    let plain = |name: &str, ty: Ty| Member {
+        name: name.to_string(),
+        declared: ty.clone(),
+        ty,
+    };
+    let named = |fields: Vec<FieldDef>| -> Vec<Member> {
+        fields
+            .into_iter()
+            .map(|f| plain(&f.name, f.declared))
+            .collect()
+    };
+    if let Ty::Opaque(page, args) = receiver
+        && page == PAGE
+        && let [item] = args.as_slice()
+    {
+        return named(page_fields(item));
+    }
+    if let Ty::Opaque(issued, args) = receiver.strip_nullable()
+        && args.is_empty()
+        && (issued == jadpo_std::http::ISSUED_TOKEN || issued == jadpo_std::http::ISSUED_KEY)
+    {
+        return jadpo_std::http::ISSUED_FIELDS
+            .iter()
+            .map(|(name, builtin)| plain(name, Ty::Prim(*builtin)))
+            .collect();
+    }
+    if let Ty::Opaque(range, args) = receiver.strip_nullable()
+        && args.is_empty()
+        && range == jadpo_std::INSTANT_RANGE
+    {
+        return jadpo_std::INSTANT_RANGE_FIELDS
+            .iter()
+            .map(|(name, builtin)| plain(name, Ty::Prim(*builtin)))
+            .collect();
+    }
+    if let Ty::Opaque(name, args) = receiver.strip_nullable()
+        && name == super::request::RESPONSE
+    {
+        return super::request::response_members(args)
+            .into_iter()
+            .map(|(name, ty)| plain(name, ty))
+            .collect();
+    }
+    if let Some(kind) = super::identity::caller_kind(receiver) {
+        return crate::identity::PRINCIPAL_FIELDS
+            .iter()
+            .filter_map(|field| Some(plain(field, identity.field_type(kind, field)?)))
+            .collect();
+    }
+    if receiver.has_error() || matches!(receiver.strip_nullable(), Ty::Opaque(..) | Ty::Var(_)) {
+        return Vec::new();
+    }
+    if let Ty::Variant(host, variant) = receiver {
+        let fields = table
+            .variants(host)
+            .and_then(|variants| variants.iter().find(|v| v.name == *variant))
+            .and_then(|v| v.fields.clone())
+            .unwrap_or_default();
+        return fields
+            .into_iter()
+            .map(|f| Member {
+                ty: table.field_type(host, &[variant.clone(), f.name.clone()]),
+                name: f.name,
+                declared: f.declared,
+            })
+            .collect();
+    }
+    if table.is_nullable(receiver) {
+        return Vec::new();
+    }
+    let Some(host) = object_of(table, receiver) else {
+        return Vec::new();
+    };
+    table
+        .fields(&host)
+        .unwrap_or(&[])
+        .iter()
+        .map(|f| {
+            let ty = table.field_type(&host, std::slice::from_ref(&f.name));
+            let ty = if f.optional { ty.nullable() } else { ty };
+            Member {
+                name: f.name.clone(),
+                ty,
+                declared: f.declared.clone(),
+            }
+        })
+        .collect()
+}
+
+/// A field as completion offers it.
+pub(crate) struct Member {
+    pub name: String,
+    /// The type reading it gives: `Note.body`, a refinement of its
+    /// declared type.
+    pub ty: Ty,
+    /// The type it is declared with: `Text`.
+    pub declared: Ty,
 }

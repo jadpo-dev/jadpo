@@ -30,6 +30,43 @@ pub(crate) const SINGLETONS: &[&str] = &[
     "translations",
 ];
 
+/// The reserved words that start a declaration ([`at_decl`]), which the
+/// editor offers where one may start (area 14, "Completion").
+pub const DECLARATION_KEYWORDS: &[SyntaxKind] = &[
+    TYPE_KW,
+    FUNCTION_KW,
+    ACTION_KW,
+    QUERY_KW,
+    FIXTURE_KW,
+    ENTITY_KW,
+    LIBRARY_KW,
+    ROUTES_KW,
+    SCHEDULE_KW,
+    SUBSCRIBER_KW,
+    CONSTANT_KW,
+];
+
+/// The words that start a declaration only where one is written
+/// ([`contextual_decl`]): `test "..."`, `seed`, `package`, `resource` and
+/// `provide`.
+pub const CONTEXTUAL_DECLARATIONS: &[&str] = &["test", "seed", "package", "resource", "provide"];
+
+/// The reserved words that start a statement ([`block_item`]).
+pub const STATEMENT_KEYWORDS: &[SyntaxKind] =
+    &[VAR_KW, RETURN_KW, IF_KW, FOR_KW, EMIT_KW, ASSERT_KW];
+
+/// The reserved words that start an expression ([`can_start_expr`]).
+pub const EXPRESSION_KEYWORDS: &[SyntaxKind] = &[
+    TRUE_KW,
+    FALSE_KW,
+    NONE_KW,
+    MATCH_KW,
+    REJECT_KW,
+    PROPAGATE_KW,
+    ATTEMPT_KW,
+    NOT_KW,
+];
+
 // --- files ------------------------------------------------------------------
 
 pub(crate) fn source_file(p: &mut Parser<'_>) {
@@ -451,8 +488,7 @@ pub(crate) fn at_decl(p: &Parser<'_>) -> bool {
     let public = usize::from(p.nth(prefix) == PUBLIC_KW);
     let n = prefix + public;
     match p.nth(n) {
-        TYPE_KW | FUNCTION_KW | ACTION_KW | QUERY_KW | FIXTURE_KW | ENTITY_KW | LIBRARY_KW
-        | ROUTES_KW | SCHEDULE_KW | SUBSCRIBER_KW | CONSTANT_KW => true,
+        kind if DECLARATION_KEYWORDS.contains(&kind) => true,
         IDENT => {
             contextual_decl(p, n).is_some()
                 || habits::const_keyword_at(p, n)
@@ -2286,27 +2322,20 @@ fn expr_stmt(p: &mut Parser<'_>) {
 // --- expressions -----------------------------------------------------------------
 
 fn can_start_expr(p: &Parser<'_>) -> bool {
-    matches!(
-        p.current(),
-        IDENT
-            | INT_NUMBER
-            | DECIMAL_NUMBER
-            | UNIT_NUMBER
-            | STRING
-            | TRUE_KW
-            | FALSE_KW
-            | NONE_KW
-            | L_PAREN
-            | L_BRACK
-            | MATCH_KW
-            | REJECT_KW
-            | PROPAGATE_KW
-            | ATTEMPT_KW
-            | NOT_KW
-            | MINUS
-            | SLASH
-            | DOT3
-    )
+    EXPRESSION_KEYWORDS.contains(&p.current())
+        || matches!(
+            p.current(),
+            IDENT
+                | INT_NUMBER
+                | DECIMAL_NUMBER
+                | UNIT_NUMBER
+                | STRING
+                | L_PAREN
+                | L_BRACK
+                | MINUS
+                | SLASH
+                | DOT3
+        )
 }
 
 pub(crate) fn expr(p: &mut Parser<'_>) -> Option<CompletedMarker> {

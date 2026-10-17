@@ -98,8 +98,8 @@ pub use standard::{
     standard_type,
 };
 pub use time::{
-    DATE_MAX, DATE_MIN, Dur, INSTANT_MAX, INSTANT_MIN, check_calendar_date, check_instant,
-    civil_date, clock_millis, date_number, days_in_month, epoch_day, format_clock_time,
-    format_date, format_instant, instant_millis, iso_duration,
+    DATE_MAX, DATE_MIN, Dur, INSTANT_MAX, INSTANT_MIN, UnitSuffix, check_calendar_date,
+    check_instant, civil_date, clock_millis, date_number, days_in_month, epoch_day,
+    format_clock_time, format_date, format_instant, instant_millis, iso_duration, unit_suffixes,
 };
 pub use zones::{LOCALES, ZONES};

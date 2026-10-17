@@ -16,6 +16,7 @@
 //! runs between messages rather than in the background with salsa's
 //! cancellation.
 
+mod completion;
 mod convert;
 mod declines;
 mod hover;

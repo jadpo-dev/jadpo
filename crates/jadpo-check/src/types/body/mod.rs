@@ -50,6 +50,7 @@ use crate::resolve::{Names, Walk, Want};
 use crate::std_lib::StdNames;
 use crate::tree::{self, node_span};
 
+pub(crate) use expr::members_of;
 use facts::{Facts, LocalFact};
 pub(crate) use facts::{NodeKey, node_key};
 pub use failing::Fallible;
@@ -110,6 +111,30 @@ pub struct Checked {
     /// edges, sites and branches, usage, recursion, the language server and
     /// both executors read; shared behind `Arc`, so nothing copies it.
     pub body: std::sync::Arc<jadpo_graph::body::Body>,
+    /// What the editor's completion reads of it (area 14, "Completion").
+    pub(crate) view: std::sync::Arc<BodyView>,
+}
+
+/// What the editor's completion reads of a checked body (area 14,
+/// "Completion"): the type the checker gave each expression, the type each
+/// position required, and every local with where its name is written, so
+/// the editor offers what the check itself decided.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct BodyView {
+    pub types: BTreeMap<NodeKey, Ty>,
+    pub expected: BTreeMap<NodeKey, Ty>,
+    pub locals: Vec<ViewLocal>,
+}
+
+/// A local as completion offers it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ViewLocal {
+    pub name: String,
+    pub ty: Ty,
+    pub kind: LocalKind,
+    /// Where its name is written.
+    pub start: u32,
+    pub end: u32,
 }
 
 /// The callables of `file` that have bodies, in source order.
@@ -194,6 +219,22 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
     let syntax = target.syntax.clone();
     checker.callable(target);
     let body = lower::lower(&checker, &lookup, file.text(db), &syntax);
+    let view = BodyView {
+        types: std::mem::take(&mut checker.facts.types),
+        expected: std::mem::take(&mut checker.facts.expected),
+        locals: checker
+            .facts
+            .locals
+            .iter()
+            .map(|local| ViewLocal {
+                name: local.name.clone(),
+                ty: local.ty.clone(),
+                kind: local.kind,
+                start: local.span.start,
+                end: local.span.end,
+            })
+            .collect(),
+    };
     let mut problems = Vec::with_capacity(checker.out.len());
     let mut deferred = Vec::new();
     for (index, problem) in checker.out.into_iter().enumerate() {
@@ -210,6 +251,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         set: checker.set,
         key,
         body: std::sync::Arc::new(body),
+        view: std::sync::Arc::new(view),
     }
 }
 

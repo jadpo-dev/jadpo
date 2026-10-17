@@ -210,3 +210,63 @@ fn a_decline_line_above_a_member_or_a_library_function_belongs_to_it() {
         .collect();
     assert_eq!(owners, [SyntaxKind::MEMBER, SyntaxKind::FUNCTION_DECL]);
 }
+
+/// The keyword sets the editor offers (area 14, "Completion") are the ones
+/// the parser starts declarations, statements and expressions with.
+#[test]
+fn the_keyword_sets_start_what_they_say() {
+    let first = |text: &str| {
+        parse_file(text)
+            .syntax()
+            .children()
+            .next()
+            .map(|node| node.kind())
+    };
+    for kind in jadpo_syntax::DECLARATION_KEYWORDS {
+        let word = kind.text().expect("a keyword");
+        let found = first(&format!("{word} thing {{}}\n"));
+        assert!(
+            found.is_some_and(|kind| kind != SyntaxKind::ERROR),
+            "`{word}` starts {found:?}"
+        );
+    }
+    for word in jadpo_syntax::CONTEXTUAL_DECLARATIONS {
+        let text = if *word == "test" {
+            "test \"it works\" {}\n".to_string()
+        } else {
+            format!("{word} thing {{}}\n")
+        };
+        let found = first(&text);
+        assert!(
+            found.is_some_and(|kind| kind != SyntaxKind::ERROR),
+            "`{word}` starts {found:?}"
+        );
+    }
+    let in_body = |line: &str| {
+        let parse = parse_file(&format!("action a() -> Int {{\n    {line}\n}}\n"));
+        let block = parse
+            .syntax()
+            .descendants()
+            .find(|node| node.kind() == SyntaxKind::BLOCK)
+            .expect("a block");
+        block.children().next().expect("a statement")
+    };
+    for kind in jadpo_syntax::STATEMENT_KEYWORDS {
+        let word = kind.text().expect("a keyword");
+        let statement = in_body(&format!("{word} x"));
+        assert!(
+            !matches!(statement.kind(), SyntaxKind::EXPR_STMT | SyntaxKind::ERROR),
+            "`{word}` starts {:?}",
+            statement.kind()
+        );
+    }
+    for kind in jadpo_syntax::EXPRESSION_KEYWORDS {
+        let word = kind.text().expect("a keyword");
+        let statement = in_body(&format!("return {word} x"));
+        let value = statement.children().next().map(|node| node.kind());
+        assert!(
+            value.is_some_and(|kind| kind != SyntaxKind::ERROR),
+            "`{word}` starts {value:?}"
+        );
+    }
+}

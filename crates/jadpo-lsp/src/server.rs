@@ -15,8 +15,8 @@ use lsp_types::notification::{
     Initialized, Notification as _, PublishDiagnostics,
 };
 use lsp_types::request::{
-    CodeActionRequest, CodeActionResolveRequest, GotoDefinition, HoverRequest, RegisterCapability,
-    Request as _,
+    CodeActionRequest, CodeActionResolveRequest, Completion, GotoDefinition, HoverRequest,
+    RegisterCapability, Request as _,
 };
 use lsp_types::{
     DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
@@ -193,6 +193,12 @@ impl Server {
             GotoDefinition::METHOD => {
                 match serde_json::from_value::<GotoDefinitionParams>(request.params) {
                     Ok(params) => Response::new_ok(id, self.definition(&params)),
+                    Err(error) => invalid(id, &error),
+                }
+            }
+            Completion::METHOD => {
+                match serde_json::from_value::<lsp_types::CompletionParams>(request.params) {
+                    Ok(params) => Response::new_ok(id, self.completion(&params)),
                     Err(error) => invalid(id, &error),
                 }
             }
@@ -468,6 +474,16 @@ fn capabilities(encoding: Encoding) -> InitializeResult {
                 },
             )),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
+            completion_provider: Some(lsp_types::CompletionOptions {
+                trigger_characters: Some(
+                    crate::completion::TRIGGERS
+                        .iter()
+                        .map(|trigger| trigger.to_string())
+                        .collect(),
+                ),
+                resolve_provider: Some(false),
+                ..lsp_types::CompletionOptions::default()
+            }),
             definition_provider: Some(OneOf::Left(true)),
             code_action_provider: Some(lsp_types::CodeActionProviderCapability::Options(
                 lsp_types::CodeActionOptions {

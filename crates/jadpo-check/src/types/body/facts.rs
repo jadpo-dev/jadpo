@@ -93,6 +93,9 @@ pub(crate) enum BuildFact {
 pub(crate) struct Facts {
     /// Each expression's type: a literal's is the type it goes into.
     pub types: BTreeMap<NodeKey, Ty>,
+    /// The type each checked position required, for the editor's
+    /// completion (area 14).
+    pub expected: BTreeMap<NodeKey, Ty>,
     pub locals: Vec<LocalFact>,
     /// The local each declared name brings in.
     pub declared: BTreeMap<NodeKey, usize>,

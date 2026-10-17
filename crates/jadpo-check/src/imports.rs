@@ -337,6 +337,77 @@ pub fn import_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
     here.problems(&written(source.syntax()))
 }
 
+/// Whether a file may use a project name, for the editor's completion
+/// (area 14, "Completion"), and how it comes in.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Import {
+    /// The file sees it already: it declares or imports it, or needs no
+    /// import for it.
+    Seen,
+    /// The edit that imports it, as `jadpo fmt` would add it.
+    Needs((u32, u32, String)),
+    /// The file may not use it: another domain's private name, or domain
+    /// code from `shared/`.
+    Refused,
+}
+
+/// How each of `symbols` comes into `file`: what [`import_problems`]
+/// would ask for if the file wrote its name.
+pub fn imports_for(db: &dyn Db, project: Project, file: File, symbols: &[&Symbol]) -> Vec<Import> {
+    with_here(db, project, file, |here| {
+        symbols.iter().map(|symbol| here.import(symbol)).collect()
+    })
+    .unwrap_or_else(|| vec![Import::Seen; symbols.len()])
+}
+
+/// How each of `domains` comes into `file`, for calls through it.
+pub fn domain_imports_for(
+    db: &dyn Db,
+    project: Project,
+    file: File,
+    domains: &[&str],
+) -> Vec<Import> {
+    with_here(db, project, file, |here| {
+        domains
+            .iter()
+            .map(|domain| here.import_domain(domain))
+            .collect()
+    })
+    .unwrap_or_else(|| vec![Import::Seen; domains.len()])
+}
+
+/// Runs `then` over `file`'s imports, as [`import_problems`] reads them;
+/// `None` for a file that imports nothing (a loose project's, a
+/// migration).
+fn with_here<R>(
+    db: &dyn Db,
+    project: Project,
+    file: File,
+    then: impl FnOnce(&Here<'_>) -> R,
+) -> Option<R> {
+    let source = tree::source(db, file)?;
+    if project.layout(db) == Layout::Loose {
+        return None;
+    }
+    let location = location(db, project, file);
+    if location.place == Place::Migration {
+        return None;
+    }
+    let path = file.path(db);
+    let lookup = Lookup::for_file(db, project, file);
+    let here = Here {
+        path,
+        text: file.text(db),
+        location,
+        subject: location.test.then(|| path.replace(".test.jadpo", ".jadpo")),
+        table: &lookup,
+        std: StdNames::get(),
+        top: top(source.syntax()),
+        lines: use_lines(source.syntax()),
+    };
+    Some(then(&here))
+}
+
 /// Every edit `jadpo fmt` makes to a file's imports, from the problems
 /// [`import_problems`] gives: the edits of each, leaving out any that
 /// overlap one already chosen. Applying them and checking again converges
@@ -485,6 +556,48 @@ impl Here<'_> {
 
     fn own_domain(&self) -> Option<&str> {
         self.location.ownership.domain()
+    }
+
+    /// How `symbol` comes into this file ([`imports_for`]).
+    fn import(&self, symbol: &Symbol) -> Import {
+        if !self.may_use(symbol) {
+            return Import::Refused;
+        }
+        let imported = self.lines.iter().any(|line| {
+            line.names.as_ref().is_some_and(|names| {
+                names
+                    .entries
+                    .iter()
+                    .any(|(name, _, _)| *name == symbol.name)
+            })
+        });
+        if self.declared_here(symbol) || imported {
+            return Import::Seen;
+        }
+        match folder_of(symbol) {
+            Some(folder) => {
+                let ((start, end), text) = self.add(&folder, Some(&symbol.name));
+                Import::Needs((start, end, text))
+            }
+            None => Import::Seen,
+        }
+    }
+
+    /// How the domain `domain` comes into this file
+    /// ([`domain_imports_for`]).
+    fn import_domain(&self, domain: &str) -> Import {
+        if self.own_domain() == Some(domain) {
+            return Import::Refused;
+        }
+        let imported = self
+            .lines
+            .iter()
+            .any(|line| line.names.is_none() && line.folder() == domain);
+        if imported {
+            return Import::Seen;
+        }
+        let ((start, end), text) = self.add(domain, None);
+        Import::Needs((start, end, text))
     }
 
     /// Whether `symbol` is declared in this file, or in the subject of a
