@@ -5,6 +5,8 @@
 # application's own nouns (todo, invoice, customer) to make a check pass.
 
 # Rust keywords and ordinary programming vocabulary
+# ordinary English: `configuration.move_name_taken`
+taken
 mut
 self
 add
@@ -243,6 +245,9 @@ signing_key
 database_url
 page_size
 sign_out
+# area 8's sign-in (`sign_in` providers and routes) and OpenAPI's `security`
+sign_in
+security
 # area 8's sign-in methods, route authentication and runtime failure codes
 browser_session
 fresh

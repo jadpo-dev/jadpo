@@ -34,6 +34,7 @@ mod policy;
 mod project;
 mod review;
 mod scale;
+mod setting_move;
 mod signed;
 mod soundness;
 mod stores;

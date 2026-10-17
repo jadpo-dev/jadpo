@@ -206,8 +206,7 @@ in test source.
 
 > Decided by Richard on 2026-10-16. Constants are built (chunk 5.3e, area
 > 3), and so is the refusal of one as a `default:`; the move below, `jadpo
-> config move`, is not built until chunk 5.3f, and its examples are
-> proposals, shown as plain text.
+> config move`, was built in chunk 5.3f, and its examples are checked.
 
 A value that could differ between deployments is a setting; one that never
 does is a `constant` (area 3). A value is one or the other, never both, so
@@ -249,32 +248,98 @@ makes only the moves an error asks for, doesn't make it. In one step it:
   `config.max_login_attempts`, and removes a `use` line nothing needs any
   more.
 
-```text
-// before: domains/accounts/libraries/security.jadpo
+Before, a library in the `accounts` domain holds the constant and an
+action reads it:
+
+```jadpo check project=move-before file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=move-before file=domains/accounts/types/login_attempts.jadpo hidden
+type LoginAttempts = Int {
+    min: 1
+    max: 100
+}
+```
+
+```jadpo check project=move-before file=domains/accounts/types/account_locked.jadpo hidden
+type AccountLocked = Bool {}
+```
+
+```jadpo check project=move-before file=domains/accounts/libraries/security.jadpo
+use accounts/types { LoginAttempts }
+
 library security {
     /// Failed sign-ins before an account is locked.
     constant max_login_attempts: LoginAttempts = 5
 }
-
-// before: domains/accounts/actions/sign_in.jadpo
-if failures >= security.max_login_attempts { ... }
 ```
+
+```jadpo check project=move-before file=domains/accounts/actions/sign_in.jadpo
+use accounts/types { AccountLocked, LoginAttempts }
+use accounts/libraries { security }
+
+action sign_in(failed_attempts: LoginAttempts) -> AccountLocked {
+    return AccountLocked(failed_attempts >= security.max_login_attempts)
+}
+```
+
+The move lists what it changed, file by file, then the setting and the
+variable a deployment can now set:
 
 ```text
 $ jadpo config move security.max_login_attempts
+  config.jadpo
+    + max_login_attempts  setting, default 5
+
+  domains/accounts/libraries/security.jadpo
+    - max_login_attempts  constant
+    - security            library, nothing left in it
+    - security.jadpo      file, nothing left in it
+
+  domains/accounts/actions/sign_in.jadpo
+    ~ line 5              reads config.max_login_attempts
+
+Made security.max_login_attempts a setting
+    setting   config.max_login_attempts
+    variable  MAX_LOGIN_ATTEMPTS
 ```
 
-```text
-// after: config.jadpo
+After, the library held nothing else, so it and its file are gone, and
+the imports follow:
+
+```jadpo check project=move-after file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=move-after file=domains/accounts/types/login_attempts.jadpo hidden
+type LoginAttempts = Int {
+    min: 1
+    max: 100
+}
+```
+
+```jadpo check project=move-after file=domains/accounts/types/account_locked.jadpo hidden
+type AccountLocked = Bool {}
+```
+
+```jadpo check project=move-after file=config.jadpo
+use accounts/types { LoginAttempts }
+
 config {
     /// Failed sign-ins before an account is locked.
     max_login_attempts: LoginAttempts {
         default: 5
     }
 }
+```
 
-// after: domains/accounts/actions/sign_in.jadpo
-if failures >= config.max_login_attempts { ... }
+```jadpo check project=move-after file=domains/accounts/actions/sign_in.jadpo
+use accounts/types { AccountLocked, LoginAttempts }
+
+action sign_in(failed_attempts: LoginAttempts) -> AccountLocked {
+    return AccountLocked(failed_attempts >= config.max_login_attempts)
+}
 ```
 
 Every read changes, so the reviewer sees each place whose behaviour can now
@@ -288,6 +353,13 @@ setting's is. It refuses, editing nothing, and says why:
 - a constant whose name a setting already has, naming that setting;
 - a constant read where a setting can't be: in a query, an update by `id`,
   a backfill or another constant's value, listing each such read.
+
+Each reason is an error of its own (`configuration.move_type_unsupported`,
+`configuration.move_name_taken`, `configuration.move_read_unsupported`,
+area 14's command errors), all given at once, ending `config move refused:
+nothing changed`. A setting whose `default:` names the constant
+(`configuration.default_literal_required`, below) is the one setting the
+move fills instead: the constant becomes that setting.
 
 Moving a setting back to a constant has no command: it is rare, and
 removing a setting is a change to every deployment's environment, made by
@@ -320,8 +392,8 @@ setting's position a meaning: a setting is read, bound and reported by
 name; `jadpo config check` and the check before the app starts list
 settings in the order they are written, which becomes name order.
 `jadpo fmt --check` fails on a `config { }` out of order. Decided by
-Richard on 2026-10-16, not built until chunk 5.3f; the examples on the
-language pages are already in name order.
+Richard on 2026-10-16 and built in chunk 5.3f; the examples on the
+language pages are in name order.
 
 ### Chosen in chunk 5.1
 
@@ -337,6 +409,22 @@ language pages are already in name order.
 - **`binding:` and the previous key.** A `SigningKey` setting also reads the
   variable named like its own with `_PREVIOUS` after it (below), so no other
   setting may bind that name.
+
+### Chosen in chunk 5.3f
+
+Choices the pages left open when `jadpo config move` was built, each the
+most conservative reading:
+
+| Choice | Chosen |
+|---|---|
+| Naming the constant | As code reads it, `security.max_login_attempts` or `free_delivery_from`, or after its domain (`accounts.security.max_login_attempts`) when private constants of two domains share the name; one name for two is refused, listing each |
+| The `default:` | The constant's value as written when it is a literal (`5`, `30d`, `0.2000`, `LogLevel.normal`); otherwise the value the compiler worked out |
+| Where the field goes | Into the one `config { }`, before the first field whose name comes after it; a new `config.jadpo` when there is none. The `///` lines move with it; imports are fixed in every file touched |
+| A library or file left empty | Removed: a library whose only member was the constant goes, and a file holding nothing else is deleted (with its folder, if that is left empty) |
+| A `default:` naming the constant | When exactly one setting's `default:` names the constant (`configuration.default_literal_required`), that setting is the one the constant becomes: its `default:` becomes the constant's value and every read becomes `config.<that setting>`; that error alone doesn't stop the move |
+| A project with errors | Not moved: its errors are shown as `jadpo check` shows them, and the editor offers the action unavailable |
+| A result that wouldn't check | Undone, and refused with the errors it would have (such as another constant left unused); nothing is written |
+| What the screen lists | The setting added (or filled), the constant and anything removed with it, and each read by line; imports are left to the diff |
 
 ## Secrets
 
@@ -2080,9 +2168,42 @@ Here `largest_page` names nothing. A constant of the setting's type is
 refused the same way (built in chunk 5.3e): a value is a constant or a
 setting, never both ([A constant or a setting](#a-constant-or-a-setting);
 revised 2026-10-16, Richard, reversing the same day's decision that a
-constant counts as a literal here). Once `jadpo config move` is built
-(chunk 5.3f), the `next:` for a constant offers it, which makes the
-constant the setting.
+constant counts as a literal here). For a constant, the `next:` offers
+`jadpo config move` (built in chunk 5.3f), which makes the constant this
+setting: its value becomes the `default:` and every read of it reads
+`config.page_size`:
+
+```jadpo check project=e-default-constant expect=configuration.default_literal_required
+type Pence = Int {
+    min: 0
+}
+
+constant largest_page: Pence = 100
+
+config {
+    page_size: Pence {
+        default: largest_page
+    }
+}
+
+function page() -> Pence {
+    return Pence(config.page_size + largest_page)
+}
+```
+
+```text output
+error: `default:` on `page_size` isn't a literal
+ --> main.jadpo:9:18
+  |
+9 |         default: largest_page
+  |                  ^^^^^^^^^^^^ not a literal
+  reason: A `default:` is a literal of the setting's type, checked while compiling (`default: 25`, `default: 5s`); it can't be computed, because nothing runs before the application starts.
+  next: Run `jadpo config move largest_page`, which makes the constant this setting, or write a literal value after `default:` (agent)
+  rule: configuration.default_literal_required
+  help: docs/language/10-configuration-and-time.html#configuration-default-literal-required
+
+check failed: 1 error, 1 file
+```
 
 ### `configuration.default_type`
 
@@ -3840,5 +3961,5 @@ locales' files, and the interpreter and runtime writing the text). Chunk
 | Where the choice runs (chosen in chunk 5.3c) | `jadpo_value::locale::from_accept_language(header, &LocalePlan)`, given the plan's locales by `jadpo_value::run` (a fourth parameter, the application's `Option<&LocalePlan>`, which `jadpo-plan` builds from `locales { }` and the interpreter passes), over `icu_locale`'s likely subtags, so the code generator will call the same function | 2026-10-16 |
 | Constants as defaults (Richard) | A `constant` (area 3) counts as a literal for a setting's `default:`, so code and a setting can share one value; `configuration.default_literal_required` still refuses anything computed. Rule of thumb: if a deployment could ever need a different value it is a setting, otherwise a constant. (Revised 2026-10-16 (Richard): a constant does not count as a literal for `default:` or `test:`, which stay literals as chosen in chunk 5.1, `configuration.default_literal_required` unchanged; the rule of thumb stands. See the next row.) | 2026-10-16 |
 | A constant or a setting (Richard) | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both: one source, one way to read it. If a constant could seed a setting, code reading the constant would silently ignore the environment variable (the `DEFAULT_PORT` bug of TypeScript and pydantic code); `default:` on the field already names the default. Tiers: `constant` (fixed in code), `config` (per deployment), `flags { }` (area 16, changes at runtime). Decided; constants built in chunk 5.3e, with a constant refused as `default:` | 2026-10-16 |
-| Making a constant a setting (Richard) | `jadpo config move <constant>`, and the editor's "Make this a setting" running the same code, adds a `config` field of the constant's name and type with its value as `default:` and its `///` description, deletes the constant and rewrites every read to `config.<name>`, so a reviewer sees each place that can now differ per deployment. Offered, never required, so not part of `jadpo fmt --layout`. Refuses, editing nothing, a type a setting can't hold, a name a setting already has, and a constant read in a query, an update by `id`, a backfill or another constant. No command moves a setting back. Rejected: a constant an environment variable can override (`setting: true`: hides per-deployment behaviour at the call site, agents add it everywhere, no single list of variables, moving a file renames its variable); a `config { }` per domain; settings declared beside their use and gathered by the compiler; values per environment in source (`production:`, `staging:`), against no layering. Decided, not built (chunk 5.3f) | 2026-10-16 |
-| Fields in name order (Richard) | `jadpo fmt` sorts `config { }` fields by name, comments moving with each, so parallel workspaces adding settings rarely touch the same lines; nothing gives a field's position meaning (settings are read, bound and reported by name). `jadpo fmt --check` fails on one out of order. The page examples are sorted already. Decided, not built (chunk 5.3f) | 2026-10-16 |
+| Making a constant a setting (Richard) | `jadpo config move <constant>`, and the editor's "Make this a setting" running the same code, adds a `config` field of the constant's name and type with its value as `default:` and its `///` description, deletes the constant and rewrites every read to `config.<name>`, so a reviewer sees each place that can now differ per deployment. Offered, never required, so not part of `jadpo fmt --layout`. Refuses, editing nothing, a type a setting can't hold, a name a setting already has, and a constant read in a query, an update by `id`, a backfill or another constant. No command moves a setting back. Rejected: a constant an environment variable can override (`setting: true`: hides per-deployment behaviour at the call site, agents add it everywhere, no single list of variables, moving a file renames its variable); a `config { }` per domain; settings declared beside their use and gathered by the compiler; values per environment in source (`production:`, `staging:`), against no layering. Built in chunk 5.3f | 2026-10-16 |
+| Fields in name order (Richard) | `jadpo fmt` sorts `config { }` fields by name, comments moving with each, so parallel workspaces adding settings rarely touch the same lines; nothing gives a field's position meaning (settings are read, bound and reported by name). `jadpo fmt --check` fails on one out of order. The page examples are sorted already. Built in chunk 5.3f | 2026-10-16 |

@@ -487,7 +487,8 @@ broken files (`crates/jadpo-syntax/tests/broken/`), the parser's fuzz
 test, which also checks that clean edits converge on a file with no
 errors, and a jadpo-check test that checks each clean habit against its
 edited source hold it. The language server shows these errors and their
-edits like any other; it offers no code actions yet.
+edits like any other, offering no quick fix for them yet; its one code
+action is "Make this a setting" (below).
 
 **Formatter.** Syntax tree to a document algebra to a printer, owning
 indentation, blank lines and member order (areas 1 and 14). Every example
@@ -597,6 +598,16 @@ a new file below the `use` lines it needs, and imported back into the old
 file when that still uses it; `jadpo fmt --layout` applies them one move at
 a time, checking again after each. The language server's lookup reads a
 `use` line's names as the declarations they bring in.
+
+**Making a constant a setting.** `jadpo_check::setting_move` (chunk 5.3f,
+area 10) is the code `jadpo config move` and the editor's "Make this a
+setting" share: `plan` reads the checked project and decides the setting,
+its `default:`, every read (from each body's resolved names, and the
+syntax outside bodies) and every refusal, editing nothing; `apply` edits
+the loaded texts, fixes imports, formats what was formatted and checks
+the result, undoing a move whose result wouldn't check. The command
+writes the files it gives back; the language server sends them as one
+workspace edit and puts its own texts back with `restore`.
 
 **Types.** Nominal and bidirectional: the expected type flows into
 literals (area 2). Widening is the only implicit conversion; the standard

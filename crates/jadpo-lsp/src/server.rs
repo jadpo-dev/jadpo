@@ -14,7 +14,10 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidChangeWatchedFiles, DidCloseTextDocument, DidOpenTextDocument,
     Initialized, Notification as _, PublishDiagnostics,
 };
-use lsp_types::request::{GotoDefinition, HoverRequest, RegisterCapability, Request as _};
+use lsp_types::request::{
+    CodeActionRequest, CodeActionResolveRequest, GotoDefinition, HoverRequest, RegisterCapability,
+    Request as _,
+};
 use lsp_types::{
     DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
     DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
@@ -46,6 +49,9 @@ pub struct Server {
     /// through a symbolic link; every URI sent back is under it, so it
     /// attaches to the editor's documents.
     shown_root: Option<PathBuf>,
+    /// Whether the editor asks for a code action's edit only once it is
+    /// chosen (`codeAction/resolve`); otherwise the edit comes with it.
+    pub(crate) resolves_edits: bool,
 }
 
 impl Server {
@@ -90,6 +96,13 @@ impl Server {
         server.shown_root = shown_root;
         // The first flush publishes what the project already has wrong.
         server.dirty = true;
+        server.resolves_edits = params
+            .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|text| text.code_action.as_ref())
+            .and_then(|action| action.resolve_support.as_ref())
+            .is_some_and(|support| support.properties.iter().any(|p| p == "edit"));
         server.can_watch = params
             .capabilities
             .workspace
@@ -110,11 +123,12 @@ impl Server {
             dirty: false,
             can_watch: false,
             shown_root: None,
+            resolves_edits: false,
         }
     }
 
     /// The root every URI sent to the editor is under.
-    fn uri_root<'a>(&'a self, loaded: &'a Loaded) -> &'a Path {
+    pub(crate) fn uri_root<'a>(&'a self, loaded: &'a Loaded) -> &'a Path {
         self.shown_root.as_deref().unwrap_or(&loaded.root)
     }
 
@@ -150,6 +164,14 @@ impl Server {
         self.loaded.as_ref()
     }
 
+    pub(crate) fn loaded_mut(&mut self) -> Option<&mut Loaded> {
+        self.loaded.as_mut()
+    }
+
+    pub(crate) fn encoding(&self) -> Encoding {
+        self.encoding
+    }
+
     /// Handles one message from the editor; what to send back.
     pub fn handle(&mut self, message: Message) -> Vec<Message> {
         match message {
@@ -172,6 +194,18 @@ impl Server {
             GotoDefinition::METHOD => {
                 match serde_json::from_value::<GotoDefinitionParams>(request.params) {
                     Ok(params) => Response::new_ok(id, self.definition(&params)),
+                    Err(error) => invalid(id, &error),
+                }
+            }
+            CodeActionRequest::METHOD => {
+                match serde_json::from_value::<lsp_types::CodeActionParams>(request.params) {
+                    Ok(params) => Response::new_ok(id, self.code_actions(&params)),
+                    Err(error) => invalid(id, &error),
+                }
+            }
+            CodeActionResolveRequest::METHOD => {
+                match serde_json::from_value::<lsp_types::CodeAction>(request.params) {
+                    Ok(action) => Response::new_ok(id, self.resolve(action)),
                     Err(error) => invalid(id, &error),
                 }
             }
@@ -250,7 +284,7 @@ impl Server {
     }
 
     /// The project-relative path of a document inside the project.
-    fn relative(&self, uri: &Uri) -> Option<String> {
+    pub(crate) fn relative(&self, uri: &Uri) -> Option<String> {
         let loaded = self.loaded.as_ref()?;
         loaded.relative(&convert::path_of(uri)?)
     }
@@ -409,6 +443,13 @@ fn capabilities(encoding: Encoding) -> InitializeResult {
             )),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             definition_provider: Some(OneOf::Left(true)),
+            code_action_provider: Some(lsp_types::CodeActionProviderCapability::Options(
+                lsp_types::CodeActionOptions {
+                    code_action_kinds: Some(vec![lsp_types::CodeActionKind::REFACTOR_REWRITE]),
+                    resolve_provider: Some(true),
+                    work_done_progress_options: Default::default(),
+                },
+            )),
             ..ServerCapabilities::default()
         },
         server_info: Some(ServerInfo {

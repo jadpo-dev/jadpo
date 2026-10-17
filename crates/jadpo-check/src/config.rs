@@ -147,6 +147,26 @@ pub fn setting_fact<'db>(
     }
 }
 
+/// Whether a setting can hold a value of type `ty` (area 10, "What a
+/// setting can hold"), for `jadpo config move`: `Err` with why not. A
+/// secret type is refused too, since a secret has no `default:`.
+pub fn holds(db: &dyn Db, project: Project, ty: &Ty) -> Result<(), String> {
+    let reader = Reader {
+        db,
+        project,
+        lookup: Lookup::new(db, project),
+        out: Config::default(),
+    };
+    reader.classify(ty)?;
+    if let Some(base) = reader.lookup.base_prim(ty).filter(|base| base.is_secret()) {
+        return Err(format!(
+            "A `{}` is secret, and a secret's value comes only from the deployment's environment, never from a `default:`.",
+            base.name()
+        ));
+    }
+    Ok(())
+}
+
 /// The problems in `config { }` itself.
 pub fn config_problems(db: &dyn Db, project: Project) -> &Vec<Diagnostic> {
     config_diagnostics(db, project)
@@ -554,6 +574,19 @@ impl Reader<'_> {
             Some(constant) => Some(constant),
         };
         let Some(constant) = literal else {
+            // A `default:` naming a constant: `jadpo config move` makes
+            // that constant this setting (area 10, "Making a constant a
+            // setting").
+            let names_constant = word == "default"
+                && matches!(&constant, Some(Const::Path(names))
+                    if crate::setting_move::names_constant(&self.lookup, names).is_some());
+            let next = if names_constant {
+                format!(
+                    "Run `jadpo config move {shown}`, which makes the constant this setting, or write a literal value after `{word}:`"
+                )
+            } else {
+                format!("Write a literal value after `{word}:`, or remove it")
+            };
             self.out.problems.push(
                 Diagnostic::new(
                     &rule::CONFIGURATION_DEFAULT_LITERAL_REQUIRED,
@@ -567,7 +600,7 @@ impl Reader<'_> {
                 .reason(format!(
                     "A `{word}:` is a literal of the setting's type, checked while compiling (`default: 25`, `default: 5s`); it can't be computed, because nothing runs before the application starts."
                 ))
-                .next(format!("Write a literal value after `{word}:`, or remove it")),
+                .next(next),
             );
             return None;
         };

@@ -73,7 +73,7 @@ Change safely
   api           Rewrite the API records       update
 
 Set up
-  config        Check and set local settings  check, set
+  config        Check and set local settings  check, move, set
   completions   Turn on Tab completion        zsh, bash, fish
   lsp           Run the language server for editors
 
@@ -132,7 +132,7 @@ Change safely
   api           Rewrite the API records       update
 
 Set up
-  config        Check and set local settings  check · set
+  config        Check and set local settings  check · move · set
   completions   Turn on Tab completion        zsh · bash · fish
   lsp           Run the language server for editors
 

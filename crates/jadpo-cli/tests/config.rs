@@ -771,3 +771,355 @@ fn a_connection_opens_at_the_address_its_setting_holds() {
     );
     assert!(!output.stderr.contains("https://example.test"));
 }
+
+// --- jadpo config move -------------------------------------------------------
+
+/// Area 10's example: a library constant in a domain, read by an action.
+const ACCOUNTS: &[(&str, &str)] = &[
+    ("app.jadpo", "application {}\n"),
+    (
+        "domains/accounts/types/login_attempts.jadpo",
+        "type LoginAttempts = Int {\n    min: 1\n    max: 100\n}\n",
+    ),
+    (
+        "domains/accounts/types/account_locked.jadpo",
+        "type AccountLocked = Bool {}\n",
+    ),
+    (
+        "domains/accounts/libraries/security.jadpo",
+        "use accounts/types { LoginAttempts }\n\nlibrary security {\n    /// Failed sign-ins before an account is locked.\n    constant max_login_attempts: LoginAttempts = 5\n}\n",
+    ),
+    (
+        "domains/accounts/actions/sign_in.jadpo",
+        "use accounts/types { AccountLocked, LoginAttempts }\nuse accounts/libraries { security }\n\naction sign_in(failed_attempts: LoginAttempts) -> AccountLocked {\n    return AccountLocked(failed_attempts >= security.max_login_attempts)\n}\n",
+    ),
+];
+
+fn accounts(name: &str) -> PathBuf {
+    let root = folder(name);
+    for (path, text) in ACCOUNTS {
+        write(&root, path, text);
+    }
+    root
+}
+
+#[test]
+fn move_makes_the_constant_a_setting_and_lists_what_changed() {
+    let root = accounts("move");
+    let output = jadpo(&root, &["config", "move", "security.max_login_attempts"]);
+    assert_eq!(output.stderr, "");
+    assert_eq!(
+        output.stdout,
+        "  config.jadpo
+    + max_login_attempts  setting, default 5
+
+  domains/accounts/libraries/security.jadpo
+    - max_login_attempts  constant
+    - security            library, nothing left in it
+    - security.jadpo      file, nothing left in it
+
+  domains/accounts/actions/sign_in.jadpo
+    ~ line 5              reads config.max_login_attempts
+
+Made security.max_login_attempts a setting
+    setting   config.max_login_attempts
+    variable  MAX_LOGIN_ATTEMPTS
+"
+    );
+    assert_eq!(output.code, 0);
+    assert_eq!(
+        fs::read_to_string(root.join("config.jadpo")).expect("config"),
+        "use accounts/types { LoginAttempts }\n\nconfig {\n    /// Failed sign-ins before an account is locked.\n    max_login_attempts: LoginAttempts {\n        default: 5\n    }\n}\n"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("domains/accounts/actions/sign_in.jadpo")).expect("action"),
+        "use accounts/types { AccountLocked, LoginAttempts }\n\naction sign_in(failed_attempts: LoginAttempts) -> AccountLocked {\n    return AccountLocked(failed_attempts >= config.max_login_attempts)\n}\n"
+    );
+    assert!(!root.join("domains/accounts/libraries").exists());
+    assert_eq!(jadpo(&root, &["check"]).code, 0);
+    assert_eq!(jadpo(&root, &["fmt", "--check"]).code, 0);
+}
+
+#[test]
+fn move_as_json_names_the_setting_its_variable_and_each_read() {
+    let root = accounts("move-json");
+    let output = jadpo(
+        &root,
+        &["config", "move", "security.max_login_attempts", "--json"],
+    );
+    assert_eq!(output.code, 0);
+    let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
+    let data = &document["data"];
+    assert_eq!(data["moved"], true);
+    assert_eq!(data["constant"], "security.max_login_attempts");
+    assert_eq!(data["setting"], "max_login_attempts");
+    assert_eq!(data["variable"], "MAX_LOGIN_ATTEMPTS");
+    assert_eq!(data["default"], "5");
+    assert_eq!(
+        data["reads"],
+        serde_json::json!([{"path": "domains/accounts/actions/sign_in.jadpo", "line": 5}])
+    );
+    let files: Vec<(&str, &str)> = data["files"]
+        .as_array()
+        .expect("files")
+        .iter()
+        .map(|f| {
+            (
+                f["path"].as_str().unwrap_or_default(),
+                f["change"].as_str().unwrap_or_default(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        files,
+        [
+            ("config.jadpo", "added"),
+            ("domains/accounts/libraries/security.jadpo", "removed"),
+            ("domains/accounts/actions/sign_in.jadpo", "changed"),
+        ]
+    );
+}
+
+#[test]
+fn move_refuses_a_name_a_setting_has_and_changes_nothing() {
+    let root = accounts("move-taken");
+    let config = "use accounts/types { LoginAttempts }\n\nconfig {\n    max_login_attempts: LoginAttempts {\n        default: 3\n    }\n}\n";
+    write(&root, "config.jadpo", config);
+    write(
+        &root,
+        "domains/accounts/actions/sign_in.jadpo",
+        "use accounts/types { AccountLocked, LoginAttempts }\nuse accounts/libraries { security }\n\naction sign_in(failed_attempts: LoginAttempts) -> AccountLocked {\n    return AccountLocked(failed_attempts >= security.max_login_attempts or failed_attempts >= config.max_login_attempts)\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["check"]).code, 0);
+    let output = jadpo(&root, &["config", "move", "security.max_login_attempts"]);
+    assert_eq!(
+        output.stdout,
+        "error: A setting is already called `max_login_attempts`
+ --> domains/accounts/libraries/security.jadpo:5:14
+  |
+5 |     constant max_login_attempts: LoginAttempts = 5
+  |              ^^^^^^^^^^^^^^^^^^ a setting has this name
+  reason: `config { }` declares `max_login_attempts` already, so `security.max_login_attempts` can't become `config.max_login_attempts` without two settings of one name.
+  next: Rename the constant or the setting `max_login_attempts`, then run `jadpo config move` again (agent)
+  rule: configuration.move_name_taken
+  help: docs/language/14-tooling.html#command-errors
+
+config move refused: nothing changed
+"
+    );
+    assert_eq!(output.code, 1);
+    assert_eq!(
+        fs::read_to_string(root.join("config.jadpo")).expect("config"),
+        config
+    );
+    assert!(
+        root.join("domains/accounts/libraries/security.jadpo")
+            .exists()
+    );
+}
+
+#[test]
+fn move_needs_a_constant_that_exists() {
+    let root = accounts("move-unknown");
+    let output = jadpo(&root, &["config", "move", "security.max_login_attempt"]);
+    assert_eq!(output.code, 2);
+    assert!(
+        output
+            .stderr
+            .contains("`security.max_login_attempt` isn't a constant"),
+        "{}",
+        output.stderr
+    );
+    assert!(output.stderr.contains(
+        "next: Use `security.max_login_attempts` instead of `security.max_login_attempt`"
+    ));
+    let missing = jadpo(&root, &["config", "move"]);
+    assert_eq!(missing.code, 2);
+    assert!(
+        missing
+            .stderr
+            .contains("`jadpo config move` needs a constant"),
+        "{}",
+        missing.stderr
+    );
+}
+
+#[test]
+fn move_stops_on_a_project_that_does_not_check() {
+    let root = accounts("move-broken");
+    write(
+        &root,
+        "domains/accounts/types/account_locked.jadpo",
+        "type AccountLocked = Bool {\n    max: 3\n}\n",
+    );
+    let output = jadpo(&root, &["config", "move", "security.max_login_attempts"]);
+    assert_eq!(output.code, 1);
+    assert!(
+        output.stdout.ends_with("config stopped: 1 error\n"),
+        "{}",
+        output.stdout
+    );
+    assert!(
+        root.join("domains/accounts/libraries/security.jadpo")
+            .exists()
+    );
+}
+
+/// The files of `project`'s ```jadpo check blocks on a language page.
+fn page_project(page: &str, project: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut lines = page.lines();
+    while let Some(line) = lines.next() {
+        let Some(attrs) = line.strip_prefix("```jadpo check ") else {
+            continue;
+        };
+        if !attrs
+            .split_whitespace()
+            .any(|attr| attr == format!("project={project}"))
+        {
+            continue;
+        }
+        let file = attrs
+            .split_whitespace()
+            .find_map(|attr| attr.strip_prefix("file="))
+            .unwrap_or("main.jadpo")
+            .to_string();
+        let mut text = String::new();
+        for line in lines.by_ref() {
+            if line.starts_with("```") {
+                break;
+            }
+            text.push_str(line);
+            text.push('\n');
+        }
+        out.push((file, text));
+    }
+    out
+}
+
+/// Area 10's example is real: `jadpo config move` turns the page's
+/// "before" project into its "after" project, printing what the page
+/// shows.
+#[test]
+fn move_does_what_area_10_shows() {
+    let page = include_str!("../../../docs/language/10-configuration-and-time.md");
+    let root = folder("move-page");
+    let before = page_project(page, "move-before");
+    assert!(!before.is_empty());
+    for (path, text) in &before {
+        write(&root, path, text);
+    }
+    let command = "$ jadpo config move security.max_login_attempts\n";
+    let start = page.find(command).expect("the transcript") + command.len();
+    let shown = &page[start..start + page[start..].find("```").expect("its end")];
+    let output = jadpo(&root, &["config", "move", "security.max_login_attempts"]);
+    assert_eq!(output.code, 0, "{}", output.stdout);
+    assert_eq!(output.stdout, shown);
+    let after = page_project(page, "move-after");
+    let mut expected: Vec<(String, String)> = after;
+    expected.sort();
+    let mut actual: Vec<(String, String)> = jadpo_db::files_under(&root, true)
+        .into_iter()
+        .map(|path| {
+            let text = fs::read_to_string(root.join(&path)).expect("read");
+            (path, text)
+        })
+        .collect();
+    actual.sort();
+    assert_eq!(actual, expected);
+}
+
+/// A project with `Pence` and one action, `main` in `file`, in the shop
+/// domain.
+fn shop(name: &str, file: &str, main: &str) -> PathBuf {
+    let root = folder(name);
+    write(&root, "app.jadpo", "application {}\n");
+    write(
+        &root,
+        "domains/shop/types/pence.jadpo",
+        "type Pence = Int {\n    min: 0\n}\n",
+    );
+    write(&root, &format!("domains/shop/actions/{file}"), main);
+    root
+}
+
+#[test]
+fn move_refuses_every_reason_at_once_and_changes_nothing() {
+    let main = "use shop/types { Pence }\n\naction first_fee() -> Pence {\n    for fee in first_fees {\n        return fee\n    }\n    return 0\n}\n\nconstant fees: List<Pence> = [250, 500]\nconstant first_fees: List<Pence> = fees\n";
+    let root = shop("move-refused", "first_fee.jadpo", main);
+    assert_eq!(
+        jadpo(&root, &["check"]).code,
+        0,
+        "{}",
+        jadpo(&root, &["check"]).stdout
+    );
+    let output = jadpo(&root, &["config", "move", "fees"]);
+    assert_eq!(output.code, 1);
+    let rules: Vec<&str> = output
+        .stdout
+        .lines()
+        .filter_map(|line| line.strip_prefix("  rule: "))
+        .collect();
+    assert_eq!(
+        rules,
+        [
+            "configuration.move_type_unsupported",
+            "configuration.move_read_unsupported",
+        ]
+    );
+    assert!(
+        output
+            .stdout
+            .ends_with("\nconfig move refused: nothing changed\n")
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("domains/shop/actions/first_fee.jadpo")).expect("action"),
+        main
+    );
+    assert!(!root.join("config.jadpo").exists());
+}
+
+#[test]
+fn move_fills_the_setting_whose_default_names_the_constant() {
+    let root = shop(
+        "move-fill",
+        "page.jadpo",
+        "use shop/types { Pence }\n\naction page() -> Pence {\n    return Pence(config.page_size + largest_page)\n}\n\nconstant largest_page: Pence = 100\n",
+    );
+    write(
+        &root,
+        "config.jadpo",
+        "use shop/types { Pence }\n\nconfig {\n    page_size: Pence {\n        default: largest_page\n    }\n}\n",
+    );
+    let check = jadpo(&root, &["check"]);
+    assert_eq!(check.code, 1);
+    assert!(
+        check
+            .stdout
+            .contains("next: Run `jadpo config move largest_page`"),
+        "{}",
+        check.stdout
+    );
+    let output = jadpo(&root, &["config", "move", "largest_page"]);
+    assert_eq!(
+        output.stdout,
+        "  config.jadpo
+    ~ page_size     default 100, was largest_page
+
+  domains/shop/actions/page.jadpo
+    - largest_page  constant
+    ~ line 4        reads config.page_size
+
+Made largest_page a setting
+    setting   config.page_size
+    variable  PAGE_SIZE
+"
+    );
+    assert_eq!(output.code, 0);
+    assert_eq!(
+        fs::read_to_string(root.join("config.jadpo")).expect("config"),
+        "use shop/types { Pence }\n\nconfig {\n    page_size: Pence {\n        default: 100\n    }\n}\n"
+    );
+    let after = jadpo(&root, &["check"]);
+    assert_eq!(after.code, 0, "{}", after.stdout);
+}

@@ -49,7 +49,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo domain rename/split/merge` | Moves a domain's files and updates every call | Decided in area 1, not built |
 | `jadpo migrate new <purpose>` / `apply` / `status` | Writes, runs and lists migrations | Built (chunk 3.1): `new` writes the next migration, or finishes the latest once its decisions are written; `apply` and `status` take the database's URL with `--url` (and `--store` when there are several), or read it from the connection's setting in the environment over `.env.local` (chunk 5.1); replaces `schema` (question 4). Prompting for a missing purpose, as the design language draws it, waits for prompts: without one the command names a purpose to use |
 | `jadpo seed <name>` | Runs a seed; refuses production | Decided in area 5, not built |
-| `jadpo config move <constant>` | Makes a constant a setting: a `config` field of its name and type with its value as `default:`, the constant deleted and every read rewritten to `config.<name>` | Decided 2026-10-16 (Richard, area 10), not built: chunk 5.3f |
+| `jadpo config move <constant>` | Makes a constant a setting: a `config` field of its name and type with its value as `default:`, the constant deleted and every read rewritten to `config.<name>` | Built (chunk 5.3f): names the constant as code reads it (`security.max_login_attempts`), or after its domain; lists what changed file by file, then the setting and its variable; refuses, changing nothing, with `configuration.move_type_unsupported`, `configuration.move_name_taken` and `configuration.move_read_unsupported`, every reason at once; undoes a move whose result wouldn't check; supports `--json` (area 10, "Making a constant a setting") |
 | `jadpo config set <field>` / `check` | Sets or checks local configuration in `.env.local` | Built (chunk 5.1): `check` lists each setting as `set`, `default`, `missing` or `invalid` with its variable against the environment over `.env.local`, each problem as `configuration.value_missing` or `configuration.value_invalid`, never printing a value, and supports `--json`; `set` asks for one value at a prompt (hidden for a secret), refuses `--json` and a missing terminal, checks the value against the setting's type, and writes `.env.local` only as an ordinary file, through a private temporary file and only if unchanged since it was read, adding the file to `.gitignore` |
 | `jadpo api update` | Rewrites the committed public API record (`api/main.api`) from the source | Built (chunk 4.1): one record per API with routes, its `version:` raised by one when it changes; a record whose API has no routes is removed. `jadpo check` fails while a record disagrees (`api.record_out_of_date`) |
 | `jadpo approval --before <ref>` | Writes the review report of what changed in behaviour, policy and the API | Decided, not built: comes with records (area 18); sign-off is question 12 |
@@ -96,7 +96,7 @@ reordered, and a section's comments move with it.
 The one exception is `config { }`: its fields are sorted by name, each with
 its comments, so two workspaces that each add a setting rarely touch the
 same lines (area 10, [Fields in name order](10-configuration-and-time.md#fields-in-name-order);
-decided 2026-10-16 by Richard, not built until chunk 5.3f).
+decided 2026-10-16 by Richard, built in chunk 5.3f).
 
 Inside a project, `jadpo fmt` fixes each file's `use` lines before it lays
 the file out (area 1, Imports): it adds a missing import, removes an unused
@@ -166,11 +166,15 @@ Decided in area 1 and not built: promotion and the similar-helper warning come
 with quick fixes; rename goes through the same code as `jadpo rename`, so an
 entity field renamed in the editor keeps its stored data (question 5).
 
-Decided in area 10 on 2026-10-16 (Richard) and not built until chunk 5.3f:
+Decided in area 10 on 2026-10-16 (Richard) and built in chunk 5.3f:
 "Make this a setting", a code action on a constant's declaration or any
 read of it, goes through the same code as `jadpo config move <constant>`
-and refuses what it refuses. It is offered, not a fix for an error, so
-`jadpo fmt --layout`, which makes the moves errors ask for, never makes it.
+and refuses what it refuses: a refused move is offered unavailable, with
+its reasons. Its edit replaces each changed file, creates `config.jadpo`
+when there is none and deletes a file the move empties; an editor that
+resolves code actions gets it only once the action is chosen. It is
+offered, not a fix for an error, so `jadpo fmt --layout`, which makes the
+moves errors ask for, never makes it.
 
 Decided in area 6 and not built: hovering over a query shows its generated
 SQL, the same as `jadpo sql`. The SQL is never written into the source as a
@@ -373,6 +377,9 @@ each command is built.
 | `configuration.local_syntax` | `config` | Local configuration syntax is invalid |
 | `configuration.local_unsafe_target` | `config` | Local configuration target is unsafe |
 | `configuration.local_write_failed` | `config` | Local configuration could not be saved |
+| `configuration.move_name_taken` | `config move`, the editor | A setting already has the constant's name |
+| `configuration.move_read_unsupported` | `config move`, the editor | Constant is read where a setting can't be |
+| `configuration.move_type_unsupported` | `config move`, the editor | Constant's type can't be a setting |
 | `configuration.value_invalid` | `config`, `dev` | Local configuration value is invalid |
 | `configuration.value_missing` | `config`, `dev` | Required local configuration is missing |
 | `format.changes_required` | `fmt` | Source files are not canonically formatted |
@@ -715,5 +722,5 @@ what other areas carried here and where this page answers it.
 | Incident input | `jadpo incident` reads a file, standard input, or text pasted at a prompt in a terminal; Jadpo events are found inside surrounding log text (timestamps, platform wrappers) and grouped by request; the build's manifest is found by the event's build id (area 18) (Richard) | 2026-10-13 |
 | CLI design language | Approved as designed in the [CLI design language](research/14-cli-design-language.md): six meaning-only colours, single-width symbols with ASCII fallbacks, one layout grid, calm by default; Jadpo's own colours when the background is known, otherwise the terminal theme's; Unicode symbols, no emoji or Nerd Font glyphs (Richard) | 2026-10-13 |
 | Constants for agents | The library catalogue lists library constants with their type, value, description and readers; `constant.similar_exists` warns on two constants of one type holding one value; the agent skill says a value a deployment could ever need to change is `config`, otherwise a `constant` (area 3). The warning and the catalogue entries built in chunk 5.3e; the skill itself isn't built yet (Richard) | 2026-10-16 |
-| Making a constant a setting | `jadpo config move <constant>`, and the editor's "Make this a setting" code action through the same code, moves a constant into `config.jadpo` and rewrites every read (area 10); offered, never required, so not part of `jadpo fmt --layout`; the agent skill points at it. Decided, not built (chunk 5.3f) (Richard) | 2026-10-16 |
-| Settings in name order | The formatter sorts `config { }` fields by name, the one exception to fields keeping their written order, so parallel workspaces adding settings rarely clash (area 10). Decided, not built (chunk 5.3f) (Richard) | 2026-10-16 |
+| Making a constant a setting | `jadpo config move <constant>`, and the editor's "Make this a setting" code action through the same code, moves a constant into `config.jadpo` and rewrites every read (area 10); offered, never required, so not part of `jadpo fmt --layout`; the agent skill points at it. Built in chunk 5.3f (Richard) | 2026-10-16 |
+| Settings in name order | The formatter sorts `config { }` fields by name, the one exception to fields keeping their written order, so parallel workspaces adding settings rarely clash (area 10). Built in chunk 5.3f (Richard) | 2026-10-16 |
