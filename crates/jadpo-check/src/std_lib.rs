@@ -33,10 +33,8 @@ const STUBS: [(&str, &str); 8] = [
     ("temporal.jadpo", include_str!("../std/temporal.jadpo")),
 ];
 
-/// Whether a stub file is the standard types' (`std/standard.jadpo`).
-fn stub_is_standard(stub: &str) -> bool {
-    std::ptr::eq(stub, STUBS[1].1)
-}
+/// The standard types' stub file (area 19).
+const STANDARD_STUB: &str = "standard.jadpo";
 
 /// A stub operation's signature as kinds (see [`StdNames::signatures`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -134,8 +132,8 @@ impl StdNames {
         static NAMES_TABLE: OnceLock<StdNames> = OnceLock::new();
         NAMES_TABLE.get_or_init(|| {
             let mut table = StdNames::parse(NAMES);
-            for (_, stub) in STUBS {
-                table.declare(stub);
+            for (name, stub) in STUBS {
+                table.declare(stub, name == STANDARD_STUB);
             }
             for (name, variants) in jadpo_std::enums() {
                 table.enums.insert(
@@ -186,8 +184,9 @@ impl StdNames {
         table
     }
 
-    /// Reads one stub file's enums and libraries.
-    fn declare(&mut self, stub: &str) {
+    /// Reads one stub file's enums and libraries, and the standard types'
+    /// declarations from theirs.
+    fn declare(&mut self, stub: &str, standard: bool) {
         let parse = jadpo_syntax::parse_file(stub);
         let Some(source) = ast::SourceFile::cast(parse.syntax()) else {
             return;
@@ -230,7 +229,7 @@ impl StdNames {
                             members.iter().map(|(variant, _)| variant.clone()).collect(),
                         );
                     }
-                    if stub_is_standard(stub) {
+                    if standard {
                         self.standard.insert(name, StandardStub { base, members });
                     }
                 }

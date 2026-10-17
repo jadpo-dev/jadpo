@@ -588,8 +588,17 @@ impl Body<'_> {
             }
             Fallible::Unknown => {
                 self.flow.open = true;
+                // A construction, or `text.parse`, whose type is already
+                // reported as wrong maps rules; nothing more is known.
+                let builds = matches!(&inner, Expr::CallExpr(call) if matches!(
+                    self.facts.reaches.get(&node_key(call.syntax())),
+                    Some(Reach::Construct(_) | Reach::Std(jadpo_std::Op::TextParse))
+                ));
                 for arm in &arms {
                     let failure = arm.value.as_ref().and_then(|v| self.failure_given(v));
+                    if arm.key == "invalid" && builds {
+                        continue;
+                    }
                     if arm.key == "invalid" {
                         self.invalid_outside_construction(arm, &inner, &written);
                     } else if let Some(name) = failure {

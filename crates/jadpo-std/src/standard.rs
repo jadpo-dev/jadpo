@@ -134,6 +134,8 @@ impl Validator {
 /// by and what it is built on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FieldMatch {
+    /// What the field is, as an error says it: "a start".
+    pub meaning: &'static str,
     /// The field's common names (question 5), the standard's own first.
     pub names: &'static [&'static str],
     /// The built-in types a matching field is built on.
@@ -355,10 +357,12 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         validator: None,
         shape: Some(&[
             FieldMatch {
+                meaning: "a start",
                 names: &["start", "starts_at", "start_at"],
                 built_on: &[Builtin::Instant],
             },
             FieldMatch {
+                meaning: "an end",
                 names: &["end", "ends_at", "end_at"],
                 built_on: &[Builtin::Instant],
             },
@@ -612,6 +616,19 @@ mod tests {
                 "{}'s examples name a format exactly when it takes one",
                 entry.name
             );
+            // A distinctive shape (question 5): two fields or more, at
+            // least one named for the domain.
+            if let Some(fields) = entry.shape {
+                assert!(fields.len() >= 2, "{}", entry.name);
+                let generic = ["name", "value", "id", "code", "type", "text"];
+                assert!(
+                    fields
+                        .iter()
+                        .any(|field| field.names.iter().all(|name| !generic.contains(name))),
+                    "{}'s shape names a field for its domain",
+                    entry.name
+                );
+            }
             for option in entry.format.options {
                 assert!(
                     ["zone", "format"].contains(&option.name),

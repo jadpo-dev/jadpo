@@ -876,7 +876,11 @@ impl Body<'_> {
             return target;
         }
         if table.is_some_and(|table| table.op == jadpo_std::Op::TextParse) {
-            // `as:` was missing or isn't a type, which is reported.
+            // `as:` was missing or isn't a type, which is reported; what
+            // the call can fail with isn't known.
+            self.facts
+                .constructions
+                .insert(node_key(call.syntax()), Fallible::Unknown);
             return Ty::Error;
         }
         if let Some(table) = table

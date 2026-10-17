@@ -27,23 +27,25 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
         Ty::Prim(prim @ (Builtin::ApiToken | Builtin::ServiceKey)) => {
             return Err(prim.name().to_string());
         }
+        // A standard type is stored as its data entry says (area 19).
+        Ty::Prim(prim) if let Some(entry) = jadpo_std::standard::of_builtin(*prim) => {
+            entry.column_type().into()
+        }
         Ty::Prim(prim) => match prim.representation() {
-            Builtin::Uuid => "uuid".into(),
             Builtin::Bool => "boolean".into(),
             Builtin::Text => "text".into(),
             Builtin::Bytes => "bytea".into(),
-            Builtin::Instant => "timestamptz(3)".into(),
-            Builtin::CalendarDate => "date".into(),
-            // An instant and its zone, stored as the API's JSON (area
-            // 5's structured values), as an object is.
-            Builtin::ZonedTime => "jsonb".into(),
-            // Milliseconds, as the runtime holds a duration.
-            Builtin::Duration => "bigint".into(),
             Builtin::Int => integer(table, ty),
             Builtin::Decimal => decimal(table, ty),
-            // The validated text types and the page types are made of
-            // text and numbers, which `representation` has already given.
-            Builtin::Unit
+            // The standard types are stored as their entries say, above;
+            // the page types are made of text and numbers, which
+            // `representation` has already given.
+            Builtin::Uuid
+            | Builtin::Instant
+            | Builtin::CalendarDate
+            | Builtin::ZonedTime
+            | Builtin::Duration
+            | Builtin::Unit
             | Builtin::Email
             | Builtin::Url
             | Builtin::IpAddress
@@ -61,6 +63,11 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
                 return Err(prim.name().to_string());
             }
         },
+        Ty::Named(name) | Ty::Opaque(name, _)
+            if let Some(entry) = jadpo_std::standard_type(name) =>
+        {
+            entry.column_type().into()
+        }
         Ty::Named(name) => match table.def(name) {
             Some(Def::Enum { variants }) => {
                 if variants.iter().any(|v| v.fields.is_some()) {

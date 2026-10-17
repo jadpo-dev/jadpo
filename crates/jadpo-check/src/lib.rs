@@ -48,7 +48,7 @@ pub use usage::{mentions, usage_problems, users};
 use jadpo_db::{Db, Project, item_tree, parse};
 use jadpo_diag::{Diagnostic, rule};
 
-pub use std_lib::StubSignature;
+pub use std_lib::{StandardStub, StubSignature};
 
 /// Every standard-library operation the stubs declare, with its
 /// parameters' kinds and its result's: each must match its entry in
@@ -56,6 +56,13 @@ pub use std_lib::StubSignature;
 /// `jadpo-value`.
 pub fn standard_operations() -> Vec<StubSignature> {
     std_lib::StdNames::get().signatures()
+}
+
+/// The standard types' stub declarations (`std/standard.jadpo`), by name,
+/// for the test that holds them to their data entries in `jadpo-std`
+/// (area 19).
+pub fn standard_stubs() -> std::collections::BTreeMap<String, StandardStub> {
+    std_lib::StdNames::get().standard().clone()
 }
 
 /// Every problem in `project`, in a stable order. Syntax errors come alone,
