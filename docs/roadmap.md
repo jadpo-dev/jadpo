@@ -851,14 +851,18 @@ reference only).
   at the end of a suggest session, as the report's instruction says. The
   command then shows the snippets HQ wants and stops: a person approves,
   directly or through the agent asking them in its conversation, and only
-  then does `share --approve` send the snippets (HQ recomputes their
-  hashes). In an unattended run nobody approves, so only hashes go and the
+  then does `share --approve` send the snippets, each with its kind and,
+  for an ignored one, its reason (HQ recomputes their hashes). In an unattended run nobody approves, so only hashes go and the
   request is skipped; HQ asks the next project that sends that hash. The
   pending file is then wiped, wanted or not. The first time hashes are
   sent, `share` says so in one line and how to turn sharing off. The protocol is written on area 14 so the real HQ, after the
   first build with the registry, implements it unchanged, including its
   agent that turns shared patterns into signal data (thresholds, generated
-  tests, release notes) and proposes, never builds, language features.
+  tests, release notes), reassesses a signal whose ignore rate across
+  distinct projects is high, reading the ignored snippets and reasons
+  beside the accepted ones, and narrows or removes it (tested against the
+  accepted snippets so it keeps catching what it got right), and proposes,
+  never builds, language features.
   Done when the whole exchange runs against the fake in tests, nothing is
   sent when sharing is off, no snippet text is sent without approval, a
   hash below the threshold never has its text requested, and an ignored
