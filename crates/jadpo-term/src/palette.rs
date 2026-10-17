@@ -8,7 +8,7 @@ use crate::detect::{Depth, Symbols, Theme};
 pub enum Token {
     /// Wrong, and it stops you: errors, failed tests and runs, faults.
     Failure,
-    /// Works, but should change: warnings, alerts, retries.
+    /// Works, but should change: alerts, retries.
     Warning,
     /// Done and correct: passed, succeeded, wrote, added.
     Success,

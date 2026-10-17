@@ -302,7 +302,7 @@
         },
         {
           "name": "storage.modifier.jadpo",
-          "match": "\\b(public|mut|fails)\\b"
+          "match": "\\b(public|mut|fails|decline)\\b"
         },
         {
           "name": "storage.type.jadpo",

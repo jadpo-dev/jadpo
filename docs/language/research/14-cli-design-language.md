@@ -58,7 +58,7 @@ indexes are from 16–255, which themes do not remap.
 | Token | Means | 16 | Dark | 256 | Light | 256 |
 |---|---|---|---|---|---|---|
 | `failure` | Wrong, and it stops you: errors, failed tests and runs, faults | 31 | `#ff7b70` 5.5 | 209 (5.9) | `#c3262f` 5.0 | 124 (6.4) |
-| `warning` | Works, but should change: warnings, alerts, retries | 33 | `#ebb54a` 7.5 | 179 (6.8) | `#8b5400` 5.4 | 94 (4.9) |
+| `warning` | Works, but should change: alerts, retries | 33 | `#ebb54a` 7.5 | 179 (6.8) | `#8b5400` 5.4 | 94 (4.9) |
 | `success` | Done and correct: passed, succeeded, wrote, added | 32 | `#4fd69c` 7.6 | 79 (7.9) | `#0f7a55` 4.6 | 23 (6.5) |
 | `accent` | Now and next: what is running, the selection, the prompt, the command to run next | 36 | `#5cc3f0` 7.0 | 74 (5.7) | `#0b649f` 5.4 | 24 (6.1) |
 | `decision` | Needs a person: `(human)` owners, outcome unknown, a choice to write down | 35 | `#d9a1f7` 6.9 | 183 (7.6) | `#8b3db8` 5.2 | 91 (6.8) |
@@ -83,7 +83,7 @@ are "ambiguous" and go double-width in CJK terminals set that way, where
 |---|---|---|---|
 | Success, answered prompt | `✓` | `+` | success |
 | Failure, error, fault | `✗` | `x` | failure |
-| Warning, alert | `▲` | `!` | warning |
+| Alert | `▲` | `!` | warning |
 | Needs a person | `◆` | `@` | decision |
 | Running (static) | `●` | `*` | accent |
 | Running (live) | `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` | `- \ \| /` | accent |
@@ -111,11 +111,12 @@ whole in `--json`. Commands, paths and links are never cut or broken: a
 long one gets a line of its own so it copies whole.
 
 - **Headline.** Symbol, severity word in its colour and bold, two spaces,
-  the subject in bold. The words are a closed set: `error`, `warning`,
-  `failed`, `fault`, `alert`, `decision`, `outcome unknown`. Identifiers
-  belong on the `rule` line. *Amended 2026-10-17 (Richard, area 1, question 11):* `warning` leaves
-  the set in chunk 5.4b, since every finding becomes an error.
-- **Errors and warnings.** Area 14's fields in its order: path, code frame,
+  the subject in bold. The words are a closed set: `error`, `failed`,
+  `fault`, `alert`, `decision`, `outcome unknown`. Identifiers belong on
+  the `rule` line. *Amended 2026-10-17 (Richard, area 1, question 11):*
+  `warning` left the set in chunk 5.4b, since every finding is an error;
+  a declinable error's `next` offers its `decline` line.
+- **Errors.** Area 14's fields in its order: path, code frame,
   `reason`, `next` (`(agent)` muted, `(human)` in decision colour),
   `in use` when a rename needs the names taken (area 1's
   `semantic.duplicate_declaration`: one name and its file per line, in
@@ -172,7 +173,7 @@ long one gets a line of its own so it copies whole.
 ## Plain and `--json`
 
 - Plain output never waits for a key and uses the decided words (`error:`,
-  `warning:`, `-->`, `FAIL`) so it can be searched.
+  `-->`, `FAIL`) so it can be searched.
 - `--json` writes one JSON document to stdout, newline-terminated, or one
   object per line for streaming commands. No prose, nothing on stderr unless
   Jadpo crashes, exit code unchanged, `schemaVersion` in every document.

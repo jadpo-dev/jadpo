@@ -364,11 +364,14 @@ A setting's `default:` and `test:` take a literal but never a constant
 
 Agents working in parallel tend to invent the same constant twice, each
 writing its own `vat_rate`. Two constants of the same type holding the same
-value get a warning, [`constant.similar_exists`](#constant-similar-exists),
+value are an error, [`constant.similar_exists`](#constant-similar-exists),
 modelled on
-[`library.similar_exists`](01-project-layout-and-modules.md#library-similar-exists):
-`check` still passes, and the warning names the other constant and its file
-so the agent reads that one and removes its own. The library catalogue
+[`library.similar_exists`](01-project-layout-and-modules.md#library-similar-exists),
+naming the other constant and its file so the agent reads that one and
+removes its own. It is declinable (area 1, decided 2026-10-17, built in
+chunk 5.4b): a VAT rate and a fee can share a value by coincidence, so a
+`decline constant.similar_exists: "<why>"` line above the constant
+answers it instead. The library catalogue
 (area 14) lists constants with their type, value, `///` description and
 readers.
 
@@ -497,7 +500,7 @@ function vat_rate_on(day: VatDate) -> VatRate {
   between every other pair of declarations.
 - **The first is kept.** Of two constants of one type holding one value,
   the first in file and source order is the one named; the others are
-  warned.
+  reported.
 - **Run as a body.** The compiler works out and checks each value while
   compiling, and the executors run the constant's typed body, which can't
   fail, where it is read (docs/compiler-runtime.md §2.5).
@@ -1024,7 +1027,9 @@ check failed: 1 error, 1 file
 
 ### `constant.similar_exists`
 
-A warning: `check` still passes, and names the constant to read instead.
+A declinable error (area 1, [Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)):
+read the constant it names instead, or decline with a reason when the two
+share a value by coincidence.
 
 ```jadpo check project=e-constant-similar expect=constant.similar_exists
 type VatRate = Decimal {
@@ -1053,17 +1058,17 @@ function vat_on(price: Pence) -> Pence {
 ```
 
 ```text output
-warning: A constant with this value exists: `pricing.vat_rate`
+error: A constant with this value exists: `pricing.vat_rate`
  --> main.jadpo:16:10
    |
 16 | constant standard_vat: VatRate = 0.2000
    |          ^^^^^^^^^^^^ same as `pricing.vat_rate`
   reason: `standard_vat` is a `VatRate` holding `0.2000`, as `pricing.vat_rate` in `main.jadpo` is.
-  next: Read `pricing.vat_rate` instead, and remove `standard_vat` (agent)
+  next: Read `pricing.vat_rate` instead, and remove `standard_vat`, or write `decline constant.similar_exists: "<why>"` above it if this is deliberate (agent)
   rule: constant.similar_exists
   help: docs/language/03-logic.html#constant-similar-exists
 
-checked: 1 warning, 1 file
+check failed: 1 error, 1 file
 ```
 
 ### `effect.function_calls_action`
@@ -3803,7 +3808,7 @@ Decided by Richard on 2026-10-12. Built in the new compiler on 2026-10-13 (roadm
 | Callable settings | None: every action is all-or-nothing, writes always check for concurrent change, reads are current unless they read a declared cache; policy is area 9 | 2026-10-12 |
 | Generics and unions | None for your own code; a parameter accepting several types takes an `Enum` whose variants carry them | 2026-10-12 |
 | Colon rule (language-wide) | Every member inside braces is `name: value`, and a value is one thing or a `{ ... }` block (`paid: { ... }`, `persistence: { ... }`); a variant with no data is just its name; a field's own settings still follow its type (`name: ProductName { optional: true }`); top-level declarations, statements and `match` arms are not members; route entries inside a `routes` group, keyed by method and path, are the one exception (area 7) (Richard; Terraform's block-versus-attribute split is a known source of confusion) | 2026-10-12 |
-| Constants | `constant name: Type = value`, only at the top of a file or in a library (in a body it is always `var`); a named type, as in signatures; a value worked out while compiling from literals, enum values, other constants, constructions and operators, never a call, `config` or `clock`, checked against the type's rules; no mutable form; unused is an error; placed and shared as helper functions are, read as `pricing.vat_rate` from a library, a private one unique within its domain; what "constants" means in queries, updates by `id` and backfills (setting defaults dropped: revised 2026-10-16 (Richard), a `default:` never names a constant); two of one type with one value warn `constant.similar_exists`; `config` when a deployment could ever need another value, otherwise a constant; dated values are a dated list constant behind a library function. Rejected: a top-level `var`, functions with no arguments, values attached to their type, a root `constants { }` block (Richard). Built in chunk 5.3e | 2026-10-16 |
+| Constants | `constant name: Type = value`, only at the top of a file or in a library (in a body it is always `var`); a named type, as in signatures; a value worked out while compiling from literals, enum values, other constants, constructions and operators, never a call, `config` or `clock`, checked against the type's rules; no mutable form; unused is an error; placed and shared as helper functions are, read as `pricing.vat_rate` from a library, a private one unique within its domain; what "constants" means in queries, updates by `id` and backfills (setting defaults dropped: revised 2026-10-16 (Richard), a `default:` never names a constant); two of one type with one value warn `constant.similar_exists` (a declinable error since 2026-10-17, area 1's question 11); `config` when a deployment could ever need another value, otherwise a constant; dated values are a dated list constant behind a library function. Rejected: a top-level `var`, functions with no arguments, values attached to their type, a root `constants { }` block (Richard). Built in chunk 5.3e | 2026-10-16 |
 | A constant or a setting | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both, so it has one source and one way to read it; a setting's `default:` is a literal and never a constant, so code reading the constant can't silently ignore the environment variable (the `DEFAULT_PORT` bug). `jadpo config move <constant>` and the editor's "Make this a setting" turn one into a setting, rewriting every read; the tiers are `constant`, `config`, `flags { }` (area 16). Details and the rejected alternatives in area 10. Decided; the refusal of a constant as `default:` built in chunk 5.3e, the move in chunk 5.3f (Richard) | 2026-10-16 |
 | Outside calls in loops | None inside `for`, in any action: a loop of calls is `batches.each`, the one way (Richard, area 12) | 2026-10-16 |
 | Inline functions in batch helpers | `each:` and `finished:` of the batch helpers take `x -> ...`; with no destination the body is one call to an action in the same domain; captured values are saved with the run and must be storable (Richard, area 12) | 2026-10-16 |

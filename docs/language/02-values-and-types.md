@@ -758,7 +758,7 @@ type PaymentOutcome = Enum {
     }
 }
 
-function decline(reason: DeclineReason) -> PaymentOutcome {
+function declined_payment(reason: DeclineReason) -> PaymentOutcome {
     return PaymentOutcome.declined {
         reason: reason
     }
@@ -1543,7 +1543,7 @@ type PaymentOutcome = Enum {
     }
 }
 
-function decline(reason: DeclineReason) -> PaymentOutcome {
+function declined_payment(reason: DeclineReason) -> PaymentOutcome {
     return PaymentOutcome.declined {
         reason: reason
         note: reason
@@ -1578,7 +1578,7 @@ type PaymentOutcome = Enum {
     }
 }
 
-function decline(reason: DeclineReason) -> PaymentOutcome {
+function declined_payment(reason: DeclineReason) -> PaymentOutcome {
     return PaymentOutcome.declined {
         reason: reason
         reason: reason

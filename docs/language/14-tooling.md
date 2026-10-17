@@ -54,7 +54,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo translations missing` / `unused` / `builtin` / `update` / `accept <locale>` / `export` / `import` | Lists missing, stale and unaccepted wording, unused messages, and Jadpo's own messages with their fields; records each translation's source in `translations/sources.jadpo_record` (`sources.json` until records are renamed, area 18); accepts a locale's changed wording; exchanges messages with translation services as XLIFF, or JSON | Decided in area 10 (2026-10-16), not built: comes with translations as messages (chunk 5.4c) |
 | `jadpo api update` | Rewrites the committed public API record (`api/main.jadpo_record`) from the source | Built (chunk 4.1) as `api/main.api`: one record per API with routes, its `version:` raised by one when it changes; a record whose API has no routes is removed. `jadpo check` fails while a record disagrees (`api.record_out_of_date`). The rename to `.jadpo_record` with its header line was decided 2026-10-16 (area 18), not built |
 | `jadpo records` | Lists every committed record (`.jadpo_record` files and `jadpo.lock`), what writes each, and flags any out of date with the command that updates it | Decided 2026-10-16 (area 18), not built |
-| `jadpo declines list` / `clear` | Lists every decline with its rule, place and reason; `clear` removes the matching decline lines so each finding comes back; `--rule <id>`, a path and `--json` | Decided (area 1, question 11), not built: chunk 5.4b |
+| `jadpo declines list` / `clear` | Lists every decline with its rule, place and reason; `clear` removes the matching decline lines so each finding comes back; `--rule <id>`, a path and `--json` | Built (chunk 5.4b): `list` is one list in file order, a reason too long for its row on the lines under it; `clear` writes each file without its matching lines, stops on syntax errors, and points at `jadpo check`; an unknown action, rule or a path outside the project is `cli.declines_arguments` (area 1, "Declining a judgement call") |
 | `jadpo fix` | Applies the fix the author picks for a finding, through the same code as the editor's quick fix; first for a release that adds a standard type an app already names (swap to it, or rename) | Decided in area 19 (question 4, 2026-10-17), not built: chunk 5.5a |
 | `jadpo approval --before <ref>` | Writes the review report of what changed in behaviour, policy and the API | Decided, not built: comes with records (area 18); sign-off is question 12 |
 | `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries; `show <id>` lists an unfinished multi-step action's steps, and `retry <id> --not-done` and `abandon <id>` act on it (area 11) | Decided (question 13; `show`, `--not-done` and `abandon` 2026-10-16), not built: comes with events (chunk 6.1) and multi-step calls |
@@ -181,8 +181,7 @@ with the generated files.
 > Since chunk 3.5 go to definition works from every use of a name, in a
 > body, a signature or a `use` line (area 1, Imports).
 
-Decided in area 1 and not built: promotion and the similar-helper warning come
-with quick fixes; rename goes through the same code as `jadpo rename`, so an
+Decided in area 1 and not built: promotion comes with quick fixes; rename goes through the same code as `jadpo rename`, so an
 entity field renamed in the editor keeps its stored data (question 5).
 
 Decided in area 10 and not built: go to definition from a
@@ -198,6 +197,13 @@ when there is none and deletes a file the move empties; an editor that
 resolves code actions gets it only once the action is chosen. It is
 offered, not a fix for an error, so `jadpo fmt --layout`, which makes the
 moves errors ask for, never makes it.
+
+Decided in area 1 (question 11, 2026-10-17) and built in chunk 5.4b:
+"Decline with a reason", a quick fix on a declinable finding, writes
+`decline <rule>: ""` above the declaration the finding is on, and
+`decline.reason_required` asks for the reason until it is written;
+"Remove decline", on a `decline` line, removes the line. Both go through
+the same code as `jadpo declines clear`.
 
 Decided in area 6 and not built: hovering over a query shows its generated
 SQL, the same as `jadpo sql`. The SQL is never written into the source as a
@@ -274,17 +280,18 @@ twin for tools (question 10).
 
 Agents look things up through the compiler rather than browsing folders.
 These were decided in areas 1, 4 and 5. The library and failure catalogues
-and the similar-helper warning are built (chunk 1.7); the rest are not yet.
+and the similar-helper check are built (chunk 1.7); the rest are not yet.
 
 - **Library catalogue** (`build/catalogue/libraries.md`): every library
   function with its signature, `///` description and callers, and every
   library constant with its type, value, description and readers (area 3,
   2026-10-16). An agent reads it before writing a helper or a constant.
-- **Similar-helper warning**: when a new helper looks like an existing one,
-  `jadpo check` warns `library.similar_exists` and names it; two constants
-  of the same type holding the same value warn `constant.similar_exists`
+- **Similar-helper check**: when a new helper looks like an existing one,
+  `jadpo check` reports `library.similar_exists` and names it; two constants
+  of the same type holding the same value are `constant.similar_exists`
   (area 3, 2026-10-16, built in chunk 5.3e). *Amended 2026-10-17 (Richard, area 1, question 11):* no warning
-  severity; both become declinable errors in chunk 5.4b.
+  severity; both are declinable errors, built in chunk 5.4b: the fix, or a
+  `decline <rule>: "<reason>"` line above the declaration.
 - **Failure catalogue** (`build/catalogue/failures.md`): every failure with
   its code, kind, status and client fields.
 - **Schema and query reports** (`build/report/`): every table, column and
@@ -536,7 +543,7 @@ is decided but not built yet.
 | JSON output | Built (chunk 1.1 on): every command takes `--json` and prints one envelope (`schemaVersion` 2 since chunk 2.8) with project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys; `jadpo test --json` is described in area 13 and under `testReport` in `jadpo help --json`. |
 | `build/` | Built (chunk 1.7): `jadpo check` writes `build/manifest.json` and the catalogues in `build/catalogue/`; `jadpo test` keeps its last run in `build/test/`. |
 | Language server | Built (chunk 1.7): diagnostics, hover and go to definition, from a `use` line too since chunk 3.5. |
-| Agent tools | The catalogues and the similar-helper warning are built (chunk 1.7); `migrate` is built (chunk 3.1); `impact`, `domain`, `rename` and `seed` are decided, not built. |
+| Agent tools | The catalogues and the similar-helper check are built (chunk 1.7), a declinable error since chunk 5.4b; `migrate` is built (chunk 3.1); `impact`, `domain`, `rename` and `seed` are decided, not built. |
 | Build-only errors | Not applicable yet: there is no `jadpo build` until Phase 8. |
 
 ### Consistency with the rest of the language

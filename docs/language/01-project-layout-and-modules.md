@@ -70,7 +70,8 @@ names a declaration, field, parameter, variable or variant, and using one is
 `propagate`, `provide`, `public`, `query`, `reject`, `resource`, `return`,
 `routes`, `schedule`, `seed`, `subscriber`, `test`, `true`, `type`, `use`
 and `var`; `constant` joins them with constants (area 3, decided
-2026-10-16, built in chunk 5.3e). A setting the language defines may still use one as its key
+2026-10-16, built in chunk 5.3e), and `decline` with declinable errors
+(question 11, decided 2026-10-17, built in chunk 5.4b). A setting the language defines may still use one as its key
 (`package: Stripe.v2024_06_20` in a connection, `test:` in configuration).
 
 These words mean something only where the language expects them, and stay
@@ -95,7 +96,113 @@ generated documentation and the library catalogue show it.
 
 Each compiler error gives the location, a reason, a suggested next step and who
 should act on it, plus a stable rule ID with a help link. Tools read the same
-fields as JSON with `jadpo check --json`.
+fields as JSON with `jadpo check --json`. There is no warning severity:
+every finding is an error, and stops `check` and the build until it is
+answered.
+
+## Declining a judgement call
+
+Most rules report plain mistakes, which only a fix answers. A few are
+judgement calls, where the code can be right as written: two helpers that
+match today but differ on purpose, two constants that share a value by
+coincidence. These rules are *declinable* (question 11, decided
+2026-10-17, built in chunk 5.4b): the author fixes the finding, or
+declines it on the declaration itself with a reason, in a line directly
+above the declaration or member, after its `///` comments.
+
+```jadpo check project=e-declined
+type Pence = Int {
+    min: 0
+}
+
+library rounding {
+    /// The amount, capped at a thousand pence.
+    function capped(amount: Pence) -> Pence {
+        if (amount > Pence(1000)) {
+            return Pence(1000)
+        }
+        return amount
+    }
+}
+
+/// The basket total, capped for the till.
+decline library.similar_exists: "Caps the basket for the till, which changes on its own; rounding.capped caps one line"
+function cap_total(total: Pence) -> Pence {
+    if (total > Pence(1000)) {
+        return Pence(1000)
+    }
+    return total
+}
+```
+
+A decline covers its one rule on its one declaration, and its reason is
+required (`decline.reason_required`). An agent or a person may decline;
+each declinable error's `next:` offers the line. Declinable today:
+[`library.similar_exists`](#library-similar-exists) and area 3's
+[`constant.similar_exists`](03-logic.md#constant-similar-exists); the
+other judgement calls question 11 lists join as their rules are built.
+Naming any other rule is [`decline.not_declinable`](#decline-not-declinable),
+and a decline whose rule no longer fires there is
+[`decline.unused`](#decline-unused), so declines don't outlive their
+reason.
+
+`jadpo declines list` shows every decline with its rule, place and
+reason, and `jadpo declines clear` removes them, so each finding comes
+back to be fixed or declined again; both take `--rule <id>`, a path and
+`--json` (area 14). In the editor, "Decline with a reason" on a
+declinable finding and "Remove decline" on a decline line run the same
+code. `jadpo approval` will list every decline a change adds or edits
+when it is built (area 18). A rule triggered by time passing (area 16's
+expired flag, not built yet) is judged at today's date by `check` and at
+the commit's date by `jadpo build`, and isn't declinable.
+
+```text
+$ jadpo declines list
+Declines
+  constant.similar_exists  domains/sales/libraries/fees.jadpo:4
+    A courier's charge, not the fee
+  library.similar_exists   domains/sales/libraries/rounding.jadpo:12
+    Caps the basket for the till, which changes on its own
+
+✓ 2 declines  2 rules · 2 files
+
+$ jadpo declines clear --rule library.similar_exists
+✓ Removed 1 decline from 1 file
+
+→ jadpo check  shows each finding again, to fix or decline
+```
+
+### Chosen in chunk 5.4b
+
+- **Where it goes.** A decline is the first child of the declaration or
+  member below it: `///` comments, then `decline` lines, then the
+  declaration. The rule is written `area.name` with no spaces, and either
+  part may be a reserved word. A decline with nothing under it is
+  `syntax.expected_declaration`; one inside a body is
+  `syntax.expected_statement`.
+- **Which declaration a finding is on.** The innermost declaration or
+  member around the error's location: a decline on a type covers a
+  finding on the type, not one on its field.
+- **The reason.** A missing or blank reason is `decline.reason_required`;
+  the finding stays declined meanwhile, so one error shows, not two.
+  "Decline with a reason" in the editor writes an empty reason for the
+  author to fill in.
+- **Unknown rules.** A rule id Jadpo doesn't have is
+  `decline.not_declinable` too, naming the nearest declinable rule.
+- **When a decline is unused.** Only once every other finding is
+  answered (no syntax errors, and every other error is itself declinable
+  or about a decline), since another error can stop a rule from firing.
+  A second decline of the same rule on one declaration is unused.
+- **The offer.** Every declinable error's `next:` ends with ``, or write
+  `decline <rule>: "<why>"` above it if this is deliberate``.
+- **JSON.** A diagnostic keeps `"severity": "error"` and gains
+  `"declinable"`; `jadpo help --json` gives each rule's `declinable`; the
+  `warnings` counts of `jadpo check --json` and `jadpo test --json` are
+  gone.
+- **The commands.** `jadpo declines clear` stops on syntax errors, as
+  every command that writes source does; `list` lists regardless. When a
+  reason doesn't fit beside its row, every reason goes on the lines under
+  its row, wrapped.
 
 ## Errors
 
@@ -1283,7 +1390,9 @@ check failed: 1 error, 4 files
 
 ### `library.similar_exists`
 
-A warning, so `check` still passes. A function is like a library function
+A declinable error: call the library function, or decline with a reason
+when the two differ on purpose ([Declining a judgement call](#declining-a-judgement-call)).
+A function is like a library function
 when its parameter types, result, `fails` list and body are the same once
 each parameter and variable is renamed by its position: a copy, however it
 is formatted or named. Of two alike library functions, the later one in
@@ -1313,17 +1422,127 @@ function cap_total(total: Pence) -> Pence {
 ```
 
 ```text output
-warning: A similar library function exists: `rounding.capped`
+error: A similar library function exists: `rounding.capped`
  --> main.jadpo:15:10
    |
 15 | function cap_total(total: Pence) -> Pence {
    |          ^^^^^^^^^ same as `rounding.capped`
   reason: `cap_total` takes the same parameters, gives the same result and has the same body as `rounding.capped` in `main.jadpo`, apart from the names of its variables.
-  next: Call `rounding.capped` instead, and remove `cap_total` (agent)
+  next: Call `rounding.capped` instead, and remove `cap_total`, or write `decline library.similar_exists: "<why>"` above it if this is deliberate (agent)
   rule: library.similar_exists
   help: docs/language/01-project-layout-and-modules.html#library-similar-exists
 
-checked: 1 warning, 1 file
+check failed: 1 error, 1 file
+```
+
+### `decline.unused`
+
+A decline whose rule no longer fires on its declaration: the finding was
+fixed, or the compiler grew smarter. Its edit removes the line. It is
+reported once every other finding is answered, since another error can
+stop a rule from firing.
+
+```jadpo check project=e-decline-unused expect=decline.unused
+type Pence = Int {
+    min: 0
+}
+
+/// The basket total, capped for the till.
+decline library.similar_exists: "Caps the basket, not a line"
+function cap_total(total: Pence) -> Pence {
+    if (total > Pence(1000)) {
+        return Pence(1000)
+    }
+    return total
+}
+```
+
+```text output
+error: Nothing to decline: `library.similar_exists` doesn't fire here
+ --> main.jadpo:6:9
+  |
+6 | decline library.similar_exists: "Caps the basket, not a line"
+  |         ^^^^^^^^^^^^^^^^^^^^^^ no such finding here
+  reason: This line declines `library.similar_exists` on `cap_total`, but `jadpo check` finds no `library.similar_exists` there now, so the decline has outlived its reason.
+  next: Remove the `decline` line (agent)
+  rule: decline.unused
+  help: docs/language/01-project-layout-and-modules.html#decline-unused
+
+check failed: 1 error, 1 file
+```
+
+### `decline.not_declinable`
+
+Only judgement calls can be declined; a plain mistake is fixed. A rule id
+Jadpo doesn't have is reported the same way, naming the nearest declinable
+rule.
+
+```jadpo check project=e-decline-not-declinable expect=decline.not_declinable
+type Pence = Int {
+    min: 0
+}
+
+decline layout.unused_declaration: "Kept for next quarter"
+function cap_total(total: Pence) -> Pence {
+    return total
+}
+```
+
+```text output
+error: `layout.unused_declaration` can't be declined
+ --> main.jadpo:5:9
+  |
+5 | decline layout.unused_declaration: "Kept for next quarter"
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^ a plain mistake
+  reason: Only judgement calls can be declined: `constant.similar_exists` and `library.similar_exists`. `layout.unused_declaration` reports a mistake, which only a fix answers.
+  next: Remove the `decline` line, and fix what `layout.unused_declaration` reports if it fires (agent)
+  rule: decline.not_declinable
+  help: docs/language/01-project-layout-and-modules.html#decline-not-declinable
+
+check failed: 1 error, 1 file
+```
+
+### `decline.reason_required`
+
+A decline says why the finding is right to leave, so a reviewer can agree
+or not.
+
+```jadpo check project=e-decline-reason expect=decline.reason_required
+type Pence = Int {
+    min: 0
+}
+
+library rounding {
+    /// The amount, capped at a thousand pence.
+    function capped(amount: Pence) -> Pence {
+        if (amount > Pence(1000)) {
+            return Pence(1000)
+        }
+        return amount
+    }
+}
+
+decline library.similar_exists: ""
+function cap_total(total: Pence) -> Pence {
+    if (total > Pence(1000)) {
+        return Pence(1000)
+    }
+    return total
+}
+```
+
+```text output
+error: This decline gives no reason
+ --> main.jadpo:15:1
+   |
+15 | decline library.similar_exists: ""
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reason needed
+  reason: A decline is reviewed like the code it sits on: its reason says why the finding is right to leave, so a reviewer can agree or not.
+  next: Write why in the quotes: `decline library.similar_exists: "<why>"` (agent)
+  rule: decline.reason_required
+  help: docs/language/01-project-layout-and-modules.html#decline-reason-required
+
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.expected_declaration`
@@ -1593,7 +1812,8 @@ rule's real output under [Errors](#errors).
 | Domains, `public` and calls | Built: owner-qualified calls and per-declaration `public`, with `visibility.private_cross_domain`, `visibility.public_not_allowed` and `visibility.public_unused` (chunk 2.8). |
 | Reserved words | Built: a reserved word can't name anything. |
 | Comments | Built: `//` and `///` documentation comments. |
-| Similar helpers | Built (chunk 1.7): the `library.similar_exists` warning. |
+| Similar helpers | Built (chunk 1.7): `library.similar_exists`, a declinable error since chunk 5.4b. |
+| Declinable errors | Built (chunk 5.4b): no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.reason_required`; `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline". `jadpo approval` listing declines comes with records (area 18), and the date rule with expired flags (area 16). |
 | Constants | Built (chunk 5.3e): `constant` as a reserved word and a declaration placed and shared as helper functions are, a private one unique within its domain, `constant.similar_exists`, and a top-level `var` pointed at `constant` (area 3). |
 | Imports | Built (chunk 3.5): `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
 | A file holds only what its primary declaration uses, primary first | Built (chunk 3.9): `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another, and `jadpo fmt` moving the primary declaration to the top. |
@@ -2262,10 +2482,11 @@ integrations in `shared/providers/`, both laid out as `shared/` is.
    integrations move to `shared/providers/`.
 11. **No warnings: every finding an error, some of them declinable?**
    *Decided 2026-10-17 (see Decisions):* yes, as recommended; built in
-   chunk 5.4b. Until then a warning never
-   fails `check` (`library.similar_exists`, built in chunk 1.7, and
-   `constant.similar_exists`, chunk 5.3e), so an agent can leave one in
-   place for ever and nobody decides it. The proposal:
+   chunk 5.4b (see [Declining a judgement call](#declining-a-judgement-call)).
+   Until then a warning never
+   failed `check` (`library.similar_exists`, built in chunk 1.7, and
+   `constant.similar_exists`, chunk 5.3e), so an agent could leave one in
+   place for ever and nobody decided it. The proposal:
    - **No warning severity.** Every finding is an error. Some rules are
      *declinable*: the author applies the fix, or declines on the
      declaration itself with a required reason. An agent or a person may

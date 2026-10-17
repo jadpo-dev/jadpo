@@ -15,9 +15,9 @@
 //!   each is decided again. Mode: operate. Scanning beats reading.
 //! - `list` is one list, as `jadpo routes` is: the bold heading `Declines`,
 //!   then a row per decline in file order, the rule, its place
-//!   (`path:line`, never cut) and the reason; a reason that doesn't fit
-//!   in 80 columns goes on the lines under its row, wrapped, since it is
-//!   prose a reviewer reads whole. The footer counts the declines, the
+//!   (`path:line`, never cut) and the reason. When a reason doesn't fit in
+//!   80 columns, every reason goes on the lines under its row, wrapped:
+//!   it is prose a reviewer reads whole, and the list keeps one shape. The footer counts the declines, the
 //!   rules and the files. No hint: nothing has to happen next.
 //! - `clear` is one status line, `✓ Removed 2 declines from 2 files`, and
 //!   the one command to run next, `jadpo check`, which shows each finding
@@ -231,25 +231,29 @@ fn list(loaded: &jadpo_db::Loaded, cwd: &Path, filter: &Filter) -> Reply {
         .collect();
     let rule_width = found.iter().map(|d| d.rule.len()).max().unwrap_or(0);
     let place_width = places.iter().map(String::len).max().unwrap_or(0);
-    let mut lines: Vec<String> = Vec::new();
-    for (decline, place) in found.iter().zip(&places) {
-        let reason = decline.reason.as_deref().unwrap_or("");
-        let row = format!(
-            "{:rule_width$}  {:place_width$}  {reason}",
-            decline.rule, place
-        );
-        if row.trim_end().chars().count() <= WIDTH - 2 {
-            lines.push(row.trim_end().to_string());
-        } else {
-            // A reason that doesn't fit goes under its row, wrapped.
+    let rows: Vec<String> = found
+        .iter()
+        .zip(&places)
+        .map(|(decline, place)| {
+            let reason = decline.reason.as_deref().unwrap_or("");
+            format!("{:rule_width$}  {place:place_width$}  {reason}", decline.rule)
+                .trim_end()
+                .to_string()
+        })
+        .collect();
+    // When any reason doesn't fit beside its row, every reason goes on the
+    // lines under its row, wrapped, so the list keeps one shape.
+    let lines: Vec<String> = if rows.iter().all(|row| row.chars().count() <= WIDTH - 2) {
+        rows
+    } else {
+        let mut lines = Vec::new();
+        for (decline, place) in found.iter().zip(&places) {
             lines.push(format!("{:rule_width$}  {place}", decline.rule));
-            lines.extend(
-                wrap(reason, WIDTH - 4)
-                    .into_iter()
-                    .map(|line| format!("  {line}")),
-            );
+            let reason = decline.reason.as_deref().unwrap_or("");
+            lines.extend(wrap(reason, WIDTH - 4).into_iter().map(|line| format!("  {line}")));
         }
-    }
+        lines
+    };
     let rules: BTreeSet<&str> = found.iter().map(|d| d.rule.as_str()).collect();
     let files: BTreeSet<&str> = found.iter().map(|d| d.path.as_str()).collect();
     let mut screen = Screen::new();
