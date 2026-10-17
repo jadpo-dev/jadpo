@@ -279,7 +279,7 @@ pub fn plan(
             FixKind::Swap => format!(
                 "Only a type can be swapped for a standard type, and `{}` is {} {}.",
                 finding.name,
-                article(finding.word),
+                a_or_an(finding.word),
                 finding.word
             ),
             FixKind::Rename => format!(
@@ -394,7 +394,7 @@ pub fn plan(
     })
 }
 
-fn article(word: &str) -> &'static str {
+fn a_or_an(word: &str) -> &'static str {
     if word.starts_with(['a', 'e', 'i', 'o', 'u']) {
         "an"
     } else {

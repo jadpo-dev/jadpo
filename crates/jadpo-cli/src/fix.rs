@@ -216,7 +216,7 @@ fn chosen(call: &Call, finding: &Finding) -> Result<Fix, Box<Diagnostic>> {
                 format!("`jadpo fix {name}` needs a fix"),
             )
             .reason(format!(
-                "`{name}` can be fixed with {}: the author picks which.",
+                "`{name}` can be fixed with {}, so `jadpo fix` needs to know which.",
                 either(&quoted(&offered))
             ))
             .next(format!("Run {}", either(&commands()))),

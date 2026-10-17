@@ -587,10 +587,11 @@ pub(crate) fn files_json(files: &[setting_move::FileChange]) -> Vec<Json> {
         .collect()
 }
 
+/// A change list's groups: each file with its marked rows.
+type Groups = Vec<(String, Vec<(ChangeMark, Vec<String>)>)>;
+
 /// Each changed file's rows, as a change list's groups.
-pub(crate) fn change_groups(
-    files: &[setting_move::FileChange],
-) -> Vec<(String, Vec<(ChangeMark, Vec<String>)>)> {
+pub(crate) fn change_groups(files: &[setting_move::FileChange]) -> Groups {
     files
         .iter()
         .filter(|change| !change.rows.is_empty())

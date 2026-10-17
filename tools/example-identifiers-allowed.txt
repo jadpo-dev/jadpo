@@ -334,3 +334,6 @@ step
 starts_at
 ends_at
 pdf
+# a standard type the language defines (area 19, chunk 5.5a2), which
+# `type.standard_clash`'s example declares as an application's own
+uuid

@@ -83,8 +83,9 @@ a package or a later area.
   purpose and shape (`DeliveryStop { address: PostalAddress }`,
   `BillingContact`), and that forced explicitness is the point. A
   declaration that reuses a standard name is already an error (built-in
-  names can't be reused, area 2), so the shape check below only has to
-  catch equivalents under other names.
+  names can't be reused, area 2; for a standard type's name,
+  `type.standard_clash`, under "A release that adds a standard type"), so
+  the shape check below only has to catch equivalents under other names.
 - **Packages use them** (decided): a package's public API, or an app's
   own code, that declares its own equivalent of a standard type gets the
   declinable error `type.standard_exists`, pointing at it ("Packages use
