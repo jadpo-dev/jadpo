@@ -3472,7 +3472,7 @@ database.
 | Exports and reports that read a large set: a schedule paging through a query, and whether a consistent snapshot read is needed | 12 | Input to area 12 |
 | Asserting in tests how many records and database queries a query can cost | 13 | Input to area 13 |
 | The build report: each query call's source (store or cache), its row bound and query count, and the indexes it needs | 14 | Input to area 14 |
-| Counts and sums in queries, and totals kept on an entity in the same transaction (computed fields, from the stores mapping §1.8) | 6 | Deferred |
+| Counts and sums in queries, and totals kept on an entity in the same transaction (computed fields, from the stores mapping §1.8) | 6 | Deferred. Amended 2026-10-17 by area 19 (questions 21 and 28): aggregate queries (`count`, `sum`, `min`, `max`, `average`, grouped by a field or a time bucket, using standard operations with SQL forms) are decided in principle and designed and built in roadmap chunk 5.6c; totals kept on an entity stay deferred |
 | `expiry:` on lossy-store entities hides expired records from queries and updates like `visible:` | 5 | Answered by area 5 question 15 (2026-10-16): `expires_after:` |
 | Several changing calls: the record, replay and `diverged` | 12 | Question 16 |
 

@@ -532,6 +532,7 @@ link_phone
 linked
 list_ingredient
 list_limit
+list_price
 list_products
 list_todos
 list_view
@@ -613,6 +614,7 @@ misuse_test_boundary
 mix_dough
 my_bakeries
 my_orders
+nand
 nearly
 needs_cooling
 new_bakery
@@ -1034,6 +1036,7 @@ tenth
 terse
 test_configuration
 the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest
+thirds
 this_partner
 ticket_status
 tidings

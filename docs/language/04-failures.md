@@ -542,7 +542,7 @@ placeholder. `jadpo build` writes, beside each API's OpenAPI document, one
 file per locale named `<api>.failures.<locale>.json`, mapping each code to
 its wording in the same `{field}` syntax and saying which placeholders need
 formatting and how (date, time or number), for client apps to show
-(revised 2026-10-16, not built yet: chunk 5.6b):
+(revised 2026-10-16, not built yet: chunk 5.4c):
 
 ```jadpo fragment
 // domains/planning/translations/fr_fr.jadpo

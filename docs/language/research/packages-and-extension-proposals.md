@@ -881,7 +881,7 @@ what is inside; formats (`csv`, with TSV as its tab-delimited form, `json`,
 app's types and back, whatever the bytes came from (a file, a request body,
 a provider's answer, a queue message); the app's code joins them, and the
 large-file `each:` form joins them piece by piece. The format namespaces
-are decided on chunk 5.4's page.
+are decided on chunk 5.4's page, [area 19](../19-standard-library.md).
 
 **One way to read and write row data, any size** (Richard: every helper
 handles small and large files alike). Explicit helpers per format and
@@ -905,11 +905,10 @@ var export = csv.write(exports
 )
 ```
 
-- Helpers: `csv.read`/`csv.write`, `tsv.read`/`tsv.write`,
-  `json_lines.read`/`json_lines.write`, `json.read(file, items_at:, as:)`/
-  `json.write` for a large JSON list, and `batches.each(from:, each:,
-  finished:, key:)` for work with no file (a large query, every page of a
-  provider's list). `each:` is the inline form area 3 allows for standard
+- Helpers: the `csv`, `tsv`, `json_lines` and `json` operations now live
+  in [area 19, "Data formats"](../19-standard-library.md#data-formats-json-csv-tsv-and-json-lines)
+  (moved 2026-10-17); `batches.each(from:, each:, finished:, key:)` is for
+  work with no file (a large query, every page of a provider's list). `each:` is the inline form area 3 allows for standard
   operations: without a destination it calls an action per item; when
   writing it returns the row to write.
 - All start after the calling action commits, like `emit`, run in the
@@ -927,7 +926,8 @@ var export = csv.write(exports
   (to a PDF service, as an attachment) that the format helpers do not
   accept; a provider's CSV report is put in a store and read the same way;
   `json.decode` stays only for single JSON documents in memory (request
-  bodies, provider answers).
+  bodies, provider answers), renamed `json.read` given text by area 19
+  (2026-10-17).
 - From the research (questions 2 to 10, as recommended): rows read are
   `Input`s and rows written `Output`s, with `column:` and the decided
   `wire:` encodings; writing CSV names its reader (`CsvFormat.spreadsheet`:

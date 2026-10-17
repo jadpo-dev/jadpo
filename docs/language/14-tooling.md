@@ -51,9 +51,11 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo seed <name>` | Runs a seed; refuses production | Decided in area 5, not built |
 | `jadpo config move <constant>` | Makes a constant a setting: a `config` field of its name and type with its value as `default:`, the constant deleted and every read rewritten to `config.<name>` | Built (chunk 5.3f): names the constant as code reads it (`security.max_login_attempts`), or after its domain; lists what changed file by file, then the setting and its variable; refuses, changing nothing, with `configuration.move_type_unsupported`, `configuration.move_name_taken` and `configuration.move_read_unsupported`, every reason at once; undoes a move whose result wouldn't check; supports `--json` (area 10, "Making a constant a setting") |
 | `jadpo config set <field>` / `check` | Sets or checks local configuration in `.env.local` | Built (chunk 5.1): `check` lists each setting as `set`, `default`, `missing` or `invalid` with its variable against the environment over `.env.local`, each problem as `configuration.value_missing` or `configuration.value_invalid`, never printing a value, and supports `--json`; `set` asks for one value at a prompt (hidden for a secret), refuses `--json` and a missing terminal, checks the value against the setting's type, and writes `.env.local` only as an ordinary file, through a private temporary file and only if unchanged since it was read, adding the file to `.gitignore` |
-| `jadpo translations missing` / `unused` / `builtin` / `update` / `accept <locale>` / `export` / `import` | Lists missing, stale and unaccepted wording, unused messages, and Jadpo's own messages with their fields; records each translation's source in `translations/sources.jadpo_record` (`sources.json` until records are renamed, area 18); accepts a locale's changed wording; exchanges messages with translation services as XLIFF, or JSON | Decided in area 10 (2026-10-16), not built: comes with translations as messages (chunk 5.6b) |
+| `jadpo translations missing` / `unused` / `builtin` / `update` / `accept <locale>` / `export` / `import` | Lists missing, stale and unaccepted wording, unused messages, and Jadpo's own messages with their fields; records each translation's source in `translations/sources.jadpo_record` (`sources.json` until records are renamed, area 18); accepts a locale's changed wording; exchanges messages with translation services as XLIFF, or JSON | Decided in area 10 (2026-10-16), not built: comes with translations as messages (chunk 5.4c) |
 | `jadpo api update` | Rewrites the committed public API record (`api/main.jadpo_record`) from the source | Built (chunk 4.1) as `api/main.api`: one record per API with routes, its `version:` raised by one when it changes; a record whose API has no routes is removed. `jadpo check` fails while a record disagrees (`api.record_out_of_date`). The rename to `.jadpo_record` with its header line was decided 2026-10-16 (area 18), not built |
 | `jadpo records` | Lists every committed record (`.jadpo_record` files and `jadpo.lock`), what writes each, and flags any out of date with the command that updates it | Decided 2026-10-16 (area 18), not built |
+| `jadpo declines list` / `clear` | Lists every decline with its rule, place and reason; `clear` removes the matching decline lines so each finding comes back; `--rule <id>`, a path and `--json` | Decided (area 1, question 11), not built: chunk 5.4b |
+| `jadpo fix` | Applies the fix the author picks for a finding, through the same code as the editor's quick fix; first for a release that adds a standard type an app already names (swap to it, or rename) | Decided in area 19 (question 4, 2026-10-17), not built: chunk 5.5a |
 | `jadpo approval --before <ref>` | Writes the review report of what changed in behaviour, policy and the API | Decided, not built: comes with records (area 18); sign-off is question 12 |
 | `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries; `show <id>` lists an unfinished multi-step action's steps, and `retry <id> --not-done` and `abandon <id>` act on it (area 11) | Decided (question 13; `show`, `--not-done` and `abandon` 2026-10-16), not built: comes with events (chunk 6.1) and multi-step calls |
 | `jadpo schedules` | Lists schedules; `run`, `pause`, `resume`, `history` | Decided in area 12, not built |
@@ -185,7 +187,7 @@ entity field renamed in the editor keeps its stored data (question 5).
 
 Decided in area 10 and not built: go to definition from a
 `translations.<domain>.<message>(...)` call goes to its message type and to
-its wording in each language file (chunk 5.6b).
+its wording in each language file (chunk 5.4c).
 
 Decided in area 10 on 2026-10-16 (Richard) and built in chunk 5.3f:
 "Make this a setting", a code action on a constant's declaration or any
@@ -281,7 +283,8 @@ and the similar-helper warning are built (chunk 1.7); the rest are not yet.
 - **Similar-helper warning**: when a new helper looks like an existing one,
   `jadpo check` warns `library.similar_exists` and names it; two constants
   of the same type holding the same value warn `constant.similar_exists`
-  (area 3, 2026-10-16, built in chunk 5.3e).
+  (area 3, 2026-10-16, built in chunk 5.3e). *Amended 2026-10-17 (Richard, area 1, question 11):* no warning
+  severity; both become declinable errors in chunk 5.4b.
 - **Failure catalogue** (`build/catalogue/failures.md`): every failure with
   its code, kind, status and client fields.
 - **Schema and query reports** (`build/report/`): every table, column and

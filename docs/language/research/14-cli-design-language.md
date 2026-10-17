@@ -113,7 +113,8 @@ long one gets a line of its own so it copies whole.
 - **Headline.** Symbol, severity word in its colour and bold, two spaces,
   the subject in bold. The words are a closed set: `error`, `warning`,
   `failed`, `fault`, `alert`, `decision`, `outcome unknown`. Identifiers
-  belong on the `rule` line.
+  belong on the `rule` line. *Amended 2026-10-17 (Richard, area 1, question 11):* `warning` leaves
+  the set in chunk 5.4b, since every finding becomes an error.
 - **Errors and warnings.** Area 14's fields in its order: path, code frame,
   `reason`, `next` (`(agent)` muted, `(human)` in decision colour),
   `in use` when a rename needs the names taken (area 1's

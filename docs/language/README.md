@@ -1,8 +1,9 @@
 # Language reference
 
-One page per language area, numbered in reading order. These pages are the
-source of truth for documentation; `tools/language_docs.py` checks them and
-renders them as web pages into `build/language-site/`.
+Nineteen areas, all decided, one page per area, numbered in reading order.
+These pages are the source of truth for documentation;
+`tools/language_docs.py` checks them and renders them as web pages into
+`build/language-site/`.
 
 ```sh
 python3 tools/language_docs.py --check   # also run by tools/verify.py

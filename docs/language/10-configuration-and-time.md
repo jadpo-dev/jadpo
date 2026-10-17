@@ -428,6 +428,13 @@ most conservative reading:
 
 ## Secrets
 
+> Amended 2026-10-17 by area 19 (question 9): the `key:` of a `crypto`
+> operation joins the places the compiler owns, written `key:
+> config.<name>` with an `EncryptionKey` (new) or `SigningKey` setting;
+> any other read stays `configuration.secret_flow`. Area 19 also adds a
+> generated `random` namespace, read only in actions as `clock.now` is
+> (question 19). Both built in chunk 5.5q.
+
 `secret: true` marks a value that must never leave the server. The compiler
 accepts it only at places the compiler itself owns: a connection's `url:`, an
 integration's `credential:` (and its webhook `secret:`, area 11) and an
@@ -1109,6 +1116,16 @@ dependency change of its own (chosen in chunk 5.2).
 > punctuation and digits of each locale, and the locales an application
 > supports.
 
+> Amended 2026-10-17 by area 19 (question 2): every standard type is
+> formatted for people by one call, `text.format(value, locale:)`, so
+> `temporal.format` becomes the time types' `text.format`, with the same
+> `zone:` and `format:` options and a habit error whose edit writes
+> `text.format`; `temporal.format_relative` stays. Built in chunk 5.5a;
+> until then the examples here use `temporal.format`. Area 19 also adds
+> three `temporal` operations (`occurrences`, `open_at`,
+> `period_between`, chunk 5.5k) and `{price, number, currency}` to the
+> placeholder styles (chunk 5.5h).
+
 Formatting needs three things the server must never guess: the zone, the
 language and the format. Decided (question 7): one call that takes all
 three, with the format either built in or declared once as a named type.
@@ -1467,7 +1484,7 @@ and the OpenAPI document lists only the supported tags; a setting typed
 an `Accept-Language` header is a library call that falls back to `default`
 ("Choosing a locale from a request", below).
 
-Decided on 2026-10-16 (Richard) and not built yet (roadmap chunk 5.6b, with
+Decided on 2026-10-16 (Richard) and not built yet (roadmap chunk 5.4c, with
 translations as messages): `in_progress:` lists supported locales whose
 translations are not finished yet; a locale listed there but not in
 `supported:` is a compile error. Every other supported locale must be
@@ -1483,7 +1500,7 @@ locales {
 ```
 
 Every locale knows its text direction, read as `locale.direction`
-(decided 2026-10-16, not built yet, chunk 5.6b): a value of the built-in
+(decided 2026-10-16, not built yet, chunk 5.4c): a value of the built-in
 enum `TextDirection`, `.left_to_right` or `.right_to_left`. Jadpo ships its
 wording as the HTML values, so a template writing
 `<html dir="{{ locale.direction }}">` writes `ltr` or `rtl`.
@@ -1625,6 +1642,10 @@ header and the same `locales { }`:
   (`locale:`) is a different thing and stays.
 
 ## Translations
+
+> Superseded 2026-10-17 (Richard): "Translations as messages", below, is
+> the design, and chunk 5.4c replaces what this section describes. Until
+> it lands, the compiler reads these JSON files.
 
 > Built in chunk 5.3b: the files, the typed calls, their checks and errors,
 > and the interpreter and runtime writing the text. The examples marked
@@ -1945,7 +1966,7 @@ reruns the tests that reach the key.
 
 > Decided on 2026-10-16 (Richard), replacing question 9's JSON files and ICU
 > MessageFormat, which chunk 5.3b built (Translations, above) on the same
-> day. Not built yet: the rework of 5.3b is roadmap chunk 5.6b, and until
+> day. Not built yet: the rework of 5.3b is roadmap chunk 5.4c, and until
 > it lands the built JSON files are what the compiler reads. Email
 > templates that read translations come with email in chunk 7.3 (area 16).
 
@@ -2214,7 +2235,7 @@ every public message.
 
 ### What the compiler checks
 
-Coming in chunk 5.6b:
+Coming in chunk 5.4c:
 
 - **Errors**: a member no message, failure or enum declares; a variant that
   is not a value of the enum; a missing variant or plural form; a
@@ -4087,7 +4108,7 @@ locales' files, and the interpreter and runtime writing the text). Chunk
 5.3c built `locale.from_accept_language(header)`, which chooses a supported
 `Locale` from an `Accept-Language` header and falls back to `default:`.
 Translations as decided on 2026-10-16 replace 5.3b's JSON files and are
-not built yet (chunk 5.6b): `Message` types and the built-in
+not built yet (chunk 5.4c): `Message` types and the built-in
 `PluralCount`, each domain's `translations { }` language files and their
 checks, the generated `translations.<domain>.<message>` calls, enum
 wording, failures' client text exported per locale, `locale.direction`,
@@ -4209,7 +4230,7 @@ messages). Library packages' translations come with packages in Phase 7.
    exported per locale for client apps, which resolves this question's
    "client failure messages" against area 4 question 12. See
    [Translations as messages](#translations-as-messages) for the whole design;
-   not built yet (chunk 5.6b), so the JSON files 5.3b built stay until then.
+   not built yet (chunk 5.4c), so the JSON files 5.3b built stay until then.
 10. **How are signing keys rotated?** (carried from area 8) Area 8 keeps
     signing keys, the OIDC issuer and audience in configuration. How does a
     deployment replace a signing key without signing everyone out?

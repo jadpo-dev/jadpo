@@ -111,6 +111,12 @@ GET / {
   browser posts from another site never reaches an action. A query string
   or a body a route doesn't read is unknown input, like an unknown field.
 
+> Amended 2026-10-17 by area 19 (question 21): text in a request is
+> normalised to Unicode NFC as it is decoded, so equal text compares
+> equal (chunk 5.5f). The page examples that name a variable or argument
+> `text` are renamed in that chunk, since `text` becomes a reserved
+> standard namespace.
+
 ## Output and status
 
 `output:` names an `Output` type and must be exactly the action's result,
@@ -340,7 +346,7 @@ numbers (question 9):
 
 The envelope's `message` stays fixed English. Text for people in client
 apps comes from the app's language files (area 10, decided 2026-10-16,
-not built yet: chunk 5.6b): every failure a route can produce has wording in every
+not built yet: chunk 5.4c): every failure a route can produce has wording in every
 supported locale, keyed by its code with its client fields as placeholders,
 and client fields that are dates or numbers stay values on the wire for the
 client to format in its own language.

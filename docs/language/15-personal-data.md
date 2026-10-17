@@ -301,7 +301,8 @@ is listed in the report as "kept until erased".
 
 - **Marked fields nothing reads.** A personal field that no query, output or
   action reads is a warning: you are holding data you do not use (data
-  minimisation, Article 5).
+  minimisation, Article 5). *Amended 2026-10-17 (Richard, area 1, question 11):* a declinable error,
+  since a field kept for a legal reason may be read only by export.
 - **Erasure is complete.** Every reference into a person's tree has an
   erasure outcome; `Erasure.anonymised` and `Erasure.retained` have the
   nullable fields and retention they need.
@@ -351,6 +352,17 @@ what the compiler cannot know: the purpose of each use, the lawful basis, and
 the organisation's details. Changes to the report appear in the approval
 review (area 9), so a pull request that starts sending email addresses to a
 new provider is seen by a person before it ships.
+
+> Amended 2026-10-17 by area 19 (questions 10, 20 and 21): an entity field
+> may be stored encrypted, `notes: ClinicalNote { encrypted: true }`,
+> sealed with the application's one `field_encryption_key:`, decrypted on
+> load, and kept out of unique rules, indexes, filters, ordering, search
+> and logs. Per-person keys stay out (question 5). Its full design is this
+> area's, built with personal data after the first build, together with
+> keys held as data (a key per device or person in an encrypted field,
+> usable only as a `crypto` call's `key:`). Every field sent to an AI
+> model is listed in the report above (the AI area, planned in chunk
+> 5.5v).
 
 ## Review
 

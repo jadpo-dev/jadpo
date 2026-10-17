@@ -1788,7 +1788,7 @@ build/
 | `subscribers/` | Event triggers, including long-running coordination | Replaces durable "workflows" |
 | (none) | Third-party APIs are provider packages: connections in `app.jadpo`; installed packages in root `packages/`, pinned in `jadpo.lock`; the app's own in `shared/providers/` | Amended 2026-10-13 by area 11, revised 2026-10-16; the `integrations/` folder and `integration` keyword are gone |
 | `emails/` | Email types and their templates, one email per name (`welcome_email.jadpo`, `welcome_email.html`, `welcome_email.txt`) | Added 2026-10-13 (Richard, area 16) |
-| `translations/` | One `type X = Message` per file, one `translations { }` language file per locale named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects, and the generated, committed `sources.jadpo_record` (area 18; named `sources.json` until the records are renamed, 2026-10-16) | Added 2026-10-16 (Richard, area 10); a message a second domain uses goes in `shared/translations/`. Chunk 5.6b adds it to the folders `layout.unknown_location` lists |
+| `translations/` | One `type X = Message` per file, one `translations { }` language file per locale named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects, and the generated, committed `sources.jadpo_record` (area 18; named `sources.json` until the records are renamed, 2026-10-16) | Added 2026-10-16 (Richard, area 10); a message a second domain uses goes in `shared/translations/`. Chunk 5.4c adds it to the folders `layout.unknown_location` lists |
 | `documents/` | Document types and their templates, one document per name (`invoice_document.jadpo`, `invoice_document.html`), rendered to HTML or PDF by the `documents` capability | Added 2026-10-16 (Richard, area 16) |
 | `fixtures/` | Test data shared by several test files in the domain | |
 
@@ -2009,6 +2009,17 @@ use menu
   `List<T>`) and standard-library namespaces (`collection.count(...)`) are
   fixed per language version and can't be declared by a project. An
   entity's generated operations (`Todo.get(id)`) come with the entity.
+
+  *Amended 2026-10-17 by area 19 (questions 6 and 30):* the standard
+  library's namespaces are `list`, `set`, `map`, `range`, `integer`,
+  `decimal`, `money`, `units`, `text`, `markup`, `hash`, `encoding`,
+  `crypto`, `random`, `json`, `csv`, `tsv`, `json_lines`, `temporal`,
+  `locale`, `colour`, `media`, `web` and `semver`, with `geo` and `ai`
+  when their areas land; `collection.` becomes `list.`, `set.` or
+  `map.`. Each is reserved by `semantic.standard_namespace_reserved`
+  from the chunk that adds it; fields and named arguments keep every
+  word (`note.text`, `set:`). The names that clash today are renamed in
+  those chunks: `text` in 5.5f, `range` in 5.5c.
 - **Calls into another domain keep the domain's name at the call.** `use menu`
   brings in the domain, and its public actions, queries and fixtures are
   called as `menu.price_item(...)`, so a call that crosses domains is
@@ -2249,6 +2260,98 @@ integrations in `shared/providers/`, both laid out as `shared/` is.
    *Revised 2026-10-16 (Richard, area 11):* the root `providers/` becomes
    `packages/`, holding only installed packages; the app's own
    integrations move to `shared/providers/`.
+11. **No warnings: every finding an error, some of them declinable?**
+   *Decided 2026-10-17 (see Decisions):* yes, as recommended; built in
+   chunk 5.4b. Until then a warning never
+   fails `check` (`library.similar_exists`, built in chunk 1.7, and
+   `constant.similar_exists`, chunk 5.3e), so an agent can leave one in
+   place for ever and nobody decides it. The proposal:
+   - **No warning severity.** Every finding is an error. Some rules are
+     *declinable*: the author applies the fix, or declines on the
+     declaration itself with a required reason. An agent or a person may
+     decline.
+   - **One decline form for every declaration** (type, field, function,
+     action, constant): a line directly above it, where a `///` comment
+     sits, naming the rule and the reason.
+
+     ```jadpo fragment
+     decline library.similar_exists: "Rounds to the nearest 5p for the till; rounding.capped rounds down"
+     function till_round(price: Pence) -> Pence { ... }
+     ```
+
+     `decline` becomes a reserved word; the reason is non-empty text; a
+     decline covers that one rule on that one declaration. A decline whose
+     rule no longer fires there is an error (`decline.unused`), so declines
+     don't outlive their reason, and naming a rule that can't be declined is
+     `decline.not_declinable`.
+   - **Compared with a per-rule option** such as area 19's
+     `not_standard: "..."`: an option needs a new name per rule, fits only
+     where a declaration has a settings block (types, fields, entities; not
+     functions or actions, which have none, area 3), and can't be listed
+     or cleared by one command. *Recommendation:* the generic form, so
+     `not_standard:` becomes `decline type.standard_exists: "..."`.
+   - **Declinable rules are the judgement calls:**
+
+     | Rule | Area | Why it can be right to decline |
+     |---|---|---|
+     | `library.similar_exists` | 1 | Two helpers can differ on purpose |
+     | `constant.similar_exists` | 3 | Two constants can share a value by coincidence (a VAT rate and a fee) |
+     | `type.standard_exists` (decided 2026-10-17) | 19 | A shape can match a standard type by chance |
+     | `type.variant_retired` (decided 2026-10-17) | 19 | Code that reads old records names a withdrawn code on purpose |
+     | A personal field nothing reads | 15 | Kept for a legal reason and read only by export |
+     | Rate limits counted in memory | 16 | One instance, by design |
+     | An email that would fail the deliverability checks | 16 | An image-only notice can be deliberate |
+     | A write refusable after a changing call (proposed) | 11, question open there | The condition may be unable to change |
+     | #88's warnings (an unhandled failure, an unused template field) | #88 | Sorted when #88 merges |
+
+     Plain mistakes are never declinable: every other rule, including area
+     11's integration retries that outlast a route's deadline, which can't
+     work as written.
+   - **Rules triggered by time passing** (area 16's flag past its
+     `expires:` date) are judged at today's date by `check`, so CI fails a
+     new change, but at the revision's commit date by `jadpo build`, so
+     rebuilding a merged revision for a hotfix is never blocked by a date
+     passing. They aren't declinable: extending the date is the reviewed
+     choice (area 16).
+   - **Seeing declines.** The approval report (`jadpo approval`, area 18)
+     lists every decline a change adds or edits with its reason, so
+     declining by reflex shows in review. `jadpo declines list` prints
+     every decline: rule, place and reason, filtered by `--rule <id>` and a
+     path, with `--json`.
+   - **Resetting them.** `jadpo declines clear`, with the same filters,
+     removes the decline lines, so each finding comes back and `check`
+     fails until it is fixed or declined again, which is the point. It is
+     for after a new standard type lands, after a compiler upgrade makes a
+     rule smarter, and for a periodic sweep. The editor's "Decline with a
+     reason" and "Remove decline" code actions run the same code as the
+     commands, as "Make this a setting" and `jadpo config move` share one
+     (area 10). Output follows the
+     [CLI design language](research/14-cli-design-language.md):
+
+     ```text
+     $ jadpo declines list --rule type.standard_exists
+     Declines
+       type.standard_exists  domains/maps/types/grid_square.jadpo:3  Grid squares, not WGS84 degrees
+       type.standard_exists  domains/quotes/types/quote.jadpo:5      A quote's figure, not money owed
+
+     ✓ 2 declines · 1 rule · 2 files
+
+     $ jadpo declines clear --rule type.standard_exists
+     ✓ Removed 2 declines from 2 files
+
+     → jadpo check  shows each finding again, to fix or decline
+     ```
+   - **Cost.** The two built warnings become declinable errors, so code
+     that passes `check` today can fail it; `warning` leaves the CLI design
+     language's closed set of headline words and area 14's error shape;
+     the language server shows them as errors.
+
+   *Recommendation:* yes, and a roadmap chunk **"Declinable errors" `opus ·
+   high`** right after 5.4, before 5.5 builds `type.standard_exists`: the
+   `decline` line, `decline.unused` and `decline.not_declinable`, the two
+   built warnings converted, `jadpo declines list` and `clear`, the
+   editor's code actions on the same path, the approval report's list, and
+   the date rule for time-triggered checks. Added to the roadmap as 5.4b.
 
 ### Decisions
 
@@ -2300,3 +2403,4 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | Documents folder | Each domain may have `documents/`, holding document types and their HTML templates; `shared/documents/` holds only the optional `layout.html` (Richard, area 16) | 2026-10-16 |
 | Reachable from public | A type or failure reachable from a public declaration's signature must itself be public, in domains and packages alike, checked on every compile (Richard, area 11) | 2026-10-16 |
 | Records | Committed generated files are `.jadpo_record` files beside what they describe (`api/main.jadpo_record`, `database/identities.jadpo_record`, `translations/sources.jadpo_record`, `surface.jadpo_record`), readable, each starting with the line that says what wrote it; a hand edit is an error; `jadpo.lock` keeps its name (Richard, area 18) | 2026-10-16 |
+| Declinable errors (question 11) | No warning severity: every finding is an error, and the judgement-call rules (question 11's table) are declinable. A declaration declines one rule with a `decline <rule>: "<reason>"` line directly above it, the reason required; an agent or a person may decline; a decline whose rule no longer fires is `decline.unused`, and naming a rule that can't be declined is `decline.not_declinable`. Plain mistakes are never declinable. `jadpo approval` lists every decline a change adds or edits; `jadpo declines list` and `clear`, with `--rule <id>`, a path and `--json`, show and reset them through the same code as the editor's actions. A rule triggered by time passing (area 16's expired flag) is judged at today's date by `check` and at the commit's date by `jadpo build`, so it blocks new changes but never the rebuild of a merged revision (Richard) | 2026-10-17 |
