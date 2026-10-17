@@ -10,6 +10,7 @@ pub mod config;
 mod declines;
 mod derived;
 pub mod dev;
+mod exchange;
 mod failure_text;
 mod fix;
 mod fmt;

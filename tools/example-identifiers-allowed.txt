@@ -99,6 +99,8 @@ nested
 next
 normalise
 note
+# XLIFF's own element: `<notes>` holds a unit's `<note>`s
+notes
 notice
 now
 number

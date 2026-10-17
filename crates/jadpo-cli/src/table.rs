@@ -762,26 +762,57 @@ pub static COMMANDS: &[Command] = &[
                       made from. `accept` records a person's acceptance of a locale's changed \
                       wording, and never of a stale translation. `builtin` lists Jadpo's own \
                       messages the application can show, with their fields and the wording to \
-                      translate from.",
+                      translate from. `export` writes every message, its description and its \
+                      wording for a locale as XLIFF 2.0 or JSON, for Crowdin, Lokalise or any \
+                      service that reads them, and `import` reads the translations back, checks \
+                      them as the language files are checked, and writes the language files and \
+                      the record, or writes nothing.",
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: missing, unused, update, accept or builtin",
+                description: "What to do: missing, unused, update, accept, builtin, export or import",
                 required: true,
                 values: Values::Fixed(crate::translations::ACTIONS),
             },
             Argument {
                 name: "locale",
-                description: "The locale to list or accept, such as fr_fr",
+                description: "The locale to list, accept or export, such as fr_fr; for import, the file to read",
                 required: false,
                 values: Values::Fixed(&[]),
             },
         ],
-        flags: &[],
+        flags: &[
+            Flag {
+                name: "--format",
+                value: Some("format"),
+                description: "For export: xliff (default) or json",
+                values: crate::exchange::command::FORMATS,
+            },
+            Flag {
+                name: "--out",
+                value: Some("folder"),
+                description: "For export: the folder to write to",
+                values: &[],
+            },
+            Flag {
+                name: "--locale",
+                value: Some("locale"),
+                description: "For import: the locale of a JSON file",
+                values: &[],
+            },
+        ],
         examples: &[
             Example {
                 description: "See what is left to translate",
                 command: "jadpo translations missing",
+            },
+            Example {
+                description: "Write every locale's wording for a translation service",
+                command: "jadpo translations export",
+            },
+            Example {
+                description: "Read back what the service translated",
+                command: "jadpo translations import build/translations/fr_fr.xlf",
             },
             Example {
                 description: "Record the translations just written",
@@ -802,9 +833,11 @@ pub static COMMANDS: &[Command] = &[
         ],
         arguments_rule: &rule::CLI_TRANSLATIONS_ARGUMENTS,
         raises: &[
+            &rule::TRANSLATION_EXCHANGE_FILE_INVALID,
+            &rule::TRANSLATION_EXCHANGE_UNIT_UNKNOWN,
             &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
-            &rule::TOOLCHAIN_NOT_BUILT_YET,
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+            &rule::TOOLCHAIN_SOURCE_READ_FAILED,
         ],
         run: commands::translations,
     },
