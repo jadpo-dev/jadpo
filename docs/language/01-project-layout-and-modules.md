@@ -2191,6 +2191,97 @@ migration workflow (area 5). The layout only reserves their folders.
    keeps each API's record in `api/` and a person's acceptance of a breaking
    change in `acceptances/`, but the decided root list allows only the entries
    above. *Recommendation:* add both folders to the fixed root. *Decided 2026-10-13 (area 18):* yes; the root also gains `providers/` and `jadpo.lock` (area 11).
+11. **No warnings: every finding an error, some of them declinable?**
+   Proposed by Richard (2026-10-17), not decided. Today a warning never
+   fails `check` (`library.similar_exists`, built in chunk 1.7, and
+   `constant.similar_exists`, chunk 5.3e), so an agent can leave one in
+   place for ever and nobody decides it. The proposal:
+   - **No warning severity.** Every finding is an error. Some rules are
+     *declinable*: the author applies the fix, or declines on the
+     declaration itself with a required reason. An agent or a person may
+     decline.
+   - **One decline form for every declaration** (type, field, function,
+     action, constant): a line directly above it, where a `///` comment
+     sits, naming the rule and the reason.
+
+     ```jadpo fragment
+     decline library.similar_exists: "Rounds to the nearest 5p for the till; rounding.capped rounds down"
+     function till_round(price: Pence) -> Pence { ... }
+     ```
+
+     `decline` becomes a reserved word; the reason is non-empty text; a
+     decline covers that one rule on that one declaration. A decline whose
+     rule no longer fires there is an error (`decline.unused`), so declines
+     don't outlive their reason, and naming a rule that can't be declined is
+     `decline.not_declinable`.
+   - **Compared with a per-rule option** such as area 19's
+     `not_standard: "..."`: an option needs a new name per rule, fits only
+     where a declaration has a settings block (types, fields, entities; not
+     functions or actions, which have none, area 3), and can't be listed
+     or cleared by one command. *Recommendation:* the generic form, so
+     `not_standard:` becomes `decline type.standard_exists: "..."`.
+   - **Declinable rules are the judgement calls:**
+
+     | Rule | Area | Why it can be right to decline |
+     |---|---|---|
+     | `library.similar_exists` | 1 | Two helpers can differ on purpose |
+     | `constant.similar_exists` | 3 | Two constants can share a value by coincidence (a VAT rate and a fee) |
+     | `type.standard_exists` (proposed) | 19 | A shape can match a standard type by chance |
+     | A personal field nothing reads | 15 | Kept for a legal reason and read only by export |
+     | Rate limits counted in memory | 16 | One instance, by design |
+     | An email that would fail the deliverability checks | 16 | An image-only notice can be deliberate |
+     | A write refusable after a changing call (proposed) | 11, question open there | The condition may be unable to change |
+     | #88's warnings (an unhandled failure, an unused template field) | #88 | Sorted when #88 merges |
+
+     Plain mistakes are never declinable: every other rule, including area
+     11's integration retries that outlast a route's deadline, which can't
+     work as written.
+   - **Rules triggered by time passing** (area 16's flag past its
+     `expires:` date) are judged at today's date by `check`, so CI fails a
+     new change, but at the revision's commit date by `jadpo build`, so
+     rebuilding a merged revision for a hotfix is never blocked by a date
+     passing. They aren't declinable: extending the date is the reviewed
+     choice (area 16).
+   - **Seeing declines.** The approval report (`jadpo approval`, area 18)
+     lists every decline a change adds or edits with its reason, so
+     declining by reflex shows in review. `jadpo declines list` prints
+     every decline: rule, place and reason, filtered by `--rule <id>` and a
+     path, with `--json`.
+   - **Resetting them.** `jadpo declines clear`, with the same filters,
+     removes the decline lines, so each finding comes back and `check`
+     fails until it is fixed or declined again, which is the point. It is
+     for after a new standard type lands, after a compiler upgrade makes a
+     rule smarter, and for a periodic sweep. The editor's "Decline with a
+     reason" and "Remove decline" code actions run the same code as the
+     commands, as "Make this a setting" and `jadpo config move` share one
+     (area 10). Output follows the
+     [CLI design language](research/14-cli-design-language.md):
+
+     ```text
+     $ jadpo declines list --rule type.standard_exists
+     Declines
+       type.standard_exists  domains/maps/types/grid_square.jadpo:3  Grid squares, not WGS84 degrees
+       type.standard_exists  domains/quotes/types/quote.jadpo:5      A quote's figure, not money owed
+
+     ✓ 2 declines · 1 rule · 2 files
+
+     $ jadpo declines clear --rule type.standard_exists
+     ✓ Removed 2 declines from 2 files
+
+     → jadpo check  shows each finding again, to fix or decline
+     ```
+   - **Cost.** The two built warnings become declinable errors, so code
+     that passes `check` today can fail it; `warning` leaves the CLI design
+     language's closed set of headline words and area 14's error shape;
+     the language server shows them as errors.
+
+   *Recommendation:* yes, and a roadmap chunk **"Declinable errors" `opus ·
+   high`** right after 5.4, before 5.5 builds `type.standard_exists`: the
+   `decline` line, `decline.unused` and `decline.not_declinable`, the two
+   built warnings converted, `jadpo declines list` and `clear`, the
+   editor's code actions on the same path, the approval report's list, and
+   the date rule for time-triggered checks. The roadmap isn't edited until
+   this is decided.
 
 ### Decisions
 
