@@ -656,14 +656,19 @@ order for layout. Adding or removing an import needs the project's names,
 which the formatter doesn't have, so `jadpo fmt` first applies the edits
 of the file's import problems against a loaded project, round by round
 until none is left (`jadpo_check::fix_imports`, in `jadpo-cli` until chunk
-3.12, now where the language server can reuse it), then formats. Since chunk 3.9 it puts
-a file's primary declaration first (area 1, "Files and names"): `jadpo
-fmt` reads which declaration that is from the file's path and item tree
+3.12, now where the language server can reuse it), then formats. Since chunk
+5.5h3 it writes a file's declarations before their use (area 1, "Files and
+names"; chunk 3.9 had put the primary declaration first): `jadpo fmt` reads
+which declaration is the primary from the file's path and item tree
 (`jadpo_db::primary`, the same answer the layout rules use) and passes its
-name to `format_file_led_by`, which moves it, with the comments the
-formatter prints with it, below the opening comments and `use` lines
-before formatting, so the self-check compares the moved text with its
-formatted form.
+name to `format_file_in_order`. That orders the declarations
+(`jadpo_fmt::order`) by the names each writes: a declaration goes after
+every one it uses, a group that uses each other stays in written order, and
+among what is ready the choice is by kind and then by the order a walk from
+the primary first reaches them, the primary's group last. Each moves with
+the comments the formatter prints with it, below the opening comments and
+`use` lines, before formatting, so the self-check compares the moved text
+with its formatted form.
 
 **Item trees.** Each file is summarised into its declarations and
 signatures without bodies (rust-analyzer's `ItemTree`), so editing a body

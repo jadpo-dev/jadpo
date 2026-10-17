@@ -2,15 +2,15 @@
 //! document algebra to a printer. It owns indentation, spacing, blank lines
 //! (one between declarations, none doubled), one member per line and the
 //! order of sections inside a declaration, so equivalent code always looks
-//! identical (areas 1 and 14), and puts a file's primary declaration first
-//! when told which it is. A file with
+//! identical (areas 1 and 14), and, when told a file's primary declaration,
+//! writes its declarations in definition-before-use order. A file with
 //! syntax errors is not formatted: its errors are returned instead.
 
 mod canonical;
 mod doc;
 mod format;
 mod imports;
-mod lead;
+mod order;
 mod sections;
 
 pub use canonical::canonical_tokens;
@@ -26,12 +26,15 @@ pub fn format_file(text: &str) -> Result<String, Vec<SyntaxError>> {
 }
 
 /// Formats a `.jadpo` file whose primary declaration (area 1, "Files and
-/// names") is named `primary`: it goes first, after the file's opening
-/// comments and `use` lines, and the declarations that support it keep
-/// the order they were written in. The caller knows the primary from the
-/// file's place in the layout; `None` keeps the written order.
-pub fn format_file_led_by(text: &str, primary: Option<&str>) -> Result<String, Vec<SyntaxError>> {
-    match primary.and_then(|name| lead::lead_with(text, name)) {
+/// names") is named `primary`, and writes its declarations in definition
+/// before use order: after the file's opening comments and `use` lines,
+/// each before the first that uses it, so the primary comes last; ties by
+/// kind, then by the order the primary first reaches them, and
+/// declarations that use each other keep their written order. The caller
+/// knows the primary from the file's place in the layout; `None` keeps the
+/// written order.
+pub fn format_file_in_order(text: &str, primary: Option<&str>) -> Result<String, Vec<SyntaxError>> {
+    match primary.and_then(|name| order::definition_before_use(text, name)) {
         Some(moved) => format_file(&moved),
         None => format_file(text),
     }

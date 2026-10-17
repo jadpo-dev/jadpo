@@ -3,7 +3,7 @@
 //! line, whole signatures on one line until they are too long, and every
 //! comment kept where it was written.
 
-use jadpo_fmt::{format_file, format_file_led_by, format_snippet};
+use jadpo_fmt::{format_file, format_file_in_order, format_snippet};
 
 fn fmt(text: &str) -> String {
     let out = format_file(text).unwrap_or_else(|errors| panic!("{errors:#?}"));
@@ -255,59 +255,331 @@ fn a_long_use_line_puts_one_name_per_line() {
     );
 }
 
-fn led_by(text: &str, primary: &str) -> String {
+fn ordered(text: &str, primary: &str) -> String {
     let out =
-        format_file_led_by(text, Some(primary)).unwrap_or_else(|errors| panic!("{errors:#?}"));
+        format_file_in_order(text, Some(primary)).unwrap_or_else(|errors| panic!("{errors:#?}"));
     assert_eq!(
-        format_file_led_by(&out, Some(primary)).expect("formatted output parses"),
+        format_file_in_order(&out, Some(primary)).expect("formatted output parses"),
         out,
         "formatting is idempotent"
     );
     out
 }
 
+// Area 1, "Files and names" (decided 2026-10-17, built in chunk 5.5h3):
+// every declaration comes before the first one that uses it, so the
+// primary declaration comes last.
+
 #[test]
-fn the_primary_declaration_goes_first_and_the_rest_keep_their_order() {
-    // Area 1, "Files and names": after the opening comments and `use`
-    // lines, with the comments written above it and after it.
+fn the_primary_declaration_comes_last() {
     assert_eq!(
-        led_by(
-            "// Sets the oven.\n\nuse kitchen/types { Bake }\n\n/// A shelf.\ntype Shelf = Int {}\n\ntype Steam = Bool {}\n\n// The action.\n/// Sets it.\naction set_oven(shelf: Shelf) -> Unit {}  // done\n\nfunction helper() -> Unit {}\n",
+        ordered(
+            "action set_oven(shelf: Shelf) -> Unit {}\n\ntype Shelf = Int {}\n",
             "set_oven"
         ),
-        "// Sets the oven.\n\nuse kitchen/types { Bake }\n\n// The action.\n/// Sets it.\naction set_oven(shelf: Shelf) -> Unit {}  // done\n\n/// A shelf.\ntype Shelf = Int {}\n\ntype Steam = Bool {}\n\nfunction helper() -> Unit {}\n"
+        "type Shelf = Int {}\n\naction set_oven(shelf: Shelf) -> Unit {}\n"
     );
-    // With no `use` lines, the opening comments stay above it; a comment
-    // with no blank line below it belongs to the declaration it is on.
+    // Already in order, so it stays; a primary that isn't there, or none,
+    // keeps the written order.
+    let last = "type Shelf = Int {}\n\naction set_oven(shelf: Shelf) -> Unit {}\n";
+    assert_eq!(ordered(last, "set_oven"), last);
+    let first = "action set_oven(shelf: Shelf) -> Unit {}\n\ntype Shelf = Int {}\n";
+    assert_eq!(ordered(first, "missing"), first);
+    assert_eq!(format_file_in_order(first, None).expect("formats"), first);
+}
+
+#[test]
+fn ties_are_broken_by_kind_constants_types_failures_helpers() {
     assert_eq!(
-        led_by(
+        ordered(
+            concat!(
+                "action bake(shelf: Shelf) fails Burnt -> Unit {\n",
+                "    return warm(shelf, hot)\n",
+                "}\n\n",
+                "function warm(shelf: Shelf, heat: Heat) -> Heat {\n    return heat\n}\n\n",
+                "type Burnt = Failure {}\n\n",
+                "type Shelf = Int {}\n\n",
+                "type Heat = Int {}\n\n",
+                "constant hot: Int = 200\n",
+            ),
+            "bake"
+        ),
+        concat!(
+            "constant hot: Int = 200\n\n",
+            "type Shelf = Int {}\n\n",
+            "type Heat = Int {}\n\n",
+            "type Burnt = Failure {}\n\n",
+            "function warm(shelf: Shelf, heat: Heat) -> Heat {\n    return heat\n}\n\n",
+            "action bake(shelf: Shelf) fails Burnt -> Unit {\n",
+            "    return warm(shelf, hot)\n",
+            "}\n",
+        )
+    );
+}
+
+#[test]
+fn within_a_kind_the_order_the_primary_first_reaches_them() {
+    // The primary writes `Steam` before `Shelf`, and `Shelf` before the
+    // helpers' own names; the written order is the opposite.
+    assert_eq!(
+        ordered(
+            concat!(
+                "action set_oven(steam: Steam, shelf: Shelf, heat: Heat) -> Unit {\n",
+                "    return nudge(heat)\n",
+                "}\n\n",
+                "function nudge(heat: Heat) -> Unit {}\n\n",
+                "type Heat = Int {}\n\n",
+                "type Shelf = Int {}\n\n",
+                "type Steam = Bool {}\n",
+            ),
+            "set_oven"
+        ),
+        concat!(
+            "type Steam = Bool {}\n\n",
+            "type Shelf = Int {}\n\n",
+            "type Heat = Int {}\n\n",
+            "function nudge(heat: Heat) -> Unit {}\n\n",
+            "action set_oven(steam: Steam, shelf: Shelf, heat: Heat) -> Unit {\n",
+            "    return nudge(heat)\n",
+            "}\n",
+        )
+    );
+}
+
+#[test]
+fn reaching_follows_a_declaration_into_what_it_uses() {
+    // The primary reaches `A`, and through it `C`, before `B`: `C` has to
+    // come before `A`, and `A` is the next reached.
+    assert_eq!(
+        ordered(
+            concat!(
+                "action go(a: A, b: B) -> Unit {}\n\n",
+                "type B = Int {}\n\n",
+                "type A = Object {\n    inner: C\n}\n\n",
+                "type C = Int {}\n",
+            ),
+            "go"
+        ),
+        concat!(
+            "type C = Int {}\n\n",
+            "type A = Object {\n    inner: C\n}\n\n",
+            "type B = Int {}\n\n",
+            "action go(a: A, b: B) -> Unit {}\n",
+        )
+    );
+}
+
+#[test]
+fn a_supporting_declaration_only_another_one_uses_comes_before_that_one() {
+    // `Cents` is used by `Fee` alone, and `base_fee` by `final_fee` alone,
+    // so each goes before the declaration that uses it, even though a
+    // type would otherwise come before every helper and a helper after
+    // the types.
+    assert_eq!(
+        ordered(
+            concat!(
+                "action charge(fee: Fee) -> Unit {\n    return final_fee(fee)\n}\n\n",
+                "function final_fee(fee: Fee) -> Fee {\n    return base_fee(fee)\n}\n\n",
+                "function base_fee(fee: Fee) -> Fee {\n    return fee\n}\n\n",
+                "type Fee = Cents {}\n\n",
+                "type Cents = Int {}\n",
+            ),
+            "charge"
+        ),
+        concat!(
+            "type Cents = Int {}\n\n",
+            "type Fee = Cents {}\n\n",
+            "function base_fee(fee: Fee) -> Fee {\n    return fee\n}\n\n",
+            "function final_fee(fee: Fee) -> Fee {\n    return base_fee(fee)\n}\n\n",
+            "action charge(fee: Fee) -> Unit {\n    return final_fee(fee)\n}\n",
+        )
+    );
+}
+
+#[test]
+fn declarations_that_refer_to_each_other_keep_their_written_order() {
+    // `Branch` and `Tree` refer to each other, so neither can come first
+    // by use: they stay as written, whichever way round that is. The
+    // pair sits where its first-reached member would, before its user, and
+    // a type outside it keeps to the reach order.
+    for (first, second) in [("Tree", "Branch"), ("Branch", "Tree")] {
+        let decl = |name: &str| {
+            let other = if name == "Tree" { "Branch" } else { "Tree" };
+            format!("type {name} = Object {{\n    other: {other}?\n}}\n")
+        };
+        let cycle = format!("{}\n{}", decl(first), decl(second));
+        let text = format!(
+            "action plant(tree: Tree, soil: Soil) -> Unit {{}}\n\ntype Soil = Int {{}}\n\n{}\n{}",
+            decl(first),
+            decl(second)
+        );
+        assert_eq!(
+            ordered(&text, "plant"),
+            format!(
+                "{cycle}\ntype Soil = Int {{}}\n\naction plant(tree: Tree, soil: Soil) -> Unit {{}}\n"
+            )
+        );
+    }
+}
+
+#[test]
+fn a_file_whose_primary_is_a_type_puts_the_type_last() {
+    assert_eq!(
+        ordered(
+            concat!(
+                "type Order = Object {\n    status: Status\n    total: Pence\n}\n\n",
+                "type Pence = Int {}\n\n",
+                "type Status = Enum {\n    open\n    shipped\n}\n",
+            ),
+            "Order"
+        ),
+        concat!(
+            "type Status = Enum {\n    open\n    shipped\n}\n\n",
+            "type Pence = Int {}\n\n",
+            "type Order = Object {\n    status: Status\n    total: Pence\n}\n",
+        )
+    );
+}
+
+#[test]
+fn a_declaration_nothing_reaches_goes_after_the_reached_ones_of_its_kind() {
+    // Dead code is `layout.unused_declaration`'s to report; the order
+    // still has to be settled: reached ones first, then as written. Here
+    // `spare_one` is held back by the type it uses.
+    assert_eq!(
+        ordered(
+            concat!(
+                "action go(a: A) -> Unit {}\n\n",
+                "type Spare = Int {}\n\n",
+                "type A = Int {}\n\n",
+                "constant spare_one: Spare = 1\n",
+            ),
+            "go"
+        ),
+        concat!(
+            "type A = Int {}\n\n",
+            "type Spare = Int {}\n\n",
+            "constant spare_one: Spare = 1\n\n",
+            "action go(a: A) -> Unit {}\n",
+        )
+    );
+}
+
+#[test]
+fn a_field_after_a_dot_names_no_declaration() {
+    // `shelf.heat` reads a field, so the helper `heat` isn't used by it.
+    assert_eq!(
+        ordered(
+            concat!(
+                "action go(shelf: Shelf) -> Unit {\n    return shelf.heat\n}\n\n",
+                "function heat() -> Int {}\n\n",
+                "type Shelf = Int {}\n",
+            ),
+            "go"
+        ),
+        concat!(
+            "type Shelf = Int {}\n\n",
+            "function heat() -> Int {}\n\n",
+            "action go(shelf: Shelf) -> Unit {\n    return shelf.heat\n}\n",
+        )
+    );
+}
+
+#[test]
+fn comments_move_with_their_declarations() {
+    // The opening comment and the `use` lines stay first; comments above a
+    // declaration, its `///` lines and its trailing comment move with it.
+    assert_eq!(
+        ordered(
+            "// Sets the oven.\n\nuse kitchen/types { Bake }\n\n// The action.\n/// Sets it.\naction set_oven(shelf: Shelf) -> Unit {}  // done\n\n/// A shelf.\ntype Shelf = Int {}  // the rack\n\n// Hot helpers.\n\nfunction helper() -> Unit {}\n",
+            "set_oven"
+        ),
+        "// Sets the oven.\n\nuse kitchen/types { Bake }\n\n/// A shelf.\ntype Shelf = Int {}  // the rack\n\n// Hot helpers.\n\nfunction helper() -> Unit {}\n\n// The action.\n/// Sets it.\naction set_oven(shelf: Shelf) -> Unit {}  // done\n"
+    );
+    // With no `use` lines, the opening comments (up to their last blank
+    // line) stay above everything; a comment with no blank line below it
+    // belongs to the declaration it is on.
+    assert_eq!(
+        ordered(
             "// Opens the file.\n\n/// A shelf.\ntype Shelf = Int {}\n\naction set_oven(shelf: Shelf) -> Unit {}\n",
             "set_oven"
         ),
-        "// Opens the file.\n\naction set_oven(shelf: Shelf) -> Unit {}\n\n/// A shelf.\ntype Shelf = Int {}\n"
+        "// Opens the file.\n\n/// A shelf.\ntype Shelf = Int {}\n\naction set_oven(shelf: Shelf) -> Unit {}\n"
     );
     assert_eq!(
-        led_by(
-            "type Shelf = Int {}\naction set_oven(shelf: Shelf) -> Unit {}",
+        ordered(
+            "// Opens the file.\n\naction set_oven(shelf: Shelf) -> Unit {}\n\n/// A shelf.\ntype Shelf = Int {}\n",
             "set_oven"
         ),
-        "action set_oven(shelf: Shelf) -> Unit {}\n\ntype Shelf = Int {}\n"
+        "// Opens the file.\n\n/// A shelf.\ntype Shelf = Int {}\n\naction set_oven(shelf: Shelf) -> Unit {}\n"
     );
-    // Already first, or not there: the written order stays.
-    let first = "action set_oven() -> Unit {}\n\ntype Shelf = Int {}\n";
-    assert_eq!(led_by(first, "set_oven"), first);
+    // A comment after the last declaration stays at the end of the file.
     assert_eq!(
-        led_by("type Shelf = Int {}\n", "set_oven"),
-        "type Shelf = Int {}\n"
+        ordered(
+            "action go(a: A) -> Unit {}\n\ntype A = Int {}\n\n// The end.\n",
+            "go"
+        ),
+        "type A = Int {}\n\naction go(a: A) -> Unit {}\n\n// The end.\n"
     );
+}
+
+#[test]
+fn constants_written_together_stay_together() {
+    // The constants use `A`, so it comes before them; written together,
+    // they stay one line each with no blank line between.
     assert_eq!(
-        format_file_led_by(
-            "type Shelf = Int {}\n\naction set_oven() -> Unit {}\n",
-            None
+        ordered(
+            concat!(
+                "action go(a: A) -> A {\n    return low + high\n}\n\n",
+                "constant low: A = 1\n",
+                "constant high: A = 2\n\n",
+                "type A = Int {}\n",
+            ),
+            "go"
+        ),
+        concat!(
+            "type A = Int {}\n\n",
+            "constant low: A = 1\n",
+            "constant high: A = 2\n\n",
+            "action go(a: A) -> A {\n    return low + high\n}\n",
         )
-        .expect("formats"),
-        "type Shelf = Int {}\n\naction set_oven() -> Unit {}\n"
     );
+}
+
+#[test]
+fn the_order_does_not_depend_on_the_written_order() {
+    // With no cycle and nothing unreached, the order is the same whatever
+    // order the declarations were written in.
+    let decls = [
+        "action bake(shelf: Shelf, steam: Steam) fails Burnt -> Unit {\n    return warm(shelf, hot)\n}\n",
+        "function warm(shelf: Shelf, heat: Heat) -> Heat {\n    return cap(heat)\n}\n",
+        "function cap(heat: Heat) -> Heat {\n    return heat\n}\n",
+        "type Burnt = Failure {}\n",
+        "type Shelf = Int {}\n",
+        "type Steam = Bool {}\n",
+        "type Heat = Int {}\n",
+        "constant hot: Int = 200\n",
+    ];
+    let expected = ordered(&decls.join("\n"), "bake");
+    assert_eq!(
+        expected,
+        [
+            decls[7], decls[4], decls[5], decls[6], decls[3], decls[2], decls[1], decls[0]
+        ]
+        .join("\n")
+    );
+    // Eight declarations: rotate and reverse rather than all 40320.
+    for turn in 0..decls.len() {
+        let mut shuffled = decls.to_vec();
+        shuffled.rotate_left(turn);
+        assert_eq!(ordered(&shuffled.join("\n"), "bake"), expected, "{turn}");
+        shuffled.reverse();
+        assert_eq!(
+            ordered(&shuffled.join("\n"), "bake"),
+            expected,
+            "{turn} reversed"
+        );
+    }
 }
 
 #[test]
