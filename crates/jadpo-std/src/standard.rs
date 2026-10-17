@@ -296,9 +296,9 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         Builtin::Email,
         Validator::Email,
         Examples {
-            valid: &[("ada@example.com", "ada@example.com")],
+            valid: &[("someone@example.com", "someone@example.com")],
             format: None,
-            malformed: &["ada", "ada@", "@example.com"],
+            malformed: &["someone", "someone@", "@example.com"],
         },
     ),
     StandardType {
@@ -651,7 +651,7 @@ mod tests {
 
     #[test]
     fn named_validators_check_text() {
-        assert!(Validator::Email.accepts("ada@example.com"));
+        assert!(Validator::Email.accepts("someone@example.com"));
         assert!(!Validator::Url.accepts("example.com"));
         assert!(Validator::IpAddress.accepts("::1"));
         assert!(!Validator::Uuid.accepts("0192f0c4"));

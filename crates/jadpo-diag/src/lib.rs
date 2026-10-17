@@ -1207,7 +1207,7 @@ mod tests {
                 );
             }
             assert!(
-                (1..=18).contains(&rule.area),
+                (1..=19).contains(&rule.area),
                 "{}: area {}",
                 rule.id,
                 rule.area
@@ -1248,7 +1248,8 @@ mod tests {
             [
                 "constant.similar_exists",
                 "library.similar_exists",
-                "translation.field_unused"
+                "translation.field_unused",
+                "type.standard_exists"
             ]
         );
     }

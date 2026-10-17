@@ -99,7 +99,7 @@ impl Body<'_> {
                 false,
                 None,
                 format!(
-                    "`{ty}` is built on `{}`, which isn't a standard type with a format for people",
+                    "`{ty}` is built on `{}`, which has no format of its own yet",
                     prim.name()
                 ),
             ),
@@ -163,7 +163,7 @@ impl Body<'_> {
                 .reason(format!(
                     "`{written}` reads text as the type `as:` names, which is written out, such as `as: Email`: a value can't say which type to read."
                 ))
-                .next("Write the type itself, such as `as: Email` or `as: OrderedAt`"),
+                .next("Write the type itself, such as `as: Email`"),
             );
             return None;
         };

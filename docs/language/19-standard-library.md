@@ -222,8 +222,8 @@ function placed_text(at: OrderedAt) -> LogText {
 
 ```jadpo check project=contract file=main.test.jadpo
 test "standard values are read, written and shown one way" {
-    var four: Quantity = attempt quantity_from("4")
-    assert four == 4
+    var ordered_quantity: Quantity = attempt quantity_from("4")
+    assert ordered_quantity == 4
     assert quantity_from("13") fails QuantityTooLarge
     assert quantity_from("four") fails QuantityUnreadable
     assert placed_text("2026-10-25T09:30:00Z") == "2026-10-25T09:30:00Z"
@@ -1519,8 +1519,8 @@ Declined, with the reason review reads:
 /// A shift as the rota plans it, before anyone has worked it.
 decline type.standard_exists: "Planned hours on the rota, not a range anyone has worked"
 type PlannedShift = Object {
-    start: Instant
-    end: Instant
+    starts_at: Instant
+    ends_at: Instant
 }
 ```
 
