@@ -1837,7 +1837,7 @@ type ShippingText = Output {
 ```
 
 ```jadpo check project=translation-messages file=domains/shipping/actions/describe_order.jadpo
-use shipping/types { CustomerName, ParcelCount, ShippingText, Formality }
+use shipping/types { CustomerName, Formality, ParcelCount, ShippingText }
 
 /// What a customer is told about their order, in their language.
 action describe_order(
@@ -1847,7 +1847,11 @@ action describe_order(
     reader_locale: Locale
 ) -> ShippingText {
     return ShippingText {
-        subject: translations.shipping.order_shipped(formality: formality, name: name, locale: reader_locale)
+        subject: translations.shipping.order_shipped(
+            formality: formality,
+            name: name,
+            locale: reader_locale
+        )
         parcels: translations.shipping.parcels(count: count, locale: reader_locale)
     }
 }
@@ -4169,10 +4173,10 @@ error: `Combo` has two fields that choose its wording, `formality` and `count`
  --> domains/shipping/translations/combo.jadpo:6:5
   |
 5 |     formality: Formality
-  |     ---- the first
+  |     --------- the first
 6 |     count: PluralCount
   |     ^^^^^ a second choice
-  reason: An enum field gives one wording for each of its values, and a `PluralCount` field one for each plural form of the language. Two together would be a grid of combinations for a translator to fill.
+  reason: An enum field gives one wording for each of its values, and a `PluralCount` field one for each plural form of the language. Both at once would need a wording for every pairing of a value and a form, which a translator would have to fill in.
   next: Split `Combo` into two messages, one for each choice, and call both (agent)
   rule: translation.too_many_selectors
   help: docs/language/10-configuration-and-time.html#translation-too-many-selectors
