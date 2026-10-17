@@ -82,6 +82,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
     max_duration: None,
     currency: None,
     rounding: None,
+    standard: None,
 };
 
 impl Builtin {

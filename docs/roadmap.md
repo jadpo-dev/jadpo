@@ -679,7 +679,7 @@ reference only).
   example, example app and test fixture reformatted. Done when the
   ordering has tests for each tie rule and a cycle, and the gate's docs and
   examples steps pass on the reordered sources.
-- [ ] **5.5i Payment and identity numbers** `opus · high` (area 19, "Groups
+- [x] **5.5i Payment and identity numbers** `opus · high` (area 19, "Groups
   with the baseline only"): the 17 of the money group and the tax and
   identity numbers that are text, each a pattern or check digit (mod-97,
   Luhn, mod-11) on the contract: `PaymentCardNumber`, `CardBin`,
@@ -688,7 +688,7 @@ reference only).
   `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin` and
   `NhsNumber`. Done when every type passes the contract's harness with
   valid and invalid examples per rule. Split on 2026-10-18; the rest is
-  5.5i2.
+  5.5i2. What the pages left open is area 19's "Chosen in chunk 5.5i".
 - [ ] **5.5j Quantities** `opus · high` (area 19, "Physical quantities",
   question 17): the 17 physical quantities with `DataSize`, `Bitrate`,
   `Percentage`, `Ratio` and `Fraction`; SI storage at each kind's scale;

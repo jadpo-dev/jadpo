@@ -581,6 +581,17 @@ the checker carries what it knows of an amount's currency
 `known.rs`), an `attempt` covers a chain of operators that can fail
 `currency_mismatch`, and the plan gives each `*` or `/` of an amount its
 type's `rounding:` (`Decoded::Rounding`).
+Since chunk 5.5i a standard type can be held as text (`Holds::Text`, the
+payment and identity numbers in `jadpo_std::standard::identifiers`): its
+stub is `= Text {}`, the checker's type table declares it as a type built
+on `Text` whose one rule is `Rules::standard`, its own check (its pattern
+and named validator, broken as `format`), and the plan's chain, the wire
+and OpenAPI read a `TypeRef::Std` of it as text with that rule
+(`standard::text_rules`), so construction, JSON and storage need nothing
+new. `text.format` is given the type's name by an implicit argument the
+checker fills (`standard`), since the runtime holds only the text, and
+shows it grouped or masked to its last four (`FormatKey::Grouped`,
+`FormatKey::LastFour`).
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from

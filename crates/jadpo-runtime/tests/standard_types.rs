@@ -33,6 +33,18 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
             vec![Validator::new(Some(builtin), Vec::new())],
             Vec::new(),
         ),
+        // Text with its own check (area 19, chunk 5.5i), as the plan's
+        // validator chain holds it.
+        Holds::Text { .. } => (
+            vec![scalar(Builtin::Text, 0)],
+            vec![Validator::new(
+                Some(Builtin::Text),
+                jadpo_std::standard::text_rules(entry.name)
+                    .into_iter()
+                    .collect(),
+            )],
+            Vec::new(),
+        ),
         Holds::Enum(codes) => {
             let spelling = Spelling::of(entry.name);
             let variants = codes
@@ -300,6 +312,23 @@ fn every_standard_type_meets_the_contract() {
                 Err(Fault::Broke(RuleKey::Malformed)),
                 "{name}: `{text}` is malformed"
             );
+            // A type held as text refuses it wherever it is built: its
+            // own check breaks `format`, and JSON doesn't read it.
+            if let Holds::Text { .. } = entry.holds {
+                let rules = jadpo_std::standard::text_rules(name).expect("its rules");
+                assert_eq!(
+                    rules.check_text(text).map_err(|broken| broken.key),
+                    Err(RuleKey::Format),
+                    "{name}: building one from `{text}` breaks `format`"
+                );
+                let mut problems = Vec::new();
+                let json = serde_json::Value::String((*text).to_string());
+                assert_eq!(
+                    table.read(CodecId(0), &json, &Path::default(), &mut problems),
+                    None,
+                    "{name}: `{text}` isn't read from JSON"
+                );
+            }
         }
     }
 }

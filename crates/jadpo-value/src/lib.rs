@@ -290,15 +290,26 @@ pub fn run(
         // The standard type contract (area 19): one implementation each,
         // over the types' data entries. `text.parse` is given the name of
         // the standard type or representation it reads.
-        (Op::TextFormat, [value, locale, zone, format, precision, display, sign]) => {
-            standard::format(
+        (
+            Op::TextFormat,
+            [
                 value,
                 locale,
                 zone,
                 format,
-                &standard::MoneyOptions::of(precision, display, sign)?,
-            )
-        }
+                precision,
+                display,
+                sign,
+                standard,
+            ],
+        ) => standard::format_as(
+            standard,
+            value,
+            locale,
+            zone,
+            format,
+            &standard::MoneyOptions::of(precision, display, sign)?,
+        ),
         (Op::TextFrom, [value]) => standard::from(value),
         (Op::TextParse, [Value::Text(raw), Value::Text(ty)]) => standard::parse(raw, ty),
         (Op::TextFormat | Op::TextFrom | Op::TextParse, _) => Err(Fault::Shape),
@@ -689,6 +700,7 @@ mod tests {
                         english.clone(),
                         london.clone(),
                         Value::text("date_long"),
+                        Value::None,
                         Value::None,
                         Value::None,
                         Value::None,
