@@ -136,7 +136,10 @@ pub fn from_parts(entry: &StandardType, parts: &[Value]) -> Result<Value, Fault>
     match (entry.holds, parts) {
         (Holds::Builtin(jadpo_std::Builtin::Money), [Value::Int(minor), Value::Text(code)]) => {
             let currency = jadpo_std::money::ordinal_of_code(code.trim()).ok_or(Fault::Shape)?;
-            Ok(crate::money::value(currency, *minor))
+            Ok(crate::money::value(
+                currency,
+                crate::money::minor(i128::from(*minor))?,
+            ))
         }
         _ => Err(Fault::Shape),
     }

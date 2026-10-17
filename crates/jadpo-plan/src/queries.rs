@@ -151,7 +151,7 @@ impl Columns {
                 let at = self.names.len();
                 let parts = match &kind {
                     Column::Compound(ty) => {
-                        jadpo_std::standard_type(ty).map_or(1, |entry| entry.columns.len())
+                        jadpo_std::standard_type(ty).map_or(1, |entry| entry.columns().len())
                     }
                     _ => 1,
                 };
@@ -560,7 +560,7 @@ impl Planner<'_> {
                 // A compound standard type, read from its several columns
                 // (area 19).
                 prim if let Some(entry) = jadpo_std::standard::of_builtin(prim)
-                    .filter(|entry| !entry.columns.is_empty()) =>
+                    .filter(|entry| !entry.columns().is_empty()) =>
                 {
                     Column::Compound(entry.name.to_string())
                 }

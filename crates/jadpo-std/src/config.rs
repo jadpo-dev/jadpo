@@ -13,36 +13,30 @@
 
 use crate::http::{Codec, CodecId};
 
-/// How a setting's environment spelling differs from the name its enum
-/// codec reads.
+/// How a setting's environment spelling, and the wire, differ from the
+/// name its enum codec reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Spelling {
     /// The codec reads the text as it is: numbers, text, durations, a
     /// declared enum's variant name.
     Plain,
-    /// An IANA zone name (`Europe/London`) for a `Zone` variant
-    /// (`europe_london`).
-    Zone,
-    /// A BCP 47 tag (`en-GB`) for a `Locale` variant (`en_gb`).
-    Locale,
-    /// An IANA media type (`image/png`) for a `FileType` variant (`png`).
-    FileType,
-    /// An ISO 4217 code (`GBP`) for a `Currency` variant (`gbp`).
-    Currency,
+    /// A standard enum (area 19, question 22), spelt by its data entry's
+    /// codes: an IANA zone name (`Europe/London`) for a `Zone` variant
+    /// (`europe_london`), a BCP 47 tag for a `Locale`, a media type for a
+    /// `FileType`, an ISO 4217 code (`GBP`) for a `Currency`; read
+    /// ignoring case.
+    Codes(&'static [(&'static str, &'static str)]),
     /// A duration as source writes it (`5m`), which the codec reads as the
     /// wire's ISO 8601 (`PT5M`, area 10).
     Duration,
 }
 
 impl Spelling {
-    /// How enum `name` is spelt.
+    /// How enum `name` is spelt: by its codes, for a standard enum.
     pub fn of(name: &str) -> Spelling {
-        match name {
-            crate::ZONE => Spelling::Zone,
-            crate::LOCALE => Spelling::Locale,
-            crate::FILE_TYPE => Spelling::FileType,
-            crate::CURRENCY => Spelling::Currency,
-            _ => Spelling::Plain,
+        match crate::standard_type(name).and_then(crate::StandardType::codes) {
+            Some(codes) => Spelling::Codes(codes),
+            None => Spelling::Plain,
         }
     }
 
@@ -55,10 +49,7 @@ impl Spelling {
                 let millis = i64::try_from(crate::Dur::parse(text)?.millis).ok()?;
                 return Some(crate::iso_duration(millis));
             }
-            Spelling::Zone => crate::zones::ZONES,
-            Spelling::Locale => crate::zones::LOCALES,
-            Spelling::FileType => crate::FILE_TYPES,
-            Spelling::Currency => crate::CURRENCIES,
+            Spelling::Codes(table) => table,
         };
         table
             .iter()
@@ -66,14 +57,11 @@ impl Spelling {
             .map(|(variant, _)| (*variant).to_string())
     }
 
-    /// The environment spelling of variant `variant`.
+    /// The environment and wire spelling of variant `variant`.
     pub fn spelling(self, variant: &str) -> String {
         let table = match self {
             Spelling::Plain | Spelling::Duration => return variant.to_string(),
-            Spelling::Zone => crate::zones::ZONES,
-            Spelling::Locale => crate::zones::LOCALES,
-            Spelling::FileType => crate::FILE_TYPES,
-            Spelling::Currency => crate::CURRENCIES,
+            Spelling::Codes(table) => table,
         };
         table
             .iter()
@@ -197,12 +185,20 @@ mod tests {
     #[test]
     fn zones_and_locales_are_read_from_their_tags() {
         assert_eq!(
-            Spelling::Zone.variant("Europe/London").as_deref(),
+            Spelling::of(crate::ZONE)
+                .variant("Europe/London")
+                .as_deref(),
             Some("europe_london")
         );
-        assert_eq!(Spelling::Zone.variant("Nowhere/Land"), None);
-        assert_eq!(Spelling::Locale.variant("en-GB").as_deref(), Some("en_gb"));
-        assert_eq!(Spelling::Zone.spelling("europe_london"), "Europe/London");
+        assert_eq!(Spelling::of(crate::ZONE).variant("Nowhere/Land"), None);
+        assert_eq!(
+            Spelling::of(crate::LOCALE).variant("en-GB").as_deref(),
+            Some("en_gb")
+        );
+        assert_eq!(
+            Spelling::of(crate::ZONE).spelling("europe_london"),
+            "Europe/London"
+        );
         assert_eq!(Spelling::Plain.variant("info").as_deref(), Some("info"));
     }
 }

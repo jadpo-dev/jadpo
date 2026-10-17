@@ -725,7 +725,7 @@ impl Body<'_> {
                     )
                     .at(span.clone(), "money shared out by `/`")
                     .reason(format!(
-                        "Dividing money by a count is sharing it out, and rounding each share loses minor units: £10.00 / 3 is £3.33, three times £9.99. `money.split` hands every minor unit to some share, and `/` takes only a `Decimal` rate, as `/ 1.20` takes VAT off; {sb} is a whole number."
+                        "Dividing money by a count is sharing it out, and rounding each share loses minor units: £10.00 / 3 is £3.33, three times £9.99. `money.split` hands every minor unit to some share, and `/` takes only a `Decimal` rate, as `/ 1.20` takes VAT off; `{parts}` is a whole number."
                     ))
                     .next(format!(
                         "Share it with `{split}`, which gives a list of shares adding up to the total, or `money.allocate` for unequal shares; halve a price with `* 0.5`"

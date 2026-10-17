@@ -128,7 +128,7 @@ impl Cases {
             0 => self.below(10),
             1 => self.below(10_000),
             2 => self.below(10_000_000_000),
-            _ => self.below(4_000_000_000_000_000_000),
+            _ => self.below(jadpo_value::money::MOST_MINOR as u64 + 1),
         } as i64;
         if self.below(5) == 0 { -size } else { size }
     }
@@ -206,6 +206,29 @@ fn allocate_never_loses_a_minor_unit() {
             }
         }
     }
+}
+
+#[test]
+fn an_amount_past_two_to_the_53_is_overflow() {
+    // The wire's amount is a JSON number, so it stays one a client reads
+    // exactly (chunk 5.5h).
+    let most = jadpo_value::money::MOST_MINOR;
+    assert_eq!(
+        call(Op::MoneyFromMinor, &[Value::Int(most), currency("GBP")]),
+        Ok(amount("GBP", most))
+    );
+    assert_eq!(
+        call(
+            Op::MoneyFromMinor,
+            &[Value::Int(-most - 1), currency("GBP")]
+        ),
+        Err(Fault::IntOverflow)
+    );
+    let both = Value::list(vec![amount("GBP", most), amount("GBP", 1)]);
+    assert_eq!(
+        call(Op::MoneySum, &[both, currency("GBP")]),
+        Err(Fault::IntOverflow)
+    );
 }
 
 #[test]

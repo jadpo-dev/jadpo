@@ -95,7 +95,11 @@ pub fn allows(table: &dyn TypeView, field: &Ty) -> Allows {
         && let Some(Def::Enum { variants }) = table.def(&name)
         && variants.iter().all(|v| v.fields.is_none())
     {
-        out.values = variants.iter().map(|v| v.name.clone()).collect();
+        // As the column holds them: `Currency`'s by code (area 19).
+        out.values = variants
+            .iter()
+            .map(|v| jadpo_std::standard::stored_variant(&name, &v.name).to_string())
+            .collect();
         out.values.sort();
     }
     for (_, rules) in table.rule_chain(field) {

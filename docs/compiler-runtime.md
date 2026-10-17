@@ -554,6 +554,22 @@ format for people, JSON, storage, `==` and order, per example). A new
 `TextForm` or `FormatKey` variant is the only code a group may need, once,
 for every type that shares it. Operations that move are listed in
 `jadpo_std::MOVED` and reported as `semantic.standard_operation_moved`.
+Since chunk 5.5h an entry's storage is one column or named columns
+(`jadpo_std::standard::Storage`): a field of such a type (`Money`) is
+stored in `<column>_<part>` columns, always all of them, read through
+`Column::Compound` and `Column::Part` and written through
+`WriteSource::Part`, with `jadpo_value::standard::to_parts` and
+`from_parts` the one codec, and the part a type can fix (`Money`'s
+currency) held to its value by a check constraint, which the physical
+schema, snapshots and migrations now carry (`schema::Check`). Standard
+enums are spelt on the wire and in settings by their entry's codes
+(`Spelling::Codes`). `Money` itself is a `Builtin` (`Value::Money`, minor
+units and a currency), its operators in `jadpo_value::ops` and `money`;
+the checker carries what it knows of an amount's currency
+(`types/body/currency.rs`, with conditions' currency classes in
+`known.rs`), an `attempt` covers a chain of operators that can fail
+`currency_mismatch`, and the plan gives each `*` or `/` of an amount its
+type's `rounding:` (`Decoded::Rounding`).
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from

@@ -650,7 +650,7 @@ reference only).
   `IssuedToken`'s too); the log is the failure's report until the hosts
   write area 4's event; what the pages left open is area 19's "Chosen in
   chunk 5.5g2".
-- [ ] **5.5h Money** `opus · high` (area 19, "Money and payments" and "The
+- [x] **5.5h Money** `opus · high` (area 19, "Money and payments" and "The
   standard operator table", question 16): `Money` and `Currency`, the 7
   `money` operations other than `convert`, the operator table's `Money`
   rows with `currency_mismatch`, `rounding:` and `type.money_split` (the
@@ -659,7 +659,9 @@ reference only).
   own `Money` renamed. Done when the money examples pass, interpreted, in
   the runtime and stored in PostgreSQL, a mismatched currency fails to
   compile where both types fix it, and `split` and `allocate` never lose
-  a minor unit. Split on 2026-10-17; the rest is 5.5h2.
+  a minor unit. Split on 2026-10-17; the rest is 5.5h2. Stored always in
+  two columns, with a check constraint for a fixed currency; what the
+  pages left open is area 19's "Chosen in chunk 5.5h".
 - [ ] **5.5h2 Exchange rates and money in messages** `opus · high` (area
   19, "Money and payments", question 16, split from 5.5h): `ExchangeRate`
   and `money.convert`, applying a rate the app holds and failing

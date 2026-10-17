@@ -330,7 +330,10 @@ pub fn backfill_sql(value: &Const) -> Option<String> {
         Const::Str(text) => jadpo_sql::text_literal(text),
         Const::Bool(value) => value.to_string(),
         Const::Number { value, .. } => number_text(*value),
-        Const::Path(path) if path.len() == 2 => jadpo_sql::text_literal(&path[1]),
+        // A variant as its column holds it: `Currency`'s by code (area 19).
+        Const::Path(path) if path.len() == 2 => {
+            jadpo_sql::text_literal(jadpo_std::standard::stored_variant(&path[0], &path[1]))
+        }
         _ => return None,
     })
 }

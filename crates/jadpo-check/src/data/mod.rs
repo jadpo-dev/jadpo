@@ -229,7 +229,7 @@ impl FieldModel {
         };
         match self.compound_entry() {
             Some(entry) => entry
-                .columns
+                .columns()
                 .iter()
                 .map(|(part, ty)| (format!("{}_{part}", self.born), (*ty).to_string()))
                 .collect(),
@@ -892,7 +892,7 @@ impl Reader<'_> {
                     .lookup
                     .representation(&ty)
                     .and_then(jadpo_std::standard::of_builtin)
-                    .filter(|entry| !entry.columns.is_empty())
+                    .filter(|entry| !entry.columns().is_empty())
                     .map(|entry| entry.name);
                 field.sql_type = Some(sql);
             }
@@ -1860,7 +1860,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
             // fix holds the values the field allows, under a check
             // constraint, and the first takes the field's other rules.
             let fixed = entry
-                .and_then(|entry| entry.fixed_part)
+                .and_then(|entry| entry.fixed_part())
                 .is_some_and(|part| name == &format!("{}_{part}", field.born));
             let allows = match entry {
                 None => field.allows.clone(),

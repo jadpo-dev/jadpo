@@ -26,8 +26,8 @@ pub(crate) fn plan(db: &dyn Db, project: Project, types: &mut Types) -> ConfigPl
             secret: setting.secret,
             codec: codecs.codec(&jadpo_check::graph::type_ref(&lookup, &setting.ty)),
             spelling: match setting.reads {
-                Reads::Zone => Spelling::Zone,
-                Reads::Locale => Spelling::Locale,
+                Reads::Zone => Spelling::of(jadpo_std::ZONE),
+                Reads::Locale => Spelling::of(jadpo_std::LOCALE),
                 Reads::Duration => Spelling::Duration,
                 _ => Spelling::Plain,
             },

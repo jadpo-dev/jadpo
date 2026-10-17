@@ -48,9 +48,17 @@ fn money_of(value: &Value) -> Result<Money, Fault> {
     }
 }
 
-/// An `i128` of minor units back in an amount's 64 bits; past them is
+/// The most minor units an amount holds either side of zero: JavaScript's
+/// largest safe integer, 2^53 - 1, so the wire's `amount` is always a JSON
+/// number a client reads exactly (chosen in chunk 5.5h).
+pub const MOST_MINOR: i64 = jadpo_std::http::SAFE_INTEGER as i64;
+
+/// Minor units as an amount holds them; past [`MOST_MINOR`] either side is
 /// overflow, a defect as it is for `+` on `Int`.
-fn minor(units: i128) -> Result<i64, Fault> {
+pub fn minor(units: i128) -> Result<i64, Fault> {
+    if units.unsigned_abs() > MOST_MINOR as u128 {
+        return Err(Fault::IntOverflow);
+    }
     i64::try_from(units).map_err(|_| Fault::IntOverflow)
 }
 
@@ -59,7 +67,7 @@ pub fn from_minor(amount: &Value, currency: &Value) -> Result<Value, Fault> {
     let Value::Int(amount) = amount else {
         return Err(Fault::Shape);
     };
-    Ok(value(currency_of(currency)?, *amount))
+    Ok(value(currency_of(currency)?, minor(i128::from(*amount))?))
 }
 
 /// `money.of(amount, currency)`: a decimal of major units, which fails
@@ -109,7 +117,7 @@ pub fn sum(items: &Value, currency: &Value) -> Result<Value, Fault> {
         if item.currency != currency {
             return Err(MISMATCH);
         }
-        total = total.checked_add(item.minor).ok_or(Fault::IntOverflow)?;
+        total = minor(i128::from(total) + i128::from(item.minor))?;
     }
     Ok(value(currency, total))
 }
@@ -191,7 +199,7 @@ pub fn add(a: Money, b: Money) -> Result<Money, Fault> {
     }
     Ok(Money {
         currency: a.currency,
-        minor: a.minor.checked_add(b.minor).ok_or(Fault::IntOverflow)?,
+        minor: minor(i128::from(a.minor) + i128::from(b.minor))?,
     })
 }
 
@@ -202,7 +210,7 @@ pub fn subtract(a: Money, b: Money) -> Result<Money, Fault> {
     }
     Ok(Money {
         currency: a.currency,
-        minor: a.minor.checked_sub(b.minor).ok_or(Fault::IntOverflow)?,
+        minor: minor(i128::from(a.minor) - i128::from(b.minor))?,
     })
 }
 
@@ -301,7 +309,7 @@ pub fn read(raw: &str) -> Option<Money> {
     };
     Some(Money {
         currency,
-        minor: i64::try_from(units).ok()?,
+        minor: minor(units).ok()?,
     })
 }
 

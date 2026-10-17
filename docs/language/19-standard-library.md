@@ -20,7 +20,7 @@ own features needed. This page collects them, adds what real applications
 keep reaching for, says which gaps in the language block the rest and how
 to close them, and says what is left out on purpose and why.
 
-> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunk 5.5g2: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); and the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2). The rest is built by chunks 5.5h to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
+> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunk 5.5h: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2); and `Money` and `Currency`, the operator table's `Money` rows and the money operations but `convert`, stored in two columns (5.5h). The rest is built by chunks 5.5h2 to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
 
 | Namespace | Holds | Operations | Decided in |
 |---|---|---|---|
@@ -96,7 +96,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 14 of them built already (bold; `Range<T>` in chunk 5.5c2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: three are built, and question 22 decided the other 22.
+Decided 2026-10-17 (Richard): 247 types, 16 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: four are built (`Currency` in chunk 5.5h), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -113,7 +113,7 @@ exception to the rule.
 | People and contact (12) | `PersonName`, `GivenName`, `FamilyName`, `Username`, **`Email`**, `EmailWithName`, `PhoneNumber`, `PhoneExtension`, `PostalAddress`, `PostalCode`, `Uprn`, `Nationality` (enum) | `web` |
 | Places (10) | `Country` (enum), `CountrySubdivision` (enum), `Continent` (enum), `UnLocode`, `CallingCode`, `Language` (enum), `WritingScript` (enum), `TextDirection` (enum), **`Locale`** (enum), **`Zone`** (enum) | |
 | Geospatial (17) | `Point` (optional altitude), `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` | `geo` (future area) |
-| Money, payments, banking (24) | `Money`, `Currency` (enum), `ExchangeRate`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, `PaymentCardNumber`, `MaskedCardNumber`, `CardBrand` (enum), `CardBin`, `CardExpiry`, `PaymentReference`, `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`, `UkAccountNumber`, `BankAccount`, `AbaRoutingNumber`, `Lei`, `Isin` | `money` |
+| Money, payments, banking (24) | **`Money`**, **`Currency`** (enum), `ExchangeRate`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, `PaymentCardNumber`, `MaskedCardNumber`, `CardBrand` (enum), `CardBin`, `CardExpiry`, `PaymentReference`, `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`, `UkAccountNumber`, `BankAccount`, `AbaRoutingNumber`, `Lei`, `Isin` | `money` |
 | Tax and identity numbers (11) | `VatNumber`, `TaxId`, `UkUtr`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin`, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, `NhsNumber` | |
 | Commerce and logistics (20) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, `HsCode`, `Incoterm` (enum), `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` | `units`, `media` |
 | Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), `LocalTime`, `LocalDateTime`, `Month` (enum), `YearMonth`, `Year`, `Quarter`, `IsoWeek`, `UtcOffset`, `DateRange`, **`InstantRange`**, `CalendarPeriod`, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` | `temporal`, `range` |
@@ -1646,7 +1646,9 @@ function sterling(paid: Payment) -> SterlingPayment? {
   time and a source, fetched by a provider package.
 - **Storage** is a `bigint` of minor units and a `char(3)` currency code,
   two columns, also for a type that fixes the currency, so opening a
-  type's currency later needs no migration and a query can group by it.
+  type's currency later needs no migration and a query can group by it;
+  a type that fixes it adds a check constraint holding the currency
+  column to that code (chunk 5.5h).
 - **Wire** is one fixed shape, `{"amount": 1050, "currency": "GBP"}`, in
   integer minor units as Stripe sends it; `json.read` and `json.write` use
   it too. A provider's other shape (`"10.50"`) is mapped in its package
@@ -3244,6 +3246,71 @@ error: `spacer` may be empty
 check failed: 1 error, 1 file
 ```
 
+### `type.money_split`
+
+Money divided by a count: `/` by an `Int`. Dividing money by a count is
+sharing it out, and rounding each share loses a minor unit; `money.split`
+hands every one to some share, and `money.allocate` shares in proportion.
+`/` by a `Decimal` stays, since that is a rate (`/ 1.20` takes VAT off).
+
+```jadpo check project=e-money-split expect=type.money_split
+type BillTotal = Money {
+    currency: Currency.gbp
+    min: 0
+}
+
+/// One friend's share of a bill split three ways.
+function share(total: BillTotal) -> BillTotal {
+    return BillTotal(total / 3)
+}
+```
+
+```text output
+error: `BillTotal` is divided by a count
+ --> main.jadpo:8:22
+  |
+8 |     return BillTotal(total / 3)
+  |                      ^^^^^^^^^ money shared out by `/`
+  reason: Dividing money by a count is sharing it out, and rounding each share loses minor units: £10.00 / 3 is £3.33, three times £9.99. `money.split` hands every minor unit to some share, and `/` takes only a `Decimal` rate, as `/ 1.20` takes VAT off; `3` is a whole number.
+  next: Share it with `money.split(total, 3)`, which gives a list of shares adding up to the total, or `money.allocate` for unequal shares; halve a price with `* 0.5` (agent)
+  rule: type.money_split
+  help: docs/language/19-standard-library.html#type-money-split
+
+check failed: 1 error, 1 file
+```
+
+Two amounts in currencies both types fix differently don't compile, by
+area 3's `type.arithmetic_operand` (and `type.ordering_operand` for `<`):
+
+```jadpo check project=e-currency-mismatch expect=type.arithmetic_operand
+type CakePrice = Money {
+    currency: Currency.gbp
+}
+
+type EuroPrice = Money {
+    currency: Currency.eur
+}
+
+/// A cake priced in pounds, delivered from a shop that charges in euros.
+function delivered(price: CakePrice, delivery: EuroPrice) -> CakePrice {
+    return CakePrice(price + delivery)
+}
+```
+
+```text output
+error: `CakePrice` and `EuroPrice` can't be added: they're in different currencies
+ --> main.jadpo:11:22
+   |
+11 |     return CakePrice(price + delivery)
+   |                      ^^^^^^^^^^^^^^^^ GBP and EUR
+  reason: `CakePrice` is in GBP and `EuroPrice` in EUR, as their types or the calls that made them fix; amounts are added only in one currency.
+  next: Use two amounts in the same currency (agent)
+  rule: type.arithmetic_operand
+  help: docs/language/03-logic.html#type-arithmetic-operand
+
+check failed: 1 error, 1 file
+```
+
 ## Review
 
 ### Status
@@ -3255,7 +3322,8 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here, built in 5.5k |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, each group of types in 5.5h to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, each other group of types in 5.5i to 5.5s |
+| `money.`, the operator table's `Money` rows | Built in 5.5h but `convert` and `ExchangeRate`, which come in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
 | A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2: `type.standard_clash`, `jadpo fix`'s swap and rename, the editor's swap |
@@ -3749,6 +3817,113 @@ under "Errors").
   `DecodeProblem` as itself, not as a keyed hash, since it never holds a
   value.
 
+### Chosen in chunk 5.5h
+
+- **`Money` is a type built into the language** (`Builtin::Money`), as
+  `Duration` is, not an object: `type CakePrice = Money { ... }` takes
+  `currency:` (a `Currency` variant), `rounding:` (a `Rounding` variant)
+  and `min:` and `max:` as whole numbers of minor units, and an amount
+  has no fields; `money.minor` and `money.currency` read it. Like `Int`,
+  it is a representation, so a signature names a type built on it.
+- **`Currency` is ISO 4217's list one, less the codes with no minor unit**
+  (`N.A.`: the precious metals, the SDR, the bond-market units, `XSU`,
+  `XUA`, `XTS`, `XXX`), 164 codes with their exponents. Codes ISO has
+  withdrawn (`HRK`, `BGN` on 2026-01-01, `SLL`, `ANG`, `ZWL`, `CUC`) and
+  `type.variant_retired` come with chunk 5.5l, which builds retired codes
+  for every closed list. Albania's lek is `Currency.all_`, since `.all`
+  lists an enum's variants (question 22); the wire still writes `ALL`.
+- **Canonical text is the code, a space and the major units with exactly
+  the currency's places,** `GBP 10.50`, `JPY 500`, `BHD 1.250`, as
+  JSR 354 and Joda-Money write it; `text.parse` reads the code ignoring
+  case and refuses any other number of places as `malformed`.
+- **`+`, `-` and `/` of two amounts keep area 3's named-type rule:** both
+  of one named type, or one a plain amount an operator or a `money`
+  operation made. A currency both sides fix differently is reported
+  first, as `type.arithmetic_operand` or `type.ordering_operand`, no new
+  rule. Operators give a plain `Money`, and the checker carries what it
+  knows of its currency (a type's `currency:`, a currency written out in
+  `money.from_minor`, `of` or `sum`, one currency through `+`, `-`, `*`
+  and `/`, and a condition that compares currencies) as it carries a
+  number's range.
+- **`==` and `!=` never fail:** two amounts in different currencies are
+  unequal, as the contract's `==` says. Only `<`, `<=`, `>` and `>=` need
+  one currency.
+- **An `attempt` around an operator chain covers every operator in it,**
+  `attempt a + b + c { currency_mismatch: ... }`, but not one inside a
+  call. In an `attempt`, a block straight after a local's value
+  (`line.amount { ... }`) is the attempt's mappings, not a value built
+  from a block, since only a type builds one; `attempt` still starts a
+  statement, so an ordering under `attempt` is a `var`.
+- **The money is written first:** `price * 2`, never `2 * price`, which is
+  `type.arithmetic_operand`, whose next step writes it the other way; `%`, `-price` and
+  `price * price` are refused. `Money / Money` takes divisors as `/` does
+  (a type with a `min` of at least 1) and gives `/`'s `Decimal`.
+- **`money.split`'s `parts` is never 0 and never negative,** proved as a
+  divisor and a count are; `money.allocate`'s ratios are a list of whole
+  numbers that is never empty (`type.argument_empty`) and whose items are
+  never negative (`type.argument_negative`). Every ratio 0 is a defect, as
+  dividing by zero would be. The leftover minor units go one each to the
+  first shares whose ratio isn't 0, so a share of ratio 0 is always
+  nothing; a negative total shares out as a payment does, every share
+  negative.
+- **`money.sum` checks every item against `currency:`,** which is also the
+  empty list's zero, and needs no arm when the items' type fixes that
+  currency; `money.of`'s `too_many_places` needs none for a currency
+  written out and an `Int`, a literal with no more places, or a type whose
+  `scale` is no more than the currency's exponent.
+- **Rounding:** `*` and `/` round to a whole minor unit by the left
+  amount's type's `rounding:`, `half_even` when it declares none; the
+  plan gives each such operator its mode. `text.format`'s
+  `precision: MoneyPrecision.whole` rounds a half away from zero, as the
+  page's `£1,235` shows; the default is `MoneyPrecision.minor`, the
+  currency's places as CLDR gives them for display.
+- **Options:** `MoneyPrecision` (`minor`, `whole`), `MoneyDisplay`
+  (`symbol`, `code`, `name`) and `MoneySign` (`standard`, `accounting`)
+  are built-in enums; `text.format` gives an amount through ICU4X's
+  currency formatter, and a `Currency` its CLDR display name ("Japanese
+  Yen"), through `icu_provider`, now a direct dependency at ICU4X's pinned
+  release.
+- **The wire's amount is always a JSON number,** as Stripe sends it,
+  however large; the currency is read ignoring case and written in
+  capitals. OpenAPI shows an object of `amount` (with the type's bounds)
+  and `currency` (an `enum` of the one code when the type fixes it).
+- **Storage is general for compound standard types:** an entry's storage
+  is one column or named columns (`Storage::Columns`; `Money`: `amount
+  bigint` and `currency char(3)`), turned into a value and back by one
+  codec (`standard::to_parts` and `from_parts`), and a field is
+  stored as `<column>_amount` and `<column>_currency`, always both, and a
+  read or write passes each column through the plan (`Column::Compound`
+  and `Part`, `WriteSource::Part`). When the type fixes the currency, a
+  check constraint holds the currency column to that code
+  (`<table>_<column>_currency_check`), and a migration adds or drops it as
+  the type changes. A query comparing or ordering by an amount, a
+  one-step update working one out, and a backfill of a new required one
+  aren't built yet; each says so.
+- **`Currency` columns hold the ISO 4217 code,** `GBP`, as the wire
+  sends it, so the database reads as the API does: a `Currency` field's
+  column, a `Money` field's currency column, a query's condition and a
+  backfill all write the code. Other enums still hold the variant's name;
+  whether every standard enum should hold its code is chunk 5.5w's.
+- **Standard enums are spelt by their entry's codes** on the wire, in
+  settings and in OpenAPI (`Spelling::Codes`), rather than a list of
+  enums by name, so `Currency.gbp` goes out as `GBP`. A standard object
+  type (`InstantRange`) is described in OpenAPI as the object its entry
+  sends, and the per-type harness holds every entry's description to its
+  JSON shape.
+- **An amount holds at most 2^53 - 1 minor units either side of zero,**
+  JavaScript's largest safe integer, so the wire's `amount` is always a
+  JSON number a client reads exactly, as question 16 fixes it, never the
+  string area 2 sends a large `Int` as. Making or working out one past it
+  is overflow, a defect, as for `+` on `Int`; JSON past it is refused as
+  `max`, and canonical text past it is `malformed`.
+- **`Display` writes an amount as code makes one,**
+  `money.from_minor(1050, Currency.gbp)`, in reports and failed
+  assertions, since there is no literal for money.
+- **Area 2's renames:** `PriceTag` and `OrderLine` for its `Money`
+  objects, its `Currency` enum gone, and crate tests the same; example
+  09's library `money` became `pricing`, since `money` is now a reserved
+  namespace.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -4187,10 +4362,14 @@ first; each group of types then arrives with its baseline and its extras.
 - **5.5g2 The decode problem on a failure** `opus · high`: the built-in
   `DecodeProblem`, and a failure mapped from `mismatch` that declares a
   `problem: DecodeProblem` field receiving it. Built.
-- **5.5h Money** `opus · high`: `Money`, `Currency`, `ExchangeRate`, the 8
-  `money` operations, the operator table's `Money` rows with
-  `currency_mismatch`, `rounding:` and `type.money_split`, the two columns, the wire shape, `{price, number,
-  currency}`, and area 2's examples renamed.
+- **5.5h Money** `opus · high`: `Money` and `Currency`, the 7 `money`
+  operations other than `convert`, the operator table's `Money` rows with
+  `currency_mismatch`, `rounding:` and `type.money_split`, the two
+  columns, the wire shape, `text.format`, and area 2's examples renamed.
+  Built; split on 2026-10-17, the rest is 5.5h2.
+- **5.5h2 Exchange rates and money in messages** `opus · high`:
+  `ExchangeRate` and `money.convert`; `{price, number, currency}` in
+  translation messages.
 - **5.5i Payment and identity numbers** `opus · high`: the money group's
   other 21 types and the 11 tax and identity numbers, each a pattern or
   check digit (mod-97, Luhn, mod-11) on the contract.

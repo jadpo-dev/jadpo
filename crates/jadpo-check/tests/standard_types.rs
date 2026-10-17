@@ -282,3 +282,44 @@ fn an_instant_range_field_has_its_start_and_end() {
     let nullable = source.replace("booking.slot.start", "booking.held.start");
     assert_eq!(check(&nullable), ["type.nullable_selection"]);
 }
+
+/// Every standard type is described in OpenAPI as its entry's JSON is
+/// sent (area 19): its canonical text as a string, an object of the
+/// entry's fields, and an enum by its codes, never by its variants'
+/// names.
+#[test]
+fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
+    use jadpo_check::routes::wire::{scalar_schema, standard_object_schema};
+    use jadpo_std::config::Spelling;
+    use jadpo_std::standard::Json;
+    for entry in STANDARD_TYPES {
+        let name = entry.name;
+        let schema = match entry.holds {
+            Holds::Builtin(builtin) => scalar_schema(builtin, &jadpo_std::Rules::default()),
+            Holds::Object(_) => standard_object_schema(entry),
+            Holds::Enum(codes) => {
+                let spelling = Spelling::of(name);
+                for (variant, code) in codes {
+                    assert_eq!(spelling.spelling(variant), *code, "{name}.{variant}");
+                }
+                continue;
+            }
+            // A range's schema is its item type's ends.
+            Holds::Range => continue,
+        };
+        let kind = schema
+            .get("type")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        match entry.json {
+            Json::Text => assert_eq!(kind.as_deref(), Some("string"), "{name}"),
+            Json::Fields(fields) => {
+                assert_eq!(kind.as_deref(), Some("object"), "{name}");
+                let properties = schema.get("properties").expect("properties");
+                for field in fields {
+                    assert!(properties.get(field).is_some(), "{name}: `{field}`");
+                }
+            }
+        }
+    }
+}

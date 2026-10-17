@@ -168,6 +168,24 @@ pub struct FieldMatch {
     pub or_enum: bool,
 }
 
+/// How a standard type is stored (area 5, "Storage types"; area 19).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Storage {
+    /// One column of this type, named for the field.
+    Column(SqlType),
+    /// Named columns, each its suffix, joined to the field's column name
+    /// with `_`, and its PostgreSQL type, in order, always all of them
+    /// (`Money`: `amount bigint` and `currency char(3)`). `fixed` names the
+    /// one a type built on it can fix to one value, which a check
+    /// constraint then holds it to (`Money`'s `currency`, which a type's
+    /// `currency:` fixes). One codec turns a value into its columns and
+    /// back (`jadpo-value`'s `standard::to_parts` and `from_parts`).
+    Columns {
+        parts: &'static [(&'static str, &'static str)],
+        fixed: Option<&'static str>,
+    },
+}
+
 /// The examples the harness checks a type with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Examples {
@@ -199,18 +217,8 @@ pub struct StandardType {
     /// which `text.from` and `text.parse` are compile errors.
     pub text: Option<TextForm>,
     pub json: Json,
-    /// Its storage column; the first of `columns` for a type stored in
-    /// more than one.
-    pub storage: SqlType,
-    /// For a type stored in more than one column (`Money`'s amount and
-    /// currency, area 19): each column's suffix, joined to the field's
-    /// column name with `_`, and its PostgreSQL type, in order. Empty for a
-    /// type stored in one.
-    pub columns: &'static [(&'static str, &'static str)],
-    /// Of `columns`, the one a type built on it can fix to one value, which
-    /// a check constraint then holds it to: `Money`'s currency, which
-    /// `currency:` fixes.
-    pub fixed_part: Option<&'static str>,
+    /// How it is stored: one column, or named columns.
+    pub storage: Storage,
     pub format: Format,
     /// Whether `<` and ordering take it.
     pub ordered: bool,
@@ -287,9 +295,7 @@ const fn checked(
         holds: Holds::Builtin(builtin),
         text: Some(TextForm::Checked),
         json: Json::Text,
-        storage: SqlType::Text,
-        columns: &[],
-        fixed_part: None,
+        storage: Storage::Column(SqlType::Text),
         format: canonical(),
         ordered: false,
         validator: Some(validator),
@@ -309,9 +315,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Builtin(Builtin::CalendarDate),
         text: Some(TextForm::Date),
         json: Json::Text,
-        storage: SqlType::Date,
-        columns: &[],
-        fixed_part: None,
+        storage: Storage::Column(SqlType::Date),
         format: Format {
             key: FormatKey::DateTime,
             options: &[FORMAT],
@@ -335,9 +339,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Enum(crate::CURRENCIES),
         text: Some(TextForm::Code),
         json: Json::Text,
-        storage: SqlType::Text,
-        columns: &[],
-        fixed_part: None,
+        storage: Storage::Column(SqlType::Text),
         format: Format {
             key: FormatKey::CurrencyName,
             options: NO_OPTIONS,
@@ -360,9 +362,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         text: Some(TextForm::Duration),
         json: Json::Text,
         // Milliseconds, as the runtime holds a duration.
-        storage: SqlType::Int8,
-        columns: &[],
-        fixed_part: None,
+        storage: Storage::Column(SqlType::Int8),
         format: Format {
             key: FormatKey::DurationUnits,
             options: NO_OPTIONS,
@@ -400,9 +400,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Enum(FILE_TYPES),
         text: Some(TextForm::Code),
         json: Json::Text,
-        storage: SqlType::Text,
-        columns: &[],
-        fixed_part: None,
+        storage: Storage::Column(SqlType::Text),
         format: canonical(),
         ordered: false,
         validator: None,
@@ -424,9 +422,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Builtin(Builtin::Instant),
         text: Some(TextForm::Instant),
         json: Json::Text,
-        storage: SqlType::Timestamp,
-        columns: &[],
-        fixed_part: None,
+        storage: Storage::Column(SqlType::Timestamp),
         format: Format {
             key: FormatKey::DateTime,
             options: &[ZONE_OPTION, FORMAT],
@@ -455,9 +451,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Fields(&["start", "end"]),
         // Stored as its JSON, as an object is, until objects get named
         // columns with `Money` (chunk 5.5h).
-        storage: SqlType::Json,
-        columns: &[],
-        fixed_part: None,
+        storage: Storage::Column(SqlType::Json),
         format: Format {
             key: FormatKey::Interval,
             options: &[ZONE_OPTION, FORMAT],
@@ -507,9 +501,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Enum(crate::zones::LOCALES),
         text: Some(TextForm::Code),
         json: Json::Text,
-        storage: SqlType::Text,
-        columns: &[],
-        fixed_part: None,
+        storage: Storage::Column(SqlType::Text),
         format: Format {
             key: FormatKey::LocaleName,
             options: NO_OPTIONS,
@@ -536,9 +528,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Builtin(Builtin::Money),
         text: Some(TextForm::Money),
         json: Json::Fields(&crate::MONEY_FIELDS),
-        storage: SqlType::Int8,
-        columns: &[("amount", "bigint"), ("currency", "char(3)")],
-        fixed_part: Some("currency"),
+        storage: Storage::Columns {
+            parts: &[("amount", "bigint"), ("currency", "char(3)")],
+            fixed: Some("currency"),
+        },
         format: Format {
             key: FormatKey::Money,
             options: &[
@@ -604,9 +597,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         text: Some(TextForm::Range),
         json: Json::Fields(&RANGE_FIELDS),
         // Stored as its JSON, as `InstantRange` is.
-        storage: SqlType::Json,
-        columns: &[],
-        fixed_part: None,
+        storage: Storage::Column(SqlType::Json),
         // The options its item type takes (`zone:`, `format:`).
         format: Format {
             key: FormatKey::Range,
@@ -651,9 +642,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Builtin(Builtin::Uuid),
         text: Some(TextForm::Uuid),
         json: Json::Text,
-        storage: SqlType::Uuid,
-        columns: &[],
-        fixed_part: None,
+        storage: Storage::Column(SqlType::Uuid),
         format: canonical(),
         ordered: false,
         validator: Some(Validator::Uuid),
@@ -675,9 +664,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Enum(WEEKDAYS),
         text: Some(TextForm::Code),
         json: Json::Text,
-        storage: SqlType::Text,
-        columns: &[],
-        fixed_part: None,
+        storage: Storage::Column(SqlType::Text),
         format: Format {
             key: FormatKey::WeekdayName,
             options: NO_OPTIONS,
@@ -699,9 +686,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Enum(crate::zones::ZONES),
         text: Some(TextForm::Code),
         json: Json::Text,
-        storage: SqlType::Text,
-        columns: &[],
-        fixed_part: None,
+        storage: Storage::Column(SqlType::Text),
         format: Format {
             key: FormatKey::ZoneName,
             options: NO_OPTIONS,
@@ -728,9 +713,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Fields(&["instant", "zone"]),
         // An instant and its zone, stored as its JSON (area 5's structured
         // values), as an object is.
-        storage: SqlType::Json,
-        columns: &[],
-        fixed_part: None,
+        storage: Storage::Column(SqlType::Json),
         format: Format {
             key: FormatKey::DateTime,
             options: &[FORMAT],
@@ -780,6 +763,29 @@ pub const RANGE_ITEMS: &[Builtin] = &[
 
 /// How a range's open end is written in its canonical text.
 pub const OPEN_END: &str = "..";
+
+/// The enums whose columns hold each variant's code rather than its name,
+/// so the database reads as the wire does: `Currency` holds `GBP` (chosen
+/// in chunk 5.5h). Whether every standard enum should is chunk 5.5w's.
+pub fn stored_by_code(ty: &str) -> Option<&'static [(&'static str, &'static str)]> {
+    (ty == crate::CURRENCY).then_some(crate::CURRENCIES)
+}
+
+/// What variant `variant` of enum `ty` is stored as in its column: its
+/// code for an enum [`stored_by_code`], else its name.
+pub fn stored_variant<'v>(ty: &str, variant: &'v str) -> &'v str {
+    stored_by_code(ty)
+        .and_then(|codes| codes.iter().find(|(name, _)| *name == variant))
+        .map_or(variant, |(_, code)| code)
+}
+
+/// The variant a column of enum `ty` holds as `stored`: by its code for an
+/// enum [`stored_by_code`], else by its name.
+pub fn variant_stored<'v>(ty: &str, stored: &'v str) -> &'v str {
+    stored_by_code(ty)
+        .and_then(|codes| codes.iter().find(|(_, code)| *code == stored.trim()))
+        .map_or(stored, |(name, _)| name)
+}
 
 /// The standard type called `name`.
 pub fn standard_type(name: &str) -> Option<&'static StandardType> {
@@ -836,14 +842,31 @@ impl StandardType {
             .find(|option| option.name == name)
     }
 
+    /// The named columns of a type stored in more than one (`Money`'s);
+    /// none for a type stored in one.
+    pub fn columns(&self) -> &'static [(&'static str, &'static str)] {
+        match self.storage {
+            Storage::Column(_) => &[],
+            Storage::Columns { parts, .. } => parts,
+        }
+    }
+
+    /// Of its named columns, the one a type built on it can fix.
+    pub fn fixed_part(&self) -> Option<&'static str> {
+        match self.storage {
+            Storage::Column(_) => None,
+            Storage::Columns { fixed, .. } => fixed,
+        }
+    }
+
     /// How its column becomes a value, for a type stored in a column of its
     /// own; `None` for one stored as its JSON or in more than one column.
     pub fn column(&self) -> Option<crate::read::Column> {
         use crate::read::Column;
-        if !self.columns.is_empty() {
+        let Storage::Column(storage) = self.storage else {
             return None;
-        }
-        Some(match (self.storage, self.holds) {
+        };
+        Some(match (storage, self.holds) {
             (SqlType::Text, Holds::Enum(codes)) => Column::Enum {
                 ty: self.name.to_string(),
                 variants: codes.iter().map(|(name, _)| (*name).to_string()).collect(),
@@ -857,9 +880,16 @@ impl StandardType {
         })
     }
 
-    /// The PostgreSQL column type its storage is.
+    /// The PostgreSQL column type its storage is: the first named column's,
+    /// for a type stored in more than one.
     pub fn column_type(&self) -> &'static str {
-        match self.storage {
+        let storage = match self.storage {
+            Storage::Column(storage) => storage,
+            Storage::Columns { parts, .. } => {
+                return parts.first().map_or("jsonb", |(_, ty)| *ty);
+            }
+        };
+        match storage {
             SqlType::Bool => "boolean",
             SqlType::Int2 => "smallint",
             SqlType::Int4 => "integer",

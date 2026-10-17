@@ -643,13 +643,18 @@ fn money_from_json(
     let before = problems.len();
     let [amount_field, currency_field] = jadpo_std::MONEY_FIELDS;
     let minor = match entries.get(amount_field) {
-        Some(serde_json::Value::Number(number)) => {
-            let found = number.as_i64();
-            if found.is_none() {
-                Codecs::problem(problems, &path.with(amount_field), "type");
+        Some(serde_json::Value::Number(number)) => match number.as_i64() {
+            // Past 2^53 - 1 either side, no amount (chunk 5.5h).
+            Some(n) if crate::money::minor(i128::from(n)).is_err() => {
+                Codecs::problem(problems, &path.with(amount_field), "max");
+                None
             }
-            found
-        }
+            Some(n) => Some(n),
+            None => {
+                Codecs::problem(problems, &path.with(amount_field), "type");
+                None
+            }
+        },
         Some(_) => {
             Codecs::problem(problems, &path.with(amount_field), "type");
             None

@@ -434,9 +434,9 @@ pub fn to_sql(value: &Value, ty: SqlType) -> Result<SqlValue, String> {
         }
         (Value::Date(day), SqlType::Date) => SqlValue::Date(*day),
         (Value::Duration(millis), SqlType::Int8) => SqlValue::Int8(*millis),
-        (Value::Variant(variant), SqlType::Text) if variant.fields.is_empty() => {
-            SqlValue::Text(variant.name.to_string())
-        }
+        (Value::Variant(variant), SqlType::Text) if variant.fields.is_empty() => SqlValue::Text(
+            jadpo_std::standard::stored_variant(&variant.ty, &variant.name).to_string(),
+        ),
         (Value::List(items) | Value::Set(items), SqlType::Array(inner)) => SqlValue::Array(
             *inner,
             items
@@ -469,7 +469,8 @@ pub fn from_sql(sql: &SqlValue, column: &Column) -> Result<Value, String> {
         (SqlValue::Uuid(bytes), Column::Uuid) => Value::uuid(&uuid_text(bytes)),
         (SqlValue::Timestamp(micros), Column::Instant) => Value::Instant(micros.div_euclid(1000)),
         (SqlValue::Date(day), Column::Date) => Value::Date(*day),
-        (SqlValue::Text(name), Column::Enum { ty, variants }) => {
+        (SqlValue::Text(stored), Column::Enum { ty, variants }) => {
+            let name = &jadpo_std::standard::variant_stored(ty, stored).to_string();
             let ordinal = variants
                 .iter()
                 .position(|variant| variant == name)
@@ -495,7 +496,7 @@ pub fn field_value(row: &[SqlValue], columns: &[Column], at: u32) -> Result<Valu
     };
     let entry =
         jadpo_std::standard_type(ty).ok_or_else(|| format!("`{ty}` isn't a standard type"))?;
-    let count = entry.columns.len();
+    let count = entry.columns().len();
     let parts = row
         .get(at..at + count)
         .ok_or_else(|| format!("a `{ty}` without its {count} columns"))?;

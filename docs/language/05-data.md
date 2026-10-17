@@ -425,8 +425,10 @@ query category_page(category_id: Category.id, page: PageRequest) -> Page<Product
   tenant and the details policy depends on, so one user's results are never
   served to another. Erasing personal data clears cached copies immediately.
 - **Each entry is stored as one JSON value**, the same JSON the API sends, so
-  every Jadpo type maps cleanly: money as `"12.50"`, large integers as
-  strings, sets as arrays, enums tagged.
+  every Jadpo type maps cleanly: money as `{"amount": 1250, "currency":
+  "GBP"}`, large integers as strings, sets as arrays, enums tagged.
+  *Amended 2026-10-17 by area 19 (question 16):* money's one shape is its
+  minor units and its currency's code, here as on the wire.
 
 A record that lives in Redis rather than being copied there (a cart, a
 sign-up in progress) is an entity in a Redis store instead ("Entities in
@@ -565,8 +567,14 @@ The migration's SQL is `UPDATE "parcel" SET "size" = 'medium' WHERE
 | `Bool`, `Text`, `Bytes` | `boolean`, `text`, `bytea` |
 | `Instant`, `CalendarDate` | `timestamptz(3)`, `date` |
 | `Duration` | `bigint`, in milliseconds |
-| `Enum` without data | `text` holding the variant name |
+| `Enum` without data | `text` holding the variant name; `Currency` holds its ISO 4217 code, `GBP` |
+| `Money` (area 19) | two columns, always: `<field>_amount bigint` of minor units and `<field>_currency char(3)`, with a check constraint holding the currency to the one a type fixes |
 | `Enum` with data, `Object`, `List`, `Set`, `Map`, `ZonedTime` (its instant and zone, area 10) | `jsonb` |
+
+> Amended 2026-10-17 by area 19 (question 16, chunk 5.5h): a standard type
+> whose data entry lists named columns is stored in those, as `Money` is,
+> rather than as `jsonb`; the same mechanism takes later compound
+> standard types. A query doesn't compare or order by one yet.
 
 ## Migrations
 
