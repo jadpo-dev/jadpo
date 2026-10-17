@@ -542,9 +542,11 @@ placeholder. `jadpo build` writes, beside each API's OpenAPI document, one
 file per locale named `<api>.failures.<locale>.json`, mapping each code to
 its wording in the same `{field}` syntax and saying which placeholders need
 formatting and how (date, time or number), for client apps to show
-(revised 2026-10-16, not built yet: chunk 5.4c):
+(revised 2026-10-16, not built yet: chunk 5.4d; chunk 5.4c built the
+language files for messages, enums and email subjects, and reads no member
+that words a failure):
 
-```jadpo fragment
+```text
 // domains/planning/translations/fr_fr.jadpo
 translations {
     todo_not_found: "Tâche introuvable."

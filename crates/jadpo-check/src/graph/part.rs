@@ -539,6 +539,7 @@ impl Part<'_> {
                 "Failure" => Base::Failure,
                 "Event" => Base::Event,
                 "EmailMessage" => Base::EmailMessage,
+                "Message" => Base::Message,
                 _ => Base::Refines(TypeRef::Written(written_base.clone())),
             },
         };
@@ -1116,6 +1117,7 @@ fn fields_base(base: FieldsBase) -> Base {
         FieldsBase::Output => Base::Output,
         FieldsBase::Event => Base::Event,
         FieldsBase::EmailMessage => Base::EmailMessage,
+        FieldsBase::Message => Base::Message,
         FieldsBase::Failure => Base::Failure,
     }
 }

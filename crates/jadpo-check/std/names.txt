@@ -25,9 +25,9 @@ ApiChange PersonalData Erasure FileType SearchLanguage RateLimitKey
 # members built so far; any other member is `toolchain.not_built_yet` until
 # its area is built (areas 8, 10 and 13). `clock.now` is the time the
 # operation started, which only actions read (area 10). `config.<name>` is a
-# setting of the project's own `config { }`, and `translations.<key>` a key of
-# the default locale's `translations/` file, so neither's members are listed
-# here (area 10).
+# setting of the project's own `config { }`, and `translations.<domain>.<message>`
+# a message or enum a domain's `translations/` folder words, so neither's
+# members are listed here (area 10).
 [generated]
 clock: now advance
 config:

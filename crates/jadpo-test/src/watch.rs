@@ -242,7 +242,6 @@ impl Watch {
         let before = (
             self.loaded.file(path).map(|file| file.text(db).clone()),
             self.loaded.project.other_files(db).clone(),
-            self.loaded.project.translations(db).clone(),
             self.loaded.unreadable.clone(),
         );
         self.loaded.refresh(path);
@@ -250,7 +249,6 @@ impl Watch {
         let after = (
             self.loaded.file(path).map(|file| file.text(db).clone()),
             self.loaded.project.other_files(db).clone(),
-            self.loaded.project.translations(db).clone(),
             self.loaded.unreadable.clone(),
         );
         before != after

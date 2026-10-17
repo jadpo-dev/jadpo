@@ -279,7 +279,7 @@
     },
     "singleton-declarations": {
       "comment": "Declarations that exist once per project carry no name (area 1).",
-      "match": "^\\s*(application|config|principal|authentication|policy|flags|migration|acceptance|locales)\\b(?=\\s*\\{)",
+      "match": "^\\s*(application|config|principal|authentication|policy|flags|migration|acceptance|locales|translations)\\b(?=\\s*\\{)",
       "captures": {
         "1": {
           "name": "keyword.declaration.jadpo"

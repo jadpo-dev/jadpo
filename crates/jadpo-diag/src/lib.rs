@@ -768,34 +768,38 @@ rules! {
         "14-tooling.html#the-jadpo-command", "Project could not be found";
     TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,
         "14-tooling.html#the-jadpo-command", "Jadpo source file could not be read";
-    TRANSLATION_FILE_INVALID: "translation.file_invalid", area 10, Error, Agent,
-        "10-configuration-and-time.html#translation-file-invalid", "A translation file is not a JSON object of messages";
+    TRANSLATION_FIELD_TYPE: "translation.field_type", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-field-type", "A message field is a type a wording can't hold";
+    TRANSLATION_FIELD_UNUSED: "translation.field_unused", area 10, Declinable, Agent,
+        "10-configuration-and-time.html#translation-field-unused", "No wording in a language uses one of a message's fields";
     TRANSLATION_FILE_MISSING: "translation.file_missing", area 10, Error, Agent,
-        "10-configuration-and-time.html#translation-file-missing", "A supported locale has no translation file";
+        "10-configuration-and-time.html#translation-file-missing", "A supported locale has no language file";
     TRANSLATION_FILE_NAME_INVALID: "translation.file_name_invalid", area 10, Error, Agent,
-        "10-configuration-and-time.html#translation-file-name-invalid", "A translation file is not named for a locale";
-    TRANSLATION_KEY_DUPLICATE: "translation.key_duplicate", area 10, Error, Agent,
-        "10-configuration-and-time.html#translation-key-duplicate", "A translation key is written twice in a file";
-    TRANSLATION_KEY_EXTRA: "translation.key_extra", area 10, Error, Agent,
-        "10-configuration-and-time.html#translation-key-extra", "A translation file has a key the default locale's file lacks";
-    TRANSLATION_KEY_INVALID: "translation.key_invalid", area 10, Error, Agent,
-        "10-configuration-and-time.html#translation-key-invalid", "A translation key is not a name a call can use";
-    TRANSLATION_KEY_MISSING: "translation.key_missing", area 10, Error, Agent,
-        "10-configuration-and-time.html#translation-key-missing", "A translation file lacks a key the default locale's file has";
-    TRANSLATION_KEY_UNKNOWN: "translation.key_unknown", area 10, Error, Agent,
-        "10-configuration-and-time.html#translation-key-unknown", "A translation call names a key no file defines";
+        "10-configuration-and-time.html#translation-file-name-invalid", "A language file is not named for a locale";
     TRANSLATION_LOCALE_UNSUPPORTED: "translation.locale_unsupported", area 10, Error, Agent,
-        "10-configuration-and-time.html#translation-locale-unsupported", "A translation file is for a locale the application does not support";
+        "10-configuration-and-time.html#translation-locale-unsupported", "A language file is for a locale the application does not support";
     TRANSLATION_LOCALES_REQUIRED: "translation.locales_required", area 10, Error, Agent,
         "10-configuration-and-time.html#translation-locales-required", "Translations without declared locales";
-    TRANSLATION_MESSAGE_INVALID: "translation.message_invalid", area 10, Error, Agent,
-        "10-configuration-and-time.html#translation-message-invalid", "A translation message is not valid MessageFormat";
-    TRANSLATION_OTHER_MISSING: "translation.other_missing", area 10, Error, Agent,
-        "10-configuration-and-time.html#translation-other-missing", "A plural or select has no other case";
-    TRANSLATION_PLACEHOLDER_MISMATCH: "translation.placeholder_mismatch", area 10, Error, Agent,
-        "10-configuration-and-time.html#translation-placeholder-mismatch", "A translation's placeholders differ from the default locale's";
-    TRANSLATION_PLACEHOLDER_TYPE: "translation.placeholder_type", area 10, Error, Agent,
-        "10-configuration-and-time.html#translation-placeholder-type", "A placeholder takes a different kind of value than in the default locale";
+    TRANSLATION_MEMBER_DUPLICATE: "translation.member_duplicate", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-member-duplicate", "A member is written twice in a language file";
+    TRANSLATION_MEMBER_UNKNOWN: "translation.member_unknown", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-member-unknown", "A language file words something that is no message, enum or email";
+    TRANSLATION_MESSAGE_UNKNOWN: "translation.message_unknown", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-message-unknown", "A translation call names no message or enum";
+    TRANSLATION_PLACEHOLDER_UNKNOWN: "translation.placeholder_unknown", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-placeholder-unknown", "A wording writes a field the message does not have";
+    TRANSLATION_TOO_MANY_SELECTORS: "translation.too_many_selectors", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-too-many-selectors", "A message has more than one enum or plural field";
+    TRANSLATION_VARIANT_MISSING: "translation.variant_missing", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-variant-missing", "A wording lacks a value of the enum or a plural form";
+    TRANSLATION_VARIANT_UNKNOWN: "translation.variant_unknown", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-variant-unknown", "A wording is for a value or plural form that does not exist";
+    TRANSLATION_WORDING_INVALID: "translation.wording_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-wording-invalid", "A wording is not a plain string with {field} placeholders";
+    TRANSLATION_WORDING_MISSING: "translation.wording_missing", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-wording-missing", "A supported locale has no wording for a message";
+    TRANSLATION_WORDING_SHAPE: "translation.wording_shape", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-wording-shape", "A member is written in the wrong shape for what it words";
     TYPE_ABSENT_FIELD: "type.absent_field", area 2, Error, Agent,
         "02-values-and-types.html#type-absent-field", "Omitted or optional field is not present";
     TYPE_ARGUMENT_COUNT: "type.argument_count", area 3, Error, Agent,
@@ -878,6 +882,10 @@ rules! {
         "10-configuration-and-time.html#type-locale-default-unsupported", "Default locale is not a supported one";
     TYPE_LOCALE_DUPLICATE: "type.locale_duplicate", area 10, Error, Agent,
         "10-configuration-and-time.html#type-locale-duplicate", "Locale is listed twice";
+    TYPE_LOCALE_IN_PROGRESS_DEFAULT: "type.locale_in_progress_default", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-locale-in-progress-default", "The default locale is listed as in progress";
+    TYPE_LOCALE_IN_PROGRESS_UNSUPPORTED: "type.locale_in_progress_unsupported", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-locale-in-progress-unsupported", "An in-progress locale is not a supported locale";
     TYPE_LOCALE_INVALID: "type.locale_invalid", area 10, Error, Agent,
         "10-configuration-and-time.html#type-locale-invalid", "Locale is not written as a Locale";
     TYPE_LOCALE_UNSUPPORTED: "type.locale_unsupported", area 10, Error, Agent,
@@ -1223,7 +1231,11 @@ mod tests {
             .collect();
         assert_eq!(
             declinable,
-            ["constant.similar_exists", "library.similar_exists"]
+            [
+                "constant.similar_exists",
+                "library.similar_exists",
+                "translation.field_unused"
+            ]
         );
     }
 

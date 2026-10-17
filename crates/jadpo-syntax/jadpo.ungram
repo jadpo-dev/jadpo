@@ -154,7 +154,8 @@ ProvideDecl =
 
 // Declarations that exist once per project carry no name (area 1):
 // `application`, `config`, `principal`, `authentication`, `policy`,
-// `flags`, `migration`, `acceptance` and `locales`.
+// `flags`, `migration`, `acceptance` and `locales`; so does a language
+// file's `translations` (area 10).
 SingletonDecl =
   keyword:'ident' MemberList
 

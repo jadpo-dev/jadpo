@@ -15,7 +15,8 @@ use crate::error::{SyntaxError, TextEdit};
 use crate::lexer::is_method_word;
 use crate::parser::{CompletedMarker, Parser};
 
-/// Declarations that exist once per project and carry no name (area 1).
+/// Declarations that carry no name (area 1): once per project, or once per
+/// language file for `translations` (area 10).
 pub(crate) const SINGLETONS: &[&str] = &[
     "acceptance",
     "application",
@@ -26,6 +27,7 @@ pub(crate) const SINGLETONS: &[&str] = &[
     "migration",
     "policy",
     "principal",
+    "translations",
 ];
 
 // --- files ------------------------------------------------------------------

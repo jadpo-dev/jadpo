@@ -177,7 +177,7 @@ cards
 carrot
 cart
 cart_id
-cart_text
+casual
 catalogue_filter
 catalogue_name
 category_id
@@ -224,6 +224,7 @@ coffee
 collect_at
 collect_on
 collection_day
+combo
 comment_body
 company
 company_chores
@@ -305,7 +306,9 @@ delivery_id
 delivery_note
 delivery_state
 delivery_view
+delivery_window
 describe_order
+describe_status
 destination_company_id
 devices
 disable_user
@@ -394,6 +397,8 @@ flour_for
 flour_short
 follow_up
 forget_memos
+formal
+formality
 found_company
 founder
 fragile
@@ -430,6 +435,7 @@ hide_todo
 higher
 hit
 hits
+hold_reason
 home_zone
 hourly_load
 http_status
@@ -659,6 +665,7 @@ off_menu_cake
 old_reference
 old_todo
 on_file
+on_hold
 on_menu
 on_payment_succeeded
 on_shelf
@@ -679,7 +686,6 @@ order_line_view
 order_locked
 order_not_found
 order_note
-order_number
 order_placed
 order_product
 order_shelf
@@ -723,6 +729,7 @@ paid
 pale
 pantry
 parcel
+parcel_count
 parcels
 partner
 partner_added
@@ -944,8 +951,8 @@ shift_end
 ship_parcel
 shipment
 shipped
-shipped_text
 shipping_address
+shipping_text
 shop_day
 shop_time
 shopping_list
@@ -957,7 +964,6 @@ show_note
 show_on_menu
 show_placed
 show_sent
-show_shipped
 sign_in_email
 sign_in_link
 sign_out_everywhere
@@ -998,6 +1004,7 @@ stars
 start_project
 start_subscription
 starting_quantity
+status_text
 steam
 steam_word
 steward

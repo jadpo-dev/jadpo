@@ -12,31 +12,13 @@ pub fn project(db: &Database, layout: Layout, files: &[(&str, &str)]) -> Project
     let make = |db: &Database, records: Vec<Record>| {
         let inputs: Vec<File> = files
             .iter()
-            .filter(|(path, _)| !jadpo_db::is_translation(path))
             .map(|(path, text)| File::new(db, path.to_string(), text.to_string()))
             .collect();
-        Project::builder(inputs, Vec::new(), layout, Default::default(), records)
-            .translations(translations(files))
-            .new(db)
+        Project::new(db, inputs, Vec::new(), layout, Default::default(), records)
     };
     let scratch = Database::default();
     let records = migration(&scratch, make(&scratch, Vec::new()));
     make(db, records)
-}
-
-/// The translation files among `files`, in path order, as the project
-/// holds them.
-pub fn translations(files: &[(&str, &str)]) -> Vec<Record> {
-    let mut found: Vec<Record> = files
-        .iter()
-        .filter(|(path, _)| jadpo_db::is_translation(path))
-        .map(|(path, text)| Record {
-            path: path.to_string(),
-            text: Ok(text.to_string()),
-        })
-        .collect();
-    found.sort_by(|a, b| a.path.cmp(&b.path));
-    found
 }
 
 fn migration(db: &Database, project: Project) -> Vec<Record> {
@@ -69,13 +51,17 @@ fn migration(db: &Database, project: Project) -> Vec<Record> {
 pub fn project_in_path_order(db: &Database, layout: Layout, files: &[(&str, &str)]) -> Project {
     let mut inputs: Vec<File> = files
         .iter()
-        .filter(|(path, _)| !jadpo_db::is_translation(path))
         .map(|(path, text)| File::new(db, path.to_string(), text.to_string()))
         .collect();
     inputs.sort_by(|a, b| a.path(db).cmp(b.path(db)));
-    Project::builder(inputs, Vec::new(), layout, Default::default(), Vec::new())
-        .translations(translations(files))
-        .new(db)
+    Project::new(
+        db,
+        inputs,
+        Vec::new(),
+        layout,
+        Default::default(),
+        Vec::new(),
+    )
 }
 
 /// Each problem as `path rule: message`.

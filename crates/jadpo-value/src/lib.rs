@@ -260,6 +260,7 @@ mod tests {
                 jadpo_std::locale_ordinal("en_gb").unwrap_or(0),
                 jadpo_std::locale_ordinal("fr_fr").unwrap_or(0),
             ],
+            in_progress: Vec::new(),
         };
         let date = Value::Date(jadpo_std::date_number("2026-10-25").unwrap_or(0));
         let zoned = Value::Zoned(Zoned {

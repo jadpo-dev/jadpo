@@ -1,0 +1,466 @@
+//! What a language file can word (area 10, "Translations as messages"):
+//! the messages a folder declares, the enums whose values get wording, and
+//! the email subjects. Each is read once into what its wording is allowed
+//! to be: a plain string, one string for each value of an enum, or one for
+//! each plural form, and the fields a wording may write.
+
+use jadpo_db::{
+    Base, Db, File, Folder, ItemKind, Ownership, Place, Project, Symbol, Symbols, symbols,
+};
+use jadpo_diag::{Diagnostic, Span, rule};
+use jadpo_std::translation::{ParamKind, TranslationParam};
+use jadpo_syntax::ast::{self, AstNode, Decl};
+
+use crate::case::to_snake;
+use crate::lookups::{Lookup, Name, file_at};
+use crate::tree::{self, node_span};
+use crate::types::{Def, FieldDef, Prim, Ty, TypeView};
+
+/// What a subject is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    /// `type X = Message { }`: always worded, in every complete locale.
+    Message,
+    /// An enum with wording for its values: worded once any language file
+    /// words it.
+    Enum,
+    /// An email's subject line: worded in the language files, with the
+    /// email's fields as placeholders, when the email machinery asks.
+    Email,
+}
+
+impl Kind {
+    /// The word for it in an error.
+    pub fn word(self) -> &'static str {
+        match self {
+            Kind::Message => "message",
+            Kind::Enum => "enum",
+            Kind::Email => "email",
+        }
+    }
+}
+
+/// One parameter of the call a subject becomes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParamSpec {
+    pub name: String,
+    pub kind: ParamKind,
+    /// For an enum's value: the enum.
+    pub enum_type: Option<String>,
+}
+
+/// One value of the enum a wording is chosen by, with the payload fields
+/// its wording may also write.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VariantInfo {
+    pub name: String,
+    /// A payload field and, when a wording can write it, how.
+    pub payload: Vec<(String, Option<ParamKind>)>,
+}
+
+/// How many wordings a language gives a subject.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Mode {
+    /// One.
+    Plain,
+    /// One for each value of an enum.
+    Variants(Vec<VariantInfo>),
+    /// One for each plural form the language needs.
+    Forms,
+}
+
+/// A message, an enum with wording or an email subject.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Subject {
+    /// The member name that words it: the type's name in lower_snake_case.
+    pub key: String,
+    pub type_name: String,
+    pub kind: Kind,
+    pub symbol: Symbol,
+    pub name_span: Span,
+    /// The call's parameters, after `locale:`.
+    pub params: Vec<ParamSpec>,
+    /// What a wording may write as `{name}`.
+    pub placeholders: Vec<(String, ParamKind)>,
+    pub mode: Mode,
+    /// A mistake in its declaration, reported; nothing is checked against
+    /// it.
+    pub broken: bool,
+}
+
+impl Subject {
+    /// Whether code can call it: emails are worded for the email's own
+    /// machinery.
+    pub fn callable(&self) -> bool {
+        self.kind != Kind::Email && !self.broken
+    }
+
+    pub fn call_params(&self) -> Vec<TranslationParam> {
+        self.params
+            .iter()
+            .map(|param| TranslationParam {
+                name: param.name.clone(),
+                kind: param.kind,
+            })
+            .collect()
+    }
+}
+
+/// Every subject of a scope, with the mistakes in how they are declared.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Subjects {
+    pub list: Vec<Subject>,
+    pub problems: Vec<Diagnostic>,
+}
+
+impl Subjects {
+    pub fn get(&self, key: &str) -> Option<&Subject> {
+        self.list.iter().find(|subject| subject.key == key)
+    }
+}
+
+/// The scope an owner's translations are in: the domain's name, or
+/// `shared`.
+pub fn scope_of(ownership: &Ownership) -> Option<String> {
+    match ownership {
+        Ownership::Domain(domain) => Some(domain.clone()),
+        Ownership::Shared => Some(SHARED.to_string()),
+        _ => None,
+    }
+}
+
+/// The scope of `shared/translations/`.
+pub const SHARED: &str = "shared";
+
+/// Every scope that declares a message or holds a language file, in name
+/// order: an enum or an email is worded only where a language file says so.
+pub fn scopes(db: &dyn Db, project: Project) -> Vec<String> {
+    let mut found: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for symbol in all_symbols(symbols(db, project)) {
+        if subject_kind(symbol) == Some(Kind::Message)
+            && let Some(scope) = scope_of(&symbol.ownership)
+        {
+            found.insert(scope);
+        }
+    }
+    for &file in project.files(db) {
+        let location = jadpo_db::location(db, project, file);
+        if matches!(location.place, Place::Folder(Folder::Translations))
+            && !location.test
+            && let Some(scope) = scope_of(&location.ownership)
+        {
+            found.insert(scope);
+        }
+    }
+    found.into_iter().collect()
+}
+
+fn all_symbols(table: &Symbols) -> impl Iterator<Item = &Symbol> {
+    table.declarations.values().flatten()
+}
+
+/// What a symbol is as a subject, if it is one.
+fn subject_kind(symbol: &Symbol) -> Option<Kind> {
+    if symbol.test || symbol.provided.is_some() || symbol.library.is_some() {
+        return None;
+    }
+    match &symbol.kind {
+        ItemKind::Type(Base::Message) if symbol.place == Place::Folder(Folder::Translations) => {
+            Some(Kind::Message)
+        }
+        ItemKind::Type(Base::EmailMessage) => Some(Kind::Email),
+        ItemKind::Type(Base::Enum) => Some(Kind::Enum),
+        _ => None,
+    }
+}
+
+/// The language files of a scope, in path order.
+pub fn language_files(db: &dyn Db, project: Project, scope: &str) -> Vec<File> {
+    let mut found: Vec<File> = project
+        .files(db)
+        .iter()
+        .copied()
+        .filter(|&file| {
+            let location = jadpo_db::location(db, project, file);
+            matches!(location.place, Place::Folder(Folder::Translations))
+                && !location.test
+                && scope_of(&location.ownership).as_deref() == Some(scope)
+                && super::language::is_language_file(db, file)
+        })
+        .collect();
+    found.sort_by(|a, b| a.path(db).cmp(b.path(db)));
+    found
+}
+
+/// The subjects of a scope.
+#[salsa::tracked(returns(ref))]
+pub fn subjects<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Subjects {
+    let scope = scope.text(db);
+    let mut out = Subjects::default();
+    let mut symbols: Vec<&Symbol> = all_symbols(symbols(db, project))
+        .filter(|symbol| scope_of(&symbol.ownership).as_deref() == Some(scope.as_str()))
+        .filter(|symbol| subject_kind(symbol).is_some())
+        .collect();
+    symbols.sort_by(|a, b| (&a.path, a.index).cmp(&(&b.path, b.index)));
+    for symbol in symbols {
+        let Some(kind) = subject_kind(symbol) else {
+            continue;
+        };
+        let key = to_snake(&symbol.name);
+        // A name another subject of the scope already took is the checker's
+        // naming rules' to report; the first is kept.
+        if out.list.iter().any(|seen| seen.key == key) {
+            continue;
+        }
+        let lookup = Lookup::within(db, project, &symbol.ownership);
+        let Some(file) = file_at(db, project, Name::new(db, symbol.path.clone())) else {
+            continue;
+        };
+        let Some(source) = tree::source(db, file) else {
+            continue;
+        };
+        let Some(Decl::TypeDecl(decl)) = tree::decl_at(&source, symbol.index) else {
+            continue;
+        };
+        let name_span = decl.name().map_or_else(
+            || node_span(&symbol.path, decl.syntax()),
+            |name| node_span(&symbol.path, name.syntax()),
+        );
+        let canonical = lookup.canonical_name(&symbol.name);
+        let subject = match kind {
+            Kind::Enum => enum_subject(&lookup, &canonical, key, symbol, name_span),
+            Kind::Message | Kind::Email => {
+                let fields = match lookup.def(&canonical) {
+                    Some(Def::Fields { fields, .. }) => fields.clone(),
+                    _ => Vec::new(),
+                };
+                let spans = field_spans(&symbol.path, &decl);
+                fields_subject(
+                    &lookup,
+                    kind,
+                    key,
+                    symbol,
+                    name_span,
+                    &fields,
+                    &spans,
+                    &mut out.problems,
+                )
+            }
+        };
+        if let Some(subject) = subject {
+            out.list.push(subject);
+        }
+    }
+    out
+}
+
+/// Where each field of a type is written, by name.
+fn field_spans(path: &str, decl: &ast::TypeDecl) -> Vec<(String, Span)> {
+    tree::members(decl.member_list())
+        .into_iter()
+        .filter_map(|(name, _)| Some((tree::name_text(&name)?, node_span(path, name.syntax()))))
+        .collect()
+}
+
+/// How a field is written into a wording, if it can be.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Class {
+    Kind(ParamKind),
+    /// An enum, by name.
+    Enum(String),
+    Unsupported,
+}
+
+pub fn classify(lookup: &Lookup<'_>, ty: &Ty) -> Class {
+    if matches!(ty, Ty::Nullable(_)) {
+        return Class::Unsupported;
+    }
+    if matches!(ty, Ty::Prim(Prim::PluralCount)) {
+        return Class::Kind(ParamKind::Plural);
+    }
+    if let Ty::Named(name) = ty
+        && matches!(lookup.def(name), Some(Def::Enum { .. }))
+    {
+        return Class::Enum(name.clone());
+    }
+    match lookup.representation(ty) {
+        Some(Prim::Text | Prim::PresentationText) => Class::Kind(ParamKind::Text),
+        Some(Prim::Int | Prim::Decimal) => Class::Kind(ParamKind::Number),
+        _ => Class::Unsupported,
+    }
+}
+
+fn enum_variants(lookup: &Lookup<'_>, name: &str) -> Vec<VariantInfo> {
+    let Some(Def::Enum { variants }) = lookup.def(name) else {
+        return Vec::new();
+    };
+    variants
+        .iter()
+        .map(|variant| VariantInfo {
+            name: variant.name.clone(),
+            payload: variant
+                .fields
+                .iter()
+                .flatten()
+                .map(|field: &FieldDef| {
+                    let kind = match classify(lookup, &field.declared) {
+                        Class::Kind(kind @ (ParamKind::Text | ParamKind::Number)) => Some(kind),
+                        _ => None,
+                    };
+                    (field.name.clone(), kind)
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+fn enum_subject(
+    lookup: &Lookup<'_>,
+    canonical: &str,
+    key: String,
+    symbol: &Symbol,
+    name_span: Span,
+) -> Option<Subject> {
+    Some(Subject {
+        key,
+        type_name: symbol.name.clone(),
+        kind: Kind::Enum,
+        symbol: symbol.clone(),
+        name_span,
+        params: vec![ParamSpec {
+            name: "value".to_string(),
+            kind: ParamKind::Choice,
+            enum_type: Some(canonical.to_string()),
+        }],
+        placeholders: Vec::new(),
+        mode: Mode::Variants(enum_variants(lookup, canonical)),
+        broken: false,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fields_subject(
+    lookup: &Lookup<'_>,
+    kind: Kind,
+    key: String,
+    symbol: &Symbol,
+    name_span: Span,
+    fields: &[FieldDef],
+    spans: &[(String, Span)],
+    problems: &mut Vec<Diagnostic>,
+) -> Option<Subject> {
+    let at = |name: &str| {
+        spans
+            .iter()
+            .find(|(seen, _)| seen == name)
+            .map_or_else(|| name_span.clone(), |(_, span)| span.clone())
+    };
+    let mut params: Vec<ParamSpec> = Vec::new();
+    let mut placeholders: Vec<(String, ParamKind)> = Vec::new();
+    let mut selector: Option<(String, Class)> = None;
+    let mut broken = false;
+    for field in fields {
+        let class = classify(lookup, &field.declared);
+        match &class {
+            Class::Unsupported => {
+                // An email's fields feed its templates too; one a subject
+                // can't write is simply not a placeholder.
+                if kind == Kind::Message {
+                    broken = true;
+                    problems.push(unsupported(symbol, field, at(&field.name)));
+                }
+            }
+            Class::Kind(k @ (ParamKind::Text | ParamKind::Number)) => {
+                params.push(ParamSpec {
+                    name: field.name.clone(),
+                    kind: *k,
+                    enum_type: None,
+                });
+                placeholders.push((field.name.clone(), *k));
+            }
+            Class::Kind(_) | Class::Enum(_) => {
+                if kind == Kind::Email {
+                    continue;
+                }
+                let (param_kind, enum_type) = match &class {
+                    Class::Enum(name) => (ParamKind::Choice, Some(name.clone())),
+                    _ => (ParamKind::Plural, None),
+                };
+                if let Some((first, _)) = &selector {
+                    broken = true;
+                    problems.push(too_many(
+                        symbol,
+                        first,
+                        &field.name,
+                        at(first),
+                        at(&field.name),
+                    ));
+                } else {
+                    selector = Some((field.name.clone(), class.clone()));
+                }
+                params.push(ParamSpec {
+                    name: field.name.clone(),
+                    kind: param_kind,
+                    enum_type,
+                });
+                if param_kind == ParamKind::Plural {
+                    placeholders.push((field.name.clone(), ParamKind::Plural));
+                }
+            }
+        }
+    }
+    let mode = match &selector {
+        Some((_, Class::Enum(name))) => Mode::Variants(enum_variants(lookup, name)),
+        Some((_, _)) => Mode::Forms,
+        None => Mode::Plain,
+    };
+    Some(Subject {
+        key,
+        type_name: symbol.name.clone(),
+        kind,
+        symbol: symbol.clone(),
+        name_span,
+        params: if kind == Kind::Email {
+            Vec::new()
+        } else {
+            params
+        },
+        placeholders,
+        mode,
+        broken,
+    })
+}
+
+fn unsupported(symbol: &Symbol, field: &FieldDef, span: Span) -> Diagnostic {
+    let ty = field.declared.to_string();
+    Diagnostic::new(
+        &rule::TRANSLATION_FIELD_TYPE,
+        format!(
+            "`{}.{}` is typed `{ty}`, which a wording can't write",
+            symbol.name, field.name
+        ),
+    )
+    .at(span, "not text, a number or a choice")
+    .reason("A message's fields are the placeholders of its wording, and a placeholder is text (`Text`, `PresentationText`), a number (`Int`, `Decimal`) or a plural count (`PluralCount`), or a type built on one of them; one `enum` field picks which wording is written. Dates, times and money are formatted in code, with `temporal.format` or the money formatter, and passed in as `PresentationText`.")
+    .next(format!(
+        "Make `{}` a `PresentationText` and format the value where the message is called",
+        field.name
+    ))
+}
+
+fn too_many(symbol: &Symbol, first: &str, second: &str, first_at: Span, at: Span) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TRANSLATION_TOO_MANY_SELECTORS,
+        format!(
+            "`{}` has two fields that choose its wording, `{first}` and `{second}`",
+            symbol.name
+        ),
+    )
+    .at(at, "a second choice")
+    .also(first_at, "the first")
+    .reason("An enum field gives one wording for each of its values, and a `PluralCount` field one for each plural form of the language. Both at once would need a wording for every pairing of a value and a form, which a translator would have to fill in.")
+    .next(format!(
+        "Split `{}` into two messages, one for each choice, and call both",
+        symbol.name
+    ))
+}

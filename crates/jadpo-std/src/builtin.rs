@@ -48,6 +48,10 @@ pub enum Builtin {
     /// stored, read back as a time, ordered or rebuilt into `Text`, so it
     /// is its own representation.
     PresentationText,
+    /// A whole number that picks a message's plural form (area 10,
+    /// "Translations as messages"): used directly as a `Message` field, and
+    /// written as `{count}` in each form's wording.
+    PluralCount,
 }
 
 /// The fewest characters a [`Builtin::SigningKey`] has: 256 bits of a
@@ -75,7 +79,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
 };
 
 impl Builtin {
-    pub const ALL: [Builtin; 22] = [
+    pub const ALL: [Builtin; 23] = [
         Builtin::Bool,
         Builtin::Int,
         Builtin::Decimal,
@@ -98,6 +102,7 @@ impl Builtin {
         Builtin::RedisUrl,
         Builtin::SigningKey,
         Builtin::PresentationText,
+        Builtin::PluralCount,
     ];
 
     pub fn name(self) -> &'static str {
@@ -124,6 +129,7 @@ impl Builtin {
             Builtin::RedisUrl => "RedisUrl",
             Builtin::SigningKey => "SigningKey",
             Builtin::PresentationText => "PresentationText",
+            Builtin::PluralCount => "PluralCount",
         }
     }
 
@@ -145,7 +151,7 @@ impl Builtin {
             | Builtin::PostgresUrl
             | Builtin::RedisUrl
             | Builtin::SigningKey => Builtin::Text,
-            Builtin::PageSize => Builtin::Int,
+            Builtin::PageSize | Builtin::PluralCount => Builtin::Int,
             other => other,
         }
     }
@@ -168,6 +174,7 @@ impl Builtin {
                 | Builtin::RedisUrl
                 | Builtin::SigningKey
                 | Builtin::PresentationText
+                | Builtin::PluralCount
         )
     }
 

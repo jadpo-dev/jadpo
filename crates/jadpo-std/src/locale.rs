@@ -12,6 +12,9 @@ pub struct LocalePlan {
     pub default: u32,
     /// The ones formatting and translations accept, in the order listed.
     pub supported: Vec<u32>,
+    /// The supported locales whose translations are not finished, which
+    /// fall back where wording is missing (`in_progress:`).
+    pub in_progress: Vec<u32>,
 }
 
 impl LocalePlan {
@@ -39,6 +42,7 @@ mod tests {
         let plan = LocalePlan {
             default: en,
             supported: vec![en],
+            in_progress: Vec::new(),
         };
         assert!(plan.supports(en));
         assert!(!plan.supports(fr));

@@ -31,6 +31,7 @@ fn holding(folder: Folder) -> &'static str {
         Folder::Events => "one event per file",
         Folder::Subscribers => "one subscriber per file",
         Folder::Emails => "one email per file",
+        Folder::Translations => "one message per file, and one language file for each locale",
         Folder::Fixtures => "test data shared by the domain's tests",
     }
 }
@@ -48,6 +49,9 @@ fn in_tests(kind: &ItemKind) -> bool {
 
 /// The folder a declaration of this kind lives in.
 fn home(kind: &ItemKind) -> Option<Folder> {
+    if *kind == ItemKind::Singleton {
+        return None;
+    }
     Folder::ALL
         .into_iter()
         .find(|folder| holds(*folder, kind))
@@ -166,7 +170,10 @@ fn folder_rules(
         _ => format!("shared/{}", folder.name()),
     };
     if let Some(primary) = primary {
-        if to_snake(&primary.name) != location.stem {
+        // A language file is named for its locale, which the translation
+        // checks read, not for its unnamed `translations { }`.
+        let language = folder == Folder::Translations && primary.kind == ItemKind::Singleton;
+        if !language && to_snake(&primary.name) != location.stem {
             out.push(misnamed(path, source, primary));
         }
         if folder == Folder::Routes {
@@ -175,6 +182,13 @@ fn folder_rules(
     }
     for item in items {
         let is_primary = primary.is_some_and(|p| p.index == item.index);
+        if folder == Folder::Translations
+            && item.kind == ItemKind::Singleton
+            && item.name != "translations"
+        {
+            out.push(misplaced(path, folder.name(), location, source, item));
+            continue;
+        }
         if is_primary {
             continue;
         }

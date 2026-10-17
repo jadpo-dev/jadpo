@@ -486,23 +486,34 @@ reference only).
   date by `jadpo build`) for expired flags when they are built. `warning`
   leaves area 14's error shape and the CLI design language's headline
   words.
-- [ ] **5.4c Translations as messages** `sonnet · high` (area 10,
+- [x] **5.4c Translations as messages** `sonnet · high` (area 10,
   "Translations as messages", decided 2026-10-16 in the packages design
   while 5.3b built JSON files of ICU MessageFormat; reworks 5.3b, whose
-  files, calls and `translation.*` errors it replaces): `type X = Message` and the built-in
-  `PluralCount`; each domain's and `shared/`'s `translations/` folder, with
-  one unnamed `translations { }` per locale and its mapping and checks
-  (placeholders, enum values, CLDR plural forms, every supported locale
-  complete, `in_progress:` locales falling back with warnings, stale
-  translations through `sources.jadpo_record`, `TranslationReview` and `accept`);
+  files, calls and `translation.*` errors it replaces). Split on
+  2026-10-17 because the whole is more than one session: this half is the
+  language itself, `5.4d` the tooling and the text Jadpo writes. Done in
+  this half: `type X = Message` and the built-in `PluralCount`; each
+  domain's and `shared/`'s `translations/` folder, with one unnamed
+  `translations { }` per locale and its mapping and checks (placeholders,
+  enum values, CLDR plural forms, every supported locale complete,
+  `in_progress:` in `locales { }` as the declared opt-out: an in-progress
+  locale falls back to its regional sibling and then the default with no
+  diagnostic); the typed calls
   `translations.<domain>.<message>(..., locale:)` returning
-  `PresentationText`; enum wording; email subjects; failures that can
-  reach a response worded in every locale and exported as
-  `<api>.failures.<locale>.json`; `TextDirection`; Jadpo's own messages
-  and the root file's owner groups; `jadpo translations missing`,
-  `unused`, `update`, `accept`, `builtin`, `export` and `import`, and a
-  pseudo-locale. Email templates follow in 7.3, library packages'
-  translations in 7.1.
+  `PresentationText`; enum wording; email subjects; and the removal of
+  5.3b's JSON files, calls and `translation.*` errors, with the section
+  of area 10 that described them.
+- [ ] **5.4d Translations: failures, review and tooling** `sonnet · high`
+  (area 10, "Translations as messages", the rest of 5.4c's text), after
+  5.4c: failures that can reach a response worded in every locale and
+  exported as `<api>.failures.<locale>.json`; stale translations through
+  `sources.jadpo_record`, `TranslationReview` and `accept`; `TextDirection`
+  and `locale.direction`; Jadpo's own messages and the root file's owner
+  groups (`translations/<locale>.jadpo`); `jadpo translations missing`
+  (which also lists what an in-progress locale falls back on), `unused`,
+  `update`, `accept`, `builtin`, `export` and `import`; go to definition
+  from a call to its message type and its wording; and a pseudo-locale.
+  Email templates follow in 7.3, library packages' translations in 7.1.
 - [ ] **5.5a The standard type contract** `opus · high` (area 19, "Every
   standard type meets one contract", questions 1 to 5): each standard type
   a stub declaration in `crates/jadpo-check/std/` plus a data entry,

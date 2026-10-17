@@ -81,12 +81,7 @@ fn formatting_a_corpus_project_changes_no_key_and_no_digest() {
     for (name, files) in corpus() {
         let formatted: Option<Vec<(String, String)>> = files
             .iter()
-            .map(|(path, text)| {
-                if path.ends_with(".json") {
-                    return Some((path.clone(), text.clone()));
-                }
-                Some((path.clone(), jadpo_fmt::format_file(text).ok()?))
-            })
+            .map(|(path, text)| Some((path.clone(), jadpo_fmt::format_file(text).ok()?)))
             .collect();
         let Some(formatted) = formatted else {
             continue;

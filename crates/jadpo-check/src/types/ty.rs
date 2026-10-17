@@ -16,7 +16,7 @@ pub use jadpo_std::Builtin as Prim;
 /// The bases used only after `=` in a `type` declaration (area 2), and
 /// `TimeFormat`, which declares a format for showing dates and times
 /// (area 10).
-pub const BASES: [&str; 8] = [
+pub const BASES: [&str; 9] = [
     "Object",
     "Enum",
     "Input",
@@ -24,6 +24,7 @@ pub const BASES: [&str; 8] = [
     "Failure",
     "Event",
     "EmailMessage",
+    "Message",
     TIME_FORMAT,
 ];
 

@@ -1,7 +1,8 @@
-//! Translations (area 10, chunk 5.3b) from the command line: a project with
-//! `translations/` checks and tests, its mistakes show a code frame in the
-//! JSON file, `jadpo dev` writes the text in the locale a request names, and
-//! a save of a translation file reruns exactly the tests that reach it.
+//! Translations as messages (area 10, chunk 5.4c) from the command line: a
+//! project with messages and language files checks and tests, its mistakes
+//! show a code frame in the language file, `jadpo dev` writes the text in
+//! the locale a request names, and a save of a language file reruns exactly
+//! the tests that reach it.
 //!
 //! The project has no entities, so no database is needed.
 
@@ -47,8 +48,8 @@ const FILES: &[(&str, &str)] = &[
 /// The cart, in the customer's language.
 action show_cart(number: OrderNumber, count: ItemCount, reader_locale: Locale) -> CartText {
     return CartText {
-        shipped: translations.order_shipped(locale: reader_locale, order_number: number)
-        cart: translations.items_in_cart(locale: reader_locale, count: count)
+        shipped: translations.shop.order_shipped(order_number: number, locale: reader_locale)
+        cart: translations.shop.items_in_cart(count: count, locale: reader_locale)
     }
 }
 "#,
@@ -88,26 +89,48 @@ routes Cart {
         "test \"one and one are two\" {\n    assert 1 + 1 == 2\n}\n",
     ),
     (
-        "translations/en_gb.json",
-        r#"{
-  "order_shipped": "Your order {order_number} has shipped.",
-  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+        "domains/shop/translations/order_shipped.jadpo",
+        "use shop/types { OrderNumber }\n\n/// Tells a customer their order has shipped.\ntype OrderShipped = Message {\n    order_number: OrderNumber\n}\n",
+    ),
+    (
+        "domains/shop/translations/items_in_cart.jadpo",
+        "/// How many items a cart holds.\ntype ItemsInCart = Message {\n    count: PluralCount\n}\n",
+    ),
+    (
+        "domains/shop/translations/en_gb.jadpo",
+        r#"translations {
+    order_shipped: "Your order {order_number} has shipped."
+    items_in_cart: {
+        one: "{count} item in your cart"
+        other: "{count} items in your cart"
+    }
 }
 "#,
     ),
     (
-        "translations/fr_fr.json",
-        r#"{
-  "order_shipped": "Votre commande {order_number} a été expédiée.",
-  "items_in_cart": "{count, plural, one {# article} many {# d'articles} other {# articles}} dans votre panier"
+        "domains/shop/translations/fr_fr.jadpo",
+        r#"translations {
+    order_shipped: "Votre commande {order_number} a été expédiée."
+    items_in_cart: {
+        one: "{count} article dans votre panier"
+        many: "{count} d'articles dans votre panier"
+        other: "{count} articles dans votre panier"
+    }
 }
 "#,
     ),
     (
-        "translations/ar_eg.json",
-        r#"{
-  "order_shipped": "تم شحن طلبك {order_number}.",
-  "items_in_cart": "{count, plural, zero {لا عناصر} one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}} في سلتك"
+        "domains/shop/translations/ar_eg.jadpo",
+        r#"translations {
+    order_shipped: "تم شحن طلبك {order_number}."
+    items_in_cart: {
+        zero: "لا عناصر في سلتك"
+        one: "عنصر واحد في سلتك"
+        two: "عنصران في سلتك"
+        few: "{count} عناصر في سلتك"
+        many: "{count} عنصرًا في سلتك"
+        other: "{count} عنصر في سلتك"
+    }
 }
 "#,
     ),
@@ -180,28 +203,29 @@ fn the_text_is_written_in_the_locale_a_request_names() {
 }
 
 #[test]
-fn a_mistake_in_a_translation_file_shows_its_line_in_that_file() {
+fn a_mistake_in_a_language_file_shows_its_line_in_that_file() {
     let (_dir, root) = project();
+    let fr = "domains/shop/translations/fr_fr.jadpo";
     write(
         &root,
-        "translations/fr_fr.json",
-        "{\n  \"order_shipped\": \"Votre commande {order_number} a été expédiée.\"\n}\n",
+        fr,
+        "translations {\n    order_shipped: \"Votre commande {order_number} a été expédiée.\"\n}\n",
     );
     let done = jadpo(&root, &["check"]);
     assert_eq!(done.code, 1, "{}{}", done.stdout, done.stderr);
     let out = format!("{}{}", done.stdout, done.stderr);
     for expected in [
-        "error: `translations/fr_fr.json` has no translation for `items_in_cart`",
-        " --> translations/fr_fr.json:1:1",
-        "rule: translation.key_missing",
+        "error: `items_in_cart` has no wording in `domains/shop/translations/fr_fr.jadpo`",
+        " --> domains/shop/translations/fr_fr.jadpo:1:1",
+        "rule: translation.wording_missing",
     ] {
         assert!(out.contains(expected), "missing `{expected}`:\n{out}");
     }
 
     write(
         &root,
-        "translations/fr_fr.json",
-        FILES[11]
+        fr,
+        FILES[13]
             .1
             .replace("{order_number} a", "{order_number a")
             .as_str(),
@@ -210,13 +234,50 @@ fn a_mistake_in_a_translation_file_shows_its_line_in_that_file() {
     assert_eq!(done.code, 1);
     let out = format!("{}{}", done.stdout, done.stderr);
     assert!(
-        out.contains("--> translations/fr_fr.json:2:36")
-            && out.contains("rule: translation.message_invalid"),
+        out.contains("--> domains/shop/translations/fr_fr.jadpo:2:36")
+            && out.contains("rule: translation.wording_invalid"),
         "{out}"
     );
     // Nothing runs while a file is wrong.
     let done = jadpo(&root, &["test"]);
     assert_eq!(done.code, 1, "{}{}", done.stdout, done.stderr);
+}
+
+#[test]
+fn an_in_progress_locale_falls_back_to_its_sibling_and_then_the_default() {
+    let dir = tempdir::Dir::new("translations-in-progress");
+    let root = dir.path().join("shop");
+    for (path, text) in FILES {
+        let text = if *path == "app.jadpo" {
+            "application {}\n\nlocales {\n    default: Locale.en_gb\n    supported: [Locale.en_gb, Locale.fr_fr, Locale.fr_ca, Locale.pl_pl, Locale.ar_eg]\n    in_progress: [Locale.fr_ca, Locale.pl_pl]\n}\n"
+        } else {
+            text
+        };
+        write(&root, path, text);
+    }
+    // `fr_ca` words only the order; `pl_pl` has no file at all.
+    write(
+        &root,
+        "domains/shop/translations/fr_ca.jadpo",
+        "translations {\n    order_shipped: \"Votre commande {order_number} est partie.\"\n}\n",
+    );
+    write(
+        &root,
+        "domains/shop/actions/show_cart.test.jadpo",
+        r#"test "an in-progress locale falls back where it has no wording" {
+    assert show_cart("A-17", 1, Locale.fr_ca).shipped == "Votre commande A-17 est partie."
+    assert show_cart("A-17", 3, Locale.fr_ca).cart == "3 articles dans votre panier"
+    assert show_cart("A-17", 3, Locale.pl_pl).cart == "3 items in your cart"
+    assert show_cart("A-17", 3, Locale.pl_pl).shipped == "Your order A-17 has shipped."
+}
+"#,
+    );
+    for args in [&["api", "update"][..], &["check"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let done = jadpo(&root, &["test"]);
+    assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
 }
 
 // --- watching ----------------------------------------------------------------------------
@@ -272,14 +333,15 @@ fn a_save_of_a_translation_file_reruns_the_tests_that_reach_its_key() {
 
     // The words of `order_shipped` in French: the tests of the action that
     // shows it rerun, the arithmetic does not, and no body is checked again.
-    let text = fs::read_to_string(root.join("translations/fr_fr.json")).expect("read");
+    let text =
+        fs::read_to_string(root.join("domains/shop/translations/fr_fr.jadpo")).expect("read");
     write(
         &root,
-        "translations/fr_fr.json",
+        "domains/shop/translations/fr_fr.jadpo",
         &text.replace("a été expédiée", "est partie"),
     );
     let event = watch
-        .apply(saved("translations/fr_fr.json"))
+        .apply(saved("domains/shop/translations/fr_fr.jadpo"))
         .expect("a change");
     let both: BTreeSet<String> = [
         "an order's shipping is told in French".to_string(),
@@ -290,19 +352,25 @@ fn a_save_of_a_translation_file_reruns_the_tests_that_reach_its_key() {
     assert_eq!(bodies(&watch.executions()), 0);
 
     // A save of the same text changes nothing.
-    let text = fs::read_to_string(root.join("translations/fr_fr.json")).expect("read");
-    write(&root, "translations/fr_fr.json", &text);
-    assert!(watch.apply(saved("translations/fr_fr.json")).is_none());
+    let text =
+        fs::read_to_string(root.join("domains/shop/translations/fr_fr.jadpo")).expect("read");
+    write(&root, "domains/shop/translations/fr_fr.jadpo", &text);
+    assert!(
+        watch
+            .apply(saved("domains/shop/translations/fr_fr.jadpo"))
+            .is_none()
+    );
 
     // The count's plural in the default locale: the other test.
-    let text = fs::read_to_string(root.join("translations/en_gb.json")).expect("read");
+    let text =
+        fs::read_to_string(root.join("domains/shop/translations/en_gb.jadpo")).expect("read");
     write(
         &root,
-        "translations/en_gb.json",
-        &text.replace("# items}", "# things}"),
+        "domains/shop/translations/en_gb.jadpo",
+        &text.replace("{count} items in your cart", "{count} things in your cart"),
     );
     let event = watch
-        .apply(saved("translations/en_gb.json"))
+        .apply(saved("domains/shop/translations/en_gb.jadpo"))
         .expect("a change");
     assert_eq!(ran(&event), both);
 }
