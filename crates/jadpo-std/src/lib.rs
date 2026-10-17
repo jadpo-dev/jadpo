@@ -24,6 +24,8 @@
 //!   decided by `jadpo-plan` and run by `jadpo-runtime` for both executors
 //!   (area 6), the [`Isolation`] an action's transaction runs at, and
 //!   each store's share of a [`Migration`].
+//! - [`standard`]: every standard type's data entry (area 19), which the
+//!   contract's one implementation of each baseline operation reads.
 //! - [`OPERATIONS`]: every standard-library operation with its parameters'
 //!   kinds, its result and the Rust function that runs it in
 //!   `jadpo-value`, which the Jadpo stubs in `jadpo-check` are tested
@@ -62,6 +64,7 @@ mod operations;
 pub mod policy;
 pub mod read;
 mod rules;
+pub mod standard;
 mod time;
 pub mod translation;
 pub mod types;
@@ -84,8 +87,11 @@ pub use locale::{LocalePlan, locale_ordinal};
 pub use migration::Migration;
 pub use num::{Num, compare_exact};
 pub use operations::{
-    Condition, INSTANT_RANGE, INSTANT_RANGE_FIELDS, Kind, OPERATIONS, Op, Operation, Param,
-    operation,
+    Condition, Kind, MOVED, OPERATIONS, Op, Operation, Param, moved, operation,
+};
+pub use standard::{
+    FILE_TYPE, FILE_TYPES, INSTANT_RANGE, INSTANT_RANGE_FIELDS, STANDARD_TYPES, StandardType,
+    standard_type,
 };
 pub use read::SqlType;
 pub use rules::{

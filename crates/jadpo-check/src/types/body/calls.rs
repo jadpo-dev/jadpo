@@ -362,6 +362,17 @@ impl Body<'_> {
             return (Ty::Error, CallKind::Other, Reach::Unknown);
         }
         if names.namespace(&head) == Some(Namespace::Standard) {
+            // An operation that moved is reported where it is resolved
+            // (area 19) and checked as the operation it moved to.
+            if let Some(to) = jadpo_std::moved(&head, member)
+                && let Some((space, name)) = to.split_once('.')
+                && let Some(operation) = names.operation(space, name)
+            {
+                let ty = self.std_call(operation, call, to, expected);
+                let reach = jadpo_std::operation(space, name)
+                    .map_or(Reach::Unknown, |operation| Reach::Std(operation.op));
+                return (ty, CallKind::Pure(to.to_string()), reach);
+            }
             if let Some(operation) = names.operation(&head, member) {
                 let ty = self.std_call(operation, call, &written, expected);
                 let reach = jadpo_std::operation(&head, member)
@@ -682,10 +693,10 @@ impl Body<'_> {
             };
             let param = slot.map(|slot| &params[slot].1);
             let is_function = matches!(param, Some(Ty::Function(..)));
-            // A format is read as written, never as a value.
+            // A format and a type are read as written, never as values.
             let is_format = slot
                 .and_then(|slot| table.and_then(|op| op.params.get(slot)))
-                .is_some_and(|p| p.kind == jadpo_std::Kind::Format);
+                .is_some_and(|p| matches!(p.kind, jadpo_std::Kind::Format | jadpo_std::Kind::Type));
             if is_literal(&value) || matches!(value, Expr::ListExpr(_)) || is_function || is_format
             {
                 actual.push(None);
@@ -703,6 +714,10 @@ impl Body<'_> {
         }
         let mut inline = Vec::new();
         let mut format: Option<(Expr, jadpo_std::TimeFormatSpec)> = None;
+        // The contract's value and the standard type it is, and the type
+        // `as:` names (area 19).
+        let mut contract: Option<(Ty, &'static jadpo_std::StandardType)> = None;
+        let mut parsed: Option<(Ty, Option<Expr>)> = None;
         for ((arg, slot), ty) in args.iter().zip(&slots).zip(actual) {
             let Some(value) = arg.expr() else { continue };
             let Some(slot) = slot else {
@@ -738,6 +753,24 @@ impl Body<'_> {
             if kind == Some(jadpo_std::Kind::Format) {
                 if let Some(spec) = self.format_argument(&value, written) {
                     format = Some((value.clone(), spec));
+                }
+                continue;
+            }
+            if let (Some(jadpo_std::Kind::Contract), Some(table)) = (kind, table) {
+                let given = match ty {
+                    Some(ty) => ty,
+                    None => self.infer(&value),
+                };
+                if let Some(entry) =
+                    self.contract_value(table.op, &value, Some(given.clone()), written)
+                {
+                    contract = Some((given, entry));
+                }
+                continue;
+            }
+            if kind == Some(jadpo_std::Kind::Type) {
+                if let Some(target) = self.type_argument(&value, written) {
+                    parsed = Some((target, None));
                 }
                 continue;
             }
@@ -823,10 +856,28 @@ impl Body<'_> {
         if let Some(table) = table
             && matches!(
                 table.op,
-                jadpo_std::Op::TemporalFormat | jadpo_std::Op::TemporalFormatRelative
+                jadpo_std::Op::TextFormat | jadpo_std::Op::TemporalFormatRelative
             )
         {
             self.locale_argument(call, &args, &slots, table, written);
+        }
+        if let (Some(table), Some((shown, entry))) = (table, &contract) {
+            self.contract_options(table, call, &args, &slots, entry, shown, written);
+        }
+        if let Some((target, _)) = parsed {
+            let raw = args
+                .iter()
+                .zip(&slots)
+                .find(|(_, slot)| **slot == Some(0))
+                .and_then(|(arg, _)| arg.expr());
+            if let Some(raw) = raw {
+                self.parse_fallible(call, &raw, &target);
+            }
+            return target;
+        }
+        if table.is_some_and(|table| table.op == jadpo_std::Op::TextParse) {
+            // `as:` was missing or isn't a type, which is reported.
+            return Ty::Error;
         }
         if let Some(table) = table
             && table.op == jadpo_std::Op::LocaleFromAcceptLanguage

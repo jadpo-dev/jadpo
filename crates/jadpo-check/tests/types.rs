@@ -368,7 +368,7 @@ fn loops_and_failures_read_their_types() {
 /// built-in types is a type variable, and a clock time is text.
 fn stub_kind(kind: jadpo_std::Kind) -> jadpo_std::Kind {
     match kind {
-        jadpo_std::Kind::OneOf(_) => jadpo_std::Kind::Any,
+        jadpo_std::Kind::OneOf(_) | jadpo_std::Kind::Contract => jadpo_std::Kind::Any,
         jadpo_std::Kind::Clock => jadpo_std::Kind::Builtin(jadpo_std::Builtin::Text),
         other => other,
     }
@@ -449,12 +449,19 @@ fn standard_operations_check_their_arguments_shape_and_kind() {
 
 #[test]
 fn formatting_is_checked_like_any_operation() {
-    // `temporal.format` is checked (area 10, chunk 5.2b): a number isn't a
-    // time, it needs a locale and a format, and it gives text for people.
+    // `text.format` is checked (areas 10 and 19): a number isn't a
+    // standard type, it needs a locale, and it gives text for people.
     assert_eq!(
         with_names(
-            "function f(n: Pence) -> Pence {\n    var formatted_price: Pence = temporal.format(n)\n    return formatted_price\n}\n"
+            "function f(n: Pence) -> Pence {\n    var formatted_price: Pence = text.format(n)\n    return formatted_price\n}\n"
         ),
         ["type.mismatch", "type.argument_count", "type.mismatch"]
+    );
+    // `temporal.format` moved to `text.format` (area 19, question 2).
+    assert_eq!(
+        with_names(
+            "type At = Instant {}\n\nfunction f(at: At) -> PresentationText {\n    return temporal.format(at, zone: Zone.utc, locale: Locale.en_gb, format: TimeFormat.date_long)\n}\n"
+        ),
+        ["semantic.standard_operation_moved"]
     );
 }

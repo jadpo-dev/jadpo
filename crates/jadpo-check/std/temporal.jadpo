@@ -11,14 +11,13 @@
 // what to do; the call's `attempt` maps each by the option's name. `at:` is
 // a clock time written as text, `"09:30"`, checked while compiling.
 //
-// `format` and `format_relative` give text for a person in `locale`
-// (area 10, "Showing dates and times to people"): `zone:` is given
-// exactly when `value` is an `Instant`, since a date or a local time
-// carries its own, and `format:` is written out, a built-in
-// `TimeFormat.date_long` or a format declared as `type Name = TimeFormat
-// { ... }`. The text is written in `locale`, which an application that
-// declares the locales it supports (`locales { }` in `app.jadpo`) accepts
-// only from them.
+// `format_relative` gives text for a person in `locale` (area 10,
+// "Showing dates and times to people"): `zone:` is given exactly when
+// `value` is an `Instant`, since a local time carries its own. The text is
+// written in `locale`, which an application that declares the locales it
+// supports (`locales { }` in `app.jadpo`) accepts only from them. The time
+// types are formatted with `text.format` (area 19, question 2), which
+// `temporal.format` became.
 
 public library temporal {
     /// `instant` as the local time in `zone`.
@@ -60,9 +59,6 @@ public library temporal {
 
     /// The month, from 1 for January.
     function month(value: T) -> Int {}
-
-    /// `value` shown to a person in `locale`, as `format` says.
-    function format(value: T, zone: Zone?, locale: Locale, format: TimeFormat) -> PresentationText {}
 
     /// `value` shown to a person in `locale` as how long ago it was from
     /// `now`: "just now", minutes, "Today at", "Yesterday at", the

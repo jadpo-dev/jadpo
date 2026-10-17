@@ -22,14 +22,21 @@ use crate::types::{BASES, Prim, TypeRef, container_arity};
 const NAMES: &str = include_str!("../std/names.txt");
 
 /// The stub files, by name.
-const STUBS: [(&str, &str); 6] = [
+const STUBS: [(&str, &str); 8] = [
     ("types.jadpo", include_str!("../std/types.jadpo")),
+    ("standard.jadpo", include_str!("../std/standard.jadpo")),
+    ("text.jadpo", include_str!("../std/text.jadpo")),
     ("collection.jadpo", include_str!("../std/collection.jadpo")),
     ("decimal.jadpo", include_str!("../std/decimal.jadpo")),
     ("integer.jadpo", include_str!("../std/integer.jadpo")),
     ("locale.jadpo", include_str!("../std/locale.jadpo")),
     ("temporal.jadpo", include_str!("../std/temporal.jadpo")),
 ];
+
+/// Whether a stub file is the standard types' (`std/standard.jadpo`).
+fn stub_is_standard(stub: &str) -> bool {
+    std::ptr::eq(stub, STUBS[1].1)
+}
 
 /// A stub operation's signature as kinds (see [`StdNames::signatures`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -64,6 +71,8 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
         }
         (jadpo_std::INSTANT_RANGE, 0) => Some(Kind::Std(jadpo_std::INSTANT_RANGE)),
         (crate::types::TIME_FORMAT, 0) => Some(Kind::Format),
+        // A type written out, `as: Email` (area 19); only in stubs.
+        ("Type", 0) => Some(Kind::Type),
         (other, 0) => Builtin::from_name(other).map(Kind::Builtin).or_else(|| {
             jadpo_std::enums()
                 .into_iter()
@@ -81,10 +90,23 @@ pub struct Operation {
     pub result: TypeRef,
 }
 
+/// A standard type's stub declaration (area 19): what it is built on, as
+/// written, and an object's fields.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StandardStub {
+    /// The name after `=`: its own for a built-in type, `Enum`, `Object`.
+    pub base: String,
+    /// An enum's variants, or an object's fields with their types, in
+    /// declared order.
+    pub members: Vec<(String, Option<TypeRef>)>,
+}
+
 #[derive(Debug, Default)]
 pub struct StdNames {
     /// Built-in types later areas define, known by name only.
     opaque: BTreeSet<&'static str>,
+    /// The standard types' stub declarations (`std/standard.jadpo`).
+    standard: BTreeMap<String, StandardStub>,
     /// Enums declared in the stubs, with their variants in order.
     enums: BTreeMap<String, Vec<String>>,
     /// Namespaces declared in the stubs, with their operations.
@@ -94,6 +116,8 @@ pub struct StdNames {
     /// Namespaces the compiler fills, with the members built so far.
     generated: BTreeMap<&'static str, BTreeSet<&'static str>>,
     generic: BTreeSet<&'static str>,
+    /// Standard namespaces not reserved yet.
+    unreserved: BTreeSet<&'static str>,
 }
 
 /// What a lower-case qualifier is in the standard library.
@@ -155,6 +179,7 @@ impl StdNames {
                         .extend(members.split_whitespace());
                 }
                 "generic" => table.generic.extend(line.split_whitespace()),
+                "unreserved" => table.unreserved.extend(line.split_whitespace()),
                 _ => {}
             }
         }
@@ -173,18 +198,41 @@ impl StdNames {
                     let Some(name) = decl.name().as_ref().and_then(tree::name_text) else {
                         continue;
                     };
-                    let variants = decl
+                    let base = match decl.base().map(|base| TypeRef::from_type(&base)) {
+                        Some(TypeRef::Path(names, _)) => names.first().cloned().unwrap_or_default(),
+                        _ => String::new(),
+                    };
+                    let mut members: Vec<(String, Option<TypeRef>)> = decl
                         .member_list()
                         .into_iter()
                         .flat_map(|list| list.member_items())
                         .filter_map(|item| match item {
-                            MemberItem::BareMember(variant) => {
-                                variant.name().as_ref().and_then(tree::name_text)
-                            }
+                            MemberItem::BareMember(variant) => Some((
+                                variant.name().as_ref().and_then(tree::name_text)?,
+                                None,
+                            )),
                             _ => None,
                         })
                         .collect();
-                    self.enums.insert(name, variants);
+                    members.extend(tree::members(decl.member_list()).into_iter().filter_map(
+                        |(name, field)| {
+                            Some((
+                                tree::name_text(&name)?,
+                                field.value().map(|value| TypeRef::from_expr(&value)),
+                            ))
+                        },
+                    ));
+                    // Only an enum's variants are names a program uses as
+                    // values; a built-in type or an object is a type only.
+                    if base == "Enum" || base.is_empty() {
+                        self.enums.insert(
+                            name.clone(),
+                            members.iter().map(|(variant, _)| variant.clone()).collect(),
+                        );
+                    }
+                    if stub_is_standard(stub) {
+                        self.standard.insert(name, StandardStub { base, members });
+                    }
                 }
                 Decl::LibraryDecl(library) => {
                     let Some(namespace) = library.name().as_ref().and_then(tree::name_text) else {
@@ -226,6 +274,12 @@ impl StdNames {
             || container_arity(name).is_some()
             || self.enums.contains_key(name)
             || self.opaque.contains(name)
+            || self.standard.contains_key(name)
+    }
+
+    /// The standard types' stub declarations, by name (area 19).
+    pub fn standard(&self) -> &BTreeMap<String, StandardStub> {
+        &self.standard
     }
 
     pub fn types(&self) -> impl Iterator<Item = &str> + '_ {
@@ -236,11 +290,23 @@ impl StdNames {
             .chain(["List", "Set", "Map"])
             .chain(self.enums.keys().map(String::as_str))
             .chain(self.opaque.iter().copied())
+            .chain(self.standard_objects())
     }
 
-    /// A built-in type a later area defines, known by name only.
+    /// The standard object types (`InstantRange`), which the checker
+    /// knows by name, as it knows a later area's types, with their fields
+    /// read from the data entry where it reads them.
+    fn standard_objects(&self) -> impl Iterator<Item = &str> + '_ {
+        self.standard
+            .iter()
+            .filter(|(_, stub)| stub.base == "Object")
+            .map(|(name, _)| name.as_str())
+    }
+
+    /// A built-in type a later area defines, known by name only, or a
+    /// standard object type.
     pub fn is_opaque(&self, name: &str) -> bool {
-        self.opaque.contains(name)
+        self.opaque.contains(name) || self.standard_objects().any(|object| object == name)
     }
 
     /// The enums the stubs declare, with their variants.
@@ -343,9 +409,10 @@ impl StdNames {
             .is_some_and(|members| members.contains(member))
     }
 
-    /// Every reserved namespace name: standard and generated.
+    /// Every reserved namespace name: standard and generated, but for a
+    /// standard namespace whose name stays free until a later chunk.
     pub fn reserved(&self, name: &str) -> bool {
-        self.namespace(name).is_some()
+        self.namespace(name).is_some() && !self.unreserved.contains(name)
     }
 
     pub fn is_generic(&self, name: &str) -> bool {

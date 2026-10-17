@@ -1,20 +1,19 @@
 # Names the language declares that have no Jadpo stub yet
 # (docs/compiler-runtime.md §2.1), read by jadpo-check's resolution. The
-# types and operations areas 2, 3 and 10 need are declared as stubs beside this
-# file (`types.jadpo`, `collection.jadpo`, `decimal.jadpo`,
-# `integer.jadpo`, `locale.jadpo`, `temporal.jadpo`); later chunks move the rest there as their areas are
+# types and operations areas 2, 3, 10 and 19 need are declared as stubs beside this
+# file (`types.jadpo`, `standard.jadpo`, `collection.jadpo`, `decimal.jadpo`,
+# `integer.jadpo`, `locale.jadpo`, `temporal.jadpo`, `text.jadpo`); later chunks move the rest there as their areas are
 # built. Lines starting with `#` are comments.
 
 # Built-in types that later areas define (areas 3 to 18), and the setting
 # options they use.
 [types]
-InstantRange
 Page
 File Principal Response Access
 IssuedToken IssuedKey
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
 FieldAccess OnDelete Generated FieldChange
-ApiChange PersonalData Erasure FileType SearchLanguage RateLimitKey
+ApiChange PersonalData Erasure SearchLanguage RateLimitKey
 
 # Standard-library namespaces and the operations the pages name so far,
 # always called through the namespace (area 10); none waits for a stub
@@ -34,6 +33,12 @@ config:
 translations:
 sessions:
 oauth:
+
+# Standard namespaces whose names stay free for parameters, variables and
+# declarations until the chunk that reserves them (area 19, question 30):
+# `text` in 5.5f, which renames the examples that use it.
+[unreserved]
+text
 
 # Names too generic for a domain or a library (area 1).
 [generic]

@@ -2009,6 +2009,11 @@ impl<'p> Machine<'p> {
                 count += 1;
             }
         }
+        // The value `text.parse` reads is then built as the type `as:`
+        // names, checking its rules (area 19).
+        if op == Op::TextParse {
+            self.tasks.push(Task::Construct(id));
+        }
         self.tasks.push(Task::Std {
             op,
             count,

@@ -45,7 +45,7 @@ impl Decider {
 pub struct Rule {
     /// `area.name`, lower case, for example `cli.unknown_command`.
     pub id: &'static str,
-    /// The language area (1–18) whose page documents the rule.
+    /// The language area (1–19) whose page documents the rule.
     pub area: u8,
     /// Whether a `decline` line may answer it instead of a fix.
     pub declinable: bool,
@@ -626,6 +626,8 @@ rules! {
         "08-identity.html#semantic-revocation-delay-invalid", "Revocation delay is not a positive duration";
     SEMANTIC_STANDARD_NAMESPACE_RESERVED: "semantic.standard_namespace_reserved", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-standard-namespace-reserved", "Name belongs to a standard-library namespace";
+    SEMANTIC_STANDARD_OPERATION_MOVED: "semantic.standard_operation_moved", area 19, Error, Agent,
+        "19-standard-library.html#semantic-standard-operation-moved", "Standard-library operation has moved to another name";
     SEMANTIC_STANDARD_OPERATION_QUALIFICATION: "semantic.standard_operation_qualification", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-standard-operation-qualification", "Standard-library operation is called without its namespace";
     SEMANTIC_UNKNOWN_CALLEE: "semantic.unknown_callee", area 1, Error, Agent,
@@ -962,6 +964,8 @@ rules! {
         "02-values-and-types.html#type-setting-value", "Setting has the wrong kind of value";
     TYPE_SIBLING_MISMATCH: "type.sibling_mismatch", area 2, Error, Agent,
         "02-values-and-types.html#type-sibling-mismatch", "Field type is used for a sibling field type";
+    TYPE_STANDARD_EXISTS: "type.standard_exists", area 19, Declinable, Agent,
+        "19-standard-library.html#type-standard-exists", "Type has a standard type's shape under another name";
     TYPE_TEMPORAL_CLOCK_INVALID: "type.temporal_clock_invalid", area 10, Error, Agent,
         "10-configuration-and-time.html#type-temporal-clock-invalid", "Clock time is not written `HH:MM`";
     TYPE_TEMPORAL_FORMAT_COMPONENT_DUPLICATE: "type.temporal_format_component_duplicate", area 10, Error, Agent,

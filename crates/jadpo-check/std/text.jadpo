@@ -1,0 +1,26 @@
+// The `text` namespace's three contract operations (area 19, "Every
+// standard type meets one contract"): each one operation over every
+// standard type, as `json.read` is one over every input type, listed in
+// `jadpo-std`'s operation table and run by `jadpo-value`'s `standard`
+// module over each type's data entry. The rest of `text` comes with
+// chunk 5.5f.
+//
+// `T` in `format` and `from` is a standard type, or a type built on one;
+// which fit, and how each is shown or written, is the type's data entry,
+// which the checker reads. `zone:` and `format:` mean something only for
+// the types whose entry takes them (the time types), and those need them.
+// `as:` in `parse` is a type written out, a standard type or a type built
+// on one or on `Text`, `Int`, `Decimal` or `Bool`, and the result is that
+// type: text that isn't one at all fails `malformed`, and the type's own
+// rules fail by their names, as a construction's do.
+
+public library text {
+    /// `value` shown to a person in `locale`, in the type's own words.
+    function format(value: T, locale: Locale, zone: Zone?, format: TimeFormat?) -> PresentationText {}
+
+    /// `value`'s canonical text, the form `parse` reads back.
+    function from(value: T) -> Text {}
+
+    /// The value of type `as` that `raw`, its canonical text, holds.
+    function parse(raw: Text, as: Type) -> T {}
+}

@@ -472,7 +472,7 @@ impl Body<'_> {
     }
 
     /// The span that removes an argument, its comma with it.
-    fn argument_removal(&self, arg: &ast::Arg) -> Span {
+    pub(super) fn argument_removal(&self, arg: &ast::Arg) -> Span {
         let node = arg.syntax();
         let start = node
             .first_token()

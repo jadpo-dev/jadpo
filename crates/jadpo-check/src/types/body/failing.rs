@@ -259,9 +259,9 @@ impl Body<'_> {
                     format!("`{written}(...)` can fail at runtime, and nothing handles it"),
                 )
                 .at(span, "checked when it runs")
-                .reason(format!(
+                .reason(self.parse_reason(call, breakable, ", so reading it can fail.").unwrap_or_else(|| format!(
                     "The value is only known when the program runs, and neither the declared ranges nor a condition before it prove it follows {rules}, so building it can fail."
-                ))
+                )))
                 .next(format!(
                     "Write `attempt {written}(...) {{ {first}: SomeFailure }}`, mapping each rule that can break to an `invalid_value` failure, or `invalid:` for all of them"
                 ))
@@ -642,6 +642,7 @@ impl Body<'_> {
     fn construction_rules(&self, call: &ast::CallExpr) -> Vec<(&'static str, String)> {
         match self.facts.reaches.get(&node_key(call.syntax())) {
             Some(Reach::Construct(target)) => self.rules_of(target),
+            Some(Reach::Std(jadpo_std::Op::TextParse)) => self.parse_rules(call),
             Some(Reach::Std(op)) => op
                 .operation()
                 .conditions
@@ -805,8 +806,34 @@ impl Body<'_> {
     fn is_standard(&self, call: &ast::CallExpr) -> bool {
         matches!(
             self.facts.reaches.get(&node_key(call.syntax())),
-            Some(Reach::Std(_))
+            Some(Reach::Std(op)) if *op != jadpo_std::Op::TextParse
         )
+    }
+
+    /// Why `text.parse` can fail as it can (area 19): the text may not be
+    /// the type at all, and nothing proves the value follows the rules
+    /// written.
+    fn parse_reason(&self, call: &ast::CallExpr, breakable: &[String], tail: &str) -> Option<String> {
+        let target = self.facts.parsed.get(&node_key(call.syntax()))?;
+        let malformed = breakable.iter().any(|key| key == "malformed");
+        let rules: Vec<String> = breakable
+            .iter()
+            .filter(|key| *key != "malformed")
+            .cloned()
+            .collect();
+        let mut said = Vec::new();
+        if malformed {
+            said.push(format!(
+                "the text is only known when the program runs, and may not be a `{target}` at all (`malformed`)"
+            ));
+        }
+        if !rules.is_empty() {
+            said.push(format!(
+                "nothing proves the value read follows {}",
+                self.written_rules(call, &rules)
+            ));
+        }
+        Some(format!("{}{tail}", capital_first(&said.join(", and "))))
     }
 
     /// The arms of a construction that can fail (area 2, "Construction
@@ -972,10 +999,17 @@ impl Body<'_> {
                     options_named(uncovered)
                 )
             } else {
-                format!(
-                    "The value is only known when the program runs, and neither the declared ranges nor a condition before it prove it follows {}; {it} needs an arm naming the `invalid_value` failure the caller gets, or `invalid:` covers every rule without its own.",
+                let tail = format!(
+                    "; {it} needs an arm naming the `invalid_value` failure the caller gets, or `invalid:` covers every rule without its own."
+                );
+                match attempt.expr() {
+                    Some(Expr::CallExpr(call)) => self.parse_reason(&call, uncovered, &tail),
+                    _ => None,
+                }
+                .unwrap_or_else(|| format!(
+                    "The value is only known when the program runs, and neither the declared ranges nor a condition before it prove it follows {}{tail}",
                     crate::and_list(&as_written)
-                )
+                ))
             })
             .next(next),
         );

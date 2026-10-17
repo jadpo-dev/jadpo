@@ -19,5 +19,9 @@ serde_json.workspace = true
 # (area 7, question 17); pure Rust, so it builds for wasm32.
 blake3.workspace = true
 
+[[test]]
+name = "integration"
+path = "tests/main.rs"
+
 [lints]
 workspace = true

@@ -42,7 +42,7 @@ const FILES: &[(&str, &str)] = &[
 /// The placing, in the customer's language and the shop's zone.
 action show_placed(input: PlaceRequest) -> PlacedText {
     return PlacedText {
-        placed: temporal.format(input.ordered_at, zone: Zone.europe_london, locale: input.locale, format: TimeFormat.date_long)
+        placed: text.format(input.ordered_at, zone: Zone.europe_london, locale: input.locale, format: TimeFormat.date_long)
         relative: temporal.format_relative(input.ordered_at, now: clock.now, zone: Zone.europe_london, locale: input.locale)
     }
 }

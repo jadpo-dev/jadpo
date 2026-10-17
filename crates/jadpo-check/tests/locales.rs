@@ -165,7 +165,7 @@ const TYPES: &str = "type OrderedAt = Instant {}\n\n";
 
 fn formats(locales: &str, locale: &str) -> Vec<String> {
     let source = format!(
-        "{locales}\n{TYPES}function label(value: OrderedAt, reader_locale: Locale) -> PresentationText {{\n    return temporal.format(value, zone: Zone.utc, locale: {locale}, format: TimeFormat.date_long)\n}}\n"
+        "{locales}\n{TYPES}function label(value: OrderedAt, reader_locale: Locale) -> PresentationText {{\n    return text.format(value, zone: Zone.utc, locale: {locale}, format: TimeFormat.date_long)\n}}\n"
     );
     rules(&source)
 }
@@ -213,7 +213,7 @@ fn application(locales: &str) -> Vec<(&'static str, String)> {
         ),
         (
             "domains/shop/actions/show_placed.jadpo",
-            "use shop/types { OrderedAt, PlacedText }\n\n/// The placing, in the customer's language.\naction show_placed(ordered_at: OrderedAt, reader_locale: Locale) -> PlacedText {\n    return PlacedText {\n        placed: temporal.format(ordered_at, zone: Zone.utc, locale: reader_locale, format: TimeFormat.date_long)\n    }\n}\n".into(),
+            "use shop/types { OrderedAt, PlacedText }\n\n/// The placing, in the customer's language.\naction show_placed(ordered_at: OrderedAt, reader_locale: Locale) -> PlacedText {\n    return PlacedText {\n        placed: text.format(ordered_at, zone: Zone.utc, locale: reader_locale, format: TimeFormat.date_long)\n    }\n}\n".into(),
         ),
         (
             "domains/shop/actions/show_placed.test.jadpo",
@@ -335,7 +335,7 @@ fn the_locale_chosen_is_one_the_application_supports() {
             DECLARED,
             "header: AcceptLanguage?, placed_at: PlacedAt",
             "PresentationText",
-            "var chosen: Locale = locale.from_accept_language(header)\n    return temporal.format(placed_at, zone: Zone.utc, locale: chosen, format: TimeFormat.date_long)"
+            "var chosen: Locale = locale.from_accept_language(header)\n    return text.format(placed_at, zone: Zone.utc, locale: chosen, format: TimeFormat.date_long)"
         ),
         CLEAN
     );

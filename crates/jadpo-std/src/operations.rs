@@ -6,6 +6,7 @@
 //! [`Op`] exhaustively, so an operation listed here without an
 //! implementation does not compile.
 
+use crate::standard::INSTANT_RANGE;
 use crate::{Builtin, Dst, InvalidDay, Rounding, RuleKey, TextDirection, Weekday};
 
 /// What a parameter or a result is, as far as an operation cares.
@@ -39,6 +40,17 @@ pub enum Kind {
     /// the checker reads into a [`crate::TimeFormatSpec`] and the operation
     /// is given as its text.
     Format,
+    /// A value the standard type contract's operations take (area 19,
+    /// "Every standard type meets one contract"): which types fit, and
+    /// what each gives, is the value's standard type's data entry
+    /// ([`crate::standard`]), which the checker reads.
+    Contract,
+    /// A type written out, `as: Email` (area 19): the checker reads it, a
+    /// standard type or a type built on one or on a representation, and
+    /// the operation is given the name of the standard type or
+    /// representation whose canonical text it reads; the call's result is
+    /// that type.
+    Type,
 }
 
 /// One parameter: its name, which a call may give it by (area 3), and its
@@ -63,6 +75,10 @@ pub struct Param {
     /// An option that a call must give whenever it means something, as
     /// `zone:` for an `Instant` being formatted.
     pub needed: bool,
+    /// An option whose meaning is the value's standard type's: its data
+    /// entry's format options say whether the type takes it and needs it
+    /// (`zone:` and `format:` on `text.format`, area 19).
+    pub by_type: bool,
 }
 
 /// A condition an operation fails on unless an option settles it (area
@@ -94,7 +110,6 @@ pub enum Op {
     TemporalDate,
     TemporalDay,
     TemporalDayBounds,
-    TemporalFormat,
     TemporalFormatRelative,
     TemporalHour,
     TemporalInZone,
@@ -108,6 +123,9 @@ pub enum Op {
     TemporalYear,
     TemporalYearBounds,
     TemporalZone,
+    TextFormat,
+    TextFrom,
+    TextParse,
 }
 
 /// One standard-library operation.
@@ -146,6 +164,7 @@ const fn param(name: &'static str, kind: Kind) -> Param {
         nullable: false,
         only_for: None,
         needed: false,
+        by_type: false,
     }
 }
 
@@ -170,6 +189,14 @@ const fn option(name: &'static str, kind: Kind) -> Param {
     Param {
         optional: true,
         ..param(name, kind)
+    }
+}
+
+/// An option whose meaning is the value's standard type's (area 19).
+const fn by_type(name: &'static str, kind: Kind) -> Param {
+    Param {
+        by_type: true,
+        ..option(name, kind)
     }
 }
 
@@ -205,23 +232,12 @@ const RANGE: Kind = Kind::Std(INSTANT_RANGE);
 const LOCALE: Kind = Kind::Enum(crate::LOCALE);
 const SHOWN_TEXT: Kind = Kind::Builtin(Builtin::PresentationText);
 
-/// What `temporal.format` shows: an instant in a zone, a date, or a local
-/// time.
-const SHOWN: Kind = Kind::OneOf(&[Builtin::Instant, Builtin::CalendarDate, Builtin::ZonedTime]);
 /// What `temporal.format_relative` shows: a moment, which a date isn't.
 const MOMENT: Kind = Kind::OneOf(&[Builtin::Instant, Builtin::ZonedTime]);
 /// `zone:` on a format: an `Instant` is shown in it, and anything else
 /// carries its own zone or has none.
 const SHOWN_IN: Param = option_needed_for("zone", ZONE, Builtin::Instant);
 
-/// `InstantRange`: what `temporal`'s bounds give, a half-open range from
-/// `start` up to but not including `end` (area 10, "Zones and local
-/// times").
-pub const INSTANT_RANGE: &str = "InstantRange";
-
-/// `InstantRange`'s fields, in order.
-pub const INSTANT_RANGE_FIELDS: [(&str, Builtin); 2] =
-    [("start", Builtin::Instant), ("end", Builtin::Instant)];
 
 /// `dst:` on a local time.
 const DST: Param = option_only_for("dst", Kind::Enum(Dst::NAME), Builtin::ZonedTime);
@@ -420,21 +436,9 @@ pub const OPERATIONS: &[Operation] = &[
         RANGE,
         "temporal::day_bounds",
     ),
-    // The text these give is `jadpo-value`'s `present` module, over the
+    // The text this gives is `jadpo-value`'s `present` module, over the
     // locale data of the locales the application supports (area 10,
-    // "Locales").
-    temporal(
-        Op::TemporalFormat,
-        "format",
-        &[
-            param("value", SHOWN),
-            SHOWN_IN,
-            param("locale", LOCALE),
-            param("format", Kind::Format),
-        ],
-        SHOWN_TEXT,
-        "temporal::format",
-    ),
+    // "Locales"); `text.format` shows the other time types.
     temporal(
         Op::TemporalFormatRelative,
         "format_relative",
@@ -552,7 +556,69 @@ pub const OPERATIONS: &[Operation] = &[
         ZONE,
         "temporal::zone",
     ),
+    // The standard type contract's three operations (area 19, "Every
+    // standard type meets one contract"), each one implementation in
+    // `jadpo-value`'s `standard` module over the data entries in
+    // [`crate::standard`]. `text.format` writes text for people over the
+    // locale data of the locales the application supports.
+    Operation {
+        op: Op::TextFormat,
+        namespace: "text",
+        name: "format",
+        params: &[
+            param("value", Kind::Contract),
+            param("locale", LOCALE),
+            by_type("zone", ZONE),
+            by_type("format", Kind::Format),
+        ],
+        result: SHOWN_TEXT,
+        at_least: None,
+        conditions: &[],
+        rust: "standard::format",
+    },
+    Operation {
+        op: Op::TextFrom,
+        namespace: "text",
+        name: "from",
+        params: &[param("value", Kind::Contract)],
+        result: Kind::Builtin(Builtin::Text),
+        at_least: None,
+        conditions: &[],
+        rust: "standard::from",
+    },
+    // Fails `malformed` for text that isn't the type at all, and by the
+    // rules of the type `as:` names, which the checker works out per call.
+    Operation {
+        op: Op::TextParse,
+        namespace: "text",
+        name: "parse",
+        params: &[
+            param("raw", Kind::Builtin(Builtin::Text)),
+            param("as", Kind::Type),
+        ],
+        result: Kind::Any,
+        at_least: None,
+        conditions: &[],
+        rust: "standard::parse",
+    },
 ];
+
+/// Operations that moved, by their old name and their new one: a call by
+/// the old name is `semantic.standard_operation_moved`, whose edit writes
+/// the new one (area 19). `temporal.format` became the time types'
+/// `text.format` (question 2).
+pub const MOVED: &[(&str, &str)] = &[("temporal.format", "text.format")];
+
+/// Where `namespace.name` moved to, if it did.
+pub fn moved(namespace: &str, name: &str) -> Option<&'static str> {
+    MOVED
+        .iter()
+        .find(|(from, _)| {
+            from.split_once('.')
+                .is_some_and(|(space, member)| space == namespace && member == name)
+        })
+        .map(|(_, to)| *to)
+}
 
 /// The operation `namespace.name`, if the standard library has one.
 pub fn operation(namespace: &str, name: &str) -> Option<&'static Operation> {
@@ -590,7 +656,13 @@ mod tests {
             operation("collection", "count").map(|op| op.at_least),
             Some(Some(0))
         );
-        assert!(operation("temporal", "format").is_some());
+        assert!(operation("text", "format").is_some());
+        assert!(operation("temporal", "format").is_none(), "moved to `text.format`");
+        assert_eq!(moved("temporal", "format"), Some("text.format"));
+        for (_, to) in MOVED {
+            let (namespace, name) = to.split_once('.').unwrap_or_default();
+            assert!(operation(namespace, name).is_some(), "{to} exists");
+        }
         for operation in OPERATIONS {
             for condition in operation.conditions {
                 let settled_by = operation

@@ -138,8 +138,13 @@ pub(crate) struct Facts {
     /// Each read of a setting (`config.mail_sender`), with the setting's
     /// name (area 10).
     pub settings: BTreeMap<NodeKey, String>,
-    /// Each `format:` argument, as the format's text (area 10).
+    /// Each `format:` argument, as the format's text (area 10), and each
+    /// `as:` of `text.parse`, as the name of the standard type or
+    /// representation it reads (area 19): an argument written out, given
+    /// to its operation as text.
     pub formats: BTreeMap<NodeKey, String>,
+    /// Each `text.parse` call, with the type it gives (area 19).
+    pub parsed: BTreeMap<NodeKey, Ty>,
     /// Each read of a constant (area 3): its library, if it is a
     /// library's, and its name as written.
     pub constants: BTreeMap<NodeKey, (Option<String>, String)>,
