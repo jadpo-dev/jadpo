@@ -348,3 +348,6 @@ problem
 pence
 yen
 bob
+# a word the language defines for money (area 19, chunk 5.5h2):
+# `ExchangeRate`'s field `rate`, which `money.convert` takes as `rate`
+rate

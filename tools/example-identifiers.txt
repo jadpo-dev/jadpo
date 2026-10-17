@@ -266,6 +266,7 @@ company_role
 complete_todo
 completed_at
 confirm_sign_in
+confirm_total
 consent
 consent_id
 contact_address
@@ -407,6 +408,7 @@ entry_count
 entry_id
 euro_price
 euros
+euros_to_pounds
 eve
 evening
 every_name
@@ -505,6 +507,7 @@ import_unreadable
 imported_line
 in_band
 in_either
+in_euros
 in_house_uses
 in_name_order
 in_rental
@@ -775,6 +778,7 @@ opening_sign
 opening_unclear
 openings
 order_after_deposit
+order_amount
 order_back
 order_by_id
 order_empty
@@ -899,6 +903,7 @@ postcodes
 poster_line
 postpone_all
 pounds
+pounds_to_euros
 praised
 praised_notes
 pretend_pure
@@ -913,6 +918,8 @@ price_loaves
 price_per_kilo
 price_range
 price_tag
+priced_abroad
+priced_if_from_pounds
 pricing
 primary_database
 print_label
@@ -1347,5 +1354,6 @@ write_note
 write_recipe
 written_at
 written_by_dee
+wrong_rate
 wrong_total
 zopf

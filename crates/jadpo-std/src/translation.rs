@@ -327,8 +327,8 @@ pub fn parse_template(source: &str) -> Result<(Template, Vec<FieldUse>), Templat
                         offset,
                         name_end,
                         "not a field",
-                        "A wording's only syntax is `{field}`: there is no ICU MessageFormat, so a plural or a choice is one wording for each plural form or each value of the enum, written as members, and a number is written the locale's way without a style. The one style is an amount of money's, `{price, number, currency}`, written exactly so.",
-                        "Write the field's name alone between the braces (or `{price, number, currency}` for an amount of money), and give each form its own wording",
+                        "A wording's only syntax is `{field}`: there is no ICU MessageFormat, so a plural or a choice is one wording for each plural form or each value of the enum, written as members, and a number is written the locale's way without a style. The one style is an amount of money's, `{field, number, currency}`, written exactly so.",
+                        "Write the field's name alone between the braces (or `{field, number, currency}` for an amount of money), and give each form its own wording",
                     ));
                 }
                 let Some(close) = close else {

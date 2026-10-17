@@ -653,7 +653,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             },
             FieldMatch {
                 meaning: "a currency it converts to",
-                names: &["to", "to_currency", "quote", "quote_currency"],
+                names: &["to", "to_currency"],
                 built_on: &[Builtin::Text],
                 or_enum: true,
             },

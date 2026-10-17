@@ -344,22 +344,29 @@ impl Body<'_> {
         };
         let code = |ordinal: u32| jadpo_std::money::code(ordinal).unwrap_or("?");
         let shown_value = crate::tree::written(value.syntax());
-        let shown_rate = crate::tree::written(rate.syntax());
+        // A rate written out is named as one, not quoted whole.
+        let (lead, shown_rate) = match rate {
+            Expr::RecordExpr(_) => ("This rate".to_string(), "this rate".to_string()),
+            _ => {
+                let quoted = format!("`{}`", crate::tree::written(rate.syntax()));
+                (quoted.clone(), quoted)
+            }
+        };
         let (amount_code, rate_code) = (code(amount_in), code(rate_from));
-        let rate_to = match self.rate_currency(&rate, "to") {
-            Currency::Fixed(to) => format!("`{rate_code}/{}`", code(to)),
-            _ => format!("from `{rate_code}`"),
+        let label = match self.rate_currency(&rate, "to") {
+            Currency::Fixed(to) => format!("a rate from {rate_code} to {}", code(to)),
+            _ => format!("a rate from {rate_code}"),
         };
         self.out.push(
             Diagnostic::new(
                 &rule::TYPE_MISMATCH,
                 format!(
-                    "`{shown_rate}` converts from {rate_code}, and `{shown_value}` is in {amount_code}"
+                    "{lead} converts from {rate_code}, and `{shown_value}` is in {amount_code}"
                 ),
             )
-            .at(self.span(&rate), format!("a rate {rate_to}"))
+            .at(self.span(&rate), label)
             .reason(format!(
-                "`{written}` applies a rate to an amount in the rate's `from` currency. `{shown_value}` is in {amount_code} and `{shown_rate}` converts from {rate_code}, as their types, how they were made or a condition around the call fix, so the rate is the wrong way round or for another currency."
+                "`{written}` applies a rate to an amount in the rate's `from` currency. `{shown_value}` is in {amount_code} and {shown_rate} converts from {rate_code}, as their types, how they were made or a condition around the call fix, so the rate is the wrong way round or for another currency."
             ))
             .next(format!(
                 "Pass a rate from {amount_code}, or an amount in {rate_code}"

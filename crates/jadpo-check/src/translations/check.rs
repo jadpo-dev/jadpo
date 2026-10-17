@@ -992,7 +992,7 @@ fn style_problem(
         )
         .at(span.clone(), "no style")
         .reason(format!(
-            "`{}.{name}` is money, and a wording writes an amount of money with its style, `{styled}`, so the translator sees it is a price; it is shown as `text.format` shows it in the reader's locale, with its symbol and the currency's places.",
+            "`{}.{name}` is money, and a wording writes an amount of money with its style, `{styled}`, so the translator sees it is one; it is shown as `text.format` shows it in the reader's locale, with its symbol and the currency's places.",
             subject.type_name
         ))
         .next(format!("Write `{styled}`"))
