@@ -62,6 +62,9 @@ pub fn int_as_number(rules: &Rules) -> bool {
 #[derive(Clone, Copy, Debug)]
 pub struct Wire<'g> {
     pub graph: &'g Graph,
+    /// The locales the application supports, when it declares them: a
+    /// `Locale` is sent and read as one of these (area 10, "Locales").
+    pub locales: Option<&'g jadpo_std::LocalePlan>,
 }
 
 /// How far a chain is followed; only a defect gets this far.
@@ -188,12 +191,21 @@ impl<'g> Wire<'g> {
     }
 
     /// A standard-library enum's variants.
-    pub fn std_variants(name: &str) -> Vec<&'static str> {
-        jadpo_std::enums()
+    pub fn std_variants(&self, name: &str) -> Vec<&'static str> {
+        let variants = jadpo_std::enums()
             .into_iter()
             .find(|(written, _)| *written == name)
             .map(|(_, variants)| variants)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        match (name, self.locales) {
+            (jadpo_std::LOCALE, Some(plan)) => variants
+                .into_iter()
+                .enumerate()
+                .filter(|(at, _)| u32::try_from(*at).is_ok_and(|at| plan.supports(at)))
+                .map(|(_, variant)| variant)
+                .collect(),
+            _ => variants,
+        }
     }
 
     /// The fields of an object type or entity, in declared order.
@@ -267,11 +279,14 @@ impl<'g> Wire<'g> {
             Shape::StdEnum(name) => {
                 let mut out = Value::object();
                 out.set("type", "string");
+                // As sent: a `Zone` by its IANA name, a `Locale` by its
+                // BCP 47 tag (area 10).
+                let spelling = jadpo_std::config::Spelling::of(&name);
                 out.set(
                     "enum",
-                    Wire::std_variants(&name)
+                    self.std_variants(&name)
                         .into_iter()
-                        .map(Value::from)
+                        .map(|variant| Value::from(spelling.spelling(variant)))
                         .collect::<Vec<_>>(),
                 );
                 out
@@ -454,14 +469,23 @@ fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
         Builtin::Instant => string(&mut out, Some("date-time")),
         Builtin::CalendarDate => string(&mut out, Some("date")),
         Builtin::Duration => string(&mut out, Some("duration")),
-        // A time of day as it is sent: `09:30`, with seconds and up to
-        // three decimal places when it has them.
-        Builtin::Time => {
-            string(&mut out, None);
-            out.set(
-                "pattern",
-                "^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]{1,3})?)?$",
+        // An instant and the zone it is seen in (area 10).
+        Builtin::ZonedTime => {
+            out.set("type", "object");
+            let mut instant = Value::object();
+            string(&mut instant, Some("date-time"));
+            let mut zone = Value::object();
+            string(&mut zone, None);
+            zone.set(
+                "description",
+                "An IANA time zone name, such as `Europe/London`.",
             );
+            let mut properties = Value::object();
+            properties.set("instant", instant);
+            properties.set("zone", zone);
+            out.set("properties", properties);
+            out.set("required", vec!["instant", "zone"]);
+            out.set("additionalProperties", false);
         }
         Builtin::Unit => out.set("type", "null"),
         _ => string(&mut out, None),

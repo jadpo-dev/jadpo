@@ -265,7 +265,7 @@ fn each_mistake_gives_its_rule() {
         ),
         (
             "function g(label: Label) -> Label {\n    return label\n}\n\nfunction f(label: Label) -> Label {\n    var h: Label = g\n    return h\n}\n",
-            "type.unknown_value",
+            "type.not_a_value",
         ),
         (
             "function f(price: Pence) -> Label {\n    if (price) {\n        return \"yes\"\n    }\n    return \"no\"\n}\n",

@@ -152,6 +152,7 @@ fn is_decl(kind: SyntaxKind) -> bool {
         kind,
         TYPE_DECL
             | FUNCTION_DECL
+            | CONSTANT_DECL
             | ACTION_DECL
             | QUERY_DECL
             | FIXTURE_DECL
@@ -258,6 +259,7 @@ impl Formatter {
             if self.printed.contains(&comment.token.text_range().start()) {
                 continue;
             }
+            docs.push(Doc::FreshLine);
             docs.push(self.comment(&comment.token));
             docs.push(Doc::HardLine);
             if comment.blank_after {
@@ -315,14 +317,22 @@ impl Formatter {
         let children = significant_children(node);
         let mut docs = Vec::new();
         let mut previous: Option<SyntaxKind> = None;
+        let mut ends_in_question = false;
         for child in &children {
+            // `??` written together is one mistake the parser reads on its
+            // own, so a `?` after a `?` keeps its space.
             if let Some(left) = previous
-                && space_between(parent, left, child.kind())
+                && (space_between(parent, left, child.kind())
+                    || (ends_in_question && child.kind() == QUESTION))
             {
                 docs.push(text(" "));
             }
             docs.push(self.element(child));
             previous = Some(child.kind());
+            ends_in_question = match child {
+                NodeOrToken::Node(node) => node.text().to_string().trim_end().ends_with('?'),
+                NodeOrToken::Token(token) => token.kind() == QUESTION,
+            };
         }
         concat(docs)
     }
@@ -362,10 +372,18 @@ impl Formatter {
         }
         for (i, item) in items.iter().enumerate() {
             if i > 0 {
-                let blank = !snippet
-                    || is_decl(item.kind())
-                    || is_decl(items[i - 1].kind())
-                    || first_token(item).is_some_and(|t| blank_before(&t));
+                // Constants one after another may stay together, each a
+                // line, as the source groups them (area 3).
+                let constants =
+                    item.kind() == CONSTANT_DECL && items[i - 1].kind() == CONSTANT_DECL;
+                let blank = if constants {
+                    first_token(item).is_some_and(|t| blank_before(&t))
+                } else {
+                    !snippet
+                        || is_decl(item.kind())
+                        || is_decl(items[i - 1].kind())
+                        || first_token(item).is_some_and(|t| blank_before(&t))
+                };
                 docs.push(Doc::HardLine);
                 if blank {
                     docs.push(Doc::HardLine);

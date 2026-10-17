@@ -35,28 +35,47 @@ pub mod collection;
 pub mod decimal;
 pub mod integer;
 pub mod json;
+pub mod locale;
 pub mod ops;
 pub mod order;
+pub mod present;
 mod rounding;
 pub mod shape;
+pub mod temporal;
 pub mod validate;
 mod value;
 
-pub use jadpo_std::{Op, Rounding};
+pub use jadpo_std::{LocalePlan, Op, Rounding};
 pub use ops::Fault;
 pub use validate::{Invalid, Validator};
-pub use value::{Decimal, QUOTIENT_PLACES, Record, Value, Variant};
+pub use value::{Decimal, QUOTIENT_PLACES, Record, Value, Variant, Zoned};
 
 /// Runs one standard-library operation with the values of its parameters
 /// in table order, its inline-function parameter left out; `each` runs the
 /// call's inline function on one item, and gives no value when it stopped
-/// (the caller knows why: it is [`Fault::Stopped`] here).
+/// (the caller knows why: it is [`Fault::Stopped`] here). `locales` is
+/// what the application's `locales { }` declares: the operations that
+/// choose among its locales read it, and every other ignores it.
 pub fn run(
     op: Op,
     args: &[Value],
+    locales: Option<&LocalePlan>,
     each: &mut dyn FnMut(&Value) -> Option<Value>,
 ) -> Result<Value, Fault> {
     match (op, args) {
+        // The locale a header asks for, of the ones the application
+        // supports (area 10, "Locales"); with none declared there is
+        // nothing to choose among.
+        (Op::LocaleFromAcceptLanguage, [header]) => {
+            let plan = locales.ok_or(Fault::Shape)?;
+            let header = match header {
+                Value::None => None,
+                Value::Text(text) => Some(&**text),
+                _ => return Err(Fault::Shape),
+            };
+            Ok(locale::value(locale::from_accept_language(header, plan)))
+        }
+        (Op::LocaleFromAcceptLanguage, _) => Err(Fault::Shape),
         (Op::CollectionContains, [Value::List(items), item]) => {
             Ok(Value::Bool(collection::contains(items, item)))
         }
@@ -90,6 +109,118 @@ pub fn run(
             | Op::IntegerDivide,
             _,
         ) => Err(Fault::Shape),
+        (
+            Op::TemporalAddDays
+            | Op::TemporalAddMonths
+            | Op::TemporalAddYears
+            | Op::TemporalBetween
+            | Op::TemporalDate
+            | Op::TemporalDay
+            | Op::TemporalDayBounds
+            | Op::TemporalHour
+            | Op::TemporalInZone
+            | Op::TemporalInstant
+            | Op::TemporalMinute
+            | Op::TemporalMonth
+            | Op::TemporalMonthBounds
+            | Op::TemporalResolve
+            | Op::TemporalWeekBounds
+            | Op::TemporalWeekday
+            | Op::TemporalYear
+            | Op::TemporalYearBounds
+            | Op::TemporalZone,
+            _,
+        ) => run_temporal(op, args),
+        // The text for people, over locale data (area 10, "Showing dates
+        // and times to people").
+        (Op::TemporalFormat, [value, zone, locale, format]) => {
+            present::format_value(value, zone, locale, format)
+        }
+        (Op::TemporalFormatRelative, [value, now, zone, locale]) => {
+            present::format_relative_value(value, now, zone, locale)
+        }
+        (Op::TemporalFormat | Op::TemporalFormatRelative, _) => Err(Fault::Shape),
+    }
+}
+
+/// A `temporal` operation (area 10): [`temporal`] holds what each does.
+fn run_temporal(op: Op, args: &[Value]) -> Result<Value, Fault> {
+    use temporal::{Dated, Period};
+    let bounds = |date: &Value, zone: &Value, period: Period| match date {
+        Value::Date(day) => {
+            let (start, end) = temporal::bounds(*day, temporal::zone_of(zone)?, period)?;
+            Ok(temporal::range(start, end))
+        }
+        _ => Err(Fault::Shape),
+    };
+    let zoned = |value: &Value| match value {
+        Value::Zoned(zoned) => Ok(*zoned),
+        _ => Err(Fault::Shape),
+    };
+    let part = |value: &Value, at: usize| -> Result<Value, Fault> {
+        let (year, month, day) = temporal::civil(Dated::of(value)?)?;
+        Ok(Value::Int([year, month, day].get(at).copied().unwrap_or(0)))
+    };
+    match (op, args) {
+        (Op::TemporalAddDays, [value, Value::Int(days), dst]) => {
+            temporal::add_days(Dated::of(value)?, *days, temporal::dst_of(dst)?).map(Dated::value)
+        }
+        (Op::TemporalAddMonths, [value, Value::Int(months), invalid_day, dst]) => {
+            temporal::add_months(
+                Dated::of(value)?,
+                *months,
+                temporal::invalid_day_of(invalid_day)?,
+                temporal::dst_of(dst)?,
+            )
+            .map(Dated::value)
+        }
+        (Op::TemporalAddYears, [value, Value::Int(years), invalid_day, dst]) => {
+            temporal::add_years(
+                Dated::of(value)?,
+                *years,
+                temporal::invalid_day_of(invalid_day)?,
+                temporal::dst_of(dst)?,
+            )
+            .map(Dated::value)
+        }
+        (Op::TemporalBetween, [Value::Instant(start), Value::Instant(end)]) => {
+            temporal::between(*start, *end).map(Value::Duration)
+        }
+        (Op::TemporalDate, [value]) => temporal::local_date(zoned(value)?).map(Value::Date),
+        (Op::TemporalDay, [value]) => part(value, 2),
+        (Op::TemporalMonth, [value]) => part(value, 1),
+        (Op::TemporalYear, [value]) => part(value, 0),
+        (Op::TemporalWeekday, [value]) => {
+            temporal::weekday(Dated::of(value)?).map(temporal::weekday_value)
+        }
+        (Op::TemporalHour, [value]) => {
+            temporal::clock(zoned(value)?).map(|clock| Value::Int(i64::from(clock / 3_600_000)))
+        }
+        (Op::TemporalMinute, [value]) => {
+            temporal::clock(zoned(value)?).map(|clock| Value::Int(i64::from(clock / 60_000 % 60)))
+        }
+        (Op::TemporalInZone, [Value::Instant(at), zone]) => {
+            temporal::in_zone(*at, temporal::zone_of(zone)?).map(Value::Zoned)
+        }
+        (Op::TemporalInstant, [value]) => zoned(value).map(|zoned| Value::Instant(zoned.millis)),
+        (Op::TemporalZone, [value]) => zoned(value).map(|zoned| temporal::zone_value(zoned.zone)),
+        (Op::TemporalResolve, [Value::Date(day), Value::Text(at), zone, dst]) => {
+            let clock = jadpo_std::clock_millis(at).ok_or(Fault::Shape)?;
+            temporal::resolve(
+                *day,
+                clock,
+                temporal::zone_of(zone)?,
+                temporal::dst_of(dst)?,
+            )
+            .map(Value::Zoned)
+        }
+        (Op::TemporalDayBounds, [date, zone]) => bounds(date, zone, Period::Day),
+        (Op::TemporalWeekBounds, [date, zone, starts_on]) => {
+            bounds(date, zone, Period::Week(temporal::weekday_of(starts_on)?))
+        }
+        (Op::TemporalMonthBounds, [date, zone]) => bounds(date, zone, Period::Month),
+        (Op::TemporalYearBounds, [date, zone]) => bounds(date, zone, Period::Year),
+        _ => Err(Fault::Shape),
     }
 }
 
@@ -114,6 +245,27 @@ mod tests {
 
     #[test]
     fn every_operation_in_the_table_runs() {
+        let london = temporal::zone_value(
+            jadpo_std::variant_ordinal(jadpo_std::ZONE, "europe_london").unwrap_or(0),
+        );
+        let english = Value::variant(
+            jadpo_std::LOCALE,
+            jadpo_std::locale_ordinal("en_gb").unwrap_or(0),
+            "en_gb",
+            Vec::new(),
+        );
+        let plan = LocalePlan {
+            default: jadpo_std::locale_ordinal("en_gb").unwrap_or(0),
+            supported: vec![
+                jadpo_std::locale_ordinal("en_gb").unwrap_or(0),
+                jadpo_std::locale_ordinal("fr_fr").unwrap_or(0),
+            ],
+        };
+        let date = Value::Date(jadpo_std::date_number("2026-10-25").unwrap_or(0));
+        let zoned = Value::Zoned(Zoned {
+            millis: 0,
+            zone: temporal::zone_of(&london).unwrap_or(0),
+        });
         let items = Value::list(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
         let mut double = |item: &Value| match item {
             Value::Int(n) => Some(Value::Int(n * 2)),
@@ -121,6 +273,23 @@ mod tests {
         };
         for operation in jadpo_std::OPERATIONS {
             let args: Vec<Value> = match operation.op {
+                Op::TemporalFormat => {
+                    vec![
+                        Value::Instant(0),
+                        london.clone(),
+                        english.clone(),
+                        Value::text("date_long"),
+                    ]
+                }
+                Op::TemporalFormatRelative => {
+                    vec![
+                        Value::Instant(0),
+                        Value::Instant(1000),
+                        london.clone(),
+                        english.clone(),
+                    ]
+                }
+                Op::LocaleFromAcceptLanguage => vec![Value::text("en-GB, fr;q=0.5")],
                 Op::CollectionContains => vec![items.clone(), Value::Int(2)],
                 Op::CollectionCount | Op::CollectionFilter | Op::CollectionMap => {
                     vec![items.clone()]
@@ -131,14 +300,45 @@ mod tests {
                     variant("half_even"),
                 ],
                 Op::IntegerDivide => vec![Value::Int(25), Value::Int(10), variant("up")],
+                Op::TemporalAddDays => vec![date.clone(), Value::Int(1), Value::None],
+                Op::TemporalAddMonths | Op::TemporalAddYears => {
+                    vec![zoned.clone(), Value::Int(1), Value::None, Value::None]
+                }
+                Op::TemporalBetween => vec![Value::Instant(0), Value::Instant(1000)],
+                Op::TemporalInZone => vec![Value::Instant(0), london.clone()],
+                Op::TemporalResolve => vec![
+                    date.clone(),
+                    Value::text("09:30"),
+                    london.clone(),
+                    Value::None,
+                ],
+                Op::TemporalDayBounds | Op::TemporalMonthBounds | Op::TemporalYearBounds => {
+                    vec![date.clone(), london.clone()]
+                }
+                Op::TemporalWeekBounds => {
+                    vec![date.clone(), london.clone(), temporal::weekday_value(0)]
+                }
+                Op::TemporalDay | Op::TemporalMonth | Op::TemporalYear | Op::TemporalWeekday => {
+                    vec![date.clone()]
+                }
+                Op::TemporalDate
+                | Op::TemporalHour
+                | Op::TemporalMinute
+                | Op::TemporalInstant
+                | Op::TemporalZone => vec![zoned.clone()],
             };
-            let result = run(operation.op, &args, &mut |item| {
+            let result = run(operation.op, &args, Some(&plan), &mut |item| {
                 Some(Value::Bool(matches!(item, Value::Int(n) if n % 2 == 1)))
             });
             assert!(result.is_ok(), "{} runs", operation.qualified());
         }
         assert_eq!(
-            run(Op::CollectionMap, std::slice::from_ref(&items), &mut double),
+            run(
+                Op::CollectionMap,
+                std::slice::from_ref(&items),
+                None,
+                &mut double
+            ),
             Ok(Value::list(vec![
                 Value::Int(2),
                 Value::Int(4),
@@ -153,6 +353,7 @@ mod tests {
                     Value::Int(3),
                     variant("half_even")
                 ],
+                None,
                 &mut double
             ),
             Ok(Value::Decimal(Decimal::new(333, 2)))
@@ -161,14 +362,46 @@ mod tests {
             run(
                 Op::IntegerDivide,
                 &[Value::Int(1), Value::Int(0), variant("up")],
+                None,
                 &mut double
             ),
             Err(Fault::DivisionByZero),
             "a zero divisor is a fault"
         );
         assert_eq!(
-            run(Op::CollectionCount, &[Value::Int(1)], &mut double),
+            run(Op::CollectionCount, &[Value::Int(1)], None, &mut double),
             Err(Fault::Shape)
         );
+        // The locale a header asks for is a `Locale` variant, and a call
+        // with no locales declared, or a header that is not text, is not
+        // run.
+        let mut asks = |header: Value, locales: Option<&LocalePlan>| {
+            run(
+                Op::LocaleFromAcceptLanguage,
+                &[header],
+                locales,
+                &mut double,
+            )
+        };
+        assert_eq!(
+            asks(Value::text("fr-CA, en;q=0.1"), Some(&plan)),
+            Ok(Value::variant(
+                jadpo_std::LOCALE,
+                jadpo_std::locale_ordinal("fr_fr").unwrap_or(0),
+                "fr_fr",
+                Vec::new()
+            ))
+        );
+        assert_eq!(
+            asks(Value::None, Some(&plan)),
+            Ok(Value::variant(
+                jadpo_std::LOCALE,
+                jadpo_std::locale_ordinal("en_gb").unwrap_or(0),
+                "en_gb",
+                Vec::new()
+            ))
+        );
+        assert_eq!(asks(Value::None, None), Err(Fault::Shape));
+        assert_eq!(asks(Value::Int(1), Some(&plan)), Err(Fault::Shape));
     }
 }

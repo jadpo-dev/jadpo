@@ -85,7 +85,7 @@ fn check_writes_the_manifest_and_the_catalogues() {
     }
     let manifest: serde_json::Value =
         serde_json::from_str(&read(&root, "build/manifest.json")).expect("JSON");
-    assert_eq!(manifest["format"], 1);
+    assert_eq!(manifest["format"], 2);
     assert_eq!(manifest["errors"], 0);
     let ids: Vec<&str> = manifest["nodes"]
         .as_array()
@@ -105,7 +105,10 @@ fn check_writes_the_manifest_and_the_catalogues() {
     assert_eq!(save["file"], "domains/notes/actions/save_note.jadpo");
     assert_eq!(save["lines"], serde_json::json!([5, 12]));
     assert_eq!(save["calls"], serde_json::json!(["function wording.keep"]));
-    assert_eq!(save["raises"], serde_json::json!(["type NoteRefused"]));
+    assert_eq!(
+        save["raises"],
+        serde_json::json!(["type notes.NoteRefused"])
+    );
     let libraries = read(&root, "build/catalogue/libraries.md");
     assert!(libraries.contains("### wording.keep\n\n```jadpo\nfunction keep(body: Body) -> Body\n```\n\nKeeps a body as it is."), "{libraries}");
     assert!(
@@ -185,7 +188,7 @@ fn help_json_documents_the_manifest_schema() {
     let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
     let schema = &document["data"]["manifest"];
     assert_eq!(schema["file"], "build/manifest.json");
-    assert_eq!(schema["format"], 1);
+    assert_eq!(schema["format"], 2);
     let kinds = schema["nodeKinds"].as_array().expect("kinds");
     assert!(
         kinds

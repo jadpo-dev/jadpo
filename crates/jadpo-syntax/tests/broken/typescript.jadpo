@@ -6,6 +6,8 @@ type Pence = Int {
     min: 0;  // error: syntax.semicolon
 }
 
+const free_delivery_from: Pence = 5000  // error: syntax.variable_keyword
+
 interface Basket {  // error: syntax.type_keyword
     total: Pence,  // error: syntax.member_comma
     lines: Line[]  // error: syntax.collection_type

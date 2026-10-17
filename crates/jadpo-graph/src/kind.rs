@@ -127,6 +127,7 @@ kinds! {
     Person: "person", Data, Reserved, 15;
 
     Function: "function", Behaviour, Built, 3;
+    Constant: "constant", Behaviour, Built, 3;
     Action: "action", Behaviour, Built, 3;
     Query: "query", Behaviour, Built, 6;
     Fixture: "fixture", Behaviour, Declared, 13;
@@ -160,7 +161,7 @@ kinds! {
 
     ConfigField: "config_field", Services, Reserved, 10;
     LocaleSet: "locale_set", Services, Reserved, 10;
-    TranslationKey: "translation_key", Services, Reserved, 10;
+    TranslationKey: "translation_key", Services, Built, 10;
     EmailTemplate: "email_template", Services, Reserved, 16;
     Flag: "flag", Services, Reserved, 16;
     RateLimit: "rate_limit", Services, Reserved, 7;
@@ -243,7 +244,7 @@ edges! {
     Grants: "grants", Built, "A grant or field restriction grants an effect on its entity or field; a listed action's line lets its callers in";
     Scopes: "scopes", Built, "A tenancy limits an entity's records to its tenant";
     Invalidates: "invalidates", Reserved, "A write invalidates a cache";
-    Uses: "uses", Built, "Names a type, entity or failure in its signature, fields or body";
+    Uses: "uses", Built, "Names a type, entity or failure in its signature, fields or body, or reads a constant";
     Provides: "provides", Reserved, "A package provides a capability";
     Reaches: "reaches", Reserved, "A deployable reaches a node";
     Covers: "covers", Reserved, "A test covers a node";

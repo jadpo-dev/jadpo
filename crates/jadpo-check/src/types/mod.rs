@@ -12,6 +12,7 @@
 mod body;
 pub(crate) mod decl;
 mod facts;
+mod formats;
 pub(crate) mod literal;
 mod loading;
 mod recursion;
@@ -39,4 +40,4 @@ pub use stores::{
     written_stores,
 };
 pub use table::{Def, FieldDef, TypeTable, TypeView, VariantDef, type_table};
-pub use ty::{BASES, Prim, Ty, TypeRef, container_arity};
+pub use ty::{BASES, Prim, TIME_FORMAT, Ty, TypeRef, container_arity, shown};

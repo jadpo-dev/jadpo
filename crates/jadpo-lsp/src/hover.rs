@@ -68,6 +68,18 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
             };
             format!("{keyword} {}{}", short(&node.name), signature.render(&name))
         }
+        Detail::Constant { ty, value } => {
+            let written = if value.is_empty() {
+                String::new()
+            } else {
+                format!(" = {value}")
+            };
+            format!(
+                "constant {}: {}{written}",
+                short(&node.name),
+                ty.render(&name)
+            )
+        }
         Detail::Type {
             base,
             rules,

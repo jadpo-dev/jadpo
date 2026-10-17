@@ -197,6 +197,10 @@ pub enum Detail {
         /// never begin a transaction of their own.
         isolation: Option<Isolation>,
     },
+    /// A constant (area 3): its type and its value as the compiler worked
+    /// it out, written as Jadpo writes a literal (`5000`, `0.2000`,
+    /// `LogLevel.normal`).
+    Constant { ty: TypeRef, value: String },
     /// An entity's store and the table its records live in (area 5).
     Entity { store: String, table: String },
     /// A compound unique rule's or a declared index's fields, in order,

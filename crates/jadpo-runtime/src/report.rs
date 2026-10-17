@@ -250,6 +250,8 @@ impl Report {
         let caret = match &fault.kind {
             FaultKind::IntOverflow => "out of range".to_string(),
             FaultKind::DecimalOverflow => "past 38 digits".to_string(),
+            FaultKind::TimeRange => "past the years a time holds".to_string(),
+            FaultKind::ClockBackward => "moves the clock back".to_string(),
             FaultKind::RecursionLimit => format!("{MAX_DEPTH} calls deep"),
             FaultKind::DeadlineExceeded => "out of time".to_string(),
             FaultKind::NotBuiltYet(_) => "not built yet".to_string(),
@@ -273,6 +275,21 @@ impl Report {
                     "`{written}` gives a `Decimal` of more than 38 digits, more than an exact number holds."
                 ),
                 "Bound the values that feed it with `max`, or keep fewer decimal places"
+                    .to_string(),
+                "agent",
+            ),
+            FaultKind::TimeRange => (
+                format!(
+                    "`{written}` gives a time outside the years 0000 to 9999, the years an `Instant` and a `CalendarDate` hold."
+                ),
+                "Bound the durations and counts that feed it with `max`".to_string(),
+                "agent",
+            ),
+            FaultKind::ClockBackward => (
+                format!(
+                    "`{written}` moves the test's clock backwards; a clock only moves forward, as time does."
+                ),
+                "Advance by a duration that isn't negative, or start the test earlier with `clock:`"
                     .to_string(),
                 "agent",
             ),

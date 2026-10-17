@@ -240,6 +240,60 @@ fn field<'a>(fields: &'a [(Rc<str>, Value)], name: &str) -> Option<&'a Value> {
         .map(|(_, value)| value)
 }
 
+/// A `ZonedTime` (area 10): an instant and the zone it is seen in. Two are
+/// equal when both are, so the same instant seen in two zones is two
+/// values; its local date and time come from the zone database
+/// ([`crate::temporal`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Zoned {
+    /// Milliseconds since 1970-01-01T00:00:00Z.
+    pub millis: i64,
+    /// The zone, as its place among `Zone`'s variants ([`jadpo_std::ZONES`]).
+    pub zone: u32,
+}
+
+impl Zoned {
+    /// The zone's IANA name, `Europe/London`.
+    pub fn zone_name(self) -> &'static str {
+        jadpo_std::ZONES
+            .get(self.zone as usize)
+            .map_or("UTC", |(_, name)| *name)
+    }
+}
+
+impl fmt::Display for Zoned {
+    /// Its local time with its offset and zone, as RFC 9557 writes it:
+    /// `2026-10-25T09:30:00+01:00[Europe/London]`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match crate::temporal::local(*self) {
+            Some((local, offset)) => {
+                let date = jadpo_std::format_date(local.date);
+                let clock = jadpo_std::format_clock_time(local.clock);
+                let clock = if clock.len() == 5 {
+                    format!("{clock}:00")
+                } else {
+                    clock
+                };
+                let sign = if offset < 0 { '-' } else { '+' };
+                let minutes = offset.unsigned_abs() / 60_000;
+                write!(
+                    f,
+                    "{date}T{clock}{sign}{:02}:{:02}[{}]",
+                    minutes / 60,
+                    minutes % 60,
+                    self.zone_name()
+                )
+            }
+            None => write!(
+                f,
+                "{}[{}]",
+                jadpo_std::format_instant(self.millis),
+                self.zone_name()
+            ),
+        }
+    }
+}
+
 /// A runtime value. Named types are erased to what they are built on: a
 /// value has already been checked against its type's rules when it was
 /// built. A nullable value is the value itself or [`Value::None`].
@@ -259,8 +313,8 @@ pub enum Value {
     Instant(i64),
     /// Days since 1970-01-01.
     Date(i32),
-    /// Milliseconds since midnight.
-    Time(u32),
+    /// An instant seen in a zone (area 10).
+    Zoned(Zoned),
     /// Milliseconds.
     Duration(i64),
     List(Rc<[Value]>),
@@ -346,7 +400,6 @@ impl Value {
             Constant::Uuid(text) => Value::Uuid(Rc::from(text.as_str())),
             Constant::Instant(millis) => Value::Instant(*millis),
             Constant::Date(day) => Value::Date(*day),
-            Constant::Time(millis) => Value::Time(*millis),
             Constant::Duration(millis) => Value::Duration(*millis),
             Constant::Variant {
                 ty,
@@ -388,7 +441,7 @@ impl fmt::Display for Value {
             Value::Bytes(bytes) => write!(f, "<{} bytes>", bytes.len()),
             Value::Instant(millis) => quoted(f, &jadpo_std::format_instant(*millis)),
             Value::Date(day) => quoted(f, &jadpo_std::format_date(*day)),
-            Value::Time(millis) => quoted(f, &jadpo_std::format_time(*millis)),
+            Value::Zoned(zoned) => quoted(f, &zoned.to_string()),
             Value::Duration(millis) => write!(
                 f,
                 "{}",

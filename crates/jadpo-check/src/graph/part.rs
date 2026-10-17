@@ -6,15 +6,18 @@ use std::collections::{BTreeMap, BTreeSet};
 use jadpo_db::{Db, File, Item, Project, item_tree, location};
 use jadpo_graph::body::Refers;
 use jadpo_graph::{
-    Base, Detail, EdgeKind, FailureDetail, FieldDefault, Key, Kind, Node, Registry, Section,
-    Signature, TypeRef, catalogue::status_of,
+    Base, Detail, EdgeKind, FailureDetail, FieldDefault, Key, Kind, Node, Section, Signature,
+    TypeRef, catalogue::status_of,
 };
 use jadpo_syntax::SyntaxNode;
 use jadpo_syntax::ast::{self, AstNode, Decl, MemberItem};
 
 use super::paths::Resolver;
 use super::text::{LineIndex, digest, doc, place};
-use super::{declaration_key, field_key, library_function_key, type_ref, variant_key};
+use super::{
+    declaration_key, entity_field_key, field_key, item_key, library_function_key, type_ref,
+    variant_key,
+};
 use crate::lookups::{FailureView, Lookup, Name, NameView, SigView};
 use crate::tree;
 use crate::types::{
@@ -33,7 +36,7 @@ pub fn file_part(db: &dyn Db, project: Project, file: File) -> FilePart {
     let Some(source) = tree::source(db, file) else {
         return FilePart::default();
     };
-    let lookup = Lookup::new(db, project);
+    let lookup = Lookup::for_file(db, project, file);
     let mut part = Part {
         db,
         project,
@@ -73,6 +76,9 @@ pub fn file_part(db: &dyn Db, project: Project, file: File) -> FilePart {
     part.out
 }
 
+/// A type declaration, for its key: every base keys the same way.
+const TYPE: jadpo_db::ItemKind = jadpo_db::ItemKind::Type(jadpo_db::Base::Object);
+
 struct Part<'a> {
     db: &'a dyn Db,
     project: Project,
@@ -87,6 +93,16 @@ struct Part<'a> {
 }
 
 impl Part<'_> {
+    /// The key of this file's declaration `name` of `item`, which carries
+    /// the file's domain for a function or type (area 18).
+    fn item_key(&self, kind: Kind, item: &jadpo_db::ItemKind, name: &str) -> Key {
+        let ownership = match &self.domain {
+            Some(domain) => jadpo_db::Ownership::Domain(domain.clone()),
+            None => jadpo_db::Ownership::Root,
+        };
+        item_key(self.lookup.registry(), kind, item, name, &ownership)
+    }
+
     /// A type as the graph holds it: canonically when it resolved, as
     /// written otherwise.
     fn type_of(&self, ty: Option<&Ty>, written: &str) -> TypeRef {
@@ -155,6 +171,12 @@ impl Part<'_> {
             Decl::LibraryDecl(d) => {
                 if let Some(item) = item {
                     self.library(d, item);
+                }
+            }
+            Decl::ConstantDecl(_) => {
+                if let Some(item) = item {
+                    let key = self.item_key(Kind::Constant, &item.kind, &item.name);
+                    self.constant(key, item.name.clone(), decl.syntax(), item, None, None);
                 }
             }
             Decl::RoutesDecl(_) | Decl::ScheduleDecl(_) | Decl::SubscriberDecl(_) => {
@@ -272,7 +294,7 @@ impl Part<'_> {
         let Some(kind) = super::kind_of(&item.kind) else {
             return;
         };
-        let key = self.lookup.registry().key(kind, &item.name, None);
+        let key = self.item_key(kind, &item.kind, &item.name);
         let mut node = self.node(key.clone(), kind, item.name.clone(), syntax.clone());
         node.public = public;
         node.detail = Detail::Callable {
@@ -329,10 +351,25 @@ impl Part<'_> {
         );
         node.public = item.public;
         self.out.nodes.push(node);
-        for (function, member) in tree::library_functions(decl)
+        for (function, member) in tree::library_members(decl)
             .iter()
             .zip(item.functions.iter())
         {
+            if member.kind == jadpo_db::ItemKind::Constant {
+                let Some(child) = super::constant_key(self.lookup, Some(&item.name), &member.name)
+                else {
+                    continue;
+                };
+                self.constant(
+                    child,
+                    format!("{}.{}", item.name, member.name),
+                    function.syntax(),
+                    item,
+                    Some(member),
+                    Some(&key),
+                );
+                continue;
+            }
             let child = library_function_key(self.lookup.registry(), &item.name, &member.name);
             let mut node = self.node(
                 child.clone(),
@@ -352,6 +389,47 @@ impl Part<'_> {
             self.out.nodes.push(node);
             self.body(&child, item.index, Some(member.index));
         }
+    }
+
+    /// A constant (area 3): its type and the value the compiler worked
+    /// out, and what its value reads, from its typed body.
+    fn constant(
+        &mut self,
+        key: Key,
+        name: String,
+        syntax: &SyntaxNode,
+        item: &Item,
+        member: Option<&Item>,
+        library: Option<&Key>,
+    ) {
+        let declared = member.unwrap_or(item);
+        let written = declared.signature.result.clone().unwrap_or_default();
+        let ty = match &declared.signature.result {
+            Some(result) => {
+                let canonical = |written: &str| NameView::canonical(self.lookup, written);
+                let resolved = self
+                    .lookup
+                    .resolve(&crate::types::TypeRef::parse(result).scoped(&canonical));
+                self.type_of(Some(&resolved), &written)
+            }
+            None => TypeRef::Written(written),
+        };
+        let value = crate::constants::evaluated(
+            self.db,
+            self.project,
+            self.path,
+            item.index,
+            member.map(|member| member.index),
+        )
+        .and_then(|evaluated| evaluated.value.as_ref())
+        .map(crate::constants::Value::written)
+        .unwrap_or_default();
+        let mut node = self.node(key.clone(), Kind::Constant, name, syntax.clone());
+        node.public = item.public;
+        node.parent = library.cloned();
+        node.detail = Detail::Constant { ty, value };
+        self.out.nodes.push(node);
+        self.body(&key, item.index, member.map(|member| member.index));
     }
 
     /// What a callable's typed body says: the types it uses, what it calls
@@ -387,6 +465,16 @@ impl Part<'_> {
             .collect();
         // Its `create`, `update` and `delete` write the entity (area 6).
         let writes: BTreeSet<Key> = body.writes().map(|(_, entity, _)| entity.clone()).collect();
+        // The translation keys it shows people (area 10): a change to one
+        // reaches it.
+        let registry = self.lookup.registry();
+        let mut uses = uses;
+        uses.extend(body.calls().filter_map(|(_, callee)| match callee {
+            jadpo_graph::body::Callee::Translation(name) => {
+                Some(registry.key(Kind::TranslationKey, name, None))
+            }
+            _ => None,
+        }));
         self.edges(key, EdgeKind::Uses, uses);
         self.edges(key, EdgeKind::Calls, calls);
         self.edges(key, EdgeKind::Reads, reads);
@@ -429,7 +517,7 @@ impl Part<'_> {
         let Some(name) = decl.name().as_ref().and_then(tree::name_text) else {
             return;
         };
-        let key = self.lookup.registry().key(Kind::Type, &name, None);
+        let key = self.item_key(Kind::Type, &TYPE, &name);
         let mut node = self.node(key.clone(), Kind::Type, name.clone(), decl.syntax().clone());
         node.public = decl.visibility().is_some();
         let written_base = decl
@@ -584,7 +672,7 @@ impl Part<'_> {
         if !provided {
             return;
         }
-        let key = self.lookup.registry().key(Kind::Type, &name, None);
+        let key = self.item_key(Kind::Type, &TYPE, &name);
         let mut node = self.node(key, Kind::Type, name.clone(), decl.syntax().clone());
         node.public = true;
         node.doc = Some(format!(
@@ -693,7 +781,7 @@ impl Part<'_> {
                 format!("{}.{}", entity.name, field.name),
                 member.syntax().clone(),
             );
-            node.parent = Some(field_key(
+            node.parent = Some(entity_field_key(
                 registry,
                 &entity.name,
                 std::slice::from_ref(&field.name),
@@ -866,7 +954,7 @@ impl Part<'_> {
         section: Option<Section>,
         order: u32,
     ) {
-        let key = field_key(self.lookup.registry(), host, &path);
+        let key = field_key(self.lookup, host, &path);
         let mut node = self.node(
             key.clone(),
             Kind::Field,
@@ -892,14 +980,13 @@ impl Part<'_> {
                     type_ref(self.lookup, &def.declared)
                 }),
             optional: def.is_some_and(|def| def.optional),
-            default: def
-                .and_then(|def| field_default(self.lookup.registry(), def.default.as_ref()?)),
+            default: def.and_then(|def| field_default(self.lookup, def.default.as_ref()?)),
             header: def.and_then(|def| def.header.clone()),
             section,
             copied_from: None,
             replaces: def.and_then(|def| def.replaces.as_ref()).map(|source| {
                 field_key(
-                    self.lookup.registry(),
+                    self.lookup,
                     source,
                     std::slice::from_ref(&path[path.len() - 1]),
                 )
@@ -922,11 +1009,7 @@ impl Part<'_> {
         entry: Option<&SyntaxNode>,
         order: u32,
     ) {
-        let key = field_key(
-            self.lookup.registry(),
-            host,
-            std::slice::from_ref(&field.name),
-        );
+        let key = field_key(self.lookup, host, std::slice::from_ref(&field.name));
         let parent_place = self
             .out
             .nodes
@@ -941,7 +1024,7 @@ impl Part<'_> {
         node.domain = self.domain.clone();
         node.parent = Some(parent.clone());
         let from = match &field.declared {
-            Ty::Field(source, path) => Some(field_key(self.lookup.registry(), source, path)),
+            Ty::Field(source, path) => Some(field_key(self.lookup, source, path)),
             _ => None,
         };
         node.detail = Detail::Field {
@@ -951,7 +1034,7 @@ impl Part<'_> {
             default: field
                 .default
                 .as_ref()
-                .and_then(|value| field_default(self.lookup.registry(), value)),
+                .and_then(|value| field_default(self.lookup, value)),
             header: field.header.clone(),
             section: None,
             copied_from: from.clone(),
@@ -973,7 +1056,7 @@ impl Part<'_> {
         syntax: &SyntaxNode,
         order: u32,
     ) {
-        let key = variant_key(self.lookup.registry(), host, variant);
+        let key = variant_key(self.lookup, host, variant);
         let mut node = self.node(
             key.clone(),
             Kind::Variant,
@@ -999,10 +1082,10 @@ impl Part<'_> {
 
 /// An input field's `default:` as the graph holds it: a literal, or a
 /// plain variant written `Enum.variant`.
-fn field_default(registry: &Registry, value: &Const) -> Option<FieldDefault> {
+fn field_default(symbols: &dyn NameView, value: &Const) -> Option<FieldDefault> {
     match value {
         Const::Path(path) if path.len() == 2 => Some(FieldDefault::Variant(variant_key(
-            registry, &path[0], &path[1],
+            symbols, &path[0], &path[1],
         ))),
         other => other.literal().map(FieldDefault::Literal),
     }

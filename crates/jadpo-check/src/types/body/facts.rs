@@ -58,6 +58,14 @@ pub(crate) enum Reach {
     Caller(jadpo_std::http::PrincipalKind),
     /// `sessions.start(user_id)` or `sessions.end()` (area 8).
     Session(jadpo_std::http::SessionOp),
+    /// `clock.advance(duration)` in a test (area 13).
+    AdvanceClock,
+    /// `translations.<key>(locale:, ...)` (area 10), with the number of
+    /// arguments it takes: the locale and each placeholder.
+    Translation {
+        key: String,
+        arity: usize,
+    },
     Unknown,
 }
 
@@ -130,6 +138,11 @@ pub(crate) struct Facts {
     /// Each read of a setting (`config.mail_sender`), with the setting's
     /// name (area 10).
     pub settings: BTreeMap<NodeKey, String>,
+    /// Each `format:` argument, as the format's text (area 10).
+    pub formats: BTreeMap<NodeKey, String>,
+    /// Each read of a constant (area 3): its library, if it is a
+    /// library's, and its name as written.
+    pub constants: BTreeMap<NodeKey, (Option<String>, String)>,
     /// Each `request { ... }` in a route test (area 13).
     pub requests: BTreeMap<NodeKey, super::request::RequestFact>,
 }

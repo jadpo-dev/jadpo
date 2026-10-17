@@ -13,6 +13,9 @@ colours comes from the language server (area 14, "Editor support").
   description, the failures a function, action or query can produce, and what
   calls or uses it.
 - **Go to definition** on a name.
+- **Make this a setting** (a refactoring) on a constant's declaration or any
+  read of it: the move `jadpo config move` makes, into `config.jadpo`, with
+  every read rewritten; where the move is refused, the action says why.
 - **Highlighting**: keywords, declarations, types, strings with escapes,
   numbers and quantities (`15m`), `//` and `///` comments, operators, route
   paths with their `{placeholders}`, and `use` lines.

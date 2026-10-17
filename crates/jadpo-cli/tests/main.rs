@@ -4,14 +4,17 @@
 
 mod support;
 
+mod accept_language;
 mod binary;
 mod check;
 mod cli;
+mod client_address;
 mod config;
 mod crate_graph;
 mod fmt;
 mod http;
 mod lifecycle;
+mod locales;
 mod lsp;
 mod manifest;
 mod migrate;
@@ -22,5 +25,6 @@ mod signed;
 mod sql;
 #[path = "test.rs"]
 mod test_command;
+mod translations;
 mod watch;
 mod writes;

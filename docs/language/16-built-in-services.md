@@ -192,7 +192,11 @@ POST / {
 ```
 
 - `by:` is `RateLimitKey.caller` (the default: the signed-in principal, or
-  the address when there is none) or `RateLimitKey.ip`.
+  the address when there is none) or `RateLimitKey.ip`. The address is the
+  client's, chosen by `application { client_address: }` (area 10, "Client
+  addresses"): the connection's own unless the application names a header
+  of a proxy of its own to believe, so behind a load balancer the limits
+  count each client and not the balancer.
 - Counters live in the Redis store named by `rate_limits: { store: cache }`
   in `application { }`. If it cannot be reached, each instance counts in its
   own memory, so limits stay roughly right and no request fails, the same
@@ -1185,10 +1189,10 @@ application {
 // domains/sales/routes/demo_requests.jadpo
 POST / {
     authentication: RouteAuthentication.none
-    bot_check: true
     input: RequestDemo
     status: SuccessStatus.no_content
     run: request_demo(input)
+    bot_check: true
 }
 ```
 
@@ -1566,7 +1570,7 @@ the feature they belong to.
 | Flag targeting | Named users, named tenants, percentage by hash of flag and user id, then everyone; first match wins | 2026-10-13 |
 | Flag checks | Unknown flags are errors; tests cover every value read; expired flags warn; `jadpo flags list` shows rollout; `jadpo flags remove --keep` | 2026-10-13 |
 | OpenFeature | Not now; `GET /flags` returns `client: true` flags evaluated for the caller (Richard) | 2026-10-13 |
-| Rate limits | On by default for every route with sensible limits; `rate_limit:` adjusts; turning off needs an acceptance; Redis when named, otherwise bounded memory with a warning; Redis or a platform binding required on Workers (Richard) | 2026-10-13 |
+| Rate limits | The address they count is the client's, read through the proxies `client_address:` trusts (area 10, chunk 5.1c); on by default for every route with sensible limits; `rate_limit:` adjusts; turning off needs an acceptance; Redis when named, otherwise bounded memory with a warning; Redis or a platform binding required on Workers (Richard) | 2026-10-13 |
 | Files | A connection providing `files` (built-in S3 driver or a preset package; revised 2026-10-16: no presets, and the disk driver on native); signed upload slots and links; local disk in development and tests | 2026-10-13 |
 | Outgoing webhooks and field encryption | Both later; encryption with area 15's sensitive fields | 2026-10-13 |
 | Audit trail | Opt-in `audit:` per entity, same transaction, personal fields hashed, readable with `read` on the record | 2026-10-13 |

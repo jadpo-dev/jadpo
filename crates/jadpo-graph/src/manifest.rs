@@ -15,8 +15,11 @@ use std::collections::BTreeMap;
 use crate::json::Value;
 use crate::{Detail, EdgeKind, Graph, Key, Kind, Node, NodeId, Rules, rule_pairs};
 
-/// The manifest's format number.
-pub const FORMAT: i64 = 1;
+/// The manifest's format number: 2 since chunk 5.3d, when the key of a
+/// function or type declared in a domain began to carry the domain, `type
+/// billing.Address` (area 18, question 8). Manifests are never stored, so
+/// nothing reads an older one.
+pub const FORMAT: i64 = 2;
 
 /// What a manifest says about the check that wrote it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -80,7 +83,7 @@ pub fn node_json(graph: &Graph, id: NodeId) -> Value {
 pub fn name_now(graph: &Graph, key: &Key) -> String {
     graph
         .get(key)
-        .map_or_else(|| key.name().to_string(), |node| node.name.clone())
+        .map_or_else(|| key.written().to_string(), |node| node.name.clone())
 }
 
 fn rules_json(rules: &Rules) -> Value {
@@ -165,6 +168,10 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
                     .collect::<Vec<_>>(),
             );
             out.set("signature", entry);
+        }
+        Detail::Constant { ty, value } => {
+            out.set("type", ty.render(name));
+            out.set("value", value.as_str());
         }
         Detail::Entity { store, table } | Detail::SystemTable { store, table } => {
             out.set("store", store.as_str());

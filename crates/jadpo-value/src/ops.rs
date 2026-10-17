@@ -26,6 +26,13 @@ pub enum Fault {
     /// A standard-library operation's inline function stopped without a
     /// value; the caller knows why.
     Stopped,
+    /// An `Instant` or a `CalendarDate` outside the years 0000 to 9999
+    /// (area 10).
+    TimeRange,
+    /// A condition a `temporal` operation fails on, which the call's
+    /// `attempt` maps by this key, as a construction's broken rule
+    /// (area 10, question 7).
+    Broke(jadpo_std::RuleKey),
 }
 
 pub fn int_add(a: i64, b: i64) -> Result<i64, Fault> {
@@ -76,10 +83,15 @@ fn decimal_result(result: Option<Decimal>) -> Result<Value, Fault> {
     result.map(Value::Decimal).ok_or(Fault::DecimalOverflow)
 }
 
-/// `a + b`: numbers, or two texts joined.
+/// `a + b`: numbers, two texts joined, two durations, or an instant moved
+/// by a duration (area 10, "Arithmetic and comparison").
 pub fn add(a: &Value, b: &Value) -> Result<Value, Fault> {
     match (a, b) {
         (Value::Int(x), Value::Int(y)) => int_add(*x, *y).map(Value::Int),
+        (Value::Instant(at), Value::Duration(by)) | (Value::Duration(by), Value::Instant(at)) => {
+            moved(at.checked_add(*by))
+        }
+        (Value::Duration(x), Value::Duration(y)) => int_add(*x, *y).map(Value::Duration),
         (Value::Text(x), Value::Text(y)) => Ok(Value::text(&format!("{x}{y}"))),
         _ => {
             let (x, y) = decimals(a, b).ok_or(Fault::Shape)?;
@@ -88,14 +100,25 @@ pub fn add(a: &Value, b: &Value) -> Result<Value, Fault> {
     }
 }
 
+/// `a - b`: numbers, two durations, an instant moved back by a duration,
+/// or the duration from one instant to another.
 pub fn subtract(a: &Value, b: &Value) -> Result<Value, Fault> {
     match (a, b) {
         (Value::Int(x), Value::Int(y)) => int_subtract(*x, *y).map(Value::Int),
+        (Value::Instant(at), Value::Duration(by)) => moved(at.checked_sub(*by)),
+        (Value::Instant(x), Value::Instant(y)) => int_subtract(*x, *y).map(Value::Duration),
+        (Value::Duration(x), Value::Duration(y)) => int_subtract(*x, *y).map(Value::Duration),
         _ => {
             let (x, y) = decimals(a, b).ok_or(Fault::Shape)?;
             decimal_result(x.checked_sub(y))
         }
     }
+}
+
+/// An instant moved, within the years an `Instant` holds.
+fn moved(to: Option<i64>) -> Result<Value, Fault> {
+    let to = to.ok_or(Fault::TimeRange)?;
+    crate::temporal::instant(to).map(Value::Instant)
 }
 
 pub fn multiply(a: &Value, b: &Value) -> Result<Value, Fault> {
@@ -158,7 +181,6 @@ pub fn compare(a: &Value, b: &Value) -> Option<Ordering> {
             Some(x.cmp(y))
         }
         (Value::Date(x), Value::Date(y)) => Some(x.cmp(y)),
-        (Value::Time(x), Value::Time(y)) => Some(x.cmp(y)),
         _ => decimals(a, b).map(|(x, y)| x.cmp(&y)),
     }
 }
@@ -215,6 +237,32 @@ mod tests {
         assert_eq!(
             remainder(&decimal("1.5"), &Value::Int(1)),
             Err(Fault::Shape)
+        );
+    }
+
+    #[test]
+    fn time_arithmetic_moves_instants_by_durations() {
+        let noon = Value::Instant(43_200_000);
+        let hour = Value::Duration(3_600_000);
+        assert_eq!(add(&noon, &hour), Ok(Value::Instant(46_800_000)));
+        assert_eq!(add(&hour, &noon), Ok(Value::Instant(46_800_000)));
+        assert_eq!(subtract(&noon, &hour), Ok(Value::Instant(39_600_000)));
+        assert_eq!(
+            subtract(&noon, &Value::Instant(0)),
+            Ok(Value::Duration(43_200_000))
+        );
+        assert_eq!(
+            subtract(&Value::Instant(0), &noon),
+            Ok(Value::Duration(-43_200_000))
+        );
+        assert_eq!(add(&hour, &hour), Ok(Value::Duration(7_200_000)));
+        assert_eq!(
+            add(&Value::Instant(jadpo_std::INSTANT_MAX), &hour),
+            Err(Fault::TimeRange)
+        );
+        assert_eq!(
+            add(&Value::Instant(i64::MAX), &Value::Duration(1)),
+            Err(Fault::TimeRange)
         );
     }
 

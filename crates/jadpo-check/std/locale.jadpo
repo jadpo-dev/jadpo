@@ -1,0 +1,16 @@
+// The `locale` namespace (area 10, "Locales"). Each operation is listed in
+// `jadpo-std`'s operation table with the Rust function in `jadpo-value`
+// that runs it, given the locales the application supports.
+//
+// `from_accept_language` is a pure function of the header and the
+// application's `locales { }`, so it gives the same `Locale` in the
+// interpreter and in every compiled target. `header` is passed whether or
+// not a request sent one: a header read with `optional: true` is `Text?`
+// and goes straight in, and `none` gives `locales { default: }`.
+
+public library locale {
+    /// The supported `Locale` an `Accept-Language` header asks for, or
+    /// `locales { default: }` when it names none the application
+    /// supports, is malformed or is `none`.
+    function from_accept_language(header: Text?) -> Locale {}
+}

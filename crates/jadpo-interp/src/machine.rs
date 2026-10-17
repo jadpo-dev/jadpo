@@ -166,6 +166,17 @@ enum Task<'p> {
     Return,
     Discard,
     PushUnit,
+    /// `clock.advance(...)`: the duration on the stack moves the clock.
+    AdvanceClock(SiteId),
+    /// `none`, for an option a standard-library call leaves out.
+    PushNone,
+    /// `translations.<key>(locale:, ...)` (area 10): the locale and the
+    /// placeholders' values on the stack, in the key's order.
+    Translate {
+        key: &'p str,
+        count: usize,
+        at: SiteId,
+    },
     IfCheck {
         arms: &'p [IfArm],
         otherwise: &'p [SiteId],
@@ -671,6 +682,36 @@ impl<'p> Machine<'p> {
                 self.pop();
             }
             Task::PushUnit => self.values.push(Value::Unit),
+            Task::AdvanceClock(at) => {
+                let by = match self.pop() {
+                    Value::Duration(by) => by,
+                    _ => {
+                        return Err(self.defect(
+                            ctx,
+                            "a clock moved by something that isn't a duration",
+                            at,
+                        ));
+                    }
+                };
+                if !ctx.advance_clock(by) {
+                    return Err(self.fault(ctx, FaultKind::ClockBackward, at));
+                }
+                self.values.push(Value::Unit);
+            }
+            Task::PushNone => self.values.push(Value::None),
+            Task::Translate { key, count, at } => {
+                let values = self.take(count);
+                let Some((locale, rest)) = values.split_first() else {
+                    return Err(self.defect(ctx, "a translation without its locale", at));
+                };
+                let Some((_, entry)) = self.program.plan().translations().key(key) else {
+                    return Err(self.defect(ctx, "a translation key the plan doesn't have", at));
+                };
+                match jadpo_value::present::translate(entry, locale, rest) {
+                    Ok(text) => self.values.push(text),
+                    Err(fault) => return Err(self.value_fault(ctx, fault, at)),
+                }
+            }
             Task::IfCheck {
                 arms,
                 otherwise,
@@ -1569,6 +1610,19 @@ impl<'p> Machine<'p> {
                     id,
                 ));
             }
+            // A constant's value: its body, which was checked while
+            // compiling and can't fail (area 3).
+            Expr::Constant { .. } => {
+                let Some(Decoded::Callable(Some(target))) = self.decoded(id) else {
+                    return Err(self.defect(ctx, "a constant that has no body", id));
+                };
+                self.tasks.push(Task::Invoke {
+                    target: Target::Callable(*target),
+                    count: 0,
+                    at: id,
+                    then: None,
+                });
+            }
             Expr::Config { .. } => match self.decoded(id) {
                 Some(Decoded::Config(Some(setting))) => match ctx
                     .setting(*setting)
@@ -1706,6 +1760,34 @@ impl<'p> Machine<'p> {
                     then: None,
                 });
                 self.arguments(args, id);
+            }
+            // A translation, formatted in the locale given (area 10).
+            Callee::Translation(key) => {
+                let mut work: Vec<Task<'p>> = Vec::new();
+                for arg in args {
+                    let Some(arg) = arg else {
+                        return Err(self.defect(
+                            ctx,
+                            "a translation without one of its values",
+                            id,
+                        ));
+                    };
+                    work.push(Task::Expr(*arg));
+                }
+                self.tasks.push(Task::Translate {
+                    key,
+                    count: work.len(),
+                    at: id,
+                });
+                self.tasks.extend(work.into_iter().rev());
+            }
+            // A test's clock moved on (area 13).
+            Callee::AdvanceClock => {
+                let [Some(arg)] = args else {
+                    return Err(self.defect(ctx, "a clock moved by nothing", id));
+                };
+                self.tasks.push(Task::AdvanceClock(id));
+                self.tasks.push(Task::Expr(*arg));
             }
             Callee::Object(_) | Callee::Variant(_) | Callee::Unknown => {
                 return Err(self.defect(ctx, "a call to something that can't be called", id));
@@ -1895,6 +1977,11 @@ impl<'p> Machine<'p> {
         let mut count = 0;
         for (param, arg) in op.operation().params.iter().zip(args) {
             let Some(arg) = arg else {
+                if param.optional {
+                    work.push(Task::PushNone);
+                    count += 1;
+                    continue;
+                }
                 work.push(Task::Defect("an operation without one of its values", id));
                 break;
             };
@@ -1937,6 +2024,7 @@ impl<'p> Machine<'p> {
         at: SiteId,
     ) -> Result<Value, Stop> {
         let mut stopped: Option<Stop> = None;
+        let locales = self.program.plan().locales();
         // An inline function's expressions give a value per item, not one
         // an assertion's report could show.
         if inline.is_some() {
@@ -1959,7 +2047,7 @@ impl<'p> Machine<'p> {
                     }
                 }
             };
-            jadpo_value::run(op, values, &mut each)
+            jadpo_value::run(op, values, locales, &mut each)
         };
         if inline.is_some() {
             ctx.resume_recording();
@@ -1967,6 +2055,12 @@ impl<'p> Machine<'p> {
         match (result, stopped) {
             (Ok(value), _) => Ok(value),
             (Err(_), Some(stop)) => Err(stop),
+            // A temporal condition its `attempt` maps, as a construction's
+            // broken rule (area 10).
+            (Err(jadpo_value::Fault::Broke(rule)), None) => Err(Stop::Invalid {
+                rule,
+                written: format!("{}:", rule.word()),
+            }),
             (Err(fault), None) => Err(self.value_fault(ctx, fault, at)),
         }
     }

@@ -263,3 +263,53 @@ fn elisions_stay_with_the_fields() {
         "entity Todo {\n    ...\n    due_at: Instant?\n    identity: id\n}\n"
     );
 }
+
+/// Area 10, "Fields in name order" (2026-10-16, built in chunk 5.3f):
+/// `config { }`'s fields sorted by name, each with the comments above it
+/// and after it on its line, so parallel work adding settings rarely
+/// touches the same lines.
+#[test]
+fn config_fields_are_sorted_by_name_with_their_comments() {
+    assert_eq!(
+        fmt(concat!(
+            "config {\n",
+            "    /// Where mail comes from.\n",
+            "    mail_sender: Email\n",
+            "    // Tuned per deployment.\n",
+            "    page_size: ListLimit {\n",
+            "        default: 25\n",
+            "    }\n",
+            "    business_zone: Zone {\n",
+            "        default: Zone.europe_london\n",
+            "    }  // the shop's own\n",
+            "    database_url: PostgresUrl\n",
+            "}\n",
+        )),
+        concat!(
+            "config {\n",
+            "    business_zone: Zone {\n",
+            "        default: Zone.europe_london\n",
+            "    }  // the shop's own\n",
+            "    database_url: PostgresUrl\n",
+            "    /// Where mail comes from.\n",
+            "    mail_sender: Email\n",
+            "    // Tuned per deployment.\n",
+            "    page_size: ListLimit {\n",
+            "        default: 25\n",
+            "    }\n",
+            "}\n",
+        )
+    );
+}
+
+#[test]
+fn config_fields_in_name_order_stay_as_they_are() {
+    let text = "config {\n    browser_origin: Url\n    database_url: PostgresUrl\n    soft_delete_retention: Duration {\n        default: 30d\n    }\n}\n";
+    assert_eq!(fmt(text), text);
+}
+
+#[test]
+fn other_singletons_keep_their_written_order() {
+    let text = "application {\n    name: \"shop\"\n    api: {\n        prefix: /api\n    }\n}\n";
+    assert_eq!(fmt(text), text);
+}

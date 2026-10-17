@@ -11,6 +11,8 @@ mod support;
 mod assertions;
 mod boundary;
 mod conditions;
+mod constants;
+mod domain_names;
 mod effects;
 mod failures;
 mod logic;

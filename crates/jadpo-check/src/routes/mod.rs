@@ -224,6 +224,69 @@ impl Groups {
     }
 }
 
+/// The declared types an API's record names, as the type tables know them
+/// ([`jadpo_db::Symbol::canonical`]): each route's input and output and
+/// placeholders, and every type reached through their fields. Such a type
+/// is an OpenAPI schema name, so its name stays unique across the project
+/// even when it is private (area 1, "Files and names").
+#[salsa::tracked(returns(ref))]
+pub fn api_named(db: &dyn Db, project: Project) -> std::collections::BTreeSet<String> {
+    use crate::types::{Def, TypeView};
+    let table = crate::types::type_table(db, project);
+    let contested = jadpo_db::contested(db, project);
+    let mut pending: Vec<Ty> = Vec::new();
+    for (group, route) in groups(db, project).routes() {
+        if let Some(input) = &route.input {
+            pending.push(Ty::Named(
+                contested.canonical(input, group.domain.as_deref()),
+            ));
+        }
+        pending.extend(route.output.iter().cloned());
+        pending.extend(route.params().map(|(_, ty)| ty.clone()));
+    }
+    let mut out = std::collections::BTreeSet::new();
+    let mut seen_fields: std::collections::BTreeSet<(String, Vec<String>)> = Default::default();
+    while let Some(ty) = pending.pop() {
+        match ty {
+            Ty::Named(name) => {
+                if !out.insert(name.clone()) {
+                    continue;
+                }
+                match table.def(&name) {
+                    Some(Def::Fields { fields, .. }) => {
+                        pending.extend(fields.iter().map(|field| field.declared.clone()));
+                    }
+                    Some(Def::Enum { variants }) => pending.extend(
+                        variants
+                            .iter()
+                            .flat_map(|variant| variant.fields.iter().flatten())
+                            .map(|field| field.declared.clone()),
+                    ),
+                    Some(Def::Scalar { parent, .. }) => pending.push(parent.clone()),
+                    _ => {}
+                }
+            }
+            Ty::Field(host, path) => {
+                if seen_fields.insert((host.clone(), path.clone())) {
+                    if let Some(field) = table.field(&host, &path) {
+                        pending.push(field.declared.clone());
+                    }
+                    pending.push(Ty::Named(host));
+                }
+            }
+            Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => pending.push(*inner),
+            Ty::Map(key, value) => {
+                pending.push(*key);
+                pending.push(*value);
+            }
+            Ty::Opaque(_, args) => pending.extend(args),
+            Ty::Variant(host, _) => pending.push(Ty::Named(host)),
+            _ => {}
+        }
+    }
+    out
+}
+
 /// The names of the project's route groups, in name order.
 #[salsa::tracked(returns(ref))]
 pub fn group_names(db: &dyn Db, project: Project) -> Vec<String> {
@@ -250,6 +313,8 @@ pub fn group_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Op
         return None;
     };
     let ownership = location(db, project, file).ownership.clone();
+    // The group's own domain's private names are the ones it reads.
+    let lookup = Lookup::within(db, project, &ownership);
     let names = Names {
         path: &symbol.path,
         ownership: &ownership,
@@ -2020,6 +2085,14 @@ impl Reader<'_> {
             (ArgRoot::Param(root.clone()), (*ty).clone())
         } else if root == "current_principal" {
             return self.caller_argument(expr, &first, &rest, used);
+        } else if let Some(named) = crate::not_value::classify(self.lookup, self.lookup, &root) {
+            // A declaration's name is no value (area 3).
+            self.out.push(crate::not_value::diagnostic(
+                &root,
+                &named,
+                self.span(&first),
+            ));
+            return None;
         } else {
             let mut known: Vec<&str> = params.iter().map(|(name, _)| *name).collect();
             if input.is_some() {

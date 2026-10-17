@@ -20,6 +20,7 @@ pub fn decl_name(decl: &Decl) -> Option<ast::Name> {
     match decl {
         Decl::TypeDecl(d) => d.name(),
         Decl::FunctionDecl(d) => d.name(),
+        Decl::ConstantDecl(d) => d.name(),
         Decl::ActionDecl(d) => d.name(),
         Decl::QueryDecl(d) => d.name(),
         Decl::FixtureDecl(d) => d.name(),
@@ -48,6 +49,20 @@ pub fn library_functions(library: &ast::LibraryDecl) -> Vec<ast::FunctionDecl> {
         .collect()
 }
 
+/// The functions and constants a library holds, in order: the members
+/// `Item::functions` lists, by the same positions.
+pub fn library_members(library: &ast::LibraryDecl) -> Vec<Decl> {
+    library
+        .member_list()
+        .into_iter()
+        .flat_map(|list| list.member_items())
+        .filter_map(|item| match item {
+            MemberItem::Decl(decl @ (Decl::FunctionDecl(_) | Decl::ConstantDecl(_))) => Some(decl),
+            _ => None,
+        })
+        .collect()
+}
+
 /// The span of the name of declaration `index`, or of function `function`
 /// in it when it is a library; the whole declaration when it has no name.
 pub fn name_span(source: &ast::SourceFile, path: &str, index: u32, function: Option<u32>) -> Span {
@@ -55,9 +70,9 @@ pub fn name_span(source: &ast::SourceFile, path: &str, index: u32, function: Opt
         return Span::new(path, 0, 0);
     };
     let name = match (&decl, function) {
-        (Decl::LibraryDecl(library), Some(i)) => library_functions(library)
-            .get(i as usize)
-            .and_then(ast::FunctionDecl::name),
+        (Decl::LibraryDecl(library), Some(i)) => {
+            library_members(library).get(i as usize).and_then(decl_name)
+        }
         _ => decl_name(&decl),
     };
     match name {

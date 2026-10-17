@@ -124,8 +124,8 @@ key.
 
 ```jadpo check project=revocation-delay file=config.jadpo
 config {
-    session_signing_key: SigningKey
     browser_origin: Url
+    session_signing_key: SigningKey
 }
 ```
 

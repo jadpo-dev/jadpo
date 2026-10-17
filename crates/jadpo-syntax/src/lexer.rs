@@ -510,7 +510,9 @@ impl Lexer<'_> {
         let after = self.rest_of_line(self.pos);
         let code = after.split("//").next().unwrap_or("").trim();
         let ends = code.is_empty() || code.starts_with('}') || code.chars().all(|c| c == ';');
-        let ends_line = ends_line && !code.starts_with('{');
+        // Nor before a `.` or a `/`: the next line would start with a field
+        // access, or the rest of a path (`use bakery;/actions`).
+        let ends_line = ends_line && !code.starts_with(['{', '.', '/']);
         let (edit, next) = if ends {
             // Spaces before the `;` go with it.
             let before = self.text[..start].trim_end_matches([' ', '\t']).len();

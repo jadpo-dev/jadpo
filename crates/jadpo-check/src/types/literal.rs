@@ -74,10 +74,12 @@ pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), P
         Const::Number { decimal: false, .. } => representation == Prim::Int,
         Const::Number { decimal: true, .. } => representation == Prim::Decimal,
         // Instants and dates are written in ISO 8601, durations only with
-        // a unit (area 10), and a `Time` is never a literal.
+        // a unit (area 10), and a `ZonedTime` is never a literal. Text
+        // written in source may stand for text for a person, which a test
+        // compares formatted text with (area 10).
         Const::Str(_) => matches!(
             representation,
-            Prim::Text | Prim::Uuid | Prim::Instant | Prim::CalendarDate
+            Prim::Text | Prim::Uuid | Prim::Instant | Prim::CalendarDate | Prim::PresentationText
         ),
         Const::Duration(_) => representation == Prim::Duration,
         Const::TooLong => representation.is_number(),

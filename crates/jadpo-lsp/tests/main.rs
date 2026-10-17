@@ -3,3 +3,4 @@
 //! `cargo test -p jadpo-lsp --test integration <module>::` runs one.
 
 mod incremental;
+mod make_setting;

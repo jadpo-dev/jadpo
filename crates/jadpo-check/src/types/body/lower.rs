@@ -24,7 +24,8 @@ use super::writes::{Breach, WriteFact};
 use super::{Body, Fallible, LocalKind};
 use crate::graph::paths::Resolver;
 use crate::graph::{
-    LineIndex, declaration_key, field_key, library_function_key, type_ref, variant_key,
+    LineIndex, constant_key, declaration_key, field_key, library_function_key, type_ref,
+    variant_key,
 };
 use crate::lookups::{FailureView, Lookup, NameView};
 use crate::tree::{self, dotted};
@@ -65,22 +66,40 @@ pub(super) fn lower(
             body.params.push(LocalId(id as u32));
         }
     }
-    let (params, result, fails, block) = parts(syntax);
-    for param in params.iter().flat_map(ast::ParamList::params) {
-        if let Some(name) = param.name() {
-            lower.declared(&name);
-        }
-        if let Some(ty) = param.ty() {
+    if let Some(constant) = ast::ConstantDecl::cast(syntax.clone()) {
+        if let Some(ty) = constant.ty() {
             lower.type_names(ty.syntax());
         }
+        // A constant's body gives its value, as a `return` would.
+        if let Some(value) = constant.value() {
+            let id = lower.alloc();
+            let value = lower.expr(&value);
+            lower.fill(
+                id,
+                constant.syntax(),
+                TypeRef::Builtin(Prim::Unit),
+                typed::Node::Stmt(TypedStmt::Return { value: Some(value) }),
+            );
+            body.block = vec![SiteId(id as u32)];
+        }
+    } else {
+        let (params, result, fails, block) = parts(syntax);
+        for param in params.iter().flat_map(ast::ParamList::params) {
+            if let Some(name) = param.name() {
+                lower.declared(&name);
+            }
+            if let Some(ty) = param.ty() {
+                lower.type_names(ty.syntax());
+            }
+        }
+        if let Some(ty) = result.and_then(|ret| ret.ty()) {
+            lower.type_names(ty.syntax());
+        }
+        for ty in fails.iter().flat_map(ast::FailsClause::types) {
+            lower.type_names(ty.syntax());
+        }
+        body.block = lower.block(block);
     }
-    if let Some(ty) = result.and_then(|ret| ret.ty()) {
-        lower.type_names(ty.syntax());
-    }
-    for ty in fails.iter().flat_map(ast::FailsClause::types) {
-        lower.type_names(ty.syntax());
-    }
-    body.block = lower.block(block);
     body.proofs = lower.proofs();
     body.sites = lower.sites.into_iter().flatten().collect();
     body.pauses = body.sites.iter().any(|site| site.pauses);
@@ -491,6 +510,12 @@ impl Lower<'_> {
 
     fn expr_node(&mut self, expr: &Expr) -> typed::Expr {
         let key = node_key(expr.syntax());
+        // A format is given to its operation as its text (area 10); the
+        // names it is written with still refer to what they name.
+        if let Some(format) = self.facts.formats.get(&key).cloned() {
+            self.scan(expr.syntax());
+            return typed::Expr::Literal(Literal::Text(format));
+        }
         match expr {
             Expr::Literal(_) => self.literal(expr),
             Expr::PrefixExpr(prefix) => {
@@ -512,6 +537,7 @@ impl Lower<'_> {
             }
             Expr::NameRef(name) => match self.read(name) {
                 Some(local) => typed::Expr::Local(local),
+                None if let Some(constant) = self.constant(expr) => constant,
                 None => {
                     self.scan(expr.syntax());
                     typed::Expr::Unchecked
@@ -623,9 +649,30 @@ impl Lower<'_> {
         literal(&Const::from_expr(expr)).map_or(typed::Expr::Unchecked, typed::Expr::Literal)
     }
 
+    /// A read of a constant (area 3), naming it, and its library.
+    fn constant(&mut self, expr: &Expr) -> Option<typed::Expr> {
+        let (library, name) = self.facts.constants.get(&node_key(expr.syntax()))?;
+        let key = constant_key(self.names, library.as_deref(), name)?;
+        if let Some((first, rest)) = dotted(expr) {
+            if let Some(library) = library
+                && let Some(lib) = self.names.library(library)
+                && let Some(kind) = crate::graph::kind_of(&lib.kind)
+            {
+                let lib_key = self.names.registry().key(kind, library, None);
+                self.node(first.syntax(), Some(lib_key), false);
+            }
+            let last = rest.last().unwrap_or(&first).clone();
+            self.node(last.syntax(), Some(key.clone()), true);
+        }
+        Some(typed::Expr::Constant { constant: key })
+    }
+
     /// `value.field`, a variant's data's field, or `Enum.variant`.
     fn field(&mut self, expr: &Expr, field: &ast::FieldExpr) -> typed::Expr {
         let key = node_key(expr.syntax());
+        if let Some(constant) = self.constant(expr) {
+            return constant;
+        }
         if let Some(name) = self.facts.settings.get(&key) {
             return typed::Expr::Config {
                 field: self
@@ -642,7 +689,7 @@ impl Lower<'_> {
             self.path_names(&refs);
             if let [entity, name] = names.as_slice() {
                 return typed::Expr::Stored {
-                    field: field_key(self.names.registry(), entity, std::slice::from_ref(name)),
+                    field: field_key(self.names, entity, std::slice::from_ref(name)),
                 };
             }
         }
@@ -652,7 +699,7 @@ impl Lower<'_> {
                 self.path_names(&refs);
             }
             return typed::Expr::Build {
-                callee: Callee::Variant(variant_key(self.names.registry(), &host, &variant)),
+                callee: Callee::Variant(variant_key(self.names, &host, &variant)),
                 fields: Vec::new(),
                 fallible: typed::Fallible::Never,
             };
@@ -661,7 +708,7 @@ impl Lower<'_> {
             && let Some(receiver) = field.expr()
         {
             let receiver = self.expr(&receiver);
-            let field_key = field_key(self.names.registry(), &host, &path);
+            let field_key = field_key(self.names, &host, &path);
             if let Some(name) = field.name_ref() {
                 self.node(name.syntax(), Some(field_key.clone()), false);
             }
@@ -714,6 +761,8 @@ impl Lower<'_> {
             },
             Reach::Caller(kind) => Callee::Caller(*kind),
             Reach::Session(op) => Callee::Session(*op),
+            Reach::AdvanceClock => Callee::AdvanceClock,
+            Reach::Translation { key, .. } => Callee::Translation(key.clone()),
             Reach::Unknown => Callee::Unknown,
         };
         if let Some(head) = call.expr() {
@@ -725,6 +774,18 @@ impl Lower<'_> {
             .flat_map(ast::ArgList::args)
             .collect();
         let args = match (&reach, self.facts.slots.get(&key).cloned()) {
+            (Reach::Translation { arity, .. }, Some(slots)) => {
+                let mut args = vec![None; *arity];
+                for (arg, slot) in arguments.iter().zip(slots) {
+                    let lowered = arg.expr().map(|value| self.expr(&value));
+                    if let Some(slot) = slot
+                        && let Some(place) = args.get_mut(slot)
+                    {
+                        *place = lowered;
+                    }
+                }
+                args
+            }
             (Reach::Std(op), Some(slots)) => {
                 let mut args = vec![None; op.operation().params.len()];
                 for (arg, slot) in arguments.iter().zip(slots) {
@@ -786,7 +847,8 @@ impl Lower<'_> {
                 }
                 self.node(last.syntax(), callee.key().cloned(), false);
             }
-            Reach::Std(_) | Reach::Session(_) => {}
+            Reach::Std(_) | Reach::Session(_) | Reach::AdvanceClock | Reach::Translation { .. } => {
+            }
             Reach::Caller(_) => {
                 self.scan(head.syntax());
             }
@@ -855,7 +917,7 @@ impl Lower<'_> {
                 Vec::new(),
             ),
             BuildFact::Variant(host, variant) => (
-                Callee::Variant(variant_key(self.names.registry(), host, variant)),
+                Callee::Variant(variant_key(self.names, host, variant)),
                 host.clone(),
                 vec![variant.clone()],
             ),
@@ -973,11 +1035,7 @@ impl Lower<'_> {
                             continue;
                         };
                         let input_field = patch_input.as_ref().map(|input| {
-                            field_key(
-                                self.names.registry(),
-                                input,
-                                std::slice::from_ref(&supplied_name),
-                            )
+                            field_key(self.names, input, std::slice::from_ref(&supplied_name))
                         });
                         self.node(supplied.syntax(), input_field.clone(), false);
                         let given = self.fields_given(fields.block(), &fact.entity, &[]);
@@ -1010,9 +1068,7 @@ impl Lower<'_> {
                                 entity: holder,
                                 name,
                                 field: true,
-                            } => {
-                                field_key(self.names.registry(), holder, std::slice::from_ref(name))
-                            }
+                            } => field_key(self.names, holder, std::slice::from_ref(name)),
                             Breach::Unique {
                                 entity: holder,
                                 name,
@@ -1094,11 +1150,7 @@ impl Lower<'_> {
             .iter()
             .filter_map(|(field, failure)| {
                 Some((
-                    field_key(
-                        self.names.registry(),
-                        &fact.entity,
-                        std::slice::from_ref(field),
-                    ),
+                    field_key(self.names, &fact.entity, std::slice::from_ref(field)),
                     self.type_key(failure)?,
                 ))
             })
@@ -1140,7 +1192,7 @@ impl Lower<'_> {
             };
             let mut path = prefix.to_vec();
             path.push(text);
-            let field = field_key(self.names.registry(), host, &path);
+            let field = field_key(self.names, host, &path);
             self.node(name.syntax(), Some(field.clone()), false);
             if let Some(value) = member.value() {
                 out.push((field, self.expr(&value)));
@@ -1233,7 +1285,7 @@ impl Lower<'_> {
                 let pattern = match self.facts.patterns.get(&node_key(pat.syntax())).cloned() {
                     Some(PatternFact::Variant(host, variant)) => {
                         self.path_names(&refs);
-                        Pattern::Variant(variant_key(self.names.registry(), &host, &variant))
+                        Pattern::Variant(variant_key(self.names, &host, &variant))
                     }
                     Some(PatternFact::Some) => Pattern::Some,
                     Some(PatternFact::Success) => Pattern::Success,

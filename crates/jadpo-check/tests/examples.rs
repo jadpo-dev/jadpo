@@ -449,6 +449,7 @@ const BODY: &[&str] = &[
     "expr field",
     "expr request",
     "expr setting",
+    "expr constant",
     "call function",
     "call action",
     "call query",
@@ -780,6 +781,8 @@ fn body_features(
                         Callee::Entity { .. } => "call entity operation",
                         Callee::Caller(_) => "call caller from a record",
                         Callee::Session(_) => "call session",
+                        Callee::AdvanceClock => "advance the test clock",
+                        Callee::Translation(_) => "call translation",
                         // Objects and variants are built, below; an
                         // unknown callee is a mistake already reported.
                         Callee::Object(_) | Callee::Variant(_) | Callee::Unknown => continue,
@@ -926,6 +929,9 @@ fn body_features(
                 }
                 Expr::Stored { .. } => {
                     out.insert("expr stored");
+                }
+                Expr::Constant { .. } => {
+                    out.insert("expr constant");
                 }
                 Expr::Unchecked => {}
             },
@@ -1109,6 +1115,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                 }
                 shapes(&signature.result, &mut used);
             }
+            Detail::Constant { ty, .. } => shapes(ty, &mut used),
             Detail::Variant { .. }
             | Detail::None
             | Detail::Entity { .. }

@@ -102,6 +102,8 @@ struct Line {
     code: Option<String>,
     route: Option<String>,
     millis: u128,
+    /// The address the request counted as (area 10, "Client addresses").
+    address: Option<String>,
     /// The fault behind a 500: what it was and where, innermost first.
     fault: Option<(String, Vec<String>)>,
 }
@@ -166,6 +168,7 @@ impl Handler for DevHandler {
                     code: response.code.clone(),
                     route: response.route.clone(),
                     millis: started.elapsed().as_millis(),
+                    address: response.client.clone(),
                     fault: response.fault.as_ref().map(|fault| {
                         (
                             fault.kind.classification().to_string(),
@@ -225,6 +228,10 @@ impl Out<'_> {
                 ("code", line.code.as_deref().map_or(Json::Null, Json::from)),
                 ("ms", Json::from(line.millis as usize)),
                 (
+                    "address",
+                    line.address.as_deref().map_or(Json::Null, Json::from),
+                ),
+                (
                     "fault",
                     line.fault.as_ref().map_or(Json::Null, |(kind, frames)| {
                         Json::object([
@@ -250,7 +257,10 @@ impl Out<'_> {
             .as_deref()
             .map_or_else(String::new, |code| format!(" {code}"));
         let time = self.paint(Token::Muted, &format!("{} ms", line.millis));
-        let mut text = format!("{short_id}  {request:<34} {status}{code}   {time}\n");
+        let address = line.address.as_deref().map_or_else(String::new, |address| {
+            format!("   {}", self.paint(Token::Muted, address))
+        });
+        let mut text = format!("{short_id}  {request:<34} {status}{code}   {time}{address}\n");
         if let Some((kind, frames)) = &line.fault {
             text.push_str(&format!(
                 "  {} {kind}\n",
@@ -554,12 +564,7 @@ fn prepare(
         .filter(jadpo_check::blocks_running)
         .collect();
     if !blocking.is_empty() {
-        let sources = loaded
-            .project
-            .files(db)
-            .iter()
-            .map(|file| (file.path(db).clone(), file.text(db).clone()))
-            .collect();
+        let sources = jadpo_db::source_texts(db, project);
         return Err((blocking, sources));
     }
     let set = jadpo_check::data::migrations::migrations(db, project);

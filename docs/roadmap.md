@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-16. This page is the only list of outstanding work: the
+**Updated:** 2026-10-17. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here.
@@ -381,33 +381,89 @@ reference only).
   renewed against the record; `RouteAuthentication.fresh` reading the
   record; `POST /auth/exchange` for service keys; a browser session's
   `origin:` from configuration.
-- [ ] **5.1c Trusted proxies** `sonnet · high` (area 10, question 12,
+- [x] **5.1c Trusted proxies** `sonnet · high` (area 10, question 12,
   decided 2026-10-16): which
   proxies a deployment trusts for a client's address (`X-Forwarded-For`,
   `Forwarded`, Cloudflare's `CF-Connecting-IP`), declared once in
   `app.jadpo` and read from the request, so the default rate limits count
   the client and not the proxy.
-- [ ] **5.1d Restricted values stored elsewhere** `opus · high` (area 9,
+- [x] **5.1d Restricted values stored elsewhere** `opus · high` (area 9,
   decided 2026-10-16): a create or update storing a value in a field some
   of whose readers may not read the value is `policy.output_field_unproved`
   at the `set:`, following the value as 4.8's flow check does; copies
   between fields with the same readers stay allowed.
-- [ ] **5.2 Time:** `opus · high` durations, instants, formatting.
-- [ ] **5.3 Translations and locales** `sonnet · high` (area 10,
-  Translations, decided 2026-10-16): `type X = Message` and the built-in
-  `PluralCount`; each domain's and `shared/`'s `translations/` folder, with
-  one unnamed `translations { }` per locale and its mapping and checks
-  (placeholders, enum values, CLDR plural forms, every supported locale
-  complete, `in_progress:` locales falling back with warnings, stale
-  translations through `sources.jadpo_record`, `TranslationReview` and `accept`);
-  `translations.<domain>.<message>(..., locale:)` returning
-  `PresentationText`; enum wording; email subjects; failures that can
-  reach a response worded in every locale and exported as
-  `<api>.failures.<locale>.json`; `TextDirection`; Jadpo's own messages
-  and the root file's owner groups; `jadpo translations missing`,
-  `unused`, `update`, `accept`, `builtin`, `export` and `import`, and a
-  pseudo-locale. Email templates follow in 7.3, library packages'
-  translations in 7.1.
+- [x] **5.2 Time:** `opus · high` durations, instants, zones and the
+  `temporal` library, `ZonedTime` in place of the time of day, time on the
+  wire and in queries, and a test's clock. Formatting is 5.2b.
+- [x] **5.2b Time formats** `opus · high` (area 10, "Showing dates and
+  times to people"), split from 5.2: `TimeFormat` declared and built in,
+  `ComponentStyle`, `PresentationText` and
+  `type.presentation_text_persistence`, and `temporal.format` and
+  `format_relative` checked (`zone:` required for an `Instant` and refused
+  otherwise), the text they give staying `toolchain.not_built_yet` until
+  5.3; area 10's formatting errors rewritten with real output.
+- [x] **5.2c A type name is not a value** `sonnet · high`, found in 5.2b:
+  `var g: Label = Placed`, a type's or other declaration's bare name where
+  a value is expected, checks clean today; it is an error with its own
+  rule, a checked example and the one-step fix where one exists (a
+  construction, a variant), and every place a value is read is covered.
+- [x] **5.3 Locales and the text for people** `sonnet · high` (area 10,
+  "Locales" and "Showing dates and times to people"), the first half of
+  "Translations and locales": `locales { }` and its errors, `locale:`
+  checked against it, a `Locale` on the wire and in a setting limited to the
+  supported ones, and `temporal::format` and `format_relative` in
+  `jadpo-value` over ICU4X's compiled CLDR data, with the
+  `toolchain.not_built_yet` refusal removed. The second half, translations,
+  is 5.3b.
+- [x] **5.3b Translations** `sonnet · high` (area 10, "Translations"): the
+  root `translations/` folder, one JSON file per supported locale of ICU
+  MessageFormat messages (plurals through CLDR's rules, selects, numbers and
+  dates), one typed `translations.<key>(locale:, ...)` call per key of the
+  default locale's file, every other file checked for the same keys and
+  placeholders (their errors, with real output), and the interpreter and
+  runtime running them.
+- [x] **5.3c Choosing a locale from a request** `sonnet · high` (area 10,
+  "Locales"): the library call that picks a supported `Locale` from an
+  `Accept-Language` header and falls back to `default`. Named by Richard on
+  2026-10-16: `locale.from_accept_language(header)`, giving a `Locale`.
+- [x] **5.3d Names private to a domain** `opus · high` (area 1, "Files and
+  names", decided 2026-10-16): a private function or type unique only
+  within its domain in the checker's name table, resolution and imports,
+  with folded collisions in the same scope; the identity key of a function
+  or type declared in a domain carrying the domain, and promotion to
+  `shared/` writing a registry move line (area 18, question 8; reworks
+  part of chunk 1.7's registry, a new manifest `format`);
+  `semantic.duplicate_declaration` saying copy or clash and listing the
+  names in use that contain the same word, its checked example rewritten.
+  `jadpo rename` refusing a name in use comes with `rename` (after the
+  first build, item 5).
+- [x] **5.3e Constants** `opus · high` (area 3, "Constants", decided
+  2026-10-16), after 5.3d: `constant name: Type = value` at the top of a
+  file or in a library, `constant` reserved; its type named as a
+  signature's is; its value worked out and checked while compiling, with
+  calls, `config`, `clock` and cycles refused; `constant` in a body, `const`
+  and `constant mut` each one error with an edit, and a top-level `var`'s
+  `next:` pointing at `constant`; placement, promotion into a library and
+  per-domain names as for helper functions; reads in bodies, queries (as
+  literals) and updates by `id` (backfills, 5.6, take them as they come),
+  but never a setting's `default:` or `test:`, which stay literals
+  (revised 2026-10-16, Richard: a value is a constant or a setting, never
+  both); the `constant.similar_exists` warning and constants in the
+  library catalogue. Each new error with a checked example and real
+  output, and area 3's proposal examples made check blocks. Split on
+  2026-10-17: the moves are 5.3f.
+- [x] **5.3f Making a constant a setting** `opus · high` (area 10, "Making
+  a constant a setting" and "Fields in name order"), split from 5.3e:
+  `jadpo config move <constant>` and the editor's "Make this a setting"
+  code action through the same code: a `config` field of the constant's
+  name, type, value as `default:` and description, the constant deleted,
+  every read rewritten to `config.<name>`, refusing a type a setting can't
+  hold, a name a setting has and a read in a query, an update by `id`, a
+  backfill or another constant; `configuration.default_literal_required`'s
+  `next:` naming `jadpo config move` when `default:` names a constant.
+  `jadpo fmt` sorting `config { }` fields by name with their comments, and
+  `--check` failing on one out of order. Area 10's proposal examples made
+  check blocks.
 - [ ] **5.4 Standard library: the plan** `opus · high`. Only `collection`
   and `temporal` are specified, piecemeal across areas 2, 3 and 10, and
   real code keeps needing more: splitting and trimming text, formatting and
@@ -425,6 +481,23 @@ reference only).
   2026-10-15): `backfill:` as an expression over each row's own fields,
   filled in batches, one `UPDATE` each where it has a SQL form and by
   `jadpo migrate apply` otherwise, then made required.
+- [ ] **5.6b Translations as messages** `sonnet · high` (area 10,
+  "Translations as messages", decided 2026-10-16 in the packages design
+  while 5.3b built JSON files of ICU MessageFormat; reworks 5.3b, whose
+  files, calls and `translation.*` errors it replaces): `type X = Message` and the built-in
+  `PluralCount`; each domain's and `shared/`'s `translations/` folder, with
+  one unnamed `translations { }` per locale and its mapping and checks
+  (placeholders, enum values, CLDR plural forms, every supported locale
+  complete, `in_progress:` locales falling back with warnings, stale
+  translations through `sources.jadpo_record`, `TranslationReview` and `accept`);
+  `translations.<domain>.<message>(..., locale:)` returning
+  `PresentationText`; enum wording; email subjects; failures that can
+  reach a response worded in every locale and exported as
+  `<api>.failures.<locale>.json`; `TextDirection`; Jadpo's own messages
+  and the root file's owner groups; `jadpo translations missing`,
+  `unused`, `update`, `accept`, `builtin`, `export` and `import`, and a
+  pseudo-locale. Email templates follow in 7.3, library packages'
+  translations in 7.1.
 - [ ] **5.7 Teaching examples for Phase 5** `opus · high`: configuration,
   time, translations and the standard library, passing `--require-examples`.
 
@@ -437,7 +510,10 @@ reference only).
   review: a system caller, so `Access.system` grants schedules and
   subscribers (today every policed statement refuses them), and events
   delivered after the response is sent, through the host (Workers'
-  `waitUntil`), not before it.
+  `waitUntil`), not before it. From chunk 5.1d: what a subscriber stores
+  from an event is checked against what every `emit` of it put there, as
+  area 9's stored values are (an `emit` itself stores nothing a caller
+  reads).
 - [ ] **6.2 Schedules:** `opus · high` leases, the native tick, schedule monitoring basics,
   and the runtime's own sweeps, starting with deleting expired idempotency
   keys (area 7).
@@ -465,7 +541,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   2026-10-16): the API record and identity registry renamed to
   `.jadpo_record` in the decided record format, with the header line, the
   hand-edit check and `jadpo records`; the format 7.1's package surfaces
-  and 5.3's translation sources also use, as
+  and 5.6b's translation sources also use, as
   [the design](language/research/jadpo-record-format.md) sets out (decided
   2026-10-16): the API record loses its `version:` counter, the OpenAPI
   version coming from a hash of the record, and `jadpo.lock` takes the
@@ -492,7 +568,10 @@ The design is area 11 as revised on 2026-10-16, with its research in
 - [ ] **7.3 Email:** `opus · high` the capability under design C (whole:
   Jadpo-rendered, attachments), the SMTP driver and a mail package as a
   second connection proving the swap, `emails/` templates and the shared
-  layout, the dev inbox, the health score.
+  layout, the dev inbox, the health score. Chunk 5.3b refuses a dotted
+  translation key (area 16's old `"welcome_email.subject"`) as
+  `translation.key_invalid`; under translations as messages (5.6b) an
+  email's subject is its own member in its domain's language files.
 - [ ] **7.3b Magic-link sign-in** `opus · high` (area 8, decided
   2026-10-16): `sign_in:` with `magic_link:` and `providers:`, the
   generated endpoints (the email links to the frontend's `link:` path,
@@ -536,9 +615,19 @@ The design is area 11 as revised on 2026-10-16, with its research in
   so generated code decodes a request straight into its structs; plan data
   embedded as constants rather than rebuilt at start; a route trie and no
   per-request allocation for paths, labels and failure lookups; the native
-  host accepting asynchronously and spreading connections round-robin.
+  host accepting asynchronously and spreading connections round-robin,
+  with one rate-limit count per caller across its worker threads (today
+  each thread counts its own, so a caller on several gets several
+  allowances).
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
-  commit, PostgreSQL through Cloudflare's pooling.
+  commit, PostgreSQL through Cloudflare's pooling; the client's address from
+  `CF-Connecting-IP` (`ClientAddress::read` with `Target::Workers`, built in
+  5.1c), and a `client_address:` source other than `cloudflare` refused when
+  a project is built for Workers (area 10, "Client addresses"), which needs
+  deployables declared first.
+  From chunk 5.3: a deployable carries locale data only for its
+  application's supported locales (today all 533 are compiled in: about
+  3.5 MB of a 3.9 MB module, 1.2 MB gzipped).
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
   TypeScript app, comparing Wasm with native and Bun with native as well
@@ -584,7 +673,8 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
    `call`.
 4. Records and acceptances (area 18): the approval report, acceptance
    matching, package upgrade plans.
-5. Tooling completeness (area 14): interactive tests, `rename`, `impact`,
+5. Tooling completeness (area 14): interactive tests, `rename` (refusing a
+   name already in use, 2026-10-16), `impact`,
    full completion.
 6. Packages and capabilities after the first build (decided 2026-10-16):
    services run by Jadpo (`runs:`, Docker or Podman hidden behind

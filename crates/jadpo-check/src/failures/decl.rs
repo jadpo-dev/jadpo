@@ -25,7 +25,7 @@ pub fn failure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
     let Some(source) = tree::source(db, file) else {
         return Vec::new();
     };
-    let lookup = Lookup::new(db, project);
+    let lookup = Lookup::for_file(db, project, file);
     let mut checker = Checker {
         path: file.path(db),
         table: &lookup,

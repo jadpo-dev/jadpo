@@ -65,6 +65,32 @@ serde_json = "1"
 # Linear-time regular expressions: `pattern:` settings are checked while
 # compiling (area 2, question 9), and the runtime will use the same crate.
 regex = "=1.11.1"
+# Time zones for `temporal` (area 10; jadpo-value only): pure Rust, builds
+# for wasm32, the IANA database bundled into the binary (jiff-tzdb, 2026e,
+# about 200 KB) rather than read from the platform, and Temporal's rules
+# for a local time in a daylight-saving gap or overlap. No default
+# features: nothing reads the system clock or the system's zone files.
+jiff = { version = "=0.2.38", default-features = false, features = ["std", "tzdb-bundle-always"] }
+# Locale data for the text `temporal.format` and `format_relative` give
+# (area 10, "Showing dates and times to people"; jadpo-value only): ICU4X,
+# pure Rust, with the CLDR data compiled into the binary (CLDR 48.x, the
+# release the `Locale` enum was generated from) rather than read from the
+# platform, so the interpreter, native deployables and Workers write alike.
+# `icu_experimental` is unstable, so every ICU4X crate is pinned exactly
+# and moved together; it brings the relative-time words ("3 minutes ago",
+# "yesterday"). `fixed_decimal` and `writeable` are the types they speak.
+icu_calendar = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+icu_datetime = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+# Plural categories and numbers in a translation's messages (area 10,
+# "Translations"): the same ICU4X release and CLDR data, already underneath
+# `icu_datetime` and `icu_experimental`, now used directly.
+icu_decimal = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+icu_plurals = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+icu_experimental = { version = "=0.6.0", default-features = false, features = ["compiled_data"] }
+icu_locale = { version = "=2.3.1", default-features = false, features = ["compiled_data"] }
+icu_time = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+fixed_decimal = { version = "=0.7.2", default-features = false }
+writeable = { version = "=0.6.4", default-features = false }
 # Pinned exactly and confined to jadpo-db and jadpo-check (docs/compiler-runtime.md §2.4).
 salsa = { version = "=0.28.5", default-features = false, features = ["macros", "inventory"] }
 # Node digests (docs/compiler-runtime.md §2.3). `pure` keeps the build free of

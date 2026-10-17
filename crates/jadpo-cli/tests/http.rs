@@ -43,13 +43,13 @@ fn skipped() -> bool {
     skip
 }
 
-fn write(root: &Path, path: &str, text: &str) {
+pub(super) fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     std::fs::create_dir_all(path.parent().expect("parent")).expect("folders");
     std::fs::write(path, text).expect("write");
 }
 
-fn jadpo(cwd: &Path, args: &[&str]) -> Output {
+pub(super) fn jadpo(cwd: &Path, args: &[&str]) -> Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
     let env = Environment::empty()
         .with_var("SOURCE_DATE_EPOCH", "1792504800")
@@ -253,7 +253,7 @@ fn project() -> (tempdir::Dir, PathBuf) {
 }
 
 /// A folder removed when the test ends.
-mod tempdir {
+pub(super) mod tempdir {
     use std::path::{Path, PathBuf};
 
     pub struct Dir(PathBuf);
@@ -303,8 +303,8 @@ impl Buffer {
 }
 
 /// A running `jadpo dev --json` on a database of its own.
-struct Dev {
-    port: u16,
+pub(super) struct Dev {
+    pub(super) port: u16,
     /// The database it serves.
     url: String,
     out: Buffer,
@@ -316,12 +316,21 @@ impl Dev {
     fn start(root: &Path) -> Dev {
         let server = jadpo_test::database::server().expect("a PostgreSQL server");
         let url = server.create_database("http").expect("a database");
+        Dev::launch(root, Some(url))
+    }
+
+    /// A project with no entities, so no database to serve.
+    pub(super) fn start_without_database(root: &Path) -> Dev {
+        Dev::launch(root, None)
+    }
+
+    fn launch(root: &Path, url: Option<String>) -> Dev {
         let out = Buffer::default();
         let stop = Arc::new(AtomicBool::new(false));
         let args = DevArgs {
             cwd: root.to_path_buf(),
             port: 0,
-            url: Some(url.clone()),
+            url: url.clone(),
             no_run: false,
             json: true,
             choice: ColorChoice::Never,
@@ -357,14 +366,25 @@ impl Dev {
         };
         Dev {
             port,
-            url,
+            url: url.unwrap_or_default(),
             out,
             stop,
             thread: Some(thread),
         }
     }
 
-    fn send(&self, method: &str, path: &str, headers: &[(&str, &str)], body: &str) -> Reply {
+    /// What `jadpo dev --json` has written so far.
+    pub(super) fn log(&self) -> String {
+        self.out.text()
+    }
+
+    pub(super) fn send(
+        &self,
+        method: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: &str,
+    ) -> Reply {
         send(self.port, method, path, headers, body)
     }
 }
@@ -380,21 +400,21 @@ impl Drop for Dev {
 
 /// A response as a client reads it.
 #[derive(Debug)]
-struct Reply {
-    status: u16,
+pub(super) struct Reply {
+    pub(super) status: u16,
     headers: Vec<(String, String)>,
     body: String,
 }
 
 impl Reply {
-    fn header(&self, name: &str) -> Option<&str> {
+    pub(super) fn header(&self, name: &str) -> Option<&str> {
         self.headers
             .iter()
             .find(|(header, _)| header.eq_ignore_ascii_case(name))
             .map(|(_, value)| value.as_str())
     }
 
-    fn json(&self) -> serde_json::Value {
+    pub(super) fn json(&self) -> serde_json::Value {
         serde_json::from_str(&self.body).unwrap_or_else(|_| panic!("not JSON: {}", self.body))
     }
 }
@@ -3152,7 +3172,10 @@ type EchoView = Output {
         "domains/lab/types/item_view.jadpo",
         "use lab/entities { Item }\n\ntype ItemView = Output {\n    pick: [Item.id, Item.name, Item.note]\n}\n",
     ),
-    ("domains/lab/types/moment.jadpo", "type Moment = Time {}\n"),
+    (
+        "domains/lab/types/moment.jadpo",
+        "type Moment = ZonedTime {}\n",
+    ),
     (
         "domains/lab/types/note.jadpo",
         "type Note = Text {\n    max_length: 200\n}\n",
@@ -3208,26 +3231,38 @@ fn openapi_describes_values_as_they_are_sent() {
         schemas["Outcome"]["oneOf"][1]["properties"]["tag"]["const"],
         "paid"
     );
+    // A `ZonedTime` is its instant and its zone (area 10).
     let moment = &schemas["EchoInput"]["properties"]["moment"];
-    assert_eq!(moment["type"], "string", "{moment}");
+    assert_eq!(moment["type"], "object", "{moment}");
+    assert_eq!(
+        moment["properties"]["instant"]["format"], "date-time",
+        "{moment}"
+    );
+    assert_eq!(moment["required"], serde_json::json!(["instant", "zone"]));
     // What the runtime sends matches what the document says.
     let dev = Dev::start(&root);
     let echoed = dev.send(
         "POST",
         "/items/echo",
         &[],
-        r#"{"moment":"09:30","outcome":"pending"}"#,
+        r#"{"moment":{"instant":"2026-10-25T09:30:00+01:00","zone":"Europe/London"},"outcome":"pending"}"#,
     );
     assert_eq!(echoed.status, 200, "{echoed:?}");
     assert_eq!(
         echoed.json(),
-        serde_json::json!({ "moment": "09:30", "outcome": "pending", "name": null })
+        serde_json::json!({
+            "moment": { "instant": "2026-10-25T08:30:00Z", "zone": "Europe/London" },
+            "outcome": "pending",
+            "name": null
+        })
     );
-    let pattern = moment["pattern"].as_str().expect("a pattern");
-    assert_eq!(
-        pattern,
-        "^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]{1,3})?)?$"
+    let refused = dev.send(
+        "POST",
+        "/items/echo",
+        &[],
+        r#"{"moment":{"instant":"2026-10-25T08:30:00Z","zone":"europe_london"},"outcome":"pending"}"#,
     );
+    assert_eq!(refused.status, 422, "{refused:?}");
 }
 
 #[test]

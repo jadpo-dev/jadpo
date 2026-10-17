@@ -357,6 +357,13 @@ pub enum Expr {
     Config {
         field: Key,
     },
+    /// A constant's value (area 3, Constants): `free_delivery_from` beside
+    /// its declaration, `pricing.vat_rate` from a library. Its value was
+    /// worked out and checked while compiling; an executor runs the
+    /// constant's own body, which can't fail.
+    Constant {
+        constant: Key,
+    },
     /// Nothing to run: a mistake already reported, or something a later
     /// area builds.
     Unchecked,
@@ -452,6 +459,12 @@ pub enum Callee {
     Caller(jadpo_std::http::PrincipalKind),
     /// `sessions.start(user_id)` or `sessions.end()` in an action (area 8).
     Session(jadpo_std::http::SessionOp),
+    /// `clock.advance(duration)` in a test (area 13, "Controlling time"):
+    /// the test's clock moved on.
+    AdvanceClock,
+    /// `translations.<key>(locale:, ...)` (area 10): the key, whose message
+    /// the runtime formats in the locale given.
+    Translation(String),
     /// Nothing that can be called: already reported.
     Unknown,
 }
@@ -472,6 +485,8 @@ impl Callee {
             | Callee::Construct(_)
             | Callee::Caller(_)
             | Callee::Session(_)
+            | Callee::AdvanceClock
+            | Callee::Translation(_)
             | Callee::Unknown => None,
         }
     }

@@ -430,6 +430,47 @@ fn fmt_layout_moves_a_shared_type_into_a_file_of_its_own() {
     assert_eq!(checked.code, 0, "{}", checked.stdout);
 }
 
+/// A type a second domain uses moves to `shared/types/`, and the move
+/// writes the registry line that keeps its key, `type planning.Days`
+/// (area 18, question 8, amended 2026-10-16).
+#[test]
+fn fmt_layout_promoting_to_shared_writes_a_registry_line() {
+    let root = folder("layout-shared");
+    write(&root, "app.jadpo", "application {}\n");
+    write(
+        &root,
+        "domains/planning/types/days.jadpo",
+        "public type Days = Int {\n    min: 1\n}\n",
+    );
+    write(
+        &root,
+        "domains/planning/actions/snooze_todo.jadpo",
+        "use planning/types { Days }\n\naction snooze_todo(days: Days) -> Unit {}\n",
+    );
+    write(
+        &root,
+        "domains/reminders/actions/remind.jadpo",
+        "use planning/types { Days }\n\naction remind(days: Days) -> Unit {}\n",
+    );
+    let output = jadpo(&root, &["fmt", "--layout"]);
+    assert_eq!(output.code, 0, "{}", output.stdout);
+    assert_eq!(
+        read(&root, "shared/types/days.jadpo"),
+        "public type Days = Int {\n    min: 1\n}\n"
+    );
+    assert_eq!(
+        read(&root, "database/identities.json"),
+        "{\n  \"type Days\": \"planning.Days\"\n}\n"
+    );
+    let checked = jadpo(&root, &["check"]);
+    let manifest = read(&root, "build/manifest.json");
+    assert!(
+        manifest.contains("\"id\": \"type planning.Days\""),
+        "{}\n{manifest}",
+        checked.stdout
+    );
+}
+
 #[test]
 fn fmt_puts_the_primary_declaration_first() {
     // Area 1, "Files and names": the declaration the file is named after
@@ -465,4 +506,33 @@ fn fmt_puts_the_primary_declaration_first() {
     let text = "type Shelf = Int {}\n\naction set_oven(shelf: Shelf) -> Unit {}\n";
     write(&loose, "set_oven.jadpo", text);
     assert_eq!(jadpo(&loose, &["fmt", "set_oven.jadpo", "--check"]).code, 0);
+}
+
+/// Area 10, "Fields in name order" (chunk 5.3f): `--check` fails on a
+/// `config { }` whose fields are out of name order, and `jadpo fmt` sorts
+/// them.
+#[test]
+fn check_fails_on_settings_out_of_name_order() {
+    let root = folder("config-order");
+    write(&root, "app.jadpo", FORMATTED_APP);
+    write(
+        &root,
+        "config.jadpo",
+        "config {\n    page_size: Int {\n        default: 25\n    }\n    mail_sender: Email\n}\n",
+    );
+    let output = jadpo(&root, &["fmt", "--check"]);
+    assert_eq!(output.code, 1);
+    assert!(
+        output
+            .stdout
+            .starts_with("error: This file isn't formatted\n --> config.jadpo:2:5\n"),
+        "{}",
+        output.stdout
+    );
+    jadpo(&root, &["fmt"]);
+    assert_eq!(
+        read(&root, "config.jadpo"),
+        "config {\n    mail_sender: Email\n    page_size: Int {\n        default: 25\n    }\n}\n"
+    );
+    assert_eq!(jadpo(&root, &["fmt", "--check"]).code, 0);
 }

@@ -10,19 +10,25 @@
 //! position so the same source always gives the same output.
 
 mod case;
+pub mod client_address;
 pub mod config;
+pub mod constants;
 pub mod data;
 mod failures;
 pub mod graph;
 pub mod identity;
 pub mod imports;
 mod layout;
+pub mod locales;
 pub mod lookups;
 mod naming;
+mod not_value;
 pub mod policy;
 mod resolve;
 pub mod routes;
+pub mod setting_move;
 mod std_lib;
+pub mod translations;
 mod tree;
 pub mod types;
 mod usage;
@@ -92,6 +98,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             out.extend(config::use_problems(db, project, file).iter().cloned());
             out.extend(types::type_problems(db, project, file).iter().cloned());
+            out.extend(
+                constants::constant_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
             out.extend(failure_problems(db, project, file).iter().cloned());
             out.extend(types::body_problems(db, project, file).iter().cloned());
             out.extend(types::recursion_problems(db, project, file).iter().cloned());
@@ -125,6 +136,17 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(config::connection_problems(db, project).iter().cloned());
         out.extend(config::test_value_problems(db, project).iter().cloned());
         out.extend(identity::identity_problems(db, project).iter().cloned());
+        out.extend(
+            client_address::client_address_problems(db, project)
+                .iter()
+                .cloned(),
+        );
+        out.extend(locales::locale_problems(db, project).iter().cloned());
+        out.extend(
+            translations::translation_problems(db, project)
+                .iter()
+                .cloned(),
+        );
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(routes::table_problems(db, project).iter().cloned());
         out.extend(routes::signin_problems(db, project).iter().cloned());
@@ -238,5 +260,13 @@ pub(crate) fn and_list(items: &[String]) -> String {
         [] => String::new(),
         [only] => only.clone(),
         [init @ .., last] => format!("{} and {last}", init.join(", ")),
+    }
+}
+
+pub(crate) fn or_list(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [only] => only.clone(),
+        [init @ .., last] => format!("{} or {last}", init.join(", ")),
     }
 }

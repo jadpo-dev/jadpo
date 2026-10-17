@@ -15,6 +15,11 @@
 //!   fields every caller who reached their record may read. A parameter
 //!   that reaches one is checked where the action or function is called,
 //!   against what the caller passes.
+//! - **What a write stores** (`policy.output_field_unproved`, chunk
+//!   5.1d). Each value a create, update or transition stores may be read
+//!   by everyone who may read the field it goes in (`stores`), followed
+//!   to the record it came from by [`Origin`]: which record a body read,
+//!   created or changed.
 //! - **Creates** (`policy.role_field_create_forbidden`). A create whose
 //!   entity's `create:` names only user fields sets one of them from the
 //!   caller, on every path: set from the request, it could only ever
@@ -53,6 +58,10 @@ use jadpo_std::http::PrincipalKind;
 use jadpo_std::read::Cardinality;
 use jadpo_std::write::WriteOp;
 
+mod stores;
+
+use stores::{Dest, Store};
+
 use super::proof::{Fact, Prover, Reached, Way};
 use super::{Effect, Grant, LineGate};
 use crate::data::Entities;
@@ -73,17 +82,20 @@ enum Src {
     Caller(PrincipalKind),
     /// A record of `entity`, which the caller reached as `reached`: each
     /// of its fields is that record's, except those a write just `given`,
-    /// which hold what it set them to.
+    /// which hold what it set them to. `origin` is which record it is,
+    /// when the body knows ([`Origin`]).
     Record {
         entity: String,
         reached: Reached,
         given: Vec<String>,
+        origin: Origin,
     },
     /// A field of a record of `entity`.
     Field {
         entity: String,
         field: String,
         reached: Reached,
+        origin: Origin,
     },
     /// The part `path` names (each field in turn; none for all of it) of
     /// the parameter at this position.
@@ -98,6 +110,51 @@ enum Src {
     /// field keeps it, and a record stays whole, so nothing it holds is
     /// lost. Never inside [`Src::Decided`] or itself.
     Deep(Box<Src>),
+}
+
+/// Which record a [`Src::Record`] or [`Src::Field`] is, when the body
+/// knows: the site that read, created or changed it, which runs at most
+/// once each time the body does, or once in each turn of the loop it is
+/// in. Two sources with the same origin are the same record, so a value
+/// copied from a record into a field of that record, or of one referring
+/// to it, is proved against how its readers reach it (chunk 5.1d). A
+/// summary holds none: another body's records are someone else's.
+type Origin = Option<u32>;
+
+/// `src` with no [`Origin`].
+fn erased(src: &Src) -> Src {
+    retold(src, &|_| None)
+}
+
+/// `src` with each [`Origin`] as `change` says.
+fn retold(src: &Src, change: &dyn Fn(u32) -> Origin) -> Src {
+    match src {
+        Src::Record {
+            entity,
+            reached,
+            given,
+            origin,
+        } => Src::Record {
+            entity: entity.clone(),
+            reached: reached.clone(),
+            given: given.clone(),
+            origin: origin.and_then(change),
+        },
+        Src::Field {
+            entity,
+            field,
+            reached,
+            origin,
+        } => Src::Field {
+            entity: entity.clone(),
+            field: field.clone(),
+            reached: reached.clone(),
+            origin: origin.and_then(change),
+        },
+        Src::Decided(inner) => Src::Decided(Box::new(retold(inner, change))),
+        Src::Deep(inner) => Src::Deep(Box::new(retold(inner, change))),
+        other => other.clone(),
+    }
 }
 
 /// `src` as what decided a value; nothing for a whole record.
@@ -187,12 +244,14 @@ impl Prov {
                     entity,
                     reached,
                     given,
+                    origin,
                 } => {
                     if !given.iter().any(|g| g == name) {
                         out.add(Src::Field {
                             entity: entity.clone(),
                             field: name.to_string(),
                             reached: reached.clone(),
+                            origin: *origin,
                         });
                     }
                 }
@@ -269,6 +328,23 @@ impl Prov {
         out
     }
 
+    /// With each source as `change` says.
+    fn retold(&self, change: &dyn Fn(&Src) -> Src) -> Prov {
+        let mut out = Prov::default();
+        for src in &self.whole {
+            out.add(change(src));
+        }
+        for (name, prov) in &self.fields {
+            out.fields.insert(name.clone(), prov.retold(change));
+        }
+        out
+    }
+
+    /// With no [`Origin`]: what a summary holds.
+    fn erased(&self) -> Prov {
+        self.retold(&erased)
+    }
+
     /// With every part deeper than [`DEPTH`] below `depth` made one deep
     /// whole, and every parameter's path cut there.
     fn widened(&self, depth: usize) -> Prov {
@@ -290,12 +366,15 @@ impl Prov {
 }
 
 /// What a caller of an action or function learns of it: where its result
-/// may have come from, in terms of its parameters, and which parts of
-/// which parameters reach what a caller is shown.
+/// may have come from, in terms of its parameters, which parts of which
+/// parameters reach what a caller is shown, and which it stores in a
+/// field, checked where it is called against everyone who may read that
+/// field ([`Store`]).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Summary {
     returns: Prov,
     sends: BTreeSet<(usize, Vec<String>)>,
+    stores: Vec<Store>,
 }
 
 /// The summary of a callable nothing resolves to.
@@ -305,6 +384,7 @@ static NOTHING: Summary = Summary {
         fields: BTreeMap::new(),
     },
     sends: BTreeSet::new(),
+    stores: Vec::new(),
 };
 
 impl Summary {
@@ -312,11 +392,23 @@ impl Summary {
     fn join(mut self, other: &Summary) -> Summary {
         self.returns.union(&other.returns);
         self.sends.extend(other.sends.iter().cloned());
+        for store in &other.stores {
+            if !self.stores.contains(store) {
+                self.stores.push(store.clone());
+            }
+        }
         self
     }
 
     /// Cut at [`DEPTH`], so a cycle's rounds end.
     fn widened(self) -> Summary {
+        let mut stores: Vec<Store> = Vec::new();
+        for store in self.stores {
+            let store = store.widened();
+            if !stores.contains(&store) {
+                stores.push(store);
+            }
+        }
         Summary {
             returns: self.returns.widened(0),
             sends: self
@@ -327,6 +419,7 @@ impl Summary {
                     (at, path)
                 })
                 .collect(),
+            stores,
         }
     }
 }
@@ -464,6 +557,12 @@ impl<'a> Flow<'a> {
             pc: Vec::new(),
             stored: None,
             decided: BTreeSet::new(),
+            stores: Vec::new(),
+            kept: BTreeSet::new(),
+            failing: Vec::new(),
+            looping: 0,
+            turns: BTreeSet::new(),
+            found: BTreeMap::new(),
         };
         if listed {
             walk.gate = super::reach::line_gate(self.db, self.project, &name)
@@ -483,6 +582,7 @@ impl<'a> Flow<'a> {
             let before = walk.locals.clone();
             walk.returns = Prov::default();
             walk.pc.clear();
+            walk.found.clear();
             walk.block(self, &body.block);
             if walk.locals == before {
                 break;
@@ -491,11 +591,14 @@ impl<'a> Flow<'a> {
         walk.report = true;
         walk.returns = Prov::default();
         walk.sends.clear();
+        walk.stores.clear();
         walk.pc.clear();
+        walk.found.clear();
         walk.block(self, &body.block);
         let summary = Summary {
-            returns: walk.returns,
+            returns: walk.returns.erased(),
             sends: walk.sends,
+            stores: walk.stores,
         };
         (summary, walk.problems)
     }
@@ -564,13 +667,36 @@ struct Walk<'b> {
     /// What decided that the statements being walked run: the conditions
     /// of the `if`s and `match`es around them and the loops they are in.
     pc: Vec<Src>,
-    /// While a write's values are worked out: its entity and each way the
+    /// While a write's values are worked out: its entity, each way the
     /// caller may have reached the record it changes, which a value
-    /// reading a stored field (`Post.view_count + 1`) comes from.
-    stored: Option<(String, Vec<Reached>)>,
+    /// reading a stored field (`Post.view_count + 1`) comes from, and
+    /// which record that is.
+    stored: Option<(String, Vec<Reached>, Origin)>,
     /// The fields already reported for deciding what a caller is shown:
     /// one problem for each, at the first value it decides.
     decided: BTreeSet<(String, String)>,
+    /// What it stores in a field from its parameters, for its callers to
+    /// check ([`Store`]).
+    stores: Vec<Store>,
+    /// The fields already reported for deciding a value stored: one
+    /// problem for each, at the first value it decides.
+    kept: BTreeSet<(String, String)>,
+    /// What decided each `reject` in the body: an action is
+    /// all-or-nothing, so these decide every value it stores, before them
+    /// or after. Gathered in every walk, so the last walk, which reports,
+    /// has them all.
+    failing: Vec<Src>,
+    /// How many loops (and inline functions, which run once per item) the
+    /// statements being walked are in.
+    looping: usize,
+    /// The [`Origin`]s given inside a loop: each turn's own record, the
+    /// same only within that turn, so a value carried into another turn
+    /// loses it.
+    turns: BTreeSet<u32>,
+    /// The value each record read by `get` was found by, when that is one
+    /// value known exactly: a record found by the `id` a write sets as a
+    /// reference is the record it refers to.
+    found: BTreeMap<u32, stores::Ident>,
 }
 
 impl Walk<'_> {
@@ -622,18 +748,82 @@ impl Walk<'_> {
     /// what decided it runs: what it tested decides the statements after
     /// it too when a `return` or `reject` inside it may have left.
     fn after(&mut self, site: SiteId, saved: Vec<Src>) {
+        if !self.leaves(site) {
+            self.pc = saved;
+        }
+    }
+
+    /// Whether a `return` or `reject` inside the statement at `site` may
+    /// leave the body.
+    fn leaves(&self, site: SiteId) -> bool {
         let at = self.body.site(site);
-        let leaves = self.body.sites.iter().any(|inner| {
+        self.body.sites.iter().any(|inner| {
             inner.start >= at.start
                 && inner.end <= at.end
                 && matches!(
                     inner.node,
                     Node::Stmt(Stmt::Return { .. }) | Node::Expr(Expr::Reject { .. })
                 )
-        });
-        if !leaves {
-            self.pc = saved;
+        })
+    }
+
+    /// The [`Origin`] of the record the site at `site` reads, creates or
+    /// changes: the site itself, a turn's own inside a loop.
+    fn mint(&mut self, site: SiteId) -> Origin {
+        if self.looping > 0 {
+            self.turns.insert(site.0);
         }
+        Some(site.0)
+    }
+
+    /// `src` with no turn's own [`Origin`].
+    fn unturned_src(&self, src: &Src) -> Src {
+        retold(src, &|origin| {
+            (!self.turns.contains(&origin)).then_some(origin)
+        })
+    }
+
+    /// `prov` with no turn's own [`Origin`].
+    fn unturned(&self, prov: &Prov) -> Prov {
+        prov.retold(&|src| self.unturned_src(src))
+    }
+
+    /// Each item of the list `prov` the loop at `site` walks: when the
+    /// list is the records one read gives, each turn's item is one of
+    /// them, the same record all through the turn.
+    fn item(&mut self, site: SiteId, prov: &Prov) -> Prov {
+        let values: Vec<&Src> = prov
+            .whole
+            .iter()
+            .filter(|src| !matches!(src, Src::Decided(_)))
+            .collect();
+        let [
+            Src::Record {
+                entity,
+                reached,
+                given,
+                origin: None,
+            },
+        ] = values.as_slice()
+        else {
+            return prov.clone();
+        };
+        if !prov.fields.is_empty() {
+            return prov.clone();
+        }
+        let origin = self.mint(site);
+        let mut out = Prov::of(Src::Record {
+            entity: entity.clone(),
+            reached: reached.clone(),
+            given: given.clone(),
+            origin,
+        });
+        for src in &prov.whole {
+            if matches!(src, Src::Decided(_)) {
+                out.add(src.clone());
+            }
+        }
+        out
     }
 
     fn span(&self, site: SiteId) -> Span {
@@ -650,10 +840,19 @@ impl Walk<'_> {
     fn statement(&mut self, flow: &Flow<'_>, site: SiteId) {
         match &self.body.site(site).node {
             Node::Stmt(stmt) => match stmt {
-                Stmt::Var { local, value } | Stmt::Assign { local, value } => {
+                Stmt::Var { local, value } => {
                     if let Some(value) = value {
                         let prov = self.eval(flow, *value);
                         let prov = self.with_pc(prov);
+                        self.local(*local, &prov);
+                    }
+                }
+                // A variable changed may keep its value into the next turn
+                // of a loop, where a turn's own record is another.
+                Stmt::Assign { local, value } => {
+                    if let Some(value) = value {
+                        let prov = self.eval(flow, *value);
+                        let prov = self.unturned(&self.with_pc(prov));
                         self.local(*local, &prov);
                     }
                 }
@@ -682,15 +881,40 @@ impl Walk<'_> {
                 }
                 Stmt::For { item, list, body } => {
                     let saved = self.pc.clone();
+                    self.looping += 1;
                     if let Some(list) = list {
                         let prov = self.eval(flow, *list);
-                        let prov = self.with_pc(prov);
-                        self.local(*item, &prov);
+                        let each = self.item(site, &prov);
+                        let each = self.with_pc(each);
+                        self.local(*item, &each);
                         // The body runs once for each item.
+                        let prov = self.with_pc(prov);
                         self.decided_by(&prov);
                     }
+                    // A turn that may have left decides every turn after
+                    // it, from the top of the body, as another item.
+                    if self.leaves(site) {
+                        let report = std::mem::replace(&mut self.report, false);
+                        let before = self.pc.clone();
+                        self.block(flow, body);
+                        let left: Vec<Src> = self
+                            .pc
+                            .iter()
+                            .filter(|src| !before.contains(src))
+                            .map(|src| self.unturned_src(src))
+                            .collect();
+                        self.pc = before;
+                        for src in left {
+                            if !self.pc.contains(&src) {
+                                self.pc.push(src);
+                            }
+                        }
+                        self.report = report;
+                    }
                     self.block(flow, body);
+                    self.looping -= 1;
                     self.after(site, saved);
+                    self.pc = self.pc.iter().map(|src| self.unturned_src(src)).collect();
                 }
                 Stmt::Emit { value } | Stmt::Assert { value, .. } | Stmt::Expr { value } => {
                     if let Some(value) = value {
@@ -712,18 +936,22 @@ impl Walk<'_> {
         };
         match expr {
             // A setting is the deployment's, never a record's (area 10).
-            Expr::Literal(_) | Expr::Config { .. } | Expr::Unchecked | Expr::Propagate { .. } => {
-                Prov::default()
-            }
+            // A constant is fixed in the code (area 3).
+            Expr::Literal(_)
+            | Expr::Config { .. }
+            | Expr::Constant { .. }
+            | Expr::Unchecked
+            | Expr::Propagate { .. } => Prov::default(),
             // A stored field an update by `id` reads is the record's.
             Expr::Stored { field } => {
                 let mut out = Prov::default();
-                if let Some((entity, ways)) = &self.stored {
+                if let Some((entity, ways, origin)) = &self.stored {
                     for reached in ways {
                         out.add(Src::Field {
                             entity: entity.clone(),
                             field: field_name(&field),
                             reached: reached.clone(),
+                            origin: *origin,
                         });
                     }
                 }
@@ -731,7 +959,7 @@ impl Walk<'_> {
             }
             Expr::Local(id) => self.locals.get(id.0 as usize).cloned().unwrap_or_default(),
             Expr::Field { receiver, field } => self.eval(flow, receiver).field(&field_name(&field)),
-            Expr::Call { callee, args, .. } => self.call(flow, &callee, &args),
+            Expr::Call { callee, args, .. } => self.call(flow, site, &callee, &args),
             Expr::Build { callee, fields, .. } => {
                 let mut out = Prov::default();
                 let mut given = Vec::new();
@@ -806,6 +1034,14 @@ impl Walk<'_> {
                 }
             }
             Expr::Reject { failure, fields } => {
+                // The action is all-or-nothing: what may make it fail
+                // decides everything it stores, in every turn.
+                for src in self.pc.clone() {
+                    let src = self.unturned_src(&src);
+                    if !self.failing.contains(&src) {
+                        self.failing.push(src);
+                    }
+                }
                 match &failure {
                     Some(failure) => self.failure(flow, failure, &fields, Some(site)),
                     None => {
@@ -847,20 +1083,67 @@ impl Walk<'_> {
                     WriteOp::Create => vec![fresh(base)],
                     WriteOp::Update | WriteOp::Delete => targets(&entity, base, target.as_ref()),
                 };
-                let outer = self.stored.replace((entity.clone(), ways.clone()));
+                // Which record it is: a change to a record loaded earlier is
+                // that record, and anything else is its own.
+                let origin = match op {
+                    WriteOp::Create => None,
+                    WriteOp::Update | WriteOp::Delete => target
+                        .as_ref()
+                        .and_then(|target| stores::loaded(&entity, &target.whole)),
+                }
+                .or_else(|| self.mint(site));
+                let outer = self.stored.replace((entity.clone(), ways.clone(), origin));
                 let mut values: Vec<(String, SiteId, Prov)> = Vec::new();
                 for (key, value) in &set {
                     let prov = self.eval(flow, *value);
                     values.push((field_name(key), *value, self.with_pc(prov)));
                 }
                 self.stored = outer;
-                if let Some(patch) = patch {
-                    self.eval(flow, patch);
-                }
-                for (_, fields) in &when_supplied {
-                    for (_, value) in fields {
-                        self.eval(flow, *value);
+                let patched = patch.map(|patch| (patch, self.eval(flow, patch)));
+                let mut supplied: Vec<(String, SiteId, Prov)> = Vec::new();
+                for (when, fields) in &when_supplied {
+                    // Whether the request supplied it decides what is set.
+                    let decided = patched
+                        .as_ref()
+                        .map(|(_, prov)| decide(&prov.field(&field_name(when))))
+                        .unwrap_or_default();
+                    for (key, value) in fields {
+                        let mut prov = self.eval(flow, *value);
+                        for src in &decided {
+                            prov.add(src.clone());
+                        }
+                        supplied.push((field_name(key), *value, self.with_pc(prov)));
                     }
+                }
+                // What it stores, for everyone who may read each field.
+                let mut dest = Dest::of(
+                    flow,
+                    &entity,
+                    target.as_ref(),
+                    origin,
+                    &values,
+                    patched
+                        .as_ref()
+                        .map(|(patch, _)| self.patch_fields(flow, *patch))
+                        .unwrap_or_default(),
+                    &supplied,
+                );
+                let changes = transition
+                    .as_ref()
+                    .map(|t| stores::transition_sets(flow, &entity, t))
+                    .unwrap_or_default();
+                self.hold(flow, &mut dest, site, &changes, None);
+                for (name, value, prov) in values.iter().chain(&supplied) {
+                    self.store(flow, &dest, name, *value, prov, None);
+                }
+                if let Some((patch, prov)) = &patched {
+                    for name in self.patch_fields(flow, *patch) {
+                        let field = self.with_pc(prov.field(&name));
+                        self.store(flow, &dest, &name, *patch, &field, None);
+                    }
+                }
+                if let Some(transition) = &transition {
+                    self.transition(flow, site, &dest, transition, ways.first());
                 }
                 // Which record a change finds shows what found it.
                 if self.report
@@ -888,6 +1171,7 @@ impl Walk<'_> {
                         entity: entity.clone(),
                         reached,
                         given: set_names.clone(),
+                        origin,
                     });
                 }
                 for (name, _, prov) in &values {
@@ -896,8 +1180,15 @@ impl Walk<'_> {
                 out
             }
             Expr::Request { .. } => Prov::default(),
+            // It runs once for each item, so what it gives keeps no
+            // turn's own record.
             Expr::Inline { body, .. } => match body {
-                Some(body) => self.eval(flow, body),
+                Some(body) => {
+                    self.looping += 1;
+                    let prov = self.eval(flow, body);
+                    self.looping -= 1;
+                    self.unturned(&prov)
+                }
                 None => Prov::default(),
             },
         }
@@ -995,7 +1286,13 @@ impl Walk<'_> {
         }
     }
 
-    fn call(&mut self, flow: &Flow<'_>, callee: &Callee, args: &[Option<SiteId>]) -> Prov {
+    fn call(
+        &mut self,
+        flow: &Flow<'_>,
+        site: SiteId,
+        callee: &Callee,
+        args: &[Option<SiteId>],
+    ) -> Prov {
         // An inline function's parameter holds the list it is given.
         let first = match args.first() {
             Some(Some(first)) => self.eval(flow, *first),
@@ -1053,10 +1350,23 @@ impl Walk<'_> {
                         .next(format!("Give `{entity}.id`'s `read:` everyone who may read the record")),
                     );
                 }
+                // The record it reads is the one with that `id`.
+                let origin = self.mint(site);
+                if let Some(origin) = origin {
+                    match provs.first().and_then(|id| stores::single(&id.whole)) {
+                        Some(by) => {
+                            self.found.insert(origin, by);
+                        }
+                        None => {
+                            self.found.remove(&origin);
+                        }
+                    }
+                }
                 Prov::of(Src::Record {
                     entity,
                     reached,
                     given: Vec::new(),
+                    origin,
                 })
             }
             Callee::Query(key) => {
@@ -1072,7 +1382,7 @@ impl Walk<'_> {
                         self.params_in(prov);
                     }
                 }
-                self.query(flow, key)
+                self.query(flow, site, key)
             }
             Callee::Action(key) | Callee::Function(key) => {
                 let summary = flow.summary(key);
@@ -1096,6 +1406,9 @@ impl Walk<'_> {
                             self.params_in(&prov.at(path));
                         }
                     }
+                }
+                for store in &summary.stores {
+                    self.passed_store(flow, site, key.name(), store, args, &provs);
                 }
                 summary.returns.substitute(&provs)
             }
@@ -1122,7 +1435,7 @@ impl Walk<'_> {
                 }
                 out
             }
-            Callee::Session(_) | Callee::Unknown => Prov::default(),
+            Callee::Session(_) | Callee::AdvanceClock | Callee::Unknown => Prov::default(),
             _ => all(),
         }
     }
@@ -1130,7 +1443,7 @@ impl Walk<'_> {
     /// What a query's result carries: an `Output` was proved where the
     /// query is declared; records and other objects are their entity's
     /// fields, read through its `read:`.
-    fn query(&self, flow: &Flow<'_>, key: &Key) -> Prov {
+    fn query(&mut self, flow: &Flow<'_>, site: SiteId, key: &Key) -> Prov {
         let Some(model) = crate::data::queries::query_model(
             flow.db,
             flow.project,
@@ -1142,12 +1455,18 @@ impl Walk<'_> {
             return Prov::default();
         }
         let reached = self.gated(flow.prover.read(&model.entity));
+        // One record is the one this read gives; a list's are many.
+        let origin = match model.cardinality {
+            Cardinality::One | Cardinality::Optional => self.mint(site),
+            Cardinality::List | Cardinality::Page => None,
+        };
         let element = element(
             flow,
             &model.entity,
             &model.element,
             &model.includes,
             &reached,
+            origin,
             &|reached| self.gated(reached),
         );
         if model.cardinality == Cardinality::Page {
@@ -1239,11 +1558,15 @@ impl Walk<'_> {
         for src in prov.flat() {
             match src {
                 Src::Record {
-                    entity, reached, ..
+                    entity,
+                    reached,
+                    origin,
+                    ..
                 } => by.add(Src::Field {
                     entity,
                     field: "id".to_string(),
                     reached,
+                    origin,
                 }),
                 other => by.add(other),
             }
@@ -1485,12 +1808,14 @@ fn targets(entity: &str, base: Reached, target: Option<&Prov>) -> Vec<Reached> {
 /// What a query's element of `entity` carries, read as `reached`: its
 /// records whole, or each field the element picks, and each include's
 /// records as `gated` says the caller reached them.
+#[allow(clippy::too_many_arguments)]
 fn element(
     flow: &Flow<'_>,
     entity: &str,
     element_of: &Element,
     includes: &[Include],
     reached: &Reached,
+    origin: Origin,
     gated: &dyn Fn(Reached) -> Reached,
 ) -> Prov {
     if element_of.ty == entity {
@@ -1498,6 +1823,7 @@ fn element(
             entity: entity.to_string(),
             reached: reached.clone(),
             given: Vec::new(),
+            origin,
         });
     }
     let mut out = Prov::default();
@@ -1507,6 +1833,7 @@ fn element(
                 entity: entity.to_string(),
                 field: field.clone(),
                 reached: reached.clone(),
+                origin,
             }),
             Source::Include(at) => {
                 let Some(inner) = includes.get(*at) else {
@@ -1527,6 +1854,7 @@ fn element(
                     &inner.element,
                     &inner.includes,
                     &next,
+                    None,
                     gated,
                 )
             }
@@ -1559,6 +1887,7 @@ fn unread(flow: &Flow<'_>, prov: &Prov) -> Vec<(String, String, Reached, bool)> 
                 entity,
                 field,
                 reached,
+                ..
             } => {
                 if !flow.prover.field_proved(&entity, &field, &reached) {
                     out.push((entity, field, reached, decided));
@@ -1568,6 +1897,7 @@ fn unread(flow: &Flow<'_>, prov: &Prov) -> Vec<(String, String, Reached, bool)> 
                 entity,
                 reached,
                 given,
+                ..
             } => {
                 let Some(model) = flow.entities.get(&entity) else {
                     continue;

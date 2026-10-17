@@ -237,6 +237,16 @@ fn unsupported_throw() {
 }
 
 #[test]
+fn a_throw_with_nothing_after_it_is_not_a_clean_habit() {
+    // `reject }` would be a second error, so the edit is not offered as
+    // one that makes the file right.
+    let (error, _) =
+        one_error("function fail_now(note: Note) -> Note {\n    if (true) { throw }\n}\n");
+    assert_eq!(error.rule.id, "syntax.unsupported_throw");
+    assert!(!error.clean, "{error:?}");
+}
+
+#[test]
 fn colon_required() {
     let text = "type ContactEmail = Text {\n    format TextFormat.email\n}\n";
     let (error, covered) = one_error(text);
@@ -482,6 +492,9 @@ fn a_semicolon_in_a_use_path_is_not_a_clean_split() {
     // Nor before the braces: a line can't start with `{`.
     let names = parse_file("use shared/types ;{ Pence }\n");
     assert!(!names.checkable(), "{:#?}", names.errors());
+    // Nor before a `.`: the new line would start with a field access.
+    let field = parse_file("action f() -> Unit {\n    var a: Count = b;.c\n}\n");
+    assert!(!field.checkable(), "{:#?}", field.errors());
 }
 
 #[test]

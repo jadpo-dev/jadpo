@@ -647,7 +647,11 @@ pub static COMMANDS: &[Command] = &[
                       `set` asks for one setting's value at a prompt, hidden when it is secret, \
                       checks it against the setting's type and stores it in `.env.local`, which \
                       it keeps out of git. A value is never an argument, so it cannot reach a \
-                      shell history, a log or a chat.",
+                      shell history, a log or a chat. `move` makes a constant a setting: a field \
+                      of its name and type in `config { }` with its value as `default:`, the \
+                      constant deleted and every read rewritten to `config.<name>`; it refuses, \
+                      changing nothing, a type a setting can't hold, a name a setting has, and a \
+                      read in a query, an update by `id`, a backfill or another constant.",
         arguments: &[
             Argument {
                 name: "action",
@@ -657,7 +661,7 @@ pub static COMMANDS: &[Command] = &[
             },
             Argument {
                 name: "field",
-                description: "The setting to store a value for",
+                description: "The setting to store a value for, or the constant to move",
                 required: false,
                 values: Values::Fixed(&[]),
             },
@@ -676,9 +680,17 @@ pub static COMMANDS: &[Command] = &[
                 description: "List the settings as data for tools",
                 command: "jadpo config check --json",
             },
+            Example {
+                description: "Make a constant a value each deployment can set",
+                command: "jadpo config move limits.max_retries",
+            },
         ],
         arguments_rule: &rule::CLI_CONFIG_ARGUMENTS,
         raises: &[
+            &rule::CONFIGURATION_MOVE_TYPE_UNSUPPORTED,
+            &rule::CONFIGURATION_MOVE_NAME_TAKEN,
+            &rule::CONFIGURATION_MOVE_READ_UNSUPPORTED,
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
             &rule::CONFIGURATION_VALUE_MISSING,
             &rule::CONFIGURATION_VALUE_INVALID,
             &rule::CLI_CONFIG_TTY_REQUIRED,

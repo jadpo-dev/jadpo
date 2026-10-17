@@ -13,6 +13,9 @@ use crate::{Db, File, Location, Place, parse};
 pub enum ItemKind {
     Type(Base),
     Function,
+    /// `constant name: Type = value` (area 3): its type is the signature's
+    /// result.
+    Constant,
     Action,
     Query,
     Fixture,
@@ -40,6 +43,7 @@ impl ItemKind {
             ItemKind::Type(Base::EmailMessage) => "email",
             ItemKind::Type(_) => "type",
             ItemKind::Function => "function",
+            ItemKind::Constant => "constant",
             ItemKind::Action => "action",
             ItemKind::Query => "query",
             ItemKind::Fixture => "fixture",
@@ -142,7 +146,7 @@ pub struct Item {
     /// Its position among the file's declarations, counting from 0.
     pub index: u32,
     pub signature: Signature,
-    /// A library's functions.
+    /// A library's functions and constants, in source order.
     pub functions: Vec<Item>,
     /// A route group's prefix: its fixed segments, placeholders left out.
     pub prefix: Option<Vec<String>>,
@@ -288,6 +292,18 @@ fn lower(decl: &Decl, index: u32) -> Option<Item> {
                 index,
             )
         },
+        Decl::ConstantDecl(decl) => Item {
+            signature: Signature {
+                result: decl.ty().map(|ty| written(ty.syntax())),
+                ..Signature::default()
+            },
+            ..item(
+                ItemKind::Constant,
+                name_of(decl.name())?,
+                decl.visibility().is_some(),
+                index,
+            )
+        },
         Decl::ActionDecl(decl) => Item {
             signature: signature(decl.param_list(), decl.fails_clause(), decl.ret_type()),
             ..item(
@@ -336,7 +352,9 @@ fn lower(decl: &Decl, index: u32) -> Option<Item> {
                 .into_iter()
                 .flat_map(|list| list.member_items())
                 .filter_map(|member| match member {
-                    MemberItem::Decl(inner @ Decl::FunctionDecl(_)) => lower(&inner, 0),
+                    MemberItem::Decl(inner @ (Decl::FunctionDecl(_) | Decl::ConstantDecl(_))) => {
+                        lower(&inner, 0)
+                    }
                     _ => None,
                 })
                 .enumerate()

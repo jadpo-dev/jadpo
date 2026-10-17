@@ -79,7 +79,10 @@ pub fn record_bodies(db: &dyn Db, project: Project) -> BTreeMap<String, String> 
             .or_default()
             .push((group, route));
     }
-    let wire = Wire { graph };
+    let wire = Wire {
+        graph,
+        locales: crate::locales::locales(db, project).plan.as_ref(),
+    };
     let apis = super::api_table(db, project);
     by_api
         .into_iter()

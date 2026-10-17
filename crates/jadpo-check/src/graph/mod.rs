@@ -45,6 +45,7 @@ pub fn kind_of(kind: &ItemKind) -> Option<Kind> {
     Some(match kind {
         ItemKind::Type(_) => Kind::Type,
         ItemKind::Function => Kind::Function,
+        ItemKind::Constant => Kind::Constant,
         ItemKind::Action => Kind::Action,
         ItemKind::Query => Kind::Query,
         ItemKind::Fixture => Kind::Fixture,
@@ -64,14 +65,32 @@ pub fn kind_of(kind: &ItemKind) -> Option<Kind> {
 }
 
 /// The key of the project declaration called `name` (not a library
-/// function), when it has a node.
+/// function), when it has a node: its kind and the born name of its
+/// identity, which carries its domain for a function or type declared in a
+/// domain (area 18, question 8, amended 2026-10-16).
 pub fn declaration_key(symbols: &dyn NameView, name: &str) -> Option<Key> {
     let symbol = symbols
         .declared(name)
         .iter()
         .find(|symbol| symbol.library.is_none())?;
     let kind = kind_of(&symbol.kind)?;
-    Some(symbols.registry().key(kind, name, None))
+    Some(symbols.registry().key(kind, &symbol.identity(), None))
+}
+
+/// The key of a declaration of `kind` called `name` in a file owned by
+/// `ownership` (not a library function).
+pub fn item_key(
+    registry: &Registry,
+    kind: Kind,
+    item: &ItemKind,
+    name: &str,
+    ownership: &jadpo_db::Ownership,
+) -> Key {
+    registry.key(
+        kind,
+        &jadpo_db::identity_name(name, item, false, ownership),
+        None,
+    )
 }
 
 /// The key of function `function` of library `library`.
@@ -84,30 +103,79 @@ pub fn library_function_key(registry: &Registry, library: &str, function: &str) 
     )
 }
 
-/// The born name of the type or entity called `host` now.
-fn born_host(registry: &Registry, host: &str) -> String {
-    let as_type = registry.born(Kind::Type, host, None);
-    if as_type != host {
-        return as_type;
+/// The key of the constant `name` (area 3): one beside its use, whose
+/// identity carries its domain as a function's does, or library
+/// `library`'s, under its library.
+pub fn constant_key(symbols: &dyn NameView, library: Option<&str>, name: &str) -> Option<Key> {
+    match library {
+        Some(library) => {
+            let born = symbols.registry().born(Kind::Library, library, None);
+            Some(symbols.registry().key(
+                Kind::Constant,
+                &format!("{library}.{name}"),
+                Some((library, &born)),
+            ))
+        }
+        None => {
+            let symbol = symbols
+                .declared(name)
+                .iter()
+                .find(|symbol| symbol.library.is_none() && symbol.kind == ItemKind::Constant)?;
+            Some(
+                symbols
+                    .registry()
+                    .key(Kind::Constant, &symbol.identity(), None),
+            )
+        }
     }
-    registry.born(Kind::Entity, host, None)
+}
+
+/// The identity of the type or entity `host` names now, and its born name:
+/// a type declared in a domain carries the domain (area 18).
+fn host_identity(symbols: &dyn NameView, host: &str) -> (String, String) {
+    let found = symbols.declared(host).iter().find(|symbol| {
+        symbol.library.is_none() && matches!(symbol.kind, ItemKind::Type(_) | ItemKind::Entity)
+    });
+    match found.and_then(|symbol| Some((symbol, kind_of(&symbol.kind)?))) {
+        Some((symbol, kind)) => {
+            let now = symbol.identity();
+            let born = symbols.registry().born(kind, &now, None);
+            (now, born)
+        }
+        None => {
+            let shown = crate::types::shown(host).to_string();
+            (shown.clone(), shown)
+        }
+    }
 }
 
 /// The key of field `path` (`Note.body`, `Outcome.paid.receipt`) under the
 /// type or entity `host`.
-pub fn field_key(registry: &Registry, host: &str, path: &[String]) -> Key {
-    let born = born_host(registry, host);
-    let now = format!("{host}.{}", path.join("."));
-    registry.key(Kind::Field, &now, Some((host, &born)))
+pub fn field_key(symbols: &dyn NameView, host: &str, path: &[String]) -> Key {
+    let (now, born) = host_identity(symbols, host);
+    host_field_key(symbols.registry(), &now, &born, path)
+}
+
+/// The key of field `path` under the host whose identity is `now`, born
+/// `born`.
+fn host_field_key(registry: &Registry, now: &str, born: &str, path: &[String]) -> Key {
+    let field = format!("{now}.{}", path.join("."));
+    registry.key(Kind::Field, &field, Some((now, born)))
+}
+
+/// The key of field `path` of entity `entity`, whose identity is its name.
+pub fn entity_field_key(registry: &Registry, entity: &str, path: &[String]) -> Key {
+    let born = registry.born(Kind::Entity, entity, None);
+    host_field_key(registry, entity, &born, path)
 }
 
 /// The key of variant `variant` of enum `host`.
-pub fn variant_key(registry: &Registry, host: &str, variant: &str) -> Key {
-    let born = born_host(registry, host);
-    registry.key(
+pub fn variant_key(symbols: &dyn NameView, host: &str, variant: &str) -> Key {
+    let (now, born) = host_identity(symbols, host);
+    symbols.registry().key(
         Kind::Variant,
-        &format!("{host}.{variant}"),
-        Some((host, &born)),
+        &format!("{now}.{variant}"),
+        Some((&now, &born)),
     )
 }
 
@@ -120,10 +188,8 @@ pub fn type_ref(symbols: &dyn NameView, ty: &Ty) -> TypeRef {
         Ty::Prim(builtin) => TypeRef::Builtin(*builtin),
         Ty::Named(name) => declaration_key(symbols, name)
             .map_or_else(|| TypeRef::Std(name.clone(), Vec::new()), TypeRef::Node),
-        Ty::Field(host, path) => TypeRef::Field(field_key(symbols.registry(), host, path)),
-        Ty::Variant(host, variant) => {
-            TypeRef::Variant(variant_key(symbols.registry(), host, variant))
-        }
+        Ty::Field(host, path) => TypeRef::Field(field_key(symbols, host, path)),
+        Ty::Variant(host, variant) => TypeRef::Variant(variant_key(symbols, host, variant)),
         Ty::List(inner) => TypeRef::List(boxed(inner)),
         Ty::Set(inner) => TypeRef::Set(boxed(inner)),
         Ty::Map(key, value) => TypeRef::Map(boxed(key), boxed(value)),
@@ -150,11 +216,24 @@ pub fn callable_key(
     match (decl, function) {
         (Decl::LibraryDecl(library), Some(index)) => {
             let name = library.name().as_ref().and_then(tree::name_text)?;
-            let function = tree::library_functions(library)
+            let member = tree::library_members(library)
                 .into_iter()
                 .nth(index as usize)?;
-            let function = function.name().as_ref().and_then(tree::name_text)?;
-            Some(library_function_key(symbols.registry(), &name, &function))
+            let member_name = tree::decl_name(&member)
+                .as_ref()
+                .and_then(tree::name_text)?;
+            match member {
+                Decl::ConstantDecl(_) => constant_key(symbols, Some(&name), &member_name),
+                _ => Some(library_function_key(
+                    symbols.registry(),
+                    &name,
+                    &member_name,
+                )),
+            }
+        }
+        (Decl::ConstantDecl(_), None) => {
+            let name = tree::decl_name(decl).as_ref().and_then(tree::name_text)?;
+            constant_key(symbols, None, &name)
         }
         (Decl::TestDecl(test), None) => {
             let name = test.string_token()?.text().trim_matches('"').to_string();
@@ -220,6 +299,9 @@ pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
         }
     }
     for node in records(db, project) {
+        builder.node(node.clone());
+    }
+    for node in translation_nodes(db, project) {
         builder.node(node.clone());
     }
     let (nodes, edges) = policy_nodes(db, project);
@@ -301,6 +383,51 @@ pub fn records(db: &dyn Db, project: Project) -> Vec<Node> {
             lines: (1, lines.line(end.saturating_sub(1))),
         });
         node.digest = Some(jadpo_graph::Digest::of([*text]));
+        out.push(node);
+    }
+    out
+}
+
+/// Each translation key of the default locale's file (area 10), with a
+/// digest of its message in every supported locale, so an edit to any
+/// message changes the key and reaches the tests of what calls it.
+#[salsa::tracked(returns(ref))]
+pub fn translation_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
+    let registry = registry(db, project);
+    let Some(file) = crate::translations::default_translation_file(db, project) else {
+        return Vec::new();
+    };
+    let text = project
+        .translations(db)
+        .iter()
+        .find(|record| record.path == file.path)
+        .and_then(|record| record.text.as_ref().ok());
+    let lines = text.map(|text| LineIndex::new(text));
+    let mut out = Vec::new();
+    for entry in &file.entries {
+        let mut node = Node::new(
+            registry.key(Kind::TranslationKey, &entry.key, None),
+            Kind::TranslationKey,
+            entry.key.clone(),
+        );
+        if let Some(lines) = &lines {
+            let last = entry
+                .message_span
+                .end
+                .saturating_sub(1)
+                .max(entry.key_span.start);
+            node.place = Some(jadpo_graph::Place {
+                file: file.path.clone(),
+                start: entry.key_span.start,
+                end: entry.message_span.end,
+                lines: (lines.line(entry.key_span.start), lines.line(last)),
+            });
+        }
+        let messages = crate::translations::messages_of(db, project, &entry.key);
+        node.digest = Some(jadpo_graph::Digest::of(
+            std::iter::once(entry.key.as_str())
+                .chain(messages.iter().flat_map(|(tag, text)| [*tag, *text])),
+        ));
         out.push(node);
     }
     out
@@ -414,7 +541,7 @@ pub fn policy_nodes(
             node.place = at(&format!("field {}", field.field));
             node.digest = Some(Digest::of(parts.iter().map(String::as_str)));
             node.domain = domain.clone();
-            let target = field_key(registry, name, std::slice::from_ref(&field.field));
+            let target = entity_field_key(registry, name, std::slice::from_ref(&field.field));
             node.parent = Some(target.clone());
             node.detail = Detail::FieldRestriction {
                 server_only: field.server_only,

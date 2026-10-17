@@ -5,6 +5,8 @@
 # application's own nouns (todo, invoice, customer) to make a check pass.
 
 # Rust keywords and ordinary programming vocabulary
+# ordinary English: `configuration.move_name_taken`
+taken
 mut
 self
 add
@@ -243,6 +245,9 @@ signing_key
 database_url
 page_size
 sign_out
+# area 8's sign-in (`sign_in` providers and routes) and OpenAPI's `security`
+sign_in
+security
 # area 8's sign-in methods, route authentication and runtime failure codes
 browser_session
 fresh
@@ -298,3 +303,27 @@ issued_key
 # What the generated `POST /auth/exchange` answers with (area 8), which the
 # API record writes as an `output` section of its own.
 exchanged_token
+
+# Words the language defines for time (area 10): `temporal.add_days`'s
+# `days`, `Dst.later`, the `Weekday` variants, and an `InstantRange`, which
+# is also ordinary programming vocabulary (rowan's `text_range`).
+days
+later
+saturday
+sunday
+range
+
+# Words the language defines for showing time (area 10): `temporal.format`'s
+# `locale:`, a `Locale`.
+locale
+
+# Ordinary programming vocabulary the packages design's examples (2026-10-16)
+# also declare as fields: a file, an import, a step of a multi-step call, a
+# reply, when something started, how many attempts, a session's renewal.
+attempts
+file
+import
+renewal
+reply
+started
+step

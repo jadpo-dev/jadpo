@@ -276,7 +276,9 @@ A condition must be one the database can use an index for: a field,
 named first, compared with a value. A function applied to a field, two
 fields compared, and a value worked out in the query are refused; values
 are parameters and their fields, literals, enum values, lists of those and
-`clock.now`. `<` and the other orderings take numbers, times, dates and
+`clock.now`. A constant (area 3, [Constants](03-logic.md#constants)) is
+accepted wherever a literal is, since it is a value fixed while compiling
+(decided 2026-10-16, built in chunk 5.3e). `<` and the other orderings take numbers, times, dates and
 durations, as they do in a body (area 3). A field that is `none` meets no
 comparison but `!=`, and `not` keeps that meaning, so SQL's `NULL` never
 shows through. A `where:` line can't compare with a value that may be
@@ -1103,7 +1105,8 @@ in one step and nothing needs checking. On the right of `set:`,
 `video.view_count` would be the copy loaded earlier. Such an update takes the
 record's `id` instead of a loaded record, and its values may use only
 parameters, constants, `clock.now` and the record's stored fields, so no
-increment is ever lost.
+increment is ever lost. A constant here is a `constant` declaration
+(area 3, decided 2026-10-16, built in chunk 5.3e).
 
 Which isolation level an action runs at follows from what it does (Richard,
 2026-10-15). An action that loads no record, neither itself nor through any
@@ -1819,12 +1822,38 @@ error: `manual_pages * 2` is worked out, and a query computes nothing
    |
 24 |     where: Manual.page_count > manual_pages * 2
    |                                ^^^^^^^^^^^^^^^^ computed
-  reason: A query's values are its parameters and their fields, literals, enum values, lists of those and `clock.now`; anything worked out from them is computed before the call.
+  reason: A query's values are its parameters and their fields, literals, constants, enum values, lists of those and `clock.now`; anything worked out from them is computed before the call.
   next: Work the value out in the action, and pass it as a parameter (agent)
   rule: query.value_unsupported
   help: docs/language/06-reads-and-writes.html#query-value-unsupported
 
 check failed: 1 error, 1 file
+```
+
+A constant counts as a literal here (decided 2026-10-16, built in chunk
+5.3e), so this is accepted. Arithmetic on a constant inside the query is
+still worked out, and still this error: give the result a constant of its
+own.
+
+```jadpo check project=query-constant
+type PageCount = Int {
+    min: 1
+    max: 5000
+}
+
+entity Manual {
+    id: Uuid
+    page_count: PageCount
+}
+
+constant longest_manual: PageCount = 900
+
+query long_manuals() -> List<Manual> {
+    from: Manual
+    where: Manual.page_count > longest_manual
+    order: [Manual.page_count asc]
+    limit: 20
+}
 ```
 
 ### `query.optional_value`
@@ -3611,3 +3640,4 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | Several outside calls | Writes after the last call; no transaction during calls; the step record in the runtime's own short transactions, deleted in the commit; a rerun replays with the record's `clock.now` and stops as `diverged` when a fresh read changes a request; a write refusable after a step took effect is warned (Richard, area 12) | 2026-10-16 |
 | Entities in Redis | Get, create, update and delete by `id`; lookup by a `unique:` field; equality on one indexed field, paged in creation order, and its count; revision checks; simple-equality grants checked after reading; everything else a compile error naming PostgreSQL; expired records hidden (Richard) | 2026-10-16 |
 | Redis counters and lifecycles | Counter updates by `id` allowed as one Redis `increment`; no lifecycles on a Redis entity (decided for Richard) | 2026-10-16 |
+| Constants in queries and updates | A `constant` (area 3) is a value fixed while compiling, so a query accepts one wherever it accepts a literal (`query.value_unsupported` names constants among a query's values), and the "constants" an update by `id` may use are these. Arithmetic in a query stays refused, on constants too. Built in chunk 5.3e (Richard) | 2026-10-16 |

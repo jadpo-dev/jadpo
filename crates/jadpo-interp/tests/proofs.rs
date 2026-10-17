@@ -25,21 +25,25 @@ fn load(files: &[(String, String)]) -> Option<Program> {
     sorted.sort();
     let inputs: Vec<File> = sorted
         .iter()
+        .filter(|(path, _)| !jadpo_db::is_translation(path))
         .map(|(path, text)| File::new(&db, path.clone(), text.clone()))
+        .collect();
+    let translations: Vec<jadpo_db::Record> = sorted
+        .iter()
+        .filter(|(path, _)| jadpo_db::is_translation(path))
+        .map(|(path, text)| jadpo_db::Record {
+            path: path.clone(),
+            text: Ok(text.clone()),
+        })
         .collect();
     let layout = if files.iter().any(|(path, _)| path == "app.jadpo") {
         Layout::Project
     } else {
         Layout::Loose
     };
-    let project = Project::new(
-        &db,
-        inputs,
-        Vec::new(),
-        layout,
-        Default::default(),
-        Vec::new(),
-    );
+    let project = Project::builder(inputs, Vec::new(), layout, Default::default(), Vec::new())
+        .translations(translations)
+        .new(&db);
     // A project written to show an error doesn't run.
     Program::load(&db, project).ok()
 }

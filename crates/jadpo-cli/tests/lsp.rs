@@ -170,13 +170,14 @@ fn an_editor_gets_diagnostics_hover_and_definitions_over_stdio() {
     assert_eq!(initialized["result"]["serverInfo"]["name"], "jadpo");
     editor.notify("initialized", json!({}));
 
-    // The server asks the editor to watch the project's files.
+    // The server asks the editor to watch the project's files and its
+    // translation files.
     let watch = editor.wait(|message| message["method"] == "client/registerCapability");
     let registration = &watch["params"]["registrations"][0];
     assert_eq!(registration["method"], "workspace/didChangeWatchedFiles");
     assert_eq!(
         registration["registerOptions"]["watchers"][0]["globPattern"],
-        "**/*.jadpo"
+        "**/{*.jadpo,translations/*.json}"
     );
     editor.send(json!({"jsonrpc": "2.0", "id": watch["id"], "result": null}));
 

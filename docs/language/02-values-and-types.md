@@ -24,13 +24,13 @@ These types exist without being declared, and their names cannot be reused.
 |---|---|---|
 | Representation | `Bool`, `Int`, `Decimal`, `Text`, `Bytes`, `Uuid` | The raw material for your own types. `Int` is an exact 64-bit integer and `Decimal` an exact decimal with a required `scale` (see Review, question 8). |
 | Validated text | `Email`, `Url`, `IpAddress` | Ready-made named types built on `Text`. |
-| Time | `Instant`, `CalendarDate`, `Time`, `Duration`, `Zone`, `Locale`, `Weekday` and the formatting types | Described in area 10, Configuration and time. |
+| Time | `Instant`, `CalendarDate`, `ZonedTime`, `Duration`, `Zone`, `Locale`, `Weekday` and the formatting types | Described in area 10, Configuration and time (`ZonedTime` was `Time`, renamed in area 10, question 5). |
 | Containers | `List<T>`, `Set<T>`, `Map<K, V>` | Described below. |
-| Translation | `PluralCount`, `TextDirection` | `PluralCount` is a whole number that picks a message's plural form, used directly as a `Message` field; `TextDirection` is a locale's direction, `.left_to_right` or `.right_to_left` (area 10; decided 2026-10-16, built in chunk 5.3). |
+| Translation | `PluralCount`, `TextDirection` | `PluralCount` is a whole number that picks a message's plural form, used directly as a `Message` field; `TextDirection` is a locale's direction, `.left_to_right` or `.right_to_left` (area 10; decided 2026-10-16, not built yet: chunk 5.6b). |
 | Files | `File`, `FileUpload`, `UploadSlot`, `FileContents` | A stored file (its key, name, size and type) as an entity field; the token of a finished upload in an `Input`; the signed address, or addresses for each part, an upload goes to; and what `store.read` returns, a file's bytes for passing on (to a provider, a PDF service, an email), which the format helpers do not accept (area 16, decided 2026-10-16). |
 | Batches | `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `CsvFormat` | A batch run, as the batch helpers return it and as an entity field can store it; its progress from `batches.status`; one bad row or failed item, without its value; what `finished:` receives after reading (or `batches.each`) and after writing, the latter holding the stored `File`; and who a CSV is written for, `CsvFormat.spreadsheet` or `.standard` (area 12, decided 2026-10-16; the format namespaces are chunk 5.4's). |
 | Services | `SearchText`, `OAuthGrant`, `AnyObject` | What people type into a search box (area 16); a connection's credential held for each owner record, `OAuthGrant { owner: ... }`, written only in a connection's `credential:` and never readable by code (area 11); and, only as a package operation's input field, any of the app's object types, sent in its JSON form (Postmark's template variables, Stripe's metadata) (decided 2026-10-16). |
-| Bases | `Object`, `Enum`, `Input`, `Output` | Used only after `=` in a `type` declaration (decided 2026-10-12). Areas add their own bases the same way: `Failure` (area 4), `Event` (area 12), `EmailMessage` (area 16), `Document`, a template rendered to HTML or PDF (area 16, decided 2026-10-16), and `Message`, a translated message whose fields are its placeholders (area 10, decided 2026-10-16, built in chunk 5.3). |
+| Bases | `Object`, `Enum`, `Input`, `Output` | Used only after `=` in a `type` declaration (decided 2026-10-12). Areas add their own bases the same way: `Failure` (area 4), `Event` (area 12), `EmailMessage` (area 16), `Document`, a template rendered to HTML or PDF (area 16, decided 2026-10-16), and `Message`, a translated message whose fields are its placeholders (area 10, decided 2026-10-16, not built yet: chunk 5.6b). |
 | Nothing | `Unit` | What an action returns when it returns nothing. |
 
 The batch types' fields (area 12, decided 2026-10-16):
@@ -2450,7 +2450,7 @@ Not built yet: a map literal, and walking or searching a set or map
 (Collections), which no roadmap chunk builds yet; and the JSON forms of
 sets, maps, large `Int`s and `Decimal`s, which come with routes in chunk
 4.1. The built-in `PluralCount` and `TextDirection` and the `Message` base
-come with translations in chunk 5.3 (area 10). The file, batch and
+come with translations as messages in chunk 5.6b (area 10). The file, batch and
 service types and the `Document` base come with the features that use
 them: `CsvFormat` with the standard library (chunk 5.5), `OAuthGrant` with
 packages (Phase 7), and the rest after the first build or, for batches,

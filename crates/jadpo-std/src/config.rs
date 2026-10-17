@@ -25,14 +25,30 @@ pub enum Spelling {
     Zone,
     /// A BCP 47 tag (`en-GB`) for a `Locale` variant (`en_gb`).
     Locale,
+    /// A duration as source writes it (`5m`), which the codec reads as the
+    /// wire's ISO 8601 (`PT5M`, area 10).
+    Duration,
 }
 
 impl Spelling {
+    /// How enum `name` is spelt.
+    pub fn of(name: &str) -> Spelling {
+        match name {
+            crate::ZONE => Spelling::Zone,
+            crate::LOCALE => Spelling::Locale,
+            _ => Spelling::Plain,
+        }
+    }
+
     /// The text the codec reads for `text` as an environment gives it, or
     /// `None` when this spelling has no such zone or locale.
     pub fn variant(self, text: &str) -> Option<String> {
         let table = match self {
             Spelling::Plain => return Some(text.to_string()),
+            Spelling::Duration => {
+                let millis = i64::try_from(crate::Dur::parse(text)?.millis).ok()?;
+                return Some(crate::iso_duration(millis));
+            }
             Spelling::Zone => crate::zones::ZONES,
             Spelling::Locale => crate::zones::LOCALES,
         };
@@ -45,7 +61,7 @@ impl Spelling {
     /// The environment spelling of variant `variant`.
     pub fn spelling(self, variant: &str) -> String {
         let table = match self {
-            Spelling::Plain => return variant.to_string(),
+            Spelling::Plain | Spelling::Duration => return variant.to_string(),
             Spelling::Zone => crate::zones::ZONES,
             Spelling::Locale => crate::zones::LOCALES,
         };

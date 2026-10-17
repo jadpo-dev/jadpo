@@ -22,7 +22,7 @@ use crate::case::starts_upper;
 use crate::std_lib::{Namespace, Operation, StdNames};
 use crate::tree::{self, dotted};
 
-fn plural(n: usize, word: &str) -> String {
+pub(super) fn plural(n: usize, word: &str) -> String {
     if n == 1 {
         format!("1 {word}")
     } else {
@@ -346,6 +346,13 @@ impl Body<'_> {
             {
                 return self.session_call(op, call, callee, &written);
             }
+            if head == "clock" && member == "advance" {
+                return self.advance_clock(call, callee, &written);
+            }
+            // A translation key's call, typed by the default locale's file.
+            if head == "translations" {
+                return self.translation_call(call, callee, member, &written);
+            }
             // Nothing else a generated namespace holds is called: `clock.now`
             // is a value, and the rest wait for their areas.
             let span = self.span(callee);
@@ -636,6 +643,9 @@ impl Body<'_> {
             .iter()
             .map(|(name, ty)| (name.clone(), self.table.resolve_std(ty)))
             .collect();
+        let table = written
+            .split_once('.')
+            .and_then(|(namespace, name)| jadpo_std::operation(namespace, name));
         let args = Self::arguments(call);
         let mut slots: Vec<Option<usize>> = Vec::new();
         let mut unknown = false;
@@ -671,7 +681,12 @@ impl Body<'_> {
             };
             let param = slot.map(|slot| &params[slot].1);
             let is_function = matches!(param, Some(Ty::Function(..)));
-            if is_literal(&value) || matches!(value, Expr::ListExpr(_)) || is_function {
+            // A format is read as written, never as a value.
+            let is_format = slot
+                .and_then(|slot| table.and_then(|op| op.params.get(slot)))
+                .is_some_and(|p| p.kind == jadpo_std::Kind::Format);
+            if is_literal(&value) || matches!(value, Expr::ListExpr(_)) || is_function || is_format
+            {
                 actual.push(None);
                 continue;
             }
@@ -686,6 +701,7 @@ impl Body<'_> {
             self.unify(&result, expected, &mut bound);
         }
         let mut inline = Vec::new();
+        let mut format: Option<(Expr, jadpo_std::TimeFormatSpec)> = None;
         for ((arg, slot), ty) in args.iter().zip(&slots).zip(actual) {
             let Some(value) = arg.expr() else { continue };
             let Some(slot) = slot else {
@@ -708,7 +724,31 @@ impl Body<'_> {
                 }
                 continue;
             }
+            let kind = table.and_then(|op| op.params.get(*slot)).map(|p| p.kind);
+            if let Some(jadpo_std::Kind::OneOf(accepts)) = kind {
+                let name = params[*slot].0.clone();
+                self.built_on_argument(&value, ty, accepts, written, &name);
+                continue;
+            }
+            if kind == Some(jadpo_std::Kind::Clock) {
+                self.clock_argument(&value, written);
+                continue;
+            }
+            if kind == Some(jadpo_std::Kind::Format) {
+                if let Some(spec) = self.format_argument(&value, written) {
+                    format = Some((value.clone(), spec));
+                }
+                continue;
+            }
             let expected = substitute(&param, &bound);
+            // A value that may be `none` (`header: Text?`) takes a value
+            // built on the type, or one that may be `none`.
+            if let Ty::Nullable(inner) = &expected
+                && let Some(accepts) = built_on(inner)
+            {
+                self.nullable_built_on_argument(&value, ty, accepts, &expected);
+                continue;
+            }
             if let Some(accepts) = built_on(&expected) {
                 let name = params[*slot].0.clone();
                 self.built_on_argument(&value, ty, accepts, written, &name);
@@ -723,13 +763,32 @@ impl Body<'_> {
             self.inline(&lambda, &from, &to, &mut bound);
         }
         self.divisors(&args, &slots, written);
+        if let Some(table) = table {
+            self.std_options(table, call, &args, &slots, written);
+        }
+        if let Some((format, spec)) = &format
+            && let Some(value) = args
+                .iter()
+                .zip(&slots)
+                .find(|(_, slot)| **slot == Some(0))
+                .and_then(|(arg, _)| arg.expr())
+        {
+            self.format_needs_time(&value, format, spec, written);
+        }
         let given = args.len();
         let extra = slots.iter().filter(|slot| slot.is_none()).count();
+        // An option may be left out (area 10's `dst:`).
+        let optional = |slot: usize| {
+            table
+                .and_then(|op| op.params.get(slot))
+                .is_some_and(|param| param.optional)
+        };
         let missing: Vec<String> = params
             .iter()
             .zip(&filled)
-            .filter(|(_, filled)| !**filled)
-            .map(|((name, _), _)| format!("`{name}`"))
+            .enumerate()
+            .filter(|(slot, (_, filled))| !**filled && !optional(*slot))
+            .map(|(_, ((name, _), _))| format!("`{name}`"))
             .collect();
         if !unknown && (extra > 0 || !missing.is_empty()) {
             let span = self.arg_list_span(call);
@@ -759,6 +818,19 @@ impl Body<'_> {
                 ))
                 .next(next),
             );
+        }
+        if let Some(table) = table
+            && matches!(
+                table.op,
+                jadpo_std::Op::TemporalFormat | jadpo_std::Op::TemporalFormatRelative
+            )
+        {
+            self.locale_argument(call, &args, &slots, table, written);
+        }
+        if let Some(table) = table
+            && table.op == jadpo_std::Op::LocaleFromAcceptLanguage
+        {
+            self.locales_for_choosing(call, written);
         }
         substitute(&result, &bound)
     }
@@ -843,14 +915,15 @@ impl Body<'_> {
         {
             return;
         }
-        let wanted = match accepts {
-            [only] => format!("a value built on `{}`", only.name()),
-            _ => "a number".to_string(),
-        };
         let built: Vec<String> = accepts
             .iter()
             .map(|prim| format!("`{}`", prim.name()))
             .collect();
+        let wanted = match accepts {
+            [only] => format!("a value built on `{}`", only.name()),
+            _ if accepts.iter().all(|prim| prim.is_number()) => "a number".to_string(),
+            _ => format!("a value built on {}", built.join(" or ")),
+        };
         let span = self.span(value);
         let reason = if nullable {
             format!("`{written}`'s `{param}` is never `none`, and `{ty}` may be `none`.")
@@ -870,6 +943,33 @@ impl Body<'_> {
             .reason(reason)
             .next(format!("Pass {wanted} here")),
         );
+    }
+
+    /// An argument to a parameter that takes `none` or a value built on one
+    /// of `accepts`: `Text?` takes `none`, a `Text`, a named type built on
+    /// `Text`, and either of those that may be `none`.
+    fn nullable_built_on_argument(
+        &mut self,
+        value: &Expr,
+        ty: Option<Ty>,
+        accepts: &[Prim],
+        expected: &Ty,
+    ) {
+        // A literal is `none` or written as the type is.
+        let Some(ty) = ty else {
+            self.check(value, expected);
+            return;
+        };
+        if ty.has_error() || matches!(ty, Ty::None) {
+            return;
+        }
+        let built = self
+            .table
+            .representation(ty.strip_nullable())
+            .is_some_and(|prim| accepts.contains(&prim));
+        if !built {
+            self.require(value, &ty, expected);
+        }
     }
 
     /// Binds the type variables in `param` from an argument's type, read
@@ -998,7 +1098,12 @@ impl Body<'_> {
         field: Option<Ty>,
         call: &ast::CallExpr,
     ) -> Ty {
-        let (ty, verdict) = self.construct_checked(written, field, call);
+        let (ty, mut verdict) = self.construct_checked(written, field, call);
+        // A construction in a constant's value is worked out and checked
+        // against its rules while compiling (area 3), so it never fails.
+        if self.context == Context::Constant {
+            verdict = Fallible::Never;
+        }
         self.facts
             .constructions
             .insert(node_key(call.syntax()), verdict);
@@ -1024,11 +1129,11 @@ impl Body<'_> {
                     Ty::Prim(prim)
                 } else {
                     match self.table.def(written) {
-                        Some(Def::Scalar { .. }) => Ty::Named(written.to_string()),
+                        Some(Def::Scalar { .. }) => Ty::Named(self.table.canonical(written)),
                         Some(Def::Enum { variants }) => {
                             let variants = variants.clone();
                             self.enum_constructor(written, &variants, call);
-                            return (Ty::Named(written.to_string()), Fallible::Unknown);
+                            return (Ty::Named(self.table.canonical(written)), Fallible::Unknown);
                         }
                         Some(Def::Fields { base, .. }) => {
                             if matches!(base, FieldsBase::Entity | FieldsBase::Failure) {
@@ -1051,7 +1156,16 @@ impl Body<'_> {
                                 ))
                                 .next(format!("Write `{written} {{ ... }}` with each field")),
                             );
-                            return (Ty::Named(written.to_string()), Fallible::Unknown);
+                            return (Ty::Named(self.table.canonical(written)), Fallible::Unknown);
+                        }
+                        Some(Def::Format { .. }) => {
+                            self.args_only(call);
+                            let span = call
+                                .expr()
+                                .map_or_else(|| self.span(call), |e| self.span(&e));
+                            self.out
+                                .push(super::super::formats::not_a_value(written, span, false));
+                            return (Ty::Error, Fallible::Unknown);
                         }
                         None => {
                             self.args_only(call);
@@ -1082,8 +1196,12 @@ impl Body<'_> {
         }
         let value = &args[0].1;
         if is_literal(value) {
-            // Checked while compiling (area 2).
+            // Checked while compiling (area 2), and decoded as the type it
+            // builds: `DueAt("2026-10-25T08:30:00Z")` is an instant.
             self.literal(value, &target, true);
+            self.facts
+                .types
+                .insert(node_key(value.syntax()), target.clone());
             return (target, Fallible::Never);
         }
         if matches!(value, Expr::ListExpr(_)) && is_collection(&self.table.structure(&target)) {
@@ -1357,6 +1475,10 @@ fn built_on(param: &Ty) -> Option<&'static [Prim]> {
         Ty::Prim(Prim::Int) => Some(&[Prim::Int]),
         Ty::Prim(Prim::Decimal) => Some(&[Prim::Decimal]),
         Ty::Prim(Prim::Text) => Some(&[Prim::Text]),
+        Ty::Prim(Prim::Instant) => Some(&[Prim::Instant]),
+        Ty::Prim(Prim::CalendarDate) => Some(&[Prim::CalendarDate]),
+        Ty::Prim(Prim::ZonedTime) => Some(&[Prim::ZonedTime]),
+        Ty::Prim(Prim::Duration) => Some(&[Prim::Duration]),
         _ => None,
     }
 }

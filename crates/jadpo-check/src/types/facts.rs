@@ -151,8 +151,18 @@ pub fn named<'db>(db: &'db dyn Db, project: Project, name: &str) -> Vec<Callable
         Some((library, function)) => (Some(library), function),
         None => (None, name),
     };
+    // A function's key carries its domain, `billing.format_address` (area
+    // 18, question 8, amended 2026-10-16); a domain is never a library's
+    // name.
+    let (domain, library) = match library {
+        Some(domain) if lookup.is_domain(domain) => (Some(domain), None),
+        other => (None, other),
+    };
     let mut out = Vec::new();
-    for symbol in lookup.declared(own) {
+    for symbol in lookup.facts(own).declarations.iter() {
+        if domain.is_some() && symbol.ownership.domain() != domain {
+            continue;
+        }
         let function = match (&symbol.library, library) {
             (None, None)
                 if matches!(

@@ -1,7 +1,7 @@
 {
   "compiler": "test",
   "errors": 0,
-  "format": 1,
+  "format": 2,
   "nodes": [
     {
       "calls": [
@@ -19,7 +19,7 @@
       ],
       "name": "save_note",
       "raises": [
-        "type NoteRefused"
+        "type notes.NoteRefused"
       ],
       "signature": {
         "fails": [
@@ -34,9 +34,9 @@
         "result": "Note"
       },
       "uses": [
-        "type Body",
-        "type Note",
-        "type NoteRefused"
+        "type notes.Body",
+        "type notes.Note",
+        "type notes.NoteRefused"
       ]
     },
     {
@@ -62,9 +62,9 @@
         "result": "Summary"
       },
       "uses": [
-        "type Note",
-        "type Summary",
-        "variant Shade.plain"
+        "type notes.Note",
+        "type notes.Summary",
+        "variant notes.Shade.plain"
       ]
     },
     {
@@ -101,7 +101,7 @@
       "digest": "304fd7764808cfba",
       "domain": "notes",
       "file": "domains/notes/types/note.jadpo",
-      "id": "field Note.body",
+      "id": "field notes.Note.body",
       "kind": "field",
       "lines": [
         4,
@@ -109,17 +109,17 @@
       ],
       "name": "Note.body",
       "order": 0,
-      "parent": "type Note",
+      "parent": "type notes.Note",
       "type": "Body",
       "uses": [
-        "type Body"
+        "type notes.Body"
       ]
     },
     {
       "digest": "f021ff6b98f87627",
       "domain": "notes",
       "file": "domains/notes/types/note.jadpo",
-      "id": "field Note.pinned",
+      "id": "field notes.Note.pinned",
       "kind": "field",
       "lines": [
         5,
@@ -127,14 +127,14 @@
       ],
       "name": "Note.pinned",
       "order": 1,
-      "parent": "type Note",
+      "parent": "type notes.Note",
       "type": "Bool"
     },
     {
       "digest": "a176d5b1b44a96c8",
       "domain": "notes",
       "file": "domains/notes/failures/note_refused.jadpo",
-      "id": "field NoteRefused.length",
+      "id": "field notes.NoteRefused.length",
       "kind": "field",
       "lines": [
         6,
@@ -142,7 +142,7 @@
       ],
       "name": "NoteRefused.length",
       "order": 0,
-      "parent": "type NoteRefused",
+      "parent": "type notes.NoteRefused",
       "section": "client",
       "type": "Int"
     },
@@ -150,7 +150,7 @@
       "digest": "c5735b3e38a506bf",
       "domain": "notes",
       "file": "domains/notes/types/shade.jadpo",
-      "id": "field Shade.tinted.level",
+      "id": "field notes.Shade.tinted.level",
       "kind": "field",
       "lines": [
         4,
@@ -158,14 +158,14 @@
       ],
       "name": "Shade.tinted.level",
       "order": 0,
-      "parent": "variant Shade.tinted",
+      "parent": "variant notes.Shade.tinted",
       "type": "Int"
     },
     {
-      "copiedFrom": "field Note.body",
+      "copiedFrom": "field notes.Note.body",
       "domain": "notes",
       "file": "domains/notes/types/summary.jadpo",
-      "id": "field Summary.body",
+      "id": "field notes.Summary.body",
       "kind": "field",
       "lines": [
         4,
@@ -173,17 +173,17 @@
       ],
       "name": "Summary.body",
       "order": 0,
-      "parent": "type Summary",
+      "parent": "type notes.Summary",
       "type": "Note.body",
       "uses": [
-        "field Note.body"
+        "field notes.Note.body"
       ]
     },
     {
       "digest": "c518e6f557f006b7",
       "domain": "notes",
       "file": "domains/notes/types/summary.jadpo",
-      "id": "field Summary.shade",
+      "id": "field notes.Summary.shade",
       "kind": "field",
       "lines": [
         5,
@@ -191,10 +191,10 @@
       ],
       "name": "Summary.shade",
       "order": 1,
-      "parent": "type Summary",
+      "parent": "type notes.Summary",
       "type": "Shade",
       "uses": [
-        "type Shade"
+        "type notes.Shade"
       ]
     },
     {
@@ -328,7 +328,7 @@
         "result": "Body"
       },
       "uses": [
-        "type Body"
+        "type notes.Body"
       ]
     },
     {
@@ -385,7 +385,7 @@
       "doc": "The text of a note.",
       "domain": "notes",
       "file": "domains/notes/types/body.jadpo",
-      "id": "type Body",
+      "id": "type notes.Body",
       "kind": "type",
       "lines": [
         2,
@@ -402,7 +402,7 @@
       "digest": "3bb086dee76303e3",
       "domain": "notes",
       "file": "domains/notes/types/note.jadpo",
-      "id": "type Note",
+      "id": "type notes.Note",
       "kind": "type",
       "lines": [
         3,
@@ -422,7 +422,7 @@
         "status": 422
       },
       "file": "domains/notes/failures/note_refused.jadpo",
-      "id": "type NoteRefused",
+      "id": "type notes.NoteRefused",
       "kind": "type",
       "lines": [
         2,
@@ -435,7 +435,7 @@
       "digest": "0867429b6fc172eb",
       "domain": "notes",
       "file": "domains/notes/types/shade.jadpo",
-      "id": "type Shade",
+      "id": "type notes.Shade",
       "kind": "type",
       "lines": [
         1,
@@ -448,7 +448,7 @@
       "digest": "4d616b7c4af1de7a",
       "domain": "notes",
       "file": "domains/notes/types/summary.jadpo",
-      "id": "type Summary",
+      "id": "type notes.Summary",
       "kind": "type",
       "lines": [
         3,
@@ -456,14 +456,14 @@
       ],
       "name": "Summary",
       "uses": [
-        "field Note.body"
+        "field notes.Note.body"
       ]
     },
     {
       "digest": "ca90024bbd3aafc0",
       "domain": "notes",
       "file": "domains/notes/types/shade.jadpo",
-      "id": "variant Shade.plain",
+      "id": "variant notes.Shade.plain",
       "kind": "variant",
       "lines": [
         2,
@@ -471,13 +471,13 @@
       ],
       "name": "Shade.plain",
       "order": 0,
-      "parent": "type Shade"
+      "parent": "type notes.Shade"
     },
     {
       "digest": "77143bc8e7b4647b",
       "domain": "notes",
       "file": "domains/notes/types/shade.jadpo",
-      "id": "variant Shade.tinted",
+      "id": "variant notes.Shade.tinted",
       "kind": "variant",
       "lines": [
         3,
@@ -485,7 +485,7 @@
       ],
       "name": "Shade.tinted",
       "order": 1,
-      "parent": "type Shade",
+      "parent": "type notes.Shade",
       "payload": true
     }
   ]

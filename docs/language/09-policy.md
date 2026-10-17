@@ -2,7 +2,7 @@
 title: Policy
 area: 9
 status: decided
-checked-with: jadpo chunk-4.8 (2026-10-16)
+checked-with: jadpo chunk-5.1d (2026-10-16)
 rules:
   - policy.*
   - type.field_update_forbidden
@@ -14,7 +14,7 @@ Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. "Status" below lists the rest.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. "Status" below lists the rest.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -743,6 +743,19 @@ entity Project {
   against its `read:` as well as its fields', since a caller may change a
   record they may not read; what its `set:` gave a field, and a created
   record's values, are the caller's own (chunk 4.8).
+- **What a write stores.** A value stored in a field is read later, from
+  any request, by everyone who may read that field, so a create or update
+  stores a value in a field only when every one of them may read it,
+  proved as an output is; otherwise `policy.output_field_unproved` names
+  the value in the write (Richard, 2026-10-16; built in chunk 5.1d). A
+  copy between fields the same callers read stays allowed: within a
+  record, into a record that refers to the one it came from, or into one
+  of the same tenant. Who reads a field is known only of the record it is
+  stored in, so a copy into any other record proves only what holds of
+  anyone signed in. A patch, `when_supplied:`, a counter and a transition
+  store values too, and so does an action a value is passed to; what
+  decided a value is stored with it, and since an action is
+  all-or-nothing, so is whatever a `reject` in it tests.
 - **Server only.** `FieldAccess.server_only` lets no request read or write
   the field. A test's or a seed's call without a caller runs without policy,
   so it may; how schedules and subscribers write one comes with area 12.
@@ -2924,6 +2937,135 @@ error: `SummaryView.summary` carries `Note.summary`, which not every caller of `
 check failed: 1 error, 1 file
 ```
 
+What a write stores is read later, from any request, by everyone who may read the field it is stored in, so a value is stored only where all of them may read it. Here the reviewer copies the appraisal into the summary, which the note's owner may read too:
+
+```jadpo check project=e-stored-field-unproved expect=policy.output_field_unproved
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    reviewer_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    summary: NoteText
+    appraisal: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+
+    policy: {
+        read: [owner_id, reviewer_id]
+        update: [reviewer_id]
+    }
+}
+
+action publish_appraisal(note_id: Note.id) fails NoteNotFound -> Note {
+    var note: Note = attempt Note.get(note_id)
+    return Note.update(note) {
+        set: {
+            summary: note.appraisal
+        }
+    }
+}
+```
+
+```text output
+error: `publish_appraisal` stores `Note.appraisal` in `Note.summary`, which not everyone who may read `summary` may read
+ --> main.jadpo:47:22
+   |
+47 |             summary: note.appraisal
+   |                      ^^^^^^^^^^^^^^ from `Note.appraisal`
+  reason: Everyone who may read `Note.summary`, the user `owner_id` points at among them, reads what is stored there, from any request, and only the user `reviewer_id` points at may read `appraisal`. A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.
+  next: Leave `appraisal` out of `summary`, or store it in a field only those who may read `appraisal` may read (agent)
+  rule: policy.output_field_unproved
+  help: docs/language/09-policy.html#policy-output-field-unproved
+
+check failed: 1 error, 1 file
+```
+
+A copy between fields the same callers read stays allowed: the reviewer's draft, which only the reviewer may read, becomes the appraisal, which only the reviewer may read too. So does a copy into a record that refers to the one it came from, or into one of the same tenant, when everyone who may read the field may read the value there:
+
+```jadpo check project=stored-field-same-readers
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    reviewer_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    summary: NoteText
+    draft: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+    appraisal: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+
+    policy: {
+        read: [owner_id, reviewer_id]
+        update: [reviewer_id]
+    }
+}
+
+action finish_review(note_id: Note.id) fails NoteNotFound -> Note {
+    var note: Note = attempt Note.get(note_id)
+    return Note.update(note) {
+        set: {
+            appraisal: note.draft
+        }
+    }
+}
+```
+
 ### `policy.role_field_create_forbidden`
 
 A note's `create:` names only `owner_id`, so a note is only ever created by its owner, and `owner_id` is set from the caller rather than the request:
@@ -3071,17 +3213,26 @@ or one read as an include's parent, proves no role; belonging to a
 record's tenant proves a list naming every role held there; a create's
 user field comes from the caller on every path.
 
+Built in chunk 5.1d (Richard, 2026-10-16): a value a write stores is
+proved readable by everyone who may read the field it is stored in, as an
+output is by its caller (`policy.output_field_unproved` at the value): a
+create's and an update's `set:`, a patch's fields and what
+`when_supplied:` sets, a counter's stored fields, and the fields a
+transition sets, with whatever decided the write, any `reject` in the
+action, and the transition's `when:`. A value is followed to the record
+it came from by the grants' shape: the same record, the record a
+reference the write sets points at, or one of the same tenant; a loop's
+item is one record within its turn. A value an action stores from its
+parameters is checked where it is called, through its summary, which
+holds no positions, as 4.11's do.
+
 Not yet:
 
-- A value stored with `set:` keeps its rules in the record the write gives
-  back, but not once it is stored: anyone who may read the field it is
-  stored in may read it later, from another request. Decided 2026-10-16:
-  such a write is refused unless every caller who may read the field it is
-  stored in may read the value; chunk 5.1d builds it.
-
 - A restricted field read only in an event isn't an output: an event's
-  subscribers (area 12) are server work. Area 15's log redaction covers
-  what a log holds.
+  subscribers (area 12) are server work, so `emit` stores nothing a caller
+  reads. What a subscriber stores from an event is checked when
+  subscribers run, in chunk 6.1. Area 15's log redaction covers what a
+  log holds.
 - `scopes:`, with the tokens issued to other applications (`oauth_token`,
   `external_token`), after the first build.
 - `Access.system`: no schedule or subscriber runs yet (area 12), so it
@@ -3122,6 +3273,7 @@ Not yet:
 | Who schedules and subscribers act as, and how policy applies to them | 12 | Depends on area 12 question 8 |
 | How schedules and subscribers write a `FieldAccess.server_only` field, which no request may | 12 | Input to area 12 |
 | Event and subscriber policy (today's candidate `policy { scope: f  Role: [invoke, read] }`, syntax review #52) | 12 | Input to area 12 |
+| What a subscriber stores from an event's payload, checked against what every `emit` of it put there (chunk 5.1d) | 12 | Input to area 12 (chunk 6.1) |
 | Testing policy: calling an action as a given user and expecting `not_found` or `not_permitted` | 13 | Input to area 13 |
 | The permissions report (`build/report/permissions.md` and `.json`) and its place in the approval review | 14 | Carried to area 14 |
 | The protected sign-off that stops an unaccepted release | 14 | Area 14 question 12 |
@@ -3262,5 +3414,8 @@ Not yet:
 | Finding records (chosen in chunk 4.8) | A `get`'s `id`, each argument a query is run with, and a write's target are checked like an output field, at the value: a record passed whole finds by its `id`. An include's reference is checked like a field the query reads: a parent's on the record that refers to it, a child's on the child | 2026-10-16 |
 | What a write gives back (chosen in chunk 4.8) | An update's record is proved against its entity's `read:` as well as its fields' own, for every record its target may be (a `get`'s, a create's, one passed in or found by `id`); its `id`, and what its `set:` gave each field, are the caller's own, and a stored field an update by `id` reads is the record's. A create's record holds what the caller set and what is new, so only its fields' own `read:` apply. The values a `set:` gives stay in the record given back. The check runs whether or not any field has a policy | 2026-10-16 |
 | Proofs from memberships (chosen in chunk 4.8) | A membership whose `role:` may be `none` holds no role a proof counts on, though it still makes its member one of the tenant's people. A membership read as an include's parent, which its lifecycle may hide, proves no role. A caller who belongs to a record's tenant passes a list naming every role of every membership held in the tenant, through the record's tenancy | 2026-10-16 |
-| Restricted values stored in another record | A create or update may store a value in a field only when every caller who may read that field may read the value, proved as an output is; otherwise `policy.output_field_unproved` names the `set:`, so copies between fields read by the same callers stay allowed (Richard) | 2026-10-16 |
+| Restricted values stored in another record | A create or update may store a value in a field only when every caller who may read that field may read the value, proved as an output is; otherwise `policy.output_field_unproved` names the `set:`, so copies between fields read by the same callers stay allowed; built in chunk 5.1d (Richard) | 2026-10-16 |
+| Storing values (chosen in chunk 5.1d) | Every value a write stores is checked, at the value: a create's and an update's `set:`, each field of a patch's `Input` (at the patch) and what `when_supplied:` sets, which whether the request supplied its field decides, and each field a transition sets (at the write), which what decided that it runs and its `when:` decide. A field's readers are those its record's `read:` and its own `read:` let in, but `Access.system`, which is server work; a field no one else may read, `FieldAccess.server_only` among them, may hold anything. Readers are known only of the record a value is stored in, so the record it came from is reached from there by the grants' shape: the same record (one loaded and changed, one found by the `id` an update by `id` is given, or a stored field a counter reads); the record a reference the write sets points at, by its `id` or the `id` a `get` found it by, or one a `get` found by a reference the stored record holds, which nothing else the action runs, nor any action it calls, may change; a record of the same tenant, when the write sets its tenancy's reference from that record's own; and any other record only as what holds of anyone signed in, or of a role held across the whole application. A `for` loop's item is one record through its turn, and a value carried into another turn, through a variable the loop changes, is any record. A value from a parameter is checked where the action is called, against what is passed, through its summary. One problem per value; a field that only decides is reported once per action. Which record an update changes is checked against its caller (chunk 4.8), not its readers, who see its `id` anyway | 2026-10-16 |
+| What fails decides what is stored (chosen in chunk 5.1d) | An action is all-or-nothing, so whatever a `reject` in its body tests decides every value it stores, before the `reject` or after it; a failure an entity operation or another action raises isn't followed, as for outputs. A `return` or `reject` inside a loop decides every turn after the one it may leave, from the top of the loop's body, for outputs and stores alike | 2026-10-16 |
+| Events and stores (chosen in chunk 5.1d) | `emit` stores nothing a caller reads: an event's subscribers are server work, as `Access.system` reading a field is, so a restricted value may go in an event's payload. What a subscriber stores from a payload is a store like any other, checked when subscribers run (chunk 6.1) against what every `emit` of the event put in it | 2026-10-16 |
 | User fields on creates (chosen in chunk 4.8) | The user field a create sets from the caller is set from the caller on every path: every value it may hold, whatever an `if` or `match` decided, is the caller's `id`; otherwise `policy.role_field_create_forbidden` | 2026-10-16 |

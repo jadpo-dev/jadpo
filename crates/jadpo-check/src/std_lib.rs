@@ -22,23 +22,31 @@ use crate::types::{BASES, Prim, TypeRef, container_arity};
 const NAMES: &str = include_str!("../std/names.txt");
 
 /// The stub files, by name.
-const STUBS: [(&str, &str); 4] = [
+const STUBS: [(&str, &str); 6] = [
     ("types.jadpo", include_str!("../std/types.jadpo")),
     ("collection.jadpo", include_str!("../std/collection.jadpo")),
     ("decimal.jadpo", include_str!("../std/decimal.jadpo")),
     ("integer.jadpo", include_str!("../std/integer.jadpo")),
+    ("locale.jadpo", include_str!("../std/locale.jadpo")),
+    ("temporal.jadpo", include_str!("../std/temporal.jadpo")),
 ];
 
 /// A stub operation's signature as kinds (see [`StdNames::signatures`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StubSignature {
     pub name: String,
-    pub params: Vec<(String, Option<Kind>)>,
+    /// Each parameter's name, its kind, and whether a call may leave it
+    /// out (its type ends in `?`).
+    pub params: Vec<(String, Option<Kind>, bool)>,
     pub result: Option<Kind>,
 }
 
-/// What kind a type written in a stub is.
+/// What kind a type written in a stub is; an option's `?` is left aside.
 fn kind_of(ty: &TypeRef) -> Option<Kind> {
+    let ty = match ty {
+        TypeRef::Nullable(inner) => inner,
+        other => other,
+    };
     let TypeRef::Path(names, args) = ty else {
         return None;
     };
@@ -54,6 +62,8 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
         {
             Some(Kind::Any)
         }
+        (jadpo_std::INSTANT_RANGE, 0) => Some(Kind::Std(jadpo_std::INSTANT_RANGE)),
+        (crate::types::TIME_FORMAT, 0) => Some(Kind::Format),
         (other, 0) => Builtin::from_name(other).map(Kind::Builtin).or_else(|| {
             jadpo_std::enums()
                 .into_iter()
@@ -290,7 +300,10 @@ impl StdNames {
                         params: operation
                             .params
                             .iter()
-                            .map(|(param, ty)| (param.clone(), kind_of(ty)))
+                            .map(|(param, ty)| {
+                                let optional = matches!(ty, TypeRef::Nullable(_));
+                                (param.clone(), kind_of(ty), optional)
+                            })
                             .collect(),
                         result: kind_of(&operation.result),
                     })

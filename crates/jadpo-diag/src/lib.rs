@@ -155,6 +155,16 @@ rules! {
         "10-configuration-and-time.html#configuration-binding-empty", "Setting names an empty environment variable";
     CONFIGURATION_BINDING_INVALID: "configuration.binding_invalid", area 10, Error, Agent,
         "10-configuration-and-time.html#configuration-binding-invalid", "Setting names a variable that is not in capitals";
+    CONFIGURATION_CLIENT_ADDRESS_DUPLICATE: "configuration.client_address_duplicate", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-client-address-duplicate", "Client address is declared twice";
+    CONFIGURATION_CLIENT_ADDRESS_HOPS_INVALID: "configuration.client_address_hops_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-client-address-hops-invalid", "Client address counts proxies with something that is not a count from 1";
+    CONFIGURATION_CLIENT_ADDRESS_HOPS_UNUSED: "configuration.client_address_hops_unused", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-client-address-hops-unused", "Client address gives a count of proxies to a source that counts none";
+    CONFIGURATION_CLIENT_ADDRESS_INVALID: "configuration.client_address_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-client-address-invalid", "Client address is not a block of a source and a count of proxies";
+    CONFIGURATION_CLIENT_ADDRESS_SOURCE_UNKNOWN: "configuration.client_address_source_unknown", area 10, Error, Agent,
+        "10-configuration-and-time.html#configuration-client-address-source-unknown", "Client address names a source that is not one of the four";
     CONFIGURATION_DEFAULT_INVALID: "configuration.default_invalid", area 10, Error, Agent,
         "10-configuration-and-time.html#configuration-default-invalid", "Setting value breaks its type's rules";
     CONFIGURATION_DEFAULT_LITERAL_REQUIRED: "configuration.default_literal_required", area 10, Error, Agent,
@@ -181,6 +191,12 @@ rules! {
         "14-tooling.html#command-errors", "Local configuration target is unsafe";
     CONFIGURATION_LOCAL_WRITE_FAILED: "configuration.local_write_failed", area 14, Error, Human,
         "14-tooling.html#command-errors", "Local configuration could not be saved";
+    CONFIGURATION_MOVE_NAME_TAKEN: "configuration.move_name_taken", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "A setting already has the constant's name";
+    CONFIGURATION_MOVE_READ_UNSUPPORTED: "configuration.move_read_unsupported", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Constant is read where a setting can't be";
+    CONFIGURATION_MOVE_TYPE_UNSUPPORTED: "configuration.move_type_unsupported", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Constant's type can't be a setting";
     CONFIGURATION_MULTIPLE_DECLARATIONS: "configuration.multiple_declarations", area 10, Error, Agent,
         "10-configuration-and-time.html#configuration-multiple-declarations", "Configuration is declared more than once";
     CONFIGURATION_SECRET_DEFAULT: "configuration.secret_default", area 10, Error, Agent,
@@ -201,6 +217,12 @@ rules! {
         "14-tooling.html#command-errors", "Configuration value is invalid";
     CONFIGURATION_VALUE_MISSING: "configuration.value_missing", area 14, Error, Human,
         "14-tooling.html#command-errors", "Required configuration is missing";
+    CONSTANT_CYCLE: "constant.cycle", area 3, Error, Agent,
+        "03-logic.html#constant-cycle", "Constant's value depends on itself";
+    CONSTANT_SIMILAR_EXISTS: "constant.similar_exists", area 3, Warning, Agent,
+        "03-logic.html#constant-similar-exists", "Another constant of the same type holds the same value";
+    CONSTANT_VALUE_NOT_FIXED: "constant.value_not_fixed", area 3, Error, Agent,
+        "03-logic.html#constant-value-not-fixed", "Constant's value is only known while the app runs";
     DATA_CLEARED_REQUIRED_REFERENCE: "data.cleared_required_reference", area 5, Error, Agent,
         "05-data.html#data-cleared-required-reference", "A reference that can never be `none` is cleared on delete";
     DATA_CONFLICT_CANNOT_BREAK: "data.conflict_cannot_break", area 6, Error, Agent,
@@ -573,6 +595,8 @@ rules! {
         "08-identity.html#semantic-multiple-applications", "Project declares more than one application";
     SEMANTIC_MULTIPLE_AUTHENTICATION: "semantic.multiple_authentication", area 8, Error, Agent,
         "08-identity.html#semantic-multiple-authentication", "Project declares more than one authentication block";
+    SEMANTIC_MULTIPLE_LOCALE_DECLARATIONS: "semantic.multiple_locale_declarations", area 10, Error, Agent,
+        "10-configuration-and-time.html#semantic-multiple-locale-declarations", "Locales are declared more than once";
     SEMANTIC_MULTIPLE_PRINCIPALS: "semantic.multiple_principals", area 8, Error, Agent,
         "08-identity.html#semantic-multiple-principals", "Project declares more than one principal";
     SEMANTIC_NAME_CASE: "semantic.name_case", area 1, Error, Agent,
@@ -657,6 +681,14 @@ rules! {
         "03-logic.html#syntax-inline-function-arrow", "Inline function written in another language's form";
     SYNTAX_INVALID_ESCAPE: "syntax.invalid_escape", area 1, Error, Agent,
         "01-project-layout-and-modules.html#syntax-invalid-escape", "Unknown escape in a string";
+    SYNTAX_LOCALES_DEFAULT_REQUIRED: "syntax.locales_default_required", area 10, Error, Agent,
+        "10-configuration-and-time.html#syntax-locales-default-required", "Locales declaration has no default";
+    SYNTAX_LOCALES_DUPLICATE_OPTION: "syntax.locales_duplicate_option", area 10, Error, Agent,
+        "10-configuration-and-time.html#syntax-locales-duplicate-option", "Locales option is given twice";
+    SYNTAX_LOCALES_SUPPORTED_REQUIRED: "syntax.locales_supported_required", area 10, Error, Agent,
+        "10-configuration-and-time.html#syntax-locales-supported-required", "Locales declaration lists no supported locales";
+    SYNTAX_LOCALES_UNKNOWN_OPTION: "syntax.locales_unknown_option", area 10, Error, Agent,
+        "10-configuration-and-time.html#syntax-locales-unknown-option", "Locales declaration has no such option";
     SYNTAX_LOGICAL_OPERATOR: "syntax.logical_operator", area 3, Error, Agent,
         "03-logic.html#syntax-logical-operator", "Logical operator written in another language's form";
     SYNTAX_MAPPING_BLOCK_REQUIRED: "syntax.mapping_block_required", area 4, Error, Agent,
@@ -733,6 +765,34 @@ rules! {
         "14-tooling.html#the-jadpo-command", "Project could not be found";
     TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,
         "14-tooling.html#the-jadpo-command", "Jadpo source file could not be read";
+    TRANSLATION_FILE_INVALID: "translation.file_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-file-invalid", "A translation file is not a JSON object of messages";
+    TRANSLATION_FILE_MISSING: "translation.file_missing", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-file-missing", "A supported locale has no translation file";
+    TRANSLATION_FILE_NAME_INVALID: "translation.file_name_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-file-name-invalid", "A translation file is not named for a locale";
+    TRANSLATION_KEY_DUPLICATE: "translation.key_duplicate", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-key-duplicate", "A translation key is written twice in a file";
+    TRANSLATION_KEY_EXTRA: "translation.key_extra", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-key-extra", "A translation file has a key the default locale's file lacks";
+    TRANSLATION_KEY_INVALID: "translation.key_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-key-invalid", "A translation key is not a name a call can use";
+    TRANSLATION_KEY_MISSING: "translation.key_missing", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-key-missing", "A translation file lacks a key the default locale's file has";
+    TRANSLATION_KEY_UNKNOWN: "translation.key_unknown", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-key-unknown", "A translation call names a key no file defines";
+    TRANSLATION_LOCALE_UNSUPPORTED: "translation.locale_unsupported", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-locale-unsupported", "A translation file is for a locale the application does not support";
+    TRANSLATION_LOCALES_REQUIRED: "translation.locales_required", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-locales-required", "Translations without declared locales";
+    TRANSLATION_MESSAGE_INVALID: "translation.message_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-message-invalid", "A translation message is not valid MessageFormat";
+    TRANSLATION_OTHER_MISSING: "translation.other_missing", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-other-missing", "A plural or select has no other case";
+    TRANSLATION_PLACEHOLDER_MISMATCH: "translation.placeholder_mismatch", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-placeholder-mismatch", "A translation's placeholders differ from the default locale's";
+    TRANSLATION_PLACEHOLDER_TYPE: "translation.placeholder_type", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-placeholder-type", "A placeholder takes a different kind of value than in the default locale";
     TYPE_ABSENT_FIELD: "type.absent_field", area 2, Error, Agent,
         "02-values-and-types.html#type-absent-field", "Omitted or optional field is not present";
     TYPE_ARGUMENT_COUNT: "type.argument_count", area 3, Error, Agent,
@@ -811,6 +871,14 @@ rules! {
         "02-values-and-types.html#type-invalid-literal", "Literal breaks its type's rules";
     TYPE_INVALID_PATTERN: "type.invalid_pattern", area 2, Error, Agent,
         "02-values-and-types.html#type-invalid-pattern", "Pattern is not a supported regular expression";
+    TYPE_LOCALE_DEFAULT_UNSUPPORTED: "type.locale_default_unsupported", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-locale-default-unsupported", "Default locale is not a supported one";
+    TYPE_LOCALE_DUPLICATE: "type.locale_duplicate", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-locale-duplicate", "Locale is listed twice";
+    TYPE_LOCALE_INVALID: "type.locale_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-locale-invalid", "Locale is not written as a Locale";
+    TYPE_LOCALE_UNSUPPORTED: "type.locale_unsupported", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-locale-unsupported", "Locale is not one the application supports";
     TYPE_LOGICAL_OPERAND: "type.logical_operand", area 3, Error, Agent,
         "03-logic.html#type-logical-operand", "Logical operator needs Bool operands";
     TYPE_MAP_KEY_BOUNDARY: "type.map_key_boundary", area 2, Error, Agent,
@@ -845,6 +913,8 @@ rules! {
         "03-logic.html#type-named-argument-unknown", "Named argument is not a parameter";
     TYPE_NAMED_ARGUMENT_UNSUPPORTED: "type.named_argument_unsupported", area 3, Error, Agent,
         "03-logic.html#type-named-argument-unsupported", "Callable does not take named arguments";
+    TYPE_NOT_A_VALUE: "type.not_a_value", area 3, Error, Agent,
+        "03-logic.html#type-not-a-value", "Declaration named where a value is read";
     TYPE_NOT_RECORD: "type.not_record", area 2, Error, Agent,
         "02-values-and-types.html#type-not-record", "Braces build a type that has no fields";
     TYPE_NULLABLE_SELECTION: "type.nullable_selection", area 2, Error, Agent,
@@ -853,6 +923,8 @@ rules! {
         "02-values-and-types.html#type-optional-outside-input", "Optional or default field outside an Input";
     TYPE_ORDERING_OPERAND: "type.ordering_operand", area 3, Error, Agent,
         "03-logic.html#type-ordering-operand", "Values cannot be ordered";
+    TYPE_PRESENTATION_TEXT_PERSISTENCE: "type.presentation_text_persistence", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-presentation-text-persistence", "Formatted text is stored";
     TYPE_PRIMITIVE_SIGNATURE: "type.primitive_signature", area 2, Error, Agent,
         "02-values-and-types.html#type-primitive-signature", "Signature uses a built-in type directly";
     TYPE_PRINCIPAL_ACTIVE_INVALID: "type.principal_active_invalid", area 8, Error, Agent,
@@ -869,6 +941,26 @@ rules! {
         "02-values-and-types.html#type-setting-value", "Setting has the wrong kind of value";
     TYPE_SIBLING_MISMATCH: "type.sibling_mismatch", area 2, Error, Agent,
         "02-values-and-types.html#type-sibling-mismatch", "Field type is used for a sibling field type";
+    TYPE_TEMPORAL_CLOCK_INVALID: "type.temporal_clock_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-clock-invalid", "Clock time is not written `HH:MM`";
+    TYPE_TEMPORAL_FORMAT_COMPONENT_DUPLICATE: "type.temporal_format_component_duplicate", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-format-component-duplicate", "Format component is given twice";
+    TYPE_TEMPORAL_FORMAT_COMPONENT_INVALID: "type.temporal_format_component_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-format-component-invalid", "Format component takes no such style";
+    TYPE_TEMPORAL_FORMAT_COMPONENTS_EMPTY: "type.temporal_format_components_empty", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-format-components-empty", "Declared format shows nothing";
+    TYPE_TEMPORAL_FORMAT_INVALID: "type.temporal_format_invalid", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-format-invalid", "Format is not a written-out time format";
+    TYPE_TEMPORAL_FORMAT_REQUIRES_TIME: "type.temporal_format_requires_time", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-format-requires-time", "Format shows a clock time a date doesn't have";
+    TYPE_TEMPORAL_LOCALES_REQUIRED: "type.temporal_locales_required", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-locales-required", "Formatting needs declared locales";
+    TYPE_TEMPORAL_OPTION_UNUSED: "type.temporal_option_unused", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-option-unused", "Option means nothing for this value";
+    TYPE_TEMPORAL_ZONE_REQUIRED: "type.temporal_zone_required", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-temporal-zone-required", "Formatting an instant needs a zone";
+    TYPE_TEST_CLOCK_CONTEXT: "type.test_clock_context", area 13, Error, Agent,
+        "13-testing.html#type-test-clock-context", "The clock is moved outside a test";
     TYPE_TYPE_ARGUMENT_COUNT: "type.type_argument_count", area 2, Error, Agent,
         "02-values-and-types.html#type-type-argument-count", "Type has the wrong number of type arguments";
     TYPE_UNARY_OPERAND: "type.unary_operand", area 3, Error, Agent,
@@ -948,6 +1040,10 @@ pub struct Diagnostic {
     pub next: Option<Next>,
     /// Printed only when it says something the rest does not.
     pub impact: Option<String>,
+    /// The names in use that a rename should know about, each with its
+    /// file (`semantic.duplicate_declaration`, area 1): printed as the `in
+    /// use` field after `next`.
+    pub in_use: Vec<(String, String)>,
     /// A page section that says more than the rule's own entry, relative
     /// to `docs/language/`: for a rule many areas share, such as
     /// `toolchain.not_built_yet`, the section that decides what isn't
@@ -965,6 +1061,7 @@ impl Diagnostic {
             reason: None,
             next: None,
             impact: None,
+            in_use: Vec::new(),
             help: None,
         }
     }
@@ -1037,6 +1134,12 @@ impl Diagnostic {
                 replacement: replacement.into(),
             });
         }
+        self
+    }
+
+    /// The names in use, each with its file, printed as the `in use` field.
+    pub fn in_use(mut self, names: Vec<(String, String)>) -> Diagnostic {
+        self.in_use = names;
         self
     }
 

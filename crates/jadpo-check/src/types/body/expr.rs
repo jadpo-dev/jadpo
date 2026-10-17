@@ -400,18 +400,30 @@ impl Body<'_> {
         };
         let head = text(&first);
         if starts_upper(&head) {
-            self.resolved_by(|names, out| names.value_name(expr, out));
+            let clean = self.resolved_by(|names, out| names.value_name(expr, out));
             if let Some(ty) = self.stored_field(&head, &rest, expr) {
                 return ty;
             }
-            return self.type_member(&head, &rest, expr);
+            return self.type_member(&first, &rest, expr, clean);
         }
         if StdNames::get().namespace(&head) == Some(Namespace::Generated) {
             return self.generated_value(&head, &rest, expr);
         }
+        if let [member] = rest.as_slice()
+            && !self.is_local(&head)
+            && self.symbols.library(&head).is_some()
+            && let Some(ty) = self.constant_read(Some(&head), &text(member), expr.syntax())
+        {
+            return ty;
+        }
         let Some(mut receiver) = self.read(&first) else {
             if !self.is_qualifier(&head) {
                 self.unknown_value(&first);
+            } else {
+                let written = tree::written(expr.syntax());
+                let span = self.span(expr);
+                self.out
+                    .push(crate::not_value::member_diagnostic(&written, span));
             }
             return Ty::Error;
         };
@@ -514,8 +526,28 @@ impl Body<'_> {
     }
 
     /// `Type.member` as a value: an enum's variant.
-    pub(super) fn type_member(&mut self, host: &str, rest: &[ast::NameRef], expr: &Expr) -> Ty {
+    pub(super) fn type_member(
+        &mut self,
+        first: &ast::NameRef,
+        rest: &[ast::NameRef],
+        expr: &Expr,
+        resolved: bool,
+    ) -> Ty {
+        let host = &text(first);
+        if host == super::super::ty::TIME_FORMAT {
+            // A built-in format is named only in `format:` (area 10).
+            let written = tree::written(expr.syntax());
+            let span = self.span(expr);
+            self.out
+                .push(super::super::formats::not_a_value(&written, span, false));
+            return Ty::Error;
+        }
         let Some(variants) = self.table.variants(host) else {
+            // `Placed.level`: a type has no members to read as a value.
+            if resolved {
+                let span = self.span(first);
+                self.declaration_as_value(host, span);
+            }
             return Ty::Error;
         };
         let [variant] = rest else {
@@ -550,7 +582,7 @@ impl Body<'_> {
                         .next(format!("Write `{host}.{name} {{ ... }}` with each field")),
                     );
                 }
-                Ty::Named(host.to_string())
+                Ty::Named(self.table.canonical(host))
             }
         }
     }
@@ -563,6 +595,7 @@ impl Body<'_> {
             .variants(host)
             .map(|variants| variants.iter().map(|v| v.name.clone()).collect())
             .unwrap_or_default();
+        let host = crate::types::shown(host);
         let near = nearest(&name, names.iter().map(String::as_str)).map(str::to_string);
         let problem = Diagnostic::new(
             &rule::TYPE_UNKNOWN_ENUM_VARIANT,
@@ -645,6 +678,27 @@ impl Body<'_> {
             self.facts
                 .fields
                 .insert(node_key(node.syntax()), (issued.clone(), vec![field]));
+            return Ty::Prim(*builtin);
+        }
+        // The instants a `temporal` bounds call gives (area 10).
+        if let Ty::Opaque(range, args) = receiver.strip_nullable()
+            && args.is_empty()
+            && range == jadpo_std::INSTANT_RANGE
+        {
+            let found = jadpo_std::INSTANT_RANGE_FIELDS
+                .iter()
+                .find(|(name, _)| *name == field);
+            let Some((_, builtin)) = found else {
+                let fields: Vec<FieldDef> = jadpo_std::INSTANT_RANGE_FIELDS
+                    .iter()
+                    .map(|(name, builtin)| plain_field(name, Ty::Prim(*builtin)))
+                    .collect();
+                self.unknown_field(range, &field, &fields, span, false);
+                return Ty::Error;
+            };
+            self.facts
+                .fields
+                .insert(node_key(node.syntax()), (range.clone(), vec![field]));
             return Ty::Prim(*builtin);
         }
         // A route test's response (area 13).
@@ -746,6 +800,7 @@ impl Body<'_> {
         span: Span,
         variant: bool,
     ) {
+        let host = crate::types::shown(host);
         let names: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
         let near = nearest(field, names.iter().copied());
         let listed: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
@@ -831,19 +886,19 @@ impl Body<'_> {
                     &[],
                 );
                 self.object_built(record);
-                Ty::Named(name)
+                Ty::Named(self.table.canonical(&name))
             }
             ([], Some(Def::Scalar { .. })) | ([], None)
                 if Prim::from_name(&name).is_some() || self.table.def(&name).is_some() =>
             {
                 self.not_record(record, &name, "scalar");
                 self.walk(|walk| walk.member_values(record.member_list()));
-                Ty::Named(name)
+                Ty::Named(self.table.canonical(&name))
             }
             ([], Some(Def::Enum { .. })) => {
                 self.not_record(record, &name, "enum");
                 self.walk(|walk| walk.member_values(record.member_list()));
-                Ty::Named(name)
+                Ty::Named(self.table.canonical(&name))
             }
             (
                 [operation],
@@ -905,7 +960,7 @@ impl Body<'_> {
                         self.walk(|walk| walk.member_values(record.member_list()));
                     }
                 }
-                Ty::Named(name)
+                Ty::Named(self.table.canonical(&name))
             }
             _ => {
                 self.failure_value(&Expr::RecordExpr(record.clone()));
@@ -1153,6 +1208,17 @@ impl Body<'_> {
         );
     }
 
+    /// A declaration named where a value is read (area 3): reported, and
+    /// whether `name` was one.
+    pub(super) fn declaration_as_value(&mut self, name: &str, span: Span) -> bool {
+        let Some(named) = crate::not_value::classify(self.symbols, self.table, name) else {
+            return false;
+        };
+        self.out
+            .push(crate::not_value::diagnostic(name, &named, span));
+        true
+    }
+
     /// A lower-case name used as a value: a local, or a mistake.
     pub(super) fn name_value(&mut self, name: &ast::NameRef) -> Ty {
         let written = text(name);
@@ -1168,14 +1234,30 @@ impl Body<'_> {
             return Ty::Error;
         }
         if starts_upper(&written) {
-            // A type or a failure as a value: resolved here, and the type
-            // checks have nothing to add (area 1).
+            // A type, a failure or an entity is no value (area 3); a format
+            // is named only in `format:` (area 10). A name that doesn't
+            // resolve is reported by resolution (area 1).
             let expr = Expr::NameRef(name.clone());
-            self.resolved_by(|names, out| names.value_name(&expr, out));
+            let resolved = self.resolved_by(|names, out| names.value_name(&expr, out));
+            let span = self.span(name);
+            if let Some(super::super::table::Def::Format { .. }) = self.table.def(&written) {
+                self.out
+                    .push(super::super::formats::not_a_value(&written, span, false));
+            } else if resolved {
+                self.declaration_as_value(&written, span);
+            }
             return Ty::Error;
         }
         match self.read(name) {
             Some(ty) => ty,
+            // A library's functions and constants read its constants
+            // bare, as they call its functions.
+            None if let Some(library) = self.library.clone()
+                && let Some(ty) = self.constant_read(Some(&library), &written, name.syntax()) =>
+            {
+                ty
+            }
+            None if let Some(ty) = self.constant_read(None, &written, name.syntax()) => ty,
             None => {
                 // `null`, `nil` and `undefined` from other languages.
                 if let Some(problem) = crate::foreign_value(&written, self.span(name)) {
@@ -1187,6 +1269,38 @@ impl Body<'_> {
                 Ty::Error
             }
         }
+    }
+
+    /// A constant's value (area 3): `name` beside its declaration, or
+    /// `library.name`. Code reads a constant it can see: one in its own
+    /// domain, `shared/` or the root, or a public library's.
+    pub(super) fn constant_read(
+        &mut self,
+        library: Option<&str>,
+        name: &str,
+        node: &jadpo_syntax::SyntaxNode,
+    ) -> Option<Ty> {
+        let visible = match library {
+            Some(library) => self
+                .symbols
+                .library_function(library, name)
+                .filter(|symbol| symbol.kind == ItemKind::Constant)
+                .is_some_and(|symbol| symbol.visible_from(self.ownership)),
+            None => self.symbols.declared(name).iter().any(|symbol| {
+                symbol.kind == ItemKind::Constant
+                    && symbol.library.is_none()
+                    && symbol.visible_from(self.ownership)
+            }),
+        };
+        if !visible {
+            return None;
+        }
+        let ty = self.calls.constant_type(library, name)?.clone();
+        self.facts.constants.insert(
+            node_key(node),
+            (library.map(str::to_string), name.to_string()),
+        );
+        Some(ty)
     }
 
     /// Whether a lower-case name before a dot names an owner rather than a
@@ -1210,23 +1324,7 @@ impl Body<'_> {
         self.unknown_name = true;
         let written = text(name);
         let span = self.span(name);
-        let callable = self.symbols.get(&written).filter(|symbol| {
-            matches!(
-                symbol.kind,
-                ItemKind::Function | ItemKind::Action | ItemKind::Query | ItemKind::Fixture
-            )
-        });
-        if let Some(symbol) = callable {
-            let word = symbol.kind.word();
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TYPE_UNKNOWN_VALUE,
-                    format!("`{written}` is {}, not a value", symbol.kind.with_a()),
-                )
-                .at(span, format!("{word} used as a value"))
-                .reason("Functions and actions aren't values: they are called, and only a standard-library collection operation takes an inline function, `item -> expression`.")
-                .next(format!("Call it, as in `{written}(...)`")),
-            );
+        if self.declaration_as_value(&written, span.clone()) {
             return;
         }
         let names = self.names_in_scope();

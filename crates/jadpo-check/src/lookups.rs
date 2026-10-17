@@ -15,7 +15,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 
-use jadpo_db::{Db, File, ItemKind, Project, Symbol, Symbols, symbols};
+use jadpo_db::{Db, File, ItemKind, Ownership, Project, Symbol, Symbols, contested, symbols};
 use jadpo_graph::Registry;
 
 use crate::case::to_snake;
@@ -52,6 +52,53 @@ pub fn name_facts<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Na
     }
 }
 
+/// The declarations called `name` that code in `domain` (empty outside
+/// every domain) sees: its own private ones first, then the project-wide
+/// ones; when there are none, every declaration of the name, so a use of
+/// another domain's private name can be reported as one (area 1, "Files
+/// and names").
+#[salsa::tracked(returns(ref))]
+pub fn in_scope<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    name: Name<'db>,
+    domain: Name<'db>,
+) -> Vec<Symbol> {
+    let all = &name_facts(db, project, name).declarations;
+    let domain = Some(domain.text(db).as_str()).filter(|domain| !domain.is_empty());
+    let mut seen: Vec<Symbol> = all
+        .iter()
+        .filter(|symbol| symbol.scope.is_some() && symbol.in_scope_of(domain))
+        .chain(all.iter().filter(|symbol| symbol.scope.is_none()))
+        .cloned()
+        .collect();
+    if seen.is_empty() {
+        seen = all.clone();
+    }
+    seen
+}
+
+/// The functions and types declared in `domain` called `name`: what the
+/// identity `<domain>.<name>` names (area 18), or the checker's tables'
+/// name for a domain's contested private name ([`Symbol::canonical`]).
+#[salsa::tracked(returns(ref))]
+pub fn domain_declarations<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    name: Name<'db>,
+    domain: Name<'db>,
+) -> Vec<Symbol> {
+    name_facts(db, project, name)
+        .declarations
+        .iter()
+        .filter(|symbol| {
+            symbol.ownership.domain() == Some(domain.text(db).as_str())
+                && symbol.identity() != symbol.name
+        })
+        .cloned()
+        .collect()
+}
+
 #[salsa::tracked(returns(ref))]
 pub fn type_def<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Option<Def> {
     type_table(db, project).def(name.text(db)).cloned()
@@ -75,6 +122,24 @@ pub fn library_signature<'db>(
         .library
         .get(&(library.text(db).clone(), function.text(db).clone()))
         .cloned()
+}
+
+/// A constant's type (area 3): one beside its use, or a library's.
+#[salsa::tracked(returns(ref))]
+pub fn constant_type<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    library: Option<Name<'db>>,
+    name: Name<'db>,
+) -> Option<crate::types::Ty> {
+    let table = callables(db, project);
+    match library {
+        Some(library) => table
+            .library_constants
+            .get(&(library.text(db).clone(), name.text(db).clone()))
+            .cloned(),
+        None => table.constants.get(name.text(db)).cloned(),
+    }
 }
 
 #[salsa::tracked(returns(ref))]
@@ -160,8 +225,10 @@ pub fn same_file_name<'db>(db: &'db dyn Db, project: Project, folded: Name<'db>)
 
 /// Reading the symbol table.
 pub trait NameView {
-    /// The declarations called `name`, in path order; more than one is a
-    /// duplicate.
+    /// The declarations called `name` the reader sees, in path order: its
+    /// own domain's private ones first, then the project-wide ones, or,
+    /// when it sees none, every one (area 1, "Files and names"). `name` may
+    /// also be a name as the checker's tables know it ([`Symbol::canonical`]).
     fn declared(&self, name: &str) -> &[Symbol];
     fn is_domain(&self, name: &str) -> bool;
     fn is_connection(&self, name: &str) -> bool;
@@ -171,6 +238,12 @@ pub trait NameView {
     fn all(&self) -> &Symbols;
     /// The identity registry every key is made through.
     fn registry(&self) -> &Registry;
+
+    /// The name the checker's tables know `written` by, as this reader
+    /// writes it ([`Symbol::canonical`]).
+    fn canonical(&self, written: &str) -> String {
+        written.to_string()
+    }
 
     /// The declaration called `name`, if there is exactly one or the first.
     fn get(&self, name: &str) -> Option<&Symbol> {
@@ -199,6 +272,8 @@ pub trait NameView {
 pub trait SigView {
     fn signature(&self, name: &str) -> Option<&Sig>;
     fn library_signature(&self, library: &str, function: &str) -> Option<&Sig>;
+    /// The type of the constant `name`, or of library `library`'s.
+    fn constant_type(&self, library: Option<&str>, name: &str) -> Option<&crate::types::Ty>;
 }
 
 /// Reading what writes can break (area 6).
@@ -218,9 +293,14 @@ pub trait FailureView {
 
 /// The per-name lookups of one project, for one check. Made inside the
 /// query that reads through it, so each lookup is that query's dependency.
+/// Made for a file ([`Lookup::for_file`]) or an owner ([`Lookup::within`]),
+/// it reads names as code there writes them, its domain's private names
+/// first (area 1, "Files and names").
 pub struct Lookup<'db> {
     db: &'db dyn Db,
     project: Project,
+    /// The domain whose private names the reader sees.
+    domain: Option<String>,
     /// Lookups already made by this check, to save interning a name again.
     defs: RefCell<HashMap<String, Option<&'db Def>>>,
 }
@@ -239,12 +319,59 @@ impl<'db> Lookup<'db> {
         std::sync::Arc::clone(crate::identity::identity(self.db, self.project))
     }
 
+    /// Lookups that read names as code outside every domain writes them.
     pub fn new(db: &'db dyn Db, project: Project) -> Lookup<'db> {
         Lookup {
             db,
             project,
+            domain: None,
             defs: RefCell::new(HashMap::new()),
         }
+    }
+
+    /// Lookups that read names as code owned by `ownership` writes them.
+    pub fn within(db: &'db dyn Db, project: Project, ownership: &Ownership) -> Lookup<'db> {
+        Lookup {
+            domain: ownership.domain().map(str::to_string),
+            ..Lookup::new(db, project)
+        }
+    }
+
+    /// Lookups that read names as the code in `file` writes them.
+    pub fn for_file(db: &'db dyn Db, project: Project, file: File) -> Lookup<'db> {
+        let location = jadpo_db::location(db, project, file);
+        Lookup::within(db, project, &location.ownership)
+    }
+
+    /// The domain whose private names this reader sees.
+    pub fn domain(&self) -> Option<&str> {
+        self.domain.as_deref()
+    }
+
+    /// The name the checker's tables know `written` by, as this reader
+    /// writes it ([`Symbol::canonical`]): `written` may also be the
+    /// identity of a function or type declared in a domain,
+    /// `billing.Address` (area 18).
+    pub fn canonical_name(&self, written: &str) -> String {
+        let contested = contested(self.db, self.project);
+        match self.identified(written) {
+            Some((domain, name)) => contested.canonical(name, Some(domain)),
+            None => contested.canonical(written, self.domain.as_deref()),
+        }
+    }
+
+    /// The domain and name of `written` when it is the identity of a
+    /// function or type declared in a domain, `billing.Address`.
+    fn identified<'w>(&self, written: &'w str) -> Option<(&'w str, &'w str)> {
+        let (domain, name) = written.split_once('.')?;
+        if name.contains('.') || !self.facts(domain).domain {
+            return None;
+        }
+        (!self.in_domain(name, domain).is_empty()).then_some((domain, name))
+    }
+
+    fn in_domain(&self, name: &str, domain: &str) -> &'db [Symbol] {
+        domain_declarations(self.db, self.project, self.name(name), self.name(domain))
     }
 
     fn name(&self, text: &str) -> Name<'db> {
@@ -265,6 +392,17 @@ impl<'db> Lookup<'db> {
         crate::config::setting_fact(self.db, self.project, self.name(name)).as_ref()
     }
 
+    /// The constant `name`, or library `library`'s, as the compiler worked
+    /// it out (area 3).
+    pub fn constant(
+        &self,
+        library: Option<&str>,
+        name: &str,
+    ) -> Option<&'db crate::constants::Evaluated> {
+        let id = crate::constants::find(self, library, name)?;
+        crate::constants::constant_table(self.db, self.project).get(&id)
+    }
+
     pub fn failures_with_code(&self, code: &str) -> &'db [FailureInfo] {
         failures_with_code(self.db, self.project, self.name(code))
     }
@@ -275,15 +413,32 @@ impl TypeView for Lookup<'_> {
         if let Some(found) = self.defs.borrow().get(name) {
             return *found;
         }
-        let found = type_def(self.db, self.project, self.name(name)).as_ref();
+        let canonical = self.canonical_name(name);
+        let found = type_def(self.db, self.project, self.name(&canonical)).as_ref();
         self.defs.borrow_mut().insert(name.to_string(), found);
         found
+    }
+
+    fn canonical(&self, written: &str) -> String {
+        self.canonical_name(written)
     }
 }
 
 impl NameView for Lookup<'_> {
     fn declared(&self, name: &str) -> &[Symbol] {
-        &self.facts(name).declarations
+        if let Some((domain, rest)) = self.identified(name) {
+            return self.in_domain(rest, domain);
+        }
+        let all = &self.facts(name).declarations;
+        if all.iter().all(|symbol| symbol.scope.is_none()) {
+            return all;
+        }
+        let domain = self.domain.clone().unwrap_or_default();
+        in_scope(self.db, self.project, self.name(name), self.name(&domain))
+    }
+
+    fn canonical(&self, written: &str) -> String {
+        self.canonical_name(written)
     }
 
     fn is_domain(&self, name: &str) -> bool {
@@ -309,7 +464,8 @@ impl NameView for Lookup<'_> {
 
 impl SigView for Lookup<'_> {
     fn signature(&self, name: &str) -> Option<&Sig> {
-        signature(self.db, self.project, self.name(name)).as_ref()
+        let canonical = self.canonical_name(name);
+        signature(self.db, self.project, self.name(&canonical)).as_ref()
     }
 
     fn library_signature(&self, library: &str, function: &str) -> Option<&Sig> {
@@ -318,6 +474,20 @@ impl SigView for Lookup<'_> {
             self.project,
             self.name(library),
             self.name(function),
+        )
+        .as_ref()
+    }
+
+    fn constant_type(&self, library: Option<&str>, name: &str) -> Option<&crate::types::Ty> {
+        let name = match library {
+            Some(_) => name.to_string(),
+            None => self.canonical_name(name),
+        };
+        constant_type(
+            self.db,
+            self.project,
+            library.map(|library| self.name(library)),
+            self.name(&name),
         )
         .as_ref()
     }

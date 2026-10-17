@@ -31,6 +31,13 @@ impl Example {
     }
 }
 
+/// Whether a project-relative path is a translation file (area 10), which
+/// a project holds beside its code.
+fn jadpo_db_translation(path: &str) -> bool {
+    path.strip_prefix("translations/")
+        .is_some_and(|name| name.ends_with(".json") && !name.contains('/'))
+}
+
 pub fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
@@ -42,6 +49,11 @@ fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let mut paths: Vec<PathBuf> = entries.filter_map(|e| e.ok()).map(|e| e.path()).collect();
     paths.sort();
     for path in paths {
+        // `build/` is generated (area 14) and never input, so a checkout
+        // that has run `jadpo check` reads the same examples as CI.
+        if path.is_dir() && path.file_name().is_some_and(|name| name == "build") {
+            continue;
+        }
         if path.is_dir() {
             markdown_files(&path, out);
         } else if matches!(
@@ -146,7 +158,7 @@ pub fn projects() -> Vec<(String, Vec<(String, String)>)> {
         };
         let project = attr("project").unwrap_or_else(|| format!("example-{n}"));
         let file = attr("file").unwrap_or_else(|| "main.jadpo".to_string());
-        if !file.ends_with(".jadpo") {
+        if !file.ends_with(".jadpo") && !jadpo_db_translation(&file) {
             continue;
         }
         // A later block of the same file replaces it, as the page's

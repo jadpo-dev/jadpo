@@ -99,6 +99,9 @@ pub struct CallablePlan {
     /// in the plan's settings with its value in a variable's spelling
     /// (area 13, "Configuration in tests").
     pub settings: Vec<(u32, String)>,
+    /// For a test: where its `clock:` starts its clock, in milliseconds
+    /// since 1970-01-01T00:00:00Z (area 13, "Test settings").
+    pub clock: Option<i64>,
 }
 
 impl CallablePlan {
@@ -165,6 +168,12 @@ pub struct Plan {
     /// Every setting `config { }` declares, and the codecs their values
     /// are read by (area 10, chunk 5.1).
     config: jadpo_std::config::ConfigPlan,
+    /// Every translation key and its message in each supported locale
+    /// (area 10, chunk 5.3b), which the runtime formats a call from.
+    translations: jadpo_std::translation::TranslationPlan,
+    /// The locales the application supports, when it declares them (area
+    /// 10, chunk 5.3c): what `locale.from_accept_language` chooses among.
+    locales: Option<jadpo_std::LocalePlan>,
 }
 
 impl Plan {
@@ -176,6 +185,8 @@ impl Plan {
         let mut found: Vec<(Key, Kind, String, Arc<Body>)> = Vec::new();
         // What each test's `config:` changes, by the test's key.
         let mut overrides: HashMap<Key, Vec<(String, String)>> = HashMap::new();
+        // Where each test's `clock:` starts its clock.
+        let mut clocks: HashMap<Key, i64> = HashMap::new();
         for &file in project.files(db) {
             let path = file.path(db).clone();
             files.insert(path.clone(), file.text(db).clone());
@@ -189,6 +200,9 @@ impl Plan {
                     let given = jadpo_check::config::test_settings(db, project, callable);
                     if !given.overrides.is_empty() {
                         overrides.insert(key.clone(), given.overrides.clone());
+                    }
+                    if let Some(start) = given.clock {
+                        clocks.insert(key.clone(), start);
                     }
                 }
                 found.push((key, kind, path.clone(), Arc::clone(&checked.body)));
@@ -300,7 +314,9 @@ impl Plan {
                     Some((*at, text.clone()))
                 })
                 .collect();
+            let clock = clocks.get(&key).copied();
             callables.push(CallablePlan {
+                clock,
                 key,
                 kind,
                 file,
@@ -322,6 +338,9 @@ impl Plan {
             &queries,
         );
         routes.identity = identity;
+        routes.client_address = jadpo_check::client_address::client_address(db, project)
+            .plan
+            .clone();
         Plan {
             callables,
             by_key,
@@ -334,6 +353,8 @@ impl Plan {
             purges,
             routes,
             config,
+            translations: jadpo_check::translations::plan(db, project),
+            locales: jadpo_check::locales::locales(db, project).plan.clone(),
         }
     }
 
@@ -355,6 +376,19 @@ impl Plan {
     /// `line_total`, `rounding.half_even`, or a test's key,
     /// `test main "a large size is rejected"`.
     pub fn find(&self, name: &str) -> Option<u32> {
+        // A function declared in a domain is keyed by its domain too,
+        // `function billing.format_address` (area 18): its name alone
+        // finds it while only one domain declares one.
+        let in_domain = |callable: &CallablePlan| {
+            callable.kind == Kind::Function
+                && callable
+                    .key
+                    .name()
+                    .split_once('.')
+                    .is_some_and(|(domain, own)| {
+                        own == name && callable.file.starts_with(&format!("domains/{domain}/"))
+                    })
+        };
         let at = self
             .callables
             .iter()
@@ -363,6 +397,15 @@ impl Plan {
                 self.callables
                     .iter()
                     .position(|callable| callable.key.name() == name)
+            })
+            .or_else(|| {
+                let mut found = self
+                    .callables
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, callable)| in_domain(callable));
+                let (at, _) = found.next()?;
+                found.next().is_none().then_some(at)
             })?;
         u32::try_from(at).ok()
     }
@@ -431,6 +474,16 @@ impl Plan {
     /// The settings and their codecs (area 10).
     pub fn config(&self) -> &jadpo_std::config::ConfigPlan {
         &self.config
+    }
+
+    /// The translation keys and their messages (area 10).
+    pub fn translations(&self) -> &jadpo_std::translation::TranslationPlan {
+        &self.translations
+    }
+
+    /// The locales the application supports, when it declares them.
+    pub fn locales(&self) -> Option<&jadpo_std::LocalePlan> {
+        self.locales.as_ref()
     }
 
     /// The purge of the entity called `entity`, when its lifecycle has one.

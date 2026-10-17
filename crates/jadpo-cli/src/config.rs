@@ -2,6 +2,9 @@
 //! area 10, "Values on your machine and in production"): look at, and fill
 //! in, the settings `config.jadpo` declares against the values this
 //! machine has, which are the process's environment over `.env.local`.
+//! `jadpo config move <constant>` (area 10, "Making a constant a setting",
+//! chunk 5.3f) makes a constant a setting through the code the editor's
+//! "Make this a setting" runs (`jadpo_check::setting_move`).
 //!
 //! Design (the brief, before the code; the CLI design language is the
 //! visual authority, the screens drawn in it):
@@ -24,19 +27,48 @@
 //! - *States.* Everything set; defaults only; some missing; some invalid;
 //!   no `config { }` at all (a note, not an error); a project that does
 //!   not check yet (its errors, as every command shows them).
+//!
+//! `move`, designed before it was built (impeccable's shape pass against
+//! the CLI design language, run unattended, so its assumptions are marked):
+//!
+//! - *Job.* An agent, or a person reviewing its work, turns a fixed value
+//!   into one each deployment sets, and needs to see every place whose
+//!   behaviour can now differ, and the variable a deployment may now set.
+//!   Mode: operate. The source diff is the full record; the screen is the
+//!   summary a reviewer checks it against.
+//! - *Success* reads as `jadpo migrate new` does: a change list grouped by
+//!   file (the setting's file, the constant's, then each reader's), each
+//!   row a `+ ~ -` mark, a subject and a muted note (`+ max_login_attempts
+//!   setting, default 5`, `- max_login_attempts  constant`, `~ line 5
+//!   reads config.max_login_attempts`), then one status line, `✓ Made
+//!   security.max_login_attempts a setting`, with the setting and its
+//!   variable on the label grid. Imports are left to the diff: mechanical,
+//!   and noise here (assumption). No hint: nothing has to happen next.
+//! - *Refused* is each reason as an error in the one shape (a frame at
+//!   the constant or at the read, `reason`, `next` with `jadpo config move`
+//!   to run again, `rule`), every reason at once so one round fixes them,
+//!   then `✗ config move refused  nothing changed`.
+//! - *States.* Moved into an existing `config { }` or a new
+//!   `config.jadpo`; a library or file left empty and removed; a setting
+//!   whose `default:` named the constant filled in (`~`); refused; a result
+//!   that wouldn't check (its errors, then `✗ config move stopped`); a
+//!   project that doesn't check (its errors, as `check` and `set` show
+//!   them); no such constant, or one name for two (`cli.config_arguments`,
+//!   with the nearest name or each domain's).
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as Process, Stdio};
 
+use jadpo_check::setting_move;
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_host_native::NativeHost;
 use jadpo_interp::Prepared;
 use jadpo_runtime::Host;
 use jadpo_runtime::config::{Mode, ProblemKind, StartProblem, State, Variables};
 use jadpo_term::{
-    Block, ColorChoice, Environment, Fact, Json, Outcome, Screen, Stream, Style, Token,
+    Block, ChangeMark, ColorChoice, Environment, Fact, Json, Outcome, Screen, Stream, Style, Token,
 };
 
 use crate::fmt::project_not_found;
@@ -60,6 +92,10 @@ pub const ACTIONS: &[crate::table::Value] = &[
         description: "List each setting as set, default, missing or invalid",
     },
     crate::table::Value {
+        name: "move",
+        description: "Make a constant a setting, rewriting every read",
+    },
+    crate::table::Value {
         name: "set",
         description: "Store one setting's value in .env.local",
     },
@@ -81,6 +117,7 @@ pub fn config(call: &Call) -> Reply {
     };
     match action.as_str() {
         "check" => check(call),
+        "move" => move_command(call),
         "set" => set_command(call),
         other => {
             let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
@@ -354,6 +391,233 @@ pub(crate) fn start_diagnostics(
             )
         })
         .collect()
+}
+
+// --- move --------------------------------------------------------------------
+
+fn move_command(call: &Call) -> Reply {
+    let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
+    let Some(written) = call.arguments.get(1) else {
+        return Reply::failed(
+            Diagnostic::new(
+                &rule::CLI_CONFIG_ARGUMENTS,
+                "`jadpo config move` needs a constant",
+            )
+            .reason("It makes one constant a setting, so it needs to know which.")
+            .next("Run `jadpo config move <constant>`, naming it as code reads it: `name`, or `library.name` for a library's"),
+        );
+    };
+    let Some(root) = jadpo_db::find_root(&cwd) else {
+        return project_not_found("config");
+    };
+    let mut loaded = jadpo_db::load(&root);
+    let id = match setting_move::find(&loaded.db, loaded.project, written) {
+        Ok(id) => id,
+        Err(problem) => return Reply::failed(*problem),
+    };
+    // A project that doesn't check can't be moved, except for a
+    // `default:` naming this constant, which the move answers.
+    let problems: Vec<Diagnostic> = jadpo_check::check(&loaded.db, loaded.project)
+        .into_iter()
+        .filter(|problem| problem.severity() == jadpo_diag::Severity::Error)
+        .filter(|problem| !setting_move::answered(&loaded.db, loaded.project, &id, problem))
+        .collect();
+    if !problems.is_empty() {
+        return blocked(&loaded, &cwd, problems, "config stopped");
+    }
+    let sources = jadpo_db::source_texts(&loaded.db, loaded.project);
+    let shown_root = jadpo_db::shown_root(&cwd, &loaded.root);
+    let plan = match setting_move::plan(&loaded.db, loaded.project, &id) {
+        Ok(plan) => plan,
+        Err(refusals) => {
+            let mut screen = Screen::new();
+            for problem in &refusals {
+                screen.push(Block::diagnostic_from(
+                    problem,
+                    &sources,
+                    shown_root.as_deref(),
+                ));
+            }
+            screen.push(Block::summary(
+                Outcome::Failure,
+                "config move refused",
+                [Fact::plain("nothing changed")],
+            ));
+            return Reply::Report {
+                screen,
+                data: Json::object([("moved", false.into())]),
+                diagnostics: refusals,
+                sources,
+            };
+        }
+    };
+    let moved = match setting_move::apply(&mut loaded, &plan) {
+        Ok(moved) => moved,
+        Err(stopped) => {
+            let mut screen = Screen::new();
+            for problem in &stopped.problems {
+                screen.push(Block::diagnostic_from(
+                    problem,
+                    &stopped.sources,
+                    shown_root.as_deref(),
+                ));
+            }
+            let errors = stopped.problems.len();
+            screen.push(Block::summary(
+                Outcome::Failure,
+                "config move stopped",
+                [
+                    Fact::problem(format!(
+                        "{errors} {} after the move",
+                        if errors == 1 { "error" } else { "errors" }
+                    )),
+                    Fact::plain("nothing changed"),
+                ],
+            ));
+            return Reply::Report {
+                screen,
+                data: Json::object([("moved", false.into())]),
+                diagnostics: stopped.problems,
+                sources: stopped.sources,
+            };
+        }
+    };
+    if let Err(problem) = write_moved(&root, &moved) {
+        return Reply::failed(*problem);
+    }
+    Reply::screen(moved_screen(&plan, &moved), moved_data(&plan, &moved))
+}
+
+/// Writes what the move changed, deleting a file it emptied.
+fn write_moved(root: &Path, moved: &setting_move::Moved) -> Result<(), Box<Diagnostic>> {
+    for change in &moved.files {
+        let path = root.join(&change.path);
+        let written = match &change.after {
+            Some(text) => path
+                .parent()
+                .map_or(Ok(()), std::fs::create_dir_all)
+                .and_then(|()| std::fs::write(&path, text)),
+            None => std::fs::remove_file(&path).map(|()| {
+                // A folder the file leaves empty goes too, as git sees it.
+                if let Some(folder) = path.parent().filter(|folder| *folder != root) {
+                    let _ = std::fs::remove_dir(folder);
+                }
+            }),
+        };
+        if let Err(error) = written {
+            return Err(Box::new(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+                    format!("`{}` couldn't be written", change.path),
+                )
+                .reason(format!("Writing it failed: {error}. The files before it in the move were written."))
+                .next_for(
+                    "Check the folder can be written, then restore the files with git and run `jadpo config move` again",
+                    jadpo_diag::Decider::Human,
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn mark_of(mark: setting_move::Mark) -> ChangeMark {
+    match mark {
+        setting_move::Mark::Added => ChangeMark::Added,
+        setting_move::Mark::Changed => ChangeMark::Changed,
+        setting_move::Mark::Removed => ChangeMark::Removed,
+    }
+}
+
+fn mark_word(mark: setting_move::Mark) -> &'static str {
+    match mark {
+        setting_move::Mark::Added => "added",
+        setting_move::Mark::Changed => "changed",
+        setting_move::Mark::Removed => "removed",
+    }
+}
+
+/// The change list, file by file, then the one status line.
+fn moved_screen(plan: &setting_move::Plan, moved: &setting_move::Moved) -> Screen {
+    let groups = moved
+        .files
+        .iter()
+        .filter(|change| !change.rows.is_empty())
+        .map(|change| {
+            (
+                change.path.clone(),
+                change
+                    .rows
+                    .iter()
+                    .map(|row| {
+                        (
+                            mark_of(row.mark),
+                            vec![row.subject.clone(), row.note.clone()],
+                        )
+                    })
+                    .collect(),
+            )
+        })
+        .collect();
+    Screen::new()
+        .with(Block::Changes { note: None, groups })
+        .with(Block::Status {
+            outcome: Outcome::Success,
+            text: format!("Made {} a setting", plan.shown),
+            rows: vec![
+                ("setting".to_string(), format!("config.{}", plan.setting)),
+                ("variable".to_string(), plan.variable.clone()),
+            ],
+        })
+}
+
+fn moved_data(plan: &setting_move::Plan, moved: &setting_move::Moved) -> Json {
+    let files: Vec<Json> = moved
+        .files
+        .iter()
+        .map(|change| {
+            let state = match (&change.before, &change.after) {
+                (None, _) => "added",
+                (_, None) => "removed",
+                _ => "changed",
+            };
+            let rows: Vec<Json> = change
+                .rows
+                .iter()
+                .map(|row| {
+                    Json::object([
+                        ("change", Json::from(mark_word(row.mark))),
+                        ("subject", Json::from(row.subject.as_str())),
+                        ("note", Json::from(row.note.as_str())),
+                    ])
+                })
+                .collect();
+            Json::object([
+                ("path", Json::from(change.path.as_str())),
+                ("change", Json::from(state)),
+                ("rows", Json::array(rows)),
+            ])
+        })
+        .collect();
+    let reads: Vec<Json> = plan
+        .reads
+        .iter()
+        .map(|read| {
+            Json::object([
+                ("path", Json::from(read.path.as_str())),
+                ("line", Json::from(i64::from(read.line))),
+            ])
+        })
+        .collect();
+    Json::object([
+        ("moved", true.into()),
+        ("constant", Json::from(plan.shown.as_str())),
+        ("setting", Json::from(plan.setting.as_str())),
+        ("variable", Json::from(plan.variable.as_str())),
+        ("default", Json::from(plan.default.as_str())),
+        ("reads", Json::array(reads)),
+        ("files", Json::array(files)),
+    ])
 }
 
 // --- set ---------------------------------------------------------------------

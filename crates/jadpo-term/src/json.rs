@@ -269,6 +269,12 @@ pub fn diagnostic_json(diagnostic: &Diagnostic, sources: &dyn Sources) -> Json {
         ),
         ("reason", diagnostic.reason.as_ref().into()),
         ("next", next.into()),
+        (
+            "inUse",
+            Json::array(diagnostic.in_use.iter().map(|(name, path)| {
+                Json::object([("name", Json::from(name)), ("path", Json::from(path))])
+            })),
+        ),
         ("impact", diagnostic.impact.as_ref().into()),
         ("help", diagnostic.help().into()),
     ])

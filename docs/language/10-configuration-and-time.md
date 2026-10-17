@@ -6,6 +6,11 @@ checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - configuration.binding_empty
   - configuration.binding_invalid
+  - configuration.client_address_duplicate
+  - configuration.client_address_hops_invalid
+  - configuration.client_address_hops_unused
+  - configuration.client_address_invalid
+  - configuration.client_address_source_unknown
   - configuration.default_invalid
   - configuration.default_literal_required
   - configuration.default_type
@@ -22,11 +27,39 @@ rules:
   - configuration.unknown_option
   - configuration.url_type
   - type.clock_context
-  - type.temporal_*
-  - type.locale_*
-  - syntax.locales_*
+  - type.temporal_clock_invalid
+  - type.temporal_option_unused
+  - type.temporal_zone_required
+  - type.temporal_format_component_duplicate
+  - type.temporal_format_component_invalid
+  - type.temporal_format_components_empty
+  - type.temporal_format_invalid
+  - type.temporal_format_requires_time
+  - type.temporal_locales_required
+  - type.locale_default_unsupported
+  - type.locale_duplicate
+  - type.locale_invalid
+  - type.locale_unsupported
+  - syntax.locales_default_required
+  - syntax.locales_duplicate_option
+  - syntax.locales_supported_required
+  - syntax.locales_unknown_option
   - semantic.multiple_locale_declarations
   - type.presentation_text_persistence
+  - translation.file_invalid
+  - translation.file_missing
+  - translation.file_name_invalid
+  - translation.key_duplicate
+  - translation.key_extra
+  - translation.key_invalid
+  - translation.key_missing
+  - translation.key_unknown
+  - translation.locale_unsupported
+  - translation.locales_required
+  - translation.message_invalid
+  - translation.other_missing
+  - translation.placeholder_mismatch
+  - translation.placeholder_type
 ---
 
 # Configuration and time
@@ -35,7 +68,7 @@ How an application declares its settings and secrets, where their values come
 from, and how code reads the current time, works with dates and zones, and
 shows times to people in their own language.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; the examples marked `check` in those sections and in the configuration errors run with this checkout's `jadpo`. Time and formatting come in chunk 5.2, locales and translations in chunk 5.3.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; chunk 5.1c built the client's address behind trusted proxies (`client_address:`). Chunk 5.2 built time: `ZonedTime`, durations, arithmetic and comparison, the `temporal` library over a bundled time zone database, and a test's clock; chunk 5.2b built the formats and `PresentationText`, and checks `temporal.format` and `format_relative`. The examples marked `check` in those sections and their errors run with this checkout's `jadpo`. Chunk 5.3 built locales (`locales { }`, checked wherever a locale is written) and the text `temporal.format` and `format_relative` give, in each locale's own words, order and digits; chunk 5.3b built translations (`translations/`, ICU MessageFormat messages, one typed call per key, the checks between locales' files); chunk 5.3c built choosing a locale from a request, `locale.from_accept_language(header)`.
 
 Two rules run through the page. **Code never reads the environment or the
 system clock directly**: settings arrive as typed `config.<field>` values,
@@ -53,10 +86,10 @@ setting cannot change while the app runs.
 
 ```jadpo check project=settings
 config {
-    database_url: PostgresUrl
-    session_signing_key: SigningKey
     browser_origin: Url
+    database_url: PostgresUrl
     mail_sender: Email
+    session_signing_key: SigningKey
     soft_delete_retention: Duration {
         default: 30d
     }
@@ -84,11 +117,11 @@ type ListLimit = Int {
 type FromAddress = Email {}
 
 config {
-    page_size: ListLimit {
-        default: 25
-    }
     mail_sender: FromAddress {
         test: "reminders@example.test"
+    }
+    page_size: ListLimit {
+        default: 25
     }
 }
 
@@ -139,11 +172,11 @@ type LogLevel = Enum {
 }
 
 config {
-    log_level: LogLevel {
-        default: LogLevel.normal
-    }
     business_zone: Zone {
         default: Zone.europe_london
+    }
+    log_level: LogLevel {
+        default: LogLevel.normal
     }
 }
 ```
@@ -160,11 +193,207 @@ A default is a literal of the field's type, checked while compiling
 (`default: 25`, `default: 5s`, `default: LogLevel.normal`), against every rule of
 the type and the types it is built on. The same is true of `test:`, the value
 every test reads (below); a field that has none of its own default and is read
-by a test needs one.
+by a test needs one. Neither names a constant (area 3,
+[Constants](03-logic.md#constants)), though it is fixed while compiling: a
+value is a constant or a setting, never both (below; revised 2026-10-16,
+Richard).
 
 A secret cannot have either, so a forgotten production secret stops the app
 instead of falling back to a value written in source, and secrets never appear
 in test source.
+
+### A constant or a setting
+
+> Decided by Richard on 2026-10-16. Constants are built (chunk 5.3e, area
+> 3), and so is the refusal of one as a `default:`; the move below, `jadpo
+> config move`, was built in chunk 5.3f, and its examples are checked.
+
+A value that could differ between deployments is a setting; one that never
+does is a `constant` (area 3). A value is one or the other, never both, so
+it has one source and one way to read it: a constant is read as
+`security.max_login_attempts`, a setting as `config.max_login_attempts`.
+That is why a `default:` never names a constant. If one could, code reading
+the constant directly would quietly ignore the environment: with
+`security.standard_attempts` (5) as `max_login_attempts`'s default,
+someone sets `MAX_LOGIN_ATTEMPTS=10`, and code reading
+`security.standard_attempts` still allows 5. That is the familiar `DEFAULT_PORT` bug of TypeScript and
+pydantic code, where a constant seeds a setting and half the code reads the
+constant. Jadpo has no need for the pattern: `default:` on the field
+already names the default, in the one place a reader looks.
+
+The three tiers, from fixed to live:
+
+| Tier | Where | Changes | Read as |
+|---|---|---|---|
+| `constant` | Beside its use, or in a library (area 3) | With a code change | `security.max_login_attempts` |
+| Setting | `config { }` in `config.jadpo` | Per deployment, when the app starts | `config.max_login_attempts` |
+| Flag | `flags { }` in `flags.jadpo` (area 16) | While the app runs | `flags.new_checkout` |
+
+#### Making a constant a setting
+
+Turning a fixed value into a per-deployment one is a move a tool makes:
+`jadpo config move <constant>` on the command line, or "Make this a
+setting" in the editor, on the constant's declaration or any read of it,
+which runs the same code (area 14, as the editor's rename runs `jadpo
+rename`). It is offered, never required, so `jadpo fmt --layout`, which
+makes only the moves an error asks for, doesn't make it. In one step it:
+
+- adds a field to `config { }` with the constant's name and type, whose
+  `default:` is the constant's value written as a literal (a value worked
+  out from other constants or operators is written as the value the
+  compiler worked out), and whose `///` description is the constant's;
+- deletes the constant;
+- rewrites every read, `security.max_login_attempts` (or
+  `max_login_attempts` beside its declaration) to
+  `config.max_login_attempts`, and removes a `use` line nothing needs any
+  more.
+
+Before, a library in the `accounts` domain holds the constant and an
+action reads it:
+
+```jadpo check project=move-before file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=move-before file=domains/accounts/types/login_attempts.jadpo hidden
+type LoginAttempts = Int {
+    min: 1
+    max: 100
+}
+```
+
+```jadpo check project=move-before file=domains/accounts/types/account_locked.jadpo hidden
+type AccountLocked = Bool {}
+```
+
+```jadpo check project=move-before file=domains/accounts/libraries/security.jadpo
+use accounts/types { LoginAttempts }
+
+library security {
+    /// Failed sign-ins before an account is locked.
+    constant max_login_attempts: LoginAttempts = 5
+}
+```
+
+```jadpo check project=move-before file=domains/accounts/actions/sign_in.jadpo
+use accounts/types { AccountLocked, LoginAttempts }
+use accounts/libraries { security }
+
+action sign_in(failed_attempts: LoginAttempts) -> AccountLocked {
+    return AccountLocked(failed_attempts >= security.max_login_attempts)
+}
+```
+
+The move lists what it changed, file by file, then the setting and the
+variable a deployment can now set:
+
+```text
+$ jadpo config move security.max_login_attempts
+  config.jadpo
+    + max_login_attempts  setting, default 5
+
+  domains/accounts/libraries/security.jadpo
+    - max_login_attempts  constant
+    - security            library, nothing left in it
+    - security.jadpo      file, nothing left in it
+
+  domains/accounts/actions/sign_in.jadpo
+    ~ line 5              reads config.max_login_attempts
+
+Made security.max_login_attempts a setting
+    setting   config.max_login_attempts
+    variable  MAX_LOGIN_ATTEMPTS
+```
+
+After, the library held nothing else, so it and its file are gone, and
+the imports follow:
+
+```jadpo check project=move-after file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=move-after file=domains/accounts/types/login_attempts.jadpo hidden
+type LoginAttempts = Int {
+    min: 1
+    max: 100
+}
+```
+
+```jadpo check project=move-after file=domains/accounts/types/account_locked.jadpo hidden
+type AccountLocked = Bool {}
+```
+
+```jadpo check project=move-after file=config.jadpo
+use accounts/types { LoginAttempts }
+
+config {
+    /// Failed sign-ins before an account is locked.
+    max_login_attempts: LoginAttempts {
+        default: 5
+    }
+}
+```
+
+```jadpo check project=move-after file=domains/accounts/actions/sign_in.jadpo
+use accounts/types { AccountLocked, LoginAttempts }
+
+action sign_in(failed_attempts: LoginAttempts) -> AccountLocked {
+    return AccountLocked(failed_attempts >= config.max_login_attempts)
+}
+```
+
+Every read changes, so the reviewer sees each place whose behaviour can now
+differ per deployment, and the tool makes that mechanical. The new
+variable, `MAX_LOGIN_ATTEMPTS`, is derived from the field's name as any
+setting's is. It refuses, editing nothing, and says why:
+
+- a constant whose type a setting can't hold ([What a setting can
+  hold](#what-a-setting-can-hold): a list, an object, `T?`, an enum with
+  data);
+- a constant whose name a setting already has, naming that setting;
+- a constant read where a setting can't be: in a query, an update by `id`,
+  a backfill or another constant's value, listing each such read.
+
+Each reason is an error of its own (`configuration.move_type_unsupported`,
+`configuration.move_name_taken`, `configuration.move_read_unsupported`,
+area 14's command errors), all given at once, ending `config move refused:
+nothing changed`. A setting whose `default:` names the constant
+(`configuration.default_literal_required`, below) is the one setting the
+move fills instead: the constant becomes that setting.
+
+Moving a setting back to a constant has no command: it is rare, and
+removing a setting is a change to every deployment's environment, made by
+hand.
+
+Rejected (Richard, 2026-10-16):
+
+- **A constant an environment variable can override** (`setting: true` on
+  the constant). A read of it looks fixed at the call site while its value
+  differs per deployment; agents would add it everywhere "just in case";
+  there is no single list of the variables a deployment must set; and
+  moving the file would rename the variable.
+- **A `config { }` block in each domain.** Settings belong to the
+  deployment, not to the code that reads them, and an operator wants one
+  list.
+- **Settings declared beside their use and gathered by the compiler.** The
+  same missing list, and a setting's name would depend on where its first
+  reader sits.
+- **Values per environment in source** (`production:`, `staging:`). Against
+  this page's rule that values come from the deployment's environment with
+  no layering ([Values on your machine and in
+  production](#values-on-your-machine-and-in-production)).
+
+### Fields in name order
+
+`jadpo fmt` sorts the fields of `config { }` by name, each with the comments
+written above it and after it on its line, so two workspaces that each add
+a setting rarely touch the same lines and merge cleanly. Nothing gives a
+setting's position a meaning: a setting is read, bound and reported by
+name; `jadpo config check` and the check before the app starts list
+settings in the order they are written, which becomes name order.
+`jadpo fmt --check` fails on a `config { }` out of order. Decided by
+Richard on 2026-10-16 and built in chunk 5.3f; the examples on the
+language pages are in name order.
 
 ### Chosen in chunk 5.1
 
@@ -180,6 +409,22 @@ in test source.
 - **`binding:` and the previous key.** A `SigningKey` setting also reads the
   variable named like its own with `_PREVIOUS` after it (below), so no other
   setting may bind that name.
+
+### Chosen in chunk 5.3f
+
+Choices the pages left open when `jadpo config move` was built, each the
+most conservative reading:
+
+| Choice | Chosen |
+|---|---|
+| Naming the constant | As code reads it, `security.max_login_attempts` or `free_delivery_from`, or after its domain (`accounts.security.max_login_attempts`) when private constants of two domains share the name; one name for two is refused, listing each |
+| The `default:` | The constant's value as written when it is a literal (`5`, `30d`, `0.2000`, `LogLevel.normal`); otherwise the value the compiler worked out |
+| Where the field goes | Into the one `config { }`, before the first field whose name comes after it; a new `config.jadpo` when there is none. The `///` lines move with it; imports are fixed in every file touched |
+| A library or file left empty | Removed: a library whose only member was the constant goes, and a file holding nothing else is deleted (with its folder, if that is left empty) |
+| A `default:` naming the constant | When exactly one setting's `default:` names the constant (`configuration.default_literal_required`), that setting is the one the constant becomes: its `default:` becomes the constant's value and every read becomes `config.<that setting>`; that error alone doesn't stop the move |
+| A project with errors | Not moved: its errors are shown as `jadpo check` shows them, and the editor offers the action unavailable |
+| A result that wouldn't check | Undone, and refused with the errors it would have (such as another constant left unused); nothing is written |
+| What the screen lists | The setting added (or filled), the constant and anything removed with it, and each read by line; imports are left to the diff |
 
 ## Secrets
 
@@ -319,6 +564,110 @@ Authentication reads the key as `signing_key: config.session_signing_key`,
 and with a revocation delay signs sessions and tokens with it (area 8, "The
 application and revocation").
 
+## Client addresses
+
+Rate limits count a request by its address while no one is signed in (areas
+7 and 16), and `jadpo dev`'s request lines and the request timeline (area 17)
+show it. Behind a load balancer or a CDN the connection's own address is the
+proxy's, so every client would share one allowance until the real address is
+read from the header the proxy adds; but a header anyone can send lets a
+caller choose its own address. `client_address:` in `app.jadpo` says, once,
+where the real address is and how many proxies of the deployment's own to
+believe (question 12):
+
+```jadpo check project=client-address file=config.jadpo
+use edge/types { ProxyHops }
+
+config {
+    proxy_hops: ProxyHops {
+        default: 1
+    }
+}
+```
+
+```jadpo check project=client-address file=app.jadpo
+application {
+    client_address: {
+        source: ClientAddressSource.forwarded_for
+        hops: config.proxy_hops
+    }
+}
+```
+
+```jadpo check project=client-address file=domains/edge/types/proxy_hops.jadpo hidden
+type ProxyHops = Int {
+    min: 1
+    max: 8
+}
+```
+
+`ClientAddressSource` is a closed set of four:
+
+| Source | The client's address is | `hops:` |
+|---|---|---|
+| `connection` | the connection's own address; no header is read (the native default) | not allowed |
+| `forwarded_for` | in `X-Forwarded-For` | required |
+| `forwarded` | in RFC 7239's `Forwarded: for=` | required |
+| `cloudflare` | in `CF-Connecting-IP` (the default on Workers, the only source accepted there) | not allowed |
+
+`hops` is how many proxies of the deployment's own sit in front of the app. It
+is a count and not a list of trusted ranges, so it cannot drift when a
+provider's addresses change. Each trusted proxy adds the address it saw to the
+right of the list, and whatever a caller sends sits to the left of that, so
+with `hops: N` the client is the N-th address from the right of the header's
+addresses, every line of the header joined in order: with one proxy,
+`X-Forwarded-For: 203.0.113.9` and with a caller's own claim in front,
+`X-Forwarded-For: 10.9.9.9, 203.0.113.9`, are both `203.0.113.9`. If the header
+has fewer than N addresses, or the one chosen is not an address, the request
+counts as the connection's own address, never as a guess. `hops` is a whole
+number from 1, written out (`hops: 1`) or read from an `Int` setting whose
+type declares `min: 1` or more, so a count below 1 cannot be started with.
+
+The address chosen is the one the default rate limits count, `jadpo dev`'s
+request lines show (after the time, muted, and as `address` with `--json`) and
+the request timeline records. Natively the connection's address comes from the
+host and the rest is the runtime's, so a deployable chooses an address the
+way `jadpo dev` does (`jadpo_runtime::http::ClientAddress`).
+
+On Workers there is no connection address to fall back to, and Cloudflare sets
+`CF-Connecting-IP` on every request from its edge and overwrites a caller's, so
+`cloudflare` is the only source accepted there and what a deployable for
+Workers uses without a `client_address:`. An address Cloudflare did not give
+is unknown there, and requests with no known address share one allowance.
+
+### Chosen in chunk 5.1c
+
+- **What `hops` needs.** `forwarded_for` and `forwarded` need it, because a
+  count of trusted proxies is never guessed; `connection` and `cloudflare`
+  refuse it (`configuration.client_address_hops_unused`), since no header is
+  counted from the right.
+- **An address.** Anything `IpAddress` accepts, as IPv4 or IPv6, and in a
+  header also with a port (`203.0.113.9:4711`) or in brackets
+  (`[2001:db8::17]:4711`, `[2001:db8::17]`). It is kept in one spelling, so a
+  client is one count whichever way a proxy writes it: IPv6 in lower case with
+  the zeros shortened, and an IPv4 address written as IPv6
+  (`::ffff:203.0.113.9`) as IPv4. The connection's own address is spelled the
+  same way. A name, `unknown`, an obfuscated identifier (`_hidden`) or a
+  zone (`fe80::1%eth0`) is not an address.
+- **Reading the lists.** Every header line of the name counts, in the order
+  received, and each is split at commas. An empty entry still takes its place
+  in the count, so a gap never moves the client left, but it is not an address.
+  In `Forwarded`, each element (split at commas outside quotes) gives one
+  entry, from its `for` parameter (any case; a token or a quoted string); an
+  element without one is an entry that is not an address. A `Forwarded` header
+  that does not parse (an unterminated quote, two `for` in one element) is
+  invalid as a whole.
+- **`cloudflare`.** Exactly one `CF-Connecting-IP` line holding one address;
+  anything else falls back, as a header that is short or invalid does.
+- **Falling back is whole.** The connection's address replaces the choice; part
+  of a header is never mixed with it.
+- **Settings.** A setting that `hops:` reads must be an `Int` (or a type built
+  on it) that declares `min:` of at least 1
+  (`configuration.client_address_hops_invalid` otherwise).
+- **Workers.** A source other than `cloudflare` is refused when the project
+  is built for Workers; deployables are declared in chunk 8.2, which makes
+  that check (`ClientAddress::read` already refuses it for that target).
+
 ## Checking values before the app starts
 
 The generated app reads only the declared variables, checks every value
@@ -355,21 +704,21 @@ not running this version: 1 error, waiting for a save that fixes them
 
 | Type | What it is | Example | On the wire |
 |---|---|---|---|
-| `Instant` | One point on the timeline, in UTC, to the millisecond | when a todo was created | `"2026-01-15T12:00:00.000Z"` |
+| `Instant` | One point on the timeline, in UTC, to the millisecond | when a todo was created | `"2026-01-15T12:00:00Z"`, `"2026-01-15T12:00:00.250Z"` |
 | `CalendarDate` | A date with no time or zone | a birthday, an invoice date | `"2026-10-25"` |
-| `Time` | An `Instant` seen in a `Zone`, for showing or reasoning about local time | "09:30 in London" | `{ "instant": …, "zone": "Europe/London" }` |
+| `ZonedTime` | An `Instant` seen in a `Zone`, for showing or reasoning about local time | "09:30 in London" | `{ "instant": "2026-10-25T08:30:00Z", "zone": "Europe/London" }` |
 | `Duration` | Elapsed time | a timeout, a retention period | `"PT5M"` |
 | `Zone` | An IANA time zone, a built-in enum | `Zone.europe_london` | `"Europe/London"` |
 | `Weekday` | A built-in enum | `Weekday.monday` | `"monday"` |
 
 - Store `Instant`. Use `CalendarDate` only for facts that really are dates.
-  There is no time without a date and zone, and no date-time without a zone.
+  There is no time of day on its own and no date-time without a zone:
+  `ZonedTime` (renamed from `Time`, question 5) holds an instant and the
+  zone it is seen in.
 - `Instant` keeps milliseconds: the precision JavaScript clients, SQLite and
   PostgreSQL all share. A literal with microseconds is rejected, and
   writes to PostgreSQL's microsecond column are always whole milliseconds
   (carried from area 5).
-- `Time` is a misleading name: in Java, JavaScript's Temporal and Elixir a
-  "time" is a time of day. Proposed: rename it `ZonedTime` (question 5).
 - Types never convert to each other or to `Text` silently; signatures use
   named types built on them (decided in area 2), such as
   `type DueAt = Instant {}`.
@@ -378,7 +727,7 @@ not running this version: 1 error, waiting for a save that fixes them
   (`"2026-10-25T08:30:00Z"`), a `CalendarDate` literal a real date
   (`"2026-10-25"`), both checked while compiling; a `Duration` is written only
   with a unit (`15m`), and `min:` and `max:` on a `Duration` type are
-  enforced; a `Time` has no literal. `Zone`, `Weekday` and `Locale` are
+  enforced; a `ZonedTime` has no literal. `Zone`, `Weekday` and `Locale` are
   built-in enums: `Zone` has a variant for each zone in the IANA database's
   `zone.tab` (2026d) plus `utc`, named in lower_snake_case
   (`Zone.america_argentina_buenos_aires`); `Locale` has one for each
@@ -387,27 +736,71 @@ not running this version: 1 error, waiting for a save that fixes them
   `Locale.en_gb`; 533 in all), named in lower_snake_case from the BCP 47
   tag. Both tables live in `jadpo-std` (`src/zones.rs`, which says how each
   was made) and change only in a change of their own.
+- An `Instant` holds the years 0000 to 9999, up to
+  `9999-12-30T22:00:00.999Z`, the last instant whose local date is in year
+  9999 in every zone, and a `CalendarDate` the same years; a literal past
+  them is refused while compiling, and arithmetic that goes past them is the
+  fault `time_out_of_range` (chosen in chunk 5.2).
+- Two `ZonedTime`s are equal when both their instants and their zones are.
+  They have no order of their own, since two in different zones have none;
+  their instants do, through `temporal.instant(...)` (chosen in chunk 5.2).
+- A `ZonedTime` field of an entity is stored as an object is, as the API's
+  JSON in `jsonb`, which is not built yet (area 5); store the `Instant` and,
+  where the zone matters, a `Zone` field beside it (chosen in chunk 5.2).
 - `clock.now` in a function, a library function or an inline function is
-  `type.clock_context`; any other member of `clock`, `translations`,
-  `sessions` or `oauth` is `toolchain.not_built_yet` until its area is built.
-  `config.<name>` is a setting (chunk 5.1).
+  `type.clock_context`; `clock.advance(...)` outside a test is
+  `type.test_clock_context` (area 13); any other member of `clock`,
+  `translations`, `sessions` or `oauth` is `toolchain.not_built_yet` until
+  its area is built. `config.<name>` is a setting (chunk 5.1).
+
+```jadpo check project=time-types
+/// When an invoice falls due.
+type DueAt = Instant {}
+
+/// The day an invoice is dated.
+type InvoiceDate = CalendarDate {}
+
+test "time literals are checked while compiling and compare as time" {
+    assert DueAt("2026-10-25T13:00:00+01:00") == DueAt("2026-10-25T12:00:00Z")
+    assert InvoiceDate("2026-10-25") < InvoiceDate("2026-10-26")
+}
+```
 
 ## Durations
 
-Proposed (question 4): one spelling everywhere in source, `500ms`, `30s`,
-`5m`, `2h`, `30d`, with ISO 8601 (`"PT5M"`) only in JSON.
+Decided (question 4): one spelling everywhere in source, `500ms`, `30s`,
+`5m`, `2h`, `30d`, with ISO 8601 (`"PT5M"`) only on the wire.
 
-```jadpo fragment
+```jadpo check project=durations
+/// How long a request may take.
 type RequestTimeout = Duration {
     max: 30s
 }
 
-var grace: Duration = 5m
+/// How long a reminder comes before its due time.
+type ReminderNotice = Duration {
+    min: 1m
+    max: 30d
+}
+
+test "durations are written with a unit, and add up" {
+    var allowed: RequestTimeout = 5s
+    assert allowed + 500ms == 5500ms
+    var notice: ReminderNotice = 2h
+    assert notice - 30m == 90m
+}
 ```
 
-`30d` would mean exactly 30 × 24 hours, which is what a retention period or a
+`30d` means exactly 30 × 24 hours, which is what a retention period or a
 token lifetime means. Moving a date by calendar days is a separate operation
 on `CalendarDate` (below).
+
+On the wire a duration is ISO 8601 in hours, minutes and seconds, as the
+runtime writes it: `"PT5M"`, `"PT1.5S"`, `"PT720H"` for `30d`, `"-PT5M"`
+for a negative one. A request's JSON, query string, path and headers give
+it the same way, with days (`"P1DT2H"`) accepted as 24 hours each; `5m` is
+the source's spelling and is refused there (chosen in chunk 5.2). A setting
+is the exception, read as source writes it, `5m` (chunk 5.1).
 
 ## The current time: `clock.now`
 
@@ -418,149 +811,1143 @@ way to read a fresher time, and code never reads the system clock.
 
 Only actions read the clock. Functions and queries must give the same answer
 for the same arguments, so they take the time as a parameter
-(`type.clock_context`):
+(`type.clock_context`); a query's condition may compare with `clock.now`,
+which is the calling action's (area 6):
 
-```jadpo fragment
+```jadpo check project=clock-now
 type ReminderCutoff = Instant {}
 
-action send_due_reminders() -> Unit {
-    var cutoff: ReminderCutoff = ReminderCutoff(clock.now)
-    var todos: List<Todo> = todos_due_before(cutoff)
-    // ...
+/// The latest due time a reminder goes out for now: an hour ahead.
+action reminder_cutoff() -> ReminderCutoff {
+    return ReminderCutoff(clock.now + 1h)
 }
 
-query todos_due_before(cutoff: ReminderCutoff) -> List<Todo> {
-    // where: Todo.due_at < cutoff   (query syntax is area 6)
+test "an action reads the test's clock" {
+    clock: "2026-01-15T12:00:00Z"
+
+    assert reminder_cutoff() == ReminderCutoff("2026-01-15T13:00:00Z")
+    clock.advance(30m)
+    assert reminder_cutoff() == ReminderCutoff("2026-01-15T13:30:00Z")
 }
 ```
 
 Timeouts are measured on a separate clock that wall-clock changes cannot
-move; code never sees it. Tests fix and move the clock through fixtures
-(area 13). The generated SQL always passes the time as a value; the database's
-own `now()` is never used.
+move; code never sees it. Tests fix the clock with `clock:` and move it with
+`clock.advance(...)` (area 13). The generated SQL always passes the time as
+a value; the database's own `now()` is never used.
 
 ## Arithmetic and comparison
 
-`Instant + Duration` and `Instant - Duration` give an `Instant`;
-`Instant - Instant` gives a `Duration`; `Duration ± Duration` gives a
-`Duration`. Instants compare with `<` and `==` on the timeline, so
-`12:00Z` equals `13:00+01:00`.
+`Instant + Duration`, `Duration + Instant` and `Instant - Duration` give an
+`Instant` of the instant's own named type, so no rebuild is needed
+(question 6). `Instant - Instant` gives the `Duration` between them, which is
+negative when the second is later; `Duration ± Duration` gives a
+`Duration`. As with numbers, both sides are the same type after widening, or
+one is a literal, and the result of two of the same is a plain `Duration`.
+Instants, dates and durations order with `<`, `<=`, `>` and `>=` and compare
+with `==` on the timeline, so `12:00Z` equals `13:00+01:00`.
 
-Proposed (question 6): adding a duration keeps the instant's named type, so
-no rebuild is needed:
+A `CalendarDate` has no clock time, so a `Duration` doesn't move it; it moves
+by calendar days with `temporal.add_days`. A `ZonedTime` moves on its
+calendar the same way, or through its instant. `*`, `/` and `%` don't take
+time values (chosen in chunk 5.2).
 
-```jadpo fragment
+```jadpo check project=arithmetic
+type DueAt = Instant {}
+
+type ReminderNotice = Duration {
+    min: 1m
+    max: 7d
+}
+
+type Lateness = Duration {}
+
+/// When to send a reminder: the notice before the due time. Taking a
+/// duration from a `DueAt` gives a `DueAt`.
 function reminder_time(due_at: DueAt, notice: ReminderNotice) -> DueAt {
-    return due_at - notice      // today: an Instant, rebuilt as DueAt(due_at - notice)
+    return due_at - notice
+}
+
+/// How late something done at `done_at` was: negative when it was early.
+function lateness(due_at: DueAt, done_at: DueAt) -> Lateness {
+    return Lateness(done_at - due_at)
+}
+
+test "a duration moves an instant and keeps its type" {
+    assert reminder_time("2026-10-25T09:00:00Z", 30m) == "2026-10-25T08:30:00Z"
+    assert lateness("2026-10-25T09:00:00Z", "2026-10-25T11:15:00Z") == 135m
+    assert lateness("2026-10-25T09:00:00Z", "2026-10-25T08:00:00Z") < 0s
+}
+
+test "instants compare on the timeline" {
+    assert DueAt("2026-10-25T12:00:00Z") == DueAt("2026-10-25T13:00:00+01:00")
+    assert DueAt("2026-10-25T12:00:00Z") < DueAt("2026-10-25T12:00:00.001Z")
 }
 ```
 
 ## Zones and local times
 
 A zone turns an instant into local time; this is never ambiguous:
-
-```jadpo fragment
-var local: Time = temporal.in_zone(clock.now, Zone.europe_london)
-```
+`temporal.in_zone(clock.now, Zone.europe_london)` is a `ZonedTime`.
 
 Going the other way, from a date and a clock time to an instant, can be: at
-01:30 on the day clocks go back, London has two 01:30s, and on the day they go
-forward 01:30 does not exist. The call says what to do in both cases:
+01:30 on the day clocks go back, London has two 01:30s, and on the day they
+go forward 01:30 does not exist. One option, `dst:`, says which instant to
+take (question 7): `Dst.earlier` or `Dst.later` takes that instant of an
+overlap, and in a gap moves the clock time back or forward by the gap's
+length; `Dst.compatible` is earlier in an overlap and later in a gap, as
+JavaScript's Temporal does. Left out, or `Dst.reject`, an unclear local time
+fails, and the call's `attempt` maps it by the option's name, `dst:`, the
+way a construction's broken rule is mapped (area 2): the failure is
+`invalid_value`, and `invalid:` covers every condition without its own arm.
 
-```jadpo fragment
-var cutoff: Time = temporal.resolve(
-    date: CalendarDate("2026-10-25"),
-    at: "09:30",
-    zone: Zone.europe_london,
-    overlap: LocalOverlap.reject,
-    gap: LocalGap.reject
-)
+```jadpo check project=local-times
+type ShopDay = CalendarDate {}
+
+type Opening = ZonedTime {}
+
+type OpeningUnclear = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// When the night shift opens on `day`: 01:30, which on the day the clocks
+/// go back happens twice, and on the day they go forward not at all.
+function night_opening(day: ShopDay) fails OpeningUnclear -> Opening {
+    var opening: ZonedTime = attempt temporal.resolve(day, at: "01:30", zone: Zone.europe_london) {
+        dst: OpeningUnclear
+    }
+    return Opening(opening)
+}
+
+/// The same, taking the earlier 01:30 of the two and, when there is none,
+/// the time an hour on.
+function night_opening_anyway(day: ShopDay) -> Opening {
+    return Opening(
+        temporal.resolve(day, at: "01:30", zone: Zone.europe_london, dst: Dst.compatible)
+    )
+}
+
+test "an unclear local time fails unless `dst:` decides" {
+    assert night_opening("2026-10-25") fails OpeningUnclear
+    assert night_opening("2026-03-29") fails OpeningUnclear
+    assert temporal.instant(night_opening_anyway("2026-10-25")) == Instant("2026-10-25T00:30:00Z")
+    assert temporal.instant(night_opening_anyway("2026-03-29")) == Instant("2026-03-29T01:30:00Z")
+}
+
+test "a day on keeps the clock time, 25 hours later across the change" {
+    var saturday: ZonedTime = temporal.resolve(
+        "2026-10-24",
+        at: "09:00",
+        zone: Zone.europe_london,
+        dst: Dst.compatible
+    )
+    var sunday: ZonedTime = temporal.add_days(saturday, 1, dst: Dst.compatible)
+    assert temporal.instant(sunday) - temporal.instant(saturday) == 25h
+    assert temporal.hour(sunday) == 9
+    assert temporal.weekday(sunday) == Weekday.sunday
+}
+
+test "a month on from the 31st needs a day the month has" {
+    var end_of_january: CalendarDate = "2026-01-31"
+    assert temporal.add_months(
+        end_of_january,
+        1,
+        invalid_day: InvalidDay.last_valid_day
+    ) == CalendarDate("2026-02-28")
+}
 ```
 
-A query for "orders on 25 October in London" uses the day's bounds, which are
-correct whether the day has 23, 24 or 25 hours:
+`at:` is a clock time written out, `"09:30"` or `"09:30:15"`, checked while
+compiling (`type.temporal_clock_invalid`): there is no time-of-day type, so
+no value holds one. Only a `dst:` written out settles the condition: a `Dst`
+passed as a value might be `reject`, so the call can still fail. Moving a
+date by months or years can land on a day the month doesn't have (31
+January plus a month): `invalid_day: InvalidDay.last_valid_day` takes the
+month's last day, and left out, or `InvalidDay.reject`, the call fails with
+`invalid_day:` to map. `dst:` means something only for a `ZonedTime`; on a
+`CalendarDate` it is `type.temporal_option_unused` (chosen in chunk 5.2).
 
-```jadpo fragment
-var day: InstantRange = temporal.day_bounds(CalendarDate("2026-10-25"), Zone.europe_london)
-// where: Order.created_at >= day.start and Order.created_at < day.end
+A query for "deliveries on 25 October in London" uses the day's bounds, from
+its first instant up to the next day's, which are correct whether the day has
+23, 24 or 25 hours; a query compares a field with an `InstantRange`
+parameter's `start` and `end` as with any parameter's fields (area 6):
+
+```jadpo check project=deliveries file=app.jadpo hidden
+application {}
 ```
 
-The `temporal` library has about 35 functions and six option enums. A
-smaller form, with one daylight-saving option instead of two, is in the
-[time and formatting proposals](research/10-configuration-and-time-proposals.md)
-(question 7).
+```jadpo check project=deliveries file=domains/shop/types/delivery_note.jadpo hidden
+type DeliveryNote = Text {
+    max_length: 200
+}
+```
+
+```jadpo check project=deliveries file=domains/shop/types/shop_day.jadpo hidden
+type ShopDay = CalendarDate {}
+```
+
+```jadpo check project=deliveries file=domains/shop/entities/delivery.jadpo hidden
+use shop/types { DeliveryNote }
+
+entity Delivery {
+    id: Uuid
+    note: DeliveryNote
+    arrived_at: Instant {
+        generated: Generated.on_create
+    }
+}
+```
+
+```jadpo check project=deliveries file=domains/shop/types/delivery_view.jadpo hidden
+use shop/entities { Delivery }
+
+type DeliveryView = Output {
+    pick: [Delivery.note, Delivery.arrived_at]
+}
+```
+
+```jadpo check project=deliveries file=domains/shop/actions/record_delivery.jadpo hidden
+use shop/entities { Delivery }
+
+/// Records a delivery as it arrives: `arrived_at` is the action's
+/// `clock.now`.
+action record_delivery(note: Delivery.note) -> Delivery {
+    return Delivery.create {
+        set: {
+            note: note
+        }
+    }
+}
+```
+
+```jadpo check project=deliveries file=domains/shop/queries/deliveries_in.jadpo
+use shop/entities { Delivery }
+use shop/types { DeliveryView }
+
+/// The deliveries that arrived from `range.start` up to `range.end`.
+query deliveries_in(range: InstantRange) -> List<DeliveryView> {
+    from: Delivery
+    where: Delivery.arrived_at >= range.start
+    where: Delivery.arrived_at < range.end
+    order: [Delivery.arrived_at asc]
+    limit: 100
+}
+```
+
+```jadpo check project=deliveries file=domains/shop/actions/deliveries_on.jadpo migrate=initial
+use shop/types { DeliveryView, ShopDay }
+use shop/queries { deliveries_in }
+
+/// The deliveries on `day` in London, however many hours it has.
+action deliveries_on(day: ShopDay) -> List<DeliveryView> {
+    return deliveries_in(temporal.day_bounds(day, Zone.europe_london))
+}
+```
+
+The test runs against PostgreSQL. London's clocks go back at 02:00 on 25
+October 2026, so the day runs from 23:00 UTC on the 24th to midnight UTC on
+the 26th:
+
+```jadpo check project=deliveries file=domains/shop/actions/deliveries_on.test.jadpo
+use shop/actions { record_delivery }
+
+test "a London day has 25 hours when the clocks go back" {
+    clock: "2026-10-24T22:59:00Z"
+
+    assert record_delivery("before midnight").note == "before midnight"
+    clock.advance(2m)
+    assert record_delivery("just after midnight").note == "just after midnight"
+    clock.advance(24h)
+    assert record_delivery("late on the 25th").note == "late on the 25th"
+    clock.advance(1h)
+    assert record_delivery("the 26th").note == "the 26th"
+    assert collection.map(deliveries_on("2026-10-25"), delivery -> delivery.note) == [
+        "just after midnight",
+        "late on the 25th"
+    ]
+}
+```
+
+The `temporal` library (question 7, Option B in the
+[time and formatting proposals](research/10-configuration-and-time-proposals.md)),
+always called through its namespace. "A date or local time" is a value built
+on `CalendarDate` or `ZonedTime`, and a result of "its type" keeps the
+argument's named type:
+
+| Operation | Gives | Fails on, unless an option settles it |
+|---|---|---|
+| `in_zone(instant, zone)` | `ZonedTime` | |
+| `resolve(date, at:, zone:, dst:)` | `ZonedTime` | `dst` |
+| `between(start, end)` | `Duration`, `end - start` | |
+| `add_days(value, days, dst:)` | its type, a whole number of calendar days on, the clock time kept | `dst`, for a `ZonedTime` |
+| `add_months(value, months, invalid_day:, dst:)` | its type, months on, the day and clock time kept | `invalid_day`, and `dst` for a `ZonedTime` |
+| `add_years(value, years, invalid_day:, dst:)` | its type, twelve months a year | the same |
+| `day_bounds(date, zone)` | `InstantRange`: `start`, and `end` not included | |
+| `week_bounds(date, zone, starts_on:)` | the week holding `date`, from `starts_on` (a `Weekday`) | |
+| `month_bounds(date, zone)`, `year_bounds(date, zone)` | the month or year holding `date` | |
+| `year(value)`, `month(value)`, `day(value)` | `Int`, of a date or a local time's date; `month` and `day` from 1 | |
+| `weekday(value)` | `Weekday` | |
+| `date(zoned)`, `hour(zoned)`, `minute(zoned)` | a local time's `CalendarDate`, and `Int`s from 0 | |
+| `zone(zoned)`, `instant(zoned)` | the `Zone` it is seen in, and the `Instant` it is | |
+| `format(value, zone:, locale:, format:)`, `format_relative(value, now:, zone:, locale:)` | `PresentationText`, below | |
+
+A day's bounds start at its first instant: midnight, or, in a zone whose
+clocks skip midnight, the first time they show that day. `instant(...)` is
+the one operation the proposal didn't list: a `ZonedTime` has no order of
+its own, and its instant does (chosen in chunk 5.2).
+
+Zones come from the IANA time zone database bundled into every build
+(jiff's `jiff-tzdb`, release 2026e), never the platform's own files, so the
+interpreter, a native deployable and WebAssembly on Workers answer alike,
+and every `Zone` variant is in it, which a test holds. A newer release is a
+dependency change of its own (chosen in chunk 5.2).
 
 ## Showing dates and times to people
 
-Formatting needs three things the server must never guess: the zone, the
-language and the format. Proposed (question 7): one call that takes all
-three, with the format either built in or declared once as a named type:
+> Built in chunk 5.2b: the formats, `PresentationText` and the checks on
+> both calls. Built in chunk 5.3: the text they give, in the words, order,
+> punctuation and digits of each locale, and the locales an application
+> supports.
 
-```jadpo fragment
+Formatting needs three things the server must never guess: the zone, the
+language and the format. Decided (question 7): one call that takes all
+three, with the format either built in or declared once as a named type.
+The language is one the application supports, declared in `app.jadpo`
+("Locales", below), so the example is a project:
+
+```jadpo check project=format-call file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=format-call file=domains/shop/types/ordered_at.jadpo
+/// When an order was placed.
+type OrderedAt = Instant {}
+```
+
+```jadpo check project=format-call file=domains/shop/types/short_date.jadpo
+/// A date as "25 Oct 2026" in `Locale.en_gb`.
 type ShortDate = TimeFormat {
     day: ComponentStyle.numeric
     month: ComponentStyle.short
     year: ComponentStyle.numeric
 }
+```
 
-var placed: PresentationText = temporal.format(
-    order.created_at,
-    zone: customer.zone,
-    locale: customer.locale,
-    format: ShortDate
-)
+```jadpo check project=format-call file=domains/shop/types/order_placed.jadpo
+/// When an order was placed, shown to its customer.
+type OrderPlaced = Output {
+    placed: PresentationText
+}
+```
+
+```jadpo check project=format-call file=domains/shop/actions/show_placed.jadpo
+use shop/types { OrderPlaced, OrderedAt, ShortDate }
+
+/// The order's placing, in the customer's zone and language.
+action show_placed(ordered_at: OrderedAt, zone: Zone, reader_locale: Locale) -> OrderPlaced {
+    return OrderPlaced {
+        placed: temporal.format(ordered_at, zone: zone, locale: reader_locale, format: ShortDate)
+    }
+}
+```
+
+The zone decides the date, and the locale the words and their order: at
+23:30 UTC on 25 October 2026 it is already the 26th in Paris.
+
+```jadpo check project=format-call file=domains/shop/actions/show_placed.test.jadpo
+test "the placing is shown in the customer's zone and language" {
+    assert show_placed(
+        "2026-10-25T09:30:00Z",
+        Zone.europe_london,
+        Locale.en_gb
+    ).placed == "25 Oct 2026"
+    assert show_placed(
+        "2026-10-25T09:30:00Z",
+        Zone.europe_paris,
+        Locale.fr_fr
+    ).placed == "25 oct. 2026"
+    assert show_placed(
+        "2026-10-25T23:30:00Z",
+        Zone.europe_paris,
+        Locale.fr_fr
+    ).placed == "26 oct. 2026"
+}
 ```
 
 A built-in format is written `format: TimeFormat.date_time_long`. The
 built-in formats are `date_`, `time_` and `date_time_` each with `full`,
-`long`, `medium` or `short`; `date_time_long` gives "27 September 2026 at
-14:30 BST" in `en_gb`. "3 minutes ago" style text uses
-`temporal.format_relative(value, now: clock.now, zone:, locale:)` with fixed
-rules: "just now", minutes, "Today at", "Yesterday at", the weekday, then the
-long date.
+`long`, `medium` or `short`, CLDR's four lengths: the locale's own pattern
+for a date, a time, or both with the words it joins them with. In `en_gb`,
+for 14:30:05 on Sunday 27 September 2026 in London, where the clocks are on
+British Summer Time:
 
-The result is `PresentationText`: it can go into a response, an email or a
-page, but it cannot be stored (`type.presentation_text_persistence`), turned
-back into a time, compared as a time or rebuilt into `Text`. Clients that
+| Format | `en_gb` |
+|---|---|
+| `date_full` | Sunday, 27 September 2026 |
+| `date_long` | 27 September 2026 |
+| `date_medium` | 27 Sept 2026 |
+| `date_short` | 27/09/2026 |
+| `time_full` | 14:30:05 British Summer Time |
+| `time_long` | 14:30:05 BST |
+| `time_medium` | 14:30:05 |
+| `time_short` | 14:30 |
+| `date_time_full` | Sunday, 27 September 2026 at 14:30:05 British Summer Time |
+| `date_time_long` | 27 September 2026 at 14:30:05 BST |
+| `date_time_medium` | 27 Sept 2026, 14:30:05 |
+| `date_time_short` | 27/09/2026, 14:30 |
+
+This page checks the table; the project that does is hidden.
+
+```jadpo check project=format-builtins file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=format-builtins file=tests/built_in_formats.test.jadpo hidden
+test "the twelve built-in formats in en_gb" {
+    var seen: ZonedTime = temporal.in_zone("2026-09-27T13:30:05Z", Zone.europe_london)
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_full
+    ) == "Sunday, 27 September 2026"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_long
+    ) == "27 September 2026"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_medium
+    ) == "27 Sept 2026"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_short
+    ) == "27/09/2026"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.time_full
+    ) == "14:30:05 British Summer Time"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.time_long
+    ) == "14:30:05 BST"
+    assert temporal.format(seen, locale: Locale.en_gb, format: TimeFormat.time_medium) == "14:30:05"
+    assert temporal.format(seen, locale: Locale.en_gb, format: TimeFormat.time_short) == "14:30"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_time_full
+    ) == "Sunday, 27 September 2026 at 14:30:05 British Summer Time"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_time_long
+    ) == "27 September 2026 at 14:30:05 BST"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_time_medium
+    ) == "27 Sept 2026, 14:30:05"
+    assert temporal.format(
+        seen,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_time_short
+    ) == "27/09/2026, 14:30"
+}
+```
+
+A declared format lists the parts it shows, each once, with a
+`ComponentStyle`, and the locale decides their order and punctuation and
+whether the clock has 12 or 24 hours, as CLDR's skeletons and JavaScript's
+`Intl.DateTimeFormat` do:
+
+| Part | Takes |
+|---|---|
+| `weekday` | `long`, `short`, `narrow` |
+| `day`, `year` | `numeric`, `two_digit` |
+| `month` | `numeric`, `two_digit`, `long`, `short`, `narrow` |
+| `hour`, `minute`, `second` | `numeric`, `two_digit` |
+| `zone_name` | `long` ("British Summer Time"), `short` ("BST") |
+
+A format with no parts is `type.temporal_format_components_empty`, a part
+twice `type.temporal_format_component_duplicate`, a style the part doesn't
+take `type.temporal_format_component_invalid`, and a name that is no part
+`type.unknown_setting`. A format holds no value: `format:` names it
+written out, and it is never the type of a field, a parameter or a
+variable, nor a value passed in (`type.temporal_format_invalid`). The
+operation is given it as text, `day:numeric month:short year:numeric` or
+`date_time_long`.
+
+`zone:` is given exactly when the value is an `Instant`
+(`type.temporal_zone_required`): a `ZonedTime` is shown in its own zone and
+a `CalendarDate` has none, so `zone:` with either is
+`type.temporal_option_unused`. A `CalendarDate` has no clock time, so a
+`time_` or `date_time_` format, or one showing `hour`, `minute`, `second`
+or `zone_name`, is `type.temporal_format_requires_time`. `locale:` is a
+`Locale` the application supports (`type.temporal_locales_required`,
+`type.locale_unsupported`; "Locales", below).
+
+"3 minutes ago" style text uses
+`temporal.format_relative(value, now: clock.now, zone:, locale:)`, for an
+`Instant` or a `ZonedTime`, with `zone:` as for `format`. Its rules are
+fixed, so two readers of the same value see the same words:
+
+| `value` against `now` | Text, in `en_gb` |
+|---|---|
+| under a minute, either way | "just now" |
+| under an hour | "4 minutes ago", "in 10 minutes" |
+| the same date | "Today at 13:00" |
+| the date before, or after | "Yesterday at 14:30", "Tomorrow at 14:30" |
+| two to six days away | "Friday at 07:30" |
+| anything else | "20 September 2026" |
+
+```jadpo check project=format-relative file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=format-relative file=domains/chat/types/sent_at.jadpo
+/// When a message was sent.
+type SentAt = Instant {}
+```
+
+```jadpo check project=format-relative file=domains/chat/types/sent_text.jadpo
+/// When a message was sent, as its reader reads it.
+type SentText = Output {
+    seen: PresentationText
+}
+```
+
+```jadpo check project=format-relative file=domains/chat/actions/show_sent.jadpo
+use chat/types { SentAt, SentText }
+
+/// When a message was sent, against now in London.
+action show_sent(sent_at: SentAt, reader_locale: Locale) -> SentText {
+    return SentText {
+        seen: temporal.format_relative(
+            sent_at,
+            now: clock.now,
+            zone: Zone.europe_london,
+            locale: reader_locale
+        )
+    }
+}
+```
+
+```jadpo check project=format-relative file=domains/chat/actions/show_sent.test.jadpo
+test "a time is shown against now" {
+    clock: "2026-09-27T13:30:00Z"
+
+    assert show_sent("2026-09-27T13:29:40Z", Locale.en_gb).seen == "just now"
+    assert show_sent("2026-09-27T13:26:00Z", Locale.en_gb).seen == "4 minutes ago"
+    assert show_sent("2026-09-27T12:00:00Z", Locale.en_gb).seen == "Today at 13:00"
+    assert show_sent("2026-09-26T13:30:00Z", Locale.en_gb).seen == "Yesterday at 14:30"
+    assert show_sent("2026-09-20T13:30:00Z", Locale.en_gb).seen == "20 September 2026"
+    assert show_sent("2026-09-27T13:26:00Z", Locale.fr_fr).seen == "il y a 4 minutes"
+    assert show_sent("2026-09-26T13:30:00Z", Locale.fr_fr).seen == "Hier à 14:30"
+}
+```
+
+The result is `PresentationText`, a built-in type: it can go into a
+response, an email or a page, a signature may use it directly, and text
+written in quotes may stand for one, which is how a test compares formatted
+text with what it expects. It cannot be stored: an entity field holding it,
+directly or through a named type, a list, an object or a variant's data, is
+`type.presentation_text_persistence`, and it is not a setting. It cannot be
+turned back into a time, ordered, added to or rebuilt into `Text`; two
+compare with `==` and `!=`. On the wire it is a JSON string. Clients that
 format for themselves receive the `Instant`.
+
+### Chosen in chunk 5.3
+
+- **Where the words come from.** Unicode CLDR 48, through ICU4X (the
+  `icu_datetime`, `icu_calendar`, `icu_time`, `icu_locale` and
+  `icu_experimental` crates, pinned together), compiled into the binary:
+  the interpreter, a native deployable and WebAssembly on Workers write the
+  same text, and nothing is read from the platform. `Locale` was generated
+  from the same release, so every variant has data.
+- **The calendar and the digits.** Always the Gregorian calendar, as
+  `calendar: "gregory"` gives in `Intl.DateTimeFormat` (a Thai or Arabic
+  reader of a `CalendarDate` sees the same year the database holds), and
+  always the digits the locale writes (`ar_eg`, `fa`, `bn`, `mr` and `ne`
+  write their own). CLDR's narrow no-break space before `PM` is written as
+  a plain space, as browsers and Node write it, so a test is written with
+  the space it shows.
+- **A declared format.** The locale's pattern for the parts is taken, then
+  each part is set to its style. A month written as a name is taken from
+  the long date pattern (the medium one where that writes the month as a
+  name too), a number from the short one, and `month: short` is that
+  pattern with the abbreviated name; `numeric` leaves a number as wide as
+  the locale writes it (`dd/MM/y` stays) and `two_digit` makes it at least
+  two; a date and a time are joined with the words the locale joins them
+  with for that month ("at" for `long`, a comma for `short`). So the output
+  is the locale's own and matches `Intl.DateTimeFormat` for most locales
+  and most options, but not all of them: where `Intl` shortens `01:59` to
+  `1:59` for `hour: numeric minute: two_digit`, this writes the locale's
+  `01:59`, and a Japanese or Korean weekday beside a long date has no
+  brackets.
+- **Parts no pattern holds together.** A year with a day (and no month), a
+  weekday and a year, a minute without an hour, or a month with a time are
+  written one after another with a space: `27 2026`, `30:05`,
+  `September, 14:30`. Only `zone_name` alone is the name alone ("British
+  Summer Time"), where `Intl` adds the date.
+- **The built-in formats.** The locale's patterns at CLDR's four lengths;
+  `date_full` is the long date with the weekday, so `date_time_long` is
+  "27 September 2026 at 14:30:05 BST", with the seconds `timeStyle: "long"`
+  has. For a handful of locales (Japanese and Korean `time_` formats, the
+  punctuation of a few `date_` formats) the pattern is ICU4X's, which is
+  not always the one `Intl.DateTimeFormat` writes. Measured against Node 24 (ICU 78, CLDR 48) on all 533 locales, two zones and four instants, 87% of 145,000 formatted texts, built-in and declared, are identical; by built-in format the same text is 92% for `date_long` and 94% for `time_medium`, down to 68% for `date_time_full`, the rest differing in punctuation, joining words, number widths or the 24-hour padding.
+- **The zone's name.** From the zone and the instant: "BST" or "British
+  Summer Time" in summer, "GMT" or "Greenwich Mean Time" in winter, and
+  where CLDR has no name for the locale, its offset ("GMT+1", "UTC+1").
+- **`format_relative`'s words.** The locale's own for "now", "4 minutes
+  ago", "yesterday" and "tomorrow"; "just now" is English's, and every
+  other locale says what CLDR says for "now". Under a minute counts
+  either way; under an hour counts whole minutes, a past value down and a
+  future one up, so a value is never said to be further away than it is.
+  Dates are the dates on the clock in the zone the value is shown in, not
+  blocks of 24 hours, so a day with 25 hours is still one day. "Tomorrow"
+  is the mirror of "Yesterday". The first letter of "Today at", "Yesterday
+  at", "Tomorrow at" and a weekday is a capital where the script has them.
+  A locale with no word for yesterday or tomorrow shows the long date.
+  "Two to six days away" is a weekday and the time, in the past or the
+  future alike; a week or more is the long date, with no time.
+- **Not here.** Translations are chunk 5.3b ("Translations", below), and
+  choosing a locale from an `Accept-Language` header is chunk 5.3c
+  ("Choosing a locale from a request", below).
 
 ## Locales
 
 `Locale` is a built-in enum of the standard locales (`Locale.en_gb`,
-`Locale.fr_fr`). An application lists the ones it supports, once, in
-`app.jadpo`; formatting and translations accept only those, and using any
-other is a compile error. The server's own locale is never used.
+`Locale.fr_fr`): every locale Unicode CLDR 48 covers fully, and for each
+language without a region the region it most likely means. An application
+lists the ones it supports, once, in `app.jadpo`; formatting and
+translations accept only those, and using any other is a compile error. The
+server's own locale is never used.
+
+```jadpo check project=locales file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.en_us, Locale.fr_fr]
+}
+```
+
+`locales { }` is a declaration with no name, like `config { }`, with
+exactly two options, each once: `default:` and `supported:`, a list. Each
+entry is written `Locale.<tag>`, the tag in lower case with `_` for `-`
+(`Locale.zh_hans` is zh-Hans). A locale written out where text is formatted,
+or as the `default:` or `test:` of a `Locale` setting, that the list doesn't
+have is `type.locale_unsupported`; a project that formats text and declares
+none is `type.temporal_locales_required`.
+
+There is no `unsupported:` setting. A request field typed `Locale` is
+decoded like any enum, so an unsupported tag is an `invalid_value` failure
+and the OpenAPI document lists only the supported tags; a setting typed
+`Locale` is read the same way when the app starts. Choosing a language from
+an `Accept-Language` header is a library call that falls back to `default`
+("Choosing a locale from a request", below).
+
+Decided on 2026-10-16 (Richard) and not built yet (roadmap chunk 5.6b, with
+translations as messages): `in_progress:` lists supported locales whose
+translations are not finished yet; a locale listed there but not in
+`supported:` is a compile error. Every other supported locale must be
+complete; only one listed here falls back where wording is missing, with
+warnings (see Translations as messages).
 
 ```jadpo fragment
-locales: {
+locales {
     default: Locale.en_gb
     supported: [Locale.en_gb, Locale.en_us, Locale.fr_fr, Locale.pl_pl]
     in_progress: [Locale.pl_pl]
 }
 ```
 
-`in_progress:` (decided 2026-10-16, built in chunk 5.3) lists supported
-locales whose translations are not finished yet; a locale listed there but
-not in `supported:` is a compile error. Every other supported locale must
-be complete; only one listed here falls back where wording is missing,
-with warnings (see Translations).
-
-There is no `unsupported:` setting. A request field typed `Locale` is decoded like
-any enum, so an unsupported tag is an `invalid_value` failure; choosing a
-language from an `Accept-Language` header is a library call that falls back to
-`default`.
-
 Every locale knows its text direction, read as `locale.direction`
-(decided 2026-10-16, built in chunk 5.3): a value of the built-in enum
-`TextDirection`, `.left_to_right` or `.right_to_left`. Jadpo ships its
+(decided 2026-10-16, not built yet, chunk 5.6b): a value of the built-in
+enum `TextDirection`, `.left_to_right` or `.right_to_left`. Jadpo ships its
 wording as the HTML values, so a template writing
 `<html dir="{{ locale.direction }}">` writes `ltr` or `rtl`.
 
+### Choosing a locale from a request
+
+> Built in chunk 5.3c, named by Richard on 2026-10-16. The examples marked
+> `check` run with this checkout's `jadpo`.
+
+`locale.from_accept_language(header)` gives the `Locale` a browser asks for
+in its `Accept-Language` header, out of the locales the application
+supports, and `default:` when the header names none of them. `header` is
+`Text?`: a field read with `header: "Accept-Language"` and `optional: true`
+(area 7) is passed straight in, whether the request sent the header or not.
+The call never fails, and it is the only way a request chooses a locale
+that is not written in its input.
+
+```jadpo fragment
+type PlaceRequest = Input {
+    ordered_at: OrderedAt
+    languages_header: BrowserLanguages {
+        header: "Accept-Language"
+        optional: true
+    }
+}
+```
+
+```jadpo check project=accept-language file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.en_us, Locale.fr_fr]
+}
+```
+
+```jadpo check project=accept-language file=domains/shop/types/browser_languages.jadpo
+/// What a browser says its reader's languages are.
+type BrowserLanguages = Text {
+    max_length: 2000
+}
+```
+
+```jadpo check project=accept-language file=domains/shop/types/ordered_at.jadpo
+/// When an order was placed.
+type OrderedAt = Instant {}
+```
+
+```jadpo check project=accept-language file=domains/shop/types/placed_text.jadpo
+/// An order's placing, shown to its customer.
+type PlacedText = Output {
+    reply_locale: Locale
+    placed: PresentationText
+}
+```
+
+```jadpo check project=accept-language file=domains/shop/actions/show_placed.jadpo
+use shop/types { BrowserLanguages, OrderedAt, PlacedText }
+
+/// The placing, in the language the customer's browser asks for.
+action show_placed(ordered_at: OrderedAt, languages_header: BrowserLanguages?) -> PlacedText {
+    var reader_pick: Locale = locale.from_accept_language(languages_header)
+    return PlacedText {
+        reply_locale: reader_pick
+        placed: temporal.format(
+            ordered_at,
+            zone: Zone.europe_london,
+            locale: reader_pick,
+            format: TimeFormat.date_long
+        )
+    }
+}
+```
+
+```jadpo check project=accept-language file=domains/shop/actions/show_placed.test.jadpo
+test "the browser's languages choose the locale" {
+    assert show_placed("2026-09-27T13:30:05Z", "fr-FR").reply_locale == Locale.fr_fr
+    assert show_placed("2026-09-27T13:30:05Z", "fr-CA").reply_locale == Locale.fr_fr
+    assert show_placed("2026-09-27T13:30:05Z", "en").reply_locale == Locale.en_us
+    assert show_placed("2026-09-27T13:30:05Z", "en-GB;q=0.3, fr;q=0.9").reply_locale == Locale.fr_fr
+    assert show_placed(
+        "2026-09-27T13:30:05Z",
+        "fr-FR;q=0, en-US;q=0.1"
+    ).reply_locale == Locale.en_us
+    assert show_placed("2026-09-27T13:30:05Z", "de-DE, ja;q=0.8").reply_locale == Locale.en_gb
+    assert show_placed("2026-09-27T13:30:05Z", "fr-FR;q=nonsense").reply_locale == Locale.en_gb
+    assert show_placed("2026-09-27T13:30:05Z", none).reply_locale == Locale.en_gb
+    assert show_placed("2026-09-27T13:30:05Z", "fr-FR").placed == "27 septembre 2026"
+}
+```
+
+The rules are fixed, so every target gives the same locale for the same
+header and the same `locales { }`:
+
+- **Reading the header.** As RFC 9110 reads `Accept-Language`: a list split
+  at commas, each entry a language range (`fr-CA`, `en`) with an optional
+  weight, `;q=` and a number from 0 to 1 with up to three decimals. Spaces
+  and tabs around entries and the `;` are ignored, an empty entry is
+  nothing, and the range is read in any case, `_` as `-` (a client that
+  writes `en_GB` means it). An entry that does not parse (a weight like
+  `1.5` or `abc`, a range with an empty part or a part over eight
+  characters, anything after the weight) is skipped and the others are
+  still read. A weight of `0` means "not acceptable", so that tag is
+  skipped too, and `*`, which names no language, is ignored.
+- **Taking the tags.** By weight, the heaviest first; tags of equal weight
+  keep the order the header gives them (an entry with no weight has `1`).
+  The first tag that matches a supported locale decides, so a lighter tag
+  that matches is chosen over a heavier one that does not.
+- **Matching a tag.** Against `supported:` only, never against every
+  `Locale`. A supported locale with exactly the tag wins, whatever the case
+  (`fr-FR` is `Locale.fr_fr`). Otherwise a supported locale of the same
+  language answers, so `fr-CA` gets `fr_fr` when French is supported only
+  as `fr_fr`. Where several are of that language, the one CLDR's likely
+  subtags give for the language alone is chosen (`en` means `en-US`, `pt`
+  means `pt-BR`), and if none of them is that one, the first in the order
+  `supported:` lists them. Only the language is compared, never the
+  script, so list a locale a header should reach exactly (`zh-TW` is
+  `Locale.zh_tw`); otherwise it is answered by another locale of its
+  language.
+- **Falling back.** With no tag matching, an empty header or `none`, the
+  result is `default:`. It is never the server's own locale, and never a
+  locale that is not supported.
+- **A pure function.** The same header and `locales { }` give the same
+  locale in the interpreter, a native deployable and WebAssembly. It reads
+  no clock, store or request, so it may be called in any function, action
+  or test. A query computes nothing, so it cannot call it
+  (`query.value_unsupported`): choose the locale in the action and pass it
+  in.
+- **The call is checked as a standard-library call is.** `header` is
+  always given, by position or as `header:`, and takes a `Text`, a type
+  built on `Text`, `none`, or any of these that may be `none`
+  (`type.argument_count`, `type.named_argument_unknown`, `type.mismatch`).
+  A project with no `locales { }` has nothing to choose among, which is
+  `type.temporal_locales_required`, as it is for formatting.
+- **The name `locale` is reserved.** It is a standard-library namespace
+  now, so a parameter or variable cannot be called `locale`
+  (`semantic.standard_namespace_reserved`); the examples on this page
+  call theirs `reader_locale`. A field or a named argument called `locale`
+  (`locale:`) is a different thing and stays.
+
 ## Translations
 
+> Built in chunk 5.3b: the files, the typed calls, their checks and errors,
+> and the interpreter and runtime writing the text. The examples marked
+> `check` run with this checkout's `jadpo`.
+
+Failure messages are translated by the client using the failure's `code`
+(decided in area 4); `message` stays fixed English. Text the server writes
+for people, such as emails and server-rendered pages, is translated on the
+server, and area 1 reserved the root `translations/` folder for it. The
+folder holds one JSON file per supported locale, named for the locale as
+`Locale.<tag>` spells it (`translations/en_gb.json`, `translations/fr_fr.json`),
+and each file is one object of keys and messages written in ICU
+MessageFormat, the format translation services already import. The default
+locale's file defines the keys; each becomes one typed call,
+`translations.<key>(locale:, ...)`, and every other file is checked to have
+the same keys and, for each key, the same placeholders.
+
+```jadpo check project=translations file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=translations file=translations/en_gb.json
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```jadpo check project=translations file=translations/fr_fr.json
+{
+  "order_shipped": "Votre commande {order_number} a été expédiée.",
+  "items_in_cart": "{count, plural, one {# article} many {# d'articles} other {# articles}} dans votre panier"
+}
+```
+
+A call gives the `locale:` and one argument for each placeholder of the key's
+message in the default locale's file, by the placeholder's name, and gives
+back `PresentationText`: text for a person, which can go into a response, an
+email or a page, and not into a store, as for a formatted time
+(`type.presentation_text_persistence`). A call computes its text from its
+arguments, so a function may make it.
+
+```jadpo check project=translations file=domains/shop/types/order_number.jadpo
+/// An order's number, as the customer reads it.
+type OrderNumber = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=translations file=domains/shop/types/item_count.jadpo
+/// How many items a cart holds.
+type ItemCount = Int {
+    min: 0
+}
+```
+
+```jadpo check project=translations file=domains/shop/types/cart_text.jadpo
+/// What a customer is told about their order.
+type CartText = Output {
+    shipped: PresentationText
+    cart: PresentationText
+}
+```
+
+```jadpo check project=translations file=domains/shop/actions/describe_order.jadpo
+use shop/types { CartText, ItemCount, OrderNumber }
+
+/// The order, in the customer's language.
+action describe_order(number: OrderNumber, count: ItemCount, reader_locale: Locale) -> CartText {
+    return CartText {
+        shipped: translations.order_shipped(locale: reader_locale, order_number: number)
+        cart: translations.items_in_cart(locale: reader_locale, count: count)
+    }
+}
+```
+
+```jadpo check project=translations file=domains/shop/actions/describe_order.test.jadpo
+test "an order is described in the customer's language" {
+    assert describe_order("A-17", 1, Locale.en_gb).shipped == "Your order A-17 has shipped."
+    assert describe_order("A-17", 1200, Locale.en_gb).cart == "1,200 items in your cart"
+    assert describe_order("A-17", 1, Locale.fr_fr).shipped == "Votre commande A-17 a été expédiée."
+    assert describe_order("A-17", 0, Locale.fr_fr).cart == "0 article dans votre panier"
+}
+```
+
+### The messages
+
+A message is text with placeholders in braces, each named in lower_snake_case
+(`{order_number}`, never `{0}`). What a placeholder is written as decides the
+kind of value its argument must be built on:
+
+| Written | Shows | The argument |
+|---|---|---|
+| `{name}` | the text as it is | built on `Text` (or a `PresentationText`) |
+| `{n, number}` | the number in the locale's digits, grouping and decimal separator, with the places it has | built on `Int` or `Decimal` |
+| `{n, number, integer}` | the same, rounded to a whole number (half to even) | built on `Int` or `Decimal` |
+| `{when, date, short}` | the date, as `temporal.format`'s `date_short`; `short`, `medium` (the default), `long` or `full` | a `CalendarDate` or a `ZonedTime` |
+| `{when, time, short}` | the clock time, as `time_short`; the same four lengths | a `ZonedTime` |
+| `{n, plural, one {...} other {...}}` | the case CLDR's cardinal rules choose for `n` | built on `Int` or `Decimal` |
+| `{n, selectordinal, one {...} other {...}}` | the same with CLDR's ordinal rules ("1st", "2nd") | built on `Int` or `Decimal` |
+| `{kind, select, gift {...} other {...}}` | the case whose word `kind` is, else `other` | built on `Text` |
+
+A plural's cases are `=0`, `=1` (that exact number) or one of CLDR's six
+categories, `zero`, `one`, `two`, `few`, `many` and `other`; the locale's
+rules say which a number is in, so Russian has four forms and Arabic six.
+Inside a case `#` is the number, written like `{n, number}`, and
+`offset:1` before the cases takes one off the number before its category is
+chosen and before `#` shows it ("you and 3 others"). A plural, a
+`selectordinal` and a `select` must each have an `other` case
+(`translation.other_missing`), which is what is shown when no other case
+matches, and a case may hold more placeholders and plurals.
+
+An apostrophe quotes a brace only where it comes right before one: `'{'` is
+a brace, `''` an apostrophe, and "don't" needs nothing. A time is shown in
+the zone its `ZonedTime` carries, so a message takes a `ZonedTime` rather
+than an `Instant`; the caller says where with `temporal.in_zone(...)`, and
+the server never guesses.
+
+```jadpo check project=translation-messages file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=translation-messages file=translations/en_gb.json
+{
+  "invited": "{host} invited {guests, plural, offset:1 =0 {nobody} =1 {{first}} one {{first} and # other} other {{first} and # others}}.",
+  "finished": "You finished {rank, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} of {total, number, integer}.",
+  "balance": "{owner}'s balance: {amount, number}",
+  "pickup": "{kind, select, gift {Gift pickup} other {Pickup}} on {day, date, long}"
+}
+```
+
+```jadpo check project=translation-messages file=translations/fr_fr.json
+{
+  "invited": "{host} a invité {guests, plural, offset:1 =0 {personne} =1 {{first}} one {{first} et # autre} other {{first} et # autres}}.",
+  "finished": "Vous avez terminé {rank, selectordinal, one {#er} other {#e}} sur {total, number, integer}.",
+  "balance": "Solde de {owner} : {amount, number}",
+  "pickup": "{kind, select, gift {Retrait du cadeau} other {Retrait}} le {day, date, long}"
+}
+```
+
+```jadpo check project=translation-messages file=tests/messages.test.jadpo
+test "a plural takes its offset off before it chooses" {
+    assert translations.invited(
+        locale: Locale.en_gb,
+        host: "Ana",
+        first: "Bo",
+        guests: 0
+    ) == "Ana invited nobody."
+    assert translations.invited(
+        locale: Locale.en_gb,
+        host: "Ana",
+        first: "Bo",
+        guests: 1
+    ) == "Ana invited Bo."
+    assert translations.invited(
+        locale: Locale.en_gb,
+        host: "Ana",
+        first: "Bo",
+        guests: 2
+    ) == "Ana invited Bo and 1 other."
+    assert translations.invited(
+        locale: Locale.fr_fr,
+        host: "Ana",
+        first: "Bo",
+        guests: 4
+    ) == "Ana a invité Bo et 3 autres."
+}
+
+test "an ordinal and a whole number follow the locale" {
+    assert translations.finished(
+        locale: Locale.en_gb,
+        rank: 1,
+        total: 22
+    ) == "You finished 1st of 22."
+    assert translations.finished(
+        locale: Locale.en_gb,
+        rank: 22,
+        total: 30
+    ) == "You finished 22nd of 30."
+    assert translations.finished(
+        locale: Locale.fr_fr,
+        rank: 1,
+        total: 22
+    ) == "Vous avez terminé 1er sur 22."
+    assert translations.finished(
+        locale: Locale.fr_fr,
+        rank: 2,
+        total: 22
+    ) == "Vous avez terminé 2e sur 22."
+}
+
+test "a number is shown with the places it has, in the locale's separator" {
+    assert translations.balance(
+        locale: Locale.en_gb,
+        owner: "Ana",
+        amount: 12.50
+    ) == "Ana's balance: 12.50"
+    assert translations.balance(
+        locale: Locale.fr_fr,
+        owner: "Ana",
+        amount: 12.50
+    ) == "Solde de Ana : 12,50"
+}
+
+test "a select picks its word and a date is the locale's" {
+    var day: ZonedTime = temporal.in_zone("2026-10-25T09:30:00Z", Zone.europe_london)
+    assert translations.pickup(
+        locale: Locale.en_gb,
+        kind: "gift",
+        day: day
+    ) == "Gift pickup on 25 October 2026"
+    assert translations.pickup(
+        locale: Locale.fr_fr,
+        kind: "bulk",
+        day: day
+    ) == "Retrait le 25 octobre 2026"
+}
+```
+
+Numbers are shown with the places they have, so `12.50` stays `12.50`; where a
+whole number is wanted, `integer` rounds it. A number is not formatted as a
+currency or a percentage: `percent`, `currency`, number skeletons
+(`::currency/EUR`) and `date` or `time` patterns are not part of what
+messages can say, and are `translation.message_invalid` with the styles that
+are.
+
+### What is checked
+
+- **Every supported locale has a file, and every file is for one.** A file is
+  named `<tag>.json`, the tag a `Locale` variant is (`translation.file_name_invalid`
+  for any other name), for a locale `locales { supported: }` lists
+  (`translation.locale_unsupported`), and each supported locale has its
+  file (`translation.file_missing`), the default locale's first, since it
+  defines the keys. A project with translation files and no
+  `locales { }` is `translation.locales_required`.
+- **Each file is an object of messages.** Anything else, or JSON that does
+  not read, is `translation.file_invalid`, at the character it went wrong;
+  a key is a lower_snake_case name (`translation.key_invalid`), once
+  (`translation.key_duplicate`), because each key is a call.
+- **Each message is MessageFormat.** One that is not is
+  `translation.message_invalid`, pointing at the character inside the string
+  in the JSON file, escapes counted, as an editor would show it.
+- **The other files match the default locale's.** The same keys
+  (`translation.key_missing`, `translation.key_extra`); for each, the same
+  placeholders (`translation.placeholder_mismatch`) used as the same kind of
+  value (`translation.placeholder_type`), which is also what a placeholder
+  used as text and as a number in one message breaks.
+- **A call names a key and gives what it needs.** A key no default message
+  has is `translation.key_unknown`, with the nearest key; the arguments are
+  checked as a standard-library call's are: a missing or extra one is
+  `type.argument_count` or `type.named_argument_unknown`, one of the wrong
+  kind `type.mismatch`, and a `Locale` written out that the application
+  does not support `type.locale_unsupported`.
+
+Editing a translation file rechecks what it affects and nothing else. The
+files are read once into messages; a call depends on its key's placeholders
+alone, not on any message's words, so changing the words of a message, in
+any locale, checks no call again, and changing a placeholder checks only the
+callables that call that key. For `jadpo test --watch`, each key is a node of
+the graph (`translation_key`), digested with its message in every supported
+locale and used by the callables that call it, so a save of a translation file
+reruns the tests that reach the key.
+
+### Chosen in chunk 5.3b
+
+- **The files.** `translations/<tag>.json`, where `<tag>` is the `Locale`
+  variant (`en_gb`, not `en-GB`), one flat JSON object of keys to message
+  strings, strictly: no comments, trailing commas, nested objects or
+  non-string values (`translation.file_invalid`). A byte-order mark is
+  allowed. Files elsewhere in `translations/` are ignored. `jadpo fmt` does
+  not format JSON, and the language server reports a file's problems at the
+  file; it does not yet jump from a call to its key.
+- **The keys.** A key is a single lower_snake_case name, since it is the name
+  of a call. Area 16's email messages are written under the type's name
+  with a dot, `"welcome_email.subject"`; how a dotted key is called is the
+  email chunk's to say, so a dotted key is `translation.key_invalid` until
+  then.
+- **The call.** Named arguments, as for a standard-library call: `locale:`
+  and one for each placeholder, and by position in that order with the
+  placeholders sorted by name, so a placeholder added to the file changes
+  no argument's place by being written earlier in a sentence. Its type is
+  `PresentationText`, and it is a pure call, allowed in a function. Whatever
+  provenance its arguments carry (area 9) the text carries.
+- **Placeholder kinds.** Four: text, number, date and time, as the table says.
+  A placeholder used as a date and a time is a time. Kinds must be equal
+  in every locale's message, since the call has one argument for each. A
+  `select` takes text; an enum is turned into text by the caller. A time is
+  never an `Instant`, because the server does not choose a zone.
+- **MessageFormat.** ICU4J's apostrophe rule (a quote only before a brace, or
+  `#` in a plural); names, not numbers; `number` with no style or `integer`;
+  `date` and `time` with `short`, `medium`, `long` or `full`; `plural`
+  (cardinal), `selectordinal` and `select`; `offset:`; `=N`. A category the
+  locale never uses (`few` in English) is accepted and never chosen, so a
+  translator's file is not rejected for being richer than the default's.
+- **Where the words come from.** The same ICU4X 2.3 and CLDR 48 data as
+  `temporal.format` (`icu_plurals` and `icu_decimal` joined `icu_datetime`
+  in `jadpo-value`, pinned the same), so the interpreter, a native deployable
+  and WebAssembly write the same text. The messages are parsed while
+  compiling into `jadpo-std`'s `Message`, carried to the runtime as plan
+  data (`TranslationPlan`), and written by one function in `jadpo-value`
+  (`present::translate`) that the interpreter calls now and generated code
+  will.
+- **Not here.** Percentages, currencies, number skeletons and date patterns;
+  `choice`; a plural category checked against the locale; keys no code
+  calls (no warning for them); and the typed email messages of area 16.
+
+## Translations as messages
+
 > Decided on 2026-10-16 (Richard), replacing question 9's JSON files and ICU
-> MessageFormat. Built in chunk 5.3; email templates that read translations
-> come with email in chunk 7.3 (area 16).
+> MessageFormat, which chunk 5.3b built (Translations, above) on the same
+> day. Not built yet: the rework of 5.3b is roadmap chunk 5.6b, and until
+> it lands the built JSON files are what the compiler reads. Email
+> templates that read translations come with email in chunk 7.3 (area 16).
 
 Text the server writes for people (emails, generated pages, a failure's text
 for client apps) is translated in Jadpo itself. Each message is a type, each
@@ -827,7 +2214,7 @@ every public message.
 
 ### What the compiler checks
 
-Coming in chunk 5.3:
+Coming in chunk 5.6b:
 
 - **Errors**: a member no message, failure or enum declares; a variant that
   is not a value of the enum; a missing variant or plural form; a
@@ -879,7 +2266,6 @@ The app's own data (product names, articles) is not a translation: an app
 models translated content as ordinary fields. Library packages' translations
 are built with packages in Phase 7 (open item 8 of the
 [packages proposals](research/packages-and-extension-proposals.md)).
-
 ## Retention periods
 
 Retention periods are ordinary settings (`soft_delete_retention: Duration`)
@@ -892,7 +2278,7 @@ erasure, export) is designed in area 15 (Personal data).
 
 ## Errors
 
-> The configuration errors below run with this checkout's `jadpo` (chunk 5.1). The time and locale errors after them predate the decisions above and are rewritten when chunks 5.2 and 5.3 build them.
+> The errors below run with this checkout's `jadpo`: the configuration errors (chunk 5.1), `type.clock_context` and the time errors after it (chunk 5.2), the formatting errors (chunk 5.2b) and the locale errors at the end (chunk 5.3).
 
 ### `configuration.binding_empty`
 
@@ -1118,6 +2504,47 @@ error: `default:` on `page_size` isn't a literal
   |                  ^^^^^^^^^^^^ not a literal
   reason: A `default:` is a literal of the setting's type, checked while compiling (`default: 25`, `default: 5s`); it can't be computed, because nothing runs before the application starts.
   next: Write a literal value after `default:`, or remove it (agent)
+  rule: configuration.default_literal_required
+  help: docs/language/10-configuration-and-time.html#configuration-default-literal-required
+
+check failed: 1 error, 1 file
+```
+
+Here `largest_page` names nothing. A constant of the setting's type is
+refused the same way (built in chunk 5.3e): a value is a constant or a
+setting, never both ([A constant or a setting](#a-constant-or-a-setting);
+revised 2026-10-16, Richard, reversing the same day's decision that a
+constant counts as a literal here). For a constant, the `next:` offers
+`jadpo config move` (built in chunk 5.3f), which makes the constant this
+setting: its value becomes the `default:` and every read of it reads
+`config.page_size`:
+
+```jadpo check project=e-default-constant expect=configuration.default_literal_required
+type Pence = Int {
+    min: 0
+}
+
+constant largest_page: Pence = 100
+
+config {
+    page_size: Pence {
+        default: largest_page
+    }
+}
+
+function page() -> Pence {
+    return Pence(config.page_size + largest_page)
+}
+```
+
+```text output
+error: `default:` on `page_size` isn't a literal
+ --> main.jadpo:9:18
+  |
+9 |         default: largest_page
+  |                  ^^^^^^^^^^^^ not a literal
+  reason: A `default:` is a literal of the setting's type, checked while compiling (`default: 25`, `default: 5s`); it can't be computed, because nothing runs before the application starts.
+  next: Run `jadpo config move largest_page`, which makes the constant this setting, or write a literal value after `default:` (agent)
   rule: configuration.default_literal_required
   help: docs/language/10-configuration-and-time.html#configuration-default-literal-required
 
@@ -1358,6 +2785,145 @@ error: `config.greeting` has no value in tests
 check failed: 1 error, 1 file
 ```
 
+### `configuration.client_address_duplicate`
+
+`client_address:` is declared once, in `app.jadpo`; a second one:
+
+```jadpo check project=e-client-address-duplicate expect=configuration.client_address_duplicate file=app.jadpo
+application {
+    client_address: {
+        source: ClientAddressSource.connection
+    }
+    client_address: {
+        source: ClientAddressSource.cloudflare
+    }
+}
+```
+
+```text output
+error: `client_address:` is declared twice
+ --> app.jadpo:5:5
+  |
+2 |     client_address: {
+  |     -------------- first declared here
+5 |     client_address: {
+  |     ^^^^^^^^^^^^^^ declared again
+  reason: The client's address is read one way for the whole application, so every request is counted by the same rule.
+  next: Keep one `client_address:` and remove the other (agent)
+  rule: configuration.client_address_duplicate
+  help: docs/language/10-configuration-and-time.html#configuration-client-address-duplicate
+
+check failed: 1 error, 1 file
+```
+
+### `configuration.client_address_invalid`
+
+`client_address:` is a block of `source:` and `hops:` and nothing else:
+
+```jadpo check project=e-client-address-invalid expect=configuration.client_address_invalid file=app.jadpo
+application {
+    client_address: {
+        source: ClientAddressSource.forwarded_for
+        hop: 1
+    }
+}
+```
+
+```text output
+error: `hop` isn't an option of `client_address:`
+ --> app.jadpo:4:9
+  |
+4 |         hop: 1
+  |         ^^^ unknown option
+  reason: `client_address:` takes `source:` and `hops:`, and nothing else; which proxies to trust is a count and not a list. Did you mean `hops`?
+  next: Use `hops` instead of `hop` (agent)
+  rule: configuration.client_address_invalid
+  help: docs/language/10-configuration-and-time.html#configuration-client-address-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `configuration.client_address_source_unknown`
+
+`source:` is one of the four `ClientAddressSource` values:
+
+```jadpo check project=e-client-address-source-unknown expect=configuration.client_address_source_unknown file=app.jadpo
+application {
+    client_address: {
+        source: ClientAddressSource.forward_for
+        hops: 1
+    }
+}
+```
+
+```text output
+error: `ClientAddressSource.forward_for` isn't a source of the client's address
+ --> app.jadpo:3:17
+  |
+3 |         source: ClientAddressSource.forward_for
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not a `ClientAddressSource`
+  reason: `ClientAddressSource` has no value called `forward_for`; the four are `connection`, `forwarded_for`, `forwarded`, `cloudflare`. Did you mean `forwarded_for`?
+  next: Use `ClientAddressSource.forwarded_for` instead (agent)
+  rule: configuration.client_address_source_unknown
+  help: docs/language/10-configuration-and-time.html#configuration-client-address-source-unknown
+
+check failed: 1 error, 1 file
+```
+
+### `configuration.client_address_hops_invalid`
+
+`hops:` counts proxies from 1, a whole number or an `Int` setting that declares `min:` of 1 or more:
+
+```jadpo check project=e-client-address-hops-invalid expect=configuration.client_address_hops_invalid file=app.jadpo
+application {
+    client_address: {
+        source: ClientAddressSource.forwarded_for
+        hops: 0
+    }
+}
+```
+
+```text output
+error: `0` can't be a number of proxies
+ --> app.jadpo:4:15
+  |
+4 |         hops: 0
+  |               ^ below 1
+  reason: `hops:` is how many proxies of the deployment's own sit in front of the app: a whole number from 1, or an `Int` setting whose type declares `min:` of at least 1.
+  next: Write a whole number from 1, such as `hops: 1`, or read an `Int` setting that declares `min: 1` (agent)
+  rule: configuration.client_address_hops_invalid
+  help: docs/language/10-configuration-and-time.html#configuration-client-address-hops-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `configuration.client_address_hops_unused`
+
+`cloudflare` and `connection` count no proxies, so `hops:` means nothing with them:
+
+```jadpo check project=e-client-address-hops-unused expect=configuration.client_address_hops_unused file=app.jadpo
+application {
+    client_address: {
+        source: ClientAddressSource.cloudflare
+        hops: 1
+    }
+}
+```
+
+```text output
+error: `hops:` means nothing with `cloudflare`
+ --> app.jadpo:4:15
+  |
+4 |         hops: 1
+  |               ^ no proxies are counted
+  reason: Cloudflare sets `CF-Connecting-IP` on every request from its edge and overwrites a caller's, so there is no list to count from the right.
+  next: Remove `hops:` (agent)
+  rule: configuration.client_address_hops_unused
+  help: docs/language/10-configuration-and-time.html#configuration-client-address-hops-unused
+
+check failed: 1 error, 1 file
+```
+
 ### `type.clock_context`
 
 ```jadpo check project=e-clock-context expect=type.clock_context
@@ -1384,214 +2950,1115 @@ check failed: 1 error, 1 file
 
 ### `type.temporal_clock_invalid`
 
-```jadpo project=e-clock-invalid expect=type.temporal_clock_invalid
-test "clock text is strict" {
-    var opening = temporal.resolve(
-        date: CalendarDate("2026-10-25"),
-        at: "9:30",
-        zone: Zone.europe_london,
-        overlap: LocalOverlap.reject,
-        gap: LocalGap.reject
+```jadpo check project=e-clock-invalid expect=type.temporal_clock_invalid
+type ShopDay = CalendarDate {}
+
+type Opening = ZonedTime {}
+
+function opening(day: ShopDay) -> Opening {
+    return Opening(temporal.resolve(day, at: "9:30", zone: Zone.utc, dst: Dst.later))
+}
+```
+
+```text output
+error: `"9:30"` isn't a clock time
+ --> main.jadpo:6:46
+  |
+6 |     return Opening(temporal.resolve(day, at: "9:30", zone: Zone.utc, dst: Dst.later))
+  |                                              ^^^^^^ not `HH:MM`
+  reason: `temporal.resolve`'s `at:` is a clock time written `HH:MM`, or `HH:MM:SS` with seconds, each part two digits, from `00:00` to `23:59`.
+  next: Write the time with two-digit hours and minutes, such as `"09:30"` (agent)
+  rule: type.temporal_clock_invalid
+  help: docs/language/10-configuration-and-time.html#type-temporal-clock-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `type.temporal_option_unused`
+
+```jadpo check project=e-option-unused expect=type.temporal_option_unused
+type ShopDay = CalendarDate {}
+
+function next_day(day: ShopDay) -> ShopDay {
+    return temporal.add_days(day, 1, dst: Dst.compatible)
+}
+```
+
+```text output
+error: `dst:` means nothing for a `ShopDay`
+ --> main.jadpo:4:38
+  |
+4 |     return temporal.add_days(day, 1, dst: Dst.compatible)
+  |                                      ^^^ `ShopDay` has no clock time
+  reason: `dst:` chooses an instant when a local time falls in a daylight-saving gap or overlap; `temporal.add_days` on a `ShopDay` moves a date, which has no clock time, so no such time arises.
+  next: Remove `dst: ...` (agent)
+  rule: type.temporal_option_unused
+  help: docs/language/10-configuration-and-time.html#type-temporal-option-unused
+
+check failed: 1 error, 1 file
+```
+
+`zone:` on a date or a local time is reported the same way: a
+`ZonedTime` carries its zone, and a `CalendarDate` has none.
+
+### `type.temporal_zone_required`
+
+```jadpo check project=e-zone-required expect=type.temporal_zone_required
+type OrderedAt = Instant {}
+
+function placed_label(ordered_at: OrderedAt, reader_locale: Locale) -> PresentationText {
+    return temporal.format(ordered_at, locale: reader_locale, format: TimeFormat.date_long)
+}
+```
+
+```text output
+error: `temporal.format` needs the zone to show `OrderedAt` in
+ --> main.jadpo:4:12
+  |
+4 |     return temporal.format(ordered_at, locale: reader_locale, format: TimeFormat.date_long)
+  |            ^^^^^^^^^^^^^^^ no `zone:`
+  reason: An `Instant` is one moment for everyone, and its date and clock time depend on where it is read; the server never guesses a zone, so `zone:` says which.
+  next: Add `zone: ...` with the reader's zone, such as `zone: Zone.europe_london` (agent)
+  rule: type.temporal_zone_required
+  help: docs/language/10-configuration-and-time.html#type-temporal-zone-required
+
+check failed: 1 error, 1 file
+```
+
+### `type.temporal_format_invalid`
+
+```jadpo check project=e-format-invalid expect=type.temporal_format_invalid
+type OrderedAt = Instant {}
+
+function placed_label(
+    ordered_at: OrderedAt,
+    zone: Zone,
+    reader_locale: Locale
+) -> PresentationText {
+    return temporal.format(
+        ordered_at,
+        zone: zone,
+        locale: reader_locale,
+        format: TimeFormat.date_longest
     )
 }
 ```
 
-### `type.temporal_locales_required`
+```text output
+error: `TimeFormat.date_longest` isn't a time format
+ --> main.jadpo:12:17
+   |
+12 |         format: TimeFormat.date_longest
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^ not a format
+  reason: `temporal.format`'s `format:` is written out: a built-in format, `TimeFormat.` followed by `date_`, `time_` or `date_time_` and `full`, `long`, `medium` or `short`, or the name of a format declared as `type Name = TimeFormat { ... }`.
+  next: Write a built-in format such as `TimeFormat.date_long`, or declare one with `type Name = TimeFormat { ... }` (agent)
+  rule: type.temporal_format_invalid
+  help: docs/language/10-configuration-and-time.html#type-temporal-format-invalid
 
-```jadpo project=e-locales-required expect=type.temporal_locales_required
-test "formatting needs declared locales" {
-    var value = temporal.in_zone(Instant("2026-09-27T13:30:00Z"), Zone.europe_london)
-    var label = temporal.format(value, style: TimeFormat.date_long)
-}
+check failed: 1 error, 1 file
 ```
+
+A format named as the type of a field, a parameter or a variable, or used
+as a value, is reported the same way: it holds no value.
 
 ### `type.temporal_format_requires_time`
 
-```jadpo project=e-requires-time expect=type.temporal_format_requires_time
-locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    unsupported: reject
-}
+```jadpo check project=e-requires-time expect=type.temporal_format_requires_time
+type InvoiceDate = CalendarDate {}
 
-test "an instant needs a zone" {
-    var label = temporal.format(
-        Instant("2026-10-25T08:30:00Z"),
-        locale: Locale.en_gb,
-        style: TimeFormat.date_long
-    )
+function invoice_dated(day: InvoiceDate, reader_locale: Locale) -> PresentationText {
+    return temporal.format(day, locale: reader_locale, format: TimeFormat.date_time_long)
 }
 ```
 
-### `type.temporal_format_choice`
+```text output
+error: `TimeFormat.date_time_long` shows a clock time, which `InvoiceDate` doesn't have
+ --> main.jadpo:4:64
+  |
+4 |     return temporal.format(day, locale: reader_locale, format: TimeFormat.date_time_long)
+  |                                                                ^^^^^^^^^^^^^^^^^^^^^^^^^ shows a clock time
+  reason: `InvoiceDate` is a date, with no clock time or zone, so `temporal.format` can show only its weekday, day, month and year.
+  next: Use a date format such as `TimeFormat.date_long`, or format an `Instant` or a `ZonedTime` instead (agent)
+  rule: type.temporal_format_requires_time
+  help: docs/language/10-configuration-and-time.html#type-temporal-format-requires-time
 
-```jadpo project=e-format-choice expect=type.temporal_format_choice
-locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    unsupported: reject
-}
-
-test "one format choice" {
-    var value = temporal.in_zone(Instant("2026-10-25T08:30:00Z"), Zone.europe_london)
-    var label = temporal.format(
-        value,
-        locale: Locale.en_gb,
-        style: TimeFormat.date_long,
-        components: { day: numeric }
-    )
-}
+check failed: 1 error, 1 file
 ```
 
 ### `type.temporal_format_components_empty`
 
-```jadpo project=e-components-empty expect=type.temporal_format_components_empty
-locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    unsupported: reject
-}
+```jadpo check project=e-components-empty expect=type.temporal_format_components_empty
+type Blank = TimeFormat {}
+```
 
-test "components cannot be empty" {
-    var value = temporal.in_zone(Instant("2026-10-25T08:30:00Z"), Zone.europe_london)
-    var label = temporal.format(value, locale: Locale.en_gb, components: {})
-}
+```text output
+error: `Blank` shows nothing
+ --> main.jadpo:1:6
+  |
+1 | type Blank = TimeFormat {}
+  |      ^^^^^ no parts
+  reason: A format lists the parts of a date or a time it shows, each with a `ComponentStyle`, and the locale arranges them; with none listed there is nothing to show.
+  next: List the parts to show, such as `day: ComponentStyle.numeric`, or use a built-in format such as `TimeFormat.date_long` (agent)
+  rule: type.temporal_format_components_empty
+  help: docs/language/10-configuration-and-time.html#type-temporal-format-components-empty
+
+check failed: 1 error, 1 file
 ```
 
 ### `type.temporal_format_component_invalid`
 
-```jadpo project=e-component-invalid expect=type.temporal_format_component_invalid
-locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    unsupported: reject
-}
-
-test "component values are checked" {
-    var value = temporal.in_zone(Instant("2026-10-25T08:30:00Z"), Zone.europe_london)
-    var label = temporal.format(value, locale: Locale.en_gb, components: { day: enormous })
+```jadpo check project=e-component-invalid expect=type.temporal_format_component_invalid
+type ShortDate = TimeFormat {
+    day: ComponentStyle.long
+    month: ComponentStyle.short
 }
 ```
 
+```text output
+error: `day` isn't shown `long`
+ --> main.jadpo:2:10
+  |
+2 |     day: ComponentStyle.long
+  |          ^^^^^^^^^^^^^^^^^^^ not a style `day` takes
+  reason: A format's `day` is shown `ComponentStyle.numeric` or `ComponentStyle.two_digit`; the locale decides the rest, such as the order and the punctuation.
+  next: Write `day: ComponentStyle.numeric` (agent)
+  rule: type.temporal_format_component_invalid
+  help: docs/language/10-configuration-and-time.html#type-temporal-format-component-invalid
+
+check failed: 1 error, 1 file
+```
+
+A part that isn't one a format shows, such as `days:`, is
+`type.unknown_setting`, with the nearest part's name.
+
 ### `type.temporal_format_component_duplicate`
 
-```jadpo project=e-component-duplicate expect=type.temporal_format_component_duplicate
-locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    unsupported: reject
+```jadpo check project=e-component-duplicate expect=type.temporal_format_component_duplicate
+type ShortDate = TimeFormat {
+    day: ComponentStyle.numeric
+    month: ComponentStyle.short
+    day: ComponentStyle.two_digit
 }
+```
 
-test "components are not repeated" {
-    var value = temporal.in_zone(Instant("2026-10-25T08:30:00Z"), Zone.europe_london)
-    var label = temporal.format (
-        value,
-        locale: Locale.en_gb,
-        components: { day: numeric day: two_digit }
-    )
-}
+```text output
+error: `day` is given twice
+ --> main.jadpo:4:5
+  |
+2 |     day: ComponentStyle.numeric
+  |     --- first given here
+4 |     day: ComponentStyle.two_digit
+  |     ^^^ given again
+  reason: A format shows each part once, in one style, so there is never a question of which `day` counts.
+  next: Remove one `day` (agent)
+  rule: type.temporal_format_component_duplicate
+  help: docs/language/10-configuration-and-time.html#type-temporal-format-component-duplicate
+
+check failed: 1 error, 1 file
 ```
 
 ### `type.presentation_text_persistence`
 
-```jadpo project=e-presentation-persist expect=type.presentation_text_persistence
+```jadpo check project=e-presentation-persist expect=type.presentation_text_persistence
 entity Receipt {
     id: Uuid
-    identity: id
     issued_label: PresentationText
+}
+```
 
-    persistence {
-        store: primary
-        role: authority
+```text output
+error: `Receipt.issued_label` would store text formatted for a person
+ --> main.jadpo:3:19
+  |
+3 |     issued_label: PresentationText
+  |                   ^^^^^^^^^^^^^^^^ `PresentationText`, stored
+  reason: `Receipt.issued_label` holds `PresentationText`: text in one reader's language and zone, which another reader, a change of locale or a correction to the zone database would show differently, and which can't be read back as a time. A record keeps the value itself and formats it when it is shown.
+  next: Store the `Instant`, `CalendarDate` or `ZonedTime` instead, and format `Receipt.issued_label` in the output that shows it (agent)
+  rule: type.presentation_text_persistence
+  help: docs/language/10-configuration-and-time.html#type-presentation-text-persistence
+
+check failed: 1 error, 1 file
+```
+
+### `type.temporal_locales_required`
+
+A project that formats text for people declares the locales it supports:
+
+```jadpo check project=e-locales-required file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-locales-required file=domains/shop/types/ordered_at.jadpo hidden
+/// When an order was placed.
+type OrderedAt = Instant {}
+```
+
+```jadpo check project=e-locales-required file=domains/shop/types/placed_text.jadpo hidden
+/// An order's placing, shown to its customer.
+type PlacedText = Output {
+    placed: PresentationText
+}
+```
+
+```jadpo check project=e-locales-required file=domains/shop/actions/show_placed.jadpo expect=type.temporal_locales_required
+use shop/types { OrderedAt, PlacedText }
+
+/// The placing, in the customer's language.
+action show_placed(ordered_at: OrderedAt, reader_locale: Locale) -> PlacedText {
+    return PlacedText {
+        placed: temporal.format(
+            ordered_at,
+            zone: Zone.utc,
+            locale: reader_locale,
+            format: TimeFormat.date_long
+        )
     }
 }
 ```
 
+```text output
+error: `temporal.format` needs the application's locales
+ --> domains/shop/actions/show_placed.jadpo:6:17
+  |
+6 |         placed: temporal.format(
+  |                 ^^^^^^^^^^^^^^^ no locales declared
+  reason: Text for a person is written in one of the locales the application supports. None is declared, so there is nothing to check `locale:` against, and nothing for a request with no usable `Accept-Language` to fall back to.
+  next: Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }` (agent)
+  rule: type.temporal_locales_required
+  help: docs/language/10-configuration-and-time.html#type-temporal-locales-required
+
+check failed: 1 error, 4 files
+```
+
+The same rule covers choosing a locale from a request, since there is
+nothing to choose among and nothing to fall back to:
+
+```jadpo check project=e-locales-required-choose file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-locales-required-choose file=domains/shop/types/browser_languages.jadpo hidden
+/// What a browser says its reader's languages are.
+type BrowserLanguages = Text {
+    max_length: 2000
+}
+```
+
+```jadpo check project=e-locales-required-choose file=domains/shop/actions/locale_for_reader.jadpo expect=type.temporal_locales_required
+use shop/types { BrowserLanguages }
+
+/// The language the customer's browser asks for.
+action locale_for_reader(languages_header: BrowserLanguages?) -> Locale {
+    return locale.from_accept_language(languages_header)
+}
+```
+
+```text output
+error: `locale.from_accept_language` needs the application's locales
+ --> domains/shop/actions/locale_for_reader.jadpo:5:12
+  |
+5 |     return locale.from_accept_language(languages_header)
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^ no locales declared
+  reason: `locale.from_accept_language` chooses among the locales the application supports and falls back to its `default:`. None is declared, so there is nothing to choose among and nothing to fall back to.
+  next: Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }` (agent)
+  rule: type.temporal_locales_required
+  help: docs/language/10-configuration-and-time.html#type-temporal-locales-required
+
+check failed: 1 error, 3 files
+```
+
 ### `syntax.locales_default_required`
 
-```jadpo project=e-locales-default expect=syntax.locales_default_required
+```jadpo check project=e-locales-default expect=syntax.locales_default_required
 locales {
-    supported: ["en-GB"]
-    unsupported: reject
+    supported: [Locale.en_gb]
 }
+```
+
+```text output
+error: `locales` has no `default:`
+ --> main.jadpo:1:1
+  |
+1 | locales {
+  | ^^^^^^^ no `default:`
+  reason: The default is the locale a choice from an `Accept-Language` header falls back to, so every request ends up with a language the application supports.
+  next: Add `default: Locale.en_gb` (agent)
+  rule: syntax.locales_default_required
+  help: docs/language/10-configuration-and-time.html#syntax-locales-default-required
+
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.locales_supported_required`
 
-```jadpo project=e-locales-supported expect=syntax.locales_supported_required
+```jadpo check project=e-locales-supported expect=syntax.locales_supported_required
 locales {
-    default: "en-GB"
-    unsupported: reject
+    default: Locale.en_gb
 }
 ```
 
-### `syntax.locales_unsupported_required`
+```text output
+error: `locales` has no `supported:`
+ --> main.jadpo:1:1
+  |
+1 | locales {
+  | ^^^^^^^ no `supported:`
+  reason: `supported:` lists every locale formatting and translations accept; a locale not listed is a compile error where it is written and an invalid value where it is read.
+  next: Add `supported: [Locale.en_gb]`, listing every locale the application speaks (agent)
+  rule: syntax.locales_supported_required
+  help: docs/language/10-configuration-and-time.html#syntax-locales-supported-required
 
-A third item with a different name:
+check failed: 1 error, 1 file
+```
 
-```jadpo project=e-locales-unsupported-required expect=syntax.locales_unsupported_required
+### `syntax.locales_unknown_option`
+
+There is no `unsupported:` setting any more (see "Locales"). A misspelt
+option (`suported:`) is reported the same way, with the nearest name:
+
+```jadpo check project=e-locales-unknown expect=syntax.locales_unknown_option
 locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    otherwise: reject
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+    unsupported: Locale.fr_fr
 }
 ```
 
-### `syntax.locales_unsupported_invalid`
+```text output
+error: `unsupported` isn't an option of `locales`
+ --> main.jadpo:4:5
+  |
+4 |     unsupported: Locale.fr_fr
+  |     ^^^^^^^^^^^ unknown option
+  reason: There is no `unsupported:` setting. A request field typed `Locale` is decoded like any enum, so a tag the application doesn't support is an `invalid_value` failure, and choosing a language from an `Accept-Language` header falls back to `default:`.
+  next: Remove `unsupported:` (agent)
+  rule: syntax.locales_unknown_option
+  help: docs/language/10-configuration-and-time.html#syntax-locales-unknown-option
 
-```jadpo project=e-locales-unsupported-invalid expect=syntax.locales_unsupported_invalid
+check failed: 1 error, 1 file
+```
+
+### `syntax.locales_duplicate_option`
+
+```jadpo check project=e-locales-twice expect=syntax.locales_duplicate_option
 locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    unsupported: guess
+    default: Locale.en_gb
+    default: Locale.fr_fr
+    supported: [Locale.en_gb, Locale.fr_fr]
 }
+```
+
+```text output
+error: `default:` is given twice
+ --> main.jadpo:3:5
+  |
+2 |     default: Locale.en_gb
+  |              ------------ first given here
+3 |     default: Locale.fr_fr
+  |     ^^^^^^^ given again
+  reason: `locales` says each of `default:` and `supported:` once.
+  next: Keep one `default:` and remove the other (agent)
+  rule: syntax.locales_duplicate_option
+  help: docs/language/10-configuration-and-time.html#syntax-locales-duplicate-option
+
+check failed: 1 error, 1 file
 ```
 
 ### `type.locale_invalid`
 
-```jadpo project=e-locale-invalid expect=type.locale_invalid
+A locale is a name in `Locale`, not text; a tag in quotes is the common
+slip, and the fix is one edit:
+
+```jadpo check project=e-locale-invalid expect=type.locale_invalid
 locales {
-    default: "en-GB"
-    supported: ["en-GB", "not a locale"]
-    unsupported: reject
+    default: Locale.en_gb
+    supported: [Locale.en_gb, "fr-FR"]
 }
+```
+
+```text output
+error: `"fr-FR"` isn't written as a locale
+ --> main.jadpo:3:31
+  |
+3 |     supported: [Locale.en_gb, "fr-FR"]
+  |                               ^^^^^^^ not a `Locale`
+  reason: A locale is a name in `Locale`, written `Locale.<tag>` with the tag in lower case and `_` for `-`: `Locale.en_gb` is en-GB. Closed choices are names, not text, so a misspelt one is caught while compiling.
+  next: Write `Locale.fr_fr` instead (agent)
+  rule: type.locale_invalid
+  help: docs/language/10-configuration-and-time.html#type-locale-invalid
+
+check failed: 1 error, 1 file
 ```
 
 ### `type.locale_duplicate`
 
-```jadpo project=e-locale-duplicate expect=type.locale_duplicate
+```jadpo check project=e-locale-duplicate expect=type.locale_duplicate
 locales {
-    default: "en-GB"
-    supported: ["en-GB", "en-GB"]
-    unsupported: reject
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.en_gb]
 }
+```
+
+```text output
+error: `Locale.en_gb` is listed twice
+ --> main.jadpo:3:31
+  |
+3 |     supported: [Locale.en_gb, Locale.en_gb]
+  |                               ^^^^^^^^^^^^ listed again
+  |                 ------------ first listed here
+  reason: A locale is supported or it is not; listing it twice says nothing more.
+  next: Remove the second `Locale.en_gb` (agent)
+  rule: type.locale_duplicate
+  help: docs/language/10-configuration-and-time.html#type-locale-duplicate
+
+check failed: 1 error, 1 file
 ```
 
 ### `type.locale_default_unsupported`
 
-```jadpo project=e-locale-default expect=type.locale_default_unsupported
+```jadpo check project=e-locale-default expect=type.locale_default_unsupported
 locales {
-    default: "fr-FR"
-    supported: ["en-GB"]
-    unsupported: reject
+    default: Locale.fr_fr
+    supported: [Locale.en_gb]
 }
+```
+
+```text output
+error: The default `Locale.fr_fr` isn't a supported locale
+ --> main.jadpo:2:14
+  |
+2 |     default: Locale.fr_fr
+  |              ^^^^^^^^^^^^ not in `supported:`
+3 |     supported: [Locale.en_gb]
+  |                -------------- the supported locales
+  reason: The default is what a request with no usable `Accept-Language` is given, and formatting and translations accept only the supported locales, so the default has to be one.
+  next: Add `Locale.fr_fr` to `supported:`, or choose a default that is listed (agent)
+  rule: type.locale_default_unsupported
+  help: docs/language/10-configuration-and-time.html#type-locale-default-unsupported
+
+check failed: 1 error, 1 file
+```
+
+### `type.locale_unsupported`
+
+```jadpo check project=e-locale-unsupported expect=type.locale_unsupported
+type OrderedAt = Instant {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+
+function placed_label(ordered_at: OrderedAt) -> PresentationText {
+    return temporal.format(
+        ordered_at,
+        zone: Zone.utc,
+        locale: Locale.fr_fr,
+        format: TimeFormat.date_long
+    )
+}
+```
+
+```text output
+error: `Locale.fr_fr` isn't a locale this application supports
+ --> main.jadpo:12:17
+   |
+12 |         locale: Locale.fr_fr,
+   |                 ^^^^^^^^^^^^ not in `locales`
+  reason: `temporal.format` writes text in the locales listed in `locales { supported: }`, in `app.jadpo`; `Locale.fr_fr` is not one of them, and the server never guesses a language.
+  next: Add `Locale.fr_fr` to `supported:` in `app.jadpo`, or use a locale that is listed (agent)
+  rule: type.locale_unsupported
+  help: docs/language/10-configuration-and-time.html#type-locale-unsupported
+
+check failed: 1 error, 1 file
 ```
 
 ### `semantic.multiple_locale_declarations`
 
-```jadpo project=e-locales-multiple expect=semantic.multiple_locale_declarations
+```jadpo check project=e-locales-multiple expect=semantic.multiple_locale_declarations
 locales {
-    default: "en-GB"
-    supported: ["en-GB"]
-    unsupported: reject
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
 }
 
 locales {
-    default: "en-US"
-    supported: ["en-US"]
-    unsupported: reject
+    default: Locale.en_us
+    supported: [Locale.en_us]
 }
 ```
+
+```text output
+error: `locales { }` is declared twice
+ --> main.jadpo:6:1
+  |
+1 | locales {
+  | ------- first declared here
+6 | locales {
+  | ^^^^^^^ declared again
+  reason: An application lists the locales it supports once, in `app.jadpo`, so formatting and translations all accept the same ones.
+  next: Move what this `locales` lists into the first, and remove it (agent)
+  rule: semantic.multiple_locale_declarations
+  help: docs/language/10-configuration-and-time.html#semantic-multiple-locale-declarations
+
+check failed: 1 error, 1 file
+```
+
+### `translation.file_invalid`
+
+A translation file is one JSON object of messages, strictly: here a colon is missing after the key.
+
+```jadpo check project=e-tr-file-invalid file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-file-invalid file=translations/en_gb.json expect=translation.file_invalid
+{
+  "order_shipped" "Your order {order_number} has shipped."
+}
+```
+
+```text output
+error: `translations/en_gb.json` isn't a JSON object of messages
+ --> translations/en_gb.json:2:19
+  |
+2 |   "order_shipped" "Your order {order_number} has shipped."
+  |                   ^ expected `:`
+  reason: A key is followed by a colon and its message.
+  next: Write `:` after the key (agent)
+  rule: translation.file_invalid
+  help: docs/language/10-configuration-and-time.html#translation-file-invalid
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.file_name_invalid`
+
+A translation file is named for the locale it is for, the tag written as `Locale` writes it: lower case, with `_` for `-`.
+
+```jadpo check project=e-tr-file-name-invalid file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=e-tr-file-name-invalid file=translations/en_gb.json hidden
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```jadpo check project=e-tr-file-name-invalid file=translations/fr_fr.json hidden
+{
+  "order_shipped": "Votre commande {order_number} a été expédiée.",
+  "items_in_cart": "{count, plural, one {# article} many {# d'articles} other {# articles}} dans votre panier"
+}
+```
+
+```jadpo check project=e-tr-file-name-invalid file=translations/pt-BR.json expect=translation.file_name_invalid
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```text output
+error: `translations/pt-BR.json` isn't named for a locale
+ --> translations/pt-BR.json:1:1
+  |
+1 | {
+  | ^ `pt-BR` is no `Locale`
+  reason: A translation file is named for the locale it translates into, the tag in lower case with `_` for `-`: `en_gb.json` is `Locale.en_gb`. Did you mean `pt_br`?
+  next: Rename the file to `translations/pt_br.json` (agent)
+  rule: translation.file_name_invalid
+  help: docs/language/10-configuration-and-time.html#translation-file-name-invalid
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.locale_unsupported`
+
+A file for a locale the application doesn't list in `locales { supported: }` would never be used.
+
+```jadpo check project=e-tr-locale-unsupported file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=e-tr-locale-unsupported file=translations/en_gb.json hidden
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```jadpo check project=e-tr-locale-unsupported file=translations/fr_fr.json hidden
+{
+  "order_shipped": "Votre commande {order_number} a été expédiée.",
+  "items_in_cart": "{count, plural, one {# article} many {# d'articles} other {# articles}} dans votre panier"
+}
+```
+
+```jadpo check project=e-tr-locale-unsupported file=translations/de_de.json expect=translation.locale_unsupported
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```text output
+error: `translations/de_de.json` is for a locale this application doesn't support
+ --> translations/de_de.json:1:1
+  |
+1 | {
+  | ^ `Locale.de_de` isn't supported
+  reason: Translations are written in the locales listed in `locales { supported: }`, in `app.jadpo`; a file for another is never used, and the server never guesses a language.
+  next: Add `Locale.de_de` to `supported:` in `app.jadpo`, or remove the file (agent)
+  rule: translation.locale_unsupported
+  help: docs/language/10-configuration-and-time.html#translation-locale-unsupported
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.file_missing`
+
+Each supported locale has a file, so a call with that locale has a message to show.
+
+```jadpo check project=e-tr-file-missing file=app.jadpo expect=translation.file_missing
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```text output
+error: `Locale.fr_fr` is supported but has no translation file
+ --> app.jadpo:5:31
+  |
+5 |     supported: [Locale.en_gb, Locale.fr_fr]
+  |                               ^^^^^^^^^^^^ no `translations/fr_fr.json`
+  reason: There is one file for each supported locale, so a call with `locale: Locale.fr_fr` has a message to show.
+  next: Add `translations/fr_fr.json` with the same keys as the default locale's file (agent)
+  rule: translation.file_missing
+  help: docs/language/10-configuration-and-time.html#translation-file-missing
+
+check failed: 1 error, 1 file
+```
+
+```jadpo check project=e-tr-file-missing file=translations/en_gb.json hidden
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+
+### `translation.locales_required`
+
+Translation files are for the locales the application supports; with none declared there is nothing to check them against.
+
+```jadpo check project=e-tr-locales-required file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-tr-locales-required file=translations/en_gb.json expect=translation.locales_required
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```text output
+error: Translations need the application's locales
+ --> translations/en_gb.json:1:1
+  |
+1 | {
+  | ^ no locales declared
+  reason: Each translation file is for one of the locales the application supports, and the default locale's file defines the keys. None is declared, so there is nothing to check the files against.
+  next: Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }` (agent)
+  rule: translation.locales_required
+  help: docs/language/10-configuration-and-time.html#translation-locales-required
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.key_invalid`
+
+A key is the name of a call, so it is lower_snake_case.
+
+```jadpo check project=e-tr-key-invalid file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-key-invalid file=translations/en_gb.json expect=translation.key_invalid
+{
+  "Order-Shipped": "Your order {order_number} has shipped."
+}
+```
+
+```text output
+error: `Order-Shipped` isn't a key a call can use
+ --> translations/en_gb.json:2:3
+  |
+2 |   "Order-Shipped": "Your order {order_number} has shipped."
+  |   ^^^^^^^^^^^^^^^ not lower_snake_case
+  reason: Each key becomes a call, `translations.order_shipped(...)`, so a key is a lower_snake_case name: lower-case letters, digits and single underscores, starting with a letter.
+  next: Rename the key to `order_shipped`, here and in every locale's file (agent)
+  rule: translation.key_invalid
+  help: docs/language/10-configuration-and-time.html#translation-key-invalid
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.key_duplicate`
+
+A key is written once in a file.
+
+```jadpo check project=e-tr-key-duplicate file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-key-duplicate file=translations/en_gb.json expect=translation.key_duplicate
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "order_shipped": "Your order {order_number} is on its way."
+}
+```
+
+```text output
+error: `order_shipped` is written twice in `translations/en_gb.json`
+ --> translations/en_gb.json:3:3
+  |
+2 |   "order_shipped": "Your order {order_number} has shipped.",
+  |   --------------- first written here
+3 |   "order_shipped": "Your order {order_number} is on its way."
+  |   ^^^^^^^^^^^^^^^ written again
+  reason: A key names one message; the second would be dropped or the first, whichever a reader of the file believed.
+  next: Remove one `order_shipped`, or give it another name (agent)
+  rule: translation.key_duplicate
+  help: docs/language/10-configuration-and-time.html#translation-key-duplicate
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.key_missing`
+
+The default locale's file defines the keys, and every other locale's file has all of them.
+
+```jadpo check project=e-tr-key-missing file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=e-tr-key-missing file=translations/en_gb.json hidden
+{
+  "order_shipped": "Your order {order_number} has shipped.",
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```jadpo check project=e-tr-key-missing file=translations/fr_fr.json expect=translation.key_missing
+{
+  "order_shipped": "Votre commande {order_number} a été expédiée."
+}
+```
+
+```text output
+error: `translations/fr_fr.json` has no translation for `items_in_cart`
+ --> translations/fr_fr.json:1:1
+  |
+1 | {
+  | ^ no `items_in_cart`
+  reason: `translations/en_gb.json` defines the keys, and every locale's file has all of them: a call of `translations.items_in_cart` in this locale would have no message.
+  next: Add `"items_in_cart"` and its message to `translations/fr_fr.json` (agent)
+  rule: translation.key_missing
+  help: docs/language/10-configuration-and-time.html#translation-key-missing
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.key_extra`
+
+A key the default locale's file doesn't have has no call, so nothing would show its message.
+
+```jadpo check project=e-tr-key-extra file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=e-tr-key-extra file=translations/en_gb.json hidden
+{
+  "order_shipped": "Your order {order_number} has shipped."
+}
+```
+
+```jadpo check project=e-tr-key-extra file=translations/fr_fr.json expect=translation.key_extra
+{
+  "order_shipped": "Votre commande {order_number} a été expédiée.",
+  "order_cancelled": "Commande {order_number} annulée."
+}
+```
+
+```text output
+error: `translations/fr_fr.json` has `order_cancelled`, which `translations/en_gb.json` doesn't
+ --> translations/fr_fr.json:3:3
+  |
+3 |   "order_cancelled": "Commande {order_number} annulée."
+  |   ^^^^^^^^^^^^^^^^^ not in the default locale's file
+  reason: `translations/en_gb.json` defines the keys, and a key that file lacks has no call, so nothing would ever show this message.
+  next: Remove it, or add `"order_cancelled"` to `translations/en_gb.json` first (agent)
+  rule: translation.key_extra
+  help: docs/language/10-configuration-and-time.html#translation-key-extra
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.key_unknown`
+
+A call names a key of the default locale's file.
+
+```jadpo check project=e-tr-key-unknown file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-key-unknown file=domains/shop/types/order_number.jadpo hidden
+/// An order's number.
+type OrderNumber = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=e-tr-key-unknown file=translations/en_gb.json hidden
+{
+  "order_shipped": "Your order {order_number} has shipped."
+}
+```
+
+```jadpo check project=e-tr-key-unknown file=domains/shop/types/shipped_text.jadpo hidden
+/// What a customer is told.
+type ShippedText = Output {
+    subject: PresentationText
+}
+```
+
+```jadpo check project=e-tr-key-unknown file=domains/shop/actions/show_shipped.jadpo expect=translation.key_unknown
+use shop/types { OrderNumber, ShippedText }
+
+/// The text, in the customer's language.
+action show_shipped(number: OrderNumber, reader_locale: Locale) -> ShippedText {
+    return ShippedText {
+        subject: translations.order_shiped(locale: reader_locale, order_number: number)
+    }
+}
+```
+
+```text output
+error: `translations.order_shiped` is not a translation key
+ --> domains/shop/actions/show_shipped.jadpo:6:18
+  |
+6 |         subject: translations.order_shiped(locale: reader_locale, order_number: number)
+  |                  ^^^^^^^^^^^^^^^^^^^^^^^^^ no such key
+  reason: `order_shiped` is not a key of the default locale's file. Did you mean `order_shipped`?
+  next: Use `translations.order_shipped` (agent)
+  rule: translation.key_unknown
+  help: docs/language/10-configuration-and-time.html#translation-key-unknown
+
+check failed: 1 error, 4 files
+```
+
+
+### `translation.message_invalid`
+
+A message is written in ICU MessageFormat; the error points at the character inside the string in the JSON file.
+
+```jadpo check project=e-tr-message-invalid file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-message-invalid file=translations/en_gb.json expect=translation.message_invalid
+{
+  "order_shipped": "Your order {order_number has shipped."
+}
+```
+
+```text output
+error: The message for `order_shipped` isn't valid MessageFormat
+ --> translations/en_gb.json:2:32
+  |
+2 |   "order_shipped": "Your order {order_number has shipped."
+  |                                ^ never closed
+  reason: After its name a placeholder is closed by `}` or continues with `,` and a type.
+  next: Close the placeholder with `}`, or add a type such as `, number` (agent)
+  rule: translation.message_invalid
+  help: docs/language/10-configuration-and-time.html#translation-message-invalid
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.other_missing`
+
+A plural, `selectordinal` or `select` ends with an `other` case, which is shown when no other case matches.
+
+```jadpo check project=e-tr-other-missing file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-tr-other-missing file=translations/en_gb.json expect=translation.other_missing
+{
+  "items_in_cart": "{count, plural, one {# item} two {# items}} in your cart"
+}
+```
+
+```text output
+error: The message for `items_in_cart` has a case list with no `other`
+ --> translations/en_gb.json:2:21
+  |
+2 |   "items_in_cart": "{count, plural, one {# item} two {# items}} in your cart"
+  |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `other` case
+  reason: `count`'s plural must end with an `other` case: it is what is shown when no other case matches, which a language with more plural forms than the sentence was written with will need.
+  next: Add an `other {...}` case to the plural on `count` (agent)
+  rule: translation.other_missing
+  help: docs/language/10-configuration-and-time.html#translation-other-missing
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.placeholder_mismatch`
+
+Every locale's message has the placeholders of the default locale's, since the call gives one argument for each.
+
+```jadpo check project=e-tr-placeholder-mismatch file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=e-tr-placeholder-mismatch file=translations/en_gb.json hidden
+{
+  "order_shipped": "Your order {order_number} has shipped."
+}
+```
+
+```jadpo check project=e-tr-placeholder-mismatch file=translations/fr_fr.json expect=translation.placeholder_mismatch
+{
+  "order_shipped": "Votre commande a été expédiée."
+}
+```
+
+```text output
+error: The message for `order_shipped` in `translations/fr_fr.json` has no `{order_number}`
+ --> translations/fr_fr.json:2:20
+  |
+2 |   "order_shipped": "Votre commande a été expédiée."
+  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `{order_number}`
+  reason: A call gives one argument for each placeholder of the default locale's message, here `{order_number}`, and every locale's message is shown with those and no others.
+  next: Use `{order_number}` in the message, in its place in the sentence (agent)
+  rule: translation.placeholder_mismatch
+  help: docs/language/10-configuration-and-time.html#translation-placeholder-mismatch
+
+check failed: 1 error, 1 file
+```
+
+
+### `translation.placeholder_type`
+
+A placeholder takes the same kind of value in every locale: here `count` is a number in the default message and text in French.
+
+```jadpo check project=e-tr-placeholder-type file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=e-tr-placeholder-type file=translations/en_gb.json hidden
+{
+  "items_in_cart": "{count, plural, one {# item} other {# items}} in your cart"
+}
+```
+
+```jadpo check project=e-tr-placeholder-type file=translations/fr_fr.json expect=translation.placeholder_type
+{
+  "items_in_cart": "{count} dans votre panier"
+}
+```
+
+```text output
+error: `{count}` is a number in `translations/en_gb.json` but text in `translations/fr_fr.json`
+ --> translations/fr_fr.json:2:20
+  |
+2 |   "items_in_cart": "{count} dans votre panier"
+  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^ used as text
+  reason: The call gives `count:` one argument, the kind the default locale's message uses it as, so every locale's message uses it the same way.
+  next: Use `count` as a number in `translations/fr_fr.json` (agent)
+  rule: translation.placeholder_type
+  help: docs/language/10-configuration-and-time.html#translation-placeholder-type
+
+check failed: 1 error, 1 file
+```
+
 
 ## Review
 
@@ -1602,16 +4069,31 @@ The new compiler has built the time literals and the built-in `Zone`,
 action as `type.clock_context`. Settings, secrets, signing keys, connection
 addresses, `jadpo config`, the check before the app starts and a test's own
 values were built in chunk 5.1 (the readings it chose are in the Decisions
-table). Time arithmetic and formatting come in chunk 5.2, and locales and
-translations in chunk 5.3: `Message` types and the built-in `PluralCount`,
-each domain's `translations { }` language files and their checks, the
-generated `translations.<domain>.<message>` calls, enum wording, failures'
-client text exported per locale, `locale.direction`, `in_progress:` locales,
-Jadpo's own messages and the root file's owner groups, and the
-`jadpo translations` commands (decided 2026-10-16, see Translations).
-Library packages' translations come with packages in Phase 7. Trusted
-proxies, the addresses a client's address is read through, are not decided
-on any page; they are chunk 5.1c.
+table), and the trusted proxies a client's address is read through in chunk
+5.1c. Chunk 5.2 built time: `ZonedTime` in place of the time of day the
+first build had, durations, arithmetic and comparison, the `temporal`
+library over the IANA database bundled into every target, time values on
+the wire, in OpenAPI and in queries, and a test's `clock:` and
+`clock.advance(...)` (area 13); its readings are in the Decisions table.
+Chunk 5.2b built `TimeFormat`, declared and built in, `ComponentStyle` and
+`PresentationText`, and checks `temporal.format` and `format_relative`; its
+readings are in the Decisions table too. Chunk 5.3 built locales
+(`locales { }` with its errors, `locale:` checked against it, a `Locale` on
+the wire or in a setting limited to the supported ones) and the text
+`temporal.format` and `format_relative` give, over CLDR data compiled into
+every target. Chunk 5.3b built translations (`translations/`, ICU
+MessageFormat messages, one typed call per key, the checks between the
+locales' files, and the interpreter and runtime writing the text). Chunk
+5.3c built `locale.from_accept_language(header)`, which chooses a supported
+`Locale` from an `Accept-Language` header and falls back to `default:`.
+Translations as decided on 2026-10-16 replace 5.3b's JSON files and are
+not built yet (chunk 5.6b): `Message` types and the built-in
+`PluralCount`, each domain's `translations { }` language files and their
+checks, the generated `translations.<domain>.<message>` calls, enum
+wording, failures' client text exported per locale, `locale.direction`,
+`in_progress:` locales, Jadpo's own messages and the root file's owner
+groups, and the `jadpo translations` commands (see Translations as
+messages). Library packages' translations come with packages in Phase 7.
 
 ### Consistency with the rest of the language
 
@@ -1622,7 +4104,8 @@ on any page; they are chunk 5.1c.
   code), and each place rejects the other (syntax review #56).
 - **Locales written as text** in their declaration but as `Locale.en_gb` in
   code (syntax review #57), against area 2's rule that closed options are
-  names.
+  names. Fixed by question 8: `locales { }` lists `Locale.en_gb`, and a
+  tag in quotes is `type.locale_invalid` with the one-edit fix.
 - **An anonymous object as an argument.** `components: { day: numeric }`
   breaks area 2's decision that there are no anonymous objects (syntax
   review #58).
@@ -1653,7 +4136,7 @@ on any page; they are chunk 5.1c.
 | A library package's own messages, and whether an app can reword them | 11 | Waits for open item 8 of the packages proposals |
 | `config.typo` should report the configuration field | 10 | Fixed (chunk 5.1): `configuration.field_unknown` |
 | `jadpo fmt` writes `temporal.format (` with a space | 14 | Bug |
-| Trusted proxies: which proxies a deployment trusts to say a client's address (`X-Forwarded-For`, `Forwarded`, Cloudflare's `CF-Connecting-IP`) | 7, 10, 16 | Decided 2026-10-16 (question 12): chunk 5.1c |
+| Trusted proxies: which proxies a deployment trusts to say a client's address (`X-Forwarded-For`, `Forwarded`, Cloudflare's `CF-Connecting-IP`) | 7, 10, 16 | Built (chunk 5.1c, question 12); a source other than `cloudflare` refused for Workers comes with chunk 8.2 |
 | GDPR: retention periods as settings, alongside personal-data marking, erasure and export | 15 | Moved to area 15 |
 
 ### Open questions
@@ -1682,16 +4165,16 @@ on any page; they are chunk 5.1c.
    (`max: 30s`), with ISO 8601 only in JSON. Keep `d` as exactly 24 hours,
    because retention and token lifetimes are elapsed time and `720h` is
    unreadable; calendar days stay a date operation. Go has no `d` and
-   Rust's `humantime` has it; no `w`, months or years, which vary. *Decided 2026-10-12:* yes, as recommended.
+   Rust's `humantime` has it; no `w`, months or years, which vary. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.2.*
 5. **Rename `Time` to `ZonedTime`?** Java, Temporal and Elixir all use "time"
    for a time of day, so `Time` will be misread by people and agents.
    *Recommendation:* yes, `ZonedTime` (Temporal says `ZonedDateTime`, jiff
-   `Zoned`), with the wire form unchanged. *Decided 2026-10-12:* yes, as recommended.
+   `Zoned`), with the wire form unchanged. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.2*, replacing the time of day the first build had called `Time`.
 6. **Does adding a duration keep the instant's named type?** Today
    `due_at - notice` is a plain `Instant` and must be rebuilt.
    *Recommendation:* yes for `+` and `-` with a `Duration`, the one mixed
    case area 3's operator rule did not cover; `Instant - Instant` gives
-   `Duration`. *Decided 2026-10-12:* yes, as recommended.
+   `Duration`. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.2.*
 7. **Should the time library and formatting be simplified?** About 35
    functions, six option enums, two daylight-saving options on every call, a
    two-step format and an anonymous components object.
@@ -1699,12 +4182,12 @@ on any page; they are chunk 5.1c.
    [time and formatting proposals](research/10-configuration-and-time-proposals.md):
    `temporal.format(value, zone:, locale:, format:)` with named built-in or
    declared formats, `format_relative` without a profile, one `dst:` option
-   that defaults to failing, and about 20 functions. *Decided 2026-10-12:* yes, as recommended.
+   that defaults to failing, and about 20 functions. *Decided 2026-10-12:* yes, as recommended. *Built in chunks 5.2, 5.2b and 5.3.*
 8. **Locales as names, and drop `unsupported:`?** *Recommendation:* yes,
    `default: Locale.en_gb` and `supported: [Locale.en_gb, Locale.fr_fr]`, in
    `app.jadpo`, with `Locale` a built-in enum of the standard locales. An
    unsupported tag in a request is an ordinary `invalid_value` like any
-   enum; header negotiation is a library call that falls back to `default`. *Decided 2026-10-12:* yes, as recommended.
+   enum; header negotiation is a library call that falls back to `default`. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.3*; the library call, which the page left without a name, was named `locale.from_accept_language(header)` on 2026-10-16 and *built in chunk 5.3c*.
 9. **What format does `translations/` use?** *Recommendation:* one JSON file
    per supported locale with ICU MessageFormat messages (what FormatJS, Java
    and translation services such as Crowdin and Lokalise use), typed calls
@@ -1713,7 +4196,7 @@ on any page; they are chunk 5.1c.
    email template needs it (area 11), not before. *Decided 2026-10-12:* yes, as recommended.
    *Amended 2026-10-13 (Richard):* translations are supported out of the box
    from the first build, not deferred: mail, the generated privacy pages,
-   client failure messages and any generated page use them.
+   client failure messages and any generated page use them. *Built in chunk 5.3b* (the Decisions table says how).
    *Revised 2026-10-16 (Richard):* JSON and ICU MessageFormat are dropped,
    and the default locale's file no longer defines the keys. Each message
    is a `type X = Message` in its domain's `translations/` folder, its
@@ -1725,7 +4208,8 @@ on any page; they are chunk 5.1c.
    failure's client text is keyed by its code in the same files and
    exported per locale for client apps, which resolves this question's
    "client failure messages" against area 4 question 12. See
-   [Translations](#translations) for the whole design.
+   [Translations as messages](#translations-as-messages) for the whole design;
+   not built yet (chunk 5.6b), so the JSON files 5.3b built stay until then.
 10. **How are signing keys rotated?** (carried from area 8) Area 8 keeps
     signing keys, the OIDC issuer and audience in configuration. How does a
     deployment replace a signing key without signing everyone out?
@@ -1769,7 +4253,7 @@ on any page; they are chunk 5.1c.
     is the only source accepted there (and its default); `hops` means nothing
     with it. The address chosen is the one rate limits count, `jadpo dev`'s
     request lines show and the request timeline records (areas 16 and 17).
-    *Decided 2026-10-16:* yes, as recommended; chunk 5.1c builds it.
+    *Decided 2026-10-16:* yes, as recommended. *Built in chunk 5.1c.*
 
 ### Decisions
 
@@ -1823,5 +4307,44 @@ on any page; they are chunk 5.1c.
 | `jadpo config` (chosen in chunk 5.1) | `check` lists each setting as `set`, `default`, `missing` or `invalid` with its variable, shows each problem as `configuration.value_missing` or `configuration.value_invalid`, exits 1 on any and supports `--json`. `set <field>` needs a terminal and refuses `--json`, hides what is typed for a secret and shows it otherwise, checks the value before writing, and writes `.env.local` only as an ordinary file, through a private temporary file, if unchanged since read, and adds it to `.gitignore` | 2026-10-16 |
 | `jadpo dev` and `jadpo migrate` (chosen in chunk 5.1) | `dev` checks the environment over `.env.local` as the app starts, watches `.env.local` with the source, and keeps the last good version serving through an invalid change; a connection whose address no variable gives gets a database on a disposable PostgreSQL (`--url` still names the database directly). `migrate apply` and `status` use a connection's setting when `--url` is not given | 2026-10-16 |
 | Retention period (chosen in chunk 5.1) | `purge: { after: config.x }` takes a `Duration` setting that is not secret (`data.lifecycle_purge_after` otherwise); the period is the value the app started with, given to a run (`jadpo_runtime::purge_after`), and a period not above zero deletes nothing | 2026-10-16 |
-| Not built here (chosen in chunk 5.1) | A browser session's `origin:` and `signing_key:` reading settings, with signed sessions and tokens, are chunk 5.1b (built there, area 8). Which proxies a deployment trusts for a client's address is decided on no page: chunk 5.1c | 2026-10-16 |
+| Not built here (chosen in chunk 5.1) | A browser session's `origin:` and `signing_key:` reading settings, with signed sessions and tokens, are chunk 5.1b (built there, area 8). Which proxies a deployment trusts for a client's address is chunk 5.1c's, below | 2026-10-16 |
 | Trusted proxies | `client_address: { source: ClientAddressSource.x hops: <Int> }` once in `app.jadpo`; sources `connection` (the native default), `forwarded_for`, `forwarded` and `cloudflare`; the client is the `hops`-th address from the right, falling back to the connection's address when the header is short or invalid; on Workers only `cloudflare` (`CF-Connecting-IP`), its default (question 12, Richard) | 2026-10-16 |
+| Trusted proxies (chosen in chunk 5.1c) | `hops:` is required with `forwarded_for` and `forwarded` and refused with `connection` and `cloudflare` (`configuration.client_address_hops_unused`); written out it is a whole number from 1, and read from a setting that setting is an `Int` (or a type built on it) declaring `min:` of at least 1, so a count below 1 never starts (`configuration.client_address_hops_invalid`). A second `client_address:` is `configuration.client_address_duplicate`, a `client_address:` that is not a block of `source:` and `hops:` is `configuration.client_address_invalid`, and a `source:` that is no `ClientAddressSource` is `configuration.client_address_source_unknown` | 2026-10-16 |
+| Reading the address (chosen in chunk 5.1c) | Every line of the header joined in order, split at commas; `Forwarded` by elements, each giving the entry of its `for`; an empty entry, a name, `unknown`, an obfuscated identifier or a zone takes its place in the count but is no address; a `Forwarded` that does not parse, or a `CF-Connecting-IP` that is not exactly one address, falls back whole. Addresses are accepted with a port or in brackets and kept in one spelling (IPv6 lower case and shortened, an IPv4-mapped address as IPv4), the connection's too. With no `client_address:` the address is the connection's natively and `CF-Connecting-IP` on Workers, where any other source is refused and an address Cloudflare did not give is unknown | 2026-10-16 |
+| Where the address is chosen (chosen in chunk 5.1c) | In the runtime, as plan data (`ClientAddressPlan` in the route table) read with the settings the app started with: `serve_request` counts a request by the address `ClientAddress` chooses from its headers and the connection address the host gives, and carries it on the response, so `jadpo dev` shows it after the time on each request line and as `address` with `--json`. The native host only supplies the connection's address | 2026-10-16 |
+| `ZonedTime` (chosen in chunk 5.2) | Replaces the time of day the first build called `Time`: an instant and the `Zone` it is seen in, with no literal, sent as `{ "instant": ..., "zone": "Europe/London" }`. Two are equal when both parts are; they have no order of their own, their instants do (`temporal.instant(...)`). An entity's `ZonedTime` field is stored as an object is, as `jsonb`, not built yet; it is not a setting. The only clock time is `resolve`'s `at:`, written out | 2026-10-16 |
+| Time range (chosen in chunk 5.2) | An `Instant` holds 0000-01-01T00:00:00Z to 9999-12-30T22:00:00.999Z, the last whose local date is in year 9999 in every zone, and a `CalendarDate` 0000-01-01 to 9999-12-31; a literal past them is refused while compiling, and arithmetic past them is the fault `time_out_of_range` | 2026-10-16 |
+| Time arithmetic (chosen in chunk 5.2) | `Instant ± Duration` and `Duration + Instant` keep the instant's named type; `Instant - Instant` of the same type after widening gives a plain `Duration`, negative when the second is later; `Duration ± Duration` of the same type, or with a literal, gives a plain `Duration`. A `CalendarDate` or `ZonedTime` takes no `Duration`, and `*`, `/` and `%` take no time value (`type.arithmetic_operand`, naming `temporal.add_days`) | 2026-10-16 |
+| Time on the wire (chosen in chunk 5.2) | A `Duration` is written ISO 8601 in hours, minutes and seconds (`PT720H` for `30d`, `-PT5M`), and read the same way in JSON, query strings, paths and headers, days counting 24 hours; `5m` is source's spelling and refused there, but a setting keeps it. A `Zone` is sent as its IANA name and a `Locale` as its BCP 47 tag, as a setting reads them, and OpenAPI lists them so; a `ZonedTime` is an object of a `date-time` `instant` and a `zone`, both required | 2026-10-16 |
+| Unclear local times (chosen in chunk 5.2) | `dst:` and `invalid_day:` each settle a condition a call fails on, which its `attempt` maps by the option's name (`dst:`, `invalid_day:`) as a construction's broken rule is mapped: an `invalid_value` failure, `invalid:` for the rest, `failure.rule_unmapped` and `failure.rule_cannot_break` as for rules. Only a value written out other than `reject` settles one; a value passed in might be `reject`. `Dst` keeps Temporal's meanings (earlier or later of an overlap; in a gap, the clock moved back or forward by its length; `compatible` earlier in an overlap and later in a gap); `InvalidDay` is `reject` or `last_valid_day`. `dst:` on a `CalendarDate` is `type.temporal_option_unused` | 2026-10-16 |
+| `at:` (chosen in chunk 5.2) | A clock time written out, `HH:MM`, `HH:MM:SS` or `HH:MM:SS.mmm`, each field two digits; anything else, a value passed in included, is `type.temporal_clock_invalid`, since no type holds a time of day | 2026-10-16 |
+| The `temporal` library (chosen in chunk 5.2) | Option B's operations, nineteen built: `in_zone`, `resolve`, `between`, `add_days`, `add_months` and `add_years` (twelve months a year) on a date or a local time, keeping its named type; `day_bounds`, `week_bounds` (from `starts_on:`), `month_bounds` and `year_bounds` giving an `InstantRange` whose `start` is the period's first instant (midnight, or the first time a zone's clocks show when they skip it) and whose `end` is the next period's, not included; `year`, `month`, `day` and `weekday` of a date or a local time's date; `date`, `hour`, `minute`, `zone` and `instant` of a local time, `instant` added because a `ZonedTime` has no order of its own. A query compares a field with an `InstantRange` parameter's `start` and `end` | 2026-10-16 |
+| Time zone data (chosen in chunk 5.2) | The `temporal` operations run in `jadpo-value` on jiff 0.2.38 with its bundled database (`jiff-tzdb`, IANA 2026e, about 200 KB): pure Rust, built for wasm32, with Temporal's handling of gaps and overlaps, and nothing read from the platform's zone files or clock, so the interpreter, native deployables and Workers answer alike. Every `Zone` variant is in it, which a test holds; a newer release is a change of its own | 2026-10-16 |
+| Not built here (chosen in chunk 5.2) | The formats (`TimeFormat`, `ComponentStyle`, the built-in formats), `PresentationText` and its errors, and `temporal.format` and `format_relative` checked are chunk 5.2b; the text they give, in each locale, is chunk 5.3 | 2026-10-16 |
+| Formats (chosen in chunk 5.2b) | `TimeFormat` is a base, as `Object` is: `type Name = TimeFormat { part: ComponentStyle.style ... }` declares a format, and `TimeFormat.` names the twelve built-in ones (`date_`, `time_`, `date_time_` with `full`, `long`, `medium`, `short`). The parts are `weekday` (`long`, `short`, `narrow`), `day`, `year`, `hour`, `minute` and `second` (`numeric`, `two_digit`), `month` (all five) and `zone_name` (`long`, `short`), as `Intl.DateTimeFormat` takes them; the locale orders them. At least one part (`type.temporal_format_components_empty`), each once (`type.temporal_format_component_duplicate`), in a style it takes (`type.temporal_format_component_invalid`); any other name is `type.unknown_setting`. A format holds no value: `format:` names one written out, and a format as a field's, parameter's or variable's type, as a value or passed in is `type.temporal_format_invalid`. The operation is given it as text, `day:numeric month:short year:numeric` or `date_long` (`jadpo_std::TimeFormatSpec`), as `at:` gives its clock time | 2026-10-16 |
+| What formatting takes (chosen in chunk 5.2b) | `format` shows an `Instant`, a `CalendarDate` or a `ZonedTime`, and `format_relative` an `Instant` or a `ZonedTime` against `now:`, an `Instant`. `zone:` is given exactly for an `Instant` (`type.temporal_zone_required`), and with a date or a local time is `type.temporal_option_unused`. A date takes only a date format: a `time_` or `date_time_` one, or a part `hour`, `minute`, `second` or `zone_name`, is `type.temporal_format_requires_time`, which names that now rather than an instant without a zone. `locale:` was any `Locale` until chunk 5.3, which checks it against the supported ones. `type.temporal_format_choice` is gone: `format:` replaced `style:` and `components:` (Option B) | 2026-10-16 |
+| `PresentationText` (chosen in chunk 5.2b) | A built-in type that is its own representation, so no constructor turns it into `Text` or back, and nothing orders it, adds to it or reads a time from it; `==` and `!=` compare it. A signature may use it directly, as `Email`, and text in quotes may stand for one, which is how a test compares formatted text. An `Output` holds it, sent as a JSON string, and a request may send one as text. An entity field holding it, directly or through a named type, a collection, an object's field or a variant's data, is `type.presentation_text_persistence`; a setting of it is `configuration.type_unsupported` | 2026-10-16 |
+| Not built here (chosen in chunk 5.2b) | The text: a call to `temporal.format` or `format_relative` that checked was `toolchain.not_built_yet`, naming chunk 5.3. Chunk 5.3 built it (below) and removed the refusal | 2026-10-16 |
+| `locales { }` (chosen in chunk 5.3) | An unnamed singleton declaration in `app.jadpo` (as area 1 reserves the word), not a member of `application { }`: the page's `locales: { ... }` was written with a colon and is amended to `locales { default: Locale.en_gb supported: [Locale.en_gb, ...] }`, each once and no others, entries written `Locale.<tag>` (`type.locale_invalid` for text, a non-list, a variant `Locale` has not; the fix for `"fr-FR"` is one edit), none twice (`type.locale_duplicate`), the default among them (`type.locale_default_unsupported`). A missing option is `syntax.locales_default_required` or `syntax.locales_supported_required`, a given-twice option `syntax.locales_duplicate_option`, any other name `syntax.locales_unknown_option` (`unsupported:` among them: there is no such setting), a second `locales { }` `semantic.multiple_locale_declarations`. `syntax.locales_unsupported_required` and `syntax.locales_unsupported_invalid` are gone with `unsupported:` | 2026-10-16 |
+| What a locale is checked against (chosen in chunk 5.3) | A project formats text for people only with `locales { }` declared (`type.temporal_locales_required`, at the call); files handed to the compiler on their own have no application to declare them, so the rule does not apply. A `Locale.x` written as `locale:`, or as the `default:` or `test:` of a `Locale` setting, that is not supported is `type.locale_unsupported`. A `Locale` passed in is read through the wire or a setting, which accept only the supported tags (`invalid_value`, rule `variant`; OpenAPI lists only those); with no `locales { }` every `Locale` is accepted as before. A problem in the declaration is reported once, and the call is not also reported | 2026-10-16 |
+| Locale data (chosen in chunk 5.3) | ICU4X 2.3 with Unicode CLDR 48 compiled into the binary (`icu_datetime`, `icu_calendar`, `icu_time`, `icu_locale` 2.3 and `icu_experimental` 0.6 for the relative-time words, pinned exactly; pure Rust, builds for wasm32): the interpreter, native deployables and Workers write the same text. A WebAssembly module that formats is about 3.5 MB larger than one that does not (3.9 MB against 0.35 MB; 1.2 MB against 0.1 MB compressed with gzip, 0.8 MB with Brotli), because the data holds every locale `Locale` lists. The next lever, if a deployable needs it, is data exported for the supported locales only | 2026-10-16 |
+| Writing a time (chosen in chunk 5.3) | Always the Gregorian calendar (as `Intl.DateTimeFormat` with `calendar: "gregory"`), the locale's own digits, CLDR's narrow no-break space written as a plain space. A built-in format is the locale's pattern at CLDR's four lengths (`date_full` with the weekday), so `date_time_long` is "27 September 2026 at 14:30:05 BST" in `en_gb`, with seconds as `timeStyle: "long"` has. A declared format takes the locale's pattern for its parts (a month as a name from the long or medium date pattern, a number from the short one; a date and a time joined as the locale joins them for that month) and sets each part's width: `numeric` leaves a number as the locale writes it, `two_digit` makes it at least two. Parts with no pattern together are written one after another with a space, and `zone_name` alone is the name alone | 2026-10-16 |
+| `format_relative` (chosen in chunk 5.3) | Against `now:`, in the zone the value is seen in: under a minute either way "just now" (English; the locale's "now" elsewhere); under an hour whole minutes, a past value rounded down and a future one up; the same local date "Today at" and the short time; the date before or after "Yesterday at" or "Tomorrow at"; two to six days away the weekday and the short time; anything else the long date. The words are the locale's, the first letter a capital; a locale with no word for yesterday or tomorrow shows the long date | 2026-10-16 |
+| Not built here (chosen in chunk 5.3) | Translations (`translations/`, ICU MessageFormat, typed calls, their errors) and choosing a locale from an `Accept-Language` header, which the page called a library call without naming it, were chunks 5.3b and 5.3c; both are built now | 2026-10-16 |
+| Translation files (chosen in chunk 5.3b) | `translations/<tag>.json`, the tag a `Locale` variant (`en_gb`), one flat object of keys to ICU MessageFormat strings, read strictly (no comments, trailing commas, nesting or non-string values: `translation.file_invalid`, at the character it fails on). A name that is no `Locale` variant is `translation.file_name_invalid`, a locale not supported `translation.locale_unsupported`, a supported locale without a file `translation.file_missing` (the default locale's first), files with no `locales { }` `translation.locales_required`. `jadpo fmt` leaves the JSON alone, and the language server reports its problems at the file | 2026-10-16 |
+| Keys and calls (chosen in chunk 5.3b) | The default locale's file defines the keys; a key is one lower_snake_case name, once (`translation.key_invalid`, `translation.key_duplicate`), and is the call `translations.<key>(locale:, ...)`, with an argument for each placeholder by its name (by position: the locale, then the placeholders sorted by name). Another locale's file has the same keys (`translation.key_missing`, `translation.key_extra`) and each key the same placeholders (`translation.placeholder_mismatch`) of the same kind (`translation.placeholder_type`). A call of a key no default message has is `translation.key_unknown`, with the nearest key. Area 16's email messages under the type's name with a dot (`welcome_email.subject`) are `translation.key_invalid` until the email chunk says how a dotted key is called | 2026-10-16 |
+| What a call is (chosen in chunk 5.3b) | `PresentationText`, from a pure call (allowed in a function) that carries its arguments' provenance. Its arguments are checked as a standard-library call's: `type.argument_count`, `type.named_argument_unknown`, `type.mismatch`, and a `Locale` written out that is not supported `type.locale_unsupported` (or `type.temporal_locales_required` with none declared) | 2026-10-16 |
+| Placeholder kinds (chosen in chunk 5.3b) | Four, from how a placeholder is written: `{x}` and a `select`'s choice take text (built on `Text`, or a `PresentationText`), `{x, number}` and a plural's count a number (built on `Int` or `Decimal`), `{x, date}` a `CalendarDate` or a `ZonedTime`, `{x, time}` a `ZonedTime`, and a placeholder used as both date and time is a time. Used as two other kinds in one message is `translation.placeholder_type`. A time is never an `Instant`: the server does not choose a zone, so the caller makes a `ZonedTime` with `temporal.in_zone`. A number is not text, so `{order_number}` for a number is a type error and `{order_number, number}` groups its digits | 2026-10-16 |
+| MessageFormat (chosen in chunk 5.3b) | ICU4J's apostrophe rule (a quote only before a brace, or `#` in a plural; `''` is an apostrophe); placeholders named in lower_snake_case, not numbered; `number` with no style or `integer`; `date` and `time` with `short`, `medium` (the default), `long` or `full`, as the built-in formats of the same names; `plural`, `selectordinal` and `select`, with `offset:`, `=N`, `#`, and the six CLDR categories; an `other` case required in each (`translation.other_missing`). Anything else is `translation.message_invalid`, pointing into the JSON file at the character, escapes counted: `percent`, `currency`, skeletons and patterns are not built. A category the locale never uses is accepted and never chosen | 2026-10-16 |
+| Writing a message (chosen in chunk 5.3b) | A number is written with the places it has (`12.50` stays `12.50`) in the locale's digits, grouping and decimal separator; `integer` rounds half to even. A plural's category is CLDR 48's cardinal rule for the locale (ordinal for `selectordinal`) on the number less the `offset:`, an `=N` case matches the number as given, and `#` is the number less the offset written as `{n, number}`. A date or time is `temporal.format`'s built-in format of that length. A `select` with a word that is no case shows `other` | 2026-10-16 |
+| Where messages run (chosen in chunk 5.3b) | Messages are parsed while compiling into `jadpo_std::translation::Message` and carried to the runtime as plan data (`TranslationPlan`: each key, its placeholders and its message in every supported locale); `jadpo_value::present::translate` writes one, over `icu_plurals` and `icu_decimal` 2.3 (pinned with the other ICU4X crates, CLDR 48, already underneath `icu_datetime`), so the interpreter, a native deployable and WebAssembly write the same text and the code generator will call the same function. The call is `Callee::Translation` in the typed body | 2026-10-16 |
+| Watching translations (chosen in chunk 5.3b) | The files are a salsa input of their own (`Project::translations`), read once into messages (`translation_files`); a call asks `lookup` for its key's placeholders alone, so editing the words of any message in any locale checks no call again and a placeholder edit checks only the callables that call that key. Each key is a `translation_key` graph node digested with its message in every supported locale and used by the callables that call it, so `jadpo test --watch` reruns the tests that reach it; `jadpo dev` reloads on a save, and the language server watches `translations/*.json` | 2026-10-16 |
+| Name of the locale call (Richard, 2026-10-16) | `locale.from_accept_language(header)`, giving a `Locale`, in a new `locale` standard-library namespace beside `temporal`. `header` is `Text?`, so a header read with `header: "Accept-Language"` and `optional: true` passes straight in; the call never fails and picks only from `locales { supported: }`, falling back to `default:`. It is a pure function of the header and the application's locales, so the interpreter and every compiled target agree | 2026-10-16 |
+| Matching an `Accept-Language` header (chosen in chunk 5.3c) | RFC 9110: split at commas, a weight `;q=` of 0 to 1 with up to three decimals, a weight of 0 excluded, `*` ignored, an entry that does not parse skipped (a range is read in any case, `_` as `-`). Tags are taken by descending weight then header order, and the first that matches wins: an exact supported locale, else a supported locale of the same language, the one CLDR likely subtags give for the language (`ICU4X` `LocaleExpander`, extended data) before any other, else the first listed in `supported:`. Only the language is compared when no supported locale has the exact tag, never the script (`zh-TW` with no supported `zh_tw` is answered by whichever supported `zh` locale the rule picks) | 2026-10-16 |
+| What the call is checked against (chosen in chunk 5.3c) | A standard-library call: `header` is a `Text?` parameter the call must pass (the operation table marks it `nullable`, not `optional`), taking a `Text`, a type built on `Text`, `none`, or any of those that may be `none`. With no `locales { }` in a project it is `type.temporal_locales_required` with its reason worded for this call (files on their own have none to require). In a query it is `query.value_unsupported`, as every call is | 2026-10-16 |
+| `locale` is a reserved namespace (chosen in chunk 5.3c) | A standard-library namespace cannot name a parameter, variable, declaration, domain or library (`semantic.standard_namespace_reserved`, area 1), so no parameter or variable is called `locale` any more. This page's examples, and the compiler's tests, call theirs `reader_locale`. A field (`input.locale`) or a named argument (`locale:`) is not a variable and keeps the name | 2026-10-16 |
+| Where the choice runs (chosen in chunk 5.3c) | `jadpo_value::locale::from_accept_language(header, &LocalePlan)`, given the plan's locales by `jadpo_value::run` (a fourth parameter, the application's `Option<&LocalePlan>`, which `jadpo-plan` builds from `locales { }` and the interpreter passes), over `icu_locale`'s likely subtags, so the code generator will call the same function | 2026-10-16 |
+| Constants as defaults (Richard) | A `constant` (area 3) counts as a literal for a setting's `default:`, so code and a setting can share one value; `configuration.default_literal_required` still refuses anything computed. Rule of thumb: if a deployment could ever need a different value it is a setting, otherwise a constant. (Revised 2026-10-16 (Richard): a constant does not count as a literal for `default:` or `test:`, which stay literals as chosen in chunk 5.1, `configuration.default_literal_required` unchanged; the rule of thumb stands. See the next row.) | 2026-10-16 |
+| A constant or a setting (Richard) | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both: one source, one way to read it. If a constant could seed a setting, code reading the constant would silently ignore the environment variable (the `DEFAULT_PORT` bug of TypeScript and pydantic code); `default:` on the field already names the default. Tiers: `constant` (fixed in code), `config` (per deployment), `flags { }` (area 16, changes at runtime). Decided; constants built in chunk 5.3e, with a constant refused as `default:` | 2026-10-16 |
+| Making a constant a setting (Richard) | `jadpo config move <constant>`, and the editor's "Make this a setting" running the same code, adds a `config` field of the constant's name and type with its value as `default:` and its `///` description, deletes the constant and rewrites every read to `config.<name>`, so a reviewer sees each place that can now differ per deployment. Offered, never required, so not part of `jadpo fmt --layout`. Refuses, editing nothing, a type a setting can't hold, a name a setting already has, and a constant read in a query, an update by `id`, a backfill or another constant. No command moves a setting back. Rejected: a constant an environment variable can override (`setting: true`: hides per-deployment behaviour at the call site, agents add it everywhere, no single list of variables, moving a file renames its variable); a `config { }` per domain; settings declared beside their use and gathered by the compiler; values per environment in source (`production:`, `staging:`), against no layering. Built in chunk 5.3f | 2026-10-16 |
+| Fields in name order (Richard) | `jadpo fmt` sorts `config { }` fields by name, comments moving with each, so parallel workspaces adding settings rarely touch the same lines; nothing gives a field's position meaning (settings are read, bound and reported by name). `jadpo fmt --check` fails on one out of order. The page examples are sorted already. Built in chunk 5.3f | 2026-10-16 |

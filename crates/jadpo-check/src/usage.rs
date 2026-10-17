@@ -43,10 +43,16 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
     let Some(source) = tree::source(db, file) else {
         return found;
     };
+    // Names as the type tables know them, so a domain's private name and
+    // another domain's of the same spelling have users of their own (area
+    // 1, "Files and names").
+    let contested = jadpo_db::contested(db, project);
+    let domain = location(db, project, file).ownership.domain();
     for decl in source.decls() {
         if matches!(
             decl,
             Decl::FunctionDecl(_)
+                | Decl::ConstantDecl(_)
                 | Decl::ActionDecl(_)
                 | Decl::FixtureDecl(_)
                 | Decl::TestDecl(_)
@@ -59,11 +65,15 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
             if let Some(text) = tree::name_ref_text(&name)
                 && starts_upper(&text)
             {
-                found.names.insert(text);
+                found.names.insert(contested.canonical(&text, domain));
             }
         }
+        // A query takes a constant where it takes a literal (area 3).
+        if let Decl::QueryDecl(query) = &decl {
+            constants_in_query(db, project, file, query, contested, domain, &mut found);
+        }
     }
-    let host_of = |key: &Key| key.name().split('.').next().unwrap_or_default().to_string();
+    let host_of = |key: &Key| canonical_of(contested, key);
     for callable in callables_of(db, file) {
         let body = &typed_body(db, project, callable).body;
         for name in &body.names {
@@ -87,7 +97,7 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
                 | Callee::Action(key)
                 | Callee::Query(key)
                 | Callee::Fixture(key) => {
-                    found.names.insert(key.name().to_string());
+                    found.names.insert(canonical_of(contested, key));
                 }
                 Callee::Object(key) | Callee::Variant(key) | Callee::Entity { entity: key, .. } => {
                     found.names.insert(host_of(key));
@@ -95,20 +105,39 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
                 Callee::Construct(ty) => {
                     found.names.extend(ty.keys().into_iter().map(host_of));
                 }
-                Callee::Std(_) | Callee::Caller(_) | Callee::Session(_) | Callee::Unknown => {}
+                Callee::Std(_)
+                | Callee::Caller(_)
+                | Callee::Session(_)
+                | Callee::AdvanceClock
+                | Callee::Translation(_)
+                | Callee::Unknown => {}
             }
         }
         for site in &body.sites {
             match &site.node {
+                // A constant read: a library's counts as a call of it, one
+                // beside its use as a mention (area 3).
+                Node::Expr(Expr::Constant { constant }) => match constant.name().split_once('.') {
+                    Some((library, own))
+                        if !jadpo_db::symbols(db, project).domains.contains(library) =>
+                    {
+                        found
+                            .library_calls
+                            .insert((library.to_string(), own.to_string()));
+                    }
+                    _ => {
+                        found.names.insert(canonical_of(contested, constant));
+                    }
+                },
                 Node::Expr(Expr::Reject {
                     failure: Some(failure),
                     ..
                 }) => {
-                    found.raised.insert(failure.name().to_string());
+                    found.raised.insert(canonical_of(contested, failure));
                 }
                 Node::Expr(Expr::Attempt { arms, .. }) => {
                     for arm in arms {
-                        found.raised.insert(arm.failure.name().to_string());
+                        found.raised.insert(canonical_of(contested, &arm.failure));
                     }
                 }
                 _ => {}
@@ -116,6 +145,87 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
         }
     }
     found
+}
+
+/// The constants a query's block reads: one beside its use by name, a
+/// library's as a call of it.
+fn constants_in_query(
+    db: &dyn Db,
+    project: Project,
+    file: File,
+    query: &ast::QueryDecl,
+    contested: &jadpo_db::Contested,
+    domain: Option<&str>,
+    found: &mut Mentions,
+) {
+    let lookup = Lookup::for_file(db, project, file);
+    let params: BTreeSet<String> = query
+        .param_list()
+        .into_iter()
+        .flat_map(|list| list.params())
+        .filter_map(|param| param.name().as_ref().and_then(tree::name_text))
+        .collect();
+    let Some(block) = query.member_list() else {
+        return;
+    };
+    for name in block.syntax().descendants().filter_map(ast::NameRef::cast) {
+        let Some(text) = tree::name_ref_text(&name) else {
+            continue;
+        };
+        if starts_upper(&text) || params.contains(&text) {
+            continue;
+        }
+        let parent = name.syntax().parent();
+        let field = parent.clone().and_then(ast::FieldExpr::cast);
+        // The name after a dot: `pricing.vat_rate`'s `vat_rate`.
+        if let Some(field) = &field
+            && field.name_ref().is_some_and(|after| after == name)
+        {
+            let Some(ast::Expr::NameRef(head)) = field.expr() else {
+                continue;
+            };
+            let Some(library) = tree::name_ref_text(&head) else {
+                continue;
+            };
+            if lookup
+                .library_function(&library, &text)
+                .is_some_and(|symbol| symbol.kind == ItemKind::Constant)
+            {
+                found.library_calls.insert((library, text));
+            }
+            continue;
+        }
+        if lookup
+            .declared(&text)
+            .iter()
+            .any(|symbol| symbol.kind == ItemKind::Constant && symbol.library.is_none())
+        {
+            found.names.insert(contested.canonical(&text, domain));
+        }
+    }
+}
+
+/// The name the checker's tables know the declaration `key` names by, or
+/// its host's for a field or variant: a key of a function or type declared
+/// in a domain carries the domain (`type billing.Address`), which the
+/// tables use only for a contested private name ([`jadpo_db::Contested`]).
+fn canonical_of(contested: &jadpo_db::Contested, key: &Key) -> String {
+    let name = key.name();
+    let parts: Vec<&str> = name.split('.').collect();
+    match key.kind() {
+        Some(Kind::Type | Kind::Entity | Kind::Field | Kind::Variant) => {
+            let at = parts
+                .iter()
+                .position(|part| starts_upper(part))
+                .unwrap_or(0);
+            let domain = (at == 1).then(|| parts[0]);
+            contested.canonical(parts[at], domain)
+        }
+        Some(Kind::Function | Kind::Constant) if parts.len() == 2 => {
+            contested.canonical(parts[1], Some(parts[0]))
+        }
+        _ => name.to_string(),
+    }
 }
 
 /// A file that uses a declaration: its path, owner, and whether it holds
@@ -228,14 +338,36 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
         return out;
     };
     let path = file.path(db);
-    let lookup = Lookup::new(db, project);
-    let named = |name: &str| name_users(db, project, Name::new(db, name.to_string()));
+    let lookup = Lookup::for_file(db, project, file);
+    let contested = jadpo_db::contested(db, project);
+    let named = |name: &str| {
+        let canonical = contested.canonical(name, location.ownership.domain());
+        name_users(db, project, Name::new(db, canonical))
+    };
     let ours = |user: &&User| user.ownership == location.ownership;
+    // A name declared twice in one scope is `semantic.duplicate_declaration`
+    // alone: who uses it can't be told apart, so no move is asked for.
+    let declared_twice = |item: &Item| {
+        let all = &lookup.facts(&item.name).declarations;
+        let Some(own) = all.iter().find(|symbol| {
+            symbol.path == *path && symbol.index == item.index && symbol.library.is_none()
+        }) else {
+            return false;
+        };
+        all.iter()
+            .filter(|symbol| symbol.library.is_none() && symbol.scope == own.scope)
+            .count()
+            > 1
+    };
     for item in &item_tree(db, file).items {
+        if declared_twice(item) {
+            continue;
+        }
         match (&location.ownership, folder, &item.kind) {
             (Ownership::Domain(domain), folder, kind)
                 if folder != Folder::Types
-                    && (*kind == ItemKind::Function || is_plain_type(kind)) =>
+                    && (matches!(kind, ItemKind::Function | ItemKind::Constant)
+                        || is_plain_type(kind)) =>
             {
                 let mut others: Vec<&User> = named(&item.name)
                     .iter()
@@ -405,7 +537,8 @@ fn unused_beside_primary(
         .iter()
         .filter(|item| {
             item.index != primary.index
-                && (item.kind == ItemKind::Function || is_plain_type(&item.kind))
+                && (matches!(item.kind, ItemKind::Function | ItemKind::Constant)
+                    || is_plain_type(&item.kind))
         })
         .collect();
     if supporting.is_empty() {
@@ -414,7 +547,9 @@ fn unused_beside_primary(
     let mut used = BTreeSet::from([primary.index]);
     let mut pending = vec![primary.index];
     for item in &supporting {
-        let elsewhere = name_users(db, project, Name::new(db, item.name.clone()))
+        let canonical =
+            jadpo_db::contested(db, project).canonical(&item.name, location.ownership.domain());
+        let elsewhere = name_users(db, project, Name::new(db, canonical))
             .iter()
             .any(|user| user.path != *path);
         if elsewhere && used.insert(item.index) {
@@ -452,7 +587,7 @@ fn names_nothing(
     source: &ast::SourceFile,
     used: &BTreeSet<u32>,
 ) -> bool {
-    let lookup = Lookup::new(db, project);
+    let lookup = Lookup::for_file(db, project, file);
     let std = StdNames::get();
     let unknown_type = used.iter().any(|&index| {
         named_in(source, index).iter().any(|name| {
@@ -517,6 +652,7 @@ fn pure(source: &ast::SourceFile, path: &str, index: u32, table: &dyn NameView) 
 }
 
 /// Where a promoted declaration moves.
+#[derive(Clone, Copy)]
 enum Move<'a> {
     Domain(&'a str),
     Shared,
@@ -555,15 +691,29 @@ fn promoted(
         Move::OwnFile(folder) => format!("{folder}/{file_name}.jadpo"),
     };
     let problem = promote(path, source, item, to, user, &target);
-    if item.kind == ItemKind::Function {
+    if matches!(item.kind, ItemKind::Function | ItemKind::Constant) {
         return problem;
     }
     let Some(decl) = tree::decl_at(source, item.index) else {
         return problem;
     };
-    let edits = crate::imports::move_edits(db, project, file, decl.syntax(), name, &target);
+    let mut edits = crate::imports::move_edits(db, project, file, decl.syntax(), name, &target);
     if edits.is_empty() {
         return problem;
+    }
+    // A type's key carries its domain until it moves to `shared/`: the
+    // move writes the registry line that keeps it (area 18, question 8).
+    if let (Move::Shared, ItemKind::Type(_), Some(domain)) = (
+        &to,
+        &item.kind,
+        location(db, project, file).ownership.domain(),
+    ) {
+        edits.push(registry_line(
+            db,
+            project,
+            &format!("type {name}"),
+            &format!("{domain}.{name}"),
+        ));
     }
     let problem = problem.next(format!(
         "Move `{name}` to `{target}`, or run `jadpo fmt --layout`, which moves it and updates the imports"
@@ -571,6 +721,30 @@ fn promoted(
     edits
         .into_iter()
         .fold(problem, |problem, (span, text)| problem.edit(span, text))
+}
+
+/// The edit that adds `"<now>": "<born name of identity>"` to the identity
+/// registry, `database/identities.json`, writing the file whole.
+fn registry_line(
+    db: &dyn Db,
+    project: Project,
+    now: &str,
+    identity: &str,
+) -> (jadpo_diag::Span, String) {
+    let registry = crate::graph::registry(db, project);
+    let born = registry.born(Kind::Type, identity, None);
+    let mut lines = project.identities(db).clone();
+    lines.insert(now.to_string(), born);
+    let written = project
+        .records(db)
+        .iter()
+        .find(|record| record.path == jadpo_db::IDENTITIES)
+        .and_then(|record| record.text.as_ref().ok())
+        .map_or(0, |text| text.len() as u32);
+    (
+        jadpo_diag::Span::new(jadpo_db::IDENTITIES, 0, written),
+        jadpo_db::write_identities(&lines),
+    )
 }
 
 fn promote(
@@ -594,6 +768,14 @@ fn promote(
             ),
             format!(
                 "Move `{name}` into a library in `{home}/libraries/` and call it through the library"
+            ),
+        ),
+        (_, ItemKind::Constant) => (
+            format!(
+                "A constant read by one {scope} lives in it; once another {scope} reads it, it moves to a library in `{home}/libraries/`"
+            ),
+            format!(
+                "Move `{name}` into a library in `{home}/libraries/` and read it through the library"
             ),
         ),
         (Move::OwnFile(folder), _) => (
@@ -633,7 +815,9 @@ fn unused(path: &str, source: &ast::SourceFile, item: &Item, library: Option<u32
         Some(index) => name_span(source, path, index, Some(item.index)),
         None => name_span(source, path, item.index, None),
     };
-    let what = if library.is_some() {
+    let what = if library.is_some() && item.kind == ItemKind::Constant {
+        "library constant"
+    } else if library.is_some() {
         "library function"
     } else {
         "shared type"

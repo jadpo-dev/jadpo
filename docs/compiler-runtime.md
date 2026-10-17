@@ -388,11 +388,49 @@ operators do (so `integer.divide` takes values built on `Int`, and
 divisions' `divisor`) is checked as `/`'s divisor is: a literal isn't `0` and
 a value's type excludes zero (chunk 1.9). A type variable no argument fixes is a checked
 unknown: it accepts anything where it stands, but the container around it
-is still checked, so a `List<T>` parameter takes only a list. Enums that Rust code interprets (`Rounding`, `TextFormat`,
-`UuidVersion`, `Weekday`, and `Zone` and `Locale` from their tables) are
+is still checked, so a `List<T>` parameter takes only a list. Since chunk
+5.2 the table also says what the stubs can't: a parameter of kind `OneOf`
+(a stub's `T`) takes only values built on the types it lists, and a result
+of that kind keeps the argument's named type; an `optional` parameter (a
+stub's `T?`) may be left out and is given `none`; an option `only_for`
+one built-in type means nothing for others (`type.temporal_option_unused`);
+a `Clock` parameter takes only a clock time written out; since chunk
+5.2b an option that is also `needed` must be given when it applies
+(`zone:` for an `Instant`, `type.temporal_zone_required`), and a `Format`
+parameter takes only a format written out, which the checker reads into
+`jadpo_std::TimeFormatSpec` and lowers as its text; and an operation's
+`conditions` are what it fails on unless an option written out settles
+them, mapped by the call's `attempt` as a construction's broken rules are
+(the operation returns `Fault::Broke(key)`, which the interpreter raises as
+the arm's failure). `temporal` runs on jiff with its bundled IANA database,
+in `jadpo-value` only, so every target reads the same zones and none reads
+the platform's (area 10, "Zones and local times"). `temporal.format` and
+`format_relative` write text for people in `jadpo-value`'s `present` module
+over ICU4X with Unicode CLDR compiled in (pure Rust, pinned exactly, built
+for wasm32 like the rest; area 10, "Chosen in chunk 5.3"): the format
+arrives as `TimeFormatSpec` text, the locale as the `Locale` variant, and
+the locales an application supports (`locales { }`, `LocalePlan`) reach the
+wire through the codecs, which accept only those, and reach `jadpo-value`'s
+`run` as its `locales` argument, which `locale.from_accept_language`
+(chunk 5.3c; `locale` module, a pure function of the header and the plan)
+chooses among; a `nullable` parameter (a stub's `T?` that a call must still
+pass) is the one the table marks apart from an `optional` one. Translations (area 10,
+"Chosen in chunk 5.3b") are read in `jadpo-check`'s `translations` module
+from `translations/<locale>.json`, a salsa input of the project of its own
+(`Project::translations`): the messages are parsed into `jadpo-std`'s
+`Message` while compiling, a call is typed by a per-key `lookup` that sees
+only the key's placeholders, and the project's `TranslationPlan` (each key,
+its placeholders and its message in every supported locale) goes into the
+plan, so the interpreter's `Callee::Translation` and generated code both
+write the text with `jadpo_value::present::translate`, over `icu_plurals`
+and `icu_decimal` beside `icu_datetime`. Each key is a `translation_key`
+graph node, so a save of a translation file reaches the tests that call it.
+Enums that Rust code interprets (`Rounding`, `TextFormat`,
+`UuidVersion`, `Weekday`, `Dst`, `InvalidDay`, `ComponentStyle`, and `Zone` and `Locale` from their tables) are
 declared once, in `jadpo-std`. The namespaces the compiler fills from the
 project or the platform (`clock`, `config`, `translations`, `sessions`,
-`oauth`) list in `std/names.txt` the members built so far (`clock.now`);
+`oauth`) list in `std/names.txt` the members built so far (`clock.now`,
+and a test's `clock.advance`);
 any other member is `toolchain.not_built_yet`. `config.<name>` is the
 exception: its members are the project's own settings, read from
 `config { }` (chunk 5.1, `jadpo_check::config`), so `names.txt` lists none.
@@ -449,7 +487,8 @@ broken files (`crates/jadpo-syntax/tests/broken/`), the parser's fuzz
 test, which also checks that clean edits converge on a file with no
 errors, and a jadpo-check test that checks each clean habit against its
 edited source hold it. The language server shows these errors and their
-edits like any other; it offers no code actions yet.
+edits like any other, offering no quick fix for them yet; its one code
+action is "Make this a setting" (below).
 
 **Formatter.** Syntax tree to a document algebra to a printer, owning
 indentation, blank lines and member order (areas 1 and 14). Every example
@@ -478,8 +517,47 @@ formatted form.
 signatures without bodies (rust-analyzer's `ItemTree`), so editing a body
 never invalidates another file's resolution.
 
+**Constants** (area 3, built in chunk 5.3e). A `constant` is an item like
+a helper function, in the item tree with its type as its signature's
+result and, in a library, among the library's members in source order. Its
+name follows a helper function's scope and identity (a private one beside
+its use is unique within its domain and keyed `constant billing.name`; a
+library's is keyed `constant library.name` under its library). It is a
+callable with a body: `typed_body` types its value as a `return` of its
+type (`Context::Constant`, pure, where a construction never needs
+`attempt`), and lowers it to a body of one `return`. A read is its own
+graph expression, `Expr::Constant`, decoded to the constant's callable, so
+both executors run that body where it is read; it can't fail. The value
+itself is worked out once for the whole project while compiling
+(`jadpo_check::constants::constant_table`), in exact arithmetic that
+follows `jadpo-value`'s, from literals, enum values, other constants,
+constructions, objects, lists and operators: every construction is
+checked against its type's rules there, a call, `config` or `clock` is
+`constant.value_not_fixed`, a loop is `constant.cycle`, and two constants
+of one type holding one value warn `constant.similar_exists`. A query
+reads the worked-out value as a literal (or a plain variant, or a list of
+them), and the graph's constant node, the manifest and the library
+catalogue carry it as Jadpo writes it.
+
 **Resolution.** One project-wide name table, because names are unique
-across the project and across kinds (area 1). A dotted prefix resolves to
+across the project and across kinds (area 1), except a private function or
+type, which is unique only within its domain (decided 2026-10-16, built in
+chunk 5.3d). The table holds every declaration of a name with the scope
+it is unique in (`Symbol::scope`), and a name resolves among its file's
+domain's private names and the project-wide ones, which never overlap: a
+`Lookup` made for a file (`Lookup::for_file`) reads names as that file
+writes them. A private name declared in more than one scope is
+*contested* (`jadpo_db::contested`, usually empty, so what reads it is
+rarely recomputed), and the type and signature tables know it as
+`<domain>.<name>`, which no declaration can be called: each file's shapes
+and signatures are read through it before the tables are built, so a
+`Ty::Named` always names one type, even one that reaches another domain
+through a public signature, and is shown as written. Duplicates and folded
+names are checked within a scope (`naming.rs`); a private type an API's
+record names (`routes::api_named`) stays unique across the project. A
+key carries the domain of a function or type declared in one (area 18,
+question 8), and lookups read such an identity, `billing.Address`, as
+the name it is. A dotted prefix resolves to
 its owner: domain, library, entity, connection, package or standard
 namespace. Visibility is the domain unless `public`. Layout rules (folder,
 kind, file name, promotion) are checked from paths. Since chunk 2.1 a
@@ -520,6 +598,16 @@ a new file below the `use` lines it needs, and imported back into the old
 file when that still uses it; `jadpo fmt --layout` applies them one move at
 a time, checking again after each. The language server's lookup reads a
 `use` line's names as the declarations they bring in.
+
+**Making a constant a setting.** `jadpo_check::setting_move` (chunk 5.3f,
+area 10) is the code `jadpo config move` and the editor's "Make this a
+setting" share: `plan` reads the checked project and decides the setting,
+its `default:`, every read (from each body's resolved names, and the
+syntax outside bodies) and every refusal, editing nothing; `apply` edits
+the loaded texts, fixes imports, formats what was formatted and checks
+the result, undoing a move whose result wouldn't check. The command
+writes the files it gives back; the language server sends them as one
+workspace edit and puts its own texts back with `restore`.
 
 **Types.** Nominal and bidirectional: the expected type flows into
 literals (area 2). Widening is the only implicit conversion; the standard
@@ -1598,6 +1686,27 @@ time it checks a request's deadline (`Step::Yield`,
 `jadpo_runtime::yield_now`), so a route that computes without waiting no
 longer holds the requests its worker serves until its deadline; an inline
 function inside a collection operation still only stops there.
+
+**The client's address** (chunk 5.1c). The address a request counts as,
+for the default rate limits, `jadpo dev`'s request lines and the request
+timeline, is chosen in the runtime from plan data and not by a host:
+`application { client_address: }` is `RouteTable::client_address`, read
+with the settings the app started with into `http::address::ClientAddress`
+(`ClientAddress::read(plan, values, Target)`), which `App::client` carries.
+`serve_request` sets the chosen address on the context (`Ctx::client`) and on
+the response (`Response::client`) before anything else runs, and
+`by_address` counts that. A host only gives the connection's address
+(`Request::address`; natively the peer's), so the Workers host uses the same
+code with `Target::Workers`, where the default is `cloudflare`
+(`CF-Connecting-IP`) and `read` refuses every other source (`NotAccepted`)
+for the deployable to report as a start-up problem (chunk 8.2). With
+`hops: N` the client is the N-th address from the right of `X-Forwarded-For`
+(every line joined) or of `Forwarded`'s `for` parameters; a header that is
+short, invalid or missing gives the connection's address, never a guess, and
+addresses are kept in one spelling. Natively the listener still sends a
+connection to the worker its peer address hashes to, so a client behind
+one proxy is counted on one thread; clients behind several proxies can be
+counted on several, as clients on several addresses always were.
 
 **Configuration** (chunk 5.1). Starting is one function, `jadpo_runtime::
 config::load`, given the plan's settings, their compiled validators and a

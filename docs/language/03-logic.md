@@ -7,11 +7,11 @@ checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce
 
 # Logic
 
-How behaviour is written: functions and actions, variables, statements,
-operators, `match`, `attempt`, loops, and what the language says about passing
-functions, recursion and generic code.
+How behaviour is written: functions and actions, variables and constants,
+statements, operators, `match`, `attempt`, loops, and what the language says
+about passing functions, recursion and generic code.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 3. Built in the new compiler in roadmap chunk 1.5, with the failure side of `attempt` and `match` in chunk 1.6 and the runtime recursion limit in chunk 2.1.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 3. Built in the new compiler in roadmap chunk 1.5, with the failure side of `attempt` and `match` in chunk 1.6, the runtime recursion limit in chunk 2.1 and `type.not_a_value` in chunk 5.2c.
 
 ## Functions and actions
 
@@ -102,10 +102,11 @@ var total: Price = rounding.half_even(subtotal)                    // a library
 var line: Pence = line_total(price, quantity)                      // a helper in this file
 var stock: Reservation = attempt inventory.reserve_for_cart(cart)  // another domain
 var todo: Todo = attempt Todo.get(todo_id)                         // an entity
-var local: Time = temporal.in_zone(at, zone)                       // the standard library
+var local: ZonedTime = temporal.in_zone(at, zone)                  // the standard library
 ```
 
-A library holds only functions.
+A library holds only functions and constants (see [Constants](#constants);
+constants decided 2026-10-16, built in chunk 5.3e).
 
 ## Variables
 
@@ -124,6 +125,382 @@ total = Pence(total + delivery)
 - A variable is visible from its declaration to the end of its block.
 - A name already in scope, including a parameter, cannot be declared again
    (decided, question 3), and an unused variable is an error (question 4).
+
+## Constants
+
+> Decided by Richard on 2026-10-16 and built in chunk 5.3e. Making a constant a setting, `jadpo config move`, was built in chunk 5.3f.
+
+A `constant` names a fixed value at the top level of a file: the same in
+every deployment, worked out while compiling, and never changed.
+
+```jadpo check project=constants
+type Pence = Int {
+    min: 0
+}
+
+constant free_delivery_from: Pence = 5000
+constant small_order_fee: Pence = 250
+
+function delivery_fee(subtotal: Pence) -> Pence {
+    if (subtotal >= free_delivery_from) {
+        return 0
+    }
+    return small_order_fee
+}
+```
+
+- **Form.** `constant name: Type = value`. The name is lower_snake_case like
+  any value, and there is no mutable form: `constant mut` is an error whose
+  edit removes `mut`.
+- **Only at the top of a file.** Inside a body a fixed value is always
+  `var`, and at the top of a file always `constant`, so each place has one
+  way to write it. `constant` in a body is an error whose edit writes `var`.
+  A top-level `var` stays `syntax.expected_declaration`, whose `next:` says
+  to write `constant` (area 1). `const` at the top of a file is one error
+  whose edit writes `constant`; in a body it stays
+  [`syntax.variable_keyword`](#syntax-variable-keyword), whose edit writes
+  `var`.
+- **A named type.** A constant's type follows the rule signatures follow
+  (area 2, "Signatures use named types"): `constant limit: Int = 5` is an
+  error, as `limit: Int` is in a parameter. A list of a named type, an
+  object, an enum, `Email`, `Url` and the other types a signature may use
+  are fine.
+- **A value the compiler can work out.** Literals, enum values, other
+  constants, construction from those (`Pence(5000)`, an object, a list),
+  and the operators of [Expressions and operators](#expressions-and-operators)
+  on them. No call of any kind (functions, library functions, the standard
+  library), no `config`, no `clock`, and no constant that depends on
+  itself ([`constant.value_not_fixed`](#constant-value-not-fixed),
+  [`constant.cycle`](#constant-cycle)). Arithmetic gives the
+  representation, as it does in a body, so `Pence(free_delivery_from * 2)`
+  constructs it back.
+- **Checked while compiling.** The value is checked against every rule of
+  its type and the types it is built on, as a literal is
+  ([`type.invalid_literal`](02-values-and-types.md#type-invalid-literal)),
+  so a construction in a constant never needs `attempt`.
+- **Unused is an error**, as for any other declaration: beside a primary
+  declaration it is `layout.unused_declaration`, and in a library a
+  constant nothing reads is unused as a function nothing calls is.
+
+```jadpo check project=constants-built
+type Pence = Int {
+    min: 0
+    max: 100000
+}
+
+type LargeOrder = Bool {}
+
+type FeeCharged = Bool {}
+
+constant small_order_fee: Pence = 250
+constant large_order_fee: Pence = Pence(small_order_fee * 2)
+constant fees: List<Pence> = [small_order_fee, large_order_fee]
+
+function fee_for(large: LargeOrder) -> Pence {
+    if (large) {
+        return large_order_fee
+    }
+    return small_order_fee
+}
+
+function charged(fee: Pence) -> FeeCharged {
+    return FeeCharged(fee in fees)
+}
+```
+
+Each of these is one error with its edit:
+
+```jadpo check project=e-constant-in-body expect=syntax.expected_statement
+type Pence = Int {
+    min: 0
+}
+
+function fee() -> Pence {
+    constant small_order_fee: Pence = 250
+    return small_order_fee
+}
+```
+
+```text output
+error: `constant` doesn't start a statement
+ --> main.jadpo:6:5
+  |
+6 |     constant small_order_fee: Pence = 250
+  |     ^^^^^^^^ write `var`
+  reason: A constant lives at the top of a file or in a library; inside a body a value that never changes is a `var`.
+  next: Use `var` instead of `constant` (agent)
+  rule: syntax.expected_statement
+  help: docs/language/03-logic.html#syntax-expected-statement
+
+check failed: 1 error, 1 file
+```
+
+```jadpo check project=e-constant-mut expect=syntax.expected_name
+type Pence = Int {
+    min: 0
+}
+
+constant mut small_order_fee: Pence = 250
+```
+
+```text output
+error: A constant can't be `mut`
+ --> main.jadpo:5:10
+  |
+5 | constant mut small_order_fee: Pence = 250
+  |          ^^^ remove `mut`
+  reason: A constant never changes, so it has no mutable form; a value that changes is a `var mut` inside a body.
+  next: Remove `mut` (agent)
+  rule: syntax.expected_name
+  help: docs/language/01-project-layout-and-modules.html#syntax-expected-name
+
+check failed: 1 error, 1 file
+```
+
+```jadpo check project=e-const-keyword expect=syntax.variable_keyword
+type Pence = Int {
+    min: 0
+}
+
+const small_order_fee: Pence = 250
+```
+
+```text output
+error: Jadpo writes `constant`, not `const`
+ --> main.jadpo:5:1
+  |
+5 | const small_order_fee: Pence = 250
+  | ^^^^^ write `constant`
+  reason: `const` declares a value that never changes in JavaScript, TypeScript, Rust, Go and C#; at the top of a Jadpo file a fixed value is `constant name: Type = value`.
+  next: Use `constant` instead of `const` (agent)
+  rule: syntax.variable_keyword
+  help: docs/language/03-logic.html#syntax-variable-keyword
+
+check failed: 1 error, 1 file
+```
+
+```jadpo check project=e-constant-built-in expect=type.primitive_signature
+constant max_login_attempts: Int = 5
+```
+
+```text output
+error: This constant uses `Int` directly
+ --> main.jadpo:1:30
+  |
+1 | constant max_login_attempts: Int = 5
+  |                              ^^^ a built-in type
+  reason: A constant's type is named as a signature's is, so its value says what it means and carries its rules; `Int` says neither.
+  next: Declare a named type built on `Int` and use it here (agent)
+  rule: type.primitive_signature
+  help: docs/language/02-values-and-types.html#type-primitive-signature
+
+check failed: 1 error, 1 file
+```
+
+### Where a constant lives
+
+Placement and sharing follow helper functions exactly (area 1, "Sharing and
+promotion"). A constant used by one file lives at the top of that file,
+beside the declaration that uses it; it is never a file's primary
+declaration, so there is no `constants/` folder, and its name never clashes
+with a file name (`constant vat_rate: VatRate` is fine). When a second file
+uses it, `layout.promotion_required` moves it into a library, and it is read
+through the library like a library function, without brackets:
+
+```jadpo check project=constants-library
+type Pence = Int {
+    min: 0
+}
+
+type VatRate = Decimal {
+    scale: 4
+    min: 0.0000
+    max: 1.0000
+}
+
+library pricing {
+    /// The UK standard rate of VAT.
+    constant vat_rate: VatRate = 0.2000
+
+    function vat_on(price: Pence) -> Pence {
+        return Pence(price / 5)
+    }
+}
+
+function standard_vat() -> VatRate {
+    var uk_rate: VatRate = pricing.vat_rate
+    return uk_rate
+}
+
+function vat(price: Pence) -> Pence {
+    return pricing.vat_on(price)
+}
+```
+
+A library's own functions and constants read its constants bare, as they
+call its functions. A library used by a second domain moves to
+`shared/libraries/`, or stays and becomes `public` when it depends on its
+domain's types, as for functions. A private constant needs a name unique
+only within its domain, as private functions and types do (area 1, "Files
+and names", chunk 5.3d), and its identity key carries its domain,
+`constant billing.free_delivery_from` (area 18).
+
+### Where a constant can be read
+
+Anywhere a value can, functions included, because it never changes. It is
+also what "constants" already means in the places that allow them:
+
+- **Queries** accept a constant wherever they accept a literal (area 6,
+  `query.value_unsupported`).
+- **An update by `id`** may use parameters, constants, `clock.now` and the
+  stored fields (area 6).
+- **A computed backfill** may use the row's stored fields, constants and
+  pure functions (area 5; backfills come with chunk 5.6).
+
+A setting's `default:` and `test:` take a literal but never a constant
+(revised 2026-10-16, Richard; see [A constant or a setting](#a-constant-or-a-setting)).
+
+### Two constants holding one value
+
+Agents working in parallel tend to invent the same constant twice, each
+writing its own `vat_rate`. Two constants of the same type holding the same
+value get a warning, [`constant.similar_exists`](#constant-similar-exists),
+modelled on
+[`library.similar_exists`](01-project-layout-and-modules.md#library-similar-exists):
+`check` still passes, and the warning names the other constant and its file
+so the agent reads that one and removes its own. The library catalogue
+(area 14) lists constants with their type, value, `///` description and
+readers.
+
+### A constant or a setting
+
+If a deployment could ever need a different value, it is a setting in
+`config.jadpo` (area 10); otherwise it is a constant. A page size an
+operator might tune is `config`; the number of pence in a pound is a
+constant. The agent skill gives the same rule (area 14).
+
+A value is one or the other, never both, so it has one source and one way
+to read it: a constant is fixed and read as `security.max_login_attempts`,
+a setting is chosen per deployment and read as `config.max_login_attempts`.
+A setting's `default:` therefore never names a constant (area 10,
+`configuration.default_literal_required`; revised 2026-10-16, Richard). If
+a constant could seed a setting, code reading the constant directly would
+quietly ignore the environment: with `security.standard_attempts` (5) as
+`max_login_attempts`'s default, someone sets `MAX_LOGIN_ATTEMPTS=10`, and
+code reading `security.standard_attempts` still allows 5. That is the
+familiar `DEFAULT_PORT` bug of TypeScript and pydantic code, and Jadpo has
+no need for the pattern, because `default:` on the field already names the
+default.
+
+The three tiers, from fixed to live: a `constant` is fixed in code; a
+`config` setting is chosen per deployment (area 10); a flag in `flags { }`
+changes while the app runs (area 16).
+
+**Making a constant a setting** is a move a tool makes, `jadpo config move
+<constant>` or the editor's "Make this a setting" (area 14). It adds a field
+of the same name and type to `config.jadpo` whose `default:` is the
+constant's value, deletes the constant, and rewrites every read
+(`security.max_login_attempts` becomes `config.max_login_attempts`), so the
+reviewer sees each place whose behaviour can now differ per deployment. It
+refuses, editing nothing, a constant whose type a setting can't hold, one
+whose name a setting already has, and one read where a setting can't be (a
+query, an update by `id`, a backfill or another constant's value). Decided
+2026-10-16 (Richard) and built in chunk 5.3f; the details are in
+area 10, [A constant or a setting](10-configuration-and-time.md#a-constant-or-a-setting).
+
+### Values that change on a known date
+
+Guidance, not built into the language (there is no `effective:` setting).
+A value that changes on a known date, such as the UK's VAT rate, is a
+constant holding a dated list, read through a library function:
+
+```jadpo check project=vat-bands
+type VatRate = Decimal {
+    scale: 4
+    min: 0.0000
+    max: 1.0000
+}
+
+type VatDate = CalendarDate {}
+
+type VatBand = Object {
+    valid_from: VatDate
+    band_rate: VatRate
+}
+
+type VatBands = List<VatBand> {
+    min_length: 1
+}
+
+library vat {
+    constant uk_bands: VatBands = [
+        VatBand {
+            valid_from: "2010-01-01"
+            band_rate: 0.1750
+        },
+        VatBand {
+            valid_from: "2011-01-04"
+            band_rate: 0.2000
+        }
+    ]
+
+    /// The UK standard rate on a date.
+    function rate_on(day: VatDate) -> VatRate {
+        var mut found: VatRate = 0.0000
+        for band in uk_bands {
+            if (band.valid_from <= day) {
+                found = band.band_rate
+            }
+        }
+        return found
+    }
+}
+
+function vat_rate_on(day: VatDate) -> VatRate {
+    var vat_due_rate: VatRate = vat.rate_on(day)
+    return vat_due_rate
+}
+```
+
+- A change of rate is an edit to the list, reviewed as a diff, and tested
+  with the test clock (area 13) on each side of the date.
+- Make it an entity only when someone who isn't a developer must change it
+  while the app runs.
+- A record stores the rate it applied (an invoice's `vat_rate` field), so
+  a later change never rewrites what was charged.
+
+### Rejected
+
+- **A top-level `var`.** `var` would mean worked out while running in a
+  body and while compiling at the top of a file.
+- **Functions with no arguments.** Queries and updates by `id` refuse
+  calls, and a call looks like a calculation, not a fixed value.
+- **Values attached to their type, `Rate.standard_vat`.** A one-off value
+  would need a type of its own, and one block per type clashes when agents
+  work in parallel.
+- **A root `constants { }` block.** A grab-bag, the one file every change
+  touches, and against domains owning their code.
+
+### Chosen in chunk 5.3e
+
+- **Rules reused.** `constant` in a body is `syntax.expected_statement`,
+  `constant mut` is `syntax.expected_name` and `const` at the top of a
+  file is `syntax.variable_keyword`, each with its edit; a construction in
+  a constant that breaks a rule is `type.invalid_literal`, naming the
+  value worked out; a built-in type is `type.primitive_signature`. The
+  constants' own rules are `constant.value_not_fixed`, `constant.cycle`
+  and `constant.similar_exists`.
+- **No file name to clash with.** `naming.folded_collision` leaves
+  constants out, since a constant never has a file of its own.
+- **Kept together.** `jadpo fmt` keeps constants written one after another
+  on consecutive lines, as the source groups them, and puts a blank line
+  between every other pair of declarations.
+- **The first is kept.** Of two constants of one type holding one value,
+  the first in file and source order is the one named; the others are
+  warned.
+- **Run as a body.** The compiler works out and checks each value while
+  compiling, and the executors run the constant's typed body, which can't
+  fail, where it is read (docs/compiler-runtime.md §2.5).
 
 ## Statements
 
@@ -441,6 +818,17 @@ list, may read the variables around it (safe because values never change),
 and cannot call actions or use `attempt`. Functions are not values: they
 cannot be stored in variables or passed to your own callables.
 
+No declaration's name is a value. A type, enum, failure, entity,
+function, action, query, library or route group, or a standard namespace such
+as `collection`, written where a value is read is `type.not_a_value`: in a
+variable's value, an argument, a returned value, a field or list item, an
+operand, a condition, a `match` subject, a `set:`, a route's `run:`, a query's
+condition, an input's `default:` or a test's expectation. A value is built
+(`Placed { ... }`, `Count(5)`), is one of an enum's variants (`Status.open`),
+is read from a variable, a setting (`config.page_size`) or the clock
+(`clock.now`), or is called (`helper(...)`); the error's `next:` gives the one
+that fits the name.
+
 **The batch helpers take the same form** (decided 2026-10-16, Richard,
 area 12): `each:` and `finished:` of `csv.read`, `csv.write`, `tsv`,
 `json_lines`, `json.read`, `json.write` and `batches.each` are inline
@@ -553,6 +941,108 @@ not Jadpo: question 16 decided against generics and unions in your own code.
 
 Every error this area can produce, with an example that triggers it and the
 new compiler's actual output.
+
+### `constant.value_not_fixed`
+
+A constant is worked out while compiling, so its value can't come from a
+call, `config` or `clock`:
+
+```jadpo check project=e-constant-not-fixed expect=constant.value_not_fixed
+type LoginAttempts = Int {
+    min: 1
+}
+
+constant max_login_attempts: LoginAttempts = config.max_login_attempts
+
+config {
+    max_login_attempts: LoginAttempts {
+        default: 5
+    }
+}
+```
+
+```text output
+error: A constant can't read `config.max_login_attempts`
+ --> main.jadpo:5:46
+  |
+5 | constant max_login_attempts: LoginAttempts = config.max_login_attempts
+  |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^ only known while the app runs
+  reason: A constant is worked out while compiling, from literals, enum values, other constants, constructions, objects, lists and operators; a call, `config` and `clock` give values only while the app runs.
+  next: Read `config.max_login_attempts` where the value is used: a setting is chosen per deployment, and a value is a constant or a setting, never both (agent)
+  rule: constant.value_not_fixed
+  help: docs/language/03-logic.html#constant-value-not-fixed
+
+check failed: 1 error, 1 file
+```
+
+### `constant.cycle`
+
+```jadpo check project=e-constant-cycle expect=constant.cycle
+type Pence = Int {
+    min: 0
+}
+
+constant small_order_fee: Pence = large_order_fee
+constant large_order_fee: Pence = small_order_fee
+```
+
+```text output
+error: `large_order_fee` depends on itself
+ --> main.jadpo:6:35
+  |
+6 | constant large_order_fee: Pence = small_order_fee
+  |                                   ^^^^^^^^^^^^^^^ leads back to it
+  reason: A constant's value is worked out from the constants it reads, and `large_order_fee` reads `small_order_fee`, which reads `large_order_fee`, so it has no value.
+  next: Write `large_order_fee`'s value without reading a constant that reads it (agent)
+  rule: constant.cycle
+  help: docs/language/03-logic.html#constant-cycle
+
+check failed: 1 error, 1 file
+```
+
+### `constant.similar_exists`
+
+A warning: `check` still passes, and names the constant to read instead.
+
+```jadpo check project=e-constant-similar expect=constant.similar_exists
+type VatRate = Decimal {
+    scale: 4
+    min: 0.0000
+    max: 1.0000
+}
+
+type Pence = Int {
+    min: 0
+}
+
+library pricing {
+    /// The UK standard rate of VAT.
+    constant vat_rate: VatRate = 0.2000
+}
+
+constant standard_vat: VatRate = 0.2000
+
+function vat_on(price: Pence) -> Pence {
+    if (pricing.vat_rate == standard_vat) {
+        return Pence(price / 5)
+    }
+    return price
+}
+```
+
+```text output
+warning: A constant with this value exists: `pricing.vat_rate`
+ --> main.jadpo:16:10
+   |
+16 | constant standard_vat: VatRate = 0.2000
+   |          ^^^^^^^^^^^^ same as `pricing.vat_rate`
+  reason: `standard_vat` is a `VatRate` holding `0.2000`, as `pricing.vat_rate` in `main.jadpo` is.
+  next: Read `pricing.vat_rate` instead, and remove `standard_vat` (agent)
+  rule: constant.similar_exists
+  help: docs/language/03-logic.html#constant-similar-exists
+
+checked: 1 warning, 1 file
+```
 
 ### `effect.function_calls_action`
 
@@ -2020,6 +2510,37 @@ error: `nmae` isn't defined in this scope
 check failed: 1 error, 1 file
 ```
 
+### `type.not_a_value`
+
+```jadpo check project=e-not-a-value expect=type.not_a_value
+type Count = Int {
+    min: 0
+}
+
+type Placed = Object {
+    count: Count
+}
+
+function first_placed() -> Placed {
+    var placed: Placed = Placed
+    return placed
+}
+```
+
+```text output
+error: `Placed` is a type, not a value
+ --> main.jadpo:10:26
+   |
+10 |     var placed: Placed = Placed
+   |                          ^^^^^^ a type
+  reason: A type says what a value looks like and holds none itself; a value is built with the type's name and every field in a block.
+  next: Build a value with `Placed { ... }`, giving each field (agent)
+  rule: type.not_a_value
+  help: docs/language/03-logic.html#type-not-a-value
+
+check failed: 1 error, 1 file
+```
+
 ### `semantic.unused_variable`
 
 ```jadpo check project=e-unused-variable expect=semantic.unused_variable
@@ -2256,29 +2777,26 @@ check failed: 1 error, 1 file
 
 ### `toolchain.not_built_yet`
 
-The standard library declares operations that later areas build, such as
-`temporal.format` (area 10). Until a chunk builds one, calling it is an error
-rather than a program that can't run:
+The language declares operations that later chunks build, such as the
+generated `oauth.approve` (area 8). Until a chunk builds one, calling it is
+an error rather than a program that can't run:
 
 ```jadpo check project=e-not-built-yet expect=toolchain.not_built_yet
-type Pence = Int {
-    min: 0
-}
+type ConsentId = Uuid {}
 
-function price_text(price: Pence) -> Pence {
-    var formatted_price: Pence = temporal.format(price)
-    return formatted_price
+action approve_consent(consent: ConsentId) -> Unit {
+    oauth.approve(consent)
 }
 ```
 
 ```text output
-error: `temporal.format` isn't built yet
- --> main.jadpo:6:34
+error: `oauth.approve` isn't built yet
+ --> main.jadpo:4:5
   |
-6 |     var formatted_price: Pence = temporal.format(price)
-  |                                  ^^^^^^^^^^^^^^^ declared, not built
-  reason: The language declares `temporal.format`, but this compiler has nothing to run it with yet, so a program that calls it couldn't run.
-  next: Do without `temporal.format` for now (agent)
+4 |     oauth.approve(consent)
+  |     ^^^^^^^^^^^^^ declared, not built
+  reason: The language declares `oauth.approve`, but this compiler has nothing to run it with yet, so a program that calls it couldn't run.
+  next: Do without `oauth.approve` for now (agent)
   rule: toolchain.not_built_yet
   help: docs/language/03-logic.html#toolchain-not-built-yet
 
@@ -2296,8 +2814,7 @@ function london_morning(date: Day) -> Instant {
         at: "09:00",
         zone: Zone.europe_london,
         zone: Zone.europe_london,
-        overlap: LocalOverlap.earlier,
-        gap: LocalGap.reject
+        dst: Dst.earlier
     )
 }
 ```
@@ -2328,8 +2845,7 @@ function london_morning(date: Day) -> Instant {
         date: date,
         "09:00",
         zone: Zone.europe_london,
-        overlap: LocalOverlap.earlier,
-        gap: LocalGap.reject
+        dst: Dst.earlier
     )
 }
 ```
@@ -3062,7 +3578,7 @@ check failed: 1 error, 1 file
 The new compiler builds this area: roadmap chunk 1.5, with the failure side
 of `attempt` and `match` in chunk 1.6 and the runtime recursion limit in
 chunk 2.1. Every example and error above is checked against it on each gate
-run.
+run, [Constants](#constants) since chunk 5.3e.
 
 ### Consistency with the rest of the language
 
@@ -3265,5 +3781,7 @@ Decided by Richard on 2026-10-12. Built in the new compiler on 2026-10-13 (roadm
 | Callable settings | None: every action is all-or-nothing, writes always check for concurrent change, reads are current unless they read a declared cache; policy is area 9 | 2026-10-12 |
 | Generics and unions | None for your own code; a parameter accepting several types takes an `Enum` whose variants carry them | 2026-10-12 |
 | Colon rule (language-wide) | Every member inside braces is `name: value`, and a value is one thing or a `{ ... }` block (`paid: { ... }`, `persistence: { ... }`); a variant with no data is just its name; a field's own settings still follow its type (`name: ProductName { optional: true }`); top-level declarations, statements and `match` arms are not members; route entries inside a `routes` group, keyed by method and path, are the one exception (area 7) (Richard; Terraform's block-versus-attribute split is a known source of confusion) | 2026-10-12 |
+| Constants | `constant name: Type = value`, only at the top of a file or in a library (in a body it is always `var`); a named type, as in signatures; a value worked out while compiling from literals, enum values, other constants, constructions and operators, never a call, `config` or `clock`, checked against the type's rules; no mutable form; unused is an error; placed and shared as helper functions are, read as `pricing.vat_rate` from a library, a private one unique within its domain; what "constants" means in queries, updates by `id` and backfills (setting defaults dropped: revised 2026-10-16 (Richard), a `default:` never names a constant); two of one type with one value warn `constant.similar_exists`; `config` when a deployment could ever need another value, otherwise a constant; dated values are a dated list constant behind a library function. Rejected: a top-level `var`, functions with no arguments, values attached to their type, a root `constants { }` block (Richard). Built in chunk 5.3e | 2026-10-16 |
+| A constant or a setting | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both, so it has one source and one way to read it; a setting's `default:` is a literal and never a constant, so code reading the constant can't silently ignore the environment variable (the `DEFAULT_PORT` bug). `jadpo config move <constant>` and the editor's "Make this a setting" turn one into a setting, rewriting every read; the tiers are `constant`, `config`, `flags { }` (area 16). Details and the rejected alternatives in area 10. Decided; the refusal of a constant as `default:` built in chunk 5.3e, the move in chunk 5.3f (Richard) | 2026-10-16 |
 | Outside calls in loops | None inside `for`, in any action: a loop of calls is `batches.each`, the one way (Richard, area 12) | 2026-10-16 |
 | Inline functions in batch helpers | `each:` and `finished:` of the batch helpers take `x -> ...`; with no destination the body is one call to an action in the same domain; captured values are saved with the run and must be storable (Richard, area 12) | 2026-10-16 |

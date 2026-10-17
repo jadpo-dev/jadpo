@@ -147,6 +147,26 @@ pub fn setting_fact<'db>(
     }
 }
 
+/// Whether a setting can hold a value of type `ty` (area 10, "What a
+/// setting can hold"), for `jadpo config move`: `Err` with why not. A
+/// secret type is refused too, since a secret has no `default:`.
+pub fn holds(db: &dyn Db, project: Project, ty: &Ty) -> Result<(), String> {
+    let reader = Reader {
+        db,
+        project,
+        lookup: Lookup::new(db, project),
+        out: Config::default(),
+    };
+    reader.classify(ty)?;
+    if let Some(base) = reader.lookup.base_prim(ty).filter(|base| base.is_secret()) {
+        return Err(format!(
+            "A `{}` is secret, and a secret's value comes only from the deployment's environment, never from a `default:`.",
+            base.name()
+        ));
+    }
+    Ok(())
+}
+
 /// The problems in `config { }` itself.
 pub fn config_problems(db: &dyn Db, project: Project) -> &Vec<Diagnostic> {
     config_diagnostics(db, project)
@@ -554,6 +574,19 @@ impl Reader<'_> {
             Some(constant) => Some(constant),
         };
         let Some(constant) = literal else {
+            // A `default:` naming a constant: `jadpo config move` makes
+            // that constant this setting (area 10, "Making a constant a
+            // setting").
+            let names_constant = word == "default"
+                && matches!(&constant, Some(Const::Path(names))
+                    if crate::setting_move::names_constant(&self.lookup, names).is_some());
+            let next = if names_constant {
+                format!(
+                    "Run `jadpo config move {shown}`, which makes the constant this setting, or write a literal value after `{word}:`"
+                )
+            } else {
+                format!("Write a literal value after `{word}:`, or remove it")
+            };
             self.out.problems.push(
                 Diagnostic::new(
                     &rule::CONFIGURATION_DEFAULT_LITERAL_REQUIRED,
@@ -567,7 +600,7 @@ impl Reader<'_> {
                 .reason(format!(
                     "A `{word}:` is a literal of the setting's type, checked while compiling (`default: 25`, `default: 5s`); it can't be computed, because nothing runs before the application starts."
                 ))
-                .next(format!("Write a literal value after `{word}:`, or remove it")),
+                .next(next),
             );
             return None;
         };
@@ -674,6 +707,27 @@ impl Reader<'_> {
             });
             return None;
         }
+        // A `Locale` setting starts the application only with a locale it
+        // supports (area 10, "Locales").
+        if reads == Reads::Locale
+            && let Some(plan) = &crate::locales::locales(self.db, self.project).plan
+            && jadpo_std::locale_ordinal(variant).is_some_and(|at| !plan.supports(at))
+        {
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::TYPE_LOCALE_UNSUPPORTED,
+                    format!("`{shown}` isn't a locale this application supports"),
+                )
+                .at(at.clone(), "not in `locales`")
+                .reason(format!(
+                    "`{name}` is read when the application starts, and only the locales listed in `locales {{ supported: }}`, in `app.jadpo`, are accepted there; a {word} outside them could never start."
+                ))
+                .next(format!(
+                    "Add `{shown}` to `supported:` in `app.jadpo`, or use a locale that is listed"
+                )),
+            );
+            return None;
+        }
         let spelling = match reads {
             Reads::Zone => jadpo_std::config::Spelling::Zone,
             Reads::Locale => jadpo_std::config::Spelling::Locale,
@@ -710,7 +764,8 @@ impl Reader<'_> {
                     Err("An object has several fields; make each a setting of its own.".to_string())
                 }
                 Some(Def::Scalar { .. }) => self.scalar(ty),
-                None => Err(String::new()),
+                // A format holds no value, which the type's own check says.
+                Some(Def::Format { .. }) | None => Err(String::new()),
             },
             _ => self.scalar(ty),
         }
@@ -721,13 +776,17 @@ impl Reader<'_> {
             return Err(String::new());
         };
         Ok(match base {
-            Prim::PageCursor | Prim::PageSize | Prim::ApiToken | Prim::ServiceKey => {
+            Prim::PageCursor
+            | Prim::PageSize
+            | Prim::ApiToken
+            | Prim::ServiceKey
+            | Prim::PresentationText => {
                 return Err(format!(
                     "`{}` is made by the runtime, not read from a deployment.",
                     base.name()
                 ));
             }
-            Prim::Bytes | Prim::Time | Prim::Unit => {
+            Prim::Bytes | Prim::ZonedTime | Prim::Unit => {
                 return Err(format!(
                     "`{}` has no one-piece text form for a variable.",
                     base.name()
@@ -1206,6 +1265,9 @@ fn test_values(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TestSettings {
     pub overrides: Vec<(String, String)>,
+    /// Where its `clock:` starts the test's clock, in milliseconds since
+    /// 1970-01-01T00:00:00Z (area 13, "Test settings").
+    pub clock: Option<i64>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -1245,6 +1307,15 @@ pub fn test_settings<'db>(
         let Some(key) = member.member_key() else {
             continue;
         };
+        if tree::written(key.syntax()) == "clock" {
+            if let Some(value) = member.value() {
+                match test_clock(&path, &value) {
+                    Ok(start) => out.clock = Some(start),
+                    Err(problem) => reader.out.problems.push(*problem),
+                }
+            }
+            continue;
+        }
         if tree::written(key.syntax()) != "config" {
             continue;
         }
@@ -1305,6 +1376,35 @@ pub fn test_settings<'db>(
     }
     out.problems = reader.out.problems;
     out
+}
+
+/// A test's `clock:`: an instant written out, `"2026-01-15T12:00:00Z"`.
+fn test_clock(path: &str, value: &ast::Expr) -> Result<i64, Box<Diagnostic>> {
+    let span = node_span(path, value.syntax());
+    let written = tree::written(value.syntax());
+    let text = match value {
+        ast::Expr::Literal(_) => match crate::types::Const::from_expr(value) {
+            crate::types::Const::Str(text) => Some(text),
+            _ => None,
+        },
+        _ => None,
+    };
+    if let Some(millis) = text.as_deref().and_then(jadpo_std::instant_millis) {
+        return Ok(millis);
+    }
+    let why = match text.as_deref().map(jadpo_std::check_instant) {
+        Some(Err(why)) => format!("The value {why}."),
+        _ => format!("`{written}` isn't written out as an instant."),
+    };
+    Err(Box::new(Diagnostic::new(
+        &rule::TYPE_SETTING_VALUE,
+        "`clock:` is the instant the test starts at",
+    )
+    .at(span, "not an instant")
+    .reason(format!(
+        "{why} A test's clock starts at an instant written as text, ISO 8601 with a `Z` or an offset, and moves only with `clock.advance(...)`."
+    ))
+    .next("Write the instant, such as `clock: \"2026-01-15T12:00:00Z\"`")))
 }
 
 fn unknown_in_test(model: &Config, name: &str, span: Span) -> Diagnostic {

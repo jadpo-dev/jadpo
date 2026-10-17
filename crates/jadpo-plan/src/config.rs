@@ -15,7 +15,8 @@ use crate::types::Types;
 pub(crate) fn plan(db: &dyn Db, project: Project, types: &mut Types) -> ConfigPlan {
     let model = config(db, project);
     let lookup = jadpo_check::lookups::Lookup::new(db, project);
-    let mut codecs = Codecs::new(types);
+    let mut codecs =
+        Codecs::new(types).supporting(jadpo_check::locales::locales(db, project).plan.clone());
     let fields = model
         .settings
         .iter()
@@ -27,6 +28,7 @@ pub(crate) fn plan(db: &dyn Db, project: Project, types: &mut Types) -> ConfigPl
             spelling: match setting.reads {
                 Reads::Zone => Spelling::Zone,
                 Reads::Locale => Spelling::Locale,
+                Reads::Duration => Spelling::Duration,
                 _ => Spelling::Plain,
             },
             default: setting.default.clone(),

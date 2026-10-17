@@ -1,0 +1,89 @@
+// The `temporal` namespace (area 10, "Zones and local times", question 7).
+// Each operation is listed in `jadpo-std`'s operation table with the Rust
+// function in `jadpo-value` that runs it, over the IANA time zone
+// database bundled into every target.
+//
+// `T` here is a date or a local time: the table limits it to values built
+// on `CalendarDate` or `ZonedTime`, and a result `T` keeps the argument's
+// named type. An option whose type ends in `?` may be left out. A local time a
+// zone's clocks skip or show twice fails unless `dst:` says which instant
+// to take, and a day a month doesn't have fails unless `invalid_day:` says
+// what to do; the call's `attempt` maps each by the option's name. `at:` is
+// a clock time written as text, `"09:30"`, checked while compiling.
+//
+// `format` and `format_relative` give text for a person in `locale`
+// (area 10, "Showing dates and times to people"): `zone:` is given
+// exactly when `value` is an `Instant`, since a date or a local time
+// carries its own, and `format:` is written out, a built-in
+// `TimeFormat.date_long` or a format declared as `type Name = TimeFormat
+// { ... }`. The text is written in `locale`, which an application that
+// declares the locales it supports (`locales { }` in `app.jadpo`) accepts
+// only from them.
+
+public library temporal {
+    /// `instant` as the local time in `zone`.
+    function in_zone(instant: Instant, zone: Zone) -> ZonedTime {}
+
+    /// The instant the clock reads `at` on `date` in `zone`; `dst:`
+    /// chooses one in a daylight-saving gap or overlap.
+    function resolve(date: CalendarDate, at: Text, zone: Zone, dst: Dst?) -> ZonedTime {}
+
+    /// How long from `start` to `end`: `end - start`.
+    function between(start: Instant, end: Instant) -> Duration {}
+
+    /// `value` moved by whole calendar days, the clock time kept.
+    function add_days(value: T, days: Int, dst: Dst?) -> T {}
+
+    /// `value` moved by whole calendar months, the day and clock time kept.
+    function add_months(value: T, months: Int, invalid_day: InvalidDay?, dst: Dst?) -> T {}
+
+    /// `value` moved by whole calendar years, the day and clock time kept.
+    function add_years(value: T, years: Int, invalid_day: InvalidDay?, dst: Dst?) -> T {}
+
+    /// The instants `date` runs between in `zone`: 23, 24 or 25 hours.
+    function day_bounds(date: CalendarDate, zone: Zone) -> InstantRange {}
+
+    /// The week holding `date` in `zone`, starting on `starts_on`.
+    function week_bounds(date: CalendarDate, zone: Zone, starts_on: Weekday) -> InstantRange {}
+
+    /// The month holding `date` in `zone`.
+    function month_bounds(date: CalendarDate, zone: Zone) -> InstantRange {}
+
+    /// The year holding `date` in `zone`.
+    function year_bounds(date: CalendarDate, zone: Zone) -> InstantRange {}
+
+    /// A local time's date.
+    function date(value: ZonedTime) -> CalendarDate {}
+
+    /// The year of a date or of a local time's date.
+    function year(value: T) -> Int {}
+
+    /// The month, from 1 for January.
+    function month(value: T) -> Int {}
+
+    /// `value` shown to a person in `locale`, as `format` says.
+    function format(value: T, zone: Zone?, locale: Locale, format: TimeFormat) -> PresentationText {}
+
+    /// `value` shown to a person in `locale` as how long ago it was from
+    /// `now`: "just now", minutes, "Today at", "Yesterday at", the
+    /// weekday, then the long date.
+    function format_relative(value: T, now: Instant, zone: Zone?, locale: Locale) -> PresentationText {}
+
+    /// The day of the month, from 1.
+    function day(value: T) -> Int {}
+
+    /// The day of the week.
+    function weekday(value: T) -> Weekday {}
+
+    /// A local time's hour, from 0 to 23.
+    function hour(value: ZonedTime) -> Int {}
+
+    /// A local time's minute, from 0 to 59.
+    function minute(value: ZonedTime) -> Int {}
+
+    /// The zone a local time is seen in.
+    function zone(value: ZonedTime) -> Zone {}
+
+    /// The instant a local time is.
+    function instant(value: ZonedTime) -> Instant {}
+}

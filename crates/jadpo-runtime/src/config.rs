@@ -380,9 +380,13 @@ pub fn decode(
         validators,
         shapes: &[],
     };
+    // A zone or locale in any case, read as the codec spells it on the
+    // wire: `europe/london` is `Europe/London`; a duration as source
+    // writes it, `5m`, is `PT5M`.
     let Some(read) = (match field.spelling {
         Spelling::Plain => Some(text.to_string()),
-        other => other.variant(text),
+        Spelling::Duration => Spelling::Duration.variant(text),
+        other => other.variant(text).map(|variant| other.spelling(&variant)),
     }) else {
         return Err("variant".to_string());
     };
@@ -526,6 +530,23 @@ mod tests {
             }
         );
         assert!(!format!("{problems:?}").contains("many"));
+    }
+
+    #[test]
+    fn a_duration_setting_is_written_as_source_writes_it() {
+        let mut grace = field("grace", false, Some("5m"));
+        grace.spelling = Spelling::Duration;
+        let (plan, validators) = plan(vec![grace], Builtin::Duration);
+        let given = decode(&plan, &validators, &plan.fields[0], "90s");
+        assert_eq!(given, Ok(Value::Duration(90_000)));
+        let wire = decode(&plan, &validators, &plan.fields[0], "PT90S");
+        assert_eq!(
+            wire,
+            Err("variant".to_string()),
+            "the wire's spelling isn't a setting's"
+        );
+        let fallen = check(&plan, &validators, &vars(&[]), Mode::Environment, NO_RANDOM);
+        assert_eq!(fallen[0].state, State::Default);
     }
 
     #[test]

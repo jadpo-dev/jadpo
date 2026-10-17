@@ -14,7 +14,7 @@ use jadpo_syntax::ast::{self, AstNode, Decl, Expr, MemberItem};
 use super::literal;
 use super::rules::{self, CONSTRAINTS, Const, FIELD_SETTINGS, Problem, Rules, Subject};
 use super::shape::{self, FieldsBase, Line, ShapeKind};
-use super::table::{Found, LineKind, LineProblem, TypeView, derive};
+use super::table::{Def, Found, LineKind, LineProblem, TypeView, derive};
 use super::ty::{BASES, Prim, Ty, TypeNode, TypeRef, container_arity};
 use crate::lookups::Lookup;
 use crate::std_lib::StdNames;
@@ -26,7 +26,7 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
     let Some(source) = tree::source(db, file) else {
         return Vec::new();
     };
-    let lookup = Lookup::new(db, project);
+    let lookup = Lookup::for_file(db, project, file);
     let mut checker = Decls {
         path: file.path(db),
         table: &lookup,
@@ -45,6 +45,8 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
 enum Role {
     Parameter,
     Result,
+    /// A constant's type, named as a signature's is (area 3).
+    Constant,
 }
 
 pub(super) struct Decls<'a> {
@@ -60,7 +62,7 @@ pub(super) struct Decls<'a> {
 }
 
 impl Decls<'_> {
-    fn span(&self, node: &SyntaxNode) -> Span {
+    pub(super) fn span(&self, node: &SyntaxNode) -> Span {
         node_span(self.path, node)
     }
 
@@ -78,9 +80,16 @@ impl Decls<'_> {
             Decl::ActionDecl(d) => self.signature(d.param_list(), d.ret_type(), true),
             Decl::QueryDecl(d) => self.signature(d.param_list(), d.ret_type(), true),
             Decl::FixtureDecl(d) => self.signature(d.param_list(), d.ret_type(), false),
+            Decl::ConstantDecl(d) => self.constant(d),
             Decl::LibraryDecl(d) => {
-                for function in tree::library_functions(d) {
-                    self.signature(function.param_list(), function.ret_type(), true);
+                for member in tree::library_members(d) {
+                    match member {
+                        Decl::FunctionDecl(function) => {
+                            self.signature(function.param_list(), function.ret_type(), true);
+                        }
+                        Decl::ConstantDecl(constant) => self.constant(&constant),
+                        _ => {}
+                    }
                 }
             }
             _ => {}
@@ -111,6 +120,16 @@ impl Decls<'_> {
         }
     }
 
+    /// A constant's type follows the rule a signature's does (area 3).
+    fn constant(&mut self, constant: &ast::ConstantDecl) {
+        if let Some(ty) = constant.ty() {
+            let node = TypeNode::Type(ty);
+            if self.type_node(&node, false) {
+                self.primitive(&node, Role::Constant, None);
+            }
+        }
+    }
+
     /// Functions, actions and queries take and return named types, with
     /// collection elements checked too (area 2, question 11).
     fn primitive(&mut self, node: &TypeNode, role: Role, container: Option<&Ty>) {
@@ -120,6 +139,7 @@ impl Decls<'_> {
                 let word = match role {
                     Role::Parameter => "parameter",
                     Role::Result => "result",
+                    Role::Constant => "constant",
                 };
                 let name = prim.name();
                 let message = match container {
@@ -132,9 +152,14 @@ impl Decls<'_> {
                 self.out.push(
                     Diagnostic::new(&rule::TYPE_PRIMITIVE_SIGNATURE, message)
                         .at(span, "a built-in type")
-                        .reason(format!(
-                            "Functions, actions and queries take and return named types, so each value says what it means and carries its rules; `{name}` says neither."
-                        ))
+                        .reason(match role {
+                            Role::Constant => format!(
+                                "A constant's type is named as a signature's is, so its value says what it means and carries its rules; `{name}` says neither."
+                            ),
+                            _ => format!(
+                                "Functions, actions and queries take and return named types, so each value says what it means and carries its rules; `{name}` says neither."
+                            ),
+                        })
                         .next(format!("Declare a named type built on `{name}` and use it here")),
                 );
             }
@@ -202,6 +227,14 @@ impl Decls<'_> {
                             "Declare `type Name = {first} {{ ... }}` and use its name here"
                         )),
                     );
+                    return false;
+                }
+                if names.len() == 1
+                    && let Some(Def::Format { .. }) = self.table.def(first)
+                {
+                    let span = self.span(&head);
+                    self.out
+                        .push(super::formats::not_a_value(first, span, true));
                     return false;
                 }
                 if names.len() == 1 {
@@ -363,6 +396,7 @@ impl Decls<'_> {
             ShapeKind::Fields { base, lines } => {
                 self.lines(list, *base, &shape.name, lines);
             }
+            ShapeKind::Format { .. } => self.format_decl(decl, &shape.name),
             ShapeKind::Enum { variants } => {
                 if variants.is_empty() {
                     let span = decl
@@ -1175,10 +1209,23 @@ impl Decls<'_> {
             return;
         }
         // `default:` is checked like a literal going into the field.
-        if matches!(value, Const::Other | Const::Path(_)) {
-            if matches!(value, Const::Path(_)) {
-                return;
+        let lower_path = matches!(value, Const::Path(names)
+            if !names.first().is_some_and(|head| crate::case::starts_upper(head)));
+        if let Const::Path(names) = value
+            && !lower_path
+        {
+            // A variant, `Status.open`, is checked where it is used; any
+            // other declaration's name is no value (area 3).
+            let head = names.first().map_or("", String::as_str);
+            let variant = names.len() == 2
+                && matches!(self.table.def(head), Some(super::table::Def::Enum { .. }));
+            if !variant && let Some(named) = crate::not_value::classify_type(self.table, head) {
+                self.out
+                    .push(crate::not_value::diagnostic(head, &named, value_span));
             }
+            return;
+        }
+        if matches!(value, Const::Other) || lower_path {
             self.out.push(
                 Diagnostic::new(&rule::TYPE_SETTING_VALUE, "`default` takes a literal")
                     .at(value_span, "a computed value")

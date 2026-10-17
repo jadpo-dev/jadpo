@@ -104,6 +104,56 @@ std_enum! {
 }
 
 std_enum! {
+    /// Which instant a local time takes when a zone's clocks change around
+    /// it (area 10, question 7): an `overlap` happens twice, a `gap` never.
+    /// Without `dst:`, or with `reject`, such a time is a failure the
+    /// caller maps.
+    Dst: "Dst" {
+        /// Fail: the call's `attempt` maps `dst:`.
+        Reject: "reject",
+        /// The earlier instant in an overlap; in a gap, the clock time
+        /// moved back by the gap's length (01:30 in a 01:00 to 02:00 gap
+        /// is 00:30).
+        Earlier: "earlier",
+        /// The later instant in an overlap; in a gap, the clock time moved
+        /// forward by the gap's length (01:30 is 02:30).
+        Later: "later",
+        /// Temporal's choice: earlier in an overlap, later in a gap.
+        Compatible: "compatible",
+    }
+}
+
+std_enum! {
+    /// What moving a date by months or years does when the month it lands
+    /// in has no such day, as 31 January plus a month (area 10).
+    InvalidDay: "InvalidDay" {
+        /// Fail: the call's `attempt` maps `invalid_day:`.
+        Reject: "reject",
+        /// The month's last day.
+        LastValidDay: "last_valid_day",
+    }
+}
+
+std_enum! {
+    /// How one part of a declared `TimeFormat` is shown (area 10, "Showing
+    /// dates and times to people"), as `Intl.DateTimeFormat` and CLDR's
+    /// skeletons name them: each part takes some of these
+    /// ([`crate::Component::styles`]), and the locale decides the rest.
+    ComponentStyle: "ComponentStyle" {
+        /// Digits as the locale writes them: `5`, `2026`.
+        Numeric: "numeric",
+        /// Always two digits: `05`, `26`.
+        TwoDigit: "two_digit",
+        /// An abbreviated name: `Oct`, `Sun`, `BST`.
+        Short: "short",
+        /// The full name: `October`, `Sunday`, `British Summer Time`.
+        Long: "long",
+        /// The narrowest form: `O`, `S`.
+        Narrow: "narrow",
+    }
+}
+
+std_enum! {
     /// When a generated `Instant` field is set (area 5, "Fields and their
     /// settings").
     Generated: "Generated" {
@@ -239,6 +289,22 @@ std_enum! {
 }
 
 std_enum! {
+    /// Where the address of the client a request came from is read (area
+    /// 10, "Client addresses"): the connection's own, or a header a proxy
+    /// of the deployment's own adds.
+    ClientAddressSource: "ClientAddressSource" {
+        /// The connection's own address; no header is read.
+        Connection: "connection",
+        /// `X-Forwarded-For`.
+        ForwardedFor: "forwarded_for",
+        /// RFC 7239's `Forwarded: for=`.
+        Forwarded: "forwarded",
+        /// Cloudflare's `CF-Connecting-IP`.
+        Cloudflare: "cloudflare",
+    }
+}
+
+std_enum! {
     /// How strongly a caller proved who they are (area 8, "The principal").
     AuthenticationStrength: "AuthenticationStrength" {
         /// One factor: a session, a token or a key.
@@ -326,6 +392,9 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (TextFormat::NAME, TextFormat::NAMES.to_vec()),
         (UuidVersion::NAME, UuidVersion::NAMES.to_vec()),
         (Weekday::NAME, Weekday::NAMES.to_vec()),
+        (Dst::NAME, Dst::NAMES.to_vec()),
+        (InvalidDay::NAME, InvalidDay::NAMES.to_vec()),
+        (ComponentStyle::NAME, ComponentStyle::NAMES.to_vec()),
         (Generated::NAME, Generated::NAMES.to_vec()),
         (OnDelete::NAME, OnDelete::NAMES.to_vec()),
         (FieldChange::NAME, FieldChange::NAMES.to_vec()),
@@ -344,6 +413,10 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (
             AuthenticationStrength::NAME,
             AuthenticationStrength::NAMES.to_vec(),
+        ),
+        (
+            ClientAddressSource::NAME,
+            ClientAddressSource::NAMES.to_vec(),
         ),
         (Access::NAME, Access::NAMES.to_vec()),
         (Tenancy::NAME, Tenancy::NAMES.to_vec()),
@@ -364,6 +437,9 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         TextFormat::NAME => position(TextFormat::NAMES),
         UuidVersion::NAME => position(UuidVersion::NAMES),
         Weekday::NAME => position(Weekday::NAMES),
+        Dst::NAME => position(Dst::NAMES),
+        InvalidDay::NAME => position(InvalidDay::NAMES),
+        ComponentStyle::NAME => position(ComponentStyle::NAMES),
         Generated::NAME => position(Generated::NAMES),
         OnDelete::NAME => position(OnDelete::NAMES),
         FieldChange::NAME => position(FieldChange::NAMES),
@@ -374,6 +450,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         RouteAuthentication::NAME => position(RouteAuthentication::NAMES),
         AuthenticationMethod::NAME => position(AuthenticationMethod::NAMES),
         AuthenticationStrength::NAME => position(AuthenticationStrength::NAMES),
+        ClientAddressSource::NAME => position(ClientAddressSource::NAMES),
         Access::NAME => position(Access::NAMES),
         Tenancy::NAME => position(Tenancy::NAMES),
         MembershipScope::NAME => position(MembershipScope::NAMES),

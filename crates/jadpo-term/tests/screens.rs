@@ -73,6 +73,49 @@ fn rich_diagnostic_matches_the_design_language() {
     );
 }
 
+/// The names in use a rename should see (area 1,
+/// `semantic.duplicate_declaration`), in two columns after `next`.
+fn with_names_in_use() -> Diagnostic {
+    unknown_value().in_use(vec![
+        (
+            "Title".to_string(),
+            "domains/planning/libraries/titles.jadpo".to_string(),
+        ),
+        (
+            "TitleCase".to_string(),
+            "shared/types/title_case.jadpo".to_string(),
+        ),
+    ])
+}
+
+#[test]
+fn names_in_use_follow_next_in_two_columns() {
+    let screen = Screen::new().with(Block::diagnostic(&with_names_in_use(), &sources()));
+    let plain = screen.render(&Style::new(Mode::Plain));
+    assert!(
+        plain.contains(
+            "  next: Use `title` instead of `titel` (agent)
+  in use:
+    Title      domains/planning/libraries/titles.jadpo
+    TitleCase  shared/types/title_case.jadpo
+  rule: cli.unknown_command
+"
+        ),
+        "{plain}"
+    );
+    let rich = screen.render(&rich());
+    assert!(
+        rich.contains(
+            "  next      Use `title` instead of `titel` (agent)
+  in use    Title      domains/planning/libraries/titles.jadpo
+            TitleCase  shared/types/title_case.jadpo
+  rule      cli.unknown_command
+"
+        ),
+        "{rich}"
+    );
+}
+
 #[test]
 fn ascii_symbols_replace_unicode_ones() {
     let style = Style {

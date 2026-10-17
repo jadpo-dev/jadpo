@@ -103,7 +103,7 @@ pub struct Decided {
 /// by key.
 #[salsa::tracked(returns(ref))]
 pub fn file_loading(db: &dyn Db, project: Project, file: File) -> BTreeMap<Key, Loading> {
-    let lookup = Lookup::new(db, project);
+    let lookup = Lookup::for_file(db, project, file);
     let mut out = BTreeMap::new();
     for item in &item_tree(db, file).items {
         if !matches!(item.kind, ItemKind::Action | ItemKind::Fixture) {
@@ -186,7 +186,7 @@ fn holds_record(lookup: &Lookup<'_>, ty: &Ty, seen: &mut BTreeSet<String>) -> bo
                     .iter()
                     .filter_map(|variant| variant.fields.as_deref())
                     .any(|own| fields(own, seen)),
-                Some(Def::Scalar { .. }) | None => false,
+                Some(Def::Scalar { .. } | Def::Format { .. }) | None => false,
             }
         }
         Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => holds_record(lookup, inner, seen),
