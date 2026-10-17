@@ -49,6 +49,11 @@ fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let mut paths: Vec<PathBuf> = entries.filter_map(|e| e.ok()).map(|e| e.path()).collect();
     paths.sort();
     for path in paths {
+        // `build/` is generated (area 14) and never input, so a checkout
+        // that has run `jadpo check` reads the same examples as CI.
+        if path.is_dir() && path.file_name().is_some_and(|name| name == "build") {
+            continue;
+        }
         if path.is_dir() {
             markdown_files(&path, out);
         } else if matches!(

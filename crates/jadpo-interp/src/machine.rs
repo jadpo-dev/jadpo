@@ -1610,6 +1610,19 @@ impl<'p> Machine<'p> {
                     id,
                 ));
             }
+            // A constant's value: its body, which was checked while
+            // compiling and can't fail (area 3).
+            Expr::Constant { .. } => {
+                let Some(Decoded::Callable(Some(target))) = self.decoded(id) else {
+                    return Err(self.defect(ctx, "a constant that has no body", id));
+                };
+                self.tasks.push(Task::Invoke {
+                    target: Target::Callable(*target),
+                    count: 0,
+                    at: id,
+                    then: None,
+                });
+            }
             Expr::Config { .. } => match self.decoded(id) {
                 Some(Decoded::Config(Some(setting))) => match ctx
                     .setting(*setting)

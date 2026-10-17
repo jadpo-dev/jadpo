@@ -204,9 +204,10 @@ in test source.
 
 ### A constant or a setting
 
-> Decided by Richard on 2026-10-16, not built until chunk 5.3e. The
-> examples are proposals, shown as plain text because the parser doesn't
-> know `constant` yet.
+> Decided by Richard on 2026-10-16. Constants are built (chunk 5.3e, area
+> 3), and so is the refusal of one as a `default:`; the move below, `jadpo
+> config move`, is not built until chunk 5.3f, and its examples are
+> proposals, shown as plain text.
 
 A value that could differ between deployments is a setting; one that never
 does is a `constant` (area 3). A value is one or the other, never both, so
@@ -319,7 +320,7 @@ setting's position a meaning: a setting is read, bound and reported by
 name; `jadpo config check` and the check before the app starts list
 settings in the order they are written, which becomes name order.
 `jadpo fmt --check` fails on a `config { }` out of order. Decided by
-Richard on 2026-10-16, not built until chunk 5.3e; the examples on the
+Richard on 2026-10-16, not built until chunk 5.3f; the examples on the
 language pages are already in name order.
 
 ### Chosen in chunk 5.1
@@ -2076,11 +2077,11 @@ check failed: 1 error, 1 file
 ```
 
 Here `largest_page` names nothing. A constant of the setting's type is
-refused the same way once constants are built (chunk 5.3e): a value is a
-constant or a setting, never both ([A constant or a
-setting](#a-constant-or-a-setting); revised 2026-10-16, Richard, reversing
-the same day's decision that a constant counts as a literal here). The
-`next:` then offers `jadpo config move <constant>`, which makes the
+refused the same way (built in chunk 5.3e): a value is a constant or a
+setting, never both ([A constant or a setting](#a-constant-or-a-setting);
+revised 2026-10-16, Richard, reversing the same day's decision that a
+constant counts as a literal here). Once `jadpo config move` is built
+(chunk 5.3f), the `next:` for a constant offers it, which makes the
 constant the setting.
 
 ### `configuration.default_type`
@@ -3838,6 +3839,6 @@ locales' files, and the interpreter and runtime writing the text). Chunk
 | `locale` is a reserved namespace (chosen in chunk 5.3c) | A standard-library namespace cannot name a parameter, variable, declaration, domain or library (`semantic.standard_namespace_reserved`, area 1), so no parameter or variable is called `locale` any more. This page's examples, and the compiler's tests, call theirs `reader_locale`. A field (`input.locale`) or a named argument (`locale:`) is not a variable and keeps the name | 2026-10-16 |
 | Where the choice runs (chosen in chunk 5.3c) | `jadpo_value::locale::from_accept_language(header, &LocalePlan)`, given the plan's locales by `jadpo_value::run` (a fourth parameter, the application's `Option<&LocalePlan>`, which `jadpo-plan` builds from `locales { }` and the interpreter passes), over `icu_locale`'s likely subtags, so the code generator will call the same function | 2026-10-16 |
 | Constants as defaults (Richard) | A `constant` (area 3) counts as a literal for a setting's `default:`, so code and a setting can share one value; `configuration.default_literal_required` still refuses anything computed. Rule of thumb: if a deployment could ever need a different value it is a setting, otherwise a constant. (Revised 2026-10-16 (Richard): a constant does not count as a literal for `default:` or `test:`, which stay literals as chosen in chunk 5.1, `configuration.default_literal_required` unchanged; the rule of thumb stands. See the next row.) | 2026-10-16 |
-| A constant or a setting (Richard) | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both: one source, one way to read it. If a constant could seed a setting, code reading the constant would silently ignore the environment variable (the `DEFAULT_PORT` bug of TypeScript and pydantic code); `default:` on the field already names the default. Tiers: `constant` (fixed in code), `config` (per deployment), `flags { }` (area 16, changes at runtime). Decided, not built (chunk 5.3e) | 2026-10-16 |
-| Making a constant a setting (Richard) | `jadpo config move <constant>`, and the editor's "Make this a setting" running the same code, adds a `config` field of the constant's name and type with its value as `default:` and its `///` description, deletes the constant and rewrites every read to `config.<name>`, so a reviewer sees each place that can now differ per deployment. Offered, never required, so not part of `jadpo fmt --layout`. Refuses, editing nothing, a type a setting can't hold, a name a setting already has, and a constant read in a query, an update by `id`, a backfill or another constant. No command moves a setting back. Rejected: a constant an environment variable can override (`setting: true`: hides per-deployment behaviour at the call site, agents add it everywhere, no single list of variables, moving a file renames its variable); a `config { }` per domain; settings declared beside their use and gathered by the compiler; values per environment in source (`production:`, `staging:`), against no layering. Decided, not built (chunk 5.3e) | 2026-10-16 |
-| Fields in name order (Richard) | `jadpo fmt` sorts `config { }` fields by name, comments moving with each, so parallel workspaces adding settings rarely touch the same lines; nothing gives a field's position meaning (settings are read, bound and reported by name). `jadpo fmt --check` fails on one out of order. The page examples are sorted already. Decided, not built (chunk 5.3e) | 2026-10-16 |
+| A constant or a setting (Richard) | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both: one source, one way to read it. If a constant could seed a setting, code reading the constant would silently ignore the environment variable (the `DEFAULT_PORT` bug of TypeScript and pydantic code); `default:` on the field already names the default. Tiers: `constant` (fixed in code), `config` (per deployment), `flags { }` (area 16, changes at runtime). Decided; constants built in chunk 5.3e, with a constant refused as `default:` | 2026-10-16 |
+| Making a constant a setting (Richard) | `jadpo config move <constant>`, and the editor's "Make this a setting" running the same code, adds a `config` field of the constant's name and type with its value as `default:` and its `///` description, deletes the constant and rewrites every read to `config.<name>`, so a reviewer sees each place that can now differ per deployment. Offered, never required, so not part of `jadpo fmt --layout`. Refuses, editing nothing, a type a setting can't hold, a name a setting already has, and a constant read in a query, an update by `id`, a backfill or another constant. No command moves a setting back. Rejected: a constant an environment variable can override (`setting: true`: hides per-deployment behaviour at the call site, agents add it everywhere, no single list of variables, moving a file renames its variable); a `config { }` per domain; settings declared beside their use and gathered by the compiler; values per environment in source (`production:`, `staging:`), against no layering. Decided, not built (chunk 5.3f) | 2026-10-16 |
+| Fields in name order (Richard) | `jadpo fmt` sorts `config { }` fields by name, comments moving with each, so parallel workspaces adding settings rarely touch the same lines; nothing gives a field's position meaning (settings are read, bound and reported by name). `jadpo fmt --check` fails on one out of order. The page examples are sorted already. Decided, not built (chunk 5.3f) | 2026-10-16 |

@@ -73,6 +73,7 @@ impl UseDecl {
 pub enum Decl {
     TypeDecl(TypeDecl),
     FunctionDecl(FunctionDecl),
+    ConstantDecl(ConstantDecl),
     ActionDecl(ActionDecl),
     QueryDecl(QueryDecl),
     FixtureDecl(FixtureDecl),
@@ -93,6 +94,7 @@ impl AstNode for Decl {
     fn can_cast(kind: SyntaxKind) -> bool {
         kind == TYPE_DECL
             || kind == FUNCTION_DECL
+            || kind == CONSTANT_DECL
             || kind == ACTION_DECL
             || kind == QUERY_DECL
             || kind == FIXTURE_DECL
@@ -115,6 +117,9 @@ impl AstNode for Decl {
         }
         if kind == FUNCTION_DECL {
             return Some(Self::FunctionDecl(FunctionDecl { syntax }));
+        }
+        if kind == CONSTANT_DECL {
+            return Some(Self::ConstantDecl(ConstantDecl { syntax }));
         }
         if kind == ACTION_DECL {
             return Some(Self::ActionDecl(ActionDecl { syntax }));
@@ -164,6 +169,7 @@ impl AstNode for Decl {
         match self {
             Self::TypeDecl(it) => it.syntax(),
             Self::FunctionDecl(it) => it.syntax(),
+            Self::ConstantDecl(it) => it.syntax(),
             Self::ActionDecl(it) => it.syntax(),
             Self::QueryDecl(it) => it.syntax(),
             Self::FixtureDecl(it) => it.syntax(),
@@ -191,6 +197,12 @@ impl From<TypeDecl> for Decl {
 impl From<FunctionDecl> for Decl {
     fn from(node: FunctionDecl) -> Decl {
         Decl::FunctionDecl(node)
+    }
+}
+
+impl From<ConstantDecl> for Decl {
+    fn from(node: ConstantDecl) -> Decl {
+        Decl::ConstantDecl(node)
     }
 }
 
@@ -869,6 +881,51 @@ impl FunctionDecl {
         support::child(&self.syntax)
     }
     pub fn block(&self) -> Option<Block> {
+        support::child(&self.syntax)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ConstantDecl {
+    pub(crate) syntax: SyntaxNode,
+}
+
+impl AstNode for ConstantDecl {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == CONSTANT_DECL
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl ConstantDecl {
+    pub fn visibility(&self) -> Option<Visibility> {
+        support::child(&self.syntax)
+    }
+    pub fn constant_kw_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, CONSTANT_KW)
+    }
+    pub fn name(&self) -> Option<Name> {
+        support::child(&self.syntax)
+    }
+    pub fn colon_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, COLON)
+    }
+    pub fn ty(&self) -> Option<Type> {
+        support::child(&self.syntax)
+    }
+    pub fn eq_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, EQ)
+    }
+    pub fn value(&self) -> Option<Expr> {
         support::child(&self.syntax)
     }
 }
@@ -1628,170 +1685,6 @@ impl Block {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Path {
-    pub(crate) syntax: SyntaxNode,
-}
-
-impl AstNode for Path {
-    fn can_cast(kind: SyntaxKind) -> bool {
-        kind == PATH
-    }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if Self::can_cast(syntax.kind()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-    fn syntax(&self) -> &SyntaxNode {
-        &self.syntax
-    }
-}
-
-impl Path {
-    pub fn name_refs(&self) -> AstChildren<NameRef> {
-        support::children(&self.syntax)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Param {
-    pub(crate) syntax: SyntaxNode,
-}
-
-impl AstNode for Param {
-    fn can_cast(kind: SyntaxKind) -> bool {
-        kind == PARAM
-    }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if Self::can_cast(syntax.kind()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-    fn syntax(&self) -> &SyntaxNode {
-        &self.syntax
-    }
-}
-
-impl Param {
-    pub fn name(&self) -> Option<Name> {
-        support::child(&self.syntax)
-    }
-    pub fn colon_token(&self) -> Option<SyntaxToken> {
-        support::token(&self.syntax, COLON)
-    }
-    pub fn ty(&self) -> Option<Type> {
-        support::child(&self.syntax)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum MemberItem {
-    Member(Member),
-    BareMember(BareMember),
-    RouteEntry(RouteEntry),
-    Decl(Decl),
-    Elision(Elision),
-}
-
-impl AstNode for MemberItem {
-    fn can_cast(kind: SyntaxKind) -> bool {
-        kind == MEMBER
-            || kind == BARE_MEMBER
-            || kind == ROUTE_ENTRY
-            || Decl::can_cast(kind)
-            || kind == ELISION
-    }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        let kind = syntax.kind();
-        if kind == MEMBER {
-            return Some(Self::Member(Member { syntax }));
-        }
-        if kind == BARE_MEMBER {
-            return Some(Self::BareMember(BareMember { syntax }));
-        }
-        if kind == ROUTE_ENTRY {
-            return Some(Self::RouteEntry(RouteEntry { syntax }));
-        }
-        if Decl::can_cast(kind) {
-            return Decl::cast(syntax).map(Self::Decl);
-        }
-        if kind == ELISION {
-            return Some(Self::Elision(Elision { syntax }));
-        }
-        None
-    }
-    fn syntax(&self) -> &SyntaxNode {
-        match self {
-            Self::Member(it) => it.syntax(),
-            Self::BareMember(it) => it.syntax(),
-            Self::RouteEntry(it) => it.syntax(),
-            Self::Decl(it) => it.syntax(),
-            Self::Elision(it) => it.syntax(),
-        }
-    }
-}
-
-impl From<Member> for MemberItem {
-    fn from(node: Member) -> MemberItem {
-        MemberItem::Member(node)
-    }
-}
-
-impl From<BareMember> for MemberItem {
-    fn from(node: BareMember) -> MemberItem {
-        MemberItem::BareMember(node)
-    }
-}
-
-impl From<RouteEntry> for MemberItem {
-    fn from(node: RouteEntry) -> MemberItem {
-        MemberItem::RouteEntry(node)
-    }
-}
-
-impl From<Decl> for MemberItem {
-    fn from(node: Decl) -> MemberItem {
-        MemberItem::Decl(node)
-    }
-}
-
-impl From<Elision> for MemberItem {
-    fn from(node: Elision) -> MemberItem {
-        MemberItem::Elision(node)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct MemberKey {
-    pub(crate) syntax: SyntaxNode,
-}
-
-impl AstNode for MemberKey {
-    fn can_cast(kind: SyntaxKind) -> bool {
-        kind == MEMBER_KEY
-    }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if Self::can_cast(syntax.kind()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-    fn syntax(&self) -> &SyntaxNode {
-        &self.syntax
-    }
-}
-
-impl MemberKey {
-    pub fn names(&self) -> AstChildren<Name> {
-        support::children(&self.syntax)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expr {
     Literal(Literal),
     NameRef(NameRef),
@@ -2033,6 +1926,170 @@ impl From<NullableExpr> for Expr {
 impl From<ElisionExpr> for Expr {
     fn from(node: ElisionExpr) -> Expr {
         Expr::ElisionExpr(node)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Path {
+    pub(crate) syntax: SyntaxNode,
+}
+
+impl AstNode for Path {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == PATH
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl Path {
+    pub fn name_refs(&self) -> AstChildren<NameRef> {
+        support::children(&self.syntax)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Param {
+    pub(crate) syntax: SyntaxNode,
+}
+
+impl AstNode for Param {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == PARAM
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl Param {
+    pub fn name(&self) -> Option<Name> {
+        support::child(&self.syntax)
+    }
+    pub fn colon_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, COLON)
+    }
+    pub fn ty(&self) -> Option<Type> {
+        support::child(&self.syntax)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum MemberItem {
+    Member(Member),
+    BareMember(BareMember),
+    RouteEntry(RouteEntry),
+    Decl(Decl),
+    Elision(Elision),
+}
+
+impl AstNode for MemberItem {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == MEMBER
+            || kind == BARE_MEMBER
+            || kind == ROUTE_ENTRY
+            || Decl::can_cast(kind)
+            || kind == ELISION
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        let kind = syntax.kind();
+        if kind == MEMBER {
+            return Some(Self::Member(Member { syntax }));
+        }
+        if kind == BARE_MEMBER {
+            return Some(Self::BareMember(BareMember { syntax }));
+        }
+        if kind == ROUTE_ENTRY {
+            return Some(Self::RouteEntry(RouteEntry { syntax }));
+        }
+        if Decl::can_cast(kind) {
+            return Decl::cast(syntax).map(Self::Decl);
+        }
+        if kind == ELISION {
+            return Some(Self::Elision(Elision { syntax }));
+        }
+        None
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        match self {
+            Self::Member(it) => it.syntax(),
+            Self::BareMember(it) => it.syntax(),
+            Self::RouteEntry(it) => it.syntax(),
+            Self::Decl(it) => it.syntax(),
+            Self::Elision(it) => it.syntax(),
+        }
+    }
+}
+
+impl From<Member> for MemberItem {
+    fn from(node: Member) -> MemberItem {
+        MemberItem::Member(node)
+    }
+}
+
+impl From<BareMember> for MemberItem {
+    fn from(node: BareMember) -> MemberItem {
+        MemberItem::BareMember(node)
+    }
+}
+
+impl From<RouteEntry> for MemberItem {
+    fn from(node: RouteEntry) -> MemberItem {
+        MemberItem::RouteEntry(node)
+    }
+}
+
+impl From<Decl> for MemberItem {
+    fn from(node: Decl) -> MemberItem {
+        MemberItem::Decl(node)
+    }
+}
+
+impl From<Elision> for MemberItem {
+    fn from(node: Elision) -> MemberItem {
+        MemberItem::Elision(node)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MemberKey {
+    pub(crate) syntax: SyntaxNode,
+}
+
+impl AstNode for MemberKey {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == MEMBER_KEY
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl MemberKey {
+    pub fn names(&self) -> AstChildren<Name> {
+        support::children(&self.syntax)
     }
 }
 

@@ -124,6 +124,24 @@ pub fn library_signature<'db>(
         .cloned()
 }
 
+/// A constant's type (area 3): one beside its use, or a library's.
+#[salsa::tracked(returns(ref))]
+pub fn constant_type<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    library: Option<Name<'db>>,
+    name: Name<'db>,
+) -> Option<crate::types::Ty> {
+    let table = callables(db, project);
+    match library {
+        Some(library) => table
+            .library_constants
+            .get(&(library.text(db).clone(), name.text(db).clone()))
+            .cloned(),
+        None => table.constants.get(name.text(db)).cloned(),
+    }
+}
+
 #[salsa::tracked(returns(ref))]
 pub fn failure_info<'db>(
     db: &'db dyn Db,
@@ -254,6 +272,8 @@ pub trait NameView {
 pub trait SigView {
     fn signature(&self, name: &str) -> Option<&Sig>;
     fn library_signature(&self, library: &str, function: &str) -> Option<&Sig>;
+    /// The type of the constant `name`, or of library `library`'s.
+    fn constant_type(&self, library: Option<&str>, name: &str) -> Option<&crate::types::Ty>;
 }
 
 /// Reading what writes can break (area 6).
@@ -372,6 +392,17 @@ impl<'db> Lookup<'db> {
         crate::config::setting_fact(self.db, self.project, self.name(name)).as_ref()
     }
 
+    /// The constant `name`, or library `library`'s, as the compiler worked
+    /// it out (area 3).
+    pub fn constant(
+        &self,
+        library: Option<&str>,
+        name: &str,
+    ) -> Option<&'db crate::constants::Evaluated> {
+        let id = crate::constants::find(self, library, name)?;
+        crate::constants::constant_table(self.db, self.project).get(&id)
+    }
+
     pub fn failures_with_code(&self, code: &str) -> &'db [FailureInfo] {
         failures_with_code(self.db, self.project, self.name(code))
     }
@@ -443,6 +474,20 @@ impl SigView for Lookup<'_> {
             self.project,
             self.name(library),
             self.name(function),
+        )
+        .as_ref()
+    }
+
+    fn constant_type(&self, library: Option<&str>, name: &str) -> Option<&crate::types::Ty> {
+        let name = match library {
+            Some(_) => name.to_string(),
+            None => self.canonical_name(name),
+        };
+        constant_type(
+            self.db,
+            self.project,
+            library.map(|library| self.name(library)),
+            self.name(&name),
         )
         .as_ref()
     }

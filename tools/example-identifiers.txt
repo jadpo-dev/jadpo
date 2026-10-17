@@ -84,6 +84,7 @@ bakery_recipes
 bakery_view
 baking
 balance
+band_rate
 basket
 basket_empty
 basket_line
@@ -294,6 +295,7 @@ deliveries_in
 deliveries_on
 delivery
 delivery_cost
+delivery_fee
 delivery_id
 delivery_note
 delivery_state
@@ -360,6 +362,9 @@ expose_secret
 exposed_secret
 family_basket
 fee
+fee_charged
+fee_for
+fees
 fill_tray
 fill_trays
 find_article
@@ -386,6 +391,7 @@ forget_memos
 found_company
 founder
 fragile
+free_delivery_from
 from_address
 from_count
 from_flag
@@ -482,6 +488,8 @@ kitchen_staff
 label_jar
 labelled
 languages_header
+large_order
+large_order_fee
 larger
 last_lent_at
 last_seen_at
@@ -541,8 +549,11 @@ locale_for_reader
 locker
 locker_code
 log_level
+login_attempts
 london_morning
+long_manuals
 longer_manuals
+longest_manual
 lookup_code
 lookup_key
 lookup_label
@@ -559,6 +570,7 @@ manual
 manual_pages
 market
 market_street
+max_login_attempts
 may_change
 member_by_email
 member_id
@@ -758,6 +770,7 @@ price_loaf
 price_loaves
 price_per_kilo
 price_range
+pricing
 primary_database
 print_label
 priorities
@@ -794,6 +807,7 @@ queue_overdue_reminders
 quote
 quote_cake
 raise_priority
+rate_on
 raw_name
 reaction
 read_by_bob
@@ -940,6 +954,7 @@ slices
 slices_in
 slot_taken
 small
+small_order_fee
 snooze_days
 snooze_todo
 sold_out
@@ -958,6 +973,7 @@ stamp_card
 stamp_count
 stamped_once
 stamps_to_go
+standard_vat
 stars
 start_project
 starting_quantity
@@ -1049,6 +1065,8 @@ tray_plan
 trays
 turned_down
 two_open_todos
+uk_bands
+uk_rate
 unknown_failure
 unlink_phone
 unlinked
@@ -1064,6 +1082,15 @@ user_todos
 user_view
 usual_contacts
 usual_order
+valid_from
+vat
+vat_band
+vat_bands
+vat_date
+vat_due_rate
+vat_on
+vat_rate
+vat_rate_on
 vegan
 vegetarian
 verbose

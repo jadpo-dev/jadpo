@@ -12,6 +12,7 @@
 mod case;
 pub mod client_address;
 pub mod config;
+pub mod constants;
 pub mod data;
 mod failures;
 pub mod graph;
@@ -96,6 +97,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             out.extend(config::use_problems(db, project, file).iter().cloned());
             out.extend(types::type_problems(db, project, file).iter().cloned());
+            out.extend(
+                constants::constant_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
             out.extend(failure_problems(db, project, file).iter().cloned());
             out.extend(types::body_problems(db, project, file).iter().cloned());
             out.extend(types::recursion_problems(db, project, file).iter().cloned());

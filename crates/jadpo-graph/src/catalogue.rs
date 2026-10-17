@@ -1,9 +1,11 @@
 //! The catalogues (areas 1, 4 and 14): views of the graph that `jadpo
 //! check` writes to `build/catalogue/` for agents and people, each as
 //! Markdown with a JSON twin for tools. The library catalogue lists every
-//! library function with its signature, description and callers, read
-//! before writing a helper; the failure catalogue lists every failure with
-//! its code, kind, status, message and client fields.
+//! library function with its signature, description and callers, and every
+//! library constant with its type, value, description and readers (area
+//! 3), read before writing a helper or a constant; the failure catalogue
+//! lists every failure with its code, kind, status, message and client
+//! fields.
 
 use crate::json::Value;
 use crate::{Detail, EdgeKind, Graph, Kind, Node, NodeId, Section};
@@ -67,6 +69,14 @@ fn callers(graph: &Graph, id: NodeId) -> Vec<NodeId> {
         .collect()
 }
 
+/// The readers of constant `id`, in key order. Tests never count.
+fn readers(graph: &Graph, id: NodeId) -> Vec<NodeId> {
+    graph
+        .incoming(id, EdgeKind::Uses)
+        .filter(|&reader| graph.node(reader).kind != Kind::Test)
+        .collect()
+}
+
 fn doc_paragraph(markdown: &mut String, doc: Option<&str>) {
     if let Some(doc) = doc {
         markdown.push_str(doc);
@@ -74,11 +84,13 @@ fn doc_paragraph(markdown: &mut String, doc: Option<&str>) {
     }
 }
 
-/// Every library function (`build/catalogue/libraries.md` and `.json`).
+/// Every library function and constant (`build/catalogue/libraries.md`
+/// and `.json`).
 pub fn libraries(graph: &Graph) -> Catalogue {
     let mut markdown = String::from(
-        "# Library functions\n\nEvery library function, with its signature, description and callers. \
-         Written by `jadpo check`; read it before writing a helper.\n\n",
+        "# Library functions\n\nEvery library function, with its signature, description and callers, \
+         and every library constant, with its type, value, description and readers. \
+         Written by `jadpo check`; read it before writing a helper or a constant.\n\n",
     );
     let mut entries = Vec::new();
     let libraries: Vec<NodeId> = graph
@@ -140,12 +152,57 @@ pub fn libraries(graph: &Graph) -> Catalogue {
             );
             functions.push(entry);
         }
+        let mut constants = Vec::new();
+        let members: Vec<NodeId> = graph
+            .children(library)
+            .filter(|&id| graph.node(id).kind == Kind::Constant)
+            .collect();
+        for constant in members {
+            let child = graph.node(constant);
+            let Detail::Constant { ty, value } = &child.detail else {
+                continue;
+            };
+            let ty = ty.render(&|key| crate::manifest::name_now(graph, key));
+            let short = child
+                .name
+                .rsplit_once('.')
+                .map_or(child.name.as_str(), |(_, short)| short);
+            markdown.push_str(&format!("### {}\n\n", child.name));
+            markdown.push_str(&format!(
+                "```jadpo\nconstant {short}: {ty} = {value}\n```\n\n"
+            ));
+            doc_paragraph(&mut markdown, child.doc.as_deref());
+            let reads = readers(graph, constant);
+            markdown.push_str(&format!("Defined at `{}`. ", location(child)));
+            if reads.is_empty() {
+                markdown.push_str("Nothing reads it yet.\n\n");
+            } else {
+                let list: Vec<String> = reads.iter().map(|&id| reference(graph, id)).collect();
+                markdown.push_str(&format!("Read by {}.\n\n", list.join(", ")));
+            }
+            let mut entry = reference_json(graph, constant);
+            entry.set("name", child.name.as_str());
+            entry.set("type", ty);
+            entry.set("value", value.as_str());
+            entry.set_some("doc", child.doc.as_deref());
+            entry.set(
+                "readers",
+                reads
+                    .iter()
+                    .map(|&id| reference_json(graph, id))
+                    .collect::<Vec<_>>(),
+            );
+            constants.push(entry);
+        }
         let mut entry = reference_json(graph, library);
         entry.set("name", node.name.as_str());
         entry.set_some("domain", node.domain.as_deref());
         entry.set_some("public", node.public);
         entry.set_some("doc", node.doc.as_deref());
         entry.set("functions", functions);
+        if !constants.is_empty() {
+            entry.set("constants", constants);
+        }
         entries.push(entry);
     }
     let mut json = Value::object();

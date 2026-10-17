@@ -140,6 +140,9 @@ pub(crate) struct Facts {
     pub settings: BTreeMap<NodeKey, String>,
     /// Each `format:` argument, as the format's text (area 10).
     pub formats: BTreeMap<NodeKey, String>,
+    /// Each read of a constant (area 3): its library, if it is a
+    /// library's, and its name as written.
+    pub constants: BTreeMap<NodeKey, (Option<String>, String)>,
     /// Each `request { ... }` in a route test (area 13).
     pub requests: BTreeMap<NodeKey, super::request::RequestFact>,
 }

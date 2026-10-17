@@ -38,7 +38,8 @@ IDENT = r'[A-Za-z_][A-Za-z0-9_]*'
 
 # Keywords that introduce a declaration; the next identifier is the declared name.
 DECLARATIONS = {
-    'action', 'api', 'application', 'authentication', 'cache', 'config', 'connection', 'constraint',
+    'action', 'api', 'application', 'authentication', 'cache', 'config', 'connection', 'constant',
+    'constraint',
     'entity', 'enum', 'event', 'failure', 'fixture', 'flag', 'function', 'input', 'inverse', 'library',
     'operation', 'output', 'package', 'principal', 'provider', 'query', 'references', 'resource',
     'routes', 'schedule', 'seed', 'service', 'site', 'subscriber', 'type', 'value', 'var',

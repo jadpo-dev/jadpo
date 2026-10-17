@@ -357,6 +357,13 @@ pub enum Expr {
     Config {
         field: Key,
     },
+    /// A constant's value (area 3, Constants): `free_delivery_from` beside
+    /// its declaration, `pricing.vat_rate` from a library. Its value was
+    /// worked out and checked while compiling; an executor runs the
+    /// constant's own body, which can't fail.
+    Constant {
+        constant: Key,
+    },
     /// Nothing to run: a mistake already reported, or something a later
     /// area builds.
     Unchecked,

@@ -1381,6 +1381,11 @@ impl<'a> Reader<'a> {
         if head == "clock" && rest == ["now"] {
             return Some((Value::Now, Ty::Prim(Prim::Instant)));
         }
+        if !scope.params.iter().any(|(name, _)| *name == head)
+            && let Some(found) = self.constant(scope, &expr, &head, &rest, expected)
+        {
+            return found;
+        }
         let Some(index) = scope.params.iter().position(|(name, _)| *name == head) else {
             if let Some(named) = crate::not_value::classify(self.lookup, self.lookup, &head) {
                 self.out.push(crate::not_value::diagnostic(
@@ -1405,7 +1410,7 @@ impl<'a> Reader<'a> {
             )
             .at(span.clone(), "not a parameter")
             .reason(format!(
-                "A query's values come from its parameters{}, literals, enum values and `clock.now`.{}",
+                "A query's values come from its parameters{}, literals, constants, enum values and `clock.now`.{}",
                 if names.is_empty() {
                     String::new()
                 } else {
@@ -1538,6 +1543,40 @@ impl<'a> Reader<'a> {
         None
     }
 
+    /// A constant (area 3), which a query takes wherever it takes a
+    /// literal: `longest_manual`, or `pricing.vat_rate` from a library.
+    /// `None` when `head` and `rest` name no constant; `Some(None)` when
+    /// one was found and reported.
+    fn constant(
+        &mut self,
+        scope: &Scope<'_>,
+        expr: &Expr,
+        head: &str,
+        rest: &[String],
+        expected: &Ty,
+    ) -> Option<Option<(Value, Ty)>> {
+        let (library, name) = match rest {
+            [] => (None, head),
+            [name] if self.lookup.library(head).is_some() => (Some(head), name.as_str()),
+            _ => return None,
+        };
+        let ty = self.lookup.constant_type(library, name)?.clone();
+        let evaluated = self.lookup.constant(library, name)?;
+        // A constant whose value is wrong is reported where it is declared.
+        let value = evaluated.value.as_ref()?;
+        let Some(value) = query_value(value) else {
+            self.value_unsupported(scope, expr);
+            return Some(None);
+        };
+        // Compared as the value of its own type, as a parameter is: a
+        // list's items are compared by the `in` that takes it.
+        if !matches!(value, Value::List(_)) && !self.comparable(&ty, expected.strip_nullable()) {
+            self.mismatch(scope, expr, &ty, expected);
+            return Some(None);
+        }
+        Some(Some((value, ty)))
+    }
+
     fn value_unsupported(&mut self, scope: &Scope<'_>, expr: &Expr) {
         let written = shown(expr.syntax());
         self.out.push(
@@ -1546,7 +1585,7 @@ impl<'a> Reader<'a> {
                 format!("`{written}` is worked out, and a query computes nothing"),
             )
             .at(Self::span(scope.path, expr), "computed")
-            .reason("A query's values are its parameters and their fields, literals, enum values, lists of those and `clock.now`; anything worked out from them is computed before the call.")
+            .reason("A query's values are its parameters and their fields, literals, constants, enum values, lists of those and `clock.now`; anything worked out from them is computed before the call.")
             .next("Work the value out in the action, and pass it as a parameter"),
         );
     }
@@ -2990,4 +3029,27 @@ fn shown(node: &jadpo_syntax::SyntaxNode) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// A constant's value as a query holds it: a literal, a plain variant or a
+/// list of those (area 3). An object, or a variant carrying data, isn't
+/// one a condition compares with.
+fn query_value(value: &crate::constants::Value) -> Option<Value> {
+    use crate::constants::Value as Fixed;
+    Some(match value {
+        Fixed::Number { value, decimal } => Value::Literal(jadpo_graph::body::Literal::Number {
+            value: *value,
+            decimal: *decimal,
+        }),
+        Fixed::Text(text) => Value::Literal(jadpo_graph::body::Literal::Text(text.clone())),
+        Fixed::Bool(value) => Value::Literal(jadpo_graph::body::Literal::Bool(*value)),
+        Fixed::Duration(text) => Value::Literal(jadpo_graph::body::Literal::Duration(text.clone())),
+        Fixed::None => Value::Literal(jadpo_graph::body::Literal::None),
+        Fixed::Variant(host, variant, fields) if fields.is_empty() => Value::Variant {
+            ty: crate::types::shown(host).to_string(),
+            variant: variant.clone(),
+        },
+        Fixed::List(items) => Value::List(items.iter().map(query_value).collect::<Option<_>>()?),
+        Fixed::Variant(..) | Fixed::Object(..) => return None,
+    })
 }

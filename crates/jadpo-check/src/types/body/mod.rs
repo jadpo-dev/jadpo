@@ -117,6 +117,7 @@ pub fn callables_of<'db>(db: &'db dyn Db, file: File) -> Vec<Callable<'db>> {
     for item in &item_tree(db, file).items {
         match item.kind {
             ItemKind::Function
+            | ItemKind::Constant
             | ItemKind::Action
             | ItemKind::Fixture
             | ItemKind::Test
@@ -216,6 +217,18 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
 pub fn body_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     callables_of(db, file)
         .into_iter()
+        // A constant whose value is refused as not fixed has that one
+        // error (area 3); what its value would have been isn't checked.
+        .filter(|callable| {
+            crate::constants::evaluated(
+                db,
+                project,
+                file.path(db),
+                callable.index(db),
+                callable.function(db),
+            )
+            .is_none_or(|evaluated| !evaluated.not_fixed)
+        })
         .flat_map(|callable| typed_body(db, project, callable).problems.iter().cloned())
         .collect()
 }
@@ -310,11 +323,17 @@ enum Context {
     /// A test, fixture or seed: test-only code that acts like an action
     /// and may call fixtures too (area 13).
     Test,
+    /// A constant's value (area 3): worked out while compiling, so pure,
+    /// and what it may be built from is checked by [`crate::constants`].
+    Constant,
 }
 
 impl Context {
     fn is_pure(self) -> bool {
-        matches!(self, Context::Function | Context::Inline)
+        matches!(
+            self,
+            Context::Function | Context::Inline | Context::Constant
+        )
     }
 
     fn with_a(self) -> &'static str {
@@ -323,6 +342,7 @@ impl Context {
             Context::Inline => "an inline function",
             Context::Action => "an action",
             Context::Test => "a test",
+            Context::Constant => "a constant",
         }
     }
 }
@@ -456,6 +476,9 @@ struct Target {
     contract: bool,
     result: Option<ast::RetType>,
     body: Option<ast::Block>,
+    /// A constant's type and value (area 3): its value is checked as a
+    /// `return` of its type would be.
+    constant: Option<(Option<ast::Type>, Option<ast::Expr>)>,
 }
 
 fn text(name: &ast::NameRef) -> String {
@@ -569,6 +592,19 @@ impl Body<'_> {
             contract,
             result,
             body,
+            constant: None,
+        };
+        let constant = |syntax: jadpo_syntax::SyntaxNode, name, d: &ast::ConstantDecl| Target {
+            syntax,
+            context: Context::Constant,
+            word: "constant",
+            name,
+            params: None,
+            fails: None,
+            contract: false,
+            result: None,
+            body: None,
+            constant: Some((d.ty(), d.value())),
         };
         Some(match (decl, function) {
             (Decl::FunctionDecl(d), None) => target(
@@ -598,10 +634,22 @@ impl Body<'_> {
                 d.ret_type(),
                 d.block(),
             ),
+            (Decl::ConstantDecl(d), None) => constant(syntax.clone(), name.clone(), d),
             (Decl::LibraryDecl(d), Some(index)) => {
                 // A library's functions call each other bare.
                 self.library = name.clone();
-                let function = tree::library_functions(d).into_iter().nth(index as usize)?;
+                let member = tree::library_members(d).into_iter().nth(index as usize)?;
+                if let Decl::ConstantDecl(c) = &member {
+                    let constant_name = c.name().as_ref().and_then(tree::name_text);
+                    return Some(constant(
+                        c.syntax().clone(),
+                        constant_name.map(|c| format!("{}.{c}", name.clone().unwrap_or_default())),
+                        c,
+                    ));
+                }
+                let Decl::FunctionDecl(function) = member else {
+                    return None;
+                };
                 let function_name = function.name().as_ref().and_then(tree::name_text);
                 Target {
                     syntax: function.syntax().clone(),
@@ -614,6 +662,7 @@ impl Body<'_> {
                     contract: true,
                     result: function.ret_type(),
                     body: function.block(),
+                    constant: None,
                 }
             }
             (Decl::TestDecl(d), None) => Target {
@@ -639,6 +688,7 @@ impl Body<'_> {
             contract,
             result,
             body,
+            constant,
         } = callable;
         self.context = context;
         self.test = word == "test";
@@ -662,10 +712,28 @@ impl Body<'_> {
             }
             self.declare(param.name(), ty, LocalKind::Param, None, "parameter");
         }
-        self.result = match result {
-            Some(ret) => self.resolve(ret.ty()),
-            None => Ty::Prim(Prim::Unit),
+        self.result = match (&constant, result) {
+            (Some((ty, _)), _) => {
+                let ty = self.resolve(ty.clone());
+                // A built-in representation is reported where the type is
+                // written, as a signature's is (area 2, question 11).
+                if matches!(ty.strip_nullable(), Ty::Prim(prim) if prim.is_representation()) {
+                    Ty::Error
+                } else {
+                    ty
+                }
+            }
+            (None, Some(ret)) => self.resolve(ret.ty()),
+            (None, None) => Ty::Prim(Prim::Unit),
         };
+        if let Some((_, value)) = constant {
+            if let Some(value) = value {
+                let expected = self.result.clone();
+                self.check(&value, &expected);
+            }
+            self.pop_scope();
+            return;
+        }
         let completes = self.block(body.clone());
         self.pop_scope();
         if completes

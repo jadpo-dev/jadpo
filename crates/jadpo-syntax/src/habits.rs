@@ -163,6 +163,10 @@ habits! {
         "Jadpo writes `$J`, not `$W`", "write `$J`",
         "`const` declares a variable that never changes in JavaScript, TypeScript and C#; a Jadpo `var` never changes unless it is `var mut`.",
         "Use `$J` instead of `$W`";
+    CONST_DECL: SYNTAX_VARIABLE_KEYWORD, Parser, "const" -> "constant",
+        "Jadpo writes `$J`, not `$W`", "write `$J`",
+        "`const` declares a value that never changes in JavaScript, TypeScript, Rust, Go and C#; at the top of a Jadpo file a fixed value is `constant name: Type = value`.",
+        "Use `$J` instead of `$W`";
     VAL: SYNTAX_VARIABLE_KEYWORD, Parser, "val" -> "var",
         "Jadpo writes `$J`, not `$W`", "write `$J`",
         "`val` declares a variable that never changes in Kotlin and Scala; a Jadpo `var` never changes unless it is `var mut`.",

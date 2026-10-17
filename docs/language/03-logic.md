@@ -106,7 +106,7 @@ var local: ZonedTime = temporal.in_zone(at, zone)                  // the standa
 ```
 
 A library holds only functions and constants (see [Constants](#constants);
-constants decided 2026-10-16, not built until chunk 5.3e).
+constants decided 2026-10-16, built in chunk 5.3e).
 
 ## Variables
 
@@ -128,12 +128,12 @@ total = Pence(total + delivery)
 
 ## Constants
 
-> Decided by Richard on 2026-10-16, not built until chunk 5.3e. The examples are proposals, shown as plain text because the parser doesn't know `constant` yet.
+> Decided by Richard on 2026-10-16 and built in chunk 5.3e. Making a constant a setting, `jadpo config move`, comes in chunk 5.3f.
 
 A `constant` names a fixed value at the top level of a file: the same in
 every deployment, worked out while compiling, and never changed.
 
-```text
+```jadpo check project=constants
 type Pence = Int {
     min: 0
 }
@@ -170,8 +170,10 @@ function delivery_fee(subtotal: Pence) -> Pence {
   and the operators of [Expressions and operators](#expressions-and-operators)
   on them. No call of any kind (functions, library functions, the standard
   library), no `config`, no `clock`, and no constant that depends on
-  itself. Arithmetic gives the representation, as it does in a body, so
-  `Pence(free_delivery_from * 2)` constructs it back.
+  itself ([`constant.value_not_fixed`](#constant-value-not-fixed),
+  [`constant.cycle`](#constant-cycle)). Arithmetic gives the
+  representation, as it does in a body, so `Pence(free_delivery_from * 2)`
+  constructs it back.
 - **Checked while compiling.** The value is checked against every rule of
   its type and the types it is built on, as a literal is
   ([`type.invalid_literal`](02-values-and-types.md#type-invalid-literal)),
@@ -180,30 +182,168 @@ function delivery_fee(subtotal: Pence) -> Pence {
   declaration it is `layout.unused_declaration`, and in a library a
   constant nothing reads is unused as a function nothing calls is.
 
+```jadpo check project=constants-built
+type Pence = Int {
+    min: 0
+    max: 100000
+}
+
+type LargeOrder = Bool {}
+
+type FeeCharged = Bool {}
+
+constant small_order_fee: Pence = 250
+constant large_order_fee: Pence = Pence(small_order_fee * 2)
+constant fees: List<Pence> = [small_order_fee, large_order_fee]
+
+function fee_for(large: LargeOrder) -> Pence {
+    if (large) {
+        return large_order_fee
+    }
+    return small_order_fee
+}
+
+function charged(fee: Pence) -> FeeCharged {
+    return FeeCharged(fee in fees)
+}
+```
+
+Each of these is one error with its edit:
+
+```jadpo check project=e-constant-in-body expect=syntax.expected_statement
+type Pence = Int {
+    min: 0
+}
+
+function fee() -> Pence {
+    constant small_order_fee: Pence = 250
+    return small_order_fee
+}
+```
+
+```text output
+error: `constant` doesn't start a statement
+ --> main.jadpo:6:5
+  |
+6 |     constant small_order_fee: Pence = 250
+  |     ^^^^^^^^ write `var`
+  reason: A constant lives at the top of a file or in a library; inside a body a value that never changes is a `var`.
+  next: Use `var` instead of `constant` (agent)
+  rule: syntax.expected_statement
+  help: docs/language/03-logic.html#syntax-expected-statement
+
+check failed: 1 error, 1 file
+```
+
+```jadpo check project=e-constant-mut expect=syntax.expected_name
+type Pence = Int {
+    min: 0
+}
+
+constant mut small_order_fee: Pence = 250
+```
+
+```text output
+error: A constant can't be `mut`
+ --> main.jadpo:5:10
+  |
+5 | constant mut small_order_fee: Pence = 250
+  |          ^^^ remove `mut`
+  reason: A constant never changes, so it has no mutable form; a value that changes is a `var mut` inside a body.
+  next: Remove `mut` (agent)
+  rule: syntax.expected_name
+  help: docs/language/01-project-layout-and-modules.html#syntax-expected-name
+
+check failed: 1 error, 1 file
+```
+
+```jadpo check project=e-const-keyword expect=syntax.variable_keyword
+type Pence = Int {
+    min: 0
+}
+
+const small_order_fee: Pence = 250
+```
+
+```text output
+error: Jadpo writes `constant`, not `const`
+ --> main.jadpo:5:1
+  |
+5 | const small_order_fee: Pence = 250
+  | ^^^^^ write `constant`
+  reason: `const` declares a value that never changes in JavaScript, TypeScript, Rust, Go and C#; at the top of a Jadpo file a fixed value is `constant name: Type = value`.
+  next: Use `constant` instead of `const` (agent)
+  rule: syntax.variable_keyword
+  help: docs/language/03-logic.html#syntax-variable-keyword
+
+check failed: 1 error, 1 file
+```
+
+```jadpo check project=e-constant-built-in expect=type.primitive_signature
+constant max_login_attempts: Int = 5
+```
+
+```text output
+error: This constant uses `Int` directly
+ --> main.jadpo:1:30
+  |
+1 | constant max_login_attempts: Int = 5
+  |                              ^^^ a built-in type
+  reason: A constant's type is named as a signature's is, so its value says what it means and carries its rules; `Int` says neither.
+  next: Declare a named type built on `Int` and use it here (agent)
+  rule: type.primitive_signature
+  help: docs/language/02-values-and-types.html#type-primitive-signature
+
+check failed: 1 error, 1 file
+```
+
 ### Where a constant lives
 
 Placement and sharing follow helper functions exactly (area 1, "Sharing and
 promotion"). A constant used by one file lives at the top of that file,
 beside the declaration that uses it; it is never a file's primary
-declaration, so there is no `constants/` folder. When a second file uses
-it, `layout.promotion_required` moves it into a library, and it is read
+declaration, so there is no `constants/` folder, and its name never clashes
+with a file name (`constant vat_rate: VatRate` is fine). When a second file
+uses it, `layout.promotion_required` moves it into a library, and it is read
 through the library like a library function, without brackets:
 
-```text
+```jadpo check project=constants-library
+type Pence = Int {
+    min: 0
+}
+
+type VatRate = Decimal {
+    scale: 4
+    min: 0.0000
+    max: 1.0000
+}
+
 library pricing {
     /// The UK standard rate of VAT.
     constant vat_rate: VatRate = 0.2000
 
-    function vat_on(net: Pence) -> Pence { ... }
+    function vat_on(price: Pence) -> Pence {
+        return Pence(price / 5)
+    }
 }
 
-var rate: VatRate = pricing.vat_rate
+function standard_vat() -> VatRate {
+    var uk_rate: VatRate = pricing.vat_rate
+    return uk_rate
+}
+
+function vat(price: Pence) -> Pence {
+    return pricing.vat_on(price)
+}
 ```
 
-A library used by a second domain moves to `shared/libraries/`, or stays
-and becomes `public` when it depends on its domain's types, as for
-functions. A private constant needs a name unique only within its domain,
-as private functions and types do (area 1, "Files and names", chunk 5.3d).
+A library's own functions and constants read its constants bare, as they
+call its functions. A library used by a second domain moves to
+`shared/libraries/`, or stays and becomes `public` when it depends on its
+domain's types, as for functions. A private constant needs a name unique
+only within its domain, as private functions and types do (area 1, "Files
+and names", chunk 5.3d), and its identity key carries its domain,
+`constant billing.free_delivery_from` (area 18).
 
 ### Where a constant can be read
 
@@ -215,7 +355,7 @@ also what "constants" already means in the places that allow them:
 - **An update by `id`** may use parameters, constants, `clock.now` and the
   stored fields (area 6).
 - **A computed backfill** may use the row's stored fields, constants and
-  pure functions (area 5).
+  pure functions (area 5; backfills come with chunk 5.6).
 
 A setting's `default:` and `test:` take a literal but never a constant
 (revised 2026-10-16, Richard; see [A constant or a setting](#a-constant-or-a-setting)).
@@ -224,11 +364,13 @@ A setting's `default:` and `test:` take a literal but never a constant
 
 Agents working in parallel tend to invent the same constant twice, each
 writing its own `vat_rate`. Two constants of the same type holding the same
-value get a warning, `constant.similar_exists`, modelled on
+value get a warning, [`constant.similar_exists`](#constant-similar-exists),
+modelled on
 [`library.similar_exists`](01-project-layout-and-modules.md#library-similar-exists):
 `check` still passes, and the warning names the other constant and its file
 so the agent reads that one and removes its own. The library catalogue
-(area 14) lists constants with their type, value and `///` description.
+(area 14) lists constants with their type, value, `///` description and
+readers.
 
 ### A constant or a setting
 
@@ -263,7 +405,7 @@ reviewer sees each place whose behaviour can now differ per deployment. It
 refuses, editing nothing, a constant whose type a setting can't hold, one
 whose name a setting already has, and one read where a setting can't be (a
 query, an update by `id`, a backfill or another constant's value). Decided
-2026-10-16 (Richard), not built until chunk 5.3e; the details are in
+2026-10-16 (Richard), not built until chunk 5.3f; the details are in
 area 10, [A constant or a setting](10-configuration-and-time.md#a-constant-or-a-setting).
 
 ### Values that change on a known date
@@ -272,12 +414,18 @@ Guidance, not built into the language (there is no `effective:` setting).
 A value that changes on a known date, such as the UK's VAT rate, is a
 constant holding a dated list, read through a library function:
 
-```text
+```jadpo check project=vat-bands
+type VatRate = Decimal {
+    scale: 4
+    min: 0.0000
+    max: 1.0000
+}
+
 type VatDate = CalendarDate {}
 
 type VatBand = Object {
-    starts: VatDate
-    rate: VatRate
+    valid_from: VatDate
+    band_rate: VatRate
 }
 
 type VatBands = List<VatBand> {
@@ -287,20 +435,31 @@ type VatBands = List<VatBand> {
 library vat {
     constant uk_bands: VatBands = [
         VatBand {
-            starts: "2010-01-01"
-            rate: 0.1750
+            valid_from: "2010-01-01"
+            band_rate: 0.1750
         },
         VatBand {
-            starts: "2011-01-04"
-            rate: 0.2000
+            valid_from: "2011-01-04"
+            band_rate: 0.2000
         }
     ]
 
     /// The UK standard rate on a date.
-    function rate_on(on: VatDate) -> VatRate { ... }
+    function rate_on(day: VatDate) -> VatRate {
+        var mut found: VatRate = 0.0000
+        for band in uk_bands {
+            if (band.valid_from <= day) {
+                found = band.band_rate
+            }
+        }
+        return found
+    }
 }
 
-var rate: VatRate = vat.rate_on(today)
+function vat_rate_on(day: VatDate) -> VatRate {
+    var vat_due_rate: VatRate = vat.rate_on(day)
+    return vat_due_rate
+}
 ```
 
 - A change of rate is an edit to the list, reviewed as a diff, and tested
@@ -321,6 +480,27 @@ var rate: VatRate = vat.rate_on(today)
   work in parallel.
 - **A root `constants { }` block.** A grab-bag, the one file every change
   touches, and against domains owning their code.
+
+### Chosen in chunk 5.3e
+
+- **Rules reused.** `constant` in a body is `syntax.expected_statement`,
+  `constant mut` is `syntax.expected_name` and `const` at the top of a
+  file is `syntax.variable_keyword`, each with its edit; a construction in
+  a constant that breaks a rule is `type.invalid_literal`, naming the
+  value worked out; a built-in type is `type.primitive_signature`. The
+  constants' own rules are `constant.value_not_fixed`, `constant.cycle`
+  and `constant.similar_exists`.
+- **No file name to clash with.** `naming.folded_collision` leaves
+  constants out, since a constant never has a file of its own.
+- **Kept together.** `jadpo fmt` keeps constants written one after another
+  on consecutive lines, as the source groups them, and puts a blank line
+  between every other pair of declarations.
+- **The first is kept.** Of two constants of one type holding one value,
+  the first in file and source order is the one named; the others are
+  warned.
+- **Run as a body.** The compiler works out and checks each value while
+  compiling, and the executors run the constant's typed body, which can't
+  fail, where it is read (docs/compiler-runtime.md §2.5).
 
 ## Statements
 
@@ -726,6 +906,108 @@ not Jadpo: question 16 decided against generics and unions in your own code.
 
 Every error this area can produce, with an example that triggers it and the
 new compiler's actual output.
+
+### `constant.value_not_fixed`
+
+A constant is worked out while compiling, so its value can't come from a
+call, `config` or `clock`:
+
+```jadpo check project=e-constant-not-fixed expect=constant.value_not_fixed
+type LoginAttempts = Int {
+    min: 1
+}
+
+constant max_login_attempts: LoginAttempts = config.max_login_attempts
+
+config {
+    max_login_attempts: LoginAttempts {
+        default: 5
+    }
+}
+```
+
+```text output
+error: A constant can't read `config.max_login_attempts`
+ --> main.jadpo:5:46
+  |
+5 | constant max_login_attempts: LoginAttempts = config.max_login_attempts
+  |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^ only known while the app runs
+  reason: A constant is worked out while compiling, from literals, enum values, other constants, constructions, objects, lists and operators; a call, `config` and `clock` give values only while the app runs.
+  next: Read `config.max_login_attempts` where the value is used: a setting is chosen per deployment, and a value is a constant or a setting, never both (agent)
+  rule: constant.value_not_fixed
+  help: docs/language/03-logic.html#constant-value-not-fixed
+
+check failed: 1 error, 1 file
+```
+
+### `constant.cycle`
+
+```jadpo check project=e-constant-cycle expect=constant.cycle
+type Pence = Int {
+    min: 0
+}
+
+constant small_order_fee: Pence = large_order_fee
+constant large_order_fee: Pence = small_order_fee
+```
+
+```text output
+error: `large_order_fee` depends on itself
+ --> main.jadpo:6:35
+  |
+6 | constant large_order_fee: Pence = small_order_fee
+  |                                   ^^^^^^^^^^^^^^^ leads back to it
+  reason: A constant's value is worked out from the constants it reads, and `large_order_fee` reads `small_order_fee`, which reads `large_order_fee`, so it has no value.
+  next: Write `large_order_fee`'s value without reading a constant that reads it (agent)
+  rule: constant.cycle
+  help: docs/language/03-logic.html#constant-cycle
+
+check failed: 1 error, 1 file
+```
+
+### `constant.similar_exists`
+
+A warning: `check` still passes, and names the constant to read instead.
+
+```jadpo check project=e-constant-similar expect=constant.similar_exists
+type VatRate = Decimal {
+    scale: 4
+    min: 0.0000
+    max: 1.0000
+}
+
+type Pence = Int {
+    min: 0
+}
+
+library pricing {
+    /// The UK standard rate of VAT.
+    constant vat_rate: VatRate = 0.2000
+}
+
+constant standard_vat: VatRate = 0.2000
+
+function vat_on(price: Pence) -> Pence {
+    if (pricing.vat_rate == standard_vat) {
+        return Pence(price / 5)
+    }
+    return price
+}
+```
+
+```text output
+warning: A constant with this value exists: `pricing.vat_rate`
+ --> main.jadpo:16:10
+   |
+16 | constant standard_vat: VatRate = 0.2000
+   |          ^^^^^^^^^^^^ same as `pricing.vat_rate`
+  reason: `standard_vat` is a `VatRate` holding `0.2000`, as `pricing.vat_rate` in `main.jadpo` is.
+  next: Read `pricing.vat_rate` instead, and remove `standard_vat` (agent)
+  rule: constant.similar_exists
+  help: docs/language/03-logic.html#constant-similar-exists
+
+checked: 1 warning, 1 file
+```
 
 ### `effect.function_calls_action`
 
@@ -3261,8 +3543,7 @@ check failed: 1 error, 1 file
 The new compiler builds this area: roadmap chunk 1.5, with the failure side
 of `attempt` and `match` in chunk 1.6 and the runtime recursion limit in
 chunk 2.1. Every example and error above is checked against it on each gate
-run, except [Constants](#constants), decided 2026-10-16 and not built until
-chunk 5.3e, whose examples are proposals.
+run, [Constants](#constants) since chunk 5.3e.
 
 ### Consistency with the rest of the language
 
@@ -3456,5 +3737,5 @@ Decided by Richard on 2026-10-12. Built in the new compiler on 2026-10-13 (roadm
 | Callable settings | None: every action is all-or-nothing, writes always check for concurrent change, reads are current unless they read a declared cache; policy is area 9 | 2026-10-12 |
 | Generics and unions | None for your own code; a parameter accepting several types takes an `Enum` whose variants carry them | 2026-10-12 |
 | Colon rule (language-wide) | Every member inside braces is `name: value`, and a value is one thing or a `{ ... }` block (`paid: { ... }`, `persistence: { ... }`); a variant with no data is just its name; a field's own settings still follow its type (`name: ProductName { optional: true }`); top-level declarations, statements and `match` arms are not members; route entries inside a `routes` group, keyed by method and path, are the one exception (area 7) (Richard; Terraform's block-versus-attribute split is a known source of confusion) | 2026-10-12 |
-| Constants | `constant name: Type = value`, only at the top of a file or in a library (in a body it is always `var`); a named type, as in signatures; a value worked out while compiling from literals, enum values, other constants, constructions and operators, never a call, `config` or `clock`, checked against the type's rules; no mutable form; unused is an error; placed and shared as helper functions are, read as `pricing.vat_rate` from a library, a private one unique within its domain; what "constants" means in queries, updates by `id` and backfills (setting defaults dropped: revised 2026-10-16 (Richard), a `default:` never names a constant); two of one type with one value warn `constant.similar_exists`; `config` when a deployment could ever need another value, otherwise a constant; dated values are a dated list constant behind a library function. Rejected: a top-level `var`, functions with no arguments, values attached to their type, a root `constants { }` block (Richard). Not built until chunk 5.3e | 2026-10-16 |
-| A constant or a setting | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both, so it has one source and one way to read it; a setting's `default:` is a literal and never a constant, so code reading the constant can't silently ignore the environment variable (the `DEFAULT_PORT` bug). `jadpo config move <constant>` and the editor's "Make this a setting" turn one into a setting, rewriting every read; the tiers are `constant`, `config`, `flags { }` (area 16). Details and the rejected alternatives in area 10. Decided, not built (chunk 5.3e) (Richard) | 2026-10-16 |
+| Constants | `constant name: Type = value`, only at the top of a file or in a library (in a body it is always `var`); a named type, as in signatures; a value worked out while compiling from literals, enum values, other constants, constructions and operators, never a call, `config` or `clock`, checked against the type's rules; no mutable form; unused is an error; placed and shared as helper functions are, read as `pricing.vat_rate` from a library, a private one unique within its domain; what "constants" means in queries, updates by `id` and backfills (setting defaults dropped: revised 2026-10-16 (Richard), a `default:` never names a constant); two of one type with one value warn `constant.similar_exists`; `config` when a deployment could ever need another value, otherwise a constant; dated values are a dated list constant behind a library function. Rejected: a top-level `var`, functions with no arguments, values attached to their type, a root `constants { }` block (Richard). Built in chunk 5.3e | 2026-10-16 |
+| A constant or a setting | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both, so it has one source and one way to read it; a setting's `default:` is a literal and never a constant, so code reading the constant can't silently ignore the environment variable (the `DEFAULT_PORT` bug). `jadpo config move <constant>` and the editor's "Make this a setting" turn one into a setting, rewriting every read; the tiers are `constant`, `config`, `flags { }` (area 16). Details and the rejected alternatives in area 10. Decided; the refusal of a constant as `default:` built in chunk 5.3e, the move not built (chunk 5.3f) (Richard) | 2026-10-16 |

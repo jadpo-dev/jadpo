@@ -39,6 +39,7 @@ pub enum SyntaxKind {
     AND_KW,
     ASSERT_KW,
     ATTEMPT_KW,
+    CONSTANT_KW,
     ELSE_KW,
     EMIT_KW,
     ENTITY_KW,
@@ -103,6 +104,7 @@ pub enum SyntaxKind {
     NAME_REF,
     TYPE_DECL,
     FUNCTION_DECL,
+    CONSTANT_DECL,
     ACTION_DECL,
     QUERY_DECL,
     FIXTURE_DECL,
@@ -185,7 +187,7 @@ pub enum SyntaxKind {
 
 use self::SyntaxKind::*;
 
-const ALL: [SyntaxKind; 175] = [
+const ALL: [SyntaxKind; 177] = [
     EOF,
     L_BRACE,
     R_BRACE,
@@ -219,6 +221,7 @@ const ALL: [SyntaxKind; 175] = [
     AND_KW,
     ASSERT_KW,
     ATTEMPT_KW,
+    CONSTANT_KW,
     ELSE_KW,
     EMIT_KW,
     ENTITY_KW,
@@ -283,6 +286,7 @@ const ALL: [SyntaxKind; 175] = [
     NAME_REF,
     TYPE_DECL,
     FUNCTION_DECL,
+    CONSTANT_DECL,
     ACTION_DECL,
     QUERY_DECL,
     FIXTURE_DECL,
@@ -381,6 +385,7 @@ impl SyntaxKind {
                 | AND_KW
                 | ASSERT_KW
                 | ATTEMPT_KW
+                | CONSTANT_KW
                 | ELSE_KW
                 | EMIT_KW
                 | ENTITY_KW
@@ -452,6 +457,7 @@ impl SyntaxKind {
             "and" => AND_KW,
             "assert" => ASSERT_KW,
             "attempt" => ATTEMPT_KW,
+            "constant" => CONSTANT_KW,
             "else" => ELSE_KW,
             "emit" => EMIT_KW,
             "entity" => ENTITY_KW,
@@ -538,6 +544,7 @@ impl SyntaxKind {
             AND_KW => "and",
             ASSERT_KW => "assert",
             ATTEMPT_KW => "attempt",
+            CONSTANT_KW => "constant",
             ELSE_KW => "else",
             EMIT_KW => "emit",
             ENTITY_KW => "entity",
@@ -617,6 +624,7 @@ macro_rules! T {
     [and] => { $crate::SyntaxKind::AND_KW };
     [assert] => { $crate::SyntaxKind::ASSERT_KW };
     [attempt] => { $crate::SyntaxKind::ATTEMPT_KW };
+    [constant] => { $crate::SyntaxKind::CONSTANT_KW };
     [else] => { $crate::SyntaxKind::ELSE_KW };
     [emit] => { $crate::SyntaxKind::EMIT_KW };
     [entity] => { $crate::SyntaxKind::ENTITY_KW };

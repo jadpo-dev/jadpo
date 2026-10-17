@@ -302,6 +302,8 @@ impl Decoder<'_> {
                 expected: self.types.name(expected).to_string(),
             },
             Node::Expr(Expr::Config { field }) => Decoded::Config((self.setting)(field)),
+            // A constant runs its own body, which gives its value.
+            Node::Expr(Expr::Constant { constant }) => Decoded::Callable((self.callable)(constant)),
             Node::Expr(Expr::Unchecked) => Decoded::Written(written(site, text)),
             _ => Decoded::Nothing,
         }

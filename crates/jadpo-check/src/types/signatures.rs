@@ -25,6 +25,10 @@ pub struct Callables {
     pub plain: BTreeMap<String, Sig>,
     /// Library functions, by library and name.
     pub library: BTreeMap<(String, String), Sig>,
+    /// Constants beside their use, by name, with their types (area 3).
+    pub constants: BTreeMap<String, Ty>,
+    /// Library constants, by library and name.
+    pub library_constants: BTreeMap<(String, String), Ty>,
 }
 
 /// Every callable's signature. It reads item trees and the type table, so
@@ -66,11 +70,23 @@ pub fn callables(db: &dyn Db, project: Project) -> Callables {
                         .entry(canonical(&item.name))
                         .or_insert_with(|| sig(&item.signature, &canonical));
                 }
+                ItemKind::Constant => {
+                    out.constants
+                        .entry(canonical(&item.name))
+                        .or_insert_with(|| sig(&item.signature, &canonical).result);
+                }
                 ItemKind::Library => {
-                    for function in &item.functions {
-                        out.library
-                            .entry((item.name.clone(), function.name.clone()))
-                            .or_insert_with(|| sig(&function.signature, &canonical));
+                    for member in &item.functions {
+                        let key = (item.name.clone(), member.name.clone());
+                        if member.kind == ItemKind::Constant {
+                            out.library_constants
+                                .entry(key)
+                                .or_insert_with(|| sig(&member.signature, &canonical).result);
+                        } else {
+                            out.library
+                                .entry(key)
+                                .or_insert_with(|| sig(&member.signature, &canonical));
+                        }
                     }
                 }
                 _ => {}

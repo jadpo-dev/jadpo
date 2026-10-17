@@ -45,6 +45,7 @@ pub fn kind_of(kind: &ItemKind) -> Option<Kind> {
     Some(match kind {
         ItemKind::Type(_) => Kind::Type,
         ItemKind::Function => Kind::Function,
+        ItemKind::Constant => Kind::Constant,
         ItemKind::Action => Kind::Action,
         ItemKind::Query => Kind::Query,
         ItemKind::Fixture => Kind::Fixture,
@@ -100,6 +101,33 @@ pub fn library_function_key(registry: &Registry, library: &str, function: &str) 
         &format!("{library}.{function}"),
         Some((library, &born)),
     )
+}
+
+/// The key of the constant `name` (area 3): one beside its use, whose
+/// identity carries its domain as a function's does, or library
+/// `library`'s, under its library.
+pub fn constant_key(symbols: &dyn NameView, library: Option<&str>, name: &str) -> Option<Key> {
+    match library {
+        Some(library) => {
+            let born = symbols.registry().born(Kind::Library, library, None);
+            Some(symbols.registry().key(
+                Kind::Constant,
+                &format!("{library}.{name}"),
+                Some((library, &born)),
+            ))
+        }
+        None => {
+            let symbol = symbols
+                .declared(name)
+                .iter()
+                .find(|symbol| symbol.library.is_none() && symbol.kind == ItemKind::Constant)?;
+            Some(
+                symbols
+                    .registry()
+                    .key(Kind::Constant, &symbol.identity(), None),
+            )
+        }
+    }
 }
 
 /// The identity of the type or entity `host` names now, and its born name:
@@ -188,11 +216,24 @@ pub fn callable_key(
     match (decl, function) {
         (Decl::LibraryDecl(library), Some(index)) => {
             let name = library.name().as_ref().and_then(tree::name_text)?;
-            let function = tree::library_functions(library)
+            let member = tree::library_members(library)
                 .into_iter()
                 .nth(index as usize)?;
-            let function = function.name().as_ref().and_then(tree::name_text)?;
-            Some(library_function_key(symbols.registry(), &name, &function))
+            let member_name = tree::decl_name(&member)
+                .as_ref()
+                .and_then(tree::name_text)?;
+            match member {
+                Decl::ConstantDecl(_) => constant_key(symbols, Some(&name), &member_name),
+                _ => Some(library_function_key(
+                    symbols.registry(),
+                    &name,
+                    &member_name,
+                )),
+            }
+        }
+        (Decl::ConstantDecl(_), None) => {
+            let name = tree::decl_name(decl).as_ref().and_then(tree::name_text)?;
+            constant_key(symbols, None, &name)
         }
         (Decl::TestDecl(test), None) => {
             let name = test.string_token()?.text().trim_matches('"').to_string();

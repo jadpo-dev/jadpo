@@ -212,6 +212,26 @@ pub(super) fn decl_prefix(p: &mut Parser<'_>) {
     }
 }
 
+/// `const name` at the start of a declaration, `n` tokens ahead: a fixed
+/// value at the top of a file, which Jadpo writes `constant` (area 3).
+pub(super) fn const_keyword_at(p: &Parser<'_>, n: usize) -> bool {
+    p.nth(n) == IDENT
+        && p.nth_text(n) == "const"
+        && !p.nth_on_new_line(n + 1)
+        && (p.nth(n + 1) == IDENT || p.nth(n + 1) == MUT_KW)
+}
+
+/// `const name: T = v` at the top of a file: reported, leaving `const` for
+/// the constant's parser to read as `constant`.
+pub(super) fn const_keyword(p: &mut Parser<'_>) {
+    rename_only(p, &h::CONST_DECL, "constant");
+}
+
+/// The end of the code on the line `at` is on, before any comment.
+pub(super) fn line_code_end(p: &Parser<'_>, at: u32) -> u32 {
+    code_end(p, at)
+}
+
 /// `fn name(`, `func name(`, `def name(` or `fun name(`, `n` tokens ahead.
 pub(super) fn function_keyword_at(p: &Parser<'_>, n: usize) -> Option<&'static Habit> {
     if p.nth(n) != IDENT

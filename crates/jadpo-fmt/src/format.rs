@@ -152,6 +152,7 @@ fn is_decl(kind: SyntaxKind) -> bool {
         kind,
         TYPE_DECL
             | FUNCTION_DECL
+            | CONSTANT_DECL
             | ACTION_DECL
             | QUERY_DECL
             | FIXTURE_DECL
@@ -371,10 +372,18 @@ impl Formatter {
         }
         for (i, item) in items.iter().enumerate() {
             if i > 0 {
-                let blank = !snippet
-                    || is_decl(item.kind())
-                    || is_decl(items[i - 1].kind())
-                    || first_token(item).is_some_and(|t| blank_before(&t));
+                // Constants one after another may stay together, each a
+                // line, as the source groups them (area 3).
+                let constants =
+                    item.kind() == CONSTANT_DECL && items[i - 1].kind() == CONSTANT_DECL;
+                let blank = if constants {
+                    first_token(item).is_some_and(|t| blank_before(&t))
+                } else {
+                    !snippet
+                        || is_decl(item.kind())
+                        || is_decl(items[i - 1].kind())
+                        || first_token(item).is_some_and(|t| blank_before(&t))
+                };
                 docs.push(Doc::HardLine);
                 if blank {
                     docs.push(Doc::HardLine);

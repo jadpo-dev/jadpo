@@ -35,10 +35,10 @@ fn holding(folder: Folder) -> &'static str {
     }
 }
 
-/// Supporting declarations may sit beside a file's main one: types and
-/// helper functions used only by that file.
+/// Supporting declarations may sit beside a file's main one: types,
+/// helper functions and constants used only by that file (area 3).
 fn supporting(kind: &ItemKind) -> bool {
-    matches!(kind, ItemKind::Function) || holds(Folder::Types, kind)
+    matches!(kind, ItemKind::Function | ItemKind::Constant) || holds(Folder::Types, kind)
 }
 
 /// Declarations a test file may hold.
@@ -52,7 +52,7 @@ fn home(kind: &ItemKind) -> Option<Folder> {
         .into_iter()
         .find(|folder| holds(*folder, kind))
         .or(match kind {
-            ItemKind::Function => Some(Folder::Libraries),
+            ItemKind::Function | ItemKind::Constant => Some(Folder::Libraries),
             _ => None,
         })
 }
@@ -79,7 +79,9 @@ fn destination(ownership: &Ownership, item: &Item) -> Option<String> {
             Some("`providers/`".to_string())
         }
         ItemKind::Singleton | ItemKind::Test => None,
-        ItemKind::Function => Some(format!("a library in `{domain}/libraries/`")),
+        ItemKind::Function | ItemKind::Constant => {
+            Some(format!("a library in `{domain}/libraries/`"))
+        }
         kind => home(kind).map(|folder| {
             // `shared/` holds only types, libraries and failures; anything
             // else moves into a domain.
@@ -301,6 +303,10 @@ fn misplaced(
         Some(Folder::Libraries) if item.kind == ItemKind::Function => (
             "belongs beside its user".to_string(),
             "a helper function lives beside the one file that uses it, or in a library once several do".to_string(),
+        ),
+        Some(Folder::Libraries) if item.kind == ItemKind::Constant => (
+            "belongs beside its user".to_string(),
+            "a constant lives beside the one file that reads it, or in a library once several do".to_string(),
         ),
         Some(Folder::Types) => (
             "belongs beside its user".to_string(),
