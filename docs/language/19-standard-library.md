@@ -1241,8 +1241,7 @@ what an operator can't.
   (toward zero, SQL form `trunc`) added by question 25; `floor`,
   `ceiling` and `half_down` stay out until amounts below zero need them.
 
-A bakery's numbers, through the operations built so far (chunk 5.5d; the
-maths from `sqrt` to `pi` comes with chunk 5.5e):
+A bakery's numbers, through the operations chunk 5.5d built:
 
 ```jadpo check project=number-operations
 type Grams = Int {
@@ -1346,6 +1345,140 @@ test "every rounding mode, to one place" {
 `scale:` that isn't a whole number from 0 to 18 written at the call, as a
 type's `scale` is, is `type.mismatch`, and one below 0
 `type.argument_negative` (under "Errors").
+
+The maths, from `sqrt` to `pi` (chunk 5.5e), on the bakery's tins,
+starters and deliveries. Each result is the true value rounded to
+`scale` places by the mode named, so the same call gives the same digits
+on every target:
+
+```jadpo check project=number-maths
+type Centimetres = Decimal {
+    scale: 2
+    min: 0.00
+}
+
+type SquareCentimetres = Decimal {
+    scale: 2
+    min: 0.00
+}
+
+type Tier = Int {
+    min: 0
+    max: 6
+}
+
+type RecipeScale = Decimal {
+    scale: 4
+}
+
+type Growth = Decimal {
+    scale: 4
+    min: 0.0000
+}
+
+type Rise = Decimal {
+    scale: 6
+}
+
+type ProvingTime = Decimal {
+    scale: 1
+    min: 0.0
+}
+
+type Metres = Decimal {
+    scale: 1
+}
+
+type Course = Decimal {
+    scale: 6
+}
+
+type NeverRose = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// The surface of a round tin, π r².
+function tin_area(radius: Centimetres) -> SquareCentimetres {
+    return SquareCentimetres(decimal.pi(scale: 6, rounding: Rounding.half_even) * radius * radius)
+}
+
+/// The side of a square tin the same size, rounded down so the cake
+/// fits. A size is never negative, so its square root needs no check.
+function square_side(surface: SquareCentimetres) -> Centimetres {
+    return Centimetres(decimal.sqrt(surface, scale: 2, rounding: Rounding.down))
+}
+
+/// How much more each tier below the surface needs, at half again a tier:
+/// exact, as `1.5 * 1.5 * 1.5` is.
+function tier_scale(tier: Tier) -> RecipeScale {
+    return RecipeScale(decimal.power(1.5, tier))
+}
+
+/// How much a starter grows over `proving`, rising all the while by
+/// `rise` an hour. `e` to any power is never below 0, so `Growth` needs no arm.
+function risen(rise: Rise, proving: ProvingTime) -> Growth {
+    return Growth(decimal.exp(rise * proving, scale: 4, rounding: Rounding.half_even))
+}
+
+/// How fast a starter rose an hour, from how much bigger it had `grown`
+/// in a day. Growth of 0 has no logarithm: a starter that shrank to
+/// nothing never rose.
+function hourly_rise(grown: Growth) fails NeverRose -> Rise {
+    var daily: Decimal = attempt decimal.ln(grown, scale: 6, rounding: Rounding.half_even) {
+        out_of_range: NeverRose
+    }
+    return Rise(daily / 24.0)
+}
+
+/// The direction of a customer at `northing` and `easting` from the
+/// bakery, in radians clockwise from north.
+function course(northing: Metres, easting: Metres) -> Course {
+    return Course(decimal.atan2(easting, northing, scale: 6, rounding: Rounding.half_even))
+}
+
+/// Where a van is, east and north of the bakery, `driven` metres on
+/// `course`.
+function easting_after(driven: Metres, course: Course) -> Metres {
+    return Metres(driven * decimal.sin(course, scale: 6, rounding: Rounding.half_even))
+}
+
+function northing_after(driven: Metres, course: Course) -> Metres {
+    return Metres(driven * decimal.cos(course, scale: 6, rounding: Rounding.half_even))
+}
+```
+
+`sqrt`'s value and `power`'s exponent are never negative, proved as a
+count is (`type.argument_negative`). `ln` fails with `out_of_range`
+unless its value is proved above 0, by a literal above 0 or a type whose
+`min` is; `Growth` allows 0, so `hourly_rise` maps it. A result past 38
+digits, such as `decimal.exp(100.0, ...)`, is a defect, as overflow is
+for `*`. The page's values, and each mode on the true value:
+
+```jadpo check project=number-maths file=main.test.jadpo
+test "the maths gives what the page says" {
+    assert tin_area(10.00) == 314.16
+    assert square_side(314.16) == 17.72
+    assert tier_scale(3) == 3.375
+    assert tier_scale(0) == 1.0
+    assert risen(0.100000, 6.0) == 1.8221
+    var rise: Rise = attempt hourly_rise(2.0000)
+    assert rise == 0.028881
+    assert hourly_rise(0.0000) fails NeverRose
+    assert course(100.0, 100.0) == 0.785398
+    assert course(-100.0, 0.0) == 3.141593
+    assert easting_after(1000.0, 0.523599) == 500.0
+    assert northing_after(1000.0, 0.523599) == 866.0
+}
+
+test "each mode rounds the true value" {
+    assert decimal.sqrt(2.0, scale: 3, rounding: Rounding.down) == 1.414
+    assert decimal.sqrt(2.0, scale: 3, rounding: Rounding.up) == 1.415
+    assert decimal.pi(scale: 4, rounding: Rounding.half_even) == 3.1416
+    assert decimal.pi(scale: 4, rounding: Rounding.down) == 3.1415
+    assert decimal.exp(1.0, scale: 5, rounding: Rounding.half_up) == 2.71828
+    assert decimal.ln(10.0, scale: 5, rounding: Rounding.up) == 2.30259
+}
+```
 
 ## Money and payments
 
@@ -2271,7 +2404,7 @@ operations it unblocks kept on this page.
 | `for` can't walk sets or maps | `for` takes a `Set`, in area 2's canonical order; maps through `map.keys` | 2, 3 | 5.5c, built | Walking sets and maps |
 | No map literal | `[]` where a map is expected; a literal with entries designed in area 2 | 2 | 5.5c, built | Building maps |
 | Inline functions take one parameter | Two parameters, `(a, b) -> ...`, for standard operations only (area 3's question 13 widened) | 3 | 5.5c2, built | `list.zip_with`, `map.filter`, `map.map_values` |
-| No `Float` and no maths | Maths on `Decimal` with `scale:` and `rounding:`, deterministic everywhere; still no `Float` | 2 (question 8 there) | 5.5e | 8 `decimal` operations; geospatial distance |
+| No `Float` and no maths | Maths on `Decimal` with `scale:` and `rounding:`, deterministic everywhere; still no `Float` | 2 (question 8 there) | 5.5e, built | 8 `decimal` operations; geospatial distance |
 | Code can't read a secret | Opaque key settings, used only as a `crypto` call's `key:` | 10 | 5.5q | `crypto` |
 | Keys held as data (per device, per person) | An encrypted field of a key type, usable only as `key:` | 10, 15 | With encrypted fields, after the first build (personal data) | Per-device signatures, `crypto.verify_totp` |
 | No randomness | Generated `random`, actions only, seeded in tests, recorded for replay | 10, 13, 17 | 5.5q | `random.*`, `encrypt`, `hash_password` |
@@ -2555,7 +2688,7 @@ check failed: 1 error, 1 file
 | `list.`, formerly `collection.` | `count`, `contains`, `map` and `filter` decided in area 2; renamed from `collection.` (question 6) and joined by the 21 operations that need no language change in 5.5b, and `zip_with` in 5.5c2 |
 | `set.`, `map.`, `range.`; `for` over a set; `[]` as an empty map | Decided 2026-10-17 (question 8); built in 5.5c: the 7 `set` operations, the 8 `map` operations that take no inline function, and the 3 `range` operations on `InstantRange`; built in 5.5c2: `map.filter`, `map.map_values`, and `Range<T>` with open ends, which the `range` operations take |
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
-| `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths in 5.5e |
+| `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here, built in 5.5k |
 | The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, each group of types in 5.5h to 5.5s |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
@@ -2843,6 +2976,33 @@ under "Errors").
   the page named no conversion, so this is the conservative reading, with
   no `units` operation for it. It is built with `Percentage` in chunk
   5.5j.
+
+### Chosen in chunk 5.5e
+
+- **A result has exactly `scale` places,** `decimal.sqrt(4.00, scale: 2,
+  ...)` giving `2.00`: unlike `decimal.round`, nothing is kept as given,
+  so there are no places to keep.
+- **`sqrt`'s value and `power`'s exponent are proved never negative,**
+  the table's "never negative" read as `never_negative` (question 7): a
+  literal isn't below 0 and a value's type has a `min` of at least 0,
+  or the call is `type.argument_negative`.
+- **`ln`'s `out_of_range` is settled by proof,** as a construction's rule
+  is: a literal above 0, or a value whose type has a `min` above 0,
+  can't fail, so its call takes no `attempt` (`failure.attempt_infallible`
+  if it has one); any other value may, and the call maps `out_of_range`
+  or `invalid:`, its failure `invalid_value`.
+- **`atan2(0, 0)` is 0,** where no angle is meant, rather than a failure
+  the page doesn't list; `atan2(0, x)` for `x` below 0 is π, as `Decimal`
+  has no negative zero to make it -π.
+- **`power(value, 0)` is 1 at `value`'s scale,** `0^0` included, and
+  every other power keeps the places repeated `*` keeps: `1.50` squared
+  is `2.25`. Past 38 digits or 38 places is overflow, a defect.
+- **`exp` past 38 digits is overflow,** a defect; one so far below 0 that
+  it is under half of 10^-18 gives 0, or one unit of the last place for
+  `up`, which rounds away from zero.
+- **Facts for proofs:** `sqrt` and `exp` are at least 0 and `pi` at
+  least 3; `sin` and `cos` carry no bounds, so building a type from one
+  checks its rules.
 
 ### Chosen in chunk 5.5a2
 
@@ -3363,7 +3523,7 @@ first; each group of types then arrives with its baseline and its extras.
   operations; `scale:` written out; `Rounding.down`. Built, with
   `text.format` for numbers.
 - **5.5e Decimal maths** `opus · high`: the eight
-  correctly rounded operations, tested against reference values.
+  correctly rounded operations, tested against reference values. Built.
 - **5.5f Text** `opus · high`: the 17 text operations (the contract's
   three come in 5.5a, `text.pick` in 5.5o), `locale:` on case
   and sorting, NFC at the boundary; `never_empty`, `fill:`,

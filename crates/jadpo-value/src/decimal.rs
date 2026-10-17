@@ -35,6 +35,50 @@ pub fn round(value: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, 
     value.rescale(scale, rounding).ok_or(Fault::DecimalOverflow)
 }
 
+/// The square root of `value`, which is never negative (the checker
+/// proves it), correctly rounded to `scale` places as `rounding` says.
+pub fn sqrt(value: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
+    crate::maths::sqrt(value, scale, rounding)
+}
+
+/// `value` to the power `exponent`, never negative: exact, as repeated
+/// `*` gives it; past 38 digits or places is overflow.
+pub fn power(value: Decimal, exponent: i64) -> Result<Decimal, Fault> {
+    crate::maths::power(value, exponent)
+}
+
+/// e to the power `value`, correctly rounded; past 38 digits is overflow.
+pub fn exp(value: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
+    crate::maths::exp(value, scale, rounding)
+}
+
+/// The natural logarithm of `value`, correctly rounded; `value` at or
+/// below 0 fails with `out_of_range`.
+pub fn ln(value: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
+    crate::maths::ln(value, scale, rounding)
+}
+
+/// The sine of `angle`, in radians, correctly rounded.
+pub fn sin(angle: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
+    crate::maths::sin(angle, scale, rounding)
+}
+
+/// The cosine of `angle`, in radians, correctly rounded.
+pub fn cos(angle: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
+    crate::maths::cos(angle, scale, rounding)
+}
+
+/// The angle of the point (`x`, `y`) from the positive `x` axis, in
+/// radians from -π to π, correctly rounded; 0 at the origin.
+pub fn atan2(y: Decimal, x: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
+    crate::maths::atan2(y, x, scale, rounding)
+}
+
+/// π, correctly rounded.
+pub fn pi(scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
+    crate::maths::pi(scale, rounding)
+}
+
 /// `dividend / divisor` at the dividend's scale, rounded as `rounding`
 /// says. The checker rules out a zero divisor; it is a fault if one arrives
 /// anyway, as is a result past 38 digits.

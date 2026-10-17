@@ -71,6 +71,32 @@ fn options_named(keys: &[String]) -> String {
     crate::and_list(&listed).replace(" and ", " or ")
 }
 
+/// Why a standard operation's conditions may fail, and what would settle
+/// them: "A local time ... fails unless `dst:` says what to do instead",
+/// or, for one only a proof settles, as `decimal.ln`'s `out_of_range`
+/// (area 19, "Numbers"), what proves it.
+fn condition_clause(keys: &[String]) -> String {
+    if keys.iter().any(|key| key == "out_of_range") {
+        "There is no logarithm of a value at or below `0`, and nothing proves this one above `0`, as a literal above `0` or a type whose `min` is above `0` would".to_string()
+    } else {
+        format!(
+            "{} unless {} says what to do instead",
+            capital_first(&conditions_meant(keys)),
+            options_named(keys)
+        )
+    }
+}
+
+/// What a call can give to settle the conditions itself: the options, or
+/// a value proved above `0`.
+fn settle_by(keys: &[String]) -> String {
+    if keys.iter().any(|key| key == "out_of_range") {
+        "pass a value whose type has a `min` above `0`".to_string()
+    } else {
+        format!("give {}", options_named(keys))
+    }
+}
+
 fn capital_first(text: &str) -> String {
     let mut chars = text.chars();
     chars.next().map_or_else(String::new, |first| {
@@ -242,13 +268,12 @@ impl Body<'_> {
                 )
                 .at(span, "checked when it runs")
                 .reason(format!(
-                    "{} unless {} says what to do instead, so the call can fail.",
-                    capital_first(&conditions_meant(breakable)),
-                    options_named(breakable)
+                    "{}, so the call can fail.",
+                    condition_clause(breakable)
                 ))
                 .next(format!(
-                    "Write `attempt {written}(...) {{ {first}: SomeFailure }}`, mapping each condition to an `invalid_value` failure, or `invalid:` for all of them, or give {}",
-                    options_named(breakable)
+                    "Write `attempt {written}(...) {{ {first}: SomeFailure }}`, mapping each condition to an `invalid_value` failure, or `invalid:` for all of them, or {}",
+                    settle_by(breakable)
                 ))
             }
             Fallible::Construction(breakable) => {
@@ -656,7 +681,12 @@ impl Body<'_> {
                 .operation()
                 .conditions
                 .iter()
-                .map(|condition| (condition.key.word(), format!("{}:", condition.option)))
+                .map(|condition| {
+                    let written = condition
+                        .option
+                        .map_or_else(|| condition.key.word().to_string(), |o| format!("{o}:"));
+                    (condition.key.word(), written)
+                })
                 .collect(),
             _ => Vec::new(),
         }
@@ -1008,9 +1038,8 @@ impl Body<'_> {
             .at(span, "can fail at runtime")
             .reason(if standard {
                 format!(
-                    "{} unless {} says what to do instead; {it} needs an arm naming the `invalid_value` failure the caller gets, or `invalid:` covers every condition without its own.",
-                    capital_first(&conditions_meant(uncovered)),
-                    options_named(uncovered)
+                    "{}; {it} needs an arm naming the `invalid_value` failure the caller gets, or `invalid:` covers every condition without its own.",
+                    condition_clause(uncovered)
                 )
             } else {
                 let tail = format!(

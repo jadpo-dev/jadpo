@@ -959,12 +959,15 @@ impl Place<'_> {
                 let failures: Vec<String> = entry
                     .conditions
                     .iter()
-                    .map(|condition| {
-                        format!(
-                            "`{}` unless `{}:` says what to do",
-                            condition.key.word(),
-                            condition.option
-                        )
+                    .map(|condition| match condition.option {
+                        Some(option) => format!(
+                            "`{}` unless `{option}:` says what to do",
+                            condition.key.word()
+                        ),
+                        None => format!(
+                            "`{}` unless its value is proved above 0",
+                            condition.key.word()
+                        ),
                     })
                     .collect();
                 docs.push(format!("Can fail: {}.", failures.join("; ")));
