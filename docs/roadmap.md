@@ -593,10 +593,12 @@ reference only).
   when each operation's example passes, area 19's `by_shelf` (`list.group_by`)
   has a test reading its map, and walking a set or a map's keys checks
   and runs.
-- [ ] **5.5d Numbers** `opus · high` (area 19, "Numbers", question 25): the
+- [x] **5.5d Numbers** `opus · high` (area 19, "Numbers", question 25): the
   8 new `integer` and `decimal` operations, `scale:` written out, and
   `Rounding.down`. Done when each operation's example passes and every
   rounding mode gives the same result interpreted and in the runtime.
+  `text.format` shows numbers too; what the pages left open is area 19's
+  "Chosen in chunk 5.5d".
 - [ ] **5.5e Decimal maths** `opus · high` (area 19, "Numbers", question
   18): `sqrt`, `power`, `exp`, `ln`, `sin`, `cos`, `atan2` and `pi` on
   `Decimal`, correctly rounded to a named scale by Jadpo's own code. Done
@@ -633,9 +635,10 @@ reference only).
   `Percentage`, `Ratio` and `Fraction`; SI storage at each kind's scale;
   the `%` literal and the operator table's `Percentage` rows; suffixed
   literals; the product and quotient table; `type.unit_required`; the 3
-  `units` operations. Done when the quantity examples pass, `1km ==
-  1000metre`, and a bare number or a mixed kind is a compile error with a
-  checked example.
+  `units` operations; a `Decimal` ratio becomes a `Percentage` by
+  construction, `Percentage(ratio)`, 0.25 → 25%. Done when the quantity
+  examples pass, `1km == 1000metre`, and a bare number or a mixed kind is
+  a compile error with a checked example.
 - [ ] **5.5k Time and calendar** `opus · high` (area 19, "Time and
   calendar additions"): the 13 new time types, `CalendarPeriod`'s
   operator rows and `temporal.period_between`, `RecurrenceRule` expansion
