@@ -32,6 +32,7 @@ allergies
 already_archived
 amendment
 amount_off
+amount_too_precise
 animal_free
 ann
 ann_on_bob
@@ -104,14 +105,16 @@ batch_count
 batch_name
 batch_size
 batches_baked
+before_vat
 bench
 bench_name
 best_before
+bill_shares
+bill_total
 billing_name
 billing_reference
 board
 board_not_found
-bob
 bobs
 book
 book_already_lent
@@ -335,6 +338,7 @@ delivery_note
 delivery_state
 delivery_view
 delivery_window
+deposit
 describe_order
 describe_status
 destination_company_id
@@ -394,9 +398,11 @@ end_of_january
 end_shift
 enrol
 entered
+entered_amount
 entry_count
 entry_id
-eur
+euro_price
+euros
 eve
 evening
 every_name
@@ -444,7 +450,6 @@ free_delivery_from
 from_address
 from_count
 from_flag
-gbp
 give_note
 gluten
 goals
@@ -453,6 +458,7 @@ grain
 grams
 grams_in
 greeting
+gross
 grown
 growth
 guest_book
@@ -500,6 +506,7 @@ in_review
 in_shop
 in_stock
 in_store
+in_yen
 incoming_call
 incomplete_receipt
 ingredient
@@ -682,6 +689,7 @@ missing_failure
 missing_success
 misuse_test_boundary
 mix_dough
+mixed_currencies
 morning
 my_bakeries
 my_orders
@@ -753,6 +761,7 @@ open_todos
 opening_hours
 opening_unclear
 openings
+order_after_deposit
 order_back
 order_by_id
 order_empty
@@ -767,6 +776,7 @@ order_locked
 order_not_found
 order_note
 order_number
+order_on_file
 order_placed
 order_problem
 order_product
@@ -836,12 +846,12 @@ party_title
 passed_on
 pastry
 patch_todo
+pay_deposit
 payment
 payment_intent
 payment_outcome
 payment_refused
 payment_succeeded
-pence
 people
 per_kilo
 per_todo
@@ -875,6 +885,7 @@ postcode
 postcodes
 poster_line
 postpone_all
+pounds
 praised
 praised_notes
 pretend_pure
@@ -888,6 +899,7 @@ price_loaf
 price_loaves
 price_per_kilo
 price_range
+price_tag
 pricing
 primary_database
 print_label
@@ -943,6 +955,7 @@ reader_locale
 reader_pick
 receipt
 receipt_id
+received
 recipe
 recipe_card
 recipe_costing
@@ -1134,6 +1147,8 @@ starting_quantity
 status_text
 steam
 steam_word
+sterling
+sterling_payment
 steward
 still_to_bake
 stock
@@ -1147,6 +1162,7 @@ subscribe
 subscription
 subtitle
 subtotal
+sum_if_shared
 summarise_line
 summary_view
 supplier
@@ -1179,7 +1195,6 @@ tenth
 terse
 test_configuration
 the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest
-thirds
 this_partner
 ticket_status
 tidied
@@ -1264,6 +1279,7 @@ vat_band
 vat_bands
 vat_date
 vat_due_rate
+vat_in
 vat_on
 vat_rate
 vat_rate_on

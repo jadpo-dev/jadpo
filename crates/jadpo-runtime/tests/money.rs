@@ -70,9 +70,12 @@ fn the_money_operations_give_the_page_s_values() {
         ),
         amount("BHD", 1250)
     );
-    assert_eq!(ok(Op::MoneyMinor, &[list_price.clone()]), Value::Int(1050));
     assert_eq!(
-        ok(Op::MoneyCurrency, &[list_price.clone()]),
+        ok(Op::MoneyMinor, std::slice::from_ref(&list_price)),
+        Value::Int(1050)
+    );
+    assert_eq!(
+        ok(Op::MoneyCurrency, std::slice::from_ref(&list_price)),
         currency("GBP")
     );
     let lines = Value::list(vec![amount("GBP", 350), amount("GBP", 700)]);

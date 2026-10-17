@@ -65,7 +65,7 @@ impl Body<'_> {
             return Currency::Fixed(code);
         }
         match expr {
-            Expr::CallExpr(call) => self.made_in(call).unwrap_or(Currency::Unknown),
+            Expr::CallExpr(call) => self.fixed_by_call(call).unwrap_or(Currency::Unknown),
             Expr::BinExpr(binary) => {
                 let (Some(lhs), Some(rhs), Some(op)) = (binary.lhs(), binary.rhs(), binary.op())
                 else {
@@ -102,7 +102,7 @@ impl Body<'_> {
 
     /// The currency a standard operation makes its amount in, where the
     /// call writes it out: `money.from_minor`, `money.of` and `money.sum`.
-    fn made_in(&self, call: &ast::CallExpr) -> Option<Currency> {
+    fn fixed_by_call(&self, call: &ast::CallExpr) -> Option<Currency> {
         let key = node_key(call.syntax());
         let Some(Reach::Std(op)) = self.facts.reaches.get(&key) else {
             return None;

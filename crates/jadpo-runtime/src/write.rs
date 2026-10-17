@@ -213,7 +213,7 @@ pub(crate) async fn write(
         let Field::Column(at) = field else {
             return Err(defect(ctx, "a written record with an include", site));
         };
-        match field_value(&row, &returns.columns, *at) {
+        match field_value(row, &returns.columns, *at) {
             Ok(value) => fields.push((std::rc::Rc::from(name.as_str()), value)),
             Err(what) => return Err(defect(ctx, &what, site)),
         }

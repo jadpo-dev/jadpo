@@ -7,6 +7,7 @@ rules:
   - semantic.standard_operation_moved
   - type.argument_empty
   - type.argument_negative
+  - type.money_split
   - type.standard_clash
   - type.standard_exists
 ---
@@ -1525,29 +1526,29 @@ function list_price() -> CakePrice {
 
 /// An amount a customer typed, in major units of their currency.
 function entered(amount: Pounds, currency: Currency) fails AmountTooPrecise -> Payment {
-    var made: Money = attempt money.of(amount, currency) {
+    var entered_amount: Money = attempt money.of(amount, currency) {
         too_many_places: AmountTooPrecise  // 10.50 in yen
     }
-    return Payment(made)
+    return Payment(entered_amount)
 }
 
 /// A cake delivered: one currency, so a plain `+`.
-function delivered(price: CakePrice, delivery: CakePrice) -> CakePrice {
-    return CakePrice(price + delivery)
+function delivered(cake: CakePrice, delivery: CakePrice) -> CakePrice {
+    return CakePrice(cake + delivery)
 }
 
 /// The VAT in a price at 20%, rounded half up to a penny.
-function vat(total: CakePrice) -> CakePrice {
+function vat_in(total: CakePrice) -> CakePrice {
     return CakePrice(total * 0.2)
 }
 
 /// A price before VAT: dividing by a rate.
-function net(gross: CakePrice) -> CakePrice {
+function before_vat(gross: CakePrice) -> CakePrice {
     return CakePrice(gross / 1.20)
 }
 
 /// A bill shared between friends, every penny to someone.
-function shares(total: CakePrice, guests: Guests) -> List<Payment> {
+function bill_shares(total: CakePrice, guests: Guests) -> List<Payment> {
     return list.map(money.split(total, guests), share -> Payment(share))
 }
 
@@ -1560,8 +1561,8 @@ function received(first: Payment, second: Payment) fails MixedCurrencies -> Paym
 }
 
 /// A price for people in the reader's locale.
-function shown(price: CakePrice, reader: Locale) -> PresentationText {
-    return text.format(price, locale: reader)
+function price_label(cake: CakePrice, customer: Locale) -> PresentationText {
+    return text.format(cake, locale: customer)
 }
 ```
 
@@ -1569,23 +1570,24 @@ function shown(price: CakePrice, reader: Locale) -> PresentationText {
 test "amounts add, round and share in minor units" {
     assert list_price() == money.from_minor(1050, Currency.gbp)
     assert delivered(list_price(), CakePrice(money.from_minor(250, Currency.gbp))) == money.from_minor(1300, Currency.gbp)
-    assert vat(CakePrice(money.from_minor(1253, Currency.gbp))) == money.from_minor(251, Currency.gbp)
-    assert net(CakePrice(money.from_minor(1200, Currency.gbp))) == money.from_minor(1000, Currency.gbp)
-    assert list.map(shares(CakePrice(money.from_minor(1000, Currency.gbp)), 3), share -> money.minor(share)) == [334, 333, 333]
+    assert vat_in(CakePrice(money.from_minor(1253, Currency.gbp))) == money.from_minor(251, Currency.gbp)
+    assert before_vat(CakePrice(money.from_minor(1200, Currency.gbp))) == money.from_minor(1000, Currency.gbp)
+    assert list.map(bill_shares(CakePrice(money.from_minor(1000, Currency.gbp)), 3), share -> money.minor(share)) == [334, 333, 333]
 }
 
 test "a currency known only while running is checked as it runs" {
-    var yen: Payment = attempt entered(500.00, Currency.jpy)
-    assert yen == money.from_minor(500, Currency.jpy)
+    var in_yen: Payment = attempt entered(500.00, Currency.jpy)
+    assert in_yen == money.from_minor(500, Currency.jpy)
     assert entered(10.50, Currency.jpy) fails AmountTooPrecise
     var euros: Payment = Payment(money.from_minor(500, Currency.eur))
     var pounds: Payment = Payment(money.from_minor(250, Currency.gbp))
-    assert received(euros, euros) == money.from_minor(1000, Currency.eur)
+    var both: Payment = attempt received(euros, euros)
+    assert both == money.from_minor(1000, Currency.eur)
     assert received(euros, pounds) fails MixedCurrencies
 }
 
 test "an amount is shown, written and read one way" {
-    assert shown(CakePrice(money.from_minor(123450, Currency.gbp)), Locale.en_gb) == "£1,234.50"
+    assert price_label(CakePrice(money.from_minor(123450, Currency.gbp)), Locale.en_gb) == "£1,234.50"
     assert text.format(Payment(money.from_minor(123450, Currency.eur)), locale: Locale.en_us) == "€1,234.50"
     assert text.format(list_price(), locale: Locale.en_gb, precision: MoneyPrecision.whole) == "£11"
     assert text.from(list_price()) == "GBP 10.50"
@@ -1606,7 +1608,7 @@ type SterlingPayment = Money {
 }
 
 /// Two payments added when they share a currency, the first otherwise.
-function combined(a: Payment, b: Payment) -> Payment {
+function sum_if_shared(a: Payment, b: Payment) -> Payment {
     if (money.currency(a) == money.currency(b)) {
         return Payment(a + b)
     }
@@ -1730,19 +1732,19 @@ action pay_deposit(order: Order, paid: Deposit) -> Order {
 ```
 
 ```jadpo check project=money-orders file=domains/bakery/actions/place_order.test.jadpo
-use bakery/actions { pay_deposit }
-use bakery/entities { Order, OrderNotFound }
+use bakery/entities { Order }
 use bakery/types { CakePrice, Deposit }
+use bakery/actions { pay_deposit }
 
 test "an order keeps its amounts as they were written" {
     var placed: Order = place_order(CakePrice(money.from_minor(4250, Currency.gbp)))
-    var found: Order = attempt Order.get(placed.id)
-    assert found.total == money.from_minor(4250, Currency.gbp)
-    assert found.deposit == none
-    var paid: Order = pay_deposit(found, Deposit(money.from_minor(2000, Currency.eur)))
-    var again: Order = attempt Order.get(placed.id)
-    assert again.deposit == paid.deposit
-    assert again.deposit == Deposit(money.from_minor(2000, Currency.eur))
+    var order_on_file: Order = attempt Order.get(placed.id)
+    assert order_on_file.total == money.from_minor(4250, Currency.gbp)
+    assert order_on_file.deposit == none
+    var paid: Order = pay_deposit(order_on_file, Deposit(money.from_minor(2000, Currency.eur)))
+    var order_after_deposit: Order = attempt Order.get(placed.id)
+    assert order_after_deposit.deposit == paid.deposit
+    assert order_after_deposit.deposit == Deposit(money.from_minor(2000, Currency.eur))
 }
 ```
 
@@ -3271,8 +3273,8 @@ error: `BillTotal` is divided by a count
   |
 8 |     return BillTotal(total / 3)
   |                      ^^^^^^^^^ money shared out by `/`
-  reason: Dividing money by a count is sharing it out, and rounding each share loses minor units: £10.00 / 3 is £3.33, three times £9.99. `money.split` hands every minor unit to some share, and `/` takes only a `Decimal` rate, as `/ 1.20` takes VAT off; `3` is a whole number.
-  next: Share it with `money.split(total, 3)`, which gives a list of shares adding up to the total, or `money.allocate` for unequal shares; halve a price with `* 0.5` (agent)
+  reason: Dividing money by a count is sharing it out, and rounding each share loses minor units: £10.00 / 3 is £3.33, three times £9.99. `money.split` hands every minor unit to some share, and `/` takes only a `Decimal` rate, as `/ 1.20` takes a 20% tax off; `3` is a whole number.
+  next: Share it with `money.split(total, 3)`, which gives a list of shares adding up to the total, or `money.allocate` for unequal shares; halve an amount with `* 0.5` (agent)
   rule: type.money_split
   help: docs/language/19-standard-library.html#type-money-split
 

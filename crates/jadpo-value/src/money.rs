@@ -135,7 +135,7 @@ pub fn split(total: &Value, parts: &Value) -> Result<Value, Fault> {
         return Err(Fault::Shape);
     }
     let ratios = vec![1i64; usize::try_from(*parts).map_err(|_| Fault::Shape)?];
-    shares(total, &ratios)
+    shared_out(total, &ratios)
 }
 
 /// `money.allocate(total, ratios)`: a share for each ratio in proportion
@@ -155,13 +155,13 @@ pub fn allocate(total: &Value, ratios: &Value) -> Result<Value, Fault> {
             _ => Err(Fault::Shape),
         })
         .collect::<Result<Vec<i64>, Fault>>()?;
-    shares(total, &ratios)
+    shared_out(total, &ratios)
 }
 
 /// The shares of `total` in proportion to `ratios`: worked out on the
 /// amount's size, the sign given back to every share, so a refund shares
 /// out as a payment does.
-fn shares(total: Money, ratios: &[i64]) -> Result<Value, Fault> {
+fn shared_out(total: Money, ratios: &[i64]) -> Result<Value, Fault> {
     if ratios.is_empty() || ratios.iter().any(|ratio| *ratio < 0) {
         return Err(Fault::Shape);
     }
@@ -234,10 +234,10 @@ fn decimal_of(value: &Value) -> Result<Decimal, Fault> {
 /// `amount * factor`, a number: exact, then rounded to a whole minor unit
 /// as `rounding` says (the amount's type's `rounding:`, area 19).
 pub fn multiply(amount: Money, factor: &Value, rounding: Rounding) -> Result<Money, Fault> {
-    let product = Decimal::from_int(amount.minor)
+    let exact = Decimal::from_int(amount.minor)
         .checked_mul(decimal_of(factor)?)
         .ok_or(Fault::IntOverflow)?;
-    let units = product.rescale(0, rounding).ok_or(Fault::IntOverflow)?;
+    let units = exact.rescale(0, rounding).ok_or(Fault::IntOverflow)?;
     Ok(Money {
         currency: amount.currency,
         minor: minor(units.mantissa)?,

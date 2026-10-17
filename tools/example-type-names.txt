@@ -10,7 +10,6 @@ Choice
 Code
 Comment
 Count
-Currency
 Cutoff
 Day
 Days
@@ -29,13 +28,13 @@ Lookup
 Member
 Minutes
 Missing
-Money
 Name
 Note
 Open
 Opening
 Order
 Pair
+Pence
 Percent
 Phrase
 Placed

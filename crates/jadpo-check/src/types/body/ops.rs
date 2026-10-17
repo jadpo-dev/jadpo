@@ -459,17 +459,18 @@ impl Body<'_> {
                 return;
             }
         }
-        if self.rep(a) == Some(Prim::Money) && self.rep(b) == Some(Prim::Money) {
-            if let OneCurrency::No(x, y) = self.one_currency(lhs, rhs) {
-                self.different_currencies(
-                    binary,
-                    &rule::TYPE_ORDERING_OPERAND,
-                    "ordered",
-                    (a, x),
-                    (b, y),
-                );
-                return;
-            }
+        if self.rep(a) == Some(Prim::Money)
+            && self.rep(b) == Some(Prim::Money)
+            && let OneCurrency::No(x, y) = self.one_currency(lhs, rhs)
+        {
+            self.different_currencies(
+                binary,
+                &rule::TYPE_ORDERING_OPERAND,
+                "ordered",
+                (a, x),
+                (b, y),
+            );
+            return;
         }
         if self.same_type(a, b) {
             if self.rep(a) == Some(Prim::Money) && self.rep(b) == Some(Prim::Money) {
@@ -725,10 +726,10 @@ impl Body<'_> {
                     )
                     .at(span.clone(), "money shared out by `/`")
                     .reason(format!(
-                        "Dividing money by a count is sharing it out, and rounding each share loses minor units: £10.00 / 3 is £3.33, three times £9.99. `money.split` hands every minor unit to some share, and `/` takes only a `Decimal` rate, as `/ 1.20` takes VAT off; `{parts}` is a whole number."
+                        "Dividing money by a count is sharing it out, and rounding each share loses minor units: £10.00 / 3 is £3.33, three times £9.99. `money.split` hands every minor unit to some share, and `/` takes only a `Decimal` rate, as `/ 1.20` takes a 20% tax off; `{parts}` is a whole number."
                     ))
                     .next(format!(
-                        "Share it with `{split}`, which gives a list of shares adding up to the total, or `money.allocate` for unequal shares; halve a price with `* 0.5`"
+                        "Share it with `{split}`, which gives a list of shares adding up to the total, or `money.allocate` for unequal shares; halve an amount with `* 0.5`"
                     ))
                     .edit(span, split),
                 );
@@ -753,7 +754,7 @@ impl Body<'_> {
             ("*", true, true) => refuse(
                 self,
                 "two amounts",
-                "`*` scales an amount of money by a number; two amounts have no product."
+                "`*` scales an amount of money by a number; one amount times another means nothing."
                     .to_string(),
                 "Multiply the amount by a number".to_string(),
             ),
