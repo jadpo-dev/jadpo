@@ -21,7 +21,10 @@ use rowan::GreenNode;
 
 pub use error::{SyntaxError, TextEdit};
 pub use generated::kinds::SyntaxKind;
-pub use grammar::RESERVED_NAMES;
+pub use grammar::{
+    CONTEXTUAL_DECLARATIONS, DECLARATION_KEYWORDS, EXPRESSION_KEYWORDS, RESERVED_NAMES,
+    STATEMENT_KEYWORDS,
+};
 pub use rowan::TokenAtOffset;
 
 use lexer::{LexError, LexErrorKind, LexMode};

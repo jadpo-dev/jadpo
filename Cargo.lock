@@ -1001,6 +1001,8 @@ dependencies = [
  "jadpo-db",
  "jadpo-diag",
  "jadpo-graph",
+ "jadpo-std",
+ "jadpo-value",
  "lsp-server",
  "lsp-types",
  "serde_json",

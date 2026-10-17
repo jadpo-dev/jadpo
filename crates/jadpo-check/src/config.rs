@@ -57,6 +57,10 @@ pub enum Reads {
     Locale,
 }
 
+/// The word `config { }` is declared with and its settings are read
+/// through: `config.<name>`.
+pub const CONFIG: &str = "config";
+
 /// One setting, as `config { }` declares it.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Setting {

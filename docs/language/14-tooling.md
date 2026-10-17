@@ -159,7 +159,7 @@ type Count = Int {
 
 The language server (`jadpo lsp`) gives any editor the compiler's own view:
 errors while you type, go to definition, find references, hover with types and
-the failures a call can produce, completion, rename and formatting. The VS
+the failures a call can produce, completion (below), rename and formatting. The VS
 Code extension in `editors/vscode` adds highlighting and starts the server. It
 contains no parser of its own, and a command to open any generated file comes
 with the generated files.
@@ -217,6 +217,59 @@ editor's rename comes with `jadpo rename`.
 Decided in area 6 and not built: hovering over a query shows its generated
 SQL, the same as `jadpo sql`. The SQL is never written into the source as a
 comment, which would go stale, add noise to diffs and invite edits.
+
+### Completion
+
+Decided 2026-10-17 (Richard): the editor offers completion for everything
+as you type, and it is generated from the same declarations and data the
+compiler uses, never from a list kept for the editor: the project's name
+and type tables, the standard library's stubs and the standard types'
+data entries, the operation, unit and enum tables, the rule catalogue, the
+settings, the translations' messages and the parser's own keyword sets.
+So every type, unit and operation a later chunk adds is offered with no
+editor code of its own. Where the position requires a type (an argument,
+a field, a variable's declared type, a `return`), what fits comes first,
+and a unit or a variant that can't go there isn't offered. The contexts:
+
+- **Names in scope** in a body: locals and parameters, the file's
+  constants and its domain's callables, types, libraries, the domains it
+  may call into and the standard namespaces. A project name the file
+  doesn't import yet comes with its `use` line, the edit `jadpo fmt`
+  would make, and another domain's private name isn't offered.
+- **Members after a value**: `note.` offers the fields the checker reads
+  from its type.
+- **Operations after a namespace**: `list.`, `text.`, `temporal.` and the
+  rest offer each operation with its signature, the failures it can raise
+  and its description, from its stub.
+- **Variants after a type**: `Shade.` offers the enum's variants, and a
+  standard type's are shown with the name its data entry gives people
+  (`Locale.en_gb` is "British English").
+- **Units straight after a number**, narrowed to the type it goes into:
+  after `2` where a `Duration` is required, `d`, `h`, `m`, `s` and `ms`;
+  none where an `Int` is. The units are `jadpo-std`'s table, so quantity
+  types offer theirs once they have units.
+- **Named arguments** of the standard-library call being written, those
+  not given yet, the required first; and the fields not given yet of a
+  record being built.
+- **Type names**, the application's and the standard ones, wherever a type
+  is written.
+- **Rule ids after `decline`**: the declinable rules only.
+- **`config.`**: the settings; **`translations.<domain>.`**: the messages.
+- **Keywords** where a declaration or a statement may start.
+
+Choosing a call with required arguments inserts it as a snippet with a
+placeholder for each: the first in its place and the rest by name for a
+standard-library operation (`temporal.resolve(${1:date}, at: ${2:at},
+zone: ${3:zone})`), every one in its place for the application's own
+callables. The server offers what the compiler knows and nothing else:
+suggestions written by a model belong to the agent, never to `jadpo lsp`.
+VS Code asks for completion as you type a word, a `.`, a `:` or a digit.
+
+> **Built (chunk 5.5a3).** Every context above, in `jadpo_check::completion`
+> through the checker's analysis of the text as it is typed, and the
+> server's `textDocument/completion`. A test offers every operation each
+> stub declares after its namespace, with no operation named in the
+> completion code.
 
 ## Error messages
 
@@ -553,7 +606,7 @@ is decided but not built yet.
 | Error messages | Built (chunks 1.1 on): one error per mistake in area 14's field order, `impact` only when it says something, edits on the next step where one exists, and help links to the language pages. |
 | JSON output | Built (chunk 1.1 on): every command takes `--json` and prints one envelope (`schemaVersion` 2 since chunk 2.8) with project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys; `jadpo test --json` is described in area 13 and under `testReport` in `jadpo help --json`. |
 | `build/` | Built (chunk 1.7): `jadpo check` writes `build/manifest.json` and the catalogues in `build/catalogue/`; `jadpo test` keeps its last run in `build/test/`. |
-| Language server | Built (chunk 1.7): diagnostics, hover and go to definition, from a `use` line too since chunk 3.5. |
+| Language server | Built (chunk 1.7): diagnostics, hover and go to definition, from a `use` line too since chunk 3.5; completion since chunk 5.5a3. |
 | Agent tools | The catalogues and the similar-helper check are built (chunk 1.7), a declinable error since chunk 5.4b; `migrate` is built (chunk 3.1); `impact`, `domain`, `rename` and `seed` are decided, not built. |
 | Build-only errors | Not applicable yet: there is no `jadpo build` until Phase 8. |
 
@@ -776,4 +829,5 @@ what other areas carried here and where this page answers it.
 | Batch commands | `jadpo batches list`, `show` and `cancel` for operators; `jadpo runs unfinished --build <build id>` before a deploy; no deploy command, since a rerun detects a changed build by its build id (decided for Richard) | 2026-10-16 |
 | Constants for agents | The library catalogue lists library constants with their type, value, description and readers; `constant.similar_exists` warns on two constants of one type holding one value; the agent skill says a value a deployment could ever need to change is `config`, otherwise a `constant` (area 3). The warning and the catalogue entries built in chunk 5.3e; the skill itself isn't built yet (Richard) | 2026-10-16 |
 | Making a constant a setting | `jadpo config move <constant>`, and the editor's "Make this a setting" code action through the same code, moves a constant into `config.jadpo` and rewrites every read (area 10); offered, never required, so not part of `jadpo fmt --layout`; the agent skill points at it. Built in chunk 5.3f (Richard) | 2026-10-16 |
+| Editor completion | Completion for everything as you type, generated from the declarations and data the compiler uses, never a list kept for the editor: names in scope, fields, operations with signature, failures and docs, variants with CLDR names, units after a number narrowed to the type required, named arguments, type names, declinable rules, settings, messages and keywords; snippets for calls with required arguments; no AI suggestions in the server. Built in chunk 5.5a3 (Richard) | 2026-10-17 |
 | Settings in name order | The formatter sorts `config { }` fields by name, the one exception to fields keeping their written order, so parallel workspaces adding settings rarely clash (area 10). Built in chunk 5.3f (Richard) | 2026-10-16 |

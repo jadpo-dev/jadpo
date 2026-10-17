@@ -12,14 +12,40 @@ pub struct Dur {
     pub millis: i128,
 }
 
-/// Each unit with its length in milliseconds, longest first.
-const UNITS: [(&str, i128); 5] = [
-    ("d", 86_400_000),
-    ("h", 3_600_000),
-    ("m", 60_000),
-    ("s", 1_000),
-    ("ms", 1),
+/// Each unit with its length in milliseconds and what it means, longest
+/// first.
+const UNITS: [(&str, i128, &str); 5] = [
+    ("d", 86_400_000, "days"),
+    ("h", 3_600_000, "hours"),
+    ("m", 60_000, "minutes"),
+    ("s", 1_000, "seconds"),
+    ("ms", 1, "milliseconds"),
 ];
+
+/// A unit a number may be written with, `30s` or `2h`: the built-in type
+/// the number is then a value of, the suffix, and what it means. Only
+/// `Duration` has units until quantities do (area 19); the editor offers
+/// them after a number, narrowed to the type expected there (area 14,
+/// "Completion"), so a type given units here is offered with no editor
+/// code of its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UnitSuffix {
+    pub of: crate::Builtin,
+    pub suffix: &'static str,
+    pub name: &'static str,
+}
+
+/// Every unit a number may be written with, each type's longest first.
+pub fn unit_suffixes() -> Vec<UnitSuffix> {
+    UNITS
+        .iter()
+        .map(|(suffix, _, name)| UnitSuffix {
+            of: crate::Builtin::Duration,
+            suffix,
+            name,
+        })
+        .collect()
+}
 
 impl Dur {
     /// Reads `500ms`, `30s`, `5m`, `2h` or `30d`; `None` for anything else.
@@ -30,7 +56,7 @@ impl Dur {
             return None;
         }
         let count: i128 = number.replace('_', "").parse().ok()?;
-        let (_, size) = UNITS.iter().find(|(name, _)| *name == unit)?;
+        let (_, size, _) = UNITS.iter().find(|(name, _, _)| *name == unit)?;
         Some(Dur {
             millis: count.checked_mul(*size)?,
         })
@@ -49,8 +75,8 @@ impl fmt::Display for Dur {
         }
         let (unit, size) = UNITS
             .iter()
-            .find(|(_, size)| self.millis % size == 0)
-            .copied()
+            .find(|(_, size, _)| self.millis % size == 0)
+            .map(|(unit, size, _)| (*unit, *size))
             .unwrap_or(("ms", 1));
         write!(f, "{}{unit}", self.millis / size)
     }

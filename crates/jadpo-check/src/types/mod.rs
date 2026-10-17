@@ -24,6 +24,7 @@ mod table;
 mod ty;
 
 pub(crate) use body::transition_key;
+pub(crate) use body::{BodyView, LocalKind, ViewLocal, members_of};
 pub use body::{
     Callable, Checked, FailureSet, FailureSets, Fallible, body_problems, call_problems,
     callables_of, failure_set, failure_sets, typed_body,

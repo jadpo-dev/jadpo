@@ -1,6 +1,6 @@
 [package]
 name = "jadpo-lsp"
-description = "The language server: the checker's diagnostics and hover for editors, over one long-lived database"
+description = "The language server: the checker's diagnostics, hover and completion for editors, over one long-lived database"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,6 +14,8 @@ jadpo-check.workspace = true
 jadpo-db.workspace = true
 jadpo-diag.workspace = true
 jadpo-graph.workspace = true
+jadpo-std.workspace = true
+jadpo-value.workspace = true
 lsp-server.workspace = true
 lsp-types.workspace = true
 serde_json.workspace = true

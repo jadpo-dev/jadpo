@@ -563,6 +563,18 @@ reference only).
   quick-fix code, designed with the skills in `.agents/skills/` first;
   release notes listing added names. Done when a clash has a checked
   example with real output and `jadpo fix` has its CLI tests.
+- [x] **5.5a3 Editor completion** `opus · high` (area 14, "Editor
+  support", "Completion"; Richard, 2026-10-17): `jadpo lsp` answers
+  completion from the declarations and data the checker uses, never a list
+  of its own: names in scope with the `use` line a name needs, a value's
+  fields, a namespace's operations with signature, failures and docs, enum
+  variants with CLDR names, units straight after a number narrowed to the
+  type it goes into, named arguments and record fields not given yet, type
+  names, declinable rules after `decline`, `config.` settings,
+  `translations.<domain>.` messages and keywords; what fits the required
+  type first; calls with required arguments as snippets; VS Code triggers
+  on `.`, `:` and digits. Done when each context has an LSP-level test and
+  an operation added to a stub is offered with no completion code.
 - [x] **5.5b Lists** `opus · high` (area 19, "Lists", questions 6, 7 and
   11): `collection.` renamed `list.` everywhere, with its habit error; the
   21 new list operations that need no language change; `never_negative`,
