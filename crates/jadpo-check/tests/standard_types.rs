@@ -22,6 +22,12 @@ fn check(source: &str) -> Vec<String> {
 /// the types the calls give and fail with.
 fn types(entry: &StandardType) -> (String, String) {
     let declared = match entry.holds {
+        // With the settings its examples take: a `Money` type's currency,
+        // since only amounts in one currency are ordered.
+        Holds::Builtin(_) if !entry.examples.settings.is_empty() => format!(
+            "type Shown = {} {{\n    {}\n}}\n\n",
+            entry.name, entry.examples.settings
+        ),
         Holds::Builtin(_) => format!("type Shown = {} {{}}\n\n", entry.name),
         _ => String::new(),
     };
@@ -166,10 +172,16 @@ fn every_standard_type_meets_the_contract_in_the_checker() {
         } else {
             assert_eq!(from, ["type.mismatch"], "{name}: text.from takes no text");
         }
-        // `text.parse`: the type, failing `malformed`.
+        // `text.parse`: the type, failing `malformed`, and by the rules
+        // its examples' settings give it.
+        let others = if entry.examples.settings.is_empty() {
+            ""
+        } else {
+            "\n        invalid: Unreadable"
+        };
         assert_eq!(
             check(&format!(
-                "{declared}function f(raw: Wire) fails Unreadable -> {value} {{\n    var read: {value} = attempt text.parse(raw, as: {value}) {{\n        malformed: Unreadable\n    }}\n    return read\n}}\n"
+                "{declared}function f(raw: Wire) fails Unreadable -> {value} {{\n    var read: {value} = attempt text.parse(raw, as: {value}) {{\n        malformed: Unreadable{others}\n    }}\n    return read\n}}\n"
             )),
             Vec::<String>::new(),
             "{name}: text.parse"

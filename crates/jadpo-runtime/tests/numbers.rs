@@ -136,7 +136,15 @@ fn the_number_operations_give_the_page_s_values() {
     let shown = |tag: &str| {
         ok(
             Op::TextFormat,
-            &[decimal("1234.50"), locale(tag), Value::None, Value::None],
+            &[
+                decimal("1234.50"),
+                locale(tag),
+                Value::None,
+                Value::None,
+                Value::None,
+                Value::None,
+                Value::None,
+            ],
         )
     };
     assert_eq!(shown("en_gb"), Value::text("1,234.50"));

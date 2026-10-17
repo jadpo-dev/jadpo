@@ -31,6 +31,7 @@ mod locales;
 mod logic;
 mod lookup;
 mod maths;
+mod money;
 mod named_collections;
 mod not_values;
 mod numbers;

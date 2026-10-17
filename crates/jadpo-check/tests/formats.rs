@@ -294,8 +294,9 @@ fn a_format_is_given_to_its_operation_as_text() {
             _ => None,
         })
         .expect("the call");
-    // `value`, `locale`, no `zone:` and the format, in the table's order.
-    assert_eq!(args.len(), 4);
+    // `value`, `locale`, no `zone:` and the format, then no money options,
+    // in the table's order.
+    assert_eq!(args.len(), 7);
     assert!(args[2].is_none());
     let format = args[3].expect("a format");
     assert_eq!(

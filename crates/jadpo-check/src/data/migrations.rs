@@ -312,6 +312,11 @@ pub fn backfill_problem(lookup: &dyn TypeView, ty: &Ty, value: &Const) -> Option
             Some(Def::Enum { .. }) => Some(format!("it isn't a plain variant of `{name}`")),
             _ => Some(format!("a `{name}` can't be written as a literal here")),
         },
+        // An amount of money has no literal, and is stored in two columns
+        // a backfill would have to fill (area 19).
+        (Ty::Prim(Builtin::Money), _) => Some(
+            "an amount of money has no literal, so a required one can't be backfilled yet: add it optional and set it in an action".into(),
+        ),
         (Ty::Prim(prim), _) => Some(format!("it isn't a `{}` literal", prim.name())),
         (other, _) => Some(format!(
             "a `{other}` can't be backfilled with a literal yet"

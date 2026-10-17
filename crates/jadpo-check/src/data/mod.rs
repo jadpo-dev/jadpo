@@ -207,6 +207,28 @@ pub struct FieldModel {
     /// What its type allows beyond its column type, which a migration
     /// snapshot records.
     pub allows: physical::Allows,
+    /// An amount of money, stored in two columns (area 19, "Money and
+    /// payments"): `<column>_amount`, a `bigint` of minor units, which
+    /// `sql_type` is, and `<column>_currency`, the currency's code.
+    pub money: bool,
+}
+
+impl FieldModel {
+    /// The columns the field is stored in, by name, each with its type: one,
+    /// or an amount of money's two, its minor units first.
+    pub fn columns(&self) -> Vec<(String, String)> {
+        let Some(sql_type) = &self.sql_type else {
+            return Vec::new();
+        };
+        match jadpo_std::standard_type("Money").filter(|_| self.money) {
+            Some(money) => money
+                .columns
+                .iter()
+                .map(|(part, ty)| (format!("{}_{part}", self.born), (*ty).to_string()))
+                .collect(),
+            None => vec![(self.born.clone(), sql_type.clone())],
+        }
+    }
 }
 
 /// A reference: the entity a field typed `X.id` points at.
@@ -742,6 +764,7 @@ impl Reader<'_> {
             reference: None,
             immutable: false,
             allows: physical::Allows::default(),
+            money: false,
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -857,7 +880,10 @@ impl Reader<'_> {
                 );
                 field.sql_type = Some(sql);
             }
-            Ok(sql) => field.sql_type = Some(sql),
+            Ok(sql) => {
+                field.money = self.lookup.representation(&ty) == Some(jadpo_std::Builtin::Money);
+                field.sql_type = Some(sql);
+            }
             Err(what) => {
                 self.out.push(
                     Diagnostic::new(
@@ -1805,33 +1831,53 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
         foreign_keys: BTreeMap::new(),
         indexes: BTreeMap::new(),
     };
-    let column = |name: &str| {
-        entity
-            .fields
-            .iter()
-            .find(|f| f.name == name)
-            .map_or_else(|| name.to_string(), |f| f.born.clone())
+    // A field's columns, by its name: an amount of money's two.
+    let column = |name: &str| -> Vec<String> {
+        match entity.fields.iter().find(|f| f.name == name) {
+            Some(field) if field.money => field.columns().into_iter().map(|(c, _)| c).collect(),
+            Some(field) => vec![field.born.clone()],
+            None => vec![name.to_string()],
+        }
     };
-    for (position, field) in (0u32..).zip(&entity.fields) {
-        let Some(sql_type) = &field.sql_type else {
+    let mut position = 0u32;
+    for field in &entity.fields {
+        let columns = field.columns();
+        for (at, (name, sql_type)) in columns.iter().enumerate() {
+            // A fixed currency is what its column allows (area 19).
+            let allows = if field.money && at > 0 {
+                physical::Allows {
+                    values: field.allows.values.clone(),
+                    ..physical::Allows::default()
+                }
+            } else if field.money {
+                physical::Allows {
+                    values: Vec::new(),
+                    ..field.allows.clone()
+                }
+            } else {
+                field.allows.clone()
+            };
+            out.columns.insert(
+                name.clone(),
+                physical::Column {
+                    position,
+                    field: Some(field.born.clone()),
+                    sql_type: sql_type.clone(),
+                    nullable: field.nullable,
+                    retired: false,
+                    allows: Some(allows),
+                },
+            );
+            position += 1;
+        }
+        if columns.is_empty() {
             continue;
-        };
-        out.columns.insert(
-            field.born.clone(),
-            physical::Column {
-                position,
-                field: Some(field.born.clone()),
-                sql_type: sql_type.clone(),
-                nullable: field.nullable,
-                retired: false,
-                allows: Some(field.allows.clone()),
-            },
-        );
+        }
         if field.unique && field.name != "id" {
             out.unique.insert(
                 physical::object_name(&[table, &field.born], "key"),
                 physical::Unique {
-                    columns: vec![field.born.clone()],
+                    columns: columns.iter().map(|(name, _)| name.clone()).collect(),
                     rule: format!("{}.{}", entity.born, field.born),
                 },
             );
@@ -1876,7 +1922,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
         out.unique.insert(
             physical::object_name(&[table, &rule.name], "key"),
             physical::Unique {
-                columns: rule.fields.iter().map(|f| column(f)).collect(),
+                columns: rule.fields.iter().flat_map(|f| column(f)).collect(),
                 rule: format!("{}.{}", entity.born, rule.name),
             },
         );
@@ -1885,7 +1931,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
         out.indexes.insert(
             physical::object_name(&[table, &index.name], "idx"),
             physical::Index {
-                columns: index.fields.iter().map(|f| column(f)).collect(),
+                columns: index.fields.iter().flat_map(|f| column(f)).collect(),
                 reason: format!("index {}.{}", entity.born, index.name),
                 predicate: None,
                 collate: Vec::new(),

@@ -2,7 +2,7 @@
 # (docs/compiler-runtime.md §2.1), read by jadpo-check's resolution. The
 # types and operations areas 2, 3, 10 and 19 need are declared as stubs beside this
 # file (`types.jadpo`, `standard.jadpo`, `list.jadpo`, `set.jadpo`,
-# `map.jadpo`, `range.jadpo`, `decimal.jadpo`, `integer.jadpo`,
+# `map.jadpo`, `range.jadpo`, `decimal.jadpo`, `integer.jadpo`, `money.jadpo`,
 # `locale.jadpo`, `temporal.jadpo`, `text.jadpo`); later chunks move the
 # rest there as their areas are built. Lines starting with `#` are comments.
 

@@ -148,8 +148,10 @@ impl Planner<'_> {
                         (self.types.field_name(key).to_string(), input)
                     })
                     .collect();
-                let mut names = Vec::new();
+                let mut names: Vec<String> = Vec::new();
                 let mut values = Vec::new();
+                // Each field's value, as the new record's grants read it.
+                let mut new: Vec<(String, String)> = Vec::new();
                 for field in &entity_model.fields {
                     let ty = column_type(field)?.param();
                     if let Some(lifecycle) = lifecycle.filter(|l| l.owns(&field.name)) {
@@ -163,7 +165,8 @@ impl Planner<'_> {
                                 || Some(jadpo_sql::NULL.to_string()),
                                 |(_, value)| jadpo_sql::value(&mut writing, value, ty),
                             )?;
-                        names.push(field.born.as_str());
+                        names.push(field.born.clone());
+                        new.push((field.name.clone(), value.clone()));
                         values.push(value);
                         continue;
                     }
@@ -184,17 +187,26 @@ impl Planner<'_> {
                         }
                         WriteSource::Input(*input)
                     };
-                    names.push(field.born.as_str());
-                    values.push(writing.param(source, ty));
+                    // An amount of money goes into its two columns (area
+                    // 19).
+                    let parts = field_columns(&mut writing, field, &source)?;
+                    for (column, value) in parts {
+                        names.push(column);
+                        values.push(value);
+                    }
+                    let first = values.last().cloned().unwrap_or_default();
+                    let first = if field.money {
+                        values
+                            .get(values.len().saturating_sub(2))
+                            .cloned()
+                            .unwrap_or(first)
+                    } else {
+                        first
+                    };
+                    new.push((field.name.clone(), first));
                 }
                 // The new record's grants hold of its values, in the
                 // same statement (area 9).
-                let new: Vec<(String, String)> = entity_model
-                    .fields
-                    .iter()
-                    .map(|f| f.name.clone())
-                    .zip(values.iter().cloned())
-                    .collect();
                 let condition =
                     self.policy(&mut writing, entity_model, Effect::Create, &Row::New(&new))?;
                 // A field whose own `policy:` narrows who may set it, set
@@ -223,6 +235,7 @@ impl Planner<'_> {
                 // record of the new record's tenant, with or without
                 // policy (area 9).
                 let set_names: Vec<String> = given.iter().map(|(name, _)| name.clone()).collect();
+                let names: Vec<&str> = names.iter().map(String::as_str).collect();
                 let new_value =
                     |name: &str| new.iter().find(|(n, _)| n == name).map(|(_, v)| v.clone());
                 kept = self.kept_in_tenant(entity_model, &set_names, &new_value, true)?;
@@ -315,8 +328,15 @@ impl Planner<'_> {
                         let field = field(entity_model, &field_name)?;
                         let ty = column_type(field)?.param();
                         let validator = self.types.validator_id(&TypeRef::Field(key.clone()));
-                        let sql = if *by_id && stored_in(body, *value) {
-                            self.stored_sql(body, *value, entity_model, ty, &mut writing)?
+                        let parts = if *by_id && stored_in(body, *value) {
+                            // The database works an amount of money out in
+                            // neither of its columns (area 19).
+                            if field.money {
+                                return None;
+                            }
+                            let sql =
+                                self.stored_sql(body, *value, entity_model, ty, &mut writing)?;
+                            vec![(field.born.clone(), sql)]
                         } else {
                             let input = writing.input(*value, Some(validator));
                             if field.reference.is_some() {
@@ -328,10 +348,16 @@ impl Planner<'_> {
                                     },
                                 ));
                             }
-                            writing.param(WriteSource::Input(input), ty)
+                            field_columns(&mut writing, field, &WriteSource::Input(input))?
                         };
-                        assignments.push(text::equal(&field.born, &sql));
-                        changed.push((field_name.clone(), sql));
+                        let first = parts
+                            .first()
+                            .map(|(_, sql)| sql.clone())
+                            .unwrap_or_default();
+                        for (column, sql) in parts {
+                            assignments.push(text::equal(&column, &sql));
+                        }
+                        changed.push((field_name.clone(), first));
                     }
                     // `patch:` and `when_supplied:`.
                     let mut supplied_fields: Vec<String> = Vec::new();
@@ -359,17 +385,22 @@ impl Planner<'_> {
                                 },
                                 SqlType::Bool,
                             );
-                            let value = writing.param(
-                                WriteSource::Field {
+                            let parts = field_columns(
+                                &mut writing,
+                                field,
+                                &WriteSource::Field {
                                     input,
                                     field: name.clone(),
                                 },
-                                ty,
-                            );
-                            assignments.push(text::set_when(&field.born, &supplied, &value));
+                            )?;
+                            let _ = ty;
+                            let (first_column, first) = parts.first().cloned()?;
+                            for (column, value) in &parts {
+                                assignments.push(text::set_when(column, &supplied, value));
+                            }
                             changed.push((
                                 name.clone(),
-                                supplied_value(table, &field.born, &supplied, &value),
+                                supplied_value(table, &first_column, &supplied, &first),
                             ));
                             if let Some(who) = self.field_policy(
                                 &mut writing,
@@ -416,11 +447,16 @@ impl Planner<'_> {
                                         },
                                     ));
                                 }
-                                let value = writing.param(WriteSource::Input(at), ty);
-                                assignments.push(text::set_when(&field.born, &supplied, &value));
+                                let _ = ty;
+                                let parts =
+                                    field_columns(&mut writing, field, &WriteSource::Input(at))?;
+                                let (first_column, first) = parts.first().cloned()?;
+                                for (column, value) in &parts {
+                                    assignments.push(text::set_when(column, &supplied, value));
+                                }
                                 changed.push((
                                     field_name.clone(),
-                                    supplied_value(table, &field.born, &supplied, &value),
+                                    supplied_value(table, &first_column, &supplied, &first),
                                 ));
                                 if let Some(who) = self.field_policy(
                                     &mut writing,
@@ -784,9 +820,17 @@ impl Planner<'_> {
     fn returned(&self, entity: &EntityModel) -> Option<Returned> {
         let mut columns = Vec::new();
         let mut fields = Vec::new();
-        for (at, field) in entity.fields.iter().enumerate() {
-            columns.push(self.column(entity, field)?);
-            fields.push((field.name.clone(), Field::Column(at as u32)));
+        for field in &entity.fields {
+            let at = columns.len() as u32;
+            let column = self.column(entity, field)?;
+            // An amount of money's code comes back in the column after it
+            // (area 19).
+            let money = column == jadpo_std::read::Column::Money;
+            columns.push(column);
+            if money {
+                columns.push(jadpo_std::read::Column::Code);
+            }
+            fields.push((field.name.clone(), Field::Column(at)));
         }
         Some(Returned {
             columns,
@@ -822,13 +866,43 @@ fn all_of(condition: String, fields: Vec<String>) -> String {
     }
 }
 
-/// Every column of an entity, as `RETURNING` lists them.
-fn returning(entity: &EntityModel) -> Vec<&str> {
+/// Every column of an entity, as `RETURNING` lists them: an amount of
+/// money's two (area 19).
+fn returning(entity: &EntityModel) -> Vec<String> {
     entity
         .fields
         .iter()
-        .map(|field| field.born.as_str())
+        .flat_map(|field| field.columns().into_iter().map(|(column, _)| column))
         .collect()
+}
+
+/// The columns `field` is written to with the value from `source`, each
+/// with its value as SQL: one, or an amount of money's minor units and its
+/// currency's code (area 19, "Money and payments").
+fn field_columns(
+    writing: &mut Writing,
+    field: &jadpo_check::data::FieldModel,
+    source: &WriteSource,
+) -> Option<Vec<(String, String)>> {
+    let ty = column_type(field)?.param();
+    if !field.money {
+        return Some(vec![(
+            field.born.clone(),
+            writing.param(source.clone(), ty),
+        )]);
+    }
+    let columns = field.columns();
+    let [(amount, _), (currency, _)] = columns.as_slice() else {
+        return None;
+    };
+    let part = |currency: bool| WriteSource::MoneyPart {
+        of: Box::new(source.clone()),
+        currency,
+    };
+    Some(vec![
+        (amount.clone(), writing.param(part(false), SqlType::Int8)),
+        (currency.clone(), writing.param(part(true), SqlType::Text)),
+    ])
 }
 
 /// Whether the value at `site` reads a stored field.

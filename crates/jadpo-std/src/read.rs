@@ -76,6 +76,8 @@ impl SqlType {
             "date" => SqlType::Date,
             "time" => SqlType::Time,
             "jsonb" => SqlType::Json,
+            // A currency's code (area 19).
+            "char" => SqlType::Text,
             _ => return None,
         })
     }
@@ -165,6 +167,13 @@ pub enum Column {
         ty: String,
         variants: Vec<String>,
     },
+    /// An amount of money's minor units, a `bigint`, read with the column
+    /// after it, its currency's code ([`Column::Code`]): a `Money` field
+    /// is stored in two columns (area 19, "Money and payments").
+    Money,
+    /// A `Money` field's currency code, read by the [`Column::Money`]
+    /// before it and never on its own.
+    Code,
 }
 
 /// Where a record's field comes from.

@@ -47,6 +47,8 @@ pub fn merge<'r>(chain: impl IntoIterator<Item = &'r Rules>) -> Rules {
         out.version = out.version.or(rules.version);
         out.min_duration = out.min_duration.or(rules.min_duration);
         out.max_duration = out.max_duration.or(rules.max_duration);
+        out.currency = out.currency.or(rules.currency);
+        out.rounding = out.rounding.or(rules.rounding);
     }
     out
 }
@@ -485,6 +487,36 @@ fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
             properties.set("zone", zone);
             out.set("properties", properties);
             out.set("required", vec!["instant", "zone"]);
+            out.set("additionalProperties", false);
+        }
+        // An amount of money in minor units and its currency's code, as
+        // Stripe sends it (area 19, "Money and payments").
+        Builtin::Money => {
+            out.set("type", "object");
+            let [amount_field, currency_field] = jadpo_std::MONEY_FIELDS;
+            let mut amount = Value::object();
+            amount.set("type", "integer");
+            if let Some(min) = rules.min.and_then(whole) {
+                amount.set("minimum", min);
+            }
+            if let Some(max) = rules.max.and_then(whole) {
+                amount.set("maximum", max);
+            }
+            amount.set(
+                "description",
+                "The amount in the currency's minor units: pence, cents.",
+            );
+            let mut currency = Value::object();
+            string(&mut currency, None);
+            match rules.currency.and_then(jadpo_std::money::code) {
+                Some(code) => currency.set("enum", vec![code]),
+                None => currency.set("description", "An ISO 4217 currency code, such as `GBP`."),
+            }
+            let mut properties = Value::object();
+            properties.set(amount_field, amount);
+            properties.set(currency_field, currency);
+            out.set("properties", properties);
+            out.set("required", vec![amount_field, currency_field]);
             out.set("additionalProperties", false);
         }
         Builtin::Unit => out.set("type", "null"),

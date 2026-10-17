@@ -1667,7 +1667,7 @@ error: `maxlength` isn't a setting Jadpo knows
   |
 3 |     maxlength: 120
   |     ^^^^^^^^^ unknown setting
-  reason: A type's block holds the constraints `min`, `max`, `min_length`, `max_length`, `pattern`, `format`, `scale` and `version`. Did you mean `max_length`?
+  reason: A type's block holds the constraints `min`, `max`, `min_length`, `max_length`, `pattern`, `format`, `scale`, `version`, `currency` and `rounding`. Did you mean `max_length`?
   next: Use `max_length` instead of `maxlength` (agent)
   rule: type.unknown_setting
   help: docs/language/02-values-and-types.html#type-unknown-setting
@@ -1713,7 +1713,7 @@ error: `min` doesn't apply to a `Text` type
   |
 2 |     min: 1
   |     ^^^ doesn't fit the base
-  reason: `min` constrains `Int`, `Decimal` and `Duration` types.
+  reason: `min` constrains `Int`, `Decimal`, `Duration` and `Money` types.
   next: Remove `min`, or use a constraint that fits (agent)
   rule: type.constraint_base
   help: docs/language/02-values-and-types.html#type-constraint-base

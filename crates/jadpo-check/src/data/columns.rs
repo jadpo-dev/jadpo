@@ -45,6 +45,7 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
             | Builtin::CalendarDate
             | Builtin::ZonedTime
             | Builtin::Duration
+            | Builtin::Money
             | Builtin::Unit
             | Builtin::Email
             | Builtin::Url
@@ -110,6 +111,13 @@ pub fn allows(table: &dyn TypeView, field: &Ty) -> Allows {
             && !out.patterns.contains(pattern)
         {
             out.patterns.push(pattern.clone());
+        }
+        // A `Money` type's one currency, which its currency column holds
+        // (area 19).
+        if out.values.is_empty()
+            && let Some(code) = rules.currency.and_then(jadpo_std::money::code)
+        {
+            out.values = vec![code.to_string()];
         }
     }
     out.patterns.sort();

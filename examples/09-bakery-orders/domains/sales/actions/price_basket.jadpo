@@ -4,7 +4,7 @@
 // action.
 
 use shared/types { Pence, Percent }
-use shared/libraries { money }
+use shared/libraries { pricing }
 use sales/types { Basket, DiscountCode, Receipt }
 use sales/failures { BasketEmpty, CodeUnknown, DiscountTooLarge }
 use sales/actions { price_lines }
@@ -77,7 +77,7 @@ function discount_for(code: DiscountCode) fails CodeUnknown -> Discount {
 /// What `discount` takes off `subtotal`.
 function amount_off(discount: Discount, subtotal: Pence) -> Pence {
     return match discount {
-        Discount.percent(percent) -> money.percent_of(subtotal, percent.off)
+        Discount.percent(percent) -> pricing.percent_of(subtotal, percent.off)
         Discount.fixed(fixed) -> fixed.off
     }
 }

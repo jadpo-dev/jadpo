@@ -231,8 +231,29 @@ fn every_standard_type_meets_the_contract() {
                 "{name}: {json} reads back ({problems:?})"
             );
             // Storage, in its own column; a type stored as its JSON is
-            // stored as the round trip above writes it.
-            if let Some(column) = entry.column() {
+            // stored as the round trip above writes it; one stored in more
+            // than one column (`Money`, area 19) as its parts, read back
+            // together.
+            if !entry.columns.is_empty() {
+                let Value::Money(money) = &value else {
+                    panic!("{name}: only an amount of money is stored in two columns");
+                };
+                let row = [
+                    jadpo_runtime::to_sql(&Value::Int(money.minor), entry.storage).unwrap(),
+                    jadpo_runtime::to_sql(&Value::text(money.code()), jadpo_std::SqlType::Text)
+                        .unwrap(),
+                ];
+                let columns = [
+                    jadpo_std::read::Column::Money,
+                    jadpo_std::read::Column::Code,
+                ];
+                assert_eq!(
+                    jadpo_runtime::field_value(&row, &columns, 0),
+                    Ok(value.clone()),
+                    "{name}: `{text}` reads back from its columns"
+                );
+                assert_eq!(entry.columns.len(), 2, "{name}");
+            } else if let Some(column) = entry.column() {
                 let sql = jadpo_runtime::to_sql(&value, entry.storage)
                     .unwrap_or_else(|why| panic!("{name}: `{text}` is stored ({why})"));
                 assert_eq!(

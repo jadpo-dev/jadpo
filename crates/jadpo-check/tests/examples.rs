@@ -609,6 +609,8 @@ fn rules(rules: &Rules, used: &mut BTreeSet<String>) {
         version,
         min_duration,
         max_duration,
+        currency,
+        rounding,
     } = rules;
     let set = [
         ("min", min.is_some() || min_duration.is_some()),
@@ -619,6 +621,8 @@ fn rules(rules: &Rules, used: &mut BTreeSet<String>) {
         ("format", format.is_some()),
         ("scale", scale.is_some()),
         ("version", version.is_some()),
+        ("currency", currency.is_some()),
+        ("rounding", rounding.is_some()),
     ];
     for (rule, present) in set {
         if present {

@@ -136,14 +136,25 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
             Some(was) if !now.retired && narrowed(was, now) => NeededKind::Refit,
             _ => continue,
         };
-        out.push(Needed {
+        let needed = Needed {
             store: store.clone(),
             table: table.clone(),
             column: column.clone(),
             entity: entity.clone(),
             field: now.field.clone().unwrap_or_else(|| column.clone()),
             kind,
+        };
+        // A field stored in two columns (an amount of money, area 19) is
+        // one decision.
+        let decided = out.iter().any(|other: &Needed| {
+            other.store == needed.store
+                && other.table == needed.table
+                && other.key() == needed.key()
+                && other.kind == needed.kind
         });
+        if !decided {
+            out.push(needed);
+        }
     }
     out
 }

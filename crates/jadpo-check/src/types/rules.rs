@@ -160,7 +160,7 @@ pub enum Subject {
 }
 
 /// The constraints area 2 defines, in the order the reader learns them.
-pub const CONSTRAINTS: [&str; 8] = [
+pub const CONSTRAINTS: [&str; 10] = [
     "min",
     "max",
     "min_length",
@@ -169,6 +169,8 @@ pub const CONSTRAINTS: [&str; 8] = [
     "format",
     "scale",
     "version",
+    "currency",
+    "rounding",
 ];
 
 /// The settings a field of an `Input` may have beside its constraints.
@@ -248,7 +250,25 @@ pub fn constraint(
                 (Subject::Prim(Prim::Duration), _) => {
                     return Err(Problem::Value("a duration, such as `30s`".into(), None));
                 }
-                _ => return Err(Problem::Base("`Int`, `Decimal` and `Duration` types")),
+                // An amount's bounds count its minor units (area 19).
+                (
+                    Subject::Prim(Prim::Money),
+                    Const::Number {
+                        value,
+                        decimal: false,
+                    },
+                ) => Some(*value),
+                (Subject::Prim(Prim::Money), _) => {
+                    return Err(Problem::Value(
+                        "a whole number of minor units, such as `0`".into(),
+                        None,
+                    ));
+                }
+                _ => {
+                    return Err(Problem::Base(
+                        "`Int`, `Decimal`, `Duration` and `Money` types",
+                    ));
+                }
             };
             if name == "min" {
                 rules.min = parsed;
@@ -381,6 +401,78 @@ pub fn constraint(
                 _ => return Err(Problem::Value(example, None)),
             }
         }
+        // The one currency a `Money` type's amounts are in (area 19).
+        "currency" => {
+            if subject != Subject::Prim(Prim::Money) {
+                return Err(Problem::Base("`Money` types"));
+            }
+            let named = |path: &[String]| match path {
+                [host, code] if host == jadpo_std::CURRENCY => {
+                    jadpo_std::money::ordinal_of_variant(code)
+                }
+                _ => None,
+            };
+            match value {
+                Const::Path(path) if named(path).is_some() => rules.currency = named(path),
+                Const::Path(path)
+                    if path.len() == 1
+                        && jadpo_std::money::ordinal_of_variant(&path[0]).is_some() =>
+                {
+                    let written = format!("{}.{}", jadpo_std::CURRENCY, path[0]);
+                    return Err(Problem::Value(
+                        format!("a `{}` value, such as `{written}`", jadpo_std::CURRENCY),
+                        Some(written),
+                    ));
+                }
+                _ => {
+                    return Err(Problem::Value(
+                        format!(
+                            "a `{}` value, such as `{}.gbp`",
+                            jadpo_std::CURRENCY,
+                            jadpo_std::CURRENCY
+                        ),
+                        None,
+                    ));
+                }
+            }
+        }
+        // How `*` and `/` round a `Money` type's amounts (area 19).
+        "rounding" => {
+            if subject != Subject::Prim(Prim::Money) {
+                return Err(Problem::Base("`Money` types"));
+            }
+            let named = |path: &[String]| match path {
+                [host, variant] if host == jadpo_std::Rounding::NAME => {
+                    jadpo_std::Rounding::from_name(variant)
+                }
+                _ => None,
+            };
+            match value {
+                Const::Path(path) if named(path).is_some() => rules.rounding = named(path),
+                Const::Path(path)
+                    if path.len() == 1 && jadpo_std::Rounding::from_name(&path[0]).is_some() =>
+                {
+                    let written = format!("{}.{}", jadpo_std::Rounding::NAME, path[0]);
+                    return Err(Problem::Value(
+                        format!(
+                            "a `{}` value, such as `{written}`",
+                            jadpo_std::Rounding::NAME
+                        ),
+                        Some(written),
+                    ));
+                }
+                _ => {
+                    return Err(Problem::Value(
+                        format!(
+                            "a `{}` value, such as `{}.half_up`",
+                            jadpo_std::Rounding::NAME,
+                            jadpo_std::Rounding::NAME
+                        ),
+                        None,
+                    ));
+                }
+            }
+        }
         _ => return Err(Problem::Unknown),
     }
     Ok(())
@@ -437,7 +529,9 @@ mod tests {
         let mut rules = Rules::default();
         assert_eq!(
             constraint(Subject::Prim(Prim::Text), "min", &number("1"), &mut rules),
-            Err(Problem::Base("`Int`, `Decimal` and `Duration` types"))
+            Err(Problem::Base(
+                "`Int`, `Decimal`, `Duration` and `Money` types"
+            ))
         );
         assert!(
             constraint(

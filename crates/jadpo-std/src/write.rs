@@ -53,6 +53,13 @@ pub enum WriteSource {
     /// Who is calling, for the policy compiled into the statement (area
     /// 9).
     Caller(crate::policy::CallerPart),
+    /// One of the two columns an amount of money from `of` is stored in
+    /// (area 19, "Money and payments"): its minor units, or its currency's
+    /// code when `currency`; `NULL` for no amount.
+    MoneyPart {
+        of: Box<WriteSource>,
+        currency: bool,
+    },
 }
 
 /// One parameter: `$1` is the first.

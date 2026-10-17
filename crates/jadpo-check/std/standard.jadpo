@@ -15,6 +15,9 @@
 /// A calendar day with no time or zone (area 10), written `2026-10-25`.
 public type CalendarDate = CalendarDate {}
 
+/// An active ISO 4217 currency (area 19), written as its code, `GBP`.
+public type Currency = Enum {}
+
 /// A length of time, exact to the millisecond (area 10), written `PT1H30M`.
 public type Duration = Duration {}
 
@@ -39,6 +42,10 @@ public type IpAddress = IpAddress {}
 
 /// A CLDR locale (area 10), written as its BCP 47 tag, `en-GB`.
 public type Locale = Enum {}
+
+/// An amount of money (area 19): a whole number of its currency's minor
+/// units and its `Currency`, written `GBP 10.50`.
+public type Money = Money {}
 
 /// The values of one ordered type from `start` up to but not including
 /// `end`, either of them `none` for an open end (area 19), written

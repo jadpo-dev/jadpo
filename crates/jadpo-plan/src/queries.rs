@@ -137,14 +137,25 @@ struct Columns {
     kinds: Vec<Column>,
 }
 
+/// How the column after an amount of money's, its currency's code, is
+/// named among a statement's columns, after its field's name: a `Money`
+/// field is stored in two columns (area 19).
+const CURRENCY_COLUMN: &str = "#currency";
+
 impl Columns {
+    /// The field's column, added once; an amount of money's two.
     fn add(&mut self, field: &str, kind: Column) -> u32 {
         let at = match self.names.iter().position(|n| n == field) {
             Some(at) => at,
             None => {
                 self.names.push(field.to_string());
+                let money = kind == Column::Money;
                 self.kinds.push(kind);
-                self.names.len() - 1
+                if money {
+                    self.names.push(format!("{field}{CURRENCY_COLUMN}"));
+                    self.kinds.push(Column::Code);
+                }
+                self.names.len() - if money { 2 } else { 1 }
             }
         };
         at as u32
@@ -540,6 +551,9 @@ impl Planner<'_> {
                 Prim::Instant => Column::Instant,
                 Prim::CalendarDate => Column::Date,
                 Prim::Duration => Column::Duration,
+                // Read with its currency's code, in the column after it
+                // (area 19).
+                Prim::Money => Column::Money,
                 _ => return None,
             });
         }
@@ -737,7 +751,23 @@ pub(crate) use jadpo_check::data::{field, sql_type as column_type};
 fn borns(entity: &EntityModel, names: &[String]) -> Vec<String> {
     names
         .iter()
-        .map(|name| field(entity, name).map_or_else(|| name.to_string(), |f| f.born.clone()))
+        .map(|name| {
+            if let Some(money) = name.strip_suffix(CURRENCY_COLUMN)
+                && let Some(field) = field(entity, money)
+            {
+                return field
+                    .columns()
+                    .get(1)
+                    .map_or_else(|| field.born.clone(), |(column, _)| column.clone());
+            }
+            match field(entity, name) {
+                Some(field) => field
+                    .columns()
+                    .first()
+                    .map_or_else(|| field.born.clone(), |(column, _)| column.clone()),
+                None => name.to_string(),
+            }
+        })
         .collect()
 }
 
