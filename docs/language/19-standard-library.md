@@ -26,7 +26,7 @@ to close them, and says what is left out on purpose and why.
 | `integer` | Operations on values built on `Int` | 5 (1 decided, 4 new) | [Area 3](03-logic.md), question 7 |
 | `decimal` | Operations on values built on `Decimal` | 13 (1 decided, 12 new) | [Area 3](03-logic.md), question 7 |
 | `money` | `Money` and its rates | 10, new | This page |
-| `units` | Physical quantities, `DataSize` and `Bitrate` | 5, new | This page |
+| `units` | Physical quantities, `DataSize` and `Bitrate` | 3, new | This page |
 | `text` | Operations on text, and the contract's `parse`, `format` and `from` for every type | 21, new | This page |
 | `hash` | SHA-256 digests | 1, new | This page |
 | `encoding` | Bytes as text and back | 9, new | This page |
@@ -41,11 +41,11 @@ to close them, and says what is left out on purpose and why.
 | `media` | Fitting dimensions | 1, new | This page |
 | `markup` | Markdown and HTML, made safe | 3, new | This page |
 
-164 operations in all: 28 decided, 136 proposed here. On top of them every
+162 operations in all: 28 decided, 134 proposed here. On top of them every
 standard type has the contract's baseline (construction, `text.parse`,
 `text.format`, `text.from`, JSON, storage, `==` and order), generated, not
 counted per type. Of the new operations, 3 wait on two-parameter inline
-functions, 8 on maths on `Decimal` (question 17) and 1 on keys held as
+functions, 8 on maths on `Decimal` (question 18) and 1 on keys held as
 data. #88's file helpers (`csv`, `tsv`, `json_lines` and the batch forms of
 `json`) are counted there, and the geospatial and AI areas' operations in
 those areas.
@@ -169,7 +169,7 @@ contract adds 2 names, not 700.
 | Group | Extras | Count |
 |---|---|---|
 | Money and payments | `money.from_minor`, `of`, `minor`, `currency`, `sum`, `multiply`, `divide`, `allocate`, `split`, `convert` (with a given `ExchangeRate`, never fetched) | 10 |
-| Physical quantities, `DataSize`, `Bitrate` | `units.of`, `in`, `multiply`, `divide`, `sum`; `+`, `-` and comparisons within one kind | 5 |
+| Physical quantities, `DataSize`, `Bitrate` | `units.of`, `in`, `sum`; operators within a kind and the defined products and quotients | 3 |
 | Time and calendar | Area 10's 21, plus `temporal.occurrences(rule, from:, count:)` for a `RecurrenceRule` and `temporal.open_at(hours, at)` for `OpeningHours` | 2 new |
 | Ranges (`Range<T>`, `DateRange`, `TimeInterval`) | `range.contains`, `range.overlaps`, `range.intersection` | 3 |
 | Colour | `colour.from_hsl`, `from_oklch`, `mix`, `with_lightness`, `contrast` (WCAG 2) | 5 |
@@ -244,7 +244,7 @@ apply to `collection`, `decimal`, `integer` and `temporal`.
   be called in a function. The exception is randomness: `random.*`,
   `crypto.encrypt` and `crypto.hash_password` read the generator, so, as
   `clock.now` is, they are called only in actions and are fixed in tests
-  (question 18). Unicode data (case mapping, white space, the slug's
+  (question 19). Unicode data (case mapping, white space, the slug's
   decomposition), CLDR formats and ISO lists are the versions pinned in
   `jadpo-value`, and upgrading them is a reviewed change, as the time-zone
   database is.
@@ -343,7 +343,7 @@ type meets one contract", and isn't repeated here.
 | Ranges | `range` | 3 |
 | Numbers | `integer`, `decimal` | 18 |
 | Money and payments | `money` | 10 |
-| Physical quantities | `units` | 5 |
+| Physical quantities | `units` | 3 |
 | Time and calendar additions | `temporal` | 2 new, 21 decided |
 | Text | `text` | 21 |
 | Text formats | `markup` | 3 |
@@ -367,7 +367,7 @@ reading and writing each batch ([area 5](05-data.md#computed-backfills)).
 Both are correct; the SQL form is only faster. Queries still compute
 nothing and a one-step update's `set:` still works a stored field out only
 with `+` and `-` (area 6); aggregate queries would be their second user
-(question 26, "Language gaps").
+(question 27, "Language gaps").
 
 - An operation that can fail has no SQL form, since a statement can't map
   a failure to a row.
@@ -541,14 +541,14 @@ what an operator can't.
   the wire's form only: no grouping, no locale's decimal comma, no
   exponent. A spreadsheet's `1.234,50` is a cell decoder's job (#88's
   `decode:`).
-- **Maths on `Decimal`, not a `Float`** (question 17). Each result is
+- **Maths on `Decimal`, not a `Float`** (question 18). Each result is
   correctly rounded to `scale` with the named rounding, by Jadpo's own
   decimal code, so it is the same on every target; a float's `sin` differs
   between platforms' maths libraries, and has `NaN`. Geospatial distance
   and statistics (a standard deviation) are what need them.
 - **PostgreSQL's `round` ties away from zero,** which is `half_up`; the
   other modes are spelled out with a `CASE`, never left to the database.
-- **`Rounding` stays `half_even`, `half_up` and `up`,** unless question 23
+- **`Rounding` stays `half_even`, `half_up` and `up`,** unless question 24
   adds `down`.
 
 ## Money and payments
@@ -628,25 +628,91 @@ text.format(total, locale: Locale.en_gb)                             // "£10.50
 ## Physical quantities
 
 Each quantity type (`Length`, `Mass`, `Temperature` ... and `DataSize`,
-`Bitrate`) holds an exact `Decimal` in its SI base unit (metres,
-kilograms, kelvin, bytes, bits per second), at the kind's fixed scale
-(micrometres for `Length`, milligrams for `Mass`). Its unit enum
-(`LengthUnit.mile`) is chosen at construction and display only. `+`, `-`
-and comparisons work within one kind, as on numbers; `Temperature` adds
-only a `TemperatureDifference`, since adding two temperatures means
-nothing.
+`Bitrate`) holds an exact `Decimal` in its SI base unit at a fixed scale
+per kind. The unit is chosen only when a value is made or shown, so a
+`Length` is a `Length` whatever unit built it, and `==` and comparisons
+work across units: `1km == 1000metre`.
+
+| Kind | Base unit | Scale (smallest step) |
+|---|---|---|
+| `Length` | metre | 6 (a micrometre) |
+| `Area` | square metre | 6 |
+| `Volume` | cubic metre | 9 (a cubic millimetre) |
+| `Angle` | radian | 9 |
+| `Mass` | kilogram | 6 (a milligram) |
+| `Pressure` | pascal | 3 |
+| `Energy` | joule | 3 |
+| `Power` | watt | 3 |
+| `Temperature`, `TemperatureDifference` | kelvin | 3 |
+| `Speed` | metre per second | 6 |
+| `Frequency` | hertz | 3 |
+| `Voltage` | volt | 6 |
+| `Current` | ampere | 6 |
+| `Illuminance` | lux | 3 |
+| `SoundLevel` | decibel | 2 |
+| `Concentration` | kilogram per cubic metre | 9 |
+| `DataSize` | byte | 0 |
+| `Bitrate` | bit per second | 0 |
+
+**Making one** always names a unit:
+
+- `units.of(value, unit)` from an `Int` or a `Decimal` and a unit of the
+  kind (`units.of(5, LengthUnit.kilometre)`);
+- a unit-suffixed literal, `5km`, `250g`, `2.5kg` (question 17);
+- `text.parse("5 km", as: Length)`, through the contract, failing
+  `unknown_unit` (a unit that isn't the kind's), `malformed` (no number),
+  or a rule of the type;
+- another value of the same kind, by construction into a named type
+  (`RoomWidth(length)`), which checks the type's rules; no conversion is
+  needed, since both are already in metres.
+
+**A bare number where a quantity is expected is a compile error,**
+`type.unit_required`, whose fix asks for the unit (`5km`, or
+`units.of(5, LengthUnit.kilometre)`). It is never declinable: a number
+without its unit is the mistake the type exists to prevent.
+
+**Arithmetic.** `+` and `-` within one kind; `*` and `/` by a plain number
+keep the kind; one kind divided by the same kind gives a plain `Decimal`,
+as `/` does for a named type (area 3). These products and quotients are
+defined; any other mix is a compile error naming the two kinds:
+
+| Left | Operator | Right | Gives |
+|---|---|---|---|
+| `Length` | `*` | `Length` | `Area` |
+| `Area` | `*` | `Length` | `Volume` |
+| `Area` | `/` | `Length` | `Length` |
+| `Volume` | `/` | `Area` | `Length` |
+| `Volume` | `/` | `Length` | `Area` |
+| `Length` | `/` | `Duration` | `Speed` |
+| `Speed` | `*` | `Duration` | `Length` |
+| `Length` | `/` | `Speed` | `Duration` |
+| `Energy` | `/` | `Duration` | `Power` |
+| `Power` | `*` | `Duration` | `Energy` |
+| `Voltage` | `*` | `Current` | `Power` |
+| `Power` | `/` | `Voltage` | `Current` |
+| `Power` | `/` | `Current` | `Voltage` |
+| `Mass` | `/` | `Volume` | `Concentration` |
+| `Concentration` | `*` | `Volume` | `Mass` |
+| `DataSize` | `/` | `Duration` | `Bitrate` |
+| `Bitrate` | `*` | `Duration` | `DataSize` |
+| `Temperature` | `-` | `Temperature` | `TemperatureDifference` |
+| `Temperature` | `+` or `-` | `TemperatureDifference` | `Temperature` |
+
+- **Rounding:** a product is exact and a quotient is worked out exactly
+  where it ends; either is then rounded half to even to the result kind's
+  scale, as constructing into a type with a fixed `scale` rounds
+  (area 2). Another rounding is `units.in` with `rounding:`.
+- **`Temperature` doesn't add to itself** (20 °C plus 20 °C isn't 40 °C);
+  it adds only a `TemperatureDifference`. `SoundLevel` is logarithmic, so
+  it compares but has no `+` or `-`.
+- **`Duration`** stays area 10's type; it takes part in the table above
+  without becoming a quantity.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `units.of(value, unit)` | The quantity of `unit`'s kind: `value` (a number) converted exactly to the base unit, rounded half to even to the kind's scale | overflow is a defect | none |
+| `units.of(value, unit)` | The quantity of `unit`'s kind: `value`, an `Int` or `Decimal`, converted exactly to the base unit and rounded half to even to the kind's scale | overflow is a defect | none |
 | `units.in(value, unit, scale:, rounding:)` | `Decimal`, the quantity in `unit`, rounded | | none |
-| `units.multiply(value, by)` | The same kind, times a number, rounded half to even to the kind's scale | overflow is a defect | none |
-| `units.divide(value, by)` | The same kind, divided by a number, rounded half to even; `by` never zero | | none |
 | `units.sum(items)` | The total of one kind; zero for none | overflow is a defect | none |
-
-- **No quantity arithmetic across kinds** (a `Length` over a `Duration`
-  giving a `Speed`): each is constructed with `units.of` from the numbers
-  `units.in` gives, which keeps every unit on the page.
 
 ## Time and calendar additions
 
@@ -661,7 +727,7 @@ Area 10's 21 `temporal` operations stand. The new time types add two.
 
 Each operation is called as `text.<name>`. Text is counted, cut and
 padded in Unicode code points, as `max_length`
-counts it (area 2) and as PostgreSQL's `char_length` does (question 21).
+counts it (area 2) and as PostgreSQL's `char_length` does (question 22).
 `PresentationText` is its own representation (area 10), so none of these
 take it.
 
@@ -694,7 +760,7 @@ take it.
   2), so showing one is a `match`; a value built on `Text` already is text.
 - **`keep_first` can split a character a person sees as one,** such as an
   emoji with a skin tone, which is two code points. A preview cut this way
-  is still valid text; graphemes are left out (question 21).
+  is still valid text; graphemes are left out (question 22).
 - **Left out by design:** `trim_start`, `trim_end` and `pad_end` (no
   scenario needs them, and each is a second way near one that exists);
   iterating characters (every job the scenarios found, slugs, masks,
@@ -746,7 +812,7 @@ CommonMark text; `RichText` is a structured document of blocks and marks;
   any other read stays `configuration.secret_flow`. Both rotate as a
   `SigningKey` does, through `NAME_PREVIOUS`.
 - **A digest is `Bytes`,** and `encoding` writes it as text:
-  `encoding.to_hex` for an ETag or a content key (question 22).
+  `encoding.to_hex` for an ETag or a content key (question 23).
 - **No MD5 or SHA-1.** Both are broken; an outside system that still asks
   for one is reached through a package (area 11). That includes TOTP,
   whose RFC 6238 default is HMAC-SHA-1 and whose per-person secret is a
@@ -761,7 +827,7 @@ CommonMark text; `RichText` is a structured document of blocks and marks;
 
 ## Randomness
 
-`random` is a generated namespace like `clock` (question 18): it reads
+`random` is a generated namespace like `clock` (question 19): it reads
 the operating system's cryptographic generator in production, is called
 only in actions, gives the same values on every rerun of a test (seeded
 per test, as the test clock is fixed), and is recorded for replay as
@@ -911,7 +977,7 @@ function nand(a: Bool, b: Bool) -> Bool {
 ```
 
 Bitwise operations on `Int` and `Bytes` (and, or, xor, not, shifts) are
-left out (question 25): flags are a `Set` of an enum, which a reviewer can
+left out (question 26): flags are a `Set` of an enum, which a reviewer can
 read, and the one scenario with bit-packed data, device payloads, decodes
 them in the provider package that knows the format.
 
@@ -938,7 +1004,7 @@ stays. What makes them first class in typed applications is a set of
 standard pieces Jadpo itself does, which is what #88's design C asks of a
 capability: Jadpo renders the prompt from a checked file and decodes the
 answer into a type, as it renders an email and hands it to a sender.
-Proposed scope for its own area page (question 19):
+Proposed scope for its own area page (question 20):
 
 | Part | Proposal |
 |---|---|
@@ -1140,12 +1206,12 @@ unblocks kept in the proposal.
 | Comparators | A key expresses every order, and an inconsistent comparator differs by target | `sort_by`, `reverse` |
 | `items[i]` | Out of range needs an arm or a defect | `list.at` gives `T?` |
 | Regular expressions as calls | A pattern is a type's rule, in linear time | `pattern:` and construction (area 2) |
-| Graphemes | They'd disagree with `max_length` and PostgreSQL, and change with each Unicode version | Code points (question 21) |
+| Graphemes | They'd disagree with `max_length` and PostgreSQL, and change with each Unicode version | Code points (question 22) |
 | Dynamic keys on records | A field is its own type and carries its own policy and marks | `Map` |
 | A dynamic JSON value | No scenario needs one | `json.read(..., as:)`; `Text` to pass on |
 | CSV in memory | #88: one way to read rows | `csv.read` through a store |
 | MD5, SHA-1 | Broken | A package (area 11) |
-| Bitwise operations | Flags read better as a set; device formats belong in their package | `Set<Enum>`; question 25 |
+| Bitwise operations | Flags read better as a set; device formats belong in their package | `Set<Enum>`; question 26 |
 | Exchange rates | Outside data with a time and a source | A provider package |
 | Gender, sex at birth | Contested, and personal data | The app's own type, marked sensitive (area 15) |
 | CMYK and print colour | Needs a colour profile | A package on the standard `Colour` |
@@ -1419,20 +1485,52 @@ Richard's points first, then the first draft's remaining questions. The vocabula
       and `{price, number, currency}` in messages, one formatter; and
       `{n, number, percent}` for a `Percentage` (in the adopted list, a
       `Decimal` where `0.20` is 20%).
-17. **Maths on `Decimal` rather than a `Float`?** *Recommendation:* yes,
+17. **Unit-suffixed literals for quantities, and the `m` clash?**
+    Durations already have `500ms`, `30s`, `5m`, `2h` and `30d` (area 10),
+    and `5m` is minutes. *Recommendation:* suffixed literals, with `m`
+    staying minutes and metres written `5metre` or with `units.of`. Not a
+    meaning chosen by the expected type: a reviewer can't see the target
+    type at the literal. Suffixes are case-sensitive as SI writes them,
+    the longest suffix wins (`dB` before `d`), and a near-miss by case
+    (`5mw`, between milliwatts and megawatts) is an error naming both.
+    The proposed suffixes, each checked against the duration suffixes and
+    each other:
+
+    | Kind | Suffixes | Clash avoided |
+    |---|---|---|
+    | `Length` | `mm`, `cm`, `metre`, `km`, `inch`, `ft`, `yd`, `mi`, `nmi` | `m` is minutes; `in` is a keyword (`for x in`) |
+    | `Mass` | `mcg`, `mg`, `g`, `kg`, `t`, `oz`, `lb` | `µg` isn't typeable everywhere |
+    | `Volume` | `ml`, `litre`, `floz`, `ukgal`, `usgal` | `l` reads as `1`; `gal` alone is ambiguous |
+    | `Area` | `sqmm`, `sqm`, `sqkm`, `ha`, `sqft`, `acre` | `m2` puts a digit in a suffix |
+    | `Angle` | `deg`, `rad` | `d` is days; longest wins |
+    | `Temperature` | `degC`, `degF`, `kelvin` | `K` reads as thousands ("5K") |
+    | `Speed` | `mps`, `kmh`, `mph`, `knot` | `ms` is milliseconds |
+    | `Pressure` | `Pa`, `hPa`, `kPa`, `bar`, `mbar`, `psi` | `h` is hours; longest wins |
+    | `Energy` | `J`, `kJ`, `Wh`, `kWh`, `kcal` | `cal` refused: food labels mean `kcal` |
+    | `Power` | `mW`, `W`, `kW`, `MW` | `mW` and `MW` differ only by case |
+    | `Frequency` | `Hz`, `kHz`, `MHz`, `GHz` | |
+    | `Voltage`, `Current` | `mV`, `V`, `kV`; `mA`, `A` | |
+    | `Illuminance`, `SoundLevel` | `lx`; `dB` | `d` is days; longest wins |
+    | `Concentration` | `mgL`, `gL` | |
+    | `DataSize` | `B`, `kB`, `MB`, `GB`, `TB`, `KiB`, `MiB`, `GiB`, `TiB` | `b` (bits) refused, so bytes and bits can't be confused |
+    | `Bitrate` | `bps`, `kbps`, `Mbps`, `Gbps` | |
+
+    `TemperatureDifference` has no suffix of its own; it comes from
+    subtracting two temperatures, or from `units.of`.
+18. **Maths on `Decimal` rather than a `Float`?** *Recommendation:* yes,
     the eight operations, correctly rounded to a named scale, the same on
     every target; area 2's "no `Float` until needed" stands, since this
     meets the need.
-18. **Randomness as a generated `random` namespace?** This reverses the
+19. **Randomness as a generated `random` namespace?** This reverses the
     first draft. *Recommendation:* yes, actions only, seeded per test,
     recorded for replay, with `random.token` (your point 6's
     `crypto.random_token`) and `random.code` for references people read.
-19. **AI as its own area, with the standard pieces sketched?**
+20. **AI as its own area, with the standard pieces sketched?**
     *Recommendation:* yes: the `ai` capability, typed `generate`,
     streaming, `Vector` and similarity queries, checked prompt files, a
     fake for tests, limits, and area 15 reporting; training out. Add **"AI:
     the plan" `opus · high`** after the geospatial plan.
-20. **Are the language gaps closed as "Language gaps this page depends
+21. **Are the language gaps closed as "Language gaps this page depends
     on" proposes?** *Recommendation:* yes, row by row: `for` over sets,
     the empty map and two-parameter inline functions in 5.5c; parsing and
     formatting through the contract in 5.5a; `locale:` order and case and
@@ -1440,32 +1538,32 @@ Richard's points first, then the first draft's remaining questions. The vocabula
     own, added once you agree: **"Cross-field rules" `opus · high`** (area
     2) after 5.5, **"Aggregate queries" `opus · high`** (area 6) after 5.6,
     and keys held as data after encrypted fields (area 15).
-21. **Is text counted and cut in code points?** *Recommendation:* yes, as
+22. **Is text counted and cut in code points?** *Recommendation:* yes, as
     Python and PostgreSQL do; graphemes left out.
-22. **Does `hash.sha256` give `Bytes`?** *Recommendation:* yes, written as
+23. **Does `hash.sha256` give `Bytes`?** *Recommendation:* yes, written as
     text by `encoding`.
-23. **Does `Rounding` gain `down`, toward zero?** *Recommendation:* yes,
+24. **Does `Rounding` gain `down`, toward zero?** *Recommendation:* yes,
     with SQL form `trunc`; `floor`, `ceiling` and `half_down` stay out
     until amounts below zero need them.
-24. **Is `text.slug` ASCII-only, and does text sort in code points unless
+25. **Is `text.slug` ASCII-only, and does text sort in code points unless
     `locale:` says otherwise?** *Recommendation:* yes to both, matching
     URLs and queries.
-25. **Bitwise operations as a `bits` namespace?** *Recommendation:* no,
+26. **Bitwise operations as a `bits` namespace?** *Recommendation:* no,
     for now. No scenario but device payloads needs them, and those decode
     in their provider package; flags are a `Set` of an enum. If a protocol
     package needs them, six operations on `Int` fit without changing
     anything else.
-26. **Are SQL forms used by backfills, and later by aggregate queries?**
+27. **Are SQL forms used by backfills, and later by aggregate queries?**
     *Recommendation:* backfills in 5.6; aggregate queries as a new area 6
     chunk after it, using the same SQL forms, which also gives reports
     their `lower` (where a form exists) and time buckets.
-27. **Does the table record `at_most_length_of`?** *Recommendation:* yes,
+28. **Does the table record `at_most_length_of`?** *Recommendation:* yes,
     for `trim`, `slice`, `keep_*` and `drop_*` only; `lower` and `upper`
     can lengthen text (`ß` becomes `SS`).
 
 ### Building it
 
-5.5 as one chunk is far more than a session: 136 operations and 233 new
+5.5 as one chunk is far more than a session: 134 operations and 233 new
 types. Proposed split, each one session, in order. The contract comes
 first; each group of types then arrives with its baseline and its extras.
 
@@ -1482,9 +1580,9 @@ first; each group of types then arrives with its baseline and its extras.
   `range` operations; `for` over a set; `[]` as an empty map;
   two-parameter inline functions and the 3 operations waiting on them.
 - **5.5d Numbers** `opus · high`: the 8 new `integer` and `decimal`
-  operations; `scale:` written out; `Rounding.down` if question 23 says
+  operations; `scale:` written out; `Rounding.down` if question 24 says
   so.
-- **5.5e Decimal maths** `opus · high`, if question 17 holds: the eight
+- **5.5e Decimal maths** `opus · high`, if question 18 holds: the eight
   correctly rounded operations, tested against reference values.
 - **5.5f Text** `opus · high`: the 18 text operations, `locale:` on case
   and sorting, NFC at the boundary; `never_empty`, `fill:`,
@@ -1500,7 +1598,8 @@ first; each group of types then arrives with its baseline and its extras.
   check digit (mod-97, Luhn, mod-11) on the contract.
 - **5.5j Quantities** `opus · high`: the 17 physical quantities with
   `DataSize`, `Bitrate`, `Percentage`, `Ratio` and `Fraction`, their units
-  and SI storage, and the 5 `units` operations.
+  SI storage at each kind's scale, suffixed literals, the product and
+  quotient table, `type.unit_required`, and the 3 `units` operations.
 - **5.5k Time and calendar** `opus · high`: the 13 new time types,
   `RecurrenceRule` expansion (`temporal.occurrences`) and `OpeningHours`
   (`temporal.open_at`).
