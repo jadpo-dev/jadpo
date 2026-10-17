@@ -430,7 +430,13 @@ fn option_unused(option: &str, entry: Option<&StandardType>, shown: &Ty) -> (Str
                 "`zone:` says which zone an `Instant` is shown in; `{shown}` is a `ZonedTime`, which carries the zone it is seen in, so `text.format` shows it there."
             ),
         ),
-        "zone" if time => (
+        "zone" if entry.is_some_and(|entry| matches!(entry.name, "LocalTime" | "LocalDateTime")) => (
+            format!("`{shown}` has no zone"),
+            format!(
+                "`zone:` says which zone an `Instant` is shown in; `{shown}` is a local time, with no zone, so it is shown as its clock reads."
+            ),
+        ),
+        "zone" if time || holds == Some(Holds::Object(&jadpo_std::standard::DATE_RANGE_FIELDS)) => (
             format!("`{shown}` has no clock time"),
             format!(
                 "`zone:` says which zone an `Instant` is shown in; `{shown}` is a date, with no clock time, so it reads the same in every zone."

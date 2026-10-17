@@ -446,6 +446,12 @@ impl Body<'_> {
                         "A `ZonedTime` is an instant and the zone it is seen in, and two in different zones have no one order; their instants do.".to_string(),
                         format!("Compare `temporal.instant({written})`"),
                     )),
+                    _ if self.is_period(operand) => Some((
+                        format!("{} has no order", capital(&shown)),
+                        format!("this is {shown}"),
+                        "A `CalendarPeriod` is years, months and days, which don't compare: one month and 30 days are neither more nor less than each other.".to_string(),
+                        "Compare the periods with `==`, or the dates they reach".to_string(),
+                    )),
                     Some(Prim::Text) => Some((
                         format!("{} has no order", capital(&shown)),
                         format!("this is {shown}"),
@@ -514,6 +520,9 @@ impl Body<'_> {
                 );
                 return Ty::Error;
             }
+        }
+        if self.is_period(a) || self.is_period(b) {
+            return self.period_arithmetic(binary, op, a, b);
         }
         let (ra, rb) = (self.rep(a), self.rep(b));
         if [ra, rb].iter().any(|prim| prim.is_some_and(is_time)) {
@@ -646,6 +655,61 @@ impl Body<'_> {
     /// (question 6), two instants of the same type give the `Duration`
     /// between them, and two durations of the same type, or one and a
     /// literal, give a plain `Duration`, as two numbers give a plain number.
+    /// Whether an operand is a `CalendarPeriod` (area 19).
+    fn is_period(&self, operand: &Operand) -> bool {
+        matches!(operand, Operand::Value(ty) if matches!(
+            self.table.structure(ty),
+            Ty::Opaque(name, args) if name == jadpo_std::CALENDAR_PERIOD && args.is_empty()
+        ))
+    }
+
+    /// The standard operator table's `CalendarPeriod` rows (area 19): a
+    /// date moved by a period gives the date's own type, two periods add
+    /// and subtract part by part, and a period times an `Int` multiplies
+    /// each part. Anything else with a period is refused.
+    fn period_arithmetic(&mut self, binary: &ast::BinExpr, op: &str, a: &Operand, b: &Operand) -> Ty {
+        let period = || Ty::Opaque(jadpo_std::CALENDAR_PERIOD.to_string(), Vec::new());
+        let (pa, pb) = (self.is_period(a), self.is_period(b));
+        match (op, a, pa, pb) {
+            ("+" | "-", Operand::Value(ty), false, true)
+                if self.rep(a) == Some(Prim::CalendarDate) =>
+            {
+                return ty.strip_nullable().clone();
+            }
+            ("+" | "-", _, true, true) => return period(),
+            ("*", _, true, false)
+                if self.rep(b) == Some(Prim::Int)
+                    && !matches!(b, Operand::Literal(Const::Number { decimal: true, .. })) =>
+            {
+                return period();
+            }
+            _ => {}
+        }
+        let (sa, sb) = (a.shown(), b.shown());
+        let span = self.span(binary);
+        let reason = if matches!(op, "+" | "-") && pa && self.rep(b) == Some(Prim::CalendarDate) {
+            format!("A date is moved by a period with the date first, `day {op} period`, as the operator table writes it.")
+        } else if op == "*" && pb && !pa {
+            "A period is multiplied with the period first, `period * 2`, as the operator table writes it.".to_string()
+        } else if self.rep(a) == Some(Prim::ZonedTime) {
+            "A `ZonedTime` takes no `CalendarPeriod` by operator, since moving a local time by months would also need a `dst:` choice; `temporal.add_months` and its siblings take one.".to_string()
+        } else {
+            format!(
+                "A `CalendarPeriod` moves a `CalendarDate` with `+` and `-`, adds to or subtracts another period, and is multiplied by an `Int`; {sa} and {sb} are none of those."
+            )
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_ARITHMETIC_OPERAND,
+                format!("{} and {} can't be {}", capital(&sa), sb, verb(op)),
+            )
+            .at(span, "not in the operator table")
+            .reason(reason)
+            .next("Move a date by a period, combine two periods, or multiply a period by an `Int`"),
+        );
+        Ty::Error
+    }
+
     fn time_arithmetic(&mut self, binary: &ast::BinExpr, op: &str, a: &Operand, b: &Operand) -> Ty {
         let (ra, rb) = (self.rep(a), self.rep(b));
         let (sa, sb) = (a.shown(), b.shown());

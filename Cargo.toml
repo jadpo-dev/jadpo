@@ -101,6 +101,9 @@ icu_casemap = { version = "=2.3.0", default-features = false, features = ["compi
 icu_collator = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
 icu_normalizer = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
 icu_properties = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+# Named directly only to read a few units' names without logging the
+# sets they aren't in (`jadpo-value`'s `present::names`).
+icu_provider = { version = "=2.3.1", default-features = false }
 fixed_decimal = { version = "=0.7.2", default-features = false }
 writeable = { version = "=0.6.4", default-features = false }
 # SHA-256 for `hash.sha256` (area 19, "Hashing and cryptography";

@@ -329,6 +329,14 @@ impl Types {
                     }
                     _ => return None,
                 },
+                // A standard object type's field (area 19) has no node: its
+                // data entry's part says what it is built on and the range
+                // a whole number keeps, which `LocalTime.hour(...)` checks.
+                TypeRef::Field(key) if self.node(&key).is_none() => {
+                    let (builtin, own) = standard_part(&key)?;
+                    rules.push(own);
+                    current = TypeRef::Builtin(builtin);
+                }
                 TypeRef::Field(key) => match &self.node(&key)?.detail {
                     Detail::Field { ty, rules: own, .. } => {
                         rules.push(own.clone());
@@ -607,4 +615,27 @@ pub(crate) fn part_type(part: jadpo_std::Part) -> TypeRef {
             _ => TypeRef::Builtin(jadpo_std::Builtin::Unit),
         },
     }
+}
+
+/// What the standard object type's field `key` names (`LocalTime.hour`)
+/// is built on, and the rules its part keeps: a whole number's range.
+fn standard_part(key: &Key) -> Option<(jadpo_std::Builtin, Rules)> {
+    let (host, field) = key.name().split_once('.')?;
+    let jadpo_std::standard::Holds::Object(fields) = jadpo_std::standard_type(host)?.holds else {
+        return None;
+    };
+    let (_, part) = fields.iter().find(|(name, _)| *name == field)?;
+    let whole = |n: i64| jadpo_std::Num {
+        mantissa: i128::from(n),
+        scale: 0,
+    };
+    let rules = match part {
+        jadpo_std::Part::Whole(min, max) => Rules {
+            min: Some(whole(*min)),
+            max: Some(whole(*max)),
+            ..Rules::default()
+        },
+        _ => Rules::default(),
+    };
+    Some((part.builtin()?, rules))
 }

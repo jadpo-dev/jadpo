@@ -166,12 +166,16 @@ pub fn period((years, months, days): (i64, i64, i64), tag: &str) -> Result<Strin
     options.width = Width::Long;
     type UnitOf = fn() -> icu_experimental::measure::category::CategorizedMeasureUnit<Unit>;
     let one = |amount: i64, unit: UnitOf| -> Result<String, Fault> {
-        // CLDR's data sorts units into sets by use; a month and a year
-        // aren't in the core one.
-        let formatter = CategorizedFormatter::try_new_core((&locale).into(), unit(), options)
-            .or_else(|_| CategorizedFormatter::try_new_extended((&locale).into(), unit(), options))
-            .or_else(|_| CategorizedFormatter::try_new_outlier((&locale).into(), unit(), options))
-            .map_err(|_| Fault::Shape)?;
+        // ICU4X sorts units' names into sets by how often they are used: a
+        // day's are in the core set, a month's and a year's in the outlier
+        // set, which is looked in after the other two.
+        let formatter = CategorizedFormatter::try_new_outlier_unstable(
+            &Silent,
+            (&locale).into(),
+            unit(),
+            options,
+        )
+        .map_err(|_| Fault::Shape)?;
         let amount = fixed_decimal::Decimal::from(amount);
         Ok(formatter
             .format_fixed_decimal(&amount)
@@ -193,6 +197,39 @@ pub fn period((years, months, days): (i64, i64, i64), tag: &str) -> Result<Strin
     let joined = ListFormatter::try_new_unit((&locale).into(), list).map_err(|_| Fault::Shape)?;
     Ok(joined.format(shown.iter()).write_to_string().into_owned())
 }
+
+/// ICU4X's compiled data, read without logging what a set of units'
+/// names doesn't hold: a month's name is looked for in the core and
+/// extended sets before the outlier set that has it, and a debug build
+/// would print each miss.
+struct Silent;
+
+macro_rules! silently {
+    ($baked:path: $($marker:path),*) => {
+        $(
+            impl icu_provider::DataProvider<$marker> for Silent {
+                fn load(
+                    &self,
+                    mut req: icu_provider::DataRequest,
+                ) -> Result<icu_provider::DataResponse<$marker>, icu_provider::DataError> {
+                    req.metadata.silent = true;
+                    icu_provider::DataProvider::<$marker>::load(&$baked, req)
+                }
+            }
+        )*
+    };
+}
+
+silently!(icu_experimental::provider::Baked:
+    icu_experimental::dimension::provider::units::categorized_display_names::UnitsNamesDurationCoreV1,
+    icu_experimental::dimension::provider::units::categorized_display_names::UnitsNamesDurationExtendedV1,
+    icu_experimental::dimension::provider::units::categorized_display_names::UnitsNamesDurationOutlierV1
+);
+silently!(icu_decimal::provider::Baked:
+    icu_decimal::provider::DecimalSymbolsV1,
+    icu_decimal::provider::DecimalDigitsV1
+);
+silently!(icu_plurals::provider::Baked: icu_plurals::provider::PluralsCardinalV1);
 
 /// A locale's display name (`FormatKey::LocaleName`): "British English"
 /// for `en-GB`, in the reader's locale.

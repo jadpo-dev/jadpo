@@ -9,6 +9,7 @@ mod syntax_examples;
 mod support;
 
 mod bodies;
+mod calendar;
 mod client_address;
 mod conditions;
 mod config;
