@@ -753,6 +753,26 @@ reference only).
   the column's comment, ranges as native range types. Done when a test per
   boundary round-trips one value of every standard type, and any boundary
   with its own encoder is gone.
+- [ ] **5.5x `jadpo suggest`: the plan** `opus · high` (Richard,
+  2026-10-17, proposed): write the page for a command that hints, never
+  edits, where code could use a standard type or operation. `jadpo suggest`
+  formats, then scans the program graph with signals held as data on each
+  standard type's contract entry (shape, conversion constants, name hints,
+  format literals, validation patterns), matched through canonicalised
+  graph fragments with hashes as the index and a matcher to confirm; it
+  reports numbered findings and ends with a broad instruction to the agent
+  to review the rest against the generated catalogue. Acceptance is
+  inferred when a finding disappears. `jadpo suggest mark` records only
+  exceptions in a committed record: ignores as hashes of the formatted
+  snippet (re-examined when the code changes, dropped when stale) and
+  misses taught as project signals (marked before editing). Opt-in sharing:
+  `jadpo suggest share`, run by a person, sends hashes of flagged snippets;
+  Jadpo HQ asks for a snippet's text only once its hash has come from
+  enough distinct projects, approved in one batch; the report nudges the
+  agent to suggest sharing when there is something to share; agents never
+  send. At HQ an agent turns shared patterns into signal data
+  automatically (thresholds, generated tests, release notes) and proposes,
+  never builds, language features. **Needs Richard** to decide the page.
 - [ ] **5.6 Computed backfills** `opus · high` (area 5, "Computed backfills",
   2026-10-15): `backfill:` as an expression over each row's own fields,
   filled in batches, one `UPDATE` each where it has a SQL form and by
