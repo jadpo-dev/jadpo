@@ -27,6 +27,8 @@ pub enum Spelling {
     Locale,
     /// An IANA media type (`image/png`) for a `FileType` variant (`png`).
     FileType,
+    /// An ISO 4217 code (`GBP`) for a `Currency` variant (`gbp`).
+    Currency,
     /// A duration as source writes it (`5m`), which the codec reads as the
     /// wire's ISO 8601 (`PT5M`, area 10).
     Duration,
@@ -39,6 +41,7 @@ impl Spelling {
             crate::ZONE => Spelling::Zone,
             crate::LOCALE => Spelling::Locale,
             crate::FILE_TYPE => Spelling::FileType,
+            crate::CURRENCY => Spelling::Currency,
             _ => Spelling::Plain,
         }
     }
@@ -55,6 +58,7 @@ impl Spelling {
             Spelling::Zone => crate::zones::ZONES,
             Spelling::Locale => crate::zones::LOCALES,
             Spelling::FileType => crate::FILE_TYPES,
+            Spelling::Currency => crate::CURRENCIES,
         };
         table
             .iter()
@@ -69,6 +73,7 @@ impl Spelling {
             Spelling::Zone => crate::zones::ZONES,
             Spelling::Locale => crate::zones::LOCALES,
             Spelling::FileType => crate::FILE_TYPES,
+            Spelling::Currency => crate::CURRENCIES,
         };
         table
             .iter()

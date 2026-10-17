@@ -110,6 +110,9 @@ impl Codecs<'_> {
                     {
                         zoned_from_json(entries, path, problems)?
                     }
+                    serde_json::Value::Object(entries) if *builtin == Builtin::Money => {
+                        money_from_json(entries, path, problems)?
+                    }
                     serde_json::Value::String(text) => scalar_from_text(*builtin, text),
                     serde_json::Value::Bool(flag) if *builtin == Builtin::Bool => {
                         Ok(Value::Bool(*flag))
@@ -578,6 +581,64 @@ fn zoned_from_json(
     }
 }
 
+/// An amount of money from `{ "amount": 1050, "currency": "GBP" }` (area
+/// 19, "Money and payments"): the amount a whole number of minor units, as
+/// Stripe sends it, and the currency's ISO 4217 code, read ignoring case
+/// (question 22); each problem reported at its own field.
+fn money_from_json(
+    entries: &serde_json::Map<String, serde_json::Value>,
+    path: &Path,
+    problems: &mut Vec<Problem>,
+) -> Option<Result<Value, &'static str>> {
+    let before = problems.len();
+    let [amount_field, currency_field] = jadpo_std::MONEY_FIELDS;
+    let minor = match entries.get(amount_field) {
+        Some(serde_json::Value::Number(number)) => {
+            let found = number.as_i64();
+            if found.is_none() {
+                Codecs::problem(problems, &path.with(amount_field), "type");
+            }
+            found
+        }
+        Some(_) => {
+            Codecs::problem(problems, &path.with(amount_field), "type");
+            None
+        }
+        None => {
+            Codecs::problem(problems, &path.with(amount_field), "required");
+            None
+        }
+    };
+    let currency = match entries.get(currency_field) {
+        Some(serde_json::Value::String(code)) => {
+            let found = jadpo_std::money::ordinal_of_code(code);
+            if found.is_none() {
+                Codecs::problem(problems, &path.with(currency_field), "variant");
+            }
+            found
+        }
+        Some(_) => {
+            Codecs::problem(problems, &path.with(currency_field), "type");
+            None
+        }
+        None => {
+            Codecs::problem(problems, &path.with(currency_field), "required");
+            None
+        }
+    };
+    for name in entries.keys() {
+        if name != amount_field && name != currency_field {
+            Codecs::problem(problems, &path.with(name.clone()), "unknown_field");
+        }
+    }
+    match (minor, currency) {
+        (Some(minor), Some(currency)) if problems.len() == before => {
+            Some(Ok(Value::Money(crate::Money { currency, minor })))
+        }
+        _ => None,
+    }
+}
+
 /// A scalar read from its text, before its rules are checked. Every
 /// text a request carries comes through here, from a body, a path, a
 /// query string, a header or a map's key, and is composed to NFC first,
@@ -642,6 +703,17 @@ fn write_scalar(value: &Value, int_as_number: bool, out: &mut String) {
             out.push('}');
         }
         Value::Duration(millis) => write_string(&iso_duration_text(*millis), out),
+        Value::Money(money) => {
+            let _ = write!(
+                out,
+                "{{\"{}\":{},\"{}\":",
+                jadpo_std::MONEY_FIELDS[0],
+                money.minor,
+                jadpo_std::MONEY_FIELDS[1]
+            );
+            write_string(money.code(), out);
+            out.push('}');
+        }
         Value::Bytes(bytes) => write_string(&base64_encode(bytes), out),
         Value::None | Value::Unit => out.push_str("null"),
         other => write_string(&other.to_string(), out),

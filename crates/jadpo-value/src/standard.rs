@@ -26,6 +26,7 @@ pub fn entry_of(value: &Value) -> Option<&'static StandardType> {
         Value::Date(_) => jadpo_std::Builtin::CalendarDate,
         Value::Zoned(_) => jadpo_std::Builtin::ZonedTime,
         Value::Duration(_) => jadpo_std::Builtin::Duration,
+        Value::Money(_) => jadpo_std::Builtin::Money,
         Value::Variant(variant) => return standard_type(&variant.ty),
         Value::Record(record) => return standard_type(&record.ty),
         _ => return None,
@@ -58,6 +59,7 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
         (TextForm::Date, Value::Date(day)) => jadpo_std::format_date(*day),
         (TextForm::Zoned, Value::Zoned(zoned)) => zoned.to_string(),
         (TextForm::Duration, Value::Duration(millis)) => jadpo_std::iso_duration(*millis),
+        (TextForm::Money, Value::Money(money)) => money.to_string(),
         (TextForm::Code, Value::Variant(variant)) => entry
             .codes()
             .and_then(|codes| codes.get(variant.ordinal as usize))
@@ -202,6 +204,7 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         TextForm::Zoned => zoned(raw).map(Value::Zoned),
         TextForm::Duration => crate::json::iso_duration(raw).map(Value::Duration),
         TextForm::Code => code(entry, raw),
+        TextForm::Money => crate::money::read(raw).map(Value::Money),
         // Its ends' type is the range type's argument, which `parse` reads.
         TextForm::Range => return Err(Fault::Shape),
         TextForm::Interval => {
@@ -262,17 +265,65 @@ fn zoned(raw: &str) -> Option<Zoned> {
     (expected == written).then_some(zoned)
 }
 
-/// `text.format(value, locale:, zone:, format:)`: the value for people in
-/// `locale`, as its entry's format key says. `zone` and `format` are
-/// `none` where the type takes neither.
+/// `text.format`'s options for an amount of money (area 19, "Money and
+/// payments"), each its default where the call leaves it out.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MoneyOptions {
+    pub precision: Option<jadpo_std::MoneyPrecision>,
+    pub display: Option<jadpo_std::MoneyDisplay>,
+    pub sign: Option<jadpo_std::MoneySign>,
+}
+
+impl MoneyOptions {
+    /// The options from `precision:`, `display:` and `sign:` as a call
+    /// gives them, each `none` when left out.
+    pub fn of(precision: &Value, display: &Value, sign: &Value) -> Result<MoneyOptions, Fault> {
+        fn read<T>(
+            value: &Value,
+            name: &str,
+            from: fn(&str) -> Option<T>,
+        ) -> Result<Option<T>, Fault> {
+            match value {
+                Value::None => Ok(None),
+                Value::Variant(variant) if &*variant.ty == name => {
+                    from(&variant.name).map(Some).ok_or(Fault::Shape)
+                }
+                _ => Err(Fault::Shape),
+            }
+        }
+        Ok(MoneyOptions {
+            precision: read(
+                precision,
+                jadpo_std::MoneyPrecision::NAME,
+                jadpo_std::MoneyPrecision::from_name,
+            )?,
+            display: read(
+                display,
+                jadpo_std::MoneyDisplay::NAME,
+                jadpo_std::MoneyDisplay::from_name,
+            )?,
+            sign: read(
+                sign,
+                jadpo_std::MoneySign::NAME,
+                jadpo_std::MoneySign::from_name,
+            )?,
+        })
+    }
+}
+
+/// `text.format(value, locale:, zone:, format:, precision:, display:,
+/// sign:)`: the value for people in `locale`, as its entry's format key
+/// says. Each option is `none` where the type doesn't take it.
 pub fn format(
     value: &Value,
     locale: &Value,
     zone: &Value,
     format_spec: &Value,
+    options: &MoneyOptions,
 ) -> Result<Value, Fault> {
     let tag = present::tag_of(locale)?;
     let text = match (entry_of(value), value) {
+        (Some(_), Value::Money(money)) => present::money::format(*money, tag, options)?,
         (Some(entry), value) => shown(entry, value, tag, zone, format_spec)?,
         // `Email`, `Url` and `IpAddress` are shown as they are written.
         (None, Value::Text(text)) => text.to_string(),
@@ -311,6 +362,12 @@ pub fn shown(
         }
         (FormatKey::LocaleName, value) => present::names::locale(&canonical(entry, value)?, tag)?,
         (FormatKey::ZoneName, value) => present::names::zone(&canonical(entry, value)?, tag)?,
+        (FormatKey::Money, Value::Money(money)) => {
+            present::money::format(*money, tag, &MoneyOptions::default())?
+        }
+        (FormatKey::CurrencyName, value) => {
+            present::money::currency_name(&canonical(entry, value)?, tag)?
+        }
         (FormatKey::Range, Value::Record(record)) => {
             let (start, end) = range_ends(record)?;
             let end_shown = |end: Option<&Value>| match end {

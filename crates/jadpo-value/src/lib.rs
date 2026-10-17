@@ -38,6 +38,7 @@ pub mod list;
 pub mod locale;
 pub mod map;
 mod maths;
+pub mod money;
 pub mod ops;
 pub mod order;
 pub mod present;
@@ -54,7 +55,7 @@ mod value;
 pub use jadpo_std::{LocalePlan, Op, Rounding};
 pub use ops::Fault;
 pub use validate::{Invalid, Validator};
-pub use value::{Decimal, QUOTIENT_PLACES, Record, Value, Variant, Zoned};
+pub use value::{Decimal, Money, QUOTIENT_PLACES, Record, Value, Variant, Zoned};
 
 /// Runs one standard-library operation with the values of its parameters
 /// in table order, its inline-function parameter left out; `each` runs the
@@ -232,6 +233,24 @@ pub fn run(
             map::map_values(entries, each).map(|given| Value::Map(std::rc::Rc::new(given)))
         }
         (Op::MapFilter | Op::MapMapValues, _) => Err(Fault::Shape),
+        // The money operations (area 19, "Money and payments").
+        (Op::MoneyFromMinor, [amount, currency]) => money::from_minor(amount, currency),
+        (Op::MoneyOf, [amount, currency]) => money::of(amount, currency),
+        (Op::MoneyMinor, [amount]) => money::minor_units(amount),
+        (Op::MoneyCurrency, [amount]) => money::currency(amount),
+        (Op::MoneySum, [items, currency]) => money::sum(items, currency),
+        (Op::MoneySplit, [total, parts]) => money::split(total, parts),
+        (Op::MoneyAllocate, [total, ratios]) => money::allocate(total, ratios),
+        (
+            Op::MoneyFromMinor
+            | Op::MoneyOf
+            | Op::MoneyMinor
+            | Op::MoneyCurrency
+            | Op::MoneySum
+            | Op::MoneySplit
+            | Op::MoneyAllocate,
+            _,
+        ) => Err(Fault::Shape),
         (Op::RangeContains, [span, value]) => range::contains(span, value).map(Value::Bool),
         (Op::RangeOverlaps, [a, b]) => range::overlaps(a, b).map(Value::Bool),
         (Op::RangeIntersection, [a, b]) => range::intersection(a, b),
@@ -267,8 +286,14 @@ pub fn run(
         // The standard type contract (area 19): one implementation each,
         // over the types' data entries. `text.parse` is given the name of
         // the standard type or representation it reads.
-        (Op::TextFormat, [value, locale, zone, format]) => {
-            standard::format(value, locale, zone, format)
+        (Op::TextFormat, [value, locale, zone, format, precision, display, sign]) => {
+            standard::format(
+                value,
+                locale,
+                zone,
+                format,
+                &standard::MoneyOptions::of(precision, display, sign)?,
+            )
         }
         (Op::TextFrom, [value]) => standard::from(value),
         (Op::TextParse, [Value::Text(raw), Value::Text(ty)]) => standard::parse(raw, ty),
@@ -575,6 +600,9 @@ mod tests {
             zone: temporal::zone_of(&london).unwrap_or(0),
         });
         let items = Value::list(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        let gbp = jadpo_std::money::ordinal_of_code("GBP").unwrap_or(0);
+        let pounds = money::currency_value(gbp).unwrap_or(Value::None);
+        let price = money::value(gbp, 1050);
         let tags = Value::set(vec![Value::Int(3), Value::Int(1)]);
         let stock = Value::Map(std::rc::Rc::new(
             [(Value::Int(1), Value::Int(4))].into_iter().collect(),
@@ -591,8 +619,17 @@ mod tests {
                         english.clone(),
                         london.clone(),
                         Value::text("date_long"),
+                        Value::None,
+                        Value::None,
+                        Value::None,
                     ]
                 }
+                Op::MoneyFromMinor => vec![Value::Int(1050), pounds.clone()],
+                Op::MoneyOf => vec![Value::Decimal(Decimal::new(1050, 2)), pounds.clone()],
+                Op::MoneyMinor | Op::MoneyCurrency => vec![price.clone()],
+                Op::MoneySum => vec![Value::list(vec![price.clone()]), pounds.clone()],
+                Op::MoneySplit => vec![price.clone(), Value::Int(3)],
+                Op::MoneyAllocate => vec![price.clone(), items.clone()],
                 Op::TextFrom => vec![Value::Instant(0)],
                 Op::TextParse => vec![Value::text("2026-10-25"), Value::text("CalendarDate")],
                 Op::TemporalFormatRelative => {

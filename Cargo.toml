@@ -102,6 +102,11 @@ icu_collator = { version = "=2.3.0", default-features = false, features = ["comp
 icu_normalizer = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
 icu_properties = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
 fixed_decimal = { version = "=0.7.2", default-features = false }
+# Money for people (area 19, "Money and payments"): a currency's CLDR
+# display name ("British Pound") is data `icu_experimental` bakes but reads
+# through no formatter, so it is loaded through the provider trait, from
+# the same release.
+icu_provider = { version = "=2.3.1", default-features = false }
 writeable = { version = "=0.6.4", default-features = false }
 # Pinned exactly and confined to jadpo-db and jadpo-check (docs/compiler-runtime.md §2.4).
 salsa = { version = "=0.28.5", default-features = false, features = ["macros", "inventory"] }

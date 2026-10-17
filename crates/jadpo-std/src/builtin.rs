@@ -20,6 +20,10 @@ pub enum Builtin {
     /// for showing or reasoning about, never a time of day on its own.
     ZonedTime,
     Duration,
+    /// An amount of money (area 19, "Money and payments", question 16): a
+    /// whole number of its currency's minor units (pence, cents) and its
+    /// `Currency`, never a decimal of pounds.
+    Money,
     Unit,
     /// The opaque cursor a page of results gives for the next one (area
     /// 6, "Order and pages"): text to the program, read only by the query
@@ -76,10 +80,12 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
     version: None,
     min_duration: None,
     max_duration: None,
+    currency: None,
+    rounding: None,
 };
 
 impl Builtin {
-    pub const ALL: [Builtin; 23] = [
+    pub const ALL: [Builtin; 24] = [
         Builtin::Bool,
         Builtin::Int,
         Builtin::Decimal,
@@ -93,6 +99,7 @@ impl Builtin {
         Builtin::CalendarDate,
         Builtin::ZonedTime,
         Builtin::Duration,
+        Builtin::Money,
         Builtin::Unit,
         Builtin::PageCursor,
         Builtin::PageSize,
@@ -120,6 +127,7 @@ impl Builtin {
             Builtin::CalendarDate => "CalendarDate",
             Builtin::ZonedTime => "ZonedTime",
             Builtin::Duration => "Duration",
+            Builtin::Money => "Money",
             Builtin::Unit => "Unit",
             Builtin::PageCursor => "PageCursor",
             Builtin::PageSize => "PageSize",
