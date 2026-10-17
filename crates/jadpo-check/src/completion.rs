@@ -63,7 +63,9 @@ pub struct Item {
     pub insert: Option<String>,
     /// `insert` is a snippet, with `${1:name}` placeholders.
     pub snippet: bool,
-    /// It fits the type the position requires.
+    /// It fits the type the position requires; for a named argument or a
+    /// record's field, the call or record can't leave it out. Either way
+    /// the editor sorts it first.
     pub fits: bool,
     /// The edit that imports it, when the file doesn't yet.
     pub import: Option<(u32, u32, String)>,
@@ -571,10 +573,8 @@ impl Place<'_> {
                 _ => continue,
             };
             let range = scope.text_range();
-            let closed = scope
-                .last_token()
-                .is_some_and(|token| token.kind() == R_BRACE);
             let end = u32::from(range.end());
+            let closed = self.text[..end as usize].ends_with('}');
             return u32::from(range.start()) <= at && (at < end || (at == end && !closed));
         }
         local.kind == LocalKind::Param
@@ -870,16 +870,16 @@ impl Place<'_> {
                 let Some(first) = parent.children().find_map(ast::NameRef::cast) else {
                     return Vec::new();
                 };
-                let Some(owner) = tree::name_ref_text(&first) else {
+                let Some(host) = tree::name_ref_text(&first) else {
                     return Vec::new();
                 };
-                let canonical = self.lookup.canonical_name(&owner);
+                let canonical = self.lookup.canonical_name(&host);
                 match self.lookup.fields(&canonical) {
                     Some(fields) => fields
                         .iter()
                         .map(|f| Item::new(&f.name, What::Field).detail(f.declared.to_string()))
                         .collect(),
-                    None => self.type_members(&owner),
+                    None => self.type_members(&host),
                 }
             }
             _ => Vec::new(),
@@ -1008,8 +1008,8 @@ impl Place<'_> {
     fn library_members(&self, library: &str, expected: Option<&Ty>) -> Vec<Item> {
         let mut items = Vec::new();
         let table = crate::types::callables(self.db, self.project);
-        for ((owner, name), sig) in &table.library {
-            if owner != library {
+        for ((host, name), sig) in &table.library {
+            if host != library {
                 continue;
             }
             let Some(symbol) = self.lookup.library_function(library, name) else {
@@ -1019,8 +1019,8 @@ impl Place<'_> {
             item.fits = self.fits(&sig.result, expected);
             items.push(item);
         }
-        for ((owner, name), ty) in &table.library_constants {
-            if owner != library {
+        for ((host, name), ty) in &table.library_constants {
+            if host != library {
                 continue;
             }
             let mut item = Item::new(name, What::Constant).detail(ty.to_string());
@@ -1260,10 +1260,10 @@ impl Place<'_> {
         let Some((first, rest)) = tree::dotted(&head) else {
             return Vec::new();
         };
-        let Some(owner) = tree::name_ref_text(&first) else {
+        let Some(host) = tree::name_ref_text(&first) else {
             return Vec::new();
         };
-        let canonical = self.lookup.canonical_name(&owner);
+        let canonical = self.lookup.canonical_name(&host);
         let fields = match rest.as_slice() {
             [] => self.lookup.fields(&canonical).map(<[_]>::to_vec),
             [variant] => {

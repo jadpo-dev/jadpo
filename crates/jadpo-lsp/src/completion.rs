@@ -1,7 +1,8 @@
 //! Completion (area 14, "Completion"): the items
 //! `jadpo_check::completion` finds at the cursor, in the protocol's terms.
 //! Each replaces what is typed there with its text, a call with its
-//! required arguments as a snippet, and brings a `use` line with it where
+//! required arguments as a snippet where the editor fills snippets in (its
+//! name alone otherwise), and brings a `use` line with it where
 //! the file doesn't import it yet. Those whose type the position requires
 //! sort first. A standard type's variant is shown with the name its entry
 //! gives people, worked out by the runtime's own `text.format` code.
@@ -42,7 +43,13 @@ impl Server {
         let items = found
             .items
             .into_iter()
-            .map(|item| protocol_item(item, range, &text, self.encoding()))
+            .map(|mut item| {
+                if item.snippet && !self.snippets {
+                    item.insert = None;
+                    item.snippet = false;
+                }
+                protocol_item(item, range, &text, self.encoding())
+            })
             .collect();
         Some(CompletionResponse::List(CompletionList {
             is_incomplete: false,

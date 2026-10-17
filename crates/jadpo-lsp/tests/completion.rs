@@ -70,10 +70,16 @@ fn project(name: &str) -> PathBuf {
 }
 
 fn start(root: &Path) -> (Server, Value) {
+    start_with(root, true)
+}
+
+fn start_with(root: &Path, snippets: bool) -> (Server, Value) {
     let params = serde_json::from_value(json!({
         "processId": null,
         "rootUri": format!("file://{}", root.display()),
-        "capabilities": {},
+        "capabilities": {
+            "textDocument": {"completion": {"completionItem": {"snippetSupport": snippets}}},
+        },
     }))
     .expect("initialize params");
     let (server, result) = Server::initialize(&params, root);
@@ -92,8 +98,12 @@ fn cursor(text: &str) -> (String, u32, u32) {
 
 /// Every item offered with the work file written as `text`.
 fn complete_file(name: &str, text: &str) -> Vec<Value> {
+    complete_in(name, text, true)
+}
+
+fn complete_in(name: &str, text: &str, snippets: bool) -> Vec<Value> {
     let root = project(name);
-    let (mut server, _) = start(&root);
+    let (mut server, _) = start_with(&root, snippets);
     let (text, line, character) = cursor(text);
     let uri = format!("file://{}", root.join(WORK).display());
     server.handle(Message::Notification(Notification::new(
@@ -489,6 +499,15 @@ fn a_call_with_required_arguments_is_inserted_as_a_snippet() {
         "resolve(${1:date}, at: ${2:at}, zone: ${3:zone})"
     );
     assert_eq!(resolve["insertTextFormat"], 2);
+    // An editor that doesn't fill snippets in gets the name alone.
+    let items = complete_in(
+        "lsp-completion-no-snippets",
+        &format!("{HEADER}    return temporal.res|\n}}\n"),
+        false,
+    );
+    let resolve = item(&items, "resolve");
+    assert_eq!(inserted(resolve), "resolve");
+    assert_eq!(resolve["insertTextFormat"], 1);
     let items = complete("lsp-completion-snippet-library", "    return rounding.|");
     let to_minute = item(&items, "to_minute");
     assert_eq!(inserted(to_minute), "to_minute(${1:wait})");
