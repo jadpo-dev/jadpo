@@ -3,6 +3,7 @@
 //! `cargo test -p jadpo-lsp --test integration <module>::` runs one.
 
 mod declines;
+mod fixes;
 mod incremental;
 mod make_setting;
 mod translations;
