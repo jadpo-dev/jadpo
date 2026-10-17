@@ -508,6 +508,56 @@ else changes: the same compiler checks, the same fakes, the same review. A
 package needs only the operations the app uses, so it can start with one
 operation and grow.
 
+### Mapping imported types to standard types
+
+> Decided 2026-10-17 (Richard). Built with the importer (chunk 7.2).
+
+An imported description says little about what a field *is*: OpenAPI's
+`integer` may be pence, Unix seconds or a count. Area 19 decides that a
+package's public types use the standard types (`type.standard_exists`), so
+an import maps fields to them in six layers, and nothing is guessed
+silently:
+
+1. **Exact mappings.** A description's own format hints map without
+   judgement: OpenAPI's `date-time` to `Instant`, `date` to `CalendarDate`,
+   `email` to `Email`, `uri` to `Url`, `uuid` to `Uuid`, `ipv4` and `ipv6` to
+   `IpAddress`, ISO 4217 and ISO 3166 enumerations to `Currency` and
+   `Country`.
+2. **Shape and name detection,** with the same matcher as
+   `type.standard_exists`: `amount` with a sibling `currency` to `Money`,
+   `lat`/`lng` to `Point`, an integer named like a time (`created`,
+   `*_at`) as a candidate `Instant` from seconds. The provider's own shape
+   becomes a named decoding at the edge (Stripe's `amount: 1050, currency:
+   "gbp"` decodes to `Money`), so the app only ever sees the standard type.
+3. **Findings on what was flagged.** Every candidate the importer is not
+   certain of is a declinable error on that field, whose `next:` says what
+   to check, marked `(agent)`: confirm against the docs and swap, or decline
+   with a reason that `jadpo approval` shows.
+4. **One scoped review of the whole package.** The import ends with one
+   broad instruction to the agent: go through every imported type the app
+   reaches against the provider's documentation, use the standard type
+   wherever one fits, add a decoding wherever a format is undocumented
+   (seconds, cents, comma-separated lists), and mark which operations change
+   something and which are idempotent. The review covers the operations the
+   app calls and every type they reach, never the whole description
+   (Stripe's has 1,180 types), and grows when the app calls something new.
+   Each imported type starts unreviewed; the agent marks it reviewed when it
+   has gone through it; `jadpo check` lists reviewed and outstanding types
+   for the operations the app calls, and `jadpo approval` shows a person
+   any type shipped unreviewed.
+5. **Confirmation by real responses.** An operation the app calls stays
+   unconfirmed until `jadpo package record` has checked a sandbox response
+   against it ("Provenance and confirmation", below).
+6. **The safety net.** The package is Jadpo source, so
+   `type.standard_exists` runs on it as on any code: a field that looks like
+   a standard type and was not mapped blocks `check` until it is swapped or
+   declined.
+
+The import's own output lists what it mapped, the findings, the scoped
+review instruction and the operations still unconfirmed, with `--json` for
+agents. Corrections made in review survive the next import, because the
+importer merges rather than overwrites.
+
 ### Provenance and confirmation
 
 Every operation says where it came from, so a reviewer knows how far to
@@ -3131,3 +3181,4 @@ packages and extension points, as each note says; 26 was decided then.
 | Choosing a provider when deploying | Designed now, built when the first app other people run needs it: every supported connection compiled and checked, a setting picks one at start, an unchosen one needs no credential (Richard) | 2026-10-16 |
 | Question 26 | Answered by the multi-step warning, for single calls too (Richard) | 2026-10-16 |
 | Settled for the build | Replies: an event's `reply:` names its reply type, keyed in `replies:` by the event's lower_snake name; `idempotency: { header: window: max_length: in_use: reused: new_key_on: replays_failures: }`; `idempotent: true` marks an operation safe to send again; `scope:` per operation; `limits: { attachments: }` in `provides/email.jadpo`; `item` in `as:`; the licence list with `.proprietary` for git only; the `x-jadpo-*` names; `ErasureNotPossible`; `public` on libraries, never functions; sign-in providers as connections (`Driver.oidc`, `Driver.github`, `Driver.apple`); OAuth grant routes, `jadpo_grants`, `grants: { encryption_key: }`, the `update` grant to connect, server-side `state` (decided for Richard by the coordinator) | 2026-10-16 |
+| Mapping imported types (Richard) | An import maps fields to standard types in six layers: exact format mappings; shape and name detection with `type.standard_exists`'s matcher, the provider's shape decoded at the edge; declinable findings with `(agent)` steps on flagged fields; one broad review instruction scoped to the types the app's operations reach, tracked per type as reviewed or not in `jadpo check` and `jadpo approval`; confirmation by recorded responses; `type.standard_exists` as the safety net. Built in 7.2 | 2026-10-17 |
