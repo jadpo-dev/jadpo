@@ -17,6 +17,7 @@
 mod check;
 mod declared;
 pub mod definitions;
+pub mod exchange;
 pub mod failures;
 pub mod jadpo;
 mod language;
@@ -31,7 +32,7 @@ use crate::lookups::Name;
 use crate::types::Prim;
 
 pub use declared::{Kind, Mode, ParamSpec, SHARED, Subject, scope_of, scopes};
-pub use language::{LanguageFile, language_file};
+pub use language::{Body, LanguageFile, Member, Variant, language_file};
 
 use check::analyse;
 use declared::subjects;

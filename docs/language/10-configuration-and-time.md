@@ -1676,9 +1676,9 @@ header and the same `locales { }`:
 > `accept`), go to definition and the pseudo-locale. The examples marked
 > `check` run with this checkout's `jadpo`. Built in chunk 5.4e: Jadpo's own
 > messages and the root file's owner groups, and `jadpo translations
-> builtin`. Coming in chunk 5.4f, and marked where it comes: `jadpo
-> translations export` and `import`. Email templates that read translations
-> come with email in chunk 7.3 (area 16).
+> builtin`. Built in chunk 5.4f: `jadpo translations export` and `import`,
+> the exchange with translation services. Email templates that read
+> translations come with email in chunk 7.3 (area 16).
 
 Text the server writes for people (emails, generated pages, a failure's text
 for client apps) is translated in Jadpo itself. Each message is a type, each
@@ -1713,7 +1713,7 @@ A message is a type built on `Message`, a type base beside `Failure`,
 `Event` and `EmailMessage`, one per file in the domain's `translations/`
 folder and named after it (area 1). Its fields are the wording's
 placeholders, and its `///` description reaches translators as context,
-in the export below (5.4f). `Message` is a type base, so its name can't
+in the export (see Tooling). `Message` is a type base, so its name can't
 name a type, and message names are unique across the project, as a
 failure's or an email's are.
 
@@ -2560,9 +2560,111 @@ Locales
 next: jadpo check  fails until the application words them
 ```
 
-Coming in chunk 5.4f: `jadpo translations export` and `import`, which
-exchange messages, their descriptions and their wording with translation
-services (Crowdin, Lokalise) as XLIFF, or JSON.
+Built in chunk 5.4f, with `--json`: `jadpo translations export [<locale>]`
+and `jadpo translations import <file>`, which exchange the project's
+messages with translation services (Crowdin, Lokalise or any that reads
+XLIFF or JSON): every message, enum with wording, failure and email
+subject the default locale words, Jadpo's own messages (those that differ
+by language), the `///` description of each, and each locale's wording.
+
+`export` writes one file for each translated locale (a supported locale
+besides the default and the pseudo-locale), or for the one named, to
+`build/translations/<locale>.xlf`; `--format json` writes
+`<locale>.json` and `--out <folder>` another folder (under the project).
+Naming the default locale writes the source file to upload: the same units
+with no translations. A unit is one wording: a plain message, a value of
+the enum that picks a wording, or a plural form of the locale; its id is
+`<domain>.<message>`, with `.<value>` or `.<form>` after it (`shared` for
+`shared/translations/`, `jadpo` for Jadpo's own). The wording is written
+as it is in the language file, `{field}` placeholders and doubled braces
+included, so a service sees ordinary text. A plural form the default
+locale has no form of is translated from the default's `other`.
+
+```text
+Wrote build/translations/de_de.xlf
+    de_de  5 units, 5 translated
+
+Wrote build/translations/pl_pl.xlf
+    pl_pl  7 units, 7 to translate
+
+Exported 2 locales: 12 units, xliff
+
+next: jadpo translations import build/translations/pl_pl.xlf  reads the translations back
+```
+
+The XLIFF is 2.0: a `<file>` for each domain, a `<unit>` for each wording
+with `description`, `context` (the enum value or plural form it is for),
+`placeholders` and, for wording translated from default wording that has
+since changed, `stale` notes, and a `<segment>` whose `state` is `initial`
+without a translation, `translated` with one and `reviewed` when a person
+accepted it. The JSON is `{ "<id>": { "message": ..., "description": ... } }`,
+the shape Chrome extensions use for `messages.json`, which has the one
+place for a description that Crowdin imports as it is ("Chrome JSON");
+`message` is empty until translated.
+
+```text
+<unit id="parcels.one">
+  <notes>
+    <note category="description">How many parcels an order has, on the tracking page.</note>
+    <note category="context">Used for the plural form `one` of `count`.</note>
+    <note category="placeholders">{count}</note>
+  </notes>
+  <segment state="translated">
+    <source xml:space="preserve">{count} parcel</source>
+    <target xml:space="preserve">{count} Paket</target>
+  </segment>
+</unit>
+```
+
+`import` reads a file by what it starts with (`<` XLIFF 2.0 or 2.1, `{`
+JSON, plain strings accepted for `message`), for the locale it names
+(XLIFF's `trgLang`), `--locale`, or a JSON file's name (`pl_pl.json`). A
+unit with no translation is left alone. It then does what a person editing
+the language files would have to: each changed wording goes into its
+language file where its member is (the file's other members, comments and
+order kept) or at the end, a missing file is created, the files are laid
+out by `jadpo fmt`, and the folder's `sources.jadpo_record` gets a line
+for each changed translation, made from today's default wording and not
+accepted (a person accepts, with `accept`). Before anything is written the
+project is checked as `jadpo check` checks it, and any new finding refuses
+the whole import, with that finding's own rule, pointing at the unit of the
+imported file that caused it: `translation.placeholder_unknown`,
+`translation.wording_invalid`, `translation.variant_missing` for a plural
+form or enum value left out, the declinable `translation.field_unused`
+for a placeholder every wording dropped. A unit naming nothing the project
+words, or a plural form the locale does not use, is
+`translation.exchange_unit_unknown` with the nearest id; a file that is
+not XLIFF 2.x or JSON, is not well formed, holds a unit twice or in
+several segments, or was translated from another default language is
+`translation.exchange_file_invalid` (area 14's command errors). All reasons
+are listed at once and nothing is written. An in-progress locale may be
+translated in part, as its language file may. Exporting and importing
+unchanged writes nothing and says `Already up to date`.
+
+```text
+Wrote domains/shipping/translations/pl_pl.jadpo
+    farewell              added
+    order_shipped.formal  added
+    order_shipped.casual  added
+    parcels.one           added
+    parcels.few           added
+    parcels.many          added
+    parcels.other         added
+
+Wrote domains/shipping/translations/sources.jadpo_record
+
+Imported pl_pl: 7 added
+
+next: jadpo check  confirms the imported wording
+```
+
+XLIFF carries what a translation was made from, so a unit whose `<source>`
+is not today's default wording (the English changed while the service
+worked) is written all the same and recorded as made from other wording:
+it is stale, counted as `stale` in the summary, and `jadpo check` fails
+with `translation.stale` until it is translated again, as for wording
+changed by hand. JSON does not carry its source, so its translations are
+taken as made from today's wording.
 
 The app's own data (product names, articles) is not a translation: an app
 models translated content as ordinary fields. Library packages' translations
@@ -2691,7 +2793,7 @@ are built with packages in Phase 7 (open item 8 of the
   reachable and by the email's own machinery, so they are never listed.
 - **The commands succeed whatever they list**; they answer a question, and
   `jadpo check` is what fails. `update` and `accept` stop on syntax
-  errors. `export` and `import` are `toolchain.not_built_yet` until 5.4f.
+  errors. `export` and `import` are 5.4f's.
 
 ### Chosen in chunk 5.4e
 
@@ -2747,6 +2849,48 @@ are built with packages in Phase 7 (open item 8 of the
   check, the default included, and none for a locale in progress. The
   summary counts messages, the ones that need wording in the problem colour,
   and features; its one hint is `jadpo check`.
+
+### Chosen in chunk 5.4f
+
+- **XLIFF 2.0.** Version 2.0 (namespace `urn:oasis:names:tc:xliff:document:2.0`)
+  is written, being the one every tool that reads 2.x reads; 2.1 is read as
+  well. 1.2 is refused with a message saying to ask the service for 2.x,
+  since the two differ in structure. *Unverified:* that Lokalise reads 2.0
+  (Crowdin's documentation was not reachable for the version either); the
+  JSON below is the fallback.
+- **JSON is Chrome's `messages.json` shape.** `{ "<id>": { "message",
+  "description" } }`: the one JSON shape with a place for a description
+  that Crowdin imports natively ("Chrome JSON": message and description
+  fields, verified in its store listing). A flat `{ id: text }` object is
+  the shape both services take, but carries no description, which the
+  exchange exists to send. *Unverified:* that Lokalise imports the Chrome
+  shape; XLIFF carries the description to it. A flat object is read on
+  import for a service that cannot keep descriptions.
+- **Placeholders stay plain text.** `{name}` is written as it is in the
+  language file, not as an XLIFF inline `<ph>`, so the same text goes to
+  both formats and round-trips exactly; both services recognise `{x}`
+  as a placeholder. Inline codes a service adds on the way back (`<ph>`,
+  `<pc>`) are read as the text they stand for.
+- **Units and ids.** One unit for each wording, `<domain>.<message>[.<value
+  or form>]`; XLIFF splits the id into `<file id>` and `<unit id>`. A
+  domain named `jadpo` would share ids with Jadpo's own messages, and
+  export refuses. Wording shared by every locale (`TextDirection`'s) is
+  not exchanged.
+- **Where files go.** `build/translations/<locale>.xlf|json`, deterministic,
+  overwritten by the next export. `--out` is relative to the project.
+- **Import is all or nothing.** Every finding comes from the checker's own
+  rules; nothing special-cased for the exchange. A translation of
+  superseded source is the one exception to "refuse": it is written and
+  left stale, because the work is not lost and `translation.stale`
+  already says what to do.
+- **The record.** Only changed translations get a line, so a round trip
+  never creates or changes one; imported wording is not accepted.
+  Statuses in a file (`reviewed`) are never read back: acceptance is a
+  person's `jadpo translations accept`.
+- **New rules, area 14.** `translation.exchange_file_invalid` and
+  `translation.exchange_unit_unknown` are command errors, so they exit 1
+  (the command ran and the file was wrong) and are in area 14's table, not
+  here.
 
 ## Retention periods
 
@@ -5378,8 +5522,8 @@ subjects and `in_progress:` locales (see Translations as messages). Chunk
 and review, `locale.direction`, the commands `missing`, `unused`, `update`
 and `accept`, go to definition and the pseudo-locale. Chunk 5.4e built
 Jadpo's own messages, the root file's owner groups and `jadpo translations
-builtin`. Not built yet (chunk 5.4f): `jadpo translations export` and
-`import`. Library packages' translations come with packages in Phase 7.
+builtin`. Chunk 5.4f built `jadpo translations export` and `import`.
+Library packages' translations come with packages in Phase 7.
 
 ### Consistency with the rest of the language
 
@@ -5634,6 +5778,7 @@ builtin`. Not built yet (chunk 5.4f): `jadpo translations export` and
 | Chosen in 5.4d: the pseudo-locale | `Locale.en_xa`, listed in `supported:` like any locale, no language file, never asked for wording; writes the default locale's wording with its letters accented, about two fifths longer and in brackets; values written into it are not accented; failures' client text is exported in it too | 2026-10-17 |
 | Chosen in 5.4d: the commands | `jadpo translations missing [locale]`, `unused`, `update` and `accept <locale>`, each with `--json`; `missing` groups by language file and succeeds whatever it lists; go to definition lands on the message's type and each language file's member | 2026-10-17 |
 | Chosen in 5.4e: Jadpo's text | Jadpo's messages are a catalogue in `jadpo-std` gated by feature; the root file's `jadpo: { }` is checked against it; a supported locale Jadpo does not ship is one `translation.jadpo_missing` per locale; `translation.feature_off` and `translation.group_unknown`; the root folder's `sources.jadpo_record` names members `jadpo.<message>`; Jadpo's failures join every API's export; `TextDirection`'s wording ships in every locale; `jadpo translations builtin`; `export` and `import` move to 5.4f | 2026-10-17 |
+| Chosen in 5.4f: the exchange | `export` writes XLIFF 2.0 (or Chrome-style JSON) for each translated locale to `build/translations/`, one unit for each plain wording, enum value or plural form, with its description; `import` reads XLIFF 2.x or JSON, checks the result as `jadpo check` does and refuses it whole with those rules, or writes the language files and a record line for each changed translation; a translation of superseded source is written and stale; `translation.exchange_file_invalid` and `translation.exchange_unit_unknown` | 2026-10-17 |
 | Name of the locale call (Richard, 2026-10-16) | `locale.from_accept_language(header)`, giving a `Locale`, in a new `locale` standard-library namespace beside `temporal`. `header` is `Text?`, so a header read with `header: "Accept-Language"` and `optional: true` passes straight in; the call never fails and picks only from `locales { supported: }`, falling back to `default:`. It is a pure function of the header and the application's locales, so the interpreter and every compiled target agree | 2026-10-16 |
 | Matching an `Accept-Language` header (chosen in chunk 5.3c) | RFC 9110: split at commas, a weight `;q=` of 0 to 1 with up to three decimals, a weight of 0 excluded, `*` ignored, an entry that does not parse skipped (a range is read in any case, `_` as `-`). Tags are taken by descending weight then header order, and the first that matches wins: an exact supported locale, else a supported locale of the same language, the one CLDR likely subtags give for the language (`ICU4X` `LocaleExpander`, extended data) before any other, else the first listed in `supported:`. Only the language is compared when no supported locale has the exact tag, never the script (`zh-TW` with no supported `zh_tw` is answered by whichever supported `zh` locale the rule picks) | 2026-10-16 |
 | What the call is checked against (chosen in chunk 5.3c) | A standard-library call: `header` is a `Text?` parameter the call must pass (the operation table marks it `nullable`, not `optional`), taking a `Text`, a type built on `Text`, `none`, or any of those that may be `none`. With no `locales { }` in a project it is `type.temporal_locales_required` with its reason worded for this call (files on their own have none to require). In a query it is `query.value_unsupported`, as every call is | 2026-10-16 |

@@ -62,6 +62,8 @@ pub struct Variant {
 pub struct Member {
     pub name: String,
     pub key_span: Span,
+    /// The whole member, its name and its wording.
+    pub span: Span,
     pub body: Body,
 }
 
@@ -72,6 +74,8 @@ pub struct Group {
     pub name: String,
     pub key_span: Span,
     pub members: Vec<Member>,
+    /// The group's closing brace: where a member is added.
+    pub close: Option<u32>,
 }
 
 /// A language file, read.
@@ -89,6 +93,9 @@ pub struct LanguageFile {
     /// For the root file: the owners' groups, where a folder's file has
     /// members.
     pub groups: Vec<Group>,
+    /// The closing brace of `translations { }`: where a member or a group
+    /// is added.
+    pub close: Option<u32>,
     /// Whether this is the root `translations/` folder's file.
     pub root: bool,
     /// What is wrong with the file by itself.
@@ -170,6 +177,7 @@ pub fn language_file(db: &dyn Db, project: Project, file: File) -> Option<Langua
         keyword,
         members: Vec::new(),
         groups: Vec::new(),
+        close: decl.member_list().and_then(|list| closing_brace(&list)),
         root,
         problems: Vec::new(),
         path,
@@ -203,6 +211,35 @@ pub fn language_file(db: &dyn Db, project: Project, file: File) -> Option<Langua
         }
     }
     Some(out)
+}
+
+/// A node's span without the comments around it, so replacing the member
+/// keeps them.
+fn core_span(path: &str, node: &jadpo_syntax::SyntaxNode) -> Span {
+    let mut tokens = node
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| !token.kind().is_trivia());
+    let first = tokens.next();
+    let last = tokens.last().or_else(|| first.clone());
+    match (first, last) {
+        (Some(first), Some(last)) => Span::new(
+            path,
+            u32::from(first.text_range().start()),
+            u32::from(last.text_range().end()),
+        ),
+        _ => node_span(path, node),
+    }
+}
+
+/// The offset of a block's closing brace.
+fn closing_brace(list: &ast::MemberList) -> Option<u32> {
+    list.syntax()
+        .children_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| token.kind() == jadpo_syntax::SyntaxKind::R_BRACE)
+        .last()
+        .map(|token| u32::from(token.text_range().start()))
 }
 
 fn shape(span: &Span, label: &str, reason: &str, next: &str) -> Diagnostic {
@@ -252,6 +289,7 @@ fn read_group(out: &mut LanguageFile, member: &ast::Member) {
         keyword: out.keyword.clone(),
         members: Vec::new(),
         groups: Vec::new(),
+        close: None,
         root: false,
         problems: Vec::new(),
     };
@@ -278,6 +316,7 @@ fn read_group(out: &mut LanguageFile, member: &ast::Member) {
         name,
         key_span,
         members: scratch.members,
+        close: closing_brace(&block),
     });
 }
 
@@ -337,6 +376,7 @@ fn read_member(out: &mut LanguageFile, member: &ast::Member) {
     out.members.push(Member {
         name,
         key_span,
+        span: core_span(&path, member.syntax()),
         body,
     });
 }

@@ -772,6 +772,10 @@ rules! {
         "14-tooling.html#the-jadpo-command", "Project could not be found";
     TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,
         "14-tooling.html#the-jadpo-command", "Jadpo source file could not be read";
+    TRANSLATION_EXCHANGE_FILE_INVALID: "translation.exchange_file_invalid", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Translation exchange file can't be read or written";
+    TRANSLATION_EXCHANGE_UNIT_UNKNOWN: "translation.exchange_unit_unknown", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Translation file holds a unit the project does not have";
     TRANSLATION_FEATURE_OFF: "translation.feature_off", area 10, Error, Agent,
         "10-configuration-and-time.html#translation-feature-off", "A language file words a Jadpo message of a feature the application has off";
     TRANSLATION_FIELD_TYPE: "translation.field_type", area 10, Error, Agent,

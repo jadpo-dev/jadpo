@@ -97,6 +97,9 @@ pub struct Subject {
     /// For one of Jadpo's own messages: the feature that switches it on.
     /// Such a subject has no declaration in the project.
     pub builtin: Option<jadpo_std::jadpo_text::Feature>,
+    /// The `///` description of its type: what a translator is told it is
+    /// for.
+    pub description: Option<String>,
 }
 
 impl Subject {
@@ -272,7 +275,8 @@ pub fn subjects<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Sub
                 )
             }
         };
-        if let Some(subject) = subject {
+        if let Some(mut subject) = subject {
+            subject.description = crate::graph::text::doc(decl.syntax());
             out.list.push(subject);
         }
     }
@@ -300,6 +304,7 @@ fn failure_subject(
     let lookup = Lookup::within(db, project, &symbol.ownership);
     let file = file_at(db, project, Name::new(db, symbol.path.clone()))?;
     let source = tree::source(db, file)?;
+    let mut description = None;
     let (name_span, spans, fields) = if symbol.provided.is_some() {
         let name_span = symbol
             .provided
@@ -337,6 +342,7 @@ fn failure_subject(
             _ => Vec::new(),
         };
         let spans = failure_field_spans(&symbol.path, &decl);
+        description = crate::graph::text::doc(decl.syntax());
         (name_span, spans, fields)
     };
     let at = |name: &str| {
@@ -374,6 +380,7 @@ fn failure_subject(
         formats,
         broken,
         builtin: None,
+        description,
     })
 }
 
@@ -524,6 +531,7 @@ fn enum_subject(
         formats: Vec::new(),
         broken: false,
         builtin: None,
+        description: None,
     })
 }
 
@@ -619,6 +627,7 @@ fn fields_subject(
         formats: Vec::new(),
         broken,
         builtin: None,
+        description: None,
     })
 }
 
