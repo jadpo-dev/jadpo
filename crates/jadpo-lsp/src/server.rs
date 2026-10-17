@@ -445,7 +445,10 @@ fn capabilities(encoding: Encoding) -> InitializeResult {
             definition_provider: Some(OneOf::Left(true)),
             code_action_provider: Some(lsp_types::CodeActionProviderCapability::Options(
                 lsp_types::CodeActionOptions {
-                    code_action_kinds: Some(vec![lsp_types::CodeActionKind::REFACTOR_REWRITE]),
+                    code_action_kinds: Some(vec![
+                        lsp_types::CodeActionKind::REFACTOR_REWRITE,
+                        lsp_types::CodeActionKind::QUICKFIX,
+                    ]),
                     resolve_provider: Some(true),
                     work_done_progress_options: Default::default(),
                 },

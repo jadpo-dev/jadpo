@@ -8,13 +8,16 @@
 //! its `///` description, the failures a callable can produce and who
 //! calls or uses it; and go to definition. Everything is read from the
 //! graph the manifest is written from, so the editor and the build never
-//! disagree. One code action, "Make this a setting" on a constant, runs
-//! the code `jadpo config move` runs (chunk 5.3f). Completion, references,
-//! rename, formatting and quick fixes come later (area 14), and checking
+//! disagree. Code actions: "Make this a setting" on a constant runs the
+//! code `jadpo config move` runs (chunk 5.3f), and "Decline with a reason"
+//! on a declinable finding and "Remove decline" on a `decline` line run the
+//! code `jadpo declines` runs (chunk 5.4b). Completion, references, rename,
+//! formatting and other quick fixes come later (area 14), and checking
 //! runs between messages rather than in the background with salsa's
 //! cancellation.
 
 mod convert;
+mod declines;
 mod hover;
 mod make_setting;
 mod server;
@@ -24,6 +27,7 @@ use std::path::Path;
 use lsp_server::{Connection, Message};
 
 pub use convert::Encoding;
+pub use declines::{DECLINE, REMOVE as REMOVE_DECLINE};
 pub use make_setting::TITLE as MAKE_SETTING;
 pub use server::Server;
 

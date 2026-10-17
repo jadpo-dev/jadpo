@@ -26,16 +26,28 @@ use crate::server::Server;
 pub const TITLE: &str = "Make this a setting";
 
 impl Server {
-    /// The code actions at the start of `params`' range: "Make this a
-    /// setting" on a constant, unavailable with the reason it is refused.
+    /// The code actions for `params`' range: "Make this a setting" on a
+    /// constant at its start, unavailable with the reason it is refused;
+    /// then the decline quick fixes (`crate::declines`).
     pub(crate) fn code_actions(&mut self, params: &CodeActionParams) -> Option<CodeActionResponse> {
         let uri = params.text_document.uri.clone();
         let (path, offset) = self.place(&uri, params.range.start)?;
-        let action = self.make_setting(&path, offset, !self.resolves_edits)?;
-        Some(vec![CodeActionOrCommand::CodeAction(CodeAction {
-            data: Some(json!({ "uri": uri.as_str(), "offset": offset })),
-            ..action
-        })])
+        let end = self
+            .place(&uri, params.range.end)
+            .map_or(offset, |(_, end)| end);
+        let mut out = Vec::new();
+        if let Some(action) = self.make_setting(&path, offset, !self.resolves_edits) {
+            out.push(CodeActionOrCommand::CodeAction(CodeAction {
+                data: Some(json!({ "uri": uri.as_str(), "offset": offset })),
+                ..action
+            }));
+        }
+        out.extend(
+            self.decline_actions(&path, offset, end)
+                .into_iter()
+                .map(CodeActionOrCommand::CodeAction),
+        );
+        (!out.is_empty()).then_some(out)
     }
 
     /// The edit of an action [`Server::code_actions`] offered without one.
