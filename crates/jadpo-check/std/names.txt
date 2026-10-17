@@ -3,7 +3,8 @@
 # types and operations areas 2, 3, 10 and 19 need are declared as stubs beside this
 # file (`types.jadpo`, `standard.jadpo`, `list.jadpo`, `set.jadpo`,
 # `map.jadpo`, `range.jadpo`, `decimal.jadpo`, `integer.jadpo`,
-# `locale.jadpo`, `temporal.jadpo`, `text.jadpo`); later chunks move the
+# `locale.jadpo`, `temporal.jadpo`, `text.jadpo`, `encoding.jadpo`,
+# `hash.jadpo`, `json.jadpo`); later chunks move the
 # rest there as their areas are built. Lines starting with `#` are comments.
 
 # Built-in types that later areas define (areas 3 to 18), and the setting

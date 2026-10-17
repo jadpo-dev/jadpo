@@ -174,6 +174,9 @@ pub struct Plan {
     /// The locales the application supports, when it declares them (area
     /// 10, chunk 5.3c): what `locale.from_accept_language` chooses among.
     locales: Option<jadpo_std::LocalePlan>,
+    /// The codecs `json.read` and `json.write` run with (area 19, chunk
+    /// 5.5g): the wire's, for each type a call reads or writes.
+    json: jadpo_std::http::JsonTable,
 }
 
 impl Plan {
@@ -263,6 +266,7 @@ impl Plan {
             })
             .collect();
         let mut constants = Vec::new();
+        let mut json_types = Vec::new();
         let mut callables = Vec::with_capacity(found.len());
         for (key, kind, file, body) in found {
             let node = graph.get(&key);
@@ -288,6 +292,7 @@ impl Plan {
                 entity: &entity,
                 write: &write,
                 setting: &|key: &Key| setting_ids.get(key).copied(),
+                json: &mut json_types,
             }
             .body(&body, text);
             let gate = (kind == Kind::Action)
@@ -330,6 +335,7 @@ impl Plan {
                 settings,
             });
         }
+        let json = routes::json_table(db, project, &mut types, &json_types);
         let mut routes = routes::table(
             db,
             project,
@@ -355,6 +361,7 @@ impl Plan {
             config,
             translations: jadpo_check::translations::plan(db, project),
             locales: jadpo_check::locales::locales(db, project).plan.clone(),
+            json,
         }
     }
 
@@ -484,6 +491,11 @@ impl Plan {
     /// The locales the application supports, when it declares them.
     pub fn locales(&self) -> Option<&jadpo_std::LocalePlan> {
         self.locales.as_ref()
+    }
+
+    /// The codecs `json.read` and `json.write` run with (area 19).
+    pub fn json(&self) -> &jadpo_std::http::JsonTable {
+        &self.json
     }
 
     /// The purge of the entity called `entity`, when its lifecycle has one.

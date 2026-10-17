@@ -49,18 +49,23 @@ pub enum RuleKey {
     /// its `invalid_day:` didn't say what to do instead.
     InvalidDay,
     /// Text `text.parse` reads isn't the type it was asked for at all
-    /// (area 19, "Every standard type meets one contract").
+    /// (area 19, "Every standard type meets one contract"), or text or
+    /// bytes an `encoding` or `json` operation decodes aren't that format
+    /// at all (area 19, "Encodings" and "Data formats").
     Malformed,
     /// A value a `decimal` operation has no result for, such as `ln` of
     /// a value at or below 0 (area 19, "Numbers").
     OutOfRange,
+    /// A JSON document `json.read` decodes isn't the type `as:` names: a
+    /// field missing, unknown or breaking a rule (area 19, "Data formats").
+    Mismatch,
 }
 
 impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 12] = [
+    pub const ALL: [RuleKey; 13] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -73,6 +78,7 @@ impl RuleKey {
         RuleKey::InvalidDay,
         RuleKey::Malformed,
         RuleKey::OutOfRange,
+        RuleKey::Mismatch,
     ];
 
     /// The key as written: `max`, `min_length`.
@@ -90,6 +96,7 @@ impl RuleKey {
             RuleKey::InvalidDay => "invalid_day",
             RuleKey::Malformed => "malformed",
             RuleKey::OutOfRange => "out_of_range",
+            RuleKey::Mismatch => "mismatch",
         }
     }
 

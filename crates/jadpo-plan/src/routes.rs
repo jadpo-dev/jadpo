@@ -21,6 +21,24 @@ use crate::types::{Types, last};
 /// How far a type's chain is followed; only a defect gets this far.
 const DEPTH: usize = 256;
 
+/// The codecs `json.read` and `json.write` run with (area 19, "Data
+/// formats"): the wire's codec for each of `types`, in the order the
+/// calls' sites number them, built as the route table's are.
+pub(crate) fn json_table(
+    db: &dyn Db,
+    project: Project,
+    types: &mut Types,
+    read_or_written: &[TypeRef],
+) -> jadpo_std::http::JsonTable {
+    let mut codecs =
+        Codecs::new(types).supporting(jadpo_check::locales::locales(db, project).plan.clone());
+    let ids = read_or_written.iter().map(|ty| codecs.codec(ty)).collect();
+    jadpo_std::http::JsonTable {
+        codecs: codecs.into_codecs(),
+        types: ids,
+    }
+}
+
 /// The route table of a project whose routes checked cleanly.
 pub(crate) fn table(
     db: &dyn Db,

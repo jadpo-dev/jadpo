@@ -429,6 +429,16 @@ impl Program {
         }
     }
 
+    /// The codecs `json.read` and `json.write` run with (area 19), with
+    /// this thread's validators and shapes.
+    pub(crate) fn json_codecs(&self) -> jadpo_value::json::Codecs<'_> {
+        jadpo_value::json::Codecs {
+            codecs: &self.plan().json().codecs,
+            validators: &self.prepared.validators,
+            shapes: &self.shapes,
+        }
+    }
+
     /// The report a person reads for an outcome that isn't a value.
     pub fn report(&self, outcome: &Outcome) -> Option<Report> {
         Report::of(outcome, self.places(), self.plan().files())

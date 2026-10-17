@@ -2047,6 +2047,11 @@ impl<'p> Machine<'p> {
         inline: Option<(&'p [LocalId], SiteId)>,
         at: SiteId,
     ) -> Result<Value, Stop> {
+        // JSON in memory runs with the codec the plan numbers for its call
+        // (area 19, "Data formats").
+        if matches!(op, Op::JsonRead | Op::JsonWrite) {
+            return self.json(ctx, op, values, at);
+        }
         let mut stopped: Option<Stop> = None;
         let locales = self.program.plan().locales();
         // An inline function's expressions give a value per item, not one
@@ -2089,5 +2094,58 @@ impl<'p> Machine<'p> {
             }),
             (Err(fault), None) => Err(self.value_fault(ctx, fault, at)),
         }
+    }
+
+    /// `json.read` or `json.write` (area 19, "Data formats"), through the
+    /// wire's codec for the type its site names, in `jadpo-value`'s `json`
+    /// module as compiled code calls it. A document that isn't JSON is
+    /// `malformed`, and one that isn't the type `mismatch`, each for the
+    /// call's `attempt` to map; the report names the first problem's field
+    /// and rule, never the value.
+    fn json(
+        &mut self,
+        ctx: &mut Ctx<'_>,
+        op: Op,
+        values: &[Value],
+        at: SiteId,
+    ) -> Result<Value, Stop> {
+        let codec = match self.decoded(at) {
+            Some(Decoded::Json(number)) => self.program.plan().json().codec_of(*number),
+            _ => None,
+        };
+        let Some(codec) = codec else {
+            return Err(self.defect(ctx, "a JSON call the plan gave no codec", at));
+        };
+        let codecs = self.program.json_codecs();
+        match (op, values) {
+            (Op::JsonWrite, [value]) => Ok(Value::text(&codecs.write_value(codec, value))),
+            (Op::JsonRead, [text, _]) => {
+                codecs
+                    .read_value(codec, text)
+                    .map_err(|unread| match unread {
+                        jadpo_value::json::Unread::Malformed => Stop::Invalid {
+                            rule: RuleKey::Malformed,
+                            written: format!("`{}`", RuleKey::Malformed.word()),
+                        },
+                        jadpo_value::json::Unread::Mismatch(problem) => Stop::Invalid {
+                            rule: RuleKey::Mismatch,
+                            written: mismatch_written(&problem),
+                        },
+                    })
+            }
+            _ => Err(self.defect(ctx, "a JSON call without its values", at)),
+        }
+    }
+}
+
+/// How a report names `json.read`'s first problem: "`mismatch` (`max` on
+/// `lines.2.quantity`)", or, for the document itself, "`mismatch`
+/// (`type`)".
+fn mismatch_written(problem: &jadpo_value::json::Problem) -> String {
+    let word = RuleKey::Mismatch.word();
+    if problem.field.is_empty() {
+        format!("`{word}` (`{}`)", problem.rule)
+    } else {
+        format!("`{word}` (`{}` on `{}`)", problem.rule, problem.field)
     }
 }
