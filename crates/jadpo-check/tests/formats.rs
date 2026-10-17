@@ -1,6 +1,7 @@
 //! Area 10, "Showing dates and times to people": declared and built-in
-//! time formats, `PresentationText`, and what `temporal.format` and
-//! `temporal.format_relative` check while compiling. The text they give is
+//! time formats, `PresentationText`, and what the time types'
+//! `text.format` (area 19) and `temporal.format_relative` check while
+//! compiling. The text they give is
 //! `jadpo-value`'s; the locales they accept are `locales.rs`'s.
 
 use crate::support;
@@ -20,7 +21,7 @@ fn check(source: &str) -> Vec<String> {
 /// A function that formats `value` of `ty` with the arguments `args`.
 fn formats(ty: &str, args: &str) -> Vec<String> {
     check(&format!(
-        "function label(value: {ty}, reader_locale: Locale) -> PresentationText {{\n    return temporal.format(value, {args})\n}}\n"
+        "function label(value: {ty}, reader_locale: Locale) -> PresentationText {{\n    return text.format(value, {args})\n}}\n"
     ))
 }
 
@@ -96,7 +97,7 @@ fn an_instant_is_formatted_in_a_zone() {
     );
     // Given in order, without names, it is the same call.
     assert_eq!(
-        formats("OrderedAt", "Zone.utc, Locale.en_gb, TimeFormat.date_long"),
+        formats("OrderedAt", "Locale.en_gb, Zone.utc, TimeFormat.date_long"),
         Vec::<String>::new()
     );
 }
@@ -144,7 +145,7 @@ fn a_date_has_no_clock_time_to_show() {
     }
     assert_eq!(
         check(
-            "type Zoned = TimeFormat {\n    day: ComponentStyle.numeric\n    zone_name: ComponentStyle.short\n}\n\nfunction label(day: ShopDay) -> PresentationText {\n    return temporal.format(day, locale: Locale.en_gb, format: Zoned)\n}\n"
+            "type Zoned = TimeFormat {\n    day: ComponentStyle.numeric\n    zone_name: ComponentStyle.short\n}\n\nfunction label(day: ShopDay) -> PresentationText {\n    return text.format(day, locale: Locale.en_gb, format: Zoned)\n}\n"
         ),
         ["type.temporal_format_requires_time"]
     );
@@ -160,7 +161,7 @@ fn the_format_is_written_out() {
         "Zone.utc",
     ] {
         let found = check(&format!(
-            "function label(value: OrderedAt, shown: Locale) -> PresentationText {{\n    return temporal.format(value, zone: Zone.utc, locale: shown, format: {format})\n}}\n"
+            "function label(value: OrderedAt, shown: Locale) -> PresentationText {{\n    return text.format(value, zone: Zone.utc, locale: shown, format: {format})\n}}\n"
         ));
         assert_eq!(found, ["type.temporal_format_invalid"], "{format}");
     }
@@ -168,9 +169,10 @@ fn the_format_is_written_out() {
         formats("OrderedAt", "zone: Zone.utc, format: TimeFormat.date_long"),
         ["type.argument_count"]
     );
+    // A time needs its format, as `text.format`'s data entry for it says.
     assert_eq!(
         formats("OrderedAt", "zone: Zone.utc, locale: reader_locale"),
-        ["type.argument_count"]
+        ["type.temporal_format_invalid"]
     );
 }
 
@@ -274,7 +276,7 @@ fn a_format_is_given_to_its_operation_as_text() {
     use jadpo_graph::body::{Callee, Expr, Literal, Node};
     let db = jadpo_db::Database::default();
     let source = format!(
-        "{TYPES}function label(value: Opening, reader_locale: Locale) -> PresentationText {{\n    return temporal.format(value, locale: reader_locale, format: ShortDate)\n}}\n"
+        "{TYPES}function label(value: Opening, reader_locale: Locale) -> PresentationText {{\n    return text.format(value, locale: reader_locale, format: ShortDate)\n}}\n"
     );
     let project = support::project(&db, Layout::Loose, &[("main.jadpo", source.as_str())]);
     let file = project.files(&db)[0];
@@ -285,16 +287,16 @@ fn a_format_is_given_to_its_operation_as_text() {
         .iter()
         .find_map(|site| match &site.node {
             Node::Expr(Expr::Call {
-                callee: Callee::Std(jadpo_std::Op::TemporalFormat),
+                callee: Callee::Std(jadpo_std::Op::TextFormat),
                 args,
                 ..
             }) => Some(args.clone()),
             _ => None,
         })
         .expect("the call");
-    // `value`, no `zone:`, `locale` and the format, in the table's order.
+    // `value`, `locale`, no `zone:` and the format, in the table's order.
     assert_eq!(args.len(), 4);
-    assert!(args[1].is_none());
+    assert!(args[2].is_none());
     let format = args[3].expect("a format");
     assert_eq!(
         body.site(format).node,

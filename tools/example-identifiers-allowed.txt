@@ -329,3 +329,8 @@ renewal
 reply
 started
 step
+# words the language defines (area 19, chunk 5.5a): `InstantRange`'s shape
+# for `type.standard_exists`, and a `FileType` variant
+starts_at
+ends_at
+pdf

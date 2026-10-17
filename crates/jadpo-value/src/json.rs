@@ -665,7 +665,7 @@ pub fn write_string(text: &str, out: &mut String) {
 /// An ISO 8601 duration of days, hours, minutes and seconds (`PT5M`,
 /// `P1DT2H`, `PT0.5S`), negative with a leading `-` as one is written
 /// (`-PT5M`), in milliseconds.
-fn iso_duration(text: &str) -> Option<i64> {
+pub(crate) fn iso_duration(text: &str) -> Option<i64> {
     if let Some(positive) = text.strip_prefix('-') {
         return iso_duration(positive.strip_prefix('P').map(|_| positive)?)?.checked_neg();
     }

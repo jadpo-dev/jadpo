@@ -1,5 +1,5 @@
 //! Text for people (area 10, "Showing dates and times to people"):
-//! `temporal.format` and `temporal.format_relative` over locale data, so
+//! the time types' `text.format` and `temporal.format_relative` over locale data, so
 //! the interpreter, a native deployable and WebAssembly on Workers write
 //! the same text for the same locale.
 //!
@@ -36,6 +36,7 @@ use writeable::{TryWriteable, Writeable};
 use crate::{Fault, Value, Zoned, temporal};
 
 mod message;
+pub(crate) mod names;
 pub mod pseudo;
 mod relative;
 
@@ -95,7 +96,7 @@ fn moment_of(value: &Value, zone: &Value) -> Result<Moment, Fault> {
 }
 
 /// A `Locale` value's BCP 47 tag.
-fn tag_of(locale: &Value) -> Result<&'static str, Fault> {
+pub(crate) fn tag_of(locale: &Value) -> Result<&'static str, Fault> {
     match locale {
         Value::Variant(variant) if &*variant.ty == jadpo_std::LOCALE => jadpo_std::LOCALES
             .get(variant.ordinal as usize)
@@ -105,18 +106,31 @@ fn tag_of(locale: &Value) -> Result<&'static str, Fault> {
     }
 }
 
-/// `temporal.format(value, zone:, locale:, format:)`.
-pub fn format_value(
+/// A time for people, as `text.format(value, locale:, zone:, format:)`
+/// shows the time types: in the locale tagged `tag`, in the format given
+/// as its text.
+pub(crate) fn format_in(
     value: &Value,
     zone: &Value,
-    locale: &Value,
+    tag: &str,
     format_spec: &Value,
 ) -> Result<Value, Fault> {
     let Value::Text(spec) = format_spec else {
         return Err(Fault::Shape);
     };
     let spec = TimeFormatSpec::parse(spec).ok_or(Fault::Shape)?;
-    format(moment_of(value, zone)?, tag_of(locale)?, &spec).map(|text| Value::text(&text))
+    format(moment_of(value, zone)?, tag, &spec).map(|text| Value::text(&text))
+}
+
+/// A time for people in a `Locale` value's locale, as the tests write it.
+#[cfg(test)]
+fn format_value(
+    value: &Value,
+    zone: &Value,
+    locale: &Value,
+    format_spec: &Value,
+) -> Result<Value, Fault> {
+    format_in(value, zone, tag_of(locale)?, format_spec)
 }
 
 /// `temporal.format_relative(value, now:, zone:, locale:)`.

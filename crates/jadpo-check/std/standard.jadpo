@@ -1,0 +1,65 @@
+// The standard types (area 19, "The standard types" and "Every standard
+// type meets one contract"): one declaration each, global, in one flat
+// set. Each is paired with its data entry in `jadpo-std`'s `standard`
+// module (its canonical text, JSON shape, storage, format for people,
+// order, named validator and the shape `type.standard_exists` matches),
+// and every baseline operation reads that entry, so a type added here
+// with its entry needs no new code; a test holds the two to each other.
+//
+// A type whose base is its own name is built into the language
+// (`jadpo_std::Builtin`): no declaration can say what it is made of, so
+// the declaration only names it. An enum with no variants listed takes
+// them from its table in `jadpo-std` (the IANA zones, the CLDR locales,
+// the media types), too long to repeat here.
+
+/// A calendar day with no time or zone (area 10), written `2026-10-25`.
+public type CalendarDate = CalendarDate {}
+
+/// A length of time, exact to the millisecond (area 10), written `PT1H30M`.
+public type Duration = Duration {}
+
+/// An email address (area 2), checked as one.
+public type Email = Email {}
+
+/// A file's IANA media type (area 16), written `image/png`.
+public type FileType = Enum {}
+
+/// One moment for everyone (area 10), written `2026-10-25T09:30:00Z`.
+public type Instant = Instant {}
+
+/// The instants from `start` up to but not including `end` (area 10),
+/// written `2026-10-25T09:00:00Z/2026-10-25T17:00:00Z`.
+public type InstantRange = Object {
+    start: Instant
+    end: Instant
+}
+
+/// An IPv4 or IPv6 address (area 2).
+public type IpAddress = IpAddress {}
+
+/// A CLDR locale (area 10), written as its BCP 47 tag, `en-GB`.
+public type Locale = Enum {}
+
+/// An `http://` or `https://` URL with a host (area 2).
+public type Url = Url {}
+
+/// A UUID (area 2), written in lowercase hexadecimal with hyphens.
+public type Uuid = Uuid {}
+
+/// A day of the week (area 10).
+public type Weekday = Enum {
+    monday
+    tuesday
+    wednesday
+    thursday
+    friday
+    saturday
+    sunday
+}
+
+/// An IANA time zone (area 10), written as its name, `Europe/London`.
+public type Zone = Enum {}
+
+/// An instant seen in a zone (area 10), written
+/// `2026-10-25T09:30:00+00:00[Europe/London]`.
+public type ZonedTime = ZonedTime {}

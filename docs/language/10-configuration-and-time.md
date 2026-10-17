@@ -1129,10 +1129,11 @@ dependency change of its own (chosen in chunk 5.2).
 
 > Amended 2026-10-17 by area 19 (question 2): every standard type is
 > formatted for people by one call, `text.format(value, locale:)`, so
-> `temporal.format` becomes the time types' `text.format`, with the same
-> `zone:` and `format:` options and a habit error whose edit writes
-> `text.format`; `temporal.format_relative` stays. Built in chunk 5.5a;
-> until then the examples here use `temporal.format`. Area 19 also adds
+> `temporal.format` became the time types' `text.format`, with the same
+> `zone:` and `format:` options and a habit error,
+> `semantic.standard_operation_moved`, whose edit writes `text.format`;
+> `temporal.format_relative` stays. Built in chunk 5.5a, and the examples
+> here use `text.format`. Area 19 also adds
 > three `temporal` operations (`occurrences`, `open_at`,
 > `period_between`, chunk 5.5k) and `{price, number, currency}` to the
 > placeholder styles (chunk 5.5h).
@@ -1179,7 +1180,7 @@ use shop/types { OrderPlaced, OrderedAt, ShortDate }
 /// The order's placing, in the customer's zone and language.
 action show_placed(ordered_at: OrderedAt, zone: Zone, reader_locale: Locale) -> OrderPlaced {
     return OrderPlaced {
-        placed: temporal.format(ordered_at, zone: zone, locale: reader_locale, format: ShortDate)
+        placed: text.format(ordered_at, zone: zone, locale: reader_locale, format: ShortDate)
     }
 }
 ```
@@ -1243,54 +1244,42 @@ locales {
 ```jadpo check project=format-builtins file=tests/built_in_formats.test.jadpo hidden
 test "the twelve built-in formats in en_gb" {
     var seen: ZonedTime = temporal.in_zone("2026-09-27T13:30:05Z", Zone.europe_london)
-    assert temporal.format(
+    assert text.format(
         seen,
         locale: Locale.en_gb,
         format: TimeFormat.date_full
     ) == "Sunday, 27 September 2026"
-    assert temporal.format(
+    assert text.format(
         seen,
         locale: Locale.en_gb,
         format: TimeFormat.date_long
     ) == "27 September 2026"
-    assert temporal.format(
-        seen,
-        locale: Locale.en_gb,
-        format: TimeFormat.date_medium
-    ) == "27 Sept 2026"
-    assert temporal.format(
-        seen,
-        locale: Locale.en_gb,
-        format: TimeFormat.date_short
-    ) == "27/09/2026"
-    assert temporal.format(
+    assert text.format(seen, locale: Locale.en_gb, format: TimeFormat.date_medium) == "27 Sept 2026"
+    assert text.format(seen, locale: Locale.en_gb, format: TimeFormat.date_short) == "27/09/2026"
+    assert text.format(
         seen,
         locale: Locale.en_gb,
         format: TimeFormat.time_full
     ) == "14:30:05 British Summer Time"
-    assert temporal.format(
-        seen,
-        locale: Locale.en_gb,
-        format: TimeFormat.time_long
-    ) == "14:30:05 BST"
-    assert temporal.format(seen, locale: Locale.en_gb, format: TimeFormat.time_medium) == "14:30:05"
-    assert temporal.format(seen, locale: Locale.en_gb, format: TimeFormat.time_short) == "14:30"
-    assert temporal.format(
+    assert text.format(seen, locale: Locale.en_gb, format: TimeFormat.time_long) == "14:30:05 BST"
+    assert text.format(seen, locale: Locale.en_gb, format: TimeFormat.time_medium) == "14:30:05"
+    assert text.format(seen, locale: Locale.en_gb, format: TimeFormat.time_short) == "14:30"
+    assert text.format(
         seen,
         locale: Locale.en_gb,
         format: TimeFormat.date_time_full
     ) == "Sunday, 27 September 2026 at 14:30:05 British Summer Time"
-    assert temporal.format(
+    assert text.format(
         seen,
         locale: Locale.en_gb,
         format: TimeFormat.date_time_long
     ) == "27 September 2026 at 14:30:05 BST"
-    assert temporal.format(
+    assert text.format(
         seen,
         locale: Locale.en_gb,
         format: TimeFormat.date_time_medium
     ) == "27 Sept 2026, 14:30:05"
-    assert temporal.format(
+    assert text.format(
         seen,
         locale: Locale.en_gb,
         format: TimeFormat.date_time_short
@@ -1599,7 +1588,7 @@ action show_placed(ordered_at: OrderedAt, languages_header: BrowserLanguages?) -
     var reader_pick: Locale = locale.from_accept_language(languages_header)
     return PlacedText {
         reply_locale: reader_pick
-        placed: temporal.format(
+        placed: text.format(
             ordered_at,
             zone: Zone.europe_london,
             locale: reader_pick,
@@ -1827,8 +1816,8 @@ How a message's type maps to its wording in each language's file:
 | Any other field type (`Instant`, `Money`, an object, `T?`) | `translation.field_type`: format it in code and pass the text |
 | More than one enum or `PluralCount` field | `translation.too_many_selectors`: split the message, so a translator never fills a grid of combinations |
 
-Dates, times and money are formatted in code (`temporal.format`, the money
-formatter) and passed in as `PresentationText`.
+Dates, times and money are formatted in code (`text.format`, area 19)
+and passed in as `PresentationText`.
 
 ### Using a message
 
@@ -2620,7 +2609,7 @@ are built with packages in Phase 7 (open item 8 of the
   `shared/translations/` is by hand until `layout.promotion_required`
   covers messages.
 - **Where the words come from.** The same ICU4X 2.3 and CLDR 48 data as
-  `temporal.format`, in `jadpo-value`, so the interpreter, a native
+  `text.format`, in `jadpo-value`, so the interpreter, a native
   deployable and WebAssembly write the same text. The wording is read while
   compiling into `jadpo-std`'s `Template`, carried to the runtime as plan
   data (`TranslationPlan`), and written by `present::translate`.
@@ -3500,16 +3489,16 @@ check failed: 1 error, 1 file
 type OrderedAt = Instant {}
 
 function placed_label(ordered_at: OrderedAt, reader_locale: Locale) -> PresentationText {
-    return temporal.format(ordered_at, locale: reader_locale, format: TimeFormat.date_long)
+    return text.format(ordered_at, locale: reader_locale, format: TimeFormat.date_long)
 }
 ```
 
 ```text output
-error: `temporal.format` needs the zone to show `OrderedAt` in
+error: `text.format` needs the zone to show `OrderedAt` in
  --> main.jadpo:4:12
   |
-4 |     return temporal.format(ordered_at, locale: reader_locale, format: TimeFormat.date_long)
-  |            ^^^^^^^^^^^^^^^ no `zone:`
+4 |     return text.format(ordered_at, locale: reader_locale, format: TimeFormat.date_long)
+  |            ^^^^^^^^^^^ no `zone:`
   reason: An `Instant` is one moment for everyone, and its date and clock time depend on where it is read; the server never guesses a zone, so `zone:` says which.
   next: Add `zone: ...` with the reader's zone, such as `zone: Zone.europe_london` (agent)
   rule: type.temporal_zone_required
@@ -3528,7 +3517,7 @@ function placed_label(
     zone: Zone,
     reader_locale: Locale
 ) -> PresentationText {
-    return temporal.format(
+    return text.format(
         ordered_at,
         zone: zone,
         locale: reader_locale,
@@ -3543,7 +3532,7 @@ error: `TimeFormat.date_longest` isn't a time format
    |
 12 |         format: TimeFormat.date_longest
    |                 ^^^^^^^^^^^^^^^^^^^^^^^ not a format
-  reason: `temporal.format`'s `format:` is written out: a built-in format, `TimeFormat.` followed by `date_`, `time_` or `date_time_` and `full`, `long`, `medium` or `short`, or the name of a format declared as `type Name = TimeFormat { ... }`.
+  reason: `text.format`'s `format:` is written out: a built-in format, `TimeFormat.` followed by `date_`, `time_` or `date_time_` and `full`, `long`, `medium` or `short`, or the name of a format declared as `type Name = TimeFormat { ... }`.
   next: Write a built-in format such as `TimeFormat.date_long`, or declare one with `type Name = TimeFormat { ... }` (agent)
   rule: type.temporal_format_invalid
   help: docs/language/10-configuration-and-time.html#type-temporal-format-invalid
@@ -3560,17 +3549,17 @@ as a value, is reported the same way: it holds no value.
 type InvoiceDate = CalendarDate {}
 
 function invoice_dated(day: InvoiceDate, reader_locale: Locale) -> PresentationText {
-    return temporal.format(day, locale: reader_locale, format: TimeFormat.date_time_long)
+    return text.format(day, locale: reader_locale, format: TimeFormat.date_time_long)
 }
 ```
 
 ```text output
 error: `TimeFormat.date_time_long` shows a clock time, which `InvoiceDate` doesn't have
- --> main.jadpo:4:64
+ --> main.jadpo:4:60
   |
-4 |     return temporal.format(day, locale: reader_locale, format: TimeFormat.date_time_long)
-  |                                                                ^^^^^^^^^^^^^^^^^^^^^^^^^ shows a clock time
-  reason: `InvoiceDate` is a date, with no clock time or zone, so `temporal.format` can show only its weekday, day, month and year.
+4 |     return text.format(day, locale: reader_locale, format: TimeFormat.date_time_long)
+  |                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^ shows a clock time
+  reason: `InvoiceDate` is a date, with no clock time or zone, so `text.format` can show only its weekday, day, month and year.
   next: Use a date format such as `TimeFormat.date_long`, or format an `Instant` or a `ZonedTime` instead (agent)
   rule: type.temporal_format_requires_time
   help: docs/language/10-configuration-and-time.html#type-temporal-format-requires-time
@@ -3699,7 +3688,7 @@ use shop/types { OrderedAt, PlacedText }
 /// The placing, in the customer's language.
 action show_placed(ordered_at: OrderedAt, reader_locale: Locale) -> PlacedText {
     return PlacedText {
-        placed: temporal.format(
+        placed: text.format(
             ordered_at,
             zone: Zone.utc,
             locale: reader_locale,
@@ -3710,11 +3699,11 @@ action show_placed(ordered_at: OrderedAt, reader_locale: Locale) -> PlacedText {
 ```
 
 ```text output
-error: `temporal.format` needs the application's locales
+error: `text.format` needs the application's locales
  --> domains/shop/actions/show_placed.jadpo:6:17
   |
-6 |         placed: temporal.format(
-  |                 ^^^^^^^^^^^^^^^ no locales declared
+6 |         placed: text.format(
+  |                 ^^^^^^^^^^^ no locales declared
   reason: Text for a person is written in one of the locales the application supports. None is declared, so there is nothing to check `locale:` against, and nothing for a request with no usable `Accept-Language` to fall back to.
   next: Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }` (agent)
   rule: type.temporal_locales_required
@@ -3943,7 +3932,7 @@ locales {
 }
 
 function placed_label(ordered_at: OrderedAt) -> PresentationText {
-    return temporal.format(
+    return text.format(
         ordered_at,
         zone: Zone.utc,
         locale: Locale.fr_fr,
@@ -3958,7 +3947,7 @@ error: `Locale.fr_fr` isn't a locale this application supports
    |
 12 |         locale: Locale.fr_fr,
    |                 ^^^^^^^^^^^^ not in `locales`
-  reason: `temporal.format` writes text in the locales listed in `locales { supported: }`, in `app.jadpo`; `Locale.fr_fr` is not one of them, and the server never guesses a language.
+  reason: `text.format` writes text in the locales listed in `locales { supported: }`, in `app.jadpo`; `Locale.fr_fr` is not one of them, and the server never guesses a language.
   next: Add `Locale.fr_fr` to `supported:` in `app.jadpo`, or use a locale that is listed (agent)
   rule: type.locale_unsupported
   help: docs/language/10-configuration-and-time.html#type-locale-unsupported
@@ -4753,7 +4742,7 @@ error: `LeftAt.when` is typed `Instant`, which a wording can't write
   |
 3 |     when: Instant
   |     ^^^^ not text, a number or a choice
-  reason: A message's fields are the placeholders of its wording, and a placeholder is text (`Text`, `PresentationText`), a number (`Int`, `Decimal`) or a plural count (`PluralCount`), or a type built on one of them; one `enum` field picks which wording is written. Dates, times and money are formatted in code, with `temporal.format` or the money formatter, and passed in as `PresentationText`.
+  reason: A message's fields are the placeholders of its wording, and a placeholder is text (`Text`, `PresentationText`), a number (`Int`, `Decimal`) or a plural count (`PluralCount`), or a type built on one of them; one `enum` field picks which wording is written. Dates, times and money are formatted in code, with `text.format`, and passed in as `PresentationText`.
   next: Make `when` a `PresentationText` and format the value where the message is called (agent)
   rule: translation.field_type
   help: docs/language/10-configuration-and-time.html#translation-field-type

@@ -632,7 +632,7 @@ fn unsupported(symbol: &Symbol, field: &FieldDef, span: Span) -> Diagnostic {
         ),
     )
     .at(span, "not text, a number or a choice")
-    .reason("A message's fields are the placeholders of its wording, and a placeholder is text (`Text`, `PresentationText`), a number (`Int`, `Decimal`) or a plural count (`PluralCount`), or a type built on one of them; one `enum` field picks which wording is written. Dates, times and money are formatted in code, with `temporal.format` or the money formatter, and passed in as `PresentationText`.")
+    .reason("A message's fields are the placeholders of its wording, and a placeholder is text (`Text`, `PresentationText`), a number (`Int`, `Decimal`) or a plural count (`PluralCount`), or a type built on one of them; one `enum` field picks which wording is written. Dates, times and money are formatted in code, with `text.format`, and passed in as `PresentationText`.")
     .next(format!(
         "Make `{}` a `PresentationText` and format the value where the message is called",
         field.name

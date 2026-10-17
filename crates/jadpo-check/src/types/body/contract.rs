@@ -1,0 +1,353 @@
+//! What the standard type contract's calls add to an ordinary
+//! standard-library call (area 19, "Every standard type meets one
+//! contract"): `text.format`, `text.from` and `text.parse` each take every
+//! standard type, and which types fit, which options a type takes and
+//! needs, and what each call can fail with are read from the types' data
+//! entries (`jadpo_std::standard`), never written per type here.
+
+use jadpo_diag::{Diagnostic, rule};
+use jadpo_std::standard::{Holds, StandardType, standard_type};
+use jadpo_std::{Op, Operation, RuleKey};
+use jadpo_syntax::ast::{self, AstNode, Expr};
+
+use super::super::table::Def;
+use super::super::ty::{Prim, Ty, TypeRef};
+use super::{Body, Fallible, node_key};
+use crate::tree;
+
+/// What a value is to the contract's operations.
+enum Contract {
+    /// A standard type, or a type built on one.
+    Standard(&'static StandardType),
+    /// A representation JSON carries as text (`Int`, `Decimal`, `Bool`),
+    /// or text itself: what `text.from` and `text.parse` take besides the
+    /// standard types (area 19, "Text").
+    Representation(Prim),
+    /// Neither, with why, after "`X` is".
+    Neither(String),
+}
+
+impl Body<'_> {
+    /// What `ty` is to the contract.
+    fn contract_of(&self, ty: &Ty) -> Contract {
+        match self.table.structure(ty) {
+            Ty::Prim(prim) => match jadpo_std::standard::of_builtin(prim) {
+                Some(entry) => Contract::Standard(entry),
+                None if matches!(prim, Prim::Int | Prim::Decimal | Prim::Bool | Prim::Text) => {
+                    Contract::Representation(prim)
+                }
+                None => Contract::Neither(format!("built on `{}`", prim.name())),
+            },
+            Ty::Named(name) | Ty::Opaque(name, _) => match standard_type(&name) {
+                Some(entry) => Contract::Standard(entry),
+                None => match self.table.def(&name) {
+                    Some(Def::Enum { .. }) => Contract::Neither(
+                        "an enum the application declares, which has no text of its own (area 2): showing one is a `match`".to_string(),
+                    ),
+                    _ => Contract::Neither("an object, which has no single text form".to_string()),
+                },
+            },
+            other => Contract::Neither(format!("`{other}`")),
+        }
+    }
+
+    /// The value given to `text.format` or `text.from`, with the standard
+    /// type it is, when it is one the call takes.
+    pub(super) fn contract_value(
+        &mut self,
+        op: Op,
+        value: &Expr,
+        ty: Option<Ty>,
+        written: &str,
+    ) -> Option<&'static StandardType> {
+        let ty = match ty {
+            Some(ty) => ty,
+            None => self.infer(value),
+        };
+        if ty.has_error() {
+            return None;
+        }
+        let (fits, entry, why) = match (op, self.contract_of(&ty)) {
+            (_, _) if self.table.is_nullable(&ty) => (
+                false,
+                None,
+                format!("`{ty}` may be `none`, and `{written}` takes a value"),
+            ),
+            (Op::TextFrom, Contract::Standard(entry)) if entry.text.is_none() => (
+                false,
+                None,
+                format!("`{ty}` has no single text form, so it has no canonical text"),
+            ),
+            // A value built on `Text` already is text (area 19, "Text").
+            (Op::TextFrom, Contract::Standard(entry)) if matches!(entry.holds, Holds::Builtin(builtin) if builtin.representation() == Prim::Text) => {
+                (
+                    false,
+                    None,
+                    format!(
+                        "`{ty}` is built on `Text` already, and a parameter written `Text` takes it as it is"
+                    ),
+                )
+            }
+            (_, Contract::Standard(entry)) => (true, Some(entry), String::new()),
+            (Op::TextFrom, Contract::Representation(Prim::Text)) => (
+                false,
+                None,
+                format!("`{ty}` is built on `Text`, so it is text already"),
+            ),
+            (Op::TextFrom, Contract::Representation(_)) => (true, None, String::new()),
+            (_, Contract::Representation(prim)) => (
+                false,
+                None,
+                format!(
+                    "`{ty}` is built on `{}`, which has no format of its own yet",
+                    prim.name()
+                ),
+            ),
+            (_, Contract::Neither(what)) => (false, None, format!("`{ty}` is {what}")),
+        };
+        if !fits {
+            let wanted = match op {
+                Op::TextFrom => "a value with a canonical text",
+                _ => "a standard type's value",
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{ty}` can't be used where {wanted} is required"),
+                )
+                .at(self.span(value), format!("this is `{ty}`"))
+                .reason(format!(
+                    "`{written}` takes a standard type's value, or a value of a type built on one{}; {why}.",
+                    if op == Op::TextFrom {
+                        ", an `Int`, a `Decimal` or a `Bool`"
+                    } else {
+                        ""
+                    }
+                ))
+                .next(format!("Pass {wanted} here")),
+            );
+        }
+        entry
+    }
+
+    /// `as:` on `text.parse`: a type written out, a standard type or one
+    /// built on a standard type or on `Text`, `Int`, `Decimal` or `Bool`.
+    /// The operation is given the name of the standard type or
+    /// representation whose text it reads, and the call gives the type.
+    pub(super) fn type_argument(&mut self, value: &Expr, written: &str) -> Option<Ty> {
+        let target = match TypeRef::from_expr(value) {
+            TypeRef::Path(names, args) if args.is_empty() && !names.is_empty() => {
+                let head_is_type = names
+                    .first()
+                    .is_some_and(|name| name.starts_with(|c: char| c.is_ascii_uppercase()));
+                if head_is_type {
+                    self.resolved_by(|names, out| names.value_name(value, out));
+                    Some(self.table.resolve(&TypeRef::Path(names, args)))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        let Some(target) = target else {
+            if !super::is_literal(value) {
+                self.infer(value);
+            }
+            let shown = tree::written(value.syntax());
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{written}`'s `as:` is a type written out, not `{shown}`"),
+                )
+                .at(self.span(value), "not a type")
+                .reason(format!(
+                    "`{written}` reads text as the type `as:` names, which is written out, such as `as: Email`: a value can't say which type to read."
+                ))
+                .next("Write the type itself, such as `as: Email`"),
+            );
+            return None;
+        };
+        if target.has_error() {
+            return None;
+        }
+        let reads = match self.contract_of(&target) {
+            Contract::Standard(entry) if entry.text.is_some() => Some(entry.name),
+            Contract::Representation(prim) => Some(prim.name()),
+            _ => None,
+        };
+        let Some(reads) = reads else {
+            let why = match self.contract_of(&target) {
+                Contract::Standard(_) => "has no single text form".to_string(),
+                Contract::Neither(what) => format!("is {what}"),
+                Contract::Representation(_) => String::new(),
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{written}` can't read text as `{target}`"),
+                )
+                .at(self.span(value), format!("`{target}` has no canonical text"))
+                .reason(format!(
+                    "`{written}` reads a standard type's canonical text, or text as a type built on `Text`, `Int`, `Decimal` or `Bool`; `{target}` {why}."
+                ))
+                .next("Read text as a standard type, or a type built on one or on a representation"),
+            );
+            return None;
+        };
+        let key = node_key(value.syntax());
+        self.facts.types.insert(key, Ty::Prim(Prim::Text));
+        self.facts.formats.insert(key, reads.to_string());
+        Some(target)
+    }
+
+    /// What `text.parse` can fail with: `malformed` unless it reads text
+    /// as text, and every rule of the type it gives that the standard type
+    /// or representation it reads doesn't already guarantee, as a
+    /// construction's.
+    pub(super) fn parse_fallible(&mut self, call: &ast::CallExpr, raw: &Expr, target: &Ty) {
+        let base = match self.contract_of(target) {
+            Contract::Standard(entry) => match entry.holds {
+                Holds::Builtin(builtin) => Some(Ty::Prim(builtin)),
+                _ => None,
+            },
+            Contract::Representation(prim) => Some(Ty::Prim(prim)),
+            Contract::Neither(_) => None,
+        };
+        let mut rules: Vec<String> = Vec::new();
+        if base != Some(Ty::Prim(Prim::Text)) {
+            rules.push(RuleKey::Malformed.word().to_string());
+        }
+        if let Some(base) = base {
+            rules.extend(self.verdict(raw, &base, target).breakable);
+        }
+        self.facts
+            .parsed
+            .insert(node_key(call.syntax()), target.clone());
+        // The call's site is the type it gives, whose rules the runtime
+        // checks once the text is read, however the call is reached (an
+        // `attempt` checks its call without inferring it).
+        self.facts
+            .types
+            .insert(node_key(call.syntax()), target.clone());
+        let fallible = if rules.is_empty() {
+            Fallible::Never
+        } else {
+            Fallible::Construction(rules)
+        };
+        self.facts
+            .constructions
+            .insert(node_key(call.syntax()), fallible);
+    }
+
+    /// The rules `text.parse` can break, by key and as written: `malformed`
+    /// and the type's own.
+    pub(super) fn parse_rules(&self, call: &ast::CallExpr) -> Vec<(&'static str, String)> {
+        let mut rules = vec![(
+            RuleKey::Malformed.word(),
+            RuleKey::Malformed.word().to_string(),
+        )];
+        if let Some(target) = self.facts.parsed.get(&node_key(call.syntax())) {
+            rules.extend(self.rules_of(target));
+        }
+        rules
+    }
+
+    /// `zone:` and `format:` on `text.format`: each means something only
+    /// for a type whose data entry takes it, and a type that takes one
+    /// needs it.
+    pub(super) fn contract_options(
+        &mut self,
+        table: &Operation,
+        call: &ast::CallExpr,
+        args: &[ast::Arg],
+        slots: &[Option<usize>],
+        (entry, shown): (&'static StandardType, &Ty),
+        written: &str,
+    ) {
+        let given = |slot: usize| {
+            args.iter()
+                .zip(slots)
+                .find(|(_, at)| **at == Some(slot))
+                .map(|(arg, _)| arg)
+        };
+        for (slot, param) in table.params.iter().enumerate() {
+            if !param.by_type {
+                continue;
+            }
+            let name = param.name;
+            match (entry.format_option(name), given(slot)) {
+                (None, Some(arg)) => {
+                    let span = arg
+                        .name()
+                        .map_or_else(|| self.span(arg), |name| self.span(&name));
+                    let removal = self.argument_removal(arg);
+                    let (label, reason) = option_unused(name, entry, shown);
+                    self.out.push(
+                        Diagnostic::new(
+                            &rule::TYPE_TEMPORAL_OPTION_UNUSED,
+                            format!("`{name}:` means nothing for a `{shown}`"),
+                        )
+                        .at(span, label)
+                        .reason(reason)
+                        .next(format!("Remove `{name}: ...`"))
+                        .edit(removal, ""),
+                    );
+                }
+                (Some(option), None) if option.needed => {
+                    let span = call
+                        .expr()
+                        .map_or_else(|| self.span(call), |callee| self.span(&callee));
+                    let problem = if name == "zone" {
+                        Diagnostic::new(
+                            &rule::TYPE_TEMPORAL_ZONE_REQUIRED,
+                            format!("`{written}` needs the zone to show `{shown}` in"),
+                        )
+                        .at(span, "no `zone:`")
+                        .reason(
+                            "An `Instant` is one moment for everyone, and its date and clock time depend on where it is read; the server never guesses a zone, so `zone:` says which.",
+                        )
+                        .next("Add `zone: ...` with the reader's zone, such as `zone: Zone.europe_london`")
+                    } else {
+                        Diagnostic::new(
+                            &rule::TYPE_TEMPORAL_FORMAT_INVALID,
+                            format!("`{written}` needs a format to show `{shown}` in"),
+                        )
+                        .at(span, "no `format:`")
+                        .reason(
+                            "A time is shown to a person in a format written out, which the server never guesses: `format:` names a built-in one, `TimeFormat.` followed by `date_`, `time_` or `date_time_` and `full`, `long`, `medium` or `short`, or the name of a format declared as `type Name = TimeFormat { ... }`.",
+                        )
+                        .next("Add `format: ...`, such as `format: TimeFormat.date_long`")
+                    };
+                    self.out.push(problem);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Why `text.format`'s option means nothing for a type.
+fn option_unused(option: &str, entry: &StandardType, shown: &Ty) -> (String, String) {
+    let time = matches!(entry.format.key, jadpo_std::standard::FormatKey::DateTime);
+    match option {
+        "zone" if entry.holds == Holds::Builtin(Prim::ZonedTime) => (
+            format!("`{shown}` is seen in its own zone"),
+            format!(
+                "`zone:` says which zone an `Instant` is shown in; `{shown}` is a `ZonedTime`, which carries the zone it is seen in, so `text.format` shows it there."
+            ),
+        ),
+        "zone" if time => (
+            format!("`{shown}` has no clock time"),
+            format!(
+                "`zone:` says which zone an `Instant` is shown in; `{shown}` is a date, with no clock time, so it reads the same in every zone."
+            ),
+        ),
+        _ => (
+            format!("`{shown}` isn't a time"),
+            format!(
+                "`{option}:` says how a time is shown to a person; `{shown}` is a `{}`, which `text.format` shows in its own words, with nothing to choose.",
+                entry.name
+            ),
+        ),
+    }
+}

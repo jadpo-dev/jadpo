@@ -41,6 +41,7 @@ pub mod order;
 pub mod present;
 mod rounding;
 pub mod shape;
+pub mod standard;
 pub mod temporal;
 pub mod validate;
 mod value;
@@ -137,13 +138,19 @@ pub fn run(
         ) => run_temporal(op, args),
         // The text for people, over locale data (area 10, "Showing dates
         // and times to people").
-        (Op::TemporalFormat, [value, zone, locale, format]) => {
-            present::format_value(value, zone, locale, format)
-        }
         (Op::TemporalFormatRelative, [value, now, zone, locale]) => {
             present::format_relative_value(value, now, zone, locale)
         }
-        (Op::TemporalFormat | Op::TemporalFormatRelative, _) => Err(Fault::Shape),
+        (Op::TemporalFormatRelative, _) => Err(Fault::Shape),
+        // The standard type contract (area 19): one implementation each,
+        // over the types' data entries. `text.parse` is given the name of
+        // the standard type or representation it reads.
+        (Op::TextFormat, [value, locale, zone, format]) => {
+            standard::format(value, locale, zone, format)
+        }
+        (Op::TextFrom, [value]) => standard::from(value),
+        (Op::TextParse, [Value::Text(raw), Value::Text(ty)]) => standard::parse(raw, ty),
+        (Op::TextFormat | Op::TextFrom | Op::TextParse, _) => Err(Fault::Shape),
     }
 }
 
@@ -278,14 +285,16 @@ mod tests {
         };
         for operation in jadpo_std::OPERATIONS {
             let args: Vec<Value> = match operation.op {
-                Op::TemporalFormat => {
+                Op::TextFormat => {
                     vec![
                         Value::Instant(0),
-                        london.clone(),
                         english.clone(),
+                        london.clone(),
                         Value::text("date_long"),
                     ]
                 }
+                Op::TextFrom => vec![Value::Instant(0)],
+                Op::TextParse => vec![Value::text("2026-10-25"), Value::text("CalendarDate")],
                 Op::TemporalFormatRelative => {
                     vec![
                         Value::Instant(0),

@@ -1148,6 +1148,28 @@ impl Names<'_> {
         };
         match self.std.namespace(&qualifier) {
             Some(Namespace::Standard) => {
+                if let Some((member, span)) = &member
+                    && let Some(to) = jadpo_std::moved(&qualifier, member)
+                {
+                    // An operation that moved (area 19): its edit writes
+                    // the new name.
+                    let whole =
+                        Span::new(qualifier_span.path.clone(), qualifier_span.start, span.end);
+                    let from = format!("{qualifier}.{member}");
+                    out.push(
+                        Diagnostic::new(
+                            &rule::SEMANTIC_STANDARD_OPERATION_MOVED,
+                            format!("`{from}` is now `{to}`"),
+                        )
+                        .at(whole.clone(), "moved")
+                        .reason(format!(
+                            "The standard library has one name for each operation; `{from}` moved to `{to}`, which takes the same values."
+                        ))
+                        .next(format!("Write `{to}`"))
+                        .edit(whole, to),
+                    );
+                    return;
+                }
                 if let Some((member, span)) = member
                     && !self.std.has_operation(&qualifier, &member)
                 {

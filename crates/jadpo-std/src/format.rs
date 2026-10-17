@@ -1,5 +1,5 @@
 //! Time formats (area 10, "Showing dates and times to people"): what
-//! `temporal.format`'s `format:` names, decided once for the checker,
+//! `text.format`'s `format:` names, decided once for the checker,
 //! which reads them from source, and the runtime, which formats with them.
 //!
 //! A format is one of the built-in [`BuiltinFormat`]s, `TimeFormat.date_long`,
@@ -165,7 +165,7 @@ impl BuiltinFormat {
     }
 }
 
-/// A format as `temporal.format` is given it.
+/// A format as `text.format` is given it.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TimeFormatSpec {
     Builtin(BuiltinFormat),

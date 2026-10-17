@@ -2,8 +2,10 @@
 title: Standard library
 area: 19
 status: decided
-checked-with: nothing yet; the examples are fragments until chunks 5.5a to 5.5s build them
-rules: []
+checked-with: this checkout's jadpo on every gate run, from chunk 5.5a; the other examples are fragments until chunks 5.5b to 5.5s build them
+rules:
+  - semantic.standard_operation_moved
+  - type.standard_exists
 ---
 
 # Standard library
@@ -15,7 +17,7 @@ own features needed. This page collects them, adds what real applications
 keep reaching for, says which gaps in the language block the rest and how
 to close them, and says what is left out on purpose and why.
 
-> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Nothing on this page beyond what areas 2, 3 and 10 already decided is built; chunks 5.5a to 5.5s build it, in the order under "Building it". Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
+> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Chunk 5.5a built the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code; nothing else on this page beyond what areas 2, 3 and 10 already decided is built, and chunks 5.5a2 to 5.5s build it, in the order under "Building it". Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
 
 | Namespace | Holds | Operations | Decided in |
 |---|---|---|---|
@@ -171,6 +173,67 @@ by type. How it is expressed is question 2.
 every standard type, as `json.read` is one over every input type, so the
 contract adds 2 names, not 700.
 
+> Built in chunk 5.5a for the 13 standard types built so far: each is a
+> stub in `crates/jadpo-check/std/standard.jadpo` and a data entry in
+> `jadpo-std`'s `standard` module, which the three operations, JSON,
+> storage and `<` read, and one harness runs every type through. Each
+> later group arrives as stubs and entries ("Chosen in chunk 5.5a", under
+> "Review").
+
+A form sends a quantity as text, an order's time goes into a log line as
+its canonical text, and a day, a duration and a zone are shown to people
+in their own words:
+
+```jadpo check project=contract
+type OrderedAt = Instant {}
+
+type LogText = Text {}
+
+type FormText = Text {}
+
+type Quantity = Int {
+    min: 1
+    max: 12
+}
+
+type QuantityUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type QuantityTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// The quantity a form sent: text that may not be a number at all
+/// (`malformed`), or a number outside `Quantity`'s rules.
+function quantity_from(raw: FormText) fails QuantityUnreadable, QuantityTooLarge -> Quantity {
+    var quantity: Quantity = attempt text.parse(raw, as: Quantity) {
+        malformed: QuantityUnreadable
+        invalid: QuantityTooLarge
+    }
+    return quantity
+}
+
+/// When an order was placed, as a log line writes it.
+function placed_text(at: OrderedAt) -> LogText {
+    return LogText(text.from(at))
+}
+```
+
+```jadpo check project=contract file=main.test.jadpo
+test "standard values are read, written and shown one way" {
+    var ordered_quantity: Quantity = attempt quantity_from("4")
+    assert ordered_quantity == 4
+    assert quantity_from("13") fails QuantityTooLarge
+    assert quantity_from("four") fails QuantityUnreadable
+    assert placed_text("2026-10-25T09:30:00Z") == "2026-10-25T09:30:00Z"
+    assert text.from(Zone.europe_london) == "Europe/London"
+    assert text.format(Weekday.monday, locale: Locale.fr_fr) == "lundi"
+    assert text.format(90m, locale: Locale.en_gb) == "1 hour, 30 minutes"
+    assert text.format(Locale.fr_fr, locale: Locale.en_gb) == "French (France)"
+}
+```
+
 **Extras beyond the baseline**, by group, each with its full table under "Operations" below:
 
 | Group | Extras | Count |
@@ -246,6 +309,14 @@ The error stops `check` and the build until one of two things is done:
 The cost is false positives: an `Object` of `x` and `y` grid cells, or an
 `amount` and `currency` that are a quote, not money, matches by shape. The
 required reason handles them, and review sees each one.
+
+> Built in chunk 5.5a on app code, with the first match signature,
+> `InstantRange`'s (a start and an end, each an `Instant`), since `Point`,
+> `Money`, `Colour`, `LineString` and `Polygon` arrive with their groups;
+> the output above is the error as it will read for `Point`. The swap's
+> one-step edit comes with `jadpo fix` (chunk 5.5a2), and packages' public
+> types with the publishing bar (chunk 7.1). Its example is under
+> "Errors".
 
 The `Country`, `Language` and `PhoneNumber` lists ship with each Jadpo
 release, as the time-zone database does (#88, "built in or a library
@@ -1407,6 +1478,85 @@ didn't: TypeScript's string-comparing default sort and asynchronous
 hashing, negative positions, Rust's and Go's byte lengths, and the aliases
 and second ways every one of them has.
 
+## Errors
+
+Every error this area can produce, with an example that triggers it and the
+new compiler's real output from `jadpo check`. The examples are checked as
+loose files.
+
+### `type.standard_exists`
+
+A declaration whose only fields are a standard type's, by their common
+names in any order and what they are built on, is that type under another
+name. It is declinable: a type that means something else keeps its shape
+with a reason on the declaration.
+
+```jadpo check project=e-standard-exists expect=type.standard_exists
+/// When a room is booked, from its start to its end.
+type Booking = Object {
+    starts_at: Instant
+    ends_at: Instant
+}
+```
+
+```text output
+error: `Booking` is the standard `InstantRange` under another name
+ --> main.jadpo:2:6
+  |
+2 | type Booking = Object {
+  |      ^^^^^^^ a start and an end
+  reason: `Booking` has only a start (`starts_at`) and an end (`ends_at`), each built on `Instant`, which is the standard `InstantRange`. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.
+  next: Use `InstantRange` where `Booking` is used, converting at the edge where data arrives in another shape, or write `decline type.standard_exists: "<why>"` above it if this is deliberate (agent)
+  rule: type.standard_exists
+  help: docs/language/19-standard-library.html#type-standard-exists
+
+check failed: 1 error, 1 file
+```
+
+Declined, with the reason review reads:
+
+```jadpo check project=standard-exists-declined
+/// A shift as the rota plans it, before anyone has worked it.
+decline type.standard_exists: "Planned hours on the rota, not a range anyone has worked"
+type PlannedShift = Object {
+    starts_at: Instant
+    ends_at: Instant
+}
+```
+
+### `semantic.standard_operation_moved`
+
+An operation the standard library has moved to another name: its edit
+writes the new name, and the call is checked as the new operation.
+`temporal.format` became the time types' `text.format` (question 2).
+
+```jadpo check project=e-operation-moved expect=semantic.standard_operation_moved
+type OrderedAt = Instant {}
+
+function placed(at: OrderedAt) -> PresentationText {
+    return temporal.format(
+        at,
+        zone: Zone.europe_london,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_long
+    )
+}
+```
+
+```text output
+error: `temporal.format` is now `text.format`
+ --> main.jadpo:4:12
+  |
+4 |     return temporal.format(
+  |            ^^^^^^^^^^^^^^^ moved
+  reason: The standard library has one name for each operation; `temporal.format` moved to `text.format`, which takes the same values.
+  next: Write `text.format` (agent)
+  rule: semantic.standard_operation_moved
+  help: docs/language/19-standard-library.html#semantic-standard-operation-moved
+
+check failed: 1 error, 1 file
+```
+
 ## Review
 
 ### Status
@@ -1416,7 +1566,9 @@ and second ways every one of them has.
 | `collection.count`, `contains`, `map`, `filter` | Decided (area 2) and built; renamed `list.` in 5.5b (question 6) |
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here, built in 5.5k |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a, each group of types in 5.5h to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, each group of types in 5.5h to 5.5s |
+| `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
+| A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2 |
 | `Email`, `Url`, `IpAddress`, `FileType`, `InstantRange` | Decided (areas 2, 10, 16) and built |
 | Everything else on this page | Decided 2026-10-17, as recommended; built in chunks 5.5a to 5.5s |
 | The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g |
@@ -1479,6 +1631,63 @@ four table entries and every call: about 40 files across areas 2, 3, 9, 13
 and this page, examples 04, 06, 08, 09, 10, 11 and 12, and the checker,
 interpreter and CLI tests. `collection.` then gives one error whose edit
 writes `list.`, `set.` or `map.` from the argument's type.
+
+### Chosen in chunk 5.5a
+
+- **The extension point.** A standard type is a stub in
+  `crates/jadpo-check/std/standard.jadpo` and an entry in `jadpo-std`'s
+  `standard` module (`StandardType`): what it holds, its `TextForm`, its
+  `Json` shape, its storage column, its `FormatKey` and the options it
+  takes, whether it is ordered, its named `Validator`, the shape
+  `type.standard_exists` matches, and the examples the harness reads. A
+  stub whose base is its own name is a type built into the language. A
+  test holds the stubs and the entries to each other, and the harness has a
+  runtime half (`jadpo-runtime`) and a checker half (`jadpo-check`).
+- **Canonical text.** An enum's code is its variant's entry in its table:
+  a `Zone`'s IANA name, a `Locale`'s BCP 47 tag, a `FileType`'s media type,
+  and a `Weekday`'s own name (`monday`), which has no other code. A
+  `ZonedTime` is RFC 9557 (`2026-10-25T09:30:00+00:00[Europe/London]`),
+  read only with the offset its zone has then; an `InstantRange` is ISO
+  8601's interval (`<start>/<end>`), its start no later than its end; a
+  `Duration` is the ISO 8601 form JSON already carries, in hours
+  (`PT26H`), and an `Instant` ends in `Z`.
+- **`text.parse`.** Text that isn't the type at all is `malformed`, an
+  address that isn't one included; the rules of the type `as:` names break
+  by their own names, as a construction's do. `as:` is a type written out:
+  a standard type, or a type built on one or on `Text`, `Int`, `Decimal` or
+  `Bool`; text read as text is never `malformed`. An application's enum or
+  object is refused, with `type.mismatch`.
+- **`text.from`** takes a standard type with a canonical text that isn't
+  built on `Text`, and `Int`, `Decimal` and `Bool`; `Email`, `Url` and
+  `IpAddress` are text already ("Text", above), and an application's enum
+  has no text of its own; each is `type.mismatch`.
+- **`text.format`.** `Email`, `Url`, `IpAddress`, `Uuid` and `FileType`
+  show their canonical text; a `Weekday` is CLDR's stand-alone weekday
+  name, a `Locale` CLDR's display name ("British English"), a `Zone` CLDR's
+  generic location format ("UK Time"), a `Duration` CLDR's long unit names
+  joined as the locale joins a list of units ("1 hour, 30 minutes"), and an
+  `InstantRange` its two ends in its format, joined by ` – `, CLDR's
+  English interval fallback, until interval patterns are needed. `zone:`
+  and `format:` are the time types' only, as their entries say: a
+  missing `format:` is `type.temporal_format_invalid`, and an option a type
+  doesn't take `type.temporal_option_unused`. Numbers take no format for
+  people until chunk 5.5d.
+- **`FileType`'s variants** are the media types the pages name: `png`,
+  `jpeg`, `webp`, `pdf`, `csv`, `tsv` and `json`; more come with chunk
+  5.5n.
+- **Storage.** `InstantRange` is stored as its JSON, as an object and a
+  `ZonedTime` are, until objects get named columns with `Money` (chunk
+  5.5h).
+- **`type.standard_exists`** matches only an `Object` declaration, whose
+  fields are exactly a shape's, none of them optional; `InstantRange`'s is
+  the first shape (`start`, `starts_at` or `start_at`, and `end`, `ends_at`
+  or `end_at`, each built on `Instant`).
+- **`text` stays free** for parameters and variables until chunk 5.5f
+  reserves it (question 30); a local called `text` hides the namespace
+  meanwhile.
+- **Moved operations** are a table in `jadpo-std` (`MOVED`), each reported
+  as `semantic.standard_operation_moved` where it is resolved and checked
+  as the operation it moved to; chunk 5.5b adds `collection.`'s.
 
 ### Decisions
 
@@ -1884,8 +2093,11 @@ first; each group of types then arrives with its baseline and its extras.
   entry generating construction, `text.parse`, `text.format`, `text.from`,
   JSON, storage, `==` and order; named validators; the one test harness;
   proven on the 13 built types; `temporal.format` moved under
-  `text.format`; `type.standard_exists` on app code; the clash check for
-  a release that adds a standard type, with `jadpo fix` (question 4).
+  `text.format`; `type.standard_exists` on app code. Built; split on
+  2026-10-17, the rest is 5.5a2.
+- **5.5a2 Standard type clashes and `jadpo fix`** `opus · high`: the clash
+  check for a release that adds a standard type, with `jadpo fix`
+  (question 4).
 - **5.5b Lists** `opus · high`: `collection.` renamed `list.` everywhere,
   with its habit error; the 21 new list operations that need no language
   change; `never_negative`, the `sort_by` key's ordered kinds, results

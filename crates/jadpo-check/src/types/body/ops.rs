@@ -54,12 +54,10 @@ impl Operand {
     }
 }
 
-/// What ordering applies to: numbers and time values.
+/// What ordering applies to: numbers, and the standard types whose data
+/// entry says they are ordered (area 19), the time values.
 fn ordered(prim: Prim) -> bool {
-    matches!(
-        prim,
-        Prim::Int | Prim::Decimal | Prim::Instant | Prim::CalendarDate | Prim::Duration
-    )
+    prim.is_number() || jadpo_std::standard::of_builtin(prim).is_some_and(|entry| entry.ordered)
 }
 
 /// What `+` and `-` work on besides numbers and text (area 10).
