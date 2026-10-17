@@ -12,21 +12,15 @@ use std::fmt;
 
 pub use suggest::nearest;
 
-/// How serious a rule is. The severity word in a headline comes from here.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Severity {
+/// Whether a rule can be declined (area 1, "Declining a judgement call"):
+/// every finding is an error, and a judgement call may be answered by a
+/// `decline <rule>: "<reason>"` line above the declaration instead of a fix.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Kind {
+    /// A plain mistake: only a fix answers it.
     Error,
-    Warning,
-}
-
-impl Severity {
-    /// The lower-case word used in headlines and JSON.
-    pub fn word(self) -> &'static str {
-        match self {
-            Severity::Error => "error",
-            Severity::Warning => "warning",
-        }
-    }
+    /// A judgement call: a fix, or a decline with a reason.
+    Declinable,
 }
 
 /// Who acts on a diagnostic's next step (area 14): a coding agent can make
@@ -53,7 +47,8 @@ pub struct Rule {
     pub id: &'static str,
     /// The language area (1–18) whose page documents the rule.
     pub area: u8,
-    pub severity: Severity,
+    /// Whether a `decline` line may answer it instead of a fix.
+    pub declinable: bool,
     /// Who usually decides the next step.
     pub decides: Decider,
     /// The rule's entry on the language pages, relative to `docs/language/`.
@@ -76,16 +71,16 @@ impl fmt::Display for Rule {
 }
 
 macro_rules! rules {
-    ($($name:ident: $id:literal, area $area:literal, $severity:ident, $decides:ident, $anchor:literal, $summary:literal;)*) => {
+    ($($name:ident: $id:literal, area $area:literal, $kind:ident, $decides:ident, $anchor:literal, $summary:literal;)*) => {
         /// Typed constants for every rule in the catalogue.
         pub mod rule {
-            use super::{Decider, Rule, Severity};
+            use super::{Decider, Kind, Rule};
             $(
                 #[doc = $summary]
                 pub const $name: Rule = Rule {
                     id: $id,
                     area: $area,
-                    severity: Severity::$severity,
+                    declinable: matches!(Kind::$kind, Kind::Declinable),
                     decides: Decider::$decides,
                     anchor: $anchor,
                     summary: $summary,
@@ -219,7 +214,7 @@ rules! {
         "14-tooling.html#command-errors", "Required configuration is missing";
     CONSTANT_CYCLE: "constant.cycle", area 3, Error, Agent,
         "03-logic.html#constant-cycle", "Constant's value depends on itself";
-    CONSTANT_SIMILAR_EXISTS: "constant.similar_exists", area 3, Warning, Agent,
+    CONSTANT_SIMILAR_EXISTS: "constant.similar_exists", area 3, Declinable, Agent,
         "03-logic.html#constant-similar-exists", "Another constant of the same type holds the same value";
     CONSTANT_VALUE_NOT_FIXED: "constant.value_not_fixed", area 3, Error, Agent,
         "03-logic.html#constant-value-not-fixed", "Constant's value is only known while the app runs";
@@ -317,6 +312,12 @@ rules! {
         "06-reads-and-writes.html#data-write-section-required", "Write doesn't say what it changes";
     DATA_WRITE_SECTION_UNEXPECTED: "data.write_section_unexpected", area 6, Error, Agent,
         "06-reads-and-writes.html#data-write-section-unexpected", "Write has a section it doesn't take";
+    DECLINE_NOT_DECLINABLE: "decline.not_declinable", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#decline-not-declinable", "Decline names a rule that can't be declined";
+    DECLINE_REASON_REQUIRED: "decline.reason_required", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#decline-reason-required", "Decline gives no reason";
+    DECLINE_UNUSED: "decline.unused", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#decline-unused", "Decline's rule no longer fires on its declaration";
     EFFECT_FUNCTION_CALLS_ACTION: "effect.function_calls_action", area 3, Error, Agent,
         "03-logic.html#effect-function-calls-action", "Function calls an action or query";
     EFFECT_FUNCTION_PERSISTENCE: "effect.function_persistence", area 3, Error, Agent,
@@ -419,7 +420,7 @@ rules! {
         "01-project-layout-and-modules.html#layout-unused-declaration", "Shared declaration is not used";
     LAYOUT_WRONG_FOLDER: "layout.wrong_folder", area 1, Error, Agent,
         "01-project-layout-and-modules.html#layout-wrong-folder", "Declaration is in the wrong folder";
-    LIBRARY_SIMILAR_EXISTS: "library.similar_exists", area 1, Warning, Agent,
+    LIBRARY_SIMILAR_EXISTS: "library.similar_exists", area 1, Declinable, Agent,
         "01-project-layout-and-modules.html#library-similar-exists", "A library function already does the same";
     MIGRATION_APPLY_FAILED: "migration.apply_failed", area 14, Error, Human,
         "14-tooling.html#command-errors", "Migrations could not be applied";
@@ -988,6 +989,14 @@ pub fn find(id: &str) -> Option<&'static Rule> {
     CATALOGUE.iter().find(|rule| rule.id == id)
 }
 
+/// What a declinable rule's next step adds: the line that declines it.
+pub fn decline_offer(rule: &Rule) -> String {
+    format!(
+        ", or write `decline {}: \"<why>\"` above it if this is deliberate",
+        rule.id
+    )
+}
+
 /// A byte range in one project file. Paths are project-relative.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Span {
@@ -1081,10 +1090,6 @@ impl Diagnostic {
         self
     }
 
-    pub fn severity(&self) -> Severity {
-        self.rule.severity
-    }
-
     pub fn at(mut self, span: Span, label: impl Into<String>) -> Diagnostic {
         self.primary = Some(Label {
             span,
@@ -1106,20 +1111,21 @@ impl Diagnostic {
         self
     }
 
-    /// The next step, decided by whoever the rule names.
-    pub fn next(mut self, text: impl Into<String>) -> Diagnostic {
-        self.next = Some(Next {
-            text: text.into(),
-            decides: self.rule.decides,
-            edits: Vec::new(),
-        });
-        self
+    /// The next step, decided by whoever the rule names. A declinable
+    /// rule's next step also offers the decline line.
+    pub fn next(self, text: impl Into<String>) -> Diagnostic {
+        let decides = self.rule.decides;
+        self.next_for(text, decides)
     }
 
     /// The next step, decided by someone other than the rule's default.
     pub fn next_for(mut self, text: impl Into<String>, decides: Decider) -> Diagnostic {
+        let mut text = text.into();
+        if self.rule.declinable {
+            text.push_str(&decline_offer(self.rule));
+        }
         self.next = Some(Next {
-            text: text.into(),
+            text,
             decides,
             edits: Vec::new(),
         });
@@ -1199,6 +1205,27 @@ mod tests {
     }
 
     #[test]
+    fn a_declinable_rules_next_step_offers_the_decline_line() {
+        let diagnostic = Diagnostic::new(&rule::LIBRARY_SIMILAR_EXISTS, "A similar one exists")
+            .next("Call `rounding.capped` instead");
+        assert_eq!(
+            diagnostic.next.map(|next| next.text).as_deref(),
+            Some(
+                "Call `rounding.capped` instead, or write `decline library.similar_exists: \"<why>\"` above it if this is deliberate"
+            )
+        );
+        let declinable: Vec<&str> = CATALOGUE
+            .iter()
+            .filter(|rule| rule.declinable)
+            .map(|rule| rule.id)
+            .collect();
+        assert_eq!(
+            declinable,
+            ["constant.similar_exists", "library.similar_exists"]
+        );
+    }
+
+    #[test]
     fn find_returns_the_typed_constant() {
         assert_eq!(
             find("cli.unknown_command"),
@@ -1212,7 +1239,7 @@ mod tests {
         let diagnostic = Diagnostic::new(&rule::CLI_UNKNOWN_COMMAND, "`x` isn't a jadpo command")
             .reason("Jadpo has no command with this name.")
             .next("Run `jadpo help` to see every command");
-        assert_eq!(diagnostic.severity(), Severity::Error);
+        assert!(!diagnostic.rule.declinable);
         assert_eq!(
             diagnostic.next.as_ref().map(|next| next.decides),
             Some(Decider::Agent)

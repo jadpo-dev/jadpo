@@ -29,7 +29,7 @@ pub fn routes(call: &Call) -> Reply {
     if !jadpo_check::routes::routes_clean(db, project) {
         let problems = jadpo_check::check(db, project)
             .into_iter()
-            .filter(|d| d.severity() == jadpo_diag::Severity::Error && d.rule.area == 7)
+            .filter(|d| d.rule.area == 7)
             .collect::<Vec<_>>();
         if !problems.is_empty() {
             return blocked(&loaded, &cwd, problems, "routes stopped");

@@ -32,7 +32,6 @@ fn texts(loaded: &Loaded) -> BTreeMap<String, String> {
 fn errors(loaded: &Loaded) -> Vec<String> {
     jadpo_check::check(&loaded.db, loaded.project)
         .iter()
-        .filter(|d| d.severity() == jadpo_diag::Severity::Error)
         .map(|d| format!("{}: {}", d.rule.id, d.message))
         .collect()
 }

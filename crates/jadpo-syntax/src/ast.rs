@@ -89,3 +89,25 @@ pub fn doc_comments(node: &SyntaxNode) -> Vec<SyntaxToken> {
         .filter(|token| token.kind() == SyntaxKind::DOC_COMMENT)
         .collect()
 }
+
+/// The `decline` lines written directly above a declaration or member
+/// (area 1, "Declining a judgement call"): its first children.
+pub fn declines(node: &SyntaxNode) -> impl Iterator<Item = Decline> + use<> {
+    node.children()
+        .take_while(|child| child.kind() == SyntaxKind::DECLINE)
+        .filter_map(Decline::cast)
+        .collect::<Vec<_>>()
+        .into_iter()
+}
+
+impl DeclineRule {
+    /// The rule's id as written, `library.similar_exists`.
+    pub fn id(&self) -> String {
+        self.syntax
+            .children_with_tokens()
+            .filter_map(|element| element.into_token())
+            .filter(|token| !token.kind().is_trivia())
+            .map(|token| token.text().to_string())
+            .collect()
+    }
+}

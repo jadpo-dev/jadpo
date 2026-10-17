@@ -419,7 +419,6 @@ fn move_command(call: &Call) -> Reply {
     // `default:` naming this constant, which the move answers.
     let problems: Vec<Diagnostic> = jadpo_check::check(&loaded.db, loaded.project)
         .into_iter()
-        .filter(|problem| problem.severity() == jadpo_diag::Severity::Error)
         .filter(|problem| !setting_move::answered(&loaded.db, loaded.project, &id, problem))
         .collect();
     if !problems.is_empty() {

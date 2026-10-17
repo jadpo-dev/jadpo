@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use jadpo_db::Layout;
-use jadpo_diag::{Diagnostic, Severity, Span, rule};
+use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_term::{Block, Fact, Json, Outcome, Screen};
 
 use crate::derived;
@@ -81,10 +81,7 @@ pub fn check(call: &Call) -> Reply {
     let layout = loaded.project.layout(db);
     let mut written = Vec::new();
     if layout == Layout::Project && loaded.unreadable.is_empty() {
-        let errors = diagnostics
-            .iter()
-            .filter(|d| d.severity() == Severity::Error)
-            .count();
+        let errors = diagnostics.len();
         let graph = jadpo_check::graph::graph(db, loaded.project);
         let openapi =
             jadpo_check::routes::openapi::documents(db, loaded.project, &title(&loaded.root));
@@ -133,17 +130,10 @@ fn report(
     (layout, written): (Layout, Vec<String>),
     elapsed: Duration,
 ) -> Reply {
-    let errors = diagnostics
-        .iter()
-        .filter(|d| d.severity() == Severity::Error)
-        .count();
-    let warnings = diagnostics.len() - errors;
+    let errors = diagnostics.len();
     let mut facts = Vec::new();
     if errors > 0 {
         facts.push(Fact::problem(count(errors, "error", "errors")));
-    }
-    if warnings > 0 {
-        facts.push(Fact::warning(count(warnings, "warning", "warnings")));
     }
     let total = paths.len() + unreadable;
     let mut files = count(total, "file", "files");
@@ -177,7 +167,6 @@ fn report(
         ("root", Json::from(root.as_deref().unwrap_or("."))),
         ("files", Json::array(paths.iter().map(|path| path.as_str()))),
         ("errors", errors.into()),
-        ("warnings", warnings.into()),
         ("build", Json::array(written)),
     ]);
     Reply::Report {

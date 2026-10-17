@@ -50,6 +50,7 @@ const KEYWORDS: &[&str] = &[
     "assert",
     "attempt",
     "constant",
+    "decline",
     "else",
     "emit",
     "entity",

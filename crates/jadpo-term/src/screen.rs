@@ -5,7 +5,7 @@
 //! 80 columns, prose wraps, values are cut with `…`, and commands, paths and
 //! links are never cut.
 
-use jadpo_diag::{Decider, Diagnostic, Severity};
+use jadpo_diag::{Decider, Diagnostic};
 
 use crate::detect::{Mode, Style, Symbols};
 use crate::diagnostic::DiagnosticView;
@@ -239,8 +239,7 @@ pub enum Outcome {
 }
 
 /// One fact in a summary footer: a count, usually. A problem count takes
-/// the failure colour, a warning count the warning colour; the rest are
-/// muted.
+/// the failure colour; the rest are muted.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fact {
     pub text: String,
@@ -260,13 +259,6 @@ impl Fact {
         Fact {
             text: text.into(),
             tone: Some(Token::Failure),
-        }
-    }
-
-    pub fn warning(text: impl Into<String>) -> Fact {
-        Fact {
-            text: text.into(),
-            tone: Some(Token::Warning),
         }
     }
 }
@@ -963,18 +955,16 @@ pub(crate) fn field(label: &str, value: Vec<Piece>, style: &Style) -> Vec<Line> 
     lines
 }
 
-/// The headline: symbol and severity word in its colour and bold, two
-/// spaces, the subject in bold. Plain output reads `error: subject`.
-pub(crate) fn headline(severity: Severity, subject: &str, style: &Style) -> Line {
-    let (symbol, token) = match severity {
-        Severity::Error => (Symbol::Failure, Token::Failure),
-        Severity::Warning => (Symbol::Warning, Token::Warning),
-    };
+/// The headline: symbol and `error` in the failure colour and bold, two
+/// spaces, the subject in bold. Plain output reads `error: subject`. Every
+/// finding is an error (area 1, "Declining a judgement call"), so there is
+/// no other word.
+pub(crate) fn headline(subject: &str, style: &Style) -> Line {
     if rich(style) {
-        let word = format!("{} {}", symbol.text(style.symbols), severity.word());
-        vec![strong(token, word), raw("  "), bold(subject)]
+        let word = format!("{} error", Symbol::Failure.text(style.symbols));
+        vec![strong(Token::Failure, word), raw("  "), bold(subject)]
     } else {
-        vec![raw(format!("{}: {subject}", severity.word()))]
+        vec![raw(format!("error: {subject}"))]
     }
 }
 

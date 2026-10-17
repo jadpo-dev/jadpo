@@ -550,10 +550,7 @@ fn prepare(
     let loaded = jadpo_db::load(root);
     let (db, project) = (&loaded.db, loaded.project);
     let diagnostics = jadpo_check::check(db, project);
-    let errors = diagnostics
-        .iter()
-        .filter(|d| d.severity() == jadpo_diag::Severity::Error)
-        .count();
+    let errors = diagnostics.len();
     let graph = jadpo_check::graph::graph(db, project);
     let openapi = jadpo_check::routes::openapi::documents(db, project, &crate::check::title(root));
     let permissions = jadpo_check::policy::policy_clean(db, project)

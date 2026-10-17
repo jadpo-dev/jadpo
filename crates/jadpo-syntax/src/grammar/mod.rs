@@ -41,6 +41,10 @@ pub(crate) fn source_file(p: &mut Parser<'_>) {
             habits::import(p);
             continue;
         }
+        if p.at(DECLINE_KW) {
+            declined(p, top_level_decl);
+            continue;
+        }
         if at_decl(p) {
             let before = p.events.len();
             decl(p);
@@ -63,6 +67,16 @@ pub(crate) fn snippet(p: &mut Parser<'_>) {
             use_decl(p);
         } else if habits::at_import(p) {
             habits::import(p);
+        } else if p.at(DECLINE_KW) && p.nth(1) != COLON {
+            declined(p, |p| {
+                if p.at(DECLINE_KW) || p.at(R_BRACE) || p.at_eof() {
+                    no_declaration(p);
+                } else if at_route_entry(p) {
+                    route_entry(p);
+                } else {
+                    member_item(p, Members::Declaration);
+                }
+            });
         } else if at_decl(p) {
             decl(p);
         } else if at_route_entry(p) {
@@ -176,7 +190,10 @@ fn recover_to_declaration(p: &mut Parser<'_>) {
     let m = p.start();
     loop {
         skip_balanced(p);
-        if p.at_eof() || (p.on_new_line() && (at_decl(p) || at_use(p) || habits::at_import(p))) {
+        if p.at_eof()
+            || (p.on_new_line()
+                && (at_decl(p) || at_use(p) || habits::at_import(p) || p.at(DECLINE_KW)))
+        {
             break;
         }
     }
@@ -407,7 +424,10 @@ fn contextual_decl(p: &Parser<'_>, n: usize) -> Option<SyntaxKind> {
 /// only sometimes starts one (`config {`, `test "..."`) written at the
 /// start of a line. Indented, such a word is a member of the block.
 pub(crate) fn ends_block(p: &Parser<'_>) -> bool {
-    if p.on_new_line() && p.at_column_zero() && (at_use(p) || habits::at_import(p)) {
+    if p.on_new_line()
+        && p.at_column_zero()
+        && (at_use(p) || habits::at_import(p) || (p.at(DECLINE_KW) && p.nth(1) != COLON))
+    {
         return true;
     }
     if !p.on_new_line() || !at_decl(p) {
@@ -527,6 +547,105 @@ fn decl(p: &mut Parser<'_>) {
             m.complete(p, ERROR);
         }
     }
+}
+
+/// A declaration at the top of a file, after its `decline` lines.
+fn top_level_decl(p: &mut Parser<'_>) {
+    if at_decl(p) && !p.at(DECLINE_KW) {
+        decl(p);
+    } else {
+        no_declaration(p);
+    }
+}
+
+/// `decline` lines, then the item `item` parses, which they become the
+/// first children of (area 1, "Declining a judgement call").
+fn declined(p: &mut Parser<'_>, item: impl FnOnce(&mut Parser<'_>)) {
+    let slot = p.start();
+    while p.at(DECLINE_KW) && p.nth(1) != COLON {
+        decline(p);
+    }
+    let at = p.events.len();
+    item(p);
+    // Otherwise nothing, or not one node, followed, and the item said so:
+    // the lines stay where they are.
+    if !slot.adopt(p, at) {
+        slot.abandon(p);
+    }
+}
+
+/// What follows `decline` lines isn't a declaration.
+fn no_declaration(p: &mut Parser<'_>) {
+    let found = p.found();
+    let error = p
+        .error_here(
+            &rule::SYNTAX_EXPECTED_DECLARATION,
+            "This decline has no declaration under it",
+        )
+        .label("expected a declaration")
+        .reason(format!(
+            "A `decline` line stands directly above the declaration or member whose finding it declines; found {found} instead."
+        ))
+        .next("Put the `decline` line directly above its declaration, or remove it");
+    p.push_error(error);
+}
+
+/// `decline <rule>: "<reason>"`. A missing reason is left to the checker
+/// (`decline.reason_required`), which says what to write.
+fn decline(p: &mut Parser<'_>) {
+    let m = p.start();
+    p.bump(DECLINE_KW);
+    if (p.at(IDENT) || p.current().is_keyword()) && !p.on_new_line() {
+        let r = p.start();
+        p.bump_remap(IDENT);
+        while p.at(DOT)
+            && (p.nth(1) == IDENT || p.nth(1).is_keyword())
+            && !p.nth_on_new_line(1)
+            && p.nth_adjacent(1)
+        {
+            p.bump(DOT);
+            p.bump_remap(IDENT);
+        }
+        r.complete(p, DECLINE_RULE);
+    } else {
+        let error = p
+            .error_here(&rule::SYNTAX_EXPECTED_NAME, "This decline names no rule")
+            .label("expected a rule")
+            .reason("A `decline` line names the rule it declines, then its reason: `decline library.similar_exists: \"<why>\"`.")
+            .next("Write the rule's id after `decline`, as its error's `rule:` line gives it");
+        p.push_error(error);
+    }
+    if p.at(COLON) && !p.on_new_line() {
+        p.bump(COLON);
+    } else if p.at(STRING) && !p.on_new_line() {
+        let error = p
+            .error_here(
+                &rule::SYNTAX_UNEXPECTED_TOKEN,
+                "The reason needs a `:` before it",
+            )
+            .label("expected `:`")
+            .reason("A `decline` line is the rule, a colon, then the reason in quotes.")
+            .next("Add `:` after the rule")
+            .edit(p.insert_after_prev(":"));
+        p.push_error(error);
+    }
+    if p.at(STRING) && !p.on_new_line() {
+        p.bump(STRING);
+    }
+    if !p.at_eof() && !p.on_new_line() && !p.at(R_BRACE) {
+        let found = p.found();
+        let error = p
+            .error_here(
+                &rule::SYNTAX_UNEXPECTED_TOKEN,
+                format!("Expected the end of the decline, found {found}"),
+            )
+            .label("expected a new line")
+            .reason("A `decline` line holds the rule and one quoted reason; the declaration starts on the next line.")
+            .next("Move this to its own line, or remove it");
+        p.push_error(error);
+        skip_line(p);
+    }
+    m.complete(p, DECLINE);
 }
 
 /// `public` followed by something that isn't a declaration.
@@ -1271,6 +1390,13 @@ fn member_key_len(p: &Parser<'_>) -> Option<usize> {
 
 fn member_item(p: &mut Parser<'_>, context: Members) {
     match p.current() {
+        DECLINE_KW if p.nth(1) != COLON => declined(p, |p| {
+            if p.at(DECLINE_KW) || p.at(R_BRACE) || p.at_eof() {
+                no_declaration(p);
+            } else {
+                member_item(p, context);
+            }
+        }),
         DOT3 => elision(p),
         _ if at_decl(p) && !(p.current().is_keyword() && p.nth(1) == COLON) => decl(p),
         _ if at_route_entry(p) => route_entry(p),
@@ -1634,6 +1760,19 @@ fn block_item(p: &mut Parser<'_>) {
     }
     match p.current() {
         VAR_KW => var_stmt(p),
+        DECLINE_KW if p.nth(1) != COLON => {
+            let error = p
+                .error_here(
+                    &rule::SYNTAX_EXPECTED_STATEMENT,
+                    "A decline can't go inside a body",
+                )
+                .label("not a statement")
+                .reason("A `decline` line stands directly above the declaration or member whose finding it declines, never among a body's statements.")
+                .next("Move the `decline` line above the declaration the finding is on");
+            p.push_error(error);
+            skip_statement(p);
+            return;
+        }
         CONSTANT_KW => {
             // A fixed value inside a body is a `var` (area 3, Constants).
             let (start, end) = p.range();

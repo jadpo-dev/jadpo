@@ -5,7 +5,6 @@
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use jadpo_diag::Severity;
 use lsp_types::{
     DiagnosticRelatedInformation, DiagnosticSeverity, Location, NumberOrString, Position, Range,
     Uri,
@@ -167,10 +166,7 @@ pub fn diagnostic(
         range: span.map_or_else(Range::default, |span| {
             range(text, span.start, span.end, encoding)
         }),
-        severity: Some(match diagnostic.severity() {
-            Severity::Error => DiagnosticSeverity::ERROR,
-            Severity::Warning => DiagnosticSeverity::WARNING,
-        }),
+        severity: Some(DiagnosticSeverity::ERROR),
         code: Some(NumberOrString::String(diagnostic.rule.id.to_string())),
         source: Some("jadpo".to_string()),
         message,

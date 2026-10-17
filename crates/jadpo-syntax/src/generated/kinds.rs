@@ -40,6 +40,7 @@ pub enum SyntaxKind {
     ASSERT_KW,
     ATTEMPT_KW,
     CONSTANT_KW,
+    DECLINE_KW,
     ELSE_KW,
     EMIT_KW,
     ENTITY_KW,
@@ -120,6 +121,8 @@ pub enum SyntaxKind {
     PROVIDE_DECL,
     SINGLETON_DECL,
     VISIBILITY,
+    DECLINE,
+    DECLINE_RULE,
     NAME,
     MEMBER_LIST,
     PARAM_LIST,
@@ -187,7 +190,7 @@ pub enum SyntaxKind {
 
 use self::SyntaxKind::*;
 
-const ALL: [SyntaxKind; 177] = [
+const ALL: [SyntaxKind; 180] = [
     EOF,
     L_BRACE,
     R_BRACE,
@@ -222,6 +225,7 @@ const ALL: [SyntaxKind; 177] = [
     ASSERT_KW,
     ATTEMPT_KW,
     CONSTANT_KW,
+    DECLINE_KW,
     ELSE_KW,
     EMIT_KW,
     ENTITY_KW,
@@ -302,6 +306,8 @@ const ALL: [SyntaxKind; 177] = [
     PROVIDE_DECL,
     SINGLETON_DECL,
     VISIBILITY,
+    DECLINE,
+    DECLINE_RULE,
     NAME,
     MEMBER_LIST,
     PARAM_LIST,
@@ -386,6 +392,7 @@ impl SyntaxKind {
                 | ASSERT_KW
                 | ATTEMPT_KW
                 | CONSTANT_KW
+                | DECLINE_KW
                 | ELSE_KW
                 | EMIT_KW
                 | ENTITY_KW
@@ -458,6 +465,7 @@ impl SyntaxKind {
             "assert" => ASSERT_KW,
             "attempt" => ATTEMPT_KW,
             "constant" => CONSTANT_KW,
+            "decline" => DECLINE_KW,
             "else" => ELSE_KW,
             "emit" => EMIT_KW,
             "entity" => ENTITY_KW,
@@ -545,6 +553,7 @@ impl SyntaxKind {
             ASSERT_KW => "assert",
             ATTEMPT_KW => "attempt",
             CONSTANT_KW => "constant",
+            DECLINE_KW => "decline",
             ELSE_KW => "else",
             EMIT_KW => "emit",
             ENTITY_KW => "entity",
@@ -625,6 +634,7 @@ macro_rules! T {
     [assert] => { $crate::SyntaxKind::ASSERT_KW };
     [attempt] => { $crate::SyntaxKind::ATTEMPT_KW };
     [constant] => { $crate::SyntaxKind::CONSTANT_KW };
+    [decline] => { $crate::SyntaxKind::DECLINE_KW };
     [else] => { $crate::SyntaxKind::ELSE_KW };
     [emit] => { $crate::SyntaxKind::EMIT_KW };
     [entity] => { $crate::SyntaxKind::ENTITY_KW };

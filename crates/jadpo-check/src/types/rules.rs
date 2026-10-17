@@ -126,7 +126,7 @@ impl Const {
 }
 
 /// A string literal's text without quotes, escapes decoded (area 2).
-fn unescape(text: &str) -> String {
+pub(crate) fn unescape(text: &str) -> String {
     let inner = text
         .strip_prefix('"')
         .and_then(|t| t.strip_suffix('"'))

@@ -11,7 +11,6 @@
 //! editor that resolves code actions gets the edit only once it is chosen.
 
 use jadpo_check::setting_move;
-use jadpo_diag::Severity;
 use lsp_types::{
     CodeAction, CodeActionDisabled, CodeActionKind, CodeActionOrCommand, CodeActionParams,
     CodeActionResponse, CreateFile, DeleteFile, DocumentChangeOperation, DocumentChanges, OneOf,
@@ -80,7 +79,6 @@ impl Server {
         };
         let errors = jadpo_check::check(&loaded.db, loaded.project)
             .into_iter()
-            .filter(|problem| problem.severity() == Severity::Error)
             .filter(|problem| !setting_move::answered(&loaded.db, loaded.project, &id, problem))
             .count();
         if errors > 0 {

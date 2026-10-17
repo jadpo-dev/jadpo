@@ -82,6 +82,19 @@ Decl =
 Visibility =
   'public'
 
+// `decline library.similar_exists: "Rounds to 5p for the till"`: a line
+// directly above a declaration or a member, after its `///` comments,
+// answering one declinable rule there with a reason (area 1, "Declining a
+// judgement call"). It is the first child of the node it stands above, so
+// every declaration and member may start with `Decline*`.
+Decline =
+  'decline' DeclineRule ':' reason:'string'
+
+// The rule's id, `area.name`; either part may be a reserved word
+// (`library.similar_exists`, `type.standard_exists`).
+DeclineRule =
+  'ident' ('.' 'ident')*
+
 Name =
   'ident'
 
