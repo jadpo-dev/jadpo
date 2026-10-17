@@ -5,6 +5,7 @@ status: decided
 checked-with: this checkout's jadpo on every gate run, from chunk 5.5a; the other examples are fragments until chunks 5.5c to 5.5s build them
 rules:
   - semantic.standard_operation_moved
+  - type.argument_empty
   - type.argument_negative
   - type.standard_clash
   - type.standard_exists
@@ -1617,7 +1618,7 @@ type TagName = Text {
     max_length: 20
 }
 
-type Separator = Text {
+type Divider = Text {
     min_length: 1
     max_length: 3
 }
@@ -1650,8 +1651,8 @@ type NameBlank = Failure {
 /// A product name as it was typed, without the spaces around it. Trimming
 /// never lengthens text, so `max_length` can't break; it can leave
 /// nothing, so `min_length` can.
-function tidy(typed: ProductName) fails NameBlank -> ProductName {
-    return attempt ProductName(text.trim(typed)) {
+function tidy(typed_name: ProductName) fails NameBlank -> ProductName {
+    return attempt ProductName(text.trim(typed_name)) {
         min_length: NameBlank
     }
 }
@@ -1667,9 +1668,9 @@ function product_slug(name: ProductName) -> ProductSlug {
     return ProductSlug(text.slug(name))
 }
 
-/// The name for a shelf edge, in capitals by the reader's own rules.
-function shelf_label(name: ProductName, reader: Locale) -> ShelfLabel {
-    return ShelfLabel(text.upper(name, locale: reader))
+/// The name for a shelf edge, in capitals by the shopper's own rules.
+function shelf_label(name: ProductName, shopper: Locale) -> ShelfLabel {
+    return ShelfLabel(text.upper(name, locale: shopper))
 }
 
 /// An order's number as six digits, `42` written `000042`.
@@ -1684,13 +1685,13 @@ function tag_line(product: Product) -> TagLine {
 
 /// How many pieces a line holds between separators. A separator is
 /// never empty, which its type's `min_length` proves.
-function pieces(line: ProductName, separator: Separator) -> PieceCount {
-    return PieceCount(list.count(text.split(line, separator)))
+function count_pieces(line: ProductName, spacer: Divider) -> PieceCount {
+    return PieceCount(list.count(text.split(line, spacer)))
 }
 
-/// The products in the order the reader's alphabet puts their names.
-function by_name(products: List<Product>, reader: Locale) -> List<Product> {
-    return list.sort_by(products, product -> product.name, locale: reader)
+/// The products in the order the shopper's alphabet puts their names.
+function in_name_order(products: List<Product>, shopper: Locale) -> List<Product> {
+    return list.sort_by(products, product -> product.name, locale: shopper)
 }
 ```
 
@@ -1756,10 +1757,10 @@ test "a locale's case and order" {
         tags: []
     }
     assert list.sort_by([zopf, oland, oat], product -> product.name) == [oat, zopf, oland]  // by code point
-    assert by_name([zopf, oland, oat], Locale.de_de) == [oat, oland, zopf]
-    assert by_name([zopf, oland, oat], Locale.sv_se) == [oat, zopf, oland]
+    assert in_name_order([zopf, oland, oat], Locale.de_de) == [oat, oland, zopf]
+    assert in_name_order([zopf, oland, oat], Locale.sv_se) == [oat, zopf, oland]
     assert tag_line(zopf) == "Swiss, plaited"
-    assert pieces("Swiss,plaited", ",") == 2
+    assert count_pieces("Swiss,plaited", ",") == 2
 }
 ```
 
@@ -2517,7 +2518,7 @@ type Ingredients = Text {
     max_length: 400
 }
 
-type Separator = Text {
+type Divider = Text {
     max_length: 3
 }
 
@@ -2526,18 +2527,18 @@ type IngredientCount = Int {
 }
 
 /// How many ingredients a recipe line lists, split where the cook says.
-function ingredient_count(line: Ingredients, separator: Separator) -> IngredientCount {
-    return IngredientCount(list.count(text.split(line, separator)))
+function ingredient_count(line: Ingredients, spacer: Divider) -> IngredientCount {
+    return IngredientCount(list.count(text.split(line, spacer)))
 }
 ```
 
 ```text output
-error: `separator` may be empty
+error: `spacer` may be empty
  --> main.jadpo:15:56
    |
-15 |     return IngredientCount(list.count(text.split(line, separator)))
-   |                                                        ^^^^^^^^^ `Separator` can be empty
-  reason: `text.split`'s `separator` is never empty, which is proved while compiling: a literal isn't `""` and a value's type has a `min_length` of at least 1; `Separator` allows empty text.
+15 |     return IngredientCount(list.count(text.split(line, spacer)))
+   |                                                        ^^^^^^ `Divider` can be empty
+  reason: `text.split`'s `separator` is never empty, which is proved while compiling: a literal isn't `""` and a value's type has a `min_length` of at least 1; `Divider` allows empty text.
   next: Pass a value whose type has `min_length: 1`, building it where empty text is handled (agent)
   rule: type.argument_empty
   help: docs/language/19-standard-library.html#type-argument-empty

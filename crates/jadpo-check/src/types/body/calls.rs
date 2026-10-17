@@ -772,12 +772,14 @@ impl Body<'_> {
             let is_format = slot
                 .and_then(|slot| table.and_then(|op| op.params.get(slot)))
                 .is_some_and(|p| matches!(p.kind, jadpo_std::Kind::Format | jadpo_std::Kind::Type));
-            // A list written out takes the parameter's type, unless every
-            // item is a value of its own, which then fixes the item type
+            // A list written out takes the parameter's type, a set's
+            // included, unless a list is expected and every item is a
+            // value of its own, which then fixes the item type
             // (`list.sort_by([rye, bap], ...)`).
             let written_list = match &value {
                 Expr::ListExpr(list) => {
-                    list.exprs().next().is_none()
+                    !matches!(param, Some(Ty::List(_)))
+                        || list.exprs().next().is_none()
                         || list
                             .exprs()
                             .any(|item| is_literal(&item) || matches!(item, Expr::ListExpr(_)))

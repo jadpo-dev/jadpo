@@ -1125,17 +1125,17 @@ entity Todo {
 }
 
 // domains/planning/queries/search_todos.jadpo
-query search_todos(owner_id: User.id, words: SearchText) -> Page<TodoView> {
+query search_todos(owner_id: User.id, search_phrase: SearchText) -> Page<TodoView> {
     from: Todo
     where: Todo.owner_id == owner_id
-    where: Todo matches words
+    where: Todo matches search_phrase
 }
 ```
 
 - Fields listed first count most when ordering results.
 - With no `order:`, best matches come first, then by `id`, in keyset pages
   like every other list (area 6).
-- `words` takes what people type into search boxes: words, quoted phrases and
+- `search_phrase` takes what people type into search boxes: words, quoted phrases and
   `-word`, never raw query syntax.
 - This replaces area 5's `kind:` full-text index: one declaration, not an
   index plus hand-written conditions.

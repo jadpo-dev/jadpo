@@ -2910,10 +2910,10 @@ type SummaryView = Output {
     pick: [Note.id, Note.summary]
 }
 
-action edit_note(note_id: Note.id, new_text: NoteText) fails NoteNotFound -> SummaryView {
+action edit_note(note_id: Note.id, revised: NoteText) fails NoteNotFound -> SummaryView {
     var note: Note = attempt Note.update(note_id) {
         set: {
-            text: new_text
+            text: revised
         }
     }
     return SummaryView {
