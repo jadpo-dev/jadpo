@@ -3,4 +3,5 @@
 //! --test integration <module>::` runs one.
 
 mod lists;
+mod sets_maps;
 mod standard_types;

@@ -2239,7 +2239,8 @@ use menu
   `map.`. Each is reserved by `semantic.standard_namespace_reserved`
   from the chunk that adds it; fields and named arguments keep every
   word (`note.text`, `set:`). The names that clash today are renamed in
-  those chunks: `text` in 5.5f, `range` in 5.5c.
+  those chunks: `text` in 5.5f, and `range` in 5.5c, which renamed area
+  10's `deliveries_in(range:)` to `deliveries_in(span:)`.
 - **Calls into another domain keep the domain's name at the call.** `use menu`
   brings in the domain, and its public actions, queries and fixtures are
   called as `menu.price_item(...)`, so a call that crosses domains is

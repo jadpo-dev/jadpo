@@ -91,6 +91,16 @@ impl Body<'_> {
                     }
                     return;
                 }
+                // `[]` where a map is expected is an empty map (area 19,
+                // question 8), whose length a named map's rules check.
+                Ty::Map(..) if list.exprs().next().is_none() => {
+                    if let Err(problem) =
+                        literal::check(self.table, expected, &Const::List(Vec::new()))
+                    {
+                        self.literal_problem(expr, expected, problem, false);
+                    }
+                    return;
+                }
                 Ty::Error | Ty::Var(_) | Ty::Opaque(..) => {}
                 _ => {
                     for element in list.exprs() {
@@ -899,6 +909,25 @@ impl Body<'_> {
                 self.object_built(record);
                 Ty::Named(self.table.canonical(&name))
             }
+            // A standard object type (`InstantRange`, area 19): its fields
+            // are its data entry's, each built on a built-in type.
+            ([], None) if let Some(fields) = standard_object_fields(&name) => {
+                self.facts.builds.insert(
+                    node_key(record.syntax()),
+                    super::facts::BuildFact::Object(name.clone()),
+                );
+                self.fields_given(
+                    record.member_list(),
+                    &name,
+                    &[],
+                    &fields,
+                    Required::All,
+                    head_span,
+                    &[],
+                );
+                self.object_built(record);
+                Ty::Opaque(name, Vec::new())
+            }
             ([], Some(Def::Scalar { .. })) | ([], None)
                 if Prim::from_name(&name).is_some() || self.table.def(&name).is_some() =>
             {
@@ -1108,7 +1137,13 @@ impl Body<'_> {
             let Some(value) = value else { continue };
             let mut path = variant.to_vec();
             path.push(name);
-            let field_ty = self.table.field_type(host, &path);
+            // A standard object type's field has no field type of its own:
+            // it is the built-in type its data entry names.
+            let field_ty = if self.table.def(host).is_none() {
+                field.declared.clone()
+            } else {
+                self.table.field_type(host, &path)
+            };
             if is_literal(&value) || matches!(value, Expr::ListExpr(_)) {
                 // A literal takes the field type, so the field's own rules
                 // are checked too.
@@ -1411,6 +1446,23 @@ fn response_fields() -> Vec<FieldDef> {
 }
 
 /// A built-in type's field, with nothing declared about it.
+/// The fields of the standard object type `name` (area 19), from its data
+/// entry, or `None` when it isn't one.
+fn standard_object_fields(name: &str) -> Option<Vec<FieldDef>> {
+    if !StdNames::get().is_opaque(name) {
+        return None;
+    }
+    let jadpo_std::standard::Holds::Object(fields) = jadpo_std::standard_type(name)?.holds else {
+        return None;
+    };
+    Some(
+        fields
+            .iter()
+            .map(|(field, builtin)| plain_field(field, Ty::Prim(*builtin)))
+            .collect(),
+    )
+}
+
 fn plain_field(name: &str, declared: Ty) -> FieldDef {
     FieldDef {
         name: name.to_string(),

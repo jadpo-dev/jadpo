@@ -826,16 +826,17 @@ brackets, its items taking the list's element type (`["urgent", "home"]`),
 `for` walks a list (area 3, Loops), and `list.count`,
 `list.contains`, `list.map` and `list.filter` take one
 (Review, question 4). A list literal written where a set is expected is a
-set (question 5). So far `for` and the `collection` operations take only
-lists: a set can be built, passed, returned and compared, and a map,
-which has no literal yet, can be received, passed, compared and sent
-back, but neither can be walked or searched.
+set (question 5). `for` walks a set too, in the canonical order ("Set
+order"), and a map through its keys, `for key in map.keys(prices)`; the
+`set.` and `map.` operations search and rebuild them (area 19). `[]`
+written where a map is expected is an empty map, to which `map.with` adds
+entries; a map literal with entries is still to design.
 
 > Amended 2026-10-17 by area 19 (questions 6 and 8): `collection.`
 > becomes `list.`, beside new `set.` and `map.` namespaces, with a habit
 > error whose edit writes the right one (built in chunk 5.5b); `for` walks a set in
 > the canonical order above; a map is walked through `map.keys`; and `[]`
-> written where a map is expected is an empty map (chunk 5.5c). A map
+> written where a map is expected is an empty map (built in chunk 5.5c). A map
 > literal with entries is still this area's to design. Text from outside
 > is normalised to NFC as it is decoded at a boundary (chunk 5.5f), and
 > named rules across an object's fields are a change to this area, built
@@ -2468,8 +2469,9 @@ check failed: 1 error, 1 file
 Built by the new compiler in chunk 1.4, with the later chunks named in
 each section: construction failures by rule (2.5), conditions as proof
 (2.6), the soundness fixes (2.7) and named collection construction (2.11).
-Not built yet: a map literal, and walking or searching a set or map
-(Collections), which no roadmap chunk builds yet; and the JSON forms of
+Walking and searching sets and maps, and `[]` as an empty map, came with
+the standard library in chunk 5.5c (area 19). Not built yet: a map literal
+with entries, which no roadmap chunk builds yet; and the JSON forms of
 sets, maps, large `Int`s and `Decimal`s, which come with routes in chunk
 4.1. The built-in `PluralCount` and the `Message` base came with
 translations as messages in chunk 5.4c (area 10); `TextDirection` and

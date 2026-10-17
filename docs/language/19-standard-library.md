@@ -717,9 +717,8 @@ function by_shelf(batches: List<Batch>) -> Map<Shelf, List<Batch>> {
 
 Each operation gives a new list, or an item of the list as it is, still
 a `Batch`; `takings([])` is `0.00`, a `Decimal`, because a sum is its
-items' representation even when there are none. `by_shelf`'s map can be
-passed, returned and compared until `map.get` reads it (chunk 5.5c), so
-its test comes with that chunk.
+items' representation even when there are none. `by_shelf`'s map is read
+with `map.get` and `map.keys` (under "Maps").
 
 ```jadpo check project=list-operations file=main.test.jadpo
 test "list operations give new lists and keep the items as they are" {
@@ -768,6 +767,33 @@ test "list operations give new lists and keep the items as they are" {
     assert list.concat([rye], [bap, spelt]) == day
     assert list.flatten([[rye], [], [bap, spelt]]) == day
 }
+
+test "group_by keeps each shelf's batches in baking order" {
+    var rye: Batch = Batch {
+        name: "Rye"
+        grams: 800
+        shelf: 2
+        price: 4.20
+    }
+    var bap: Batch = Batch {
+        name: "Bap"
+        grams: 90
+        shelf: 1
+        price: 0.60
+    }
+    var spelt: Batch = Batch {
+        name: "Spelt"
+        grams: 800
+        shelf: 2
+        price: 3.80
+    }
+    var shelves: Map<Shelf, List<Batch>> = by_shelf([rye, bap, spelt])
+    assert map.keys(shelves) == [1, 2]
+    assert map.get(shelves, 2) == [rye, spelt]
+    assert map.get(shelves, 1) == [bap]
+    assert map.get(shelves, 3) == none
+    assert map.count(by_shelf([])) == 0
+}
 ```
 
 A count or a position that might be negative is `type.argument_negative`
@@ -801,6 +827,85 @@ Each operation is called as `set.<name>`. All return a new set.
 - **Example 04** keeps `Recipe.allergens` as a list only because a set
   couldn't be searched; with `set.contains` it becomes the set it is.
 
+A bakery's labels, through every set operation and a `for` over a set
+(chunk 5.5c):
+
+```jadpo check project=set-operations
+type RecipeName = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type Warning = Enum {
+    gluten
+    milk
+    nuts
+    sesame
+}
+
+type Recipe = Object {
+    name: RecipeName
+    warnings: Set<Warning>
+}
+
+type SafeToEat = Bool {}
+
+/// Whether `recipe` carries none of the warnings in `avoid`.
+function safe_for(recipe: Recipe, avoid: Set<Warning>) -> SafeToEat {
+    return SafeToEat(set.count(set.intersection(recipe.warnings, avoid)) == 0)
+}
+
+/// Every warning a tray of recipes carries, each once.
+function tray_warnings(recipes: List<Recipe>) -> Set<Warning> {
+    var mut found: Set<Warning> = []
+    for recipe in recipes {
+        found = set.union(found, recipe.warnings)
+    }
+    return found
+}
+
+/// The warnings as a label prints them: a set is walked in its canonical
+/// order, which for an enum is the order its variants are declared in.
+function label(warnings: Set<Warning>) -> List<Warning> {
+    var mut shown: List<Warning> = []
+    for warning in warnings {
+        shown = list.append(shown, warning)
+    }
+    return shown
+}
+```
+
+```jadpo check project=set-operations file=main.test.jadpo
+test "set operations give new sets" {
+    var loaf: Recipe = Recipe {
+        name: "Seeded loaf"
+        warnings: [Warning.sesame, Warning.gluten]
+    }
+    var flapjack: Recipe = Recipe {
+        name: "Flapjack"
+        warnings: [Warning.milk]
+    }
+    assert set.count(loaf.warnings) == 2
+    assert set.contains(loaf.warnings, Warning.sesame)
+    assert not set.contains(flapjack.warnings, Warning.nuts)
+    assert set.with(loaf.warnings, Warning.gluten) == loaf.warnings  // already there
+    assert set.with(flapjack.warnings, Warning.nuts) == [Warning.milk, Warning.nuts]
+    assert set.without(loaf.warnings, Warning.sesame) == [Warning.gluten]
+    var either: Set<Warning> = set.union(loaf.warnings, flapjack.warnings)
+    assert either == [Warning.gluten, Warning.milk, Warning.sesame]
+    assert set.intersection(loaf.warnings, [Warning.sesame, Warning.nuts]) == [Warning.sesame]
+    assert set.difference(loaf.warnings, [Warning.sesame]) == [Warning.gluten]
+    assert safe_for(flapjack, [Warning.nuts])
+    assert not safe_for(loaf, [Warning.nuts, Warning.sesame])
+    assert tray_warnings([loaf, flapjack]) == [Warning.milk, Warning.sesame, Warning.gluten]
+    assert label(loaf.warnings) == [Warning.gluten, Warning.sesame]
+}
+```
+
+A set compares without order, so the literal on the right of `==` can be
+written in any order; walking one is the only place its order shows, and
+it is always the canonical one, on every target.
+
 ## Maps
 
 Each operation is called as `map.<name>`. All return a new map.
@@ -830,6 +935,74 @@ Each operation is called as `map.<name>`. All return a new map.
   identifiers apart, and hide which field policy and personal-data marks
   apply to. Keys known only while running are what a `Map` is for.
 
+A shop's stock, through the map operations built so far (chunk 5.5c;
+`filter` and `map_values` wait for two-parameter inline functions in
+5.5c2):
+
+```jadpo check project=map-operations
+type Loaf = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type Stock = Int {
+    min: 0
+}
+
+/// The stock after `count` more of `loaf` arrive.
+function delivered(stock: Map<Loaf, Stock>, loaf: Loaf, count: Stock) -> Map<Loaf, Stock> {
+    var held: Stock = match map.get(stock, loaf) {
+        some(found) -> found
+        none -> 0
+    }
+    return map.with(stock, loaf, Stock(held + count))
+}
+
+/// The loaves with none left, in the canonical order of their names: a
+/// map is walked through its keys.
+function sold_out(stock: Map<Loaf, Stock>) -> List<Loaf> {
+    var mut out: List<Loaf> = []
+    for loaf in map.keys(stock) {
+        if (map.get(stock, loaf) == 0) {
+            out = list.append(out, loaf)
+        }
+    }
+    return out
+}
+
+/// How many loaves are on the shelves altogether.
+function on_shelves(stock: Map<Loaf, Stock>) -> Stock {
+    return Stock(list.sum(map.values(stock)))
+}
+```
+
+```jadpo check project=map-operations file=main.test.jadpo
+test "map operations give new maps" {
+    var empty: Map<Loaf, Stock> = []
+    var stock: Map<Loaf, Stock> = map.with(map.with(empty, "Rye", 4), "Bap", 0)
+    assert map.count(empty) == 0
+    assert map.count(stock) == 2
+    assert map.get(stock, "Rye") == 4
+    assert map.get(stock, "Spelt") == none
+    assert map.has(stock, "Bap")
+    assert not map.has(stock, "Spelt")
+    assert map.keys(stock) == ["Bap", "Rye"]
+    assert map.values(stock) == [0, 4]  // in the canonical order of their keys
+    assert map.with(stock, "Rye", 6) == map.with(map.with(empty, "Bap", 0), "Rye", 6)
+    assert map.without(stock, "Bap") == map.with(empty, "Rye", 4)
+    assert map.without(stock, "Spelt") == stock
+    var fresh: Map<Loaf, Stock> = map.with(empty, "Rye", 9)
+    assert map.merge(stock, fresh) == map.with(map.with(empty, "Bap", 0), "Rye", 9)
+    assert delivered(stock, "Bap", 12) == map.with(stock, "Bap", 12)
+    assert delivered(stock, "Spelt", 3) == map.with(stock, "Spelt", 3)
+    assert sold_out(stock) == ["Bap"]
+    assert on_shelves(stock) == 4
+}
+```
+
+`map.get` gives `V?`, so a key that may be missing is handled where it is
+read; `map.has` says whether it is there without reading it.
+
 ## Ranges
 
 `Range<T>` holds a `start` and an `end` of one ordered type, either of
@@ -843,6 +1016,88 @@ Stored as PostgreSQL's range types (`daterange`, `tstzrange`,
 | `range.contains(range, value)` | `Bool`: `value` is inside, by the range's own end rule | | `x @> a` |
 | `range.overlaps(a, b)` | `Bool`: the two share at least one value | | `a && b` |
 | `range.intersection(a, b)` | `Range<T>?`, the shared part; `none` when they don't overlap | | `NULLIF(a * b, 'empty')` |
+
+The three operations take an `InstantRange` until `Range<T>` comes to the
+contract in chunk 5.5c2 and `DateRange` with the time types in 5.5k. An
+`InstantRange` holds every instant from its start up to, not including,
+its end, so two bookings that meet at the hour don't overlap, and one that
+starts and ends together holds nothing:
+
+```jadpo check project=range-operations
+type Booking = Object {
+    room: RoomName
+    slot: InstantRange
+}
+
+type RoomName = Text {
+    min_length: 1
+}
+
+type Moment = Instant {}
+
+type Booked = Bool {}
+
+type Clash = Bool {}
+
+/// Whether the room is booked at `at`.
+function booked_at(booking: Booking, at: Moment) -> Booked {
+    return Booked(range.contains(booking.slot, at))
+}
+
+/// Whether two bookings of one room clash.
+function clash(first: Booking, second: Booking) -> Clash {
+    return Clash(first.room == second.room and range.overlaps(first.slot, second.slot))
+}
+
+/// The time two bookings share, if any.
+function shared(first: Booking, second: Booking) -> InstantRange? {
+    return range.intersection(first.slot, second.slot)
+}
+```
+
+```jadpo check project=range-operations file=main.test.jadpo
+test "ranges include their start and exclude their end" {
+    var morning: Booking = Booking {
+        room: "Oven room"
+        slot: InstantRange {
+            start: "2026-10-26T09:00:00Z"
+            end: "2026-10-26T12:00:00Z"
+        }
+    }
+    var lunch: Booking = Booking {
+        room: "Oven room"
+        slot: InstantRange {
+            start: "2026-10-26T11:00:00Z"
+            end: "2026-10-26T13:00:00Z"
+        }
+    }
+    var afternoon: Booking = Booking {
+        room: "Oven room"
+        slot: InstantRange {
+            start: "2026-10-26T12:00:00Z"
+            end: "2026-10-26T17:00:00Z"
+        }
+    }
+    var nothing: Booking = Booking {
+        room: "Oven room"
+        slot: InstantRange {
+            start: "2026-10-26T10:00:00Z"
+            end: "2026-10-26T10:00:00Z"
+        }
+    }
+    var overlap: InstantRange = InstantRange {
+        start: "2026-10-26T11:00:00Z"
+        end: "2026-10-26T12:00:00Z"
+    }
+    assert booked_at(morning, "2026-10-26T09:00:00Z")
+    assert not booked_at(morning, "2026-10-26T12:00:00Z")
+    assert clash(morning, lunch)
+    assert not clash(morning, afternoon)  // they meet at noon
+    assert not clash(morning, nothing)
+    assert shared(morning, lunch) == overlap
+    assert shared(morning, afternoon) == none
+}
+```
 
 ## Numbers
 
