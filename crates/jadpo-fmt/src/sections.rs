@@ -2,12 +2,16 @@
 //! 2026-10-13). The formatter owns it, so a failure, a route entry or an
 //! entity reads the same wherever it is written. Fields keep their written
 //! order (it is meaningful), and so does everything else this module does
-//! not place: it follows the placed sections.
+//! not place: it follows the placed sections. The one exception is
+//! `config { }`, whose fields are sorted by name (area 10, "Fields in name
+//! order", 2026-10-16): a setting is read, bound and reported by name, so
+//! its position means nothing, and two workspaces that each add one rarely
+//! touch the same lines.
 
 use jadpo_syntax::SyntaxElement;
 use jadpo_syntax::SyntaxKind::*;
 use jadpo_syntax::SyntaxNode;
-use jadpo_syntax::ast::{AstNode, BareMember, Member, TypeDecl};
+use jadpo_syntax::ast::{AstNode, BareMember, Member, SingletonDecl, TypeDecl};
 
 /// `type X = Failure { ... }` (area 4).
 const FAILURE: &[&str] = &["kind", "code", "message", "client", "internal"];
@@ -53,6 +57,8 @@ pub(crate) enum Order {
     Failure,
     Route,
     Entity,
+    /// `config { }`: its fields by name.
+    Config,
 }
 
 impl Order {
@@ -66,6 +72,10 @@ impl Order {
         match parent.kind() {
             ENTITY_DECL => Some(Order::Entity),
             ROUTE_ENTRY => Some(Order::Route),
+            SINGLETON_DECL => SingletonDecl::cast(parent)?
+                .keyword()
+                .is_some_and(|keyword| keyword.text() == "config")
+                .then_some(Order::Config),
             TYPE_DECL => {
                 let base = TypeDecl::cast(parent)?.base()?;
                 let base = base.syntax();
@@ -83,29 +93,39 @@ impl Order {
     }
 
     /// Where an item goes: items are stably sorted by this rank.
-    pub(crate) fn rank(self, item: &SyntaxElement) -> usize {
+    pub(crate) fn rank(self, item: &SyntaxElement) -> (usize, String) {
         let name = section_name(item);
         let placed = match self {
             Order::Failure => FAILURE,
             Order::Route => ROUTE,
             Order::Entity => ENTITY,
+            // Fields by name; anything else after them, as written.
+            Order::Config => {
+                return match name {
+                    Some(name) if matches!(item.kind(), MEMBER) => (0, name),
+                    _ => (1, String::new()),
+                };
+            }
         };
         let position = name
             .as_deref()
             .and_then(|name| placed.iter().position(|p| *p == name));
-        match self {
+        let rank = match self {
             Order::Failure | Order::Route => position.unwrap_or(placed.len()),
             Order::Entity => {
                 if let Some(position) = position {
-                    return 1 + position;
+                    1 + position
+                } else {
+                    let is_field = matches!(item.kind(), MEMBER | BARE_MEMBER | ELISION)
+                        && !name
+                            .as_deref()
+                            .is_some_and(|name| ENTITY_OTHER.contains(&name));
+                    if is_field { 0 } else { 1 + placed.len() }
                 }
-                let is_field = matches!(item.kind(), MEMBER | BARE_MEMBER | ELISION)
-                    && !name
-                        .as_deref()
-                        .is_some_and(|name| ENTITY_OTHER.contains(&name));
-                if is_field { 0 } else { 1 + placed.len() }
             }
-        }
+            Order::Config => 0,
+        };
+        (rank, String::new())
     }
 }
 

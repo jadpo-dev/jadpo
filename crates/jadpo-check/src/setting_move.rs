@@ -384,7 +384,7 @@ pub fn plan(db: &dyn Db, project: Project, id: &ConstantId) -> Result<Plan, Vec<
                 &rule::CONFIGURATION_MOVE_NAME_TAKEN,
                 format!("A setting is already called `{name}`"),
             )
-            .at(tree::name_span(&source, &id.path, id.index, id.member), "a setting's name")
+            .at(tree::name_span(&source, &id.path, id.index, id.member), "a setting has this name")
             .reason(format!(
                 "`config {{ }}` declares `{name}` already, so `{shown}` can't become `config.{name}` without two settings of one name."
             ))
@@ -870,31 +870,6 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Moved, Stopped> {
                 subject: format!("line {}", read.line),
                 note: format!("reads config.{}", plan.setting),
             });
-        }
-        if !file_removed || path != constant_path {
-            let lines = |text: &Option<String>| -> Vec<String> {
-                text.as_deref()
-                    .unwrap_or_default()
-                    .lines()
-                    .filter_map(|line| line.strip_prefix("use "))
-                    .map(str::to_string)
-                    .collect()
-            };
-            let (old, new) = (lines(&was), lines(&now));
-            for line in old.iter().filter(|line| !new.contains(line)) {
-                rows.push(Row {
-                    mark: Mark::Removed,
-                    subject: "use".to_string(),
-                    note: line.clone(),
-                });
-            }
-            for line in new.iter().filter(|line| !old.contains(line)) {
-                rows.push(Row {
-                    mark: Mark::Added,
-                    subject: "use".to_string(),
-                    note: line.clone(),
-                });
-            }
         }
         files.push(FileChange {
             path,

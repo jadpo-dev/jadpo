@@ -507,3 +507,32 @@ fn fmt_puts_the_primary_declaration_first() {
     write(&loose, "set_oven.jadpo", text);
     assert_eq!(jadpo(&loose, &["fmt", "set_oven.jadpo", "--check"]).code, 0);
 }
+
+/// Area 10, "Fields in name order" (chunk 5.3f): `--check` fails on a
+/// `config { }` whose fields are out of name order, and `jadpo fmt` sorts
+/// them.
+#[test]
+fn check_fails_on_settings_out_of_name_order() {
+    let root = folder("config-order");
+    write(&root, "app.jadpo", FORMATTED_APP);
+    write(
+        &root,
+        "config.jadpo",
+        "config {\n    page_size: Int {\n        default: 25\n    }\n    mail_sender: Email\n}\n",
+    );
+    let output = jadpo(&root, &["fmt", "--check"]);
+    assert_eq!(output.code, 1);
+    assert!(
+        output
+            .stdout
+            .starts_with("error: This file isn't formatted\n --> config.jadpo:2:5\n"),
+        "{}",
+        output.stdout
+    );
+    jadpo(&root, &["fmt"]);
+    assert_eq!(
+        read(&root, "config.jadpo"),
+        "config {\n    mail_sender: Email\n    page_size: Int {\n        default: 25\n    }\n}\n"
+    );
+    assert_eq!(jadpo(&root, &["fmt", "--check"]).code, 0);
+}

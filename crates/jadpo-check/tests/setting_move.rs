@@ -123,11 +123,6 @@ fn the_pages_example_becomes_a_setting() {
                         "max_login_attempts".to_string(),
                         "setting, default 5".to_string()
                     ),
-                    (
-                        Mark::Added,
-                        "use".to_string(),
-                        "accounts/types { LoginAttempts }".to_string()
-                    ),
                 ]
             ),
             (
@@ -157,11 +152,6 @@ fn the_pages_example_becomes_a_setting() {
                         Mark::Changed,
                         "line 5".to_string(),
                         "reads config.max_login_attempts".to_string()
-                    ),
-                    (
-                        Mark::Removed,
-                        "use".to_string(),
-                        "accounts/libraries { security }".to_string()
                     ),
                 ]
             ),
