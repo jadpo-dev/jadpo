@@ -3996,10 +3996,12 @@ first; each group of types then arrives with its baseline and its extras.
   SI storage at each kind's scale, the `%` literal and the operator
   table's `Percentage` rows, suffixed literals, the product and
   quotient table, `type.unit_required`, and the 3 `units` operations.
-- **5.5k Time and calendar** `opus · high`: the 13 new time types,
-  `CalendarPeriod`'s operator rows and `temporal.period_between`,
-  `RecurrenceRule` expansion (`temporal.occurrences`) and `OpeningHours`
-  (`temporal.open_at`).
+- **5.5k Time and calendar** `opus · high`: ten of the 13 new time
+  types, `CalendarPeriod`'s operator rows and `temporal.period_between`.
+  Split on 2026-10-17, the rest is 5.5k2.
+- **5.5k2 Recurrence and opening hours** `opus · high`: `RecurrenceRule`
+  expansion (`temporal.occurrences`), `OpeningHours`
+  (`temporal.open_at`) and `CalendarEvent`.
 - **5.5l People and places** `opus · high`: the 19 new types, with
   `PhoneNumber`'s E.164 metadata, `PostalAddress` and `PersonName` in each
   locale's order, and `PostalCode` per country.
