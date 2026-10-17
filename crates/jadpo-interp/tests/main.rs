@@ -18,6 +18,7 @@ mod failures;
 mod lists;
 mod logic;
 mod named_collections;
+mod numbers;
 mod proofs;
 mod reports;
 mod sets_maps;

@@ -1,5 +1,6 @@
 //! Rounding a division that doesn't come out exact (area 3, question 7),
-//! shared by `integer.divide` and `decimal.divide`. `Rounding` itself is
+//! shared by `integer.divide`, `decimal.divide` and the rounding
+//! operations of area 19's "Numbers". `Rounding` itself is
 //! declared once, in `jadpo-std`.
 
 use jadpo_std::Rounding;
@@ -39,6 +40,7 @@ pub(crate) fn divide_shifted(
         let twice = remainder << 1;
         let step = match rounding {
             Rounding::Up => true,
+            Rounding::Down => false,
             Rounding::HalfUp => twice >= whole,
             Rounding::HalfEven => twice > whole || (twice == whole && quotient.is_odd()),
         };
@@ -156,6 +158,9 @@ mod tests {
         assert_eq!(divide(9, 4, Rounding::Up), Some(3));
         assert_eq!(divide(-9, 4, Rounding::Up), Some(-3));
         assert_eq!(divide(8, 4, Rounding::Up), Some(2));
+        assert_eq!(divide(11, 4, Rounding::Down), Some(2));
+        assert_eq!(divide(-11, 4, Rounding::Down), Some(-2));
+        assert_eq!(divide(8, 4, Rounding::Down), Some(2));
         assert_eq!(divide(1, 0, Rounding::Up), None);
         assert_eq!(divide(i128::MIN, -1, Rounding::Up), None, "past an i128");
         assert_eq!(

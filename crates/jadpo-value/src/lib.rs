@@ -102,6 +102,34 @@ pub fn run(
             integer::divide(*dividend, *divisor, rounding_of(rounding)?).map(Value::Int)
         }
         (Op::DecimalDivide | Op::IntegerDivide, _) => Err(Fault::Shape),
+        // The number operations (area 19, "Numbers").
+        (Op::IntegerAbs, [Value::Int(n)]) => integer::abs(*n).map(Value::Int),
+        (Op::IntegerMin, [Value::Int(a), Value::Int(b)]) => Ok(Value::Int(integer::min(*a, *b))),
+        (Op::IntegerMax, [Value::Int(a), Value::Int(b)]) => Ok(Value::Int(integer::max(*a, *b))),
+        (Op::IntegerFromDecimal, [Value::Decimal(d), rounding]) => {
+            integer::from_decimal(*d, rounding_of(rounding)?).map(Value::Int)
+        }
+        (Op::DecimalAbs, [Value::Decimal(d)]) => decimal::abs(*d).map(Value::Decimal),
+        (Op::DecimalMin, [Value::Decimal(a), Value::Decimal(b)]) => {
+            Ok(Value::Decimal(decimal::min(*a, *b)))
+        }
+        (Op::DecimalMax, [Value::Decimal(a), Value::Decimal(b)]) => {
+            Ok(Value::Decimal(decimal::max(*a, *b)))
+        }
+        (Op::DecimalRound, [Value::Decimal(d), Value::Int(scale), rounding]) => {
+            decimal::round(*d, *scale, rounding_of(rounding)?).map(Value::Decimal)
+        }
+        (
+            Op::IntegerAbs
+            | Op::IntegerMin
+            | Op::IntegerMax
+            | Op::IntegerFromDecimal
+            | Op::DecimalAbs
+            | Op::DecimalMin
+            | Op::DecimalMax
+            | Op::DecimalRound,
+            _,
+        ) => Err(Fault::Shape),
         (
             Op::ListAll
             | Op::ListAny
@@ -493,6 +521,21 @@ mod tests {
                     variant("half_even"),
                 ],
                 Op::IntegerDivide => vec![Value::Int(25), Value::Int(10), variant("up")],
+                Op::IntegerAbs => vec![Value::Int(-3)],
+                Op::IntegerMin | Op::IntegerMax => vec![Value::Int(3), Value::Int(4)],
+                Op::IntegerFromDecimal => {
+                    vec![Value::Decimal(Decimal::new(25, 1)), variant("down")]
+                }
+                Op::DecimalAbs => vec![Value::Decimal(Decimal::new(-25, 1))],
+                Op::DecimalMin | Op::DecimalMax => vec![
+                    Value::Decimal(Decimal::new(25, 1)),
+                    Value::Decimal(Decimal::new(3, 0)),
+                ],
+                Op::DecimalRound => vec![
+                    Value::Decimal(Decimal::new(225, 2)),
+                    Value::Int(1),
+                    variant("half_up"),
+                ],
                 Op::TemporalAddDays => vec![date.clone(), Value::Int(1), Value::None],
                 Op::TemporalAddMonths | Op::TemporalAddYears => {
                     vec![zoned.clone(), Value::Int(1), Value::None, Value::None]

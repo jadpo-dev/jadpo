@@ -344,8 +344,7 @@ fn a_range_meets_the_contract_through_its_ends() {
             "function f(band: Range<Weight>) -> Wire {\n    return Wire(text.from(band))\n}\n",
             &[],
         ),
-        // Shown as its ends are, with their options; a number has no format
-        // for people yet.
+        // Shown as its ends are, with their options; a number takes none.
         (
             "function f(band: Range<Moment>, shown: Locale) -> PresentationText {\n    return text.format(band, locale: shown, zone: Zone.utc, format: TimeFormat.date_medium)\n}\n",
             &[],
@@ -356,7 +355,11 @@ fn a_range_meets_the_contract_through_its_ends() {
         ),
         (
             "function f(band: Range<Weight>, shown: Locale) -> PresentationText {\n    return text.format(band, locale: shown)\n}\n",
-            &["type.mismatch"],
+            &[],
+        ),
+        (
+            "function f(band: Range<Weight>, shown: Locale) -> PresentationText {\n    return text.format(band, locale: shown, zone: Zone.utc)\n}\n",
+            &["type.temporal_option_unused"],
         ),
         // Read end by end as a standard type or a representation.
         (

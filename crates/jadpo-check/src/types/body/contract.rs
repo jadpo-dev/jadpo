@@ -51,15 +51,17 @@ impl Body<'_> {
         }
     }
 
-    /// The value given to `text.format` or `text.from`, with the standard
-    /// type it is, when it is one the call takes.
+    /// The value given to `text.format` or `text.from`, when it is one the
+    /// call takes, with the standard type it is; a representation, such as
+    /// a number `text.format` shows (area 19, "Numbers"), is no standard
+    /// type.
     pub(super) fn contract_value(
         &mut self,
         op: Op,
         value: &Expr,
         ty: Option<Ty>,
         written: &str,
-    ) -> Option<&'static StandardType> {
+    ) -> Option<Option<&'static StandardType>> {
         let ty = match ty {
             Some(ty) => ty,
             None => self.infer(value),
@@ -76,7 +78,9 @@ impl Body<'_> {
             })
         {
             return match self.contract_of(&item) {
-                Contract::Standard(entry) => Some(entry),
+                Contract::Standard(entry) => Some(Some(entry)),
+                // A number, in the locale's digits, with no options.
+                Contract::Representation(Prim::Int | Prim::Decimal) => Some(None),
                 Contract::Representation(prim) => {
                     self.out.push(
                         Diagnostic::new(
@@ -123,6 +127,10 @@ impl Body<'_> {
                 format!("`{ty}` is built on `Text`, so it is text already"),
             ),
             (Op::TextFrom, Contract::Representation(_)) => (true, None, String::new()),
+            // A number for people, in the locale's digits and separators.
+            (Op::TextFormat, Contract::Representation(Prim::Int | Prim::Decimal)) => {
+                (true, None, String::new())
+            }
             (_, Contract::Representation(prim)) => (
                 false,
                 None,
@@ -154,8 +162,9 @@ impl Body<'_> {
                 ))
                 .next(format!("Pass {wanted} here")),
             );
+            return None;
         }
-        entry
+        Some(entry)
     }
 
     /// `as:` on `text.parse`: a type written out, a standard type or one
@@ -332,14 +341,14 @@ impl Body<'_> {
 
     /// `zone:` and `format:` on `text.format`: each means something only
     /// for a type whose data entry takes it, and a type that takes one
-    /// needs it.
+    /// needs it; a number takes neither.
     pub(super) fn contract_options(
         &mut self,
         table: &Operation,
         call: &ast::CallExpr,
         args: &[ast::Arg],
         slots: &[Option<usize>],
-        (entry, shown): (&'static StandardType, &Ty),
+        (entry, shown): (Option<&'static StandardType>, &Ty),
         written: &str,
     ) {
         let given = |slot: usize| {
@@ -353,7 +362,10 @@ impl Body<'_> {
                 continue;
             }
             let name = param.name;
-            match (entry.format_option(name), given(slot)) {
+            match (
+                entry.and_then(|entry| entry.format_option(name)),
+                given(slot),
+            ) {
                 (None, Some(arg)) => {
                     let span = arg
                         .name()
@@ -404,11 +416,15 @@ impl Body<'_> {
     }
 }
 
-/// Why `text.format`'s option means nothing for a type.
-fn option_unused(option: &str, entry: &StandardType, shown: &Ty) -> (String, String) {
-    let time = matches!(entry.format.key, jadpo_std::standard::FormatKey::DateTime);
+/// Why `text.format`'s option means nothing for a type: a standard type's,
+/// or a number's, which has no entry.
+fn option_unused(option: &str, entry: Option<&StandardType>, shown: &Ty) -> (String, String) {
+    let time = entry
+        .is_some_and(|entry| matches!(entry.format.key, jadpo_std::standard::FormatKey::DateTime));
+    let holds = entry.map(|entry| entry.holds);
+    let kind = entry.map_or("number", |entry| entry.name);
     match option {
-        "zone" if entry.holds == Holds::Builtin(Prim::ZonedTime) => (
+        "zone" if holds == Some(Holds::Builtin(Prim::ZonedTime)) => (
             format!("`{shown}` is seen in its own zone"),
             format!(
                 "`zone:` says which zone an `Instant` is shown in; `{shown}` is a `ZonedTime`, which carries the zone it is seen in, so `text.format` shows it there."
@@ -423,8 +439,12 @@ fn option_unused(option: &str, entry: &StandardType, shown: &Ty) -> (String, Str
         _ => (
             format!("`{shown}` isn't a time"),
             format!(
-                "`{option}:` says how a time is shown to a person; `{shown}` is a `{}`, which `text.format` shows in its own words, with nothing to choose.",
-                entry.name
+                "`{option}:` says how a time is shown to a person; `{shown}` is a {}, which `text.format` shows in its own words, with nothing to choose.",
+                if entry.is_some() {
+                    format!("`{kind}`")
+                } else {
+                    kind.to_string()
+                }
             ),
         ),
     }

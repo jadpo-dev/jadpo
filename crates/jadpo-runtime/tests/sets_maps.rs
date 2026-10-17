@@ -332,6 +332,17 @@ fn a_range_of_any_ordered_type_gives_the_page_s_values() {
         Ok(Value::text("800/.."))
     );
     assert_eq!(
+        jadpo_value::standard::format(
+            &band(Some(1200), None),
+            &jadpo_value::locale::value(
+                jadpo_std::variant_ordinal(jadpo_std::LOCALE, "en_gb").unwrap()
+            ),
+            &Value::None,
+            &Value::None
+        ),
+        Ok(Value::text("1,200 – …"))
+    );
+    assert_eq!(
         jadpo_value::standard::parse("800/..", "Range<Int>"),
         Ok(large)
     );

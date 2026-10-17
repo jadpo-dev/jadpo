@@ -452,13 +452,13 @@ fn standard_operations_check_their_arguments_shape_and_kind() {
 
 #[test]
 fn formatting_is_checked_like_any_operation() {
-    // `text.format` is checked (areas 10 and 19): a number isn't a
-    // standard type, it needs a locale, and it gives text for people.
+    // `text.format` is checked (areas 10 and 19): it needs a locale, and
+    // it gives text for people, which isn't a number.
     assert_eq!(
         with_names(
             "function f(n: Pence) -> Pence {\n    var formatted_price: Pence = text.format(n)\n    return formatted_price\n}\n"
         ),
-        ["type.mismatch", "type.argument_count", "type.mismatch"]
+        ["type.mismatch", "type.argument_count"]
     );
     // `temporal.format` moved to `text.format` (area 19, question 2).
     assert_eq!(

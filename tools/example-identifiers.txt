@@ -345,6 +345,7 @@ double_quantity
 doubled_checked
 doubled_order
 draft_name
+drift
 due_at
 due_before
 due_date
@@ -530,6 +531,7 @@ kitchen
 kitchen_busy
 kitchen_staff
 label_jar
+label_weight
 labelled
 languages_header
 large_order
@@ -590,6 +592,7 @@ loan_view
 loans
 loans_due
 loaves
+loaves_from
 loaves_total
 local_due
 locale_for_reader
@@ -611,6 +614,7 @@ lookup_refused
 lookup_rejected
 lookup_result
 lookup_timed_out
+lowest
 loyalty
 lunch
 lunch_overlap
@@ -752,6 +756,7 @@ outlet_view
 outlet_with_menu
 outlets
 outsider
+oven
 oven_down
 oven_setting
 oven_temperature
@@ -832,6 +837,7 @@ price
 price_basket
 price_flour
 price_item
+price_label
 price_lines
 price_loaf
 price_loaves
@@ -959,6 +965,7 @@ sack_count
 sacks
 safe_for
 safe_to_eat
+sale_price
 sales
 same_price
 same_twice
@@ -1151,6 +1158,7 @@ tray_plan
 tray_warnings
 trays
 trays_out
+trays_to_bake
 turned_down
 two_open_todos
 uk_bands
@@ -1199,6 +1207,7 @@ water_difference
 wear
 weigh_flour
 weigh_recipe
+weighed
 weight
 weight_of
 welcome_email

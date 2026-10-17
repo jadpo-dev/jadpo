@@ -115,7 +115,7 @@ impl Body<'_> {
 
     /// Whether two operands are the same type after widening, or one of
     /// them takes the other's type.
-    fn same_type(&self, a: &Operand, b: &Operand) -> bool {
+    pub(super) fn same_type(&self, a: &Operand, b: &Operand) -> bool {
         match (a, b) {
             (Operand::Literal(_), Operand::Literal(_)) => match (self.rep(a), self.rep(b)) {
                 (Some(x), Some(y)) => x == y || (x.is_number() && y.is_number()),

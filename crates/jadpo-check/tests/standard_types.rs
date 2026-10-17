@@ -190,14 +190,15 @@ fn every_standard_type_meets_the_contract_in_the_checker() {
 fn the_contract_refuses_what_has_no_contract() {
     let types = "type Wire = Text {}\n\ntype Count = Int {}\n\ntype Shade = Enum {\n    plain\n    tinted\n}\n\ntype Unreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
     let cases: &[(&str, &[&str])] = &[
-        // A number has canonical text, but no format for people yet.
+        // A number has canonical text, and a format for people since
+        // chunk 5.5d (area 19, "Numbers").
         (
             "function f(n: Count) -> Wire {\n    return Wire(text.from(n))\n}\n",
             &[],
         ),
         (
             "function f(n: Count, shown: Locale) -> PresentationText {\n    return text.format(n, locale: shown)\n}\n",
-            &["type.mismatch"],
+            &[],
         ),
         // An application's enum has no text of its own.
         (
