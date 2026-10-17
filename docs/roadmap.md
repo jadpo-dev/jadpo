@@ -818,13 +818,15 @@ reference only).
     reason to `ignored_suggestions.jadpo_record` at the project root
     (committed, shared by the team; area 1's root list gains it); the
     snippet stays quiet until its code changes, and stale entries drop out.
-    It sends nothing.
+    It also adds the snippet's text, hash, signal and reason to the pending
+    file as an `ignored` entry. It sends nothing.
   - `jadpo suggest found <file>:<line> <Type or operation> "<why>"`, run
     before the code is changed, captures the snippet's text, hash,
     canonical form, the suggestion and the reason, and teaches it as a
     project signal so the next scan finds the same pattern itself.
-  - Accepted and found entries go to `.jadpo/suggest_pending` (local,
-    untracked) for sharing.
+  - Every entry to share goes to `.jadpo/suggest_pending` (local,
+    untracked) with its kind, `found`, `accepted` or `ignored`, so HQ can
+    tell a signal that was right from one that fired wrongly.
   Done when every signal kind has a finding and a non-finding test, an
   ignored snippet stays quiet until edited, a found snippet's text survives
   the fix, and a taught miss is found by the next scan.
@@ -842,9 +844,8 @@ reference only).
   `suggestions { share: false }` in `app.jadpo`, or `JADPO_SUGGEST_SHARE=off`
   in the environment for a whole machine or organisation, makes `share`
   stop at once saying sharing is turned off and where, and drops the
-  report's instruction to share. `share` sends every hash in `.jadpo/suggest_pending` and every
-  ignored hash not sent before (marked sent in
-  `ignored_suggestions.jadpo_record`), with the token; HQ replies with the
+  report's instruction to share. `share` sends every hash in `.jadpo/suggest_pending` with its kind
+  (`found`, `accepted` or `ignored`) and the token; HQ replies with the
   hashes whose text it wants (those seen from enough distinct projects).
   The hashes go at once, with no prompt; the agent runs `share` itself
   at the end of a suggest session, as the report's instruction says. The
@@ -861,7 +862,7 @@ reference only).
   Done when the whole exchange runs against the fake in tests, nothing is
   sent when sharing is off, no snippet text is sent without approval, a
   hash below the threshold never has its text requested, and an ignored
-  hash is sent once.
+  snippet's text can be shared once approved.
 - [ ] **5.6 Computed backfills** `opus · high` (area 5, "Computed backfills",
   2026-10-15): `backfill:` as an expression over each row's own fields,
   filled in batches, one `UPDATE` each where it has a SQL form and by
