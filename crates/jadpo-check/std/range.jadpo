@@ -1,0 +1,19 @@
+// The `range` namespace (area 19, "Ranges"). Each operation is listed,
+// typed, in `jadpo-std`'s operation table, which names the Rust function
+// in `jadpo-value` that runs it; a test holds these stubs to that table.
+//
+// Each follows the range's own end rule: an `InstantRange` holds every
+// instant from its start up to, not including, its end. They take an
+// `InstantRange` until `Range<T>` comes to the contract (chunk 5.5c2) and
+// `DateRange` with the time types (5.5k).
+
+public library range {
+    /// Whether `value` is inside `range`.
+    function contains(range: InstantRange, value: Instant) -> Bool {}
+
+    /// Whether `a` and `b` share at least one instant.
+    function overlaps(a: InstantRange, b: InstantRange) -> Bool {}
+
+    /// The part `a` and `b` share; `none` when they don't overlap.
+    function intersection(a: InstantRange, b: InstantRange) -> InstantRange? {}
+}

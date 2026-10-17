@@ -36,10 +36,13 @@ pub mod integer;
 pub mod json;
 pub mod list;
 pub mod locale;
+pub mod map;
 pub mod ops;
 pub mod order;
 pub mod present;
+pub mod range;
 mod rounding;
+pub mod set;
 pub mod shape;
 pub mod standard;
 pub mod temporal;
@@ -155,6 +158,31 @@ pub fn run(
             _,
         ) => run_list(op, args, each),
         (
+            Op::SetContains
+            | Op::SetCount
+            | Op::SetDifference
+            | Op::SetIntersection
+            | Op::SetUnion
+            | Op::SetWith
+            | Op::SetWithout,
+            _,
+        ) => run_set(op, args),
+        (
+            Op::MapCount
+            | Op::MapGet
+            | Op::MapHas
+            | Op::MapKeys
+            | Op::MapMerge
+            | Op::MapValues
+            | Op::MapWith
+            | Op::MapWithout,
+            _,
+        ) => run_map(op, args),
+        (Op::RangeContains, [span, value]) => range::contains(span, value).map(Value::Bool),
+        (Op::RangeOverlaps, [a, b]) => range::overlaps(a, b).map(Value::Bool),
+        (Op::RangeIntersection, [a, b]) => range::intersection(a, b),
+        (Op::RangeContains | Op::RangeOverlaps | Op::RangeIntersection, _) => Err(Fault::Shape),
+        (
             Op::TemporalAddDays
             | Op::TemporalAddMonths
             | Op::TemporalAddYears
@@ -235,6 +263,46 @@ fn run_list(
         (Op::ListConcat, [Value::List(second)]) => Ok(Value::list(list::concat(items, second))),
         (Op::ListFlatten, []) => list::flatten(items).map(Value::list),
         (Op::ListGroupBy, []) => list::group_by(items, each),
+        _ => Err(Fault::Shape),
+    }
+}
+
+/// A `set` operation (area 19, "Sets"): [`set`] holds what each does.
+/// Every one takes a set first, held in the canonical order, so each
+/// result it builds from those items is in that order too.
+fn run_set(op: Op, args: &[Value]) -> Result<Value, Fault> {
+    let Some((Value::Set(items), rest)) = args.split_first() else {
+        return Err(Fault::Shape);
+    };
+    let built = |items: Vec<Value>| Value::Set(std::rc::Rc::from(items));
+    match (op, rest) {
+        (Op::SetCount, []) => Ok(Value::Int(set::count(items))),
+        (Op::SetContains, [item]) => Ok(Value::Bool(set::contains(items, item))),
+        (Op::SetWith, [item]) => Ok(built(set::with(items, item))),
+        (Op::SetWithout, [item]) => Ok(built(set::without(items, item))),
+        (Op::SetUnion, [Value::Set(other)]) => Ok(built(set::union(items, other))),
+        (Op::SetIntersection, [Value::Set(other)]) => Ok(built(set::intersection(items, other))),
+        (Op::SetDifference, [Value::Set(other)]) => Ok(built(set::difference(items, other))),
+        _ => Err(Fault::Shape),
+    }
+}
+
+/// A `map` operation (area 19, "Maps"): [`map`] holds what each does.
+/// Every one takes a map first.
+fn run_map(op: Op, args: &[Value]) -> Result<Value, Fault> {
+    let Some((Value::Map(entries), rest)) = args.split_first() else {
+        return Err(Fault::Shape);
+    };
+    let built = |entries| Value::Map(std::rc::Rc::new(entries));
+    match (op, rest) {
+        (Op::MapCount, []) => Ok(Value::Int(map::count(entries))),
+        (Op::MapGet, [key]) => Ok(map::get(entries, key)),
+        (Op::MapHas, [key]) => Ok(Value::Bool(map::has(entries, key))),
+        (Op::MapKeys, []) => Ok(Value::Set(std::rc::Rc::from(map::keys(entries)))),
+        (Op::MapValues, []) => Ok(Value::list(map::values(entries))),
+        (Op::MapWith, [key, value]) => Ok(built(map::with(entries, key, value))),
+        (Op::MapWithout, [key]) => Ok(built(map::without(entries, key))),
+        (Op::MapMerge, [Value::Map(second)]) => Ok(built(map::merge(entries, second))),
         _ => Err(Fault::Shape),
     }
 }
@@ -364,6 +432,10 @@ mod tests {
             zone: temporal::zone_of(&london).unwrap_or(0),
         });
         let items = Value::list(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        let tags = Value::set(vec![Value::Int(3), Value::Int(1)]);
+        let stock = Value::Map(std::rc::Rc::new(
+            [(Value::Int(1), Value::Int(4))].into_iter().collect(),
+        ));
         let mut double = |item: &Value| match item {
             Value::Int(n) => Some(Value::Int(n * 2)),
             _ => None,
@@ -414,6 +486,21 @@ mod tests {
                 | Op::ListMinBy
                 | Op::ListReverse
                 | Op::ListSortBy => vec![items.clone()],
+                Op::SetCount => vec![tags.clone()],
+                Op::SetContains | Op::SetWith | Op::SetWithout => {
+                    vec![tags.clone(), Value::Int(2)]
+                }
+                Op::SetUnion | Op::SetIntersection | Op::SetDifference => {
+                    vec![tags.clone(), tags.clone()]
+                }
+                Op::MapCount | Op::MapKeys | Op::MapValues => vec![stock.clone()],
+                Op::MapGet | Op::MapHas | Op::MapWithout => vec![stock.clone(), Value::Int(1)],
+                Op::MapWith => vec![stock.clone(), Value::Int(1), Value::Int(2)],
+                Op::MapMerge => vec![stock.clone(), stock.clone()],
+                Op::RangeContains => vec![temporal::range(0, 10), Value::Instant(5)],
+                Op::RangeOverlaps | Op::RangeIntersection => {
+                    vec![temporal::range(0, 10), temporal::range(5, 15)]
+                }
                 Op::DecimalDivide => vec![
                     Value::Decimal(Decimal::new(1000, 2)),
                     Value::Int(3),

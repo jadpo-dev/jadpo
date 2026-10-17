@@ -19,6 +19,7 @@ add_partner
 add_tagged_memo
 add_todo
 admin_orders
+afternoon
 afterwards
 alice
 alice_with_todos
@@ -47,6 +48,7 @@ approved
 archive_todo
 archived
 archived_at
+arrivals
 arrived_at
 article
 article_id
@@ -97,6 +99,8 @@ batch_count
 batch_name
 batch_size
 batches_baked
+bench
+bench_name
 best_before
 billing_name
 billing_reference
@@ -118,7 +122,9 @@ book_title
 book_titled
 book_view
 booked
+booked_at
 booking
+booking_time
 bookings
 books
 books_after
@@ -232,6 +238,7 @@ collect_on
 collection_day
 combo
 comment_body
+common_time
 company
 company_chores
 company_id
@@ -328,6 +335,7 @@ discount_too_large
 display_name
 display_word
 done_at
+double_booked
 double_if_room
 double_order
 double_quantity
@@ -438,6 +446,7 @@ handover_charge
 handovers
 harbour
 has_urgent
+hazard
 headline_text
 heaviest
 heavy
@@ -457,6 +466,7 @@ icing_unreadable
 import_products
 import_recipe
 import_reference
+in_either
 in_house_uses
 in_review
 in_shop
@@ -598,6 +608,8 @@ lookup_result
 lookup_timed_out
 lowest
 loyalty
+lunch
+lunch_overlap
 mail_api_key
 make_badge
 manual
@@ -635,6 +647,7 @@ missing_failure
 missing_success
 misuse_test_boundary
 mix_dough
+morning
 my_bakeries
 my_orders
 nand
@@ -653,6 +666,7 @@ nickname
 night_opening
 night_opening_anyway
 no_guests
+no_stock
 no_subtitle
 normal
 northwind
@@ -683,10 +697,12 @@ off_menu_cake
 old_reference
 old_todo
 on_file
+on_hand
 on_hold
 on_menu
 on_payment_succeeded
 on_shelf
+on_shelves
 open_bakery
 open_outlet
 open_outlets
@@ -967,6 +983,7 @@ send_sign_in_link
 sent_at
 sent_text
 service_fake_identity
+sesame
 set_oven
 severe
 shelf
@@ -975,6 +992,7 @@ shelf_empty
 shelf_name
 shelf_size
 shelvable
+shelves
 shift_end
 ship_parcel
 shipment
@@ -1125,6 +1143,7 @@ tray_capacity
 tray_count
 tray_full
 tray_plan
+tray_warnings
 trays
 trays_out
 trays_to_bake
@@ -1170,6 +1189,7 @@ vouched_by
 voucher
 wallet
 wallet_id
+warnings
 water
 water_difference
 wear

@@ -22,11 +22,14 @@ use crate::types::{BASES, Prim, TypeRef, container_arity};
 const NAMES: &str = include_str!("../std/names.txt");
 
 /// The stub files, by name.
-const STUBS: [(&str, &str); 8] = [
+const STUBS: [(&str, &str); 11] = [
     ("types.jadpo", include_str!("../std/types.jadpo")),
     ("standard.jadpo", include_str!("../std/standard.jadpo")),
     ("text.jadpo", include_str!("../std/text.jadpo")),
     ("list.jadpo", include_str!("../std/list.jadpo")),
+    ("set.jadpo", include_str!("../std/set.jadpo")),
+    ("map.jadpo", include_str!("../std/map.jadpo")),
+    ("range.jadpo", include_str!("../std/range.jadpo")),
     ("decimal.jadpo", include_str!("../std/decimal.jadpo")),
     ("integer.jadpo", include_str!("../std/integer.jadpo")),
     ("locale.jadpo", include_str!("../std/locale.jadpo")),
@@ -60,6 +63,7 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
     };
     match (name.as_str(), args.len()) {
         ("List", 1) => Some(Kind::List),
+        ("Set", 1) => Some(Kind::Set),
         ("Map", 2) => Some(Kind::Map),
         ("Function", 2) => Some(Kind::Function),
         ("Number", 0) => Some(Kind::Number),
@@ -483,6 +487,8 @@ mod tests {
         assert_eq!(names.namespace_of("in_zone").as_deref(), Some("temporal"));
         assert!(names.has_operation("list", "count"));
         assert!(names.has_operation("list", "group_by"));
+        assert!(names.has_operation("set", "union") && names.has_operation("map", "keys"));
+        assert!(names.reserved("set") && names.reserved("map") && names.reserved("range"));
         assert!(names.is_generic("utils"));
         assert_eq!(
             names.enums().get("UuidVersion").map(Vec::len),

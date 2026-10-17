@@ -413,6 +413,10 @@ as `list.sum`'s `zero` of its items' representation, and a result of kind
 and `MOVED_NAMESPACES` lists a namespace that moved whole (`collection`,
 reserved with no operations), whose calls the type checker reports with
 an edit by their first value's type, since resolution can't know it.
+Since chunk 5.5c a `Set` parameter or result is a stub's `Set<T>`, and a
+standard object type an operation takes (`InstantRange`, kind `Std`) can
+be written as an object literal, which the plan builds from its data
+entry's fields (area 19, "Sets", "Maps" and "Ranges").
 Since chunk 5.5d (area 19, "Numbers") a `written_out` parameter
 (`decimal.round`'s `scale:`) takes only a whole number from 0 to 18
 written at the call, and an operation whose `OneOf` result shares its `T`

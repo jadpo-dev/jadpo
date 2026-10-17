@@ -584,15 +584,27 @@ reference only).
   examples or tests. `group_by`'s page test reads its map once
   `map.get` exists (5.5c); what the pages left open is area 19's "Chosen
   in chunk 5.5b".
-- [ ] **5.5c Sets, maps and ranges** `opus · high` (area 19, "Sets",
-  "Maps", "Ranges" and "Language gaps", question 8): the 7 `set`, 8 `map`
-  and 3 `range` operations and `Range<T>` on the contract; `for` over a
-  set in canonical order; `[]` as an empty map; two-parameter inline
-  functions for standard operations and the 3 operations waiting on them;
-  `range` reserved and area 10's `deliveries_in(range:)` renamed. Done
-  when each operation's example passes, area 19's `by_shelf` (`list.group_by`)
-  has a test reading its map, and walking a set or a map's keys checks
-  and runs.
+- [x] **5.5c Sets, maps and ranges** `opus · high` (area 19, "Sets",
+  "Maps", "Ranges" and "Language gaps", question 8): the 7 `set`
+  operations, the 8 `map` operations that take no inline function, and the
+  3 `range` operations on `InstantRange`; `for` over a set in canonical
+  order, and so over a map's keys; `[]` as an empty map; `range` reserved
+  and area 10's `deliveries_in(range:)` renamed. Done when each
+  operation's example passes, interpreted and in the runtime, area 19's
+  `by_shelf` (`list.group_by`) has a test reading its map, and walking a
+  set or a map's keys checks and runs. Split on 2026-10-17 because the
+  whole is more than one session: two-parameter inline functions and
+  `Range<T>` are 5.5c2. An `InstantRange` object literal now checks and
+  runs, which the range examples needed; what the pages left open is area
+  19's "Chosen in chunk 5.5c".
+- [ ] **5.5c2 Two-parameter inline functions and `Range<T>`** `opus ·
+  high` (area 19, "Lists", "Maps", "Ranges" and "Language gaps", split
+  from 5.5c): `(a, b) -> ...` for standard operations only (area 3's
+  question 13 widened), with `list.zip_with`, `map.filter` and
+  `map.map_values`; `Range<T>` on the contract, with open ends, and the 3
+  `range` operations taking it. Done when each of those operations'
+  examples passes, interpreted and in the runtime, and a two-parameter
+  inline function anywhere else is an error with a checked example.
 - [x] **5.5d Numbers** `opus · high` (area 19, "Numbers", question 25): the
   8 new `integer` and `decimal` operations, `scale:` written out, and
   `Rounding.down`. Done when each operation's example passes and every

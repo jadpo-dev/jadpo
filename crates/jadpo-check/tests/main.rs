@@ -38,6 +38,7 @@ mod policy;
 mod project;
 mod review;
 mod scale;
+mod sets_maps;
 mod setting_move;
 mod signed;
 mod soundness;

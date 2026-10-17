@@ -1,0 +1,37 @@
+// The `map` namespace (area 19, "Maps"). Each operation is listed, typed,
+// in `jadpo-std`'s operation table, which names the Rust function in
+// `jadpo-value` that runs it; a test holds these stubs to that table.
+//
+// `K` and `V` stand for a map's key and value types, fixed by the
+// arguments at each call, as in `list.jadpo`. A map keeps its keys in the
+// canonical order (area 2), and is walked through them:
+// `for key in map.keys(entries)`. `[]` written where a map is expected is
+// an empty map. Values never change, so every operation that gives a map
+// gives a new one. `filter` and `map_values` come with two-parameter
+// inline functions (chunk 5.5c2).
+
+public library map {
+    /// How many entries `entries` holds.
+    function count(entries: Map<K, V>) -> Int {}
+
+    /// The value at `key`, if there is one.
+    function get(entries: Map<K, V>, key: K) -> V? {}
+
+    /// Whether `entries` has `key`.
+    function has(entries: Map<K, V>, key: K) -> Bool {}
+
+    /// Its keys, in the canonical order.
+    function keys(entries: Map<K, V>) -> Set<K> {}
+
+    /// Its values, in the canonical order of their keys.
+    function values(entries: Map<K, V>) -> List<V> {}
+
+    /// The map with `key` set to `value`, added or replaced.
+    function with(entries: Map<K, V>, key: K, value: V) -> Map<K, V> {}
+
+    /// The map without `key`.
+    function without(entries: Map<K, V>, key: K) -> Map<K, V> {}
+
+    /// Both maps' entries; `second`'s value wins where both have a key.
+    function merge(first: Map<K, V>, second: Map<K, V>) -> Map<K, V> {}
+}

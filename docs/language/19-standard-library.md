@@ -667,7 +667,7 @@ is written inline, `item -> expression` (area 3).
   consistent gives different orders on different targets).
 
 A day's baking, through the list operations built so far (chunk 5.5b;
-`zip_with` waits for two-parameter inline functions in 5.5c):
+`zip_with` waits for two-parameter inline functions in 5.5c2):
 
 ```jadpo check project=list-operations
 type BatchName = Text {
@@ -721,9 +721,8 @@ function by_shelf(batches: List<Batch>) -> Map<Shelf, List<Batch>> {
 
 Each operation gives a new list, or an item of the list as it is, still
 a `Batch`; `takings([])` is `0.00`, a `Decimal`, because a sum is its
-items' representation even when there are none. `by_shelf`'s map can be
-passed, returned and compared until `map.get` reads it (chunk 5.5c), so
-its test comes with that chunk.
+items' representation even when there are none. `by_shelf`'s map is read
+with `map.get` and `map.keys` (under "Maps").
 
 ```jadpo check project=list-operations file=main.test.jadpo
 test "list operations give new lists and keep the items as they are" {
@@ -772,6 +771,33 @@ test "list operations give new lists and keep the items as they are" {
     assert list.concat([rye], [bap, spelt]) == day
     assert list.flatten([[rye], [], [bap, spelt]]) == day
 }
+
+test "group_by keeps each shelf's batches in baking order" {
+    var rye: Batch = Batch {
+        name: "Rye"
+        grams: 800
+        shelf: 2
+        price: 4.20
+    }
+    var bap: Batch = Batch {
+        name: "Bap"
+        grams: 90
+        shelf: 1
+        price: 0.60
+    }
+    var spelt: Batch = Batch {
+        name: "Spelt"
+        grams: 800
+        shelf: 2
+        price: 3.80
+    }
+    var shelves: Map<Shelf, List<Batch>> = by_shelf([rye, bap, spelt])
+    assert map.keys(shelves) == [1, 2]
+    assert map.get(shelves, 2) == [rye, spelt]
+    assert map.get(shelves, 1) == [bap]
+    assert map.get(shelves, 3) == none
+    assert map.count(by_shelf([])) == 0
+}
 ```
 
 A count or a position that might be negative is `type.argument_negative`
@@ -805,6 +831,85 @@ Each operation is called as `set.<name>`. All return a new set.
 - **Example 04** keeps `Recipe.allergens` as a list only because a set
   couldn't be searched; with `set.contains` it becomes the set it is.
 
+A bakery's labels, through every set operation and a `for` over a set
+(chunk 5.5c):
+
+```jadpo check project=set-operations
+type RecipeName = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type Hazard = Enum {
+    gluten
+    milk
+    nuts
+    sesame
+}
+
+type Recipe = Object {
+    name: RecipeName
+    warnings: Set<Hazard>
+}
+
+type SafeToEat = Bool {}
+
+/// Whether `recipe` carries none of the warnings in `avoid`.
+function safe_for(recipe: Recipe, avoid: Set<Hazard>) -> SafeToEat {
+    return SafeToEat(set.count(set.intersection(recipe.warnings, avoid)) == 0)
+}
+
+/// Every warning a tray of recipes carries, each once.
+function tray_warnings(recipes: List<Recipe>) -> Set<Hazard> {
+    var mut found: Set<Hazard> = []
+    for recipe in recipes {
+        found = set.union(found, recipe.warnings)
+    }
+    return found
+}
+
+/// The warnings as a label prints them: a set is walked in its canonical
+/// order, which for an enum is the order its variants are declared in.
+function label(warnings: Set<Hazard>) -> List<Hazard> {
+    var mut shown: List<Hazard> = []
+    for hazard in warnings {
+        shown = list.append(shown, hazard)
+    }
+    return shown
+}
+```
+
+```jadpo check project=set-operations file=main.test.jadpo
+test "set operations give new sets" {
+    var loaf: Recipe = Recipe {
+        name: "Seeded loaf"
+        warnings: [Hazard.sesame, Hazard.gluten]
+    }
+    var flapjack: Recipe = Recipe {
+        name: "Flapjack"
+        warnings: [Hazard.milk]
+    }
+    assert set.count(loaf.warnings) == 2
+    assert set.contains(loaf.warnings, Hazard.sesame)
+    assert not set.contains(flapjack.warnings, Hazard.nuts)
+    assert set.with(loaf.warnings, Hazard.gluten) == loaf.warnings  // already there
+    assert set.with(flapjack.warnings, Hazard.nuts) == [Hazard.milk, Hazard.nuts]
+    assert set.without(loaf.warnings, Hazard.sesame) == [Hazard.gluten]
+    var in_either: Set<Hazard> = set.union(loaf.warnings, flapjack.warnings)
+    assert in_either == [Hazard.gluten, Hazard.milk, Hazard.sesame]
+    assert set.intersection(loaf.warnings, [Hazard.sesame, Hazard.nuts]) == [Hazard.sesame]
+    assert set.difference(loaf.warnings, [Hazard.sesame]) == [Hazard.gluten]
+    assert safe_for(flapjack, [Hazard.nuts])
+    assert not safe_for(loaf, [Hazard.nuts, Hazard.sesame])
+    assert tray_warnings([loaf, flapjack]) == [Hazard.milk, Hazard.sesame, Hazard.gluten]
+    assert label(loaf.warnings) == [Hazard.gluten, Hazard.sesame]
+}
+```
+
+A set compares without order, so the literal on the right of `==` can be
+written in any order; walking one is the only place its order shows, and
+it is always the canonical one, on every target.
+
 ## Maps
 
 Each operation is called as `map.<name>`. All return a new map.
@@ -834,6 +939,74 @@ Each operation is called as `map.<name>`. All return a new map.
   identifiers apart, and hide which field policy and personal-data marks
   apply to. Keys known only while running are what a `Map` is for.
 
+A shop's stock, through the map operations built so far (chunk 5.5c;
+`filter` and `map_values` wait for two-parameter inline functions in
+5.5c2):
+
+```jadpo check project=map-operations
+type Loaf = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type Stock = Int {
+    min: 0
+}
+
+/// The stock after `count` more of `loaf` arrive.
+function delivered(stock: Map<Loaf, Stock>, loaf: Loaf, count: Stock) -> Map<Loaf, Stock> {
+    var on_hand: Stock = match map.get(stock, loaf) {
+        some(found) -> found
+        none -> 0
+    }
+    return map.with(stock, loaf, Stock(on_hand + count))
+}
+
+/// The loaves with none left, in the canonical order of their names: a
+/// map is walked through its keys.
+function sold_out(stock: Map<Loaf, Stock>) -> List<Loaf> {
+    var mut out: List<Loaf> = []
+    for loaf in map.keys(stock) {
+        if (map.get(stock, loaf) == 0) {
+            out = list.append(out, loaf)
+        }
+    }
+    return out
+}
+
+/// How many loaves are on the shelves altogether.
+function on_shelves(stock: Map<Loaf, Stock>) -> Stock {
+    return Stock(list.sum(map.values(stock)))
+}
+```
+
+```jadpo check project=map-operations file=main.test.jadpo
+test "map operations give new maps" {
+    var no_stock: Map<Loaf, Stock> = []
+    var stock: Map<Loaf, Stock> = map.with(map.with(no_stock, "Rye", 4), "Bap", 0)
+    assert map.count(no_stock) == 0
+    assert map.count(stock) == 2
+    assert map.get(stock, "Rye") == 4
+    assert map.get(stock, "Spelt") == none
+    assert map.has(stock, "Bap")
+    assert not map.has(stock, "Spelt")
+    assert map.keys(stock) == ["Bap", "Rye"]
+    assert map.values(stock) == [0, 4]  // in the canonical order of their keys
+    assert map.with(stock, "Rye", 6) == map.with(map.with(no_stock, "Bap", 0), "Rye", 6)
+    assert map.without(stock, "Bap") == map.with(no_stock, "Rye", 4)
+    assert map.without(stock, "Spelt") == stock
+    var fresh: Map<Loaf, Stock> = map.with(no_stock, "Rye", 9)
+    assert map.merge(stock, fresh) == map.with(map.with(no_stock, "Bap", 0), "Rye", 9)
+    assert delivered(stock, "Bap", 12) == map.with(stock, "Bap", 12)
+    assert delivered(stock, "Spelt", 3) == map.with(stock, "Spelt", 3)
+    assert sold_out(stock) == ["Bap"]
+    assert on_shelves(stock) == 4
+}
+```
+
+`map.get` gives `V?`, so a key that may be missing is handled where it is
+read; `map.has` says whether it is there without reading it.
+
 ## Ranges
 
 `Range<T>` holds a `start` and an `end` of one ordered type, either of
@@ -847,6 +1020,88 @@ Stored as PostgreSQL's range types (`daterange`, `tstzrange`,
 | `range.contains(range, value)` | `Bool`: `value` is inside, by the range's own end rule | | `x @> a` |
 | `range.overlaps(a, b)` | `Bool`: the two share at least one value | | `a && b` |
 | `range.intersection(a, b)` | `Range<T>?`, the shared part; `none` when they don't overlap | | `NULLIF(a * b, 'empty')` |
+
+The three operations take an `InstantRange` until `Range<T>` comes to the
+contract in chunk 5.5c2 and `DateRange` with the time types in 5.5k. An
+`InstantRange` holds every instant from its start up to, not including,
+its end, so two bookings that meet at the hour don't lunch_overlap, and one that
+starts and ends together holds nothing:
+
+```jadpo check project=range-operations
+type Booking = Object {
+    bench: BenchName
+    slot: InstantRange
+}
+
+type BenchName = Text {
+    min_length: 1
+}
+
+type BookingTime = Instant {}
+
+type Booked = Bool {}
+
+type DoubleBooked = Bool {}
+
+/// Whether the bench is booked at `at`.
+function booked_at(booking: Booking, at: BookingTime) -> Booked {
+    return Booked(range.contains(booking.slot, at))
+}
+
+/// Whether two bookings of one bench double_booked.
+function double_booked(first: Booking, second: Booking) -> DoubleBooked {
+    return DoubleBooked(first.bench == second.bench and range.overlaps(first.slot, second.slot))
+}
+
+/// The time two bookings share, if any.
+function common_time(first: Booking, second: Booking) -> InstantRange? {
+    return range.intersection(first.slot, second.slot)
+}
+```
+
+```jadpo check project=range-operations file=main.test.jadpo
+test "ranges include their start and exclude their end" {
+    var morning: Booking = Booking {
+        bench: "Oven bench"
+        slot: InstantRange {
+            start: "2026-10-26T09:00:00Z"
+            end: "2026-10-26T12:00:00Z"
+        }
+    }
+    var lunch: Booking = Booking {
+        bench: "Oven bench"
+        slot: InstantRange {
+            start: "2026-10-26T11:00:00Z"
+            end: "2026-10-26T13:00:00Z"
+        }
+    }
+    var afternoon: Booking = Booking {
+        bench: "Oven bench"
+        slot: InstantRange {
+            start: "2026-10-26T12:00:00Z"
+            end: "2026-10-26T17:00:00Z"
+        }
+    }
+    var nothing: Booking = Booking {
+        bench: "Oven bench"
+        slot: InstantRange {
+            start: "2026-10-26T10:00:00Z"
+            end: "2026-10-26T10:00:00Z"
+        }
+    }
+    var lunch_overlap: InstantRange = InstantRange {
+        start: "2026-10-26T11:00:00Z"
+        end: "2026-10-26T12:00:00Z"
+    }
+    assert booked_at(morning, "2026-10-26T09:00:00Z")
+    assert not booked_at(morning, "2026-10-26T12:00:00Z")
+    assert double_booked(morning, lunch)
+    assert not double_booked(morning, afternoon)  // they meet at noon
+    assert not double_booked(morning, nothing)
+    assert common_time(morning, lunch) == lunch_overlap
+    assert common_time(morning, afternoon) == none
+}
+```
 
 ## Numbers
 
@@ -1703,9 +1958,9 @@ operations it unblocks kept on this page.
 
 | Gap | Fix | Owning area | Chunk | Unblocks |
 |---|---|---|---|---|
-| `for` can't walk sets or maps | `for` takes a `Set`, in area 2's canonical order; maps through `map.keys` | 2, 3 | 5.5c | Walking sets and maps |
-| No map literal | `[]` where a map is expected; a literal with entries designed in area 2 | 2 | 5.5c | Building maps |
-| Inline functions take one parameter | Two parameters, `(a, b) -> ...`, for standard operations only (area 3's question 13 widened) | 3 | 5.5c | `list.zip_with`, `map.filter`, `map.map_values` |
+| `for` can't walk sets or maps | `for` takes a `Set`, in area 2's canonical order; maps through `map.keys` | 2, 3 | 5.5c, built | Walking sets and maps |
+| No map literal | `[]` where a map is expected; a literal with entries designed in area 2 | 2 | 5.5c, built | Building maps |
+| Inline functions take one parameter | Two parameters, `(a, b) -> ...`, for standard operations only (area 3's question 13 widened) | 3 | 5.5c2 | `list.zip_with`, `map.filter`, `map.map_values` |
 | No `Float` and no maths | Maths on `Decimal` with `scale:` and `rounding:`, deterministic everywhere; still no `Float` | 2 (question 8 there) | 5.5e | 8 `decimal` operations; geospatial distance |
 | Code can't read a secret | Opaque key settings, used only as a `crypto` call's `key:` | 10 | 5.5q | `crypto` |
 | Keys held as data (per device, per person) | An encrypted field of a key type, usable only as `key:` | 10, 15 | With encrypted fields, after the first build (personal data) | Per-device signatures, `crypto.verify_totp` |
@@ -1946,7 +2201,8 @@ check failed: 1 error, 1 file
 
 | Feature | Status |
 |---|---|
-| `list.`, formerly `collection.` | `count`, `contains`, `map` and `filter` decided in area 2; renamed from `collection.` (question 6) and joined by the 21 operations that need no language change in 5.5b; `zip_with` in 5.5c |
+| `list.`, formerly `collection.` | `count`, `contains`, `map` and `filter` decided in area 2; renamed from `collection.` (question 6) and joined by the 21 operations that need no language change in 5.5b; `zip_with` in 5.5c2 |
+| `set.`, `map.`, `range.`; `for` over a set; `[]` as an empty map | Decided 2026-10-17 (question 8); built in 5.5c: the 7 `set` operations, the 8 `map` operations that take no inline function, and the 3 `range` operations on `InstantRange`; `map.filter`, `map.map_values` and `Range<T>` in 5.5c2 |
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here, built in 5.5k |
@@ -1970,7 +2226,7 @@ check failed: 1 error, 1 file
   five page examples (area 2's `work_email(text:)`, areas 7's and 8's `var
   text: Memo`, area 9's `edit_note(text:)`, area 16's `search_todos(text:)`)
   and about ten Jadpo snippets in crate tests; for `range`, area 10's
-  `deliveries_in(range:)` query; all renamed in 5.5f and 5.5c (question
+  `deliveries_in(range:)` query, now `deliveries_in(arrivals:)`; all renamed in 5.5f and 5.5c (question
   30). Area 1 carries an amendment note.
 - **Area 2:** `collection.` becomes `list.` (question 6, below); the 234 new standard
   types, `EncryptionKey` and `PasswordCheck` become built-in names, and the
@@ -2083,7 +2339,8 @@ under "Errors").
   it is `semantic.standard_operation_moved`, with an edit to `list.`,
   `set.` or `map.` read from its first value's type when that value is a
   name or a field, and to `list.` otherwise; it is then checked as the
-  `list` operation, and a `set.` or `map.` one waits for chunk 5.5c.
+  `list` operation, and a `set.` or `map.` one as that operation from
+  chunk 5.5c.
 - **Counts that may be negative** are `type.argument_negative`: a literal
   below `0`, or a value whose type has no `min` of at least `0`. A call's
   result, `list.count`'s included, is a plain `Int` and proves nothing,
@@ -2109,7 +2366,7 @@ under "Errors").
   back by construction (area 2).
 - **`group_by`** gives `Map<K, List<T>>`, its keys in the canonical order
   and `==` grouping them, so a key may be any type. Its page test waits
-  for `map.get` (chunk 5.5c); the interpreter's and the runtime's tests
+  for `map.get` (chunk 5.5c, which added it); the interpreter's and the runtime's tests
   read the map meanwhile.
 - **`distinct`** keeps each first occurrence, found through the canonical
   order, which agrees with `==` for values of one type.
@@ -2117,6 +2374,36 @@ under "Errors").
   list of a named list type isn't one.
 - **`list` is reserved** (question 30). No page or example used the name;
   one checker test's action was renamed.
+
+### Chosen in chunk 5.5c
+
+- **The range operations take an `InstantRange`** until `Range<T>` comes
+  to the contract (5.5c2) and `DateRange` with the time types (5.5k): the
+  only range type built. Their stubs are `crates/jadpo-check/std/range.jadpo`.
+- **An empty range holds nothing and overlaps nothing.** An
+  `InstantRange` whose start is its end contains no instant, so
+  `range.overlaps` is `false` and `range.intersection` `none` for it, as
+  PostgreSQL's `&&` and `NULLIF(a * b, 'empty')` give; two ranges that
+  only meet (one's end is the other's start) don't overlap either.
+- **An `InstantRange` written as an object literal** checks its two
+  fields against its data entry's `Instant`s and runs, built from the
+  entry's fields; until this chunk it checked as nothing and stopped as
+  not built. Its fields take values built on `Instant` only as an
+  object's fields do, so a named instant type (`Moment`) is a mismatch,
+  as it is for any field declared `Instant`.
+- **`for` over a map** is `type.mismatch`, whose edit writes
+  `map.keys(<the map>)`; `for` over a set takes the set's item type, as
+  over a list.
+- **`[]` where a map is expected** is an empty map, whose length a named
+  map type's `min_length` checks as a literal's (`type.invalid_literal`);
+  a list with items there is `type.mismatch`, since a literal with
+  entries is still area 2's to design.
+- **Named types.** As for lists, an operation giving `T`, `V?`, `Set<T>`,
+  `Set<K>` or `List<V>` keeps the items' named type, and a named set or
+  map type isn't kept, since `without` can break its `min_length`.
+- **`set` and `map` are reserved** with `range` (question 30); no page,
+  example or test used either name. `collection.` on a set or a map now
+  checks as the `set.` or `map.` operation it moved to.
 
 ### Chosen in chunk 5.5d
 
@@ -2616,10 +2903,13 @@ first; each group of types then arrives with its baseline and its extras.
   change; `never_negative`, the `sort_by` key's ordered kinds, results
   that keep a named type. Built.
 - **5.5c Sets, maps and ranges** `opus · high`: the 7 `set`, 8 `map` and 3
-  `range` operations and `Range<T>` on the contract; `for` over a set;
-  `[]` as an empty map; two-parameter inline functions and the 3
-  operations waiting on them; `range` reserved and area 10's
-  `deliveries_in(range:)` renamed.
+  `range` operations; `for` over a set; `[]` as an empty map; `range`
+  reserved and area 10's `deliveries_in(range:)` renamed. Built; split on
+  2026-10-17, the rest is 5.5c2.
+- **5.5c2 Two-parameter inline functions and `Range<T>`** `opus · high`:
+  `(a, b) -> ...` for standard operations, with `list.zip_with`,
+  `map.filter` and `map.map_values`; `Range<T>` on the contract, the
+  `range` operations taking it.
 - **5.5d Numbers** `opus · high`: the 8 new `integer` and `decimal`
   operations; `scale:` written out; `Rounding.down`. Built, with
   `text.format` for numbers.

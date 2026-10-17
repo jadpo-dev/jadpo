@@ -21,5 +21,6 @@ mod named_collections;
 mod numbers;
 mod proofs;
 mod reports;
+mod sets_maps;
 mod soundness;
 mod values;

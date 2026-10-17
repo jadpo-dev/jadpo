@@ -1,0 +1,32 @@
+// The `set` namespace (area 19, "Sets"). Each operation is listed, typed,
+// in `jadpo-std`'s operation table, which names the Rust function in
+// `jadpo-value` that runs it; a test holds these stubs to that table.
+//
+// A single capital letter (`T`) stands for any type, fixed by the
+// arguments at each call, as in `list.jadpo`. A set holds each value once,
+// in the canonical order (area 2, "Set order"), which `for` walks; it has
+// no first item and is never indexed. Values never change, so every
+// operation that gives a set gives a new one.
+
+public library set {
+    /// How many items `items` holds.
+    function count(items: Set<T>) -> Int {}
+
+    /// Whether `items` holds `item`.
+    function contains(items: Set<T>, item: T) -> Bool {}
+
+    /// The set with `item` added; the same set when it is already there.
+    function with(items: Set<T>, item: T) -> Set<T> {}
+
+    /// The set without `item`.
+    function without(items: Set<T>, item: T) -> Set<T> {}
+
+    /// The items in either set.
+    function union(a: Set<T>, b: Set<T>) -> Set<T> {}
+
+    /// The items in both sets.
+    function intersection(a: Set<T>, b: Set<T>) -> Set<T> {}
+
+    /// The items in `a` and not in `b`.
+    function difference(a: Set<T>, b: Set<T>) -> Set<T> {}
+}
