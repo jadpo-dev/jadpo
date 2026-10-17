@@ -58,17 +58,13 @@ fn update(call: &Call) -> Reply {
     let problems: Vec<Diagnostic> = jadpo_check::check(db, project)
         .into_iter()
         .filter(|d| {
-            d.severity() == jadpo_diag::Severity::Error
-                && (d.rule.area == 7 || d.rule.id.starts_with("syntax."))
+            (d.rule.area == 7 || d.rule.id.starts_with("syntax."))
                 && d.rule.id != rule::API_RECORD_OUT_OF_DATE.id
         })
         .collect();
     if !problems.is_empty() || !jadpo_check::routes::routes_clean(db, project) {
         let problems = if problems.is_empty() {
             jadpo_check::check(db, project)
-                .into_iter()
-                .filter(|d| d.severity() == jadpo_diag::Severity::Error)
-                .collect()
         } else {
             problems
         };

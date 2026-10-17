@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use jadpo_diag::{Diagnostic, Severity, nearest, rule};
+use jadpo_diag::{Diagnostic, nearest, rule};
 use jadpo_term::{Block, ColorChoice, Fact, Json, Outcome, Screen};
 use jadpo_test::{Options, Ran, TestKind};
 
@@ -183,11 +183,7 @@ fn refused(
     files: usize,
     root: Option<String>,
 ) -> (Screen, Json, Vec<Diagnostic>, BTreeMap<String, String>) {
-    let errors = diagnostics
-        .iter()
-        .filter(|d| d.severity() == Severity::Error)
-        .count();
-    let warnings = diagnostics.len() - errors;
+    let errors = diagnostics.len();
     let mut screen = Screen::new();
     for diagnostic in &diagnostics {
         screen.push(Block::diagnostic_from(
@@ -196,18 +192,16 @@ fn refused(
             root.as_deref(),
         ));
     }
-    let mut facts = vec![Fact::problem(count(errors, "error", "errors"))];
-    if warnings > 0 {
-        facts.push(Fact::warning(count(warnings, "warning", "warnings")));
-    }
-    facts.push(Fact::plain(count(files, "file", "files")));
+    let facts = vec![
+        Fact::problem(count(errors, "error", "errors")),
+        Fact::plain(count(files, "file", "files")),
+    ];
     screen.push(Block::summary(Outcome::Failure, "tests not run", facts));
     let data = Json::object([
         ("ran", false.into()),
         ("root", Json::from(root.as_deref().unwrap_or("."))),
         ("fileCount", files.into()),
         ("errors", errors.into()),
-        ("warnings", warnings.into()),
     ]);
     (screen, data, diagnostics, sources)
 }

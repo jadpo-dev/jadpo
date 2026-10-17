@@ -257,7 +257,6 @@ pub fn schema() -> Json {
                 ("root", "As for a run"),
                 ("fileCount", "How many files the project holds"),
                 ("errors", "How many errors"),
-                ("warnings", "How many warnings"),
             ]),
         ),
         (

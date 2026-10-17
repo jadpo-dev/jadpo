@@ -170,14 +170,14 @@ fn enums_and_tagged_unions() {
         ),
         (
             "main.jadpo",
-            "type PaymentOutcome = Enum {\n    pending\n    paid: {\n        receipt_id: ReceiptId\n        paid_at: Instant\n    }\n    declined: {\n        reason: DeclineReason\n    }\n}\n\nfunction decline(reason: DeclineReason) -> PaymentOutcome {\n    return PaymentOutcome.declined {\n        reason: reason\n    }\n}\n\nfunction label(outcome: PaymentOutcome) -> OutcomeLabel {\n    return match outcome {\n        PaymentOutcome.pending -> \"pending\"\n        PaymentOutcome.paid -> \"paid\"\n        PaymentOutcome.declined -> \"declined\"\n    }\n}\n",
+            "type PaymentOutcome = Enum {\n    pending\n    paid: {\n        receipt_id: ReceiptId\n        paid_at: Instant\n    }\n    declined: {\n        reason: DeclineReason\n    }\n}\n\nfunction declined_payment(reason: DeclineReason) -> PaymentOutcome {\n    return PaymentOutcome.declined {\n        reason: reason\n    }\n}\n\nfunction label(outcome: PaymentOutcome) -> OutcomeLabel {\n    return match outcome {\n        PaymentOutcome.pending -> \"pending\"\n        PaymentOutcome.paid -> \"paid\"\n        PaymentOutcome.declined -> \"declined\"\n    }\n}\n",
         ),
     ]);
     assert_eq!(
         value(&program, "reopen", vec![]).to_string(),
         "TicketStatus.open"
     );
-    let declined = value(&program, "decline", vec![text("card expired")]);
+    let declined = value(&program, "declined_payment", vec![text("card expired")]);
     assert_eq!(
         declined.to_string(),
         "PaymentOutcome.declined { reason: \"card expired\" }"

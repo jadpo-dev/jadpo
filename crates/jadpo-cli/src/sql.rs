@@ -23,7 +23,7 @@
 use std::path::PathBuf;
 
 use jadpo_check::data::queries::{Include, IncludeKind, QueryModel, query_models};
-use jadpo_diag::{Diagnostic, Severity, rule};
+use jadpo_diag::{Diagnostic, rule};
 use jadpo_graph::Kind;
 use jadpo_graph::body::{Body, Expr, Node, SiteId};
 use jadpo_plan::{CallablePlan, Decoded, Plan, QueryPlan, Raises, WriteSitePlan};
@@ -77,10 +77,7 @@ pub fn sql(call: &Call) -> Reply {
             }),
         );
     };
-    let errors: Vec<Diagnostic> = jadpo_check::check(db, loaded.project)
-        .into_iter()
-        .filter(|d| d.rule.severity == Severity::Error)
-        .collect();
+    let errors: Vec<Diagnostic> = jadpo_check::check(db, loaded.project);
     if !errors.is_empty() {
         return crate::migrate::blocked(&loaded, &cwd, errors, "sql not shown");
     }

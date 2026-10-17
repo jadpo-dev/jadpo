@@ -21,7 +21,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_db::{Db, File, Loaded, Project};
-use jadpo_diag::{Diagnostic, Severity, Span, nearest, rule};
+use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_graph::Key;
 use jadpo_graph::body::{Expr as BodyExpr, Node, Refers};
 use jadpo_syntax::SyntaxKind::*;
@@ -813,10 +813,7 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Moved, Stopped> {
     }
 
     // 4. Checked: a move never leaves a project that doesn't.
-    let problems: Vec<Diagnostic> = crate::check(&loaded.db, project)
-        .into_iter()
-        .filter(|problem| problem.severity() == Severity::Error)
-        .collect();
+    let problems: Vec<Diagnostic> = crate::check(&loaded.db, project);
     let after: BTreeMap<String, Option<String>> = paths
         .iter()
         .map(|path| (path.clone(), text_of(loaded, path)))

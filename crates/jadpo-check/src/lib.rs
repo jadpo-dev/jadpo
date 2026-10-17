@@ -14,6 +14,7 @@ pub mod client_address;
 pub mod config;
 pub mod constants;
 pub mod data;
+pub mod declines;
 mod failures;
 pub mod graph;
 pub mod identity;
@@ -61,7 +62,8 @@ pub fn standard_operations() -> Vec<StubSignature> {
 /// since a file that does not parse would only add knock-on errors, unless
 /// every one is a habit from another language that parsed as its Jadpo
 /// form (`Parse::checkable`): then the rest of the project is checked too,
-/// and no other problem is reported on a line with a syntax error.
+/// and no other problem is reported on a line with a syntax error. A
+/// finding a `decline` line answers is left out ([`declines`]).
 pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let files = project.files(db);
     let syntax: Vec<Diagnostic> = files
@@ -157,6 +159,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .iter()
                 .cloned(),
         );
+        out = declines::answer(db, project, out, syntax.is_empty());
     }
     if !syntax.is_empty() {
         let line = |path: &str, offset: u32| {
@@ -192,8 +195,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 /// to clients that `jadpo check` and CI hold to (area 7), not a reason
 /// the program can't run.
 pub fn blocks_running(diagnostic: &Diagnostic) -> bool {
-    diagnostic.severity() == jadpo_diag::Severity::Error
-        && diagnostic.rule.id != rule::API_RECORD_OUT_OF_DATE.id
+    diagnostic.rule.id != rule::API_RECORD_OUT_OF_DATE.id
 }
 
 /// The zero-based line `offset` is on.

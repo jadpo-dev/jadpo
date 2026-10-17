@@ -509,3 +509,35 @@ fn optional_chaining_with_a_space_is_the_same_habit() {
         spaced.errors()
     );
 }
+
+#[test]
+fn a_decline_with_nothing_under_it_is_expected_declaration() {
+    let (error, _) = one_error("decline library.similar_exists: \"Rounds down\"\n");
+    assert_eq!(error.rule.id, "syntax.expected_declaration");
+    assert_eq!(error.message, "This decline has no declaration under it");
+}
+
+#[test]
+fn a_decline_inside_a_body_is_expected_statement() {
+    let (error, covered) = one_error(
+        "function f(a: Int) -> Int {\n    decline library.similar_exists: \"x\"\n    return a\n}\n",
+    );
+    assert_eq!(error.rule.id, "syntax.expected_statement");
+    assert_eq!(covered, "decline");
+}
+
+#[test]
+fn a_decline_without_its_colon_offers_one() {
+    let text = "decline library.similar_exists \"Rounds down\"\nfunction f(a: Int) -> Int {\n    return a\n}\n";
+    let (error, _) = one_error(text);
+    assert_eq!(error.rule.id, "syntax.unexpected_token");
+    let fixed = fixed_by_edits(text, &error);
+    assert!(fixed.starts_with("decline library.similar_exists: \"Rounds down\""));
+}
+
+#[test]
+fn decline_is_a_reserved_word() {
+    let (error, covered) = one_error("function decline(a: Int) -> Int {\n    return a\n}\n");
+    assert_eq!(error.rule.id, "syntax.expected_name");
+    assert_eq!(covered, "decline");
+}

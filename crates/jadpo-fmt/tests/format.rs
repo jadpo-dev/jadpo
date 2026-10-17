@@ -309,3 +309,19 @@ fn the_primary_declaration_goes_first_and_the_rest_keep_their_order() {
         "type Shelf = Int {}\n\naction set_oven() -> Unit {}\n"
     );
 }
+
+#[test]
+fn a_decline_line_sits_alone_directly_above_its_declaration() {
+    assert_eq!(
+        fmt(
+            "/// Rounds for the till.\ndecline   library.similar_exists :\"Rounds to 5p\"\n\npublic function till_round(price: Pence) -> Pence {\n    return price\n}\n"
+        ),
+        "/// Rounds for the till.\ndecline library.similar_exists: \"Rounds to 5p\"\npublic function till_round(price: Pence) -> Pence {\n    return price\n}\n"
+    );
+    assert_eq!(
+        fmt(
+            "library rounding {\n    decline library.similar_exists: \"Rounds down\"\n      function capped(amount: Int) -> Int {\n        return amount\n    }\n}\n\ntype Box = Object {\n  decline personal.unread: \"Kept\"\n  width: Int\n}\n"
+        ),
+        "library rounding {\n    decline library.similar_exists: \"Rounds down\"\n    function capped(amount: Int) -> Int {\n        return amount\n    }\n}\n\ntype Box = Object {\n    decline personal.unread: \"Kept\"\n    width: Int\n}\n"
+    );
+}

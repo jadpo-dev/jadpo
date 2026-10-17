@@ -474,7 +474,7 @@ reference only).
   area page: the namespaces, every operation's signature and failures,
   which have a SQL form (for queries and backfills), and what is left out
   on purpose. **Needs Richard** to decide the page before 5.5.
-- [ ] **5.4b Declinable errors** `opus · high` (area 1, question 11,
+- [x] **5.4b Declinable errors** `opus · high` (area 1, question 11,
   decided 2026-10-17): no warning severity; the generic `decline <rule>:
   "<reason>"` line above any declaration, with `decline.unused` and
   `decline.not_declinable`; `jadpo declines list` and `clear` (`--rule`, a

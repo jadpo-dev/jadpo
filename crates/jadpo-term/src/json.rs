@@ -4,7 +4,7 @@
 
 use std::fmt::Write as _;
 
-use jadpo_diag::{Diagnostic, Label, Severity, Span};
+use jadpo_diag::{Diagnostic, Label, Span};
 
 use crate::sources::{Position, Sources};
 
@@ -204,16 +204,15 @@ impl From<Vec<Json>> for Json {
 
 /// The document every `--json` command prints: `schemaVersion`, the
 /// canonical command name, whether it succeeded, its data, and its
-/// diagnostics. A command fails when any diagnostic is an error.
+/// diagnostics. A command fails when it has any diagnostic: every finding
+/// is an error (area 1, "Declining a judgement call").
 pub fn envelope(
     command: Option<&str>,
     data: Option<Json>,
     diagnostics: &[Diagnostic],
     sources: &dyn Sources,
 ) -> Json {
-    let ok = diagnostics
-        .iter()
-        .all(|diagnostic| diagnostic.severity() != Severity::Error);
+    let ok = diagnostics.is_empty();
     Json::object([
         ("schemaVersion", Json::Int(SCHEMA_VERSION)),
         ("command", command.into()),
@@ -248,7 +247,8 @@ pub fn diagnostic_json(diagnostic: &Diagnostic, sources: &dyn Sources) -> Json {
     });
     Json::object([
         ("rule", diagnostic.rule.id.into()),
-        ("severity", diagnostic.severity().word().into()),
+        ("severity", "error".into()),
+        ("declinable", diagnostic.rule.declinable.into()),
         ("message", Json::from(&diagnostic.message)),
         (
             "location",

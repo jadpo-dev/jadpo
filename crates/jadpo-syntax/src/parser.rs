@@ -508,6 +508,46 @@ impl Marker {
         }
     }
 
+    /// Makes this marker the start of the one node parsed from event `at`
+    /// on, so what was parsed between this marker and `at` (a
+    /// declaration's `decline` lines) becomes that node's first children.
+    /// False, changing nothing, unless everything from `at` is one node.
+    pub(crate) fn adopt(&self, p: &mut Parser<'_>, at: usize) -> bool {
+        let Some(first) = (at..p.events.len()).find(|&i| !matches!(p.events[i], Event::Tombstone))
+        else {
+            return false;
+        };
+        let Event::Start {
+            kind,
+            forward_parent: None,
+        } = p.events[first]
+        else {
+            return false;
+        };
+        let mut depth = 0i64;
+        for (i, event) in p.events.iter().enumerate().skip(first) {
+            match event {
+                Event::Start { .. } => depth += 1,
+                Event::Finish => {
+                    depth -= 1;
+                    if depth == 0 && i + 1 != p.events.len() {
+                        return false;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if depth != 0 {
+            return false;
+        }
+        p.events[first] = Event::Tombstone;
+        p.events[self.pos as usize] = Event::Start {
+            kind,
+            forward_parent: None,
+        };
+        true
+    }
+
     pub(crate) fn abandon(self, p: &mut Parser<'_>) {
         if self.pos as usize == p.events.len() - 1 {
             p.events.pop();

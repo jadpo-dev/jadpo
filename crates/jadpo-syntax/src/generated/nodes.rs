@@ -1456,6 +1456,69 @@ impl Visibility {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Decline {
+    pub(crate) syntax: SyntaxNode,
+}
+
+impl AstNode for Decline {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == DECLINE
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl Decline {
+    pub fn decline_kw_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, DECLINE_KW)
+    }
+    pub fn decline_rule(&self) -> Option<DeclineRule> {
+        support::child(&self.syntax)
+    }
+    pub fn colon_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, COLON)
+    }
+    pub fn reason(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, STRING)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct DeclineRule {
+    pub(crate) syntax: SyntaxNode,
+}
+
+impl AstNode for DeclineRule {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == DECLINE_RULE
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl DeclineRule {
+    pub fn ident_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, IDENT)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Name {
     pub(crate) syntax: SyntaxNode,
 }

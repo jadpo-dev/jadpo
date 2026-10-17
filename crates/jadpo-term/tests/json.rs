@@ -81,6 +81,7 @@ fn a_failed_envelope_has_null_data_and_its_diagnostics() {
         serde_json::json!({
             "rule": "cli.unknown_command",
             "severity": "error",
+            "declinable": false,
             "message": "`hlep` isn't a jadpo command",
             "location": null,
             "related": [],
@@ -94,9 +95,8 @@ fn a_failed_envelope_has_null_data_and_its_diagnostics() {
 }
 
 #[test]
-fn warnings_alone_still_leave_the_envelope_ok() {
-    // Only errors fail a command; no warning rules exist yet, so the check is
-    // that an empty diagnostic list is ok and an error is not.
+fn no_diagnostics_leave_the_envelope_ok() {
+    // Every finding is an error, so only an empty list is ok.
     let ok = envelope(Some("help"), Some(Json::Null), &[], &()).to_document();
     assert!(ok.contains("\"ok\": true"));
 }

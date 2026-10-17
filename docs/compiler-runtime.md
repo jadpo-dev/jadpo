@@ -534,7 +534,8 @@ follows `jadpo-value`'s, from literals, enum values, other constants,
 constructions, objects, lists and operators: every construction is
 checked against its type's rules there, a call, `config` or `clock` is
 `constant.value_not_fixed`, a loop is `constant.cycle`, and two constants
-of one type holding one value warn `constant.similar_exists`. A query
+of one type holding one value are `constant.similar_exists`, a
+declinable error (area 1, question 11; chunk 5.4b). A query
 reads the worked-out value as a literal (or a plain variant, or a list of
 them), and the graph's constant node, the manifest and the library
 catalogue carry it as Jadpo writes it.
@@ -618,7 +619,8 @@ sets, effect rules per callable kind, reads in loops, one store per action,
 calls before writes.
 
 **Diagnostics.** The catalogue is a `rules!` table in `jadpo-diag` (rule
-id, owning area, severity, summary, who decides, help anchor), used through
+id, owning area, whether it is declinable, summary, who decides, help
+anchor; every finding is an error, area 1's question 11), used through
 typed constants, so a misspelt rule does not compile. A diagnostic carries
 the rule, primary and secondary spans, reason, next step with optional
 edits, and who decides (`agent` or `human`). `jadpo-term` renders it rich

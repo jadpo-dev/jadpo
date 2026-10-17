@@ -5,7 +5,7 @@ Each project in examples/ (a folder holding app.jadpo; golden-todo/ holds
 only the golden app's contract) is copied to a temporary folder, so the
 manifest `jadpo check` writes never lands in the repository, and must:
 
-- check with no diagnostics at all, errors or warnings (`jadpo check --json`);
+- check with no diagnostics at all (`jadpo check --json`);
 - be canonically formatted (`jadpo fmt --check`);
 - have tests, all passing under `jadpo test --json --seed 1`;
 - have its own README.md, and appear in examples/README.md's reading order;

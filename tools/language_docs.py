@@ -5,7 +5,7 @@ A ```jadpo check block is compiled by the new `jadpo` (docs/compiler-runtime.md
 §2.7) with `jadpo check`, which grows with each roadmap chunk: a block without
 `expect=` must check cleanly, exit 0 and be canonically formatted (`jadpo fmt
 --check`), and an `expect=rule.id` block must report exactly one diagnostic,
-with that rule, read from `jadpo check --json`, exit 1 (0 for a warning), be
+with that rule, read from `jadpo check --json`, exit 1, be
 formatted unless the rule is a syntax or import error (`jadpo fmt` fixes
 imports), and be followed by a
 ```text output block holding the exact plain output, which `--bless`
@@ -337,7 +337,8 @@ class Page:
             else:
                 # Exactly the expected error, once, and the failing exit
                 # code: an example shows one mistake.
-                exit_code = 0 if self.catalogue.get(expected, {}).get('severity') == 'warning' else 1
+                # Every finding is an error (area 1, question 11).
+                exit_code = 1
                 ok = rules == [expected] and code == exit_code
                 if rules != [expected]:
                     self.problems.append(f'{name}: expected exactly one {expected} but got {rules[:4] or "a pass"}')
@@ -570,7 +571,7 @@ def slug(text):
 def render_diagnostic(output):
     lines = []
     for line in html.escape(output).splitlines():
-        line = re.sub(r'^(error|warning):', r'<span class="e">\1:</span>', line)
+        line = re.sub(r'^(error):', r'<span class="e">\1:</span>', line)
         line = re.sub(r'^(\s*)(rule:) (\S+)', r'\1<span class="dim">\2</span> <span class="rule">\3</span>', line)
         line = re.sub(r'^(\s*)(reason:|next:|help:|note:|behavioral impact:|public contract impact:)',
                       r'\1<span class="dim">\2</span>', line)

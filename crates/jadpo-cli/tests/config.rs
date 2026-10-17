@@ -1045,7 +1045,7 @@ fn shop(name: &str, file: &str, main: &str) -> PathBuf {
 
 #[test]
 fn move_refuses_every_reason_at_once_and_changes_nothing() {
-    let main = "use shop/types { Pence }\n\naction first_fee() -> Pence {\n    for fee in first_fees {\n        return fee\n    }\n    return 0\n}\n\nconstant fees: List<Pence> = [250, 500]\nconstant first_fees: List<Pence> = fees\n";
+    let main = "use shop/types { Pence }\n\naction first_fee() -> Pence {\n    for fee in first_fees {\n        return fee\n    }\n    return 0\n}\n\nconstant fees: List<Pence> = [250, 500]\ndecline constant.similar_exists: \"The first fees, which may differ\"\nconstant first_fees: List<Pence> = fees\n";
     let root = shop("move-refused", "first_fee.jadpo", main);
     assert_eq!(
         jadpo(&root, &["check"]).code,

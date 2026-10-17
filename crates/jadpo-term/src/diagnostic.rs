@@ -2,7 +2,7 @@
 //! fields in its order (`reason`, `next`, `impact`, `rule`, `help`), with
 //! the names in use after `next` when a rename needs them (area 1).
 
-use jadpo_diag::{Decider, Diagnostic, Label, Severity};
+use jadpo_diag::{Decider, Diagnostic, Label};
 
 use crate::detect::{Mode, Style};
 use crate::palette::{Symbol, Token};
@@ -31,7 +31,6 @@ struct FrameLine {
 /// A diagnostic with its positions resolved against the sources.
 #[derive(Clone, Debug)]
 pub struct DiagnosticView {
-    severity: Severity,
     message: String,
     location: Option<String>,
     frame: Vec<FrameLine>,
@@ -87,7 +86,6 @@ impl DiagnosticView {
             }
         }
         DiagnosticView {
-            severity: diagnostic.severity(),
             message: diagnostic.message.clone(),
             location,
             frame,
@@ -105,7 +103,7 @@ impl DiagnosticView {
 
     pub(crate) fn lines(&self, style: &Style) -> Vec<Line> {
         let rich = style.mode == Mode::Rich;
-        let mut lines = vec![headline(self.severity, &self.message, style)];
+        let mut lines = vec![headline(&self.message, style)];
         if let Some(location) = &self.location {
             lines.push(vec![raw(if rich {
                 format!("  {location}")
@@ -199,10 +197,7 @@ impl DiagnosticView {
             .map(|line| line.number.to_string().len())
             .max()
             .unwrap_or(1);
-        let token = match self.severity {
-            Severity::Error => Token::Failure,
-            Severity::Warning => Token::Warning,
-        };
+        let token = Token::Failure;
         let bar = if rich {
             Symbol::Gutter.text(style.symbols)
         } else {

@@ -17,7 +17,7 @@ use jadpo_check::data::migrations::{
 };
 use jadpo_check::data::{DataModel, data_model, schema};
 use jadpo_db::Loaded;
-use jadpo_diag::{Decider, Diagnostic, Severity, rule};
+use jadpo_diag::{Decider, Diagnostic, rule};
 use jadpo_graph::migration::{
     Needed, NeededKind, Refusal, Sql, decisions_needed, migration_sql, next_snapshot,
 };
@@ -128,7 +128,7 @@ fn new(call: &Call) -> Reply {
     let (db, project) = (&loaded.db, loaded.project);
     let problems: Vec<Diagnostic> = jadpo_check::check(db, project)
         .into_iter()
-        .filter(|d| d.severity() == Severity::Error && !answers(d))
+        .filter(|d| !answers(d))
         .collect();
     if !problems.is_empty() {
         return blocked(&loaded, &cwd, problems, "migrate new stopped");

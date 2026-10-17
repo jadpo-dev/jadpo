@@ -9,6 +9,7 @@ use crate::completion;
 pub use crate::api::api;
 pub use crate::check::check;
 pub use crate::config::config;
+pub use crate::declines::declines;
 pub use crate::dev::dev;
 pub use crate::fmt::fmt;
 use crate::help::{self, VERSION};

@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use jadpo_diag::{Diagnostic, Severity, rule};
+use jadpo_diag::{Diagnostic, rule};
 use jadpo_term::{Block, ColorChoice, Environment, Json, Screen, Stream, Style, envelope};
 
 use crate::completion;
@@ -159,12 +159,7 @@ fn finish_report(
     choice: ColorChoice,
 ) -> Output {
     let (screen, data, diagnostics, sources) = report;
-    let code = diagnostics
-        .iter()
-        .filter(|diagnostic| diagnostic.severity() == Severity::Error)
-        .map(exit_code)
-        .max()
-        .unwrap_or(0);
+    let code = diagnostics.iter().map(exit_code).max().unwrap_or(0);
     let stdout = if json {
         envelope(name, Some(data), &diagnostics, &sources).to_document()
     } else {

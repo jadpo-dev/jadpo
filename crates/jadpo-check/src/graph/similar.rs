@@ -1,4 +1,4 @@
-//! The similar-helper warning (area 1, "Tools for agents" in area 14):
+//! The similar-helper check (area 1, "Tools for agents" in area 14):
 //! when a function does what a library function already does, `jadpo
 //! check` says so and names the library function, so a helper is not
 //! written twice.
@@ -150,8 +150,8 @@ pub fn similar_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
 }
 
 /// A function's likeness: its canonical tokens after its own name, with
-/// each parameter and variable named by its position and visibility left
-/// out.
+/// each parameter and variable named by its position, and visibility and
+/// `decline` lines left out.
 fn likeness(function: &ast::FunctionDecl) -> Digest {
     let own = function.name().map(|name| name.syntax().clone());
     let mut locals: BTreeMap<String, usize> = BTreeMap::new();
@@ -170,7 +170,12 @@ fn likeness(function: &ast::FunctionDecl) -> Digest {
         let Some(parent) = token.parent() else {
             continue;
         };
-        if Some(&parent) == own.as_ref() || parent.kind() == jadpo_syntax::SyntaxKind::VISIBILITY {
+        if Some(&parent) == own.as_ref()
+            || parent.kind() == jadpo_syntax::SyntaxKind::VISIBILITY
+            || parent
+                .ancestors()
+                .any(|node| node.kind() == jadpo_syntax::SyntaxKind::DECLINE)
+        {
             continue;
         }
         if token.kind() == IDENT

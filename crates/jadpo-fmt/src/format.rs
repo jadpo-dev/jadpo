@@ -193,6 +193,7 @@ fn tight(kind: SyntaxKind) -> bool {
             | GENERIC_ARG_LIST
             | ROUTE_PATH_EXPR
             | USE_PATH
+            | DECLINE_RULE
     )
 }
 
@@ -319,6 +320,13 @@ impl Formatter {
         let mut previous: Option<SyntaxKind> = None;
         let mut ends_in_question = false;
         for child in &children {
+            // A `decline` line stands alone above what it declines.
+            if previous == Some(DECLINE) {
+                docs.push(Doc::HardLine);
+                docs.push(self.element(child));
+                previous = Some(child.kind());
+                continue;
+            }
             // `??` written together is one mistake the parser reads on its
             // own, so a `?` after a `?` keeps its space.
             if let Some(left) = previous

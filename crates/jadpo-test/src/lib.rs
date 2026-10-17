@@ -135,8 +135,8 @@ pub struct Options {
 pub enum Ran {
     /// Run outside any project, with no path to say what to run.
     NoProject,
-    /// The project has errors, so nothing ran: its check's diagnostics
-    /// (warnings too), the sources they point into, and how many files.
+    /// The project has errors, so nothing ran: its check's diagnostics,
+    /// the sources they point into, and how many files.
     Refused {
         diagnostics: Vec<Diagnostic>,
         sources: BTreeMap<String, String>,

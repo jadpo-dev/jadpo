@@ -215,7 +215,8 @@ pub fn reference_json() -> Json {
                 Json::object([
                     ("id", rule.id.into()),
                     ("area", i64::from(rule.area).into()),
-                    ("severity", rule.severity.word().into()),
+                    ("severity", "error".into()),
+                    ("declinable", rule.declinable.into()),
                     ("decides", rule.decides.word().into()),
                     ("summary", rule.summary.into()),
                     ("help", rule.help().into()),

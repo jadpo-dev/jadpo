@@ -114,7 +114,7 @@ fn constant_is_reserved() {
 }
 
 #[test]
-fn two_constants_of_one_type_holding_one_value_warn() {
+fn two_constants_of_one_type_holding_one_value_is_a_declinable_error() {
     let text = format!(
         "{PENCE}constant fee: Pence = 250\nconstant charge: Pence = 250\n\nfunction total() -> Pence {{\n    return Pence(fee + charge)\n}}\n"
     );

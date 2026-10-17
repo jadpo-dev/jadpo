@@ -153,3 +153,60 @@ fn use_is_reserved_where_something_is_named() {
         Some("`use` is a reserved word")
     );
 }
+
+#[test]
+fn decline_lines_are_the_first_children_of_the_declaration_below() {
+    let source = file(
+        "/// Rounds for the till.\ndecline library.similar_exists: \"Rounds to 5p\"\ndecline constant.similar_exists: \"Another reason\"\npublic function till_round(price: Pence) -> Pence {\n    return price\n}\n",
+    );
+    let decl = source.decls().next().expect("a declaration");
+    assert_eq!(decl.syntax().kind(), SyntaxKind::FUNCTION_DECL);
+    let declines: Vec<(String, String)> = ast::declines(decl.syntax())
+        .map(|decline| {
+            (
+                decline.decline_rule().expect("rule").id(),
+                decline.reason().expect("reason").text().to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        declines,
+        [
+            (
+                "library.similar_exists".to_string(),
+                "\"Rounds to 5p\"".to_string()
+            ),
+            (
+                "constant.similar_exists".to_string(),
+                "\"Another reason\"".to_string()
+            ),
+        ]
+    );
+    let docs: Vec<String> = ast::doc_comments(decl.syntax())
+        .iter()
+        .map(|token| token.text().to_string())
+        .collect();
+    assert_eq!(docs, ["/// Rounds for the till."]);
+    let Decl::FunctionDecl(function) = decl else {
+        panic!("a function")
+    };
+    assert_eq!(
+        function.name().expect("name").syntax().text().to_string(),
+        "till_round"
+    );
+}
+
+#[test]
+fn a_decline_line_above_a_member_or_a_library_function_belongs_to_it() {
+    let source = file(
+        "type Box = Object {\n    decline personal.unread: \"Kept for the regulator\"\n    width: Int\n}\n\nlibrary rounding {\n    decline library.similar_exists: \"Rounds down\"\n    function capped(amount: Int) -> Int {\n        return amount\n    }\n}\n",
+    );
+    let owners: Vec<SyntaxKind> = source
+        .syntax()
+        .descendants()
+        .filter(|node| node.kind() == SyntaxKind::DECLINE)
+        .filter_map(|node| node.parent())
+        .map(|parent| parent.kind())
+        .collect();
+    assert_eq!(owners, [SyntaxKind::MEMBER, SyntaxKind::FUNCTION_DECL]);
+}
