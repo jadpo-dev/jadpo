@@ -22,27 +22,37 @@ to close them, and says what is left out on purpose and why.
 | `list` | Operations on `List<T>` (was `collection`) | 26 (4 decided, 22 new) | [Area 2](02-values-and-types.md#collections), question 4; inline functions in [area 3](03-logic.md#passing-functions) |
 | `set` | Operations on `Set<T>` | 7, new | This page |
 | `map` | Operations on `Map<K, V>` | 10, new | This page |
-| `integer` | Operations on values built on `Int` | 7 (1 decided, 6 new) | [Area 3](03-logic.md), question 7 |
-| `decimal` | Operations on values built on `Decimal` | 15 (1 decided, 14 new) | [Area 3](03-logic.md), question 7 |
-| `money` | `Money` in one currency | 10, new | This page |
-| `text` | Operations on values built on `Text` | 18, new | This page |
+| `range` | Operations on `Range<T>` and the ranges built on it | 3, new | This page |
+| `integer` | Operations on values built on `Int` | 5 (1 decided, 4 new) | [Area 3](03-logic.md), question 7 |
+| `decimal` | Operations on values built on `Decimal` | 13 (1 decided, 12 new) | [Area 3](03-logic.md), question 7 |
+| `money` | `Money` and its rates | 10, new | This page |
+| `units` | Physical quantities, `DataSize` and `Bitrate` | 5, new | This page |
+| `text` | Operations on text, and the contract's `parse`, `format` and `from` for every type | 21, new | This page |
 | `hash` | SHA-256 digests | 1, new | This page |
 | `encoding` | Bytes as text and back | 9, new | This page |
-| `crypto` | Encryption, passwords, message authentication | 6, new | This page |
+| `crypto` | Encryption, passwords, signatures, message authentication | 10, new | This page |
 | `random` | Tokens, codes, shuffles; actions only | 5, new | This page |
 | `json` | One JSON document in memory; large files through #88's batches | 2, new | This page and #88 |
-| `temporal` | Instants, dates, local times, zones, formats | 23 (21 decided, 2 new) | [Area 10](10-configuration-and-time.md#zones-and-local-times) |
+| `temporal` | Instants, dates, local times, zones, formats, recurrence | 23 (21 decided, 2 new) | [Area 10](10-configuration-and-time.md#zones-and-local-times) |
 | `locale` | Choosing a supported locale | 1, unchanged | [Area 10](10-configuration-and-time.md#choosing-a-locale-from-a-request) |
+| `colour` | Converting `Colour` between spaces, contrast | 5, new | This page |
+| `web` | Building URLs, address blocks | 3, new | This page |
+| `semver` | Version ranges | 1, new | This page |
+| `media` | Fitting dimensions | 1, new | This page |
+| `markup` | Markdown and HTML, made safe | 3, new | This page |
 
-140 operations in all: 28 decided, 112 proposed here. Of the new ones, 3
-wait on a language change this page proposes (two-parameter inline
-functions) and 8 on the choice of maths on `Decimal` (question 17). #88's
-file helpers (`csv`, `tsv`, `json_lines` and the batch forms of `json`)
-are counted there, not here.
+164 operations in all: 28 decided, 136 proposed here. On top of them every
+standard type has the contract's baseline (construction, `text.parse`,
+`text.format`, `text.from`, JSON, storage, `==` and order), generated, not
+counted per type. Of the new operations, 3 wait on two-parameter inline
+functions, 8 on maths on `Decimal` (question 17) and 1 on keys held as
+data. #88's file helpers (`csv`, `tsv`, `json_lines` and the batch forms of
+`json`) are counted there, and the geospatial and AI areas' operations in
+those areas.
 
 ## Shared vocabulary types
 
-> Decided 2026-10-17 (Richard): the principle; the warning on a package that declares its own equivalent; and that every standard type is global, in one flat set. Which types get in, and under what names, are still proposals (questions 2 to 5); so is each type in the table below.
+> Decided 2026-10-17 (Richard): the principle; the warning on a package that declares its own equivalent; every standard type global, in one flat set; the list of standard types below, with its three rules; `Point` as the one exception to the naming rule; and that every standard type meets one contract. How the contract is expressed, and the other names, are still proposals (questions 2 and 3).
 
 **The standard library defines the types two packages would otherwise
 each invent**. Geospatial libraries disagree on
@@ -75,20 +85,102 @@ a package or a later area.
   its own equivalent of a standard type is warned and pointed at it
   ("Packages use the standard types", below).
 
-| Type | Fields or representation | Wire (JSON) | Storage | Standard library vs elsewhere | Status |
-|---|---|---|---|---|---|
-| `Instant`, `CalendarDate`, `ZonedTime`, `Duration`, `Zone`, `Locale`, `Weekday` | As area 10 | Area 7's wire forms | Area 5 | `temporal`, `locale` | Exists (areas 2, 10) |
-| `Email`, `Url`, `IpAddress` | Validated `Text` | A string | `text` | Construction only | Exists (area 2) |
-| `FileType` | Enum of media types | `"image/png"` | `text` | Construction only | Exists (area 16) |
-| `Money`, `Currency` | Minor units (`Int`) and an ISO 4217 currency | `{"amount": 1050, "currency": "GBP"}` | `bigint` and a `char(3)` code | `money`; no exchange rates | Proposed here (question 16); built in per #88 |
-| `Country` | Enum of ISO 3166-1 alpha-2 codes, `Country.gb` | `"GB"` | `char(2)` | Construction only; names through translations | Proposed here; built in per #88 |
-| `Language` | BCP 47 language tag (`en`, `pt-BR`), any language, not only the app's supported `Locale`s | `"pt-BR"` | `text` | Construction only | Proposed here; built in per #88 |
-| `PhoneNumber` | E.164 text, `+447700900123` | A string | `text` | Construction, which normalises; formatting for people a package | Proposed here; carried to area 2 by area 11, question 19 |
-| `Percentage` | `Decimal` where `0.20` is 20%, scale chosen by the type | `"0.20"`, as any `Decimal` | `numeric` | `money.multiply`, `decimal` operations; `{n, number, percent}` in messages | Proposed here (question 16) |
-| `Colour` | `red`, `green`, `blue` and `alpha`, each 0 to 255, in sRGB | `"#rrggbb"` or `"#rrggbbaa"` | `text`, the same | Construction from hex; conversions to other spaces a package | Proposed here (question 13); reverses Richard's point 8 |
-| `Point` | `latitude`, `longitude` (WGS84 degrees) | GeoJSON | PostGIS `geography` | Type here; operations in the geospatial area | Proposed for a future area (question 12) |
-| `LineString`, `Polygon`, `MultiPolygon` | Named lists of `Point`s | GeoJSON | PostGIS `geography` | As `Point` | Proposed for a future area |
-| `Vector` | A fixed number of `Decimal`s, `Vector { dimensions: 1536 }` | A JSON array of numbers | pgvector `vector(n)` | Type here; similarity queries in the AI area | Proposed for a future area (question 19) |
+### The standard types
+
+Decided 2026-10-17 (Richard): 245 types, 12 of them built already (bold).
+Units fold into their quantity type, roles into the general type,
+duplicates are merged, and formats and application entities are out. The
+[vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
+the full reference list behind it: all 1,120 brainstormed entries, each
+with its decision. Names stay subject to question 3, except `Point`,
+decided.
+
+| Group | Types | Extras in |
+|---|---|---|
+| People and contact (12) | `PersonName`, `GivenName`, `FamilyName`, `Username`, **`Email`**, `EmailWithName`, `PhoneNumber`, `PhoneExtension`, `PostalAddress`, `PostalCode`, `Uprn`, `Nationality` | `web` |
+| Places (10) | `Country`, `Subdivision`, `Continent`, `UnLocode`, `CallingCode`, `Language`, `Script`, `TextDirection`, **`Locale`**, **`Zone`** | |
+| Geospatial (17) | `Point` (optional altitude), `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` | `geo` (future area) |
+| Money, payments, banking (24) | `Money`, `Currency`, `ExchangeRate`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, `PaymentCardNumber`, `MaskedCardNumber`, `CardBrand`, `CardBin`, `CardExpiry`, `PaymentReference`, `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`, `UkAccountNumber`, `BankAccount`, `AbaRoutingNumber`, `Lei`, `Isin` | `money` |
+| Tax and identity numbers (10) | `VatNumber`, `TaxId`, `UkUtr`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin`, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, `NhsNumber` | |
+| Commerce and logistics (20) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `Quantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, `HsCode`, `Incoterm`, `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` | `units`, `media` |
+| Time and calendar (18) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`**, `LocalTime`, `LocalDateTime`, `Month`, `YearMonth`, `Year`, `Quarter`, `IsoWeek`, `UtcOffset`, `DateRange`, `TimeInterval`, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` | `temporal`, `range` |
+| Physical quantities (17) | `Length`, `Area`, `Volume`, `Angle`, `Mass`, `Pressure`, `Energy`, `Power`, `Temperature`, `TemperatureDifference`, `Speed`, `Frequency`, `Voltage`, `Current`, `Illuminance`, `SoundLevel`, `Concentration` | `units` |
+| Maths and data (8) | `Percentage`, `Ratio`, `Fraction`, `Range<T>`, `DataSize`, `Bitrate`, `Vector`, `Embedding` | `range`, `units`; AI area |
+| Health (9) | `BloodType`, `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` | |
+| Media and visual (15) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize`, `ExifOrientation`, `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating` | `colour`, `media` |
+| Web and network (23) | **`Url`**, `UrlPath`, `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `Origin`, `HttpMethod`, `HttpStatus`, `HttpHeaderName`, **`FileType`**, `UserAgent`, `ProblemDetails`, `JsonPointer`, `Cookie`, `UtmParameters`, **`IpAddress`**, `Cidr`, `Port`, `MacAddress`, `Imei`, `Emoji`, `PushToken` | `web` |
+| Software (19) | `SemanticVersion`, `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`, `SpanId`, `TraceParent`, `LogLevel`, `FilePath`, `FileName`, `RegularExpression`, `ContainerImage`, `Digest`, **`Uuid`**, `Ulid`, `IdempotencyKey`, `Doi` | `semver` |
+| Text formats (4) | `Markdown`, `Html`, `RichText`, `LocalisedText` | `markup`, `text` |
+| Security (20) | `Password`, `PasswordHash`, `PasswordPolicy`, `Hash`, `Hmac`, `Jwt`, `JwtClaims`, `Jwk`, `PublicKey`, `PrivateKey`, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `Secret`, `BearerToken`, `OAuthScope`, `OidcClaims`, `WebAuthnCredential`, `EncryptedValue` | `crypto` |
+| Travel (6) | `IataAirport`, `IcaoAirport`, `IataAirline`, `FlightNumber`, `CabinClass`, `BookingReference` | |
+| Other with a published standard (10) | `UnNumber`, `Orcid`, `CefrLevel`, `Mpan`, `Mprn`, `EpcRating`, `Tenure`, `LawfulBasis`, `Jurisdiction`, `ModelId` | |
+| AI (3) | `TokenCount`, `TokenUsage`, `ChatMessage` | AI area |
+
+**Its three rules**, decided with it:
+
+- **Country-specific identifiers are global types,** like the rest:
+  `UkSortCode`, `UsSsn` and `NhsNumber` are named by their country, so
+  they don't clash.
+- **Gender and sex at birth stay out.** They are contested and personal
+  data: an application models them deliberately, and area 15 marks them
+  sensitive.
+- **A quantity is stored in its SI base unit,** with the unit chosen at
+  construction and display: `units.of(5, LengthUnit.mile)` holds metres,
+  and `text.format(distance, locale:, unit: LengthUnit.mile)` shows miles.
+  `==` and ordering then just work, and storage is one `numeric` column.
+
+**Folded or cut, so nothing is lost** (each entry's decision is in the
+catalogue's Decision column):
+
+| What | Became |
+|---|---|
+| Units (`Metre`, `Mile`, `Kilogram`, `Pound`, `Celsius`, `Litre`, `KilowattHour`, every `...Unit` enum and 17 more) | The quantity type, with a unit at construction and display |
+| Roles: `Height`, `GeoDistance` · `FloorArea` · `WindSpeed` · `BodyTemperature` · `BarometricPressure` · `MediaDuration` · `DateOfBirth`, `ExpiryDate` · `CountryOfOrigin` · `UsState`, `Region` · `Salary` | `Length` · `Area` · `Speed` · `Temperature` · `Pressure` · `Duration` · `CalendarDate` · `Country` · `Subdivision` · `Money`: a field of the general type |
+| Duplicates: `Timestamp`, `Uri`, `Ipv4Address`, `Ipv6Address`, `HexColour`, `HslColour`, `Sha256`, `UuidV7`, `Point3D`, `CountryAlpha3`, `LanguageAlpha3`, `UkPostcode`, `UsZipCode`, `UkNumberPlate`, `EuVatNumber`, `UkVatNumber`, `TimeRange`, `Period`, `MinorUnits`, `MediaType`, `ImageFormat` | The one standard type each duplicates (the catalogue names which) |
+| Also folded in review: `AddressLine`, `BarcodeSymbology`, `DoseFrequency`, `FlightDesignator`, `GitSha`, `Gtin`, `HttpHeaders`, `Humidity`, `PackageDimensions`, `PackageName`, `PhysicalQuantity`, `UnitOfMeasure`, `Ucum`, `Proportion`, `QueryString`, `SubtitleTrack`, `UkBankAccount`, `WebhookSignature`, `WindDirection`, `CarbonDioxideEquivalent` | `PostalAddress`, `Barcode`, `DosageInstruction`, `FlightNumber`, `GitRef`, `Ean13`, `HttpHeaderName`, `Percentage`, `Dimensions`, `PackageUrl`, `Quantity` (three), `Ratio`, `Url`, `SubtitleCue`, `BankAccount`, `Hmac`, `Bearing`, `Mass` |
+| Formats: `Hex`, `Base64`, `Wkt`, `Json`, `CsvDialect`, `MessageFormat`, `VCard`, `OtpAuthUri`, `CssLength` | Out: `encoding.` and `json.` operations |
+| Application entities: `Recipe`, `HotelStay`, `OrderStatus`, `PaymentStatus`, `Consent`, `SensorReading`, `StoredFile`, `UserId`, `Allergy` and 31 more | Out: an application's own records |
+| `Gender`, `SexAtBirth`, `Cvv` | Out: sensitive (a CVV is never stored) |
+| `HashAlgorithm`, `KeyAlgorithm`; `SessionId`; `AcceptLanguage` | Out: no algorithm choices; the runtime's (area 8); a call, `locale.from_accept_language` |
+| Niche, silly, or a maybe with no published standard | Out: 730 entries, a package's to define |
+
+### Every standard type meets one contract
+
+Decided 2026-10-17 (Richard): every standard type has a library, at least
+a baseline, and the baseline is the same for every type, not chosen type
+by type. How it is expressed is question 2.
+
+| Baseline | What it is | Where a type has none |
+|---|---|---|
+| Construct and validate | From its parts (`PostalCode(raw)`, `Money` from `money.from_minor`), and from text with `text.parse(raw, as: T)`; each failure named by the rule it breaks, `malformed` for text that isn't the type at all | Never: every type has both |
+| `format` for people | `text.format(value, locale:)`, giving `PresentationText`, through CLDR where the locale matters (an address's line order, a name's order, a quantity's unit) | Every type has one |
+| Canonical text | `text.from(value)`: E.164, ISO codes, `#rrggbb`, ISO 8601, `pkg:` URLs; the form `text.parse` reads back | Types with no single text form (`PostalAddress`, `PersonName`); asking is a compile error |
+| JSON | One shape, read and written by `json.read`, `json.write` and every route | Never |
+| Storage | One shape: a column type, or named columns for an object (`Money`'s two) | Never |
+| `==`, and order | `==` on every type; `<` and `sort_by` where the type is ordered (quantities of one kind, `Money` of one currency, times, `SemanticVersion`, `Percentage`) | Order only where it means something |
+| Conversions at named edges | `geo.from_lng_lat`, `units.in`, `Isbn` 10 to 13, `MaskedCardNumber` from a `PaymentCardNumber` | Only where the type has another form |
+
+`text.parse`, `text.format` and `text.from` are each one operation over
+every standard type, as `json.read` is one over every input type, so the
+contract adds 2 names, not 700.
+
+**Extras beyond the baseline**, by group, each with its full table under "Operations" below:
+
+| Group | Extras | Count |
+|---|---|---|
+| Money and payments | `money.from_minor`, `of`, `minor`, `currency`, `sum`, `multiply`, `divide`, `allocate`, `split`, `convert` (with a given `ExchangeRate`, never fetched) | 10 |
+| Physical quantities, `DataSize`, `Bitrate` | `units.of`, `in`, `multiply`, `divide`, `sum`; `+`, `-` and comparisons within one kind | 5 |
+| Time and calendar | Area 10's 21, plus `temporal.occurrences(rule, from:, count:)` for a `RecurrenceRule` and `temporal.open_at(hours, at)` for `OpeningHours` | 2 new |
+| Ranges (`Range<T>`, `DateRange`, `TimeInterval`) | `range.contains`, `range.overlaps`, `range.intersection` | 3 |
+| Colour | `colour.from_hsl`, `from_oklch`, `mix`, `with_lightness`, `contrast` (WCAG 2) | 5 |
+| Security | `crypto` as tabled below, with `sign`, `verify_signature`, `verify_jwt` and `verify_totp` | 10 |
+| Web | `web.with_query(url, query)`, `web.resolve(base, relative)`, `web.cidr_contains(range, address)` | 3 |
+| Software | `semver.satisfies(version, range)` | 1 |
+| Media | `media.fit(dimensions, within:)`, keeping the aspect ratio | 1 |
+| Text formats | `markup.to_html`, `rich_to_html`, `to_plain_text`; `text.pick` with fallback. `Html` is always safe: its construction sanitises (#88) | 4 |
+| Geometry | `geo.intersects`, `contains`, `within`, `distance`, `bounds` | Future area |
+| AI (`Vector`, `Embedding`, `ChatMessage`) | Similarity and generation | Future area |
+| People, places, identity numbers, commerce codes, health, travel, other | Baseline only: each identifier's check digit or pattern is its construction | |
 
 ### Packages use the standard types
 
@@ -235,6 +327,36 @@ because a type has no such rule today: the bookings scenario needs one,
 so cross-field rules are proposed as a language change (question 15,
 "Language gaps").
 
+## Operations
+
+Every operation beyond the contract's baseline, with its signature,
+failures and SQL form, one section per namespace or type group. The
+baseline itself (construction, `text.parse`, `text.format`, `text.from`,
+JSON, storage, `==` and order) is defined once, under "Every standard
+type meets one contract", and isn't repeated here.
+
+| Section | Namespace | Operations |
+|---|---|---|
+| Lists | `list` | 26 |
+| Sets | `set` | 7 |
+| Maps | `map` | 10 |
+| Ranges | `range` | 3 |
+| Numbers | `integer`, `decimal` | 18 |
+| Money and payments | `money` | 10 |
+| Physical quantities | `units` | 5 |
+| Time and calendar additions | `temporal` | 2 new, 21 decided |
+| Text | `text` | 21 |
+| Text formats | `markup` | 3 |
+| Hashing and cryptography | `hash`, `crypto` | 11 |
+| Randomness | `random` | 5 |
+| Encodings | `encoding` | 9 |
+| Data formats | `json` | 2 |
+| Colour | `colour` | 5 |
+| Media | `media` | 1 |
+| Web and software | `web`, `semver` | 4 |
+| Groups with the baseline only | | 0 |
+| Locale | `locale` | 1 decided |
+
 ## SQL forms
 
 A **SQL form** is a PostgreSQL 16 expression that gives exactly the result
@@ -372,6 +494,20 @@ Each operation is called as `map.<name>`. All return a new map.
   identifiers apart, and hide which field policy and personal-data marks
   apply to. Keys known only while running are what a `Map` is for.
 
+## Ranges
+
+`Range<T>` holds a `start` and an `end` of one ordered type, either of
+which may be `none` for an open end; `DateRange` includes its end date and
+`TimeInterval` excludes its end instant, each saying so once in its type.
+Stored as PostgreSQL's range types (`daterange`, `tstzrange`,
+`numrange`), so the SQL forms are the range operators.
+
+| Operation | Gives | Fails | SQL form |
+|---|---|---|---|
+| `range.contains(range, value)` | `Bool`: `value` is inside, by the range's own end rule | | `x @> a` |
+| `range.overlaps(a, b)` | `Bool`: the two share at least one value | | `a && b` |
+| `range.intersection(a, b)` | `Range<T>?`, the shared part; `none` when they don't overlap | | `NULLIF(a * b, 'empty')` |
+
 ## Numbers
 
 `integer` operations take values built on `Int`, and `decimal` operations
@@ -384,14 +520,10 @@ what an operator can't.
 | `integer.abs(value)` | `Int`, at least 0 | overflow on the smallest `Int` is a defect | `abs(x)` |
 | `integer.min(a, b)`, `integer.max(a, b)` | the smaller or larger, keeping their named type (both the same, as `+` needs) | | `LEAST(a, b)`, `GREATEST(a, b)` |
 | `integer.from_decimal(value, rounding:)` | `Int`, `value` rounded to a whole number | overflow is a defect | `round(x)::bigint` for `half_up`; a `CASE` on the dropped digits for the others |
-| `integer.parse(text)` | `Int` from an optional `-` and ASCII digits, nothing else | `malformed` | none |
-| `integer.format(value, locale:)` | `PresentationText`, as `{n, number}` writes it | | none |
 | `decimal.divide(dividend, divisor, rounding:)` | `Decimal` (decided, area 3) | | every mode: as `integer.divide`, on the values scaled to the dividend's places |
 | `decimal.abs(value)` | `Decimal`, at least 0, the same scale | | `abs(x)` |
 | `decimal.min(a, b)`, `decimal.max(a, b)` | as for `integer` | | `LEAST(a, b)`, `GREATEST(a, b)` |
 | `decimal.round(value, scale:, rounding:)` | `Decimal` with at most `scale` places; `scale:` a whole number written out, at least 0 | | `round(x, s)` for `half_up`; a `CASE` on the dropped digits for the others |
-| `decimal.parse(text)` | `Decimal` from an optional `-`, digits and one `.`, with the places written | `malformed` | none |
-| `decimal.format(value, locale:)` | `PresentationText`, as `{n, number}` writes it | | none |
 | `decimal.sqrt(value, scale:, rounding:)` | `Decimal`; `value` never negative | | none |
 | `decimal.power(value, exponent)` | `Decimal`, exact; `exponent` a whole number, never negative | overflow is a defect | none |
 | `decimal.exp(value, scale:, rounding:)`, `decimal.ln(value, scale:, rounding:)` | `Decimal`; `ln`'s `value` above 0 | `ln`: `out_of_range` | none |
@@ -404,9 +536,11 @@ what an operator can't.
   for another mode or fewer places than the type keeps.
 - **An `Int` becomes a `Decimal` by multiplying,** `count * 1.00`, since
   `*` may mix the two (area 3), so there is no `decimal.from_integer`.
-- **Parsing takes the wire's form only:** no grouping, no locale's
-  decimal comma, no exponent. A spreadsheet's `1.234,50` is a cell
-  decoder's job (#88's `decode:`).
+- **Parsing and formatting are the contract's** (`text.parse(raw, as:
+  Quantity)`, `text.format(n, locale:)`), as for every type. Parsing takes
+  the wire's form only: no grouping, no locale's decimal comma, no
+  exponent. A spreadsheet's `1.234,50` is a cell decoder's job (#88's
+  `decode:`).
 - **Maths on `Decimal`, not a `Float`** (question 17). Each result is
   correctly rounded to `scale` with the named rounding, by Jadpo's own
   decimal code, so it is the same on every target; a float's `sin` differs
@@ -417,7 +551,7 @@ what an operator can't.
 - **`Rounding` stays `half_even`, `half_up` and `up`,** unless question 23
   adds `down`.
 
-## Money
+## Money and payments
 
 `Money` is a built-in vocabulary type (question 16): an amount held as a
 whole number of the currency's minor units (pence, cents) and its
@@ -438,7 +572,7 @@ var entered: Money = attempt money.of(input.amount, input.currency) {
 var total: Price = Price(list_price + delivery)                      // same currency: plain +
 var vat: Price = money.multiply(total, by: 0.20, rounding: Rounding.half_even)
 var thirds: List<Money> = money.split(total, 3)                       // 3.50, 3.50, 3.50
-money.format(total, locale: Locale.en_gb)                            // "£10.50"
+text.format(total, locale: Locale.en_gb)                             // "£10.50"
 ```
 
 | Operation | Gives | Fails | SQL form |
@@ -452,7 +586,7 @@ money.format(total, locale: Locale.en_gb)                            // "£10.50
 | `money.divide(value, by:, rounding:)` | `Money` divided by a number, rounded to a minor unit; `by` never zero | | none |
 | `money.allocate(total, ratios)` | `List<Money>` in proportion to `ratios` (whole numbers), adding up to `total` exactly: leftover minor units go one each to the first shares | | none |
 | `money.split(total, parts)` | `List<Money>`, `parts` near-equal shares adding up to `total`; `parts` at least 1 | | none |
-| `money.format(value, locale:, precision:, display:, sign:)` | `PresentationText` | | none |
+| `money.convert(value, rate)` | `Money` in the rate's other currency, rounded half to even to its minor unit; `rate` an `ExchangeRate` the app was given | `currency_mismatch` (the rate is for another currency) | none |
 
 - **`+`, `-` and comparisons** work on two `Money` values of the same
   currency, as on numbers. Where both types fix the currency, a mismatch
@@ -464,10 +598,10 @@ money.format(total, locale: Locale.en_gb)                            // "£10.50
 - **Multiplying or dividing always names its rounding,** since a third of
   a penny has to go somewhere. Splitting never rounds: `allocate` and
   `split` hand every minor unit to some share.
-- **No exchange rates.** Converting between currencies needs a rate,
-  which is outside data with a time and a source; it is a provider
-  package's operation, and its result is constructed with `money.of` like
-  any other amount.
+- **No exchange-rate source.** A rate is outside data with a time and a
+  source, fetched by a provider package; `money.convert` only applies an
+  `ExchangeRate` the app already holds, so an inverted rate is a type
+  error, not a silent bug.
 - **Storage** is a `bigint` of minor units and a `char(3)` currency code,
   two columns, also for a type that fixes the currency, so opening a
   type's currency later needs no migration and a query can group by it.
@@ -475,13 +609,14 @@ money.format(total, locale: Locale.en_gb)                            // "£10.50
   integer minor units as Stripe sends it; `json.read` and `json.write` use
   it too. A provider's other shape (`"10.50"`) is mapped in its package
   (#88's `wire:`) (question 16).
-- **Formatting for people.** `money.format` writes the symbol or code, the
+- **Formatting for people** is the contract's `text.format`, with Money's
+  options. It writes the symbol or code, the
   locale's grouping and decimal separator, the currency's places and the
   symbol's position from CLDR: `£1,234.50`, `1 234,50 €`. `precision:
   MoneyPrecision.whole` gives `£1,235`; `display:` is `symbol` (default),
   `code` or `name`; `sign:` is `standard` or `accounting` (`(£5.00)`).
   Inside a translation the same formatter is `{price, number, currency}`,
-  amending area 10's list of placeholder styles. Code uses `money.format`;
+  amending area 10's list of placeholder styles. Code uses `text.format`;
   messages use the placeholder. ICU4X, already pinned, has the currency
   formatter (`icu_experimental`).
 - **What changes in area 2:** `Money` and `Currency` become built-in
@@ -489,6 +624,38 @@ money.format(total, locale: Locale.en_gb)                            // "£10.50
   currency }` (Objects, the type reference, question 12's sample) are
   renamed or use the built-in. Example 09's `Pence` and its percentage
   discount move to `Money` in 5.7.
+
+## Physical quantities
+
+Each quantity type (`Length`, `Mass`, `Temperature` ... and `DataSize`,
+`Bitrate`) holds an exact `Decimal` in its SI base unit (metres,
+kilograms, kelvin, bytes, bits per second), at the kind's fixed scale
+(micrometres for `Length`, milligrams for `Mass`). Its unit enum
+(`LengthUnit.mile`) is chosen at construction and display only. `+`, `-`
+and comparisons work within one kind, as on numbers; `Temperature` adds
+only a `TemperatureDifference`, since adding two temperatures means
+nothing.
+
+| Operation | Gives | Fails | SQL form |
+|---|---|---|---|
+| `units.of(value, unit)` | The quantity of `unit`'s kind: `value` (a number) converted exactly to the base unit, rounded half to even to the kind's scale | overflow is a defect | none |
+| `units.in(value, unit, scale:, rounding:)` | `Decimal`, the quantity in `unit`, rounded | | none |
+| `units.multiply(value, by)` | The same kind, times a number, rounded half to even to the kind's scale | overflow is a defect | none |
+| `units.divide(value, by)` | The same kind, divided by a number, rounded half to even; `by` never zero | | none |
+| `units.sum(items)` | The total of one kind; zero for none | overflow is a defect | none |
+
+- **No quantity arithmetic across kinds** (a `Length` over a `Duration`
+  giving a `Speed`): each is constructed with `units.of` from the numbers
+  `units.in` gives, which keeps every unit on the page.
+
+## Time and calendar additions
+
+Area 10's 21 `temporal` operations stand. The new time types add two.
+
+| Operation | Gives | Fails | SQL form |
+|---|---|---|---|
+| `temporal.occurrences(rule, from:, count:)` | `List<ZonedTime>`, the next `count` occurrences of a `RecurrenceRule` (RFC 5545) at or after `from`, in the rule's zone; `count` 1 to 1000 | | none |
+| `temporal.open_at(hours, at)` | `Bool`: an `OpeningHours` is open at the `Instant`, in its zone, across midnight and its exceptions | | none |
 
 ## Text
 
@@ -513,6 +680,9 @@ take it.
 | `drop_first(value, n)`, `drop_last(value, n)` | `Text` without `n` code points from that end; never longer | | `substr(x, n + 1)`; `CASE WHEN n = 0 THEN x ELSE left(x, -n) END` |
 | `pad_start(value, length, fill:)` | `Text` of at least `length` code points, `fill` added at the start; never cut; `fill:` one character written out | | `CASE` on `char_length(x)` with `lpad` |
 | `from(value)` | `Text`, the value as JSON carries it (areas 2 and 10): an `Int`'s digits, a `Decimal` with its scale's places, a `Uuid` in lowercase, `true` or `false`, a time in its wire form | | `x::text` for `Int`, `Decimal`, `Uuid` and `Bool`; times none |
+| `parse(raw, as: T)` | `T`, any standard type or type built on a representation, from its canonical text (the contract) | `malformed`, or the rule it breaks | none |
+| `format(value, locale:)` | `PresentationText` for people, any standard type, with the type's own options (`unit:`, `precision:`) (the contract) | | none |
+| `pick(value, locale:)` | `Text` from a `LocalisedText`: the locale's entry, else its language's, else the default | | none |
 | `slug(value)` | `Text` of lowercase ASCII letters, digits and single `-`: accents dropped, every other run of characters one `-`, none at either end; may be empty | | none |
 
 - **Matching is a type's `pattern`.** Whether text looks like a postcode
@@ -532,6 +702,20 @@ take it.
   marks break). Unicode normalisation is a boundary rule, not a call
   ("Language gaps").
 
+## Text formats
+
+`Html` is always safe: its construction from text keeps only the allowed
+elements and attributes (no scripts, no event handlers, links only to
+`https:` and `mailto:`), the security boundary #88 asks for. `Markdown` is
+CommonMark text; `RichText` is a structured document of blocks and marks;
+`LocalisedText` maps locales to text and is read with `text.pick`.
+
+| Operation | Gives | Fails | SQL form |
+|---|---|---|---|
+| `markup.to_html(markdown)` | `Html`, the CommonMark rendered, then made safe as any `Html` is | | none |
+| `markup.rich_to_html(rich)` | `Html` from a `RichText` | | none |
+| `markup.to_plain_text(html)` | `Text`, the text content, with a new line between blocks | | none |
+
 ## Hashing and cryptography
 
 | Operation | Gives | Fails | SQL form |
@@ -543,6 +727,10 @@ take it.
 | `crypto.verify_password(password, hash)` | `PasswordCheck`: `wrong`, `correct`, or `correct_outdated` (store a fresh hash) | | none |
 | `crypto.hmac(value, key:)` | `Bytes`, HMAC-SHA-256 with the current key | | none |
 | `crypto.verify_hmac(value, mac, key:)` | `Bool`, in constant time, against the current or previous key | | none |
+| `crypto.sign(value, key:)` | `Bytes`, an Ed25519 signature; `key:` a `PrivateKey` setting | | none |
+| `crypto.verify_signature(value, signature, key)` | `Bool`; `key` a `PublicKey`, which is not secret and may be read | | none |
+| `crypto.verify_jwt(token, keys:)` | `JwtClaims`, checked against a set of `Jwk`s, each key's own algorithm only (never `none`, never chosen by the token), with expiry and not-before against `clock.now` | `invalid_signature`, `expired`, `not_yet_valid`, `malformed` | none |
+| `crypto.verify_totp(code, secret)` | `Bool` for a `OneTimeCode` against a `TotpSecret`, RFC 6238 with one step either side. Waits for keys held as data | | none |
 
 - **No algorithm choices.** Each job has one construction, chosen for
   safety by default; a release that changes one keeps reading the old
@@ -665,6 +853,51 @@ direction instead, so there is one namespace and one shape:
 - **No CSV in memory.** #88's rule stands: a provider's CSV answer goes
   into a store and through `csv.read`, so there is one way to read rows.
 
+## Colour
+
+`Colour` holds `red`, `green`, `blue` and `alpha`, each 0 to 255, in sRGB.
+Every operation gives an sRGB `Colour`; other spaces appear only as
+arguments.
+
+| Operation | Gives | Fails | SQL form |
+|---|---|---|---|
+| `colour.from_hsl(hue, saturation, lightness)` | `Colour`; `hue` an `Angle`, the others `Percentage` | | none |
+| `colour.from_oklch(lightness, chroma, hue)` | `Colour`, clipped into sRGB | | none |
+| `colour.mix(a, b, ratio)` | `Colour`, mixed in OKLCH; `ratio` a `Percentage` of `b` | | none |
+| `colour.with_lightness(value, lightness)` | `Colour` with its OKLCH lightness set, hue kept | | none |
+| `colour.contrast(a, b)` | `Decimal`, WCAG 2's contrast ratio, 1.00 to 21.00 | | none |
+
+## Media
+
+| Operation | Gives | Fails | SQL form |
+|---|---|---|---|
+| `media.fit(dimensions, within:)` | `ImageDimensions` scaled to fit inside `within`, keeping the aspect ratio, never larger than the original, rounded down to whole pixels | | none |
+
+## Web and software
+
+| Operation | Gives | Fails | SQL form |
+|---|---|---|---|
+| `web.with_query(url, query)` | `Url` with each entry of `query` (a `Map<Text, Text>`) added, percent-encoded, in key order | | none |
+| `web.resolve(base, relative)` | `Url`: a `RelativeUrl` or `UrlPath` resolved against `base` by RFC 3986 | | none |
+| `web.cidr_contains(range, address)` | `Bool`: the `IpAddress` is inside the `Cidr` | | `x >>= a` |
+| `semver.satisfies(version, range)` | `Bool`: a `SemanticVersion` is inside a `VersionRange` | | none |
+
+## Groups with the baseline only
+
+These groups have nothing beyond the contract: each type's rules are its
+construction, which the contract's `text.parse` and data entry already
+cover. Where a rule is more than a pattern, the type names one validator.
+
+| Group | Validators beyond a pattern |
+|---|---|
+| People and contact | `PhoneNumber` (E.164 per country), `PostalCode` (per country), `PostalAddress` and `PersonName` (CLDR order for `text.format`) |
+| Places | `Subdivision` against ISO 3166-2, `UnLocode` against its list |
+| Payment and identity numbers | `Iban` (mod-97), `PaymentCardNumber` (Luhn), `UkSortCode` with `UkAccountNumber` (modulus check), `AbaRoutingNumber`, `Lei`, `Isin`, `NhsNumber` (mod-11), `UkNationalInsuranceNumber` (prefix rules) |
+| Commerce and logistics | `Ean13`, `UpcA`, `Isbn`, `Sscc` (GS1 check digits), `Vin` (check digit), `ContainerNumber` (ISO 6346) |
+| Health | `SnomedConcept` (Verhoeff), `Icd10Code` against its release |
+| Travel | `IataAirport`, `IcaoAirport`, `IataAirline` against their lists |
+| Other | `Orcid` (ISO 7064), `Mpan` (check digit) |
+
 ## Logic and bits
 
 `and`, `or` and `not` are the logical operators (area 3), and exclusive or
@@ -764,7 +997,7 @@ left out with a reason.
 
 | Does | Needs |
 |---|---|
-| Asking price shown in the visitor's locale | `money.format` |
+| Asking price shown in the visitor's locale | `text.format` |
 | Price per square metre | `money.divide` with `rounding:` |
 | Listing address | `text.slug` |
 | Description preview | `text.trim`, `text.keep_first` |
@@ -881,20 +1114,20 @@ unblocks kept in the proposal.
 
 | Gap | Fix proposed | Owning area | Chunk | Unblocks |
 |---|---|---|---|---|
-| `for` can't walk sets or maps | `for` takes a `Set`, in area 2's canonical order; maps through `map.keys` | 2, 3 | 5.5b | Walking sets and maps |
-| No map literal | `[]` where a map is expected; a literal with entries designed in area 2 | 2 | 5.5b | Building maps |
-| Inline functions take one parameter | Two parameters, `(a, b) -> ...`, for standard operations only (area 3's question 13 widened) | 3 | 5.5b | `list.zip_with`, `map.filter`, `map.map_values` |
-| No `Float` and no maths | Maths on `Decimal` with `scale:` and `rounding:`, deterministic everywhere; still no `Float` | 2 (question 8 there) | 5.5d | 8 `decimal` operations; geospatial distance |
-| Code can't read a secret | Opaque key settings, used only as a `crypto` call's `key:` | 10 | 5.5h | `crypto` |
-| Keys held as data (per device, per person) | An encrypted field of a key type, usable only as `key:` | 10, 15 | After encrypted fields | Per-device signatures, TOTP |
-| No randomness | Generated `random`, actions only, seeded in tests, recorded for replay | 10, 13, 17 | 5.5h | `random.*`, `encrypt`, `hash_password` |
-| Text has no locale order or case | `locale:` on `list.sort_by`, `text.lower` and `text.upper`, through ICU4X's collator and case mapping (two more crates of the pinned ICU4X) | 10 | 5.5e | Locale sorting and case |
-| Numbers formatted only in translations | `integer.format`, `decimal.format`, `money.format`, giving `PresentationText` | 10 | 5.5c, 5.5g | Showing numbers in code |
-| No parsing of numbers and times | `integer.parse`, `decimal.parse`, `temporal.parse_date`, `temporal.parse_instant`, wire forms only | 2 | 5.5c, 5.5e | Text from a person or a file cell |
+| `for` can't walk sets or maps | `for` takes a `Set`, in area 2's canonical order; maps through `map.keys` | 2, 3 | 5.5c | Walking sets and maps |
+| No map literal | `[]` where a map is expected; a literal with entries designed in area 2 | 2 | 5.5c | Building maps |
+| Inline functions take one parameter | Two parameters, `(a, b) -> ...`, for standard operations only (area 3's question 13 widened) | 3 | 5.5c | `list.zip_with`, `map.filter`, `map.map_values` |
+| No `Float` and no maths | Maths on `Decimal` with `scale:` and `rounding:`, deterministic everywhere; still no `Float` | 2 (question 8 there) | 5.5e | 8 `decimal` operations; geospatial distance |
+| Code can't read a secret | Opaque key settings, used only as a `crypto` call's `key:` | 10 | 5.5q | `crypto` |
+| Keys held as data (per device, per person) | An encrypted field of a key type, usable only as `key:` | 10, 15 | After encrypted fields | Per-device signatures, `crypto.verify_totp` |
+| No randomness | Generated `random`, actions only, seeded in tests, recorded for replay | 10, 13, 17 | 5.5q | `random.*`, `encrypt`, `hash_password` |
+| Text has no locale order or case | `locale:` on `list.sort_by`, `text.lower` and `text.upper`, through ICU4X's collator and case mapping (two more crates of the pinned ICU4X) | 10 | 5.5f | Locale sorting and case |
+| Values formatted for people only in translations | The contract's `text.format`, giving `PresentationText`, for every standard type | 10 | 5.5a | Showing numbers, money, quantities and addresses in code |
+| No parsing from text | The contract's `text.parse(raw, as: T)`, canonical forms only | 2 | 5.5a | Text from a person or a file cell |
 | Queries compute nothing | Aggregate queries: `count`, `sum`, `min`, `max`, `average`, grouped by a field or a time bucket, using operations with SQL forms; area 6 already lists counts and sums in queries as deferred | 6 | New, after 5.6 | Reports, dashboards, usage totals |
 | No rule across fields | Named rules on an object type (`rule ends_after_start: ends > starts`), proved or attempted like any rule | 2 | New, after 5.5 | Bookings, date ranges, price bands |
-| Text from outside not normalised | NFC applied as text is decoded at a boundary | 2, 7 | 5.5e | Equal text comparing equal |
-| `Money` is an application's own object | Built-in `Money` and `Currency` | 2 | 5.5g | `money` |
+| Text from outside not normalised | NFC applied as text is decoded at a boundary | 2, 7 | 5.5f | Equal text comparing equal |
+| `Money` is an application's own object | Built-in `Money` and `Currency` | 2 | 5.5h | `money` |
 | No geospatial types | A future area | New area | After 5.5 | Geospatial |
 | No AI pieces | A future area | New area | After geospatial | AI |
 
@@ -914,7 +1147,8 @@ unblocks kept in the proposal.
 | MD5, SHA-1 | Broken | A package (area 11) |
 | Bitwise operations | Flags read better as a set; device formats belong in their package | `Set<Enum>`; question 25 |
 | Exchange rates | Outside data with a time and a source | A provider package |
-| Colour conversions (HSL, CMYK, contrast) | Specialist, and several defensible formulas | A package on the standard `Colour` |
+| Gender, sex at birth | Contested, and personal data | The app's own type, marked sensitive (area 15) |
+| CMYK and print colour | Needs a colour profile | A package on the standard `Colour` |
 | Training models | Needs GPUs, datasets and long jobs | A package or an outside service |
 | Aliases (`size` for `count`) | One obvious name each | The table's name |
 
@@ -951,7 +1185,8 @@ and second ways every one of them has.
 |---|---|
 | `collection.count`, `contains`, `map`, `filter` | Decided (area 2) and built; renamed `list.` in 5.5 if question 6 holds |
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
-| `temporal`, `locale` | Decided (area 10) and built; two parse operations added here |
+| `temporal`, `locale` | Decided (area 10) and built; `occurrences` and `open_at` added here |
+| The standard types and their contract | Decided (2026-10-17); the contract's form is question 2; built in chunk 5.5 |
 | `Email`, `Url`, `IpAddress`, `FileType` | Decided (areas 2, 16) and built |
 | Everything else on this page | Proposed (chunk 5.4); built in chunk 5.5 once decided |
 | The format namespaces | Decided in #88, unmerged; `json.read` and `json.write` in memory proposed here |
@@ -960,16 +1195,19 @@ and second ways every one of them has.
 
 ### Consistency with the rest of the language
 
-- **Area 1:** `list`, `set`, `map`, `text`, `money`, `hash`, `encoding`,
-  `crypto`, `random`, `json`, `csv`, `tsv` and `json_lines` become
-  reserved namespaces (`locale` already is). Only `text` clashes today:
+- **Area 1:** `list`, `set`, `map`, `range`, `text`, `markup`, `money`,
+  `units`, `hash`, `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`,
+  `json_lines`, `colour`, `media`, `web` and `semver` become reserved
+  namespaces, and `geo` and `ai` with their areas (`locale` already is).
+  `units` rather than `quantity`, since areas 1 and 4 name variables
+  `quantity`. Only `text` clashes today:
   five page examples (area 2's `work_email(text:)`, areas 7's and 8's `var
   text: Memo`, area 9's `edit_note(text:)`, area 16's `search_todos(text:)`)
   and about ten Jadpo snippets in crate tests, renamed in 5.5.
-- **Area 2:** `collection.` becomes `list.` (below); `Money`, `Currency`,
-  `Country`, `Language`, `PhoneNumber`, `Percentage`, `Colour`,
-  `PasswordHash` and `EncryptionKey` become built-in names; `for` and maps
-  as "Language gaps" says.
+- **Area 2:** `collection.` becomes `list.` (below); the 233 new standard
+  types, `EncryptionKey` and `PasswordCheck` become built-in names, and the
+  page and example types that reuse one are renamed (question 3 lists
+  them); `for` and maps as "Language gaps" says.
 - **Area 3:** inline functions may take two parameters for standard
   operations; `any`, `all`, `find`, `min_by`, `max_by`, `sort_by` and
   `group_by` take inline functions. Area 3 question 6's "text order
@@ -1008,6 +1246,9 @@ writes `list.`, `set.` or `map.` from the argument's type.
 | Shared vocabulary types | The standard library defines a type wherever two packages would otherwise each invent their own, even when the heavy operations live in a package or a later area; each has one construction that validates, one wire shape and one storage shape; positional pairs are designed out by named fields, and an axis order exists only in a conversion that names it (`geo.from_lng_lat`) (Richard) | 2026-10-17 |
 | Packages use the standard types | A package's public `Object` whose only fields match a standard type's shape, by the common field names in any order (table under "Packages use the standard types"), is the warning `type.standard_equivalent`, whose `next:` is to use the standard type and convert at the edge; a warning on #88's publishing bar, not a refusal (Richard). Whether it becomes a blocking error with a declared opt-out, for app code too, is open question 1 | 2026-10-17 |
 | Standard types are global, in one flat set | Every standard vocabulary type is a global name, with no split between core types and types inside namespaces; functions stay in namespaces. Apps name their own types for purpose and shape (`DeliveryStop { address: PostalAddress }`, `BillingContact`), never re-declaring a standard one (Richard) | 2026-10-17 |
+| The standard types | 245 types in 18 groups (table under "The standard types"); units folded into their quantity type, roles into the general type, duplicates merged, formats and application entities out; country-specific identifiers are global types; gender and sex at birth stay out; a quantity is stored in its SI base unit, with the unit chosen at construction and display; the catalogue records the decision for each of the 1,120 brainstormed entries (Richard) | 2026-10-17 |
+| Every standard type meets one contract | Every standard type has a library with the same baseline: construction and validation from its parts and from text with failures named by rule; formatting for people as `PresentationText`, through the locale where it matters; a canonical text form where one exists; one JSON shape and one storage shape; `==`, and order where the type is ordered; conversions at named edges. Some groups add extras (Richard) | 2026-10-17 |
+| `Point` | The geographic point is `Point`, the one exception to the naming rule (Richard) | 2026-10-17 |
 
 ### Open questions
 
@@ -1046,21 +1287,26 @@ Richard's points first, then the first draft's remaining questions. The vocabula
      cells, or an `amount` and `currency` that are a quote, not money,
      matches by shape. The required reason handles them, and review sees
      each one.
-2. **Which types get in?** The draft catalogue
-   ([#105](https://github.com/richardwillars/jadpo/pull/105),
-   `docs/language/research/vocabulary-types-catalogue.md`, unmerged)
-   lists 1,120 candidates in 42 domains, tiered core (45), likely (142),
-   maybe (337), niche (425) and silly (171). *Recommendation:* a type gets
-   in when it has a precise definition: an ISO or RFC, a national
-   standard, or a shape packages genuinely disagree on. That is core and
-   likely, the maybe entries with a named standard (208), and none of
-   silly: about **395 types**. Niche goes to packages unless a real
-   standard backs it; 284 niche entries name an authority, but many are
-   proprietary (what3words, Gravatar), so each is reviewed, not taken
-   wholesale. Once decided, the catalogue is cut to the reviewed list
-   and becomes the record of what is standard, each entry with its
-   shape, wire, storage and construction; 5.5i builds it in batches by
-   domain.
+2. **How is the standard type contract expressed and called?** Written
+   per type, 245 times, or generated from each type's declaration and
+   data. *Recommendation:* generated. Each standard type is a stub
+   declaration in `crates/jadpo-check/std/` (as `types.jadpo` holds the
+   built ones) plus a data entry: its canonical text grammar, JSON shape,
+   storage columns, CLDR format key and options, whether and how it is
+   ordered, its conversions, and the one named validator where data can't
+   say it (IBAN's mod-97, Luhn for card numbers, ISBN and NHS check
+   digits, E.164's metadata). One implementation of each baseline
+   operation reads that data, in the operation table, the interpreter and
+   the runtime alike, and one harness tests every type the same way:
+   valid and invalid examples per rule, and the round trip through text,
+   JSON and storage. A new type is then data plus at most one validator,
+   which is how 245 types fit the chunks below. Calls are one name each
+   over every type, `text.parse(raw, as: T)`, `text.format(value,
+   locale:)` and `text.from(value)`, rather than a `parse` per namespace.
+   That makes area 10's decided `temporal.format` the time types'
+   `text.format`: move it, with a habit error whose edit writes
+   `text.format`, as `collection.` becomes `list.`; `format_relative`
+   stays a `temporal` extra.
 3. **Precise names.** A standard type's name says exactly what it is, so
    it doesn't take a word an app needs for something else.
    *Recommendation:* this rule, in order: (a) the defining standard's
@@ -1069,20 +1315,23 @@ Richard's points first, then the first draft's remaining questions. The vocabula
    by what it holds (`DateRange`, `DataSize`, `ImageDimensions`); (c)
    never a bare word an app plausibly uses for its own, different thing,
    except a generic container that takes a type (`Range<T>`, as
-   `List<T>`). Tested against the catalogue's top 30, 23 pass and 7
-   change: `Subdivision` becomes `CountrySubdivision` (a housing
-   subdivision), `Interval` becomes the existing built-in `InstantRange`,
-   `Period` becomes `CalendarPeriod` (a billing or school period),
-   `Quantity` becomes `UnitQuantity` (an order line's quantity, area 2's
-   own example), `Length` becomes `PhysicalLength` (a text's or a
-   video's length), `Secret` becomes `SecretText` (area 10's `secret:`
-   settings), and `StoredFile` is area 16's existing `File`. `Mass` and
-   `Temperature` pass: an app using those words means the standard
-   thing. The rule would also rename question 12's `Point` to
-   `GeoPoint`; decide the two together, keeping `Point` as the one
-   exception, since GeoJSON, PostGIS and OGC all say Point and the
-   geometry family shares the term. Existing built-in names (`File`,
-   `Page`, `Access`) predate the rule and aren't renamed.
+   `List<T>`). `Point` is the decided exception. Applied to the adopted
+   list, 8 names change: `Subdivision` to `CountrySubdivision` (a
+   housing subdivision), `Quantity` to `UnitQuantity` (an order line's
+   count, area 2's own example), `Length` to `PhysicalLength` (a text's
+   or a video's length), `Secret` to `SecretText` (area 10's `secret:`
+   settings), `Port` to `NetworkPort` (a sea port, in logistics),
+   `Script` to `WritingScript`, `Origin` to `WebOrigin` (a country of
+   origin), and `TimeInterval` merges into the existing built-in
+   `InstantRange`. The rest pass, because an app using the word means
+   the standard thing (`Price`, `Area`, `Mass`, `Currency`). Existing
+   built-in names (`File`, `Page`, `Access`) predate the rule and aren't
+   renamed. Either way, page and example types that reuse a standard name
+   are renamed in the chunk that builds it: `Money`, `Currency`,
+   `PostalCode`, `Sku`, `Dimensions`, `Price` and `Quantity` in areas 1 to
+   4, `ApiKey` and `LogLevel` in areas 10 and 13, `Discount` in area 1
+   and example 09, `Allergen` in examples 03, 04 and 12, `Isbn` in
+   example 10, `Price` in example 05.
 4. **A compiler upgrade that adds a standard type** an app has already
    named for itself. *Recommendation:* never a silent break. The first
    `check` after the upgrade reports each clash as an error naming the
@@ -1105,7 +1354,7 @@ Richard's points first, then the first draft's remaining questions. The vocabula
    already an error, and a differently named `Text` says nothing. Each
    standard type that has a distinctive shape lists its match signature
    (fields and their common synonyms) in the catalogue, reviewed with
-   it; of the roughly 395, 139 are objects, and only those with a
+   it; of the 245, 99 are objects, and only those with a
    domain field name carry one.
 6. **One namespace per type: `list.`, `set.` and `map.` replace
    `collection.`?** Costs: `list`, `set`, `map` and `text` can't be
@@ -1141,23 +1390,13 @@ Richard's points first, then the first draft's remaining questions. The vocabula
    *Recommendation:* yes, scope as sketched; add **"Geospatial: the plan"
    `opus · high`** right after 5.5, writing the new area page, with its
    build placed by that page. The roadmap isn't edited until you agree.
-   - **`Point`, `Position` or `Location`?** *Recommendation:* `Point`.
-     It is the GeoJSON, PostGIS and OGC term, and sits in the
-     `LineString`, `Polygon`, `MultiPolygon` family. `Location` is what
-     applications name their own entities (a branch, a delivery stop) and
-     is an HTTP header; `Position` is GeoJSON's word for the bare
-     coordinate array, the very ambiguity being designed out, and also
-     means order in a list or on screen. The cost: built-in names can't
-     be reused (area 2, "Built-in types"), so an app's own `x`/`y` point
-     for drawing must be called something else (`CanvasPoint`), and area
-     2's `struct Point` habit example and one CLI test's `type Point`
-     are renamed when the type is built. A `Geo` prefix for the whole
-     family (`GeoPoint`, `GeoPolygon`) avoids that but is clunky on every
-     use, for a clash few apps have; rejected.
-13. **`Colour` as a standard type?** This reverses your point 8 under the
-    vocabulary principle. *Recommendation:* yes, the type only: named
-    channels in sRGB, constructed from `"#rrggbb"`, one wire and storage
-    form; conversions to other spaces stay a package.
+13. **`Colour`'s shape and extras?** `Colour` is in the adopted list.
+    *Recommendation:* `red`, `green`, `blue` and `alpha`, each 0 to 255,
+    in sRGB, constructed from and written as `"#rrggbb"` or
+    `"#rrggbbaa"`; extras `colour.from_hsl`, `from_oklch`, `mix`,
+    `with_lightness` and `contrast` (WCAG 2's ratio, for checking text
+    against its background), all giving sRGB. CMYK needs a colour profile and stays a
+    package.
 14. **`json.read` and `json.write` in memory, one name per direction with
     #88's batch forms, no dynamic JSON value?** *Recommendation:* yes;
     #88's `json.decode` renamed `json.read`; `mismatch` carries the first
@@ -1176,11 +1415,10 @@ Richard's points first, then the first draft's remaining questions. The vocabula
       where it is known only while running.
     - Wire shape: *recommendation:* fixed, `{"amount": 1050, "currency":
       "GBP"}`; a provider's decimal string is mapped in its package.
-    - Formatting: *recommendation:* `money.format` in code and `{price,
-      number, currency}` in messages, one formatter.
-    - `Percentage` as a vocabulary type beside it: *recommendation:* yes,
-      a `Decimal` where `0.20` is 20%, with `{n, number, percent}` in
-      messages.
+    - Formatting: *recommendation:* the contract's `text.format` in code
+      and `{price, number, currency}` in messages, one formatter; and
+      `{n, number, percent}` for a `Percentage` (in the adopted list, a
+      `Decimal` where `0.20` is 20%).
 17. **Maths on `Decimal` rather than a `Float`?** *Recommendation:* yes,
     the eight operations, correctly rounded to a named scale, the same on
     every target; area 2's "no `Float` until needed" stands, since this
@@ -1196,9 +1434,9 @@ Richard's points first, then the first draft's remaining questions. The vocabula
     the plan" `opus · high`** after the geospatial plan.
 20. **Are the language gaps closed as "Language gaps this page depends
     on" proposes?** *Recommendation:* yes, row by row: `for` over sets,
-    the empty map and two-parameter inline functions in 5.5b; secrets as
-    opaque keys and `random` in 5.5h; `locale:` order and case, parsing,
-    `format` and NFC in 5.5c and 5.5e. Three need roadmap entries of their
+    the empty map and two-parameter inline functions in 5.5c; parsing and
+    formatting through the contract in 5.5a; `locale:` order and case and
+    NFC in 5.5f; secrets as opaque keys and `random` in 5.5q. Three need roadmap entries of their
     own, added once you agree: **"Cross-field rules" `opus · high`** (area
     2) after 5.5, **"Aggregate queries" `opus · high`** (area 6) after 5.6,
     and keys held as data after encrypted fields (area 15).
@@ -1227,43 +1465,72 @@ Richard's points first, then the first draft's remaining questions. The vocabula
 
 ### Building it
 
-5.5 as one chunk is far more than a session. Proposed split, each one
-session, in order:
+5.5 as one chunk is far more than a session: 136 operations and 233 new
+types. Proposed split, each one session, in order. The contract comes
+first; each group of types then arrives with its baseline and its extras.
 
-- **5.5a Lists** `opus · high`: `collection.` renamed `list.` everywhere,
+- **5.5a The standard type contract** `opus · high`: a type's stub and data
+  entry generating construction, `text.parse`, `text.format`, `text.from`,
+  JSON, storage, `==` and order; named validators; the one test harness;
+  proven on the 12 built types; `temporal.format` moved under
+  `text.format` if question 2 holds.
+- **5.5b Lists** `opus · high`: `collection.` renamed `list.` everywhere,
   with its habit error; the 21 new list operations that need no language
   change; `never_negative`, the `sort_by` key's ordered kinds, results
   that keep a named type.
-- **5.5b Sets and maps** `opus · high`: the 7 `set` and 8 `map`
-  operations; `for` over a set; `[]` as an empty map; two-parameter
-  inline functions and the 3 operations waiting on them.
-- **5.5c Numbers** `opus · high`: the `integer` and `decimal` operations
-  except maths, `parse` and `format` included; `scale:` written out;
-  `Rounding.down` if question 23 says so.
-- **5.5d Decimal maths** `opus · high`, if question 17 holds: the eight
+- **5.5c Sets, maps and ranges** `opus · high`: the 7 `set`, 8 `map` and 3
+  `range` operations; `for` over a set; `[]` as an empty map;
+  two-parameter inline functions and the 3 operations waiting on them.
+- **5.5d Numbers** `opus · high`: the 8 new `integer` and `decimal`
+  operations; `scale:` written out; `Rounding.down` if question 23 says
+  so.
+- **5.5e Decimal maths** `opus · high`, if question 17 holds: the eight
   correctly rounded operations, tested against reference values.
-- **5.5e Text** `opus · high`: the 18 `text` operations, `locale:` on case
-  and sorting, `temporal.parse_date` and `parse_instant`, NFC at the
-  boundary; `never_empty`, `fill:`, `at_most_length_of`; `text` reserved
-  and the clashing examples renamed.
-- **5.5f Hashing, encodings and JSON** `opus · high`: `hash`, `encoding`,
+- **5.5f Text** `opus · high`: the 18 text operations, `locale:` on case
+  and sorting, NFC at the boundary; `never_empty`, `fill:`,
+  `at_most_length_of`; `text` reserved and the clashing examples renamed.
+- **5.5g Hashing, encodings and JSON** `opus · high`: `hash`, `encoding`,
   `json.read` and `json.write` in memory with `mismatch`'s problem; the
   batch forms come with #88's batches.
-- **5.5g Money** `opus · high`: `Money`, `Currency`, `Percentage`, the 10
+- **5.5h Money** `opus · high`: `Money`, `Currency`, `ExchangeRate`, the 10
   `money` operations, the two columns, the wire shape, `{price, number,
   currency}`, and area 2's examples renamed.
-- **5.5h Randomness and cryptography** `opus · high`: the generated
-  `random` namespace with test seeding; `crypto` with `EncryptionKey`,
-  `PasswordHash`, `PasswordCheck` and `key:` as a compiler-owned place.
-- **5.5i Vocabulary types** `opus · high`: `Country`, `Language`,
-  `PhoneNumber` (E.164 normalisation) and `Colour`, each with its
-  construction, wire and storage shape. The rest of the reviewed
-  catalogue (question 2) follows in later chunks of about 40 types each,
-  batched by domain, split when question 2 is decided. The `type.standard_equivalent`
-  warning comes with package publishing (#88, Phase 7), once the types it
-  points at exist.
-- **Later, outside 5.5:** encrypted fields with area 15; cross-field rules
-  (area 2) and aggregate queries (area 6) as their own chunks; the
-  geospatial and AI plans.
+- **5.5i Payment and identity numbers** `opus · high`: the money group's
+  other 21 types and the 10 tax and identity numbers, each a pattern or
+  check digit (mod-97, Luhn, mod-11) on the contract.
+- **5.5j Quantities** `opus · high`: the 17 physical quantities with
+  `DataSize`, `Bitrate`, `Percentage`, `Ratio` and `Fraction`, their units
+  and SI storage, and the 5 `units` operations.
+- **5.5k Time and calendar** `opus · high`: the 13 new time types,
+  `RecurrenceRule` expansion (`temporal.occurrences`) and `OpeningHours`
+  (`temporal.open_at`).
+- **5.5l People and places** `opus · high`: the 19 new types, with
+  `PhoneNumber`'s E.164 metadata, `PostalAddress` and `PersonName` in each
+  locale's order, and `PostalCode` per country.
+- **5.5m Commerce, health, travel and the rest** `opus · high`: 45 types,
+  mostly codes with a pattern or check digit (`Ean13`, `Isbn`, `Vin`,
+  `IataAirport`).
+- **5.5n Web and software** `opus · high`: 38 types, `web`'s 3 operations
+  and `semver.satisfies`.
+- **5.5o Text formats** `opus · high`: `Markdown`, `Html` (whose
+  construction is the sanitiser, a security boundary per #88), `RichText`
+  and `LocalisedText`, `markup`'s 3 operations and `text.pick`.
+- **5.5p Media and colour** `opus · high`: the 15 types, `colour`'s 5
+  operations and `media.fit`.
+- **5.5q Randomness and cryptography** `opus · high`: the generated
+  `random` namespace with test seeding; `crypto`'s 8 operations that need
+  no keys held as data; `EncryptionKey`, `PasswordHash`, `PasswordCheck`,
+  `PrivateKey`, `PublicKey` and `key:` as a compiler-owned place.
+- **5.5r Security types** `opus · high`: the other 17 security types
+  (`Password`, `Jwt`, `Jwk`, `Certificate`, `ApiKey` ...) and
+  `crypto.verify_jwt`; `verify_totp` follows keys held as data.
+- **5.5s Geospatial and AI types' baselines** `opus · high`: the 17
+  geospatial types and `Vector`, `Embedding`, `TokenCount`, `TokenUsage`
+  and `ChatMessage`, with construction, text and JSON from the contract;
+  their storage and operations come with their own areas.
+- **Later, outside 5.5:** the `type.standard_equivalent` check with
+  package publishing (#88, Phase 7); encrypted fields with area 15;
+  cross-field rules (area 2) and aggregate queries (area 6) as their own
+  chunks; the geospatial and AI plans.
 - **SQL forms move to 5.6**, computed backfills, their only user for now.
 - **5.7** brings the teaching examples up to date, as planned.
