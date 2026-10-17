@@ -91,7 +91,8 @@ impl Term {
 
 /// One side of a comparison of currencies.
 enum CurrencySide {
-    /// `money.currency(x)`, `x` a subject.
+    /// `money.currency(x)`, `x` a subject, or a subject that is a
+    /// currency itself, `rate.from`.
     Of(Term),
     /// `Currency.gbp`, by its place among the variants.
     Written(u32),
@@ -614,6 +615,16 @@ impl Body<'_> {
             _ => match self.facts.variants.get(&node_key(expr.syntax())) {
                 Some((ty, variant)) if ty == jadpo_std::CURRENCY => {
                     jadpo_std::money::ordinal_of_variant(variant).map(CurrencySide::Written)
+                }
+                // A currency a subject holds, such as an exchange rate's
+                // `rate.from` (chunk 5.5h2): its class is the amounts in
+                // that currency.
+                _ if self.facts.types.get(&node_key(expr.syntax()))
+                    == Some(&super::super::ty::Ty::Named(
+                        jadpo_std::CURRENCY.to_string(),
+                    )) =>
+                {
+                    self.term(expr).map(CurrencySide::Of)
                 }
                 _ => None,
             },

@@ -480,6 +480,8 @@ pub fn classify(lookup: &Lookup<'_>, ty: &Ty) -> Class {
     match lookup.representation(ty) {
         Some(Prim::Text | Prim::PresentationText) => Class::Kind(ParamKind::Text),
         Some(Prim::Int | Prim::Decimal) => Class::Kind(ParamKind::Number),
+        // Written `{price, number, currency}` (area 19, question 16).
+        Some(Prim::Money) => Class::Kind(ParamKind::Money),
         _ => Class::Unsupported,
     }
 }
@@ -567,7 +569,7 @@ fn fields_subject(
                     problems.push(unsupported(symbol, field, at(&field.name)));
                 }
             }
-            Class::Kind(k @ (ParamKind::Text | ParamKind::Number)) => {
+            Class::Kind(k @ (ParamKind::Text | ParamKind::Number | ParamKind::Money)) => {
                 params.push(ParamSpec {
                     name: field.name.clone(),
                     kind: *k,
@@ -640,8 +642,8 @@ fn unsupported(symbol: &Symbol, field: &FieldDef, span: Span) -> Diagnostic {
             symbol.name, field.name
         ),
     )
-    .at(span, "not text, a number or a choice")
-    .reason("A message's fields are the placeholders of its wording, and a placeholder is text (`Text`, `PresentationText`), a number (`Int`, `Decimal`) or a plural count (`PluralCount`), or a type built on one of them; one `enum` field picks which wording is written. Dates, times and money are formatted in code, with `text.format`, and passed in as `PresentationText`.")
+    .at(span, "not text, a number, money or a choice")
+    .reason("A message's fields are the placeholders of its wording, and a placeholder is text (`Text`, `PresentationText`), a number (`Int`, `Decimal`), an amount of money (`Money`, written `{field, number, currency}`) or a plural count (`PluralCount`), or a type built on one of them; one `enum` field picks which wording is written. Dates and times are formatted in code, with `text.format`, and passed in as `PresentationText`.")
     .next(format!(
         "Make `{}` a `PresentationText` and format the value where the message is called",
         field.name

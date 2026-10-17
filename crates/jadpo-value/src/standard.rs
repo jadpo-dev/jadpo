@@ -63,6 +63,7 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
         (TextForm::Zoned, Value::Zoned(zoned)) => zoned.to_string(),
         (TextForm::Duration, Value::Duration(millis)) => jadpo_std::iso_duration(*millis),
         (TextForm::Money, Value::Money(money)) => money.to_string(),
+        (TextForm::ExchangeRate, Value::Record(record)) => exchange_rate_text(record)?,
         (TextForm::Code, Value::Variant(variant)) => entry
             .codes()
             .and_then(|codes| codes.get(variant.ordinal as usize))
@@ -237,6 +238,7 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         TextForm::Duration => crate::json::iso_duration(raw).map(Value::Duration),
         TextForm::Code => code(entry, raw),
         TextForm::Money => crate::money::read(raw).map(Value::Money),
+        TextForm::ExchangeRate => read_exchange_rate(raw),
         // Its ends' type is the range type's argument, which `parse` reads.
         TextForm::Range => return Err(Fault::Shape),
         // The time group's forms, which `calendar` reads above.
@@ -275,6 +277,55 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         }
     };
     read.ok_or(MALFORMED)
+}
+
+/// An exchange rate's canonical text, `GBP/EUR 1.17 2026-10-18T09:00:00Z`:
+/// its pair as codes, its rate with the places it was given, and the
+/// instant it was quoted at (chosen in chunk 5.5h2).
+fn exchange_rate_text(record: &crate::Record) -> Result<String, Fault> {
+    let code = |name: &str| match record.get(name) {
+        Some(Value::Variant(variant)) if &*variant.ty == jadpo_std::CURRENCY => {
+            jadpo_std::money::code(variant.ordinal).ok_or(Fault::Shape)
+        }
+        _ => Err(Fault::Shape),
+    };
+    let (Some(Value::Decimal(rate)), Some(Value::Instant(at))) =
+        (record.get("rate"), record.get("at"))
+    else {
+        return Err(Fault::Shape);
+    };
+    Ok(format!(
+        "{}/{} {rate} {}",
+        code("from")?,
+        code("to")?,
+        jadpo_std::format_instant(*at)
+    ))
+}
+
+/// An exchange rate read from its canonical text: two currency codes,
+/// read ignoring case, joined by `/`, one space, a decimal rate, one
+/// space, and an instant in UTC ending `Z`.
+fn read_exchange_rate(raw: &str) -> Option<Value> {
+    let mut parts = raw.split(' ');
+    let (pair, rate, at) = (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some() {
+        return None;
+    }
+    let (from, to) = pair.split_once('/')?;
+    let currency = |code: &str| {
+        jadpo_std::money::ordinal_of_code(code)
+            .and_then(|ordinal| crate::money::currency_value(ordinal).ok())
+    };
+    let at = jadpo_std::instant_millis(at).filter(|_| at.ends_with('Z'))?;
+    Some(Value::record(
+        jadpo_std::standard::EXCHANGE_RATE,
+        vec![
+            ("from".into(), currency(from)?),
+            ("to".into(), currency(to)?),
+            ("rate".into(), Value::Decimal(decimal(rate)?)),
+            ("at".into(), Value::Instant(at)),
+        ],
+    ))
 }
 
 /// An enum's variant by its code, ignoring case (question 22).

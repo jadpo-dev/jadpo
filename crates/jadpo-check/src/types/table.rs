@@ -1150,6 +1150,13 @@ fn standard_field(name: &str, part: jadpo_std::Part) -> FieldDef {
                 ..Rules::default()
             },
         ),
+        // A standard enum is named as a declared one is: `ExchangeRate`'s
+        // currencies compare with `Currency.gbp` (area 19).
+        jadpo_std::Part::Standard(other)
+            if jadpo_std::standard_type(other).is_some_and(|entry| entry.codes().is_some()) =>
+        {
+            (Ty::Named(other.to_string()), Rules::default())
+        }
         jadpo_std::Part::Standard(other) => {
             (Ty::Opaque(other.to_string(), Vec::new()), Rules::default())
         }

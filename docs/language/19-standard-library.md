@@ -22,7 +22,7 @@ own features needed. This page collects them, adds what real applications
 keep reaching for, says which gaps in the language block the rest and how
 to close them, and says what is left out on purpose and why.
 
-> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunks 5.5h and 5.5k: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2); `Money` and `Currency`, the operator table's `Money` rows and the money operations but `convert`, stored in two columns (5.5h); and ten of the time types, with `CalendarPeriod`'s operator rows and `temporal.period_between` (5.5k). The rest is built by chunks 5.5h2 to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
+> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunks 5.5h2 and 5.5k: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2); `Money` and `Currency`, the operator table's `Money` rows and the money operations but `convert`, stored in two columns (5.5h); `ExchangeRate`, `money.convert` and `{price, number, currency}` in messages (5.5h2); and ten of the time types, with `CalendarPeriod`'s operator rows and `temporal.period_between` (5.5k). The rest is built by chunks 5.5i to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
 
 | Namespace | Holds | Operations | Decided in |
 |---|---|---|---|
@@ -384,7 +384,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `CalendarDate`, `CalendarPeriod`, `Currency`, `DateRange`, `Duration`, `Email`, `FileType`, `Instant`, `InstantRange`, `IpAddress`, `IsoWeek`, `LocalDateTime`, `LocalTime`, `Locale`, `Money`, `Month`, `Quarter`, `Range`, `Url`, `UtcOffset`, `Uuid`, `Weekday`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `CalendarDate`, `CalendarPeriod`, `Currency`, `DateRange`, `Duration`, `Email`, `ExchangeRate`, `FileType`, `Instant`, `InstantRange`, `IpAddress`, `IsoWeek`, `LocalDateTime`, `LocalTime`, `Locale`, `Money`, `Month`, `Quarter`, `Range`, `Url`, `UtcOffset`, `Uuid`, `Weekday`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -1631,6 +1631,100 @@ function sterling(paid: Payment) -> SterlingPayment? {
 }
 ```
 
+A shop that takes orders from abroad is given a rate each morning and
+prices a cake in the customer's currency. `money.convert` takes the rate
+only from the amount's currency; where the checker knows both, a rate the
+wrong way round doesn't compile, and otherwise the call fails
+`currency_mismatch`, which a condition on `rate.from` proves away:
+
+```jadpo check project=money-rates
+type CakePrice = Money {
+    currency: Currency.gbp
+    min: 0
+}
+
+type Payment = Money {}
+
+type WrongRate = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A cake's price in the rate's other currency, at a rate the shop was
+/// given; a rate from any other currency fails.
+function priced_abroad(cake: CakePrice, rate: ExchangeRate) fails WrongRate -> Payment {
+    var charged: Money = attempt money.convert(cake, rate) {
+        currency_mismatch: WrongRate  // a rate from euros, the wrong way round
+    }
+    return Payment(charged)
+}
+
+/// The same, with the rate's currency checked first, so it needs no
+/// `attempt`.
+function priced_if_from_pounds(cake: CakePrice, rate: ExchangeRate) -> Payment? {
+    if (rate.from == Currency.gbp) {
+        return Payment(money.convert(cake, rate))
+    }
+    return none
+}
+```
+
+```jadpo check project=money-rates file=main.test.jadpo
+test "a rate converts from its own currency only" {
+    var pounds_to_euros: ExchangeRate = ExchangeRate {
+        from: Currency.gbp
+        to: Currency.eur
+        rate: 1.17
+        at: "2026-10-18T09:00:00Z"
+    }
+    var euros_to_pounds: ExchangeRate = ExchangeRate {
+        from: Currency.eur
+        to: Currency.gbp
+        rate: 0.85
+        at: "2026-10-18T09:00:00Z"
+    }
+    var cake: CakePrice = CakePrice(money.from_minor(1050, Currency.gbp))
+    var in_euros: Payment = attempt priced_abroad(cake, pounds_to_euros)
+    assert in_euros == money.from_minor(1228, Currency.eur)  // €12.285, half to even
+    assert priced_abroad(cake, euros_to_pounds) fails WrongRate
+    assert priced_if_from_pounds(cake, pounds_to_euros) == money.from_minor(1228, Currency.eur)
+    assert priced_if_from_pounds(cake, euros_to_pounds) == none
+    assert text.from(pounds_to_euros) == "GBP/EUR 1.17 2026-10-18T09:00:00Z"
+}
+```
+
+Where the checker knows the rate is from another currency, by a
+condition or a rate written out, the call is a type error:
+
+```jadpo check project=money-rate-inverted expect=type.mismatch
+type CakePrice = Money {
+    currency: Currency.gbp
+}
+
+type Payment = Money {}
+
+/// A cake's price at a rate quoted from euros.
+function priced_abroad(cake: CakePrice, rate: ExchangeRate) -> Payment? {
+    if (rate.from == Currency.eur) {
+        return Payment(money.convert(cake, rate))
+    }
+    return none
+}
+```
+
+```text output
+error: `rate` converts from EUR, and `cake` is in GBP
+ --> main.jadpo:10:44
+   |
+10 |         return Payment(money.convert(cake, rate))
+   |                                            ^^^^ a rate from EUR
+  reason: `money.convert` applies a rate to an amount in the rate's `from` currency. `cake` is in GBP and `rate` converts from EUR, as their types, how they were made or a condition around the call fix, so the rate is the wrong way round or for another currency.
+  next: Pass a rate from GBP, or an amount in EUR (agent)
+  rule: type.mismatch
+  help: docs/language/02-values-and-types.html#type-mismatch
+
+check failed: 1 error, 1 file
+```
+
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
 | `money.from_minor(amount, currency)` | `Money` of `amount` minor units | | none |
@@ -1652,7 +1746,10 @@ function sterling(paid: Payment) -> SterlingPayment? {
 - **Applying a rate is in; fetching one is out.** `money.convert`
   applies an `ExchangeRate` the app already holds, so an inverted rate is
   a type error, not a silent bug; the rate itself is outside data with a
-  time and a source, fetched by a provider package.
+  time and a source, fetched by a provider package. An `ExchangeRate` is
+  an object of `from` and `to` (each a `Currency`), `rate` (a `Decimal`:
+  one `from` is `rate` of `to`) and `at` (the `Instant` it was quoted
+  at), written `GBP/EUR 1.17 2026-10-18T09:00:00Z` (chunk 5.5h2).
 - **Storage** is a `bigint` of minor units and a `char(3)` currency code,
   two columns, also for a type that fixes the currency, so opening a
   type's currency later needs no migration and a query can group by it;
@@ -1760,9 +1857,11 @@ test "an order keeps its amounts as they were written" {
 > `currency_mismatch`, `rounding:` and `type.money_split`, the two
 > columns, the wire shape and `text.format` with its options; what the
 > page left open is "Chosen in chunk 5.5h", under "Review".
-> `ExchangeRate`, `money.convert` and `{price, number, currency}` come in
-> chunk 5.5h2, and `Money * Percentage` with `Percentage` in 5.5j; until
-> then `price * 0.2` scales by a `Decimal`.
+> Built in chunk 5.5h2: `ExchangeRate` on the contract, `money.convert`
+> with its inverted-rate type error, and `{price, number, currency}` in
+> translation messages (area 10); what the pages left open is "Chosen in
+> chunk 5.5h2". `Money * Percentage` with `Percentage` comes in 5.5j;
+> until then `price * 0.2` scales by a `Decimal`.
 
 ## Physical quantities
 
@@ -3472,8 +3571,8 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, the other two in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, ten time types in 5.5k, each other group of types in 5.5i to 5.5s |
-| `money.`, the operator table's `Money` rows | Built in 5.5h but `convert` and `ExchangeRate`, which come in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, ten time types in 5.5k, each other group of types in 5.5i to 5.5s |
+| `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
 | A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2: `type.standard_clash`, `jadpo fix`'s swap and rename, the editor's swap |
@@ -4074,6 +4173,52 @@ under "Errors").
   09's library `money` became `pricing`, since `money` is now a reserved
   namespace.
 
+### Chosen in chunk 5.5h2
+
+- **`ExchangeRate` is a standard object type**, the catalogue's shape:
+  `from` and `to`, each a `Currency`, `rate`, a `Decimal`, and `at`, the
+  `Instant` it was quoted at, built with its object literal and read by
+  its fields. One `from` is `rate` of `to`, as a currency pair is quoted
+  (`GBP/EUR 1.17`: £1 is €1.17). Its JSON is an object of the four
+  fields, each in its own canonical text, and it is stored as that JSON,
+  as `InstantRange` is. Its shape is matched by `type.standard_exists`
+  (`from`, `to`, `rate` and `at`, by their common names).
+- **Its canonical text is the pair, the rate and the instant,** `GBP/EUR
+  1.17 2026-10-18T09:00:00Z`: the ISO 4217 codes base first, joined by
+  `/` as a currency pair is written, the rate with the places it was
+  given, and the instant in UTC; codes are read ignoring case. No
+  standard writes a rate with its time, so this is the narrowest text
+  that round-trips. `text.format` shows that text, the locale changing
+  nothing, as for a `Uuid`.
+- **A rate is any `Decimal`**, not checked to be above 0: no rule a field
+  can carry says "greater than", and a rate is a provider's data; a rate
+  between a currency and itself is allowed.
+- **No type fixes a rate's currencies.** An inverted rate is a type error
+  where the checker knows both currencies, as for `+` on two amounts: the
+  amount's from its type or how it was made, the rate's `from` and `to`
+  from its object literal written out or from a condition (`rate.from ==
+  Currency.gbp`, `rate.from == money.currency(price)`), which also settles
+  `currency_mismatch` with no `attempt`. It is reported as
+  `type.mismatch`, no new rule. Elsewhere the call fails
+  `currency_mismatch` under `attempt`. The result is in the rate's `to`
+  where that is known, so building a type that fixes that currency needs
+  no arm. A `from:` and `to:` on a type built on `ExchangeRate`, as
+  `Money` has `currency:`, would carry the currencies in signatures; it
+  is left out until an app needs it.
+- **`money.convert` rounds half to even** to the `to` currency's minor
+  unit, whatever the amount's type's `rounding:`, as the operation table
+  says: £10.50 at 1.17 is €12.285, so €12.28.
+- **`{price, number, currency}` is the one placeholder style, written
+  exactly so,** for a field built on `Money`, in a message's wording or an
+  email's subject: `{price}` for an amount, or the style on any other
+  field, is `translation.placeholder_style`, whose edit writes the right
+  one; any other style (`{price,number,currency}`, `{n, number,
+  percent}` until `Percentage` in 5.5j) is still
+  `translation.wording_invalid`. It shows the amount as `text.format`
+  does with its default options, in the locale the message is written in.
+  A failure's `client:` fields still can't be money: the client app
+  formats those, and the export has no money format yet.
+
 ### Chosen in chunk 5.5k
 
 - **Split.** `RecurrenceRule`, `OpeningHours` and `CalendarEvent`, with
@@ -4602,7 +4747,7 @@ first; each group of types then arrives with its baseline and its extras.
   Built; split on 2026-10-17, the rest is 5.5h2.
 - **5.5h2 Exchange rates and money in messages** `opus · high`:
   `ExchangeRate` and `money.convert`; `{price, number, currency}` in
-  translation messages.
+  translation messages. Built.
 - **5.5i Payment and identity numbers** `opus · high`: the money group's
   other 21 types and the 11 tax and identity numbers, each a pattern or
   check digit (mod-97, Luhn, mod-11) on the contract.

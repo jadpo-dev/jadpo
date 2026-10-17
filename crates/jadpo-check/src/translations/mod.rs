@@ -267,6 +267,7 @@ pub fn accepts(kind: ParamKind) -> &'static [Prim] {
     match kind {
         ParamKind::Text => &[Prim::Text, Prim::PresentationText],
         ParamKind::Number => &[Prim::Int, Prim::Decimal],
+        ParamKind::Money => &[Prim::Money],
         ParamKind::Plural => &[Prim::Int],
         ParamKind::Choice => &[],
     }

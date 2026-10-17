@@ -40,6 +40,16 @@ public type Duration = Duration {}
 /// An email address (area 2), checked as one.
 public type Email = Email {}
 
+/// A rate between two currencies at an instant (area 19): one `from` is
+/// `rate` of `to`, written `GBP/EUR 1.17 2026-10-18T09:00:00Z`. An app holds
+/// one it was given; `money.convert` applies it.
+public type ExchangeRate = Object {
+    from: Currency
+    to: Currency
+    rate: Decimal
+    at: Instant
+}
+
 /// A file's IANA media type (area 16), written `image/png`.
 public type FileType = Enum {}
 

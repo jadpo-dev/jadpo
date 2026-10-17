@@ -59,6 +59,7 @@ rules:
   - translation.message_unknown
   - translation.option_unknown
   - translation.group_unknown
+  - translation.placeholder_style
   - translation.placeholder_unknown
   - translation.review_invalid
   - translation.sources_invalid
@@ -1138,7 +1139,7 @@ dependency change of its own (chosen in chunk 5.2).
 > here use `text.format`. Area 19 also adds
 > three `temporal` operations (`occurrences`, `open_at`,
 > `period_between`, chunk 5.5k) and `{price, number, currency}` to the
-> placeholder styles (chunk 5.5h).
+> placeholder styles, built in chunk 5.5h2 ("Messages", below).
 
 Formatting needs three things the server must never guess: the zone, the
 language and the format. Decided (question 7): one call that takes all
@@ -1813,13 +1814,71 @@ How a message's type maps to its wording in each language's file:
 | The type's name, `OrderShipped` | The member `order_shipped`, in the language files of the type's own `translations/` folder |
 | No fields | A plain string |
 | A `Text`, `PresentationText`, `Int` or `Decimal` field, or a named type built on `Text`, `Int` or `Decimal` | A `{field}` placeholder; numbers are written the locale's way |
+| A field built on `Money` | A `{field, number, currency}` placeholder, the one style, written as `text.format` shows the amount in the locale (area 19); `{field}` alone is `translation.placeholder_style` |
 | One enum field | One member per value of the enum; the field is not a placeholder |
 | One `PluralCount` field | One member per plural form the language needs, from Unicode CLDR (English `one` and `other`; Polish `one`, `few`, `many` and `other`); `{count}` is available in each |
-| Any other field type (`Instant`, `Money`, an object, `T?`) | `translation.field_type`: format it in code and pass the text |
+| Any other field type (`Instant`, an object, `T?`) | `translation.field_type`: format it in code and pass the text |
 | More than one enum or `PluralCount` field | `translation.too_many_selectors`: split the message, so a translator never fills a grid of combinations |
 
-Dates, times and money are formatted in code (`text.format`, area 19)
-and passed in as `PresentationText`.
+Dates and times are formatted in code (`text.format`, area 19) and
+passed in as `PresentationText`. An amount of money is a placeholder of
+its own, through the same formatter as `text.format`, so the translator
+sees a price and each language writes it its own way (area 19, question
+16, built in chunk 5.5h2):
+
+```jadpo check project=translation-money file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.es_mx]
+}
+```
+
+```jadpo check project=translation-money file=domains/orders/types/order_amount.jadpo hidden
+/// What an order costs, in the customer's currency.
+type OrderAmount = Money {}
+```
+
+```jadpo check project=translation-money file=domains/orders/translations/order_total.jadpo
+use orders/types { OrderAmount }
+
+/// What an order comes to, on its confirmation page.
+type OrderTotal = Message {
+    total: OrderAmount
+}
+```
+
+```jadpo check project=translation-money file=domains/orders/translations/en_gb.jadpo
+translations {
+    order_total: "Your order comes to {total, number, currency}."
+}
+```
+
+```jadpo check project=translation-money file=domains/orders/translations/es_mx.jadpo
+translations {
+    order_total: "Tu pedido suma {total, number, currency}."
+}
+```
+
+```jadpo check project=translation-money file=domains/orders/actions/confirm_total.jadpo hidden
+use orders/types { OrderAmount }
+
+/// The order's total, in the customer's language.
+action confirm_total(total: OrderAmount, reader_locale: Locale) -> PresentationText {
+    return translations.orders.order_total(total: total, locale: reader_locale)
+}
+```
+
+```jadpo check project=translation-money file=domains/orders/actions/confirm_total.test.jadpo
+use orders/types { OrderAmount }
+
+test "a price is written each language's way" {
+    var total: OrderAmount = OrderAmount(money.from_minor(123450, Currency.mxn))
+    assert confirm_total(total, Locale.en_gb) == "Your order comes to MX$1,234.50."
+    assert confirm_total(total, Locale.es_mx) == "Tu pedido suma $1,234.50."
+}
+```
 
 ### Using a message
 
@@ -2370,7 +2429,9 @@ Built in chunk 5.4c, each with its own error below:
   is not a value of the enum, or a plural form the language does not use
   (`translation.variant_unknown`); a missing variant or plural form
   (`translation.variant_missing`); a placeholder that is not a field
-  (`translation.placeholder_unknown`); a field type a wording cannot hold
+  (`translation.placeholder_unknown`); an amount of money written without
+  its style, or the style on another field (`translation.placeholder_style`,
+  chunk 5.5h2); a field type a wording cannot hold
   (`translation.field_type`), or more than one enum or `PluralCount` field
   (`translation.too_many_selectors`); a language file that is not named for
   a locale (`translation.file_name_invalid`) or is for one the application
@@ -4756,6 +4817,61 @@ error: `{nom}` isn't a field of `OrderShipped`
 check failed: 1 error, 4 files
 ```
 
+### `translation.placeholder_style`
+
+An amount of money is written with its style, `{price, number,
+currency}`, so a translator sees it is a price; the style on a field
+that isn't money is the same mistake the other way round.
+
+```jadpo check project=e-tr-placeholder-style file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.es_mx]
+}
+```
+
+```jadpo check project=e-tr-placeholder-style file=domains/orders/types/order_amount.jadpo hidden
+/// What an order costs, in the customer's currency.
+type OrderAmount = Money {}
+```
+
+```jadpo check project=e-tr-placeholder-style file=domains/orders/translations/order_total.jadpo hidden
+use orders/types { OrderAmount }
+
+/// What an order comes to, on its confirmation page.
+type OrderTotal = Message {
+    total: OrderAmount
+}
+```
+
+```jadpo check project=e-tr-placeholder-style file=domains/orders/translations/en_gb.jadpo hidden
+translations {
+    order_total: "Your order comes to {total, number, currency}."
+}
+```
+
+```jadpo check project=e-tr-placeholder-style file=domains/orders/translations/es_mx.jadpo expect=translation.placeholder_style
+translations {
+    order_total: "Tu pedido suma {total}."
+}
+```
+
+```text output
+error: `{total}` is an amount of money, written `{total, number, currency}`
+ --> domains/orders/translations/es_mx.jadpo:2:34
+  |
+2 |     order_total: "Tu pedido suma {total}."
+  |                                  ^^^^^^^ no style
+  reason: `OrderTotal.total` is money, and a wording writes an amount of money with its style, `{total, number, currency}`, so the translator sees it is one; it is shown as `text.format` shows it in the reader's locale, with its symbol and the currency's places.
+  next: Write `{total, number, currency}` (agent)
+  rule: translation.placeholder_style
+  help: docs/language/10-configuration-and-time.html#translation-placeholder-style
+
+check failed: 1 error, 5 files
+```
+
 ### `translation.variant_unknown`
 
 A language gives one wording for each plural form CLDR gives it. English has `one` and `other`, so `few` is a form it never uses.
@@ -4864,7 +4980,7 @@ check failed: 1 error, 4 files
 
 ### `translation.field_type`
 
-A message's fields are the placeholders of its wording: text, numbers, a plural count, or an enum that picks the wording. A moment is formatted in code and passed in as `PresentationText`.
+A message's fields are the placeholders of its wording: text, numbers, amounts of money, a plural count, or an enum that picks the wording. A moment is formatted in code and passed in as `PresentationText`.
 
 ```jadpo check project=e-tr-field-type file=app.jadpo hidden
 application {}
@@ -4887,8 +5003,8 @@ error: `LeftAt.when` is typed `Instant`, which a wording can't write
  --> domains/shipping/translations/left_at.jadpo:3:5
   |
 3 |     when: Instant
-  |     ^^^^ not text, a number or a choice
-  reason: A message's fields are the placeholders of its wording, and a placeholder is text (`Text`, `PresentationText`), a number (`Int`, `Decimal`) or a plural count (`PluralCount`), or a type built on one of them; one `enum` field picks which wording is written. Dates, times and money are formatted in code, with `text.format`, and passed in as `PresentationText`.
+  |     ^^^^ not text, a number, money or a choice
+  reason: A message's fields are the placeholders of its wording, and a placeholder is text (`Text`, `PresentationText`), a number (`Int`, `Decimal`), an amount of money (`Money`, written `{field, number, currency}`) or a plural count (`PluralCount`), or a type built on one of them; one `enum` field picks which wording is written. Dates and times are formatted in code, with `text.format`, and passed in as `PresentationText`.
   next: Make `when` a `PresentationText` and format the value where the message is called (agent)
   rule: translation.field_type
   help: docs/language/10-configuration-and-time.html#translation-field-type
@@ -5716,7 +5832,7 @@ Library packages' translations come with packages in Phase 7.
 | Where translations live | In the domain that uses them, `domains/<domain>/translations/`; a message a second domain uses moves to `shared/translations/` under area 1's promotion rule; the root `translations/` holds only the app's wording for Jadpo's own messages (Richard) | 2026-10-16 |
 | Messages | `type X = Message { ... }`, a type base beside `Failure`, `Event` and `EmailMessage`, one per file; fields are placeholders; `///` descriptions are translator context (Richard) | 2026-10-16 |
 | Language files | One unnamed `translations { }` per locale in a file named after it (`de_de.jadpo`); members are message, failure, enum or email names in lower_snake_case; every wording a plain string whose only syntax is `{field}`, a literal brace doubled (`{{`, `}}`); no grouping or nesting beyond variants and plural forms; JSON and ICU MessageFormat dropped (Richard) | 2026-10-16 |
-| Mapping a message to wording | No fields: a string; `Text`, `PresentationText`, `Int`, `Decimal`: placeholders, numbers written the locale's way; one enum field: one wording per value; one `PluralCount` field: one wording per CLDR plural form; any other field type, or more than one enum or `PluralCount` field, an error; a placeholder that is not a field an error; a field no wording uses a warning (Richard). Revised 2026-10-17 for area 1, question 11: a declinable error, `translation.field_unused` | 2026-10-16 |
+| Mapping a message to wording | No fields: a string; `Text`, `PresentationText`, `Int`, `Decimal`: placeholders, numbers written the locale's way; one enum field: one wording per value; one `PluralCount` field: one wording per CLDR plural form; any other field type, or more than one enum or `PluralCount` field, an error; a placeholder that is not a field an error; a field no wording uses a warning (Richard). Revised 2026-10-17 for area 1, question 11: a declinable error, `translation.field_unused`. Revised by area 19, question 16 (built in chunk 5.5h2): a field built on `Money` is a placeholder written `{price, number, currency}`, the one style, and `translation.placeholder_style` refuses it written otherwise | 2026-10-16 |
 | Generated calls | `translations.<domain>.<message>(field: value, ..., locale: ...)`, every field by name, returning `PresentationText`; `translations.shared.<message>` for `shared/translations/`; in email templates the email's locale (Richard) | 2026-10-16 |
 | Email subjects | An `EmailMessage`'s member in its domain's language files is its subject line, its fields usable as placeholders; the body is the `.html` and `.txt` templates (Richard) | 2026-10-16 |
 | Enum wording | An enum can be written out once its domain's language files give each value a wording, a value's fields usable as placeholders; area 2's "no display labels" stands (Richard) | 2026-10-16 |

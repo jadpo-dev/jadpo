@@ -636,7 +636,14 @@ impl Ctx<'_> {
         let mut clean = true;
         for field in uses {
             used.push(field.name.clone());
-            if allowed.iter().any(|(name, _)| *name == field.name) {
+            if let Some((_, kind)) = allowed.iter().find(|(name, _)| *name == field.name) {
+                // An amount of money is written with its style, and only an
+                // amount of money is (area 19, question 16).
+                if (*kind == ParamKind::Money) != field.currency {
+                    clean = false;
+                    self.problems
+                        .push(style_problem(subject, written, &field, *kind));
+                }
                 continue;
             }
             clean = false;
@@ -964,4 +971,44 @@ fn feature_off(
         "Remove `{}` from `{}`, or switch the feature on",
         member.name, file.path
     ))
+}
+
+/// `{price}` for an amount of money, which is written `{price, number,
+/// currency}`, or that style on a field that isn't one.
+fn style_problem(
+    subject: &Subject,
+    written: &Written,
+    field: &jadpo_std::translation::FieldUse,
+    kind: ParamKind,
+) -> Diagnostic {
+    let name = &field.name;
+    let styled = format!("{{{name}{}}}", jadpo_std::translation::CURRENCY_STYLE);
+    let plain = format!("{{{name}}}");
+    let span = written.range(field.start, field.end);
+    if kind == ParamKind::Money {
+        Diagnostic::new(
+            &rule::TRANSLATION_PLACEHOLDER_STYLE,
+            format!("`{plain}` is an amount of money, written `{styled}`"),
+        )
+        .at(span.clone(), "no style")
+        .reason(format!(
+            "`{}.{name}` is money, and a wording writes an amount of money with its style, `{styled}`, so the translator sees it is one; it is shown as `text.format` shows it in the reader's locale, with its symbol and the currency's places.",
+            subject.type_name
+        ))
+        .next(format!("Write `{styled}`"))
+        .edit(span, styled)
+    } else {
+        Diagnostic::new(
+            &rule::TRANSLATION_PLACEHOLDER_STYLE,
+            format!("`{styled}` writes {} as money", kind.word()),
+        )
+        .at(span.clone(), "not money")
+        .reason(format!(
+            "`, number, currency` is the style of an amount of money, and `{}.{name}` is {}, which a wording writes as `{plain}`.",
+            subject.type_name,
+            kind.word()
+        ))
+        .next(format!("Write `{plain}`"))
+        .edit(span, plain)
+    }
 }
