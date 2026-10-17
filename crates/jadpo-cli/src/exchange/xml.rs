@@ -192,13 +192,13 @@ impl Reader<'_> {
                     }
                     self.at += 1;
                     self.skip_space();
-                    let quote = match self.bytes.get(self.at) {
+                    let delimiter = match self.bytes.get(self.at) {
                         Some(&q @ (b'"' | b'\'')) => q,
                         _ => return self.fail("an attribute value needs quotes"),
                     };
                     self.at += 1;
                     let value_start = self.at;
-                    while self.bytes.get(self.at).is_some_and(|b| *b != quote) {
+                    while self.bytes.get(self.at).is_some_and(|b| *b != delimiter) {
                         self.at += 1;
                     }
                     if self.at >= self.bytes.len() {

@@ -662,7 +662,6 @@ note_tidings
 note_view
 note_was_edited
 note_with_citation
-notes
 nothing_to_bake
 notify_owner
 nut_free

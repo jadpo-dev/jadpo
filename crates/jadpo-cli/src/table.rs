@@ -725,19 +725,19 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--format",
                 value: Some("format"),
-                description: "For export: xliff (the default) or json",
+                description: "For export: xliff (default) or json",
                 values: crate::exchange::command::FORMATS,
             },
             Flag {
                 name: "--out",
                 value: Some("folder"),
-                description: "For export: the folder to write to (build/translations)",
+                description: "For export: the folder to write to",
                 values: &[],
             },
             Flag {
                 name: "--locale",
                 value: Some("locale"),
-                description: "For import: the locale a JSON file is for, when its name doesn't say",
+                description: "For import: the locale of a JSON file",
                 values: &[],
             },
         ],

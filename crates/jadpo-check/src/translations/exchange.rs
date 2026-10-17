@@ -11,7 +11,7 @@
 use std::collections::BTreeSet;
 
 use jadpo_db::{Db, File, Project};
-use jadpo_std::jadpo_text::{GROUP, Shape as ShippedShape};
+use jadpo_std::jadpo_text::{GROUP, Shape as CatalogueShape};
 use jadpo_std::translation::plural_categories;
 use jadpo_std::{LOCALES, LocalePlan};
 
@@ -252,8 +252,8 @@ pub fn catalogue(db: &dyn Db, project: Project) -> Option<Catalogue> {
             .filter(|source| !source.is_empty());
         let source = own.or_else(|| {
             message.ships_in(default.tag).then(|| match message.shape {
-                ShippedShape::Plain(text) => vec![(None, text.to_string())],
-                ShippedShape::Variants(variants) => variants
+                CatalogueShape::Plain(text) => vec![(None, text.to_string())],
+                CatalogueShape::Variants(variants) => variants
                     .iter()
                     .map(|(name, text)| (Some((*name).to_string()), (*text).to_string()))
                     .collect(),
