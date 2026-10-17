@@ -882,6 +882,11 @@ messages:
 language ("15 minutes"). The failures' wording also goes into the
 per-locale failure export for client apps (area 10).
 
+Built in chunk 5.4e: these twelve messages are in Jadpo's catalogue (area
+10, "Jadpo's and packages' text") with the wording above, but no application
+has the feature on until magic-link sign-in is built, so none is listed,
+required or rewordable yet.
+
 **Level 3: branding.** Every email, built in or the app's own, is wrapped
 in the app's shared email layout, so built-in emails carry the app's
 branding with no other change. The layout is optional, one per app, in

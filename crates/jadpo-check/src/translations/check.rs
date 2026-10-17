@@ -952,10 +952,10 @@ fn feature_off(
     )
     .at(
         member.key_span.clone(),
-        format!("{} is off", feature.heading().to_lowercase()),
+        "a feature this application has off",
     )
     .reason(format!(
-        "`{}` is part of Jadpo's {} text, which an application has when {}. This one doesn't, so wording it changes nothing and would hide a mistake.",
+        "`{}` is part of Jadpo's {} text, which Jadpo writes when {}. This application doesn't, so wording it changes nothing and would hide a mistake.",
         member.name,
         feature.heading().to_lowercase(),
         feature.when()

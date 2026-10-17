@@ -700,11 +700,13 @@ pub static COMMANDS: &[Command] = &[
                       lists the messages no code calls. `update` records, in each translations \
                       folder's sources.jadpo_record, which default wording each translation was \
                       made from. `accept` records a person's acceptance of a locale's changed \
-                      wording, and never of a stale translation.",
+                      wording, and never of a stale translation. `builtin` lists Jadpo's own \
+                      messages the application can show, with their fields and the wording to \
+                      translate from.",
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: missing, unused, update or accept",
+                description: "What to do: missing, unused, update, accept or builtin",
                 required: true,
                 values: Values::Fixed(crate::translations::ACTIONS),
             },
@@ -732,6 +734,10 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "List the messages nothing calls as data for tools",
                 command: "jadpo translations unused --json",
+            },
+            Example {
+                description: "See Jadpo's own messages to word for a new locale",
+                command: "jadpo translations builtin",
             },
         ],
         arguments_rule: &rule::CLI_TRANSLATIONS_ARGUMENTS,
