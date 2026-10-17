@@ -792,37 +792,55 @@ reference only).
 - [ ] **5.5x `jadpo suggest`** `opus · high` (area 14; decided by Richard,
   2026-10-17): first write the command's section on area 14 from this
   design, then build it. A command that hints, never edits, where code
-  could use a standard type or operation. `jadpo suggest` formats, then
-  scans the program graph with signals held as data on each standard
-  type's contract entry (shape, conversion constants, name hints, format
-  literals, validation patterns), matched through canonicalised graph
-  fragments with hashes as the index and a matcher to confirm; it reports
-  numbered findings and ends with a broad instruction to the agent to
-  review the rest against `jadpo suggest --catalogue`, generated from the
-  contract. Acceptance is inferred when a finding disappears. `jadpo
-  suggest mark` records only exceptions in a committed record: ignores as
-  hashes of the formatted snippet (re-examined when the code changes,
-  dropped when stale) and misses taught as project signals (marked before
-  editing). Edits stay with the agent and, for type clashes only, `jadpo
-  fix`. Done when every signal kind has a finding and a non-finding test,
-  an ignored snippet stays quiet until edited, and a taught miss is found
-  by the next scan.
+  could use a standard type or operation; edits stay with the agent and,
+  for type clashes only, `jadpo fix`. `jadpo suggest` formats, then scans
+  the program graph with signals held as data on each standard type's
+  contract entry (shape, conversion constants, name hints, format literals,
+  validation patterns), matched through canonicalised graph fragments with
+  hashes as the index and a matcher to confirm; it reports numbered
+  findings (S1, S2…) and ends with a broad instruction to the agent:
+  review the rest of the code against `jadpo suggest --catalogue`
+  (generated from the contract), and run `jadpo suggest found` before
+  changing anything it finds. A snippet's hash is of the smallest
+  statement or expression at the place, formatted, without comments.
+  - A finding that disappears after a fix is recorded as accepted, from
+    the scan's own note of its last findings (local, untracked).
+  - `jadpo suggest ignore S3 "<why>"` writes the hash, the signal and the
+    reason to `ignored_suggestions.jadpo_record` at the project root
+    (committed, shared by the team; area 1's root list gains it); the
+    snippet stays quiet until its code changes, and stale entries drop out.
+    It sends nothing.
+  - `jadpo suggest found <file>:<line> <Type or operation> "<why>"`, run
+    before the code is changed, captures the snippet's text, hash,
+    canonical form, the suggestion and the reason, and teaches it as a
+    project signal so the next scan finds the same pattern itself.
+  - Accepted and found entries go to `.jadpo/suggest_pending` (local,
+    untracked) for sharing.
+  Done when every signal kind has a finding and a non-finding test, an
+  ignored snippet stays quiet until edited, a found snippet's text survives
+  the fix, and a taught miss is found by the next scan.
 - [ ] **5.5y `jadpo suggest share`, against a fake Jadpo HQ** `opus ·
-  high` (area 14; decided by Richard, 2026-10-17), after 5.5x: the opt-in
-  sharing client, built in full against a local fake of Jadpo HQ that
-  speaks the same protocol, since HQ doesn't exist yet. `share`, run by a
-  person (refused for agents), sends hashes of flagged snippets; HQ asks
-  for a snippet's text only once its hash has come from enough distinct
-  projects, and the person approves the requested snippets in one batch;
-  the record notes what was shared; the report nudges the agent to suggest
-  sharing when there is something to share, and stays quiet otherwise.
-  The protocol is written on area 14 so the real HQ, after the first build
-  with the registry, implements it unchanged, including its agent that
-  turns shared patterns into signal data (thresholds, generated tests,
-  release notes) and proposes, never builds, language features. Done when
-  the whole exchange runs against the fake in tests, nothing is sent
-  without opt-in and approval, and a hash below the threshold never has
-  its text requested.
+  high` (area 14; decided by Richard, 2026-10-17), after 5.5x: opt-in
+  sharing, built in full against a local fake of Jadpo HQ that speaks the
+  same protocol, since HQ doesn't exist yet. Off until the project opts in,
+  which also creates a random anonymous project token tied to nothing (no
+  repo, user or machine), so HQ counts distinct projects without knowing
+  them. `share` sends every hash in `.jadpo/suggest_pending` and every
+  ignored hash not sent before (marked sent in
+  `ignored_suggestions.jadpo_record`), with the token; HQ replies with the
+  hashes whose text it wants (those seen from enough distinct projects).
+  The command shows those snippets and stops; a person approves, directly
+  or through the agent asking them in its conversation, and only then does
+  `share --approve` send the snippets (HQ recomputes their hashes). The
+  pending file is then wiped, wanted or not. The report nudges the agent to
+  suggest sharing when there is something to share, and stays quiet
+  otherwise. The protocol is written on area 14 so the real HQ, after the
+  first build with the registry, implements it unchanged, including its
+  agent that turns shared patterns into signal data (thresholds, generated
+  tests, release notes) and proposes, never builds, language features.
+  Done when the whole exchange runs against the fake in tests, nothing is
+  sent without opt-in and approval, a hash below the threshold never has
+  its text requested, and an ignored hash is sent once.
 - [ ] **5.6 Computed backfills** `opus · high` (area 5, "Computed backfills",
   2026-10-15): `backfill:` as an expression over each row's own fields,
   filled in batches, one `UPDATE` each where it has a SQL form and by
