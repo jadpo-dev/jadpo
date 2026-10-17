@@ -89,7 +89,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 12 of them built already (bold); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review.
+Decided 2026-10-17 (Richard): 247 types, 12 of them built already (bold); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: three are built, and the other 22 are proposed by question 22.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -99,23 +99,23 @@ decided.
 
 | Group | Types | Extras in |
 |---|---|---|
-| People and contact (12) | `PersonName`, `GivenName`, `FamilyName`, `Username`, **`Email`**, `EmailWithName`, `PhoneNumber`, `PhoneExtension`, `PostalAddress`, `PostalCode`, `Uprn`, `Nationality` | `web` |
-| Places (10) | `Country`, `Subdivision`, `Continent`, `UnLocode`, `CallingCode`, `Language`, `Script`, `TextDirection`, **`Locale`**, **`Zone`** | |
+| People and contact (12) | `PersonName`, `GivenName`, `FamilyName`, `Username`, **`Email`**, `EmailWithName`, `PhoneNumber`, `PhoneExtension`, `PostalAddress`, `PostalCode`, `Uprn`, `Nationality` (enum) | `web` |
+| Places (10) | `Country` (enum), `Subdivision` (enum), `Continent` (enum), `UnLocode`, `CallingCode`, `Language` (enum), `Script` (enum), `TextDirection` (enum), **`Locale`** (enum), **`Zone`** (enum) | |
 | Geospatial (17) | `Point` (optional altitude), `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` | `geo` (future area) |
-| Money, payments, banking (24) | `Money`, `Currency`, `ExchangeRate`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, `PaymentCardNumber`, `MaskedCardNumber`, `CardBrand`, `CardBin`, `CardExpiry`, `PaymentReference`, `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`, `UkAccountNumber`, `BankAccount`, `AbaRoutingNumber`, `Lei`, `Isin` | `money` |
+| Money, payments, banking (24) | `Money`, `Currency` (enum), `ExchangeRate`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, `PaymentCardNumber`, `MaskedCardNumber`, `CardBrand` (enum), `CardBin`, `CardExpiry`, `PaymentReference`, `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`, `UkAccountNumber`, `BankAccount`, `AbaRoutingNumber`, `Lei`, `Isin` | `money` |
 | Tax and identity numbers (11) | `VatNumber`, `TaxId`, `UkUtr`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin`, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, `NhsNumber` | |
-| Commerce and logistics (20) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `Quantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, `HsCode`, `Incoterm`, `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` | `units`, `media` |
-| Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`**, `LocalTime`, `LocalDateTime`, `Month`, `YearMonth`, `Year`, `Quarter`, `IsoWeek`, `UtcOffset`, `DateRange`, `TimeInterval`, `CalendarPeriod`, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` | `temporal`, `range` |
+| Commerce and logistics (20) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `Quantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, `HsCode`, `Incoterm` (enum), `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` | `units`, `media` |
+| Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), `LocalTime`, `LocalDateTime`, `Month` (enum), `YearMonth`, `Year`, `Quarter`, `IsoWeek`, `UtcOffset`, `DateRange`, `TimeInterval`, `CalendarPeriod`, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` | `temporal`, `range` |
 | Physical quantities (17) | `Length`, `Area`, `Volume`, `Angle`, `Mass`, `Pressure`, `Energy`, `Power`, `Temperature`, `TemperatureDifference`, `Speed`, `Frequency`, `Voltage`, `Current`, `Illuminance`, `SoundLevel`, `Concentration` | `units` |
 | Maths and data (8) | `Percentage`, `Ratio`, `Fraction`, `Range<T>`, `DataSize`, `Bitrate`, `Vector`, `Embedding` | `range`, `units`; AI area |
-| Health (9) | `BloodType`, `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` | |
-| Media and visual (15) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize`, `ExifOrientation`, `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating` | `colour`, `media` |
-| Web and network (23) | **`Url`**, `UrlPath`, `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `Origin`, `HttpMethod`, `HttpStatus`, `HttpHeaderName`, **`FileType`**, `UserAgent`, `ProblemDetails`, `JsonPointer`, `Cookie`, `UtmParameters`, **`IpAddress`**, `Cidr`, `Port`, `MacAddress`, `Imei`, `Emoji`, `PushToken` | `web` |
-| Software (19) | `SemanticVersion`, `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`, `SpanId`, `TraceParent`, `LogLevel`, `FilePath`, `FileName`, `RegularExpression`, `ContainerImage`, `Digest`, **`Uuid`**, `Ulid`, `IdempotencyKey`, `Doi` | `semver` |
+| Health (9) | `BloodType` (enum), `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` (enum) | |
+| Media and visual (15) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize` (enum), `ExifOrientation` (enum), `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating` | `colour`, `media` |
+| Web and network (23) | **`Url`**, `UrlPath`, `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `Origin`, `HttpMethod` (enum), `HttpStatus`, `HttpHeaderName`, **`FileType`**, `UserAgent`, `ProblemDetails`, `JsonPointer`, `Cookie`, `UtmParameters`, **`IpAddress`**, `Cidr`, `Port`, `MacAddress`, `Imei`, `Emoji`, `PushToken` | `web` |
+| Software (19) | `SemanticVersion`, `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`, `SpanId`, `TraceParent`, `LogLevel` (enum), `FilePath`, `FileName`, `RegularExpression`, `ContainerImage`, `Digest`, **`Uuid`**, `Ulid`, `IdempotencyKey`, `Doi` | `semver` |
 | Text formats (4) | `Markdown`, `Html`, `RichText`, `LocalisedText` | `markup`, `text` |
 | Security (20) | `Password`, `PasswordHash`, `PasswordPolicy`, `Hash`, `Hmac`, `Jwt`, `JwtClaims`, `Jwk`, `PublicKey`, `PrivateKey`, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `Secret`, `BearerToken`, `OAuthScope`, `OidcClaims`, `WebAuthnCredential`, `EncryptedValue` | `crypto` |
-| Travel (6) | `IataAirport`, `IcaoAirport`, `IataAirline`, `FlightNumber`, `CabinClass`, `BookingReference` | |
-| Other with a published standard (10) | `UnNumber`, `Orcid`, `CefrLevel`, `Mpan`, `Mprn`, `EpcRating`, `Tenure`, `LawfulBasis`, `Jurisdiction`, `ModelId` | |
+| Travel (6) | `IataAirport`, `IcaoAirport`, `IataAirline`, `FlightNumber`, `CabinClass` (enum), `BookingReference` | |
+| Other with a published standard (10) | `UnNumber`, `Orcid`, `CefrLevel` (enum), `Mpan`, `Mprn`, `EpcRating` (enum), `Tenure` (enum), `LawfulBasis` (enum), `Jurisdiction`, `ModelId` | |
 | AI (3) | `TokenCount`, `TokenUsage`, `ChatMessage` | AI area |
 
 **Its three rules**, decided with it:
@@ -434,7 +434,7 @@ reading and writing each batch ([area 5](05-data.md#computed-backfills)).
 Both are correct; the SQL form is only faster. Queries still compute
 nothing and a one-step update's `set:` still works a stored field out only
 with `+` and `-` (area 6); aggregate queries would be their second user
-(question 27, "Language gaps").
+(question 28, "Language gaps").
 
 - An operation that can fail has no SQL form, since a statement can't map
   a failure to a row.
@@ -615,7 +615,7 @@ what an operator can't.
   and statistics (a standard deviation) are what need them.
 - **PostgreSQL's `round` ties away from zero,** which is `half_up`; the
   other modes are spelled out with a `CASE`, never left to the database.
-- **`Rounding` stays `half_even`, `half_up` and `up`,** unless question 24
+- **`Rounding` stays `half_even`, `half_up` and `up`,** unless question 25
   adds `down`.
 
 ## Money and payments
@@ -661,10 +661,10 @@ text.format(total, locale: Locale.en_gb)                             // "£10.50
   rounded by the type's `rounding:` (`half_even` unless declared), and `/`
   by an `Int` refused in favour of `split` (question 16). Splitting never
   rounds: `allocate` and `split` hand every minor unit to some share.
-- **No exchange-rate source.** A rate is outside data with a time and a
-  source, fetched by a provider package; `money.convert` only applies an
-  `ExchangeRate` the app already holds, so an inverted rate is a type
-  error, not a silent bug.
+- **Applying a rate is in; fetching one is out.** `money.convert`
+  applies an `ExchangeRate` the app already holds, so an inverted rate is
+  a type error, not a silent bug; the rate itself is outside data with a
+  time and a source, fetched by a provider package.
 - **Storage** is a `bigint` of minor units and a `char(3)` currency code,
   two columns, also for a type that fixes the currency, so opening a
   type's currency later needs no migration and a query can group by it.
@@ -810,7 +810,7 @@ need a `dst:` choice; it uses `temporal.add_months` and its siblings.
 
 Each operation is called as `text.<name>`. Text is counted, cut and
 padded in Unicode code points, as `max_length`
-counts it (area 2) and as PostgreSQL's `char_length` does (question 22).
+counts it (area 2) and as PostgreSQL's `char_length` does (question 23).
 `PresentationText` is its own representation (area 10), so none of these
 take it.
 
@@ -839,11 +839,13 @@ take it.
   there is no `text.matches`, and no replacing or capturing by regular
   expression: a pattern is a type's rule, checked in linear time.
 - **Joining two pieces is `+`** (area 3); `join` is for a list.
-- **`from` takes no enum and no text.** An enum has no display label (area
-  2), so showing one is a `match`; a value built on `Text` already is text.
+- **`from` takes no enum an application declares, and no text.** Such an
+  enum has no display label (area 2), so showing one is a `match`; a value
+  built on `Text` already is text. A standard enum's `from` is its code
+  (`GB`) and its `format` its CLDR name (question 22).
 - **`keep_first` can split a character a person sees as one,** such as an
   emoji with a skin tone, which is two code points. A preview cut this way
-  is still valid text; graphemes are left out (question 22).
+  is still valid text; graphemes are left out (question 23).
 - **Left out by design:** `trim_start`, `trim_end` and `pad_end` (no
   scenario needs them, and each is a second way near one that exists);
   iterating characters (every job the scenarios found, slugs, masks,
@@ -895,7 +897,7 @@ CommonMark text; `RichText` is a structured document of blocks and marks;
   any other read stays `configuration.secret_flow`. Both rotate as a
   `SigningKey` does, through `NAME_PREVIOUS`.
 - **A digest is `Bytes`,** and `encoding` writes it as text:
-  `encoding.to_hex` for an ETag or a content key (question 23).
+  `encoding.to_hex` for an ETag or a content key (question 24).
 - **No MD5 or SHA-1.** Both are broken; an outside system that still asks
   for one is reached through a package (area 11). That includes TOTP,
   whose RFC 6238 default is HMAC-SHA-1 and whose per-person secret is a
@@ -1060,7 +1062,7 @@ function nand(a: Bool, b: Bool) -> Bool {
 ```
 
 Bitwise operations on `Int` and `Bytes` (and, or, xor, not, shifts) are
-left out (question 26): flags are a `Set` of an enum, which a reviewer can
+left out (question 27): flags are a `Set` of an enum, which a reviewer can
 read, and the one scenario with bit-packed data, device payloads, decodes
 them in the provider package that knows the format.
 
@@ -1289,13 +1291,13 @@ unblocks kept in the proposal.
 | Comparators | A key expresses every order, and an inconsistent comparator differs by target | `sort_by`, `reverse` |
 | `items[i]` | Out of range needs an arm or a defect | `list.at` gives `T?` |
 | Regular expressions as calls | A pattern is a type's rule, in linear time | `pattern:` and construction (area 2) |
-| Graphemes | They'd disagree with `max_length` and PostgreSQL, and change with each Unicode version | Code points (question 22) |
+| Graphemes | They'd disagree with `max_length` and PostgreSQL, and change with each Unicode version | Code points (question 23) |
 | Dynamic keys on records | A field is its own type and carries its own policy and marks | `Map` |
 | A dynamic JSON value | No scenario needs one | `json.read(..., as:)`; `Text` to pass on |
 | CSV in memory | #88: one way to read rows | `csv.read` through a store |
 | MD5, SHA-1 | Broken | A package (area 11) |
-| Bitwise operations | Flags read better as a set; device formats belong in their package | `Set<Enum>`; question 26 |
-| Exchange rates | Outside data with a time and a source | A provider package |
+| Bitwise operations | Flags read better as a set; device formats belong in their package | `Set<Enum>`; question 27 |
+| Fetching exchange rates | Outside data with a time and a source | A provider package; `money.convert` applies a rate the app holds |
 | Gender, sex at birth | Contested, and personal data | The app's own type, marked sensitive (area 15) |
 | CMYK and print colour | Needs a colour profile | A package on the standard `Colour` |
 | Training models | Needs GPUs, datasets and long jobs | A package or an outside service |
@@ -1353,7 +1355,7 @@ and second ways every one of them has.
   five page examples (area 2's `work_email(text:)`, areas 7's and 8's `var
   text: Memo`, area 9's `edit_note(text:)`, area 16's `search_todos(text:)`)
   and about ten Jadpo snippets in crate tests; for `range`, area 10's
-  `deliveries_in(range:)` query; all renamed in 5.5 (question 29).
+  `deliveries_in(range:)` query; all renamed in 5.5 (question 30).
 - **Area 2:** `collection.` becomes `list.` if question 6 holds (below); the 235 new standard
   types, `EncryptionKey` and `PasswordCheck` become built-in names, and the
   page and example types that reuse one are renamed (question 3 lists
@@ -1654,31 +1656,89 @@ Richard's points first, then the first draft's remaining questions. The vocabula
     own, added once you agree: **"Cross-field rules" `opus · high`** (area
     2) after 5.5, **"Aggregate queries" `opus · high`** (area 6) after 5.6,
     and keys held as data after encrypted fields (area 15).
-22. **Is text counted and cut in code points?** *Recommendation:* yes, as
+22. **Closed value sets are enums?** Sub-choices:
+    - The rule: *recommendation:* a standard type is a built-in enum
+      when its list is closed, published by an authority and rarely
+      changes, as `Locale`, `Zone` and `Weekday` already are (area 10):
+      the 22 marked "(enum)" in the standard types table, among them
+      `Country` (ISO 3166-1), `Currency` (ISO 4217), `Language` (ISO
+      639), `Script` (ISO 15924), `HttpMethod` and `CardBrand`. A huge or
+      fast-changing list stays text with a `pattern:`, checked against its
+      list where "Groups with the baseline only" says so: `IataAirport`,
+      `PostalCode`, `HsCode`, `UnLocode`, `Icd10Code`, `SpdxLicence`,
+      `Emoji`. `HttpStatus` stays a number, since its registry is open by
+      design (an unknown code is still a status), and `CallingCode` text,
+      since its codes are digits.
+    - `Subdivision` (ISO 3166-2, about 5,000 codes, a few changes a
+      year): *recommendation:* an enum. Validating an address needs the
+      list anyway ("Groups with the baseline only"), CLDR names each
+      subdivision, its changes arrive with releases as the time-zone
+      database's do, and a withdrawn code stays readable (below).
+    - Variants in code: *recommendation:* the code in lower case with `_`
+      for `-`, as `Locale` writes them: `Country.gb`, `Currency.gbp`,
+      `Subdivision.gb_eng`. A code that is a reserved word (area 1) takes
+      a trailing `_`: `Country.in_` for India, `Language.or_` for Odia;
+      the wire still writes `IN` and `or`.
+    - Text to enum at a boundary: *recommendation:* automatic, in a
+      request, JSON, a CSV cell or a setting, as `Locale` is decoded: an
+      unknown code is `invalid_value` naming the field, rule `variant`.
+    - Text to enum mid-program: *recommendation:* the contract's `parse`,
+      `attempt text.parse(raw, as: Country) { invalid: UnknownCountry }`;
+      `text.from(Country.gb)` gives `GB` back.
+    - Case: *recommendation:* `parse` and boundary decoding ignore case
+      and write the canonical case back, as a `Locale` setting is already
+      read: no two codes in these lists differ only by case, BCP 47 tags
+      are case-insensitive, and `gb` typed into a form plainly means `GB`.
+      Spaces and other spellings are still refused.
+    - Other code systems: *recommendation:* a `form:` option on the
+      contract's calls, not a function per form, since functions live in
+      namespaces and a type carries none: `text.parse("GBR", as: Country,
+      form: CodeForm.alpha3)`, `form: CodeForm.numeric` for `826`, and
+      `text.from(country, form: CodeForm.alpha3)` to write one. The type's
+      own code is the default, and a form the type has no data for is a
+      compile error.
+    - Showing it: *recommendation:* `text.format(country, locale:)` gives
+      the CLDR name in that locale ("Royaume-Uni"), and `Country.all`
+      lists every variant, in the enum's canonical order, for a dropdown.
+      `.all` exists on every enum whose variants carry no data, so `all`
+      can't name a variant; no page or example enum has one.
+    - Matching names ("England", "UK"): *recommendation:* left out, not
+      in `parse` and not as a separate operation. Which name means which
+      code is a judgement (England is `Subdivision.gb_eng`, not a
+      country), differs by locale, and a list of candidates still needs a
+      person to pick one, which a dropdown from `.all` already asks for. A
+      package can offer it if an import needs it.
+    - Retired codes: *recommendation:* each enum's data ships with the
+      compiler and is pinned in `jadpo-value`, as the time-zone database
+      is. A code its authority withdraws stays a variant, marked retired,
+      so stored data and old messages still decode; new code that writes
+      it is the declinable error `type.variant_retired` (area 1's question
+      11), whose reason says why, such as reading old records.
+23. **Is text counted and cut in code points?** *Recommendation:* yes, as
     Python and PostgreSQL do; graphemes left out.
-23. **Does `hash.sha256` give `Bytes`?** *Recommendation:* yes, written as
+24. **Does `hash.sha256` give `Bytes`?** *Recommendation:* yes, written as
     text by `encoding`.
-24. **Does `Rounding` gain `down`, toward zero?** *Recommendation:* yes,
+25. **Does `Rounding` gain `down`, toward zero?** *Recommendation:* yes,
     with SQL form `trunc`; `floor`, `ceiling` and `half_down` stay out
     until amounts below zero need them.
-25. **Is `text.slug` ASCII-only, and does text sort in code points unless
+26. **Is `text.slug` ASCII-only, and does text sort in code points unless
     `locale:` says otherwise?** *Recommendation:* yes to both, matching
     URLs and queries.
-26. **No logic gates beyond `and`, `or` and `not`, and bitwise
+27. **No logic gates beyond `and`, `or` and `not`, and bitwise
     operations as a `bits` namespace?** *Recommendation:* no gates added:
     exclusive or on `Bool` is `!=`, and any other gate is a one-line
     function. No `bits`, for now. No scenario but device payloads needs them, and those decode
     in their provider package; flags are a `Set` of an enum. If a protocol
     package needs them, six operations on `Int` fit without changing
     anything else.
-27. **Are SQL forms used by backfills, and later by aggregate queries?**
+28. **Are SQL forms used by backfills, and later by aggregate queries?**
     *Recommendation:* backfills in 5.6; aggregate queries as a new area 6
     chunk after it, using the same SQL forms, which also gives reports
     their `lower` (where a form exists) and time buckets.
-28. **Does the table record `at_most_length_of`?** *Recommendation:* yes,
+29. **Does the table record `at_most_length_of`?** *Recommendation:* yes,
     for `trim`, `slice`, `keep_*` and `drop_*` only; `lower` and `upper`
     can lengthen text (`ß` becomes `SS`).
-29. **Every standard namespace reserved, `locale` included?** Area 1
+30. **Every standard namespace reserved, `locale` included?** Area 1
     reserves standard-library namespaces
     (`semantic.standard_namespace_reserved`), so each namespace this page
     adds takes a word from declarations, domains, libraries, parameters
@@ -1716,7 +1776,7 @@ first; each group of types then arrives with its baseline and its extras.
   operations waiting on them; `range` reserved and area 10's
   `deliveries_in(range:)` renamed.
 - **5.5d Numbers** `opus · high`: the 8 new `integer` and `decimal`
-  operations; `scale:` written out; `Rounding.down` if question 24 says
+  operations; `scale:` written out; `Rounding.down` if question 25 says
   so.
 - **5.5e Decimal maths** `opus · high`, if question 18 holds: the eight
   correctly rounded operations, tested against reference values.

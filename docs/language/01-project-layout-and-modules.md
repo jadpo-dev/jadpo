@@ -2228,6 +2228,7 @@ migration workflow (area 5). The layout only reserves their folders.
      | `library.similar_exists` | 1 | Two helpers can differ on purpose |
      | `constant.similar_exists` | 3 | Two constants can share a value by coincidence (a VAT rate and a fee) |
      | `type.standard_exists` (proposed) | 19 | A shape can match a standard type by chance |
+     | `type.variant_retired` (proposed) | 19 | Code that reads old records names a withdrawn code on purpose |
      | A personal field nothing reads | 15 | Kept for a legal reason and read only by export |
      | Rate limits counted in memory | 16 | One instance, by design |
      | An email that would fail the deliverability checks | 16 | An image-only notice can be deliberate |
