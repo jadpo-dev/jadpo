@@ -2906,15 +2906,14 @@ impl<'a> Reader<'a> {
 
 // --- helpers -------------------------------------------------------------------
 
-/// Field `field` of an `InstantRange`, `start` or `end`, by its type.
+/// Field `field` of a standard object type (an `InstantRange`'s `start`
+/// or `end`), by its type.
 fn range_field(ty: &Ty, field: &str) -> Option<Ty> {
     match ty.strip_nullable() {
-        Ty::Opaque(name, args) if name == jadpo_std::INSTANT_RANGE && args.is_empty() => {
-            jadpo_std::INSTANT_RANGE_FIELDS
-                .iter()
-                .find(|(name, _)| *name == field)
-                .map(|(_, builtin)| Ty::Prim(*builtin))
-        }
+        Ty::Opaque(name, args) if args.is_empty() => crate::types::standard_fields(name)?
+            .iter()
+            .find(|f| f.name == field)
+            .map(|f| f.declared.clone()),
         _ => None,
     }
 }

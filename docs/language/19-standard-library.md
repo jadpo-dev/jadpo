@@ -382,7 +382,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `CalendarDate`, `Duration`, `Email`, `FileType`, `Instant`, `InstantRange`, `IpAddress`, `Locale`, `Range`, `Url`, `Uuid`, `Weekday`, `Zone`, `ZonedTime` |
+| 0.1.0 | `CalendarDate`, `CalendarPeriod`, `DateRange`, `Duration`, `Email`, `FileType`, `Instant`, `InstantRange`, `IpAddress`, `IsoWeek`, `LocalDateTime`, `LocalTime`, `Locale`, `Month`, `Quarter`, `Range`, `Url`, `UtcOffset`, `Uuid`, `Weekday`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under

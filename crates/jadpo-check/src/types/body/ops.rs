@@ -78,6 +78,17 @@ fn verb(op: &str) -> &'static str {
 }
 
 impl Body<'_> {
+    /// Whether `ty` is a standard object type its data entry orders
+    /// (`LocalTime`, `YearMonth`, area 19), compared part by part.
+    pub(super) fn ordered_standard(&self, ty: &Ty) -> bool {
+        match self.table.structure(ty) {
+            Ty::Opaque(name, args) if args.is_empty() => {
+                jadpo_std::standard_type(&name).is_some_and(|entry| entry.ordered)
+            }
+            _ => false,
+        }
+    }
+
     fn operand(&mut self, expr: &Expr) -> Operand {
         if is_literal(expr) {
             Operand::Literal(Const::from_expr(expr))
@@ -428,6 +439,7 @@ impl Body<'_> {
             } else {
                 match self.rep(operand) {
                     Some(prim) if ordered(prim) => None,
+                    _ if matches!(operand, Operand::Value(ty) if self.ordered_standard(ty)) => None,
                     Some(Prim::ZonedTime) => Some((
                         format!("{} has no order of its own", capital(&shown)),
                         format!("this is {shown}"),

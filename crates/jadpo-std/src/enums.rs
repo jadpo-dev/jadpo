@@ -107,6 +107,25 @@ std_enum! {
 }
 
 std_enum! {
+    /// A month of the year (area 19, "Time and calendar additions"),
+    /// January first, as ISO 8601 numbers them from 1.
+    Month: "Month" {
+        January: "january",
+        February: "february",
+        March: "march",
+        April: "april",
+        May: "may",
+        June: "june",
+        July: "july",
+        August: "august",
+        September: "september",
+        October: "october",
+        November: "november",
+        December: "december",
+    }
+}
+
+std_enum! {
     /// The way a locale's text runs (area 10, "Locales"): what `locale.direction`
     /// gives. Its wording, for a template's `dir=` attribute, is `ltr` and
     /// `rtl`.
@@ -418,6 +437,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (TextFormat::NAME, TextFormat::NAMES.to_vec()),
         (UuidVersion::NAME, UuidVersion::NAMES.to_vec()),
         (Weekday::NAME, Weekday::NAMES.to_vec()),
+        (Month::NAME, Month::NAMES.to_vec()),
         (TextDirection::NAME, TextDirection::NAMES.to_vec()),
         (TranslationReview::NAME, TranslationReview::NAMES.to_vec()),
         (Dst::NAME, Dst::NAMES.to_vec()),
@@ -466,6 +486,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         TextFormat::NAME => position(TextFormat::NAMES),
         UuidVersion::NAME => position(UuidVersion::NAMES),
         Weekday::NAME => position(Weekday::NAMES),
+        Month::NAME => position(Month::NAMES),
         TextDirection::NAME => position(TextDirection::NAMES),
         TranslationReview::NAME => position(TranslationReview::NAMES),
         Dst::NAME => position(Dst::NAMES),

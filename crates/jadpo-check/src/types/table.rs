@@ -723,7 +723,15 @@ pub trait TypeView {
     /// The field `owner.path`: an object's or entity's field, or a payload
     /// field `Enum.variant.field`.
     fn field(&self, host: &str, path: &[String]) -> Option<&FieldDef> {
-        match (self.def(host)?, path) {
+        let Some(def) = self.def(host) else {
+            // A standard object type's field (area 19), from its data
+            // entry: `LocalTime.hour`, a whole number from 0 to 23.
+            return match path {
+                [name] => standard_fields(host)?.iter().find(|f| f.name == *name),
+                _ => None,
+            };
+        };
+        match (def, path) {
             (Def::Fields { fields, .. }, [name]) => fields.iter().find(|f| f.name == *name),
             (Def::Enum { variants }, [variant, name]) => variants
                 .iter()
@@ -1096,5 +1104,63 @@ pub trait TypeView {
         }
         let theirs: BTreeSet<Ty> = self.ancestors(b).into_iter().skip(1).collect();
         self.ancestors(a).iter().skip(1).any(|t| theirs.contains(t))
+    }
+}
+
+/// The fields of the standard object type `name` (area 19), from its data
+/// entry, or `None` when it isn't one: each built on its built-in type, a
+/// whole number with its range as the field's own rules (`LocalTime`'s
+/// `hour`, from 0 to 23), or another standard type (`LocalDateTime`'s
+/// `time`).
+pub fn standard_fields(name: &str) -> Option<&'static [FieldDef]> {
+    static FIELDS: std::sync::OnceLock<BTreeMap<&'static str, Vec<FieldDef>>> =
+        std::sync::OnceLock::new();
+    FIELDS
+        .get_or_init(|| {
+            jadpo_std::STANDARD_TYPES
+                .iter()
+                .filter_map(|entry| match entry.holds {
+                    jadpo_std::standard::Holds::Object(fields) => Some((
+                        entry.name,
+                        fields
+                            .iter()
+                            .map(|(field, part)| standard_field(field, *part))
+                            .collect(),
+                    )),
+                    _ => None,
+                })
+                .collect()
+        })
+        .get(name)
+        .map(Vec::as_slice)
+}
+
+fn standard_field(name: &str, part: jadpo_std::Part) -> FieldDef {
+    let whole = |n: i64| jadpo_std::Num {
+        mantissa: i128::from(n),
+        scale: 0,
+    };
+    let (declared, rules) = match part {
+        jadpo_std::Part::Of(builtin) => (Ty::Prim(builtin), Rules::default()),
+        jadpo_std::Part::Whole(min, max) => (
+            Ty::Prim(Prim::Int),
+            Rules {
+                min: Some(whole(min)),
+                max: Some(whole(max)),
+                ..Rules::default()
+            },
+        ),
+        jadpo_std::Part::Standard(other) => (Ty::Opaque(other.to_string(), Vec::new()), Rules::default()),
+    };
+    FieldDef {
+        name: name.to_string(),
+        declared,
+        rules,
+        optional: false,
+        default: None,
+        header: None,
+        copied: false,
+        replaces: None,
+        generated: false,
     }
 }

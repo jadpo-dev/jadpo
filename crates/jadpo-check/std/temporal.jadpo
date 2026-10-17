@@ -48,6 +48,11 @@ public library temporal {
     /// The month holding `date` in `zone`.
     function month_bounds(date: CalendarDate, zone: Zone) -> InstantRange {}
 
+    /// Whole years, months and days from `start` to `end`, so `start`
+    /// plus the period is `end`; each part negative when `end` is
+    /// earlier.
+    function period_between(start: CalendarDate, end: CalendarDate) -> CalendarPeriod {}
+
     /// The year holding `date` in `zone`.
     function year_bounds(date: CalendarDate, zone: Zone) -> InstantRange {}
 

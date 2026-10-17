@@ -159,16 +159,39 @@ impl Types {
         name: &str,
         fields: &[(&str, jadpo_std::Builtin)],
     ) -> ShapeId {
+        let fields: Vec<(&str, TypeRef)> = fields
+            .iter()
+            .map(|(field, builtin)| (*field, TypeRef::Builtin(*builtin)))
+            .collect();
+        self.typed_shape(name, &fields)
+    }
+
+    /// The shape of a standard object type from its data entry's parts
+    /// (area 19): each field the type its part is built on, or the
+    /// standard type it holds.
+    pub(crate) fn standard_shape(
+        &mut self,
+        name: &str,
+        fields: &[(&str, jadpo_std::Part)],
+    ) -> ShapeId {
+        let fields: Vec<(&str, TypeRef)> = fields
+            .iter()
+            .map(|(field, part)| (*field, part_type(*part)))
+            .collect();
+        self.typed_shape(name, &fields)
+    }
+
+    fn typed_shape(&mut self, name: &str, fields: &[(&str, TypeRef)]) -> ShapeId {
         let key = Key::new(Kind::Type, name);
         if let Some(id) = self.shape_ids.get(&key) {
             return *id;
         }
         let fields = fields
             .iter()
-            .map(|(field, builtin)| FieldPlan {
+            .map(|(field, ty)| FieldPlan {
                 key: format!("field {name}.{field}"),
                 name: (*field).to_string(),
-                validator: self.validator_id(&TypeRef::Builtin(*builtin)),
+                validator: self.validator_id(ty),
                 absent: None,
                 omittable: false,
                 none_left_out: false,
@@ -195,7 +218,7 @@ impl Types {
         let entry = jadpo_std::standard_type(key.name())?;
         match entry.holds {
             jadpo_std::standard::Holds::Object(fields) => {
-                Some(self.fixed_shape(entry.name, fields))
+                Some(self.standard_shape(entry.name, fields))
             }
             jadpo_std::standard::Holds::Range => Some(self.range_shape()),
             _ => None,
@@ -571,5 +594,17 @@ impl Types {
             message: detail.message.clone(),
             fields: self.fields(key, 0),
         })
+    }
+}
+
+/// The type a standard object type's field holds (area 19): what its part
+/// is built on, or the standard type it is.
+pub(crate) fn part_type(part: jadpo_std::Part) -> TypeRef {
+    match part.builtin() {
+        Some(builtin) => TypeRef::Builtin(builtin),
+        None => match part {
+            jadpo_std::Part::Standard(name) => TypeRef::Std(name.to_string(), Vec::new()),
+            _ => TypeRef::Builtin(jadpo_std::Builtin::Unit),
+        },
     }
 }

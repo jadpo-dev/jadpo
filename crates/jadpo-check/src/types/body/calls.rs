@@ -1157,6 +1157,7 @@ impl Body<'_> {
                 "Give a key that is never `none`".to_string(),
             ),
             Some(prim) if super::ops::ordered(prim) || prim == Prim::Text => return,
+            _ if self.ordered_standard(key) => return,
             Some(Prim::ZonedTime) => (
                 format!("`{written}`'s key gives `{key}`, which has no order of its own"),
                 "A `ZonedTime` is an instant and the zone it is seen in, and two in different zones have no one order; their instants do.".to_string(),

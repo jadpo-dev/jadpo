@@ -93,6 +93,13 @@ pub fn add(a: &Value, b: &Value) -> Result<Value, Fault> {
         }
         (Value::Duration(x), Value::Duration(y)) => int_add(*x, *y).map(Value::Duration),
         (Value::Text(x), Value::Text(y)) => Ok(Value::text(&format!("{x}{y}"))),
+        // A date moved by a period, and two periods added part by part
+        // (area 19, the standard operator table).
+        (Value::Date(day), period) if crate::calendar::is_period(period) => {
+            crate::calendar::add_period(*day, crate::calendar::period_parts(period)?)
+                .map(Value::Date)
+        }
+        (a, b) if crate::calendar::is_period(a) => crate::calendar::combine(a, b, false),
         _ => {
             let (x, y) = decimals(a, b).ok_or(Fault::Shape)?;
             decimal_result(x.checked_add(y))
@@ -108,6 +115,11 @@ pub fn subtract(a: &Value, b: &Value) -> Result<Value, Fault> {
         (Value::Instant(at), Value::Duration(by)) => moved(at.checked_sub(*by)),
         (Value::Instant(x), Value::Instant(y)) => int_subtract(*x, *y).map(Value::Duration),
         (Value::Duration(x), Value::Duration(y)) => int_subtract(*x, *y).map(Value::Duration),
+        (Value::Date(day), period) if crate::calendar::is_period(period) => {
+            crate::calendar::subtract_period(*day, crate::calendar::period_parts(period)?)
+                .map(Value::Date)
+        }
+        (a, b) if crate::calendar::is_period(a) => crate::calendar::combine(a, b, true),
         _ => {
             let (x, y) = decimals(a, b).ok_or(Fault::Shape)?;
             decimal_result(x.checked_sub(y))
@@ -124,6 +136,10 @@ fn moved(to: Option<i64>) -> Result<Value, Fault> {
 pub fn multiply(a: &Value, b: &Value) -> Result<Value, Fault> {
     match (a, b) {
         (Value::Int(x), Value::Int(y)) => int_multiply(*x, *y).map(Value::Int),
+        // A period's parts each multiplied (area 19).
+        (period, Value::Int(n)) if crate::calendar::is_period(period) => {
+            crate::calendar::times(period, *n)
+        }
         _ => {
             let (x, y) = decimals(a, b).ok_or(Fault::Shape)?;
             decimal_result(x.checked_mul(y))
@@ -181,6 +197,15 @@ pub fn compare(a: &Value, b: &Value) -> Option<Ordering> {
             Some(x.cmp(y))
         }
         (Value::Date(x), Value::Date(y)) => Some(x.cmp(y)),
+        // A standard type its data entry orders, held as a record of its
+        // parts (`LocalTime`, `YearMonth`): field by field in declared
+        // order, which is the canonical order (area 19).
+        (Value::Record(x), Value::Record(y))
+            if x.ty == y.ty
+                && jadpo_std::standard_type(&x.ty).is_some_and(|entry| entry.ordered) =>
+        {
+            Some(crate::order::compare(a, b))
+        }
         _ => decimals(a, b).map(|(x, y)| x.cmp(&y)),
     }
 }

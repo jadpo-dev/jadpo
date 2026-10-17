@@ -85,9 +85,14 @@ fn every_stub_agrees_with_its_data_entry() {
                     .collect();
                 let expected: Vec<(String, String)> = fields
                     .iter()
-                    .map(|(name, builtin): &(&str, Builtin)| {
+                    .map(|(name, part): &(&str, jadpo_std::Part)| {
+                        let written = match (part.builtin(), part) {
+                            (Some(builtin), _) => builtin.name(),
+                            (None, jadpo_std::Part::Standard(other)) => other,
+                            _ => "",
+                        };
                         let ty = jadpo_check::types::TypeRef::Path(
-                            vec![builtin.name().to_string()],
+                            vec![written.to_string()],
                             Vec::new(),
                         );
                         ((*name).to_string(), format!("{:?}", Some(ty)))

@@ -87,6 +87,113 @@ pub fn weekday(ordinal: u32, tag: &str) -> Result<String, Fault> {
     super::format(moment, tag, &spec)
 }
 
+/// A month's stand-alone name in full (`FormatKey::MonthName`):
+/// "October", from 0 for January.
+pub fn month(ordinal: u32, tag: &str) -> Result<String, Fault> {
+    let month = i64::from(ordinal) + 1;
+    let day = jadpo_std::epoch_day(2026, month, 1).ok_or(Fault::Shape)?;
+    shown_parts(day, &[(jadpo_std::Component::Month, jadpo_std::ComponentStyle::Long)], tag)
+}
+
+/// A `YearMonth` or a `Year` in CLDR's pattern for the parts it has
+/// (`FormatKey::YearMonth`, `FormatKey::Year`): "October 2026", "2026".
+pub fn year_month(value: &crate::Value, tag: &str) -> Result<String, Fault> {
+    let crate::Value::Record(record) = value else {
+        return Err(Fault::Shape);
+    };
+    let year = match record.get("year") {
+        Some(crate::Value::Int(year)) => *year,
+        _ => return Err(Fault::Shape),
+    };
+    let mut parts = vec![(
+        jadpo_std::Component::Year,
+        jadpo_std::ComponentStyle::Numeric,
+    )];
+    let month = match record.get("month") {
+        Some(crate::Value::Int(month)) => {
+            parts.push((jadpo_std::Component::Month, jadpo_std::ComponentStyle::Long));
+            *month
+        }
+        _ => 1,
+    };
+    let day = jadpo_std::epoch_day(year, month, 1).ok_or(Fault::Shape)?;
+    shown_parts(day, &parts, tag)
+}
+
+/// A day shown by a declared format of `parts`.
+fn shown_parts(
+    day: i32,
+    parts: &[(jadpo_std::Component, jadpo_std::ComponentStyle)],
+    tag: &str,
+) -> Result<String, Fault> {
+    let spec = jadpo_std::TimeFormatSpec::Components(parts.to_vec());
+    let moment = super::Moment {
+        date: day,
+        clock: 0,
+        zone: None,
+    };
+    super::format(moment, tag, &spec)
+}
+
+/// A `UtcOffset` in CLDR's localized GMT format, in full
+/// (`FormatKey::OffsetName`): "GMT+01:00", "GMT+00:00".
+pub fn offset(value: &crate::Value, tag: &str) -> Result<String, Fault> {
+    let minutes = match value {
+        crate::Value::Record(record) => match record.get("minutes") {
+            Some(crate::Value::Int(minutes)) => *minutes,
+            _ => return Err(Fault::Shape),
+        },
+        _ => return Err(Fault::Shape),
+    };
+    let reader = locale_of(tag)?;
+    let seconds = i32::try_from(minutes * 60).map_err(|_| Fault::Shape)?;
+    let offset = icu_time::zone::UtcOffset::try_from_seconds(seconds).map_err(|_| Fault::Shape)?;
+    let formatter = NoCalendarFormatter::try_new(
+        (&reader).into(),
+        icu_datetime::fieldsets::zone::LocalizedOffsetLong,
+    )
+    .map_err(|_| Fault::Shape)?;
+    Ok(formatter.format(&offset).write_to_string().into_owned())
+}
+
+/// A `CalendarPeriod` in its units, written out in full
+/// (`FormatKey::PeriodUnits`): "1 year, 2 months, 10 days", each part that
+/// isn't zero with its sign, joined as the locale joins a list of units;
+/// nothing at all is "0 days".
+pub fn period((years, months, days): (i64, i64, i64), tag: &str) -> Result<String, Fault> {
+    let locale = locale_of(tag)?;
+    let mut options = UnitsFormatterOptions::default();
+    options.width = Width::Long;
+    type UnitOf = fn() -> icu_experimental::measure::category::CategorizedMeasureUnit<Unit>;
+    let one = |amount: i64, unit: UnitOf| -> Result<String, Fault> {
+        // CLDR's data sorts units into sets by use; a month and a year
+        // aren't in the core one.
+        let formatter = CategorizedFormatter::try_new_core((&locale).into(), unit(), options)
+            .or_else(|_| CategorizedFormatter::try_new_extended((&locale).into(), unit(), options))
+            .or_else(|_| CategorizedFormatter::try_new_outlier((&locale).into(), unit(), options))
+            .map_err(|_| Fault::Shape)?;
+        let amount = fixed_decimal::Decimal::from(amount);
+        Ok(formatter
+            .format_fixed_decimal(&amount)
+            .write_to_string()
+            .into_owned())
+    };
+    let mut shown: Vec<String> = Vec::new();
+    let units: [(i64, UnitOf); 3] = [(years, Unit::year), (months, Unit::month), (days, Unit::day)];
+    for (amount, unit) in units {
+        if amount != 0 {
+            shown.push(one(amount, unit)?);
+        }
+    }
+    if shown.is_empty() {
+        shown.push(one(0, Unit::day)?);
+    }
+    let mut list = ListFormatterOptions::default();
+    list.length = Some(ListLength::Wide);
+    let joined = ListFormatter::try_new_unit((&locale).into(), list).map_err(|_| Fault::Shape)?;
+    Ok(joined.format(shown.iter()).write_to_string().into_owned())
+}
+
 /// A locale's display name (`FormatKey::LocaleName`): "British English"
 /// for `en-GB`, in the reader's locale.
 pub fn locale(shown: &str, tag: &str) -> Result<String, Fault> {
@@ -112,6 +219,15 @@ pub fn zone(iana: &str, tag: &str) -> Result<String, Fault> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_time_group_s_names_come_from_cldr() {
+        assert_eq!(period((0, 0, 10), "en-GB"), Ok("10 days".to_string()));
+        assert_eq!(period((0, 2, 0), "en-GB"), Ok("2 months".to_string()));
+        assert_eq!(period((1, 0, 0), "en-GB"), Ok("1 year".to_string()));
+        assert_eq!(period((1, 2, 10), "en-GB"), Ok("1 year, 2 months, 10 days".to_string()));
+        assert_eq!(month(9, "en-GB"), Ok("October".to_string()));
+    }
 
     #[test]
     fn names_come_from_cldr() {

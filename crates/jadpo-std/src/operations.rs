@@ -239,6 +239,7 @@ pub enum Op {
     TemporalMinute,
     TemporalMonth,
     TemporalMonthBounds,
+    TemporalPeriodBetween,
     TemporalResolve,
     TemporalWeekBounds,
     TemporalWeekday,
@@ -1469,6 +1470,15 @@ pub const OPERATIONS: &[Operation] = &[
         &[param("date", DATE), param("zone", ZONE)],
         RANGE,
         "temporal::month_bounds",
+    ),
+    // Whole years, months and days from one date to another (area 19,
+    // "Time and calendar additions").
+    temporal(
+        Op::TemporalPeriodBetween,
+        "period_between",
+        &[param("start", DATE), param("end", DATE)],
+        Kind::Std(crate::standard::CALENDAR_PERIOD),
+        "temporal::period_between",
     ),
     Operation {
         conditions: &[ON_DST],
