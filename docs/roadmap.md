@@ -672,7 +672,7 @@ reference only).
   construction, `Percentage(ratio)`, 0.25 → 25%. Done when the quantity
   examples pass, `1km == 1000metre`, and a bare number or a mixed kind is
   a compile error with a checked example.
-- [ ] **5.5k Time and calendar** `opus · high` (area 19, "Time and
+- [x] **5.5k Time and calendar** `opus · high` (area 19, "Time and
   calendar additions"): ten of the 13 new time types (`LocalTime`,
   `LocalDateTime`, `Month`, `YearMonth`, `Year`, `Quarter`, `IsoWeek`,
   `UtcOffset`, `DateRange`, `CalendarPeriod`), `CalendarPeriod`'s

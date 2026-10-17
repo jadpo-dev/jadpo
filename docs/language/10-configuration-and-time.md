@@ -730,9 +730,11 @@ not running this version: 1 error, waiting for a save that fixes them
 | `Weekday` | A built-in enum | `Weekday.monday` | `"monday"` |
 
 - Store `Instant`. Use `CalendarDate` only for facts that really are dates.
-  There is no time of day on its own and no date-time without a zone:
-  `ZonedTime` (renamed from `Time`, question 5) holds an instant and the
-  zone it is seen in.
+  There is no time of day on its own and no date-time without a zone
+  among these: `ZonedTime` (renamed from `Time`, question 5) holds an
+  instant and the zone it is seen in. Area 19's `LocalTime` and
+  `LocalDateTime` are for what has no zone, such as a shop's opening
+  time, and are never a moment until a zone is chosen.
 - `Instant` keeps milliseconds: the precision JavaScript clients, SQLite and
   PostgreSQL all share. A literal with microseconds is rejected, and
   writes to PostgreSQL's microsecond column are always whole milliseconds
@@ -976,8 +978,8 @@ test "a month on from the 31st needs a day the month has" {
 ```
 
 `at:` is a clock time written out, `"09:30"` or `"09:30:15"`, checked while
-compiling (`type.temporal_clock_invalid`): there is no time-of-day type, so
-no value holds one. Only a `dst:` written out settles the condition: a `Dst`
+compiling (`type.temporal_clock_invalid`), so no value gives one, not
+even a `LocalTime` (area 19). Only a `dst:` written out settles the condition: a `Dst`
 passed as a value might be `reject`, so the call can still fail. Moving a
 date by months or years can land on a day the month doesn't have (31
 January plus a month): `invalid_day: InvalidDay.last_valid_day` takes the

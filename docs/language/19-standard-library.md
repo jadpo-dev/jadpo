@@ -20,7 +20,7 @@ own features needed. This page collects them, adds what real applications
 keep reaching for, says which gaps in the language block the rest and how
 to close them, and says what is left out on purpose and why.
 
-> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunk 5.5g2: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); and the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2). The rest is built by chunks 5.5h to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
+> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunk 5.5g2, and 5.5k: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2); and ten of the time types, with `CalendarPeriod`'s operator rows and `temporal.period_between` (5.5k). The rest is built by chunks 5.5h to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
 
 | Namespace | Holds | Operations | Decided in |
 |---|---|---|---|
@@ -96,7 +96,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 14 of them built already (bold; `Range<T>` in chunk 5.5c2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: three are built, and question 22 decided the other 22.
+Decided 2026-10-17 (Richard): 247 types, 24 of them built already (bold; `Range<T>` in chunk 5.5c2, ten time types in 5.5k); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: four are built (`Month` in 5.5k), and question 22 decided the other 21.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -116,7 +116,7 @@ exception to the rule.
 | Money, payments, banking (24) | `Money`, `Currency` (enum), `ExchangeRate`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, `PaymentCardNumber`, `MaskedCardNumber`, `CardBrand` (enum), `CardBin`, `CardExpiry`, `PaymentReference`, `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`, `UkAccountNumber`, `BankAccount`, `AbaRoutingNumber`, `Lei`, `Isin` | `money` |
 | Tax and identity numbers (11) | `VatNumber`, `TaxId`, `UkUtr`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin`, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, `NhsNumber` | |
 | Commerce and logistics (20) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, `HsCode`, `Incoterm` (enum), `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` | `units`, `media` |
-| Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), `LocalTime`, `LocalDateTime`, `Month` (enum), `YearMonth`, `Year`, `Quarter`, `IsoWeek`, `UtcOffset`, `DateRange`, **`InstantRange`**, `CalendarPeriod`, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` | `temporal`, `range` |
+| Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), **`LocalTime`**, **`LocalDateTime`**, **`Month`** (enum), **`YearMonth`**, **`Year`**, **`Quarter`**, **`IsoWeek`**, **`UtcOffset`**, **`DateRange`**, **`InstantRange`**, **`CalendarPeriod`**, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` | `temporal`, `range` |
 | Physical quantities (17) | `PhysicalLength`, `Area`, `Volume`, `Angle`, `Mass`, `Pressure`, `Energy`, `Power`, `Temperature`, `TemperatureDifference`, `Speed`, `Frequency`, `Voltage`, `Current`, `Illuminance`, `SoundLevel`, `Concentration` | `units` |
 | Maths and data (8) | `Percentage`, `Ratio`, `Fraction`, **`Range<T>`**, `DataSize`, `Bitrate`, `Vector`, `Embedding` | `range`, `units`; AI area |
 | Health (9) | `BloodType` (enum), `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` (enum) | |
@@ -1047,7 +1047,7 @@ Stored as PostgreSQL's range types (`daterange`, `tstzrange`,
 | `range.intersection(a, b)` | `Range<T>?`, the shared part; `none` when they don't overlap | | `NULLIF(a * b, 'empty')` |
 
 The three operations take a `Range<T>` or an `InstantRange` (chunk
-5.5c2), and `DateRange` with the time types in 5.5k; a call's ranges are
+5.5c2), and a `DateRange` (chunk 5.5k), which holds its end date; a call's ranges are
 all one range type, and a range it gives is that type too. An
 `InstantRange` holds every instant from its start up to, not including,
 its end, so two bookings that meet at the hour don't overlap, and one that
@@ -1667,6 +1667,115 @@ so 31 January plus one month is 28 or 29 February. That is area 10's
 that must refuse instead calls `add_months` with `InvalidDay.reject`.
 A `ZonedTime` takes no `CalendarPeriod` by operator, since it would also
 need a `dst:` choice; it uses `temporal.add_months` and its siblings.
+
+> Built in chunk 5.5k: ten of the 13 new types on the contract, with
+> `CalendarPeriod`'s operator rows, `temporal.period_between` and
+> `DateRange` in the `range` operations; `RecurrenceRule`,
+> `OpeningHours`, `CalendarEvent`, `temporal.occurrences` and
+> `temporal.open_at` are not built yet (chunk 5.5k2), and calling either
+> operation is `toolchain.not_built_yet`. The choices the page didn't
+> make are under "Chosen in chunk 5.5k".
+
+| Type | Fields | Canonical text and JSON | Shown in `en_gb` |
+|---|---|---|---|
+| `LocalTime` | `hour` (0 to 23), `minute`, `second` (0 to 59) | `09:30:00` | by `format:`, a time format: "09:30" |
+| `LocalDateTime` | `date: CalendarDate`, `time: LocalTime` | `2026-10-25T09:30:00` | by `format:`, with no zone: "25 Oct 2026, 09:30:00" |
+| `Month` (enum) | `january` to `december` | `october` | "October" |
+| `YearMonth` | `year` (0 to 9999), `month` (1 to 12) | `2026-10` | "October 2026" |
+| `Year` | `year` (0 to 9999) | `2026` | "2026" |
+| `Quarter` | `year`, `quarter` (1 to 4) | `2026-Q4` | its canonical text |
+| `IsoWeek` | `year`, `week` (1 to 52, or 53) | `2026-W43` | its canonical text |
+| `UtcOffset` | `minutes` (-1080 to 1080) | `+05:30` | "GMT+05:30" |
+| `DateRange` | `start`, `end`, both `CalendarDate`, the end included | `2026-10-01/2026-10-31`; JSON `{ "start", "end" }` | each end by `format:`, a date format |
+| `CalendarPeriod` | `years`, `months`, `days` | `P1Y2M10D` | "1 year, 2 months, 10 days" |
+
+A lease runs for a calendar period from the day it starts, and how long
+someone has lived somewhere is a period between two days, whatever the
+clocks did in between:
+
+```jadpo check project=calendar
+type LeaseDay = CalendarDate {}
+
+type SeenAt = Instant {}
+
+type Lease = Object {
+    starts: LeaseDay
+    term: CalendarPeriod
+}
+
+/// The day a lease ends: its term on from the day it starts, a day past
+/// a month's end becoming that month's last day.
+function lease_end(lease: Lease) -> LeaseDay {
+    return lease.starts + lease.term
+}
+
+/// The day it is in `zone` at `at`.
+function local_day(at: SeenAt, zone: Zone) -> LeaseDay {
+    return LeaseDay(temporal.date(temporal.in_zone(at, zone)))
+}
+
+/// How long someone has lived somewhere, in whole years, months and
+/// days, from the day they moved in to `today`.
+function time_lived(moved_in: LeaseDay, today: LeaseDay) -> CalendarPeriod {
+    return temporal.period_between(moved_in, today)
+}
+
+type Covered = Bool {}
+
+/// Whether `day` is one of the days a lease covers, its last included.
+function covers(days: DateRange, day: LeaseDay) -> Covered {
+    return Covered(range.contains(days, day))
+}
+```
+
+```jadpo check project=calendar file=main.test.jadpo
+test "a period counts calendar days, whatever the clocks do" {
+    var london_spring: LeaseDay = local_day("2026-03-29T00:30:00Z", Zone.europe_london)
+    var london_autumn: LeaseDay = local_day("2026-10-25T23:30:00Z", Zone.europe_london)
+    assert london_spring == LeaseDay("2026-03-29")
+    assert london_autumn == LeaseDay("2026-10-25")
+    assert time_lived(london_spring, london_autumn) == CalendarPeriod {
+        years: 0
+        months: 6
+        days: 26
+    }
+    assert lease_end(
+        Lease {
+            starts: london_spring
+            term: time_lived(london_spring, london_autumn)
+        }
+    ) == london_autumn
+    var new_york_spring: LeaseDay = local_day("2026-03-08T07:30:00Z", Zone.america_new_york)
+    var new_york_autumn: LeaseDay = local_day("2026-11-02T03:30:00Z", Zone.america_new_york)
+    assert new_york_autumn == LeaseDay("2026-11-01")
+    assert text.from(time_lived(new_york_spring, new_york_autumn)) == "P7M24D"
+    assert text.from(time_lived(new_york_autumn, new_york_spring)) == "P-7M-24D"
+}
+
+test "a month on from the 31st is the month's last day" {
+    var lease: Lease = Lease {
+        starts: "2026-01-31"
+        term: CalendarPeriod {
+            years: 0
+            months: 1
+            days: 0
+        }
+    }
+    assert lease_end(lease) == "2026-02-28"
+    assert lease.term * 12 + lease.term == CalendarPeriod {
+        years: 0
+        months: 13
+        days: 0
+    }
+    var days: DateRange = DateRange {
+        start: "2026-01-31"
+        end: "2026-02-28"
+    }
+    assert covers(days, "2026-02-28")
+    assert not covers(days, "2026-03-01")
+    assert text.format(lease.term * 3, locale: Locale.en_gb) == "3 months"
+}
+```
 
 ## Text
 
@@ -3041,6 +3150,38 @@ error: `spacer` may be empty
 check failed: 1 error, 1 file
 ```
 
+### `type.temporal_format_part_missing`
+
+A `LocalTime` is a clock time with no date or zone, and a
+`LocalDateTime` a date and a clock time with no zone, so `text.format`
+shows each only in a format of the parts it has: a format showing a
+date is refused for a `LocalTime`, and one showing a zone for either, as
+`type.temporal_format_requires_time` refuses a clock time for a date
+(area 10). Nothing is made up to fill the part.
+
+```jadpo check project=e-temporal-format-part-missing expect=type.temporal_format_part_missing
+type OpeningSign = PresentationText {}
+
+/// When the shop opens each day, as its sign shows it.
+function opening_sign(opens: LocalTime, shown: Locale) -> OpeningSign {
+    return OpeningSign(text.format(opens, locale: shown, format: TimeFormat.date_time_short))
+}
+```
+
+```text output
+error: `TimeFormat.date_time_short` shows a part `LocalTime` doesn't have
+ --> main.jadpo:5:66
+  |
+5 |     return OpeningSign(text.format(opens, locale: shown, format: TimeFormat.date_time_short))
+  |                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^ shows a date
+  reason: `LocalTime` is a clock time, with no date or zone, so `text.format` can show only the parts it has.
+  next: Use a time format such as `TimeFormat.time_short` (agent)
+  rule: type.temporal_format_part_missing
+  help: docs/language/19-standard-library.html#type-temporal-format-part-missing
+
+check failed: 1 error, 1 file
+```
+
 ## Review
 
 ### Status
@@ -3051,8 +3192,8 @@ check failed: 1 error, 1 file
 | `set.`, `map.`, `range.`; `for` over a set; `[]` as an empty map | Decided 2026-10-17 (question 8); built in 5.5c: the 7 `set` operations, the 8 `map` operations that take no inline function, and the 3 `range` operations on `InstantRange`; built in 5.5c2: `map.filter`, `map.map_values`, and `Range<T>` with open ends, which the `range` operations take |
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
-| `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here, built in 5.5k |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, each group of types in 5.5h to 5.5s |
+| `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, the other two in 5.5k2 |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, ten time types in 5.5k, each group of types in 5.5h to 5.5s |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
 | A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2: `type.standard_clash`, `jadpo fix`'s swap and rename, the editor's swap |
@@ -3546,6 +3687,87 @@ under "Errors").
   `DecodeProblem` as itself, not as a keyed hash, since it never holds a
   value.
 
+### Chosen in chunk 5.5k
+
+- **Split.** `RecurrenceRule`, `OpeningHours` and `CalendarEvent`, with
+  `temporal.occurrences` and `temporal.open_at`, are chunk 5.5k2; their
+  calls are `toolchain.not_built_yet` meanwhile.
+- **The ten types are records of their parts** (`Holds::Object`), as
+  `InstantRange` is, so code reads `at.hour` and `week.year`; nothing new
+  is built into the language. A field is a built-in type, a whole number
+  with a range (`Part::Whole`: `LocalTime`'s `hour` from 0 to 23, a
+  year from 0 to 9999 as a `CalendarDate`'s, `Quarter`'s `quarter`
+  from 1 to 4, `UtcOffset`'s `minutes` within 18 hours), or another
+  standard type (`LocalDateTime`'s `time`). An object literal proves
+  each range as an object's field rules are proved (area 2):
+  `type.invalid_literal` for a literal, `type.field_unproved` for a
+  value, and `LocalTime.hour(raw)` builds one with its `min` and `max`.
+  A rule across fields, an `IsoWeek`'s week 53 in a year with 52, waits
+  for 5.5t, as `InstantRange`'s start after its end does; its text is
+  refused. `Year` is a record of one `year`, since a standard type
+  built on `Int` with rules of its own would need declarations the
+  project doesn't have.
+- **Canonical text** is ISO 8601's, to the second and with nothing
+  optional, and only the form written is read: `09:30:00` (never
+  `09:30`, `24:00:00` or a leap second), `2026-10-25T09:30:00` with no
+  offset, `2026-10`, `2026` in four digits, `2026-W43` (week 53 only in
+  a year that has one), `+05:30` (UTC is `+00:00`, never `Z` or
+  `-00:00`), and `2026-10-01/2026-10-31` for a `DateRange`. A quarter
+  has no ISO 8601 form, so it is `2026-Q4`, upper case. A
+  `CalendarPeriod` writes each part that isn't zero, in the order years,
+  months, days, with its own sign when negative, as PostgreSQL writes an
+  interval (`P1Y-2M3D`), and nothing at all as `P0D`; weeks (`P1W`), a
+  `+` and a written zero part are refused, so a period has one text.
+- **JSON is the canonical text** for each, as a `Duration`'s is
+  (`Codec::Standard`), except a `DateRange`, which is an object of its
+  two dates as `InstantRange` is. **Storage** is that JSON in `jsonb`,
+  as `InstantRange`'s is until objects get columns of their own; the
+  `interval` and `daterange` columns the page names come then.
+- **Order.** `LocalTime`, `LocalDateTime`, `YearMonth`, `Year`,
+  `Quarter` and `IsoWeek` are ordered, part by part in declared order,
+  which is the canonical order; `UtcOffset`, `Month` (an enum, as
+  `Weekday` isn't ordered either), `DateRange` and `CalendarPeriod`
+  aren't. `<` and `sort_by` take the ordered ones.
+- **Shown to people.** `LocalTime` and `LocalDateTime` take `format:`, as
+  the time types do, and only a format of the parts they have:
+  `type.temporal_format_part_missing` (under "Errors") refuses a date
+  for a `LocalTime` and a zone for either, and `zone:` is
+  `type.temporal_option_unused`. A `DateRange` shows each date by a date
+  format, `type.temporal_format_requires_time` refusing a clock time.
+  `Month` is CLDR's stand-alone month name, `YearMonth` and `Year`
+  CLDR's pattern for the parts they have ("October 2026"), `UtcOffset`
+  CLDR's long localized GMT format ("GMT+05:30", "GMT+00:00"), and
+  `CalendarPeriod` CLDR's long unit names joined as a list of units, as
+  a `Duration` is ("1 year, 2 months, 10 days", "0 days", each negative
+  part with its sign). ICU4X has no quarter or week-of-year patterns
+  yet, so `Quarter` and `IsoWeek` are shown as their canonical text.
+- **`Month`'s code is its own name** (`october`), as `Weekday`'s is.
+- **`DateRange`'s shape** for `type.standard_exists` is a first day
+  (`start`, `starts_on` or `start_date`) and a last day (`end`,
+  `ends_on` or `end_date`), each built on `CalendarDate`. In the `range`
+  operations it holds its end: a range whose start is its end holds that
+  day, and two that meet on a day overlap on it. Its fields take values
+  built on `CalendarDate` as an `InstantRange`'s take instants, so a
+  named date type is a mismatch there.
+- **The operator rows.** A date moved by a period keeps the date's own
+  named type, as `Instant + Duration` does (area 10); `date - period`
+  adds the period with every part negated, so 31 March less a month is
+  28 February. The date comes first; `Int * period`, a `Decimal` factor,
+  a `ZonedTime` and `<` on periods are `type.arithmetic_operand` or
+  `type.ordering_operand`. Past the years a date holds is the fault
+  `time_out_of_range`, and a part past 64 bits overflow, a defect.
+- **`temporal.period_between`** counts a month once the end's day of the
+  month reaches the start's, as PostgreSQL's `age` and `java.time` do
+  (30 January to 28 February is `P29D`), takes fewer where clamping would
+  pass the end, and gives the rest as days, so `start + period` is `end`
+  for every pair, every part of one sign. Going backwards it counts from
+  the end, so it isn't always the forward period negated (25 October to
+  29 March is `P-6M-27D`, forward `P6M26D`). Where `age` borrows days
+  from the start's month and adds back past the end (29 January to 1
+  March 2028 is `age`'s 1 month 3 days, here `P1M1D`), its SQL form
+  differs; chunk 5.6, its first user, checks the form against the
+  runtime before relying on it.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -3998,7 +4220,7 @@ first; each group of types then arrives with its baseline and its extras.
   quotient table, `type.unit_required`, and the 3 `units` operations.
 - **5.5k Time and calendar** `opus · high`: ten of the 13 new time
   types, `CalendarPeriod`'s operator rows and `temporal.period_between`.
-  Split on 2026-10-17, the rest is 5.5k2.
+  Built; split on 2026-10-17, the rest is 5.5k2.
 - **5.5k2 Recurrence and opening hours** `opus · high`: `RecurrenceRule`
   expansion (`temporal.occurrences`), `OpeningHours`
   (`temporal.open_at`) and `CalendarEvent`.

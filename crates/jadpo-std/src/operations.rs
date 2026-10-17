@@ -40,8 +40,8 @@ pub enum Kind {
     /// kind is the range type its arguments are.
     Range,
     /// A clock time written as text, `"09:30"`, checked while compiling
-    /// (area 10, "Zones and local times"): there is no time-of-day type,
-    /// so only a literal gives one.
+    /// (area 10, "Zones and local times"): only a literal gives one, not a
+    /// value, a `LocalTime` included.
     Clock,
     /// A time format written out (area 10, "Showing dates and times to
     /// people"): `TimeFormat.date_long` or a declared format's name, which
