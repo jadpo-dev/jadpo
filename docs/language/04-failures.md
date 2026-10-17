@@ -379,6 +379,11 @@ var receipt: Receipt = match payments.charge(order) {
 a write's or an integration call's conditions each need their own arm, and
 `invalid:` in their block is an error (`failure.invalid_outside_construction`).
 
+> Amended 2026-10-17 by area 19 (chunk 5.5g2): a failure mapped from
+> `json.read`'s `mismatch` that declares `problem: DecodeProblem`
+> receives the first problem in that field, so the arm gives every other
+> field and never `problem`; nothing else fills one.
+
 The failure that was mapped is kept as the internal cause of the new one, so
 the log shows both (question 8):
 
