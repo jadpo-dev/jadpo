@@ -18,6 +18,7 @@ mod check;
 mod declared;
 pub mod failures;
 mod language;
+pub mod outstanding;
 pub mod sources;
 
 use jadpo_db::{Db, Project, Symbol};

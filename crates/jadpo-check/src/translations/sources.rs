@@ -129,13 +129,13 @@ pub fn parse(text: &str) -> Result<Vec<Entry>, (usize, String)> {
     match lines.next() {
         Some((_, line)) if line == KIND => {}
         Some((at, line)) if line.starts_with("record translations ") => {
-            return Err((
-                at,
-                "this record was written by a newer Jadpo".to_string(),
-            ));
+            return Err((at, "this record was written by a newer Jadpo".to_string()));
         }
         Some((at, _)) => {
-            return Err((at, "the second line is not `record translations 1`".to_string()));
+            return Err((
+                at,
+                "the second line is not `record translations 1`".to_string(),
+            ));
         }
         None => return Err((1, "the file ends after the header".to_string())),
     }
@@ -237,7 +237,11 @@ pub fn standings<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> St
         return out;
     };
     let path = record_path(&scope);
-    if let Some(record) = project.records(db).iter().find(|record| record.path == path) {
+    if let Some(record) = project
+        .records(db)
+        .iter()
+        .find(|record| record.path == path)
+    {
         out.has_record = true;
         match &record.text {
             Ok(text) => match parse(text) {
@@ -288,7 +292,9 @@ pub fn standings<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> St
                 .iter()
                 .find(|entry| entry.locale == file.tag && entry.member == member.name)
                 .cloned();
-            let stale = recorded.as_ref().is_some_and(|entry| entry.from != default_hash);
+            let stale = recorded
+                .as_ref()
+                .is_some_and(|entry| entry.from != default_hash);
             out.list.push(Standing {
                 scope: scope.clone(),
                 locale,
@@ -312,7 +318,10 @@ pub fn standings<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> St
     // where `jadpo translations missing` lists it instead.
     for standing in &out.list {
         if standing.stale && !standing.in_progress {
-            out.problems.push(stale(standing, subjects.get(&standing.member).map(|s| s.kind)));
+            out.problems.push(stale(
+                standing,
+                subjects.get(&standing.member).map(|s| s.kind),
+            ));
         }
     }
     out
@@ -419,7 +428,9 @@ pub fn review(db: &dyn Db, project: Project) -> Review {
                         match jadpo_std::TranslationReview::from_name(&path[1]) {
                             Some(jadpo_std::TranslationReview::Required) => out.required = true,
                             Some(jadpo_std::TranslationReview::None) => {}
-                            None => out.problems.push(invalid_review(value_span, Some(&path[1]))),
+                            None => out
+                                .problems
+                                .push(invalid_review(value_span, Some(&path[1]))),
                         }
                     }
                     _ => out.problems.push(invalid_review(value_span, None)),
@@ -449,5 +460,96 @@ fn invalid_review(at: Span, variant: Option<&str>) -> Diagnostic {
             .next(format!("Use `TranslationReview.{near}`"))
             .edit(at, format!("TranslationReview.{near}")),
         None => problem.next("Write `review: TranslationReview.required`, or leave `review:` out"),
+    }
+}
+
+/// What a translation's line did when the record was brought up to date.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Change {
+    /// A translation the record had no line for.
+    Recorded,
+    /// A translation whose wording changed since its line was written: its
+    /// line now says it was made from today's default wording, and drops
+    /// its acceptance.
+    Reworded,
+    /// A line for a translation that is gone.
+    Removed,
+    /// A person accepted its wording.
+    Accepted,
+    /// Made from default wording that has changed and not reworded since:
+    /// its line is left as it was, and `accept` leaves it alone.
+    StillStale,
+}
+
+/// The record after `jadpo translations update`, or after `jadpo
+/// translations accept` for the locale `accept` names, and what changed.
+#[derive(Debug)]
+pub struct Updated {
+    pub entries: Vec<Entry>,
+    pub changes: Vec<(String, String, Change)>,
+}
+
+/// Brings a scope's record up to date with its translations.
+///
+/// A translation with no line, or reworded since its line, is recorded as
+/// made from today's default wording (a translation reworded to match a
+/// changed default is the one thing `update` can tell was updated). One
+/// made from wording that has changed and not reworded stays stale, so the
+/// error stays until someone translates it again. Accepting a locale
+/// records the acceptance of everything of its that is not stale.
+pub fn updated(standings: &Standings, accept: Option<&str>) -> Updated {
+    let mut entries = Vec::new();
+    let mut changes = Vec::new();
+    for standing in &standings.list {
+        let mut change = None;
+        let mut entry = match &standing.recorded {
+            None => {
+                change = Some(Change::Recorded);
+                fresh(standing)
+            }
+            Some(recorded) if recorded.wording != standing.wording_hash => {
+                change = Some(Change::Reworded);
+                fresh(standing)
+            }
+            Some(recorded) => {
+                if recorded.from != standing.default_hash {
+                    change = Some(Change::StillStale);
+                }
+                recorded.clone()
+            }
+        };
+        if accept == Some(standing.tag.as_str()) {
+            if entry.from != standing.default_hash {
+                change = Some(Change::StillStale);
+            } else if !entry.accepted {
+                entry.accepted = true;
+                change = Some(Change::Accepted);
+            }
+        }
+        if let Some(change) = change {
+            changes.push((standing.tag.clone(), standing.member.clone(), change));
+        }
+        entries.push(entry);
+    }
+    for gone in &standings.record {
+        if !entries
+            .iter()
+            .any(|entry| entry.locale == gone.locale && entry.member == gone.member)
+        {
+            changes.push((gone.locale.clone(), gone.member.clone(), Change::Removed));
+        }
+    }
+    entries.sort_by(|a, b| (&a.locale, &a.member).cmp(&(&b.locale, &b.member)));
+    changes.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+    Updated { entries, changes }
+}
+
+fn fresh(standing: &Standing) -> Entry {
+    Entry {
+        locale: standing.tag.clone(),
+        member: standing.member.clone(),
+        from: standing.default_hash.clone(),
+        wording: standing.wording_hash.clone(),
+        accepted: false,
     }
 }

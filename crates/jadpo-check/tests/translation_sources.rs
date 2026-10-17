@@ -4,10 +4,10 @@
 //! has changed is an error, unless its locale is in progress, and
 //! `translations: { review: ... }` in `app.jadpo` is read.
 
+use jadpo_check::lookups::Name;
 use jadpo_check::translations::sources::{
     Entry, HEADER, hash, parse, record_path, render, standings,
 };
-use jadpo_check::lookups::Name;
 use jadpo_db::{Database, Layout};
 
 use crate::support;
@@ -32,7 +32,10 @@ fn lines(app: &str, en: &str, fr: &str, record: Option<&str>) -> Vec<String> {
     let db = Database::default();
     let files = files(app, en, fr);
     let path = record_path("greeting");
-    let records: Vec<(&str, &str)> = record.map(|text| (path.as_str(), text)).into_iter().collect();
+    let records: Vec<(&str, &str)> = record
+        .map(|text| (path.as_str(), text))
+        .into_iter()
+        .collect();
     let project = support::project_with_records(&db, Layout::Project, &files, &records);
     jadpo_check::check(&db, project)
         .iter()
@@ -72,7 +75,9 @@ fn a_record_is_written_and_read_back() {
         },
     ];
     let text = render(&entries);
-    assert!(text.starts_with(&format!("{HEADER}\nrecord translations 1\n\ntranslation de_de.hello from ")));
+    assert!(text.starts_with(&format!(
+        "{HEADER}\nrecord translations 1\n\ntranslation de_de.hello from "
+    )));
     assert!(text.ends_with(" accepted\n"), "{text}");
     let mut sorted = entries.clone();
     sorted.reverse();
@@ -86,8 +91,10 @@ fn a_record_the_compiler_cannot_read_is_refused_with_its_line() {
     assert!(parse("").is_err());
     assert!(parse(&format!("{HEADER}\nrecord translations 2\n")).is_err());
     assert_eq!(
-        parse(&format!("{HEADER}\nrecord translations 1\n\ntranslation fr_fr.hello from 1 wording 2\n"))
-            .map_err(|(line, _)| line),
+        parse(&format!(
+            "{HEADER}\nrecord translations 1\n\ntranslation fr_fr.hello from 1 wording 2\n"
+        ))
+        .map_err(|(line, _)| line),
         Err(3)
     );
 }
@@ -109,7 +116,9 @@ fn a_translation_made_from_wording_that_changed_is_stale() {
     let en = EN.replace("Hello,", "Good day,");
     assert_eq!(
         lines(APP, &en, FR, Some(&record)),
-        ["translation.stale `hello` in `fr_fr` was translated from `en_gb` wording that has since changed"]
+        [
+            "translation.stale `hello` in `fr_fr` was translated from `en_gb` wording that has since changed"
+        ]
     );
 }
 
@@ -152,7 +161,10 @@ fn reordering_a_blocks_values_changes_no_hash() {
 fn an_unreadable_record_is_an_error_pointing_at_its_line() {
     let found = lines(APP, EN, FR, Some("not a record\n"));
     assert_eq!(found.len(), 1, "{found:?}");
-    assert!(found[0].starts_with("translation.sources_invalid "), "{found:?}");
+    assert!(
+        found[0].starts_with("translation.sources_invalid "),
+        "{found:?}"
+    );
 }
 
 #[test]
@@ -161,7 +173,11 @@ fn what_is_unaccepted_is_what_is_new_or_changed() {
     let path = record_path("greeting");
     let standing = |record: Option<String>, fr: &str| {
         let files = files(APP, EN, fr);
-        let records: Vec<(&str, &str)> = record.as_deref().map(|text| (path.as_str(), text)).into_iter().collect();
+        let records: Vec<(&str, &str)> = record
+            .as_deref()
+            .map(|text| (path.as_str(), text))
+            .into_iter()
+            .collect();
         let project = support::project_with_records(&db, Layout::Project, &files, &records);
         standings(&db, project, Name::new(&db, "greeting".to_string()))
             .list
@@ -171,7 +187,10 @@ fn what_is_unaccepted_is_what_is_new_or_changed() {
     let new = standing(None, FR);
     assert!(new[0].changed() && !new[0].accepted());
     // Accepted exactly this wording.
-    let accepted = standing(Some(recorded("Hello, {name}.", "Bonjour, {name}.", true)), FR);
+    let accepted = standing(
+        Some(recorded("Hello, {name}.", "Bonjour, {name}.", true)),
+        FR,
+    );
     assert!(!accepted[0].changed() && accepted[0].accepted());
     // Reworded since: changed, so unaccepted though the line says accepted.
     let reworded = standing(
@@ -180,27 +199,44 @@ fn what_is_unaccepted_is_what_is_new_or_changed() {
     );
     assert!(reworded[0].changed() && !reworded[0].accepted());
     // Recorded but not accepted.
-    let waiting = standing(Some(recorded("Hello, {name}.", "Bonjour, {name}.", false)), FR);
+    let waiting = standing(
+        Some(recorded("Hello, {name}.", "Bonjour, {name}.", false)),
+        FR,
+    );
     assert!(!waiting[0].changed() && !waiting[0].accepted());
 }
 
 // --- review in app.jadpo ---------------------------------------------------------------
 
 fn with_review(option: &str) -> String {
-    format!("application {{\n    translations: {{\n        {option}\n    }}\n}}\n\nlocales {{\n    default: Locale.en_gb\n    supported: [Locale.en_gb, Locale.fr_fr]\n}}\n")
+    format!(
+        "application {{\n    translations: {{\n        {option}\n    }}\n}}\n\nlocales {{\n    default: Locale.en_gb\n    supported: [Locale.en_gb, Locale.fr_fr]\n}}\n"
+    )
 }
 
 #[test]
 fn review_can_be_required_or_none() {
-    assert_eq!(lines(&with_review("review: TranslationReview.required"), EN, FR, None), CLEAN);
-    assert_eq!(lines(&with_review("review: TranslationReview.none"), EN, FR, None), CLEAN);
+    assert_eq!(
+        lines(
+            &with_review("review: TranslationReview.required"),
+            EN,
+            FR,
+            None
+        ),
+        CLEAN
+    );
+    assert_eq!(
+        lines(&with_review("review: TranslationReview.none"), EN, FR, None),
+        CLEAN
+    );
 }
 
 #[test]
 fn review_is_read_from_the_application() {
     let db = Database::default();
     let required = with_review("review: TranslationReview.required");
-    let project = support::project_with_records(&db, Layout::Project, &files(&required, EN, FR), &[]);
+    let project =
+        support::project_with_records(&db, Layout::Project, &files(&required, EN, FR), &[]);
     assert!(jadpo_check::translations::sources::review(&db, project).required);
     let project = support::project_with_records(&db, Layout::Project, &files(APP, EN, FR), &[]);
     assert!(!jadpo_check::translations::sources::review(&db, project).required);
@@ -209,7 +245,12 @@ fn review_is_read_from_the_application() {
 #[test]
 fn an_option_review_does_not_take_is_an_error() {
     assert_eq!(
-        lines(&with_review("reviews: TranslationReview.required"), EN, FR, None),
+        lines(
+            &with_review("reviews: TranslationReview.required"),
+            EN,
+            FR,
+            None
+        ),
         ["translation.option_unknown `reviews` isn't an option of `translations`"]
     );
 }
@@ -217,7 +258,12 @@ fn an_option_review_does_not_take_is_an_error() {
 #[test]
 fn a_review_that_is_not_a_translation_review_is_an_error() {
     assert_eq!(
-        lines(&with_review("review: TranslationReview.always"), EN, FR, None),
+        lines(
+            &with_review("review: TranslationReview.always"),
+            EN,
+            FR,
+            None
+        ),
         ["translation.review_invalid `review:` isn't a `TranslationReview`"]
     );
     assert_eq!(

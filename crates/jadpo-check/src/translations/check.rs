@@ -656,18 +656,7 @@ impl Ctx<'_> {
 
     /// Every supported locale not in progress words everything it must.
     fn completeness(&mut self, files: &[&LanguageFile]) {
-        let required: Vec<&Subject> = self
-            .subjects
-            .list
-            .iter()
-            .filter(|subject| !subject.broken)
-            .filter(|subject| match subject.kind {
-                Kind::Message => true,
-                Kind::Enum => files.iter().any(|file| file.member(&subject.key).is_some()),
-                Kind::Failure => self.reachable.contains(&subject.type_name),
-                Kind::Email => false,
-            })
-            .collect();
+        let required = required(self.subjects, files, self.reachable);
         if required.is_empty() {
             return;
         }
@@ -729,6 +718,27 @@ impl Ctx<'_> {
             crate::and_list(&names)
         ))
     }
+}
+
+/// What every supported locale that isn't in progress must word: every
+/// message, an enum once any language file words it, and a failure a route
+/// can answer with.
+pub(super) fn required<'a>(
+    subjects: &'a Subjects,
+    files: &[&LanguageFile],
+    reachable: &std::collections::BTreeSet<String>,
+) -> Vec<&'a Subject> {
+    subjects
+        .list
+        .iter()
+        .filter(|subject| !subject.broken)
+        .filter(|subject| match subject.kind {
+            Kind::Message => true,
+            Kind::Enum => files.iter().any(|file| file.member(&subject.key).is_some()),
+            Kind::Failure => reachable.contains(&subject.type_name),
+            Kind::Email => false,
+        })
+        .collect()
 }
 
 /// A message's wording missing in a language file that exists.

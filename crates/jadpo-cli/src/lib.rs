@@ -21,6 +21,7 @@ mod sql;
 mod suggest;
 mod table;
 mod test;
+mod translations;
 pub mod watch;
 
 pub use run::{Output, Session, run, spinner};

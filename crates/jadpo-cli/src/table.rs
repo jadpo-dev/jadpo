@@ -688,6 +688,61 @@ pub static COMMANDS: &[Command] = &[
         run: commands::declines,
     },
     Command {
+        name: "translations",
+        synonyms: &[],
+        group: "Change safely",
+        summary: "Keep translations up to date",
+        description: "Text the server writes for people is translated in Jadpo itself (area 10). \
+                      `missing` lists, by language file, the wording a locale lacks (and what an \
+                      in-progress locale falls back on), the translations made from default wording \
+                      that has since changed, and, with `translations: { review: \
+                      TranslationReview.required }`, the wording waiting for acceptance. `unused` \
+                      lists the messages no code calls. `update` records, in each translations \
+                      folder's sources.jadpo_record, which default wording each translation was \
+                      made from. `accept` records a person's acceptance of a locale's changed \
+                      wording, and never of a stale translation.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do: missing, unused, update or accept",
+                required: true,
+                values: Values::Fixed(crate::translations::ACTIONS),
+            },
+            Argument {
+                name: "locale",
+                description: "The locale to list or accept, such as fr_fr",
+                required: false,
+                values: Values::Fixed(&[]),
+            },
+        ],
+        flags: &[],
+        examples: &[
+            Example {
+                description: "See what is left to translate",
+                command: "jadpo translations missing",
+            },
+            Example {
+                description: "Record the translations just written",
+                command: "jadpo translations update",
+            },
+            Example {
+                description: "Accept the French wording after reading it",
+                command: "jadpo translations accept fr_fr",
+            },
+            Example {
+                description: "List the messages nothing calls as data for tools",
+                command: "jadpo translations unused --json",
+            },
+        ],
+        arguments_rule: &rule::CLI_TRANSLATIONS_ARGUMENTS,
+        raises: &[
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_NOT_BUILT_YET,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::translations,
+    },
+    Command {
         name: "config",
         synonyms: &[],
         group: "Set up",
