@@ -527,6 +527,14 @@ pub const CALENDAR_PERIOD_FIELDS: [(&str, Part); 3] = [
     ("days", Part::Of(Builtin::Int)),
 ];
 
+/// `RecurrenceRule` (area 19, "Time and calendar additions"), held as its
+/// RFC 5545 text.
+pub const RECURRENCE_RULE: &str = "RecurrenceRule";
+
+/// `OpeningHours` (area 19, "Time and calendar additions"), held as its
+/// OpenStreetMap text and zone.
+pub const OPENING_HOURS: &str = "OpeningHours";
+
 /// `DateRange`: the dates from `start` to `end`, both included (area 19,
 /// "Ranges").
 pub const DATE_RANGE: &str = "DateRange";

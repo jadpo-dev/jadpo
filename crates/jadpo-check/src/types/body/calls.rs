@@ -981,6 +981,7 @@ impl Body<'_> {
         self.divisors(&args, &slots, written);
         if let Some(table) = table {
             self.counts(table, &args, &slots, written);
+            self.bounded(table, &args, &slots, written);
             self.never_empty(table, &args, &slots, written);
         }
         if let Some(table) = table {
@@ -1275,6 +1276,110 @@ impl Body<'_> {
                         param.name
                     ))
                     .next(next),
+            );
+        }
+    }
+
+    /// A whole number within bounds (`temporal.occurrences`' `count`, from 1
+    /// to 1000, area 19), proved as a count's sign is: a literal within
+    /// them, or a value whose type's `min` and `max` are. Anything else is
+    /// `type.mismatch`, as a `scale:` out of its range is.
+    fn bounded(
+        &mut self,
+        table: &jadpo_std::Operation,
+        args: &[ast::Arg],
+        slots: &[Option<usize>],
+        written: &str,
+    ) {
+        for (arg, slot) in args.iter().zip(slots) {
+            let (Some(value), Some(slot)) = (arg.expr(), slot) else {
+                continue;
+            };
+            let Some((param, (low, high))) = table
+                .params
+                .get(*slot)
+                .and_then(|param| Some((param, param.within?)))
+            else {
+                continue;
+            };
+            let shown = tree::written(value.syntax());
+            let (label, why) = if is_literal(&value) {
+                match Const::from_expr(&value) {
+                    Const::Number {
+                        value: number,
+                        decimal: false,
+                    } if number.scale == 0
+                        && (i128::from(low)..=i128::from(high)).contains(&number.mantissa) =>
+                    {
+                        continue;
+                    }
+                    Const::Number { .. } => (
+                        format!("not from {low} to {high}"),
+                        format!("`{shown}` isn't."),
+                    ),
+                    // Not a number at all is already reported.
+                    _ => continue,
+                }
+            } else {
+                match self.facts.types.get(&node_key(value.syntax())).cloned() {
+                    Some(ty)
+                        if !ty.has_error()
+                            && !self.table.is_nullable(&ty)
+                            && self.table.representation(&ty) == Some(Prim::Int) =>
+                    {
+                        let chain = self.table.rule_chain(&ty);
+                        let at_least = chain.iter().any(|(_, rules)| {
+                            rules.min.is_some_and(|min| {
+                                jadpo_std::compare_exact(
+                                    min.mantissa,
+                                    min.scale,
+                                    i128::from(low),
+                                    0,
+                                )
+                                .is_ge()
+                            })
+                        });
+                        let at_most = chain.iter().any(|(_, rules)| {
+                            rules.max.is_some_and(|max| {
+                                jadpo_std::compare_exact(
+                                    max.mantissa,
+                                    max.scale,
+                                    i128::from(high),
+                                    0,
+                                )
+                                .is_le()
+                            })
+                        });
+                        if at_least && at_most {
+                            continue;
+                        }
+                        let why = match &ty {
+                            Ty::Prim(prim) => format!(
+                                "`{shown}` is a plain `{}`, which can be any whole number.",
+                                prim.name()
+                            ),
+                            other => format!(
+                                "`{other}` allows values outside them: it needs `min: {low}` or more and `max: {high}` or less."
+                            ),
+                        };
+                        (format!("`{ty}` can be outside {low} to {high}"), why)
+                    }
+                    _ => continue,
+                }
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{written}`'s `{}` is a whole number from {low} to {high}", param.name),
+                )
+                .at(self.span(&value), label)
+                .reason(format!(
+                    "`{written}`'s `{}` bounds what it gives, so it is from {low} to {high}, which is proved while compiling: a literal within them, or a value whose type's `min` and `max` are; {why}",
+                    param.name
+                ))
+                .next(format!(
+                    "Pass a value whose type has `min: {low}` and `max: {high}` or narrower, building it where a larger one is handled"
+                )),
             );
         }
     }

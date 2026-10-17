@@ -8,6 +8,7 @@ mod lists;
 mod maths;
 mod money;
 mod numbers;
+mod schedules;
 mod sets_maps;
 mod standard_types;
 mod text;

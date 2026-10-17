@@ -49,7 +49,7 @@ const fn schedule(
 /// When a recurring thing happens (RFC 5545): its first occurrence as a
 /// local time in its zone, then its rule, on two lines.
 pub const RECURRENCE_RULE: StandardType = schedule(
-    "RecurrenceRule",
+    super::RECURRENCE_RULE,
     "DTSTART;TZID=[A-Za-z0-9/_+-]+:[0-9]{8}T[0-9]{6}\nRRULE:[A-Z0-9=;,+-]+",
     Validator::RecurrenceRule,
     &[
@@ -80,7 +80,7 @@ pub const RECURRENCE_RULE: StandardType = schedule(
 /// When a place is open each week, and the days that differ, read in its
 /// zone (OpenStreetMap's `opening_hours`).
 pub const OPENING_HOURS: StandardType = schedule(
-    "OpeningHours",
+    super::OPENING_HOURS,
     "[A-Za-z0-9 :;,-]+ \\[[A-Za-z0-9/_+-]+\\]",
     Validator::OpeningHours,
     &[

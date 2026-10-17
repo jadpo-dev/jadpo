@@ -43,6 +43,7 @@ mod policy;
 mod project;
 mod review;
 mod scale;
+mod schedules;
 mod sets_maps;
 mod setting_move;
 mod signed;

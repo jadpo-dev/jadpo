@@ -48,6 +48,14 @@ public library temporal {
     /// The month holding `date` in `zone`.
     function month_bounds(date: CalendarDate, zone: Zone) -> InstantRange {}
 
+    /// The next `count` occurrences of `rule` at or after `from`, in its
+    /// zone (RFC 5545): fewer when the rule ends first; `count` is from 1
+    /// to 1000, so an unbounded rule is never expanded without a bound.
+    function occurrences(rule: RecurrenceRule, from: Instant, count: Int) -> List<ZonedTime> {}
+
+    /// Whether `hours` are open at `at`, by the clock in their zone.
+    function open_at(hours: OpeningHours, at: Instant) -> Bool {}
+
     /// Whole years, months and days from `start` to `end`, so `start`
     /// plus the period is `end`; each part negative when `end` is
     /// earlier.

@@ -418,6 +418,7 @@ impl Rule {
 
 /// A rule's occurrences in local time, in order (see
 /// [`Rule::local_occurrences`]).
+#[derive(Debug)]
 pub struct Occurrences<'r> {
     rule: &'r Rule,
     period: i64,
