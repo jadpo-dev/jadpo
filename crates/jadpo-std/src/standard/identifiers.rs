@@ -584,7 +584,7 @@ fn luhn(digits: impl DoubleEndedIterator<Item = u32>) -> bool {
             (_, doubled) => doubled,
         })
         .sum();
-    sum % 10 == 0
+    sum.is_multiple_of(10)
 }
 
 /// A card number's Luhn check digit.
@@ -617,7 +617,7 @@ pub fn is_aba_routing_number(text: &str) -> bool {
         .zip([3, 7, 1].into_iter().cycle())
         .map(|(digit, times)| digit * times)
         .sum();
-    text.len() == 9 && sum % 10 == 0
+    text.len() == 9 && sum.is_multiple_of(10)
 }
 
 /// An NHS number's check digit: 11 less the sum of its first nine digits
