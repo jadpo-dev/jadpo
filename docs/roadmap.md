@@ -752,7 +752,20 @@ reference only).
   the type fixes it), quantities as one SI-unit column with the unit in
   the column's comment, ranges as native range types. Done when a test per
   boundary round-trips one value of every standard type, and any boundary
-  with its own encoder is gone.
+  with its own encoder is gone. A read-only audit (2026-10-17) found what
+  to fix, beyond what 5.5h fixes for Money (OpenAPI for standard object
+  types, enum spellings from `entry.codes()`, storage as named columns):
+  `json.write`'s map keys use debug text and don't read back
+  (`jadpo-value/src/json.rs` `key_text`); the JSON, schema and enum encoders
+  match on builtins instead of reading the entries; enums are stored by
+  variant name but sent by code; reading is looser than `text.parse` (an
+  `Instant` with an offset, a `CalendarDate` not checked for 30 February);
+  settings take `5m` but not `PT5M`; a `Decimal` quantity's `value` must
+  follow area 2's Decimal-as-string rule; and nothing yet decides the
+  encoding of event, job and batch payloads (with a version rule), CSV
+  cells for types with no single text form, the bytes a personal value's
+  log hash covers, developer reports' value form, and integration fields
+  without `wire:`. Decide each of those on its owning page, then build.
 - [ ] **5.5x `jadpo suggest`** `opus · high` (area 14; decided by Richard,
   2026-10-17): first write the command's section on area 14 from this
   design, then build it. A command that hints, never edits, where code
