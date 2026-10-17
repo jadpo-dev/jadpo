@@ -680,8 +680,19 @@ impl Body<'_> {
                 .insert(node_key(node.syntax()), (issued.clone(), vec![field]));
             return Ty::Prim(*builtin);
         }
-        // The instants a `temporal` bounds call gives (area 10).
-        if let Ty::Opaque(range, args) = receiver.strip_nullable()
+        // The instants a `temporal` bounds call gives (area 10), or a field
+        // declared `InstantRange` (area 19, the standard types).
+        let mut through = receiver.strip_nullable().clone();
+        for _ in 0..64 {
+            if !matches!(through, Ty::Field(..)) || self.table.is_nullable(&through) {
+                break;
+            }
+            match self.table.parent(&through) {
+                Some(parent) => through = parent,
+                None => break,
+            }
+        }
+        if let Ty::Opaque(range, args) = &through
             && args.is_empty()
             && range == jadpo_std::INSTANT_RANGE
         {

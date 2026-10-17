@@ -72,6 +72,7 @@ Look things up
 Change safely
   api           Rewrite the API records       update
   declines      List or clear declines        list, clear
+  fix           Fix a standard type's finding
   translations  Keep translations up to date
 
 Set up
@@ -133,6 +134,7 @@ Look things up
 Change safely
   api           Rewrite the API records       update
   declines      List or clear declines        list · clear
+  fix           Fix a standard type's finding
   translations  Keep translations up to date
 
 Set up
@@ -292,6 +294,7 @@ fn help_json_is_the_whole_command_reference() {
             "routes",
             "api",
             "declines",
+            "fix",
             "translations",
             "config",
             "completions",
@@ -300,7 +303,7 @@ fn help_json_is_the_whole_command_reference() {
             "version"
         ]
     );
-    let completions = &data["commands"][11];
+    let completions = &data["commands"][12];
     assert_eq!(completions["synonyms"], serde_json::json!(["completion"]));
     assert_eq!(completions["group"], "Set up");
     assert_eq!(completions["usage"], "jadpo completions <shell>");
@@ -678,6 +681,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "routes\tList every route",
             "api\tRewrite the API records",
             "declines\tList or clear declines",
+            "fix\tFix a standard type's finding",
             "translations\tKeep translations up to date",
             "config\tCheck and set local settings",
             "completions\tTurn on Tab completion",

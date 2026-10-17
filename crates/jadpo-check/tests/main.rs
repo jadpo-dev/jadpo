@@ -18,6 +18,7 @@ mod determinism;
 mod domain_names;
 mod examples;
 mod failures;
+mod fixes;
 mod formats;
 mod graph;
 mod habits;

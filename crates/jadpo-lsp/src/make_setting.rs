@@ -28,7 +28,8 @@ pub const TITLE: &str = "Make this a setting";
 impl Server {
     /// The code actions for `params`' range: "Make this a setting" on a
     /// constant at its start, unavailable with the reason it is refused;
-    /// then the decline quick fixes (`crate::declines`).
+    /// then the swap for a standard type's finding (`crate::fixes`) and the
+    /// decline quick fixes (`crate::declines`).
     pub(crate) fn code_actions(&mut self, params: &CodeActionParams) -> Option<CodeActionResponse> {
         let uri = params.text_document.uri.clone();
         let (path, offset) = self.place(&uri, params.range.start)?;
@@ -42,6 +43,11 @@ impl Server {
                 ..action
             }));
         }
+        out.extend(
+            self.swap_actions(&uri, &path, offset, end)
+                .into_iter()
+                .map(CodeActionOrCommand::CodeAction),
+        );
         out.extend(
             self.decline_actions(&path, offset, end)
                 .into_iter()
@@ -60,6 +66,20 @@ impl Server {
         let Some((path, offset)) = place else {
             return action;
         };
+        if action
+            .data
+            .as_ref()
+            .and_then(|data| data["action"].as_str())
+            == Some(crate::fixes::DATA)
+        {
+            return match self.swap(&path, offset, true) {
+                Some(resolved) => CodeAction {
+                    data: action.data,
+                    ..resolved
+                },
+                None => action,
+            };
+        }
         match self.make_setting(&path, offset, true) {
             Some(resolved) => CodeAction {
                 data: action.data,
@@ -125,20 +145,24 @@ impl Server {
             }
         };
         setting_move::restore(loaded, &moved);
-        let edit = self.workspace_edit(&moved)?;
+        let edit = self.workspace_edit(&moved.files)?;
         Some(CodeAction {
             edit: Some(edit),
             ..action(None)
         })
     }
 
-    /// `moved` as one workspace edit.
-    fn workspace_edit(&self, moved: &setting_move::Moved) -> Option<WorkspaceEdit> {
+    /// The changed files as one workspace edit: each replaced whole, a new
+    /// one created and an emptied one deleted.
+    pub(crate) fn workspace_edit(
+        &self,
+        files: &[setting_move::FileChange],
+    ) -> Option<WorkspaceEdit> {
         let loaded = self.loaded()?;
         let root = self.uri_root(loaded).to_path_buf();
         let encoding = self.encoding();
         let mut operations = Vec::new();
-        for change in &moved.files {
+        for change in files {
             let uri = convert::uri_of(&root.join(&change.path))?;
             match (&change.before, &change.after) {
                 (_, None) => operations.push(DocumentChangeOperation::Op(ResourceOp::Delete(

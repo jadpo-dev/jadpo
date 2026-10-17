@@ -126,6 +126,8 @@ rules! {
         "14-tooling.html#command-errors", "Development port is invalid";
     CLI_DEV_START_FAILED: "cli.dev_start_failed", area 14, Error, Human,
         "14-tooling.html#command-errors", "Development server could not start";
+    CLI_FIX_ARGUMENTS: "cli.fix_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Fix command has invalid arguments";
     CLI_FMT_ARGUMENTS: "cli.fmt_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Format command has invalid arguments";
     CLI_HELP_ARGUMENTS: "cli.help_arguments", area 14, Error, Agent,
@@ -976,6 +978,8 @@ rules! {
         "02-values-and-types.html#type-setting-value", "Setting has the wrong kind of value";
     TYPE_SIBLING_MISMATCH: "type.sibling_mismatch", area 2, Error, Agent,
         "02-values-and-types.html#type-sibling-mismatch", "Field type is used for a sibling field type";
+    TYPE_STANDARD_CLASH: "type.standard_clash", area 19, Error, Agent,
+        "19-standard-library.html#type-standard-clash", "Declaration has a standard type's name";
     TYPE_STANDARD_EXISTS: "type.standard_exists", area 19, Declinable, Agent,
         "19-standard-library.html#type-standard-exists", "Type has a standard type's shape under another name";
     TYPE_TEMPORAL_CLOCK_INVALID: "type.temporal_clock_invalid", area 10, Error, Agent,

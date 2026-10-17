@@ -494,7 +494,8 @@ type groups through, with no new code path. Each is two things:
   (`FormatKey`) and the `text.format` options it takes and needs, whether
   `<` takes it, its named `Validator` (IBAN's mod-97, Luhn and the like are
   added to that enum, one function each), the shape `type.standard_exists`
-  matches (`FieldMatch`), and its examples.
+  matches (`FieldMatch`), its examples, and the release that added it,
+  which `type.standard_clash` names (chunk 5.5a2).
 
 Every baseline operation has one implementation over the entries:
 `jadpo_value::standard` (`text.from`, `text.parse`, `text.format`, with
@@ -565,8 +566,9 @@ broken files (`crates/jadpo-syntax/tests/broken/`), the parser's fuzz
 test, which also checks that clean edits converge on a file with no
 errors, and a jadpo-check test that checks each clean habit against its
 edited source hold it. The language server shows these errors and their
-edits like any other, offering no quick fix for them yet; its one code
-action is "Make this a setting" (below).
+edits like any other, offering no quick fix for them yet; its code
+actions are "Make this a setting" and the swap for a standard type's
+finding (below), and the declines.
 
 **Formatter.** Syntax tree to a document algebra to a printer, owning
 indentation, blank lines and member order (areas 1 and 14). Every example
@@ -687,6 +689,18 @@ the loaded texts, fixes imports, formats what was formatted and checks
 the result, undoing a move whose result wouldn't check. The command
 writes the files it gives back; the language server sends them as one
 workspace edit and puts its own texts back with `restore`.
+
+**Fixing a standard type's finding.** `jadpo_check::fixes` (chunk
+5.5a2, area 19's question 4) is the code `jadpo fix` and the editor's
+"Swap for the standard ..." share, built as `setting_move` is: `findings`
+reads `type.standard_clash` and `type.standard_exists` from the check,
+`plan` decides each edit (a reference by its name in the files that can
+see the declaration, a matched field by what each body name resolved to
+and by `Type.field` as written, a `use` line, the declaration's file
+moved for a rename) and every refusal, and `apply` makes them, fixes
+imports, formats what was formatted and checks the result, undoing a fix
+that adds an error by rule and headline. Each standard type's data entry
+carries the `release` that added it, which the clash names.
 
 **Types.** Nominal and bidirectional: the expected type flows into
 literals (area 2). Widening is the only implicit conversion; the standard

@@ -554,7 +554,7 @@ reference only).
   `type.standard_exists` has a checked example with real output. Split on
   2026-10-17 because the whole is more than one session: the clash check
   and `jadpo fix` are 5.5a2.
-- [ ] **5.5a2 Standard type clashes and `jadpo fix`** `opus · high` (area
+- [x] **5.5a2 Standard type clashes and `jadpo fix`** `opus · high` (area
   19, question 4), split from 5.5a: each data entry's release; the first
   `check` after an upgrade reporting each app type that clashes with a
   standard type the release added, naming the type and the release, with

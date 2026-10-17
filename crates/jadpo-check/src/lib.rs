@@ -16,6 +16,7 @@ pub mod constants;
 pub mod data;
 pub mod declines;
 mod failures;
+pub mod fixes;
 pub mod graph;
 pub mod identity;
 pub mod imports;

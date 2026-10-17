@@ -910,7 +910,7 @@ pub fn restore(loaded: &mut Loaded, moved: &Moved) {
     restore_texts(loaded, &before);
 }
 
-fn restore_texts(loaded: &mut Loaded, before: &BTreeMap<String, Option<String>>) {
+pub(crate) fn restore_texts(loaded: &mut Loaded, before: &BTreeMap<String, Option<String>>) {
     for (path, text) in before {
         match text {
             Some(text) => loaded.set_text(path, text.clone()),
@@ -921,7 +921,7 @@ fn restore_texts(loaded: &mut Loaded, before: &BTreeMap<String, Option<String>>)
 
 /// `text` formatted as `jadpo fmt` formats a file at `path`, with its
 /// primary declaration first in a project; `None` when it can't be.
-fn canonical(path: &str, text: &str, project: bool) -> Option<String> {
+pub(crate) fn canonical(path: &str, text: &str, project: bool) -> Option<String> {
     let primary = project
         .then(|| {
             let parse = jadpo_syntax::parse_file(text);
@@ -1028,7 +1028,7 @@ fn column_text(text: &str, at: u32) -> String {
 /// `text` without `node`: from the line its comments or code start on to
 /// the end of the line it ends on, and one blank line fewer where two
 /// would meet.
-fn remove_node(text: &str, node: &SyntaxNode) -> String {
+pub(crate) fn remove_node(text: &str, node: &SyntaxNode) -> String {
     let start = first_line_start(text, node) as usize;
     let last = node
         .descendants_with_tokens()

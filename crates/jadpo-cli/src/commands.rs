@@ -11,6 +11,7 @@ pub use crate::check::check;
 pub use crate::config::config;
 pub use crate::declines::declines;
 pub use crate::dev::dev;
+pub use crate::fix::fix;
 pub use crate::fmt::fmt;
 use crate::help::{self, VERSION};
 pub use crate::migrate::migrate;

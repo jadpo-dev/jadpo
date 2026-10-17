@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run, from chunk 5.5a; the othe
 rules:
   - semantic.standard_operation_moved
   - type.argument_negative
+  - type.standard_clash
   - type.standard_exists
 ---
 
@@ -18,7 +19,7 @@ own features needed. This page collects them, adds what real applications
 keep reaching for, says which gaps in the language block the rest and how
 to close them, and says what is left out on purpose and why.
 
-> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Chunk 5.5a built the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code; nothing else on this page beyond what areas 2, 3 and 10 already decided is built, and chunks 5.5a2 to 5.5s build it, in the order under "Building it". Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
+> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Chunk 5.5a built the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code, and chunk 5.5a2 the clash a release's new standard type makes with an app's own, with `jadpo fix`; nothing else on this page beyond what areas 2, 3 and 10 already decided is built, and chunks 5.5b to 5.5s build it, in the order under "Building it". Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
 
 | Namespace | Holds | Operations | Decided in |
 |---|---|---|---|
@@ -83,8 +84,9 @@ a package or a later area.
   purpose and shape (`DeliveryStop { address: PostalAddress }`,
   `BillingContact`), and that forced explicitness is the point. A
   declaration that reuses a standard name is already an error (built-in
-  names can't be reused, area 2), so the shape check below only has to
-  catch equivalents under other names.
+  names can't be reused, area 2; for a standard type's name,
+  `type.standard_clash`, under "A release that adds a standard type"), so
+  the shape check below only has to catch equivalents under other names.
 - **Packages use them** (decided): a package's public API, or an app's
   own code, that declares its own equivalent of a standard type gets the
   declinable error `type.standard_exists`, pointing at it ("Packages use
@@ -315,15 +317,78 @@ required reason handles them, and review sees each one.
 > `InstantRange`'s (a start and an end, each an `Instant`), since `Point`,
 > `Money`, `Colour`, `LineString` and `Polygon` arrive with their groups;
 > the output above is the error as it will read for `Point`. The swap's
-> one-step edit comes with `jadpo fix` (chunk 5.5a2), and packages' public
-> types with the publishing bar (chunk 7.1). Its example is under
-> "Errors".
+> one-step edit is `jadpo fix <name> swap` and the editor's quick fix
+> (chunk 5.5a2, under "A release that adds a standard type"); the data
+> migration and the acceptances for a type already stored or on the wire
+> come with area 18's records, and until then such a swap stops (below).
+> Packages' public types come with the publishing bar (chunk 7.1). Its
+> example is under "Errors".
 
 The `Country`, `Language` and `PhoneNumber` lists ship with each Jadpo
 release, as the time-zone database does (#88, "built in or a library
 package"). That also answers #88's open point for 5.4, where fixed
 reference data can be declared: in the release, as these enums, not by
 applications.
+
+### A release that adds a standard type
+
+Decided 2026-10-17 (Richard, question 4): a Jadpo upgrade that adds a
+standard type an application already names for itself never breaks it
+silently. The first `check` after the upgrade reports each clash as the
+error `type.standard_clash`, naming the standard type and the release that
+added it, with two fixes:
+
+- **Swap to the standard type,** the same swap as `type.standard_exists`'s:
+  every reference to the application's type becomes a reference to the
+  standard one, each field the shape matched is read by the standard
+  field's name, and the declaration goes.
+- **Rename the application's type,** keeping its own meaning under a name
+  of its own.
+
+`jadpo fix` applies whichever the author picks, through the same code as
+the editor's quick fix (area 14), and each release's notes list the names
+it adds.
+
+`jadpo fix` with no arguments lists each finding it can fix, and `jadpo
+fix <name> swap` or `jadpo fix <name> rename <NewName>` makes one, listing
+what changed file by file:
+
+```text
+  domains/rooms/types/slot.jadpo
+    - Slot        type, the standard InstantRange replaces it
+    - slot.jadpo  file, nothing left in it
+
+  domains/rooms/actions/slot_of.jadpo
+    ~ line 4      InstantRange, was Slot
+    ~ line 5      InstantRange, was Slot
+    ~ line 6      start, was starts_at
+    ~ line 7      end, was ends_at
+
+✓ Swapped Slot for the standard InstantRange
+
+→ jadpo check  shows the error the project still has
+```
+
+A fix never adds an error: one whose result would have an error the
+project didn't have changes nothing and shows that error, as a swap to a
+standard enum without a variant the code names does. Errors the project
+already had stay, and `jadpo check` shows them.
+
+**Names each release adds,** the release notes' list, held to the data
+entries by a test:
+
+| Release | Standard types it adds |
+|---|---|
+| 0.1.0 | `CalendarDate`, `Duration`, `Email`, `FileType`, `Instant`, `InstantRange`, `IpAddress`, `Locale`, `Url`, `Uuid`, `Weekday`, `Zone`, `ZonedTime` |
+
+> Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
+> on any declaration named like a standard type (its example is under
+> "Errors"), and `jadpo fix` with the editor's "Swap for the standard ..."
+> quick fix, both through `jadpo_check::fixes`. The rename is `jadpo fix`'s
+> only, written through the same code: it isn't `jadpo rename` (area 14,
+> after the first build), so it writes no identity line, and a rename
+> whose result changes stored data or an API record stops ("Chosen in
+> chunk 5.5a2", under "Review").
 
 ## What every operation follows
 
@@ -1597,6 +1662,33 @@ Every error this area can produce, with an example that triggers it and the
 new compiler's real output from `jadpo check`. The examples are checked as
 loose files.
 
+### `type.standard_clash`
+
+A declaration named like a standard type: a Jadpo release added the
+standard type after the application named its own. Its fixes are the swap
+and the rename, each made by `jadpo fix`.
+
+```jadpo check project=e-standard-clash expect=type.standard_clash
+/// A room booking's reference, from before Jadpo had a `Uuid` of its own.
+type Uuid = Text {
+    max_length: 36
+}
+```
+
+```text output
+error: `Uuid` is the name of a standard type
+ --> main.jadpo:2:6
+  |
+2 | type Uuid = Text {
+  |      ^^^^ standard since Jadpo 0.1.0
+  reason: Jadpo 0.1.0 added the standard type `Uuid`, and the application's own type can't share its name, or `Uuid` would mean two things. An upgrade never changes what code means silently, so `check` stops here until this type is swapped for the standard type or renamed.
+  next: Run `jadpo fix Uuid swap` to use the standard `Uuid` in its place, or `jadpo fix Uuid rename <NewName>` to keep this one under a name of its own (agent)
+  rule: type.standard_clash
+  help: docs/language/19-standard-library.html#type-standard-clash
+
+check failed: 1 error, 1 file
+```
+
 ### `type.standard_exists`
 
 A declaration whose only fields are a standard type's, by their common
@@ -1619,7 +1711,7 @@ error: `Booking` is the standard `InstantRange` under another name
 2 | type Booking = Object {
   |      ^^^^^^^ a start and an end
   reason: `Booking` has only a start (`starts_at`) and an end (`ends_at`), each built on `Instant`, which is the standard `InstantRange`. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.
-  next: Use `InstantRange` where `Booking` is used, converting at the edge where data arrives in another shape, or write `decline type.standard_exists: "<why>"` above it if this is deliberate (agent)
+  next: Run `jadpo fix Booking swap` to use `InstantRange` where `Booking` is used, then convert at the edge where data arrives in another shape, or write `decline type.standard_exists: "<why>"` above it if this is deliberate (agent)
   rule: type.standard_exists
   help: docs/language/19-standard-library.html#type-standard-exists
 
@@ -1749,7 +1841,7 @@ check failed: 1 error, 1 file
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here, built in 5.5k |
 | The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, each group of types in 5.5h to 5.5s |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
-| A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2 |
+| A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2: `type.standard_clash`, `jadpo fix`'s swap and rename, the editor's swap |
 | `Email`, `Url`, `IpAddress`, `FileType`, `InstantRange` | Decided (areas 2, 10, 16) and built |
 | Everything else on this page | Decided 2026-10-17, as recommended; built in chunks 5.5a to 5.5s |
 | The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g |
@@ -1914,6 +2006,55 @@ under "Errors").
   list of a named list type isn't one.
 - **`list` is reserved** (question 30). No page or example used the name;
   one checker test's action was renamed.
+
+### Chosen in chunk 5.5a2
+
+- **A release** is each data entry's `release`, `major.minor.patch`. The
+  13 standard types built before Jadpo's first release carry `0.1.0`, the
+  workspace's version, and a later group carries the version it ships in.
+  The release notes' list is "Names each release adds", held to the
+  entries by a test until releases have notes of their own.
+- **`type.standard_clash`** is reported on every declaration named like a
+  standard type, whenever it was written: the checker keeps no record of
+  the release a project last checked with, so "the first `check` after
+  the upgrade" is every `check` until the clash is fixed. It replaces
+  `semantic.duplicate_declaration`'s "is a built-in type" for a standard
+  type's name (a language type's, `Text` or `Int`, keeps it), it is not
+  declinable, since two declarations can't share a name, and a
+  declaration it names is never also `type.standard_exists`. While the
+  clash stands, a reference to the name means the standard type, as
+  before chunk 5.5a2; the errors that gives are the swap's, and the
+  rename clears them.
+- **The swap is offered on a type only**; a failure, event, email or
+  entity named like a standard type is renamed. It deletes the
+  declaration (with its comments and `decline` line, and its file when
+  nothing else is in it), writes the standard type's name at each
+  reference in the files that can see the declaration, renames each field
+  the shape matched where it is read (in a body by what the name resolved
+  to, elsewhere as `Type.field` is written), and takes the name out of
+  `use` lines. Whether the standard type fits is the result's check, not
+  a test of shapes beforehand.
+- **The rename is `jadpo fix`'s, through the quick-fix code, not a general
+  `jadpo rename`.** It writes the new name at the declaration and every
+  reference in the files that can see it, `use` lines included, and moves
+  the file named after the declaration to the new name's file. It writes
+  no identity line (`database/identities.json`), so a rename whose result
+  changes stored data or an API record stops on that error. The new name must be an unused `UpperCamelCase`
+  name that reads back from its file name, refused otherwise with
+  `cli.fix_arguments`. The editor offers only the swap, since a quick fix
+  can't ask for a name; its rename comes with `jadpo rename`.
+- **A fix never adds an error.** It is checked once made: an error the
+  project didn't have before, by rule and headline, undoes it and is
+  shown. Errors it already had stay, so one finding is fixed at a time
+  even while others, or other errors, stand, and `jadpo fix` says how
+  many are left. A swap of a type already stored or in an API record
+  therefore stops, until area 18's records bring its migration and
+  acceptances.
+- **`jadpo fix`'s name is the declaration's,** as its finding names it; a
+  name two domains each declare privately is refused, naming both places.
+- **A field declared `InstantRange`** has its `start` and `end` read
+  through the field, as a value of the type has; chunk 5.5a read them only
+  on a value.
 
 ### Decisions
 
@@ -2323,7 +2464,7 @@ first; each group of types then arrives with its baseline and its extras.
   2026-10-17, the rest is 5.5a2.
 - **5.5a2 Standard type clashes and `jadpo fix`** `opus · high`: the clash
   check for a release that adds a standard type, with `jadpo fix`
-  (question 4).
+  (question 4). Built.
 - **5.5b Lists** `opus · high`: `collection.` renamed `list.` everywhere,
   with its habit error; the 21 new list operations that need no language
   change; `never_negative`, the `sort_by` key's ordered kinds, results
