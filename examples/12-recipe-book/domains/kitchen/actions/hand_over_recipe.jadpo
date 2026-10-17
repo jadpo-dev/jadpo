@@ -5,6 +5,11 @@
 use kitchen/entities { Baker, BakerNotFound, Recipe, RecipeNotFound }
 use kitchen/types { RecipeCard }
 
+/// Who takes a recipe on.
+type HandOver = Input {
+    to: Baker.id
+}
+
 /// Hands a recipe to another baker.
 action hand_over_recipe(
     recipe_id: Recipe.id,
@@ -20,9 +25,4 @@ action hand_over_recipe(
         name: recipe.name
         author_id: recipe.author_id
     }
-}
-
-/// Who takes a recipe on.
-type HandOver = Input {
-    to: Baker.id
 }

@@ -5,29 +5,6 @@
 
 use sales/types { Pence }
 
-/// What `handover` adds to the bill, and where to deliver, if anywhere.
-action choose_handover(handover: Handover) -> HandoverCharge {
-    // The only way to read a variant's fields is to `match` on it. The
-    // name in brackets, `delivery(chosen)`, binds that variant's fields,
-    // read as `chosen.address`.
-    return match handover {
-        Handover.in_shop -> HandoverCharge {
-            fee: 0
-            deliver_to: none
-        }
-        Handover.delivery(chosen) -> HandoverCharge {
-            fee: chosen.fee
-            deliver_to: chosen.address
-        }
-        // A pattern without brackets matches the variant without reading
-        // its fields.
-        Handover.locker -> HandoverCharge {
-            fee: 50
-            deliver_to: none
-        }
-    }
-}
-
 /// A street address for deliveries.
 type StreetAddress = Text {
     min_length: 5
@@ -58,4 +35,27 @@ type HandoverCharge = Object {
     // `Handover.delivery.address` is the type of the `address` field of
     // the `delivery` variant: payload fields have field types too.
     deliver_to: Handover.delivery.address?
+}
+
+/// What `handover` adds to the bill, and where to deliver, if anywhere.
+action choose_handover(handover: Handover) -> HandoverCharge {
+    // The only way to read a variant's fields is to `match` on it. The
+    // name in brackets, `delivery(chosen)`, binds that variant's fields,
+    // read as `chosen.address`.
+    return match handover {
+        Handover.in_shop -> HandoverCharge {
+            fee: 0
+            deliver_to: none
+        }
+        Handover.delivery(chosen) -> HandoverCharge {
+            fee: chosen.fee
+            deliver_to: chosen.address
+        }
+        // A pattern without brackets matches the variant without reading
+        // its fields.
+        Handover.locker -> HandoverCharge {
+            fee: 50
+            deliver_to: none
+        }
+    }
 }

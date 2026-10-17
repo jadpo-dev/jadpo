@@ -2,6 +2,18 @@
 
 use sales/failures { IcingTooLong, IcingUnreadable }
 
+/// Words a customer types into the order form to go on a cake: any text,
+/// until it is checked.
+type AskedWords = Text {}
+
+/// Words the decorator can pipe onto a cake: 1 to 30 letters, digits,
+/// spaces and simple punctuation.
+type Icing = Text {
+    min_length: 1
+    max_length: 30
+    pattern: "[A-Za-z0-9 !,.-]*"
+}
+
 /// `asked` as words the decorator can pipe.
 action check_icing(asked: AskedWords) fails IcingTooLong, IcingUnreadable -> Icing {
     // All three rules can break. Words that are too long get a failure of
@@ -13,16 +25,4 @@ action check_icing(asked: AskedWords) fails IcingTooLong, IcingUnreadable -> Ici
         invalid: IcingUnreadable
     }
     return icing
-}
-
-/// Words a customer types into the order form to go on a cake: any text,
-/// until it is checked.
-type AskedWords = Text {}
-
-/// Words the decorator can pipe onto a cake: 1 to 30 letters, digits,
-/// spaces and simple punctuation.
-type Icing = Text {
-    min_length: 1
-    max_length: 30
-    pattern: "[A-Za-z0-9 !,.-]*"
 }

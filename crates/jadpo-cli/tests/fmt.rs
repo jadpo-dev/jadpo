@@ -472,17 +472,18 @@ fn fmt_layout_promoting_to_shared_writes_a_registry_line() {
 }
 
 #[test]
-fn fmt_puts_the_primary_declaration_first() {
-    // Area 1, "Files and names": the declaration the file is named after
-    // goes first, after the opening comment, and `--check` fails until it
-    // is; the rest keep their order. Loose files have no primary.
+fn fmt_writes_definitions_before_their_use() {
+    // Area 1, "Files and names" (chunk 5.5h3): every declaration comes
+    // before the first one that uses it, so the declaration the file is
+    // named after comes last, after the opening comment; `--check` fails
+    // until it does. Loose files have no primary.
     let root = folder("primary");
     write(&root, "app.jadpo", FORMATTED_APP);
     let path = "domains/kitchen/actions/set_oven.jadpo";
     write(
         &root,
         path,
-        "// Sets the oven.\n\ntype Shelf = Int {}\n\ntype Steam = Bool {}\n\naction set_oven(shelf: Shelf, steam: Steam) -> Unit {}\n",
+        "// Sets the oven.\n\naction set_oven(shelf: Shelf, steam: Steam) -> Unit {}\n\ntype Steam = Bool {}\n\ntype Shelf = Int {}\n",
     );
     let output = jadpo(&root, &["fmt", "--check"]);
     assert_eq!(output.code, 1);
@@ -493,17 +494,23 @@ fn fmt_puts_the_primary_declaration_first() {
         "{}",
         output.stdout
     );
+    // `--check` only reports.
+    assert!(
+        read(&root, path)
+            .contains("action set_oven(shelf: Shelf, steam: Steam) -> Unit {}\n\ntype Steam")
+    );
     assert_eq!(
         jadpo(&root, &["fmt"]).stdout,
         "formatted: 1 changed, 1 unchanged\n"
     );
     assert_eq!(
         read(&root, path),
-        "// Sets the oven.\n\naction set_oven(shelf: Shelf, steam: Steam) -> Unit {}\n\ntype Shelf = Int {}\n\ntype Steam = Bool {}\n"
+        "// Sets the oven.\n\ntype Shelf = Int {}\n\ntype Steam = Bool {}\n\naction set_oven(shelf: Shelf, steam: Steam) -> Unit {}\n"
     );
     assert_eq!(jadpo(&root, &["fmt", "--check"]).code, 0);
+    assert_eq!(jadpo(&root, &["fmt"]).stdout, "formatted: 2 unchanged\n");
     let loose = folder("primary-loose");
-    let text = "type Shelf = Int {}\n\naction set_oven(shelf: Shelf) -> Unit {}\n";
+    let text = "action set_oven(shelf: Shelf) -> Unit {}\n\ntype Shelf = Int {}\n";
     write(&loose, "set_oven.jadpo", text);
     assert_eq!(jadpo(&loose, &["fmt", "set_oven.jadpo", "--check"]).code, 0);
 }

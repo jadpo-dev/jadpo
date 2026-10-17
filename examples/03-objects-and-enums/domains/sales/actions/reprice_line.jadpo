@@ -4,21 +4,6 @@
 
 use sales/types { CakeLine }
 
-/// A copy of `change.line` at its new price, or at half price when the
-/// change gives none.
-action reprice_line(change: Reprice) -> CakeLine {
-    // A value that may be absent is read with `match`: `some(each)` when
-    // there is one, naming it `each`, and `none` when there isn't.
-    return match change.each {
-        some(each) -> CakeLine {
-            cake: change.line.cake
-            count: change.line.count
-            each: each
-        }
-        none -> half_price(change.line)
-    }
-}
-
 /// A price change: the line to change and its new price per cake, left
 /// out for cakes left at closing time, which go at half price.
 type Reprice = Object {
@@ -39,5 +24,20 @@ function half_price(line: CakeLine) -> CakeLine {
         cake: line.cake
         count: line.count
         each: CakeLine.each(line.each / 2)
+    }
+}
+
+/// A copy of `change.line` at its new price, or at half price when the
+/// change gives none.
+action reprice_line(change: Reprice) -> CakeLine {
+    // A value that may be absent is read with `match`: `some(each)` when
+    // there is one, naming it `each`, and `none` when there isn't.
+    return match change.each {
+        some(each) -> CakeLine {
+            cake: change.line.cake
+            count: change.line.count
+            each: each
+        }
+        none -> half_price(change.line)
     }
 }

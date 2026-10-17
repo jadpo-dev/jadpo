@@ -4,6 +4,12 @@
 
 use sales/types { CakeCount, CakeLine, CakeName }
 
+/// A change to a line, where the sender sends only what changes.
+type ChangeLine = Input {
+    pick: [CakeLine.cake, CakeLine.count]
+    optional: all
+}
+
 /// `line` with `change` applied: a field left out of the change keeps the
 /// line's value.
 action change_line(line: CakeLine, change: ChangeLine) -> CakeLine {
@@ -22,10 +28,4 @@ action change_line(line: CakeLine, change: ChangeLine) -> CakeLine {
         count: count
         each: line.each
     }
-}
-
-/// A change to a line, where the sender sends only what changes.
-type ChangeLine = Input {
-    pick: [CakeLine.cake, CakeLine.count]
-    optional: all
 }

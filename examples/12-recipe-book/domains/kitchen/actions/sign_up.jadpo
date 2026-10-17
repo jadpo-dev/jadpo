@@ -2,13 +2,13 @@ use kitchen/entities { Baker }
 use kitchen/failures { HandleTaken }
 use kitchen/actions { register }
 
+/// What signing up takes.
+type SignUp = Input {
+    pick: [Baker.handle]
+}
+
 /// Makes someone a baker and signs them in.
 action sign_up(input: SignUp) fails HandleTaken -> Unit {
     var baker: Baker = attempt register(input.handle)
     sessions.start(baker.id)
-}
-
-/// What signing up takes.
-type SignUp = Input {
-    pick: [Baker.handle]
 }

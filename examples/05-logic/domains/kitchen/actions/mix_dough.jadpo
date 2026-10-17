@@ -11,6 +11,43 @@
 // Brackets group. `and` and `or` stop as soon as the answer is known.
 // Logical operators are words: `!`, `&&` and `||` are not Jadpo.
 
+/// A weight in grams, never negative.
+type Grams = Int {
+    min: 0
+}
+
+/// A temperature in degrees, which may be below freezing.
+type Celsius = Int {
+    min: -40
+    max: 300
+}
+
+/// How long a dough has been kneaded, in minutes.
+type Minutes = Int {
+    min: 0
+}
+
+/// Whether dough has been left to rest, which does some of the
+/// kneading's work.
+type Rested = Bool {}
+
+/// Whether dough is ready to shape.
+type Ready = Bool {}
+
+/// Water hotter or colder than a dough wants, in degrees either way.
+type Difference = Int {
+    min: -340
+    max: 340
+}
+
+/// How far the water is from the 26 degrees a dough wants: positive when
+/// too warm, negative when too cold.
+function water_difference(water: Celsius) -> Difference {
+    // Subtracting two values gives a plain `Int`; the range of `Celsius`
+    // proves the result fits `Difference`, so no check can fail.
+    return Difference(water - 26)
+}
+
 /// Whether a dough of `flour` and `water` grams, mixed with water at
 /// `temperature` and kneaded for `minutes`, is ready: wet enough, mixed
 /// within 4 degrees of 26, and either kneaded long enough or rested.
@@ -32,41 +69,4 @@ action mix_dough(
     var close_enough: Bool = difference <= 4 and -difference <= 4
     // The brackets make the `or` happen before the `and`.
     return Ready(wet_enough and close_enough and (minutes >= 10 or rested))
-}
-
-/// A weight in grams, never negative.
-type Grams = Int {
-    min: 0
-}
-
-/// A temperature in degrees, which may be below freezing.
-type Celsius = Int {
-    min: -40
-    max: 300
-}
-
-/// Water hotter or colder than a dough wants, in degrees either way.
-type Difference = Int {
-    min: -340
-    max: 340
-}
-
-/// How long a dough has been kneaded, in minutes.
-type Minutes = Int {
-    min: 0
-}
-
-/// Whether dough is ready to shape.
-type Ready = Bool {}
-
-/// Whether dough has been left to rest, which does some of the
-/// kneading's work.
-type Rested = Bool {}
-
-/// How far the water is from the 26 degrees a dough wants: positive when
-/// too warm, negative when too cold.
-function water_difference(water: Celsius) -> Difference {
-    // Subtracting two values gives a plain `Int`; the range of `Celsius`
-    // proves the result fits `Difference`, so no check can fail.
-    return Difference(water - 26)
 }

@@ -1,16 +1,5 @@
 // Text (`Text`) and the rules text can follow.
 
-/// The text printed on a jar: its shelf name, then its batch code.
-action label_jar(name: ShelfName, batch: BatchCode) -> JarLabel {
-    // `+` joins two texts, and a text literal joins with anything built
-    // on `Text`. Like every operator, it works on the representation, so
-    // the result is a plain `Text`; `JarLabel(...)` gives it its meaning.
-    // `JarLabel` has no rules, so this can never fail. Had it a
-    // `max_length`, the compiler couldn't prove the joined text fits, and
-    // it would ask for `attempt` (example 06).
-    return JarLabel(catalogue_name(name) + " / " + batch)
-}
-
 /// What a jar on the shelf is called. Lengths count characters, not
 /// bytes, so "Crème" is five long.
 type JarName = Text {
@@ -47,4 +36,15 @@ function catalogue_name(name: ShelfName) -> JarName {
     // other way, from `JarName` to `ShelfName`, always needs a
     // constructor, which checks the tighter rules.
     return name
+}
+
+/// The text printed on a jar: its shelf name, then its batch code.
+action label_jar(name: ShelfName, batch: BatchCode) -> JarLabel {
+    // `+` joins two texts, and a text literal joins with anything built
+    // on `Text`. Like every operator, it works on the representation, so
+    // the result is a plain `Text`; `JarLabel(...)` gives it its meaning.
+    // `JarLabel` has no rules, so this can never fail. Had it a
+    // `max_length`, the compiler couldn't prove the joined text fits, and
+    // it would ask for `attempt` (example 06).
+    return JarLabel(catalogue_name(name) + " / " + batch)
 }

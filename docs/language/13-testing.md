@@ -322,6 +322,11 @@ entity Memo {
 use notes/entities { Memo }
 use notes/types { MemoText, MemoView }
 
+/// What leaving a memo takes.
+type AddMemo = Input {
+    text: MemoText
+}
+
 /// Leaves a memo.
 action add_memo(input: AddMemo) -> MemoView {
     var memo: Memo = Memo.create {
@@ -333,11 +338,6 @@ action add_memo(input: AddMemo) -> MemoView {
         id: memo.id
         text: memo.text
     }
-}
-
-/// What leaving a memo takes.
-type AddMemo = Input {
-    text: MemoText
 }
 ```
 

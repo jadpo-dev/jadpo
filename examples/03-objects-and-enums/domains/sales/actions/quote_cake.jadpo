@@ -6,28 +6,6 @@
 
 use sales/types { CakeLine, CakeName }
 
-/// The quote for one cake as `request` describes it.
-action quote_cake(request: CakeRequest) -> CakeQuote {
-    // An object value is written with its type's name and every field.
-    // Unknown fields and missing fields are errors.
-    var line: CakeLine = CakeLine {
-        cake: request.cake
-        count: 1
-        each: size_price(request.size)
-    }
-    // The quote reads the customer's choices back to them, the allergies
-    // above all, so a mistake is caught before anything is baked. The
-    // photo isn't sent back: the customer already has it, and the
-    // decorator reads it from the order once orders are stored (area 5).
-    return CakeQuote {
-        line: line
-        icing: request.icing
-        candles: request.candles
-        collect_at: request.collect_at
-        allergies: request.allergies
-    }
-}
-
 /// How big a cake is.
 type CakeSize = Enum {
     small
@@ -35,15 +13,15 @@ type CakeSize = Enum {
     large
 }
 
-/// Words iced on top of a cake.
-type Icing = Text {
-    max_length: 30
-}
-
 /// How many candles go on top.
 type CandleCount = Int {
     min: 0
     max: 100
+}
+
+/// Words iced on top of a cake.
+type Icing = Text {
+    max_length: 30
 }
 
 // Some values have no literal, so here they only arrive from outside: a
@@ -133,5 +111,27 @@ function size_price(size: CakeSize) -> CakeLine.each {
         CakeSize.small -> 1800
         CakeSize.medium -> 2600
         CakeSize.large -> 3800
+    }
+}
+
+/// The quote for one cake as `request` describes it.
+action quote_cake(request: CakeRequest) -> CakeQuote {
+    // An object value is written with its type's name and every field.
+    // Unknown fields and missing fields are errors.
+    var line: CakeLine = CakeLine {
+        cake: request.cake
+        count: 1
+        each: size_price(request.size)
+    }
+    // The quote reads the customer's choices back to them, the allergies
+    // above all, so a mistake is caught before anything is baked. The
+    // photo isn't sent back: the customer already has it, and the
+    // decorator reads it from the order once orders are stored (area 5).
+    return CakeQuote {
+        line: line
+        icing: request.icing
+        candles: request.candles
+        collect_at: request.collect_at
+        allergies: request.allergies
     }
 }

@@ -1,6 +1,13 @@
 use loyalty/types { Card, StampCount }
 use loyalty/failures { CardNotFull }
 
+/// How many more stamps `card` needs before it can be redeemed.
+function stamps_to_go(card: Card) -> StampCount {
+    // `card.stamp_count` is 0 to 10, so `10 - card.stamp_count` is too, and the
+    // compiler proves it fits `StampCount`.
+    return StampCount(10 - card.stamp_count)
+}
+
 /// `card` emptied, once its free coffee has been given.
 action redeem_card(card: Card) fails CardNotFull -> Card {
     if (stamps_to_go(card) > 0) {
@@ -12,11 +19,4 @@ action redeem_card(card: Card) fails CardNotFull -> Card {
         name: card.name
         stamp_count: 0
     }
-}
-
-/// How many more stamps `card` needs before it can be redeemed.
-function stamps_to_go(card: Card) -> StampCount {
-    // `card.stamp_count` is 0 to 10, so `10 - card.stamp_count` is too, and the
-    // compiler proves it fits `StampCount`.
-    return StampCount(10 - card.stamp_count)
 }

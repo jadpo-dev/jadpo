@@ -920,7 +920,8 @@ pub(crate) fn restore_texts(loaded: &mut Loaded, before: &BTreeMap<String, Optio
 }
 
 /// `text` formatted as `jadpo fmt` formats a file at `path`, with its
-/// primary declaration first in a project; `None` when it can't be.
+/// declarations in definition-before-use order in a project; `None` when it
+/// can't be.
 pub(crate) fn canonical(path: &str, text: &str, project: bool) -> Option<String> {
     let primary = project
         .then(|| {
@@ -931,7 +932,7 @@ pub(crate) fn canonical(path: &str, text: &str, project: bool) -> Option<String>
             jadpo_db::primary(&location, &items).map(|item| item.name.clone())
         })
         .flatten();
-    jadpo_fmt::format_file_led_by(text, primary.as_deref()).ok()
+    jadpo_fmt::format_file_in_order(text, primary.as_deref()).ok()
 }
 
 /// The field the move adds, each line after `indent`.

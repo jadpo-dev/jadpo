@@ -16,16 +16,6 @@ use shared/libraries { portions }
 use pantry/failures { FlourShort }
 use pantry
 
-/// Bakes `loaves` loaves with flour from the `in_store` sacks in the pantry.
-/// Public, so the scenario in the root `tests/` folder can call it.
-public action bake_loaves(
-    loaves: LoafCount,
-    in_store: SackCount
-) fails TooHeavy, FlourShort -> Grams {
-    var flour: Grams = attempt flour_for(loaves)
-    return attempt pantry.take_flour(flour, in_store)
-}
-
 /// How many loaves a bake makes.
 type LoafCount = Int {
     min: 1
@@ -37,4 +27,14 @@ type LoafCount = Int {
 function flour_for(loaves: LoafCount) fails TooHeavy -> Grams {
     var needed: Grams = attempt portions.together(450, PortionCount(loaves))
     return portions.larger(needed, 2000)
+}
+
+/// Bakes `loaves` loaves with flour from the `in_store` sacks in the pantry.
+/// Public, so the scenario in the root `tests/` folder can call it.
+public action bake_loaves(
+    loaves: LoafCount,
+    in_store: SackCount
+) fails TooHeavy, FlourShort -> Grams {
+    var flour: Grams = attempt flour_for(loaves)
+    return attempt pantry.take_flour(flour, in_store)
 }

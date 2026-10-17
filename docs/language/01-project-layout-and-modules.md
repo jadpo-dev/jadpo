@@ -275,43 +275,43 @@ application {}
 ```
 
 ```jadpo check project=e-duplicate-domain file=domains/billing/actions/send_invoice.jadpo hidden
-action send_invoice(address: Address) -> Unit {}
-
 type Address = Object {
     street: Text
 }
+
+action send_invoice(address: Address) -> Unit {}
 ```
 
 ```jadpo check project=e-duplicate-domain file=domains/shipping/actions/ship_parcel.jadpo hidden
-action ship_parcel(address: Address) -> Unit {}
-
 type Address = Object {
     postcode: Text
 }
+
+action ship_parcel(address: Address) -> Unit {}
 ```
 
 ```jadpo check project=e-duplicate-domain file=domains/shipping/actions/print_label.jadpo hidden
-action print_label(address: ShippingAddress) -> Unit {}
-
 type ShippingAddress = Object {
     line_one: Text
 }
+
+action print_label(address: ShippingAddress) -> Unit {}
 ```
 
 ```jadpo check project=e-duplicate-domain file=domains/billing/actions/send_reminder.jadpo expect=semantic.duplicate_declaration
-action send_reminder(address: Address) -> Unit {}
-
 type Address = Object {
     street: Text
     town: Text
 }
+
+action send_reminder(address: Address) -> Unit {}
 ```
 
 ```text output
 error: `Address` is declared twice in `billing`
- --> domains/billing/actions/send_reminder.jadpo:3:6
+ --> domains/billing/actions/send_reminder.jadpo:1:6
   |
-3 | type Address = Object {
+1 | type Address = Object {
   |      ^^^^^^^ declared again here
   reason: `Address` is already a type in `domains/billing/actions/send_invoice.jadpo`, declared differently, so these are two things with one name.
   next: Rename one of them, here and where it's used (agent)
@@ -1162,19 +1162,19 @@ action postpone_all(days: SnoozeDays) -> Unit {}
 ```
 
 ```jadpo check project=e-promotion file=domains/planning/actions/snooze_todo.jadpo expect=layout.promotion_required
-action snooze_todo(days: SnoozeDays) -> Unit {}
-
 type SnoozeDays = Int {
     min: 1
     max: 30
 }
+
+action snooze_todo(days: SnoozeDays) -> Unit {}
 ```
 
 ```text output
 error: `SnoozeDays` is used beyond this file
- --> domains/planning/actions/snooze_todo.jadpo:3:6
+ --> domains/planning/actions/snooze_todo.jadpo:1:6
   |
-3 | type SnoozeDays = Int {
+1 | type SnoozeDays = Int {
   |      ^^^^^^^^^^ used by another file
   reason: A type used by one file lives in it; once another file uses it, it moves to a file of its own in `domains/planning/types/`. `domains/planning/actions/postpone_all.jadpo` uses it too.
   next: Move `SnoozeDays` to `domains/planning/types/snooze_days.jadpo`, or run `jadpo fmt --layout`, which moves it and updates the imports (agent)
@@ -1194,20 +1194,20 @@ application {}
 ```
 
 ```jadpo check project=e-promotion-file file=domains/sales/types/basket.jadpo expect=layout.promotion_required
-type Basket = Object {
-    code: DiscountCode
-}
-
 type DiscountCode = Text {
     max_length: 12
+}
+
+type Basket = Object {
+    code: DiscountCode
 }
 ```
 
 ```text output
 error: `DiscountCode` is used beyond this file
- --> domains/sales/types/basket.jadpo:5:6
+ --> domains/sales/types/basket.jadpo:1:6
   |
-5 | type DiscountCode = Text {
+1 | type DiscountCode = Text {
   |      ^^^^^^^^^^^^ used by another file
   reason: A declaration another file uses has a file of its own named after it, so its `use` line says where it is; `DiscountCode` is in `basket.jadpo`, named after another declaration, and moves to `domains/sales/types/`. `domains/sales/actions/apply_code.jadpo` uses it too.
   next: Move `DiscountCode` to `domains/sales/types/discount_code.jadpo`, or run `jadpo fmt --layout`, which moves it and updates the imports (agent)
@@ -1258,14 +1258,6 @@ application {}
 ```
 
 ```jadpo check project=e-unused-beside file=domains/kitchen/actions/set_oven.jadpo expect=layout.unused_declaration
-/// The temperature for a bake on `shelf`: a high shelf runs hot.
-action set_oven(shelf: Shelf) -> OvenTemperature {
-    if (shelf > 0) {
-        return 190
-    }
-    return 200
-}
-
 type Shelf = Int {
     min: -2
     max: 2
@@ -1279,13 +1271,21 @@ type OvenTemperature = Int {
 function top_shelf() -> Shelf {
     return 2
 }
+
+/// The temperature for a bake on `shelf`: a high shelf runs hot.
+action set_oven(shelf: Shelf) -> OvenTemperature {
+    if (shelf > 0) {
+        return 190
+    }
+    return 200
+}
 ```
 
 ```text output
 error: `top_shelf` isn't used by `set_oven`
- --> domains/kitchen/actions/set_oven.jadpo:19:10
+ --> domains/kitchen/actions/set_oven.jadpo:11:10
    |
-19 | function top_shelf() -> Shelf {
+11 | function top_shelf() -> Shelf {
    |          ^^^^^^^^^ `set_oven` doesn't use this
   reason: Everything in a file besides the declaration it is named after is there for that declaration, used by it directly or through one another; anything else is dead code. Tests don't count as users.
   next: Remove `top_shelf` (agent)
@@ -1816,7 +1816,8 @@ rule's real output under [Errors](#errors).
 | Declinable errors | Built (chunk 5.4b): no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline". `jadpo approval` listing declines comes with records (area 18), and the date rule with expired flags (area 16). |
 | Constants | Built (chunk 5.3e): `constant` as a reserved word and a declaration placed and shared as helper functions are, a private one unique within its domain, `constant.similar_exists`, and a top-level `var` pointed at `constant` (area 3). |
 | Imports | Built (chunk 3.5): `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
-| A file holds only what its primary declaration uses, primary first | Built (chunk 3.9): `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another, and `jadpo fmt` moving the primary declaration to the top. |
+| A file holds only what its primary declaration uses | Built (chunk 3.9): `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another. Chunk 3.9 also had `jadpo fmt` move the primary declaration to the top; chunk 5.5h3 replaced that with the next row. |
+| Definition before use | Built (chunk 5.5h3): `jadpo fmt` writes each file's declarations before the first one that uses them, the primary declaration last, ties by kind (constants, types, failures, helpers) and then by the order the primary first reaches them, declarations that use each other in written order, and `jadpo fmt --check` fails on a file out of it. Test, root and loose files, which have no primary declaration, keep their order. |
 | Referenced assets | Decided, not built: `layout.asset_unreferenced` waits for the reference forms of areas 11 and 16. |
 | Packages | Decided, not built: the root `packages/` and `jadpo.lock`, `shared/providers/`, and packages checked as `shared/` is come with chunk 7.1; until then `packages/` is `layout.unknown_location`. |
 | `.jadpo_record` files and the reachability rule | Decided 2026-10-16, not built: today's compiler writes `api/main.api`; the rename, the header line and the hand-edit check, and the rule that everything reachable from a public declaration is public, have no chunk on the roadmap yet. |
@@ -2036,8 +2037,14 @@ build/
   kind by the order the primary declaration first reaches them;
   declarations that refer to each other keep their written order among
   themselves. `jadpo fmt` writes this order and `jadpo fmt --check` fails on
-  a file out of it (built in chunk 5.5h3; until then `jadpo fmt` still
-  moves the primary declaration first, as chunk 3.9 built).
+  a file out of it (built in chunk 5.5h3). A file with no primary
+  declaration (a test file, a root file, a loose file) keeps its written
+  order. Reaching follows the primary's names in the order it first writes
+  them, into each declaration before the next (chosen in chunk 5.5h3). A
+  declaration nothing reaches (reported as `layout.unused_declaration`)
+  goes after the reached ones of its kind, in written order, and a
+  declaration still waits for what it uses whatever its kind, so a constant
+  of type `Pence` comes after `Pence`.
 - A name must convert to its file name and back unchanged, so consecutive
   capitals are not allowed: `VatRate`, not `VATRate` (Rust's guideline too).
 - Names are unique across the whole project and across kinds, with one
@@ -2626,8 +2633,8 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | Imports: before a promotion, provided failures, loose files, migrations, generated namespaces | A declaration beside another file's main one is imported from that file's folder until promoted; an entity's provided not-found failure comes from the entity's folder; loose files have no imports, and a `use` line there is `import.unknown`; a migration's `changes.jadpo`, which `jadpo migrate new` writes and which names what changed (`Todo.rank:`), imports nothing; `clock` and `config` need no import; while a name the file writes names nothing, no import is called unused (chunk 3.5) | 2026-10-15 |
 | A file per shared name: where it applies | A second declaration in any domain or `shared/` file, `types/` and `libraries/` included, moves to a file of its own once another file uses it; one only its own file uses stays; the edit makes the move, and `jadpo fmt --layout` makes it and updates the imports (chunk 3.5) | 2026-10-15 |
 | A file holds only what its primary declaration uses | The primary declaration is the one of the folder's kind named after the file (the first of that kind when the file is misnamed), or the seed in `database/seeds/`; every type or helper function beside it is used by it, directly or through one another, or is `layout.unused_declaration`. Tests never count. One another file uses is moved by `layout.promotion_required`, not reported unused. While the primary, or a declaration it uses, writes a name that names nothing, perhaps a misspelling of the one it meant, nothing beside it is called unused, as with imports. Test files, root files and loose files have no primary declaration, and a library's functions keep their own rule: one nothing calls is unused (chunk 3.9) | 2026-10-15 |
-| The primary declaration first | `jadpo fmt` moves the primary declaration below the file's opening comments, up to their last blank line, and its `use` lines; it takes the comments written above it and the one after it on its line, and everything else keeps its written order. `jadpo fmt --check` fails on a file whose primary declaration isn't first; loose files keep their order (chunk 3.9) | 2026-10-15 |
-| Definition before use (Richard) | Every declaration before the first one that uses it, so the primary declaration comes last; ties by kind (constants, types, failures, helpers), then by the order the primary first reaches them; mutual references keep their written order; `jadpo fmt` writes it and `--check` fails on a file out of it. Replaces "the primary declaration first" (2026-10-15). Built in 5.5h3 | 2026-10-17 |
+| The primary declaration first (replaced 2026-10-17 by Definition before use) | `jadpo fmt` moves the primary declaration below the file's opening comments, up to their last blank line, and its `use` lines; it takes the comments written above it and the one after it on its line, and everything else keeps its written order. `jadpo fmt --check` fails on a file whose primary declaration isn't first; loose files keep their order (chunk 3.9) | 2026-10-15 |
+| Definition before use (Richard) | Every declaration before the first one that uses it, so the primary declaration comes last; ties by kind (constants, types, failures, helpers), then by the order the primary first reaches them; mutual references keep their written order; `jadpo fmt` writes it and `--check` fails on a file out of it. Replaces "the primary declaration first" (2026-10-15). Built in chunk 5.5h3, which chose: a file with no primary declaration keeps its order; reaching is depth-first through the primary's names in written order; a declaration waits for what it uses whatever its kind; a declaration nothing reaches goes after the reached ones of its kind; constants written together stay together | 2026-10-17 |
 | Names per domain | A private function or type (not a failure, an email, or a type an API's record names) needs a name unique only within its domain; everything public, in `shared/` or the root files, and every other kind (entities, failures, events, actions, queries, routes, schedules, subscribers, services, fixtures, emails) stays unique across the project, as do domain, library and standard-library names among themselves. Why: agents in parallel workspaces on different domains would otherwise clash on private helper names at merge; imports stay exact. Rejected: a namespace per domain, which only moves the prefix into tables, error codes, OpenAPI and event names, and makes one name mean different things by folder. The identity key of a function or type declared in a domain carries the domain, and promotion to `shared/` writes a registry move line (amends area 18's question 8). `semantic.duplicate_declaration` says copy or clash, never invents a name, and lists the names in use with the same word; `jadpo rename` refuses a name in use; agents merge `main` and run `jadpo check` before pushing, and generated CI runs `jadpo check` first. Built in chunk 5.3d, but for `jadpo rename`, which comes with the command (Richard) | 2026-10-16 |
 | Constants in the layout | A `constant` (area 3) is placed and shared as a helper function is: used by one file it sits at the top of that file, never as a primary declaration, and used by a second it moves into a library and is read through it (`pricing.vat_rate`), so a library holds functions and constants; a private constant needs a name unique only within its domain; `constant` is reserved; a top-level `var` is `syntax.expected_declaration` whose `next:` writes `constant`; two constants of one type holding one value warn `constant.similar_exists`. Built in chunk 5.3e (Richard) | 2026-10-16 |
 | Packages in the layout | The root `packages/` holds only installed packages, `packages/<name>/<version>/`, committed, read-only and checked against `jadpo.lock`; the app's own integrations live in `shared/providers/<name>/<version>/` in the package format; a package is laid out as `shared/` is; `use packages/…` always names installed code (Richard, area 11) | 2026-10-16 |

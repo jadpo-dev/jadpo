@@ -8,6 +8,28 @@
 
 use baking/types { Grams, Ingredient, IngredientName, Recipe }
 
+/// How many times a recipe is made at once.
+type Batches = Int {
+    min: 1
+    max: 10
+}
+
+/// A recipe made several times over, and the ingredients too heavy for
+/// the bench scale, which are weighed on the floor scale instead.
+type ScaledRecipe = Output {
+    recipe: Recipe
+    floor_scale: List<IngredientName>
+}
+
+/// The names of the ingredients heavier than `over`, in recipe order.
+function heavy_ingredients(recipe: Recipe, over: Grams) -> List<IngredientName> {
+    var heavy: List<Ingredient> = list.filter(
+        recipe.ingredients,
+        ingredient -> ingredient.weight > over
+    )
+    return list.map(heavy, ingredient -> ingredient.name)
+}
+
 /// `recipe` made `batches` times over, and which ingredients then go on
 /// the floor scale.
 action scale_recipe(recipe: Recipe, batches: Batches) -> ScaledRecipe {
@@ -27,26 +49,4 @@ action scale_recipe(recipe: Recipe, batches: Batches) -> ScaledRecipe {
         recipe: whole_batch
         floor_scale: heavy_ingredients(whole_batch, 5000)
     }
-}
-
-/// A recipe made several times over, and the ingredients too heavy for
-/// the bench scale, which are weighed on the floor scale instead.
-type ScaledRecipe = Output {
-    recipe: Recipe
-    floor_scale: List<IngredientName>
-}
-
-/// How many times a recipe is made at once.
-type Batches = Int {
-    min: 1
-    max: 10
-}
-
-/// The names of the ingredients heavier than `over`, in recipe order.
-function heavy_ingredients(recipe: Recipe, over: Grams) -> List<IngredientName> {
-    var heavy: List<Ingredient> = list.filter(
-        recipe.ingredients,
-        ingredient -> ingredient.weight > over
-    )
-    return list.map(heavy, ingredient -> ingredient.name)
 }

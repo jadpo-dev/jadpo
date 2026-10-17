@@ -2,6 +2,14 @@ use kitchen/entities { Ingredient }
 use kitchen/types { Allergen, IngredientName, IngredientView }
 use kitchen/failures { IngredientListed }
 
+/// What listing an ingredient takes.
+type ListIngredient = Input {
+    name: IngredientName
+    allergen: Allergen {
+        optional: true
+    }
+}
+
 /// Adds an ingredient to the shared list.
 action list_ingredient(input: ListIngredient) fails IngredientListed -> IngredientView {
     var ingredient: Ingredient = attempt Ingredient.create {
@@ -17,13 +25,5 @@ action list_ingredient(input: ListIngredient) fails IngredientListed -> Ingredie
         id: ingredient.id
         name: ingredient.name
         allergen: ingredient.allergen
-    }
-}
-
-/// What listing an ingredient takes.
-type ListIngredient = Input {
-    name: IngredientName
-    allergen: Allergen {
-        optional: true
     }
 }
