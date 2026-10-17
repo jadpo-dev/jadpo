@@ -220,10 +220,7 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         return read.ok_or(MALFORMED);
     }
     let read = match form {
-        TextForm::Checked => entry
-            .validator
-            .is_some_and(|validator| validator.accepts(raw))
-            .then(|| Value::text(raw)),
+        TextForm::Checked => entry.accepts(raw).then(|| Value::text(raw)),
         TextForm::Uuid => entry
             .validator
             .is_some_and(|validator| validator.accepts(raw))
@@ -410,6 +407,27 @@ impl MoneyOptions {
     }
 }
 
+/// `text.format` as a call runs it: given, besides the value and its
+/// options, the name of the standard type held as text the value is, which
+/// the checker fills (an IBAN is text to the runtime), or `none`.
+pub fn format_as(
+    standard: &Value,
+    value: &Value,
+    locale: &Value,
+    zone: &Value,
+    format_spec: &Value,
+    options: &MoneyOptions,
+) -> Result<Value, Fault> {
+    if let (Value::Text(name), Value::Text(_)) = (standard, value)
+        && let Some(entry) = standard_type(name)
+        && matches!(entry.holds, Holds::Text { .. })
+    {
+        let tag = present::tag_of(locale)?;
+        return Ok(Value::text(&shown(entry, value, tag, zone, format_spec)?));
+    }
+    format(value, locale, zone, format_spec, options)
+}
+
 /// `text.format(value, locale:, zone:, format:, precision:, display:,
 /// sign:)`: the value for people in `locale`, as its entry's format key
 /// says. Each option is `none` where the type doesn't take it.
@@ -474,6 +492,14 @@ pub fn shown(
         }
         (FormatKey::CurrencyName, value) => {
             present::money::currency_name(&canonical(entry, value)?, tag)?
+        }
+        // A payment or identity number's printed form (area 19, chunk
+        // 5.5i): grouped, or its last four after a mask.
+        (FormatKey::Grouped(grouping), value) => grouping.apply(&canonical(entry, value)?),
+        (FormatKey::LastFour { mask }, value) => {
+            let text = canonical(entry, value)?;
+            let skip = text.chars().count().saturating_sub(4);
+            format!("{mask}{}", text.chars().skip(skip).collect::<String>())
         }
         (FormatKey::Range, Value::Record(record)) => {
             let (start, end) = range_ends(record)?;

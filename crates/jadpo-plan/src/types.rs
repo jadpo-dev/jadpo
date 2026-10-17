@@ -329,6 +329,12 @@ impl Types {
                     }
                     _ => return None,
                 },
+                // A standard type held as text (area 19, chunk 5.5i) has no
+                // node: it is text with its own check.
+                TypeRef::Std(name, args) if args.is_empty() => {
+                    rules.push(jadpo_std::standard::text_rules(&name)?);
+                    current = TypeRef::Builtin(Builtin::Text);
+                }
                 // A standard object type's field (area 19) has no node: its
                 // data entry's part says what it is built on and the range
                 // a whole number keeps, which `LocalTime.hour(...)` checks.

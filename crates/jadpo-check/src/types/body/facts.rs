@@ -156,6 +156,10 @@ pub(crate) struct Facts {
     pub formats: BTreeMap<NodeKey, String>,
     /// Each `text.parse` call, with the type it gives (area 19).
     pub parsed: BTreeMap<NodeKey, Ty>,
+    /// Each `text.format` call whose value is a standard type held as
+    /// text, with that type's name, which the call is given (area 19,
+    /// chunk 5.5i).
+    pub shown: BTreeMap<NodeKey, &'static str>,
     /// Each read of a constant (area 3): its library, if it is a
     /// library's, and its name as written.
     pub constants: BTreeMap<NodeKey, (Option<String>, String)>,

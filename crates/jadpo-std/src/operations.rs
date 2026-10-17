@@ -102,7 +102,8 @@ pub struct Param {
     /// Never written by a call: the checker fills it from the call's types
     /// and the operation is given it like any other value. `list.sum`'s
     /// `zero` is `0` of its items' representation, so an empty list sums
-    /// to the `Int` or the `Decimal` its type says.
+    /// to the `Int` or the `Decimal` its type says; `text.format`'s
+    /// `standard` names the standard type held as text its value is.
     pub implicit: bool,
     /// A whole number written out at the call, never a value (area 19,
     /// "Numbers"): `decimal.round`'s `scale:`, from 0 to 18 places as a
@@ -1723,6 +1724,12 @@ pub const OPERATIONS: &[Operation] = &[
             by_type("precision", Kind::Enum(crate::MoneyPrecision::NAME)),
             by_type("display", Kind::Enum(crate::MoneyDisplay::NAME)),
             by_type("sign", Kind::Enum(crate::MoneySign::NAME)),
+            // The standard type held as text the value is (an IBAN is text
+            // to the runtime), or `none` (area 19, chunk 5.5i).
+            Param {
+                implicit: true,
+                ..param("standard", Kind::Builtin(Builtin::Text))
+            },
         ],
         result: SHOWN_TEXT,
         at_least: None,

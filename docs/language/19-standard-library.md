@@ -98,7 +98,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 26 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, ten time types in 5.5k); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: five are built (`Currency` in chunk 5.5h, `Month` in 5.5k), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 44 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, ten time types in 5.5k, 17 payment and identity numbers in 5.5i); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: five are built (`Currency` in chunk 5.5h, `Month` in 5.5k), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -115,8 +115,8 @@ exception to the rule.
 | People and contact (12) | `PersonName`, `GivenName`, `FamilyName`, `Username`, **`Email`**, `EmailWithName`, `PhoneNumber`, `PhoneExtension`, `PostalAddress`, `PostalCode`, `Uprn`, `Nationality` (enum) | `web` |
 | Places (10) | `Country` (enum), `CountrySubdivision` (enum), `Continent` (enum), `UnLocode`, `CallingCode`, `Language` (enum), `WritingScript` (enum), `TextDirection` (enum), **`Locale`** (enum), **`Zone`** (enum) | |
 | Geospatial (17) | `Point` (optional altitude), `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` | `geo` (future area) |
-| Money, payments, banking (24) | **`Money`**, **`Currency`** (enum), `ExchangeRate`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, `PaymentCardNumber`, `MaskedCardNumber`, `CardBrand` (enum), `CardBin`, `CardExpiry`, `PaymentReference`, `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`, `UkAccountNumber`, `BankAccount`, `AbaRoutingNumber`, `Lei`, `Isin` | `money` |
-| Tax and identity numbers (11) | `VatNumber`, `TaxId`, `UkUtr`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin`, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, `NhsNumber` | |
+| Money, payments, banking (24) | **`Money`**, **`Currency`** (enum), **`ExchangeRate`**, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, **`PaymentCardNumber`**, `MaskedCardNumber`, `CardBrand` (enum), **`CardBin`**, `CardExpiry`, **`PaymentReference`**, **`InvoiceNumber`**, **`Iban`**, **`Bic`**, **`UkSortCode`**, **`UkAccountNumber`**, `BankAccount`, **`AbaRoutingNumber`**, **`Lei`**, **`Isin`** | `money` |
+| Tax and identity numbers (11) | `VatNumber`, `TaxId`, **`UkUtr`**, **`UkCompanyNumber`**, **`UkNationalInsuranceNumber`**, **`UsSsn`**, **`UsEin`**, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, **`NhsNumber`** | |
 | Commerce and logistics (20) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, `HsCode`, `Incoterm` (enum), `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` | `units`, `media` |
 | Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), **`LocalTime`**, **`LocalDateTime`**, **`Month`** (enum), **`YearMonth`**, **`Year`**, **`Quarter`**, **`IsoWeek`**, **`UtcOffset`**, **`DateRange`**, **`InstantRange`**, **`CalendarPeriod`**, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` | `temporal`, `range` |
 | Physical quantities (17) | `Length`, `Area`, `Volume`, `Angle`, `Mass`, `Pressure`, `Energy`, `Power`, `Temperature`, `TemperatureDifference`, `Speed`, `Frequency`, `Voltage`, `Current`, `Illuminance`, `SoundLevel`, `Concentration` | `units` |
@@ -384,7 +384,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `CalendarDate`, `CalendarPeriod`, `Currency`, `DateRange`, `Duration`, `Email`, `ExchangeRate`, `FileType`, `Instant`, `InstantRange`, `IpAddress`, `IsoWeek`, `LocalDateTime`, `LocalTime`, `Locale`, `Money`, `Month`, `Quarter`, `Range`, `Url`, `UtcOffset`, `Uuid`, `Weekday`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Bic`, `CalendarDate`, `CalendarPeriod`, `CardBin`, `Currency`, `DateRange`, `Duration`, `Email`, `ExchangeRate`, `FileType`, `Iban`, `Instant`, `InstantRange`, `InvoiceNumber`, `IpAddress`, `Isin`, `IsoWeek`, `Lei`, `LocalDateTime`, `LocalTime`, `Locale`, `Money`, `Month`, `NhsNumber`, `PaymentCardNumber`, `PaymentReference`, `Quarter`, `Range`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Url`, `UsEin`, `UsSsn`, `UtcOffset`, `Uuid`, `Weekday`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -2967,6 +2967,79 @@ cover. Where a rule is more than a pattern, the type names one validator.
 | Travel | `IataAirport`, `IcaoAirport`, `IataAirline` against their lists |
 | Other | `Orcid` (ISO 7064), `Mpan` (check digit) |
 
+A marketplace pays its sellers into the account they type, takes a
+patient's NHS number from a referral, and shows a card on file by its
+last four:
+
+```jadpo check project=payment-numbers
+type FormText = Text {}
+
+type NotAnIban = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type NotAnNhsNumber = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// The account a seller is paid into, as they typed it: checked by its
+/// country's length and its mod-97 check digits.
+function payout_account(raw: FormText) fails NotAnIban -> Iban {
+    var account: Iban = attempt Iban(raw) {
+        format: NotAnIban
+    }
+    return account
+}
+
+/// A patient's NHS number, as a referral sends it.
+function patient_number(raw: FormText) fails NotAnNhsNumber -> NhsNumber {
+    var number: NhsNumber = attempt text.parse(raw, as: NhsNumber) {
+        malformed: NotAnNhsNumber
+    }
+    return number
+}
+
+/// An account as a statement prints it.
+function account_label(account: Iban, viewer: Locale) -> PresentationText {
+    return text.format(account, locale: viewer)
+}
+
+/// A card on file as a receipt shows it: its last four only.
+function card_label(card: PaymentCardNumber, viewer: Locale) -> PresentationText {
+    return text.format(card, locale: viewer)
+}
+```
+
+```jadpo check project=payment-numbers file=main.test.jadpo
+test "payment and identity numbers are checked as they are built" {
+    var account: Iban = attempt payout_account("GB29NWBK60161331926819")
+    assert account == Iban("GB29NWBK60161331926819")
+    assert payout_account("GB29NWBK60161331926818") fails NotAnIban
+    assert payout_account("GB29 NWBK 6016 1331 9268 19") fails NotAnIban
+    var patient: NhsNumber = attempt patient_number("9434765919")
+    assert patient == NhsNumber("9434765919")
+    assert patient_number("9434765918") fails NotAnNhsNumber
+}
+
+test "they are shown as they are printed" {
+    var account: Iban = Iban("GB29NWBK60161331926819")
+    assert account_label(account, Locale.en_gb) == "GB29 NWBK 6016 1331 9268 19"
+    assert card_label(PaymentCardNumber("4242424242424242"), Locale.en_gb) == "•••• 4242"
+    assert text.format(NhsNumber("9434765919"), locale: Locale.en_gb) == "943 476 5919"
+}
+```
+
+> Built in chunk 5.5i for the 17 payment and identity numbers that are
+> text: `PaymentCardNumber`, `CardBin`, `PaymentReference`,
+> `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`, `UkAccountNumber`,
+> `AbaRoutingNumber`, `Lei`, `Isin`, `UkUtr`, `UkCompanyNumber`,
+> `UkNationalInsuranceNumber`, `UsSsn`, `UsEin` and `NhsNumber`, each a
+> pattern and, where the table above names one, a validator; the UK
+> modulus check, which needs a sort code and an account number together,
+> comes with `BankAccount` in chunk 5.5i2, with the money group's records
+> and the identity documents. What the page left open is "Chosen in chunk
+> 5.5i", under "Review".
+
 ## Logic and bits
 
 `and`, `or` and `not` are the logical operators (area 3), and exclusive or
@@ -3571,7 +3644,7 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, the other two in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, ten time types in 5.5k, each other group of types in 5.5i to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, ten time types in 5.5k, 17 payment and identity numbers in 5.5i, each other group of types in 5.5i2 to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
@@ -4301,6 +4374,75 @@ under "Errors").
   differs; chunk 5.6, its first user, checks the form against the
   runtime before relying on it.
 
+### Chosen in chunk 5.5i
+
+- **Split.** The 17 that are text are built here; the 15 that are
+  records or choices of other types wait for what they hold, as chunk
+  5.5i2: `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints` and
+  `InterestRate` for `Percentage` and the quantities (5.5j), `VatNumber`,
+  `TaxId`, `PassportNumber`, `DrivingLicenceNumber` and
+  `IdentityDocument` for `Country` (5.5l), and `CardBrand`,
+  `MaskedCardNumber`, `CardExpiry` and `BankAccount` with them.
+- **Held as text.** Each is a type built on `Text` that the standard
+  library declares (`Holds::Text`, its stub `public type Iban = Text
+  {}`), so construction, literals checked while compiling, `attempt`,
+  JSON (a string), storage (a `text` column) and `==` are area 2's, and
+  an application's own type can be built on one, adding rules: `type
+  SterlingIban = Iban { pattern: "GB.*" }`. Its pattern, matched whole,
+  and its validator are one check, which text of another type breaks as
+  `format`, as an `Email`'s does, so no new rule name; `text.parse`
+  fails only `malformed`, `text.from` is `type.mismatch` (it is text
+  already), and none is ordered.
+- **Canonical text is the electronic form,** upper case with no spaces
+  or dashes: `GB29NWBK60161331926819`, sort code `089999`, SSN
+  `123456789`, EIN `123456789`. Only that is read, so the printed IBAN
+  and lower case are refused, as `text.parse` reads only canonical text
+  everywhere; an application strips a form's spaces before building one
+  (`text.replace`). The catalogue's sketches of the SSN and EIN with
+  dashes are the printed form.
+- **Shown to people in the printed form,** which the locale doesn't
+  change (`FormatKey::Grouped`): an IBAN in fours, a sort code in pairs
+  with dashes (`08-99-99`), a National Insurance number in pairs
+  (`AB 12 34 56 C`), an NHS number 3-3-4 (`943 476 5919`), an EIN 2-7;
+  the others as their canonical text. `text.format` is given the name of
+  the standard type a value is held as (an implicit `standard`
+  argument the checker fills), since the runtime sees only text.
+- **Masked by `text.format`, the conservative choice:** a
+  `PaymentCardNumber` and a `UsSsn` are shown as their last four only
+  (`•••• 4242`, `•••-••-6789`), as PCI DSS lets a card number be shown
+  and as the SSA and IRS truncate an SSN. Code that must show a whole
+  number has it as text already.
+- **Personal data.** Each entry names the area 15 category its values
+  are, whatever field holds them: `financial` for a card number, an IBAN
+  and a UK account number, `government_id` for a National Insurance
+  number, an SSN and a UTR, and `health` for an NHS number. Area 15 isn't
+  built yet (personal data comes after the first build), and logs carry
+  no values today (a failure's code and a fault), so nothing writes one in
+  clear; its build treats a field of such a type as marked with that
+  category, hashed in logs, kept out of caches when sensitive, and its
+  reads recorded. A failed assertion in `jadpo test` still shows the
+  value it compared, which is test data.
+- **Validators** are the page's: IBAN's mod-97 with each country's
+  length from SWIFT's IBAN Registry (a country the registry adds later is
+  refused until a release adds it, as a currency is), LEI's ISO 7064 mod
+  97-10, a card number's Luhn, an ISIN's Luhn over its letters as
+  numbers, an ABA routing number's 3-7-1 checksum, an NHS number's mod-11
+  (a check digit of 10 is never issued), and a National Insurance
+  number's prefix rules from HMRC's NIM39110 (suffix A to D only). The
+  rest are patterns: a BIC (its country checked against ISO 3166 once
+  `Country` is built), a card BIN of 6 or 8 digits, a payment reference
+  of up to 18 of Bacs's characters, an invoice number of 1 to 200
+  characters with no control character and no space at either end, a
+  sort code, an account number, a UTR, a company number, an EIN, and an
+  SSN with the areas, groups and serials the SSA never issues refused.
+  The UK modulus check needs a sort code and an account number together,
+  so it is `BankAccount`'s, in 5.5i2.
+- **Test values are published ones** where a scheme publishes them
+  (SWIFT's registry IBANs, Stripe's test cards, the NHS Number standard's
+  example and the 999 test range, Vocalink's modulus checking test cases,
+  GLEIF's LEIs), and made up to the rules where it doesn't; each entry
+  says which.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -4748,9 +4890,14 @@ first; each group of types then arrives with its baseline and its extras.
 - **5.5h2 Exchange rates and money in messages** `opus · high`:
   `ExchangeRate` and `money.convert`; `{price, number, currency}` in
   translation messages. Built.
-- **5.5i Payment and identity numbers** `opus · high`: the money group's
-  other 21 types and the 11 tax and identity numbers, each a pattern or
-  check digit (mod-97, Luhn, mod-11) on the contract.
+- **5.5i Payment and identity numbers** `opus · high`: the 17 payment and
+  identity numbers that are text, each a pattern or check digit (mod-97,
+  Luhn, mod-11) on the contract. Built; split on 2026-10-18, the rest is
+  5.5i2.
+- **5.5i2 Payment records and identity documents** `opus · high`, after
+  5.5j and 5.5l: the money group's records (`Price`, `TaxRate`,
+  `Discount`, `MaskedCardNumber`, `BankAccount` with the UK modulus check,
+  and the rest) and the identity documents on `Country`.
 - **5.5j Quantities** `opus · high`: the 17 physical quantities with
   `DataSize`, `Bitrate`, `Percentage`, `Ratio` and `Fraction`, their units
   SI storage at each kind's scale, the `%` literal and the operator

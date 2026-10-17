@@ -313,6 +313,13 @@ impl StdNames {
             .chain(self.enums.keys().map(String::as_str))
             .chain(self.opaque.iter().copied())
             .chain(self.standard_objects())
+            // The standard types held as text (area 19, chunk 5.5i).
+            .chain(
+                self.standard
+                    .iter()
+                    .filter(|(_, stub)| stub.base == "Text")
+                    .map(|(name, _)| name.as_str()),
+            )
     }
 
     /// The standard object types (`InstantRange`), which the checker

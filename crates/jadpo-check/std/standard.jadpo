@@ -12,6 +12,14 @@
 // them from its table in `jadpo-std` (the IANA zones, the CLDR locales,
 // the media types), too long to repeat here.
 
+/// A US bank's ABA routing number (area 19), nine digits with a 3-7-1
+/// checksum: `021000021`.
+public type AbaRoutingNumber = Text {}
+
+/// A bank identifier code (area 19, ISO 9362), 8 or 11 characters:
+/// `DEUTDEFF`.
+public type Bic = Text {}
+
 /// A calendar day with no time or zone (area 10), written `2026-10-25`.
 public type CalendarDate = CalendarDate {}
 
@@ -23,6 +31,10 @@ public type CalendarPeriod = Object {
     months: Int
     days: Int
 }
+
+/// The first 6 or 8 digits of a card number, naming its issuer (area
+/// 19): `424242`.
+public type CardBin = Text {}
 
 /// The days from `start` to `end`, both included (area 19), written
 /// `2026-10-01/2026-10-31`.
@@ -53,6 +65,11 @@ public type ExchangeRate = Object {
 /// A file's IANA media type (area 16), written `image/png`.
 public type FileType = Enum {}
 
+/// An IBAN (area 19, ISO 13616) in its electronic form, upper case with
+/// no spaces, its mod-97 check digits passing: `GB29NWBK60161331926819`.
+/// Shown to people in fours.
+public type Iban = Text {}
+
 /// One moment for everyone (area 10), written `2026-10-25T09:30:00Z`.
 public type Instant = Instant {}
 
@@ -63,8 +80,16 @@ public type InstantRange = Object {
     end: Instant
 }
 
+/// An invoice's number (area 19, EN 16931): 1 to 200 characters, with no
+/// space at either end.
+public type InvoiceNumber = Text {}
+
 /// An IPv4 or IPv6 address (area 2).
 public type IpAddress = IpAddress {}
+
+/// A securities identification number (area 19, ISO 6166), its Luhn
+/// check digit passing: `US0378331005`.
+public type Isin = Text {}
 
 /// A week of an ISO 8601 week-numbering year (area 19), written
 /// `2026-W43`: `week` from 1 to 52, or 53 in a year that has one.
@@ -72,6 +97,10 @@ public type IsoWeek = Object {
     year: Int
     week: Int
 }
+
+/// A Legal Entity Identifier (area 19, ISO 17442), its mod-97 check
+/// digits passing: `506700GE1G29325QX363`.
+public type Lei = Text {}
 
 /// A date and a clock time with no zone (area 19), written
 /// `2026-10-25T09:30:00`: not one moment until a zone is chosen.
@@ -107,6 +136,19 @@ public type Month = Enum {
     december
 }
 
+/// An NHS number (area 19), ten digits with a mod-11 check digit:
+/// `9434765919`, shown to people as `943 476 5919`. Personal data.
+public type NhsNumber = Text {}
+
+/// A payment card's number (area 19, ISO/IEC 7812), 12 to 19 digits with
+/// a Luhn check digit: `4242424242424242`. Shown to people as its last
+/// four only, `•••• 4242`. Personal data.
+public type PaymentCardNumber = Text {}
+
+/// The reference a payer sees on a UK bank payment (area 19): up to 18
+/// of Bacs's characters, `INV-2026/0042`.
+public type PaymentReference = Text {}
+
 /// A quarter of a calendar year (area 19), written `2026-Q4`: `quarter`
 /// from 1 to 4.
 public type Quarter = Object {
@@ -126,8 +168,37 @@ public type Range = Object {
     end: T?
 }
 
+/// A UK bank account number (area 19), eight digits with leading zeros
+/// kept: `66374958`. Personal data.
+public type UkAccountNumber = Text {}
+
+/// A UK company's number at Companies House (area 19), eight digits or
+/// two letters and six: `00445790`, `SC123456`.
+public type UkCompanyNumber = Text {}
+
+/// A UK National Insurance number (area 19), its prefix one HMRC
+/// allocates: `AB123456C`, shown to people as `AB 12 34 56 C`. Personal
+/// data.
+public type UkNationalInsuranceNumber = Text {}
+
+/// A UK bank sort code (area 19), six digits: `089999`, shown to people
+/// as `08-99-99`.
+public type UkSortCode = Text {}
+
+/// A UK Unique Taxpayer Reference (area 19), ten digits. Personal data.
+public type UkUtr = Text {}
+
 /// An `http://` or `https://` URL with a host (area 2).
 public type Url = Url {}
+
+/// A US Employer Identification Number (area 19), nine digits:
+/// `123456789`, shown to people as `12-3456789`.
+public type UsEin = Text {}
+
+/// A US Social Security number (area 19), nine digits that the SSA could
+/// have issued: `123456789`. Shown to people as its last four only,
+/// `•••-••-6789`. Personal data.
+public type UsSsn = Text {}
 
 /// An offset from UTC in minutes (area 19), written `+05:30`, from 18
 /// hours behind to 18 hours ahead.

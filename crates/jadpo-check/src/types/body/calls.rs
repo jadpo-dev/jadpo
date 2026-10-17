@@ -884,6 +884,13 @@ impl Body<'_> {
                 if let Some(entry) =
                     self.contract_value(table.op, &value, Some(given.clone()), written)
                 {
+                    // `text.format` is told which standard type held as
+                    // text its value is, which the runtime can't see.
+                    if let Some(entry) = entry
+                        && matches!(entry.holds, jadpo_std::standard::Holds::Text { .. })
+                    {
+                        self.facts.shown.insert(node_key(call.syntax()), entry.name);
+                    }
                     contract = Some((given, entry));
                 }
                 continue;

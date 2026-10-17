@@ -228,6 +228,13 @@ members
 membership
 money
 currency
+# the standard types `PaymentCardNumber`, `PaymentReference`,
+# `InvoiceNumber` and `UkCompanyNumber` (area 19, chunk 5.5i)
+payment
+card
+card_number
+invoice
+company
 principal
 retention
 role

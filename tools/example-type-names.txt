@@ -6,9 +6,12 @@ Batches
 Blank
 Broken
 BrowserSession
+Card
+CardNumber
 Choice
 Code
 Comment
+Company
 Count
 Cutoff
 Day
@@ -21,6 +24,7 @@ Draft
 Flag
 Handle
 Health
+Invoice
 Item
 Label
 Listing
@@ -34,6 +38,7 @@ Open
 Opening
 Order
 Pair
+Payment
 Pence
 Percent
 Phrase

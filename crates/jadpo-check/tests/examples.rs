@@ -611,6 +611,8 @@ fn rules(rules: &Rules, used: &mut BTreeSet<String>) {
         max_duration,
         currency,
         rounding,
+        // Set only by the standard library, never written in a block.
+        standard: _,
     } = rules;
     let set = [
         ("min", min.is_some() || min_duration.is_some()),
