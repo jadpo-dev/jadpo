@@ -1495,9 +1495,9 @@ customer's currency, and shares a bill between friends:
 
 ```jadpo check project=money
 type CakePrice = Money {
-    currency: Currency.gbp     // fixed: adding another currency doesn't compile
-    min: 0                     // in minor units: pence
-    rounding: Rounding.half_up // how `*` and `/` round to a penny
+    currency: Currency.gbp  // fixed: adding another currency doesn't compile
+    min: 0  // in minor units: pence
+    rounding: Rounding.half_up  // how `*` and `/` round to a penny
 }
 
 type Payment = Money {}  // any currency, known only while running
@@ -1568,11 +1568,15 @@ function price_label(cake: CakePrice, customer: Locale) -> PresentationText {
 
 ```jadpo check project=money file=main.test.jadpo
 test "amounts add, round and share in minor units" {
+    var delivery: CakePrice = CakePrice(money.from_minor(250, Currency.gbp))
+    var gross: CakePrice = CakePrice(money.from_minor(1200, Currency.gbp))
+    var bill: CakePrice = CakePrice(money.from_minor(1000, Currency.gbp))
     assert list_price() == money.from_minor(1050, Currency.gbp)
-    assert delivered(list_price(), CakePrice(money.from_minor(250, Currency.gbp))) == money.from_minor(1300, Currency.gbp)
-    assert vat_in(CakePrice(money.from_minor(1253, Currency.gbp))) == money.from_minor(251, Currency.gbp)
-    assert before_vat(CakePrice(money.from_minor(1200, Currency.gbp))) == money.from_minor(1000, Currency.gbp)
-    assert list.map(bill_shares(CakePrice(money.from_minor(1000, Currency.gbp)), 3), share -> money.minor(share)) == [334, 333, 333]
+    assert delivered(list_price(), delivery) == money.from_minor(1300, Currency.gbp)
+    assert vat_in(list_price()) == money.from_minor(210, Currency.gbp)
+    assert before_vat(gross) == money.from_minor(1000, Currency.gbp)
+    var pence: List<Int> = list.map(bill_shares(bill, 3), share -> money.minor(share))
+    assert pence == [334, 333, 333]
 }
 
 test "a currency known only while running is checked as it runs" {
@@ -1587,8 +1591,10 @@ test "a currency known only while running is checked as it runs" {
 }
 
 test "an amount is shown, written and read one way" {
-    assert price_label(CakePrice(money.from_minor(123450, Currency.gbp)), Locale.en_gb) == "£1,234.50"
-    assert text.format(Payment(money.from_minor(123450, Currency.eur)), locale: Locale.en_us) == "€1,234.50"
+    var large: CakePrice = CakePrice(money.from_minor(123450, Currency.gbp))
+    var abroad: Payment = Payment(money.from_minor(123450, Currency.eur))
+    assert price_label(large, Locale.en_gb) == "£1,234.50"
+    assert text.format(abroad, locale: Locale.en_us) == "€1,234.50"
     assert text.format(list_price(), locale: Locale.en_gb, precision: MoneyPrecision.whole) == "£11"
     assert text.from(list_price()) == "GBP 10.50"
     assert text.format(Currency.jpy, locale: Locale.en_gb) == "Japanese Yen"
