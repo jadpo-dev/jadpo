@@ -274,7 +274,8 @@ pub fn export(loaded: &Loaded, call: &Call, cwd: &Path) -> Reply {
             loaded,
             cwd,
             syntax,
-            "translations export stopped",
+            "Export stopped",
+            false,
             &BTreeMap::new(),
         );
     }
@@ -432,6 +433,7 @@ fn blocked(
     cwd: &Path,
     problems: Vec<Diagnostic>,
     headline: &str,
+    nothing_written: bool,
     extra: &BTreeMap<String, String>,
 ) -> Reply {
     let mut sources: BTreeMap<String, String> = jadpo_db::source_texts(&loaded.db, loaded.project);
@@ -445,7 +447,10 @@ fn blocked(
     screen.push(Block::summary(
         Outcome::Failure,
         headline,
-        [Fact::problem(count(errors, "error", "errors"))],
+        nothing_written
+            .then(|| Fact::plain("nothing written"))
+            .into_iter()
+            .chain([Fact::problem(count(errors, "error", "errors"))]),
     ));
     Reply::Report {
         screen,
@@ -455,8 +460,17 @@ fn blocked(
     }
 }
 
+/// The nearest character boundary at or before `at`.
+fn boundary(text: &str, at: usize) -> usize {
+    let mut at = at.min(text.len());
+    while !text.is_char_boundary(at) {
+        at -= 1;
+    }
+    at
+}
+
 fn file_invalid(shown: &str, at: usize, text: &str, why: &str, headline: &str) -> Diagnostic {
-    let start = at.min(text.len());
+    let start = boundary(text, at);
     let end = text[start..]
         .char_indices()
         .nth(1)
@@ -538,7 +552,8 @@ pub fn import(loaded: &mut Loaded, call: &Call, cwd: &Path) -> Reply {
             loaded,
             cwd,
             diagnostics,
-            "Import stopped: nothing written",
+            "Import stopped",
+            true,
             &file_sources,
         )
     };
@@ -549,7 +564,8 @@ pub fn import(loaded: &mut Loaded, call: &Call, cwd: &Path) -> Reply {
             loaded,
             cwd,
             syntax,
-            "translations import stopped",
+            "Import stopped",
+            true,
             &BTreeMap::new(),
         );
     }
@@ -1079,7 +1095,7 @@ fn unknown_unit(
     target: &exchange::Target,
     expected: &BTreeMap<String, (usize, Option<String>)>,
 ) -> Diagnostic {
-    let at = unit.start.min(text.len());
+    let at = boundary(text, unit.start);
     let end = unit.end.clamp(at + 1, text.len().max(at + 1));
     let near = nearest(&unit.id, expected.keys().map(String::as_str));
     // A unit of a message that exists, in a form the language does not use.
@@ -1184,7 +1200,7 @@ fn anchor(
     });
     if let Some(unit_at) = unit_at {
         let unit = &parsed.units[unit_at];
-        let start = unit.start.min(text.len());
+        let start = boundary(text, unit.start);
         let end = unit.end.clamp(start + 1, text.len().max(start + 1));
         // A wording problem points inside the wording when the file has it
         // in one piece.

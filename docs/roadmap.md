@@ -532,11 +532,16 @@ reference only).
   wording; the root folder's `sources.jadpo_record` (members
   `jadpo.<message>`), listed by `missing` and written by `update` and
   `accept`; and `jadpo translations builtin`.
-- [ ] **5.4f Translations: the exchange** `sonnet · high` (area 10,
-  "Tooling"), after 5.4e: `jadpo translations export` and `import`, which
-  exchange messages, their descriptions and their wording with translation
-  services (Crowdin, Lokalise) as XLIFF or JSON, and which also write the
-  record.
+- [x] **5.4f Translations: the exchange** `sonnet · high` (area 10,
+  "Tooling"), after 5.4e. Done: `jadpo translations export` writes XLIFF 2.0
+  (or Chrome-style JSON) for each translated locale, or the default
+  locale's source file, with each message's description and placeholders;
+  `import` reads XLIFF 2.x or JSON, checks the result with `jadpo check`'s
+  own rules, and writes the language files and the record or refuses whole
+  with `translation.exchange_unit_unknown`, `translation.exchange_file_invalid`
+  or the language files' rule at the unit of the file; exporting then
+  importing unchanged writes nothing. Lokalise's reading of XLIFF 2.0 and of
+  the Chrome JSON shape is unverified (area 10, "Chosen in chunk 5.4f").
 - [ ] **5.5a The standard type contract** `opus · high` (area 19, "Every
   standard type meets one contract", questions 1 to 5): each standard type
   a stub declaration in `crates/jadpo-check/std/` plus a data entry,
