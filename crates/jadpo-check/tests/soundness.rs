@@ -159,7 +159,7 @@ fn a_collection_type_is_not_a_constructor() {
 #[test]
 fn a_set_where_a_list_is_required_suggests_no_conversion() {
     let found = diagnostics(&format!(
-        "{LISTS}function count(p: Pair) -> Count {{\n    return Count(collection.count(p))\n}}\n"
+        "{LISTS}function count(p: Pair) -> Count {{\n    return Count(list.count(p))\n}}\n"
     ));
     assert_eq!(found.len(), 1, "{found:#?}");
     let problem = &found[0];

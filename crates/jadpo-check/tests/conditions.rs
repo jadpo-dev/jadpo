@@ -81,9 +81,9 @@ fn a_condition_that_leaves_proves_the_construction_after_it() {
         // A field of a value that never changes.
         "function from_line(line: Line) fails OrderTooLarge -> CakeCount {\n    if (line.quantity < 1 or line.quantity > 12) {\n        reject OrderTooLarge\n    }\n    return CakeCount(line.quantity)\n}\n",
         // A standard-library call on such values.
-        "function counted(items: List<Tag>) fails OrderEmpty, OrderTooLarge -> CakeCount {\n    if (collection.count(items) == 0) {\n        reject OrderEmpty\n    }\n    if (collection.count(items) > 12) {\n        reject OrderTooLarge\n    }\n    return CakeCount(collection.count(items))\n}\n",
+        "function counted(items: List<Tag>) fails OrderEmpty, OrderTooLarge -> CakeCount {\n    if (list.count(items) == 0) {\n        reject OrderEmpty\n    }\n    if (list.count(items) > 12) {\n        reject OrderTooLarge\n    }\n    return CakeCount(list.count(items))\n}\n",
         // A count bounds the list's own length.
-        "function stock_shelf(tags: List<Tag>) fails OrderTooLarge -> Shelf {\n    if (collection.count(tags) > 3) {\n        reject OrderTooLarge\n    }\n    return Shelf {\n        tags: tags\n    }\n}\n",
+        "function stock_shelf(tags: List<Tag>) fails OrderTooLarge -> Shelf {\n    if (list.count(tags) > 3) {\n        reject OrderTooLarge\n    }\n    return Shelf {\n        tags: tags\n    }\n}\n",
         // An object literal's field is proved the same way.
         "function build_order(n: Count) fails OrderTooLarge -> Order {\n    if (n < 1 or n > 12) {\n        reject OrderTooLarge\n    }\n    return Order {\n        count: n\n    }\n}\n",
         // Decimals: the value is rounded to the target's scale before its

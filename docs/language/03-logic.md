@@ -815,14 +815,14 @@ provider calls (chunk 7.1).
 
 ## Passing functions
 
-Area 2 decided on `collection.map` and `collection.filter`, which need a
+Area 2 decided on `list.map` and `list.filter`, which need a
 function as an argument. Decided (question 13): inline functions are allowed only as
 arguments to standard-library collection operations, using `->` for
 "produces":
 
 ```jadpo fragment
-var open: List<Todo> = collection.filter(todos, todo -> todo.status == TodoStatus.open)
-var titles: List<TodoTitle> = collection.map(todos, todo -> todo.title)
+var open: List<Todo> = list.filter(todos, todo -> todo.status == TodoStatus.open)
+var titles: List<TodoTitle> = list.map(todos, todo -> todo.title)
 ```
 
 The inline function is one expression, takes its parameter's type from the
@@ -911,7 +911,7 @@ depth limit that ends in a defined fault.
 
 ## Generic code
 
-Only the standard library is generic (`List<T>`, `collection.count`). Your own
+Only the standard library is generic (`List<T>`, `list.count`). Your own
 callables take named types, and a parameter that accepts several types is an
 enum whose variants carry each one (from area 2):
 
@@ -2752,15 +2752,15 @@ type Pence = Int {
 }
 
 function line_count(lines: List<Pence>) -> Pence {
-    return Pence(collection.count(itmes: lines))
+    return Pence(list.count(itmes: lines))
 }
 ```
 
 ```text output
-error: `collection.count` has no argument `itmes`
+error: `list.count` has no argument `itmes`
  --> main.jadpo:6:35
   |
-6 |     return Pence(collection.count(itmes: lines))
+6 |     return Pence(list.count(itmes: lines))
   |                                   ^^^^^ not a parameter
   reason: Its one argument is `items`.
   next: Use `items:` instead of `itmes:` (agent)
@@ -2794,7 +2794,7 @@ error: An inline function is only an argument to a collection operation
    |
 10 |     return same_price(item -> price)
    |                       ^^^^^^^^^^^^^ inline function
-  reason: Functions aren't values: `item -> expression` is written only as an argument to a standard-library collection operation, such as `collection.map` or `collection.filter`.
+  reason: Functions aren't values: `item -> expression` is written only as an argument to a standard-library collection operation, such as `list.map` or `list.filter`.
   next: Write the expression on its own, or pass it to a collection operation (agent)
   rule: type.inline_function_placement
   help: docs/language/03-logic.html#type-inline-function-placement
@@ -2917,7 +2917,7 @@ error: Jadpo has no `while` loop
 6 |     while (count > 0) {
   |     ^^^^^ not a Jadpo statement
   reason: The only loop is `for item in items`, which always ends after its list; stop early with `return`.
-  next: Loop over a list with `for`, or narrow it first with `collection.filter` (agent)
+  next: Loop over a list with `for`, or narrow it first with `list.filter` (agent)
   rule: syntax.expected_statement
   help: docs/language/03-logic.html#syntax-expected-statement
 
@@ -3459,7 +3459,7 @@ type Todo = Object {
 }
 
 function titles(todos: List<Todo>) -> List<TodoTitle> {
-    return collection.map(todos, todo => todo.title)
+    return list.map(todos, todo => todo.title)
 }
 ```
 
@@ -3467,7 +3467,7 @@ function titles(todos: List<Todo>) -> List<TodoTitle> {
 error: Jadpo writes `todo -> todo.title`, not `todo => todo.title`
  --> main.jadpo:10:34
    |
-10 |     return collection.map(todos, todo => todo.title)
+10 |     return list.map(todos, todo => todo.title)
    |                                  ^^^^^^^ write `todo -> todo.title`
   reason: `x => e` is an arrow function in JavaScript, TypeScript and C#, `lambda x: e` in Python and `|x| e` in Rust; a Jadpo inline function is `item -> expression`.
   next: Write `todo -> todo.title` (agent)
@@ -3735,13 +3735,13 @@ run, [Constants](#constants) since chunk 5.3e.
     `for` over a `List` only, with `return` allowed inside; no `while`,
     `break` or `continue`. Every loop then ends after its list, which keeps
     request deadlines predictable, and searching or stopping early is
-    `collection.filter` or a `return`. Go manages with one loop form; Elixir
+    `list.filter` or a `return`. Go manages with one loop form; Elixir
     with none.
     *Revised 2026-10-16 (Richard, area 12):* no outside call (a provider
     operation, a package action, a file store's `put` or `read`, a
     `documents` render) inside a `for` body, in any action; a loop of calls
     is `batches.each`, the one way.
-13. **How are functions passed to `collection.map` and `collection.filter`?**
+13. **How are functions passed to `list.map` and `list.filter`?**
     *Decided 2026-10-12:* inline functions only as arguments to standard-library
     collection operations, written `todo -> todo.title`: one expression, pure,
     parameter type taken from the list. No function types in your own

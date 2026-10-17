@@ -362,6 +362,11 @@ impl Body<'_> {
             return (Ty::Error, CallKind::Other, Reach::Unknown);
         }
         if names.namespace(&head) == Some(Namespace::Standard) {
+            if let Some(targets) = jadpo_std::moved_namespace(&head)
+                && let [member] = rest.as_slice()
+            {
+                return self.moved_namespace_call(callee, call, (&head, member), targets, expected);
+            }
             // An operation that moved is reported where it is resolved
             // (area 19) and checked as the operation it moved to.
             if let Some(to) = jadpo_std::moved(&head, member)
@@ -432,6 +437,74 @@ impl Body<'_> {
         }
         self.args_only(call);
         (Ty::Error, CallKind::Effect(written), Reach::Unknown)
+    }
+
+    /// A call through a namespace that moved whole (area 19, question 6):
+    /// `collection.<name>` is reported with an edit to `list.`, `set.` or
+    /// `map.`, by what its first value is, and checked as the operation it
+    /// moved to where that one is built.
+    fn moved_namespace_call(
+        &mut self,
+        callee: &Expr,
+        call: &ast::CallExpr,
+        (head, member): (&str, &str),
+        targets: &'static [&'static str],
+        expected: Option<&Ty>,
+    ) -> (Ty, CallKind, Reach) {
+        let first = Self::arguments(call).first().and_then(ast::Arg::expr);
+        let kind = first.as_ref().map_or("list", |value| self.collection_word(value));
+        let space = targets
+            .iter()
+            .copied()
+            .find(|space| *space == kind)
+            .unwrap_or("list");
+        let to = format!("{space}.{member}");
+        let from = format!("{head}.{member}");
+        let which = match &first {
+            Some(value) => format!("`{}` is a {kind}", tree::written(value.syntax())),
+            None => "a call with no values is a list's".to_string(),
+        };
+        let shown: Vec<String> = targets.iter().map(|space| format!("`{space}.`")).collect();
+        let span = self.span(callee);
+        self.out.push(
+            Diagnostic::new(
+                &rule::SEMANTIC_STANDARD_OPERATION_MOVED,
+                format!("`{from}` is now `{to}`"),
+            )
+            .at(span.clone(), "moved")
+            .reason(format!(
+                "The standard library has one namespace for each type an operation works on, so `{head}.` became {}; {which}.",
+                crate::and_list(&shown)
+            ))
+            .next(format!("Write `{to}`"))
+            .edit(span, to.clone()),
+        );
+        if let Some(operation) = StdNames::get().operation(space, member) {
+            let ty = self.std_call(operation, call, &to, expected);
+            let reach = jadpo_std::operation(space, member)
+                .map_or(Reach::Unknown, |operation| Reach::Std(operation.op));
+            return (ty, CallKind::Pure(to), reach);
+        }
+        self.args_only(call);
+        (Ty::Error, CallKind::Pure(to), Reach::Unknown)
+    }
+
+    /// Whether a value is a list, a set or a map, read without reporting
+    /// anything, since the call that reads it reports what it finds: only
+    /// a name or a field is read, and anything else is taken as a list.
+    fn collection_word(&mut self, value: &Expr) -> &'static str {
+        if !matches!(value, Expr::NameRef(_) | Expr::FieldExpr(_)) {
+            return "list";
+        }
+        let before = (self.out.len(), self.resolved.len());
+        let ty = self.infer(value);
+        self.out.truncate(before.0);
+        self.resolved.truncate(before.1);
+        match self.table.structure(&ty) {
+            Ty::Set(_) => "set",
+            Ty::Map(..) => "map",
+            _ => "list",
+        }
     }
 
     /// A standard-library operation the language declares but nothing runs
@@ -718,6 +791,8 @@ impl Body<'_> {
         // `as:` names (area 19).
         let mut contract: Option<(Ty, &'static jadpo_std::StandardType)> = None;
         let mut parsed: Option<(Ty, Option<Expr>)> = None;
+        // What `list.sum`'s items are built on, which its result is.
+        let mut summed: Option<Prim> = None;
         for ((arg, slot), ty) in args.iter().zip(&slots).zip(actual) {
             let Some(value) = arg.expr() else { continue };
             let Some(slot) = slot else {
@@ -729,9 +804,12 @@ impl Body<'_> {
             let param = params[*slot].1.clone();
             if let Ty::Function(from, to) = &param {
                 match &value {
-                    Expr::LambdaExpr(lambda) => {
-                        inline.push((lambda.clone(), (**from).clone(), (**to).clone()))
-                    }
+                    Expr::LambdaExpr(lambda) => inline.push((
+                        lambda.clone(),
+                        (**from).clone(),
+                        (**to).clone(),
+                        *slot,
+                    )),
                     other => {
                         let ty = self.infer(other);
                         let expected = substitute(&param, &bound);
@@ -774,6 +852,19 @@ impl Body<'_> {
                 }
                 continue;
             }
+            // A list of numbers (`list.sum`): any list whose items are
+            // built on `Int` or `Decimal`, as operators take them.
+            if let Ty::List(item) = &param
+                && **item == Ty::Number
+            {
+                let given = match ty {
+                    Some(ty) => ty,
+                    None => self.infer(&value),
+                };
+                let name = params[*slot].0.clone();
+                summed = self.numbers_argument(&value, &given, written, &name);
+                continue;
+            }
             let expected = substitute(&param, &bound);
             // A value that may be `none` (`header: Text?`) takes a value
             // built on the type, or one that may be `none`.
@@ -793,10 +884,19 @@ impl Body<'_> {
                 None => self.check(&value, &expected),
             }
         }
-        for (lambda, from, to) in inline {
+        for (lambda, from, to, slot) in inline {
             self.inline(&lambda, &from, &to, &mut bound);
+            if table
+                .and_then(|op| op.params.get(slot))
+                .is_some_and(|param| param.ordered)
+            {
+                self.ordered_key(&lambda, &substitute(&to, &bound), written);
+            }
         }
         self.divisors(&args, &slots, written);
+        if let Some(table) = table {
+            self.counts(table, &args, &slots, written);
+        }
         if let Some(table) = table {
             self.std_options(table, call, &args, &slots, written);
         }
@@ -888,7 +988,171 @@ impl Body<'_> {
         {
             self.locales_for_choosing(call, written);
         }
+        // A sum is its items' representation, as `+` gives (area 19): a
+        // named type is built back from it by construction.
+        if result == Ty::Number {
+            return summed.map_or(Ty::Error, Ty::Prim);
+        }
         substitute(&result, &bound)
+    }
+
+    /// A list of numbers, for `list.sum`: the representation its items are
+    /// built on, or `None` once what is wrong is reported.
+    fn numbers_argument(
+        &mut self,
+        value: &Expr,
+        given: &Ty,
+        written: &str,
+        param: &str,
+    ) -> Option<Prim> {
+        if given.has_error() {
+            return None;
+        }
+        let item = match self.table.structure(given) {
+            Ty::List(item) if !self.table.is_nullable(given) => Some(*item),
+            _ => None,
+        };
+        let numbers = item.as_ref().and_then(|item| {
+            self.table
+                .representation(item)
+                .filter(|prim| prim.is_number() && !self.table.is_nullable(item))
+        });
+        if numbers.is_some() {
+            return numbers;
+        }
+        let span = self.span(value);
+        let what = match &item {
+            Some(item) => format!("a list of `{item}`"),
+            None => super::super::literal::what(self.table, given),
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_MISMATCH,
+                format!("`{given}` can't be used where a list of numbers is required"),
+            )
+            .at(span, format!("this is `{given}`"))
+            .reason(format!(
+                "`{written}`'s `{param}` takes a list of values built on `Int` or `Decimal`, which `+` adds; `{given}` is {what}."
+            ))
+            .next("Pass a list of numbers here"),
+        );
+        None
+    }
+
+    /// The key an inline function gives to order items (`sort_by`,
+    /// `min_by`, `max_by`): a number, a time, a date, a duration or text,
+    /// which the canonical order compares as what they are (area 19).
+    fn ordered_key(&mut self, lambda: &ast::LambdaExpr, key: &Ty, written: &str) {
+        let Some(body) = lambda.expr() else { return };
+        if key.has_error() || matches!(key, Ty::Var(_)) {
+            return;
+        }
+        let span = self.span(&body);
+        let nullable = self.table.is_nullable(key);
+        let prim = self.table.representation(key);
+        let (message, reason, next) = match prim {
+            _ if nullable => (
+                format!("`{written}`'s key may be `none`, so it can't order the items"),
+                format!("The key gives `{key}`, and `none` has no place in an order."),
+                "Give a key that is never `none`".to_string(),
+            ),
+            Some(prim) if super::ops::ordered(prim) || prim == Prim::Text => return,
+            Some(Prim::ZonedTime) => (
+                format!("`{written}`'s key gives `{key}`, which has no order of its own"),
+                "A `ZonedTime` is an instant and the zone it is seen in, and two in different zones have no one order; their instants do.".to_string(),
+                "Order by the instant, with `temporal.instant`".to_string(),
+            ),
+            _ => (
+                format!("`{written}`'s key gives `{key}`, which has no order"),
+                format!(
+                    "A key orders the items, so it gives a number, a time, a date, a duration or text, each compared as what it is, text by code point; `{key}` is {}.",
+                    super::super::literal::what(self.table, key)
+                ),
+                "Give a key that is a number, a time, a date, a duration or text".to_string(),
+            ),
+        };
+        self.out.push(
+            Diagnostic::new(&rule::TYPE_ORDERING_OPERAND, message)
+                .at(span, format!("this is `{key}`"))
+                .reason(reason)
+                .next(next),
+        );
+    }
+
+    /// A count or a position is never negative (area 19, question 7),
+    /// checked as a divisor's zero is: a literal isn't below `0`, and a
+    /// value's type has a `min` of at least `0`.
+    fn counts(
+        &mut self,
+        table: &jadpo_std::Operation,
+        args: &[ast::Arg],
+        slots: &[Option<usize>],
+        written: &str,
+    ) {
+        for (arg, slot) in args.iter().zip(slots) {
+            let (Some(value), Some(slot)) = (arg.expr(), slot) else {
+                continue;
+            };
+            let Some(param) = table.params.get(*slot).filter(|p| p.never_negative) else {
+                continue;
+            };
+            let span = self.span(&value);
+            let shown = tree::written(value.syntax());
+            let (message, label, why) = if is_literal(&value) {
+                match Const::from_expr(&value) {
+                    Const::Number { value: number, .. } if number.mantissa < 0 => (
+                        format!("`{written}`'s `{}` is never negative", param.name),
+                        "below `0`".to_string(),
+                        format!("`{shown}` is below `0`."),
+                    ),
+                    _ => continue,
+                }
+            } else {
+                match self.facts.types.get(&node_key(value.syntax())).cloned() {
+                    // A value that isn't a whole number is already reported.
+                    Some(ty)
+                        if !ty.has_error()
+                            && !self.table.is_nullable(&ty)
+                            && self.table.representation(&ty) == Some(Prim::Int) =>
+                    {
+                        if self.never_below_zero(&ty) {
+                            continue;
+                        }
+                        let why = match &ty {
+                            Ty::Prim(prim) => format!(
+                                "`{shown}` is a plain `{}`, which can be below `0`.",
+                                prim.name()
+                            ),
+                            other => format!("`{other}` allows values below `0`."),
+                        };
+                        (
+                            format!("`{shown}` may be negative"),
+                            format!("a `{ty}` can be below `0`"),
+                            why,
+                        )
+                    }
+                    _ => continue,
+                }
+            };
+            self.out.push(
+                Diagnostic::new(&rule::TYPE_ARGUMENT_NEGATIVE, message)
+                    .at(span, label)
+                    .reason(format!(
+                        "`{written}`'s `{}` counts from the start, so it is never negative, which is proved while compiling: a literal isn't below `0` and a value's type has a `min` of at least `0`; {why}",
+                        param.name
+                    ))
+                    .next("Pass a value whose type has `min: 0`, building it where a negative one is handled; count from the end with `keep_last` or `drop_last`"),
+            );
+        }
+    }
+
+    /// Whether a type's rules leave out every value below zero: a `min` of
+    /// at least zero anywhere along its chain.
+    fn never_below_zero(&self, ty: &Ty) -> bool {
+        self.table
+            .rule_chain(ty)
+            .iter()
+            .any(|(_, rules)| rules.min.is_some_and(|min| min.mantissa >= 0))
     }
 
     /// A standard-library divisor is checked as `/`'s is (area 3, question
@@ -1124,7 +1388,7 @@ impl Body<'_> {
                 "An inline function is only an argument to a collection operation",
             )
             .at(span, "inline function")
-            .reason("Functions aren't values: `item -> expression` is written only as an argument to a standard-library collection operation, such as `collection.map` or `collection.filter`.")
+            .reason("Functions aren't values: `item -> expression` is written only as an argument to a standard-library collection operation, such as `list.map` or `list.filter`.")
             .next("Write the expression on its own, or pass it to a collection operation"),
         );
         let previous = self.context;

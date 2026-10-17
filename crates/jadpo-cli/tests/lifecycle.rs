@@ -255,7 +255,7 @@ test \"a parent stays included when hidden, and children of a visible parent sho
     var cy: Member = join(\"Cy\")
     var first: Visit = record_visit(cy, \"first\")
     var page: MemberPage = attempt member_with_visits(cy.id)
-    assert collection.map(page.visits, v -> v.note) == [\"first\"]
+    assert list.map(page.visits, v -> v.note) == [\"first\"]
     attempt leave(cy.id)
     assert member_with_visits(cy.id) fails MemberNotFound
     var seen: VisitPage = attempt visit_with_member(first.id)
@@ -269,7 +269,7 @@ test \"a notice shows from its time\" {
     assert later.published_at != none
     assert draft.published_at == none
     assert earlier.published_at != none
-    assert collection.map(notices(), n -> n.title) == [\"Earlier\"]
+    assert list.map(notices(), n -> n.title) == [\"Earlier\"]
 }
 ";
 

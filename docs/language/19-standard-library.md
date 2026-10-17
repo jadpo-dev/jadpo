@@ -1563,7 +1563,7 @@ check failed: 1 error, 1 file
 
 | Feature | Status |
 |---|---|
-| `collection.count`, `contains`, `map`, `filter` | Decided (area 2) and built; renamed `list.` in 5.5b (question 6) |
+| `list.count`, `contains`, `map`, `filter` | Decided (area 2) and built; renamed `list.` in 5.5b (question 6) |
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here, built in 5.5k |
 | The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, each group of types in 5.5h to 5.5s |
@@ -1624,7 +1624,7 @@ check failed: 1 error, 1 file
   `currency_mismatch`, `too_many_places`), a `sort_by` key limited to
   ordered kinds, actions-only operations, and a SQL form per operation.
 
-**Renaming `collection`.** `collection.count`, `contains`, `map` and
+**Renaming `collection`.** `list.count`, `contains`, `map` and
 `filter` are decided in area 2 and built (`crates/jadpo-check/std/collection.jadpo`,
 `jadpo-std`'s operation table). 5.5b renames the stub to `list.jadpo`, the
 four table entries and every call: about 40 files across areas 2, 3, 9, 13

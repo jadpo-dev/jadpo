@@ -100,10 +100,10 @@ fn declared_lengths_and_conditions_prove_a_named_collection() {
         // A sibling: `Shortlist` proves `max_length`, so only `min_length`
         // can break.
         "function from_short(short: Shortlist) fails NoNames -> FewNames {\n    var result: FewNames = attempt FewNames(short) {\n        min_length: NoNames\n    }\n    return result\n}\n",
-        // A condition on `collection.count` proves the lengths.
-        "function checked(found: List<Name>) fails NoNames -> Names {\n    if (collection.count(found) == 0) {\n        reject NoNames\n    }\n    return Names(found)\n}\n",
-        "function checked(found: List<Name>) fails NoNames, TooMany -> FewNames {\n    if (collection.count(found) < 1) {\n        reject NoNames\n    } else if (collection.count(found) > 3) {\n        reject TooMany\n    }\n    return FewNames(found)\n}\n",
-        "function inside(found: List<Name>) fails NoNames -> FewNames {\n    if (collection.count(found) >= 1 and collection.count(found) <= 3) {\n        return FewNames(found)\n    }\n    reject NoNames\n}\n",
+        // A condition on `list.count` proves the lengths.
+        "function checked(found: List<Name>) fails NoNames -> Names {\n    if (list.count(found) == 0) {\n        reject NoNames\n    }\n    return Names(found)\n}\n",
+        "function checked(found: List<Name>) fails NoNames, TooMany -> FewNames {\n    if (list.count(found) < 1) {\n        reject NoNames\n    } else if (list.count(found) > 3) {\n        reject TooMany\n    }\n    return FewNames(found)\n}\n",
+        "function inside(found: List<Name>) fails NoNames -> FewNames {\n    if (list.count(found) >= 1 and list.count(found) <= 3) {\n        return FewNames(found)\n    }\n    reject NoNames\n}\n",
     ];
     for source in clean {
         assert_eq!(with_types(source), CLEAN, "for:\n{source}");
@@ -117,14 +117,14 @@ fn declared_lengths_and_conditions_prove_a_named_collection() {
     );
     assert_eq!(
         with_types(
-            "function checked(found: List<Name>) fails NoNames, TooMany -> FewNames {\n    if (collection.count(found) > 3) {\n        reject TooMany\n    }\n    var result: FewNames = attempt FewNames(found) {\n        min_length: NoNames\n        max_length: TooMany\n    }\n    return result\n}\n"
+            "function checked(found: List<Name>) fails NoNames, TooMany -> FewNames {\n    if (list.count(found) > 3) {\n        reject TooMany\n    }\n    var result: FewNames = attempt FewNames(found) {\n        min_length: NoNames\n        max_length: TooMany\n    }\n    return result\n}\n"
         ),
         ["failure.rule_cannot_break"]
     );
     // A check that proves the wrong end proves nothing.
     assert_eq!(
         with_types(
-            "function wrong(found: List<Name>) fails TooMany -> Names {\n    if (collection.count(found) > 3) {\n        reject TooMany\n    }\n    return Names(found)\n}\n"
+            "function wrong(found: List<Name>) fails TooMany -> Names {\n    if (list.count(found) > 3) {\n        reject TooMany\n    }\n    return Names(found)\n}\n"
         ),
         ["failure.attempt_required"]
     );
@@ -139,7 +139,7 @@ fn a_named_set_is_built_from_a_set_or_a_list_of_its_items() {
         "function from_short(short: Shortlist) fails NoNames -> NameSet {\n    var result: NameSet = attempt NameSet(short) {\n        min_length: NoNames\n    }\n    return result\n}\n",
         // ... and at least one when the list has any items.
         "function from_names(names: FewNames) -> NameSet {\n    return NameSet(names)\n}\n",
-        "function counted(found: List<Name>) fails NoNames, TooMany -> NameSet {\n    if (collection.count(found) == 0) {\n        reject NoNames\n    } else if (collection.count(found) > 3) {\n        reject TooMany\n    }\n    return NameSet(found)\n}\n",
+        "function counted(found: List<Name>) fails NoNames, TooMany -> NameSet {\n    if (list.count(found) == 0) {\n        reject NoNames\n    } else if (list.count(found) > 3) {\n        reject TooMany\n    }\n    return NameSet(found)\n}\n",
         // A set's own lengths carry over.
         "function from_pairs(pairs: PairSet) -> PairSet {\n    return PairSet(pairs)\n}\n",
     ];
@@ -153,7 +153,7 @@ fn a_named_set_is_built_from_a_set_or_a_list_of_its_items() {
         ["failure.attempt_required"]
     );
     let required = explained(
-        "function counted(found: List<Name>) fails NoNames -> PairSet {\n    if (collection.count(found) < 2) {\n        reject NoNames\n    }\n    return PairSet(found)\n}\n",
+        "function counted(found: List<Name>) fails NoNames -> PairSet {\n    if (list.count(found) < 2) {\n        reject NoNames\n    }\n    return PairSet(found)\n}\n",
     );
     assert_eq!(required.len(), 1, "{required:#?}");
     assert_eq!(required[0][0], "failure.attempt_required");

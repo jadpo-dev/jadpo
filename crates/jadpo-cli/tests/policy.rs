@@ -448,7 +448,7 @@ action audit() -> AuditView {
         r#"use desk/types { TokenId }
 
 action list_token_ids(person: Principal.user) -> List<TokenId> {
-    return collection.map(sessions.tokens(person.id), t -> TokenId(t.id))
+    return list.map(sessions.tokens(person.id), t -> TokenId(t.id))
 }
 "#,
     ),
@@ -457,7 +457,7 @@ action list_token_ids(person: Principal.user) -> List<TokenId> {
         r#"use desk/types { TokenCount }
 
 action count_tokens(person: Principal.user) -> TokenCount {
-    return TokenCount(collection.count(sessions.tokens(person.id)))
+    return TokenCount(list.count(sessions.tokens(person.id)))
 }
 "#,
     ),

@@ -197,7 +197,7 @@ fn capital(text: &str) -> String {
     })
 }
 
-/// `collection.count` read without a call: what a namespace, domain,
+/// `list.count` read without a call: what a namespace, domain,
 /// library or connection holds is called, and none of it is a value.
 pub(crate) fn member_diagnostic(written: &str, span: Span) -> Diagnostic {
     Diagnostic::new(

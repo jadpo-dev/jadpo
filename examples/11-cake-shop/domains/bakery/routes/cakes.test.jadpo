@@ -16,7 +16,7 @@ test "the menu filters by flavour" {
     // `output` is `none` unless the route succeeded, so `match` reaches
     // the page inside.
     var cake_names: List<CakeName> = match response.output {
-        some(page) -> collection.map(page.items, cake -> cake.name)
+        some(page) -> list.map(page.items, cake -> cake.name)
         none -> []
     }
     assert cake_names == ["Lemon drizzle"]

@@ -12,10 +12,10 @@ filter it. So far `for` and those operations take only lists.
 ## What it teaches
 
 1. **Collections as types.** `List` fields holding objects, in `types/`. See `domains/baking/types/recipe.jadpo` and [area 2, Collections](../../docs/language/02-values-and-types.md#collections).
-2. **`for` and `var mut`.** Totals built up in a loop, `return` from inside one, and `collection.count`. See `actions/weigh_recipe.jadpo` and [area 3, Loops](../../docs/language/03-logic.md#loops).
+2. **`for` and `var mut`.** Totals built up in a loop, `return` from inside one, and `list.count`. See `actions/weigh_recipe.jadpo` and [area 3, Loops](../../docs/language/03-logic.md#loops).
 3. **List literals.** Square brackets, items taking the list's element type. See `actions/weigh_recipe.test.jadpo`.
-4. **Inline functions.** `collection.map` and `collection.filter` with `item -> expression`. See `actions/scale_recipe.jadpo` and [area 3, Passing functions](../../docs/language/03-logic.md#passing-functions).
-5. **Searching and sets.** `collection.contains`, an `else if` chain, and a `Set` returned and compared without order, with what sets can't do yet. See `actions/check_allergens.jadpo` and [area 2, Collections](../../docs/language/02-values-and-types.md#collections).
+4. **Inline functions.** `list.map` and `list.filter` with `item -> expression`. See `actions/scale_recipe.jadpo` and [area 3, Passing functions](../../docs/language/03-logic.md#passing-functions).
+5. **Searching and sets.** `list.contains`, an `else if` chain, and a `Set` returned and compared without order, with what sets can't do yet. See `actions/check_allergens.jadpo` and [area 2, Collections](../../docs/language/02-values-and-types.md#collections).
 6. **Named collections.** `ShoppingList(every_name)` builds a named set type from a list whose items already are its item type, keeping each value once. See `actions/shopping_list.jadpo` and [area 2, Named collection construction](../../docs/language/02-values-and-types.md#named-collection-construction).
 
 The other types in `domains/baking/types/` are short; read them as `recipe.jadpo` mentions them. Each action's tests sit beside it, in `<file>.test.jadpo`.

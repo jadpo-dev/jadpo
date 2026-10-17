@@ -34,7 +34,7 @@ test "editors list ingredients, and everyone signed in reads them" {
         as: Principal.user(crew.counter)
     }
     var ingredient_names: List<IngredientName> = match by_counter.output {
-        some(seen) -> collection.map(seen, ingredient -> ingredient.name)
+        some(seen) -> list.map(seen, ingredient -> ingredient.name)
         none -> []
     }
     assert ingredient_names == ["Rye flour"]

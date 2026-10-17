@@ -159,7 +159,7 @@ fn a_cursor_from_another_query_is_invalid_input() {
     write(
         &root,
         "domains/planning/queries/other_page.test.jadpo",
-        "use planning/types { Filter, TaskView }\nuse planning/queries { tasks_page }\nuse planning/fixtures { two_projects }\n\ntest \"a cursor names its query\" {\n    assert collection.count(two_projects().tasks) == 5\n    var first: Page<TaskView> = tasks_page(Filter {})\n    var wrong: Page<TaskView> = other_page(Filter { after: first.next })\n    assert collection.count(wrong.items) == 2\n}\n",
+        "use planning/types { Filter, TaskView }\nuse planning/queries { tasks_page }\nuse planning/fixtures { two_projects }\n\ntest \"a cursor names its query\" {\n    assert list.count(two_projects().tasks) == 5\n    var first: Page<TaskView> = tasks_page(Filter {})\n    var wrong: Page<TaskView> = other_page(Filter { after: first.next })\n    assert list.count(wrong.items) == 2\n}\n",
     );
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
@@ -180,38 +180,38 @@ use planning/fixtures { two_projects }
 test \"not keeps a field that is none\" {
     var garden: Project = two_projects().garden
     var due: List<TaskView> = tasks_due(garden.id, \"2026-11-01\")
-    assert collection.map(due, task -> task.title) == [\"Dig\", \"Water\"]
+    assert list.map(due, task -> task.title) == [\"Dig\", \"Water\"]
 }
 
 test \"!= is met by a field that is none\" {
     var garden: Project = two_projects().garden
     var others: List<TaskView> = tasks_not_on(garden.id, \"2026-11-01\")
-    assert collection.map(others, task -> task.title) == [\"Plant\", \"Water\"]
+    assert list.map(others, task -> task.title) == [\"Plant\", \"Water\"]
 }
 
 test \"pages follow each other, a filter left out applying to nothing\" {
-    assert collection.count(two_projects().tasks) == 5
+    assert list.count(two_projects().tasks) == 5
     var first: Page<TaskView> = tasks_page(Filter {})
-    assert collection.map(first.items, task -> task.title) == [\"Water\", \"Sweep\"]
+    assert list.map(first.items, task -> task.title) == [\"Water\", \"Sweep\"]
     var second: Page<TaskView> = tasks_page(Filter { after: first.next })
-    assert collection.map(second.items, task -> task.title) == [\"Plant\", \"Paint\"]
+    assert list.map(second.items, task -> task.title) == [\"Plant\", \"Paint\"]
     var last: Page<TaskView> = tasks_page(Filter { after: second.next })
-    assert collection.map(last.items, task -> task.title) == [\"Dig\"]
+    assert list.map(last.items, task -> task.title) == [\"Dig\"]
     assert last.next == none
     var done: Page<TaskView> = tasks_page(Filter { status: Status.done })
-    assert collection.map(done.items, task -> task.title) == [\"Plant\"]
+    assert list.map(done.items, task -> task.title) == [\"Plant\"]
 }
 
 test \"each record's list is ordered and limited on its own\" {
-    assert collection.count(two_projects().tasks) == 5
-    var lists: List<List<TaskView>> = collection.map(boards(), board -> board.tasks)
+    assert list.count(two_projects().tasks) == 5
+    var lists: List<List<TaskView>> = list.map(boards(), board -> board.tasks)
     assert lists == [[TaskView { title: \"Dig\" }], [TaskView { title: \"Paint\" }]]
 }
 
 test \"a read in an action sees the action's own writes\" {
     var garden: Project = two_projects().garden
     var due: List<TaskView> = add_and_count(garden)
-    assert collection.map(due, task -> task.title) == [\"Later\", \"Water\"]
+    assert list.map(due, task -> task.title) == [\"Later\", \"Water\"]
 }
 
 test \"exactly one record, or the missing failure with its fields\" {

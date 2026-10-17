@@ -1,7 +1,7 @@
 # Names the language declares that have no Jadpo stub yet
 # (docs/compiler-runtime.md §2.1), read by jadpo-check's resolution. The
 # types and operations areas 2, 3, 10 and 19 need are declared as stubs beside this
-# file (`types.jadpo`, `standard.jadpo`, `collection.jadpo`, `decimal.jadpo`,
+# file (`types.jadpo`, `standard.jadpo`, `list.jadpo`, `decimal.jadpo`,
 # `integer.jadpo`, `locale.jadpo`, `temporal.jadpo`, `text.jadpo`); later chunks move the rest there as their areas are
 # built. Lines starting with `#` are comments.
 
@@ -17,8 +17,11 @@ ApiChange PersonalData Erasure SearchLanguage RateLimitKey
 
 # Standard-library namespaces and the operations the pages name so far,
 # always called through the namespace (area 10); none waits for a stub
-# now.
+# now. `collection` moved whole to `list`, `set` and `map` (area 19,
+# question 6): it has no operations, and stays reserved so that a call
+# through it is `semantic.standard_operation_moved`.
 [namespaces]
+collection:
 
 # Namespaces the compiler fills from the project or the platform, with the
 # members built so far; any other member is `toolchain.not_built_yet` until

@@ -281,7 +281,7 @@ fn a_field_is_built_first_and_the_object_never_fails() {
 fn lists_are_built_counted_searched_and_looped_over() {
     // Question 4.
     let program = main(
-        "type TagName = Text {\n    min_length: 1\n    max_length: 30\n}\n\ntype TagCount = Int {\n    min: 0\n}\n\ntype HasUrgent = Bool {}\n\nfunction tag_count() -> TagCount {\n    var tags: List<TagName> = [\"urgent\", \"home\"]\n    var count: TagCount = TagCount(collection.count(tags))\n    return count\n}\n\nfunction has_urgent(tags: List<TagName>) -> HasUrgent {\n    return HasUrgent(collection.contains(tags, \"urgent\"))\n}\n\nfunction letters(tags: List<TagName>) -> TagCount {\n    var mut total: TagCount = 0\n    for tag in tags {\n        if (tag != \"\") {\n            total = TagCount(total + 1)\n        }\n    }\n    return total\n}\n",
+        "type TagName = Text {\n    min_length: 1\n    max_length: 30\n}\n\ntype TagCount = Int {\n    min: 0\n}\n\ntype HasUrgent = Bool {}\n\nfunction tag_count() -> TagCount {\n    var tags: List<TagName> = [\"urgent\", \"home\"]\n    var count: TagCount = TagCount(list.count(tags))\n    return count\n}\n\nfunction has_urgent(tags: List<TagName>) -> HasUrgent {\n    return HasUrgent(list.contains(tags, \"urgent\"))\n}\n\nfunction letters(tags: List<TagName>) -> TagCount {\n    var mut total: TagCount = 0\n    for tag in tags {\n        if (tag != \"\") {\n            total = TagCount(total + 1)\n        }\n    }\n    return total\n}\n",
     );
     assert_eq!(value(&program, "tag_count", vec![]), int(2));
     let tags = support::list(vec![text("home"), text("urgent")]);

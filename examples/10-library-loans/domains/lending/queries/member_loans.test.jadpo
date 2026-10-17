@@ -9,7 +9,7 @@ test "a member's page holds their card and loans, soonest first" {
     assert page.card == CardView {
         number: "00012345"
     }
-    assert collection.map(page.loans, loan -> loan.book.title) == ["Dune", "Emma"]
+    assert list.map(page.loans, loan -> loan.book.title) == ["Dune", "Emma"]
 }
 
 test "a member who isn't there fails" {

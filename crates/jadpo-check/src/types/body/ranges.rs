@@ -12,7 +12,7 @@
 //! rounded the same way before its bounds are compared. Text, bytes and
 //! collections are proved by their own type's rules implying the target's:
 //! a length range inside the target's, a list's narrowed by what is known
-//! of `collection.count` on it, and the same pattern, format or version.
+//! of `list.count` on it, and the same pattern, format or version.
 
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
@@ -459,6 +459,42 @@ impl Body<'_> {
         Some((find("dividend", 0)?, find("divisor", 1)?))
     }
 
+    /// `list.sum`: items never below zero add up to a sum never below
+    /// zero, however many there are, and items never above zero to one
+    /// never above it (area 19); anything finer needs a check.
+    fn summed(&self, call: &ast::CallExpr) -> Option<Interval> {
+        let super::facts::Reach::Std(Op::ListSum) =
+            self.facts.reaches.get(&node_key(call.syntax()))?
+        else {
+            return None;
+        };
+        let items = call.arg_list()?.args().next()?.expr()?;
+        let item = match self
+            .facts
+            .types
+            .get(&node_key(items.syntax()))
+            .map(|ty| self.table.structure(ty))
+        {
+            Some(Ty::List(item)) => *item,
+            _ => return Some(Interval::ANY),
+        };
+        let each = self.type_interval(&item);
+        let zero = End::At(Num::whole(0));
+        Some(if each.low.cmp(zero).is_ge() {
+            Interval {
+                low: zero,
+                high: End::Above,
+            }
+        } else if each.high.cmp(zero).is_le() {
+            Interval {
+                low: End::Below,
+                high: zero,
+            }
+        } else {
+            Interval::ANY
+        })
+    }
+
     fn floor(&self, call: &ast::CallExpr) -> Option<i64> {
         match self.facts.reaches.get(&node_key(call.syntax()))? {
             super::facts::Reach::Std(op) => op.operation().at_least,
@@ -582,7 +618,7 @@ impl Body<'_> {
     }
 
     /// What the conditions around a list say about how many items it
-    /// holds: the bounds known for `collection.count` on it, which counts
+    /// holds: the bounds known for `list.count` on it, which counts
     /// exactly the items `min_length` and `max_length` count.
     fn counted(&self, value: &Expr, actual: &Ty) -> Option<Counted> {
         if self.known.is_empty()
@@ -591,7 +627,7 @@ impl Body<'_> {
         {
             return None;
         }
-        let term = Term::Std(Op::CollectionCount, vec![self.term(value)?]);
+        let term = Term::Std(Op::ListCount, vec![self.term(value)?]);
         let fact = self.known.get(&term)?;
         Some(Counted {
             interval: fact.interval,
@@ -643,12 +679,13 @@ impl Body<'_> {
             }
             Expr::BinExpr(binary) => self.binary_interval(binary, reading),
             // A standard-library operation whose result has a floor its
-            // type can't say, as `collection.count`'s is 0 (the operation
+            // type can't say, as `list.count`'s is 0 (the operation
             // table's `at_least`).
             Expr::CallExpr(call) if let Some(floor) = self.floor(call) => Interval {
                 low: End::At(Num::whole(i128::from(floor))),
                 high: End::Above,
             },
+            Expr::CallExpr(call) if let Some(summed) = self.summed(call) => summed,
             // `integer.divide` and `decimal.divide` are bounded as `/` is,
             // whichever way they round: rounding away from zero never
             // passes the dividend while the divisor is at least 1.

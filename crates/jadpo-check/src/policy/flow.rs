@@ -1414,12 +1414,12 @@ impl Walk<'_> {
             }
             Callee::Caller(kind) => Prov::of(Src::Caller(*kind)),
             // How many there are shows only what decided which were kept.
-            Callee::Std(Op::CollectionCount) => Prov {
+            Callee::Std(Op::ListCount) => Prov {
                 whole: decide(&first),
                 fields: BTreeMap::new(),
             },
             // Which items pass shows what the predicate tests.
-            Callee::Std(Op::CollectionFilter) => {
+            Callee::Std(Op::ListFilter) => {
                 let mut out = first;
                 if let Some(predicate) = provs.get(1) {
                     for src in decide(predicate) {
@@ -1428,7 +1428,7 @@ impl Walk<'_> {
                 }
                 out
             }
-            Callee::Std(Op::CollectionMap) => {
+            Callee::Std(Op::ListMap) => {
                 let mut out = provs.get(1).cloned().unwrap_or_default();
                 for src in decide(&first) {
                     out.add(src);

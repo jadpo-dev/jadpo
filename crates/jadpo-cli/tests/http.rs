@@ -1607,7 +1607,7 @@ action create_partner(name: PartnerName) fails PartnerNameTaken -> Partner {
         r#"/// The member's devices, oldest first.
 action list_devices(member: Principal.user) -> DeviceList {
     return DeviceList {
-        devices: collection.map(sessions.tokens(member.id), token -> DeviceView {
+        devices: list.map(sessions.tokens(member.id), token -> DeviceView {
             id: token.id
             signed_in_at: token.started_at
         })

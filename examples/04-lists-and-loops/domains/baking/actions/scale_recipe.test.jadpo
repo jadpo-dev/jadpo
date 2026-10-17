@@ -15,7 +15,7 @@ test "scaling multiplies every ingredient's weight" {
         allergens: [Allergen.gluten, Allergen.egg]
     }
     var double: Recipe = scale_recipe(sponge, 2).recipe
-    assert collection.map(double.ingredients, ingredient -> ingredient.weight) == [400, 300]
+    assert list.map(double.ingredients, ingredient -> ingredient.weight) == [400, 300]
     assert double.allergens == sponge.allergens
 }
 
