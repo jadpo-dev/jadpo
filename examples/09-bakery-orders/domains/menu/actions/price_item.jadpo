@@ -4,15 +4,6 @@
 use shared/types { Grain, MenuItem, Pence, SliceCount }
 use shared/libraries { pricing }
 
-/// What one of `item` costs.
-public action price_item(item: MenuItem) -> Pence {
-    return match item {
-        MenuItem.loaf(loaf) -> loaf_price(loaf.grain)
-        MenuItem.cake(cake) -> cake_price(cake.slices)
-        MenuItem.coffee -> 280
-    }
-}
-
 /// A loaf's price by its grain.
 function loaf_price(grain: Grain) -> Pence {
     return match grain {
@@ -31,4 +22,13 @@ function cake_price(slices: SliceCount) -> Pence {
         return pricing.percent_of(full, 90)
     }
     return full
+}
+
+/// What one of `item` costs.
+public action price_item(item: MenuItem) -> Pence {
+    return match item {
+        MenuItem.loaf(loaf) -> loaf_price(loaf.grain)
+        MenuItem.cake(cake) -> cake_price(cake.slices)
+        MenuItem.coffee -> 280
+    }
 }

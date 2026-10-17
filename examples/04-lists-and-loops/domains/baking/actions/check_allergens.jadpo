@@ -2,21 +2,6 @@
 
 use baking/types { Allergen, Recipe }
 
-/// What the menu shows beside `recipe` for someone avoiding the allergens
-/// in `avoid`: whether it's safe for them, and the badges it earns.
-action check_allergens(recipe: Recipe, avoid: List<Allergen>) -> AllergenCheck {
-    return AllergenCheck {
-        avoids_all: safe_for(recipe, avoid)
-        badges: badges(recipe)
-    }
-}
-
-/// Whether a recipe is safe for someone, and the badges it earns.
-type AllergenCheck = Output {
-    avoids_all: SafeToEat
-    badges: Set<Badge>
-}
-
 /// Whether a recipe is safe for someone.
 type SafeToEat = Bool {}
 
@@ -25,6 +10,12 @@ type Badge = Enum {
     vegan
     vegetarian
     nut_free
+}
+
+/// Whether a recipe is safe for someone, and the badges it earns.
+type AllergenCheck = Output {
+    avoids_all: SafeToEat
+    badges: Set<Badge>
 }
 
 /// Whether `recipe` avoids every allergen in `avoid`.
@@ -67,4 +58,13 @@ function badges(recipe: Recipe) -> Set<Badge> {
         return [Badge.vegetarian, Badge.nut_free]
     }
     return [Badge.vegetarian]
+}
+
+/// What the menu shows beside `recipe` for someone avoiding the allergens
+/// in `avoid`: whether it's safe for them, and the badges it earns.
+action check_allergens(recipe: Recipe, avoid: List<Allergen>) -> AllergenCheck {
+    return AllergenCheck {
+        avoids_all: safe_for(recipe, avoid)
+        badges: badges(recipe)
+    }
 }

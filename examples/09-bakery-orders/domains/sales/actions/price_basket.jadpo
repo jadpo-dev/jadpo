@@ -9,6 +9,39 @@ use sales/types { Basket, DiscountCode, Receipt }
 use sales/failures { BasketEmpty, CodeUnknown, DiscountTooLarge }
 use sales/actions { price_lines }
 
+/// What a discount code is worth: a share of the basket, or an amount.
+type Discount = Enum {
+    percent: {
+        off: Percent
+    }
+    fixed: {
+        off: Pence
+    }
+}
+
+/// The discount the code `code` gives.
+function discount_for(code: DiscountCode) fails CodeUnknown -> Discount {
+    return match code {
+        "TENOFF" -> Discount.percent {
+            off: 10
+        }
+        "FIVEPOUNDS" -> Discount.fixed {
+            off: 500
+        }
+        _ -> reject CodeUnknown {
+            code: code
+        }
+    }
+}
+
+/// What `discount` takes off `subtotal`.
+function amount_off(discount: Discount, subtotal: Pence) -> Pence {
+    return match discount {
+        Discount.percent(percent) -> pricing.percent_of(subtotal, percent.off)
+        Discount.fixed(fixed) -> fixed.off
+    }
+}
+
 /// The receipt for `basket`.
 public action price_basket(
     basket: Basket
@@ -46,38 +79,5 @@ public action price_basket(
         subtotal: subtotal
         discount: off
         total: total
-    }
-}
-
-/// What a discount code is worth: a share of the basket, or an amount.
-type Discount = Enum {
-    percent: {
-        off: Percent
-    }
-    fixed: {
-        off: Pence
-    }
-}
-
-/// The discount the code `code` gives.
-function discount_for(code: DiscountCode) fails CodeUnknown -> Discount {
-    return match code {
-        "TENOFF" -> Discount.percent {
-            off: 10
-        }
-        "FIVEPOUNDS" -> Discount.fixed {
-            off: 500
-        }
-        _ -> reject CodeUnknown {
-            code: code
-        }
-    }
-}
-
-/// What `discount` takes off `subtotal`.
-function amount_off(discount: Discount, subtotal: Pence) -> Pence {
-    return match discount {
-        Discount.percent(percent) -> pricing.percent_of(subtotal, percent.off)
-        Discount.fixed(fixed) -> fixed.off
     }
 }

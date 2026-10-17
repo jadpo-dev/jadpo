@@ -458,6 +458,13 @@ action start_project(company_id: Company.id, name: Label) fails CompanyNotFound 
 use work/entities { Chore, Company, CompanyNotFound, Project, ProjectNotFound }
 use work/types { ChoreCard, Label }
 
+/// What adding a chore takes.
+type AddChore = Input {
+    company_id: Company.id
+    project_id: Project.id
+    title: Label
+}
+
 /// Adds a chore to a project.
 action add_chore(input: AddChore) fails CompanyNotFound, ProjectNotFound -> ChoreCard {
     var chore: Chore = attempt Chore.create {
@@ -471,13 +478,6 @@ action add_chore(input: AddChore) fails CompanyNotFound, ProjectNotFound -> Chor
         id: chore.id
         title: chore.title
     }
-}
-
-/// What adding a chore takes.
-type AddChore = Input {
-    company_id: Company.id
-    project_id: Project.id
-    title: Label
 }
 ```
 
@@ -1073,6 +1073,12 @@ action add_member(
 use work/entities { Company, CompanyNotFound, Project }
 use work/types { ProjectName, ProjectView }
 
+/// What starting a project takes.
+type StartProject = Input {
+    company_id: Company.id
+    name: ProjectName
+}
+
 /// Starts a project in a company.
 action start_project(input: StartProject) fails CompanyNotFound -> ProjectView {
     var project: Project = attempt Project.create {
@@ -1086,17 +1092,16 @@ action start_project(input: StartProject) fails CompanyNotFound -> ProjectView {
         name: project.name
     }
 }
-
-/// What starting a project takes.
-type StartProject = Input {
-    company_id: Company.id
-    name: ProjectName
-}
 ```
 
 ```jadpo check project=policy-end-to-end file=domains/work/actions/rename_project.jadpo hidden
 use work/entities { Project, ProjectNotFound }
 use work/types { ProjectName, ProjectView }
+
+/// What renaming a project takes.
+type RenameProject = Input {
+    name: ProjectName
+}
 
 /// Renames a project.
 action rename_project(
@@ -1112,11 +1117,6 @@ action rename_project(
         id: project.id
         name: project.name
     }
-}
-
-/// What renaming a project takes.
-type RenameProject = Input {
-    name: ProjectName
 }
 ```
 

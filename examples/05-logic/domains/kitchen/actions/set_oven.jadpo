@@ -2,20 +2,37 @@
 // `else if`s and one `else`. `match` chooses between the cases of a value,
 // must cover every case, and works both as a statement and as a value.
 
-/// The oven's setting for a bake keyed in at its keypad, on `shelf`, with
-/// or without `steam`, or `none` when the oven doesn't know the bake.
-action set_oven(keyed_in: KeypadEntry, shelf: Shelf, steam: Steam) -> OvenSetting? {
-    // A `match` that gives a value has one expression per arm: `pattern ->
-    // value`. `bake_for` may find no bake, and matching its answer is the
-    // only way to reach the bake inside: `some(bake)` binds it.
-    return match bake_for(keyed_in) {
-        some(bake) -> OvenSetting {
-            temperature: turned_down(bake, shelf)
-            crust: crust_on(shelf)
-            steam: steam_word(steam)
-        }
-        none -> none
-    }
+/// What a baker types on the oven's keypad to call up a bake, such as
+/// `BREAD`. Anyone can type anything, so it is open text, not an enum.
+type KeypadEntry = Text {
+    max_length: 12
+}
+
+/// A shelf in the oven, counted from the middle: below it is negative.
+type Shelf = Int {
+    min: -2
+    max: 2
+}
+
+/// Whether the oven fills with steam.
+type Steam = Bool {}
+
+/// An oven temperature in degrees.
+type OvenTemperature = Int {
+    min: 0
+    max: 300
+}
+
+/// How a bake's top comes out.
+type Crust = Enum {
+    pale
+    golden
+    browned
+}
+
+/// A word on the oven's display.
+type DisplayWord = Text {
+    max_length: 12
 }
 
 /// What the oven is set to, and what it shows.
@@ -32,39 +49,6 @@ type Bake = Enum {
     meringue
 }
 
-/// An oven temperature in degrees.
-type OvenTemperature = Int {
-    min: 0
-    max: 300
-}
-
-/// How a bake's top comes out.
-type Crust = Enum {
-    pale
-    golden
-    browned
-}
-
-/// A shelf in the oven, counted from the middle: below it is negative.
-type Shelf = Int {
-    min: -2
-    max: 2
-}
-
-/// What a baker types on the oven's keypad to call up a bake, such as
-/// `BREAD`. Anyone can type anything, so it is open text, not an enum.
-type KeypadEntry = Text {
-    max_length: 12
-}
-
-/// Whether the oven fills with steam.
-type Steam = Bool {}
-
-/// A word on the oven's display.
-type DisplayWord = Text {
-    max_length: 12
-}
-
 /// The bake a keypad entry calls up, or `none` when the oven doesn't
 /// know it.
 function bake_for(keyed_in: KeypadEntry) -> Bake? {
@@ -75,6 +59,17 @@ function bake_for(keyed_in: KeypadEntry) -> Bake? {
         "PASTRY" -> Bake.pastry
         "MERINGUE" -> Bake.meringue
         _ -> none
+    }
+}
+
+/// The oven's temperature for a bake.
+function temperature_for(bake: Bake) -> OvenTemperature {
+    // Covering every variant means no `_` is needed, and adding a variant
+    // later makes every `match` that misses it a compile error.
+    return match bake {
+        Bake.bread -> 230
+        Bake.pastry -> 200
+        Bake.meringue -> 100
     }
 }
 
@@ -105,17 +100,6 @@ function turned_down(bake: Bake, shelf: Shelf) -> OvenTemperature {
     return setting
 }
 
-/// The oven's temperature for a bake.
-function temperature_for(bake: Bake) -> OvenTemperature {
-    // Covering every variant means no `_` is needed, and adding a variant
-    // later makes every `match` that misses it a compile error.
-    return match bake {
-        Bake.bread -> 230
-        Bake.pastry -> 200
-        Bake.meringue -> 100
-    }
-}
-
 /// What a shelf does to a bake's top.
 function crust_on(shelf: Shelf) -> Crust {
     // Literal patterns match exact values; a negative number is written
@@ -135,5 +119,21 @@ function steam_word(steam: Steam) -> DisplayWord {
     return match steam {
         true -> "steam on"
         false -> "steam off"
+    }
+}
+
+/// The oven's setting for a bake keyed in at its keypad, on `shelf`, with
+/// or without `steam`, or `none` when the oven doesn't know the bake.
+action set_oven(keyed_in: KeypadEntry, shelf: Shelf, steam: Steam) -> OvenSetting? {
+    // A `match` that gives a value has one expression per arm: `pattern ->
+    // value`. `bake_for` may find no bake, and matching its answer is the
+    // only way to reach the bake inside: `some(bake)` binds it.
+    return match bake_for(keyed_in) {
+        some(bake) -> OvenSetting {
+            temperature: turned_down(bake, shelf)
+            crust: crust_on(shelf)
+            steam: steam_word(steam)
+        }
+        none -> none
     }
 }

@@ -4,11 +4,6 @@
 // that calls itself, directly or through others, doesn't compile, and the
 // runtime stops a function that recurses too deep with a defined fault.
 
-/// How many tiers the whole cake has, the base included.
-action count_tiers(base: Tier) -> TierCount {
-    return TierCount(1 + tiers_above(base))
-}
-
 /// What a tier is called on the order.
 type TierName = Text {
     max_length: 30
@@ -32,4 +27,9 @@ function tiers_above(tier: Tier) -> TierCount {
         count = TierCount(count + 1 + tiers_above(upper))
     }
     return count
+}
+
+/// How many tiers the whole cake has, the base included.
+action count_tiers(base: Tier) -> TierCount {
+    return TierCount(1 + tiers_above(base))
 }

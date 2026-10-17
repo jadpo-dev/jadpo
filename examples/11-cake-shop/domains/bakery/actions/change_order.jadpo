@@ -6,6 +6,14 @@ use bakery/entities { Order, OrderNotFound }
 use bakery/types { OrderView }
 use bakery/queries { order_by_id }
 
+// `PUT` replaces what may change about an order, so every field is
+// required: a client sends the whole of it.
+
+/// What a customer may change about an order.
+type ChangeOrder = Input {
+    pick: [Order.quantity, Order.collect_on]
+}
+
 /// Changes how many cakes an order is for, and when they are collected.
 action change_order(order_id: Order.id, input: ChangeOrder) fails OrderNotFound -> OrderView {
     var order: Order = attempt Order.update(order_id) {
@@ -15,12 +23,4 @@ action change_order(order_id: Order.id, input: ChangeOrder) fails OrderNotFound 
         }
     }
     return attempt order_by_id(order.id)
-}
-
-// `PUT` replaces what may change about an order, so every field is
-// required: a client sends the whole of it.
-
-/// What a customer may change about an order.
-type ChangeOrder = Input {
-    pick: [Order.quantity, Order.collect_on]
 }

@@ -669,7 +669,7 @@ reference only).
   currency}` in translation messages (area 10's placeholder styles). Done
   when `convert`'s example passes, an inverted rate is a type error, and
   a message writes a price in two locales.
-- [ ] **5.5h3 Definition before use** `sonnet · high` (area 1, "Files and
+- [x] **5.5h3 Definition before use** `sonnet · high` (area 1, "Files and
   names"; Richard, 2026-10-17): `jadpo fmt` orders each file as decided:
   opening comment, `use` lines, then every declaration before the first
   one that uses it, the primary declaration last, ties by kind (constants,

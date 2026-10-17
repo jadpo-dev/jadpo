@@ -1,20 +1,5 @@
 // Time: built-in types that hold moments, days and lengths of time.
 
-/// Whether a delivery can go on the shelf: it arrived before the day's
-/// `cutoff`, its flour is good after `today`, and the proving time printed
-/// on the sack is one the bakery can use.
-action check_delivery(
-    arrived: ArrivedAt,
-    cutoff: Cutoff,
-    best_before: BestBefore,
-    today: BakeryDay,
-    proving: ProvingTime
-) -> Shelvable {
-    // Moments, days and durations are ordered, so `<`, `<=`, `>` and `>=`
-    // work on them as on numbers. Text has no order.
-    return Shelvable(arrived < cutoff and best_before > today and proving <= 2h)
-}
-
 // Time: an `Instant` is a moment, written in ISO 8601 with its offset; a
 // `CalendarDate` is a day with no time or zone; a `Duration` is a length
 // of time, written with a unit (`45m`, `2h`), and its bounds are written
@@ -51,3 +36,18 @@ type ProvingTime = Duration {
 
 /// Whether a delivery can go on the shelf.
 type Shelvable = Bool {}
+
+/// Whether a delivery can go on the shelf: it arrived before the day's
+/// `cutoff`, its flour is good after `today`, and the proving time printed
+/// on the sack is one the bakery can use.
+action check_delivery(
+    arrived: ArrivedAt,
+    cutoff: Cutoff,
+    best_before: BestBefore,
+    today: BakeryDay,
+    proving: ProvingTime
+) -> Shelvable {
+    // Moments, days and durations are ordered, so `<`, `<=`, `>` and `>=`
+    // work on them as on numbers. Text has no order.
+    return Shelvable(arrived < cutoff and best_before > today and proving <= 2h)
+}

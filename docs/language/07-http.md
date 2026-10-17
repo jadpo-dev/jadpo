@@ -528,6 +528,11 @@ query find_todo(todo_id: Todo.id) fails TodoNotFound -> TodoView {
 use planning/entities { Todo }
 use planning/types { TodoTitle, TodoView }
 
+/// What creating a todo takes.
+type CreateTodo = Input {
+    title: TodoTitle
+}
+
 action create_todo(input: CreateTodo) -> TodoView {
     var todo: Todo = Todo.create {
         set: {
@@ -540,11 +545,6 @@ action create_todo(input: CreateTodo) -> TodoView {
         title: todo.title
         done: todo.done
     }
-}
-
-/// What creating a todo takes.
-type CreateTodo = Input {
-    title: TodoTitle
 }
 ```
 
@@ -2089,14 +2089,14 @@ application {
 ```jadpo check project=e-prefix-api file=domains/memos/actions/add_memo.jadpo hidden
 use memos/types { Memo, MemoView }
 
+type AddMemo = Input {
+    text: Memo
+}
+
 action add_memo(input: AddMemo) -> MemoView {
     return MemoView {
         text: input.text
     }
-}
-
-type AddMemo = Input {
-    text: Memo
 }
 ```
 
@@ -2302,14 +2302,14 @@ application {}
 ```jadpo check project=e-record file=domains/memos/actions/add_memo.jadpo hidden
 use memos/types { Memo, MemoView }
 
+type AddMemo = Input {
+    text: Memo
+}
+
 action add_memo(input: AddMemo) -> MemoView {
     return MemoView {
         text: input.text
     }
-}
-
-type AddMemo = Input {
-    text: Memo
 }
 ```
 

@@ -16,15 +16,6 @@
 
 use sales/types { CakeLine, Pence }
 
-/// The receipt line for `line`.
-action summarise_line(line: CakeLine) -> LineReceipt {
-    return LineReceipt {
-        cake: line.cake
-        each: line.each
-        total: Pence(line.each * line.count)
-    }
-}
-
 /// A line as the receipt prints it.
 type LineReceipt = Output {
     include: [CakeLine]
@@ -33,4 +24,13 @@ type LineReceipt = Output {
     // the receipt's `each` is plain `Pence`, without the line's £60 limit.
     each: Pence
     total: Pence
+}
+
+/// The receipt line for `line`.
+action summarise_line(line: CakeLine) -> LineReceipt {
+    return LineReceipt {
+        cake: line.cake
+        each: line.each
+        total: Pence(line.each * line.count)
+    }
 }

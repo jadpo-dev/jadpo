@@ -4,6 +4,11 @@
 use kitchen/entities { Bakery, BakeryNotFound, Recipe }
 use kitchen/types { RecipeCard, RecipeName }
 
+/// What writing a recipe takes.
+type WriteRecipe = Input {
+    name: RecipeName
+}
+
 /// Adds a recipe to a bakery, written by the caller.
 action write_recipe(
     bakery_id: Bakery.id,
@@ -24,9 +29,4 @@ action write_recipe(
         name: recipe.name
         author_id: recipe.author_id
     }
-}
-
-/// What writing a recipe takes.
-type WriteRecipe = Input {
-    name: RecipeName
 }

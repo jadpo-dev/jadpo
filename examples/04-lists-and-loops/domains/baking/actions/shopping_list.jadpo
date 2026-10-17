@@ -2,6 +2,9 @@
 
 use baking/types { IngredientName, Recipe }
 
+/// What to buy for a recipe: each ingredient named once.
+type ShoppingList = Set<IngredientName> {}
+
 /// The ingredients to buy for `recipe`, each once however often it goes
 /// in.
 action shopping_list(recipe: Recipe) -> ShoppingList {
@@ -18,6 +21,3 @@ action shopping_list(recipe: Recipe) -> ShoppingList {
     // bought once.
     return ShoppingList(every_name)
 }
-
-/// What to buy for a recipe: each ingredient named once.
-type ShoppingList = Set<IngredientName> {}

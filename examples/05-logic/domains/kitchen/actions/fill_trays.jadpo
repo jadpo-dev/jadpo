@@ -8,27 +8,6 @@
 // zero (a literal divisor must not be 0), so the compiler rules it out
 // before the program runs.
 
-/// How `buns` buns go onto trays, `per_tray` to a tray.
-action fill_trays(buns: BunCount, per_tray: TrayCapacity) -> TrayPlan {
-    // Standard-library operations are the only calls that take named
-    // arguments: `rounding:` says which way, and makes the call read
-    // plainly. `Rounding.up` rounds away from zero, so a part-filled tray
-    // still counts. The compiler knows a division of a count never below
-    // zero by a divisor of at least 1 is from zero up to the count, so
-    // `TrayCount(...)` can't fail.
-    return TrayPlan {
-        trays: TrayCount(integer.divide(buns, per_tray, rounding: Rounding.up))
-        last_tray: left_over(buns, per_tray)
-    }
-}
-
-/// How many trays a bake needs, and how many buns sit on the last tray
-/// when it isn't full: 0 when every tray is.
-type TrayPlan = Output {
-    trays: TrayCount
-    last_tray: BunCount
-}
-
 /// How many buns are baked.
 type BunCount = Int {
     min: 0
@@ -47,9 +26,30 @@ type TrayCount = Int {
     max: 5000
 }
 
+/// How many trays a bake needs, and how many buns sit on the last tray
+/// when it isn't full: 0 when every tray is.
+type TrayPlan = Output {
+    trays: TrayCount
+    last_tray: BunCount
+}
+
 /// How many buns are left over after filling only whole trays.
 function left_over(buns: BunCount, per_tray: TrayCapacity) -> BunCount {
     // `%` is the remainder of a whole-number division. It is never more
     // than the count it divides, so `BunCount(...)` can't fail.
     return BunCount(buns % per_tray)
+}
+
+/// How `buns` buns go onto trays, `per_tray` to a tray.
+action fill_trays(buns: BunCount, per_tray: TrayCapacity) -> TrayPlan {
+    // Standard-library operations are the only calls that take named
+    // arguments: `rounding:` says which way, and makes the call read
+    // plainly. `Rounding.up` rounds away from zero, so a part-filled tray
+    // still counts. The compiler knows a division of a count never below
+    // zero by a divisor of at least 1 is from zero up to the count, so
+    // `TrayCount(...)` can't fail.
+    return TrayPlan {
+        trays: TrayCount(integer.divide(buns, per_tray, rounding: Rounding.up))
+        last_tray: left_over(buns, per_tray)
+    }
 }

@@ -1047,15 +1047,15 @@ use journal/types { Handle }
 use journal/failures { HandleTaken }
 use journal/actions { register }
 
+/// What signing up takes.
+type SignUp = Input {
+    handle: Handle
+}
+
 /// Registers a member and signs them in.
 action sign_up(input: SignUp) fails HandleTaken -> Unit {
     var member: Member = attempt register(input.handle)
     sessions.start(member.id)
-}
-
-/// What signing up takes.
-type SignUp = Input {
-    handle: Handle
 }
 ```
 
@@ -1070,6 +1070,11 @@ action sign_out() -> Unit {
 use journal/entities { Note }
 use journal/types { NoteText, NoteView }
 
+/// What writing a note takes.
+type WriteNote = Input {
+    text: NoteText
+}
+
 /// Writes a note as the signed-in member.
 action write_note(input: WriteNote, author: Principal.user) -> NoteView {
     var note: Note = Note.create {
@@ -1081,11 +1086,6 @@ action write_note(input: WriteNote, author: Principal.user) -> NoteView {
     return NoteView {
         text: note.text
     }
-}
-
-/// What writing a note takes.
-type WriteNote = Input {
-    text: NoteText
 }
 ```
 
@@ -1431,6 +1431,11 @@ action sign_out() -> Unit {
 use journal/entities { Note }
 use journal/types { NoteText, NoteView }
 
+/// What writing a note takes.
+type WriteNote = Input {
+    text: NoteText
+}
+
 /// Writes a note as the signed-in member.
 action write_note(input: WriteNote, author: Principal.user) -> NoteView {
     var note: Note = Note.create {
@@ -1443,11 +1448,6 @@ action write_note(input: WriteNote, author: Principal.user) -> NoteView {
         text: note.text
     }
 }
-
-/// What writing a note takes.
-type WriteNote = Input {
-    text: NoteText
-}
 ```
 
 Signing up issues the app's token and answers with it, once; ending
@@ -1459,14 +1459,6 @@ use journal/types { Handle }
 use journal/failures { HandleTaken }
 use journal/actions { register }
 
-/// Registers a member and gives their app a token, shown once.
-action sign_up(input: SignUp) fails HandleTaken -> SignedUp {
-    var member: Member = attempt register(input.handle)
-    return SignedUp {
-        token: sessions.issue_token(member.id)
-    }
-}
-
 /// What signing up takes.
 type SignUp = Input {
     handle: Handle
@@ -1475,6 +1467,14 @@ type SignUp = Input {
 /// The app's token, which it sends back as `Authorization: Bearer`.
 type SignedUp = Output {
     token: ApiToken
+}
+
+/// Registers a member and gives their app a token, shown once.
+action sign_up(input: SignUp) fails HandleTaken -> SignedUp {
+    var member: Member = attempt register(input.handle)
+    return SignedUp {
+        token: sessions.issue_token(member.id)
+    }
 }
 ```
 
@@ -1497,17 +1497,6 @@ use journal/types { PartnerName }
 use journal/failures { PartnerNameTaken }
 use journal/actions { create_partner }
 
-/// Adds a partner and gives its first key, shown once.
-action add_partner(
-    input: AddPartner,
-    owner: Principal.user
-) fails PartnerNameTaken -> PartnerAdded {
-    var partner: Partner = attempt create_partner(input.name, owner)
-    return PartnerAdded {
-        key: Partner.issue_key(partner.id, input.key_expires_at)
-    }
-}
-
 /// What adding a partner takes.
 type AddPartner = Input {
     name: PartnerName
@@ -1517,6 +1506,17 @@ type AddPartner = Input {
 /// The partner's key, which it sends as `Authorization: Bearer`.
 type PartnerAdded = Output {
     key: ServiceKey
+}
+
+/// Adds a partner and gives its first key, shown once.
+action add_partner(
+    input: AddPartner,
+    owner: Principal.user
+) fails PartnerNameTaken -> PartnerAdded {
+    var partner: Partner = attempt create_partner(input.name, owner)
+    return PartnerAdded {
+        key: Partner.issue_key(partner.id, input.key_expires_at)
+    }
 }
 ```
 

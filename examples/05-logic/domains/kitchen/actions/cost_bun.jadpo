@@ -2,24 +2,6 @@
 // comes out to the penny, so the code says which way the half penny
 // goes: `decimal.divide` keeps the result's places and rounds as told.
 
-/// What one bun costs when a batch costing `batch` makes `buns` buns.
-action cost_bun(batch: Price, buns: BatchSize) -> BunCost {
-    return BunCost {
-        // The books send a half penny to the even penny (banker's
-        // rounding), so rounding errors don't all lean one way over many
-        // batches.
-        booked: Price(decimal.divide(batch, buns, rounding: Rounding.half_even))
-        // A shelf label rounds a half penny up, as a till does.
-        labelled: Price(decimal.divide(batch, buns, rounding: Rounding.half_up))
-    }
-}
-
-/// A bun's cost, as the books record it and as its shelf label shows it.
-type BunCost = Output {
-    booked: Price
-    labelled: Price
-}
-
 /// A price in pounds and pence.
 type Price = Decimal {
     scale: 2
@@ -30,4 +12,22 @@ type Price = Decimal {
 type BatchSize = Int {
     min: 1
     max: 20
+}
+
+/// A bun's cost, as the books record it and as its shelf label shows it.
+type BunCost = Output {
+    booked: Price
+    labelled: Price
+}
+
+/// What one bun costs when a batch costing `batch` makes `buns` buns.
+action cost_bun(batch: Price, buns: BatchSize) -> BunCost {
+    return BunCost {
+        // The books send a half penny to the even penny (banker's
+        // rounding), so rounding errors don't all lean one way over many
+        // batches.
+        booked: Price(decimal.divide(batch, buns, rounding: Rounding.half_even))
+        // A shelf label rounds a half penny up, as a till does.
+        labelled: Price(decimal.divide(batch, buns, rounding: Rounding.half_up))
+    }
 }
