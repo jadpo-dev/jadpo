@@ -543,6 +543,7 @@ const PLACES: &[&str] = &[
     "migration",
     "providers",
     "acceptances",
+    "root translations",
 ];
 
 // --- what the examples use --------------------------------------------------
@@ -556,6 +557,7 @@ fn place(place: &Place) -> Option<&'static str> {
         Place::Migration => Some("migration"),
         Place::Providers => Some("providers"),
         Place::Acceptances => Some("acceptances"),
+        Place::RootTranslations => Some("root translations"),
         // A root file is counted by name; loose and stray files aren't
         // features (an example with one fails to check).
         Place::RootFile(_) | Place::Loose | Place::Stray(_) => None,

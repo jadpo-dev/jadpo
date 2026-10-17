@@ -506,7 +506,7 @@ reference only).
 - [x] **5.4d Translations: failures, review and commands** `sonnet · high`
   (area 10, "Translations as messages", the rest of 5.4c's text). Split on
   2026-10-17 because the whole is more than one session: this half is the
-  app's own text, `5.4e` Jadpo's and the exchange with translation
+  app's own text, `5.4e` Jadpo's and `5.4f` the exchange with translation
   services. Done in this half: failures that can reach a response worded in
   every locale (by code, `client:` fields as placeholders formatted by the
   client) and exported as `<api>.failures.<locale>.json` beside the OpenAPI
@@ -518,14 +518,25 @@ reference only).
   `accept`; go to definition from a call to its message type and its
   wording; and the pseudo-locale `Locale.en_xa`. Email templates follow in
   7.3, library packages' translations in 7.1.
-- [ ] **5.4e Translations: Jadpo's text and exchange** `sonnet · high`
-  (area 10, "Jadpo's and packages' text" and "Tooling"), after 5.4d: Jadpo's
-  own messages, shipped in `en_gb` and `en_us`, and their failures' wording
-  in the failures export and `TextDirection`'s `ltr` and `rtl`; the root
-  file's owner groups (`translations/<locale>.jadpo`, `jadpo: { }`), kept in
-  `translations/sources.jadpo_record` and listed by `missing`; `jadpo
-  translations builtin`; and `jadpo translations export` and `import` as
-  XLIFF or JSON, which also write the record.
+- [x] **5.4e Translations: Jadpo's text** `sonnet · high` (area 10,
+  "Jadpo's and packages' text" and "Tooling"), after 5.4d. Split on
+  2026-10-17 because the whole is more than one session: this half is
+  Jadpo's own words, `5.4f` the exchange with translation services. Done:
+  Jadpo's own messages as a catalogue in `jadpo-std`, shipped in `en_gb` and
+  `en_us`, gated by the features an app has on (requests, signing in, locales;
+  magic links catalogued, not on until area 8); the root folder as a place
+  (`translations/<locale>.jadpo`, `jadpo: { }`), checked as a folder's are,
+  with `translation.jadpo_missing` (one error for each locale Jadpo does not
+  ship), `translation.feature_off` and `translation.owner_unknown`; Jadpo's
+  failures in every API's failures export; `TextDirection`'s `ltr` and `rtl`
+  wording; the root folder's `sources.jadpo_record` (members
+  `jadpo.<message>`), listed by `missing` and written by `update` and
+  `accept`; and `jadpo translations builtin`.
+- [ ] **5.4f Translations: the exchange** `sonnet · high` (area 10,
+  "Tooling"), after 5.4e: `jadpo translations export` and `import`, which
+  exchange messages, their descriptions and their wording with translation
+  services (Crowdin, Lokalise) as XLIFF or JSON, and which also write the
+  record.
 - [x] **5.5a The standard type contract** `opus · high` (area 19, "Every
   standard type meets one contract", questions 1 to 5): each standard type
   a stub declaration in `crates/jadpo-check/std/` plus a data entry,

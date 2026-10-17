@@ -447,7 +447,14 @@ reads the route model), their wording carried in `Analysis` and written by
 OpenAPI documents; `sources`, each folder's `sources.jadpo_record` against
 the wording (`Standings`, `updated`) and `translations: { review: }` in
 `app.jadpo`; `outstanding`, the gaps and unused messages the commands list;
-and `definitions`, go to definition from a call. The pseudo-locale
+and `definitions`, go to definition from a call. Chunk 5.4e adds `jadpo`,
+Jadpo's own messages: a catalogue in `jadpo-std` (`jadpo_text`) of each
+message with its feature, fields and shipped wording, turned into
+`Subject`s the root `translations/` folder's `jadpo: { }` group (the
+`RootTranslations` place, read by `language` into `Group`s) is checked
+against by the same `Ctx` as a folder's, a feature being on when a route
+(and its authentication) calls for it; the root folder's record is `sources`'
+`ROOT` scope, and the failures it words join each API's export. The pseudo-locale
 `Locale.en_xa` is a `Locale` variant that `fallback_chain` sends straight to
 the default locale, and `present::pseudo` accents and lengthens the text of
 the wording while the values it writes stay as they are.

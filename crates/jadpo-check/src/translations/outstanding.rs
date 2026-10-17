@@ -40,10 +40,28 @@ pub fn gaps(db: &dyn Db, project: Project) -> Vec<Gap> {
     let Some(plan) = &declared.plan else {
         return Vec::new();
     };
+    let mut out = Vec::new();
+    // Jadpo's own messages, worded in the root folder or by Jadpo.
+    for gap in super::jadpo::gaps(db, project) {
+        out.push(Gap {
+            scope: super::sources::ROOT.to_string(),
+            locale: gap.locale,
+            tag: gap.tag,
+            member: super::jadpo::member_name(gap.message.key),
+            kind: match gap.message.kind {
+                jadpo_std::jadpo_text::Kind::Message => Kind::Message,
+                jadpo_std::jadpo_text::Kind::Failure => Kind::Failure,
+                jadpo_std::jadpo_text::Kind::Enum => Kind::Enum,
+            },
+            path: gap.path,
+            file_exists: gap.file_exists,
+            in_progress: gap.in_progress,
+            worded_in: gap.worded_in,
+        });
+    }
     let mut all: BTreeSet<String> = scopes(db, project).into_iter().collect();
     all.extend(failure_scopes(db, project));
     let reachable = reachable_names(db, project);
-    let mut out = Vec::new();
     for scope in all {
         let subjects = subjects(db, project, Name::new(db, scope.clone()));
         let files: Vec<_> = language_files(db, project, &scope)

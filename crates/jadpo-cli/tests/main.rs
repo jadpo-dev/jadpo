@@ -26,6 +26,7 @@ mod signed;
 mod sql;
 #[path = "test.rs"]
 mod test_command;
+mod translation_jadpo;
 mod translation_tooling;
 mod translations;
 mod watch;

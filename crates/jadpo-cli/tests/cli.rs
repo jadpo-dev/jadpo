@@ -72,7 +72,7 @@ Look things up
 Change safely
   api           Rewrite the API records       update
   declines      List or clear declines        list, clear
-  translations  Keep translations up to date  missing, unused, update, accept
+  translations  Keep translations up to date
 
 Set up
   config        Check and set local settings  check, move, set
@@ -133,7 +133,7 @@ Look things up
 Change safely
   api           Rewrite the API records       update
   declines      List or clear declines        list · clear
-  translations  Keep translations up to date  missing · unused · update · accept
+  translations  Keep translations up to date
 
 Set up
   config        Check and set local settings  check · move · set

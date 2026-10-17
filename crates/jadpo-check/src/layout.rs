@@ -140,6 +140,15 @@ pub fn layout_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
                 out.push(not_test_content(path, location, &source, item));
             }
         }
+        Place::RootTranslations => {
+            // The root folder holds language files for the app's wording of
+            // Jadpo's and packages' text, and nothing else.
+            for item in items {
+                if !(item.kind == ItemKind::Singleton && item.name == "translations") {
+                    out.push(misplaced(path, "translations", location, &source, item));
+                }
+            }
+        }
         Place::Seeds => {
             for item in items {
                 if item.kind == ItemKind::Seed {
@@ -224,7 +233,7 @@ fn unknown_location(path: &str, stray: &Stray, location: &Location, items: &[Ite
         ),
         Stray::RootFolder(folder) => (
             format!("`{folder}/` isn't a place for Jadpo code"),
-            "Code lives in `domains/` and `shared/`; the other root folders are `tests/`, `database/`, `providers/` and `acceptances/`, and `api/` and `translations/` hold no `.jadpo` files.".to_string(),
+            "Code lives in `domains/` and `shared/`; the other root folders are `tests/`, `database/`, `providers/` and `acceptances/`, and `api/` holds no `.jadpo` files. The root `translations/` holds only language files.".to_string(),
         ),
         Stray::DomainsFile => (
             format!("`{file}` is outside any domain"),

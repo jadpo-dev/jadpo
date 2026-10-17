@@ -247,6 +247,8 @@ page_size
 sign_out
 # area 8's sign-in (`sign_in` providers and routes) and OpenAPI's `security`
 sign_in
+# a field of the built-in `MagicLinkEmail` (area 16), part of Jadpo's own message names
+sign_in_link
 security
 # area 8's sign-in methods, route authentication and runtime failure codes
 browser_session
