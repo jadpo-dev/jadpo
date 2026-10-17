@@ -2027,10 +2027,17 @@ build/
   `layout.unused_declaration` like an unused shared declaration, so a file
   never collects helpers for something else (2026-10-15, Richard; built in
   chunk 3.9).
-- The primary declaration comes first in its file, after any opening
-  comment. `jadpo fmt` moves it there and leaves everything else in the
-  order it was written, so opening a file shows what it is for
-  (2026-10-15, Richard; built in chunk 3.9).
+- Definitions come before their use: after any opening comment and the
+  `use` lines, every declaration in a file comes before the first one that
+  uses it, so the primary declaration comes last, read with the context of
+  the constants and types it needs (2026-10-17, Richard, replacing
+  2026-10-15's "the primary declaration comes first"). Ties are broken by
+  kind (constants, then types, then failures, then helpers) and within a
+  kind by the order the primary declaration first reaches them;
+  declarations that refer to each other keep their written order among
+  themselves. `jadpo fmt` writes this order and `jadpo fmt --check` fails on
+  a file out of it (built in chunk 5.5h3; until then `jadpo fmt` still
+  moves the primary declaration first, as chunk 3.9 built).
 - A name must convert to its file name and back unchanged, so consecutive
   capitals are not allowed: `VatRate`, not `VATRate` (Rust's guideline too).
 - Names are unique across the whole project and across kinds, with one
@@ -2620,6 +2627,7 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | A file per shared name: where it applies | A second declaration in any domain or `shared/` file, `types/` and `libraries/` included, moves to a file of its own once another file uses it; one only its own file uses stays; the edit makes the move, and `jadpo fmt --layout` makes it and updates the imports (chunk 3.5) | 2026-10-15 |
 | A file holds only what its primary declaration uses | The primary declaration is the one of the folder's kind named after the file (the first of that kind when the file is misnamed), or the seed in `database/seeds/`; every type or helper function beside it is used by it, directly or through one another, or is `layout.unused_declaration`. Tests never count. One another file uses is moved by `layout.promotion_required`, not reported unused. While the primary, or a declaration it uses, writes a name that names nothing, perhaps a misspelling of the one it meant, nothing beside it is called unused, as with imports. Test files, root files and loose files have no primary declaration, and a library's functions keep their own rule: one nothing calls is unused (chunk 3.9) | 2026-10-15 |
 | The primary declaration first | `jadpo fmt` moves the primary declaration below the file's opening comments, up to their last blank line, and its `use` lines; it takes the comments written above it and the one after it on its line, and everything else keeps its written order. `jadpo fmt --check` fails on a file whose primary declaration isn't first; loose files keep their order (chunk 3.9) | 2026-10-15 |
+| Definition before use (Richard) | Every declaration before the first one that uses it, so the primary declaration comes last; ties by kind (constants, types, failures, helpers), then by the order the primary first reaches them; mutual references keep their written order; `jadpo fmt` writes it and `--check` fails on a file out of it. Replaces "the primary declaration first" (2026-10-15). Built in 5.5h3 | 2026-10-17 |
 | Names per domain | A private function or type (not a failure, an email, or a type an API's record names) needs a name unique only within its domain; everything public, in `shared/` or the root files, and every other kind (entities, failures, events, actions, queries, routes, schedules, subscribers, services, fixtures, emails) stays unique across the project, as do domain, library and standard-library names among themselves. Why: agents in parallel workspaces on different domains would otherwise clash on private helper names at merge; imports stay exact. Rejected: a namespace per domain, which only moves the prefix into tables, error codes, OpenAPI and event names, and makes one name mean different things by folder. The identity key of a function or type declared in a domain carries the domain, and promotion to `shared/` writes a registry move line (amends area 18's question 8). `semantic.duplicate_declaration` says copy or clash, never invents a name, and lists the names in use with the same word; `jadpo rename` refuses a name in use; agents merge `main` and run `jadpo check` before pushing, and generated CI runs `jadpo check` first. Built in chunk 5.3d, but for `jadpo rename`, which comes with the command (Richard) | 2026-10-16 |
 | Constants in the layout | A `constant` (area 3) is placed and shared as a helper function is: used by one file it sits at the top of that file, never as a primary declaration, and used by a second it moves into a library and is read through it (`pricing.vat_rate`), so a library holds functions and constants; a private constant needs a name unique only within its domain; `constant` is reserved; a top-level `var` is `syntax.expected_declaration` whose `next:` writes `constant`; two constants of one type holding one value warn `constant.similar_exists`. Built in chunk 5.3e (Richard) | 2026-10-16 |
 | Packages in the layout | The root `packages/` holds only installed packages, `packages/<name>/<version>/`, committed, read-only and checked against `jadpo.lock`; the app's own integrations live in `shared/providers/<name>/<version>/` in the package format; a package is laid out as `shared/` is; `use packages/…` always names installed code (Richard, area 11) | 2026-10-16 |

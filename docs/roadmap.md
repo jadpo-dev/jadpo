@@ -669,6 +669,16 @@ reference only).
   currency}` in translation messages (area 10's placeholder styles). Done
   when `convert`'s example passes, an inverted rate is a type error, and
   a message writes a price in two locales.
+- [ ] **5.5h3 Definition before use** `sonnet · high` (area 1, "Files and
+  names"; Richard, 2026-10-17): `jadpo fmt` orders each file as decided:
+  opening comment, `use` lines, then every declaration before the first
+  one that uses it, the primary declaration last, ties by kind (constants,
+  types, failures, helpers) then by the order the primary first reaches
+  them, mutual references in written order; `jadpo fmt --check` failing on
+  a file out of order; chunk 3.9's "primary first" move removed; every page
+  example, example app and test fixture reformatted. Done when the
+  ordering has tests for each tie rule and a cycle, and the gate's docs and
+  examples steps pass on the reordered sources.
 - [ ] **5.5i Payment and identity numbers** `opus · high` (area 19, "Groups
   with the baseline only"): the money group's other 21 types and the 11
   tax and identity numbers, each a pattern or check digit (mod-97, Luhn,
