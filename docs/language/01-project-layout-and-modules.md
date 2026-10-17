@@ -1788,7 +1788,7 @@ build/
 | `subscribers/` | Event triggers, including long-running coordination | Replaces durable "workflows" |
 | (none) | Third-party APIs are provider packages: connections in `app.jadpo`; installed packages in root `packages/`, pinned in `jadpo.lock`; the app's own in `shared/providers/` | Amended 2026-10-13 by area 11, revised 2026-10-16; the `integrations/` folder and `integration` keyword are gone |
 | `emails/` | Email types and their templates, one email per name (`welcome_email.jadpo`, `welcome_email.html`, `welcome_email.txt`) | Added 2026-10-13 (Richard, area 16) |
-| `translations/` | One `type X = Message` per file, one `translations { }` language file per locale named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects, and the generated, committed `sources.jadpo_record` (area 18; named `sources.json` until the records are renamed, 2026-10-16) | Added 2026-10-16 (Richard, area 10); a message a second domain uses goes in `shared/translations/`. Chunk 5.6b adds it to the folders `layout.unknown_location` lists |
+| `translations/` | One `type X = Message` per file, one `translations { }` language file per locale named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects, and the generated, committed `sources.jadpo_record` (area 18; named `sources.json` until the records are renamed, 2026-10-16) | Added 2026-10-16 (Richard, area 10); a message a second domain uses goes in `shared/translations/`. Chunk 5.4c adds it to the folders `layout.unknown_location` lists |
 | `documents/` | Document types and their templates, one document per name (`invoice_document.jadpo`, `invoice_document.html`), rendered to HTML or PDF by the `documents` capability | Added 2026-10-16 (Richard, area 16) |
 | `fixtures/` | Test data shared by several test files in the domain | |
 
@@ -2009,6 +2009,17 @@ use menu
   `List<T>`) and standard-library namespaces (`collection.count(...)`) are
   fixed per language version and can't be declared by a project. An
   entity's generated operations (`Todo.get(id)`) come with the entity.
+
+  *Amended 2026-10-17 by area 19 (questions 6 and 30):* the standard
+  library's namespaces are `list`, `set`, `map`, `range`, `integer`,
+  `decimal`, `money`, `units`, `text`, `markup`, `hash`, `encoding`,
+  `crypto`, `random`, `json`, `csv`, `tsv`, `json_lines`, `temporal`,
+  `locale`, `colour`, `media`, `web` and `semver`, with `geo` and `ai`
+  when their areas land; `collection.` becomes `list.`, `set.` or
+  `map.`. Each is reserved by `semantic.standard_namespace_reserved`
+  from the chunk that adds it; fields and named arguments keep every
+  word (`note.text`, `set:`). The names that clash today are renamed in
+  those chunks: `text` in 5.5f, `range` in 5.5c.
 - **Calls into another domain keep the domain's name at the call.** `use menu`
   brings in the domain, and its public actions, queries and fixtures are
   called as `menu.price_item(...)`, so a call that crosses domains is
@@ -2285,8 +2296,8 @@ integrations in `shared/providers/`, both laid out as `shared/` is.
      |---|---|---|
      | `library.similar_exists` | 1 | Two helpers can differ on purpose |
      | `constant.similar_exists` | 3 | Two constants can share a value by coincidence (a VAT rate and a fee) |
-     | `type.standard_exists` (proposed) | 19 | A shape can match a standard type by chance |
-     | `type.variant_retired` (proposed) | 19 | Code that reads old records names a withdrawn code on purpose |
+     | `type.standard_exists` (decided 2026-10-17) | 19 | A shape can match a standard type by chance |
+     | `type.variant_retired` (decided 2026-10-17) | 19 | Code that reads old records names a withdrawn code on purpose |
      | A personal field nothing reads | 15 | Kept for a legal reason and read only by export |
      | Rate limits counted in memory | 16 | One instance, by design |
      | An email that would fail the deliverability checks | 16 | An image-only notice can be deliberate |

@@ -15,7 +15,7 @@ pub struct Example {
     pub source: String,
     /// Inside a `::: today` box: the archived v0 compiler's syntax.
     pub today: bool,
-    /// On one of the eighteen area pages.
+    /// On one of the nineteen area pages.
     pub area_page: bool,
 }
 

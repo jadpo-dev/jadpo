@@ -353,6 +353,17 @@ the organisation's details. Changes to the report appear in the approval
 review (area 9), so a pull request that starts sending email addresses to a
 new provider is seen by a person before it ships.
 
+> Amended 2026-10-17 by area 19 (questions 10, 20 and 21): an entity field
+> may be stored encrypted, `notes: ClinicalNote { encrypted: true }`,
+> sealed with the application's one `field_encryption_key:`, decrypted on
+> load, and kept out of unique rules, indexes, filters, ordering, search
+> and logs. Per-person keys stay out (question 5). Its full design is this
+> area's, built with personal data after the first build, together with
+> keys held as data (a key per device or person in an encrypted field,
+> usable only as a `crypto` call's `key:`). Every field sent to an AI
+> model is listed in the report above (the AI area, planned in chunk
+> 5.5v).
+
 ## Review
 
 ### Status

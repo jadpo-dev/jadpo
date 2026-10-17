@@ -146,10 +146,7 @@ action export_products(request: ProductExport) -> BatchRun {
 
 | Helper | Reads or writes |
 |---|---|
-| `csv.read`, `csv.write` | CSV |
-| `tsv.read`, `tsv.write` | TSV, CSV's tab-delimited form |
-| `json_lines.read`, `json_lines.write` | JSON Lines, one value per line |
-| `json.read(file, items_at:, as:)`, `json.write` | A large JSON list, `items_at:` naming where the list sits in the document |
+| `csv`, `tsv`, `json_lines` and `json` read and write helpers | Files; each operation's signature, result and failures are in [area 19, "Data formats"](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines) (moved 2026-10-17) |
 | `batches.each(from:, each:, finished:, key:)` | No file: a large query, or every page of a provider's list |
 
 - **Reading** takes a stored `File`, the row type (`as:`), `each:` calling
@@ -219,13 +216,14 @@ only; a write without `format:` is a compile error. Reading takes UTF-8
 (a byte-order mark removed), UTF-16 with a mark, and legacy encodings the
 format declares, never guessing; writing is UTF-8. gzip is read only with
 `max_unpacked_size:`, and no archives are opened. The format namespaces
-themselves are chunk 5.4's.
+themselves are area 19's ("Data formats", decided 2026-10-17).
 
 **No other way.** There is no loop over a file's rows and no parse of a
 whole file into a list. `store.read(file)` returns `FileContents` for
 passing bytes on (area 16), which the helpers do not accept; a provider's
-CSV report is put in a store and read like an upload; `json.decode` is
-only for single JSON documents in memory. An export walks live data, so a
+CSV report is put in a store and read like an upload; `json.read` given
+text (named `json.decode` until area 19, 2026-10-17) is only for single
+JSON documents in memory. An export walks live data, so a
 record changed during it appears as its page saw it; `jadpo check` warns
 when `from:` orders by a field that can be updated, since ordering by an
 immutable field (`id`, or a creation time with `id`) is what keeps every

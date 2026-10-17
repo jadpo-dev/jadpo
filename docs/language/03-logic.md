@@ -611,6 +611,15 @@ is one error whose edit writes `==` or `!=` (`syntax.equality_operator`,
 chunk 3.5), as are SQL's `<>`, `=` and `IS NULL` (chunk 3.8, [Habits from
 other languages](#habits-from-other-languages)).
 
+> Amended 2026-10-17 by area 19 (question 16): operators on standard
+> types follow area 19's standard operator table (`price * 20%`,
+> `distance / 2h`), and anything not in it, or in the table above, is a
+> compile error naming the two types. `20%` is a `Percentage` literal;
+> remainder keeps `%` written with spaces, as the formatter writes every
+> binary operator, and `20%3` is an error naming both readings.
+> `Rounding` gains `down`, toward zero (question 25). Built in chunks 5.5d,
+> 5.5h and 5.5j.
+
 Questions 6 and 7 decided operator typing and division:
 
 ```jadpo fragment
@@ -818,6 +827,15 @@ list, may read the variables around it (safe because values never change),
 and cannot call actions or use `attempt`. Functions are not values: they
 cannot be stored in variables or passed to your own callables.
 
+> Amended 2026-10-17 by area 19 (questions 6, 8 and 21): the collection
+> operations are `list.`, `set.` and `map.`, and more of them take an
+> inline function (`any`, `all`, `find`, `min_by`, `max_by`, `sort_by`,
+> `group_by`). For standard operations only, an inline function may take
+> two parameters, `(key, value) -> ...` (`list.zip_with`, `map.filter`,
+> `map.map_values`), widening question 13; built in chunk 5.5c. Question
+> 6's "text order belongs in a standard function" is `list.sort_by` with a
+> text key.
+
 No declaration's name is a value. A type, enum, failure, entity,
 function, action, query, library or route group, or a standard namespace such
 as `collection`, written where a value is read is `type.not_a_value`: in a
@@ -936,6 +954,10 @@ function party_label(party: PartyId) -> PartyTitle {
 
 `function first<T>(items: List<T>) -> T` and `Customer.id | Supplier.id` are
 not Jadpo: question 16 decided against generics and unions in your own code.
+
+> Amended 2026-10-17 by area 19 (question 16): for the same reason, an
+> application's types never declare operators, so every `a + b` is a row
+> of the operator tables a reviewer can look up, and never an overload.
 
 ## Errors
 

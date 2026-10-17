@@ -573,6 +573,10 @@ test "a todo due in an hour becomes overdue" {
 Advancing the clock does not run schedules by itself; a schedule test runs
 one with `.run()` (question 5).
 
+> Amended 2026-10-17 by area 19 (question 19): the standard library's
+> `random` namespace is fixed in tests as the clock is: seeded per test,
+> so a rerun gives the same tokens, codes and shuffles (chunk 5.5q).
+
 ## Configuration in tests
 
 Each configuration field can give a `test:` value in `config.jadpo`, used by

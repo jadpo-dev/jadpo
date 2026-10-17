@@ -317,11 +317,13 @@ the bytes came from. The app's code joins them:
   helpers or `batches.each`.
 - Rows in a file, of any size, are read and written only through the batch
   helpers (`csv.read`, `csv.write`, `tsv`, `json_lines`, `json.read` and
-  `json.write`; area 12, "Batches"). There is no loop over a file's rows and
-  no parse of a whole file into a list. A provider's CSV report is put in
-  a store and read the same way.
-- `json.decode` stays only for single JSON documents in memory: request
-  bodies and provider answers.
+  `json.write`; area 12, "Batches"), whose operations are tabled in
+  [area 19, "Data formats"](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines).
+  There is no loop over a file's rows and no parse of a whole file into a
+  list. A provider's CSV report is put in a store and read the same way.
+- `json.read(text, as:)` (the `json.decode` of the packages design,
+  renamed by area 19 on 2026-10-17) is only for single JSON documents in
+  memory: request bodies and provider answers.
 
 **Uploading.** Files go straight from the client to the store, not through
 the application, so the 1 MB body limit (area 7) is not in the way:
@@ -1314,7 +1316,7 @@ the feature they belong to.
 | Search engines and erasure; `AuditEntryRecorded` copies of hashed fields | 15 | Questions 9 and 12 |
 | `jadpo traces`, `metrics` and `logs`; `jadpo dev --export-telemetry` | 17 | Question 10 |
 | `metric` declarations in `monitoring.jadpo` | 1 | Question 10 |
-| The `CsvFormat`, `json` and `json_lines` namespaces and their encodings | Standard library (chunk 5.4) | Question 7 |
+| The `CsvFormat`, `json` and `json_lines` namespaces and their encodings | Standard library (chunk 5.4) | Question 7; decided 2026-10-17 in area 19, "Data formats" |
 
 ### Open questions
 

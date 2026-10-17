@@ -8,7 +8,7 @@ and the [language pages](language/README.md), not here.
 ## The direction (decided 2026-10-13)
 
 - **The language is specified** in [docs/language](language/README.md):
-  eighteen areas, all decided. Those pages are the specification and their
+  nineteen areas, all decided. Those pages are the specification and their
   examples become the tests.
 - **A new compiler, built around one graph**
   ([compiler-runtime §1.1–1.2](compiler-runtime.md#11-graph-centred-compiler-decided-2026-10-13)).
@@ -369,7 +369,7 @@ reference only).
   sends a request; routes, identity and policy in the scale test with
   asserted recheck counts.
 
-## Phase 5 — Configuration, time, translations and the standard library (area 10)
+## Phase 5 — Configuration, time, translations and the standard library (areas 10 and 19)
 
 - [x] **5.1 Configuration:** `sonnet · high` `config.jadpo`, environments, secrets, signing
   keys, `jadpo config`, the check before the app starts, and a test's own
@@ -464,7 +464,8 @@ reference only).
   `jadpo fmt` sorting `config { }` fields by name with their comments, and
   `--check` failing on one out of order. Area 10's proposal examples made
   check blocks.
-- [ ] **5.4 Standard library: the plan** `opus · high`. Only `collection`
+- [x] **5.4 Standard library: the plan** `opus · high`, decided 2026-10-17,
+  as recommended ([area 19](language/19-standard-library.md)). Only `collection`
   and `temporal` are specified, piecemeal across areas 2, 3 and 10, and
   real code keeps needing more: splitting and trimming text, formatting and
   rounding numbers, hashing, encodings. Collect what the decided areas and
@@ -485,15 +486,7 @@ reference only).
   date by `jadpo build`) for expired flags when they are built. `warning`
   leaves area 14's error shape and the CLI design language's headline
   words.
-- [ ] **5.5 Standard library: the build** `opus · high`: the operations 5.4
-  decided, in the shared operation table, the interpreter and the runtime,
-  each with its page examples as tests. Split here before starting if 5.4's
-  page is more than one session.
-- [ ] **5.6 Computed backfills** `opus · high` (area 5, "Computed backfills",
-  2026-10-15): `backfill:` as an expression over each row's own fields,
-  filled in batches, one `UPDATE` each where it has a SQL form and by
-  `jadpo migrate apply` otherwise, then made required.
-- [ ] **5.6b Translations as messages** `sonnet · high` (area 10,
+- [ ] **5.4c Translations as messages** `sonnet · high` (area 10,
   "Translations as messages", decided 2026-10-16 in the packages design
   while 5.3b built JSON files of ICU MessageFormat; reworks 5.3b, whose
   files, calls and `translation.*` errors it replaces): `type X = Message` and the built-in
@@ -510,6 +503,153 @@ reference only).
   `unused`, `update`, `accept`, `builtin`, `export` and `import`, and a
   pseudo-locale. Email templates follow in 7.3, library packages'
   translations in 7.1.
+- [ ] **5.5a The standard type contract** `opus · high` (area 19, "Every
+  standard type meets one contract", questions 1 to 5): each standard type
+  a stub declaration in `crates/jadpo-check/std/` plus a data entry,
+  generating construction, `text.parse`, `text.format`, `text.from`, JSON,
+  storage, `==` and order; named validators; one test harness for every
+  type; `temporal.format` moved under `text.format` with its habit error;
+  `type.standard_exists` on app code, declinable through 5.4b; the clash
+  check for a release that adds a standard type, with `jadpo fix`. Done
+  when the 13 built standard types run through the contract and the
+  harness, area 10's formatting examples use `text.format`, and
+  `type.standard_exists` has a checked example with real output.
+- [ ] **5.5b Lists** `opus · high` (area 19, "Lists", questions 6, 7 and
+  11): `collection.` renamed `list.` everywhere, with its habit error; the
+  21 new list operations that need no language change; `never_negative`,
+  the `sort_by` key's ordered kinds, results that keep a named type. Done
+  when every list operation's page example passes as a test, interpreted
+  and in the runtime, and no `collection.` call is left in the pages,
+  examples or tests.
+- [ ] **5.5c Sets, maps and ranges** `opus · high` (area 19, "Sets",
+  "Maps", "Ranges" and "Language gaps", question 8): the 7 `set`, 8 `map`
+  and 3 `range` operations and `Range<T>` on the contract; `for` over a
+  set in canonical order; `[]` as an empty map; two-parameter inline
+  functions for standard operations and the 3 operations waiting on them;
+  `range` reserved and area 10's `deliveries_in(range:)` renamed. Done
+  when each operation's example passes and walking a set or a map's keys
+  checks and runs.
+- [ ] **5.5d Numbers** `opus · high` (area 19, "Numbers", question 25): the
+  8 new `integer` and `decimal` operations, `scale:` written out, and
+  `Rounding.down`. Done when each operation's example passes and every
+  rounding mode gives the same result interpreted and in the runtime.
+- [ ] **5.5e Decimal maths** `opus · high` (area 19, "Numbers", question
+  18): `sqrt`, `power`, `exp`, `ln`, `sin`, `cos`, `atan2` and `pi` on
+  `Decimal`, correctly rounded to a named scale by Jadpo's own code. Done
+  when each is tested against reference values and gives the same digits
+  on native and WebAssembly.
+- [ ] **5.5f Text** `opus · high` (area 19, "Text", questions 23, 26, 29
+  and 30): the 17 text operations, `locale:` on case and sorting through
+  ICU4X, NFC at the boundary, `never_empty`, `fill:` and
+  `at_most_length_of`; `text` reserved and the clashing page examples and
+  crate snippets renamed. Done when each operation's example passes,
+  including the Unicode edge cases, and `text` can't name a variable.
+- [ ] **5.5g Hashing, encodings and JSON** `opus · high` (area 19,
+  "Hashing and cryptography", "Encodings" and "Data formats", questions
+  14 and 24): `hash.sha256`, the 9 `encoding` operations, `json.read` and
+  `json.write` in memory with `mismatch`'s problem path. The batch forms
+  and `csv`, `tsv` and `json_lines` come with batches (6.4). Done when
+  each operation's example passes and `json.write` gives the same text
+  for the same value on every target.
+- [ ] **5.5h Money** `opus · high` (area 19, "Money and payments" and "The
+  standard operator table", question 16): `Money`, `Currency`,
+  `ExchangeRate`, the 8 `money` operations, the operator table's `Money`
+  rows with `currency_mismatch`, `rounding:` and `type.money_split`, the
+  two columns, the wire shape, `{price, number, currency}`, and area 2's
+  examples that declare their own `Money` renamed. Done when the money
+  examples pass, a mismatched currency fails to compile where both types
+  fix it, and `split` and `allocate` never lose a minor unit.
+- [ ] **5.5i Payment and identity numbers** `opus · high` (area 19, "Groups
+  with the baseline only"): the money group's other 21 types and the 11
+  tax and identity numbers, each a pattern or check digit (mod-97, Luhn,
+  mod-11) on the contract. Done when every type passes the contract's
+  harness with valid and invalid examples per rule.
+- [ ] **5.5j Quantities** `opus · high` (area 19, "Physical quantities",
+  question 17): the 17 physical quantities with `DataSize`, `Bitrate`,
+  `Percentage`, `Ratio` and `Fraction`; SI storage at each kind's scale;
+  the `%` literal and the operator table's `Percentage` rows; suffixed
+  literals; the product and quotient table; `type.unit_required`; the 3
+  `units` operations. Done when the quantity examples pass, `1km ==
+  1000metre`, and a bare number or a mixed kind is a compile error with a
+  checked example.
+- [ ] **5.5k Time and calendar** `opus · high` (area 19, "Time and
+  calendar additions"): the 13 new time types, `CalendarPeriod`'s
+  operator rows and `temporal.period_between`, `RecurrenceRule` expansion
+  (`temporal.occurrences`) and `OpeningHours` (`temporal.open_at`). Done
+  when each type passes the harness and the three operations' examples
+  pass across a daylight-saving change.
+- [ ] **5.5l People and places** `opus · high` (area 19, question 22): the
+  19 new types, the closed lists as built-in enums with `form:`, `.all`
+  and retired codes (`type.variant_retired`), `PhoneNumber`'s E.164
+  metadata, `PostalAddress` and `PersonName` in each locale's order, and
+  `PostalCode` per country. Done when every type passes the harness and
+  `text.format` writes an address in two locales' orders.
+- [ ] **5.5m Commerce, health, travel and the rest** `opus · high` (area
+  19, "Groups with the baseline only"): 45 types, mostly codes with a
+  pattern or check digit (`Ean13`, `Isbn`, `Vin`, `IataAirport`). Done
+  when every type passes the harness.
+- [ ] **5.5n Web and software** `opus · high` (area 19, "Web and
+  software"): 38 types, `web`'s 3 operations and `semver.satisfies`. Done
+  when every type passes the harness and the four operations' examples
+  pass.
+- [ ] **5.5o Text formats** `opus · high` (area 19, "Text formats"):
+  `Markdown`, `Html` (whose construction is the sanitiser, a security
+  boundary), `RichText` and `LocalisedText`, `markup`'s 3 operations and
+  `text.pick`. Done when the examples pass and a sanitiser test suite of
+  script, event-handler and link attacks comes out safe.
+- [ ] **5.5p Media and colour** `opus · high` (area 19, "Colour" and
+  "Media", question 13): the 15 types, `colour`'s 5 operations and
+  `media.fit`. Done when each operation's example passes and `contrast`
+  matches WCAG 2's reference ratios.
+- [ ] **5.5q Randomness and cryptography** `opus · high` (area 19,
+  "Randomness" and "Hashing and cryptography", questions 9 and 19): the
+  generated `random` namespace, actions only, seeded per test and
+  recorded for replay; `crypto`'s 8 operations that need no keys held as
+  data; `EncryptionKey`, `PasswordHash`, `PasswordCheck`, `PrivateKey`,
+  `PublicKey` and `key:` as a compiler-owned place. Done when the
+  examples pass, a test's random values repeat on a rerun, and reading a
+  key anywhere but `key:` is `configuration.secret_flow`.
+- [ ] **5.5r Security types** `opus · high` (area 19, "The standard
+  types"): the other 17 security types (`Password`, `Jwt`, `Jwk`,
+  `Certificate`, `ApiKey` ...) and `crypto.verify_jwt`; `verify_totp`
+  follows keys held as data. Done when every type passes the harness and
+  `verify_jwt` refuses `none`, a token-chosen algorithm and an expired
+  token.
+- [ ] **5.5s Geospatial and AI types' baselines** `opus · high` (area 19,
+  "The standard types"): the 17 geospatial types and `Vector`,
+  `Embedding`, `TokenCount`, `TokenUsage` and `ChatMessage`, with
+  construction, text and JSON from the contract; storage and operations
+  come with their own areas. Done when every type passes the harness's
+  construction, text and JSON cases.
+- [ ] **5.5t Cross-field rules** `opus · high` (area 2, decided by area 19,
+  question 15): named rules across an object type's fields (`rule
+  ends_after_start: ends > starts`), proved or attempted like any rule.
+  Design the syntax and errors on area 2's page first. Done when a
+  booking whose end is before its start fails construction with the
+  rule's name, a proved one needs no arm, and each new error has a
+  checked example.
+- [ ] **5.5u Geospatial: the plan** `opus · high` (area 19, question 12):
+  write the geospatial area page from area 19's scope (the types in
+  WGS84, GeoJSON on the wire, `geo.` construction and operations, PostGIS
+  `geography` storage, query conditions and GiST indexes), and place its
+  build on this roadmap. **Needs Richard** to decide the page.
+- [ ] **5.5v AI: the plan** `opus · high` (area 19, question 20): write the
+  AI area page from area 19's scope (the `ai` capability, typed
+  `ai.generate`, streaming, embeddings with pgvector, checked prompt
+  files, a fake for tests, limits, area 15's report), and place its build
+  on this roadmap. **Needs Richard** to decide the page.
+- [ ] **5.6 Computed backfills** `opus · high` (area 5, "Computed backfills",
+  2026-10-15): `backfill:` as an expression over each row's own fields,
+  filled in batches, one `UPDATE` each where it has a SQL form and by
+  `jadpo migrate apply` otherwise, then made required; with the SQL form
+  of each standard operation (area 19, "SQL forms"), each tested against
+  the runtime on the same inputs.
+- [ ] **5.6c Aggregate queries** `opus · high` (area 6, decided by area 19,
+  questions 21 and 28): `count`, `sum`, `min`, `max` and `average` in
+  queries, grouped by a field or a time bucket, using the standard
+  operations' SQL forms. Design the syntax and errors on area 6's page
+  first. Done when a usage-per-month and a counts-by-status query each
+  run as one SQL statement and give the same result as the interpreter.
 - [ ] **5.7 Teaching examples for Phase 5** `opus · high`: configuration,
   time, translations and the standard library, passing `--require-examples`.
 
@@ -537,8 +677,9 @@ reference only).
   `batches.each`, `batches.status`, `cancel` and `key:`, items grouped into
   transactions that commit their writes and position together, problems
   collected, resuming after crashes and deploys; replacing chained events
-  for paging; then `csv.read`/`write`, `tsv`, `json_lines` and
-  `json.read`/`write` on it once 5.5 provides the formats, and `store.read`'s
+  for paging; then `csv.read`/`write`, `tsv`, `json_lines` and the batch
+  forms of `json.read`/`write` on it, as area 19's "Data formats" tables
+  them, and `store.read`'s
   whole-read cap. Split before starting if the format helpers make it more
   than one session.
 - [ ] **6.5 Teaching examples for Phase 6** `opus · high`: events,
@@ -553,7 +694,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   2026-10-16): the API record and identity registry renamed to
   `.jadpo_record` in the decided record format, with the header line, the
   hand-edit check and `jadpo records`; the format 7.1's package surfaces
-  and 5.6b's translation sources also use, as
+  and 5.4c's translation sources also use, as
   [the design](language/research/jadpo-record-format.md) sets out (decided
   2026-10-16): the API record loses its `version:` counter, the OpenAPI
   version coming from a hash of the record, and `jadpo.lock` takes the
@@ -566,7 +707,8 @@ The design is area 11 as revised on 2026-10-16, with its research in
   install, reserved names, `surface.jadpo_record` and `jadpo package show`,
   `connections:` and the network report, lazy loading, library packages'
   translations, and the `jadpo package` commands for adding, linking and
-  checking. The public registry stays after the first build.
+  checking, with `type.standard_exists` on packages' public types in the
+  publishing bar (area 19, question 1). The public registry stays after the first build.
 - [ ] **7.2 Importing, decoding and faking** `opus · high`: `x-jadpo`
   fields in every API's OpenAPI document and each API serving it at
   `<prefix>/openapi.json` (under its own authentication, `serve_openapi:
@@ -582,7 +724,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   second connection proving the swap, `emails/` templates and the shared
   layout, the dev inbox, the health score. Chunk 5.3b refuses a dotted
   translation key (area 16's old `"welcome_email.subject"`) as
-  `translation.key_invalid`; under translations as messages (5.6b) an
+  `translation.key_invalid`; under translations as messages (5.4c) an
   email's subject is its own member in its domain's language files.
 - [ ] **7.3b Magic-link sign-in** `opus · high` (area 8, decided
   2026-10-16): `sign_in:` with `magic_link:` and `providers:`, the
@@ -678,7 +820,9 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 
 ## After the first build, in order
 
-1. Personal data (area 15).
+1. Personal data (area 15), with encrypted fields and keys held as data
+   (area 19, questions 10 and 21) and `crypto.verify_totp`, which waits on
+   them.
 2. Remaining built-in services (area 16): flags, files, audit, search,
    telemetry thresholds.
 3. Debugging and review (area 17): `why`, timelines, `test new --from`,
