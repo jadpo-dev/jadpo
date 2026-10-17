@@ -1598,6 +1598,8 @@ rule's real output under [Errors](#errors).
 | Imports | Built (chunk 3.5): `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
 | A file holds only what its primary declaration uses, primary first | Built (chunk 3.9): `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another, and `jadpo fmt` moving the primary declaration to the top. |
 | Referenced assets | Decided, not built: `layout.asset_unreferenced` waits for the reference forms of areas 11 and 16. |
+| Packages | Decided, not built: the root `packages/` and `jadpo.lock`, `shared/providers/`, and packages checked as `shared/` is come with chunk 7.1; until then `packages/` is `layout.unknown_location`. |
+| `.jadpo_record` files and the reachability rule | Decided 2026-10-16, not built: today's compiler writes `api/main.api`; the rename, the header line and the hand-edit check, and the rule that everything reachable from a public declaration is public, have no chunk on the roadmap yet. |
 
 ### Consistency with the rest of the language
 
@@ -1650,8 +1652,10 @@ app.jadpo                  application, principal, health, readiness, language v
 config.jadpo               configuration: names, types, bindings, defaults
 authentication.jadpo       authentication methods and their failures
 policy.jadpo               application-wide policy, such as tenancy
-jadpo.lock                 pinned provider packages from the registry
-providers/                 provider packages imported or written for this app
+jadpo.lock                 installed packages: version, source and digest
+packages/                  installed packages, committed and read-only
+api/
+  main.jadpo_record        the public API record (area 7)
 domains/
   planning/
     entities/
@@ -1676,7 +1680,7 @@ domains/
     schedules/
       overdue_reminders.jadpo
 database/
-  identities.json          stable identity of every table and column
+  identities.jadpo_record  stable identity of every renamed table, column and declaration
   migrations/
     20261012T0930_initial/
 build/                     generated output, never committed
@@ -1685,10 +1689,16 @@ build/                     generated output, never committed
 The same rules for a large application:
 
 ```text
-app.jadpo  config.jadpo  authentication.jadpo  policy.jadpo
+app.jadpo  config.jadpo  authentication.jadpo  policy.jadpo  flags.jadpo  jadpo.lock
 shared/
   types/          money.jadpo  country_code.jadpo  address.jadpo
   libraries/      rounding.jadpo
+  translations/   order_reference.jadpo  en_gb.jadpo  de_de.jadpo  sources.jadpo_record
+  emails/         layout.html  layout.txt
+  providers/      acme_couriers/v1/          the app's own integration, in the package format
+packages/         stripe/v2024_06_20/  postcodes/v2/   installed: in jadpo.lock, read-only
+api/              main.jadpo_record  admin.jadpo_record
+acceptances/      20261020T1400_remove_todo_priority.jadpo
 domains/
   ordering/
     entities/     cart.jadpo  order.jadpo  order.test.jadpo
@@ -1699,6 +1709,8 @@ domains/
     subscribers/  cancel_unpaid_orders.jadpo
     schedules/    expire_quotes.jadpo
     fixtures/     sample_catalogue.jadpo
+    translations/ order_shipped.jadpo  en_gb.jadpo  de_de.jadpo  sources.jadpo_record
+    documents/    invoice_document.jadpo  invoice_document.html
   inventory/
     actions/      reserve_stock.jadpo        public: called by checkout in one transaction
   payments/
@@ -1707,10 +1719,10 @@ domains/
     subscribers/  send_order_confirmation.jadpo
   catalogue/  fulfilment/  identity/
 database/
-  identities.json
+  identities.jadpo_record
   migrations/     20260901T1000_initial/  20261012T0930_add_order_channel/
   seeds/          local_demo.jadpo
-translations/
+translations/     fr_fr.jadpo        the app's wording for Jadpo's and packages' text
 tests/            checkout_to_delivery.test.jadpo
 build/
 ```
@@ -1718,9 +1730,22 @@ build/
 #### The root
 
 - Only these entries: `app.jadpo`, `config.jadpo`, `authentication.jadpo`,
-  `policy.jadpo`, `domains/`, `shared/`, `database/`, `translations/`,
-  `tests/` and `build/`.
+  `policy.jadpo`, `flags.jadpo`, `jadpo.lock`, `domains/`, `shared/`,
+  `packages/`, `database/`, `api/`, `acceptances/`, `translations/`,
+  `tests/` and `build/` (`packages/` replaced the root `providers/` on
+  2026-10-16, area 11).
+- `packages/` holds only installed packages, each in
+  `packages/<name>/<version>/`, committed, read-only and checked against its
+  digest in `jadpo.lock`; everything the app's authors wrote lives in
+  `domains/` and `shared/`, whatever kind it is, so the app's own
+  integrations are in `shared/providers/` (area 11, 2026-10-16). A package
+  is laid out as `shared/` is, under the same rules.
 - `app.jadpo` also records the project's Jadpo language version.
+- The root `translations/` holds only the app's wording for text it did
+  not write, one `<locale>.jadpo` file each, grouped by owner (`jadpo: { }`
+  for Jadpo's own, a library package's name for its); an application's
+  messages live in the domain that uses them, or in `shared/translations/`
+  (area 10, revised 2026-10-16).
 - A `.jadpo` file anywhere else is an error. Folders with no `.jadpo` files
   (`docs/`, `.github/`) are ignored.
 - There is no `env.jadpo`. `config.jadpo` declares every setting; values come
@@ -1761,8 +1786,10 @@ build/
 | `schedules/` | Time triggers: when to run which action | Replaces "jobs" |
 | `events/` | Event definitions | |
 | `subscribers/` | Event triggers, including long-running coordination | Replaces durable "workflows" |
-| (none) | Third-party APIs are provider packages: connections in `app.jadpo`, packages in root `providers/` or pinned in `jadpo.lock` | Amended 2026-10-13 by area 11; the `integrations/` folder and `integration` keyword are gone |
+| (none) | Third-party APIs are provider packages: connections in `app.jadpo`; installed packages in root `packages/`, pinned in `jadpo.lock`; the app's own in `shared/providers/` | Amended 2026-10-13 by area 11, revised 2026-10-16; the `integrations/` folder and `integration` keyword are gone |
 | `emails/` | Email types and their templates, one email per name (`welcome_email.jadpo`, `welcome_email.html`, `welcome_email.txt`) | Added 2026-10-13 (Richard, area 16) |
+| `translations/` | One `type X = Message` per file, one `translations { }` language file per locale named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects, and the generated, committed `sources.jadpo_record` (area 18; named `sources.json` until the records are renamed, 2026-10-16) | Added 2026-10-16 (Richard, area 10); a message a second domain uses goes in `shared/translations/`. Chunk 5.6b adds it to the folders `layout.unknown_location` lists |
+| `documents/` | Document types and their templates, one document per name (`invoice_document.jadpo`, `invoice_document.html`), rendered to HTML or PDF by the `documents` capability | Added 2026-10-16 (Richard, area 16) |
 | `fixtures/` | Test data shared by several test files in the domain | |
 
 #### Files and names
@@ -1850,11 +1877,18 @@ build/
 - A type, failure or helper used by one file lives in that file. When a
   second file in the domain uses it, it must move to a file of its own in the
   domain's `types/`, `failures/` or `libraries/`; when a second domain does,
-  to `shared/` (pure types, failures and libraries only). A constant
+  to `shared/` (pure types, failures, libraries and messages only; a
+  message moves to `shared/translations/`, 2026-10-16). A constant
   (area 3) is placed as a helper function is: used by one file it sits at
   the top of that file, and used by a second it moves into a library and
   is read through it, `pricing.vat_rate` (2026-10-16, Richard; built in
-  chunk 5.3e). Moving to the
+  chunk 5.3e). `shared/emails/`
+  holds only the app's optional email layout, `layout.html` and
+  `layout.txt` (area 16, 2026-10-16), and `shared/documents/` only its
+  optional document layout, `layout.html`. `shared/providers/` holds the
+  app's own integrations, each in `shared/providers/<name>/<version>/` in
+  exactly the package format (area 11, 2026-10-16); they are not promoted
+  there, but written there from the start. Moving to the
   right folder is not enough: `DiscountCode` in `types/basket.jadpo` used by
   another file must move to `types/discount_code.jadpo` (2026-10-14). Tests never count as users, a route only counts when
   nothing else uses the type, and a failure counts where it is raised.
@@ -1918,6 +1952,12 @@ build/
   or roll back together in one database transaction. Another domain never touches the entities
   directly. If a domain ever moves to its own database, the compiler rejects
   the shared transaction rather than losing the all-or-nothing guarantee.
+- **Everything reachable from a public declaration is public** (Richard,
+  2026-10-16, from area 11's package surface). A type in a public action's,
+  query's, library's or event's signature, and a failure it can raise,
+  must itself be public (or shared), checked on every compile; an internal
+  failure is mapped or handled before it leaves. A package's public surface
+  follows the same rule.
 - Events are for reactions that do not need to be all-or-nothing, such as
   sending a confirmation email: they run after the commit, so a failed email
   never rolls back an order.
@@ -2043,11 +2083,22 @@ Built in chunk 3.5, with these readings (each on the
 
 #### Database
 
-- `database/identities.json` is the registry that gives every table, column
+- `database/identities.jadpo_record` is the registry that gives every table, column
   and index a stable identity, so renaming a field renames its column instead
-  of dropping it. Compiler-maintained, committed and reviewed. One sorted
+  of dropping it (area 18 narrows it to renames, data and code alike).
+  Compiler-maintained, committed and reviewed. One sorted
   entry per line, so two branches that change the schema produce a readable
   merge.
+- **Committed generated files share one extension, `.jadpo_record`**, and
+  stay next to what they describe: `api/<api>.jadpo_record`,
+  `database/identities.jadpo_record`, each `translations/sources.jadpo_record`
+  and each installed package's `surface.jadpo_record` (decided 2026-10-16,
+  replacing `.api` and `.json`). Each is in Jadpo's readable format and
+  starts with a line saying what wrote it and which command updates it;
+  `jadpo check` regenerates it and a hand edit is an error naming that
+  command. `jadpo.lock` keeps its name. `jadpo records` lists them all and
+  flags any out of date (area 18). People-written files (acceptances) are
+  not records.
 - Each schema change is a folder under `database/migrations/`, named by date,
   time and purpose, holding your decisions on destructive changes, the
   generated SQL for each database and any data backfill written in Jadpo. The
@@ -2116,7 +2167,7 @@ subscriber send_order_confirmation {
 }
 
 // app.jadpo: a connection to a provider package (area 11)
-providers: {
+connections: {
     stripe: {
         package: Stripe.v2024_06_20
         credential: config.stripe_secret_key
@@ -2148,7 +2199,11 @@ are checked with the logic of bodies (area 3).
 
 Route group syntax (area 7), the `schedule` keyword (area 12), integrations
 and provider API versions (area 11), translation file format (area 10) and the
-migration workflow (area 5). The layout only reserves their folders.
+migration workflow (area 5). The layout only reserves their folders. Area 10
+decided translations on 2026-10-16: they moved from a root-only folder into
+each domain's and `shared/`'s `translations/`. Area 11 decided packages on
+2026-10-16: installed packages in the root `packages/`, the app's own
+integrations in `shared/providers/`, both laid out as `shared/` is.
 
 ### Open questions
 
@@ -2191,6 +2246,9 @@ migration workflow (area 5). The layout only reserves their folders.
    keeps each API's record in `api/` and a person's acceptance of a breaking
    change in `acceptances/`, but the decided root list allows only the entries
    above. *Recommendation:* add both folders to the fixed root. *Decided 2026-10-13 (area 18):* yes; the root also gains `providers/` and `jadpo.lock` (area 11).
+   *Revised 2026-10-16 (Richard, area 11):* the root `providers/` becomes
+   `packages/`, holding only installed packages; the app's own
+   integrations move to `shared/providers/`.
 11. **No warnings: every finding an error, some of them declinable?**
    *Decided 2026-10-17 (see Decisions):* yes, as recommended; built in
    chunk 5.4b. Until then a warning never
@@ -2313,8 +2371,9 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | Keywords match folders | `schedule` (folder `schedules/`), `integration` (`integrations/`) and `library` (`libraries/`) replace `job` and `service` (Amended 2026-10-13 by area 11: `integration` and `integrations/` are gone; external services are provider packages) | 2026-10-12 |
 | Unnamed singletons | Declarations that exist once per project carry no name: `application { }`, `config { }`, `principal { }`, `locales { }` | 2026-10-12 |
 | Query and action placement | Every query lives in its domain's `queries/` folder and every action in `actions/`, one per file; written ones are called by name; entity files hold the data definition and the generated operations (area 5, Richard) | 2026-10-12 |
-| Root `api/` and `acceptances/` folders | Added to the fixed root, with `providers/` and `jadpo.lock` (areas 11 and 18) | 2026-10-13 |
+| Root `api/` and `acceptances/` folders | Added to the fixed root, with `providers/` and `jadpo.lock` (areas 11 and 18) (Revised 2026-10-16: `packages/` replaces `providers/`) | 2026-10-13 |
 | Emails folder | Each domain may have `emails/`, holding email types and their templates (from area 16) | 2026-10-13 |
+| Translations folder | Each domain, and `shared/`, may have `translations/`, holding `Message` types one per file and one `translations { }` file per locale; a message a second domain uses is promoted to `shared/translations/`; the root `translations/` holds only the app's wording for Jadpo's and library packages' text, grouped by owner (Richard, area 10) | 2026-10-16 |
 | Flags and monitoring files | `flags.jadpo` joins the fixed root; each domain may hold one `monitoring.jadpo` directly in its folder (Richard, from the architecture plan) | 2026-10-13 |
 | Public fixtures | A fixture may be `public`, offered to other domains' tests, fixtures and seeds and to scenarios in root `tests/`, which call it through its domain (`planning.alice_with_todos()`); only tests, fixtures and seeds ever call a fixture, and a private one stays its own domain's. Area 13 wins over the earlier rule here that `public` on a fixture was `visibility.public_not_allowed` (Richard) | 2026-10-14 |
 | Unused `public` | `public` on a declaration nothing outside its domain uses is the error `visibility.public_unused`, whose edit removes `public`. Users are another domain's code, root `tests/` scenarios, and the signature of another public declaration that is itself used outside; the domain's own tests don't count. A package's public members are its interface to other projects and are exempt (area 11) (Richard) | 2026-10-14 |
@@ -2329,4 +2388,8 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | The primary declaration first | `jadpo fmt` moves the primary declaration below the file's opening comments, up to their last blank line, and its `use` lines; it takes the comments written above it and the one after it on its line, and everything else keeps its written order. `jadpo fmt --check` fails on a file whose primary declaration isn't first; loose files keep their order (chunk 3.9) | 2026-10-15 |
 | Names per domain | A private function or type (not a failure, an email, or a type an API's record names) needs a name unique only within its domain; everything public, in `shared/` or the root files, and every other kind (entities, failures, events, actions, queries, routes, schedules, subscribers, services, fixtures, emails) stays unique across the project, as do domain, library and standard-library names among themselves. Why: agents in parallel workspaces on different domains would otherwise clash on private helper names at merge; imports stay exact. Rejected: a namespace per domain, which only moves the prefix into tables, error codes, OpenAPI and event names, and makes one name mean different things by folder. The identity key of a function or type declared in a domain carries the domain, and promotion to `shared/` writes a registry move line (amends area 18's question 8). `semantic.duplicate_declaration` says copy or clash, never invents a name, and lists the names in use with the same word; `jadpo rename` refuses a name in use; agents merge `main` and run `jadpo check` before pushing, and generated CI runs `jadpo check` first. Built in chunk 5.3d, but for `jadpo rename`, which comes with the command (Richard) | 2026-10-16 |
 | Constants in the layout | A `constant` (area 3) is placed and shared as a helper function is: used by one file it sits at the top of that file, never as a primary declaration, and used by a second it moves into a library and is read through it (`pricing.vat_rate`), so a library holds functions and constants; a private constant needs a name unique only within its domain; `constant` is reserved; a top-level `var` is `syntax.expected_declaration` whose `next:` writes `constant`; two constants of one type holding one value warn `constant.similar_exists`. Built in chunk 5.3e (Richard) | 2026-10-16 |
+| Packages in the layout | The root `packages/` holds only installed packages, `packages/<name>/<version>/`, committed, read-only and checked against `jadpo.lock`; the app's own integrations live in `shared/providers/<name>/<version>/` in the package format; a package is laid out as `shared/` is; `use packages/…` always names installed code (Richard, area 11) | 2026-10-16 |
+| Documents folder | Each domain may have `documents/`, holding document types and their HTML templates; `shared/documents/` holds only the optional `layout.html` (Richard, area 16) | 2026-10-16 |
+| Reachable from public | A type or failure reachable from a public declaration's signature must itself be public, in domains and packages alike, checked on every compile (Richard, area 11) | 2026-10-16 |
+| Records | Committed generated files are `.jadpo_record` files beside what they describe (`api/main.jadpo_record`, `database/identities.jadpo_record`, `translations/sources.jadpo_record`, `surface.jadpo_record`), readable, each starting with the line that says what wrote it; a hand edit is an error; `jadpo.lock` keeps its name (Richard, area 18) | 2026-10-16 |
 | Declinable errors (question 11) | No warning severity: every finding is an error, and the judgement-call rules (question 11's table) are declinable. A declaration declines one rule with a `decline <rule>: "<reason>"` line directly above it, the reason required; an agent or a person may decline; a decline whose rule no longer fires is `decline.unused`, and naming a rule that can't be declined is `decline.not_declinable`. Plain mistakes are never declinable. `jadpo approval` lists every decline a change adds or edits; `jadpo declines list` and `clear`, with `--rule <id>`, a path and `--json`, show and reset them through the same code as the editor's actions. A rule triggered by time passing (area 16's expired flag) is judged at today's date by `check` and at the commit's date by `jadpo build`, so it blocks new changes but never the rebuild of a merged revision (Richard) | 2026-10-17 |

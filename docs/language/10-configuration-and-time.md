@@ -1467,6 +1467,27 @@ and the OpenAPI document lists only the supported tags; a setting typed
 an `Accept-Language` header is a library call that falls back to `default`
 ("Choosing a locale from a request", below).
 
+Decided on 2026-10-16 (Richard) and not built yet (roadmap chunk 5.6b, with
+translations as messages): `in_progress:` lists supported locales whose
+translations are not finished yet; a locale listed there but not in
+`supported:` is a compile error. Every other supported locale must be
+complete; only one listed here falls back where wording is missing, with
+warnings (see Translations as messages).
+
+```jadpo fragment
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.en_us, Locale.fr_fr, Locale.pl_pl]
+    in_progress: [Locale.pl_pl]
+}
+```
+
+Every locale knows its text direction, read as `locale.direction`
+(decided 2026-10-16, not built yet, chunk 5.6b): a value of the built-in
+enum `TextDirection`, `.left_to_right` or `.right_to_left`. Jadpo ships its
+wording as the HTML values, so a template writing
+`<html dir="{{ locale.direction }}">` writes `ltr` or `rtl`.
+
 ### Choosing a locale from a request
 
 > Built in chunk 5.3c, named by Richard on 2026-10-16. The examples marked
@@ -1920,6 +1941,331 @@ reruns the tests that reach the key.
   `choice`; a plural category checked against the locale; keys no code
   calls (no warning for them); and the typed email messages of area 16.
 
+## Translations as messages
+
+> Decided on 2026-10-16 (Richard), replacing question 9's JSON files and ICU
+> MessageFormat, which chunk 5.3b built (Translations, above) on the same
+> day. Not built yet: the rework of 5.3b is roadmap chunk 5.6b, and until
+> it lands the built JSON files are what the compiler reads. Email
+> templates that read translations come with email in chunk 7.3 (area 16).
+
+Text the server writes for people (emails, generated pages, a failure's text
+for client apps) is translated in Jadpo itself. Each message is a type, each
+language is a file of wordings, and both live in the domain that uses them.
+
+### Where translations live
+
+In the domain that uses them, in `domains/<domain>/translations/`, as its
+emails live in `emails/`. A message a second domain uses moves to
+`shared/translations/` under area 1's promotion rule. The root
+`translations/` holds only the app's wording for text it did not write:
+Jadpo's own and its library packages' (below).
+
+```text
+domains/shipping/translations/
+    order_shipped.jadpo       type OrderShipped = Message { ... }
+    parcels.jadpo             type Parcels = Message { ... }
+    en_gb.jadpo               translations { ... }: the English wording
+    de_de.jadpo               translations { ... }: the German wording
+    sources.json              generated: what each translation was made from
+shared/translations/          messages several domains use
+translations/                 the app's wording for Jadpo's and packages' text only
+```
+
+### Messages
+
+A message is a type built on `Message`, a type base beside `Failure`,
+`Event` and `EmailMessage`, one per file in the domain's `translations/`
+folder and named after it (area 1). Its fields are the wording's
+placeholders, and its `///` description reaches translators as context,
+in the export below.
+
+```jadpo fragment
+// domains/shipping/translations/order_shipped.jadpo
+/// Subject of the email sent when a parcel leaves the warehouse.
+type OrderShipped = Message {
+    tone: Tone            // an enum: one wording per value
+    name: Text
+}
+
+// domains/shipping/translations/parcels.jadpo
+/// How many parcels an order has, on the tracking page.
+type Parcels = Message {
+    count: PluralCount    // plural forms, per language
+}
+```
+
+`PluralCount` is a built-in whole number (area 2) that picks a plural form.
+
+### Languages
+
+Each language is one unnamed `translations { }` declaration in Jadpo
+syntax, in a file named after its locale (`de_de.jadpo`), found by its name
+as `config { }` is; code never refers to it by name. A member is a
+message's, failure's, enum's or email's name in lower_snake_case, found by
+area 1's name conversion (`order_shipped` is `OrderShipped`). Every wording
+is a plain string whose only syntax is `{field}`; a literal brace is
+doubled, `{{` writing `{` and `}}` writing `}`. There is no grouping inside a
+file (the domain is the group, and nesting means variants and plural forms
+only, except the root file's groups by owner, below), and no message inside another: a reused value such as a product name
+is a placeholder, because languages that inflect cannot reuse a fragment.
+
+```jadpo fragment
+// domains/shipping/translations/de_de.jadpo
+translations {
+    order_shipped: {
+        formal: "Guten Tag {name}, Ihre Bestellung wurde versandt."
+        casual: "Hallo {name}, deine Bestellung ist unterwegs!"
+    }
+    parcels: {
+        one: "{count} Paket"
+        other: "{count} Pakete"
+    }
+    delivery_window: "Lieferung am {day}, zwischen {hours}."
+    slot_taken: "Dieser Termin ist gerade vergeben worden. Der nächste ist {next_slot}."
+}
+```
+
+How a message's type maps to its wording in each language:
+
+| In the type | In each language's file |
+|---|---|
+| The type's name, `OrderShipped` | The member `order_shipped`, in the language files of the type's own `translations/` folder |
+| No fields | A plain string |
+| A `Text`, `PresentationText`, `Int` or `Decimal` field, or a named type built on `Text`, `Int` or `Decimal` | A `{field}` placeholder; numbers are written the locale's way |
+| One enum field | One member per value of the enum; the field is not a placeholder |
+| One `PluralCount` field | One member per plural form the language needs, from Unicode CLDR (English `one` and `other`; Polish `one`, `few`, `many` and `other`); `{count}` is available in each |
+| Any other field type (`Instant`, `Money`, an object) | A compile error: format it in code and pass the text |
+| More than one enum or `PluralCount` field | A compile error: split the message, so a translator never fills a grid of combinations |
+
+Dates, times and money are formatted in code (`temporal.format`, the money
+formatter) and passed in as `PresentationText`.
+
+### Using a message
+
+The compiler generates one call per message,
+`translations.<domain>.<message>(...)`, taking every field by name plus
+`locale:`, one of the app's supported locales. It returns
+`PresentationText`, so the result can be shown but never stored.
+
+```jadpo fragment
+var subject: PresentationText = translations.shipping.order_shipped(
+    tone: shop.tone,
+    name: customer.first_name,
+    locale: customer.locale
+)
+```
+
+A message in `shared/translations/` is called
+`translations.shared.<message>(...)`. In an email template the same call
+takes the email's locale and is written without `locale:`:
+`{{ translations.shipping.parcels(count: parcel_count) }}` (area 16).
+
+### Email subjects
+
+An `EmailMessage`'s member in its domain's language files is its subject
+line, with the email's fields as placeholders; its body is its `.html` and
+`.txt` templates (area 16).
+
+```jadpo fragment
+// domains/accounts/translations/en_gb.jadpo
+translations {
+    welcome_email: "Welcome, {display_name}"
+}
+```
+
+### Enums with wording
+
+An enum can be written out once its domain's language files give each of
+its values a wording, checked like a message with one enum field; a value's
+fields can be used as placeholders. In a template `{{ order.status }}` then
+writes the wording, and code reads it with
+`translations.<domain>.<enum>(value, locale: ...)`. Without wording,
+writing an enum out is an error that says to add it. Area 2's "enums have
+no display labels" stands: the wording lives in translations.
+
+```jadpo fragment
+// domains/shipping/translations/en_gb.jadpo
+translations {
+    order_status: {
+        pending: "Waiting to be packed"
+        held: "Held: {reason}"
+        shipped: "On its way"
+    }
+}
+
+var status: PresentationText = translations.shipping.order_status(order.status, locale: customer.locale)
+```
+
+### Failures for client apps
+
+A `Failure`'s text for client apps is keyed by its code in its domain's
+language files, mapped like a message: its `client: { }` fields are the
+placeholders, and `kind:` and `message:` are not. The wording is never
+written on the failure type: one rule holds for all text, and Jadpo's and
+packages' failures could not carry the app's wording in place. Names are
+unique across the project, so a failure and a message never share a key.
+Every failure
+that can reach a response (the compiler knows each route's failures) must
+have wording in every supported locale; a failure that never leaves the
+server needs none.
+
+A client field that is a date, a time or a number is sent as a value (an
+`Instant` stays an instant on the wire, area 7), and the client formats it
+for its own language before filling the placeholder, so unlike a
+message's, a failure's date or time field can be a placeholder. The
+field's type decides how the client formats it:
+
+| Client field type | Format |
+|---|---|
+| `CalendarDate` | `date` |
+| `Instant` | `date_time`, shown in the reader's own zone by the client |
+| `Time` (`ZonedTime` once renamed, question 5) | `date_time`, in the zone it carries |
+| `Duration` | `duration` |
+| `Int` | `number` |
+| `Decimal` | `decimal` |
+| `Text`, `PresentationText` | none: written as it is |
+| A type the client cannot format (an object, a list) | A compile error, as for a message's placeholder |
+
+`jadpo build` writes, beside each API's OpenAPI document, one file per
+locale named `<api>.failures.<locale>.json`, for client apps to show. It
+maps each failure code to an object of the same shape, so a client has one
+way to read it: `text` is the wording in `{field}` syntax, and `formats`
+lists only the placeholders the client must format, each as one of
+`number`, `decimal`, `date`, `date_time` or `duration`.
+
+```json
+{
+  "slot_taken": {
+    "text": "Ce créneau vient d'être pris. Le prochain est {next_slot}.",
+    "formats": { "next_slot": "date_time" }
+  },
+  "todo_not_found": { "text": "Tâche introuvable.", "formats": {} }
+}
+```
+
+The server's `message` stays fixed English for developers and logs (area 4).
+
+```jadpo fragment
+// domains/shipping/translations/fr_fr.jadpo
+translations {
+    slot_taken: "Ce créneau vient d'être pris. Le prochain est {next_slot}."
+}
+```
+
+### Jadpo's and packages' text
+
+Text Jadpo writes itself (built-in emails and its failures' wording; it
+generates endpoints only, never pages) is Jadpo's own messages. Jadpo ships their wording in
+`en_gb` and `en_us` at first, and releases add locales; an app supporting
+any other locale must word them itself, and until it does `jadpo check`
+fails with one error listing the missing messages (an `in_progress:`
+locale falls back instead). Only the messages of features the app has
+switched on count: rewording one of a feature that is off (magic-link
+wording without `magic_link:`) is an error saying the feature is off, and
+`jadpo translations builtin` lists only the switched-on features'
+messages, with their fields. Every Jadpo message may use `{app_name}`,
+the application's `display_name:`; an app that needs the name translated
+rewords the messages. The magic-link email's messages are listed in area
+16, "Built-in emails".
+
+A library package carries translations as a domain does: a
+`translations/` folder with its message types, its failures' wording and
+one `<locale>.jadpo` per language it supports. The app calls a package's
+message as `Postcodes.translations.<message>(...)`. A provider package
+shows users no text, because its failures are always mapped to the app's
+own, so it carries none.
+
+The root `translations/<locale>.jadpo` holds the app's wording for text it
+did not write, grouped by owner: `jadpo: { }` for Jadpo's own and the
+package's name for a package's. This is the one place a language file
+groups, the group being whose text it is, and each group is checked
+against its owner's message and failure types.
+
+```jadpo fragment
+// translations/fr_fr.jadpo
+translations {
+    jadpo: {
+        privacy_export_ready: "Votre export de données est prêt."
+    }
+    postcodes: {
+        invalid_postcode: "Ce code postal n'existe pas."
+    }
+}
+```
+
+A package's or Jadpo's message is looked up in the app's root wording for
+that locale, then the owner's own; for an in-progress locale, then the
+regional sibling in the same order, then the default locale in the same
+order. The app's supported locales must be complete for every package and
+Jadpo message the app can show, so an English-only package in an app that
+supports French is an error until the root file supplies the French.
+
+To show a package failure under a different code, not just different
+words, map it to the app's own failure at the call with `attempt`, as for
+any package failure (area 11, Calling).
+
+A package changing a message's or failure's fields is a breaking change by
+its surface diff, so the app's rewording fails to compile until it is
+updated; a package changing its own wording marks the app's rewording
+stale through `sources.json`. A library package is published with
+complete wording in its own default locale and a `///` description on
+every public message.
+
+### What the compiler checks
+
+Coming in chunk 5.6b:
+
+- **Errors**: a member no message, failure or enum declares; a variant that
+  is not a value of the enum; a missing variant or plural form; a
+  placeholder that is not a field; a field type a wording cannot hold, or
+  more than one enum or `PluralCount` field; a `locale:` that is not a
+  supported locale; and a message, a failure that can reach a response, or
+  an enum's wording missing from any supported locale not listed in
+  `in_progress:`. Every supported locale must be complete. The missing
+  wording's `next:` names the file and the member to add, with the
+  placeholders to use (agent).
+- **Warnings**: a field no wording in a language uses (one variant leaving
+  a field out is normal); wording missing from an in-progress locale,
+  which falls back to the same language's regional sibling first (`fr_ca`
+  tries `fr_fr`, if supported) and then to the default locale, listed by
+  `jadpo translations missing`; removing the locale from `in_progress:`
+  makes the gaps errors again. Quality comes from the review setting below,
+  not from waiting. A stale translation, made from an older version of the
+  default wording, warns until it is updated.
+- **Sources**: each `translations/` folder has a generated, committed
+  `sources.json` (machine-written, so JSON, and a record in area 18): for
+  each locale and message, a hash of the default wording it was translated
+  from. A translation whose hash no longer matches the default wording is
+  stale. `jadpo translations update` and `import` write it.
+- **Review**: `translations: { review: TranslationReview.required }` in
+  `app.jadpo` (the default is `TranslationReview.none`) makes every new or
+  changed wording outside the default locale unreviewed until a person
+  runs `jadpo translations accept <locale>`, which records the acceptance
+  in the same `sources.json`. Unaccepted wording appears in the approval
+  report. Jadpo cannot tell who wrote a wording, so this is "changed and
+  not yet accepted", not "written by an agent".
+
+### Tooling
+
+- `jadpo translations missing` lists missing, stale and unaccepted
+  translations, and `jadpo translations unused` messages no code uses.
+  Every `jadpo translations` command that prints takes `--json` (area 14).
+- `jadpo translations update` records each translation's source in
+  `sources.json`; `jadpo translations accept <locale>` accepts a locale's
+  changed wording; `jadpo translations builtin` lists Jadpo's own messages
+  with their fields.
+- `jadpo translations export` and `import` exchange messages, their
+  descriptions and their wording with translation services (Crowdin,
+  Lokalise) as XLIFF, or JSON.
+- Go to definition goes from a call to its message type and to its wording.
+- A pseudo-locale, for development and tests, renders every message
+  accented and lengthened, to expose hard-coded text and tight layouts.
+
+The app's own data (product names, articles) is not a translation: an app
+models translated content as ordinary fields. Library packages' translations
+are built with packages in Phase 7 (open item 8 of the
+[packages proposals](research/packages-and-extension-proposals.md)).
 ## Retention periods
 
 Retention periods are ordinary settings (`soft_delete_retention: Duration`)
@@ -3740,6 +4086,14 @@ MessageFormat messages, one typed call per key, the checks between the
 locales' files, and the interpreter and runtime writing the text). Chunk
 5.3c built `locale.from_accept_language(header)`, which chooses a supported
 `Locale` from an `Accept-Language` header and falls back to `default:`.
+Translations as decided on 2026-10-16 replace 5.3b's JSON files and are
+not built yet (chunk 5.6b): `Message` types and the built-in
+`PluralCount`, each domain's `translations { }` language files and their
+checks, the generated `translations.<domain>.<message>` calls, enum
+wording, failures' client text exported per locale, `locale.direction`,
+`in_progress:` locales, Jadpo's own messages and the root file's owner
+groups, and the `jadpo translations` commands (see Translations as
+messages). Library packages' translations come with packages in Phase 7.
 
 ### Consistency with the rest of the language
 
@@ -3778,7 +4132,8 @@ locales' files, and the interpreter and runtime writing the text). Chunk
 | The startup report of a deployable (`runtime.startup_failed`), the generated app refusing to start | 14 | Input to area 14; `jadpo dev` refuses today, and the runtime's check is the one a deployable calls |
 | Health and readiness, including the generated `health { }` proposal (syntax review #65) and `semantic.service_configuration_missing` | 11 | Input to area 11 |
 | Integration credentials and authentication signing keys as the only secret sinks; their setting names (`token:`, `signing_key:`) | 8, 11 | Input to areas 8 and 11 |
-| Mail templates using translations and `PresentationText` | 11 | Input to area 11 |
+| Mail templates using translations and `PresentationText` | 11 | Input to area 11 (Superseded 2026-10-16: templates read `translations.` and are checked strictly; see area 16 question 11.) |
+| A library package's own messages, and whether an app can reword them | 11 | Waits for open item 8 of the packages proposals |
 | `config.typo` should report the configuration field | 10 | Fixed (chunk 5.1): `configuration.field_unknown` |
 | `jadpo fmt` writes `temporal.format (` with a space | 14 | Bug |
 | Trusted proxies: which proxies a deployment trusts to say a client's address (`X-Forwarded-For`, `Forwarded`, Cloudflare's `CF-Connecting-IP`) | 7, 10, 16 | Built (chunk 5.1c, question 12); a source other than `cloudflare` refused for Workers comes with chunk 8.2 |
@@ -3842,6 +4197,19 @@ locales' files, and the interpreter and runtime writing the text). Chunk
    *Amended 2026-10-13 (Richard):* translations are supported out of the box
    from the first build, not deferred: mail, the generated privacy pages,
    client failure messages and any generated page use them. *Built in chunk 5.3b* (the Decisions table says how).
+   *Revised 2026-10-16 (Richard):* JSON and ICU MessageFormat are dropped,
+   and the default locale's file no longer defines the keys. Each message
+   is a `type X = Message` in its domain's `translations/` folder, its
+   fields the placeholders; each language is an unnamed `translations { }`
+   in a file named after its locale, whose wordings are plain strings with
+   `{field}` placeholders, plural forms from CLDR for a `PluralCount` field and
+   one wording per value for an enum field. JSON has no comments and
+   quotes everything, and the compiler parses only Jadpo (area 11). A
+   failure's client text is keyed by its code in the same files and
+   exported per locale for client apps, which resolves this question's
+   "client failure messages" against area 4 question 12. See
+   [Translations as messages](#translations-as-messages) for the whole design;
+   not built yet (chunk 5.6b), so the JSON files 5.3b built stay until then.
 10. **How are signing keys rotated?** (carried from area 8) Area 8 keeps
     signing keys, the OIDC issuer and audience in configuration. How does a
     deployment replace a signing key without signing everyone out?
@@ -3893,7 +4261,7 @@ locales' files, and the interpreter and runtime writing the text). Chunk
 |---|---|---|
 | Unnamed declarations | Carried from area 1: `config { }` and `locales { }` carry no name | 2026-10-12 |
 | Root files | Carried from area 1: settings live in `config.jadpo`; there is no `env.jadpo`; values come from the platform environment and one `.env.local`, with secrets entered through `jadpo config set` | 2026-10-12 |
-| Translations folder | Carried from area 1: `translations/` is a fixed root folder; its format is decided here | 2026-10-12 |
+| Translations folder | Carried from area 1: `translations/` is a fixed root folder; its format is decided here (Superseded 2026-10-16: translations live in each domain's `translations/` folder; the root folder holds only the app's wording for Jadpo's own messages.) | 2026-10-12 |
 | Failure messages | Carried from area 4: clients translate by failure `code`; `message` stays fixed English | 2026-10-12 |
 | Store addresses | Carried from area 5: stores are declared in `app.jadpo` and take `url: config.<field>` | 2026-10-12 |
 | Signature types | Carried from area 2: signatures use named types built on `Instant`, `CalendarDate`, `Time` and `Duration`; `Zone`, `Locale` and `Weekday` may be used directly | 2026-10-12 |
@@ -3906,10 +4274,27 @@ locales' files, and the interpreter and runtime writing the text). Chunk
 | Instant arithmetic | Adding or subtracting a `Duration` keeps the named type; `Instant - Instant` gives `Duration` | 2026-10-12 |
 | Time library and formatting | Option B: `temporal.format(value, zone:, locale:, format:)` with named formats, one `dst:` option failing by default, about 20 functions | 2026-10-12 |
 | Locales declaration | `locales: { default: Locale.en_gb supported: [...] }` in `app.jadpo`; `Locale` built in; no `unsupported:` | 2026-10-12 |
-| Translations format | One JSON file per locale with ICU MessageFormat; typed calls from the default locale's keys; missing keys or placeholders are compile errors; built with the first email template | 2026-10-12 |
+| Locales in progress | `in_progress: [...]` in `locales:` lists supported locales allowed to fall back with warnings, and one not in `supported:` is an error; the rest must be complete (Richard) | 2026-10-16 |
+| Failure export shape | `<api>.failures.<locale>.json` maps each code to `{ "text": ..., "formats": { placeholder: format } }`, the same shape for every code; `formats` lists only placeholders the client formats, as `number`, `decimal`, `date`, `date_time` or `duration`, decided by the field's type (`CalendarDate` date, `Instant` date_time in the reader's zone, `Time` date_time in its own zone, `Duration` duration, `Int` number, `Decimal` decimal); a type the client cannot format is an error (decided for Richard) | 2026-10-16 |
+| Translations format | One JSON file per locale with ICU MessageFormat; typed calls from the default locale's keys; missing keys or placeholders are compile errors; built with the first email template (Superseded 2026-10-13 and 2026-10-16: built from the start; the format is under Translations, above.) | 2026-10-12 |
 | Signing key rotation | Built-in `SigningKey` reading `NAME` and optional `NAME_PREVIOUS`; sign with current, accept both | 2026-10-12 |
 | Test values for settings | `test:` on the field; random secrets generated by `jadpo test`; per-test override | 2026-10-12 |
 | Translations from the start | Built into the first build, used by mail, generated pages and client failure messages (Richard) | 2026-10-13 |
+| Where translations live | In the domain that uses them, `domains/<domain>/translations/`; a message a second domain uses moves to `shared/translations/` under area 1's promotion rule; the root `translations/` holds only the app's wording for Jadpo's own messages (Richard) | 2026-10-16 |
+| Messages | `type X = Message { ... }`, a type base beside `Failure`, `Event` and `EmailMessage`, one per file; fields are placeholders; `///` descriptions are translator context (Richard) | 2026-10-16 |
+| Language files | One unnamed `translations { }` per locale in a file named after it (`de_de.jadpo`); members are message, failure, enum or email names in lower_snake_case; every wording a plain string whose only syntax is `{field}`, a literal brace doubled (`{{`, `}}`); no grouping or nesting beyond variants and plural forms; JSON and ICU MessageFormat dropped (Richard) | 2026-10-16 |
+| Mapping a message to wording | No fields: a string; `Text`, `PresentationText`, `Int`, `Decimal`: placeholders, numbers written the locale's way; one enum field: one wording per value; one `PluralCount` field: one wording per CLDR plural form; any other field type, or more than one enum or `PluralCount` field, an error; a placeholder that is not a field an error; a field no wording uses a warning (Richard) | 2026-10-16 |
+| Generated calls | `translations.<domain>.<message>(field: value, ..., locale: ...)`, every field by name, returning `PresentationText`; `translations.shared.<message>` for `shared/translations/`; in email templates the email's locale (Richard) | 2026-10-16 |
+| Email subjects | An `EmailMessage`'s member in its domain's language files is its subject line, its fields usable as placeholders; the body is the `.html` and `.txt` templates (Richard) | 2026-10-16 |
+| Enum wording | An enum can be written out once its domain's language files give each value a wording, a value's fields usable as placeholders; area 2's "no display labels" stands (Richard) | 2026-10-16 |
+| Failures' client text | Keyed by the failure's code in its domain's language files, client fields as placeholders; `jadpo build` writes `<api>.failures.<locale>.json` beside each API's OpenAPI document, from code to wording in `{field}` syntax (revised the same day: with each placeholder's formatting); the server's `message` stays English (Richard) | 2026-10-16 |
+| Translation checks | Every supported locale is complete: missing wording for a message, a failure that can reach a response or an enum is an error whose `next:` names the file, member and placeholders; only a locale in `locales: { in_progress: [...] }` falls back with warnings, regional sibling first (`fr_ca` to `fr_fr`), then the default; stale translations warn, judged by a hash of the default wording in each folder's generated, committed `translations/sources.json`; with `translations: { review: TranslationReview.required }` in `app.jadpo` (default `.none`), new or changed non-default wording is unaccepted, and listed in the approval report, until `jadpo translations accept <locale>` (Richard) | 2026-10-16 |
+| Text direction | `locale.direction` is the built-in enum `TextDirection` (`.left_to_right`, `.right_to_left`), whose shipped wording is `ltr` and `rtl` (Richard) | 2026-10-16 |
+| Jadpo's own text | Jadpo's own messages, with wording shipped in `en_gb` and `en_us` at first and more locales added by releases; another supported locale is an error listing the missing messages until the app words them; only switched-on features' messages count, rewording another is an error, and `jadpo translations builtin` lists only those (Richard) | 2026-10-16 |
+| Text the app did not write | The root `translations/<locale>.jadpo` groups wording by owner, `jadpo: { }` and a package's name, the one grouping allowed, checked against the owner's types; lookup is the app's root wording, then the owner's, then (in progress) the regional sibling, then the default; supported locales must be complete for every package and Jadpo message the app can show (Richard) | 2026-10-16 |
+| Package translations | A library package carries a `translations/` folder like a domain's, called `Postcodes.translations.<message>(...)`; provider packages carry none; changed fields break the app's rewording, changed wording makes it stale; published with complete default-locale wording and `///` on every public message; a different code for a package failure is mapped with `attempt` (Richard) | 2026-10-16 |
+| Failures sent to clients | Wording lives in the language files, never on the failure type (one rule for all text; Jadpo's and packages' failures could not carry it in place); every failure that can reach a response has wording in every supported locale; dates and numbers in client fields are sent as values and formatted by the client, and the per-locale export says which placeholders need formatting and how (Richard) | 2026-10-16 |
+| Translation tooling | `jadpo translations missing` and `unused` with `--json`; `update`, `accept <locale>` and `builtin`; `export` and `import` as XLIFF or JSON; `--json` wherever they print; go to definition from a call to its type and wording; a pseudo-locale for development and tests; the app's own data is not a translation (Richard) | 2026-10-16 |
 | Reading `config { }` (chosen in chunk 5.1) | A setting is `name: Type` with an optional block of `secret:`, `default:`, `binding:` and `test:`, each once and no others (`configuration.duplicate_option`, `configuration.unknown_option`); a line that is not a setting is `configuration.expected_field`, a second `config { }` is `configuration.multiple_declarations`, and a name that is no setting is `configuration.field_unknown` with the nearest name. A variable set to nothing is not set; the process's environment wins over `.env.local` | 2026-10-16 |
 | What a setting can be (chosen in chunk 5.1) | A named or built-in type of one piece of text, a number, `Bool`, `Uuid`, `Duration`, `Instant` or `CalendarDate`, an enum with no data, `Zone` (read as `Europe/London`) or `Locale` (read as `en-GB`). Not `Bytes`, `Time`, a list, object, map or `T?`, or the types the runtime makes (`PageCursor`, `PageSize`, `ApiToken`, `ServiceKey`): `configuration.type_unsupported`. A secret is text, so a test run can make one. A setting may be declared with a built-in type; naming the type code passes it as saves building it | 2026-10-16 |
 | Variables (chosen in chunk 5.1) | A variable is capitals, digits and `_` starting with a capital (`configuration.binding_invalid`, `configuration.binding_empty`); no two settings share one, and a `SigningKey`'s `_PREVIOUS` counts as taken (`configuration.duplicate_binding`) | 2026-10-16 |

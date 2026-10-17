@@ -646,6 +646,56 @@ with secrets left out. A fake cannot run code of its own, and nothing else in
 the application can be faked. If the code calls an operation more times than
 the fake has responses, or fewer, the test fails and says so (question 7).
 
+### Provider calls and capabilities in tests
+
+Decided 2026-10-16 (Richard), with the packages and capabilities decisions
+(areas 11, 12 and 16). Every provider call in a test is faked, as in
+`jadpo dev`; nothing can be let through to a sandbox from a test.
+
+- **Provider operations** answer with the package fake's valid defaults
+  unless the test scripts them, as question 7 decided:
+  `fakes: { stripe.payment_intents.create: [card_declined, ...] }`. A
+  scripted answer is the clean output type or one of the operation's
+  provider failures, never the wire shape; the package's own tests cover
+  its decoding. `jadpo calls script` sets the same answers by hand in
+  `jadpo dev` (area 17).
+- **Several changing calls** (area 12): fakes honour idempotency keys, so a
+  repeated step under the same key gets the stored answer, and a script
+  can answer `lost` (the request went, no answer came back) or `in_use`
+  (another runner holds the key). `jadpo test` reruns every test that
+  reaches an action with several changing calls once with a crash at each
+  step boundary (before the send, after the send, after the answer is
+  recorded), on by default, and the test must pass every time; the report
+  names the boundary of any run that fails.
+- **One fake per capability**, under design C: `email.sent` lists the mail
+  the code sent (area 16); there is no `sms.sent`, since SMS is a package
+  whose calls are faked like any other. A package that fills a capability
+  is not faked separately: the capability's fake stands in for every
+  connection that fills it.
+- **Documents**: `documents.pdf` returns a placeholder PDF, and
+  `documents.html` the real rendered HTML, which a test can assert on.
+- **Bot checks** pass through a local driver; a test scripts a failure
+  with `fakes: { bot_check: [bot_check_failed] }`, and the request is
+  refused with `403 bot_check_failed` before the action runs.
+- **Search** uses PostgreSQL's full-text search whatever engine production
+  names.
+- **OAuth grants** are declared at the top of a test beside `fakes:`, as
+  `grants: { calendar: [alice] }`: the connection's name, and the fixtures
+  whose records own a grant, as `jadpo dev grants add` makes them in
+  development. A call on behalf of an owner with no grant fails
+  `grant_missing`, and a script can answer `grant_revoked`.
+- **Files**: the in-memory store can be told to fail a read
+  (`unavailable`) or a write (`storage_full`). A real file sits in a
+  domain's `fixtures/` folder (`fixtures/files/customers.csv`), and a test
+  turns it into a stored `File` with `fixture_file("customers.csv", store:
+  imports)`.
+- **Batches** (area 12) run to the end within the test, after the action
+  that started them commits, like events. `jadpo test` runs them in batches
+  of two items and simulates a restart between every batch, so every
+  import or export test also tests resuming; a test asserts on what the
+  app recorded and on the summary `finished:` received, and can read
+  `batches.status`.
+
 ## Shared test data: fixtures
 
 Decided in area 1: test data used by several test files lives in the
@@ -1658,7 +1708,7 @@ with when it comes.
 | Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
 | Clock | Works (run, chunk 5.2): a test's clock starts at its `clock:`, or at 2000-01-01T00:00:00Z without one, and `clock.advance(...)` moves it on for the calls after it; only a test moves it (`type.test_clock_context`, a fixture and a seed included), and a move backwards is the fault `clock_backward`. |
 | Configuration | Works (check and run, chunk 5.1): `test:` values on fields, defaults, generated secrets and a test's own `config:`; a request sent through a route is not followed for the compile-time check that every setting a test reads has a value, and a read with none then ends the test as a fault naming the setting. |
-| Integration fakes | Decided, not built: fakes come with packages (area 11, roadmap 7.2). |
+| Integration fakes | Decided, not built: fakes come with packages (area 11, roadmap 7.2), `email.sent` with email (7.3). Capability fakes, crash points for several changing calls, grants, documents and batches come with those features (areas 12 and 16). |
 | Database | Works (run, chunk 3.1): `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Since chunks 3.2 and 3.3 tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. |
 | Caller | Decided, not built: acting as a user comes with identity (area 8, roadmap 4.3). Until then tests run with no caller. |
 | Placement | Built (chunk 1.3, checked): a test sits in `<name>.test.jadpo` beside its subject, or in root `tests/`; a test elsewhere is `layout.wrong_folder`, which names the `.test.jadpo` file beside it, and a test file with nothing beside it is `layout.test_without_subject`. |
@@ -1698,6 +1748,9 @@ with when it comes.
 | Fake responses name the provider conditions in the integration's `failures:` block; checking a fake against the provider's contract or sandbox | 11 | Input to area 11 |
 | `overdue_reminders.run()` in tests, subscriber delivery order, and retries of a failing subscriber in tests | 12 | Input to area 12 |
 | Caches in tests once the Redis adapter exists | 6 | Input to area 6 |
+| `lost` and `in_use` answers and crash points for several changing calls; batches in tests | 12 | Question 18 |
+| One fake per capability; `bot_check_failed`; the placeholder PDF; PostgreSQL search in tests; `fixture_file` | 16 | Question 18 |
+| Declaring OAuth grants in tests | 11 | Question 18 |
 | `jadpo test` itself: starting PostgreSQL, template copies, parallel runs, `--kind`, `--keep-failed`, the report; `test.no_tests`, `test.failed` and `test.runtime_start_failed`, which only `jadpo test` raises | 14 | Input to area 14 |
 | Tests the compiler generates from facts it already owns (bad input, failure envelopes, closed output) | 14 | Input to area 14 |
 | `layout.test_without_subject` and test file contents | 1 | Follows from a decision |
@@ -1795,6 +1848,16 @@ with when it comes.
     milliseconds. *Recommendation:* the runner prepares copies in the
     background while tests run; measure on the golden app before changing
     the approach. *Decided 2026-10-13:* yes, as recommended.
+18. **How do tests treat provider calls, capabilities and batches?**
+    (from the packages decisions, 2026-10-16) *Decided 2026-10-16
+    (Richard):* every provider call is faked, scripted answers taking the
+    clean type or a provider failure; fakes honour keys and answer `lost`
+    and `in_use`, and multi-step tests rerun with a crash at each step
+    boundary by default; one fake per capability (`email.sent`, no
+    `sms.sent`); documents give a placeholder PDF and readable HTML; bot
+    checks pass unless a test scripts `bot_check_failed`; search is
+    PostgreSQL's; grants are declared with `grants: { <connection>: [<fixtures>] }`; batches run to the end in batches of
+    two with a restart between each.
 
 ### Decisions
 
@@ -1827,6 +1890,7 @@ with when it comes.
 | Comparing values | `==` on records and lists with field diffs; no snapshot assertions | 2026-10-13 |
 | What a failed test leaves | `--keep-failed` keeps the database and trace | 2026-10-13 |
 | Speed of database copies | Copies prepared in the background; measured on the golden app before changing approach | 2026-10-13 |
+| Provider calls and capabilities in tests | Every provider call faked; scripted answers in the clean type; fakes honour keys and answer `lost` and `in_use`; crash points at each step boundary of multi-step actions, on by default; one fake per capability (`email.sent`, no `sms.sent`); placeholder PDF with readable HTML; `bot_check_failed` scripted; PostgreSQL search; `grants: { calendar: [alice] }` naming fixtures; file fixtures and failing stores; batches in batches of two with a restart between each (Richard) | 2026-10-16 |
 | Idempotency keys in route tests | A route test sends a fresh `Idempotency-Key` with every request but a `GET`, as a real client would, so a route on an API with `idempotency: Idempotency.required` is tested through its success; a test that writes its own `Idempotency-Key` header sends that one instead, to test repeats and refusals; built in chunk 4.7 (Richard) | 2026-10-16 |
 | Writing a route test's key (chosen in chunk 4.7, confirmed by Richard 2026-10-16) | A test writes the key it sends as `idempotency_key:` in `request { }`, text, as `as:` stands for the credential: the request has no headers of its own, and an `Input`'s `header:` field is the action's, which the runtime's key never reaches. The runtime checks it as it checks a client's. A `GET` reads no key, so a request to one that gives `idempotency_key:` is `semantic.request_invalid`. A fresh key is a new identity from the test's seed, so a run is the same every time; a route whose `Input` itself reads an `Idempotency-Key` header sends that one | 2026-10-16 |
 | An omitted field in a route test (chosen in chunk 4.9) | A route test's `input:` leaves an optional field it doesn't write out of the body it sends, as a client would, so a `patch:` keeps that field rather than clearing it; a field written as `none` is sent as `null`. A request's body goes with `Content-Type: application/json` | 2026-10-16 |

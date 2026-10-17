@@ -1,9 +1,10 @@
 a_days_flour
+accept_invitation
+accept_invitation_in_app
 accepted_at
 account_id
 account_locked
 account_orders
-acme_couriers
 act_as
 ada
 ada_borrows_two
@@ -234,6 +235,7 @@ company_projects
 company_role
 complete_todo
 completed_at
+confirm_sign_in
 consent
 consent_id
 contact_address
@@ -257,6 +259,7 @@ country
 country_id
 country_view
 create_booking
+create_member
 create_note
 create_order
 create_partner
@@ -359,6 +362,7 @@ eve
 every_name
 expected_delivery
 export_my_data
+export_products
 expose_secret
 exposed_secret
 failed_attempts
@@ -374,7 +378,6 @@ find_books
 find_customer
 find_note
 find_todo
-finish_magic_link
 finish_review
 first_loan
 first_page
@@ -432,12 +435,14 @@ http_status
 icing
 icing_too_long
 icing_unreadable
+import_products
 import_recipe
 import_reference
 in_house_uses
 in_review
 in_shop
 in_store
+incoming_call
 incomplete_receipt
 ingredient
 ingredient_count
@@ -450,11 +455,13 @@ ingredients
 inside_range
 invalid_configuration
 invalid_success
+invitation
 invited
 invoice
 invoice_address
 invoice_date
 invoice_dated
+invoice_document
 invoice_transfer
 is_overdue
 isbn
@@ -675,6 +682,7 @@ order_number
 order_placed
 order_product
 order_shelf
+order_shipped
 order_stage
 order_state
 order_status
@@ -714,6 +722,7 @@ paid
 pale
 pantry
 parcel
+parcels
 partner
 partner_added
 partner_id
@@ -735,6 +744,7 @@ payment_intent
 payment_outcome
 payment_refused
 payment_succeeded
+pdf
 pence
 people
 per_kilo
@@ -762,6 +772,7 @@ portion_count
 portions
 postal_code
 postcode
+postcodes
 postpone_all
 praised
 praised_notes
@@ -833,6 +844,7 @@ record_delivery
 record_payment
 record_payment_webhook
 redeem_card
+redeemed
 reduction
 register_and_record
 register_both
@@ -915,6 +927,7 @@ send_order_confirmation
 send_overdue_reminder
 send_reminder
 send_reminders
+send_sign_in_link
 sent_at
 sent_text
 service_fake_identity
@@ -944,10 +957,11 @@ show_on_menu
 show_placed
 show_sent
 show_shipped
-sign_in_app
+sign_in_email
 sign_in_link
 sign_out_everywhere
 sign_up
+sign_up_draft
 signed_in
 signed_up
 signup_ip
@@ -981,6 +995,7 @@ stamps_to_go
 standard_vat
 stars
 start_project
+start_subscription
 starting_quantity
 steam
 steam_word
@@ -992,6 +1007,8 @@ story
 street
 street_address
 stripe_v2024
+subscribe
+subscription
 subtitle
 subtotal
 summarise_line
@@ -1062,6 +1079,7 @@ top_tier
 total_weight
 touch
 town
+tracking
 tray
 tray_capacity
 tray_count
@@ -1113,12 +1131,12 @@ wallet_id
 water
 water_difference
 wear
-webhooks_stripe
 weigh_flour
 weigh_recipe
 weight
 weight_of
 welcome_email
+welcome_heading
 wet_enough
 white
 whoami

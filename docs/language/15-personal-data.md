@@ -179,13 +179,69 @@ What erasure reaches:
   the UK regulator (ICO) calls putting data "beyond use" (question 5).
 - **Logs** are not rewritten either. They hold identifiers and hashes, never
   marked values, and expire on their own retention.
-- **Other companies.** Data already sent to an integration (an email
-  provider, a payment provider) is outside the database; the report lists
-  every integration that receives a marked field, so the team knows whom to
-  ask (question 12).
+- **Other companies.** Data already sent to a provider (an email provider,
+  a payment provider) is outside the database. Providers that can erase
+  are asked to, as "Erasure at providers" says; the report lists every
+  connection that receives a marked field and whether its copy is erased
+  (question 12).
+- **OAuth grants** a person or record owns (area 11) are deleted with it,
+  and revoked at the provider where the package declares how.
 - **Legal holds** are application data: an action that checks a hold flag
   and refuses with its own failure before calling `User.erase` (question 6).
   The same goes for restricting use while a complaint is open (Article 18).
+
+### Erasure at providers
+
+Decided 2026-10-16 (Richard), revising question 15. A provider package
+declares how its provider erases a person, in its `provider.jadpo`; the
+app's connection names the field holding that person's key there.
+
+```jadpo fragment
+// packages/stripe/v2024_06_20/provider.jadpo
+provider {
+    ...
+    erasure: {
+        call: customers.delete
+        by: CustomerId
+    }
+}
+
+// app.jadpo
+stripe: {
+    package: Stripe.v2024_06_20
+    domains: [payments]
+    credential: config.stripe_secret_key
+    erasure: {
+        key: User.stripe_customer_id
+    }
+}
+```
+
+- **The order is fixed.** When `User.erase` runs, Jadpo copies each
+  connection's key (`stripe_customer_id`) into the erasure event, then
+  erases the person in one transaction as above; after it commits, a
+  generated subscriber calls each provider's erasure operation, retried
+  until the provider confirms. The app first, then the providers, so a
+  provider never holds the only record of someone the app still has.
+- **The completion email waits for every provider.** The erasure-completed
+  email (area 16's built-in emails) goes only once every provider has
+  confirmed. A delivery that gives up is parked for an operator and shown
+  in the privacy request's state and in `jadpo privacy requests`, never
+  left quietly incomplete.
+- **A copied key that is itself personal data** (an email address used as
+  the provider's key) stays only in the outbox until it is delivered, and
+  the personal-data report lists it there.
+- **A connection that receives personal data but cannot erase it** (its
+  package declares no `erasure:`, or the connection names no key) is a
+  compile error, unless an acceptance (area 7's form) states why the data
+  stays there (tax records at an accounting provider); the report lists
+  the connection and the reason.
+- The app may add its own `PersonErased` subscribers for anything else
+  (a CRM it calls through its own integration).
+
+This is a declaration on the package, not part of any capability (area
+11, design C), so Stripe and Postmark are erased the same way. Built with
+data requests, after the first build.
 
 ## Export
 
@@ -282,7 +338,13 @@ store with the configuration setting that says where it is.
 - who may read it, from policy;
 - its retention, or "kept until erased";
 - what erasure does to each record that belongs to the person;
-- every integration a marked field is sent to;
+- every connection a marked field is sent to, and whether its copy is
+  erased by the provider's `erasure:` or kept for an accepted reason;
+- keys copied into the outbox for erasure at providers, while they wait;
+- the step records of actions with several changing calls (area 12),
+  which hold providers' answers encrypted, a fault over 1 MB each, until the
+  action commits;
+- connections holding OAuth grants, and whose grants they are;
 - sensitive fields, flagged.
 
 That is most of a record of processing activities (Article 30). The team adds
@@ -449,6 +511,39 @@ work after the first build.
       subscriber, except retention purges.
     - **Protection:** rate limits on the page and API (area 16), links
       single-use and short-lived, every step in the access records. *Decided 2026-10-13:* the revised recommendation.
+    *Revised 2026-10-16 (Richard, built-in emails):* the privacy emails (the
+    address check, export ready, erasure scheduled, erasure completed) are
+    built-in emails and change in area 16's five levels ("Built-in emails"):
+    Jadpo's own email, its words in the root `translations/` under
+    `jadpo: { }` (area 10), the app's shared layout, the app's own
+    `EmailMessage` (`email:`), or the app's own sending (`send:`). They go
+    through the app's one `email:` connection in `application { }`, so
+    `self_service: { email: <connection> }` becomes `self_service: {}`.
+    Each has a built-in type and a request type for `send:`:
+    `PrivacyAddressCheckEmail`, `PrivacyExportEmail`,
+    `PrivacyErasureConfirmedEmail` and `PrivacyErasureCompletedEmail`, set
+    in `privacy: { emails: { address_check: { } export_ready: { }
+    erasure_confirmed: { } erasure_completed: { } } }`, each entry taking
+    `email:` or `send:`, never both; their fields are in area 16. An entity
+    marked `Erasure.retained` needs a wording in its domain's language
+    files, which the completion email lists as what was kept. The privacy
+    emails need `application { display_name: }` (area 16).
+    *Revised 2026-10-16 (Richard, no pages):* Jadpo generates endpoints
+    only, never pages, so the generated `/privacy` page is replaced by
+    endpoints the app's frontend calls; the frontend builds the page, and a
+    recipe can show one. `POST /privacy/requests` (`address`) answers `202`
+    for every address and sends the address-check email, whose link opens
+    the frontend path `self_service: { link: "/privacy/confirm" }` at the
+    browser origin with a token; the frontend posts
+    `POST /privacy/requests/confirm` (`token`, `kind`: `export` or
+    `erasure`) to create the request, and the erasure confirmation's cancel
+    link opens `self_service: { cancel_link: "/privacy/cancel" }`, which
+    posts `POST /privacy/requests/cancel` (`token`). Loading a frontend page
+    consumes nothing, so mail scanners cancel and confirm nothing. These
+    routes take `path:` and `routes: false` like every generated route
+    (area 7), over generated `privacy.request`, `privacy.confirm` and
+    `privacy.cancel` operations that keep every protection; the signed-in
+    `POST /privacy/export` and `/privacy/erasure` stay as they are.
 14. **How is personal data that erasure cannot reach prevented?** Raised by
     Richard (2026-10-13): no siloed data left behind. *Recommendation:* a
     compile error for any marked personal field on an entity that is not a
@@ -466,6 +561,18 @@ work after the first build.
     connection that receives marked fields, or an accepted reason it is not
     needed (area 18). The personal-data report lists each provider and
     whether its copy is erased automatically. *Decided 2026-10-13:* yes, as recommended.
+    *Revised 2026-10-16 (Richard):* the package declares its erasure
+    operation (`erasure: { call: by: }` in `provider.jadpo`) and the
+    connection names the app's field holding the key (`erasure: { key: }`);
+    Jadpo copies each key into the erasure event, erases the person in one
+    transaction, then a generated subscriber calls each provider after
+    commit, retried until it confirms. The completion email goes only when
+    every provider has confirmed; a delivery that gives up is parked and
+    shown. A copied key that is personal data stays only in the outbox
+    until delivered, listed in the report. A connection that receives
+    personal data but cannot erase it is an error unless an acceptance
+    states why. Erasing a person or record also deletes and revokes its
+    OAuth grants.
 16. **What does this not cover?** *Recommendation:* say so plainly in the
     report. Covered by the language: minimisation and storage limitation,
     access, rectification (ordinary updates), erasure, portability,
@@ -501,7 +608,9 @@ work after the first build.
 | Logs of marked fields | Every marked field hashed in logs, whatever its type (amends area 4) | 2026-10-13 |
 | Purpose and consent | Not in the language | 2026-10-13 |
 | Report and residency | `build/report/personal-data.md` and `.json`, shown in review when it changes; residency by deployment per region | 2026-10-13 |
-| Data request routes | `privacy: { self_service: { email: } exports: { store: keep: } }`: a generated `/privacy` page with email verification, export by expiring link, erasure after a cooling-off period, events at every step, API routes for the person only, staff actions granted in policy | 2026-10-13 |
+| Data request routes | (Revised 2026-10-16: endpoints only, no `/privacy` page: `POST /privacy/requests`, `/confirm` and `/cancel`, the emails linking to the frontend's `link:` and `cancel_link:` paths. The emails are area 16's built-in emails, sent through the app's one `email:` connection; `self_service: {}`, and `emails: { address_check: export_ready: erasure_confirmed: erasure_completed: }` each taking `email:` or `send:`.) `privacy: { self_service: { email: } exports: { store: keep: } }`: a generated `/privacy` page with email verification, export by expiring link, erasure after a cooling-off period, events at every step, API routes for the person only, staff actions granted in policy | 2026-10-13 |
 | Unreachable personal data | A marked field that belongs to no person is a compile error; every reference into a person's records has an erasure outcome | 2026-10-13 |
-| Provider copies | Erasure emits `PersonErased`; every connection receiving marked fields needs a deleting subscriber or an accepted reason | 2026-10-13 |
+| Provider copies | Erasure emits `PersonErased`; every connection receiving marked fields needs a deleting subscriber or an accepted reason (Revised 2026-10-16: the package's `erasure:` and the connection's key; see below) | 2026-10-13 |
+| Erasure at providers | The package's `erasure: { call: by: }`, the connection's `erasure: { key: }`; the app erased first in one transaction, then each provider by a generated subscriber after commit, retried until confirmed; the completion email only when all confirm; parked deliveries shown; personal keys only in the outbox until delivered; a connection that cannot erase needs an acceptance stating why; OAuth grants deleted and revoked (Richard) | 2026-10-16 |
+| Report additions | Erasure per connection, keys waiting in the outbox, multi-step step records and OAuth grants listed in the personal-data report (Richard, areas 11 and 12) | 2026-10-16 |
 | Coverage and gaps | The report states what the language covers, what is the app's choice and what is not code; breach-notification and transfer support to add | 2026-10-13 |
