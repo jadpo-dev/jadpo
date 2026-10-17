@@ -346,7 +346,7 @@ numbers (question 9):
 
 The envelope's `message` stays fixed English. Text for people in client
 apps comes from the app's language files (area 10, decided 2026-10-16,
-not built yet: chunk 5.4d): every failure a route can produce has wording in every
+built in chunk 5.4d): every failure a route can produce has wording in every
 supported locale, keyed by its code with its client fields as placeholders,
 and client fields that are dates or numbers stay values on the wire for the
 client to format in its own language.
@@ -401,7 +401,8 @@ refuse what it or an action it calls does, 503 where it uses a store, and
 an `Idempotency-Key` that promises a repeat the first response only where
 that response is kept.
 
-Beside each document, `jadpo build` writes `<api>.failures.<locale>.json`
+Beside each document, `jadpo check` writes (and `jadpo build` will write)
+`<api>.failures.<locale>.json`
 for each supported locale: each reachable failure's code mapped to
 `{ "text": "…{next_slot}…", "formats": { "next_slot": "date_time" } }`, the
 same shape for every code. `formats` lists only the placeholders the

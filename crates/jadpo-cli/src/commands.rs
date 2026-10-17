@@ -20,6 +20,7 @@ pub use crate::sql::sql;
 use crate::suggest::nearest;
 use crate::table::{self, SHELLS};
 pub use crate::test::test;
+pub use crate::translations::translations;
 
 pub fn help(call: &Call) -> Reply {
     match call.arguments.first() {

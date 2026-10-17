@@ -21,6 +21,22 @@ use jadpo_graph::{Graph, catalogue};
 
 use crate::help::VERSION;
 
+/// Each API's OpenAPI document, then the text its clients show for the
+/// failures it answers with, one file for each supported locale
+/// ([`crate::failure_text`]), all written to `build/openapi/`.
+pub fn openapi(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    title: &str,
+) -> Vec<(String, jadpo_graph::json::Value)> {
+    let mut files = jadpo_check::routes::openapi::documents(db, project, title);
+    // Only once the routes read cleanly, as the documents themselves are.
+    if !files.is_empty() {
+        files.extend(crate::failure_text::documents(db, project));
+    }
+    files
+}
+
 /// Writes every derived file; the paths written, relative to the root.
 pub fn write(
     root: &Path,

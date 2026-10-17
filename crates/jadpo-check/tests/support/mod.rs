@@ -45,6 +45,28 @@ fn migration(db: &Database, project: Project) -> Vec<Record> {
     ]
 }
 
+/// A project of `files` with the generated records at `records`, as they
+/// would be read from disk.
+pub fn project_with_records(
+    db: &Database,
+    layout: Layout,
+    files: &[(&str, &str)],
+    records: &[(&str, &str)],
+) -> Project {
+    let inputs: Vec<File> = files
+        .iter()
+        .map(|(path, text)| File::new(db, path.to_string(), text.to_string()))
+        .collect();
+    let records = records
+        .iter()
+        .map(|(path, text)| Record {
+            path: path.to_string(),
+            text: Ok(text.to_string()),
+        })
+        .collect();
+    Project::new(db, inputs, Vec::new(), layout, Default::default(), records)
+}
+
 /// A project of `files`, created in the order given and listed in path
 /// order, as `jadpo_db::load` lists them: only the order the inputs were
 /// made in differs.

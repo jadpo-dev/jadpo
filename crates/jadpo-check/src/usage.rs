@@ -853,3 +853,23 @@ fn unused_beside(path: &str, source: &ast::SourceFile, item: &Item, primary: &It
     )
     .next(format!("Remove `{name}`"))
 }
+
+/// The translation calls the application's code makes, as `<scope>.<key>`:
+/// what `jadpo translations unused` compares the messages with. Tests do
+/// not count as users.
+pub fn translation_keys_used(db: &dyn Db, project: Project) -> BTreeSet<String> {
+    let mut used = BTreeSet::new();
+    for &file in project.files(db) {
+        if location(db, project, file).test {
+            continue;
+        }
+        for callable in callables_of(db, file) {
+            for (_, callee) in typed_body(db, project, callable).body.calls() {
+                if let Callee::Translation(key) = callee {
+                    used.insert(key.clone());
+                }
+            }
+        }
+    }
+    used
+}

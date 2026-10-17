@@ -10,6 +10,7 @@ pub mod config;
 mod declines;
 mod derived;
 pub mod dev;
+mod failure_text;
 mod fmt;
 mod help;
 mod local;
@@ -20,6 +21,7 @@ mod sql;
 mod suggest;
 mod table;
 mod test;
+mod translations;
 pub mod watch;
 
 pub use run::{Output, Session, run, spinner};

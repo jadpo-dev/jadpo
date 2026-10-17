@@ -10,6 +10,7 @@ license.workspace = true
 autotests = false
 
 [dependencies]
+blake3.workspace = true
 jadpo-db.workspace = true
 jadpo-diag.workspace = true
 jadpo-fmt.workspace = true

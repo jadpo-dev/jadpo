@@ -6,7 +6,7 @@
 //! [`Op`] exhaustively, so an operation listed here without an
 //! implementation does not compile.
 
-use crate::{Builtin, Dst, InvalidDay, Rounding, RuleKey, Weekday};
+use crate::{Builtin, Dst, InvalidDay, Rounding, RuleKey, TextDirection, Weekday};
 
 /// What a parameter or a result is, as far as an operation cares.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -85,6 +85,7 @@ pub enum Op {
     CollectionMap,
     DecimalDivide,
     IntegerDivide,
+    LocaleDirection,
     LocaleFromAcceptLanguage,
     TemporalAddDays,
     TemporalAddMonths,
@@ -328,6 +329,17 @@ pub const OPERATIONS: &[Operation] = &[
         at_least: None,
         conditions: &[],
         rust: "integer::divide",
+    },
+    // The way a locale's text runs (area 10, "Locales"), from CLDR.
+    Operation {
+        op: Op::LocaleDirection,
+        namespace: "locale",
+        name: "direction",
+        params: &[param("value", LOCALE)],
+        result: Kind::Enum(TextDirection::NAME),
+        at_least: None,
+        conditions: &[],
+        rust: "locale::direction",
     },
     // The locale a request's `Accept-Language` header asks for, of the ones
     // the application supports (area 10, "Locales"): `jadpo-value`'s

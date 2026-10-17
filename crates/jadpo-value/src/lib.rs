@@ -76,6 +76,10 @@ pub fn run(
             Ok(locale::value(locale::from_accept_language(header, plan)))
         }
         (Op::LocaleFromAcceptLanguage, _) => Err(Fault::Shape),
+        (Op::LocaleDirection, [Value::Variant(variant)]) if &*variant.ty == jadpo_std::LOCALE => {
+            Ok(locale::direction(variant.ordinal))
+        }
+        (Op::LocaleDirection, _) => Err(Fault::Shape),
         (Op::CollectionContains, [Value::List(items), item]) => {
             Ok(Value::Bool(collection::contains(items, item)))
         }
@@ -291,6 +295,7 @@ mod tests {
                     ]
                 }
                 Op::LocaleFromAcceptLanguage => vec![Value::text("en-GB, fr;q=0.5")],
+                Op::LocaleDirection => vec![locale::value(0)],
                 Op::CollectionContains => vec![items.clone(), Value::Int(2)],
                 Op::CollectionCount | Op::CollectionFilter | Op::CollectionMap => {
                     vec![items.clone()]

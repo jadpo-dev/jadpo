@@ -65,8 +65,8 @@ pub struct Record {
 }
 
 /// Whether a project-relative path is a record [`Record`] holds: a file in
-/// a migration's folder that isn't source, an API's record or the identity
-/// registry.
+/// a migration's folder that isn't source, an API's record, the identity
+/// registry, or a `translations/` folder's sources (area 18).
 pub fn is_record(path: &str) -> bool {
     if path == IDENTITIES {
         return true;
@@ -81,7 +81,8 @@ pub fn is_record(path: &str) -> bool {
             "migrations",
             _,
             "snapshot.json" | "postgres.sql"
-        ]
+        ] | ["domains", _, "translations", "sources.jadpo_record"]
+            | ["shared", "translations", "sources.jadpo_record"]
     )
 }
 

@@ -16,7 +16,11 @@
 
 mod check;
 mod declared;
+pub mod definitions;
+pub mod failures;
 mod language;
+pub mod outstanding;
+pub mod sources;
 
 use jadpo_db::{Db, Project, Symbol};
 use jadpo_diag::{Diagnostic, Span, rule};
@@ -34,8 +38,21 @@ use declared::subjects;
 /// The problems in the project's translations.
 #[salsa::tracked(returns(ref))]
 pub fn translation_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
-    let scopes = scopes(db, project);
-    let mut out = Vec::new();
+    let mut scopes = scopes(db, project);
+    // What `translations:` in `app.jadpo` says is read whether or not the
+    // project words anything yet.
+    let mut out: Vec<Diagnostic> = sources::review(db, project).problems.clone();
+    // A failure a route can answer with is worded in every supported
+    // locale, wherever its domain keeps no message or language file yet;
+    // with no `locales { }` there is nothing to word it for.
+    if crate::locales::locales(db, project).declared {
+        for scope in failures::failure_scopes(db, project) {
+            if !scopes.contains(&scope) {
+                scopes.push(scope);
+            }
+        }
+        scopes.sort();
+    }
     if scopes.is_empty() {
         return out;
     }
@@ -55,6 +72,12 @@ pub fn translation_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     for scope in &scopes {
         out.extend(
             analyse(db, project, Name::new(db, scope.clone()))
+                .problems
+                .iter()
+                .cloned(),
+        );
+        out.extend(
+            sources::standings(db, project, Name::new(db, scope.clone()))
                 .problems
                 .iter()
                 .cloned(),
@@ -118,7 +141,7 @@ pub fn callable<'db>(
     key: Name<'db>,
 ) -> Callable {
     match subjects(db, project, scope).get(key.text(db)) {
-        Some(subject) if subject.kind != Kind::Email => {
+        Some(subject) if !matches!(subject.kind, Kind::Email | Kind::Failure) => {
             if subject.broken {
                 Callable::Broken
             } else {
@@ -182,7 +205,7 @@ pub fn entry_facts(db: &dyn Db, project: Project) -> Vec<EntryFacts> {
             .filter_map(|file| language_file(db, project, file).as_ref())
             .collect();
         for subject in &subjects.list {
-            if subject.broken || subject.kind == Kind::Email {
+            if subject.broken || matches!(subject.kind, Kind::Email | Kind::Failure) {
                 continue;
             }
             let mut text = Vec::new();

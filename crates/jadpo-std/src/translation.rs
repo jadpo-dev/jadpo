@@ -42,6 +42,39 @@ impl ParamKind {
     }
 }
 
+/// How a client app formats a failure's client field before it fills the
+/// field's placeholder (area 10, "Failures for client apps"): the field's
+/// type decides it, and the export says it for the placeholders that need
+/// one. A text field needs none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ClientFormat {
+    /// An `Int`.
+    Number,
+    /// A `Decimal`.
+    Decimal,
+    /// A `CalendarDate`.
+    Date,
+    /// An `Instant`, shown in the reader's own zone by the client, or a
+    /// `ZonedTime`, in the zone it carries.
+    DateTime,
+    /// A `Duration`.
+    Duration,
+}
+
+impl ClientFormat {
+    /// The word the export writes: `number`, `decimal`, `date`,
+    /// `date_time` or `duration`.
+    pub fn word(self) -> &'static str {
+        match self {
+            ClientFormat::Number => "number",
+            ClientFormat::Decimal => "decimal",
+            ClientFormat::Date => "date",
+            ClientFormat::DateTime => "date_time",
+            ClientFormat::Duration => "duration",
+        }
+    }
+}
+
 /// One of CLDR's plural categories.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PluralCategory {
@@ -122,6 +155,32 @@ pub struct Template {
 }
 
 impl Template {
+    /// The wording as it is written in a language file: `{field}` for a
+    /// field and a doubled brace for a literal one. The export for client
+    /// apps carries it, so a client reads the same syntax.
+    pub fn written(&self) -> String {
+        let mut out = String::new();
+        for piece in &self.pieces {
+            match piece {
+                Piece::Text(text) => {
+                    for c in text.chars() {
+                        match c {
+                            '{' => out.push_str("{{"),
+                            '}' => out.push_str("}}"),
+                            other => out.push(other),
+                        }
+                    }
+                }
+                Piece::Field(name) => {
+                    out.push('{');
+                    out.push_str(name);
+                    out.push('}');
+                }
+            }
+        }
+        out
+    }
+
     /// The fields the wording writes, in order, repeats included.
     pub fn fields(&self) -> impl Iterator<Item = &str> {
         self.pieces.iter().filter_map(|piece| match piece {
@@ -354,7 +413,7 @@ impl TranslationPlan {
 /// [`PluralCategory::ALL`], indexed by the locale's place among `Locale`'s
 /// variants. Generated from ICU4X's CLDR data and checked against it by
 /// `jadpo-value`'s tests.
-static PLURAL_MASKS: [u8; 533] = [
+static PLURAL_MASKS: [u8; 534] = [
     34, 34, 34, 34, 34, 34, 34, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63,
     63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 34, 34, 34, 34, 34, 32, 32, 58, 58, 58, 34, 34, 34,
     34, 34, 42, 42, 42, 50, 50, 50, 50, 50, 50, 34, 34, 58, 58, 35, 35, 63, 63, 34, 34, 34, 34, 34,
@@ -363,21 +422,21 @@ static PLURAL_MASKS: [u8; 533] = [
     34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34,
     34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34,
     34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34,
-    34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 50, 50, 50, 50, 50, 50, 50,
-    50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 34, 34,
-    34, 34, 34, 34, 34, 34, 34, 34, 34, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50,
+    34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 50, 50, 50, 50, 50, 50,
+    50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 34,
+    34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50,
     50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50,
-    50, 50, 50, 50, 50, 50, 50, 50, 62, 62, 62, 46, 46, 34, 34, 34, 34, 34, 34, 34, 34, 38, 38, 34,
-    34, 34, 42, 42, 42, 46, 46, 50, 50, 34, 34, 34, 34, 32, 32, 32, 32, 34, 34, 50, 50, 50, 50, 50,
-    32, 32, 32, 32, 34, 34, 34, 32, 32, 34, 34, 32, 32, 34, 34, 32, 32, 32, 32, 34, 34, 34, 34, 34,
-    32, 32, 58, 58, 35, 35, 34, 34, 34, 34, 34, 34, 34, 34, 32, 32, 32, 32, 32, 32, 32, 34, 34, 34,
-    34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 58, 58,
-    34, 34, 34, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 32, 32, 32, 32, 34, 34, 42, 42,
-    42, 58, 58, 58, 58, 58, 58, 58, 34, 34, 34, 32, 32, 32, 34, 34, 58, 58, 46, 46, 34, 34, 34, 34,
-    34, 34, 34, 34, 34, 42, 42, 42, 42, 42, 32, 32, 32, 32, 42, 34, 34, 34, 34, 34, 34, 34, 34, 34,
-    34, 34, 34, 34, 34, 34, 34, 32, 32, 34, 34, 34, 34, 34, 34, 34, 34, 58, 58, 32, 32, 34, 34, 34,
-    34, 34, 34, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
-    32, 32, 32, 34, 34,
+    50, 50, 50, 50, 50, 50, 50, 50, 50, 62, 62, 62, 46, 46, 34, 34, 34, 34, 34, 34, 34, 34, 38, 38,
+    34, 34, 34, 42, 42, 42, 46, 46, 50, 50, 34, 34, 34, 34, 32, 32, 32, 32, 34, 34, 50, 50, 50, 50,
+    50, 32, 32, 32, 32, 34, 34, 34, 32, 32, 34, 34, 32, 32, 34, 34, 32, 32, 32, 32, 34, 34, 34, 34,
+    34, 32, 32, 58, 58, 35, 35, 34, 34, 34, 34, 34, 34, 34, 34, 32, 32, 32, 32, 32, 32, 32, 34, 34,
+    34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 58,
+    58, 34, 34, 34, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 32, 32, 32, 32, 34, 34, 42,
+    42, 42, 58, 58, 58, 58, 58, 58, 58, 34, 34, 34, 32, 32, 32, 34, 34, 58, 58, 46, 46, 34, 34, 34,
+    34, 34, 34, 34, 34, 34, 42, 42, 42, 42, 42, 32, 32, 32, 32, 42, 34, 34, 34, 34, 34, 34, 34, 34,
+    34, 34, 34, 34, 34, 34, 34, 34, 32, 32, 34, 34, 34, 34, 34, 34, 34, 34, 58, 58, 32, 32, 34, 34,
+    34, 34, 34, 34, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
+    32, 32, 32, 32, 34, 34,
 ];
 
 #[cfg(test)]

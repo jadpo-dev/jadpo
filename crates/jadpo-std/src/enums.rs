@@ -104,6 +104,29 @@ std_enum! {
 }
 
 std_enum! {
+    /// The way a locale's text runs (area 10, "Locales"): what `locale.direction`
+    /// gives. Its wording, for a template's `dir=` attribute, is `ltr` and
+    /// `rtl`.
+    TextDirection: "TextDirection" {
+        LeftToRight: "left_to_right",
+        RightToLeft: "right_to_left",
+    }
+}
+
+std_enum! {
+    /// Whether wording outside the default locale needs a person's
+    /// acceptance (area 10, "Translations as messages"): the `review:` of
+    /// `translations: { }` in `app.jadpo`.
+    TranslationReview: "TranslationReview" {
+        /// Nothing waits for review; the default.
+        None: "none",
+        /// New or changed wording stays unaccepted until `jadpo
+        /// translations accept <locale>`.
+        Required: "required",
+    }
+}
+
+std_enum! {
     /// Which instant a local time takes when a zone's clocks change around
     /// it (area 10, question 7): an `overlap` happens twice, a `gap` never.
     /// Without `dst:`, or with `reject`, such a time is a failure the
@@ -392,6 +415,8 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (TextFormat::NAME, TextFormat::NAMES.to_vec()),
         (UuidVersion::NAME, UuidVersion::NAMES.to_vec()),
         (Weekday::NAME, Weekday::NAMES.to_vec()),
+        (TextDirection::NAME, TextDirection::NAMES.to_vec()),
+        (TranslationReview::NAME, TranslationReview::NAMES.to_vec()),
         (Dst::NAME, Dst::NAMES.to_vec()),
         (InvalidDay::NAME, InvalidDay::NAMES.to_vec()),
         (ComponentStyle::NAME, ComponentStyle::NAMES.to_vec()),
@@ -437,6 +462,8 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         TextFormat::NAME => position(TextFormat::NAMES),
         UuidVersion::NAME => position(UuidVersion::NAMES),
         Weekday::NAME => position(Weekday::NAMES),
+        TextDirection::NAME => position(TextDirection::NAMES),
+        TranslationReview::NAME => position(TranslationReview::NAMES),
         Dst::NAME => position(Dst::NAMES),
         InvalidDay::NAME => position(InvalidDay::NAMES),
         ComponentStyle::NAME => position(ComponentStyle::NAMES),

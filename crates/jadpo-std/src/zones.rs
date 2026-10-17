@@ -446,7 +446,10 @@ pub const ZONES: &[(&str, &str)] = &[
     ("utc", "UTC"),
 ];
 
-/// Every `Locale` variant with its BCP 47 tag, in variant order.
+/// Every `Locale` variant with its BCP 47 tag, in variant order: each
+/// locale CLDR gives modern coverage, and `en_xa`, the pseudo-locale
+/// (area 10, "Tooling"), whose tag is the one Android and Chrome use and
+/// whose region code is one ISO 3166 leaves for private use.
 pub const LOCALES: &[(&str, &str)] = &[
     ("af", "af"),
     ("af_na", "af-NA"),
@@ -654,6 +657,7 @@ pub const LOCALES: &[(&str, &str)] = &[
     ("en_vi", "en-VI"),
     ("en_vu", "en-VU"),
     ("en_ws", "en-WS"),
+    ("en_xa", "en-XA"),
     ("en_za", "en-ZA"),
     ("en_zm", "en-ZM"),
     ("en_zw", "en-ZW"),

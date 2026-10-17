@@ -21,6 +21,21 @@ impl LocalePlan {
     pub fn supports(&self, ordinal: u32) -> bool {
         self.supported.contains(&ordinal)
     }
+
+    /// Whether `ordinal` is the pseudo-locale, which has no wording of its
+    /// own to write: it is the default locale's, accented and lengthened.
+    pub fn is_pseudo(ordinal: u32) -> bool {
+        ordinal == pseudo_ordinal()
+    }
+}
+
+/// The pseudo-locale's variant: every message accented and lengthened, for
+/// development and tests (area 10, "Tooling").
+pub const PSEUDO: &str = "en_xa";
+
+/// The pseudo-locale's place among `Locale`'s variants.
+pub fn pseudo_ordinal() -> u32 {
+    locale_ordinal(PSEUDO).unwrap_or(u32::MAX)
 }
 
 /// The place of the variant `variant` (`en_gb`) among `Locale`'s variants.

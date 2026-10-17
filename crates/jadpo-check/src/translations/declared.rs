@@ -8,7 +8,7 @@ use jadpo_db::{
     Base, Db, File, Folder, ItemKind, Ownership, Place, Project, Symbol, Symbols, symbols,
 };
 use jadpo_diag::{Diagnostic, Span, rule};
-use jadpo_std::translation::{ParamKind, TranslationParam};
+use jadpo_std::translation::{ClientFormat, ParamKind, TranslationParam};
 use jadpo_syntax::ast::{self, AstNode, Decl};
 
 use crate::case::to_snake;
@@ -27,6 +27,10 @@ pub enum Kind {
     /// An email's subject line: worded in the language files, with the
     /// email's fields as placeholders, when the email machinery asks.
     Email,
+    /// A failure's text for client apps, keyed by its code: worded in every
+    /// supported locale when a route can answer with it, and sent to
+    /// clients with the response's code, never written by the server.
+    Failure,
 }
 
 impl Kind {
@@ -36,6 +40,7 @@ impl Kind {
             Kind::Message => "message",
             Kind::Enum => "enum",
             Kind::Email => "email",
+            Kind::Failure => "failure",
         }
     }
 }
@@ -83,6 +88,9 @@ pub struct Subject {
     /// What a wording may write as `{name}`.
     pub placeholders: Vec<(String, ParamKind)>,
     pub mode: Mode,
+    /// For a failure: how a client formats each client field that needs it
+    /// before filling its placeholder.
+    pub formats: Vec<(String, ClientFormat)>,
     /// A mistake in its declaration, reported; nothing is checked against
     /// it.
     pub broken: bool,
@@ -90,9 +98,9 @@ pub struct Subject {
 
 impl Subject {
     /// Whether code can call it: emails are worded for the email's own
-    /// machinery.
+    /// machinery and failures for client apps.
     pub fn callable(&self) -> bool {
-        self.kind != Kind::Email && !self.broken
+        !matches!(self.kind, Kind::Email | Kind::Failure) && !self.broken
     }
 
     pub fn call_params(&self) -> Vec<TranslationParam> {
@@ -161,14 +169,20 @@ fn all_symbols(table: &Symbols) -> impl Iterator<Item = &Symbol> {
 
 /// What a symbol is as a subject, if it is one.
 fn subject_kind(symbol: &Symbol) -> Option<Kind> {
-    if symbol.test || symbol.provided.is_some() || symbol.library.is_some() {
+    if symbol.test || symbol.library.is_some() {
         return None;
+    }
+    // The not-found failure the compiler provides for an entity is worded
+    // like one the project declares; nothing else it provides is a subject.
+    if symbol.provided.is_some() {
+        return matches!(symbol.kind, ItemKind::Type(Base::Failure)).then_some(Kind::Failure);
     }
     match &symbol.kind {
         ItemKind::Type(Base::Message) if symbol.place == Place::Folder(Folder::Translations) => {
             Some(Kind::Message)
         }
         ItemKind::Type(Base::EmailMessage) => Some(Kind::Email),
+        ItemKind::Type(Base::Failure) => Some(Kind::Failure),
         ItemKind::Type(Base::Enum) => Some(Kind::Enum),
         _ => None,
     }
@@ -206,6 +220,14 @@ pub fn subjects<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Sub
         let Some(kind) = subject_kind(symbol) else {
             continue;
         };
+        if kind == Kind::Failure {
+            if let Some(subject) =
+                failure_subject(db, project, symbol, &out.list, &mut out.problems)
+            {
+                out.list.push(subject);
+            }
+            continue;
+        }
         let key = to_snake(&symbol.name);
         // A name another subject of the scope already took is the checker's
         // naming rules' to report; the first is kept.
@@ -229,7 +251,7 @@ pub fn subjects<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Sub
         let canonical = lookup.canonical_name(&symbol.name);
         let subject = match kind {
             Kind::Enum => enum_subject(&lookup, &canonical, key, symbol, name_span),
-            Kind::Message | Kind::Email => {
+            Kind::Message | Kind::Email | Kind::Failure => {
                 let fields = match lookup.def(&canonical) {
                     Some(Def::Fields { fields, .. }) => fields.clone(),
                     _ => Vec::new(),
@@ -252,6 +274,167 @@ pub fn subjects<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Sub
         }
     }
     out
+}
+
+/// A failure as a subject: keyed by its code, its `client:` fields the
+/// placeholders (area 10, "Failures for client apps"). The failure the
+/// compiler provides for an entity has no fields and no declaration, so it
+/// is pointed at through its entity.
+fn failure_subject(
+    db: &dyn Db,
+    project: Project,
+    symbol: &Symbol,
+    seen: &[Subject],
+    problems: &mut Vec<Diagnostic>,
+) -> Option<Subject> {
+    let info =
+        crate::lookups::failure_info(db, project, Name::new(db, symbol.name.clone())).as_ref()?;
+    // The first failure to use a code keeps it: area 4 reports a code two
+    // failures share.
+    if seen.iter().any(|other| other.key == info.code) {
+        return None;
+    }
+    let lookup = Lookup::within(db, project, &symbol.ownership);
+    let file = file_at(db, project, Name::new(db, symbol.path.clone()))?;
+    let source = tree::source(db, file)?;
+    let (name_span, spans, fields) = if symbol.provided.is_some() {
+        let name_span = symbol
+            .provided
+            .as_ref()
+            .and_then(|entity| symbol_named(db, project, entity))
+            .and_then(|found| {
+                let decl = tree::decl_at(&source, found.index)?;
+                let Decl::EntityDecl(decl) = decl else {
+                    return None;
+                };
+                Some(decl.name().map_or_else(
+                    || node_span(&symbol.path, decl.syntax()),
+                    |name| node_span(&symbol.path, name.syntax()),
+                ))
+            })
+            .unwrap_or_else(|| Span::new(&symbol.path, 0, 0));
+        (name_span, Vec::new(), Vec::new())
+    } else {
+        let Some(Decl::TypeDecl(decl)) = tree::decl_at(&source, symbol.index) else {
+            return None;
+        };
+        let name_span = decl.name().map_or_else(
+            || node_span(&symbol.path, decl.syntax()),
+            |name| node_span(&symbol.path, name.syntax()),
+        );
+        let canonical = lookup.canonical_name(&symbol.name);
+        let client =
+            crate::failures::client_fields(db, project, Name::new(db, symbol.name.clone()));
+        let fields: Vec<FieldDef> = match lookup.def(&canonical) {
+            Some(Def::Fields { fields, .. }) => fields
+                .iter()
+                .filter(|field| client.contains(&field.name))
+                .cloned()
+                .collect(),
+            _ => Vec::new(),
+        };
+        let spans = failure_field_spans(&symbol.path, &decl);
+        (name_span, spans, fields)
+    };
+    let at = |name: &str| {
+        spans
+            .iter()
+            .find(|(seen, _)| seen == name)
+            .map_or_else(|| name_span.clone(), |(_, span)| span.clone())
+    };
+    let mut placeholders: Vec<(String, ParamKind)> = Vec::new();
+    let mut formats: Vec<(String, ClientFormat)> = Vec::new();
+    let mut broken = false;
+    for field in &fields {
+        match client_class(&lookup, &field.declared) {
+            Some((kind, format)) => {
+                placeholders.push((field.name.clone(), kind));
+                if let Some(format) = format {
+                    formats.push((field.name.clone(), format));
+                }
+            }
+            None => {
+                broken = true;
+                problems.push(unsupported_client(symbol, field, at(&field.name)));
+            }
+        }
+    }
+    Some(Subject {
+        key: info.code.clone(),
+        type_name: symbol.name.clone(),
+        kind: Kind::Failure,
+        symbol: symbol.clone(),
+        name_span,
+        params: Vec::new(),
+        placeholders,
+        mode: Mode::Plain,
+        formats,
+        broken,
+    })
+}
+
+/// The first declaration named `name`.
+fn symbol_named(db: &dyn Db, project: Project, name: &str) -> Option<Symbol> {
+    symbols(db, project)
+        .declarations
+        .get(name)
+        .and_then(|found| found.first())
+        .cloned()
+}
+
+/// Where each `client:` field of a failure is written, by name.
+fn failure_field_spans(path: &str, decl: &ast::TypeDecl) -> Vec<(String, Span)> {
+    tree::members(decl.member_list())
+        .into_iter()
+        .filter(|(block, _)| tree::name_text(block).as_deref() == Some("client"))
+        .flat_map(|(_, member)| tree::members(member.block()))
+        .filter_map(|(name, _)| Some((tree::name_text(&name)?, node_span(path, name.syntax()))))
+        .collect()
+}
+
+/// How a client field is written into a wording, and what the client does
+/// to its value first, if it can be written at all.
+fn client_class(lookup: &Lookup<'_>, ty: &Ty) -> Option<(ParamKind, Option<ClientFormat>)> {
+    if matches!(ty, Ty::Nullable(_)) {
+        return None;
+    }
+    if let Ty::Named(name) = ty
+        && matches!(lookup.def(name), Some(Def::Enum { .. }))
+    {
+        return None;
+    }
+    Some(match lookup.representation(ty)? {
+        // Text on the wire, so written as it is.
+        Prim::Text
+        | Prim::PresentationText
+        | Prim::Uuid
+        | Prim::Email
+        | Prim::Url
+        | Prim::IpAddress => (ParamKind::Text, None),
+        Prim::Int => (ParamKind::Number, Some(ClientFormat::Number)),
+        Prim::Decimal => (ParamKind::Number, Some(ClientFormat::Decimal)),
+        Prim::CalendarDate => (ParamKind::Number, Some(ClientFormat::Date)),
+        Prim::Instant | Prim::ZonedTime => (ParamKind::Number, Some(ClientFormat::DateTime)),
+        Prim::Duration => (ParamKind::Number, Some(ClientFormat::Duration)),
+        _ => return None,
+    })
+}
+
+fn unsupported_client(symbol: &Symbol, field: &FieldDef, span: Span) -> Diagnostic {
+    let ty = field.declared.to_string();
+    Diagnostic::new(
+        &rule::TRANSLATION_FIELD_TYPE,
+        format!(
+            "`{}.{}` is typed `{ty}`, which a client can't write into a wording",
+            symbol.name, field.name
+        ),
+    )
+    .at(span, "not text, a number, a date, a time or a duration")
+    .reason("A failure's `client:` fields are the placeholders of its wording, and the client app fills each one: text as it is, and a number, a date, a time or a duration formatted for its own language. A choice, an object, a list or an optional value has no such format.")
+    .next(format!(
+        "Make `{}` text, or send the text in a `PresentationText` field",
+        field.name
+    ))
 }
 
 /// Where each field of a type is written, by name.
@@ -334,6 +517,7 @@ fn enum_subject(
         }],
         placeholders: Vec::new(),
         mode: Mode::Variants(enum_variants(lookup, canonical)),
+        formats: Vec::new(),
         broken: false,
     })
 }
@@ -427,6 +611,7 @@ fn fields_subject(
         },
         placeholders,
         mode,
+        formats: Vec::new(),
         broken,
     })
 }

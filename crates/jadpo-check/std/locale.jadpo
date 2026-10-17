@@ -9,6 +9,10 @@
 // and goes straight in, and `none` gives `locales { default: }`.
 
 public library locale {
+    /// Which way `value`'s text runs, as CLDR says: `TextDirection.left_to_right`
+    /// for English, `TextDirection.right_to_left` for Arabic and Hebrew.
+    function direction(value: Locale) -> TextDirection {}
+
     /// The supported `Locale` an `Accept-Language` header asks for, or
     /// `locales { default: }` when it names none the application
     /// supports, is malformed or is `none`.

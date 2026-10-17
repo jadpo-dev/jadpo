@@ -5,3 +5,4 @@
 mod declines;
 mod incremental;
 mod make_setting;
+mod translations;
