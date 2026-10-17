@@ -200,6 +200,20 @@ fn category_of(category: Category) -> PluralCategory {
     }
 }
 
+/// A number for people in the locale tagged `tag` (area 19, "Numbers"):
+/// `text.format` on an `Int` or a `Decimal`, written as a translation's
+/// `{n}` is, with the locale's digits, grouping and decimal separator, and
+/// every place the value keeps.
+pub fn number(value: &Value, tag: &str) -> Result<String, Fault> {
+    let locale = locale_of(tag)?;
+    let formatter = DecimalFormatter::try_new((&locale).into(), Default::default())
+        .map_err(|_| Fault::Shape)?;
+    Ok(formatter
+        .format(&to_fixed(value)?)
+        .write_to_string()
+        .into_owned())
+}
+
 /// A number as ICU4X holds it, with the places it was written with.
 fn to_fixed(value: &Value) -> Result<Fixed, Fault> {
     match value {
@@ -364,6 +378,15 @@ mod tests {
         let pending = Value::variant("Status", 0, "pending", Vec::new());
         assert_eq!(say(&e, "en_gb", &p, vec![held]), "Held: no stock");
         assert_eq!(say(&e, "en_gb", &p, vec![pending]), "Waiting");
+    }
+
+    #[test]
+    fn a_number_alone_is_written_as_a_wording_writes_it() {
+        let d = Value::decimal("-1234.50").unwrap_or(Value::Unit);
+        assert_eq!(number(&d, "en-GB").as_deref(), Ok("-1,234.50"));
+        assert_eq!(number(&d, "de-DE").as_deref(), Ok("-1.234,50"));
+        assert_eq!(number(&Value::Int(7), "en-GB").as_deref(), Ok("7"));
+        assert_eq!(number(&Value::text("7"), "en-GB"), Err(Fault::Shape));
     }
 
     #[test]

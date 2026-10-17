@@ -1,8 +1,39 @@
-//! The `decimal` namespace (area 3, question 7).
+//! The `decimal` namespace (area 3, question 7; area 19, "Numbers").
 
 use crate::Fault;
 use crate::value::Decimal;
 pub use jadpo_std::Rounding;
+
+/// `value` without its sign, at the same scale.
+pub fn abs(value: Decimal) -> Result<Decimal, Fault> {
+    if value.mantissa < 0 {
+        value.checked_neg().ok_or(Fault::DecimalOverflow)
+    } else {
+        Ok(value)
+    }
+}
+
+/// The smaller of `a` and `b`, by value; of equal ones, `a`, so its places
+/// are kept.
+pub fn min(a: Decimal, b: Decimal) -> Decimal {
+    if b < a { b } else { a }
+}
+
+/// The larger of `a` and `b`, by value; of equal ones, `a`.
+pub fn max(a: Decimal, b: Decimal) -> Decimal {
+    if b > a { b } else { a }
+}
+
+/// `value` with at most `scale` places, rounded as `rounding` says when
+/// places are dropped; a value with fewer places is kept as it is.
+pub fn round(value: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
+    // The checker reads `scale:` written out, from 0 to 18.
+    let scale = u32::try_from(scale).map_err(|_| Fault::Shape)?;
+    if value.scale <= scale {
+        return Ok(value);
+    }
+    value.rescale(scale, rounding).ok_or(Fault::DecimalOverflow)
+}
 
 /// `dividend / divisor` at the dividend's scale, rounded as `rounding`
 /// says. The checker rules out a zero divisor; it is a fault if one arrives
@@ -64,5 +95,34 @@ mod tests {
             ),
             Ok(Decimal::new(5 * 10i128.pow(35), 2))
         );
+    }
+
+    #[test]
+    fn each_rounding_mode_rounds_its_own_way() {
+        let d = |m, s| Decimal::new(m, s);
+        let mode = |name| Rounding::from_name(name).unwrap_or(Rounding::HalfEven);
+        // (value, places, mode, result)
+        let cases = [
+            (d(225, 2), 1, "half_even", d(22, 1)),
+            (d(235, 2), 1, "half_even", d(24, 1)),
+            (d(225, 2), 1, "half_up", d(23, 1)),
+            (d(-225, 2), 1, "half_up", d(-23, 1)),
+            (d(221, 2), 1, "up", d(23, 1)),
+            (d(-221, 2), 1, "up", d(-23, 1)),
+            (d(229, 2), 1, "down", d(22, 1)),
+            (d(-229, 2), 1, "down", d(-22, 1)),
+            (d(229, 2), 0, "down", d(2, 0)),
+            // Fewer places than `scale` are kept as they are.
+            (d(25, 1), 3, "up", d(25, 1)),
+        ];
+        for (value, places, rounding, expected) in cases {
+            let rounded = round(value, places, mode(rounding));
+            assert_eq!(rounded, Ok(expected), "{value} {places} {rounding}");
+            assert_eq!(rounded.map(|r| r.scale), Ok(expected.scale));
+        }
+        assert_eq!(abs(d(-150, 2)), Ok(d(150, 2)));
+        assert_eq!(abs(d(150, 2)).map(|a| a.scale), Ok(2));
+        assert_eq!(min(d(150, 2), d(15, 1)).scale, 2, "the first of equal ones");
+        assert_eq!(max(d(150, 2), d(151, 2)), d(151, 2));
     }
 }

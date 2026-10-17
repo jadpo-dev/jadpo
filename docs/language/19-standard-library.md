@@ -575,6 +575,10 @@ stand.
   (area 3) is always written with spaces, as the formatter writes every
   binary operator, so the two never meet in formatted code. `20%3` is an
   error naming both readings.
+- **A ratio becomes a `Percentage` by construction.** Dividing two
+  quantities gives a plain `Decimal` (`lip / total`), and
+  `Percentage(ratio)` makes it one for display: `0.25` gives `25%`
+  ("Chosen in chunk 5.5d").
 - **No user-defined operators.** An application's types can't declare
   operators, so `a + b` always means a row of this table or area 3's, and
   a reviewer never has to find an overload to know what it does, whether
@@ -1142,6 +1146,112 @@ what an operator can't.
 - **`Rounding` is `half_even`, `half_up`, `up` and `down`,** `down`
   (toward zero, SQL form `trunc`) added by question 25; `floor`,
   `ceiling` and `half_down` stay out until amounts below zero need them.
+
+A bakery's numbers, through the operations built so far (chunk 5.5d; the
+maths from `sqrt` to `pi` comes with chunk 5.5e):
+
+```jadpo check project=number-operations
+type Grams = Int {
+    min: 0
+}
+
+type TrayCount = Int {
+    min: 1
+    max: 12
+}
+
+type LoafCount = Int {
+    min: 0
+}
+
+type Kilograms = Decimal {
+    scale: 3
+    min: 0.000
+}
+
+type LoafPrice = Decimal {
+    scale: 2
+    min: 0.00
+}
+
+/// How far a weighed batch is from its recipe, either way. `abs` is never
+/// below 0, so building `Grams` from it needs no arm.
+function drift(weighed: Grams, recipe: Grams) -> Grams {
+    return Grams(integer.abs(weighed - recipe))
+}
+
+/// The trays to bake: what was ordered, but never more than the oven
+/// holds. `min` gives one of its two values as it is, still a `TrayCount`.
+function trays_to_bake(requested: TrayCount, oven: TrayCount) -> TrayCount {
+    return integer.min(requested, oven)
+}
+
+/// Whole loaves a sack of flour makes at 0.450 kg each: part of a loaf
+/// isn't one, so the count rounds down, toward zero.
+function loaves_from(flour: Kilograms) -> LoafCount {
+    return LoafCount(integer.from_decimal(flour / 0.450, rounding: Rounding.down))
+}
+
+/// A loaf's price at a fifth off, never below the lowest price.
+function sale_price(price: LoafPrice, lowest: LoafPrice) -> LoafPrice {
+    return decimal.max(LoafPrice(price * 0.80), lowest)
+}
+
+/// A batch's weight to the nearest 100 g, for its label.
+function label_weight(weight: Kilograms) -> Kilograms {
+    return Kilograms(decimal.round(weight, scale: 1, rounding: Rounding.half_up))
+}
+
+/// The price as a customer reads it, in their own locale.
+function price_label(price: LoafPrice, customer: Locale) -> PresentationText {
+    return text.format(price, locale: customer)
+}
+```
+
+`min` and `max` take two values of one type, as `+` does: a literal
+takes the other's type and is checked against it, so `integer.min(requested,
+20)` is an error where `TrayCount` stops at 12, and a plain number, such as
+`requested + 1`, makes the result a plain `Int`. A rounding never crosses
+zero, so `loaves_from`'s count of flour never below zero is never below
+zero either. The page's values, and each mode to one place:
+
+```jadpo check project=number-operations file=main.test.jadpo
+test "number operations give what the page says" {
+    assert drift(980, 1000) == 20
+    assert drift(1020, 1000) == 20
+    assert trays_to_bake(10, 8) == 8
+    assert trays_to_bake(3, 8) == 3
+    assert loaves_from(10.000) == 22
+    assert loaves_from(0.449) == 0
+    assert sale_price(4.20, 3.50) == 3.50
+    assert sale_price(5.00, 3.50) == 4.00
+    assert label_weight(1.250) == 1.3
+    assert label_weight(1.249) == 1.2
+    assert integer.max(3, 8) == 8
+    assert decimal.abs(-2.50) == 2.50
+    assert decimal.min(4.20, 3.80) == 3.80
+    assert price_label(1234.50, Locale.en_gb) == "1,234.50"
+    assert price_label(1234.50, Locale.de_de) == "1.234,50"
+}
+
+test "every rounding mode, to one place" {
+    assert decimal.round(2.25, scale: 1, rounding: Rounding.half_even) == 2.2
+    assert decimal.round(2.35, scale: 1, rounding: Rounding.half_even) == 2.4
+    assert decimal.round(2.25, scale: 1, rounding: Rounding.half_up) == 2.3
+    assert decimal.round(-2.25, scale: 1, rounding: Rounding.half_up) == -2.3
+    assert decimal.round(2.21, scale: 1, rounding: Rounding.up) == 2.3
+    assert decimal.round(-2.21, scale: 1, rounding: Rounding.up) == -2.3
+    assert decimal.round(2.29, scale: 1, rounding: Rounding.down) == 2.2
+    assert decimal.round(-2.29, scale: 1, rounding: Rounding.down) == -2.2
+    assert integer.from_decimal(2.5, rounding: Rounding.half_even) == 2
+    assert integer.from_decimal(-2.5, rounding: Rounding.half_up) == -3
+    assert integer.divide(7, 2, rounding: Rounding.down) == 3
+}
+```
+
+`scale:` that isn't a whole number from 0 to 18 written at the call, as a
+type's `scale` is, is `type.mismatch`, and one below 0
+`type.argument_negative` (under "Errors").
 
 ## Money and payments
 
@@ -2094,6 +2204,7 @@ check failed: 1 error, 1 file
 | `list.`, formerly `collection.` | `count`, `contains`, `map` and `filter` decided in area 2; renamed from `collection.` (question 6) and joined by the 21 operations that need no language change in 5.5b; `zip_with` in 5.5c2 |
 | `set.`, `map.`, `range.`; `for` over a set; `[]` as an empty map | Decided 2026-10-17 (question 8); built in 5.5c: the 7 `set` operations, the 8 `map` operations that take no inline function, and the 3 `range` operations on `InstantRange`; `map.filter`, `map.map_values` and `Range<T>` in 5.5c2 |
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
+| `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here, built in 5.5k |
 | The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, each group of types in 5.5h to 5.5s |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
@@ -2198,8 +2309,8 @@ under "Errors").
   English interval fallback, until interval patterns are needed. `zone:`
   and `format:` are the time types' only, as their entries say: a
   missing `format:` is `type.temporal_format_invalid`, and an option a type
-  doesn't take `type.temporal_option_unused`. Numbers take no format for
-  people until chunk 5.5d.
+  doesn't take `type.temporal_option_unused`. Numbers took no format for
+  people until chunk 5.5d ("Chosen in chunk 5.5d").
 - **`FileType`'s variants** are the media types the pages name: `png`,
   `jpeg`, `webp`, `pdf`, `csv`, `tsv` and `json`; more come with chunk
   5.5n.
@@ -2293,6 +2404,41 @@ under "Errors").
 - **`set` and `map` are reserved** with `range` (question 30); no page,
   example or test used either name. `collection.` on a set or a map now
   checks as the `set.` or `map.` operation it moved to.
+
+### Chosen in chunk 5.5d
+
+- **`min` and `max` take two values of one type,** as `+` does (area 3),
+  and give one of them as it is: two named types that aren't one after
+  widening are `type.mismatch`; a literal takes the other's type and is
+  checked against all its rules, since the result may be the literal; a
+  plain number, which carries no type of its own, makes the result the
+  plain representation; two literals give it too. Where one type widens
+  to the other, the result is the wider.
+- **`scale:` is a whole number from 0 to 18,** the range a type's
+  `scale` takes (area 2), written at the call. A value is `type.mismatch`,
+  as `text.parse`'s `as:` is, a literal below 0 is
+  `type.argument_negative`, and any other literal `type.mismatch`. A
+  value with no more places than `scale:` is kept as it is, since the
+  result has *at most* `scale` places.
+- **Facts for proofs.** Besides `abs`'s floor of 0 in the table, `min`
+  and `max` carry their arguments' bounds (the smaller of two values is
+  never above either's top), and `integer.from_decimal` and
+  `decimal.round` keep the sign of a value bounded at zero, since no mode
+  rounds across it. Nothing finer: a rounded value's other bounds need a
+  check.
+- **Of equal values, `decimal.min` and `max` give the first,** so
+  `decimal.min(1.50, 1.5)` keeps `1.50`'s places.
+- **`text.format` on a number** is CLDR's decimal format for the locale,
+  with its digits, grouping and decimal separator, and every place the
+  value keeps, as a translation's `{n}` writes it (area 10): `1234.50` is
+  `1,234.50` in `en_gb` and `1.234,50` in `de_de`. It takes no options;
+  `zone:` or `format:` is `type.temporal_option_unused`. A `Bool` still
+  has no format for people.
+- **A ratio becomes a `Percentage` by construction,** `Percentage(ratio)`,
+  `0.25` giving `25%`, as every value becomes a named type (question 15):
+  the page named no conversion, so this is the conservative reading, with
+  no `units` operation for it. It is built with `Percentage` in chunk
+  5.5j.
 
 ### Chosen in chunk 5.5a2
 
@@ -2765,7 +2911,8 @@ first; each group of types then arrives with its baseline and its extras.
   `map.filter` and `map.map_values`; `Range<T>` on the contract, the
   `range` operations taking it.
 - **5.5d Numbers** `opus · high`: the 8 new `integer` and `decimal`
-  operations; `scale:` written out; `Rounding.down`.
+  operations; `scale:` written out; `Rounding.down`. Built, with
+  `text.format` for numbers.
 - **5.5e Decimal maths** `opus · high`: the eight
   correctly rounded operations, tested against reference values.
 - **5.5f Text** `opus · high`: the 17 text operations (the contract's

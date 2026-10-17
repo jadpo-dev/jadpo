@@ -417,6 +417,11 @@ Since chunk 5.5c a `Set` parameter or result is a stub's `Set<T>`, and a
 standard object type an operation takes (`InstantRange`, kind `Std`) can
 be written as an object literal, which the plan builds from its data
 entry's fields (area 19, "Sets", "Maps" and "Ranges").
+Since chunk 5.5d (area 19, "Numbers") a `written_out` parameter
+(`decimal.round`'s `scale:`) takes only a whole number from 0 to 18
+written at the call, and an operation whose `OneOf` result shares its `T`
+with two parameters (`min`, `max`) takes values of one type there, as `+`
+does, giving that type, or the representation for a plain number.
 `temporal` runs on jiff with its bundled IANA database,
 in `jadpo-value` only, so every target reads the same zones and none reads
 the platform's (area 10, "Zones and local times"). The time types'

@@ -791,7 +791,8 @@ impl Body<'_> {
         let mut format: Option<(Expr, jadpo_std::TimeFormatSpec)> = None;
         // The contract's value and the standard type it is, and the type
         // `as:` names (area 19).
-        let mut contract: Option<(Ty, &'static jadpo_std::StandardType)> = None;
+        // A number has no entry (area 19, "Numbers").
+        let mut contract: Option<(Ty, Option<&'static jadpo_std::StandardType>)> = None;
         let mut parsed: Option<(Ty, Option<Expr>)> = None;
         // What `list.sum`'s items are built on, which its result is.
         let mut summed: Option<Prim> = None;
@@ -818,6 +819,14 @@ impl Body<'_> {
                 continue;
             }
             let kind = table.and_then(|op| op.params.get(*slot)).map(|p| p.kind);
+            if table
+                .and_then(|op| op.params.get(*slot))
+                .is_some_and(|p| p.written_out)
+            {
+                let name = params[*slot].0.clone();
+                self.written_out_argument(&value, written, &name);
+                continue;
+            }
             if let Some(jadpo_std::Kind::OneOf(accepts)) = kind {
                 let name = params[*slot].0.clone();
                 self.built_on_argument(&value, ty, accepts, written, &name);
@@ -961,7 +970,7 @@ impl Body<'_> {
             self.locale_argument(call, &args, &slots, table, written);
         }
         if let (Some(table), Some((shown, entry))) = (table, &contract) {
-            self.contract_options(table, call, &args, &slots, (entry, shown), written);
+            self.contract_options(table, call, &args, &slots, (*entry, shown), written);
         }
         if let Some((target, _)) = parsed {
             let raw = args
@@ -986,6 +995,17 @@ impl Body<'_> {
             && table.op == jadpo_std::Op::LocaleFromAcceptLanguage
         {
             self.locales_for_choosing(call, written);
+        }
+        // `min` and `max` give one of their values, of one type (area 19).
+        if let Some(table) = table {
+            let given: Vec<(usize, Expr)> = args
+                .iter()
+                .zip(&slots)
+                .filter_map(|(arg, slot)| Some(((*slot)?, arg.expr()?)))
+                .collect();
+            if let Some(shared) = self.shared_type(table, &given, written) {
+                return shared;
+            }
         }
         // A sum is its items' representation, as `+` gives (area 19): a
         // named type is built back from it by construction.

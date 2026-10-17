@@ -40,7 +40,7 @@ pub(crate) mod names;
 pub mod pseudo;
 mod relative;
 
-pub use message::translate;
+pub use message::{number, translate};
 pub use relative::format_relative;
 
 type Zdt = ZonedDateTime<Gregorian, TimeZoneInfo<models::AtTime>>;
