@@ -177,7 +177,7 @@ pub fn find(db: &dyn Db, project: Project, written: &str) -> Result<ConstantId, 
                     .reason(format!(
                         "`jadpo config move` makes a constant a setting, and no constant is called `{written}`; a library's is named after its library, `library.name`."
                     ))
-                    .next("Name the constant as code reads it, such as `security.max_login_attempts`"),
+                    .next("Name the constant as code reads it: `name`, or `library.name` for a library's"),
             }))
         }
         many => {
@@ -210,8 +210,7 @@ pub fn at(db: &dyn Db, project: Project, file: File, offset: u32) -> Option<Cons
         }
     }
     // On a read.
-    let (crate::graph::Found::Node(found), _) =
-        crate::graph::lookup(db, project, file, offset)?
+    let (crate::graph::Found::Node(found), _) = crate::graph::lookup(db, project, file, offset)?
     else {
         return None;
     };
@@ -262,7 +261,10 @@ fn declaration(source: &ast::SourceFile, id: &ConstantId) -> Option<ast::Constan
     match (decl, id.member) {
         (Decl::ConstantDecl(constant), None) => Some(constant),
         (Decl::LibraryDecl(library), Some(member)) => {
-            match tree::library_members(&library).into_iter().nth(member as usize)? {
+            match tree::library_members(&library)
+                .into_iter()
+                .nth(member as usize)?
+            {
                 Decl::ConstantDecl(constant) => Some(constant),
                 _ => None,
             }
@@ -351,11 +353,10 @@ pub fn plan(db: &dyn Db, project: Project, id: &ConstantId) -> Result<Plan, Vec<
     if let Some(ty) = &ty
         && let Err(why) = crate::config::holds(db, project, ty)
     {
-        let at = ty_node
-            .as_ref()
-            .map_or_else(|| node_span(&id.path, decl.syntax()), |t| {
-                node_span(&id.path, t.syntax())
-            });
+        let at = ty_node.as_ref().map_or_else(
+            || node_span(&id.path, decl.syntax()),
+            |t| node_span(&id.path, t.syntax()),
+        );
         let why = if why.is_empty() {
             String::new()
         } else {
@@ -618,7 +619,11 @@ fn reads_of(
 }
 
 /// The syntax of callable `index` (`function` of a library) in its file.
-fn callable_node(source: &ast::SourceFile, index: u32, function: Option<u32>) -> Option<SyntaxNode> {
+fn callable_node(
+    source: &ast::SourceFile,
+    index: u32,
+    function: Option<u32>,
+) -> Option<SyntaxNode> {
     let decl = tree::decl_at(source, index)?;
     match (&decl, function) {
         (Decl::LibraryDecl(library), Some(member)) => tree::library_members(library)
@@ -670,14 +675,16 @@ fn in_update_by_id(body: &jadpo_graph::body::Body, offset: u32) -> bool {
 
 /// Whether `node` is in a `backfill:` decision (area 5).
 fn in_backfill(node: &SyntaxNode) -> bool {
-    node.ancestors().filter_map(ast::Member::cast).any(|member| {
-        member
-            .member_key()
-            .and_then(|key| key.names().next())
-            .and_then(|name| name_text(&name))
-            .as_deref()
-            == Some("backfill")
-    })
+    node.ancestors()
+        .filter_map(ast::Member::cast)
+        .any(|member| {
+            member
+                .member_key()
+                .and_then(|key| key.names().next())
+                .and_then(|name| name_text(&name))
+                .as_deref()
+                == Some("backfill")
+        })
 }
 
 /// Whether `node` is a value written in `config { }`: a `default:` naming
@@ -685,7 +692,10 @@ fn in_backfill(node: &SyntaxNode) -> bool {
 fn in_setting(node: &SyntaxNode) -> bool {
     node.ancestors()
         .filter_map(ast::SingletonDecl::cast)
-        .any(|decl| decl.keyword().is_some_and(|keyword| keyword.text() == "config"))
+        .any(|decl| {
+            decl.keyword()
+                .is_some_and(|keyword| keyword.text() == "config")
+        })
 }
 
 // --- moving ------------------------------------------------------------------
@@ -696,11 +706,8 @@ fn in_setting(node: &SyntaxNode) -> bool {
 pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Moved, Stopped> {
     let project = loaded.project;
     let mut before: BTreeMap<String, Option<String>> = BTreeMap::new();
-    let text_of = |loaded: &Loaded, path: &str| {
-        loaded
-            .file(path)
-            .map(|file| file.text(&loaded.db).clone())
-    };
+    let text_of =
+        |loaded: &Loaded, path: &str| loaded.file(path).map(|file| file.text(&loaded.db).clone());
     let config_path = plan
         .config
         .clone()
@@ -717,10 +724,11 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Moved, Stopped> {
     //    still there, so the imports it no longer needs read as unused.
     let mut edits: BTreeMap<String, Vec<(u32, u32, String)>> = BTreeMap::new();
     for read in &plan.reads {
-        edits
-            .entry(read.path.clone())
-            .or_default()
-            .push((read.start, read.end, format!("config.{}", plan.setting)));
+        edits.entry(read.path.clone()).or_default().push((
+            read.start,
+            read.end,
+            format!("config.{}", plan.setting),
+        ));
     }
     let config_text = before.get(&config_path).cloned().flatten();
     match (&plan.fills, &config_text) {
@@ -741,9 +749,16 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Moved, Stopped> {
         loaded.set_text(&path, crate::apply_edits(&text, file_edits));
     }
     if config_text.is_none() && plan.fills.is_none() {
-        loaded.set_text(&config_path, format!("config {{\n{}}}\n", field_text(plan, "    ")));
+        loaded.set_text(
+            &config_path,
+            format!("config {{\n{}}}\n", field_text(plan, "    ")),
+        );
     }
-    let touched: Vec<String> = paths.iter().filter(|p| **p != constant_path).cloned().collect();
+    let touched: Vec<String> = paths
+        .iter()
+        .filter(|p| **p != constant_path)
+        .cloned()
+        .collect();
     for path in &touched {
         crate::fix_imports(loaded, path);
     }
@@ -758,7 +773,8 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Moved, Stopped> {
         {
             let mut target = decl.syntax().clone();
             if plan.constant.member.is_some()
-                && let Some(Decl::LibraryDecl(library)) = tree::decl_at(&source, plan.constant.index)
+                && let Some(Decl::LibraryDecl(library)) =
+                    tree::decl_at(&source, plan.constant.index)
                 && tree::library_members(&library).len() == 1
                 && library
                     .member_list()
@@ -767,7 +783,8 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Moved, Stopped> {
                 library_removed = library.name().as_ref().and_then(name_text);
                 target = library.syntax().clone();
             }
-            let rest = source.decls().count() - usize::from(library_removed.is_some() || plan.constant.member.is_none());
+            let rest = source.decls().count()
+                - usize::from(library_removed.is_some() || plan.constant.member.is_none());
             if rest == 0 {
                 file_removed = true;
                 loaded.remove(&constant_path);
@@ -813,7 +830,11 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Moved, Stopped> {
     // What changed, file by file.
     let mut files = Vec::new();
     let mut order: Vec<String> = vec![config_path.clone(), constant_path.clone()];
-    let others: Vec<String> = paths.iter().filter(|p| !order.contains(p)).cloned().collect();
+    let others: Vec<String> = paths
+        .iter()
+        .filter(|p| !order.contains(p))
+        .cloned()
+        .collect();
     order.extend(others);
     for path in order {
         let was = before.get(&path).cloned().flatten();
@@ -946,10 +967,10 @@ fn insert_field(text: &str, plan: &Plan) -> Option<(u32, u32, String)> {
     let list = config.member_list()?;
     let items: Vec<MemberItem> = list.member_items().collect();
     let first = items.first().map(|item| item.syntax().clone());
-    let indent = first
-        .as_ref()
-        .and_then(|node| significant(node))
-        .map_or_else(|| "    ".to_string(), |token| column_text(text, token.text_range().start().into()));
+    let indent = first.as_ref().and_then(significant).map_or_else(
+        || "    ".to_string(),
+        |token| column_text(text, token.text_range().start().into()),
+    );
     let field = field_text(plan, &indent);
     let after = items.iter().find(|item| match item {
         MemberItem::Member(member) => member
@@ -987,9 +1008,10 @@ fn significant(node: &SyntaxNode) -> Option<SyntaxToken> {
 
 /// The start of the line holding the first comment or code of `node`.
 fn first_line_start(text: &str, node: &SyntaxNode) -> u32 {
-    let at = significant(node).map_or_else(|| node.text_range().start().into(), |token| {
-        u32::from(token.text_range().start())
-    });
+    let at = significant(node).map_or_else(
+        || node.text_range().start().into(),
+        |token| u32::from(token.text_range().start()),
+    );
     line_start(text, at)
 }
 
@@ -1016,7 +1038,10 @@ fn remove_node(text: &str, node: &SyntaxNode) -> String {
         .filter_map(|element| element.into_token())
         .filter(|token| !token.kind().is_trivia())
         .last()
-        .map_or_else(|| node.text_range().end().into(), |token| u32::from(token.text_range().end()));
+        .map_or_else(
+            || node.text_range().end().into(),
+            |token| u32::from(token.text_range().end()),
+        );
     let mut end = last as usize;
     let rest = &text[end..];
     end += rest.find('\n').map_or(rest.len(), |i| i + 1);

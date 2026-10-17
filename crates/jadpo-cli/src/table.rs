@@ -682,7 +682,7 @@ pub static COMMANDS: &[Command] = &[
             },
             Example {
                 description: "Make a constant a value each deployment can set",
-                command: "jadpo config move security.max_login_attempts",
+                command: "jadpo config move limits.max_retries",
             },
         ],
         arguments_rule: &rule::CLI_CONFIG_ARGUMENTS,

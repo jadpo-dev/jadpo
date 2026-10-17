@@ -4,7 +4,7 @@
 //! type with its value as `default:` and its description, deletes the
 //! constant, rewrites every read to `config.<name>`, and refuses, editing
 //! nothing, a type a setting can't hold, a name a setting has, and a read
-//! in a query, an update by `id` or another constant's value.
+//! in a query, an update by `id`, a backfill or another constant's value.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -72,7 +72,7 @@ const ACCOUNTS: &[(&str, &str)] = &[
     ),
     (
         "domains/accounts/actions/sign_in.jadpo",
-        "use accounts/types { AccountLocked, LoginAttempts }\nuse accounts/libraries { security }\n\naction sign_in(failures: LoginAttempts) -> AccountLocked {\n    return AccountLocked(failures >= security.max_login_attempts)\n}\n",
+        "use accounts/types { AccountLocked, LoginAttempts }\nuse accounts/libraries { security }\n\naction sign_in(failed_attempts: LoginAttempts) -> AccountLocked {\n    return AccountLocked(failed_attempts >= security.max_login_attempts)\n}\n",
     ),
 ];
 
@@ -93,13 +93,14 @@ fn the_pages_example_becomes_a_setting() {
             .get("domains/accounts/actions/sign_in.jadpo")
             .map(String::as_str),
         Some(
-            "use accounts/types { AccountLocked, LoginAttempts }\n\naction sign_in(failures: LoginAttempts) -> AccountLocked {\n    return AccountLocked(failures >= config.max_login_attempts)\n}\n"
+            "use accounts/types { AccountLocked, LoginAttempts }\n\naction sign_in(failed_attempts: LoginAttempts) -> AccountLocked {\n    return AccountLocked(failed_attempts >= config.max_login_attempts)\n}\n"
         )
     );
     // The library held nothing else, so it and its file are gone.
     assert!(!texts.contains_key("domains/accounts/libraries/security.jadpo"));
     assert_eq!(errors(&loaded), Vec::<String>::new());
-    let shown: Vec<(String, Vec<(Mark, String, String)>)> = moved
+    type Rows = Vec<(Mark, String, String)>;
+    let shown: Vec<(String, Rows)> = moved
         .files
         .iter()
         .map(|file| {
@@ -117,13 +118,11 @@ fn the_pages_example_becomes_a_setting() {
         [
             (
                 "config.jadpo".to_string(),
-                vec![
-                    (
-                        Mark::Added,
-                        "max_login_attempts".to_string(),
-                        "setting, default 5".to_string()
-                    ),
-                ]
+                vec![(
+                    Mark::Added,
+                    "max_login_attempts".to_string(),
+                    "setting, default 5".to_string()
+                ),]
             ),
             (
                 "domains/accounts/libraries/security.jadpo".to_string(),
@@ -147,13 +146,11 @@ fn the_pages_example_becomes_a_setting() {
             ),
             (
                 "domains/accounts/actions/sign_in.jadpo".to_string(),
-                vec![
-                    (
-                        Mark::Changed,
-                        "line 5".to_string(),
-                        "reads config.max_login_attempts".to_string()
-                    ),
-                ]
+                vec![(
+                    Mark::Changed,
+                    "line 5".to_string(),
+                    "reads config.max_login_attempts".to_string()
+                ),]
             ),
         ]
     );
@@ -173,7 +170,10 @@ fn the_constant_is_named_as_code_reads_it_or_after_its_domain() {
     let wrong = setting_move::find(&loaded.db, loaded.project, "security.max_login_attempt")
         .expect_err("no such constant");
     assert_eq!(wrong.rule.id, "cli.config_arguments");
-    assert_eq!(wrong.message, "`security.max_login_attempt` isn't a constant");
+    assert_eq!(
+        wrong.message,
+        "`security.max_login_attempt` isn't a constant"
+    );
     assert_eq!(
         wrong.next.as_ref().map(|next| next.text.as_str()),
         Some("Use `security.max_login_attempts` instead of `security.max_login_attempt`")
@@ -398,4 +398,34 @@ fn restore_puts_the_texts_back() {
     let moved = moved(&mut loaded, "security.max_login_attempts");
     setting_move::restore(&mut loaded, &moved);
     assert_eq!(texts(&loaded), before);
+}
+
+#[test]
+fn a_read_in_a_backfill_is_refused() {
+    // A backfill takes literals until computed backfills (chunk 5.6), so
+    // the project doesn't check; the plan refuses the read all the same.
+    let files: &[(&str, &str)] = &[
+        APP,
+        (
+            "domains/notes/types/stars.jadpo",
+            "type Stars = Int {\n    min: 1\n    max: 5\n}\n",
+        ),
+        (
+            "domains/notes/entities/note.jadpo",
+            "use notes/types { Stars }\n\nentity Note {\n    id: Uuid\n    stars: Stars\n}\n",
+        ),
+        (
+            "shared/libraries/ratings.jadpo",
+            "use notes/types { Stars }\n\nlibrary ratings {\n    constant usual_stars: Stars = 3\n}\n",
+        ),
+        (
+            "database/migrations/20261020T1401_add_stars/changes.jadpo",
+            "use shared/libraries { ratings }\n\nmigration {\n    Note.stars: {\n        backfill: ratings.usual_stars\n    }\n}\n",
+        ),
+    ];
+    let loaded = loaded(Layout::Project, files);
+    assert_eq!(
+        refused(&loaded, "ratings.usual_stars"),
+        ["configuration.move_read_unsupported: `ratings.usual_stars` is read in a backfill"]
+    );
 }

@@ -27,7 +27,7 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/accounts/actions/sign_in.jadpo",
-        "use accounts/types { AccountLocked, LoginAttempts }\nuse accounts/libraries { security }\n\naction sign_in(failures: LoginAttempts) -> AccountLocked {\n    return AccountLocked(failures >= security.max_login_attempts)\n}\n",
+        "use accounts/types { AccountLocked, LoginAttempts }\nuse accounts/libraries { security }\n\naction sign_in(failed_attempts: LoginAttempts) -> AccountLocked {\n    return AccountLocked(failed_attempts >= security.max_login_attempts)\n}\n",
     ),
 ];
 
@@ -51,7 +51,8 @@ fn uri(root: &Path, path: &str) -> String {
 fn start(root: &Path, resolves: bool) -> Server {
     let mut capabilities = json!({});
     if resolves {
-        capabilities = json!({"textDocument": {"codeAction": {"resolveSupport": {"properties": ["edit"]}}}});
+        capabilities =
+            json!({"textDocument": {"codeAction": {"resolveSupport": {"properties": ["edit"]}}}});
     }
     let params = serde_json::from_value(json!({
         "processId": null,
@@ -161,7 +162,13 @@ fn the_action_on_a_read_makes_the_edit_config_move_makes() {
             .map(|file| file.text(&loaded.db).clone())
     };
     assert_eq!(server_text(&server).as_deref(), Some(FILES[4].1));
-    assert!(server.loaded().expect("project").file("config.jadpo").is_none());
+    assert!(
+        server
+            .loaded()
+            .expect("project")
+            .file("config.jadpo")
+            .is_none()
+    );
 }
 
 #[test]
@@ -176,7 +183,10 @@ fn the_action_on_the_declaration_comes_with_its_edit_when_not_resolved() {
         15,
     );
     assert_eq!(offered[0]["title"], MAKE_SETTING);
-    assert!(offered[0]["edit"]["documentChanges"].is_array(), "{offered}");
+    assert!(
+        offered[0]["edit"]["documentChanges"].is_array(),
+        "{offered}"
+    );
 }
 
 #[test]
@@ -188,7 +198,7 @@ fn a_refused_move_is_offered_unavailable_with_its_reason() {
     ));
     files[4] = (
         SIGN_IN,
-        "use accounts/types { AccountLocked, LoginAttempts }\nuse accounts/libraries { security }\n\naction sign_in(failures: LoginAttempts) -> AccountLocked {\n    return AccountLocked(failures >= security.max_login_attempts or failures >= config.max_login_attempts)\n}\n",
+        "use accounts/types { AccountLocked, LoginAttempts }\nuse accounts/libraries { security }\n\naction sign_in(failed_attempts: LoginAttempts) -> AccountLocked {\n    return AccountLocked(failed_attempts >= security.max_login_attempts or failed_attempts >= config.max_login_attempts)\n}\n",
     );
     let root = project("lsp-make-setting-refused", &files);
     let mut server = start(&root, true);

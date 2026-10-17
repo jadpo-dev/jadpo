@@ -61,12 +61,12 @@ use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as Process, Stdio};
 
+use jadpo_check::setting_move;
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_host_native::NativeHost;
 use jadpo_interp::Prepared;
 use jadpo_runtime::Host;
 use jadpo_runtime::config::{Mode, ProblemKind, StartProblem, State, Variables};
-use jadpo_check::setting_move;
 use jadpo_term::{
     Block, ChangeMark, ColorChoice, Environment, Fact, Json, Outcome, Screen, Stream, Style, Token,
 };
@@ -404,7 +404,7 @@ fn move_command(call: &Call) -> Reply {
                 "`jadpo config move` needs a constant",
             )
             .reason("It makes one constant a setting, so it needs to know which.")
-            .next("Run `jadpo config move <constant>`, naming it as code reads it, such as `security.max_login_attempts`"),
+            .next("Run `jadpo config move <constant>`, naming it as code reads it: `name`, or `library.name` for a library's"),
         );
     };
     let Some(root) = jadpo_db::find_root(&cwd) else {
@@ -432,7 +432,11 @@ fn move_command(call: &Call) -> Reply {
         Err(refusals) => {
             let mut screen = Screen::new();
             for problem in &refusals {
-                screen.push(Block::diagnostic_from(problem, &sources, shown_root.as_deref()));
+                screen.push(Block::diagnostic_from(
+                    problem,
+                    &sources,
+                    shown_root.as_deref(),
+                ));
             }
             screen.push(Block::summary(
                 Outcome::Failure,
@@ -545,7 +549,12 @@ fn moved_screen(plan: &setting_move::Plan, moved: &setting_move::Moved) -> Scree
                 change
                     .rows
                     .iter()
-                    .map(|row| (mark_of(row.mark), vec![row.subject.clone(), row.note.clone()]))
+                    .map(|row| {
+                        (
+                            mark_of(row.mark),
+                            vec![row.subject.clone(), row.note.clone()],
+                        )
+                    })
                     .collect(),
             )
         })

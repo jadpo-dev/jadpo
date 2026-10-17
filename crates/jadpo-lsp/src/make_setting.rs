@@ -14,9 +14,9 @@ use jadpo_check::setting_move;
 use jadpo_diag::Severity;
 use lsp_types::{
     CodeAction, CodeActionDisabled, CodeActionKind, CodeActionOrCommand, CodeActionParams,
-    CodeActionResponse, CreateFile, DeleteFile, DocumentChangeOperation, DocumentChanges,
-    OneOf, OptionalVersionedTextDocumentIdentifier, Position, Range, ResourceOp,
-    TextDocumentEdit, TextEdit, Uri, WorkspaceEdit,
+    CodeActionResponse, CreateFile, DeleteFile, DocumentChangeOperation, DocumentChanges, OneOf,
+    OptionalVersionedTextDocumentIdentifier, Position, Range, ResourceOp, TextDocumentEdit,
+    TextEdit, Uri, WorkspaceEdit,
 };
 use serde_json::json;
 
@@ -91,8 +91,10 @@ impl Server {
         let plan = match setting_move::plan(&loaded.db, loaded.project, &id) {
             Ok(plan) => plan,
             Err(refusals) => {
-                let reasons: Vec<String> =
-                    refusals.iter().map(|problem| problem.message.clone()).collect();
+                let reasons: Vec<String> = refusals
+                    .iter()
+                    .map(|problem| problem.message.clone())
+                    .collect();
                 return Some(action(Some(reasons.join("; "))));
             }
         };
@@ -130,10 +132,7 @@ impl Server {
             let uri = convert::uri_of(&root.join(&change.path))?;
             match (&change.before, &change.after) {
                 (_, None) => operations.push(DocumentChangeOperation::Op(ResourceOp::Delete(
-                    DeleteFile {
-                        uri,
-                        options: None,
-                    },
+                    DeleteFile { uri, options: None },
                 ))),
                 (before, Some(after)) => {
                     let before = before.clone().unwrap_or_default();
