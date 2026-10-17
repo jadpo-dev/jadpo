@@ -953,7 +953,11 @@ impl Lower<'_> {
                     // no declaration in the project: the plan builds its
                     // shape from its data entry.
                     None if jadpo_std::standard_type(name).is_some_and(|entry| {
-                        matches!(entry.holds, jadpo_std::standard::Holds::Object(_))
+                        matches!(
+                            entry.holds,
+                            jadpo_std::standard::Holds::Object(_)
+                                | jadpo_std::standard::Holds::Range
+                        )
                     }) =>
                     {
                         Callee::Object(Key::new(jadpo_graph::Kind::Type, name))

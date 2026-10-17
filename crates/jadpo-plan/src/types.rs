@@ -189,10 +189,45 @@ impl Types {
             return None;
         }
         let entry = jadpo_std::standard_type(key.name())?;
-        let jadpo_std::standard::Holds::Object(fields) = entry.holds else {
-            return None;
-        };
-        Some(self.fixed_shape(entry.name, fields))
+        match entry.holds {
+            jadpo_std::standard::Holds::Object(fields) => {
+                Some(self.fixed_shape(entry.name, fields))
+            }
+            jadpo_std::standard::Holds::Range => Some(self.range_shape()),
+            _ => None,
+        }
+    }
+
+    /// The shape of `Range<T>` (area 19): its `start` and `end`, each a
+    /// `T` or `none`. One shape serves every `T`: an end is checked as its
+    /// `T` where it is built or read (its codec), so the shape adds no
+    /// rule of its own.
+    pub(crate) fn range_shape(&mut self) -> ShapeId {
+        let key = Key::new(Kind::Type, jadpo_std::RANGE);
+        if let Some(id) = self.shape_ids.get(&key) {
+            return *id;
+        }
+        let validator = self.validator_id(&TypeRef::Std(jadpo_std::RANGE.to_string(), Vec::new()));
+        let fields = jadpo_std::RANGE_FIELDS
+            .iter()
+            .map(|field| FieldPlan {
+                key: format!("field {}.{field}", jadpo_std::RANGE),
+                name: (*field).to_string(),
+                validator,
+                absent: None,
+                omittable: false,
+                none_left_out: false,
+                section: None,
+            })
+            .collect();
+        let id = ShapeId(self.shapes.len() as u32);
+        self.shapes.push(ShapePlan {
+            ty: jadpo_std::RANGE.to_string(),
+            variant: None,
+            fields,
+        });
+        self.shape_ids.insert(key, id);
+        id
     }
 
     /// The number of failure `key`'s plan, numbering it on first use.

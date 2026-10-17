@@ -29,6 +29,10 @@ pub enum Holds {
     /// An object with these fields, in declared order, each built on a
     /// built-in type.
     Object(&'static [(&'static str, Builtin)]),
+    /// `Range<T>` (area 19, "Ranges"): a `start` and an `end` ([`RANGE_FIELDS`])
+    /// of one ordered type, the type argument, either of them `none` for
+    /// an open end.
+    Range,
 }
 
 /// A standard type's canonical text: the one form `text.from` writes and
@@ -54,6 +58,10 @@ pub enum TextForm {
     Code,
     /// ISO 8601's interval of two instants, `<start>/<end>`.
     Interval,
+    /// A range's two ends, each in its item type's canonical text, joined
+    /// by `/`, with an open end written `..` as ISO 8601-2 writes one:
+    /// `2026-10-01/..`.
+    Range,
 }
 
 /// How a standard type is sent and read as JSON.
@@ -88,6 +96,10 @@ pub enum FormatKey {
     LocaleName,
     /// CLDR's generic location format for a zone: "UK Time".
     ZoneName,
+    /// Each end as its item type is shown, with the item type's options,
+    /// joined by CLDR's interval fallback, `{0} – {1}`; an open end is
+    /// `…`.
+    Range,
 }
 
 /// An option `text.format` takes for a type, by its parameter's name.
@@ -155,6 +167,9 @@ pub struct Examples {
     pub format: Option<&'static str>,
     /// Texts that aren't the type at all: `text.parse` fails `malformed`.
     pub malformed: &'static [&'static str],
+    /// For a type that takes a type argument, the one its examples hold:
+    /// `CalendarDate` for `Range<CalendarDate>`.
+    pub of: Option<&'static str>,
 }
 
 /// One standard type's data entry.
@@ -255,7 +270,8 @@ const fn checked(
 }
 
 /// Every standard type built so far, sorted by name: the 13 areas 2, 10
-/// and 16 built, run through the contract in chunk 5.5a.
+/// and 16 built, run through the contract in chunk 5.5a, and `Range<T>`
+/// (chunk 5.5c2).
 pub const STANDARD_TYPES: &[StandardType] = &[
     // Day-and-month calendar dates, ordered by day.
     StandardType {
@@ -275,6 +291,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             valid: &[("2026-02-28", "28 Feb 2026"), ("2026-10-25", "25 Oct 2026")],
             format: Some("date_medium"),
             malformed: &["2026-02-30", "25/10/2026", ""],
+            of: None,
         },
         release: FIRST_RELEASE,
     },
@@ -300,6 +317,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ],
             format: None,
             malformed: &["5 minutes", "P", "PT"],
+            of: None,
         },
         release: FIRST_RELEASE,
     },
@@ -311,6 +329,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             valid: &[("someone@example.com", "someone@example.com")],
             format: None,
             malformed: &["someone", "someone@", "@example.com"],
+            of: None,
         },
     ),
     StandardType {
@@ -330,6 +349,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ],
             format: None,
             malformed: &["png", "image/tiff"],
+            of: None,
         },
         release: FIRST_RELEASE,
     },
@@ -353,6 +373,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ],
             format: Some("date_time_medium"),
             malformed: &["2026-10-25", "2026-10-25T09:30:00", "yesterday"],
+            of: None,
         },
         release: FIRST_RELEASE,
     },
@@ -391,6 +412,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             )],
             format: Some("date_time_medium"),
             malformed: &["2026-10-25T09:00:00Z", "2026-10-25T09:00:00Z/tomorrow"],
+            of: None,
         },
         release: FIRST_RELEASE,
     },
@@ -402,6 +424,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             valid: &[("192.0.2.1", "192.0.2.1"), ("2001:db8::1", "2001:db8::1")],
             format: None,
             malformed: &["192.0.2", "example.com"],
+            of: None,
         },
     ),
     StandardType {
@@ -421,6 +444,43 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             valid: &[("en-GB", "British English"), ("fr-FR", "French (France)")],
             format: None,
             malformed: &["english", "xx-YY"],
+            of: None,
+        },
+        release: FIRST_RELEASE,
+    },
+    // A range of any ordered type, either end open (area 19, "Ranges"),
+    // holding its start and not its end, as `InstantRange` and
+    // PostgreSQL's ranges do. Its examples are ranges of dates.
+    StandardType {
+        name: RANGE,
+        holds: Holds::Range,
+        text: Some(TextForm::Range),
+        json: Json::Fields(&RANGE_FIELDS),
+        // Stored as its JSON, as `InstantRange` is.
+        storage: SqlType::Json,
+        // The options its item type takes (`zone:`, `format:`).
+        format: Format {
+            key: FormatKey::Range,
+            options: NO_OPTIONS,
+        },
+        ordered: false,
+        validator: None,
+        shape: None,
+        examples: Examples {
+            valid: &[
+                ("2026-10-01/2026-11-01", "1 Oct 2026 – 1 Nov 2026"),
+                ("2026-10-01/..", "1 Oct 2026 – …"),
+                ("../2026-11-01", "… – 1 Nov 2026"),
+                ("../..", "… – …"),
+            ],
+            format: Some("date_medium"),
+            malformed: &[
+                "2026-10-01",
+                "2026-11-01/2026-10-01",
+                "2026-10-01/tomorrow",
+                "/2026-11-01",
+            ],
+            of: Some("CalendarDate"),
         },
         release: FIRST_RELEASE,
     },
@@ -432,6 +492,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             valid: &[("https://example.com/orders", "https://example.com/orders")],
             format: None,
             malformed: &["example.com", "ftp://example.com"],
+            of: None,
         },
     ),
     StandardType {
@@ -451,6 +512,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             )],
             format: None,
             malformed: &["0192f0c4", "not-a-uuid"],
+            of: None,
         },
         release: FIRST_RELEASE,
     },
@@ -471,6 +533,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             valid: &[("monday", "Monday"), ("sunday", "Sunday")],
             format: None,
             malformed: &["mon", "funday"],
+            of: None,
         },
         release: FIRST_RELEASE,
     },
@@ -494,6 +557,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ],
             format: None,
             malformed: &["London", "GMT+1"],
+            of: None,
         },
         release: FIRST_RELEASE,
     },
@@ -520,6 +584,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             )],
             format: Some("date_time_medium"),
             malformed: &["2026-10-25T09:30:00Z", "2026-10-25T09:30:00+00:00"],
+            of: None,
         },
         release: FIRST_RELEASE,
     },
@@ -533,6 +598,25 @@ pub const INSTANT_RANGE: &str = "InstantRange";
 /// `InstantRange`'s fields, in order.
 pub const INSTANT_RANGE_FIELDS: [(&str, Builtin); 2] =
     [("start", Builtin::Instant), ("end", Builtin::Instant)];
+
+/// `Range<T>` (area 19, "Ranges"): a range of any ordered type.
+pub const RANGE: &str = "Range";
+
+/// `Range<T>`'s fields, in order, each a `T?`.
+pub const RANGE_FIELDS: [&str; 2] = ["start", "end"];
+
+/// The built-in types a range's item may be built on: those `<` orders
+/// (area 3).
+pub const RANGE_ITEMS: &[Builtin] = &[
+    Builtin::Int,
+    Builtin::Decimal,
+    Builtin::Instant,
+    Builtin::CalendarDate,
+    Builtin::Duration,
+];
+
+/// How a range's open end is written in its canonical text.
+pub const OPEN_END: &str = "..";
 
 /// The standard type called `name`.
 pub fn standard_type(name: &str) -> Option<&'static StandardType> {
@@ -637,7 +721,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 13, "the 13 standard types built so far");
+        assert_eq!(names.len(), 14, "the 14 standard types built so far");
     }
 
     #[test]
@@ -659,10 +743,21 @@ mod tests {
                 let declared: Vec<&str> = fields.iter().map(|(name, _)| *name).collect();
                 assert_eq!(declared, names, "{}'s JSON is its fields", entry.name);
             }
+            // A range takes its item type's options.
+            let formatted = match entry.examples.of {
+                Some(item) => standard_type(item).expect("an item type"),
+                None => entry,
+            };
             assert_eq!(
                 entry.examples.format.is_some(),
-                entry.format_option("format").is_some(),
+                formatted.format_option("format").is_some(),
                 "{}'s examples name a format exactly when it takes one",
+                entry.name
+            );
+            assert_eq!(
+                entry.examples.of.is_some(),
+                entry.holds == Holds::Range,
+                "{}'s examples hold a type argument exactly when it takes one",
                 entry.name
             );
             // A distinctive shape (question 5): two fields or more, at

@@ -67,6 +67,34 @@ impl Body<'_> {
         if ty.has_error() {
             return None;
         }
+        // A range is shown as its ends are, with their options (area 19).
+        if op == Op::TextFormat
+            && !self.table.is_nullable(&ty)
+            && let Some(item) = super::calls::range_item(&self.table.structure(&ty))
+            && standard_type(jadpo_std::RANGE).is_some_and(|entry| {
+                matches!(self.contract_of(&ty), Contract::Standard(found) if found == entry)
+            })
+        {
+            return match self.contract_of(&item) {
+                Contract::Standard(entry) => Some(entry),
+                Contract::Representation(prim) => {
+                    self.out.push(
+                        Diagnostic::new(
+                            &rule::TYPE_MISMATCH,
+                            format!("`{ty}` can't be used where a standard type's value is required"),
+                        )
+                        .at(self.span(value), format!("this is `{ty}`"))
+                        .reason(format!(
+                            "`{written}` shows a range as its ends are shown; `{ty}`'s ends are built on `{}`, which has no format of its own yet.",
+                            prim.name()
+                        ))
+                        .next("Pass a standard type's value here"),
+                    );
+                    None
+                }
+                Contract::Neither(_) => None,
+            };
+        }
         let (fits, entry, why) = match (op, self.contract_of(&ty)) {
             (_, _) if self.table.is_nullable(&ty) => (
                 false,
@@ -136,6 +164,12 @@ impl Body<'_> {
     /// representation whose text it reads, and the call gives the type.
     pub(super) fn type_argument(&mut self, value: &Expr, written: &str) -> Option<Ty> {
         let target = match TypeRef::from_expr(value) {
+            // `as: Range<CalendarDate>` (area 19).
+            TypeRef::Path(names, args)
+                if names.len() == 1 && names[0] == jadpo_std::RANGE && args.len() == 1 =>
+            {
+                Some(self.table.resolve(&TypeRef::Path(names, args)))
+            }
             TypeRef::Path(names, args) if args.is_empty() && !names.is_empty() => {
                 let head_is_type = names
                     .first()
@@ -169,6 +203,50 @@ impl Body<'_> {
         };
         if target.has_error() {
             return None;
+        }
+        // A range is read end by end, as its item type: a standard type or
+        // a representation itself, whose canonical text is all that is
+        // checked, since a range of a type with rules of its own has no
+        // construction to check them (area 19).
+        if let Some(item) = super::calls::range_item(&target)
+            && let Ty::Opaque(name, _) = &target
+            && name == jadpo_std::RANGE
+        {
+            if !self.range_ordered(&item) {
+                self.out
+                    .push(super::range_unordered(&item, self.span(value)));
+                return None;
+            }
+            let reads = match (&item, self.contract_of(&item)) {
+                (Ty::Prim(_), Contract::Standard(entry)) => Some(entry.name),
+                (Ty::Prim(_), Contract::Representation(prim)) => Some(prim.name()),
+                _ => None,
+            };
+            let Some(reads) = reads else {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_MISMATCH,
+                        format!("`{written}` can't read text as `{target}`"),
+                    )
+                    .at(self.span(value), format!("`{item}` has rules of its own"))
+                    .reason(format!(
+                        "`{written}` reads a range's ends by their canonical text alone, so it reads a range of a standard type or a representation, such as `Range<Int>`; `{item}`'s rules would go unchecked."
+                    ))
+                    .next(format!(
+                        "Read a range of what `{item}` is built on, such as `as: Range<{}>`",
+                        self.table
+                            .representation(&item)
+                            .map_or("Int", |prim| prim.name())
+                    )),
+                );
+                return None;
+            };
+            let key = node_key(value.syntax());
+            self.facts.types.insert(key, Ty::Prim(Prim::Text));
+            self.facts
+                .formats
+                .insert(key, format!("{}<{reads}>", jadpo_std::RANGE));
+            return Some(target);
         }
         let reads = match self.contract_of(&target) {
             Contract::Standard(entry) if entry.text.is_some() => Some(entry.name),

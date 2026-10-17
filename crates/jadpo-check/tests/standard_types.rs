@@ -25,8 +25,10 @@ fn types(entry: &StandardType) -> (String, String) {
         Holds::Builtin(_) => format!("type Shown = {} {{}}\n\n", entry.name),
         _ => String::new(),
     };
-    let value = match entry.holds {
-        Holds::Builtin(_) => "Shown".to_string(),
+    let value = match (entry.holds, entry.examples.of) {
+        (Holds::Builtin(_), _) => "Shown".to_string(),
+        // A range of its examples' type (area 19).
+        (_, Some(item)) => format!("{}<{item}>", entry.name),
         _ => entry.name.to_string(),
     };
     (
@@ -93,6 +95,18 @@ fn every_stub_agrees_with_its_data_entry() {
                     .collect();
                 assert_eq!(declared, expected, "{}'s fields", entry.name);
             }
+            Holds::Range => {
+                assert_eq!(base, "Object", "{}", entry.name);
+                let end = jadpo_check::types::TypeRef::Nullable(Box::new(
+                    jadpo_check::types::TypeRef::Path(vec!["T".to_string()], Vec::new()),
+                ));
+                let expected: Vec<(String, Option<jadpo_check::types::TypeRef>)> =
+                    jadpo_std::RANGE_FIELDS
+                        .iter()
+                        .map(|name| ((*name).to_string(), Some(end.clone())))
+                        .collect();
+                assert_eq!(members, &expected, "{}'s ends", entry.name);
+            }
         }
     }
 }
@@ -102,9 +116,15 @@ fn every_standard_type_meets_the_contract_in_the_checker() {
     for entry in STANDARD_TYPES {
         let name = entry.name;
         let (declared, value) = types(entry);
-        // `text.format`, with the options its entry takes, and none other.
+        // `text.format`, with the options its entry takes, and none other:
+        // a range's are its item type's.
+        let formatted = entry
+            .examples
+            .of
+            .and_then(jadpo_std::standard_type)
+            .unwrap_or(entry);
         let mut options = String::new();
-        if entry.format_option("zone").is_some() {
+        if formatted.format_option("zone").is_some() {
             options.push_str(", zone: Zone.utc");
         }
         if let Some(format) = entry.examples.format {
@@ -120,7 +140,7 @@ fn every_standard_type_meets_the_contract_in_the_checker() {
             Vec::<String>::new(),
             "{name}: text.format"
         );
-        if entry.format_option("zone").is_none() {
+        if formatted.format_option("zone").is_none() {
             assert_eq!(
                 format(&format!("{options}, zone: Zone.utc")),
                 ["type.temporal_option_unused"],

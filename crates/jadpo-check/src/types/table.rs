@@ -851,6 +851,11 @@ pub trait TypeView {
                 Ty::Error
             };
         }
+        // `Range<T>` takes one type argument (area 19), which its
+        // declaration's check reports when it is missing.
+        if name == jadpo_std::RANGE && args.len() != 1 {
+            return Ty::Error;
+        }
         if StdNames::get().is_opaque(name) {
             return Ty::Opaque(name.to_string(), args);
         }

@@ -2,18 +2,21 @@
 // typed, in `jadpo-std`'s operation table, which names the Rust function
 // in `jadpo-value` that runs it; a test holds these stubs to that table.
 //
-// Each follows the range's own end rule: an `InstantRange` holds every
-// instant from its start up to, not including, its end. They take an
-// `InstantRange` until `Range<T>` comes to the contract (chunk 5.5c2) and
-// `DateRange` with the time types (5.5k).
+// `Range<T>` here is any range whose ends are a `T`: a `Range<T>` itself,
+// or `InstantRange`, whose ends are instants. A call's ranges are all of
+// one range type, and a range it gives is of that type too. Each follows
+// the range's own end rule: a `Range<T>` and an `InstantRange` hold every
+// value from their start up to, not including, their end, and an open end
+// (`none`) holds everything on its side. `DateRange` joins with the time
+// types (5.5k).
 
 public library range {
     /// Whether `value` is inside `range`.
-    function contains(range: InstantRange, value: Instant) -> Bool {}
+    function contains(range: Range<T>, value: T) -> Bool {}
 
-    /// Whether `a` and `b` share at least one instant.
-    function overlaps(a: InstantRange, b: InstantRange) -> Bool {}
+    /// Whether `a` and `b` share at least one value.
+    function overlaps(a: Range<T>, b: Range<T>) -> Bool {}
 
     /// The part `a` and `b` share; `none` when they don't overlap.
-    function intersection(a: InstantRange, b: InstantRange) -> InstantRange? {}
+    function intersection(a: Range<T>, b: Range<T>) -> Range<T>? {}
 }

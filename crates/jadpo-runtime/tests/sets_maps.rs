@@ -297,3 +297,42 @@ fn filter_and_map_values_are_given_each_key_and_value() {
         );
     }
 }
+
+/// `project=generic-ranges`: a `Range<T>` holds its start and not its end,
+/// and an open end holds everything on its side (chunk 5.5c2).
+#[test]
+fn a_range_of_any_ordered_type_gives_the_page_s_values() {
+    let band = |start: Option<i64>, end: Option<i64>| {
+        jadpo_value::range::range_of(start.map(Value::Int), end.map(Value::Int))
+    };
+    let large = band(Some(800), None);
+    let medium = band(Some(400), Some(800));
+    let small = band(None, Some(500));
+    let yes = Value::Bool(true);
+    let no = Value::Bool(false);
+    assert_eq!(
+        call(Op::RangeContains, &[large.clone(), Value::Int(800)]),
+        yes
+    );
+    assert_eq!(
+        call(Op::RangeContains, &[medium.clone(), Value::Int(800)]),
+        no
+    );
+    assert_eq!(
+        call(Op::RangeIntersection, &[medium.clone(), large.clone()]),
+        Value::None
+    );
+    assert_eq!(
+        call(Op::RangeIntersection, &[medium.clone(), small.clone()]),
+        band(Some(400), Some(500))
+    );
+    assert_eq!(call(Op::RangeOverlaps, &[small, medium]), yes);
+    assert_eq!(
+        jadpo_value::standard::from(&large),
+        Ok(Value::text("800/.."))
+    );
+    assert_eq!(
+        jadpo_value::standard::parse("800/..", "Range<Int>"),
+        Ok(large)
+    );
+}

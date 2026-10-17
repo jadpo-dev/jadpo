@@ -795,6 +795,8 @@ impl Body<'_> {
         let mut parsed: Option<(Ty, Option<Expr>)> = None;
         // What `list.sum`'s items are built on, which its result is.
         let mut summed: Option<Prim> = None;
+        // The range type a `range` call's ranges are, which its result is.
+        let mut ranged: Option<Ty> = None;
         for ((arg, slot), ty) in args.iter().zip(&slots).zip(actual) {
             let Some(value) = arg.expr() else { continue };
             let Some(slot) = slot else {
@@ -818,6 +820,15 @@ impl Body<'_> {
                 continue;
             }
             let kind = table.and_then(|op| op.params.get(*slot)).map(|p| p.kind);
+            if kind == Some(jadpo_std::Kind::Range) {
+                let given = match ty {
+                    Some(ty) => ty,
+                    None => self.infer(&value),
+                };
+                let name = params[*slot].0.clone();
+                self.range_argument(&value, &given, &mut ranged, (written, &name));
+                continue;
+            }
             if let Some(jadpo_std::Kind::OneOf(accepts)) = kind {
                 let name = params[*slot].0.clone();
                 self.built_on_argument(&value, ty, accepts, written, &name);
@@ -994,6 +1005,14 @@ impl Body<'_> {
         // named type is built back from it by construction.
         if result == Ty::Number {
             return summed.map_or(Ty::Error, Ty::Prim);
+        }
+        // A range is the range type the call's ranges are (area 19).
+        if table.is_some_and(|table| table.result == jadpo_std::Kind::Range) {
+            return match ranged {
+                Some(range) if matches!(result, Ty::Nullable(_)) => range.nullable(),
+                Some(range) => range,
+                None => Ty::Error,
+            };
         }
         substitute(&result, &bound)
     }
@@ -1303,12 +1322,78 @@ impl Body<'_> {
         }
         match (param, self.table.structure(actual)) {
             (Ty::List(p), Ty::List(a)) | (Ty::Set(p), Ty::Set(a)) => self.unify(p, &a, bound),
+            // A range's ends, from `Range<T>` or a standard range type
+            // (area 19).
+            (Ty::Opaque(name, args), actual) if name == jadpo_std::RANGE => {
+                if let ([p], Some(item)) = (args.as_slice(), range_item(&actual)) {
+                    self.unify(p, &item, bound);
+                }
+            }
             (Ty::Nullable(p), a) => self.unify(p, &a, bound),
             (Ty::Map(pk, pv), Ty::Map(ak, av)) => {
                 self.unify(pk, &ak, bound);
                 self.unify(pv, &av, bound);
             }
             _ => {}
+        }
+    }
+
+    /// A range given to a `range` operation (area 19): a `Range<T>` or a
+    /// standard range type (`InstantRange`), of the same range type as the
+    /// call's other ranges, since each keeps its own end rule.
+    fn range_argument(
+        &mut self,
+        value: &Expr,
+        given: &Ty,
+        ranged: &mut Option<Ty>,
+        (written, param): (&str, &str),
+    ) {
+        if given.has_error() {
+            return;
+        }
+        let structure = self.table.structure(given);
+        let nullable = self.table.is_nullable(given);
+        let why = if nullable {
+            Some(format!(
+                "`{given}` may be `none`, and `{written}` takes a range"
+            ))
+        } else if range_item(&structure).is_none() {
+            Some(format!(
+                "`{written}`'s `{param}` takes a `Range<T>` or an `InstantRange`; `{given}` is {}",
+                super::super::literal::what(self.table, given)
+            ))
+        } else {
+            None
+        };
+        if let Some(why) = why {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{given}` can't be used where a range is required"),
+                )
+                .at(self.span(value), format!("this is `{given}`"))
+                .reason(format!("{why}."))
+                .next("Pass a range here"),
+            );
+            return;
+        }
+        match ranged {
+            Some(first) if *first != structure && !first.has_error() => {
+                let first = first.clone();
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_MISMATCH,
+                        format!("`{given}` can't be used where `{first}` is required"),
+                    )
+                    .at(self.span(value), format!("this is `{given}`"))
+                    .reason(format!(
+                        "`{written}`'s ranges are all one range type, since each keeps its own end rule; its first is `{first}`."
+                    ))
+                    .next(format!("Pass a range of the same type, `{first}`, here")),
+                );
+            }
+            Some(_) => {}
+            None => *ranged = Some(structure),
         }
     }
 
@@ -1875,6 +1960,21 @@ fn collection_words(ty: &Ty) -> String {
 
 /// The built-in types a parameter takes values built on, when it is
 /// `Number` or a built-in representation in a stub.
+/// The type a range's ends are: `T` for a `Range<T>`, `Instant` for an
+/// `InstantRange`; `None` for anything but a range (area 19).
+pub(super) fn range_item(ty: &Ty) -> Option<Ty> {
+    match ty {
+        Ty::Opaque(name, args) if name == jadpo_std::RANGE => match args.as_slice() {
+            [item] => Some(item.clone()),
+            _ => None,
+        },
+        Ty::Opaque(name, args) if name == jadpo_std::INSTANT_RANGE && args.is_empty() => {
+            Some(Ty::Prim(Prim::Instant))
+        }
+        _ => None,
+    }
+}
+
 fn built_on(param: &Ty) -> Option<&'static [Prim]> {
     match param {
         Ty::Number => Some(&[Prim::Int, Prim::Decimal]),

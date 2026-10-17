@@ -416,7 +416,15 @@ an edit by their first value's type, since resolution can't know it.
 Since chunk 5.5c a `Set` parameter or result is a stub's `Set<T>`, and a
 standard object type an operation takes (`InstantRange`, kind `Std`) can
 be written as an object literal, which the plan builds from its data
-entry's fields (area 19, "Sets", "Maps" and "Ranges").
+entry's fields (area 19, "Sets", "Maps" and "Ranges"). Since chunk 5.5c2
+a stub's `Function<K, V, U>` is an inline function of two parameters,
+`(key, value) -> ...` (the graph's `Inline` holds its parameters in
+order, and `jadpo_value::run`'s `each` is given the values as a slice);
+and a `Range` parameter (a stub's `Range<T>`) takes a `Range<T>` or a
+standard range type, all of a call's ranges one range type, which a
+`Range` result is. `Range<T>` is the first standard type with a type
+argument: `Holds::Range` in its entry, the checker's `Ty::Opaque("Range",
+[T])`, one plan shape for every `T` and a codec per `T`.
 `temporal` runs on jiff with its bundled IANA database,
 in `jadpo-value` only, so every target reads the same zones and none reads
 the platform's (area 10, "Zones and local times"). The time types'

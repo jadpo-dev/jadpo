@@ -280,6 +280,8 @@ enum Made {
     /// A standard object type, `InstantRange` (area 19): its fields from
     /// its data entry.
     StdObject(&'static jadpo_std::StandardType),
+    /// `Range<T>` (area 19): its two ends, each a `T` or `null`.
+    Range(TypeRef),
     Unknown,
 }
 
@@ -484,6 +486,14 @@ impl<'t> Codecs<'t> {
                     .collect();
                 Codec::Object { shape, fields }
             }
+            Made::Range(item) => {
+                let shape = self.types.range_shape();
+                let end = self.codec(&TypeRef::Nullable(Box::new(item)));
+                Codec::Object {
+                    shape,
+                    fields: vec![end, end],
+                }
+            }
             Made::Unknown => self.made_unknown(),
         }
     }
@@ -533,6 +543,9 @@ impl<'t> Codecs<'t> {
                 TypeRef::Map(key, value) => return Made::Map(*key, *value),
                 TypeRef::Std(name, mut args) if name == "Page" && args.len() == 1 => {
                     return Made::Page(args.remove(0));
+                }
+                TypeRef::Std(name, mut args) if name == jadpo_std::RANGE && args.len() == 1 => {
+                    return Made::Range(args.remove(0));
                 }
                 TypeRef::Std(name, args) if args.is_empty() => {
                     if let Some(entry) = jadpo_std::standard_type(&name)

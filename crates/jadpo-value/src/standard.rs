@@ -69,8 +69,58 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
                 jadpo_std::format_instant(end)
             )
         }
+        (TextForm::Range, Value::Record(record)) => {
+            let (start, end) = range_ends(record)?;
+            let text = |end: Option<&Value>| match end {
+                Some(value) => text_of(from(value)?),
+                None => Ok(jadpo_std::standard::OPEN_END.to_string()),
+            };
+            format!("{}/{}", text(start)?, text(end)?)
+        }
         _ => return Err(Fault::Shape),
     })
+}
+
+/// A range's two ends, `None` for an open one.
+fn range_ends(record: &crate::Record) -> Result<(Option<&Value>, Option<&Value>), Fault> {
+    let [start, end] = jadpo_std::RANGE_FIELDS;
+    let end_of = |name: &str| match record.get(name) {
+        Some(Value::None) => Ok(None),
+        Some(value) => Ok(Some(value)),
+        None => Err(Fault::Shape),
+    };
+    Ok((end_of(start)?, end_of(end)?))
+}
+
+/// `Range<T>` read from its canonical text, each end as `item` (the
+/// standard type or representation `T` is built on), `..` for an open
+/// end; a start after its end is `malformed`, as for an `InstantRange`.
+pub fn read_range(raw: &str, item: &str) -> Result<Value, Fault> {
+    let (from, to) = raw.split_once('/').ok_or(MALFORMED)?;
+    let end = |text: &str| -> Result<Option<Value>, Fault> {
+        if text == jadpo_std::standard::OPEN_END {
+            return Ok(None);
+        }
+        match parse(text, item) {
+            Ok(value) => Ok(Some(value)),
+            Err(Fault::Broke(_)) => Err(MALFORMED),
+            Err(other) => Err(other),
+        }
+    };
+    let (start, end) = (end(from)?, end(to)?);
+    if let (Some(start), Some(end)) = (&start, &end)
+        && crate::ops::compare(start, end) == Some(std::cmp::Ordering::Greater)
+    {
+        return Err(MALFORMED);
+    }
+    Ok(crate::range::range_of(start, end))
+}
+
+/// The item type a range type's name gives it: `Int` for `Range<Int>`.
+fn range_item(ty: &str) -> Option<&str> {
+    ty.strip_prefix(jadpo_std::RANGE)?
+        .strip_prefix('<')?
+        .strip_suffix('>')
 }
 
 /// An interval's two instants, by its entry's fields in order.
@@ -89,6 +139,9 @@ fn interval(entry: &StandardType, record: &crate::Record) -> Result<(i64, i64), 
 /// type `as:` names are checked by its construction after this. Text that
 /// isn't that type at all fails `malformed`.
 pub fn parse(raw: &str, ty: &str) -> Result<Value, Fault> {
+    if let Some(item) = range_item(ty) {
+        return read_range(raw, item);
+    }
     if let Some(entry) = standard_type(ty) {
         return read(entry, raw);
     }
@@ -147,6 +200,8 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         TextForm::Zoned => zoned(raw).map(Value::Zoned),
         TextForm::Duration => crate::json::iso_duration(raw).map(Value::Duration),
         TextForm::Code => code(entry, raw),
+        // Its ends' type is the range type's argument, which `parse` reads.
+        TextForm::Range => return Err(Fault::Shape),
         TextForm::Interval => {
             let Holds::Object([(start, _), (end, _)]) = entry.holds else {
                 return Err(Fault::Shape);
@@ -251,6 +306,17 @@ pub fn shown(
         }
         (FormatKey::LocaleName, value) => present::names::locale(&canonical(entry, value)?, tag)?,
         (FormatKey::ZoneName, value) => present::names::zone(&canonical(entry, value)?, tag)?,
+        (FormatKey::Range, Value::Record(record)) => {
+            let (start, end) = range_ends(record)?;
+            let end_shown = |end: Option<&Value>| match end {
+                Some(value) => {
+                    let entry = entry_of(value).ok_or(Fault::Shape)?;
+                    shown(entry, value, tag, zone, format_spec)
+                }
+                None => Ok("…".to_string()),
+            };
+            format!("{} – {}", end_shown(start)?, end_shown(end)?)
+        }
         _ => return Err(Fault::Shape),
     })
 }

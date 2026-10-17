@@ -265,3 +265,55 @@ fn two_parameter_inline_functions_are_given_each_pair() {
         "as long as the shorter"
     );
 }
+
+const RANGES: &str = "type Weight = Int {\n    min: 0\n}\n\ntype Flag = Bool {}\n\ntype Wire = Text {}\n\nfunction large() -> Range<Weight> {\n    return Range {\n        start: 800\n        end: none\n    }\n}\n\nfunction inside(band: Range<Weight>, at: Weight) -> Flag {\n    return Flag(range.contains(band, at))\n}\n\nfunction clash(a: Range<Weight>, b: Range<Weight>) -> Flag {\n    return Flag(range.overlaps(a, b))\n}\n\nfunction shared(a: Range<Weight>, b: Range<Weight>) -> Range<Weight>? {\n    return range.intersection(a, b)\n}\n\nfunction lowest(band: Range<Weight>) -> Weight {\n    return match band.start {\n        some(start) -> start\n        none -> 0\n    }\n}\n\nfunction written(band: Range<Weight>) -> Wire {\n    return Wire(text.from(band))\n}\n";
+
+fn band(start: Option<i64>, end: Option<i64>) -> Value {
+    let end_of = |end: Option<i64>| end.map_or(Value::None, int);
+    Value::record(
+        "Range",
+        vec![
+            (Rc::from("start"), end_of(start)),
+            (Rc::from("end"), end_of(end)),
+        ],
+    )
+}
+
+#[test]
+fn a_range_of_any_ordered_type_with_open_ends_runs() {
+    let program = main(RANGES).with_proof_checks();
+    let large = value(&program, "large", Vec::new());
+    assert_eq!(large, band(Some(800), None));
+    let medium = band(Some(400), Some(800));
+    let small = band(None, Some(500));
+    let yes = Value::Bool(true);
+    let no = Value::Bool(false);
+    assert_eq!(
+        value(&program, "inside", vec![large.clone(), int(5000)]),
+        yes
+    );
+    assert_eq!(
+        value(&program, "inside", vec![medium.clone(), int(800)]),
+        no,
+        "a range doesn't hold its end"
+    );
+    assert_eq!(
+        value(&program, "clash", vec![medium.clone(), large.clone()]),
+        no
+    );
+    assert_eq!(
+        value(&program, "clash", vec![small.clone(), medium.clone()]),
+        yes
+    );
+    assert_eq!(
+        value(&program, "shared", vec![medium.clone(), small.clone()]),
+        band(Some(400), Some(500))
+    );
+    assert_eq!(
+        value(&program, "shared", vec![medium.clone(), large.clone()]),
+        Value::None
+    );
+    assert_eq!(value(&program, "lowest", vec![small]), int(0));
+    assert_eq!(value(&program, "lowest", vec![medium]), int(400));
+    assert_eq!(value(&program, "written", vec![large]), text("800/.."));
+}

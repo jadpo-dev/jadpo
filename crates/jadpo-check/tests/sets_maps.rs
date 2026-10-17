@@ -279,3 +279,96 @@ fn two_parameters_are_only_for_a_standard_operation() {
         ["semantic.duplicate_declaration"]
     );
 }
+
+#[test]
+fn a_range_of_any_ordered_type_takes_the_range_operations() {
+    // `Range<T>` with open ends (chunk 5.5c2): the operations take it as
+    // they take an `InstantRange`, and give its own range type.
+    let source = "function inside(band: Range<Weight>, at: Weight) -> Flag {\n    return Flag(range.contains(band, at) and range.contains(band, 3))\n}\n\nfunction clash(a: Range<Weight>, b: Range<Weight>) -> Flag {\n    return Flag(range.overlaps(a, b))\n}\n\nfunction shared(a: Range<Weight>, b: Range<Weight>) -> Range<Weight>? {\n    return range.intersection(a, b)\n}\n\nfunction days(a: Range<Day>, b: Range<Day>) -> Range<Day>? {\n    return range.intersection(a, b)\n}\n\nfunction open() -> Range<Weight> {\n    return Range {\n        start: 5\n        end: none\n    }\n}\n\nfunction written(at: Weight) -> Flag {\n    return Flag(range.contains(Range {\n        start: 1\n        end: 9\n    }, at))\n}\n\nfunction first(band: Range<Weight>) -> Weight? {\n    return band.start\n}\n";
+    assert_eq!(rules(source), NONE);
+    let cases: &[(&str, &[&str])] = &[
+        // Its ends are a type `<` orders.
+        (
+            "function f(band: Range<Flag>) -> Flag {\n    return Flag(range.contains(band, true))\n}\n",
+            &["type.ordering_operand"],
+        ),
+        (
+            "function f() -> Flag {\n    return Flag(range.contains(Range {\n        start: true\n        end: none\n    }, true))\n}\n",
+            &["type.ordering_operand"],
+        ),
+        // It takes one type argument.
+        (
+            "function f(band: Range) -> Flag {\n    return Flag(range.overlaps(band, band))\n}\n",
+            &["type.type_argument_count"],
+        ),
+        // A call's ranges are one range type, each with its own end rule.
+        (
+            "function f(a: InstantRange, b: Range<Moment>) -> Flag {\n    return Flag(range.overlaps(a, b))\n}\n",
+            &["type.mismatch"],
+        ),
+        // The value is the range's item type.
+        (
+            "function f(band: Range<Weight>, day: Day) -> Flag {\n    return Flag(range.contains(band, day))\n}\n",
+            &["type.mismatch"],
+        ),
+        // Something that isn't a range.
+        (
+            "function f(band: List<Weight>, at: Weight) -> Flag {\n    return Flag(range.contains(band, at))\n}\n",
+            &["type.mismatch"],
+        ),
+        // An end may be open, so reading one needs `match`.
+        (
+            "function f(band: Range<Weight>) -> Weight {\n    return band.end\n}\n",
+            &["type.mismatch"],
+        ),
+        (
+            "function f(band: Range<Weight>) -> Weight? {\n    return band.finish\n}\n",
+            &["type.unknown_field"],
+        ),
+        // Both ends are given, `none` for an open one.
+        (
+            "function f() -> Range<Weight> {\n    return Range {\n        start: 5\n    }\n}\n",
+            &["type.missing_field"],
+        ),
+    ];
+    for (source, expected) in cases {
+        assert_eq!(&rules(source), expected, "{source}");
+    }
+}
+
+#[test]
+fn a_range_meets_the_contract_through_its_ends() {
+    let types = "type Wire = Text {}\n\ntype Unreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
+    let cases: &[(&str, &[&str])] = &[
+        (
+            "function f(band: Range<Weight>) -> Wire {\n    return Wire(text.from(band))\n}\n",
+            &[],
+        ),
+        // Shown as its ends are, with their options; a number has no format
+        // for people yet.
+        (
+            "function f(band: Range<Moment>, shown: Locale) -> PresentationText {\n    return text.format(band, locale: shown, zone: Zone.utc, format: TimeFormat.date_medium)\n}\n",
+            &[],
+        ),
+        (
+            "function f(band: Range<Moment>, shown: Locale) -> PresentationText {\n    return text.format(band, locale: shown, format: TimeFormat.date_medium)\n}\n",
+            &["type.temporal_zone_required"],
+        ),
+        (
+            "function f(band: Range<Weight>, shown: Locale) -> PresentationText {\n    return text.format(band, locale: shown)\n}\n",
+            &["type.mismatch"],
+        ),
+        // Read end by end as a standard type or a representation.
+        (
+            "function f(raw: Wire) fails Unreadable -> Range<Int> {\n    var read: Range<Int> = attempt text.parse(raw, as: Range<Int>) {\n        malformed: Unreadable\n    }\n    return read\n}\n",
+            &[],
+        ),
+        (
+            "function f(raw: Wire) fails Unreadable -> Range<Weight> {\n    var read: Range<Weight> = attempt text.parse(raw, as: Range<Weight>) {\n        malformed: Unreadable\n    }\n    return read\n}\n",
+            &["type.mismatch"],
+        ),
+    ];
+    for (source, expected) in cases {
+        assert_eq!(&rules(&format!("{types}{source}")), expected, "{source}");
+    }
+}
