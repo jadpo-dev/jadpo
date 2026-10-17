@@ -719,8 +719,8 @@ function by_shelf(batches: List<Batch>) -> Map<Shelf, List<Batch>> {
 
 /// Whether each batch came out heavier than planned, batch by batch: a
 /// two-parameter inline function is given one item from each list.
-function over_plan(batches: List<Batch>, planned: List<Grams>) -> List<OverPlan> {
-    return list.zip_with(batches, planned, (batch, plan) -> OverPlan(batch.grams > plan))
+function over_plan(batches: List<Batch>, goals: List<Grams>) -> List<OverPlan> {
+    return list.zip_with(batches, goals, (batch, goal) -> OverPlan(batch.grams > goal))
 }
 ```
 
@@ -1160,7 +1160,7 @@ function in_band(loaf: Loaf, band: Range<Grams>) -> InBand {
 }
 
 /// The weights two bands share, if any.
-function shared(first: Range<Grams>, second: Range<Grams>) -> Range<Grams>? {
+function common_weights(first: Range<Grams>, second: Range<Grams>) -> Range<Grams>? {
     return range.intersection(first, second)
 }
 ```
@@ -1175,7 +1175,7 @@ test "a range of any ordered type, either end open" {
         start: none
         end: 500
     }
-    var overlap: Range<Grams> = Range {
+    var both: Range<Grams> = Range {
         start: 400
         end: 500
     }
@@ -1185,8 +1185,8 @@ test "a range of any ordered type, either end open" {
     }
     assert in_band(rye, large())
     assert not in_band(rye, medium)  // a range doesn't hold its end
-    assert shared(medium, large()) == none  // they meet at 800
-    assert shared(medium, small) == overlap
+    assert common_weights(medium, large()) == none  // they meet at 800
+    assert common_weights(medium, small) == both
     assert range.overlaps(small, medium)
     assert text.from(large()) == "800/.."
 }

@@ -2920,7 +2920,7 @@ function larger(first: Pence, second: Pence) -> Pence {
     return second
 }
 
-function best(price: Pence) -> Pence {
+function dearer(price: Pence) -> Pence {
     return larger((a, b) -> a, price)
 }
 ```
