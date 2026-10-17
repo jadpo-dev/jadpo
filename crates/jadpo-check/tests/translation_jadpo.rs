@@ -230,7 +230,7 @@ fn a_group_that_is_not_an_owner_is_an_error() {
     let found = problems(&files);
     assert_eq!(found.len(), 1, "{found:?}");
     assert!(
-        found[0].starts_with("translations/en_gb.jadpo translation.owner_unknown:"),
+        found[0].starts_with("translations/en_gb.jadpo translation.group_unknown:"),
         "{found:?}"
     );
 }

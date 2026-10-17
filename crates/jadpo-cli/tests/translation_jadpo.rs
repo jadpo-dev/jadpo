@@ -138,7 +138,7 @@ fn builtin_as_data() {
         "Some of the information sent isn't valid. Check it and try again."
     );
     assert_eq!(
-        invalid_input["shippedIn"],
+        invalid_input["shipsIn"],
         serde_json::json!(["en_gb", "en_us"])
     );
     assert_eq!(invalid_input["needs"], serde_json::json!(["fr_fr"]));

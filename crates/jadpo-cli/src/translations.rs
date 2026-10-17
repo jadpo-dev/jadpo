@@ -779,11 +779,11 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
 
 /// Jadpo's own messages the application can show, by feature.
 fn builtin(loaded: &Loaded) -> Reply {
-    use jadpo_check::translations::jadpo as owner;
+    use jadpo_check::translations::jadpo as own;
     use jadpo_std::jadpo_text::{Feature, Shape, Ships};
     let (db, project) = (&loaded.db, loaded.project);
-    let messages = owner::messages_on(db, project);
-    let needs = owner::needs(db, project);
+    let messages = own::messages_on(db, project);
+    let needs = own::needs(db, project);
     let needing = |key: &str| -> Vec<&'static str> {
         needs
             .iter()
@@ -897,10 +897,10 @@ fn builtin(loaded: &Loaded) -> Reply {
                     ),
                     ("wording", wording),
                     (
-                        "shippedIn",
+                        "shipsIn",
                         Json::array(
                             match message.ships {
-                                Ships::English => jadpo_std::jadpo_text::SHIPPED.to_vec(),
+                                Ships::English => jadpo_std::jadpo_text::SHIPS_IN.to_vec(),
                                 Ships::Everywhere => Vec::new(),
                             }
                             .into_iter()
@@ -908,7 +908,7 @@ fn builtin(loaded: &Loaded) -> Reply {
                         ),
                     ),
                     (
-                        "shippedEverywhere",
+                        "shipsEverywhere",
                         Json::from(message.ships == Ships::Everywhere),
                     ),
                     (

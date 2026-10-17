@@ -12,10 +12,10 @@
 use crate::translation::ParamKind;
 
 /// The locales Jadpo ships wording for, as `Locale` variants.
-pub const SHIPPED: [&str; 2] = ["en_gb", "en_us"];
+pub const SHIPS_IN: [&str; 2] = ["en_gb", "en_us"];
 
 /// The name of the owner of Jadpo's own messages in the root file.
-pub const OWNER: &str = "jadpo";
+pub const GROUP: &str = "jadpo";
 
 /// The placeholder every Jadpo message may write: the application's
 /// `display_name:`.
@@ -79,7 +79,7 @@ impl Feature {
             Feature::ServiceSignIn => "an API signs services in",
             Feature::BrowserSession => "an API accepts browser sessions",
             Feature::Locales => "the application declares its locales",
-            Feature::MagicLink => "the application signs people in with magic links",
+            Feature::MagicLink => "the application signs users in with magic links",
         }
     }
 
@@ -127,7 +127,7 @@ pub enum Shape {
 /// Where Jadpo ships a message's wording.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ships {
-    /// In [`SHIPPED`]'s locales.
+    /// In [`SHIPS_IN`]'s locales.
     English,
     /// In every locale, because the wording is the same in all of them
     /// (the HTML values `ltr` and `rtl`).
@@ -157,7 +157,7 @@ impl Message {
     /// Whether Jadpo ships wording for the locale (a `Locale` variant).
     pub fn ships_in(&self, locale: &str) -> bool {
         match self.ships {
-            Ships::English => SHIPPED.contains(&locale),
+            Ships::English => SHIPS_IN.contains(&locale),
             Ships::Everywhere => true,
         }
     }
@@ -393,13 +393,13 @@ pub static MESSAGES: [Message; 31] = [
     failure(
         "sign_in_code_invalid",
         Feature::MagicLink,
-        "The code entered is wrong.",
+        "The code typed is wrong.",
         "That code isn't right. Check it, or ask for a new one.",
     ),
     failure(
         "sign_in_codes_disabled",
         Feature::MagicLink,
-        "Too many wrong codes were entered today.",
+        "Too many wrong codes were typed today.",
         "Too many wrong codes today. Use the link in your email instead.",
     ),
     failure(
@@ -461,7 +461,7 @@ mod tests {
 
     #[test]
     fn the_shipped_locales_are_locales() {
-        for tag in SHIPPED {
+        for tag in SHIPS_IN {
             assert!(crate::locale_ordinal(tag).is_some(), "{tag}");
         }
     }

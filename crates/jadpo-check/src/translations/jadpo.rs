@@ -15,9 +15,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_db::{Db, File, Folder, Place, Project, Symbol};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
-use jadpo_std::jadpo_text::{self, Feature, Message, OWNER, Shape};
+use jadpo_std::LocalePlan;
+use jadpo_std::jadpo_text::{self, Feature, GROUP, Message, Shape};
 use jadpo_std::translation::{ParamKind, Wording, parse_template};
-use jadpo_std::{LOCALES, LocalePlan};
 
 use super::check::{Analysis, Ctx, FailureWords, variant_name};
 use super::declared::{Kind, Mode, ParamSpec, Subject, Subjects, VariantInfo};
@@ -216,7 +216,7 @@ pub fn subjects() -> Subjects {
 }
 
 /// What Jadpo ships for a message in a locale, as a wording.
-pub fn shipped(message: &Message, tag: &str) -> Option<Wording> {
+pub fn ships_wording(message: &Message, tag: &str) -> Option<Wording> {
     if !message.ships_in(tag) {
         return None;
     }
@@ -233,7 +233,7 @@ pub fn shipped(message: &Message, tag: &str) -> Option<Wording> {
 
 /// The text a shipped wording is compared as, the way a written member's
 /// is (values in name order).
-pub fn shipped_canonical(message: &Message) -> String {
+pub fn ships_canonical(message: &Message) -> String {
     match message.shape {
         Shape::Plain(text) => text.to_string(),
         Shape::Variants(variants) => {
@@ -272,7 +272,7 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
         plan,
         declared,
         reachable: &reachable,
-        scope: OWNER,
+        scope: GROUP,
         features: Some(on),
         found: BTreeMap::new(),
         problems: Vec::new(),
@@ -281,9 +281,9 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
         let Some((locale, in_progress)) = ctx.locale_of(file) else {
             continue;
         };
-        let mut owners: BTreeMap<&str, Span> = BTreeMap::new();
+        let mut seen_groups: BTreeMap<&str, Span> = BTreeMap::new();
         for group in &file.groups {
-            if let Some(first) = owners.get(group.name.as_str()) {
+            if let Some(first) = seen_groups.get(group.name.as_str()) {
                 ctx.problems.push(
                     Diagnostic::new(
                         &rule::TRANSLATION_MEMBER_DUPLICATE,
@@ -291,14 +291,14 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
                     )
                     .at(group.key_span.clone(), "written again")
                     .also(first.clone(), "first written here")
-                    .reason("A group words one owner's text, once; the second would be dropped or the first, whichever a reader of the file believed.")
+                    .reason("A group is written once; the second would be dropped or the first, whichever a reader of the file believed.")
                     .next(format!("Merge the two `{}` groups", group.name)),
                 );
                 continue;
             }
-            owners.insert(&group.name, group.key_span.clone());
-            if group.name != OWNER {
-                ctx.problems.push(owner_unknown(file, group));
+            seen_groups.insert(&group.name, group.key_span.clone());
+            if group.name != GROUP {
+                ctx.problems.push(group_unknown(file, group));
                 continue;
             }
             ctx.members(file, locale, in_progress, &group.members);
@@ -319,7 +319,7 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
             if by_locale.iter().any(|(at, _)| *at == locale) {
                 continue;
             }
-            if let Some(wording) = shipped(message, tag) {
+            if let Some(wording) = ships_wording(message, tag) {
                 by_locale.push((locale, wording));
             }
         }
@@ -339,13 +339,13 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
     out
 }
 
-fn owner_unknown(file: &LanguageFile, group: &super::language::Group) -> Diagnostic {
-    let near = nearest(&group.name, [OWNER]);
+fn group_unknown(file: &LanguageFile, group: &super::language::Group) -> Diagnostic {
+    let near = nearest(&group.name, [GROUP]);
     let problem = Diagnostic::new(
-        &rule::TRANSLATION_OWNER_UNKNOWN,
-        format!("`{}` isn't an owner of text", group.name),
+        &rule::TRANSLATION_GROUP_UNKNOWN,
+        format!("`{}` isn't a group Jadpo reads", group.name),
     )
-    .at(group.key_span.clone(), "no such owner")
+    .at(group.key_span.clone(), "no such group")
     .reason(format!(
         "The root file words the text the application did not write, grouped by whose it is: `jadpo` for Jadpo's own messages, or the name of a library package the application uses for that package's (library packages come with Phase 7).{}",
         near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
@@ -367,7 +367,7 @@ fn worded(files: &[&LanguageFile], message: &Message, locale: u32) -> bool {
         || files.iter().any(|file| {
             file.locale == Some(locale)
                 && file
-                    .group(OWNER)
+                    .group(GROUP)
                     .is_some_and(|group| group.member(message.key).is_some())
         })
 }
@@ -436,9 +436,9 @@ fn completeness(db: &dyn Db, project: Project, files: &[&LanguageFile]) -> Vec<D
         out.push(
             problem
                 .reason(format!(
-                    "Jadpo ships its own wording in {} and no other locale, so a client app or a person using `Locale.{tag}` would be shown English. An application words the messages of the features it has on itself, in the `jadpo: {{ }}` group of the root `translations/{tag}.jadpo`. Still to word: {}.",
+                    "Jadpo ships its own wording in {} and no other locale, so users and client apps working in `Locale.{tag}` would be shown English. An application words the messages of the features it has on itself, in the `jadpo: {{ }}` group of the root `translations/{tag}.jadpo`. Still to word: {}.",
                     crate::and_list(
-                        &jadpo_text::SHIPPED
+                        &jadpo_text::SHIPS_IN
                             .iter()
                             .map(|tag| format!("`{tag}`"))
                             .collect::<Vec<_>>()
@@ -538,13 +538,5 @@ pub fn failure_texts(
 
 /// The member name a record and a list use for one of Jadpo's messages.
 pub fn member_name(key: &str) -> String {
-    format!("{OWNER}.{key}")
-}
-
-/// The locale tags a message is shipped in, for the listing.
-pub fn shipped_in(message: &Message) -> Vec<&'static str> {
-    match message.ships {
-        jadpo_text::Ships::English => jadpo_text::SHIPPED.to_vec(),
-        jadpo_text::Ships::Everywhere => LOCALES.iter().map(|(name, _)| *name).collect(),
-    }
+    format!("{GROUP}.{key}")
 }

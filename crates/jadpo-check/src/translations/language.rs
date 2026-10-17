@@ -101,8 +101,8 @@ impl LanguageFile {
     }
 
     /// The group an owner's wording is in.
-    pub fn group(&self, owner: &str) -> Option<&Group> {
-        self.groups.iter().find(|group| group.name == owner)
+    pub fn group(&self, name: &str) -> Option<&Group> {
+        self.groups.iter().find(|group| group.name == name)
     }
 }
 
@@ -228,7 +228,7 @@ fn read_group(out: &mut LanguageFile, member: &ast::Member) {
             &key_span,
             "a dotted name",
             "The root file groups by whose text it is: `jadpo: { }` for Jadpo's own messages, and a library package's name for a package's. A group is one name.",
-            "Write the owner's name alone",
+            "Write the group's name alone",
         ));
         return;
     };
@@ -239,7 +239,7 @@ fn read_group(out: &mut LanguageFile, member: &ast::Member) {
     let Some(block) = member.block().filter(|_| member.value().is_none()) else {
         out.problems.push(shape(
             &key_span,
-            "not in an owner's group",
+            "not in a group",
             "The root file words text the app did not write, and groups it by whose text it is: `jadpo: { name: \"...\" }` for Jadpo's own messages, and a library package's name for a package's.",
             &format!("Move `{name}` into `jadpo: {{ }}`, or the package's group"),
         ));

@@ -794,8 +794,8 @@ rules! {
         "10-configuration-and-time.html#translation-message-unknown", "A translation call names no message or enum";
     TRANSLATION_OPTION_UNKNOWN: "translation.option_unknown", area 10, Error, Agent,
         "10-configuration-and-time.html#translation-option-unknown", "An option of translations in app.jadpo is not one it takes";
-    TRANSLATION_OWNER_UNKNOWN: "translation.owner_unknown", area 10, Error, Agent,
-        "10-configuration-and-time.html#translation-owner-unknown", "A group in the root language file names no owner of text";
+    TRANSLATION_GROUP_UNKNOWN: "translation.group_unknown", area 10, Error, Agent,
+        "10-configuration-and-time.html#translation-group-unknown", "A group in the root language file is not one Jadpo reads";
     TRANSLATION_PLACEHOLDER_UNKNOWN: "translation.placeholder_unknown", area 10, Error, Agent,
         "10-configuration-and-time.html#translation-placeholder-unknown", "A wording writes a field the message does not have";
     TRANSLATION_REVIEW_INVALID: "translation.review_invalid", area 10, Error, Agent,

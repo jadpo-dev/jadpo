@@ -373,10 +373,10 @@ fn root_standings(
     plan: &jadpo_std::LocalePlan,
     out: &mut Standings,
 ) {
-    use jadpo_std::jadpo_text::{self, OWNER};
+    use jadpo_std::jadpo_text::{self, GROUP};
     let files = super::jadpo::root_language_files(db, project);
     for file in &files {
-        for group in file.groups.iter().filter(|group| group.name == OWNER) {
+        for group in file.groups.iter().filter(|group| group.name == GROUP) {
             for member in &group.members {
                 out.present
                     .push((file.tag.clone(), super::jadpo::member_name(&member.name)));
@@ -397,7 +397,7 @@ fn root_standings(
         {
             continue;
         }
-        let Some(group) = file.group(OWNER) else {
+        let Some(group) = file.group(GROUP) else {
             continue;
         };
         for member in &group.members {
@@ -409,13 +409,13 @@ fn root_standings(
             }
             // The default wording: the application's, or what Jadpo ships.
             let own = default_file
-                .and_then(|file| file.group(OWNER))
+                .and_then(|file| file.group(GROUP))
                 .and_then(|group| group.member(&member.name))
                 .filter(|default| default.body != Body::Invalid);
             let (default_text, default_span) = match own {
                 Some(default) => (canonical(&default.body), Some(default.key_span.clone())),
                 None if message.ships_in(&default_tag) => {
-                    (super::jadpo::shipped_canonical(message), None)
+                    (super::jadpo::ships_canonical(message), None)
                 }
                 None => continue,
             };
