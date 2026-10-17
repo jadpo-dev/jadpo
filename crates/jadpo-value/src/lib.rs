@@ -132,11 +132,11 @@ pub fn run(
         (Op::DecimalLn, [value, Value::Int(scale), rounding]) => {
             decimal::ln(decimal_of(value)?, *scale, rounding_of(rounding)?).map(Value::Decimal)
         }
-        (Op::DecimalSin, [radians, Value::Int(scale), rounding]) => {
-            decimal::sin(decimal_of(radians)?, *scale, rounding_of(rounding)?).map(Value::Decimal)
+        (Op::DecimalSin, [angle, Value::Int(scale), rounding]) => {
+            decimal::sin(decimal_of(angle)?, *scale, rounding_of(rounding)?).map(Value::Decimal)
         }
-        (Op::DecimalCos, [radians, Value::Int(scale), rounding]) => {
-            decimal::cos(decimal_of(radians)?, *scale, rounding_of(rounding)?).map(Value::Decimal)
+        (Op::DecimalCos, [angle, Value::Int(scale), rounding]) => {
+            decimal::cos(decimal_of(angle)?, *scale, rounding_of(rounding)?).map(Value::Decimal)
         }
         (Op::DecimalAtan2, [y, x, Value::Int(scale), rounding]) => decimal::atan2(
             decimal_of(y)?,

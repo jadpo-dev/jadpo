@@ -31,10 +31,10 @@ impl Big {
         let mut power = Big::from_u128(1);
         let mut left = n;
         while left >= 9 {
-            power = power.mul_small(1_000_000_000);
+            power = power.mul_word(1_000_000_000);
             left -= 9;
         }
-        power.mul_small(10u32.pow(left))
+        power.mul_word(10u32.pow(left))
     }
 
     fn trimmed(mut self) -> Big {
@@ -134,9 +134,9 @@ impl Big {
             let mut slots = out.iter_mut().skip(at);
             for &b in &other.0 {
                 if let Some(slot) = slots.next() {
-                    let product = u64::from(a) * u64::from(b) + u64::from(*slot) + carry;
-                    *slot = product as u32;
-                    carry = product >> 32;
+                    let wide = u64::from(a) * u64::from(b) + u64::from(*slot) + carry;
+                    *slot = wide as u32;
+                    carry = wide >> 32;
                 }
             }
             for slot in slots {
@@ -151,13 +151,13 @@ impl Big {
         Big(out).trimmed()
     }
 
-    pub(crate) fn mul_small(&self, factor: u32) -> Big {
+    pub(crate) fn mul_word(&self, by: u32) -> Big {
         let mut out = Vec::with_capacity(self.0.len() + 1);
         let mut carry = 0u64;
         for &limb in &self.0 {
-            let product = u64::from(limb) * u64::from(factor) + carry;
-            out.push(product as u32);
-            carry = product >> 32;
+            let wide = u64::from(limb) * u64::from(by) + carry;
+            out.push(wide as u32);
+            carry = wide >> 32;
         }
         if carry != 0 {
             out.push(carry as u32);
@@ -166,7 +166,7 @@ impl Big {
     }
 
     /// The quotient and remainder by a nonzero `divisor`.
-    pub(crate) fn div_small(&self, divisor: u32) -> (Big, u32) {
+    pub(crate) fn div_word(&self, divisor: u32) -> (Big, u32) {
         let mut out = vec![0u32; self.0.len()];
         let mut remainder = 0u64;
         for (limb, slot) in self.0.iter().zip(out.iter_mut()).rev() {
@@ -242,7 +242,7 @@ impl Big {
         let mut root = Big::from_u128(1).shl(self.bits().div_ceil(2));
         loop {
             let (quotient, _) = self.div_rem(&root);
-            let (next, _) = root.add(&quotient).div_small(2);
+            let (next, _) = root.add(&quotient).div_word(2);
             if next >= root {
                 return root;
             }
@@ -330,13 +330,13 @@ impl Int {
         Int::new(self.negative, self.magnitude.mul(other))
     }
 
-    pub(crate) fn mul_small(&self, factor: u32) -> Int {
-        Int::new(self.negative, self.magnitude.mul_small(factor))
+    pub(crate) fn mul_word(&self, by: u32) -> Int {
+        Int::new(self.negative, self.magnitude.mul_word(by))
     }
 
     /// `self / divisor`, the remainder dropped: toward zero.
-    pub(crate) fn div_small(&self, divisor: u32) -> Int {
-        Int::new(self.negative, self.magnitude.div_small(divisor).0)
+    pub(crate) fn div_word(&self, divisor: u32) -> Int {
+        Int::new(self.negative, self.magnitude.div_word(divisor).0)
     }
 
     /// `self / divisor`, toward zero.
@@ -377,15 +377,15 @@ mod tests {
                 big(a.max(b)).sub(&big(a.min(b))).to_u128(),
                 Some(a.max(b) - a.min(b))
             );
-            if let Some(product) = a.checked_mul(b) {
-                assert_eq!(big(a).mul(&big(b)).to_u128(), Some(product));
+            if let Some(wide) = a.checked_mul(b) {
+                assert_eq!(big(a).mul(&big(b)).to_u128(), Some(wide));
             }
             let (quotient, remainder) = big(a).div_rem(&big(b));
             assert_eq!(quotient.to_u128(), Some(a / b), "{a} / {b}");
             assert_eq!(remainder.to_u128(), Some(a % b));
             assert_eq!(big(a).cmp(&big(b)), a.cmp(&b));
         }
-        assert_eq!(big(1000).div_small(7), (big(142), 6));
+        assert_eq!(big(1000).div_word(7), (big(142), 6));
         assert_eq!(big(5).shl(100).to_u128(), Some(5 << 100));
         assert_eq!(Big::pow10(38).to_u128(), Some(10u128.pow(38)));
         assert_eq!(big(1).bits(), 1);
@@ -418,7 +418,7 @@ mod tests {
         assert_eq!(int(-7).add(&int(3)), int(-4));
         assert_eq!(int(7).sub(&int(9)), int(-2));
         assert_eq!(int(-7).mul(&int(-3)), int(21));
-        assert_eq!(int(-7).div_small(2), int(-3), "toward zero");
+        assert_eq!(int(-7).div_word(2), int(-3), "toward zero");
         assert_eq!(int(-7).div(&int(2)), int(-3));
         assert!(int(3).sub(&int(3)).is_zero());
         assert!(!int(0).neg().is_negative(), "zero is never negative");

@@ -144,7 +144,7 @@ pub(crate) fn sqrt(value: Decimal, scale: i64, rounding: Rounding) -> Result<Dec
         (mantissa, Big::pow10(value.scale - 2 * scale))
     };
     let root = p.div_rem(&q).0.isqrt();
-    let four_p = p.mul_small(4);
+    let four_p = p.mul_word(4);
     let odd = root.add(&root).add(&Big::from_u128(1));
     let halfway = odd.mul(&odd).mul(&q);
     let step = match rounding {
@@ -189,11 +189,11 @@ pub(crate) fn power(value: Decimal, exponent: i64) -> Result<Decimal, Fault> {
     }
     let mut scale = value.scale * exponent;
     while scale > value.scale {
-        let (tenth, remainder) = result.div_small(10);
+        let (shorter, remainder) = result.div_word(10);
         if remainder != 0 {
             break;
         }
-        result = tenth;
+        result = shorter;
         scale -= 1;
     }
     if scale > Decimal::MAX_DIGITS {
@@ -232,22 +232,22 @@ pub(crate) fn ln(value: Decimal, scale: i64, rounding: Rounding) -> Result<Decim
     correctly_rounded(scale, rounding, |q| series::ln(value, q))
 }
 
-/// The sine of `radians`.
-pub(crate) fn sin(radians: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
+/// The sine of `angle`, in radians.
+pub(crate) fn sin(angle: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
     let scale = places(scale)?;
-    if radians.mantissa == 0 {
+    if angle.mantissa == 0 {
         return exactly(0, scale);
     }
-    correctly_rounded(scale, rounding, |q| series::sin_cos(radians, q).0)
+    correctly_rounded(scale, rounding, |q| series::sin_cos(angle, q).0)
 }
 
-/// The cosine of `radians`.
-pub(crate) fn cos(radians: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
+/// The cosine of `angle`, in radians.
+pub(crate) fn cos(angle: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
     let scale = places(scale)?;
-    if radians.mantissa == 0 {
+    if angle.mantissa == 0 {
         return exactly(1, scale);
     }
-    correctly_rounded(scale, rounding, |q| series::sin_cos(radians, q).1)
+    correctly_rounded(scale, rounding, |q| series::sin_cos(angle, q).1)
 }
 
 /// The angle from the positive `x` axis to the point (`x`, `y`), in
@@ -264,7 +264,7 @@ pub(crate) fn atan2(
         (0, 0 | 1) => exactly(0, scale),
         (0, _) => correctly_rounded(scale, rounding, series::pi),
         (sign, 0) => correctly_rounded(scale, rounding, |q| {
-            let half = series::pi(q + 1).div_small(20);
+            let half = series::pi(q + 1).div_word(20);
             if sign < 0 { half.neg() } else { half }
         }),
         _ => correctly_rounded(scale, rounding, |q| series::atan2(y, x, q)),

@@ -1277,16 +1277,16 @@ type RecipeScale = Decimal {
     scale: 4
 }
 
-type Factor = Decimal {
+type Growth = Decimal {
     scale: 4
     min: 0.0000
 }
 
-type Rate = Decimal {
+type Rise = Decimal {
     scale: 6
 }
 
-type Hours = Decimal {
+type ProvingTime = Decimal {
     scale: 1
     min: 0.0
 }
@@ -1295,7 +1295,7 @@ type Metres = Decimal {
     scale: 1
 }
 
-type Radians = Decimal {
+type Course = Decimal {
     scale: 6
 }
 
@@ -1303,59 +1303,60 @@ type NeverRose = Failure {
     kind: FailureKind.invalid_value
 }
 
-/// The top of a round tin, π r².
+/// The surface of a round tin, π r².
 function tin_area(radius: Centimetres) -> SquareCentimetres {
     return SquareCentimetres(decimal.pi(scale: 6, rounding: Rounding.half_even) * radius * radius)
 }
 
-/// The side of a square tin with the same top, rounded down so the cake
-/// fits. An area is never negative, so its square root needs no check.
-function square_side(area: SquareCentimetres) -> Centimetres {
-    return Centimetres(decimal.sqrt(area, scale: 2, rounding: Rounding.down))
+/// The side of a square tin the same size, rounded down so the cake
+/// fits. A size is never negative, so its square root needs no check.
+function square_side(surface: SquareCentimetres) -> Centimetres {
+    return Centimetres(decimal.sqrt(surface, scale: 2, rounding: Rounding.down))
 }
 
-/// How much more each tier below the top needs, at half again a tier:
+/// How much more each tier below the surface needs, at half again a tier:
 /// exact, as `1.5 * 1.5 * 1.5` is.
 function tier_scale(tier: Tier) -> RecipeScale {
     return RecipeScale(decimal.power(1.5, tier))
 }
 
-/// How much a starter grows over `hours`, rising all the while at `rate`
-/// an hour. `e` to any power is never below 0, so `Factor` needs no arm.
-function growth(rate: Rate, hours: Hours) -> Factor {
-    return Factor(decimal.exp(rate * hours, scale: 4, rounding: Rounding.half_even))
+/// How much a starter grows over `proving`, rising all the while by
+/// `rise` an hour. `e` to any power is never below 0, so `Growth` needs no arm.
+function risen(rise: Rise, proving: ProvingTime) -> Growth {
+    return Growth(decimal.exp(rise * proving, scale: 4, rounding: Rounding.half_even))
 }
 
-/// The rate a starter rose at an hour, from how much bigger it got in a
-/// day. A factor of 0 has no logarithm: a starter that shrank to nothing
-/// never rose.
-function hourly_rate(factor: Factor) fails NeverRose -> Rate {
-    var daily: Decimal = attempt decimal.ln(factor, scale: 6, rounding: Rounding.half_even) {
+/// How fast a starter rose an hour, from how much bigger it had `grown`
+/// in a day. Growth of 0 has no logarithm: a starter that shrank to
+/// nothing never rose.
+function hourly_rise(grown: Growth) fails NeverRose -> Rise {
+    var daily: Decimal = attempt decimal.ln(grown, scale: 6, rounding: Rounding.half_even) {
         out_of_range: NeverRose
     }
-    return Rate(daily / 24.0)
+    return Rise(daily / 24.0)
 }
 
-/// The direction of a customer `north` and `east` of the bakery, in
-/// radians clockwise from north.
-function bearing(north: Metres, east: Metres) -> Radians {
-    return Radians(decimal.atan2(east, north, scale: 6, rounding: Rounding.half_even))
+/// The direction of a customer at `northing` and `easting` from the
+/// bakery, in radians clockwise from north.
+function course(northing: Metres, easting: Metres) -> Course {
+    return Course(decimal.atan2(easting, northing, scale: 6, rounding: Rounding.half_even))
 }
 
-/// How far east and north a van gets, `distance` metres on `bearing`.
-function east_of(distance: Metres, bearing: Radians) -> Metres {
-    return Metres(distance * decimal.sin(bearing, scale: 6, rounding: Rounding.half_even))
+/// Where a van is, east and north of the bakery, `driven` metres on
+/// `course`.
+function easting_after(driven: Metres, course: Course) -> Metres {
+    return Metres(driven * decimal.sin(course, scale: 6, rounding: Rounding.half_even))
 }
 
-function north_of(distance: Metres, bearing: Radians) -> Metres {
-    return Metres(distance * decimal.cos(bearing, scale: 6, rounding: Rounding.half_even))
+function northing_after(driven: Metres, course: Course) -> Metres {
+    return Metres(driven * decimal.cos(course, scale: 6, rounding: Rounding.half_even))
 }
 ```
 
 `sqrt`'s value and `power`'s exponent are never negative, proved as a
 count is (`type.argument_negative`). `ln` fails with `out_of_range`
 unless its value is proved above 0, by a literal above 0 or a type whose
-`min` is; `Factor` allows 0, so `hourly_rate` maps it. A result past 38
+`min` is; `Growth` allows 0, so `hourly_rise` maps it. A result past 38
 digits, such as `decimal.exp(100.0, ...)`, is a defect, as overflow is
 for `*`. The page's values, and each mode on the true value:
 
@@ -1365,14 +1366,14 @@ test "the maths gives what the page says" {
     assert square_side(314.16) == 17.72
     assert tier_scale(3) == 3.375
     assert tier_scale(0) == 1.0
-    assert growth(0.100000, 6.0) == 1.8221
-    var rate: Rate = attempt hourly_rate(2.0000)
-    assert rate == 0.028881
-    assert hourly_rate(0.0000) fails NeverRose
-    assert bearing(100.0, 100.0) == 0.785398
-    assert bearing(-100.0, 0.0) == 3.141593
-    assert east_of(1000.0, 0.523599) == 500.0
-    assert north_of(1000.0, 0.523599) == 866.0
+    assert risen(0.100000, 6.0) == 1.8221
+    var rise: Rise = attempt hourly_rise(2.0000)
+    assert rise == 0.028881
+    assert hourly_rise(0.0000) fails NeverRose
+    assert course(100.0, 100.0) == 0.785398
+    assert course(-100.0, 0.0) == 3.141593
+    assert easting_after(1000.0, 0.523599) == 500.0
+    assert northing_after(1000.0, 0.523599) == 866.0
 }
 
 test "each mode rounds the true value" {

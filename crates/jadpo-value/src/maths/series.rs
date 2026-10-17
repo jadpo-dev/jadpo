@@ -3,7 +3,7 @@
 //! its value at `q` places within [`ERROR`] units of the last place,
 //! having worked at `q` plus enough guard places that every truncation
 //! along the way, and what a reduction multiplies it by, stays below a
-//! tenth of a unit at `q`. The bounds are worked out beside each step.
+//! shorter of a unit at `q`. The bounds are worked out beside each step.
 //! Nothing here rounds to a scale: [`super`]'s loop does that, asking for
 //! more places until the bounds settle the rounding.
 
@@ -20,7 +20,7 @@ fn digits(n: u32) -> u32 {
 }
 
 /// Guard places for working at `q` places: enough that an error of a few
-/// thousand units per working place stays below a tenth of a unit at `q`,
+/// thousand units per working place stays below a shorter of a unit at `q`,
 /// plus `extra` for what a reduction multiplies it by.
 fn guard(q: u32, extra: u32) -> u32 {
     digits(q) + 8 + extra
@@ -60,15 +60,15 @@ pub(crate) fn fixed(value: Decimal, w: u32) -> Int {
 /// `2 × terms + 1` units, and there are at most `w / log10(n²) + 1` terms.
 fn atan_inverse(n: u32, w: u32) -> Int {
     let square = n * n;
-    let mut term = Big::pow10(w).div_small(n).0;
+    let mut term = Big::pow10(w).div_word(n).0;
     let mut sum = Int::from_big(term.clone());
     let mut k: u32 = 1;
     loop {
-        term = term.div_small(square).0;
+        term = term.div_word(square).0;
         if term.is_zero() {
             return sum;
         }
-        let part = Int::from_big(term.div_small(2 * k + 1).0);
+        let part = Int::from_big(term.div_word(2 * k + 1).0);
         sum = if k % 2 == 1 {
             sum.sub(&part)
         } else {
@@ -83,8 +83,8 @@ fn atan_inverse(n: u32, w: u32) -> Int {
 /// `25w + 70`.
 fn pi_at(w: u32) -> Int {
     atan_inverse(5, w)
-        .mul_small(16)
-        .sub(&atan_inverse(239, w).mul_small(4))
+        .mul_word(16)
+        .sub(&atan_inverse(239, w).mul_word(4))
 }
 
 /// `π × 10^q`, within [`ERROR`]: `25w + 70` units at `w = q + guard` is
@@ -109,7 +109,7 @@ fn atanh_series(z: &Int, one: &Big) -> Int {
         if power.is_zero() {
             return sum;
         }
-        sum = sum.add(&power.div_small(odd));
+        sum = sum.add(&power.div_word(odd));
         odd += 2;
     }
 }
@@ -127,7 +127,7 @@ fn atan_series(t: &Int, one: &Big) -> Int {
         if power.is_zero() {
             return sum;
         }
-        sum = sum.add(&power.div_small(odd));
+        sum = sum.add(&power.div_word(odd));
         odd += 2;
     }
 }
@@ -155,7 +155,7 @@ pub(crate) fn exp(x: Decimal, q: u32) -> Int {
     let mut sum = term.clone();
     let mut k: u32 = 1;
     loop {
-        term = mulf(&term, &r, &one).div_small(k);
+        term = mulf(&term, &r, &one).div_word(k);
         if term.is_zero() {
             break;
         }
@@ -183,7 +183,7 @@ pub(crate) fn ln(x: Decimal, q: u32) -> Int {
     let denominator = Big::pow10(x.scale);
     // 2^k ≤ x < 2^(k+1): `x / 2^k` as numerator over denominator.
     let mut k = numerator.bits() as i64 - denominator.bits() as i64;
-    let scaled = |k: i64| {
+    let over_power = |k: i64| {
         if k >= 0 {
             (numerator.clone(), denominator.shl(k.unsigned_abs()))
         } else {
@@ -191,7 +191,7 @@ pub(crate) fn ln(x: Decimal, q: u32) -> Int {
         }
     };
     loop {
-        let (top, bottom) = scaled(k);
+        let (top, bottom) = over_power(k);
         if top < bottom {
             k -= 1;
         } else if top >= bottom.shl(1) {
@@ -200,15 +200,15 @@ pub(crate) fn ln(x: Decimal, q: u32) -> Int {
             break;
         }
     }
-    let (top, bottom) = scaled(k);
+    let (top, bottom) = over_power(k);
     // `y × 10^w`, below a unit off, and `z = (y - 1) / (y + 1)`.
     let y = Int::from_big(top.mul(&one).div_rem(&bottom).0);
     let unit = Int::from_big(one.clone());
     let z = divf(&y.sub(&unit), &y.add(&unit), &one);
-    let ln_y = atanh_series(&z, &one).mul_small(2);
-    let third = Int::from_big(one.div_small(3).0);
-    let ln_2 = atanh_series(&third, &one).mul_small(2);
-    let times = ln_2.mul_small(k.unsigned_abs() as u32);
+    let ln_y = atanh_series(&z, &one).mul_word(2);
+    let third = Int::from_big(one.div_word(3).0);
+    let ln_2 = atanh_series(&third, &one).mul_word(2);
+    let times = ln_2.mul_word(k.unsigned_abs() as u32);
     let sum = if k >= 0 {
         ln_y.add(&times)
     } else {
@@ -233,16 +233,16 @@ pub(crate) fn sin_cos(x: Decimal, q: u32) -> (Int, Int) {
     let guard = guard(q, 4);
     let w = q + guard;
     let wide = w + whole + 1;
-    let half_pi = pi(wide).div_small(2);
+    let half_pi = pi(wide).div_word(2);
     let x_wide = fixed(x, wide);
     // The nearest whole number of half-turns, rounded half away from zero:
-    // any near one keeps `r` small, so this needn't be exact.
-    let k = x_wide.mul_small(2).add(&if x_wide.is_negative() {
+    // any near one keeps `r` lesser, so this needn't be exact.
+    let k = x_wide.mul_word(2).add(&if x_wide.is_negative() {
         half_pi.neg()
     } else {
         half_pi.clone()
     });
-    let k = k.div(&half_pi.mul_small(2));
+    let k = k.div(&half_pi.mul_word(2));
     let r = finish(&x_wide.sub(&k.mul(&half_pi)), whole + 1);
     let one = Big::pow10(w);
     let square = mulf(&r, &r, &one);
@@ -250,7 +250,7 @@ pub(crate) fn sin_cos(x: Decimal, q: u32) -> (Int, Int) {
     let mut sin = r.clone();
     let mut n: u32 = 2;
     loop {
-        term = mulf(&term, &square, &one).div_small(n * (n + 1)).neg();
+        term = mulf(&term, &square, &one).div_word(n * (n + 1)).neg();
         if term.is_zero() {
             break;
         }
@@ -261,7 +261,7 @@ pub(crate) fn sin_cos(x: Decimal, q: u32) -> (Int, Int) {
     let mut cos = term.clone();
     let mut n: u32 = 1;
     loop {
-        term = mulf(&term, &square, &one).div_small(n * (n + 1)).neg();
+        term = mulf(&term, &square, &one).div_word(n * (n + 1)).neg();
         if term.is_zero() {
             break;
         }
@@ -269,7 +269,7 @@ pub(crate) fn sin_cos(x: Decimal, q: u32) -> (Int, Int) {
         n += 2;
     }
     // Which quarter turn: k mod 4, from its magnitude and sign.
-    let quarter = k.magnitude().div_small(4).1;
+    let quarter = k.magnitude().div_word(4).1;
     let quarter = if k.is_negative() {
         (4 - quarter) % 4
     } else {
@@ -303,17 +303,17 @@ pub(crate) fn atan2(y: Decimal, x: Decimal, q: u32) -> Int {
         |d: Decimal| Big::from_u128(d.mantissa.unsigned_abs()).mul(&Big::pow10(scale - d.scale));
     let (a, b) = (lifted(y), lifted(x));
     let steep = a > b;
-    let (small, large) = if steep { (&b, &a) } else { (&a, &b) };
-    let mut t = Int::from_big(small.mul(&one).div_rem(large).0);
+    let (lesser, greater) = if steep { (&b, &a) } else { (&a, &b) };
+    let mut t = Int::from_big(lesser.mul(&one).div_rem(greater).0);
     for _ in 0..2 {
         let hypotenuse =
             Int::from_big(one.mul(&one).add(&t.magnitude().mul(t.magnitude())).isqrt());
         t = divf(&t, &unit.add(&hypotenuse), &one);
     }
-    let mut angle = atan_series(&t, &one).mul_small(4);
+    let mut angle = atan_series(&t, &one).mul_word(4);
     let pi = pi(w);
     if steep {
-        angle = pi.div_small(2).sub(&angle);
+        angle = pi.div_word(2).sub(&angle);
     }
     if x.mantissa < 0 {
         angle = pi.sub(&angle);

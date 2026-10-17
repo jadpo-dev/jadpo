@@ -58,14 +58,14 @@ pub fn ln(value: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fau
     crate::maths::ln(value, scale, rounding)
 }
 
-/// The sine of `radians`, correctly rounded.
-pub fn sin(radians: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
-    crate::maths::sin(radians, scale, rounding)
+/// The sine of `angle`, in radians, correctly rounded.
+pub fn sin(angle: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
+    crate::maths::sin(angle, scale, rounding)
 }
 
-/// The cosine of `radians`, correctly rounded.
-pub fn cos(radians: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
-    crate::maths::cos(radians, scale, rounding)
+/// The cosine of `angle`, in radians, correctly rounded.
+pub fn cos(angle: Decimal, scale: i64, rounding: Rounding) -> Result<Decimal, Fault> {
+    crate::maths::cos(angle, scale, rounding)
 }
 
 /// The angle of the point (`x`, `y`) from the positive `x` axis, in
