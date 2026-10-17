@@ -149,7 +149,7 @@ fn lists_and_sets_are_probed_at_the_edges_of_their_lengths() {
     on_large_stack(|| {
         let files = vec![(
             "main.jadpo".to_string(),
-            "type Tag = Text {\n    max_length: 3\n}\n\ntype Tags = List<Tag> {\n    min_length: 1\n    max_length: 3\n}\n\ntype Labels = Set<Tag> {}\n\ntype Count = Int {}\n\nfunction few(items: Tags, labels: Labels) -> Count {\n    return Count(collection.count(items))\n}\n"
+            "type Tag = Text {\n    max_length: 3\n}\n\ntype Tags = List<Tag> {\n    min_length: 1\n    max_length: 3\n}\n\ntype Labels = Set<Tag> {}\n\ntype Count = Int {}\n\nfunction few(items: Tags, labels: Labels) -> Count {\n    return Count(list.count(items))\n}\n"
                 .to_string(),
         )];
         let program = load(&files).expect("it checks");

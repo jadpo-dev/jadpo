@@ -54,7 +54,7 @@ fn unit_calls_attempt_and_bare_return_stand_alone() {
 fn loops_inline_functions_and_recursive_functions_check() {
     assert_eq!(
         with_names(
-            "type OrderLine = Object {\n    subtotal: Pence\n}\n\ntype Comment = Object {\n    replies: List<Comment>\n}\n\ntype Replies = Int {\n    min: 0\n}\n\nfunction order_total(lines: List<OrderLine>) -> Pence {\n    var mut total: Pence = 0\n    for line in lines {\n        total = Pence(total + line.subtotal)\n    }\n    return total\n}\n\nfunction reply_count(comment: Comment) -> Replies {\n    var mut count: Replies = 0\n    for reply in comment.replies {\n        count = Replies(count + 1 + reply_count(reply))\n    }\n    return count\n}\n\nfunction subtotals(lines: List<OrderLine>, floor: Pence) -> List<Pence> {\n    var large: List<OrderLine> = collection.filter(lines, line -> line.subtotal > floor)\n    return collection.map(large, line -> line.subtotal)\n}\n"
+            "type OrderLine = Object {\n    subtotal: Pence\n}\n\ntype Comment = Object {\n    replies: List<Comment>\n}\n\ntype Replies = Int {\n    min: 0\n}\n\nfunction order_total(lines: List<OrderLine>) -> Pence {\n    var mut total: Pence = 0\n    for line in lines {\n        total = Pence(total + line.subtotal)\n    }\n    return total\n}\n\nfunction reply_count(comment: Comment) -> Replies {\n    var mut count: Replies = 0\n    for reply in comment.replies {\n        count = Replies(count + 1 + reply_count(reply))\n    }\n    return count\n}\n\nfunction subtotals(lines: List<OrderLine>, floor: Pence) -> List<Pence> {\n    var large: List<OrderLine> = list.filter(lines, line -> line.subtotal > floor)\n    return list.map(large, line -> line.subtotal)\n}\n"
         ),
         CLEAN
     );
@@ -67,14 +67,14 @@ fn inline_functions_take_the_list_and_the_expected_result() {
     // `List<TodoTitle>` because that is what the variable requires.
     assert_eq!(
         check(&format!(
-            "{todos}function open_titles(todos: List<Todo>) -> List<TodoTitle> {{\n    var open: List<Todo> = collection.filter(todos, todo -> todo.status == TodoStatus.open)\n    var titles: List<TodoTitle> = collection.map(open, todo -> todo.title)\n    return titles\n}}\n\naction rename(todo: Todo, title: TodoTitle) -> Todo {{\n    var fresh: TodoTitle = title\n    return Todo.update(todo) {{\n        set: {{\n            title: fresh\n        }}\n    }}\n}}\n"
+            "{todos}function open_titles(todos: List<Todo>) -> List<TodoTitle> {{\n    var open: List<Todo> = list.filter(todos, todo -> todo.status == TodoStatus.open)\n    var titles: List<TodoTitle> = list.map(open, todo -> todo.title)\n    return titles\n}}\n\naction rename(todo: Todo, title: TodoTitle) -> Todo {{\n    var fresh: TodoTitle = title\n    return Todo.update(todo) {{\n        set: {{\n            title: fresh\n        }}\n    }}\n}}\n"
         )),
         // `fresh` is read in the update's block.
         Vec::<&str>::new()
     );
     assert_eq!(
         check(&format!(
-            "{todos}function open_ids(todos: List<Todo>) -> List<Todo> {{\n    return collection.filter(todos, todo -> notify_owner(todo.id) == notify_owner(todo.id))\n}}\n"
+            "{todos}function open_ids(todos: List<Todo>) -> List<Todo> {{\n    return list.filter(todos, todo -> notify_owner(todo.id) == notify_owner(todo.id))\n}}\n"
         ))
         .first()
         .map(String::as_str),
@@ -240,7 +240,7 @@ fn each_mistake_gives_its_rule() {
             "type.match_wildcard_required",
         ),
         (
-            "function f(lines: List<Pence>) -> Pence {\n    return Pence(collection.count(list: lines))\n}\n",
+            "function f(lines: List<Pence>) -> Pence {\n    return Pence(list.count(list: lines))\n}\n",
             "type.named_argument_unknown",
         ),
         (

@@ -16,6 +16,8 @@ pub enum Kind {
     Any,
     /// `List<T>`.
     List,
+    /// `Map<K, V>`.
+    Map,
     /// An inline function, `item -> expression` (area 3).
     Function,
     /// A value built on `Int` or `Decimal`.
@@ -79,6 +81,21 @@ pub struct Param {
     /// entry's format options say whether the type takes it and needs it
     /// (`zone:` and `format:` on `text.format`, area 19).
     pub by_type: bool,
+    /// A count or a position: the checker rules a negative one out while
+    /// compiling, as `never_zero` rules out a zero divisor (area 19,
+    /// question 7): a literal isn't below 0 and a value's type has a
+    /// `min` of at least 0, so the operation never counts from the other
+    /// end.
+    pub never_negative: bool,
+    /// An inline function whose result orders the items (`sort_by`'s
+    /// `key`): it must give a number, a time, a date, a duration or text,
+    /// which the canonical order compares as what they are (area 19).
+    pub ordered: bool,
+    /// Never written by a call: the checker fills it from the call's types
+    /// and the operation is given it like any other value. `list.sum`'s
+    /// `zero` is `0` of its items' representation, so an empty list sums
+    /// to the `Int` or the `Decimal` its type says.
+    pub implicit: bool,
 }
 
 /// A condition an operation fails on unless an option settles it (area
@@ -95,12 +112,33 @@ pub struct Condition {
 /// Which operation, for an exhaustive match in each executor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Op {
-    CollectionContains,
-    CollectionCount,
-    CollectionFilter,
-    CollectionMap,
     DecimalDivide,
     IntegerDivide,
+    ListAll,
+    ListAny,
+    ListAppend,
+    ListAt,
+    ListConcat,
+    ListContains,
+    ListCount,
+    ListDistinct,
+    ListDropFirst,
+    ListDropLast,
+    ListFilter,
+    ListFind,
+    ListFirst,
+    ListFlatten,
+    ListGroupBy,
+    ListKeepFirst,
+    ListKeepLast,
+    ListLast,
+    ListMap,
+    ListMaxBy,
+    ListMinBy,
+    ListReverse,
+    ListSlice,
+    ListSortBy,
+    ListSum,
     LocaleDirection,
     LocaleFromAcceptLanguage,
     TemporalAddDays,
@@ -137,7 +175,7 @@ pub struct Operation {
     pub params: &'static [Param],
     pub result: Kind,
     /// The smallest result it can give, when its result type can't say:
-    /// `collection.count` never gives less than 0, though its result is a
+    /// `list.count` never gives less than 0, though its result is a
     /// plain `Int`. Proving a construction safe reads it (area 4,
     /// question 6).
     pub at_least: Option<i64>,
@@ -165,6 +203,25 @@ const fn param(name: &'static str, kind: Kind) -> Param {
         only_for: None,
         needed: false,
         by_type: false,
+        never_negative: false,
+        ordered: false,
+        implicit: false,
+    }
+}
+
+/// A count or a position, never negative.
+const fn count(name: &'static str) -> Param {
+    Param {
+        never_negative: true,
+        ..param(name, INT)
+    }
+}
+
+/// An inline function whose result orders the items.
+const fn key() -> Param {
+    Param {
+        ordered: true,
+        ..param("key", Kind::Function)
     }
 }
 
@@ -227,6 +284,7 @@ const INSTANT: Kind = Kind::Builtin(Builtin::Instant);
 const DATE: Kind = Kind::Builtin(Builtin::CalendarDate);
 const ZONED: Kind = Kind::Builtin(Builtin::ZonedTime);
 const INT: Kind = Kind::Builtin(Builtin::Int);
+const BOOL: Kind = Kind::Builtin(Builtin::Bool);
 const ZONE: Kind = Kind::Enum(crate::ZONE);
 const RANGE: Kind = Kind::Std(INSTANT_RANGE);
 const LOCALE: Kind = Kind::Enum(crate::LOCALE);
@@ -272,65 +330,48 @@ const fn temporal(
     }
 }
 
-/// `collection.contains`, the table's first entry.
-const CONTAINS: Operation = Operation {
-    op: Op::CollectionContains,
-    namespace: "collection",
-    name: "contains",
-    params: &[param("items", Kind::List), param("item", Kind::Any)],
-    result: Kind::Builtin(Builtin::Bool),
+/// `decimal.divide`, the table's first entry.
+const DIVIDE: Operation = Operation {
+    op: Op::DecimalDivide,
+    namespace: "decimal",
+    name: "divide",
+    params: &[
+        param("dividend", Kind::Number),
+        divisor("divisor", Kind::Number),
+        param("rounding", ROUNDING),
+    ],
+    result: Kind::Builtin(Builtin::Decimal),
     at_least: None,
     conditions: &[],
-    rust: "collection::contains",
+    rust: "decimal::divide",
 };
+
+const ITEMS: Param = param("items", Kind::List);
+
+/// A `list` operation that never fails (area 19, "Lists"), by its
+/// parameters and result.
+const fn list(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace: "list",
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: &[],
+        rust,
+    }
+}
 
 /// Every operation, sorted by namespace and name.
 pub const OPERATIONS: &[Operation] = &[
-    CONTAINS,
-    Operation {
-        op: Op::CollectionCount,
-        namespace: "collection",
-        name: "count",
-        params: &[param("items", Kind::List)],
-        result: Kind::Builtin(Builtin::Int),
-        at_least: Some(0),
-        conditions: &[],
-        rust: "collection::count",
-    },
-    Operation {
-        op: Op::CollectionFilter,
-        namespace: "collection",
-        name: "filter",
-        params: &[param("items", Kind::List), param("keep", Kind::Function)],
-        result: Kind::List,
-        at_least: None,
-        conditions: &[],
-        rust: "collection::filter",
-    },
-    Operation {
-        op: Op::CollectionMap,
-        namespace: "collection",
-        name: "map",
-        params: &[param("items", Kind::List), param("each", Kind::Function)],
-        result: Kind::List,
-        at_least: None,
-        conditions: &[],
-        rust: "collection::map",
-    },
-    Operation {
-        op: Op::DecimalDivide,
-        namespace: "decimal",
-        name: "divide",
-        params: &[
-            param("dividend", Kind::Number),
-            divisor("divisor", Kind::Number),
-            param("rounding", ROUNDING),
-        ],
-        result: Kind::Builtin(Builtin::Decimal),
-        at_least: None,
-        conditions: &[],
-        rust: "decimal::divide",
-    },
+    DIVIDE,
     Operation {
         op: Op::IntegerDivide,
         namespace: "integer",
@@ -345,6 +386,178 @@ pub const OPERATIONS: &[Operation] = &[
         conditions: &[],
         rust: "integer::divide",
     },
+    // The list operations (area 19, "Lists"), each one function in
+    // `jadpo-value`'s `list` module. Those whose result is `T`, `T?` or
+    // `List<T>` give items of the list unchanged, so they keep the items'
+    // named type; a named list type is built back by construction (area 2).
+    list(
+        Op::ListAll,
+        "all",
+        &[ITEMS, param("check", Kind::Function)],
+        BOOL,
+        "list::all",
+    ),
+    list(
+        Op::ListAny,
+        "any",
+        &[ITEMS, param("check", Kind::Function)],
+        BOOL,
+        "list::any",
+    ),
+    list(
+        Op::ListAppend,
+        "append",
+        &[ITEMS, param("item", Kind::Any)],
+        Kind::List,
+        "list::append",
+    ),
+    list(
+        Op::ListAt,
+        "at",
+        &[ITEMS, count("position")],
+        Kind::Any,
+        "list::at",
+    ),
+    list(
+        Op::ListConcat,
+        "concat",
+        &[param("first", Kind::List), param("second", Kind::List)],
+        Kind::List,
+        "list::concat",
+    ),
+    list(
+        Op::ListContains,
+        "contains",
+        &[ITEMS, param("item", Kind::Any)],
+        BOOL,
+        "list::contains",
+    ),
+    Operation {
+        at_least: Some(0),
+        ..list(Op::ListCount, "count", &[ITEMS], INT, "list::count")
+    },
+    list(
+        Op::ListDistinct,
+        "distinct",
+        &[ITEMS],
+        Kind::List,
+        "list::distinct",
+    ),
+    list(
+        Op::ListDropFirst,
+        "drop_first",
+        &[ITEMS, count("n")],
+        Kind::List,
+        "list::drop_first",
+    ),
+    list(
+        Op::ListDropLast,
+        "drop_last",
+        &[ITEMS, count("n")],
+        Kind::List,
+        "list::drop_last",
+    ),
+    list(
+        Op::ListFilter,
+        "filter",
+        &[ITEMS, param("keep", Kind::Function)],
+        Kind::List,
+        "list::filter",
+    ),
+    list(
+        Op::ListFind,
+        "find",
+        &[ITEMS, param("check", Kind::Function)],
+        Kind::Any,
+        "list::find",
+    ),
+    list(Op::ListFirst, "first", &[ITEMS], Kind::Any, "list::first"),
+    list(
+        Op::ListFlatten,
+        "flatten",
+        &[param("lists", Kind::List)],
+        Kind::List,
+        "list::flatten",
+    ),
+    list(
+        Op::ListGroupBy,
+        "group_by",
+        &[ITEMS, param("key", Kind::Function)],
+        Kind::Map,
+        "list::group_by",
+    ),
+    list(
+        Op::ListKeepFirst,
+        "keep_first",
+        &[ITEMS, count("n")],
+        Kind::List,
+        "list::keep_first",
+    ),
+    list(
+        Op::ListKeepLast,
+        "keep_last",
+        &[ITEMS, count("n")],
+        Kind::List,
+        "list::keep_last",
+    ),
+    list(Op::ListLast, "last", &[ITEMS], Kind::Any, "list::last"),
+    list(
+        Op::ListMap,
+        "map",
+        &[ITEMS, param("each", Kind::Function)],
+        Kind::List,
+        "list::map",
+    ),
+    list(
+        Op::ListMaxBy,
+        "max_by",
+        &[ITEMS, key()],
+        Kind::Any,
+        "list::max_by",
+    ),
+    list(
+        Op::ListMinBy,
+        "min_by",
+        &[ITEMS, key()],
+        Kind::Any,
+        "list::min_by",
+    ),
+    list(
+        Op::ListReverse,
+        "reverse",
+        &[ITEMS],
+        Kind::List,
+        "list::reverse",
+    ),
+    list(
+        Op::ListSlice,
+        "slice",
+        &[ITEMS, count("from"), count("count")],
+        Kind::List,
+        "list::slice",
+    ),
+    list(
+        Op::ListSortBy,
+        "sort_by",
+        &[ITEMS, key()],
+        Kind::List,
+        "list::sort_by",
+    ),
+    // The items added, from the `zero` the checker gives, of the items'
+    // representation (area 19); overflow is a defect, as it is for `+`.
+    list(
+        Op::ListSum,
+        "sum",
+        &[
+            ITEMS,
+            Param {
+                implicit: true,
+                ..param("zero", Kind::Number)
+            },
+        ],
+        Kind::Number,
+        "list::sum",
+    ),
     // The way a locale's text runs (area 10, "Locales"), from CLDR.
     Operation {
         op: Op::LocaleDirection,
@@ -619,6 +832,21 @@ pub fn moved(namespace: &str, name: &str) -> Option<&'static str> {
         .map(|(_, to)| *to)
 }
 
+/// Namespaces that moved whole, each with the namespaces it became: a
+/// call `collection.<name>` is `semantic.standard_operation_moved`, whose
+/// edit writes `list.`, `set.` or `map.` by what its first argument is, a
+/// list unless it is a set or a map (area 19, question 6). The old name
+/// stays reserved, so the habit is always caught.
+pub const MOVED_NAMESPACES: &[(&str, &[&str])] = &[("collection", &["list", "set", "map"])];
+
+/// The namespaces `namespace` became, if it moved whole.
+pub fn moved_namespace(namespace: &str) -> Option<&'static [&'static str]> {
+    MOVED_NAMESPACES
+        .iter()
+        .find(|(from, _)| *from == namespace)
+        .map(|(_, to)| *to)
+}
+
 /// The operation `namespace.name`, if the standard library has one.
 pub fn operation(namespace: &str, name: &str) -> Option<&'static Operation> {
     OPERATIONS
@@ -633,7 +861,7 @@ impl Op {
             .iter()
             .find(|operation| operation.op == self)
             // The table lists every operation, which its test holds it to.
-            .unwrap_or(&CONTAINS)
+            .unwrap_or(&DIVIDE)
     }
 }
 
@@ -652,7 +880,7 @@ mod tests {
             assert_eq!(operation.op.operation(), operation);
         }
         assert_eq!(
-            operation("collection", "count").map(|op| op.at_least),
+            operation("list", "count").map(|op| op.at_least),
             Some(Some(0))
         );
         assert!(operation("text", "format").is_some());
@@ -664,6 +892,29 @@ mod tests {
         for (_, to) in MOVED {
             let (namespace, name) = to.split_once('.').unwrap_or_default();
             assert!(operation(namespace, name).is_some(), "{to} exists");
+        }
+        assert_eq!(
+            moved_namespace("collection"),
+            Some(&["list", "set", "map"][..])
+        );
+        assert!(
+            operation("collection", "count").is_none(),
+            "moved to `list.`"
+        );
+        for operation in OPERATIONS {
+            // A value the checker fills comes after every written one.
+            let written = operation.params.iter().take_while(|p| !p.implicit).count();
+            assert!(operation.params[written..].iter().all(|p| p.implicit));
+            for param in operation.params {
+                assert!(
+                    !param.never_negative || param.kind == INT,
+                    "a count is an `Int`"
+                );
+                assert!(
+                    !param.ordered || param.kind == Kind::Function,
+                    "a key is inline"
+                );
+            }
         }
         for operation in OPERATIONS {
             for condition in operation.conditions {

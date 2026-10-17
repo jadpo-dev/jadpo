@@ -26,6 +26,7 @@ mod identity;
 mod imports;
 mod incremental;
 mod isolation;
+mod lists;
 mod locales;
 mod logic;
 mod lookup;

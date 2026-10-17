@@ -23,7 +23,7 @@ test "anyone signed in may open a bakery, and owns it" {
         as: Principal.user(dee)
     }
     var bakery_names: List<BakeryName> = match seen.output {
-        some(bakeries) -> collection.map(bakeries, bakery -> bakery.name)
+        some(bakeries) -> list.map(bakeries, bakery -> bakery.name)
         none -> []
     }
     assert bakery_names == ["Southbank"]

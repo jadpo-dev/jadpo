@@ -787,13 +787,21 @@ impl Lower<'_> {
                 args
             }
             (Reach::Std(op), Some(slots)) => {
-                let mut args = vec![None; op.operation().params.len()];
+                let params = op.operation().params;
+                let mut args = vec![None; params.len()];
                 for (arg, slot) in arguments.iter().zip(slots) {
                     let lowered = arg.expr().map(|value| self.expr(&value));
                     if let Some(slot) = slot
                         && let Some(place) = args.get_mut(slot)
                     {
                         *place = lowered;
+                    }
+                }
+                // What the checker fills, never written (`list.sum`'s
+                // `zero`).
+                for (place, param) in args.iter_mut().zip(params) {
+                    if param.implicit {
+                        *place = Some(self.zero(call));
                     }
                 }
                 args
@@ -809,6 +817,30 @@ impl Lower<'_> {
             args,
             fallible,
         }
+    }
+
+    /// `list.sum`'s `zero`, which the checker fills: `0` of the call's own
+    /// type, its items' representation, so an empty list sums to the `Int`
+    /// or the `Decimal` its type says (area 19).
+    fn zero(&mut self, call: &ast::CallExpr) -> SiteId {
+        let ty = self
+            .facts
+            .types
+            .get(&node_key(call.syntax()))
+            .cloned()
+            .unwrap_or(Ty::Prim(Prim::Int));
+        let decimal = ty == Ty::Prim(Prim::Decimal);
+        let id = self.alloc();
+        let zero = typed::Expr::Literal(Literal::Number {
+            value: jadpo_std::Num {
+                mantissa: 0,
+                scale: 0,
+            },
+            decimal,
+        });
+        let ty = self.ty(&ty);
+        self.fill(id, call.syntax(), ty, typed::Node::Expr(zero));
+        SiteId(id as u32)
     }
 
     /// What each name in a callee refers to: the callable, its library or

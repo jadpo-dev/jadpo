@@ -2226,7 +2226,7 @@ use menu
 - **What the project declares is imported, root files included**: a
   connection in `app.jadpo` comes in as `use app { ... }`.
 - **Built-ins are never imported.** Built-in types (`Text`, `Int`,
-  `List<T>`) and standard-library namespaces (`collection.count(...)`) are
+  `List<T>`) and standard-library namespaces (`list.count(...)`) are
   fixed per language version and can't be declared by a project. An
   entity's generated operations (`Todo.get(id)`) come with the entity.
 

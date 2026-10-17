@@ -72,7 +72,7 @@ fn only_calls_into_actions_pause() {
 }
 
 /// Each level calls itself from an inline function, inside an operation.
-const THROUGH_INLINE: &str = "type Count = Int {\n    min: 0\n}\n\nfunction down(n: Count, items: List<Count>) -> Count {\n    if (n == 0) {\n        return n\n    }\n    var next: Count = Count(n - 1)\n    var below: List<Count> = collection.map(items, item -> down(next, items))\n    if (collection.count(below) > 5) {\n        return 0\n    }\n    return next\n}\n";
+const THROUGH_INLINE: &str = "type Count = Int {\n    min: 0\n}\n\nfunction down(n: Count, items: List<Count>) -> Count {\n    if (n == 0) {\n        return n\n    }\n    var next: Count = Count(n - 1)\n    var below: List<Count> = list.map(items, item -> down(next, items))\n    if (list.count(below) > 5) {\n        return 0\n    }\n    return next\n}\n";
 
 #[test]
 fn recursion_through_inline_functions_reaches_the_depth_limit_without_overflowing() {

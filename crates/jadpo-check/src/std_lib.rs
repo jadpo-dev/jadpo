@@ -26,7 +26,7 @@ const STUBS: [(&str, &str); 8] = [
     ("types.jadpo", include_str!("../std/types.jadpo")),
     ("standard.jadpo", include_str!("../std/standard.jadpo")),
     ("text.jadpo", include_str!("../std/text.jadpo")),
-    ("collection.jadpo", include_str!("../std/collection.jadpo")),
+    ("list.jadpo", include_str!("../std/list.jadpo")),
     ("decimal.jadpo", include_str!("../std/decimal.jadpo")),
     ("integer.jadpo", include_str!("../std/integer.jadpo")),
     ("locale.jadpo", include_str!("../std/locale.jadpo")),
@@ -60,6 +60,7 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
     };
     match (name.as_str(), args.len()) {
         ("List", 1) => Some(Kind::List),
+        ("Map", 2) => Some(Kind::Map),
         ("Function", 2) => Some(Kind::Function),
         ("Number", 0) => Some(Kind::Number),
         (variable, 0)
@@ -432,13 +433,19 @@ mod tests {
         assert!(names.is_type("Int") && names.is_type("FailureKind"));
         assert!(names.is_type("TextFormat") && names.is_type("List"));
         assert_eq!(names.namespace("temporal"), Some(Namespace::Standard));
+        assert_eq!(names.namespace("list"), Some(Namespace::Standard));
+        // `collection` moved to `list`, `set` and `map`, and stays reserved
+        // for the habit error (area 19, question 6).
         assert_eq!(names.namespace("collection"), Some(Namespace::Standard));
+        assert!(names.reserved("collection") && names.reserved("list"));
+        assert!(names.operations("collection").is_empty());
         assert_eq!(names.namespace("clock"), Some(Namespace::Generated));
         assert_eq!(names.namespace("config"), Some(Namespace::Generated));
         assert!(names.generated_member("clock", "now"));
         assert!(!names.generated_member("clock", "whenever"));
         assert_eq!(names.namespace_of("in_zone").as_deref(), Some("temporal"));
-        assert!(names.has_operation("collection", "count"));
+        assert!(names.has_operation("list", "count"));
+        assert!(names.has_operation("list", "group_by"));
         assert!(names.is_generic("utils"));
         assert_eq!(
             names.enums().get("UuidVersion").map(Vec::len),
@@ -458,8 +465,8 @@ mod tests {
     #[test]
     fn stub_signatures_are_read() {
         let count = StdNames::get()
-            .operation("collection", "count")
-            .expect("collection.count");
+            .operation("list", "count")
+            .expect("list.count");
         assert_eq!(count.params.len(), 1);
         assert_eq!(count.result, TypeRef::Path(vec!["Int".into()], Vec::new()));
     }

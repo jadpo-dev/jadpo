@@ -120,19 +120,19 @@ fn an_expected_failure_keeps_the_call_and_its_arguments() {
 #[test]
 fn an_inline_function_has_no_single_value_to_show() {
     let program = sizes(
-        "test \"two are large\" {\n    var sizes: List<Count> = [1, 20, 30]\n    assert collection.count(collection.filter(sizes, size -> size > 25)) == 2\n}\n",
+        "test \"two are large\" {\n    var sizes: List<Count> = [1, 20, 30]\n    assert list.count(list.filter(sizes, size -> size > 25)) == 2\n}\n",
     );
     assert_eq!(
         parts(&program, "two are large"),
         [
             part(
-                "collection.count(collection.filter(sizes, size -> size > 25))",
-                "collection.count(collection.filter(sizes, size -> size > 25))",
+                "list.count(list.filter(sizes, size -> size > 25))",
+                "list.count(list.filter(sizes, size -> size > 25))",
                 "1"
             ),
             part(
-                "collection.filter(sizes, size -> size > 25)",
-                "collection.filter(sizes, size -> size > 25)",
+                "list.filter(sizes, size -> size > 25)",
+                "list.filter(sizes, size -> size > 25)",
                 "[30]"
             ),
             part("sizes", "sizes", "[1, 20, 30]"),

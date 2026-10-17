@@ -563,21 +563,24 @@ reference only).
   quick-fix code, designed with the skills in `.agents/skills/` first;
   release notes listing added names. Done when a clash has a checked
   example with real output and `jadpo fix` has its CLI tests.
-- [ ] **5.5b Lists** `opus · high` (area 19, "Lists", questions 6, 7 and
+- [x] **5.5b Lists** `opus · high` (area 19, "Lists", questions 6, 7 and
   11): `collection.` renamed `list.` everywhere, with its habit error; the
   21 new list operations that need no language change; `never_negative`,
   the `sort_by` key's ordered kinds, results that keep a named type. Done
   when every list operation's page example passes as a test, interpreted
   and in the runtime, and no `collection.` call is left in the pages,
-  examples or tests.
+  examples or tests. `group_by`'s page test reads its map once
+  `map.get` exists (5.5c); what the pages left open is area 19's "Chosen
+  in chunk 5.5b".
 - [ ] **5.5c Sets, maps and ranges** `opus · high` (area 19, "Sets",
   "Maps", "Ranges" and "Language gaps", question 8): the 7 `set`, 8 `map`
   and 3 `range` operations and `Range<T>` on the contract; `for` over a
   set in canonical order; `[]` as an empty map; two-parameter inline
   functions for standard operations and the 3 operations waiting on them;
   `range` reserved and area 10's `deliveries_in(range:)` renamed. Done
-  when each operation's example passes and walking a set or a map's keys
-  checks and runs.
+  when each operation's example passes, area 19's `by_shelf` (`list.group_by`)
+  has a test reading its map, and walking a set or a map's keys checks
+  and runs.
 - [ ] **5.5d Numbers** `opus · high` (area 19, "Numbers", question 25): the
   8 new `integer` and `decimal` operations, `scale:` written out, and
   `Rounding.down`. Done when each operation's example passes and every

@@ -13,7 +13,7 @@ use sales/actions { price_lines }
 public action price_basket(
     basket: Basket
 ) fails BasketEmpty, CodeUnknown, DiscountTooLarge -> Receipt {
-    if (collection.count(basket.lines) == 0) {
+    if (list.count(basket.lines) == 0) {
         reject BasketEmpty
     }
     var subtotal: Pence = price_lines(basket)

@@ -56,7 +56,7 @@ impl Operand {
 
 /// What ordering applies to: numbers, and the standard types whose data
 /// entry says they are ordered (area 19), the time values.
-fn ordered(prim: Prim) -> bool {
+pub(super) fn ordered(prim: Prim) -> bool {
     prim.is_number() || jadpo_std::standard::of_builtin(prim).is_some_and(|entry| entry.ordered)
 }
 

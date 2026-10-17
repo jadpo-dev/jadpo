@@ -153,6 +153,10 @@ fn hostile_input_is_survived() {
     // words apart.
     inputs.push("function f(a: Flag, b: Flag): Flag {\n    return !a&&b||a===b;\n}\n".to_string());
     inputs.push("function f(a: Flag)->Flag {\n    return a AND(b) OR NOT(a)\n}\n".to_string());
+    // A `;` before what can't start a line isn't a clean split.
+    inputs.push(
+        "type A = Output {\n    flour: Grams;?\n    total: Grams;, ;: ;= ;+ ;)\n}\n".to_string(),
+    );
     for input in inputs {
         check(&input);
     }

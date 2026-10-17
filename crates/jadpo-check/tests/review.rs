@@ -68,7 +68,7 @@ fn reject_is_never_a_value() {
     );
     assert_eq!(
         with_counts(
-            "function f(ns: List<Count>) fails Refused -> List<Count> {\n    return collection.map(ns, n -> reject Refused)\n}\n"
+            "function f(ns: List<Count>) fails Refused -> List<Count> {\n    return list.map(ns, n -> reject Refused)\n}\n"
         ),
         ["failure.reject_placement"]
     );
@@ -128,7 +128,7 @@ fn only_actions_read_the_clock() {
     );
     assert_eq!(
         check(&format!(
-            "{AT}type Flag = Bool {{}}\n\nfunction late(cutoffs: List<ReminderCutoff>) -> List<ReminderCutoff> {{\n    return collection.filter(cutoffs, c -> c < clock.now)\n}}\n"
+            "{AT}type Flag = Bool {{}}\n\nfunction late(cutoffs: List<ReminderCutoff>) -> List<ReminderCutoff> {{\n    return list.filter(cutoffs, c -> c < clock.now)\n}}\n"
         )),
         ["type.clock_context"]
     );

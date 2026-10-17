@@ -274,7 +274,7 @@ fn a_return_inside_a_loop_leaves_the_callable() {
 #[test]
 fn inline_functions_are_passed_to_collection_operations() {
     let program = main(
-        "type TodoTitle = Text {\n    max_length: 200\n}\n\ntype TodoStatus = Enum {\n    open\n    done\n}\n\ntype Todo = Object {\n    title: TodoTitle\n    status: TodoStatus\n}\n\nfunction open_titles(todos: List<Todo>) -> List<TodoTitle> {\n    var open: List<Todo> = collection.filter(todos, todo -> todo.status == TodoStatus.open)\n    var titles: List<TodoTitle> = collection.map(open, todo -> todo.title)\n    return titles\n}\n",
+        "type TodoTitle = Text {\n    max_length: 200\n}\n\ntype TodoStatus = Enum {\n    open\n    done\n}\n\ntype Todo = Object {\n    title: TodoTitle\n    status: TodoStatus\n}\n\nfunction open_titles(todos: List<Todo>) -> List<TodoTitle> {\n    var open: List<Todo> = list.filter(todos, todo -> todo.status == TodoStatus.open)\n    var titles: List<TodoTitle> = list.map(open, todo -> todo.title)\n    return titles\n}\n",
     );
     let todo = |title: &str, status: &str| {
         program
@@ -424,7 +424,7 @@ fn a_set_literal_holds_each_value_once_in_order() {
 #[test]
 fn an_inline_function_reads_the_variables_around_it() {
     let program = main(
-        "type Score = Int {}\n\nfunction above(scores: List<Score>, limit: Score) -> List<Score> {\n    var kept: List<Score> = collection.filter(scores, score -> score > limit)\n    return kept\n}\n\nfunction squares(scores: List<Score>) -> List<Score> {\n    var squared: List<Score> = collection.map(scores, score -> Score(score * score))\n    return squared\n}\n",
+        "type Score = Int {}\n\nfunction above(scores: List<Score>, limit: Score) -> List<Score> {\n    var kept: List<Score> = list.filter(scores, score -> score > limit)\n    return kept\n}\n\nfunction squares(scores: List<Score>) -> List<Score> {\n    var squared: List<Score> = list.map(scores, score -> Score(score * score))\n    return squared\n}\n",
     );
     assert_eq!(
         value(

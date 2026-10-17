@@ -1326,14 +1326,14 @@ action flag_match(project_id: Project.id) fails ProjectNotFound -> Flag {
 action count_funded(company_id: Company.id) -> Tally {
     var projects: List<Project> = company_records(company_id)
     return Tally {
-        funded: collection.count(collection.filter(projects, project -> project.budget > 0))
+        funded: list.count(list.filter(projects, project -> project.budget > 0))
     }
 }
 
 action funded_cards(company_id: Company.id) -> List<ProjectCard> {
     var projects: List<Project> = company_records(company_id)
-    var funded: List<Project> = collection.filter(projects, project -> project.budget > 0)
-    return collection.map(funded, project -> ProjectCard {
+    var funded: List<Project> = list.filter(projects, project -> project.budget > 0)
+    return list.map(funded, project -> ProjectCard {
         id: project.id
         name: project.name
     })
@@ -1365,7 +1365,7 @@ action flag_none(project_id: Project.id) fails ProjectNotFound -> Flag? {
 action count_all(company_id: Company.id) -> Tally {
     var projects: List<Project> = company_records(company_id)
     return Tally {
-        funded: collection.count(projects)
+        funded: list.count(projects)
     }
 }
 

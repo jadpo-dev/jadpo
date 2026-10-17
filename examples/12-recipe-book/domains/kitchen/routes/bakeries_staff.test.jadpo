@@ -49,7 +49,7 @@ test "an owner sees the whole team, anyone else only their own place" {
         some(team) -> team
         none -> []
     }
-    assert collection.count(whole_team) == 3
+    assert list.count(whole_team) == 3
     var by_baker: Response = request {
         method: HttpMethod.get
         path: "/bakeries/{bakery_id}/staff"

@@ -1,0 +1,95 @@
+// The `list` namespace (area 19, "Lists"; `collection` until chunk 5.5b,
+// question 6). Each operation is listed, typed, in `jadpo-std`'s operation
+// table, which names the Rust function in `jadpo-value` that runs it; a
+// test holds these stubs to that table.
+//
+// In these stubs a single capital letter (`T`, `U`, `K`) stands for any
+// type, fixed by the arguments at each call: the standard library's
+// signatures are the only generic ones (area 3). `Function<T, U>` is an
+// argument written inline as `item -> expression` (area 3); `Number` is any
+// type built on `Int` or `Decimal`, and a built-in representation such as
+// `Int` is any type built on it, since operations work on the
+// representation as operators do. Each exists only here. What a stub can't
+// say is the table's: which counts are never negative, which keys must be
+// ordered, and that `sum` gives its items' representation.
+//
+// Values never change (area 2), so every operation that gives a list gives
+// a new one; there is no push or pop.
+
+public library list {
+    /// How many items `items` holds.
+    function count(items: List<T>) -> Int {}
+
+    /// Whether `items` holds an item equal to `item`.
+    function contains(items: List<T>, item: T) -> Bool {}
+
+    /// A new list with `each` applied to every item, in order.
+    function map(items: List<T>, each: Function<T, U>) -> List<U> {}
+
+    /// A new list of the items `keep` accepts, in order.
+    function filter(items: List<T>, keep: Function<T, Bool>) -> List<T> {}
+
+    /// The items added, as their representation: `0` for none.
+    function sum(items: List<Number>) -> Number {}
+
+    /// Whether `check` accepts at least one item; `false` for none.
+    function any(items: List<T>, check: Function<T, Bool>) -> Bool {}
+
+    /// Whether `check` accepts every item; `true` for none.
+    function all(items: List<T>, check: Function<T, Bool>) -> Bool {}
+
+    /// The first item `check` accepts, if any does.
+    function find(items: List<T>, check: Function<T, Bool>) -> T? {}
+
+    /// The first item, if there is one.
+    function first(items: List<T>) -> T? {}
+
+    /// The last item, if there is one.
+    function last(items: List<T>) -> T? {}
+
+    /// The item at `position`, 0 being the first, if there is one there.
+    function at(items: List<T>, position: Int) -> T? {}
+
+    /// The item with the smallest key; the first of equal ones.
+    function min_by(items: List<T>, key: Function<T, K>) -> T? {}
+
+    /// The item with the largest key; the first of equal ones.
+    function max_by(items: List<T>, key: Function<T, K>) -> T? {}
+
+    /// A new list ordered by `key`, smallest first; items with equal keys
+    /// keep their order.
+    function sort_by(items: List<T>, key: Function<T, K>) -> List<T> {}
+
+    /// A new list with the last item first.
+    function reverse(items: List<T>) -> List<T> {}
+
+    /// A new list of each item's first occurrence, by `==`.
+    function distinct(items: List<T>) -> List<T> {}
+
+    /// Up to `count` items from position `from`, cut short at the end.
+    function slice(items: List<T>, from: Int, count: Int) -> List<T> {}
+
+    /// At most `n` items from the start.
+    function keep_first(items: List<T>, n: Int) -> List<T> {}
+
+    /// At most `n` items from the end.
+    function keep_last(items: List<T>, n: Int) -> List<T> {}
+
+    /// The list without its first `n` items; none left when `n` is longer.
+    function drop_first(items: List<T>, n: Int) -> List<T> {}
+
+    /// The list without its last `n` items; none left when `n` is longer.
+    function drop_last(items: List<T>, n: Int) -> List<T> {}
+
+    /// A new list with `item` added at the end.
+    function append(items: List<T>, item: T) -> List<T> {}
+
+    /// `first`'s items, then `second`'s.
+    function concat(first: List<T>, second: List<T>) -> List<T> {}
+
+    /// The items of each list in turn.
+    function flatten(lists: List<List<T>>) -> List<T> {}
+
+    /// Each key `key` gives, with its items in order.
+    function group_by(items: List<T>, key: Function<T, K>) -> Map<K, List<T>> {}
+}

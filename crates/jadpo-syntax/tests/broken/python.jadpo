@@ -8,7 +8,7 @@ def total(items: list[Item]) -> Pence {  // error: syntax.function_keyword
     } elif (items is not None) {  // error: syntax.else_if
         return 1
     }
-    var names: List<Name> = collection.map(items, lambda item: item.name)  // error: syntax.inline_function_arrow
+    var names: List<Name> = list.map(items, lambda item: item.name)  // error: syntax.inline_function_arrow
     var first: Optional[Name] = none  // error: syntax.nullable_type
     var sorted: List<Item> = order(items, reverse = true)  // error: syntax.named_argument_equals
     var tags: Map<Tag, Count> = build(tags)

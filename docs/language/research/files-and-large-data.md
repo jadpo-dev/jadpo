@@ -759,10 +759,10 @@ action import_customer_piece(import_id: CustomerImport.id, piece: Rows<CustomerR
     if (current.status == ImportStatus.cancelled) {
         reject ImportCancelled           // stops the run here; nothing more is read
     }
-    var emails: List<Email> = collection.map(piece.rows, row -> row.email)
+    var emails: List<Email> = list.map(piece.rows, row -> row.email)
     var existing: List<Email> = customer_emails_in(emails)    // one query, not one per row
     for row in piece.rows {
-        if (not collection.contains(existing, row.email)) {
+        if (not list.contains(existing, row.email)) {
             Customer.create {
                 set: {
                     email: row.email
@@ -786,7 +786,7 @@ action import_customer_piece(import_id: CustomerImport.id, piece: Rows<CustomerR
     attempt CustomerImport.update(current) {
         set: {
             rows_read: piece.position.rows_read
-            rows_with_problems: RowCount(current.rows_with_problems + collection.count(piece.problems))
+            rows_with_problems: RowCount(current.rows_with_problems + list.count(piece.problems))
         }
     }
 }
@@ -838,7 +838,7 @@ subscriber export_orders {
 
 // domains/ordering/libraries/export_lines.jadpo
 function export_lines(orders: List<Order>, zone: Zone, locale: Locale) -> List<OrderExportLine> {
-    return collection.map(orders, order -> OrderExportLine {
+    return list.map(orders, order -> OrderExportLine {
         reference: order.reference
         placed: temporal.format(order.placed_at, zone: zone, locale: locale, format: TimeFormat.date_time_medium)
         status: order.status

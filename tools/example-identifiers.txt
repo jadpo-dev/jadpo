@@ -87,12 +87,16 @@ bakery_view
 baking
 balance
 band_rate
+bap
 basket
 basket_empty
 basket_line
 batch_code
 batch_cost
+batch_count
+batch_name
 batch_size
+batches_baked
 best_before
 billing_name
 billing_reference
@@ -145,6 +149,7 @@ by_member
 by_outsider
 by_owner
 by_partner
+by_shelf
 cake
 cake_count
 cake_id
@@ -397,6 +402,7 @@ flavours
 floor_scale
 flour
 flour_for
+flour_needed
 flour_short
 follow_up
 forget_memos
@@ -432,6 +438,7 @@ handovers
 harbour
 has_urgent
 headline_text
+heaviest
 heavy
 heavy_ingredients
 hello
@@ -1001,6 +1008,7 @@ snooze_todo
 sold_out
 source_company_id
 southbank
+spelt
 split_evenly
 sponge
 staff
@@ -1023,6 +1031,7 @@ status_text
 steam
 steam_word
 steward
+still_to_bake
 stock
 stock_badge
 stock_badges
@@ -1051,6 +1060,7 @@ tagged_memo
 take_flour
 take_off_menu
 take_on
+takings
 team
 team_id
 temperature
@@ -1109,6 +1119,7 @@ tray_count
 tray_full
 tray_plan
 trays
+trays_out
 turned_down
 two_open_todos
 uk_bands
