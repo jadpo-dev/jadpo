@@ -1,9 +1,10 @@
-//! `jadpo translations missing`, `unused`, `update`, `accept` and `builtin`
-//! (area 10, "Tooling"; chunks 5.4d and 5.4e): what is left to translate,
-//! which messages nothing calls, the record of which default wording each
-//! translation was made from and who accepted it, and Jadpo's own
-//! messages. `export` and `import` come with the exchange with translation
-//! services (chunk 5.4f). Every command that prints takes `--json`.
+//! `jadpo translations missing`, `unused`, `update`, `accept`, `builtin`,
+//! `export` and `import` (area 10, "Tooling"; chunks 5.4d, 5.4e and 5.4f):
+//! what is left to translate, which messages nothing calls, the record of
+//! which default wording each translation was made from and who accepted
+//! it, Jadpo's own messages, and the exchange with translation services
+//! (`export` and `import`, designed in [`crate::exchange::command`]). Every
+//! command that prints takes `--json`.
 //!
 //! Designed before it was built (impeccable's shape pass against the CLI
 //! design language, run unattended, so its assumptions are marked):
@@ -101,34 +102,22 @@ pub const ACTIONS: &[Value] = &[
         name: "builtin",
         description: "List Jadpo's own messages the app can show",
     },
-];
-
-/// Decided, not built yet (chunk 5.4f).
-const PLANNED: &[(&str, &str)] = &[
-    (
-        "export",
-        "Exchanging messages with translation services as XLIFF or JSON comes in chunk 5.4f",
-    ),
-    (
-        "import",
-        "Exchanging messages with translation services as XLIFF or JSON comes in chunk 5.4f",
-    ),
+    Value {
+        name: "export",
+        description: "Write the wording for a translation service as XLIFF or JSON",
+    },
+    Value {
+        name: "import",
+        description: "Read a translation service's file into the language files",
+    },
 ];
 
 pub fn translations(call: &Call) -> Reply {
     let action = match call.arguments.first().map(String::as_str) {
-        Some(action @ ("missing" | "unused" | "update" | "accept" | "builtin")) => action,
+        Some(
+            action @ ("missing" | "unused" | "update" | "accept" | "builtin" | "export" | "import"),
+        ) => action,
         Some(other) => {
-            if let Some((_, reason)) = PLANNED.iter().find(|(name, _)| *name == other) {
-                return Reply::failed(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!("`jadpo translations {other}` isn't built yet"),
-                    )
-                    .reason(format!("{reason}."))
-                    .next("Run `jadpo translations missing` to see what is left to translate"),
-                );
-            }
             let names: Vec<&str> = ACTIONS.iter().map(|action| action.name).collect();
             let diagnostic = Diagnostic::new(
                 &rule::CLI_TRANSLATIONS_ARGUMENTS,
@@ -155,7 +144,7 @@ pub fn translations(call: &Call) -> Reply {
                     &rule::CLI_TRANSLATIONS_ARGUMENTS,
                     "`jadpo translations` needs to know what to do",
                 )
-                .reason("`missing` lists what is left to translate, `unused` the messages no code calls, `update` records the wording each translation was made from, `accept` accepts a locale's changed wording and `builtin` lists Jadpo's own messages.")
+                .reason("`missing` lists what is left to translate, `unused` the messages no code calls, `update` records the wording each translation was made from, `accept` accepts a locale's changed wording, `builtin` lists Jadpo's own messages, and `export` and `import` exchange the wording with a translation service.")
                 .next("Run `jadpo translations missing`"),
             );
         }
@@ -164,7 +153,12 @@ pub fn translations(call: &Call) -> Reply {
     let Some(root) = jadpo_db::find_root(&cwd) else {
         return project_not_found("translations");
     };
-    let loaded = jadpo_db::load(&root);
+    let mut loaded = jadpo_db::load(&root);
+    match action {
+        "export" => return crate::exchange::command::export(&loaded, call, &cwd),
+        "import" => return crate::exchange::command::import(&mut loaded, call, &cwd),
+        _ => {}
+    }
     let extra = call.arguments.get(1).map(String::as_str);
     if let Some(extra) = extra
         && matches!(action, "unused" | "update" | "builtin")

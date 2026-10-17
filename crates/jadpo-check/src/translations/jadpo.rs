@@ -204,6 +204,7 @@ fn subject(message: &Message) -> Subject {
         formats: Vec::new(),
         broken: false,
         builtin: Some(message.feature),
+        description: Some(message.description.to_string()),
     }
 }
 

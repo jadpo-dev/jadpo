@@ -546,14 +546,6 @@ fn the_commands_refuse_what_they_cannot_do() {
     assert!(near.contains("Did you mean `fr_fr`?"), "{near}");
     let (_, extra) = plain(&root, &["translations", "unused", "fr_fr"]);
     assert!(extra.contains("takes nothing after it"), "{extra}");
-    for planned in ["export", "import"] {
-        let (code, out) = plain(&root, &["translations", planned]);
-        assert_ne!(code, 0);
-        assert!(
-            out.contains("rule: toolchain.not_built_yet"),
-            "{planned}: {out}"
-        );
-    }
 }
 
 #[test]
