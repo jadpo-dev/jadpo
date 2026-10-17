@@ -499,10 +499,17 @@ impl<'t> Codecs<'t> {
                 let jadpo_std::standard::Holds::Object(fields) = entry.holds else {
                     return self.made_unknown();
                 };
-                let shape = self.types.fixed_shape(entry.name, fields);
+                // Sent as its canonical text (area 19, "Time and calendar
+                // additions"), or as an object of its fields.
+                if entry.json == jadpo_std::standard::Json::Text {
+                    return Codec::Standard {
+                        ty: entry.name.to_string(),
+                    };
+                }
+                let shape = self.types.standard_shape(entry.name, fields);
                 let fields = fields
                     .iter()
-                    .map(|(_, builtin)| self.codec(&TypeRef::Builtin(*builtin)))
+                    .map(|(_, part)| self.codec(&crate::types::part_type(*part)))
                     .collect();
                 Codec::Object { shape, fields }
             }

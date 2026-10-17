@@ -14,7 +14,7 @@
 
 use std::path::Path;
 
-use super::http::{Dev, jadpo, tempdir, write};
+use super::http::{Dev, jadpo, tempdir, wait_for, write};
 
 const FILES: &[(&str, &str)] = &[
     (
@@ -270,6 +270,9 @@ fn the_first_problem_reaches_the_client_and_never_a_value() {
     assert_eq!(unreadable.status, 422, "{unreadable:?}");
     assert_eq!(unreadable.json()["error"]["code"], "import_unreadable");
 
+    // The server writes a request's line after answering it, so the last
+    // one is waited for before the log is read.
+    wait_for(&dev, "import_unreadable");
     let log = dev.log();
     assert!(log.contains("import_invalid"), "{log}");
     assert!(!log.contains("sk_live"), "{log}");

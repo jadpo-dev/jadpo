@@ -54,6 +54,14 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
                 Vec::new(),
             )
         }
+        // Sent as its canonical text (chunk 5.5k).
+        Holds::Object(_) if entry.json == Json::Text => (
+            vec![Codec::Standard {
+                ty: entry.name.to_string(),
+            }],
+            Vec::new(),
+            Vec::new(),
+        ),
         Holds::Object(fields) => {
             let mut codecs = vec![Codec::Object {
                 shape: ShapeId(0),
@@ -61,9 +69,12 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
             }];
             let mut validators = Vec::new();
             let mut plans = Vec::new();
-            for (at, (name, builtin)) in fields.iter().enumerate() {
-                codecs.push(scalar(*builtin, at as u32));
-                validators.push(Validator::new(Some(*builtin), Vec::new()));
+            for (at, (name, part)) in fields.iter().enumerate() {
+                let builtin = part
+                    .builtin()
+                    .expect("an object sent as fields holds built-in types");
+                codecs.push(scalar(builtin, at as u32));
+                validators.push(Validator::new(Some(builtin), Vec::new()));
                 plans.push(FieldPlan {
                     key: format!("field {}.{name}", entry.name),
                     name: (*name).to_string(),

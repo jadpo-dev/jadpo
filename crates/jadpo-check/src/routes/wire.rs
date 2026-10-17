@@ -440,15 +440,26 @@ fn whole(n: Num) -> Option<i64> {
 }
 
 /// A standard object type's schema, from its data entry (area 19): an
-/// object of its fields, each its built-in type's, all required.
+/// object of its fields, each its built-in type's, all required; a type
+/// sent as its canonical text (`LocalTime`, chunk 5.5k) is a string.
 pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
     let mut out = Value::object();
+    if entry.json == jadpo_std::standard::Json::Text {
+        out.set("type", "string");
+        return out;
+    }
     out.set("type", "object");
     let mut properties = Value::object();
     let mut required = Vec::new();
     if let jadpo_std::standard::Holds::Object(fields) = entry.holds {
-        for (name, builtin) in fields {
-            properties.set(name, scalar_schema(*builtin, &Rules::default()));
+        for (name, part) in fields {
+            let schema = match (part.builtin(), part) {
+                (Some(builtin), _) => scalar_schema(builtin, &Rules::default()),
+                (None, jadpo_std::Part::Standard(other)) => jadpo_std::standard_type(other)
+                    .map_or_else(Value::object, standard_object_schema),
+                _ => Value::object(),
+            };
+            properties.set(name, schema);
             required.push(*name);
         }
     }

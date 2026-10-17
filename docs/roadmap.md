@@ -695,12 +695,21 @@ reference only).
   construction, `Percentage(ratio)`, 0.25 → 25%. Done when the quantity
   examples pass, `1km == 1000metre`, and a bare number or a mixed kind is
   a compile error with a checked example.
-- [ ] **5.5k Time and calendar** `opus · high` (area 19, "Time and
-  calendar additions"): the 13 new time types, `CalendarPeriod`'s
-  operator rows and `temporal.period_between`, `RecurrenceRule` expansion
-  (`temporal.occurrences`) and `OpeningHours` (`temporal.open_at`). Done
-  when each type passes the harness and the three operations' examples
-  pass across a daylight-saving change.
+- [x] **5.5k Time and calendar** `opus · high` (area 19, "Time and
+  calendar additions"): ten of the 13 new time types (`LocalTime`,
+  `LocalDateTime`, `Month`, `YearMonth`, `Year`, `Quarter`, `IsoWeek`,
+  `UtcOffset`, `DateRange`, `CalendarPeriod`), `CalendarPeriod`'s
+  operator rows, `temporal.period_between`, and `DateRange` taken by the
+  `range` operations. Done when each of the ten passes the harness and
+  `period_between`'s example passes across a daylight-saving change.
+  Split on 2026-10-17; the rest is 5.5k2.
+- [ ] **5.5k2 Recurrence and opening hours** `opus · high` (area 19,
+  "Time and calendar additions"): `RecurrenceRule` (RFC 5545) with its
+  expansion, `temporal.occurrences`; `OpeningHours` with
+  `temporal.open_at`; and `CalendarEvent`. Done when each of the three
+  passes the harness and the two operations' examples pass across spring
+  forward and fall back in Europe/London and America/New_York,
+  interpreted and in the runtime.
 - [ ] **5.5l People and places** `opus · high` (area 19, question 22): the
   19 new types, the closed lists as built-in enums with `form:`, `.all`
   and retired codes (`type.variant_retired`), `PhoneNumber`'s E.164

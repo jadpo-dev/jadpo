@@ -145,6 +145,13 @@ impl Codecs<'_> {
                     }
                 }
             }
+            Codec::Standard { .. } => match json {
+                serde_json::Value::String(text) => self.read_text(id, text, path, problems),
+                _ => {
+                    Self::problem(problems, path, "type");
+                    None
+                }
+            },
             Codec::Object { shape, fields } => {
                 let serde_json::Value::Object(entries) = json else {
                     Self::problem(problems, path, "type");
@@ -365,6 +372,14 @@ impl Codecs<'_> {
                 path,
                 problems,
             ),
+            // Its canonical text, read only as it is written.
+            Some(Codec::Standard { ty }) => match crate::standard::parse(text, ty) {
+                Ok(value) => Some(value),
+                Err(_) => {
+                    Self::problem(problems, path, "format");
+                    None
+                }
+            },
             _ => {
                 Self::problem(problems, path, "type");
                 None
@@ -552,6 +567,10 @@ impl Codecs<'_> {
                 }
                 out.push('}');
             }
+            (Some(Codec::Standard { .. }), value) => match crate::standard::from(value) {
+                Ok(Value::Text(text)) => write_string(&text, out),
+                _ => out.push_str("null"),
+            },
             (Some(Codec::Page { item }), Value::Record(record)) => {
                 out.push_str("{\"items\":[");
                 let items = record

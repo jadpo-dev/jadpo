@@ -40,8 +40,8 @@ pub enum Kind {
     /// kind is the range type its arguments are.
     Range,
     /// A clock time written as text, `"09:30"`, checked while compiling
-    /// (area 10, "Zones and local times"): there is no time-of-day type,
-    /// so only a literal gives one.
+    /// (area 10, "Zones and local times"): only a literal gives one, not a
+    /// value, a `LocalTime` included.
     Clock,
     /// A time format written out (area 10, "Showing dates and times to
     /// people"): `TimeFormat.date_long` or a declared format's name, which
@@ -250,6 +250,7 @@ pub enum Op {
     TemporalMinute,
     TemporalMonth,
     TemporalMonthBounds,
+    TemporalPeriodBetween,
     TemporalResolve,
     TemporalWeekBounds,
     TemporalWeekday,
@@ -1593,6 +1594,15 @@ pub const OPERATIONS: &[Operation] = &[
         &[param("date", DATE), param("zone", ZONE)],
         RANGE,
         "temporal::month_bounds",
+    ),
+    // Whole years, months and days from one date to another (area 19,
+    // "Time and calendar additions").
+    temporal(
+        Op::TemporalPeriodBetween,
+        "period_between",
+        &[param("start", DATE), param("end", DATE)],
+        Kind::Std(crate::standard::CALENDAR_PERIOD),
+        "temporal::period_between",
     ),
     Operation {
         conditions: &[ON_DST],

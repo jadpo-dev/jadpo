@@ -649,7 +649,7 @@ fn a_save_swaps_in_the_new_version_and_errors_keep_the_last_good_one() {
 }
 
 /// Waits for `jadpo dev` to write a line holding `needle`.
-fn wait_for(dev: &Dev, needle: &str) -> String {
+pub(super) fn wait_for(dev: &Dev, needle: &str) -> String {
     let started = Instant::now();
     loop {
         let text = dev.out.text();

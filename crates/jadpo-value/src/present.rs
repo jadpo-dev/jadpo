@@ -83,6 +83,24 @@ fn moment_of(value: &Value, zone: &Value) -> Result<Moment, Fault> {
             zone: temporal::zone_of(zone)?,
         },
         Value::Zoned(zoned) => *zoned,
+        // A local date and time, or a clock time on no day in particular,
+        // which the checker shows only by a format of the parts it has
+        // (area 19, "Time and calendar additions").
+        Value::Record(record) if &*record.ty == "LocalDateTime" => {
+            let (date, clock) = crate::calendar::local_date_time(value)?;
+            return Ok(Moment {
+                date,
+                clock,
+                zone: None,
+            });
+        }
+        Value::Record(record) if &*record.ty == "LocalTime" => {
+            return Ok(Moment {
+                date: 0,
+                clock: crate::calendar::clock_of(value)?,
+                zone: None,
+            });
+        }
         _ => return Err(Fault::Shape),
     };
     let (local, offset) = temporal::local(zoned).ok_or(Fault::TimeRange)?;

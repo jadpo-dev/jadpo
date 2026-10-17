@@ -726,25 +726,22 @@ impl Body<'_> {
                 .insert(node_key(node.syntax()), (range.clone(), vec![field]));
             return item.clone().nullable();
         }
-        if let Ty::Opaque(range, args) = &through
+        // A standard object type's fields (area 19): an `InstantRange`'s
+        // instants, a `LocalTime`'s hour, minute and second, each read as
+        // what it is built on.
+        if let Ty::Opaque(object, args) = &through
             && args.is_empty()
-            && range == jadpo_std::INSTANT_RANGE
+            && let Some(fields) = super::super::standard_fields(object)
         {
-            let found = jadpo_std::INSTANT_RANGE_FIELDS
-                .iter()
-                .find(|(name, _)| *name == field);
-            let Some((_, builtin)) = found else {
-                let fields: Vec<FieldDef> = jadpo_std::INSTANT_RANGE_FIELDS
-                    .iter()
-                    .map(|(name, builtin)| plain_field(name, Ty::Prim(*builtin)))
-                    .collect();
-                self.unknown_field(range, &field, &fields, span, false);
+            let Some(found) = fields.iter().find(|f| f.name == field) else {
+                self.unknown_field(object, &field, fields, span, false);
                 return Ty::Error;
             };
+            let declared = found.declared.clone();
             self.facts
                 .fields
-                .insert(node_key(node.syntax()), (range.clone(), vec![field]));
-            return Ty::Prim(*builtin);
+                .insert(node_key(node.syntax()), (object.clone(), vec![field]));
+            return declared;
         }
         // A route test's response (area 13).
         if let Some(found) = self.response_field(receiver, &field) {
@@ -1195,8 +1192,9 @@ impl Body<'_> {
             let mut path = variant.to_vec();
             path.push(name);
             // A standard object type's field has no field type of its own:
-            // it is the built-in type its data entry names.
-            let field_ty = if self.table.def(host).is_none() {
+            // it is the type its data entry names, or, for a whole number
+            // with a range, the field itself, whose rules are that range.
+            let field_ty = if self.table.def(host).is_none() && field.rules == Rules::default() {
                 field.declared.clone()
             } else {
                 self.table.field_type(host, &path)
@@ -1573,15 +1571,7 @@ fn standard_object_fields(name: &str) -> Option<Vec<FieldDef>> {
     if !StdNames::get().is_opaque(name) {
         return None;
     }
-    let jadpo_std::standard::Holds::Object(fields) = jadpo_std::standard_type(name)?.holds else {
-        return None;
-    };
-    Some(
-        fields
-            .iter()
-            .map(|(field, builtin)| plain_field(field, Ty::Prim(*builtin)))
-            .collect(),
-    )
+    super::super::standard_fields(name).map(<[FieldDef]>::to_vec)
 }
 
 fn plain_field(name: &str, declared: Ty) -> FieldDef {
@@ -1678,13 +1668,13 @@ pub(crate) fn members_of(
             .map(|name| plain(name, item.clone().nullable()))
             .collect();
     }
-    if let Ty::Opaque(range, args) = receiver.strip_nullable()
+    if let Ty::Opaque(object, args) = receiver.strip_nullable()
         && args.is_empty()
-        && range == jadpo_std::INSTANT_RANGE
+        && let Some(fields) = super::super::standard_fields(object)
     {
-        return jadpo_std::INSTANT_RANGE_FIELDS
+        return fields
             .iter()
-            .map(|(name, builtin)| plain(name, Ty::Prim(*builtin)))
+            .map(|field| plain(&field.name, field.declared.clone()))
             .collect();
     }
     if let Ty::Opaque(name, args) = receiver.strip_nullable()

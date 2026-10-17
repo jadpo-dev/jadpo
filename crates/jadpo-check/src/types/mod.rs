@@ -40,5 +40,5 @@ pub use stores::{
     Reach as StoreReach, store_problems, store_reaches, unkept_responses, used_stores,
     written_stores,
 };
-pub use table::{Def, FieldDef, TypeTable, TypeView, VariantDef, type_table};
+pub use table::{Def, FieldDef, TypeTable, TypeView, VariantDef, standard_fields, type_table};
 pub use ty::{BASES, Prim, TIME_FORMAT, Ty, TypeRef, container_arity, shown};

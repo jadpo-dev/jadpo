@@ -437,6 +437,17 @@ standard range type, all of a call's ranges one range type, which a
 `Range` result is. `Range<T>` is the first standard type with a type
 argument: `Holds::Range` in its entry, the checker's `Ty::Opaque("Range",
 [T])`, one plan shape for every `T` and a codec per `T`.
+Since chunk 5.5k (area 19, "Time and calendar additions") a standard
+object's fields are `Part`s: a built-in type, a whole number with a range,
+or another standard type. The type table reads them as fields
+(`types::standard_fields`), a range as the field's own rules, so an
+object literal proves it and `LocalTime.hour(...)` builds one, which the
+plan's validator checks from the entry. An object whose JSON is its
+canonical text has `Codec::Standard`, read and written through
+`jadpo_value::standard`; `jadpo_value::calendar` holds the time group's
+texts, `CalendarPeriod`'s operator rows (which `ops::add`, `subtract`
+and `multiply` reach by the value's shape) and `temporal.period_between`,
+and `ops::compare` orders a record its entry marks ordered, part by part.
 Since chunk 5.5d (area 19, "Numbers") a `written_out` parameter
 (`decimal.round`'s `scale:`) takes only a whole number from 0 to 18
 written at the call, and an operation whose `OneOf` result shares its `T`

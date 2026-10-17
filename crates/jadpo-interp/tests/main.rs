@@ -10,6 +10,7 @@ mod support;
 
 mod assertions;
 mod boundary;
+mod calendar;
 mod conditions;
 mod constants;
 mod data_formats;
