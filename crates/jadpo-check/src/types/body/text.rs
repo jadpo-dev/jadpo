@@ -31,6 +31,43 @@ impl Body<'_> {
             };
             let span = self.span(&value);
             let shown = tree::written(value.syntax());
+            // A list that is never empty: `money.allocate`'s ratios (area
+            // 19), a list written out with items, or a list type with a
+            // `min_length` of at least 1.
+            if param.kind == jadpo_std::Kind::List {
+                let why = match &value {
+                    Expr::ListExpr(list) if list.exprs().next().is_none() => {
+                        format!("`{shown}` has no items.")
+                    }
+                    Expr::ListExpr(_) => continue,
+                    _ => match self.facts.types.get(&node_key(value.syntax())).cloned() {
+                        Some(ty)
+                            if !ty.has_error()
+                                && !self.table.is_nullable(&ty)
+                                && matches!(self.table.structure(&ty), Ty::List(_)) =>
+                        {
+                            if self.never_empty_type(&ty) {
+                                continue;
+                            }
+                            format!("`{ty}` allows an empty list.")
+                        }
+                        _ => continue,
+                    },
+                };
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_ARGUMENT_EMPTY,
+                        format!("`{written}`'s `{}` is never empty", param.name),
+                    )
+                    .at(span, "may be empty")
+                    .reason(format!(
+                        "`{written}`'s `{}` is never empty, which is proved while compiling: a list written out has items and a list type has a `min_length` of at least 1; {why}",
+                        param.name
+                    ))
+                    .next("Pass a list whose type has `min_length: 1`, building it where an empty one is handled"),
+                );
+                continue;
+            }
             let (message, label, why) = if is_literal(&value) {
                 match Const::from_expr(&value) {
                     Const::Str(text) if text.is_empty() => (
@@ -134,10 +171,36 @@ impl Body<'_> {
             Ty::List(item) if !self.table.is_nullable(given) => Some(*item),
             _ => None,
         };
+        let built_on = match written {
+            "money.allocate" => Prim::Int,
+            _ if written.starts_with("money.") => Prim::Money,
+            _ => Prim::Text,
+        };
         let texts = item.as_ref().is_some_and(|item| {
-            !self.table.is_nullable(item) && self.table.representation(item) == Some(Prim::Text)
+            !self.table.is_nullable(item) && self.table.representation(item) == Some(built_on)
         });
         if texts {
+            return;
+        }
+        if built_on != Prim::Text {
+            let (what, next) = if built_on == Prim::Money {
+                ("amounts", "Pass a list of amounts of money here")
+            } else {
+                ("whole numbers", "Pass a list of whole numbers here")
+            };
+            let span = self.span(value);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{given}` can't be used where a list of {what} is required"),
+                )
+                .at(span, format!("this is `{given}`"))
+                .reason(format!(
+                    "`{written}`'s `{param}` takes a list of values built on `{}`; `{given}` isn't one.",
+                    built_on.name()
+                ))
+                .next(next),
+            );
             return;
         }
         let span = self.span(value);

@@ -400,6 +400,42 @@ std_enum! {
     }
 }
 
+std_enum! {
+    /// How many places `text.format` shows an amount of money with (area
+    /// 19, "Money and payments").
+    MoneyPrecision: "MoneyPrecision" {
+        /// Every minor unit: the currency's places, `£1,234.50`.
+        Minor: "minor",
+        /// Whole major units, a half rounded away from zero: `£1,235`.
+        Whole: "whole",
+    }
+}
+
+std_enum! {
+    /// How `text.format` names an amount's currency (area 19, "Money and
+    /// payments").
+    MoneyDisplay: "MoneyDisplay" {
+        /// The locale's symbol: `£`, `€`, `US$`.
+        Symbol: "symbol",
+        /// The ISO 4217 code: `GBP`.
+        Code: "code",
+        /// The locale's name for it, in the amount's plural form: `British
+        /// pounds`.
+        Name: "name",
+    }
+}
+
+std_enum! {
+    /// How `text.format` writes a negative amount (area 19, "Money and
+    /// payments").
+    MoneySign: "MoneySign" {
+        /// With the locale's minus sign: `-£5.00`.
+        Standard: "standard",
+        /// As the locale's accounts write it: `(£5.00)` in English.
+        Accounting: "accounting",
+    }
+}
+
 impl HttpMethod {
     /// As a route entry and HTTP write it: `GET`.
     pub fn word(self) -> &'static str {
@@ -427,7 +463,8 @@ impl HttpMethod {
 }
 
 /// Every enum declared here, by name, with its variants in order: the
-/// ones Rust interprets, then `Zone` and `Locale` from their tables.
+/// ones Rust interprets, then `Zone`, `Locale`, `FileType` and `Currency`
+/// from their tables.
 pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
     let names = |list: &'static [(&'static str, &'static str)]| {
         list.iter().map(|(variant, _)| *variant).collect()
@@ -470,9 +507,13 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (Tenancy::NAME, Tenancy::NAMES.to_vec()),
         (MembershipScope::NAME, MembershipScope::NAMES.to_vec()),
         (FieldAccess::NAME, FieldAccess::NAMES.to_vec()),
+        (MoneyPrecision::NAME, MoneyPrecision::NAMES.to_vec()),
+        (MoneyDisplay::NAME, MoneyDisplay::NAMES.to_vec()),
+        (MoneySign::NAME, MoneySign::NAMES.to_vec()),
         (ZONE, names(crate::zones::ZONES)),
         (LOCALE, names(crate::zones::LOCALES)),
         (crate::FILE_TYPE, names(crate::FILE_TYPES)),
+        (crate::CURRENCY, names(crate::CURRENCIES)),
     ]
 }
 
@@ -507,11 +548,15 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         Tenancy::NAME => position(Tenancy::NAMES),
         MembershipScope::NAME => position(MembershipScope::NAMES),
         FieldAccess::NAME => position(FieldAccess::NAMES),
+        MoneyPrecision::NAME => position(MoneyPrecision::NAMES),
+        MoneyDisplay::NAME => position(MoneyDisplay::NAMES),
+        MoneySign::NAME => position(MoneySign::NAMES),
         ZONE => crate::zones::ZONES.iter().position(|(v, _)| *v == variant),
         LOCALE => crate::zones::LOCALES
             .iter()
             .position(|(v, _)| *v == variant),
         crate::FILE_TYPE => crate::FILE_TYPES.iter().position(|(v, _)| *v == variant),
+        crate::CURRENCY => crate::CURRENCIES.iter().position(|(v, _)| *v == variant),
         _ => None,
     };
     found.and_then(|at| u32::try_from(at).ok())

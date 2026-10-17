@@ -338,7 +338,8 @@ fn a_range_of_any_ordered_type_gives_the_page_s_values() {
                 jadpo_std::variant_ordinal(jadpo_std::LOCALE, "en_gb").unwrap()
             ),
             &Value::None,
-            &Value::None
+            &Value::None,
+            &Default::default()
         ),
         Ok(Value::text("1,200 – …"))
     );

@@ -5,7 +5,9 @@
 // `T` in `format` and `from` is a standard type, or a type built on one;
 // which fit, and how each is shown or written, is the type's data entry,
 // which the checker reads. `zone:` and `format:` mean something only for
-// the types whose entry takes them (the time types), and those need them.
+// the types whose entry takes them (the time types), and those need them;
+// `precision:`, `display:` and `sign:` only for `Money`, which may leave
+// them out.
 // `as:` in `parse` is a type written out, a standard type or a type built
 // on one or on `Text`, `Int`, `Decimal` or `Bool`, and the result is that
 // type: text that isn't one at all fails `malformed`, and the type's own
@@ -31,7 +33,7 @@ public library text {
     function ends_with(value: Text, suffix: Text) -> Bool {}
 
     /// `value` shown to a person in `locale`, in the type's own words.
-    function format(value: T, locale: Locale, zone: Zone?, format: TimeFormat?) -> PresentationText {}
+    function format(value: T, locale: Locale, zone: Zone?, format: TimeFormat?, precision: MoneyPrecision?, display: MoneyDisplay?, sign: MoneySign?) -> PresentationText {}
 
     /// `value`'s canonical text, the form `parse` reads back.
     function from(value: T) -> Text {}

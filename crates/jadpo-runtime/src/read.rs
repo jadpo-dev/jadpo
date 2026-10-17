@@ -349,12 +349,7 @@ fn records<'a>(
             for (name, field) in &select.record.fields {
                 let value = match field {
                     Field::Column(at) => {
-                        let (Some(sql), Some(column)) =
-                            (row.get(*at as usize), select.columns.get(*at as usize))
-                        else {
-                            return Err(Problem::Defect("a row without a column it needs".into()));
-                        };
-                        from_sql(sql, column).map_err(Problem::Defect)?
+                        field_value(row, &select.columns, *at).map_err(Problem::Defect)?
                     }
                     Field::Include(at) => {
                         let (Some(include), Some(matched)) =
@@ -439,9 +434,9 @@ pub fn to_sql(value: &Value, ty: SqlType) -> Result<SqlValue, String> {
         }
         (Value::Date(day), SqlType::Date) => SqlValue::Date(*day),
         (Value::Duration(millis), SqlType::Int8) => SqlValue::Int8(*millis),
-        (Value::Variant(variant), SqlType::Text) if variant.fields.is_empty() => {
-            SqlValue::Text(variant.name.to_string())
-        }
+        (Value::Variant(variant), SqlType::Text) if variant.fields.is_empty() => SqlValue::Text(
+            jadpo_std::standard::stored_variant(&variant.ty, &variant.name).to_string(),
+        ),
         (Value::List(items) | Value::Set(items), SqlType::Array(inner)) => SqlValue::Array(
             *inner,
             items
@@ -474,7 +469,8 @@ pub fn from_sql(sql: &SqlValue, column: &Column) -> Result<Value, String> {
         (SqlValue::Uuid(bytes), Column::Uuid) => Value::uuid(&uuid_text(bytes)),
         (SqlValue::Timestamp(micros), Column::Instant) => Value::Instant(micros.div_euclid(1000)),
         (SqlValue::Date(day), Column::Date) => Value::Date(*day),
-        (SqlValue::Text(name), Column::Enum { ty, variants }) => {
+        (SqlValue::Text(stored), Column::Enum { ty, variants }) => {
+            let name = &jadpo_std::standard::variant_stored(ty, stored).to_string();
             let ordinal = variants
                 .iter()
                 .position(|variant| variant == name)
@@ -485,6 +481,40 @@ pub fn from_sql(sql: &SqlValue, column: &Column) -> Result<Value, String> {
             return Err(format!("a `{:?}` column read as {column:?}", sql.ty()));
         }
     })
+}
+
+/// The value of the field whose column is at `at` of `row`: the column's
+/// own, or for a compound standard type (`Money`, area 19), its value made
+/// from that column and the parts after it.
+pub fn field_value(row: &[SqlValue], columns: &[Column], at: u32) -> Result<Value, String> {
+    let at = at as usize;
+    let (Some(sql), Some(column)) = (row.get(at), columns.get(at)) else {
+        return Err("a row without a column it needs".into());
+    };
+    let Column::Compound(ty) = column else {
+        return from_sql(sql, column);
+    };
+    let entry =
+        jadpo_std::standard_type(ty).ok_or_else(|| format!("`{ty}` isn't a standard type"))?;
+    let count = entry.columns().len();
+    let parts = row
+        .get(at..at + count)
+        .ok_or_else(|| format!("a `{ty}` without its {count} columns"))?;
+    if parts.iter().all(|part| matches!(part, SqlValue::Null(_))) {
+        return Ok(Value::None);
+    }
+    let values = parts
+        .iter()
+        .map(|part| match part {
+            SqlValue::Int2(n) => Ok(Value::Int(i64::from(*n))),
+            SqlValue::Int4(n) => Ok(Value::Int(i64::from(*n))),
+            SqlValue::Int8(n) => Ok(Value::Int(*n)),
+            SqlValue::Text(text) => Ok(Value::text(text)),
+            other => Err(format!("a `{:?}` column of a `{ty}`", other.ty())),
+        })
+        .collect::<Result<Vec<Value>, String>>()?;
+    jadpo_value::standard::from_parts(entry, &values)
+        .map_err(|_| format!("columns that don't make a `{ty}`"))
 }
 
 /// A whole number of any width as a cursor holds it.

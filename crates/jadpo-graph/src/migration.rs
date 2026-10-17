@@ -136,14 +136,25 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
             Some(was) if !now.retired && narrowed(was, now) => NeededKind::Refit,
             _ => continue,
         };
-        out.push(Needed {
+        let needed = Needed {
             store: store.clone(),
             table: table.clone(),
             column: column.clone(),
             entity: entity.clone(),
             field: now.field.clone().unwrap_or_else(|| column.clone()),
             kind,
+        };
+        // A field stored in two columns (an amount of money, area 19) is
+        // one decision.
+        let decided = out.iter().any(|other: &Needed| {
+            other.store == needed.store
+                && other.table == needed.table
+                && other.key() == needed.key()
+                && other.kind == needed.kind
         });
+        if !decided {
+            out.push(needed);
+        }
     }
     out
 }
@@ -325,6 +336,9 @@ pub fn migration_sql(
                     for name in new.unique.keys() {
                         plan.constraints.push(add_unique(table, name, new));
                     }
+                    for name in new.checks.keys() {
+                        plan.constraints.push(add_check(table, name, new));
+                    }
                     for name in new.foreign_keys.keys() {
                         plan.references.push(add_foreign_key(table, name, new));
                     }
@@ -426,7 +440,9 @@ pub fn migration_sql(
                     reason: "A column is dropped only after it was retired, and dropping needs acceptances (area 18), which aren't built yet.".into(),
                 });
             }
-            Change::DropForeignKey { table, name, .. } | Change::DropUnique { table, name, .. } => {
+            Change::DropForeignKey { table, name, .. }
+            | Change::DropUnique { table, name, .. }
+            | Change::DropCheck { table, name, .. } => {
                 plan.drop.push(Statement {
                     sql: table::drop_constraint(table, name),
                     does: "drop constraint",
@@ -439,6 +455,11 @@ pub fn migration_sql(
             Change::AddUnique { table, name, .. } => {
                 if let Some(new) = new {
                     plan.constraints.push(add_unique(table, name, new));
+                }
+            }
+            Change::AddCheck { table, name, .. } => {
+                if let Some(new) = new {
+                    plan.constraints.push(add_check(table, name, new));
                 }
             }
             Change::AddForeignKey { table, name, .. } => {
@@ -562,6 +583,17 @@ fn add_unique(table: &str, name: &str, def: &Table) -> Statement {
     }
 }
 
+fn add_check(table: &str, name: &str, def: &Table) -> Statement {
+    let sql = match def.checks.get(name) {
+        Some(check) => table::add_check(table, name, &check.column, &check.values),
+        None => table::add_check(table, name, "", &[]),
+    };
+    Statement {
+        sql,
+        does: "add check",
+    }
+}
+
 fn add_foreign_key(table: &str, name: &str, def: &Table) -> Statement {
     let sql = match def.foreign_keys.get(name) {
         Some(key) => {
@@ -629,6 +661,7 @@ mod tests {
             unique: BTreeMap::new(),
             foreign_keys: BTreeMap::new(),
             indexes: BTreeMap::new(),
+            checks: BTreeMap::new(),
         };
         for (position, (name, ty, nullable, retired)) in (0u32..).zip(columns) {
             table.columns.insert(

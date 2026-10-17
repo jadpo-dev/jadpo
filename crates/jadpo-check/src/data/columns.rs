@@ -45,6 +45,7 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
             | Builtin::CalendarDate
             | Builtin::ZonedTime
             | Builtin::Duration
+            | Builtin::Money
             | Builtin::Unit
             | Builtin::Email
             | Builtin::Url
@@ -94,7 +95,11 @@ pub fn allows(table: &dyn TypeView, field: &Ty) -> Allows {
         && let Some(Def::Enum { variants }) = table.def(&name)
         && variants.iter().all(|v| v.fields.is_none())
     {
-        out.values = variants.iter().map(|v| v.name.clone()).collect();
+        // As the column holds them: `Currency`'s by code (area 19).
+        out.values = variants
+            .iter()
+            .map(|v| jadpo_std::standard::stored_variant(&name, &v.name).to_string())
+            .collect();
         out.values.sort();
     }
     for (_, rules) in table.rule_chain(field) {
@@ -110,6 +115,13 @@ pub fn allows(table: &dyn TypeView, field: &Ty) -> Allows {
             && !out.patterns.contains(pattern)
         {
             out.patterns.push(pattern.clone());
+        }
+        // A `Money` type's one currency, which its currency column holds
+        // (area 19).
+        if out.values.is_empty()
+            && let Some(code) = rules.currency.and_then(jadpo_std::money::code)
+        {
+            out.values = vec![code.to_string()];
         }
     }
     out.patterns.sort();
@@ -342,5 +354,6 @@ pub fn system_table(name: &str) -> Table {
         unique,
         foreign_keys,
         indexes,
+        checks: BTreeMap::new(),
     }
 }

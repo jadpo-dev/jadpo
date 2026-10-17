@@ -110,12 +110,12 @@ pub fn any_of(whos: &[Who]) -> String {
 
 /// `INSERT` of `values` into `columns` of `table` only when `condition`
 /// holds of them, returning `returning`: no row when policy refuses.
-pub fn insert_when(
+pub fn insert_when<S: AsRef<str>>(
     table: &str,
     columns: &[&str],
     values: &[String],
     condition: &str,
-    returning: &[&str],
+    returning: &[S],
 ) -> String {
     format!(
         "INSERT INTO {} ({})\nSELECT {}\nWHERE {condition}\nRETURNING {}",

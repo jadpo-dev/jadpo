@@ -418,6 +418,13 @@ fn input_name(source: &WriteSource, write: &WriteSitePlan, body: &Body, text: &s
         WriteSource::NewId => "a new identity".to_string(),
         WriteSource::Now => "clock.now".to_string(),
         WriteSource::Caller(part) => caller(*part),
+        WriteSource::Part { of, index } => {
+            format!(
+                "part {} of {}",
+                index + 1,
+                input_name(of, write, body, text)
+            )
+        }
     }
 }
 

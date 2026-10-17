@@ -113,6 +113,11 @@ pub enum TextForm {
     /// by `/`, with an open end written `..` as ISO 8601-2 writes one:
     /// `2026-10-01/..`.
     Range,
+    /// An amount of money: its currency's ISO 4217 code, a space, and the
+    /// amount in major units with exactly the currency's places, `GBP
+    /// 10.50`, `JPY 500`, `BHD 1.250` (chosen in chunk 5.5h); the code is
+    /// read ignoring case.
+    Money,
 }
 
 /// How a standard type is sent and read as JSON.
@@ -165,6 +170,12 @@ pub enum FormatKey {
     /// joined by CLDR's interval fallback, `{0} – {1}`; an open end is
     /// `…`.
     Range,
+    /// CLDR's currency formats: the locale's grouping and decimal
+    /// separator, the currency's places, and its symbol, code or name in
+    /// the place the locale puts it, `£1,234.50`, `1 234,50 €`.
+    Money,
+    /// CLDR's currency display names: "British Pound".
+    CurrencyName,
 }
 
 /// An option `text.format` takes for a type, by its parameter's name.
@@ -217,6 +228,27 @@ pub struct FieldMatch {
     pub names: &'static [&'static str],
     /// The built-in types a matching field is built on.
     pub built_on: &'static [Builtin],
+    /// Whether a field holding an enum matches too, as a currency held as
+    /// a project's own enum does.
+    pub or_enum: bool,
+}
+
+/// How a standard type is stored (area 5, "Storage types"; area 19).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Storage {
+    /// One column of this type, named for the field.
+    Column(SqlType),
+    /// Named columns, each its suffix, joined to the field's column name
+    /// with `_`, and its PostgreSQL type, in order, always all of them
+    /// (`Money`: `amount bigint` and `currency char(3)`). `fixed` names the
+    /// one a type built on it can fix to one value, which a check
+    /// constraint then holds it to (`Money`'s `currency`, which a type's
+    /// `currency:` fixes). One codec turns a value into its columns and
+    /// back (`jadpo-value`'s `standard::to_parts` and `from_parts`).
+    Columns {
+        parts: &'static [(&'static str, &'static str)],
+        fixed: Option<&'static str>,
+    },
 }
 
 /// The examples the harness checks a type with.
@@ -235,6 +267,10 @@ pub struct Examples {
     /// For a type that takes a type argument, the one its examples hold:
     /// `CalendarDate` for `Range<CalendarDate>`.
     pub of: Option<&'static str>,
+    /// The settings a named type built on it takes in the checker's half of
+    /// the harness, where the type needs one to be ordered: a `Money`
+    /// type's `currency:`, since only amounts in one currency compare.
+    pub settings: &'static str,
 }
 
 /// One standard type's data entry.
@@ -246,8 +282,8 @@ pub struct StandardType {
     /// which `text.from` and `text.parse` are compile errors.
     pub text: Option<TextForm>,
     pub json: Json,
-    /// Its storage column.
-    pub storage: SqlType,
+    /// How it is stored: one column, or named columns.
+    pub storage: Storage,
     pub format: Format,
     /// Whether `<` and ordering take it.
     pub ordered: bool,
@@ -324,7 +360,7 @@ const fn checked(
         holds: Holds::Builtin(builtin),
         text: Some(TextForm::Checked),
         json: Json::Text,
-        storage: SqlType::Text,
+        storage: Storage::Column(SqlType::Text),
         format: canonical(),
         ordered: false,
         validator: Some(validator),
@@ -351,7 +387,7 @@ const fn time_object(
         holds: Holds::Object(fields),
         text: Some(text),
         json: Json::Text,
-        storage: SqlType::Json,
+        storage: Storage::Column(SqlType::Json),
         format,
         ordered,
         validator: None,
@@ -423,7 +459,8 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 
 /// Every standard type built so far, sorted by name: the 13 areas 2, 10
 /// and 16 built, run through the contract in chunk 5.5a, `Range<T>`
-/// (chunk 5.5c2), and ten of the time group (chunk 5.5k).
+/// (chunk 5.5c2), `Money` and `Currency` (chunk 5.5h), and ten of the time
+/// group (chunk 5.5k).
 pub const STANDARD_TYPES: &[StandardType] = &[
     // Day-and-month calendar dates, ordered by day.
     StandardType {
@@ -431,7 +468,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Builtin(Builtin::CalendarDate),
         text: Some(TextForm::Date),
         json: Json::Text,
-        storage: SqlType::Date,
+        storage: Storage::Column(SqlType::Date),
         format: Format {
             key: FormatKey::DateTime,
             options: &[FORMAT],
@@ -444,6 +481,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: Some("date_medium"),
             malformed: &["2026-02-30", "25/10/2026", ""],
             of: None,
+            settings: "",
         },
         release: FIRST_RELEASE,
     },
@@ -465,8 +503,33 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["1 month", "P", "PT1H", "P1D2M", "P1W", "P1M0D", "P+1M"],
             of: None,
+            settings: "",
         },
     ),
+    // The active ISO 4217 codes (area 19, "Money and payments", question
+    // 22), written as their codes and shown by CLDR's display names.
+    StandardType {
+        name: crate::CURRENCY,
+        holds: Holds::Enum(crate::CURRENCIES),
+        text: Some(TextForm::Code),
+        json: Json::Text,
+        storage: Storage::Column(SqlType::Text),
+        format: Format {
+            key: FormatKey::CurrencyName,
+            options: NO_OPTIONS,
+        },
+        ordered: false,
+        validator: None,
+        shape: None,
+        examples: Examples {
+            valid: &[("GBP", "British Pound"), ("JPY", "Japanese Yen")],
+            format: None,
+            malformed: &["pound", "XYZ", "HRK", "GB"],
+            of: None,
+            settings: "",
+        },
+        release: FIRST_RELEASE,
+    },
     // The dates from `start` to `end`, both included (area 19, "Ranges").
     StandardType {
         name: DATE_RANGE,
@@ -474,7 +537,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         text: Some(TextForm::Interval),
         json: Json::Fields(&["start", "end"]),
         // Stored as its JSON, as `InstantRange` is.
-        storage: SqlType::Json,
+        storage: Storage::Column(SqlType::Json),
         format: Format {
             key: FormatKey::Interval,
             options: &[FORMAT],
@@ -486,11 +549,13 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 meaning: "a first day",
                 names: &["start", "starts_on", "start_date"],
                 built_on: &[Builtin::CalendarDate],
+                or_enum: false,
             },
             FieldMatch {
                 meaning: "a last day",
                 names: &["end", "ends_on", "end_date"],
                 built_on: &[Builtin::CalendarDate],
+                or_enum: false,
             },
         ]),
         examples: Examples {
@@ -506,6 +571,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 "2026-10-01T00:00:00Z/2026-10-02T00:00:00Z",
             ],
             of: None,
+            settings: "",
         },
         release: FIRST_RELEASE,
     },
@@ -515,7 +581,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         text: Some(TextForm::Duration),
         json: Json::Text,
         // Milliseconds, as the runtime holds a duration.
-        storage: SqlType::Int8,
+        storage: Storage::Column(SqlType::Int8),
         format: Format {
             key: FormatKey::DurationUnits,
             options: NO_OPTIONS,
@@ -532,6 +598,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["5 minutes", "P", "PT"],
             of: None,
+            settings: "",
         },
         release: FIRST_RELEASE,
     },
@@ -544,6 +611,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["someone", "someone@", "@example.com"],
             of: None,
+            settings: "",
         },
     ),
     StandardType {
@@ -551,7 +619,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Enum(FILE_TYPES),
         text: Some(TextForm::Code),
         json: Json::Text,
-        storage: SqlType::Text,
+        storage: Storage::Column(SqlType::Text),
         format: canonical(),
         ordered: false,
         validator: None,
@@ -564,6 +632,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["png", "image/tiff"],
             of: None,
+            settings: "",
         },
         release: FIRST_RELEASE,
     },
@@ -572,7 +641,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Builtin(Builtin::Instant),
         text: Some(TextForm::Instant),
         json: Json::Text,
-        storage: SqlType::Timestamp,
+        storage: Storage::Column(SqlType::Timestamp),
         format: Format {
             key: FormatKey::DateTime,
             options: &[ZONE_OPTION, FORMAT],
@@ -588,6 +657,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: Some("date_time_medium"),
             malformed: &["2026-10-25", "2026-10-25T09:30:00", "yesterday"],
             of: None,
+            settings: "",
         },
         release: FIRST_RELEASE,
     },
@@ -600,7 +670,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Fields(&["start", "end"]),
         // Stored as its JSON, as an object is, until objects get named
         // columns with `Money` (chunk 5.5h).
-        storage: SqlType::Json,
+        storage: Storage::Column(SqlType::Json),
         format: Format {
             key: FormatKey::Interval,
             options: &[ZONE_OPTION, FORMAT],
@@ -612,11 +682,13 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 meaning: "a start",
                 names: &["start", "starts_at", "start_at"],
                 built_on: &[Builtin::Instant],
+                or_enum: false,
             },
             FieldMatch {
                 meaning: "an end",
                 names: &["end", "ends_at", "end_at"],
                 built_on: &[Builtin::Instant],
+                or_enum: false,
             },
         ]),
         examples: Examples {
@@ -627,6 +699,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: Some("date_time_medium"),
             malformed: &["2026-10-25T09:00:00Z", "2026-10-25T09:00:00Z/tomorrow"],
             of: None,
+            settings: "",
         },
         release: FIRST_RELEASE,
     },
@@ -639,6 +712,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["192.0.2", "example.com"],
             of: None,
+            settings: "",
         },
     ),
     // A week of an ISO week-numbering year, ordered by year and week.
@@ -654,6 +728,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["2027-W53", "2026-W54", "2026-W00", "2026-W1", "2026W01"],
             of: None,
+            settings: "",
         },
     ),
     // A date and a clock time with no zone: not an instant until a zone
@@ -681,6 +756,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 "2026-02-30T01:30:00",
             ],
             of: None,
+            settings: "",
         },
     ),
     // A clock time with no date or zone, to the second.
@@ -699,6 +775,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: Some("time_medium"),
             malformed: &["24:00:00", "09:30", "9:30:00", "09:30:60", "09:30:00Z"],
             of: None,
+            settings: "",
         },
     ),
     StandardType {
@@ -706,7 +783,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Enum(crate::zones::LOCALES),
         text: Some(TextForm::Code),
         json: Json::Text,
-        storage: SqlType::Text,
+        storage: Storage::Column(SqlType::Text),
         format: Format {
             key: FormatKey::LocaleName,
             options: NO_OPTIONS,
@@ -719,6 +796,77 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["english", "xx-YY"],
             of: None,
+            settings: "",
+        },
+        release: FIRST_RELEASE,
+    },
+    // An amount in a currency's minor units (area 19, "Money and
+    // payments", question 16): its JSON is the amount and the code, as
+    // Stripe sends it, and it is stored in two columns, a `bigint` of minor
+    // units and the code, also for a type that fixes the currency. Only
+    // amounts in one currency are ordered, so its examples are all pounds.
+    StandardType {
+        name: "Money",
+        holds: Holds::Builtin(Builtin::Money),
+        text: Some(TextForm::Money),
+        json: Json::Fields(&crate::MONEY_FIELDS),
+        storage: Storage::Columns {
+            parts: &[("amount", "bigint"), ("currency", "char(3)")],
+            fixed: Some("currency"),
+        },
+        format: Format {
+            key: FormatKey::Money,
+            options: &[
+                FormatOption {
+                    name: "precision",
+                    needed: false,
+                },
+                FormatOption {
+                    name: "display",
+                    needed: false,
+                },
+                FormatOption {
+                    name: "sign",
+                    needed: false,
+                },
+            ],
+        },
+        ordered: true,
+        validator: None,
+        shape: Some(&[
+            FieldMatch {
+                meaning: "an amount",
+                names: &["amount", "value", "amount_minor", "minor", "cents", "pence"],
+                built_on: &[Builtin::Int, Builtin::Decimal],
+                or_enum: false,
+            },
+            FieldMatch {
+                meaning: "a currency",
+                names: &["currency", "currency_code"],
+                built_on: &[Builtin::Text],
+                or_enum: true,
+            },
+        ]),
+        examples: Examples {
+            valid: &[
+                ("GBP -5.00", "-£5.00"),
+                ("GBP 0.05", "£0.05"),
+                ("GBP 10.50", "£10.50"),
+                ("GBP 1234.50", "£1,234.50"),
+            ],
+            format: None,
+            malformed: &[
+                "10.50",
+                "GBP 10.505",
+                "GBP 10.5",
+                "GBP10.50",
+                "XYZ 10.50",
+                "£10.50",
+                "GBP 1,234.50",
+                "",
+            ],
+            of: None,
+            settings: "currency: Currency.gbp",
         },
         release: FIRST_RELEASE,
     },
@@ -729,7 +877,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Enum(MONTHS),
         text: Some(TextForm::Code),
         json: Json::Text,
-        storage: SqlType::Text,
+        storage: Storage::Column(SqlType::Text),
         format: shown_as(FormatKey::MonthName),
         ordered: false,
         validator: None,
@@ -739,6 +887,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["jan", "10", "smarch"],
             of: None,
+            settings: "",
         },
         release: FIRST_RELEASE,
     },
@@ -756,6 +905,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["2026-Q5", "2026-Q0", "2026Q1", "Q1 2026", "2026-q1"],
             of: None,
+            settings: "",
         },
     ),
     // A range of any ordered type, either end open (area 19, "Ranges"),
@@ -767,7 +917,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         text: Some(TextForm::Range),
         json: Json::Fields(&RANGE_FIELDS),
         // Stored as its JSON, as `InstantRange` is.
-        storage: SqlType::Json,
+        storage: Storage::Column(SqlType::Json),
         // The options its item type takes (`zone:`, `format:`).
         format: Format {
             key: FormatKey::Range,
@@ -791,6 +941,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 "/2026-11-01",
             ],
             of: Some("CalendarDate"),
+            settings: "",
         },
         release: FIRST_RELEASE,
     },
@@ -803,6 +954,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["example.com", "ftp://example.com"],
             of: None,
+            settings: "",
         },
     ),
     // An offset from UTC, as a zone has at a moment; unordered.
@@ -821,6 +973,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["Z", "+0100", "+01", "05:00", "+18:01", "-00:00", "+01:60"],
             of: None,
+            settings: "",
         },
     ),
     StandardType {
@@ -828,7 +981,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Builtin(Builtin::Uuid),
         text: Some(TextForm::Uuid),
         json: Json::Text,
-        storage: SqlType::Uuid,
+        storage: Storage::Column(SqlType::Uuid),
         format: canonical(),
         ordered: false,
         validator: Some(Validator::Uuid),
@@ -841,6 +994,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["0192f0c4", "not-a-uuid"],
             of: None,
+            settings: "",
         },
         release: FIRST_RELEASE,
     },
@@ -849,7 +1003,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Enum(WEEKDAYS),
         text: Some(TextForm::Code),
         json: Json::Text,
-        storage: SqlType::Text,
+        storage: Storage::Column(SqlType::Text),
         format: Format {
             key: FormatKey::WeekdayName,
             options: NO_OPTIONS,
@@ -862,6 +1016,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["mon", "funday"],
             of: None,
+            settings: "",
         },
         release: FIRST_RELEASE,
     },
@@ -877,6 +1032,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["26", "10000", "-2026", "2026-10"],
             of: None,
+            settings: "",
         },
     ),
     // A month of a year, ordered.
@@ -891,6 +1047,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["2026-13", "2026-00", "2026-1", "202610", "2026-10-01"],
             of: None,
+            settings: "",
         },
     ),
     StandardType {
@@ -898,7 +1055,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Enum(crate::zones::ZONES),
         text: Some(TextForm::Code),
         json: Json::Text,
-        storage: SqlType::Text,
+        storage: Storage::Column(SqlType::Text),
         format: Format {
             key: FormatKey::ZoneName,
             options: NO_OPTIONS,
@@ -914,6 +1071,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: None,
             malformed: &["London", "GMT+1"],
             of: None,
+            settings: "",
         },
         release: FIRST_RELEASE,
     },
@@ -924,7 +1082,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Fields(&["instant", "zone"]),
         // An instant and its zone, stored as its JSON (area 5's structured
         // values), as an object is.
-        storage: SqlType::Json,
+        storage: Storage::Column(SqlType::Json),
         format: Format {
             key: FormatKey::DateTime,
             options: &[FORMAT],
@@ -941,6 +1099,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             format: Some("date_time_medium"),
             malformed: &["2026-10-25T09:30:00Z", "2026-10-25T09:30:00+00:00"],
             of: None,
+            settings: "",
         },
         release: FIRST_RELEASE,
     },
@@ -998,6 +1157,29 @@ pub const RANGE_ITEMS: &[Builtin] = &[
 /// How a range's open end is written in its canonical text.
 pub const OPEN_END: &str = "..";
 
+/// The enums whose columns hold each variant's code rather than its name,
+/// so the database reads as the wire does: `Currency` holds `GBP` (chosen
+/// in chunk 5.5h). Whether every standard enum should is chunk 5.5w's.
+pub fn stored_by_code(ty: &str) -> Option<&'static [(&'static str, &'static str)]> {
+    (ty == crate::CURRENCY).then_some(crate::CURRENCIES)
+}
+
+/// What variant `variant` of enum `ty` is stored as in its column: its
+/// code for an enum [`stored_by_code`], else its name.
+pub fn stored_variant<'v>(ty: &str, variant: &'v str) -> &'v str {
+    stored_by_code(ty)
+        .and_then(|codes| codes.iter().find(|(name, _)| *name == variant))
+        .map_or(variant, |(_, code)| code)
+}
+
+/// The variant a column of enum `ty` holds as `stored`: by its code for an
+/// enum [`stored_by_code`], else by its name.
+pub fn variant_stored<'v>(ty: &str, stored: &'v str) -> &'v str {
+    stored_by_code(ty)
+        .and_then(|codes| codes.iter().find(|(_, code)| *code == stored.trim()))
+        .map_or(stored, |(name, _)| name)
+}
+
 /// The standard type called `name`.
 pub fn standard_type(name: &str) -> Option<&'static StandardType> {
     STANDARD_TYPES.iter().find(|entry| entry.name == name)
@@ -1053,11 +1235,31 @@ impl StandardType {
             .find(|option| option.name == name)
     }
 
+    /// The named columns of a type stored in more than one (`Money`'s);
+    /// none for a type stored in one.
+    pub fn columns(&self) -> &'static [(&'static str, &'static str)] {
+        match self.storage {
+            Storage::Column(_) => &[],
+            Storage::Columns { parts, .. } => parts,
+        }
+    }
+
+    /// Of its named columns, the one a type built on it can fix.
+    pub fn fixed_part(&self) -> Option<&'static str> {
+        match self.storage {
+            Storage::Column(_) => None,
+            Storage::Columns { fixed, .. } => fixed,
+        }
+    }
+
     /// How its column becomes a value, for a type stored in a column of its
-    /// own; `None` for one stored as its JSON.
+    /// own; `None` for one stored as its JSON or in more than one column.
     pub fn column(&self) -> Option<crate::read::Column> {
         use crate::read::Column;
-        Some(match (self.storage, self.holds) {
+        let Storage::Column(storage) = self.storage else {
+            return None;
+        };
+        Some(match (storage, self.holds) {
             (SqlType::Text, Holds::Enum(codes)) => Column::Enum {
                 ty: self.name.to_string(),
                 variants: codes.iter().map(|(name, _)| (*name).to_string()).collect(),
@@ -1071,9 +1273,16 @@ impl StandardType {
         })
     }
 
-    /// The PostgreSQL column type its storage is.
+    /// The PostgreSQL column type its storage is: the first named column's,
+    /// for a type stored in more than one.
     pub fn column_type(&self) -> &'static str {
-        match self.storage {
+        let storage = match self.storage {
+            Storage::Column(storage) => storage,
+            Storage::Columns { parts, .. } => {
+                return parts.first().map_or("jsonb", |(_, ty)| *ty);
+            }
+        };
+        match storage {
             SqlType::Bool => "boolean",
             SqlType::Int2 => "smallint",
             SqlType::Int4 => "integer",
@@ -1101,7 +1310,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 24, "the 24 standard types built so far");
+        assert_eq!(names.len(), 26, "the 26 standard types built so far");
     }
 
     #[test]
@@ -1155,7 +1364,7 @@ mod tests {
             }
             for option in entry.format.options {
                 assert!(
-                    ["zone", "format"].contains(&option.name),
+                    ["zone", "format", "precision", "display", "sign"].contains(&option.name),
                     "{}: `{}:` is one of `text.format`'s options",
                     entry.name,
                     option.name

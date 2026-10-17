@@ -342,3 +342,9 @@ uuid
 # a word the language defines (area 19, chunk 5.5g2): the failure field
 # `json.read`'s `mismatch` fills with a `DecodeProblem`
 problem
+# words the language defines for money (area 19): `pence` among the names
+# `type.standard_exists` matches for an amount, `Yen` in CLDR's name for
+# `JPY`, and `BOB`, Bolivia's ISO 4217 code
+pence
+yen
+bob

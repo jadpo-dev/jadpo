@@ -1,7 +1,7 @@
 use shared/types { Pence, Percent }
 
-/// Sums of money.
-library money {
+/// Prices worked out from other prices.
+library pricing {
     /// `percent` per cent of `amount`, to the nearest penny; a half penny
     /// goes to the even penny.
     function percent_of(amount: Pence, percent: Percent) -> Pence {

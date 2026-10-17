@@ -122,6 +122,15 @@ pub fn rule_pairs(rules: &Rules) -> Vec<(&'static str, String)> {
     if let Some(version) = rules.version {
         out.push(("version", version.digit().to_string()));
     }
+    if let Some(currency) = rules.currency {
+        out.push((
+            "currency",
+            jadpo_std::money::code(currency).unwrap_or("?").to_string(),
+        ));
+    }
+    if let Some(rounding) = rules.rounding {
+        out.push(("rounding", rounding.name().to_string()));
+    }
     out
 }
 

@@ -207,6 +207,35 @@ pub struct FieldModel {
     /// What its type allows beyond its column type, which a migration
     /// snapshot records.
     pub allows: physical::Allows,
+    /// A compound standard type stored in more than one column, by name
+    /// (area 19): `Money`, in `<column>_amount`, a `bigint` of minor units
+    /// that `sql_type` is, and `<column>_currency`, the currency's code.
+    pub compound: Option<&'static str>,
+}
+
+impl FieldModel {
+    /// The data entry of the compound standard type the field holds, if it
+    /// holds one.
+    pub fn compound_entry(&self) -> Option<&'static jadpo_std::StandardType> {
+        self.compound.and_then(jadpo_std::standard_type)
+    }
+
+    /// The columns the field is stored in, by name, each with its type: one,
+    /// or a compound type's, its column suffixes joined to the field's
+    /// column name with `_`, in its entry's order.
+    pub fn columns(&self) -> Vec<(String, String)> {
+        let Some(sql_type) = &self.sql_type else {
+            return Vec::new();
+        };
+        match self.compound_entry() {
+            Some(entry) => entry
+                .columns()
+                .iter()
+                .map(|(part, ty)| (format!("{}_{part}", self.born), (*ty).to_string()))
+                .collect(),
+            None => vec![(self.born.clone(), sql_type.clone())],
+        }
+    }
 }
 
 /// A reference: the entity a field typed `X.id` points at.
@@ -742,6 +771,7 @@ impl Reader<'_> {
             reference: None,
             immutable: false,
             allows: physical::Allows::default(),
+            compound: None,
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -857,7 +887,15 @@ impl Reader<'_> {
                 );
                 field.sql_type = Some(sql);
             }
-            Ok(sql) => field.sql_type = Some(sql),
+            Ok(sql) => {
+                field.compound = self
+                    .lookup
+                    .representation(&ty)
+                    .and_then(jadpo_std::standard::of_builtin)
+                    .filter(|entry| !entry.columns().is_empty())
+                    .map(|entry| entry.name);
+                field.sql_type = Some(sql);
+            }
             Err(what) => {
                 self.out.push(
                     Diagnostic::new(
@@ -1804,34 +1842,68 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
         unique: BTreeMap::new(),
         foreign_keys: BTreeMap::new(),
         indexes: BTreeMap::new(),
+        checks: BTreeMap::new(),
     };
-    let column = |name: &str| {
-        entity
-            .fields
-            .iter()
-            .find(|f| f.name == name)
-            .map_or_else(|| name.to_string(), |f| f.born.clone())
+    // A field's columns, by its name: a compound type's several.
+    let column = |name: &str| -> Vec<String> {
+        match entity.fields.iter().find(|f| f.name == name) {
+            Some(field) => field.columns().into_iter().map(|(c, _)| c).collect(),
+            None => vec![name.to_string()],
+        }
     };
-    for (position, field) in (0u32..).zip(&entity.fields) {
-        let Some(sql_type) = &field.sql_type else {
+    let mut position = 0u32;
+    for field in &entity.fields {
+        let columns = field.columns();
+        let entry = field.compound_entry();
+        for (at, (name, sql_type)) in columns.iter().enumerate() {
+            // Of a compound type's columns (area 19), the one its type can
+            // fix holds the values the field allows, under a check
+            // constraint, and the first takes the field's other rules.
+            let fixed = entry
+                .and_then(|entry| entry.fixed_part())
+                .is_some_and(|part| name == &format!("{}_{part}", field.born));
+            let allows = match entry {
+                None => field.allows.clone(),
+                Some(_) if fixed => physical::Allows {
+                    values: field.allows.values.clone(),
+                    ..physical::Allows::default()
+                },
+                Some(_) if at == 0 => physical::Allows {
+                    values: Vec::new(),
+                    ..field.allows.clone()
+                },
+                Some(_) => physical::Allows::default(),
+            };
+            if fixed && !field.allows.values.is_empty() {
+                out.checks.insert(
+                    physical::object_name(&[table, name], "check"),
+                    physical::Check {
+                        column: name.clone(),
+                        values: field.allows.values.clone(),
+                    },
+                );
+            }
+            out.columns.insert(
+                name.clone(),
+                physical::Column {
+                    position,
+                    field: Some(field.born.clone()),
+                    sql_type: sql_type.clone(),
+                    nullable: field.nullable,
+                    retired: false,
+                    allows: Some(allows),
+                },
+            );
+            position += 1;
+        }
+        if columns.is_empty() {
             continue;
-        };
-        out.columns.insert(
-            field.born.clone(),
-            physical::Column {
-                position,
-                field: Some(field.born.clone()),
-                sql_type: sql_type.clone(),
-                nullable: field.nullable,
-                retired: false,
-                allows: Some(field.allows.clone()),
-            },
-        );
+        }
         if field.unique && field.name != "id" {
             out.unique.insert(
                 physical::object_name(&[table, &field.born], "key"),
                 physical::Unique {
-                    columns: vec![field.born.clone()],
+                    columns: columns.iter().map(|(name, _)| name.clone()).collect(),
                     rule: format!("{}.{}", entity.born, field.born),
                 },
             );
@@ -1876,7 +1948,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
         out.unique.insert(
             physical::object_name(&[table, &rule.name], "key"),
             physical::Unique {
-                columns: rule.fields.iter().map(|f| column(f)).collect(),
+                columns: rule.fields.iter().flat_map(|f| column(f)).collect(),
                 rule: format!("{}.{}", entity.born, rule.name),
             },
         );
@@ -1885,7 +1957,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
         out.indexes.insert(
             physical::object_name(&[table, &index.name], "idx"),
             physical::Index {
-                columns: index.fields.iter().map(|f| column(f)).collect(),
+                columns: index.fields.iter().flat_map(|f| column(f)).collect(),
                 reason: format!("index {}.{}", entity.born, index.name),
                 predicate: None,
                 collate: Vec::new(),

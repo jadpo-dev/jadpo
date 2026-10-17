@@ -10,7 +10,7 @@ the earlier examples teach each idea on its own.
 
 ## What it teaches
 
-1. **Shared types and a library.** A tagged union for menu items and a `money` library both domains use. See `shared/types/` and `shared/libraries/money.jadpo`.
+1. **Shared types and a library.** A tagged union for menu items and a `pricing` library both domains use. See `shared/types/` and `shared/libraries/pricing.jadpo`.
 2. **The menu.** A public action that prices each kind of item with `match`. See `domains/menu/actions/price_item.jadpo`.
 3. **The basket and the receipt.** A public `Input` whose list has a length rule and whose code may be left out, and the `Output` sent back. See `domains/sales/types/`.
 4. **Pricing.** A loop over the lines calling another domain, a statement `match` on an optional code, a text `match` that rejects unknown codes, and a check whose `min` arm names its failure with fields: `min: DiscountTooLarge { ... }`. See `domains/sales/actions/price_lines.jadpo`, `domains/sales/actions/price_basket.jadpo` and [area 4, Turning one failure into another](../../docs/language/04-failures.md#turning-one-failure-into-another).

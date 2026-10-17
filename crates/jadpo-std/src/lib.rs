@@ -60,6 +60,7 @@ pub mod jadpo_text;
 mod literal;
 mod locale;
 mod migration;
+pub mod money;
 mod num;
 mod operations;
 pub mod policy;
@@ -77,15 +78,16 @@ pub use constant::Constant;
 pub use enums::{
     Access, AuthenticationMethod, AuthenticationStrength, ClientAddressSource, ComponentStyle,
     Driver, Dst, FieldAccess, FieldChange, Generated, HttpMethod, Idempotency, InvalidDay, LOCALE,
-    MembershipScope, Month, OnDelete, Rounding, RouteAuthentication, SuccessStatus, Tenancy,
-    TextDirection, TextFormat, TranslationReview, UuidVersion, Weekday, ZONE, enums,
-    variant_ordinal,
+    MembershipScope, MoneyDisplay, MoneyPrecision, MoneySign, Month, OnDelete, Rounding,
+    RouteAuthentication, SuccessStatus, Tenancy, TextDirection, TextFormat, TranslationReview,
+    UuidVersion, Weekday, ZONE, enums, variant_ordinal,
 };
 pub use format::{BuiltinFormat, Component, FormatLength, FormatPart, TimeFormatSpec};
 pub use isolation::Isolation;
 pub use literal::Literal;
 pub use locale::{LocalePlan, locale_ordinal};
 pub use migration::Migration;
+pub use money::{CURRENCIES, CURRENCY, MONEY_FIELDS};
 pub use num::{Num, compare_exact};
 pub use operations::{
     Condition, Kind, MOVED, MOVED_NAMESPACES, OPERATIONS, Op, Operation, Param, moved,

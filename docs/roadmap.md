@@ -650,14 +650,25 @@ reference only).
   `IssuedToken`'s too); the log is the failure's report until the hosts
   write area 4's event; what the pages left open is area 19's "Chosen in
   chunk 5.5g2".
-- [ ] **5.5h Money** `opus · high` (area 19, "Money and payments" and "The
-  standard operator table", question 16): `Money`, `Currency`,
-  `ExchangeRate`, the 8 `money` operations, the operator table's `Money`
-  rows with `currency_mismatch`, `rounding:` and `type.money_split`, the
-  two columns, the wire shape, `{price, number, currency}`, and area 2's
-  examples that declare their own `Money` renamed. Done when the money
-  examples pass, a mismatched currency fails to compile where both types
-  fix it, and `split` and `allocate` never lose a minor unit.
+- [x] **5.5h Money** `opus · high` (area 19, "Money and payments" and "The
+  standard operator table", question 16): `Money` and `Currency`, the 7
+  `money` operations other than `convert`, the operator table's `Money`
+  rows with `currency_mismatch`, `rounding:` and `type.money_split` (the
+  rows with `Percentage` come with it, in 5.5j), the two columns, the
+  wire shape, `text.format`, and area 2's examples that declare their
+  own `Money` renamed. Done when the money examples pass, interpreted, in
+  the runtime and stored in PostgreSQL, a mismatched currency fails to
+  compile where both types fix it, and `split` and `allocate` never lose
+  a minor unit. Split on 2026-10-17; the rest is 5.5h2. Stored always in
+  two columns, with a check constraint for a fixed currency; what the
+  pages left open is area 19's "Chosen in chunk 5.5h".
+- [ ] **5.5h2 Exchange rates and money in messages** `opus · high` (area
+  19, "Money and payments", question 16, split from 5.5h): `ExchangeRate`
+  and `money.convert`, applying a rate the app holds and failing
+  `currency_mismatch` for another currency's rate; `{price, number,
+  currency}` in translation messages (area 10's placeholder styles). Done
+  when `convert`'s example passes, an inverted rate is a type error, and
+  a message writes a price in two locales.
 - [ ] **5.5i Payment and identity numbers** `opus · high` (area 19, "Groups
   with the baseline only"): the money group's other 21 types and the 11
   tax and identity numbers, each a pattern or check digit (mod-97, Luhn,
@@ -666,7 +677,9 @@ reference only).
 - [ ] **5.5j Quantities** `opus · high` (area 19, "Physical quantities",
   question 17): the 17 physical quantities with `DataSize`, `Bitrate`,
   `Percentage`, `Ratio` and `Fraction`; SI storage at each kind's scale;
-  the `%` literal and the operator table's `Percentage` rows; suffixed
+  the `%` literal and the operator table's `Percentage` rows, with
+  `Money * Percentage` and the refused `Money + Percentage` (5.5h built
+  `Money` by a number); suffixed
   literals; the product and quotient table; `type.unit_required`; the 3
   `units` operations; a `Decimal` ratio becomes a `Percentage` by
   construction, `Percentage(ratio)`, 0.25 → 25%. Done when the quantity

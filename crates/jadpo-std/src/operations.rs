@@ -91,7 +91,9 @@ pub struct Param {
     /// compiling, as `never_zero` rules out a zero divisor (area 19,
     /// question 7): a literal isn't below 0 and a value's type has a
     /// `min` of at least 0, so the operation never counts from the other
-    /// end.
+    /// end. On a list, each item: a literal list's items aren't below 0
+    /// and its item type has a `min` of at least 0 (`money.allocate`'s
+    /// ratios).
     pub never_negative: bool,
     /// An inline function whose result orders the items (`sort_by`'s
     /// `key`): it must give a number, a time, a date, a duration or text,
@@ -111,7 +113,9 @@ pub struct Param {
     /// the checker rules `""` out while compiling, as `never_zero` rules
     /// out a zero divisor: a literal isn't `""` and a value's type has a
     /// `min_length` of at least 1, so `text.replace` never searches for
-    /// nothing and `text.split` never splits on it.
+    /// nothing and `text.split` never splits on it. On a list, a literal
+    /// list has items and a value's type has a `min_length` of at least 1
+    /// (`money.allocate`'s ratios).
     pub never_empty: bool,
     /// One character written out at the call, never a value (area 19,
     /// "Text"): `text.pad_start`'s `fill:`, a text literal of exactly one
@@ -215,6 +219,13 @@ pub enum Op {
     MapValues,
     MapWith,
     MapWithout,
+    MoneyAllocate,
+    MoneyCurrency,
+    MoneyFromMinor,
+    MoneyMinor,
+    MoneyOf,
+    MoneySplit,
+    MoneySum,
     RangeContains,
     RangeIntersection,
     RangeOverlaps,
@@ -619,6 +630,45 @@ const fn map(
         rust,
     }
 }
+
+/// A `money` operation (area 19, "Money and payments", question 16), by
+/// its parameters and result; amounts are whole numbers of minor units.
+const fn money(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace: "money",
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: &[],
+        rust,
+    }
+}
+
+const MONEY: Kind = Kind::Builtin(Builtin::Money);
+const CURRENCY: Kind = Kind::Enum(crate::CURRENCY);
+
+/// Two amounts, or an amount and a list's currency, in different
+/// currencies, where only the running program knows them: settled only by
+/// proof, a type's `currency:` or a currency written out (area 19).
+const ON_CURRENCY_MISMATCH: Condition = Condition {
+    key: RuleKey::CurrencyMismatch,
+    option: None,
+};
+
+/// More places than the currency has: settled only by proof, a currency
+/// written out and an amount with no more places than it has.
+const ON_TOO_MANY_PLACES: Condition = Condition {
+    key: RuleKey::TooManyPlaces,
+    option: None,
+};
 
 /// A `range` operation that never fails (area 19, "Ranges"), by its
 /// parameters and result: on a `Range<T>` or an `InstantRange`, both of
@@ -1264,6 +1314,80 @@ pub const OPERATIONS: &[Operation] = &[
         Kind::Map,
         "map::without",
     ),
+    // The money operations (area 19, "Money and payments"), each one
+    // function in `jadpo-value`'s `money` module. Arithmetic is the
+    // operator table's; these say what no operator says. `allocate` and
+    // `split` hand every minor unit to some share, the leftover one each
+    // to the first shares, so the shares always add up to the total.
+    money(
+        Op::MoneyAllocate,
+        "allocate",
+        &[
+            param("total", MONEY),
+            Param {
+                never_negative: true,
+                never_empty: true,
+                ..param("ratios", Kind::List)
+            },
+        ],
+        Kind::List,
+        "money::allocate",
+    ),
+    money(
+        Op::MoneyCurrency,
+        "currency",
+        &[param("value", MONEY)],
+        CURRENCY,
+        "money::currency",
+    ),
+    money(
+        Op::MoneyFromMinor,
+        "from_minor",
+        &[param("amount", INT), param("currency", CURRENCY)],
+        MONEY,
+        "money::from_minor",
+    ),
+    money(
+        Op::MoneyMinor,
+        "minor",
+        &[param("value", MONEY)],
+        INT,
+        "money::minor",
+    ),
+    Operation {
+        conditions: &[ON_TOO_MANY_PLACES],
+        ..money(
+            Op::MoneyOf,
+            "of",
+            &[param("amount", DECIMAL), param("currency", CURRENCY)],
+            MONEY,
+            "money::of",
+        )
+    },
+    money(
+        Op::MoneySplit,
+        "split",
+        &[
+            param("total", MONEY),
+            Param {
+                never_zero: true,
+                never_negative: true,
+                ..param("parts", INT)
+            },
+        ],
+        Kind::List,
+        "money::split",
+    ),
+    Operation {
+        conditions: &[ON_CURRENCY_MISMATCH],
+        ..money(
+            Op::MoneySum,
+            "sum",
+            &[param("items", Kind::List), param("currency", CURRENCY)],
+            MONEY,
+            "money::sum",
+        )
+    },
     // The range operations (area 19, "Ranges"), each one function in
     // `jadpo-value`'s `range` module, by the range's own end rule: a
     // `Range<T>` and an `InstantRange` hold their start and not their end,
@@ -1579,6 +1703,9 @@ pub const OPERATIONS: &[Operation] = &[
             param("locale", LOCALE),
             by_type("zone", ZONE),
             by_type("format", Kind::Format),
+            by_type("precision", Kind::Enum(crate::MoneyPrecision::NAME)),
+            by_type("display", Kind::Enum(crate::MoneyDisplay::NAME)),
+            by_type("sign", Kind::Enum(crate::MoneySign::NAME)),
         ],
         result: SHOWN_TEXT,
         at_least: None,
@@ -1790,8 +1917,11 @@ mod tests {
             assert!(operation.params[written..].iter().all(|p| p.implicit));
             for param in operation.params {
                 assert!(
-                    !param.never_negative || param.kind == INT || param.kind == DECIMAL,
-                    "a count is an `Int`; `sqrt`'s value a `Decimal`"
+                    !param.never_negative
+                        || param.kind == INT
+                        || param.kind == DECIMAL
+                        || param.kind == Kind::List,
+                    "a count is an `Int`; `sqrt`'s value a `Decimal`; `allocate`'s ratios a list of them"
                 );
                 assert!(
                     !param.above_zero || param.kind == DECIMAL,
@@ -1806,9 +1936,12 @@ mod tests {
                     "a scale is a whole number"
                 );
                 assert!(
-                    !(param.never_empty || param.character || param.bounds_length)
-                        || param.kind == TEXT,
-                    "never empty, one character and a length bound are text's"
+                    !(param.character || param.bounds_length) || param.kind == TEXT,
+                    "one character and a length bound are text's"
+                );
+                assert!(
+                    !param.never_empty || param.kind == TEXT || param.kind == Kind::List,
+                    "never empty is text's or a list's"
                 );
             }
         }
@@ -1822,7 +1955,12 @@ mod tests {
                     // What text or bytes decode to is known only when the
                     // program runs, so only an `attempt` settles it.
                     None if matches!(condition.key, RuleKey::Malformed | RuleKey::Mismatch) => true,
-                    None => operation.params.iter().any(|param| param.above_zero),
+                    // `ln`'s by a value proved above 0; the money
+                    // operations' by a currency the types or the call fix.
+                    None => {
+                        operation.params.iter().any(|param| param.above_zero)
+                            || operation.params.iter().any(|param| param.kind == CURRENCY)
+                    }
                 };
                 assert!(
                     settled,

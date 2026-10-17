@@ -3,7 +3,8 @@
 //! JSON, iteration once `for` takes sets) lists it in this order, the same
 //! in interpreted and compiled code. It is by value: numbers numerically,
 //! text by Unicode code point, instants, dates, times and durations as the
-//! moments and lengths they are, enum variants in the order their enum
+//! moments and lengths they are, amounts of money by currency then
+//! amount, enum variants in the order their enum
 //! declares them, and objects and tagged unions field by field in declared
 //! order. Sets keep their items, and maps their keys, in this order, which
 //! is `Value`'s `Ord`.
@@ -37,6 +38,7 @@ fn rank(value: &Value) -> u8 {
         Value::Map(_) => 13,
         Value::Record(_) => 14,
         Value::Variant(_) => 15,
+        Value::Money(_) => 16,
     }
 }
 
@@ -62,6 +64,9 @@ pub fn compare(a: &Value, b: &Value) -> Ordering {
         (Value::Date(a), Value::Date(b)) => a.cmp(b),
         // On the timeline, then by zone, so the order agrees with `==`.
         (Value::Zoned(a), Value::Zoned(b)) => a.cmp(b),
+        // By currency code, then amount, so the order agrees with `==`;
+        // `<` orders only amounts in one currency (area 19).
+        (Value::Money(a), Value::Money(b)) => a.cmp(b),
         (Value::List(a), Value::List(b)) | (Value::Set(a), Value::Set(b)) => items(a, b),
         (Value::Map(a), Value::Map(b)) => {
             for ((ak, av), (bk, bv)) in a.iter().zip(b.iter()) {

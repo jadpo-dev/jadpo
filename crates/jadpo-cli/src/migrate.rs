@@ -780,6 +780,26 @@ fn change_groups(
                     ],
                 )
             }
+            Change::AddCheck { name: n, .. } | Change::DropCheck { name: n, .. } => {
+                let added = matches!(change, Change::AddCheck { .. });
+                let check = table(if added { after } else { before }, store, name)
+                    .and_then(|t| t.checks.get(n).cloned());
+                (
+                    if added {
+                        ChangeMark::Added
+                    } else {
+                        ChangeMark::Removed
+                    },
+                    vec![
+                        "check".into(),
+                        check
+                            .as_ref()
+                            .map_or_else(String::new, |c| format!("({})", c.column)),
+                        check
+                            .map_or_else(|| n.clone(), |c| format!("is {}", c.values.join(" or "))),
+                    ],
+                )
+            }
             Change::AddForeignKey { name: n, .. } | Change::DropForeignKey { name: n, .. } => {
                 let added = matches!(change, Change::AddForeignKey { .. });
                 let key = table(if added { after } else { before }, store, name)
