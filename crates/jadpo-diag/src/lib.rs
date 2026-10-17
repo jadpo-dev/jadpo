@@ -118,6 +118,8 @@ rules! {
         "14-tooling.html#command-errors", "Secure configuration prompt failed";
     CLI_CONFIG_TTY_REQUIRED: "cli.config_tty_required", area 14, Error, Human,
         "14-tooling.html#command-errors", "Configuration entry requires an interactive terminal";
+    CLI_DECLINES_ARGUMENTS: "cli.declines_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Declines command has invalid arguments";
     CLI_DEV_ARGUMENTS: "cli.dev_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Dev command has invalid arguments";
     CLI_DEV_PORT_INVALID: "cli.dev_port_invalid", area 14, Error, Agent,

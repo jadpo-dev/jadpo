@@ -11,6 +11,7 @@ mod cli;
 mod client_address;
 mod config;
 mod crate_graph;
+mod declines;
 mod fmt;
 mod http;
 mod lifecycle;

@@ -7,6 +7,7 @@ mod check;
 mod commands;
 mod completion;
 pub mod config;
+mod declines;
 mod derived;
 pub mod dev;
 mod fmt;

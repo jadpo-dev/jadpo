@@ -635,6 +635,59 @@ pub static COMMANDS: &[Command] = &[
         run: commands::api,
     },
     Command {
+        name: "declines",
+        synonyms: &[],
+        group: "Change safely",
+        summary: "List or clear declined errors",
+        description: "A judgement-call error, such as a helper like a library's, can be declined with \
+                      a reason: a `decline <rule>: \"<reason>\"` line above the declaration it is \
+                      on. `list` shows every decline with its rule, place and reason, so each can \
+                      be reviewed. `clear` removes the decline lines, so each finding comes back and \
+                      jadpo check fails until it is fixed or declined again: after a compiler \
+                      upgrade, a new standard type, or as a periodic sweep. `--rule` and a path \
+                      narrow both.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do: list or clear",
+                required: true,
+                values: Values::Fixed(crate::declines::ACTIONS),
+            },
+            Argument {
+                name: "path",
+                description: "Only the declines in this file or folder",
+                required: false,
+                values: Values::Path,
+            },
+        ],
+        flags: &[Flag {
+            name: "--rule",
+            value: Some("id"),
+            description: "Only the declines of this rule",
+            values: &[],
+        }],
+        examples: &[
+            Example {
+                description: "See every decline and its reason",
+                command: "jadpo declines list",
+            },
+            Example {
+                description: "Decide again every similar-helper decline",
+                command: "jadpo declines clear --rule library.similar_exists",
+            },
+            Example {
+                description: "List one domain's declines as data for tools",
+                command: "jadpo declines list domains/menu --json",
+            },
+        ],
+        arguments_rule: &rule::CLI_DECLINES_ARGUMENTS,
+        raises: &[
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::declines,
+    },
+    Command {
         name: "config",
         synonyms: &[],
         group: "Set up",
