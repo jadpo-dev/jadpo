@@ -5,6 +5,7 @@
 mod formats;
 mod lists;
 mod maths;
+mod money;
 mod numbers;
 mod sets_maps;
 mod standard_types;

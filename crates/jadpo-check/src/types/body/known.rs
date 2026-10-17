@@ -89,6 +89,14 @@ impl Term {
     }
 }
 
+/// One side of a comparison of currencies.
+enum CurrencySide {
+    /// `money.currency(x)`, `x` a subject.
+    Of(Term),
+    /// `Currency.gbp`, by its place among the variants.
+    Written(u32),
+}
+
 /// A comparison a bound came from, as written, for the errors that name
 /// it.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -104,16 +112,62 @@ pub(super) struct Fact {
     pub from: BTreeSet<Origin>,
 }
 
-/// What holds at one point: a bound per subject. A subject with no bound
-/// has only its declared range.
+/// Amounts of money a condition proved are in one currency (area 19,
+/// "The standard operator table"): `money.currency(a) ==
+/// money.currency(b)` puts `a` and `b` in one class, and `money.currency(a)
+/// == Currency.gbp` gives its class that currency.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Same {
+    pub terms: BTreeSet<Term>,
+    pub currency: Option<u32>,
+    pub from: BTreeSet<Origin>,
+}
+
+impl Same {
+    /// Whether it still says anything: two amounts in one currency, or one
+    /// in a known one.
+    fn says(&self) -> bool {
+        self.terms.len() > 1 || (self.currency.is_some() && !self.terms.is_empty())
+    }
+}
+
+/// What holds at one point: a bound per subject, and the amounts known to
+/// be in one currency. A subject with no bound has only its declared
+/// range.
 #[derive(Clone, Debug, Default)]
 pub(super) struct Known {
     facts: BTreeMap<Term, Fact>,
+    same: Vec<Same>,
 }
 
 impl Known {
     pub(super) fn is_empty(&self) -> bool {
-        self.facts.is_empty()
+        self.facts.is_empty() && self.same.is_empty()
+    }
+
+    /// The class of amounts known to share `term`'s currency.
+    pub(super) fn same_as(&self, term: &Term) -> Option<&Same> {
+        self.same.iter().find(|same| same.terms.contains(term))
+    }
+
+    /// Adds that the amounts in `found` share one currency, `currency` when
+    /// it is known: merged with every class that has one of them.
+    fn add_same(&mut self, found: Same) {
+        let mut merged = found;
+        let mut kept = Vec::with_capacity(self.same.len());
+        for same in std::mem::take(&mut self.same) {
+            if same.terms.is_disjoint(&merged.terms) {
+                kept.push(same);
+                continue;
+            }
+            merged.terms.extend(same.terms);
+            merged.from.extend(same.from);
+            merged.currency = merged.currency.or(same.currency);
+        }
+        if merged.says() {
+            kept.push(merged);
+        }
+        self.same = kept;
     }
 
     pub(super) fn get(&self, term: &Term) -> Option<&Fact> {
@@ -139,6 +193,9 @@ impl Known {
         for (term, fact) in &other.facts {
             out.add(term.clone(), fact.clone());
         }
+        for same in &other.same {
+            out.add_same(same.clone());
+        }
         out
     }
 
@@ -157,6 +214,26 @@ impl Known {
             let from = a.from.union(&b.from).cloned().collect();
             out.facts.insert(term.clone(), Fact { interval, from });
         }
+        // Only what both say: the amounts both put in one class, in a
+        // currency only when both know the same one.
+        for a in &self.same {
+            for b in &other.same {
+                let terms: BTreeSet<Term> = a.terms.intersection(&b.terms).cloned().collect();
+                let currency = if a.currency == b.currency {
+                    a.currency
+                } else {
+                    None
+                };
+                let same = Same {
+                    terms,
+                    currency,
+                    from: a.from.union(&b.from).cloned().collect(),
+                };
+                if same.says() {
+                    out.add_same(same);
+                }
+            }
+        }
         out
     }
 
@@ -170,11 +247,19 @@ impl Known {
     /// pointed at a new value.
     pub(super) fn forget(&mut self, local: usize) {
         self.facts.retain(|term, _| !term.mentions(local));
+        for same in &mut self.same {
+            same.terms.retain(|term| !term.mentions(local));
+        }
+        self.same.retain(Same::says);
     }
 
     /// Keeps only bounds on subjects made of `locals`, those in scope.
     pub(super) fn keep_within(&mut self, locals: &BTreeSet<usize>) {
         self.facts.retain(|term, _| term.within(locals));
+        for same in &mut self.same {
+            same.terms.retain(|term| term.within(locals));
+        }
+        self.same.retain(Same::says);
     }
 
     fn bound(&mut self, term: &Option<Term>, interval: Interval, from: &BTreeSet<Origin>) {
@@ -399,6 +484,15 @@ impl Body<'_> {
                         let (b_holds, b_fails) = self.knowing(&a_fails, |body| body.split(&rhs));
                         (a_holds.or(&a_fails.and(&b_holds)), a_fails.and(&b_fails))
                     }
+                    "==" | "!="
+                        if let Some(said) = self.currencies_compared(binary, &lhs, &rhs) =>
+                    {
+                        if op.text() == "==" {
+                            said
+                        } else {
+                            (said.1, said.0)
+                        }
+                    }
                     "<" | "<=" | ">" | ">=" | "==" | "!=" => {
                         self.comparison(binary, &lhs, op.text(), &rhs)
                     }
@@ -462,6 +556,68 @@ impl Body<'_> {
         }
         let [holds, fails] = out;
         (holds, fails)
+    }
+
+    /// What `lhs == rhs` says when it compares the currencies of amounts
+    /// (area 19): `money.currency(a) == money.currency(b)` puts `a` and `b`
+    /// in one class where it holds, and `money.currency(a) == Currency.gbp`
+    /// gives `a`'s class that currency; nothing where it doesn't.
+    fn currencies_compared(
+        &self,
+        binary: &ast::BinExpr,
+        lhs: &Expr,
+        rhs: &Expr,
+    ) -> Option<(Known, Known)> {
+        let left = self.currency_side(lhs)?;
+        let right = self.currency_side(rhs)?;
+        let mut same = Same {
+            terms: BTreeSet::new(),
+            currency: None,
+            from: BTreeSet::from([Origin {
+                key: node_key(binary.syntax()),
+                written: spaced(binary.syntax()),
+            }]),
+        };
+        for side in [left, right] {
+            match side {
+                CurrencySide::Of(term) => {
+                    same.terms.insert(term);
+                }
+                CurrencySide::Written(code) => {
+                    if same.currency.is_some_and(|known| known != code) {
+                        return Some(Default::default());
+                    }
+                    same.currency = Some(code);
+                }
+            }
+        }
+        let mut holds = Known::default();
+        if same.says() {
+            holds.add_same(same);
+        }
+        Some((holds, Known::default()))
+    }
+
+    /// One side of a comparison of currencies: `money.currency(x)` of an
+    /// amount that is a subject, or a currency written out.
+    fn currency_side(&self, expr: &Expr) -> Option<CurrencySide> {
+        match expr {
+            Expr::ParenExpr(paren) => self.currency_side(&paren.expr()?),
+            Expr::CallExpr(call) => {
+                let key = node_key(call.syntax());
+                let Some(Reach::Std(Op::MoneyCurrency)) = self.facts.reaches.get(&key) else {
+                    return None;
+                };
+                let value = call.arg_list()?.args().next()?.expr()?;
+                self.term(&value).map(CurrencySide::Of)
+            }
+            _ => match self.facts.variants.get(&node_key(expr.syntax())) {
+                Some((ty, variant)) if ty == jadpo_std::CURRENCY => {
+                    jadpo_std::money::ordinal_of_variant(variant).map(CurrencySide::Written)
+                }
+                _ => None,
+            },
+        }
     }
 
     /// The locals a block assigns anywhere in it, among those in scope

@@ -76,6 +76,8 @@ impl SqlType {
             "date" => SqlType::Date,
             "time" => SqlType::Time,
             "jsonb" => SqlType::Json,
+            // A currency's code (area 19).
+            "char" => SqlType::Text,
             _ => return None,
         })
     }
@@ -165,6 +167,14 @@ pub enum Column {
         ty: String,
         variants: Vec<String>,
     },
+    /// The first of the columns a compound standard type is stored in
+    /// (`Money`'s amount and currency, area 19), by the type's name: the
+    /// value is read from it and the [`Column::Part`]s after it, as the
+    /// type's data entry lists its columns.
+    Compound(String),
+    /// A later column of a compound type, read by the [`Column::Compound`]
+    /// before it and never on its own.
+    Part,
 }
 
 /// Where a record's field comes from.

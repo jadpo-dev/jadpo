@@ -332,6 +332,8 @@ struct Combined {
     /// The validated built-in text type at the bottom of the chain
     /// (`Email`, `Url`, `IpAddress`), whose own check counts as `format`.
     checked: Option<Prim>,
+    /// A `Money` type's one currency (area 19).
+    currency: Option<u32>,
 }
 
 /// A validated built-in text type: its own check of the text is what
@@ -378,6 +380,7 @@ fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
         if rules.version.is_some() {
             out.version = rules.version;
         }
+        out.currency = out.currency.or(rules.currency);
     }
     out
 }
@@ -424,6 +427,16 @@ impl Combined {
                 ),
             ));
         }
+        if let Some(currency) = self.currency {
+            out.push((
+                "currency",
+                format!(
+                    "currency: {}.{}",
+                    jadpo_std::CURRENCY,
+                    jadpo_std::money::variant(currency).unwrap_or("?")
+                ),
+            ));
+        }
         out
     }
 }
@@ -463,7 +476,7 @@ impl Body<'_> {
     /// zero, however many there are, and items never above zero to one
     /// never above it (area 19); anything finer needs a check.
     fn summed(&self, call: &ast::CallExpr) -> Option<Interval> {
-        let super::facts::Reach::Std(Op::ListSum) =
+        let super::facts::Reach::Std(Op::ListSum | Op::MoneySum) =
             self.facts.reaches.get(&node_key(call.syntax()))?
         else {
             return None;
@@ -568,6 +581,19 @@ impl Body<'_> {
                 End::Above
             },
         })
+    }
+
+    /// `money.from_minor` and `money.minor` (area 19): an amount made
+    /// from a number of minor units has that number's bounds, and an
+    /// amount's minor units its own.
+    fn amount(&self, call: &ast::CallExpr, reading: &mut Reading) -> Option<Interval> {
+        let super::facts::Reach::Std(Op::MoneyFromMinor | Op::MoneyMinor) =
+            self.facts.reaches.get(&node_key(call.syntax()))?
+        else {
+            return None;
+        };
+        let value = call.arg_list()?.args().next()?.expr()?;
+        Some(self.interval(&value, reading))
     }
 
     fn floor(&self, call: &ast::CallExpr) -> Option<i64> {
@@ -692,6 +718,13 @@ impl Body<'_> {
         if needs.version.is_some() && needs.version != has.version {
             out.push("version".to_string());
         }
+        // A `Money` type's currency: the amount's own type fixing the same
+        // one, how it was made, or a condition around it (area 19).
+        if let Some(code) = needs.currency
+            && !self.in_currency(value, code)
+        {
+            out.push("currency".to_string());
+        }
         verdict
     }
 
@@ -806,6 +839,7 @@ impl Body<'_> {
             Expr::CallExpr(call) if let Some(summed) = self.summed(call) => summed,
             Expr::CallExpr(call) if let Some(chosen) = self.chosen(call, reading) => chosen,
             Expr::CallExpr(call) if let Some(rounded) = self.rounded(call, reading) => rounded,
+            Expr::CallExpr(call) if let Some(amount) = self.amount(call, reading) => amount,
             // `integer.divide` and `decimal.divide` are bounded as `/` is,
             // whichever way they round: rounding away from zero never
             // passes the dividend while the divisor is at least 1.

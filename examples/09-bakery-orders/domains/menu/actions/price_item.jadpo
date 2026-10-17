@@ -2,7 +2,7 @@
 // rather than keeping prices of its own, so a price changes in one place.
 
 use shared/types { Grain, MenuItem, Pence, SliceCount }
-use shared/libraries { money }
+use shared/libraries { pricing }
 
 /// What one of `item` costs.
 public action price_item(item: MenuItem) -> Pence {
@@ -28,7 +28,7 @@ function cake_price(slices: SliceCount) -> Pence {
     if (slices == 16) {
         // Taking 90% rather than subtracting 10% keeps the result provably
         // never below zero, so no check is needed.
-        return money.percent_of(full, 90)
+        return pricing.percent_of(full, 90)
     }
     return full
 }

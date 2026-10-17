@@ -289,7 +289,10 @@ pub fn condition(
 pub fn value(bind: &mut dyn Bind, value: &Value, ty: SqlType) -> Option<String> {
     Some(match value {
         Value::Literal(literal) => self::literal(literal, ty)?,
-        Value::Variant { variant, .. } => text_literal(variant),
+        // As its column holds it: `Currency`'s by its code (area 19).
+        Value::Variant { ty, variant } => {
+            text_literal(jadpo_std::standard::stored_variant(ty, variant))
+        }
         Value::List(_) => return None,
         other => bind.bind(other, ty)?,
     })

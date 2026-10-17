@@ -176,6 +176,15 @@ impl<'a> Parser<'a> {
         self.nth_text(0)
     }
 
+    /// Whether the source at byte `offset` starts with a lower-case
+    /// letter, as a local's name does and a type's never does.
+    pub(crate) fn lowercase_at(&self, offset: u32) -> bool {
+        self.text
+            .get(offset as usize..)
+            .and_then(|rest| rest.chars().next())
+            .is_some_and(|c| c.is_lowercase())
+    }
+
     /// An identifier with exactly this text, `n` tokens ahead.
     pub(crate) fn nth_word(&self, n: usize, word: &str) -> bool {
         self.nth(n) == IDENT && self.nth_text(n) == word

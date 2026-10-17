@@ -20,6 +20,7 @@ mod failures;
 mod lists;
 mod logic;
 mod maths;
+mod money;
 mod named_collections;
 mod numbers;
 mod proofs;

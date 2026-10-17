@@ -662,6 +662,27 @@ impl Body<'_> {
                 };
                 (ty, fallible)
             }
+            // Operators on amounts whose currencies are known only while
+            // running (area 19): the attempt covers every one of them in
+            // the operator chain it wraps, `a + b + c` included.
+            Expr::BinExpr(_) | Expr::ParenExpr(_) => {
+                let covered = Self::operator_chain(&inner);
+                let depth = self.handled.len();
+                self.handled.extend(covered.iter().copied());
+                let ty = self.infer(&inner);
+                self.handled.truncate(depth);
+                let fallible = if covered
+                    .iter()
+                    .any(|key| self.facts.fallible_ops.contains(key))
+                {
+                    Fallible::Construction(vec![
+                        jadpo_std::RuleKey::CurrencyMismatch.word().to_string(),
+                    ])
+                } else {
+                    Fallible::Never
+                };
+                (ty, fallible)
+            }
             other => (self.infer(other), Fallible::Never),
         };
         let written = match &inner {
@@ -734,6 +755,10 @@ impl Body<'_> {
             Fallible::Construction(breakable) => {
                 let rules = match &inner {
                     Expr::CallExpr(call) => self.construction_rules(call),
+                    Expr::BinExpr(_) | Expr::ParenExpr(_) => {
+                        let word = jadpo_std::RuleKey::CurrencyMismatch.word();
+                        vec![(word, word.to_string())]
+                    }
                     _ => Vec::new(),
                 };
                 let proofs = match &inner {
@@ -753,6 +778,34 @@ impl Body<'_> {
             }
         }
         ty
+    }
+
+    /// Whether an operator in the chain `expr` is on two amounts of money.
+    fn money_operator(&self, expr: &Expr) -> bool {
+        Self::operator_chain(expr).iter().any(|key| {
+            self.facts.types.get(key)
+                == Some(&super::super::ty::Ty::Prim(super::super::ty::Prim::Money))
+                || self.facts.proofs.contains_key(key)
+        })
+    }
+
+    /// The operators an `attempt` around `expr` covers: it, and those its
+    /// operands are, through brackets, but not inside a call.
+    fn operator_chain(expr: &Expr) -> Vec<super::facts::NodeKey> {
+        let mut out = Vec::new();
+        let mut stack = vec![expr.clone()];
+        while let Some(next) = stack.pop() {
+            match next {
+                Expr::ParenExpr(paren) => stack.extend(paren.expr()),
+                Expr::BinExpr(binary) => {
+                    out.push(node_key(binary.syntax()));
+                    stack.extend(binary.lhs());
+                    stack.extend(binary.rhs());
+                }
+                _ => {}
+            }
+        }
+        out
     }
 
     /// The rules of the type a construction builds, by key and as written,
@@ -876,6 +929,9 @@ impl Body<'_> {
             ),
             Expr::RecordExpr(_) => format!(
                 "Every field of `{written}` gets a value of its own type, or one the declared ranges prove follows the field's own rules, so building it never fails; `attempt` marks only what can."
+            ),
+            Expr::BinExpr(_) | Expr::ParenExpr(_) if self.money_operator(inner) => format!(
+                "The amounts in `{written}` are known to be in one currency, by their types, how they were made or a condition around it, so it never fails with `currency_mismatch`; `attempt` marks only what can."
             ),
             _ => "`attempt` marks a call that can fail, and this isn't a call.".to_string(),
         };

@@ -154,6 +154,7 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
             WriteSource::NewId => "a new identity".to_string(),
             WriteSource::Now => "clock.now".to_string(),
             WriteSource::Caller(part) => format!("caller {part:?}"),
+            WriteSource::Part { of, index } => format!("part {index} of {of:?}"),
         };
         out.push_str(&format!("-- ${}: {source} as {:?}\n", i + 1, param.ty));
     }

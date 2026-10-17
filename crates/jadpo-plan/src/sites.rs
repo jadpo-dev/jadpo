@@ -5,7 +5,7 @@
 //! both executors, so neither reads a type's chain or a field's key while a
 //! body runs.
 
-use jadpo_graph::body::{Body, Callee, Expr, Fallible, Node, Pattern, Site, Stmt};
+use jadpo_graph::body::{BinaryOp, Body, Callee, Expr, Fallible, Node, Pattern, Site, Stmt};
 use jadpo_graph::{Key, TypeRef};
 
 use crate::constant::Constant;
@@ -92,6 +92,10 @@ pub enum Decoded {
     /// `config.<name>`: the number of the setting in the plan's settings;
     /// `None` when it has none, which the checker rules out.
     Config(Option<u32>),
+    /// `*` or `/` of an amount of money by a number: how the result is
+    /// rounded to a whole minor unit, the amount's type's `rounding:`
+    /// (area 19).
+    Rounding(jadpo_std::Rounding),
     /// `json.read` or `json.write` (area 19, "Data formats"): the number
     /// of the type it reads or writes in the plan's JSON table
     /// ([`crate::Plan::json`]), whose codec is the wire's for that type.
@@ -366,6 +370,24 @@ impl Decoder<'_> {
                 expected: self.types.name(expected).to_string(),
             },
             Node::Expr(Expr::Config { field }) => Decoded::Config((self.setting)(field)),
+            // An amount scaled by a number rounds by its type's `rounding:`,
+            // `half_even` when it declares none (area 19).
+            Node::Expr(Expr::Binary {
+                op: BinaryOp::Multiply | BinaryOp::Divide,
+                lhs,
+                ..
+            }) => {
+                let rounding = body
+                    .sites
+                    .get(lhs.0 as usize)
+                    .and_then(|lhs| self.types.chain(&lhs.ty))
+                    .filter(|(builtin, _)| *builtin == jadpo_std::Builtin::Money)
+                    .and_then(|(_, rules)| rules.iter().find_map(|rules| rules.rounding));
+                match rounding {
+                    Some(rounding) => Decoded::Rounding(rounding),
+                    None => Decoded::Nothing,
+                }
+            }
             // A constant runs its own body, which gives its value.
             Node::Expr(Expr::Constant { constant }) => Decoded::Callable((self.callable)(constant)),
             Node::Expr(Expr::Unchecked) => Decoded::Written(written(site, text)),

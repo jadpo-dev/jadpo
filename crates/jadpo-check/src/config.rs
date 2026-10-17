@@ -733,8 +733,8 @@ impl Reader<'_> {
             return None;
         }
         let spelling = match reads {
-            Reads::Zone => jadpo_std::config::Spelling::Zone,
-            Reads::Locale => jadpo_std::config::Spelling::Locale,
+            Reads::Zone => jadpo_std::config::Spelling::of(jadpo_std::ZONE),
+            Reads::Locale => jadpo_std::config::Spelling::of(jadpo_std::LOCALE),
             _ => jadpo_std::config::Spelling::Plain,
         };
         Some(Some(spelling.spelling(variant)))

@@ -22,6 +22,9 @@ pub enum Shape {
     /// An enum, by its key, or a standard-library enum by name.
     Enum(Key),
     StdEnum(String),
+    /// A standard object type (area 19): sent as its data entry's JSON
+    /// says, an object of its fields (`InstantRange`'s `start` and `end`).
+    StdObject(&'static jadpo_std::StandardType),
     /// `IssuedToken` or `IssuedKey` (area 8), or `DecodeProblem` (area
     /// 19): built in, with the fields `jadpo_std::http::builtin_object_fields`
     /// lists.
@@ -48,6 +51,8 @@ pub fn merge<'r>(chain: impl IntoIterator<Item = &'r Rules>) -> Rules {
         out.version = out.version.or(rules.version);
         out.min_duration = out.min_duration.or(rules.min_duration);
         out.max_duration = out.max_duration.or(rules.max_duration);
+        out.currency = out.currency.or(rules.currency);
+        out.rounding = out.rounding.or(rules.rounding);
     }
     out
 }
@@ -145,6 +150,11 @@ impl<'g> Wire<'g> {
                     return Shape::Page(args.into_iter().next().unwrap_or(TypeRef::None));
                 }
                 TypeRef::Std(name, args) if args.is_empty() => {
+                    if let Some(entry) = jadpo_std::standard_type(&name)
+                        && matches!(entry.holds, jadpo_std::standard::Holds::Object(_))
+                    {
+                        return Shape::StdObject(entry);
+                    }
                     return match issued_name(&name) {
                         Some(issued) => Shape::Issued(issued),
                         None => Shape::StdEnum(name),
@@ -236,6 +246,7 @@ impl<'g> Wire<'g> {
                 self.name(&key)
             }
             Shape::StdEnum(name) => name,
+            Shape::StdObject(entry) => entry.name.to_string(),
             Shape::Issued(name) => {
                 refs.insert(issued_key(name));
                 name.to_string()
@@ -277,6 +288,7 @@ impl<'g> Wire<'g> {
                 refs.insert(issued_key(name));
                 reference(name)
             }
+            Shape::StdObject(entry) => standard_object_schema(entry),
             Shape::StdEnum(name) => {
                 let mut out = Value::object();
                 out.set("type", "string");
@@ -427,7 +439,28 @@ fn whole(n: Num) -> Option<i64> {
         .flatten()
 }
 
-fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
+/// A standard object type's schema, from its data entry (area 19): an
+/// object of its fields, each its built-in type's, all required.
+pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
+    let mut out = Value::object();
+    out.set("type", "object");
+    let mut properties = Value::object();
+    let mut required = Vec::new();
+    if let jadpo_std::standard::Holds::Object(fields) = entry.holds {
+        for (name, builtin) in fields {
+            properties.set(name, scalar_schema(*builtin, &Rules::default()));
+            required.push(*name);
+        }
+    }
+    out.set("properties", properties);
+    out.set("required", required);
+    out.set("additionalProperties", false);
+    out
+}
+
+/// A built-in type's schema, with its rules; a standard type stored and
+/// sent as an object (`Money`, `ZonedTime`) is that object.
+pub fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
     let mut out = Value::object();
     let string = |out: &mut Value, format: Option<&str>| {
         out.set("type", "string");
@@ -493,6 +526,41 @@ fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
             properties.set("zone", zone);
             out.set("properties", properties);
             out.set("required", vec!["instant", "zone"]);
+            out.set("additionalProperties", false);
+        }
+        // An amount of money in minor units and its currency's code, as
+        // Stripe sends it (area 19, "Money and payments").
+        Builtin::Money => {
+            out.set("type", "object");
+            let [amount_field, currency_field] = jadpo_std::MONEY_FIELDS;
+            let mut amount = Value::object();
+            amount.set("type", "integer");
+            if let Some(min) = rules.min.and_then(whole) {
+                amount.set("minimum", min);
+            }
+            if let Some(max) = rules.max.and_then(whole) {
+                amount.set("maximum", max);
+            }
+            amount.set(
+                "description",
+                "The amount in the currency's minor units: pence, cents.",
+            );
+            let mut currency = Value::object();
+            string(&mut currency, None);
+            // The one code its type fixes, or every code `Currency` has.
+            let codes: Vec<&str> = match rules.currency.and_then(jadpo_std::money::code) {
+                Some(code) => vec![code],
+                None => jadpo_std::CURRENCIES
+                    .iter()
+                    .map(|(_, code)| *code)
+                    .collect(),
+            };
+            currency.set("enum", codes);
+            let mut properties = Value::object();
+            properties.set(amount_field, amount);
+            properties.set(currency_field, currency);
+            out.set("properties", properties);
+            out.set("required", vec![amount_field, currency_field]);
             out.set("additionalProperties", false);
         }
         Builtin::Unit => out.set("type", "null"),

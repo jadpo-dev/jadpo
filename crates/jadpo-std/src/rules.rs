@@ -7,7 +7,7 @@
 
 use std::cmp::Ordering;
 
-use crate::{Builtin, Dur, Num, TextFormat, UuidVersion};
+use crate::{Builtin, Dur, Num, Rounding, TextFormat, UuidVersion};
 
 /// The rules one declaration adds: a type's block, or a field's settings.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -25,6 +25,13 @@ pub struct Rules {
     /// `min:` and `max:` on a `Duration` type.
     pub min_duration: Option<Dur>,
     pub max_duration: Option<Dur>,
+    /// `currency:` on a `Money` type (area 19, "Money and payments"): the
+    /// one currency its amounts are in, by its place among `Currency`'s
+    /// variants. `min:` and `max:` on a `Money` type count minor units.
+    pub currency: Option<u32>,
+    /// `rounding:` on a `Money` type: how `*` and `/` round an amount to a
+    /// whole minor unit, `half_even` when not declared.
+    pub rounding: Option<Rounding>,
 }
 
 /// Which rule a value breaks, by the key an `attempt`'s arm names it with
@@ -41,6 +48,9 @@ pub enum RuleKey {
     Format,
     Scale,
     Version,
+    /// An amount of money in another currency than a `Money` type's
+    /// `currency:` (area 19, "Money and payments").
+    Currency,
     /// A local time a temporal operation makes falls in a daylight-saving
     /// gap or overlap, and its `dst:` didn't say which instant to take
     /// (area 10, "Zones and local times").
@@ -56,6 +66,13 @@ pub enum RuleKey {
     /// A value a `decimal` operation has no result for, such as `ln` of
     /// a value at or below 0 (area 19, "Numbers").
     OutOfRange,
+    /// Two amounts of money in different currencies, added, subtracted or
+    /// ordered, where only the running program knows their currencies
+    /// (area 19, "The standard operator table").
+    CurrencyMismatch,
+    /// A decimal amount with more places than its currency has, made into
+    /// `Money` by `money.of` (area 19, "Money and payments").
+    TooManyPlaces,
     /// A JSON document `json.read` decodes isn't the type `as:` names: a
     /// field missing, unknown or breaking a rule (area 19, "Data formats").
     Mismatch,
@@ -65,7 +82,7 @@ impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 13] = [
+    pub const ALL: [RuleKey; 16] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -74,10 +91,13 @@ impl RuleKey {
         RuleKey::Format,
         RuleKey::Scale,
         RuleKey::Version,
+        RuleKey::Currency,
         RuleKey::Dst,
         RuleKey::InvalidDay,
         RuleKey::Malformed,
         RuleKey::OutOfRange,
+        RuleKey::CurrencyMismatch,
+        RuleKey::TooManyPlaces,
         RuleKey::Mismatch,
     ];
 
@@ -92,10 +112,13 @@ impl RuleKey {
             RuleKey::Format => "format",
             RuleKey::Scale => "scale",
             RuleKey::Version => "version",
+            RuleKey::Currency => "currency",
             RuleKey::Dst => "dst",
             RuleKey::InvalidDay => "invalid_day",
             RuleKey::Malformed => "malformed",
             RuleKey::OutOfRange => "out_of_range",
+            RuleKey::CurrencyMismatch => "currency_mismatch",
+            RuleKey::TooManyPlaces => "too_many_places",
             RuleKey::Mismatch => "mismatch",
         }
     }
@@ -178,6 +201,24 @@ impl Rules {
             );
         }
         Ok(())
+    }
+
+    /// An amount of money against `currency`, then `min` and `max`, which
+    /// count its minor units; `currency` is its currency's place among
+    /// `Currency`'s variants.
+    pub fn check_money(&self, minor: i64, currency: u32) -> Result<(), Broken> {
+        if let Some(fixed) = self.currency
+            && fixed != currency
+        {
+            let code = |ordinal: u32| crate::money::code(ordinal).unwrap_or("?");
+            let variant = crate::money::variant(fixed).unwrap_or("?");
+            return broken(
+                RuleKey::Currency,
+                format!("currency: {}.{variant}", crate::CURRENCY),
+                format!("is in {}, not {}", code(currency), code(fixed)),
+            );
+        }
+        self.check_number(Num::whole(i128::from(minor)))
     }
 
     /// A length against `min_length` and `max_length`; `unit` names what

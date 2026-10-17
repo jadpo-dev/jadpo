@@ -391,13 +391,21 @@ impl Body<'_> {
             // One only a proof settles: `decimal.ln`'s value proved above
             // 0 (area 19, "Numbers").
             let Some(option) = condition.option else {
-                let proved = table
-                    .params
-                    .iter()
-                    .position(|param| param.above_zero)
-                    .and_then(given)
-                    .and_then(ast::Arg::expr)
-                    .is_some_and(|value| self.above_zero(&value));
+                let proved = match condition.key {
+                    // The money operations' (area 19): settled by a
+                    // currency written out that the items or the amount
+                    // can't break.
+                    jadpo_std::RuleKey::CurrencyMismatch | jadpo_std::RuleKey::TooManyPlaces => {
+                        self.money_condition_settled(table, call, condition.key, &given)
+                    }
+                    _ => table
+                        .params
+                        .iter()
+                        .position(|param| param.above_zero)
+                        .and_then(given)
+                        .and_then(ast::Arg::expr)
+                        .is_some_and(|value| self.above_zero(&value)),
+                };
                 if !proved {
                     open.push(condition.key.word().to_string());
                 }

@@ -216,7 +216,12 @@ pub fn children(keys: &str, columns: &[&str], inner: &str, order: &[Order<'_>]) 
 }
 
 /// `INSERT` of `values` into `columns` of `table`, returning `returning`.
-pub fn insert(table: &str, columns: &[&str], values: &[String], returning: &[&str]) -> String {
+pub fn insert<S: AsRef<str>>(
+    table: &str,
+    columns: &[&str],
+    values: &[String],
+    returning: &[S],
+) -> String {
     format!(
         "INSERT INTO {} ({})\nVALUES ({})\nRETURNING {}",
         ident(table),
@@ -242,7 +247,7 @@ pub fn delete(table: &str) -> String {
 }
 
 /// Adds `RETURNING` of `columns` to `sql`.
-pub fn returning(sql: &mut String, columns: &[&str]) {
+pub fn returning<S: AsRef<str>>(sql: &mut String, columns: &[S]) {
     sql.push_str(&format!("\nRETURNING {}", idents(columns)));
 }
 

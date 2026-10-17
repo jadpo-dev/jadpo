@@ -53,6 +53,10 @@ pub enum WriteSource {
     /// Who is calling, for the policy compiled into the statement (area
     /// 9).
     Caller(crate::policy::CallerPart),
+    /// The column at `index` of those a compound standard type from `of`
+    /// is stored in (`Money`'s amount, then its currency, area 19); `NULL`
+    /// for no value.
+    Part { of: Box<WriteSource>, index: u32 },
 }
 
 /// One parameter: `$1` is the first.

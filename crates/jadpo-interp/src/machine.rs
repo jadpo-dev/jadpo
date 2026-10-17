@@ -1706,9 +1706,13 @@ impl<'p> Machine<'p> {
         at: SiteId,
     ) -> Result<Value, Stop> {
         let ordered = |wanted: fn(std::cmp::Ordering) -> bool| {
-            ops::compare(left, right)
-                .map(|ordering| Value::Bool(wanted(ordering)))
-                .ok_or(jadpo_value::Fault::Shape)
+            ops::order(left, right).map(|ordering| Value::Bool(wanted(ordering)))
+        };
+        // An amount scaled by a number rounds by its type's `rounding:`
+        // (area 19).
+        let rounding = match self.decoded(at) {
+            Some(Decoded::Rounding(rounding)) => *rounding,
+            _ => jadpo_value::Rounding::HalfEven,
         };
         let result = match op {
             BinaryOp::Equal => Ok(Value::Bool(ops::equal(left, right))),
@@ -1719,8 +1723,8 @@ impl<'p> Machine<'p> {
             BinaryOp::GreaterEqual => ordered(std::cmp::Ordering::is_ge),
             BinaryOp::Add => ops::add(left, right),
             BinaryOp::Subtract => ops::subtract(left, right),
-            BinaryOp::Multiply => ops::multiply(left, right),
-            BinaryOp::Divide => ops::divide(left, right),
+            BinaryOp::Multiply => ops::multiply_rounded(left, right, rounding),
+            BinaryOp::Divide => ops::divide_rounded(left, right, rounding),
             BinaryOp::Remainder => ops::remainder(left, right),
             BinaryOp::In => ops::contains(right, left)
                 .map(Value::Bool)
@@ -1729,7 +1733,16 @@ impl<'p> Machine<'p> {
             BinaryOp::Matches => return Err(self.not_built_yet(ctx, "matches", at)),
             BinaryOp::And | BinaryOp::Or => Err(jadpo_value::Fault::Shape),
         };
-        result.map_err(|fault| self.value_fault(ctx, fault, at))
+        result.map_err(|fault| match fault {
+            // Two amounts in different currencies, which the operator's
+            // `attempt` maps (area 19).
+            jadpo_value::Fault::Broke(rule) => Stop::Invalid {
+                rule,
+                written: format!("{}:", rule.word()),
+                problem: None,
+            },
+            fault => self.value_fault(ctx, fault, at),
+        })
     }
 
     // --- calls --------------------------------------------------------------

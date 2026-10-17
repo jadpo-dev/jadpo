@@ -294,6 +294,45 @@ impl fmt::Display for Zoned {
     }
 }
 
+/// An amount of money (area 19, "Money and payments"): a whole number of
+/// its currency's minor units, and the currency. Two are equal when both
+/// are, so £5.00 and €5.00 differ; only amounts in one currency are
+/// ordered by `<`, while the canonical order puts the currency first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Money {
+    /// The currency, as its place among `Currency`'s variants
+    /// ([`jadpo_std::CURRENCIES`]).
+    pub currency: u32,
+    /// Minor units: pence for `GBP`, yen for `JPY`, fils for `BHD`.
+    pub minor: i64,
+}
+
+impl Money {
+    /// The currency's ISO 4217 code: `GBP`.
+    pub fn code(self) -> &'static str {
+        jadpo_std::money::code(self.currency).unwrap_or("XXX")
+    }
+
+    /// How many places the currency's major unit has.
+    pub fn exponent(self) -> u32 {
+        jadpo_std::money::exponent(self.currency).unwrap_or(2)
+    }
+
+    /// The amount in major units, with exactly the currency's places:
+    /// `10.50` for 1050 pence, `500` for 500 yen.
+    pub fn major(self) -> Decimal {
+        Decimal::new(i128::from(self.minor), self.exponent())
+    }
+}
+
+impl fmt::Display for Money {
+    /// Its canonical text (area 19): the code and the amount in major
+    /// units with the currency's places, `GBP 10.50`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.code(), self.major())
+    }
+}
+
 /// A runtime value. Named types are erased to what they are built on: a
 /// value has already been checked against its type's rules when it was
 /// built. A nullable value is the value itself or [`Value::None`].
@@ -317,6 +356,8 @@ pub enum Value {
     Zoned(Zoned),
     /// Milliseconds.
     Duration(i64),
+    /// An amount of money in a currency (area 19).
+    Money(Money),
     List(Rc<[Value]>),
     /// Kept in the canonical order without repeats, so equality is set
     /// equality.
@@ -429,7 +470,7 @@ impl Value {
 
 impl fmt::Display for Value {
     /// As Jadpo writes the value: `5.00`, `"Buy milk"`, `[1, 2]`,
-    /// `Money { amount: 5.00 }`, `TicketStatus.open`.
+    /// `PriceTag { amount: 5.00 }`, `TicketStatus.open`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Unit => f.write_str("Unit"),
@@ -448,6 +489,14 @@ impl fmt::Display for Value {
                 Dur {
                     millis: i128::from(*millis)
                 }
+            ),
+            // As code makes one: there is no literal for money (area 19).
+            Value::Money(money) => write!(
+                f,
+                "money.from_minor({}, {}.{})",
+                money.minor,
+                jadpo_std::CURRENCY,
+                jadpo_std::money::variant(money.currency).unwrap_or("?")
             ),
             Value::List(items) | Value::Set(items) => {
                 f.write_str("[")?;
@@ -524,7 +573,7 @@ mod tests {
     #[test]
     fn equality_compares_contents() {
         let record =
-            |amount: i64| Value::record("Money", vec![("amount".into(), Value::Int(amount))]);
+            |amount: i64| Value::record("PriceTag", vec![("amount".into(), Value::Int(amount))]);
         assert_eq!(record(5), record(5));
         assert_ne!(record(5), record(6));
         assert_eq!(
@@ -636,11 +685,11 @@ mod tests {
             Value::variant("TicketStatus", 0, "open", Vec::new()).to_string(),
             "TicketStatus.open"
         );
-        let money = Value::record(
-            "Money",
+        let tag = Value::record(
+            "PriceTag",
             vec![("amount".into(), Value::Decimal(decimal("5.00")))],
         );
-        assert_eq!(money.to_string(), "Money { amount: 5.00 }");
+        assert_eq!(tag.to_string(), "PriceTag { amount: 5.00 }");
         assert_eq!(
             Value::list(vec![Value::Int(1), Value::None]).to_string(),
             "[1, none]"

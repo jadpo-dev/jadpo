@@ -153,6 +153,7 @@ impl Validator {
                 Value::Duration(millis) => rules.check_duration(jadpo_std::Dur {
                     millis: i128::from(*millis),
                 }),
+                Value::Money(money) => rules.check_money(money.minor, money.currency),
                 _ => Ok(()),
             }
             .map_err(Invalid::Broken)?;
