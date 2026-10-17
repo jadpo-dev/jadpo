@@ -452,7 +452,7 @@ reference only).
   library catalogue. Each new error with a checked example and real
   output, and area 3's proposal examples made check blocks. Split on
   2026-10-17: the moves are 5.3f.
-- [ ] **5.3f Making a constant a setting** `opus · high` (area 10, "Making
+- [x] **5.3f Making a constant a setting** `opus · high` (area 10, "Making
   a constant a setting" and "Fields in name order"), split from 5.3e:
   `jadpo config move <constant>` and the editor's "Make this a setting"
   code action through the same code: a `config` field of the constant's
