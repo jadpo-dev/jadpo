@@ -206,6 +206,15 @@ impl Validator {
                     mantissa: fraction.mantissa,
                     scale: fraction.scale,
                 }),
+                // A rate type's currencies (area 19, chunk 5.5h4).
+                Value::Record(record) if rules.rate_from.is_some() || rules.rate_to.is_some() => {
+                    match (record.get("from"), record.get("to")) {
+                        (Some(Value::Variant(from)), Some(Value::Variant(to))) => {
+                            rules.check_rate(from.ordinal, to.ordinal)
+                        }
+                        _ => Ok(()),
+                    }
+                }
                 _ => Ok(()),
             }
             .map_err(Invalid::Broken)?;

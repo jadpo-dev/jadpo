@@ -5,7 +5,9 @@
 //! hand every minor unit out, and an amount is shown, read and written as
 //! the contract says. Chunk 5.5h2: `money.convert` applies an
 //! `ExchangeRate` from the amount's currency, and fails `currency_mismatch`
-//! for one from another. The runtime's test (crates/jadpo-runtime/tests/
+//! for one from another. Chunk 5.5h4: a rate type's `from:` and `to:`,
+//! checked as a rate is built from one the app was given and as one is read
+//! from JSON or text. The runtime's test (crates/jadpo-runtime/tests/
 //! money.rs) holds the operations to the same values over many totals.
 
 use crate::support;
@@ -216,5 +218,85 @@ fn a_rate_converts_an_amount_in_its_from_currency() {
             vec![amount("GBP", 1050), to_pounds]
         ),
         amount("GBP", 1050)
+    );
+}
+
+const TYPED: &str = "type CakePrice = Money {\n    currency: Currency.gbp\n}\n\ntype Charge = Money {}\n\ntype PoundsToEuros = ExchangeRate {\n    from: Currency.gbp\n    to: Currency.eur\n}\n\ntype Sent = Text {}\n\ntype WrongRate = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype NotARate = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction priced(price: CakePrice, rate: PoundsToEuros) -> Charge {\n    return Charge(money.convert(price, rate))\n}\n\nfunction typed(rate: ExchangeRate) fails WrongRate -> PoundsToEuros {\n    var checked: PoundsToEuros = attempt PoundsToEuros(rate) {\n        from: WrongRate\n        to: WrongRate\n    }\n    return checked\n}\n\nfunction typed_if_checked(rate: ExchangeRate) -> PoundsToEuros? {\n    if (rate.from == Currency.gbp and rate.to == Currency.eur) {\n        return PoundsToEuros(rate)\n    }\n    return none\n}\n\nfunction from_json(sent: Sent) fails NotARate -> PoundsToEuros {\n    return attempt json.read(sent, as: PoundsToEuros) {\n        malformed: NotARate\n        mismatch: NotARate\n    }\n}\n\nfunction from_text(sent: Sent) fails NotARate, WrongRate -> PoundsToEuros {\n    return attempt text.parse(sent, as: PoundsToEuros) {\n        malformed: NotARate\n        from: WrongRate\n        to: WrongRate\n    }\n}\n";
+
+#[test]
+fn a_rate_type_fixes_its_currencies_as_it_runs() {
+    let program = main(TYPED).with_proof_checks();
+    let to_euros = rate("GBP/EUR 1.17 2026-10-18T09:00:00Z");
+    let to_pounds = rate("EUR/GBP 0.85 2026-10-18T09:00:00Z");
+    let to_dollars = rate("GBP/USD 1.30 2026-10-18T09:00:00Z");
+    assert_eq!(
+        value(
+            &program,
+            "priced",
+            vec![amount("GBP", 1050), to_euros.clone()]
+        ),
+        amount("EUR", 1228)
+    );
+    assert_eq!(value(&program, "typed", vec![to_euros.clone()]), to_euros);
+    assert_eq!(
+        failure(&program, "typed", vec![to_pounds.clone()]).name,
+        "WrongRate"
+    );
+    assert_eq!(
+        failure(&program, "typed", vec![to_dollars.clone()]).name,
+        "WrongRate"
+    );
+    assert_eq!(
+        value(&program, "typed_if_checked", vec![to_euros.clone()]),
+        to_euros
+    );
+    assert_eq!(
+        value(&program, "typed_if_checked", vec![to_dollars]),
+        Value::None
+    );
+}
+
+#[test]
+fn a_rate_read_at_the_boundary_is_checked_against_its_type() {
+    let program = main(TYPED);
+    let to_euros = rate("GBP/EUR 1.17 2026-10-18T09:00:00Z");
+    let json = |from: &str, to: &str| {
+        text(&format!(
+            "{{\"from\":\"{from}\",\"to\":\"{to}\",\"rate\":\"1.17\",\"at\":\"2026-10-18T09:00:00Z\"}}"
+        ))
+    };
+    assert_eq!(
+        value(&program, "from_json", vec![json("GBP", "EUR")]),
+        to_euros
+    );
+    assert_eq!(
+        failure(&program, "from_json", vec![json("EUR", "GBP")]).name,
+        "NotARate",
+        "the wrong way round"
+    );
+    assert_eq!(
+        failure(&program, "from_json", vec![json("GBP", "USD")]).name,
+        "NotARate"
+    );
+    assert_eq!(
+        value(
+            &program,
+            "from_text",
+            vec![text("GBP/EUR 1.17 2026-10-18T09:00:00Z")]
+        ),
+        to_euros
+    );
+    assert_eq!(
+        failure(
+            &program,
+            "from_text",
+            vec![text("EUR/GBP 0.85 2026-10-18T09:00:00Z")]
+        )
+        .name,
+        "WrongRate"
+    );
+    assert_eq!(
+        failure(&program, "from_text", vec![text("GBP to EUR")]).name,
+        "NotARate"
     );
 }

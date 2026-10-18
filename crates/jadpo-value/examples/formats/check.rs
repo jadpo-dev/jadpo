@@ -187,6 +187,7 @@ fn table() -> Table {
         Codec::Object {
             shape: ShapeId(0),
             fields: (1..=16).map(CodecId).collect(),
+            validator: None,
         },
         scalar(Builtin::Uuid, v_uuid, true),
         scalar(Builtin::Text, v_text, true),
@@ -231,6 +232,7 @@ fn table() -> Table {
         Codec::Object {
             shape: ShapeId(1),
             fields: vec![CodecId(2), CodecId(3)],
+            validator: None,
         },
     ];
     Table {

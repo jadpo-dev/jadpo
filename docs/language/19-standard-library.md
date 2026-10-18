@@ -30,7 +30,7 @@ own features needed. This page collects them, adds what real applications
 keep reaching for, says which gaps in the language block the rest and how
 to close them, and says what is left out on purpose and why.
 
-> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunks 5.5h2, 5.5k and 5.5k2: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2); `Money` and `Currency`, the operator table's `Money` rows and the money operations but `convert`, stored in two columns (5.5h); `ExchangeRate`, `money.convert` and `{price, number, currency}` in messages (5.5h2); ten of the time types, with `CalendarPeriod`'s operator rows and `temporal.period_between` (5.5k); `RecurrenceRule` and `OpeningHours`, with `temporal.occurrences` and `temporal.open_at` (5.5k2); `Colour` and the media types, with `colour`'s operations and `media.fit` (5.5p); and the `random` namespace, seeded per test (5.5q); and the 17 geospatial types, sent as GeoJSON (5.5s). The rest is built by chunks 5.5i to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
+> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunks 5.5h2, 5.5k and 5.5k2: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2); `Money` and `Currency`, the operator table's `Money` rows and the money operations but `convert`, stored in two columns (5.5h); `ExchangeRate`, `money.convert` and `{price, number, currency}` in messages (5.5h2); rate types that fix their currencies with `from:` and `to:` (5.5h4); ten of the time types, with `CalendarPeriod`'s operator rows and `temporal.period_between` (5.5k); `RecurrenceRule` and `OpeningHours`, with `temporal.occurrences` and `temporal.open_at` (5.5k2); `temporal.resolve` of a `LocalDateTime`, and a recurrence on dates for an all-day event (5.5k4); `Colour` and the media types, with `colour`'s operations and `media.fit` (5.5p); and the `random` namespace, seeded per test (5.5q); and the 17 geospatial types, sent as GeoJSON (5.5s). The rest is built by chunks 5.5i to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
 
 | Namespace | Holds | Operations | Decided in |
 |---|---|---|---|
@@ -1888,6 +1888,155 @@ error: `rate` converts from EUR, and `cake` is in GBP
 check failed: 1 error, 1 file
 ```
 
+A type built on `ExchangeRate` fixes its currencies with `from:` and
+`to:`, as a `Money` type fixes its one with `currency:` (chunk 5.5h4), so
+a signature carries them: the right rate needs no `attempt`, the wrong
+one doesn't compile wherever it is passed, and a rate the app was given,
+or reads from JSON or text, is checked against them where it becomes one:
+
+```jadpo check project=money-rate-types
+type CakePrice = Money {
+    currency: Currency.gbp
+    min: 0
+}
+
+type EuroPrice = Money {
+    currency: Currency.eur
+}
+
+/// The rate a shop is given each morning for pricing in euros.
+type PoundsToEuros = ExchangeRate {
+    from: Currency.gbp  // fixed: a rate from euros doesn't compile
+    to: Currency.eur
+}
+
+type QuoteJson = Text {}
+
+type WrongRate = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type NotARate = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A cake's price in euros: the rate's type fixes both currencies, so
+/// the call needs no `attempt` and the result is in euros.
+function priced_in_euros(cake: CakePrice, rate: PoundsToEuros) -> EuroPrice {
+    return EuroPrice(money.convert(cake, rate))
+}
+
+/// The morning's rate, checked once, where it arrives.
+function morning_rate(todays_quote: ExchangeRate) fails WrongRate -> PoundsToEuros {
+    return attempt PoundsToEuros(todays_quote) {
+        from: WrongRate  // a rate from euros, the wrong way round
+        to: WrongRate  // a rate to dollars
+    }
+}
+
+/// A rate a provider sent as JSON.
+function sent_rate(sent: QuoteJson) fails NotARate -> PoundsToEuros {
+    return attempt json.read(sent, as: PoundsToEuros) {
+        malformed: NotARate
+        mismatch: NotARate  // other currencies
+    }
+}
+```
+
+```jadpo check project=money-rate-types file=main.test.jadpo
+test "a rate type converts from its own currency only" {
+    var todays_quote: ExchangeRate = ExchangeRate {
+        from: Currency.gbp
+        to: Currency.eur
+        rate: 1.17
+        at: "2026-10-18T09:00:00Z"
+    }
+    var backwards_quote: ExchangeRate = ExchangeRate {
+        from: Currency.eur
+        to: Currency.gbp
+        rate: 0.85
+        at: "2026-10-18T09:00:00Z"
+    }
+    var rate: PoundsToEuros = attempt morning_rate(todays_quote)
+    var cake: CakePrice = CakePrice(money.from_minor(1050, Currency.gbp))
+    assert priced_in_euros(cake, rate) == money.from_minor(1228, Currency.eur)
+    assert morning_rate(backwards_quote) fails WrongRate
+    var sent: PoundsToEuros = attempt sent_rate(
+        "{\"from\":\"GBP\",\"to\":\"EUR\",\"rate\":\"1.17\",\"at\":\"2026-10-18T09:00:00Z\"}"
+    )
+    assert sent == rate
+    assert sent_rate(
+        "{\"from\":\"EUR\",\"to\":\"GBP\",\"rate\":\"0.85\",\"at\":\"2026-10-18T09:00:00Z\"}"
+    ) fails NotARate
+}
+```
+
+A rate whose type is the wrong way round is a type error in the function
+it is passed to, with no condition in sight:
+
+```jadpo check project=money-rate-type-inverted expect=type.mismatch
+type CakePrice = Money {
+    currency: Currency.gbp
+}
+
+type Payment = Money {}
+
+type EurosToPounds = ExchangeRate {
+    from: Currency.eur
+    to: Currency.gbp
+}
+
+/// A cake's price, at a rate whose type is the wrong way round.
+function priced_abroad(cake: CakePrice, rate: EurosToPounds) -> Payment {
+    return Payment(money.convert(cake, rate))
+}
+```
+
+```text output
+error: `rate` converts from EUR, and `cake` is in GBP
+ --> main.jadpo:14:40
+   |
+14 |     return Payment(money.convert(cake, rate))
+   |                                        ^^^^ a rate from EUR to GBP
+  reason: `money.convert` applies a rate to an amount in the rate's `from` currency. `cake` is in GBP and `rate` converts from EUR, as their types, how they were made or a condition around the call fix, so the rate is the wrong way round or for another currency.
+  next: Pass a rate from GBP, or an amount in EUR (agent)
+  rule: type.mismatch
+  help: docs/language/02-values-and-types.html#type-mismatch
+
+check failed: 1 error, 1 file
+```
+
+A type built on one that fixes a currency repeats it or leaves it out, as
+a type built on another only narrows it (area 2): another one, for an
+amount's `currency:` or a rate's `from:` and `to:`, leaves no value that
+follows both, and the fix removes it (chunk 5.5h4):
+
+```jadpo check project=money-currency-kept expect=type.constraint_contradiction
+type CakePrice = Money {
+    currency: Currency.gbp
+    min: 0
+}
+
+/// A cake's price for the shop in Paris.
+type ParisPrice = CakePrice {
+    currency: Currency.eur
+}
+```
+
+```text output
+error: `currency: Currency.eur` is different from `CakePrice`'s `currency: Currency.gbp`
+ --> main.jadpo:8:15
+  |
+8 |     currency: Currency.eur
+  |               ^^^^^^^^^^^^ different from `CakePrice`'s `currency: Currency.gbp`
+  reason: `CakePrice` fixes the currency at GBP, and a type built on another only narrows it, so it repeats that currency or leaves it out; with another one no value could follow both, and the type could never be built.
+  next: Remove `currency:`, so the type keeps `CakePrice`'s GBP (agent)
+  rule: type.constraint_contradiction
+  help: docs/language/02-values-and-types.html#type-constraint-contradiction
+
+check failed: 1 error, 1 file
+```
+
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
 | `money.from_minor(amount, currency)` | `Money` of `amount` minor units | | none |
@@ -2247,6 +2396,11 @@ test "a loan keeps its rate over base as it was written" {
 > translation messages (area 10); what the pages left open is "Chosen in
 > chunk 5.5h2". `Money * Percentage` came with `Percentage` in chunk
 > 5.5j2, under "The standard operator table".
+> Built in chunk 5.5h4: a rate type's `from:` and `to:`, an inverted
+> typed rate a compile error across function boundaries, its
+> construction, JSON and text checked against them; storing one waits
+> with `ExchangeRate`. What the page left open is "Chosen in chunk
+> 5.5h4".
 > Built in chunk 5.5i3: `Price`, `UnitPrice`, `TaxRate`, `Discount`,
 > `BasisPoints` and `InterestRate`, with `InterestRateBasis`, on the
 > contract, and `money.apply_discount`; storing the records and choices
@@ -2691,7 +2845,7 @@ Area 10's 21 `temporal` operations stand. The new time types add three.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `temporal.occurrences(rule, from:, count:)` | `List<ZonedTime>`, the next `count` occurrences of a `RecurrenceRule` (RFC 5545) at or after `from`, in the rule's zone; `count` 1 to 1000 | | none |
+| `temporal.occurrences(rule, from:, count:)` | `List<ZonedTime>`, the next `count` occurrences of a `RecurrenceRule` (RFC 5545) at or after `from`, an `Instant`, in the rule's zone; from a `CalendarDate`, `List<CalendarDate>`, the days they fall on, which a rule on dates gives (chunk 5.5k4); `count` 1 to 1000 | | none |
 | `temporal.open_at(hours, at)` | `Bool`: an `OpeningHours` is open at the `Instant`, in its zone, across midnight and its exceptions | | none |
 | `temporal.period_between(start, end)` | `CalendarPeriod` in whole years, months and days from one `CalendarDate` to another, so adding it to `start` gives `end`; negative parts when `end` is earlier | | `age(b, a)`, reduced to years, months and days |
 
@@ -2713,9 +2867,12 @@ need a `dst:` choice; it uses `temporal.add_months` and its siblings.
 > `DateRange` in the `range` operations. Built in chunk 5.5k2:
 > `RecurrenceRule` with `temporal.occurrences` and `OpeningHours` with
 > `temporal.open_at`. Built in chunk 5.5k3: `CalendarEvent`, an object
-> whose canonical text is an RFC 5545 `VEVENT`. The choices the page
-> didn't make are under "Chosen in chunk 5.5k", "Chosen in chunk 5.5k2"
-> and "Chosen in chunk 5.5k3".
+> whose canonical text is an RFC 5545 `VEVENT`. Built in chunk 5.5k4:
+> `temporal.resolve` of a `LocalDateTime`, or of a date at a `LocalTime`,
+> so a timed event's start becomes an instant, and a `RecurrenceRule` that
+> starts on a date, so an all-day event recurs. The choices the page
+> didn't make are under "Chosen in chunk 5.5k", "Chosen in chunk 5.5k2",
+> "Chosen in chunk 5.5k3" and "Chosen in chunk 5.5k4".
 
 | Type | Fields | Canonical text and JSON | Shown in `en_gb` |
 |---|---|---|---|
@@ -2729,9 +2886,9 @@ need a `dst:` choice; it uses `temporal.add_months` and its siblings.
 | `UtcOffset` | `minutes` (-1080 to 1080) | `+05:30` | "GMT+05:30" |
 | `DateRange` | `start`, `end`, both `CalendarDate`, the end included | `2026-10-01/2026-10-31`; JSON `{ "start", "end" }` | each end by `format:`, a date format |
 | `CalendarPeriod` | `years`, `months`, `days` | `P1Y2M10D` | "1 year, 2 months, 10 days" |
-| `RecurrenceRule` | held as its text (RFC 5545): the first occurrence as a local time in its zone, a line feed, the rule | `DTSTART;TZID=Europe/London:20261026T093000` and `RRULE:FREQ=WEEKLY;BYDAY=MO`, on two lines | as written |
+| `RecurrenceRule` | held as its text (RFC 5545): the first occurrence as a local time in its zone, or a date alone, a line feed, the rule | `DTSTART;TZID=Europe/London:20261026T093000` and `RRULE:FREQ=WEEKLY;BYDAY=MO`, on two lines; on dates, `DTSTART;VALUE=DATE:20240229` and `RRULE:FREQ=YEARLY` | as written |
 | `OpeningHours` | held as its text (OpenStreetMap's `opening_hours`) and its zone | `Mo-Fr 09:00-17:30; Sa 10:00-16:00 [Europe/London]` | as written |
-| `CalendarEvent` | `summary`; an all-day event's `first_day` and `last_day`, both included, or a timed one's `start` and `end` (`LocalDateTime`) and `zone`; `location`, `description` and `recurrence` (`RecurrenceRule`), each may be `none` | an RFC 5545 `VEVENT`, an all-day `DTEND` the day after the last; JSON its parts | as written |
+| `CalendarEvent` | `summary`; an all-day event's `first_day` and `last_day`, both included, or a timed one's `start` and `end` (`LocalDateTime`) and `zone`; `location`, `description` and `recurrence` (`RecurrenceRule`, on dates for an all-day event), each may be `none` | an RFC 5545 `VEVENT`, an all-day `DTEND` the day after the last; JSON its parts | as written |
 
 A rental runs for a calendar period from its first day, and how long
 someone has lived somewhere is a period between two days, whatever the
@@ -2916,8 +3073,13 @@ and last days, both included, and no zone: a holiday on 25 December is on
 Kiritimati, fourteen hours ahead of UTC, or Pago Pago, eleven behind. A
 timed event holds its local start and end and the zone they are in, as a
 recurrence does, so a shift that starts at 22:00 keeps starting at 22:00
-when the clocks change. Its text is RFC 5545's `VEVENT`, where an all-day
-event's end is the day after its last, and its JSON is its parts:
+when the clocks change; `temporal.resolve` turns its start into an
+instant, with `dst:` choosing on the nights the clocks change. An all-day
+event repeats on its days, with a rule that starts on a date and has no
+zone: a birthday on 29 February comes round only in leap years, as RFC
+5545 skips a day a year doesn't have. Its text is RFC 5545's `VEVENT`,
+where an all-day event's end is the day after its last, and its JSON is
+its parts:
 
 ```jadpo check project=calendar-events
 type DiaryText = Text {}
@@ -2975,6 +3137,57 @@ function covers_reader_day(event: CalendarEvent, at: SeenAt, zone: Zone) -> Cove
             none -> CoversReaderDay(false)
         }
         none -> CoversReaderDay(false)
+    }
+}
+
+/// When a timed event starts: its local start in its zone, the earlier of
+/// the two on the night the clocks go back and an hour on in the hour they
+/// skip; none for an all-day event.
+function event_start(event: CalendarEvent) -> SeenAt? {
+    return match event.start {
+        some(start) -> match event.zone {
+            some(zone) -> SeenAt(
+                temporal.instant(temporal.resolve(start, zone: zone, dst: Dst.compatible))
+            )
+            none -> none
+        }
+        none -> none
+    }
+}
+
+type StartUnclear = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// Where a local time lands in `zone` under each `dst:` choice: the earlier
+/// instant, the later, and the compatible one, earlier of two and later in
+/// a gap.
+function landings(at: LocalDateTime, zone: Zone) -> List<SeenAt> {
+    return [
+        SeenAt(temporal.instant(temporal.resolve(at, zone: zone, dst: Dst.earlier))),
+        SeenAt(temporal.instant(temporal.resolve(at, zone: zone, dst: Dst.later))),
+        SeenAt(temporal.instant(temporal.resolve(at, zone: zone, dst: Dst.compatible)))
+    ]
+}
+
+/// Where a local time lands in `zone` when it must be clear: one the
+/// clocks skip or show twice fails.
+function clear_landing(at: LocalDateTime, zone: Zone) fails StartUnclear -> SeenAt {
+    var landed: ZonedTime = attempt temporal.resolve(at, zone: zone) {
+        dst: StartUnclear
+    }
+    return SeenAt(temporal.instant(landed))
+}
+
+/// The days the next `count` of a repeating event fall on, from `from`; an
+/// all-day event's are its own days, whichever zone they are read in.
+function next_days(event: CalendarEvent, from: ReaderDay, count: ShiftCount) -> List<ReaderDay> {
+    return match event.recurrence {
+        some(rule) -> list.map(
+            temporal.occurrences(rule, from: from, count: count),
+            day -> ReaderDay(day)
+        )
+        none -> []
     }
 }
 
@@ -3068,6 +3281,107 @@ test "a timed event runs past midnight and repeats at its local time" {
     assert diary_entry_from_json(
         "{\"summary\":\"Night shift\",\"first_day\":\"2026-10-24\",\"last_day\":\"2026-10-26\",\"start\":null,\"end\":null,\"zone\":\"Europe/London\",\"location\":null,\"description\":null,\"recurrence\":null}"
     ) fails DiaryUnreadable
+    assert event_start(night_shift) == SeenAt("2026-10-24T21:00:00Z")
+}
+
+test "a start resolves across both clock changes as `dst:` chooses" {
+    // London's clocks go forward at 01:00 on 29 March 2026, so 01:30 never
+    // comes, and back at 02:00 on 25 October, so it comes twice.
+    var london_gap: LocalDateTime = LocalDateTime {
+        date: "2026-03-29"
+        time: LocalTime {
+            hour: 1
+            minute: 30
+            second: 0
+        }
+    }
+    var london_overlap: LocalDateTime = LocalDateTime {
+        date: "2026-10-25"
+        time: LocalTime {
+            hour: 1
+            minute: 30
+            second: 0
+        }
+    }
+    assert landings(london_gap, Zone.europe_london) == [
+        SeenAt("2026-03-29T00:30:00Z"),
+        SeenAt("2026-03-29T01:30:00Z"),
+        SeenAt("2026-03-29T01:30:00Z")
+    ]
+    assert landings(london_overlap, Zone.europe_london) == [
+        SeenAt("2026-10-25T00:30:00Z"),
+        SeenAt("2026-10-25T01:30:00Z"),
+        SeenAt("2026-10-25T00:30:00Z")
+    ]
+    assert clear_landing(london_gap, Zone.europe_london) fails StartUnclear
+    assert clear_landing(london_overlap, Zone.europe_london) fails StartUnclear
+    // New York's go forward at 02:00 on 8 March and back at 02:00 on 1
+    // November.
+    var new_york_gap: LocalDateTime = LocalDateTime {
+        date: "2026-03-08"
+        time: LocalTime {
+            hour: 2
+            minute: 30
+            second: 0
+        }
+    }
+    var new_york_overlap: LocalDateTime = LocalDateTime {
+        date: "2026-11-01"
+        time: LocalTime {
+            hour: 1
+            minute: 30
+            second: 0
+        }
+    }
+    assert landings(new_york_gap, Zone.america_new_york) == [
+        SeenAt("2026-03-08T06:30:00Z"),
+        SeenAt("2026-03-08T07:30:00Z"),
+        SeenAt("2026-03-08T07:30:00Z")
+    ]
+    assert landings(new_york_overlap, Zone.america_new_york) == [
+        SeenAt("2026-11-01T05:30:00Z"),
+        SeenAt("2026-11-01T06:30:00Z"),
+        SeenAt("2026-11-01T05:30:00Z")
+    ]
+    assert clear_landing(new_york_gap, Zone.america_new_york) fails StartUnclear
+    assert clear_landing(new_york_overlap, Zone.america_new_york) fails StartUnclear
+    var shift_start: LocalDateTime = LocalDateTime {
+        date: "2026-10-24"
+        time: LocalTime {
+            hour: 22
+            minute: 0
+            second: 0
+        }
+    }
+    var shift_landed: SeenAt = attempt clear_landing(shift_start, Zone.europe_london)
+    assert shift_landed == SeenAt("2026-10-24T21:00:00Z")
+}
+
+test "a birthday on 29 February comes round in leap years" {
+    var birthday: CalendarEvent = CalendarEvent {
+        summary: "Sam's birthday"
+        first_day: "2024-02-29"
+        last_day: "2024-02-29"
+        start: none
+        end: none
+        zone: none
+        location: none
+        description: none
+        recurrence: "DTSTART;VALUE=DATE:20240229\nRRULE:FREQ=YEARLY"
+    }
+    assert next_days(birthday, "2024-03-01", 2) == [
+        ReaderDay("2028-02-29"),
+        ReaderDay("2032-02-29")
+    ]
+    assert event_start(birthday) == none
+    var birthday_vevent: DiaryText = DiaryText(text.from(birthday))
+    assert birthday_vevent == "BEGIN:VEVENT\nDTSTART;VALUE=DATE:20240229\nDTEND;VALUE=DATE:20240301\nSUMMARY:Sam's birthday\nRRULE:FREQ=YEARLY\nEND:VEVENT"
+    var birthday_from_text: CalendarEvent = attempt diary_entry_from_text(birthday_vevent)
+    assert birthday_from_text == birthday
+    var birthday_from_json: CalendarEvent = attempt diary_entry_from_json(
+        DiaryJson(json.write(birthday))
+    )
+    assert birthday_from_json == birthday
 }
 ```
 
@@ -6957,9 +7271,9 @@ check failed: 1 error, 1 file
 | `set.`, `map.`, `range.`; `for` over a set; `[]` as an empty map | Decided 2026-10-17 (question 8); built in 5.5c: the 7 `set` operations, the 8 `map` operations that take no inline function, and the 3 `range` operations on `InstantRange`; built in 5.5c2: `map.filter`, `map.map_values`, and `Range<T>` with open ends, which the `range` operations take |
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
-| `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
+| `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2; `resolve` of a `LocalDateTime` and `occurrences` of days in 5.5k4 |
 | The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, `Html` and `Markdown` with `markup.to_html` and `to_plain_text` in 5.5o, `Colour` and the media types with `colour`'s five operations and `media.fit` in 5.5p, `RichText` and `LocalisedText` with `markup.rich_to_html` and `text.pick` in 5.5o2, `PasswordHash`, `PasswordCheck` and `PublicKey` with `crypto` in 5.5q2, the 17 geospatial types in 5.5s, the token types in 5.5r, the secret values in 5.5r2, each other group of types in the chunks after them to 5.5s |
-| `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}`; `apply_discount` in 5.5i3 |
+| `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; a rate type's `from:` and `to:` in 5.5h4; the `Percentage` rows in 5.5j2 with `{rate, number, percent}`; `apply_discount` in 5.5i3 |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` built in 5.5o2 |
 | A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2: `type.standard_clash`, `jadpo fix`'s swap and rename, the editor's swap |
@@ -7591,8 +7905,8 @@ under "Errors").
   `currency_mismatch` under `attempt`. The result is in the rate's `to`
   where that is known, so building a type that fixes that currency needs
   no arm. A `from:` and `to:` on a type built on `ExchangeRate`, as
-  `Money` has `currency:`, would carry the currencies in signatures; it
-  is left out until an app needs it.
+  `Money` has `currency:`, came with chunk 5.5h4 (decided by the lead
+  session, 2026-10-18), under "Chosen in chunk 5.5h4".
 - **`money.convert` rounds half to even** to the `to` currency's minor
   unit, whatever the amount's type's `rounding:`, as the operation table
   says: £10.50 at 1.17 is €12.285, so €12.28.
@@ -7606,6 +7920,54 @@ under "Errors").
   does with its default options, in the locale the message is written in.
   A failure's `client:` fields still can't be money: the client app
   formats those, and the export has no money format yet.
+
+### Chosen in chunk 5.5h4
+
+- **`from:` and `to:` are a rate type's settings,** each a `Currency`
+  variant written out, `type PoundsToEuros = ExchangeRate { from:
+  Currency.gbp, to: Currency.eur }`, either alone (`type FromPounds =
+  ExchangeRate { from: Currency.gbp }`). On any other type they are
+  `type.constraint_base`, and `currency:` on a rate type is too.
+- **A type built on one that fixes a currency keeps it** (decided by the
+  lead session, 2026-10-18): it repeats the currency or leaves it out,
+  for a `Money` type's `currency:` and a rate type's `from:` and `to:`
+  alike, since a type built on another only narrows it (area 2). Another
+  one is area 2's `type.constraint_contradiction`, no new rule, as a
+  `scale:` other than the inherited one is, and its one-step fix removes
+  the setting. A currency the parent leaves open (`to:` on a type built
+  on `FromPounds`) may be fixed.
+- **The rate's type is the first thing the proof reads,** before a rate
+  written out or a condition on `rate.from` (5.5h2's machinery, no
+  second one): an amount whose type or making fixes the rate type's
+  `from` needs no `attempt`, one fixed to another currency is
+  5.5h2's `type.mismatch` wherever the rate was passed from, its label
+  naming both currencies (`a rate from EUR to GBP`), and the result is
+  in the type's `to`. An amount whose currency only the running program
+  knows still takes `currency_mismatch` under `attempt`.
+- **A type built on an object is built from a value of that object,**
+  its representation in area 2's sense: `PoundsToEuros(rate)` from an
+  `ExchangeRate`, or from another type built on one, which a constructor
+  refused before as `type.constructor_input`. It is checked against the
+  rules the type adds; a rate type's break as `from` and `to`, new rule
+  keys named for their settings, as area 2 names every construction
+  failure, settled with no arm by the value's own type, a rate written
+  out, or a condition on `rate.from` and `rate.to`. An arm for a currency
+  the type leaves open is `failure.unknown_mapping`. Braces don't build
+  one: `PoundsToEuros { ... }` is still `type.not_record`, and a rate
+  written out is `PoundsToEuros(ExchangeRate { ... })`.
+- **A rate read at the boundary is checked against its type:** an
+  object's codec carries the type's validator when the type adds rules,
+  so `json.read` and a request body check the whole rate once its fields
+  are read, failing `mismatch` with the rule `from` or `to` in its
+  `DecodeProblem`; `text.parse` fails `from` or `to` beside `malformed`.
+  OpenAPI shows each fixed currency as an `enum` of its one code, as for
+  a `Money` type's, and the API record writes the type `ExchangeRate {
+  from: GBP, to: EUR }`, so changing them shows as an API change.
+- **Storage follows `ExchangeRate`'s gap:** a rate is stored as its JSON,
+  which waits on area 5's structured storage (`toolchain.not_built_yet`),
+  so a rate type has no column, and no check constraint, yet; the chunk
+  that stores it holds the stored rate's currencies to the type's, as
+  5.5h's constraint holds a `Money` column's.
 
 ### Chosen in chunk 5.5j
 
@@ -7858,9 +8220,9 @@ under "Errors").
   `rrule.js` and `python-dateutil` write one: `DTSTART;TZID=`, an IANA
   zone, `:` and the first occurrence's local date and time
   (`20261026T093000`), then `RRULE:` and the rule in RFC 5545's grammar,
-  its parts in any order, each once. Not read: a start in UTC, floating
-  or a date only, a carriage return, a folded line, `RDATE` and
-  `EXDATE`. `FREQ` is daily, weekly, monthly or yearly; `SECONDLY`,
+  its parts in any order, each once. Not read: a start in UTC or
+  floating, a carriage return, a folded line, `RDATE` and `EXDATE`; a
+  start on a date alone is read since chunk 5.5k4. `FREQ` is daily, weekly, monthly or yearly; `SECONDLY`,
   `MINUTELY` and `HOURLY` are refused, since a rule within a day is where
   calendars disagree most across a clock change, and a later chunk can
   add them. `UNTIL` is a UTC time, as RFC 5545 requires with a zoned
@@ -7936,11 +8298,10 @@ under "Errors").
   its start, as RFC 5545 requires; an all-day event's last day is on or
   after its first. A floating time (no zone) and a time in UTC aren't
   read.
-- **A recurrence only on a timed event, from its start.** A
-  `RecurrenceRule` starts at a local time in a zone, so an all-day event
-  doesn't recur until a later chunk lets a rule start on a date (a
-  birthday); a timed event's rule starts at the event's own `start` in its
-  `zone`, since a `VEVENT` writes one `DTSTART` for both.
+- **A recurrence from the event's start.** A timed event's rule starts
+  at the event's own `start` in its `zone`, since a `VEVENT` writes one
+  `DTSTART` for both. An all-day event didn't recur until chunk 5.5k4 let
+  a rule start on a date; now its rule starts on its `first_day`.
 - **These rules are proved where a literal shows them,** as an address's
   postal code is (chunk 5.5l2): a part written `none` is known to be
   absent and one written out (text, a variant, an object) known to be
@@ -7980,6 +8341,53 @@ under "Errors").
   `type.standard_exists` matches no application's event type, since `{
   title, start, end }` is too common to be distinctive (question 5). It
   isn't personal data of itself.
+
+### Chosen in chunk 5.5k4
+
+- **`temporal.resolve` takes a local date and time.** Its first argument
+  is a date, given its clock time with `at:`, or a `LocalDateTime`, which
+  carries its own and takes no `at:`; `at:` is a clock time written out
+  or a `LocalTime`. Either way the local time is placed in `zone:` under
+  area 10's `dst:`, unchanged: in a gap `Dst.earlier` moves it back by the
+  gap and `Dst.later` and `Dst.compatible` forward; in an overlap
+  `Dst.earlier` and `Dst.compatible` take the first instant and
+  `Dst.later` the second; left out, or `Dst.reject`, the call fails and
+  its `attempt` maps `dst:`. The parameter keeps its name, `date`, so no
+  call written before changes. A date with no `at:` is
+  `type.argument_count`, and `at:` beside a `LocalDateTime` is
+  `type.temporal_option_unused`, both existing rules; a value that is
+  neither a `LocalTime` nor a clock time written out is still
+  `type.temporal_clock_invalid`. An editor's snippet for the call leaves
+  `at:` out, since it is now an option.
+- **A recurrence on dates.** A `RecurrenceRule`'s first line may be
+  `DTSTART;VALUE=DATE:` and a date, as RFC 5545 writes a date-only start
+  (3.3.10) and as an all-day `VEVENT` writes its `DTSTART`. It has no
+  zone, and its occurrences are days: a day a month doesn't have (29
+  February in a year without one) is skipped and not counted, as for any
+  rule, so a yearly rule from 29 February 2024 gives 2028, 2032 and so on.
+  `UNTIL` is a date, included, as RFC 5545 requires with a date start, and
+  a time there, or a date `UNTIL` on a zoned rule, is refused; so are
+  `BYHOUR`, `BYMINUTE` and `BYSECOND`, which RFC 5545 forbids with a date
+  start. The type's `pattern` takes either first line.
+- **`temporal.occurrences` gives days from a date.** The rule's form is
+  in its text, which the checker can't see in a value, so the result's
+  type comes from `from:`: an `Instant` gives `List<ZonedTime>`, as
+  before, and a `CalendarDate` gives `List<CalendarDate>`, the days of
+  the next `count` occurrences on or after it. A rule on dates gives its
+  own days; a timed rule gives the local date of each occurrence in its
+  zone, one for each, from the first instant of `from` there. A rule on
+  dates asked for instants (`from:` an `Instant`) has no zone to place
+  them in, so it is a defect fault, never a guessed zone or an empty
+  list; code that may hold either form asks for days. Text written out
+  for `from:` is an `Instant` or a date by how it is written.
+- **An all-day event recurs on its days.** Chunk 5.5k3's rule that only a
+  timed event recurs is lifted: an all-day event's `recurrence` is a rule
+  on dates whose start is its `first_day`, and a timed event's a zoned
+  rule from its `start` in its `zone`, as before. A rule of the other form
+  is refused by the same rules across parts: `type.invalid_literal` where
+  a literal shows it, `malformed` in text, `format` in JSON. An all-day
+  `VEVENT`'s `RRULE` is read with its `DTSTART;VALUE=DATE:` line as the
+  rule's start, and written back the same way.
 
 ### Chosen in chunk 5.5i
 
@@ -10049,6 +10457,9 @@ first; each group of types then arrives with its baseline and its extras.
   5.5k3.
 - **5.5k3 Calendar events** `opus · high`: `CalendarEvent`, an object
   whose parts code reads, with optional parts and an all-day form. Built.
+- **5.5k4 Local times to instants, and all-day recurrence** `opus ·
+  high`: `temporal.resolve` of a `LocalDateTime`, and a `RecurrenceRule`
+  that starts on a date, so an all-day event recurs. Built.
 - **5.5l People and places** `opus · high`: the 19 new types, with
   `PhoneNumber`'s E.164 metadata, `PostalAddress` and `PersonName` in each
   locale's order, and `PostalCode` per country. 15 built; split on

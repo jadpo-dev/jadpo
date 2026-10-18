@@ -494,7 +494,14 @@ rule and expands it in local time, and `opening_hours` reads OpenStreetMap's
 hours, each shared by the type's validator and by `jadpo_value::temporal`'s
 `occurrences` and `open_at`, which put the local times in the zone with
 jiff. A `within` parameter (`occurrences`' `count`) is a whole number
-proved between two bounds as a count's sign is.
+proved between two bounds as a count's sign is. Since chunk 5.5k4 a
+`Clock` parameter also takes a `LocalTime`, given to the operation as its
+record; a `Local` parameter (`resolve`'s first, a stub's `T`) takes a value
+built on `CalendarDate` or a `LocalDateTime`, `resolve`'s `at:` being an
+option `needed` for a date and `only_for` it; a `OneOf` text literal
+takes the first listed time it is written as; and `occurrences`' result is
+`List<CalendarDate>` when its `from:` is a date, the runtime matching on
+the value it is given.
 Since chunk 5.5d (area 19, "Numbers") a `written_out` parameter
 (`decimal.round`'s `scale:`) takes only a whole number from 0 to 18
 written at the call, and an operation whose `OneOf` result shares its `T`

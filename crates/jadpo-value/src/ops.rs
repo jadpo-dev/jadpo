@@ -38,6 +38,10 @@ pub enum Fault {
     NoRandomness,
     /// `random.integer` given a `min` above its `max`.
     EmptyRange,
+    /// `temporal.occurrences` asked for the instants of a recurrence on
+    /// dates, which has days and no zone (chunk 5.5k4): its days are asked
+    /// for from a date.
+    DateOnlyRule,
 }
 
 pub fn int_add(a: i64, b: i64) -> Result<i64, Fault> {

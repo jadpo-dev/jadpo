@@ -983,8 +983,10 @@ test "a month on from the 31st needs a day the month has" {
 ```
 
 `at:` is a clock time written out, `"09:30"` or `"09:30:15"`, checked while
-compiling (`type.temporal_clock_invalid`), so no value gives one, not
-even a `LocalTime` (area 19). Only a `dst:` written out settles the condition: a `Dst`
+compiling (`type.temporal_clock_invalid`), or a `LocalTime` (area 19), and
+in place of a date and `at:` the call takes a `LocalDateTime`, which
+carries its own clock time: `temporal.resolve(shift.start, zone:
+shift_zone, dst: Dst.compatible)`. Only a `dst:` written out settles the condition: a `Dst`
 passed as a value might be `reject`, so the call can still fail. Moving a
 date by months or years can land on a day the month doesn't have (31
 January plus a month): `invalid_day: InvalidDay.last_valid_day` takes the
@@ -1093,6 +1095,11 @@ test "a London day has 25 hours when the clocks go back" {
 }
 ```
 
+> Amended 2026-10-18 by area 19 (chunk 5.5k4): `resolve` takes a
+> `LocalDateTime`, which has its own clock time, or a date with `at:` a
+> clock time written out or a `LocalTime`, each under the same `dst:`; the
+> choices are area 19's "Chosen in chunk 5.5k4".
+
 The `temporal` library (question 7, Option B in the
 [time and formatting proposals](research/10-configuration-and-time-proposals.md)),
 always called through its namespace. "A date or local time" is a value built
@@ -1102,7 +1109,7 @@ argument's named type:
 | Operation | Gives | Fails on, unless an option settles it |
 |---|---|---|
 | `in_zone(instant, zone)` | `ZonedTime` | |
-| `resolve(date, at:, zone:, dst:)` | `ZonedTime` | `dst` |
+| `resolve(date, at:, zone:, dst:)`, or a `LocalDateTime` with no `at:` | `ZonedTime` | `dst` |
 | `between(start, end)` | `Duration`, `end - start` | |
 | `add_days(value, days, dst:)` | its type, a whole number of calendar days on, the clock time kept | `dst`, for a `ZonedTime` |
 | `add_months(value, months, invalid_day:, dst:)` | its type, months on, the day and clock time kept | `invalid_day`, and `dst` for a `ZonedTime` |

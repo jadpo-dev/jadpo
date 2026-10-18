@@ -9,7 +9,12 @@
 // zone's clocks skip or show twice fails unless `dst:` says which instant
 // to take, and a day a month doesn't have fails unless `invalid_day:` says
 // what to do; the call's `attempt` maps each by the option's name. `at:` is
-// a clock time written as text, `"09:30"`, checked while compiling.
+// a clock time written as text, `"09:30"`, checked while compiling, or a
+// `LocalTime`.
+//
+// `resolve`'s `T` is a date, given `at:`, or a `LocalDateTime`, which has
+// its own clock time; `occurrences`' is an `Instant`, giving zoned times,
+// or a date, giving days (chunk 5.5k4).
 //
 // `format_relative` gives text for a person in `locale` (area 10,
 // "Showing dates and times to people"): `zone:` is given exactly when
@@ -23,9 +28,10 @@ public library temporal {
     /// `instant` as the local time in `zone`.
     function in_zone(instant: Instant, zone: Zone) -> ZonedTime {}
 
-    /// The instant the clock reads `at` on `date` in `zone`; `dst:`
-    /// chooses one in a daylight-saving gap or overlap.
-    function resolve(date: CalendarDate, at: Text, zone: Zone, dst: Dst?) -> ZonedTime {}
+    /// The instant the clock reads `at` on `date` in `zone`, or a
+    /// `LocalDateTime` given as `date` reads with no `at:`; `dst:` chooses
+    /// one in a daylight-saving gap or overlap.
+    function resolve(date: T, at: Text?, zone: Zone, dst: Dst?) -> ZonedTime {}
 
     /// How long from `start` to `end`: `end - start`.
     function between(start: Instant, end: Instant) -> Duration {}
@@ -51,7 +57,9 @@ public library temporal {
     /// The next `count` occurrences of `rule` at or after `from`, in its
     /// zone (RFC 5545): fewer when the rule ends first; `count` is from 1
     /// to 1000, so an unbounded rule is never expanded without a bound.
-    function occurrences(rule: RecurrenceRule, from: Instant, count: Int) -> List<ZonedTime> {}
+    /// From a date, the days they fall on, `List<CalendarDate>`, which a
+    /// rule on dates gives; from an `Instant`, a timed rule's local times.
+    function occurrences(rule: RecurrenceRule, from: T, count: Int) -> List<ZonedTime> {}
 
     /// Whether `hours` are open at `at`, by the clock in their zone.
     function open_at(hours: OpeningHours, at: Instant) -> Bool {}

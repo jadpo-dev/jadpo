@@ -82,6 +82,7 @@ avoid
 avoids_all
 awaited_delivery
 ba_flight
+backwards_quote
 bad_glucose
 bad_pulse
 badge
@@ -130,6 +131,10 @@ bill_shares
 bill_total
 billing_name
 billing_reference
+birthday
+birthday_from_json
+birthday_from_text
+birthday_vevent
 black
 board
 board_not_found
@@ -275,6 +280,7 @@ class_count
 class_schedule
 class_time
 clear_cart
+clear_landing
 clearance
 clinic_public_key
 clinical_note
@@ -473,6 +479,7 @@ euros
 euros_to_pounds
 eve
 evening
+event_start
 every_name
 expected_delivery
 export_my_data
@@ -685,6 +692,8 @@ label_jar
 label_line
 label_weight
 labelled
+landed
+landings
 landscape
 languages_header
 large_order
@@ -762,7 +771,9 @@ locker_code
 log_text
 login_attempts
 london_autumn
+london_gap
 london_morning
+london_overlap
 london_spring
 long_manuals
 longer_manuals
@@ -832,6 +843,7 @@ monday_classes
 monitor_text
 monitored_pulse
 morning
+morning_rate
 moved_in
 munich_plate
 my_bakeries
@@ -851,11 +863,14 @@ new_outlet_key
 new_staff
 new_todo
 new_york_autumn
+new_york_gap
+new_york_overlap
 new_york_spring
 newer_than
 newsletter
 next_classes
 next_day
+next_days
 next_free
 next_page
 next_shift_starts
@@ -1019,6 +1034,7 @@ parcel_label
 parcel_size
 parcel_to
 parcels
+paris_price
 partner
 partner_added
 partner_claims
@@ -1120,6 +1136,7 @@ price_range
 price_tag
 priced_abroad
 priced_if_from_pounds
+priced_in_euros
 pricing
 primary_database
 print_label
@@ -1167,6 +1184,7 @@ quantity_unreadable
 queue_overdue_reminders
 quiz_rounds
 quote_cake
+quote_json
 raise_priority
 rate_label
 rate_on
@@ -1329,6 +1347,7 @@ sent_at
 sent_attachment
 sent_order
 sent_photo
+sent_rate
 sent_text
 service_fake_identity
 set_oven
@@ -1359,6 +1378,8 @@ shift_end
 shift_from_json
 shift_from_text
 shift_kept
+shift_landed
+shift_start
 shift_vevent
 ship_parcel
 ship_to
@@ -1436,6 +1457,7 @@ standard_vat
 stars
 start_project
 start_subscription
+start_unclear
 starting_quantity
 status_text
 steam
@@ -1533,6 +1555,7 @@ title_back
 title_blank
 titles
 to_belgrade
+todays_quote
 todo
 todo_by_id
 todo_changes

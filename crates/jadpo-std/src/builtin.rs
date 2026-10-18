@@ -106,6 +106,8 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
     max_duration: None,
     currency: None,
     rounding: None,
+    rate_from: None,
+    rate_to: None,
     standard: None,
 };
 

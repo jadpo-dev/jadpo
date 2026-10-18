@@ -749,7 +749,7 @@ reference only).
   as text and JSON are read, and stored a column per part (checked in
   PostgreSQL); what the pages left open is area 19's "Chosen in chunk
   5.5k3".
-- [ ] **5.5k4 Local times to instants, and all-day recurrence** `opus ·
+- [x] **5.5k4 Local times to instants, and all-day recurrence** `opus ·
   high` (areas 10 and 19; decided by the lead session, 2026-10-18, from
   5.5k3's findings): `temporal.resolve` taking a `LocalDateTime` (and a
   `CalendarDate` with a `LocalTime`) with a zone, under area 10's existing
@@ -758,6 +758,9 @@ reference only).
   recurs (birthdays, anniversaries) without a zone. Done when an event's
   start resolves across both clock changes with each `dst:` choice, and a
   yearly all-day event on 29 February follows RFC 5545's skipping rule.
+  Built, with `DTSTART;VALUE=DATE:` rules, `temporal.occurrences` giving
+  days from a date, and all-day events recurring from their first day;
+  what the pages left open is area 19's "Chosen in chunk 5.5k4".
 - [x] **5.5l People and places** `opus · high` (area 19, question 22): 15
   of the 19 new types: the closed lists (`Country`, `CountrySubdivision`,
   `Continent`, `Language`, `WritingScript`, `TextDirection`,
@@ -786,7 +789,7 @@ reference only).
   UN/LOCODE list's terms are unclear and **needs Richard** to say whether
   it ships. What the pages left open is area 19's "Chosen in chunk
   5.5l2".
-- [ ] **5.5h4 Exchange rate types that fix their currencies** `opus ·
+- [x] **5.5h4 Exchange rate types that fix their currencies** `opus ·
   high` (area 19, "Money and payments"; decided by the lead session,
   2026-10-18, following decision 16), after 5.5h2: a type built on
   `ExchangeRate` may fix its currencies, `type PoundsToEuros =
@@ -796,7 +799,11 @@ reference only).
   condition; a rate read at the boundary is checked against them. Purely
   additive. Done when an inverted typed rate passed through a function
   fails to compile with a checked example, and a fixed-currency rate needs
-  no `attempt`.
+  no `attempt`. Built, with a type built on an object now built from that
+  object, `from` and `to` as construction failures, and JSON, text and
+  OpenAPI checking them, and a currency a parent type fixes kept by the
+  types built on it; storing one waits with `ExchangeRate`. What the
+  pages left open is area 19's "Chosen in chunk 5.5h4".
 - [x] **5.5i2 Cards and identity documents** `opus · high` (area 19,
   "The standard types", split from 5.5i), after 5.5l: `CardBrand`,
   `MaskedCardNumber` with its conversion from a `PaymentCardNumber`, and

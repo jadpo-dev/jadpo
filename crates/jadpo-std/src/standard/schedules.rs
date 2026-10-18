@@ -47,10 +47,11 @@ const fn schedule(
 }
 
 /// When a recurring thing happens (RFC 5545): its first occurrence as a
-/// local time in its zone, then its rule, on two lines.
+/// local time in its zone, or a date alone (chunk 5.5k4), then its rule,
+/// on two lines.
 pub const RECURRENCE_RULE: StandardType = schedule(
     super::RECURRENCE_RULE,
-    "DTSTART;TZID=[A-Za-z0-9/_+-]+:[0-9]{8}T[0-9]{6}\nRRULE:[A-Z0-9=;,+-]+",
+    "DTSTART(?:;TZID=[A-Za-z0-9/_+-]+:[0-9]{8}T[0-9]{6}|;VALUE=DATE:[0-9]{8})\nRRULE:[A-Z0-9=;,+-]+",
     Validator::RecurrenceRule,
     &[
         (
@@ -65,6 +66,10 @@ pub const RECURRENCE_RULE: StandardType = schedule(
             "DTSTART;TZID=Europe/London:20260130T170000\nRRULE:FREQ=MONTHLY;BYDAY=-1FR;UNTIL=20261231T235959Z",
             "DTSTART;TZID=Europe/London:20260130T170000\nRRULE:FREQ=MONTHLY;BYDAY=-1FR;UNTIL=20261231T235959Z",
         ),
+        (
+            "DTSTART;VALUE=DATE:20240229\nRRULE:FREQ=YEARLY",
+            "DTSTART;VALUE=DATE:20240229\nRRULE:FREQ=YEARLY",
+        ),
     ],
     &[
         "FREQ=WEEKLY;BYDAY=MO",
@@ -73,6 +78,8 @@ pub const RECURRENCE_RULE: StandardType = schedule(
         "DTSTART;TZID=Europe/London:20261026T093000\nRRULE:FREQ=HOURLY",
         "DTSTART:20261026T093000Z\nRRULE:FREQ=DAILY",
         "DTSTART;TZID=Europe/London:20261026T093000\nRRULE:FREQ=DAILY;COUNT=2;UNTIL=20261231T000000Z",
+        // A clock time picked for a rule on dates.
+        "DTSTART;VALUE=DATE:20240229\nRRULE:FREQ=YEARLY;BYHOUR=9",
         "",
     ],
 );

@@ -131,6 +131,15 @@ pub fn rule_pairs(rules: &Rules) -> Vec<(&'static str, String)> {
     if let Some(rounding) = rules.rounding {
         out.push(("rounding", rounding.name().to_string()));
     }
+    if let Some(from) = rules.rate_from {
+        out.push((
+            "from",
+            jadpo_std::money::code(from).unwrap_or("?").to_string(),
+        ));
+    }
+    if let Some(to) = rules.rate_to {
+        out.push(("to", jadpo_std::money::code(to).unwrap_or("?").to_string()));
+    }
     out
 }
 

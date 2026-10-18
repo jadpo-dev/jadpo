@@ -59,10 +59,14 @@ pub enum Codec {
         validator: ValidatorId,
         int_as_number: bool,
     },
-    /// An object: the shape's fields in declared order, each with its codec.
+    /// An object: the shape's fields in declared order, each with its codec,
+    /// and, for a type built on a standard object that adds rules (a rate
+    /// type's currencies, chunk 5.5h4), the validator the whole value is
+    /// checked against once read.
     Object {
         shape: ShapeId,
         fields: Vec<CodecId>,
+        validator: Option<ValidatorId>,
     },
     /// An enum: a plain variant is its name as a string; a variant with
     /// fields is an object with `tag` and its fields (area 2). A

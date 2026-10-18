@@ -32,6 +32,11 @@ pub struct Rules {
     /// `rounding:` on a `Money` type: how `*` and `/` round an amount to a
     /// whole minor unit, `half_even` when not declared.
     pub rounding: Option<Rounding>,
+    /// `from:` and `to:` on a type built on `ExchangeRate` (area 19,
+    /// chunk 5.5h4): the currencies its rates convert from and to, each by
+    /// its place among `Currency`'s variants.
+    pub rate_from: Option<u32>,
+    pub rate_to: Option<u32>,
     /// The standard type held as text whose own check the text passes
     /// (area 19, "Groups with the baseline only"): its pattern and its
     /// named validator, an IBAN's mod-97, broken as `format`, as an
@@ -58,6 +63,11 @@ pub enum RuleKey {
     /// An amount of money in another currency than a `Money` type's
     /// `currency:` (area 19, "Money and payments").
     Currency,
+    /// An exchange rate from another currency than its type's `from:`
+    /// (area 19, chunk 5.5h4).
+    From,
+    /// An exchange rate to another currency than its type's `to:`.
+    To,
     /// A local time a temporal operation makes falls in a daylight-saving
     /// gap or overlap, and its `dst:` didn't say which instant to take
     /// (area 10, "Zones and local times").
@@ -115,7 +125,7 @@ impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 23] = [
+    pub const ALL: [RuleKey; 25] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -125,6 +135,8 @@ impl RuleKey {
         RuleKey::Scale,
         RuleKey::Version,
         RuleKey::Currency,
+        RuleKey::From,
+        RuleKey::To,
         RuleKey::Dst,
         RuleKey::InvalidDay,
         RuleKey::Malformed,
@@ -153,6 +165,8 @@ impl RuleKey {
             RuleKey::Scale => "scale",
             RuleKey::Version => "version",
             RuleKey::Currency => "currency",
+            RuleKey::From => "from",
+            RuleKey::To => "to",
             RuleKey::Dst => "dst",
             RuleKey::InvalidDay => "invalid_day",
             RuleKey::Malformed => "malformed",
@@ -284,6 +298,38 @@ impl Rules {
             );
         }
         self.check_number(Num::whole(i128::from(minor)))
+    }
+
+    /// An exchange rate's currencies against `from` and `to` (area 19,
+    /// chunk 5.5h4), each its place among `Currency`'s variants.
+    pub fn check_rate(&self, from: u32, to: u32) -> Result<(), Broken> {
+        let code = |ordinal: u32| crate::money::code(ordinal).unwrap_or("?");
+        let written = |ordinal: u32| {
+            format!(
+                "{}.{}",
+                crate::CURRENCY,
+                crate::money::variant(ordinal).unwrap_or("?")
+            )
+        };
+        if let Some(fixed) = self.rate_from
+            && fixed != from
+        {
+            return broken(
+                RuleKey::From,
+                format!("from: {}", written(fixed)),
+                format!("converts from {}, not {}", code(from), code(fixed)),
+            );
+        }
+        if let Some(fixed) = self.rate_to
+            && fixed != to
+        {
+            return broken(
+                RuleKey::To,
+                format!("to: {}", written(fixed)),
+                format!("converts to {}, not {}", code(to), code(fixed)),
+            );
+        }
+        Ok(())
     }
 
     /// A physical quantity of `kind` against `min` and `max`, both held in

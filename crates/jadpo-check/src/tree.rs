@@ -151,3 +151,20 @@ pub fn written(node: &SyntaxNode) -> String {
         .map(|token| token.text().to_string())
         .collect()
 }
+
+/// The edit that removes a member's line from its block.
+pub fn removal(path: &str, member: &ast::Member) -> Span {
+    let node = member.syntax();
+    let end = u32::from(node.text_range().end());
+    let start = node
+        .first_token()
+        .and_then(|token| {
+            std::iter::successors(token.prev_token(), |t| t.prev_token())
+                .find(|t| !t.kind().is_trivia())
+        })
+        .map_or_else(
+            || u32::from(node.text_range().start()),
+            |token| u32::from(token.text_range().end()),
+        );
+    Span::new(path, start, end)
+}
