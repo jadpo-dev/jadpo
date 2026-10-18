@@ -753,9 +753,11 @@ shape and the parts' codecs of its entry (`standard_variant_fields`,
 chain `standard_part` reads), so the interpreter builds and reads a
 `Value::Variant` with fields, and JSON is area 2's tagged form
 (`Json::Tagged`, `Codec::Enum` with payload variants). OpenAPI describes
-it as `oneOf` its tagged variants. A later choice (`BankAccount`) is a
-stub and an entry. A standard type may also be built on a built-in type
-with bounds of its own (`Holds::Bounded`, `TaxRate`): `standard::declared`
+it as `oneOf` its tagged variants. A later choice (`BankAccount`, chunk
+5.5i4) is a stub and an entry; its UK modulus check is
+`jadpo_std::standard::modulus`, which reads Vocalink's tables as text and
+which nothing runs until they can ship. A standard type may also be built
+on a built-in type with bounds of its own (`Holds::Bounded`, `TaxRate`): `standard::declared`
 gives its built-in type and its bounds, as it gives a type held as text
 or as a whole number its rules, so the table, the plan's chain and the
 wire read it as that refinement; its bounds name no `standard`, so a

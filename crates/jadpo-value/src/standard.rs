@@ -909,10 +909,23 @@ pub fn shown(
             }
         }
         // A tax or identity document's number, masked (chunk 5.5i2).
-        (FormatKey::PartLastFour { part, mask }, Value::Record(record)) => match record.get(part) {
-            Some(Value::Text(text)) => last_four(mask, text),
-            _ => return Err(Fault::Shape),
-        },
+        // A bank account's number or IBAN, whichever its variant has
+        // (chunk 5.5i4).
+        (FormatKey::PartLastFour { parts, mask }, value) => {
+            let part = |name: &str| match value {
+                Value::Record(record) => record.get(name),
+                Value::Variant(variant) => variant
+                    .fields
+                    .iter()
+                    .find(|(field, _)| &**field == name)
+                    .map(|(_, value)| value),
+                _ => None,
+            };
+            match parts.iter().find_map(|name| part(name)) {
+                Some(Value::Text(text)) => last_four(mask, text),
+                _ => return Err(Fault::Shape),
+            }
+        }
         // The parts named, each as its own type is shown, joined: a
         // price's amount, an interest rate's rate and basis, a choice's
         // parts its variant has (chunk 5.5i3).

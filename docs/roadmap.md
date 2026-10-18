@@ -826,7 +826,7 @@ reference only).
   storing the four records waits on area 5's structured storage, as an
   `ExchangeRate`'s does. What the pages left open is area 19's "Chosen in
   chunk 5.5i3".
-- [ ] **5.5i4 Bank accounts** `opus · high` (area 19, "The standard
+- [x] **5.5i4 Bank accounts** `opus · high` (area 19, "The standard
   types", split from 5.5i3), after 5.5i3: `BankAccount`, a choice of a UK
   sort code and account number, an IBAN, or another country's account,
   on 5.5i3's choice; the UK modulus check across a sort code and an
@@ -835,6 +835,12 @@ reference only).
   financial personal data (area 15), as 5.5i did. Done when it passes the
   harness with valid and invalid examples per rule and all 34 Vocalink
   cases pass.
+  Built, the check passing all 34 cases; Vocalink publishes its weight
+  and substitution tables with all rights reserved, so no release ships
+  them and no `BankAccount` runs the check yet, which the specification's
+  own rule for a sort code its table doesn't cover allows. Whether they
+  ship is Richard's question. What the pages left open is area 19's
+  "Chosen in chunk 5.5i4".
 - [x] **5.5m Commerce, health, travel and the rest: codes and lists**
   `opus · high` (area 19, "Groups with the baseline only"): the 29 of the
   45 that are codes or closed lists. Held as text with a pattern and,
@@ -904,7 +910,7 @@ reference only).
   fixed point and a nesting limit of 512; every way in sanitises and none
   fails, and an `Html` literal must already be safe. Markdown is
   CommonMark by pulldown-cmark. ammonia brings `cssparser` (MPL-2.0), the
-  build's first MPL code, which **needs Richard** to accept or replace.
+  build's first MPL code, accepted by the lead session (2026-10-18).
   What the pages left open is area 19's "Chosen in chunk 5.5o".
 - [ ] **5.5o2 Rich and localised text** `opus · high` (area 19, "Text
   formats", split from 5.5o), after 5.5o: `RichText`, a structured
