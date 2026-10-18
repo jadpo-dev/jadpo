@@ -393,6 +393,7 @@ pub fn is_crypto(op: Op) -> bool {
             | Op::CryptoPublicKey
             | Op::CryptoSign
             | Op::CryptoVerifyHmac
+            | Op::CryptoVerifyJwt
             | Op::CryptoVerifyPassword
             | Op::CryptoVerifySignature
     )
@@ -400,13 +401,15 @@ pub fn is_crypto(op: Op) -> bool {
 
 /// Runs `crypto` operation `op` on `values`, its arguments in its
 /// parameters' order, with `keys` the ring its `key:` names (the value in
-/// that place is only the executor's handle, never the key) and `source`
-/// the invocation's random bytes.
+/// that place is only the executor's handle, never the key), `source` the
+/// invocation's random bytes and `now` its clock, an instant's
+/// milliseconds, which `verify_jwt` checks a token's times against.
 pub fn run(
     op: Op,
     values: &[Value],
     keys: Option<&KeyRing>,
     source: &mut Source<'_>,
+    now: i64,
 ) -> Result<Value, Fault> {
     let keys = || keys.ok_or(Fault::Shape);
     match (op, values) {
@@ -434,6 +437,20 @@ pub fn run(
         (Op::CryptoVerifySignature, [value, Value::Bytes(signature), key]) => Ok(Value::Bool(
             verify_signature(bytes_of(value)?, signature, text_of(key)?),
         )),
+        (Op::CryptoVerifyJwt, [token, Value::List(keys), issuer, audience]) => {
+            let option = |value: &Value| match value {
+                Value::None => Ok(None),
+                Value::Text(text) => Ok(Some(text.to_string())),
+                _ => Err(Fault::Shape),
+            };
+            crate::jwt::verify_jwt(
+                text_of(token)?,
+                keys,
+                option(issuer)?.as_deref(),
+                option(audience)?.as_deref(),
+                now,
+            )
+        }
         _ => Err(Fault::Shape),
     }
 }
@@ -880,6 +897,7 @@ mod tests {
             &[Value::text("note"), handle.clone(), Value::text("row")],
             Some(&keys),
             &mut source,
+            0,
         )
         .expect("sealed");
         let opened = run(
@@ -887,6 +905,7 @@ mod tests {
             &[sealed.clone(), handle.clone(), Value::text("row")],
             Some(&keys),
             &mut source,
+            0,
         )
         .expect("opened");
         assert_eq!(opened, Value::Bytes(std::rc::Rc::from(&b"note"[..])));
@@ -896,6 +915,7 @@ mod tests {
                 &[sealed, handle.clone(), Value::text("other")],
                 Some(&keys),
                 &mut source,
+                0,
             ),
             Err(Fault::Broke(RuleKey::Unreadable))
         );
@@ -907,6 +927,7 @@ mod tests {
                 &[Value::text("x"), handle],
                 None,
                 &mut source,
+                0,
             ),
             Err(Fault::Shape)
         );
@@ -915,6 +936,7 @@ mod tests {
             &[Value::text("x"), Value::text("not a hash")],
             None,
             &mut source,
+            0,
         )
         .expect("checked");
         assert_eq!(check, PasswordCheck::Wrong.value());

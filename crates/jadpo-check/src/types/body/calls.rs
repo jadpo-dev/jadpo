@@ -389,6 +389,13 @@ impl Body<'_> {
                     self.random_read(span, &written);
                     return (ty, CallKind::Effect(written), reach);
                 }
+                // `crypto.verify_jwt` reads the clock, as `clock.now` does
+                // (area 19, chunk 5.5r).
+                if table.is_some_and(|operation| operation.op.reads_clock()) {
+                    let span = self.span(call);
+                    self.clock_read(span, &written);
+                    return (ty, CallKind::Effect(written), reach);
+                }
                 return (ty, CallKind::Pure(written), reach);
             }
             if names.name_only(&head, member) {

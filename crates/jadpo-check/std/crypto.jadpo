@@ -5,7 +5,8 @@
 // `encrypt` and `decrypt`, a `SigningKey` for `hmac` and `verify_hmac`,
 // whose text's bytes are the HMAC key, and a `PrivateKey` for `sign`.
 // `encrypt` and `hash_password` read the generator for a nonce and a salt,
-// so they are called only in actions, as `random`'s operations are. Each
+// so they are called only in actions, as `random`'s operations are, and
+// `verify_jwt` reads the clock, as `clock.now` does. Each
 // is listed, typed, in `jadpo-std`'s operation table, which names the
 // Rust function in `jadpo-value` that runs it; a test holds these stubs to
 // that table. `T` is a value built on `Bytes`, or a `Text`, whose UTF-8 is
@@ -40,6 +41,18 @@ public library crypto {
     /// Whether `mac` is `value`'s HMAC-SHA-256 under the current or the
     /// previous key, compared in constant time.
     function verify_hmac(value: T, mac: Bytes, key: SigningKey) -> Bool {}
+
+    /// The registered claims of `token` once it holds: signed by one of
+    /// `keys` with that key's own algorithm (Ed25519), never the one the
+    /// token names, so `none` and every other algorithm fail
+    /// `invalid_signature`; not expired, not used before its `nbf` and not
+    /// issued later than now, against the clock with 30 seconds' leeway
+    /// (`expired`, `not_yet_valid`); issued by `issuer` when one is given
+    /// (`wrong_issuer`); and for `audience`, or for no audience when none
+    /// is given (`wrong_audience`). A token that isn't one, or has no
+    /// `exp`, is `malformed`. It reads the clock, so it is called only in
+    /// actions.
+    function verify_jwt(token: Jwt, keys: List<Jwk>, issuer: Text?, audience: Text?) -> JwtClaims {}
 
     /// `correct`, `wrong`, or `correct_outdated` when the hash was made
     /// with older parameters and a fresh one should be stored; compared in

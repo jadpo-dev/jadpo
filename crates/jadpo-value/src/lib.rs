@@ -41,6 +41,7 @@ pub mod geo;
 pub mod hash;
 pub mod integer;
 pub mod json;
+pub mod jwt;
 pub mod list;
 pub mod locale;
 mod mailbox;
@@ -442,8 +443,8 @@ pub fn run(
             | Op::RandomToken,
             _,
         ) => Err(Fault::Shape),
-        // `crypto` takes the key its call's `key:` names and the
-        // invocation's random bytes, so each executor runs it through
+        // `crypto` takes the key its call's `key:` names, the invocation's
+        // random bytes and its clock, so each executor runs it through
         // [`crypto::run`] (area 19, "Hashing and cryptography").
         (
             Op::CryptoDecrypt
@@ -453,6 +454,7 @@ pub fn run(
             | Op::CryptoPublicKey
             | Op::CryptoSign
             | Op::CryptoVerifyHmac
+            | Op::CryptoVerifyJwt
             | Op::CryptoVerifyPassword
             | Op::CryptoVerifySignature,
             _,
@@ -820,6 +822,7 @@ mod tests {
                 | Op::CryptoPublicKey
                 | Op::CryptoSign
                 | Op::CryptoVerifyHmac
+                | Op::CryptoVerifyJwt
                 | Op::CryptoVerifyPassword
                 | Op::CryptoVerifySignature => continue,
                 Op::EncodingToBase64

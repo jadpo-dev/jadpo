@@ -3326,7 +3326,11 @@ Not yet:
    member in the entity's `policy:`, keyed by the same four names:
    `scopes: { read: OAuthScope.todos_read  update: OAuthScope.todos_write }`,
    where `OAuthScope` is generated from the scopes declared in
-   `authentication.jadpo`. A caller whose token carries scopes needs both a
+   `authentication.jadpo`. *Amended 2026-10-18 (lead session, area 19,
+   chunk 5.5r):* `OAuthScope` is now a standard type (RFC 6749's
+   scope-token), so the generated enum narrows it to the application's
+   declared scopes, a closed subset, rather than reusing the name. Not
+   built; it comes with `scopes:`. A caller whose token carries scopes needs both a
    grant and the scope; signed-in browsers and service keys are unaffected.
    An effect with no scope listed is refused to scoped tokens, so a new
    entity is never exposed to other applications by accident; an

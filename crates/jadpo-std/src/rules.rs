@@ -91,13 +91,31 @@ pub enum RuleKey {
     /// the previous key for this context, or was altered since (area 19,
     /// "Hashing and cryptography"): never which of those it was.
     Unreadable,
+    /// A token `crypto.verify_jwt` checks isn't signed by any of the keys
+    /// it is given with that key's own algorithm, or names `none` or
+    /// another algorithm, or an extension it can't check (area 19, chunk
+    /// 5.5r).
+    InvalidSignature,
+    /// A token `crypto.verify_jwt` checks expired, `exp` past by more than
+    /// the leeway.
+    Expired,
+    /// A token `crypto.verify_jwt` checks is used before its `nbf`, or was
+    /// issued (`iat`) later than now, by more than the leeway.
+    NotYetValid,
+    /// A token `crypto.verify_jwt` checks was issued for another audience
+    /// than `audience:` names, or for an audience at all when it names
+    /// none (RFC 7519 §4.1.3).
+    WrongAudience,
+    /// A token `crypto.verify_jwt` checks was issued by another issuer than
+    /// `issuer:` names, or by none.
+    WrongIssuer,
 }
 
 impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 18] = [
+    pub const ALL: [RuleKey; 23] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -116,6 +134,11 @@ impl RuleKey {
         RuleKey::Mismatch,
         RuleKey::UnknownUnit,
         RuleKey::Unreadable,
+        RuleKey::InvalidSignature,
+        RuleKey::Expired,
+        RuleKey::NotYetValid,
+        RuleKey::WrongAudience,
+        RuleKey::WrongIssuer,
     ];
 
     /// The key as written: `max`, `min_length`.
@@ -139,7 +162,30 @@ impl RuleKey {
             RuleKey::Mismatch => "mismatch",
             RuleKey::UnknownUnit => "unknown_unit",
             RuleKey::Unreadable => "unreadable",
+            RuleKey::InvalidSignature => "invalid_signature",
+            RuleKey::Expired => "expired",
+            RuleKey::NotYetValid => "not_yet_valid",
+            RuleKey::WrongAudience => "wrong_audience",
+            RuleKey::WrongIssuer => "wrong_issuer",
         }
+    }
+
+    /// Whether only the running program can know it, so no option or
+    /// proof settles it and only an `attempt` does: what text or bytes
+    /// decode to (`malformed`, `mismatch`), whether a sealed value opens
+    /// (`unreadable`) and what a token says (`crypto.verify_jwt`'s).
+    pub fn only_when_run(self) -> bool {
+        matches!(
+            self,
+            RuleKey::Malformed
+                | RuleKey::Mismatch
+                | RuleKey::Unreadable
+                | RuleKey::InvalidSignature
+                | RuleKey::Expired
+                | RuleKey::NotYetValid
+                | RuleKey::WrongAudience
+                | RuleKey::WrongIssuer
+        )
     }
 
     pub fn from_word(word: &str) -> Option<RuleKey> {
