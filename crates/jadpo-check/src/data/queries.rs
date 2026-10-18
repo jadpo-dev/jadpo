@@ -421,10 +421,7 @@ impl<'a> Reader<'a> {
             self.result(&name, &sig.result, entity, &result_span)?;
         // A nearest-neighbour query (area 21): `nearest` in `order:`, and
         // `List<Nearest<T>>` as its result.
-        let nearest_written = sections
-            .first
-            .get("order")
-            .and_then(|member| nearest_entry(member));
+        let nearest_written = sections.first.get("order").and_then(nearest_entry);
         if (nearest_written.is_some() || nearest_result) && cardinality == Cardinality::Page {
             self.nearest_page(&name, &result_span, &element_ty);
             return None;
@@ -3247,7 +3244,7 @@ impl Reader<'_> {
             self.out.push(
                 Diagnostic::new(
                     &rule::QUERY_NEAREST_UNINDEXED,
-                    format!("`{written}` has no fixed length, so it can't be searched by nearness"),
+                    format!("`{written}` has no fixed length, so no index can order it by nearness"),
                 )
                 .at(
                     field_span,
@@ -3273,7 +3270,7 @@ impl Reader<'_> {
                 )
                 .at(field_span, format!("{dimensions} dimensions"))
                 .reason(format!(
-                    "pgvector's HNSW index takes a `vector` of up to {MOST_INDEXED_DIMENSIONS} dimensions; a longer one is indexed through a half-precision expression, or searched exactly over 4,000 (area 21, \"The index\"), which comes in chunk 5.5v1c."
+                    "pgvector's HNSW index takes a `vector` of up to {MOST_INDEXED_DIMENSIONS} dimensions; a longer one is indexed through a half-precision expression, or read in full over 4,000 (area 21, \"The index\"), which comes in chunk 5.5v1c."
                 ))
                 .next("Ask the model for fewer dimensions with `embedding_dimensions:`, or wait for chunk 5.5v1c")
                 .help_at("21-ai.html#the-index"),
@@ -3310,10 +3307,7 @@ impl Reader<'_> {
         let theirs = vector_type(self.lookup, &given);
         if theirs.as_ref() != Some(&vector) {
             let shown_given = theirs.unwrap_or_else(|| given.clone());
-            let label = format!(
-                "a `{shown_given}`, not {}",
-                with_article(&vector.to_string())
-            );
+            let label = format!("a `{shown_given}`, not {}", a_or_an(&vector.to_string()));
             self.out.push(
                 Diagnostic::new(
                     &rule::QUERY_NEAREST_TYPE,
@@ -3322,9 +3316,9 @@ impl Reader<'_> {
                 .at(Self::span(path, &target), label)
                 .reason(format!(
                     "A vector type stands for the model that made its vectors and how they are compared, so `nearest` measures from a vector of the field's own type; a `{shown_given}` may come from another model, and its distance from {} would mean nothing.",
-                    with_article(&vector.to_string())
+                    a_or_an(&vector.to_string())
                 ))
-                .next(format!("Pass {}, made by the same model", with_article(&vector.to_string()))),
+                .next(format!("Pass {}, made by the same model", a_or_an(&vector.to_string()))),
             );
             return None;
         }
@@ -3515,8 +3509,8 @@ impl Reader<'_> {
     }
 }
 
-/// `a ArticleMeaning`: a type's name after "a" or "an".
-fn with_article(name: &str) -> String {
+/// A type's name in backticks after "a" or "an".
+fn a_or_an(name: &str) -> String {
     let an = name
         .chars()
         .next()

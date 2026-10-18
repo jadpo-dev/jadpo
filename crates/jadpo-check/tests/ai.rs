@@ -381,9 +381,9 @@ fn a_nearest_query_orders_by_a_vector_and_returns_its_distance() {
     ));
     // A value whose type has a `max:` of at most 100 bounds it too.
     assert_eq!(
-        searched(&format!(
-            "query closest(meaning: ArticleMeaning, count: AnswerCount) -> List<Nearest<HelpArticle>> {{\n    from: HelpArticle\n    order: [HelpArticle.body_meaning nearest meaning]\n    limit: count\n}}\n"
-        )),
+        searched(
+            "query closest(meaning: ArticleMeaning, count: AnswerCount) -> List<Nearest<HelpArticle>> {\n    from: HelpArticle\n    order: [HelpArticle.body_meaning nearest meaning]\n    limit: count\n}\n"
+        ),
         NONE
     );
     // Code reads each record and its distance.
