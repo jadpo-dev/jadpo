@@ -380,6 +380,86 @@ fn read_json(table: &Codecs<'_>, text: &str) -> Option<Value> {
     table.read(CodecId(0), &json, &Path::default(), &mut problems)
 }
 
+/// Whether a setting may hold the entry's type (area 10, "What a setting
+/// can hold"): a type read from one piece of text, built on `Text`, `Int`,
+/// `Decimal`, `Bool`, `Uuid`, `Duration`, `Instant` or `CalendarDate`, or
+/// an enum without data; an object, a choice, a collection, an amount of
+/// money and the rest are `configuration.type_unsupported`, which the
+/// checker's half holds.
+fn a_setting_holds(entry: &StandardType) -> bool {
+    let read = |builtin: Builtin| {
+        matches!(
+            builtin.representation(),
+            Builtin::Text
+                | Builtin::Int
+                | Builtin::Decimal
+                | Builtin::Bool
+                | Builtin::Uuid
+                | Builtin::Duration
+                | Builtin::Instant
+                | Builtin::CalendarDate
+        )
+    };
+    match entry.holds {
+        Holds::Builtin(builtin) | Holds::Bounded { of: builtin, .. } => read(builtin),
+        Holds::Text { .. } | Holds::Whole { .. } | Holds::Enum(_) => true,
+        _ => false,
+    }
+}
+
+/// `text` as setting `value` of the entry's type, as the check before the
+/// app starts reads an environment variable: a code in any case, a
+/// duration as source writes it or as its canonical text.
+fn setting(table: &Codecs<'_>, entry: &StandardType, text: &str) -> Result<Value, String> {
+    let spelling = match entry.holds {
+        Holds::Builtin(Builtin::Duration) => Spelling::Duration,
+        _ => Spelling::of(entry.name),
+    };
+    let plan = jadpo_std::config::ConfigPlan {
+        fields: vec![jadpo_std::config::ConfigField {
+            name: "value".into(),
+            variable: "VALUE".into(),
+            secret: false,
+            codec: CodecId(0),
+            spelling,
+            default: None,
+            test: None,
+            generated: None,
+            rotates: false,
+        }],
+        codecs: table.codecs.to_vec(),
+        connections: Vec::new(),
+    };
+    jadpo_runtime::config::decode(&plan, table.validators, &plan.fields[0], text)
+}
+
+/// The entry's codecs with a map keyed by its type, of whole numbers, at
+/// the end: what `json.write` and `json.read` send a `Map<T, Int>` with.
+fn keyed(
+    codecs: &[Codec],
+    validators: &[Validator],
+) -> (Vec<Codec>, Vec<Validator>, CodecId) {
+    let mut codecs = codecs.to_vec();
+    let mut validators = validators.to_vec();
+    validators.push(Validator::new(Some(Builtin::Int), Vec::new()));
+    let whole = ValidatorId(validators.len() as u32 - 1);
+    validators.push(Validator::new(None, Vec::new()));
+    let any = ValidatorId(validators.len() as u32 - 1);
+    codecs.push(Codec::Scalar {
+        builtin: Builtin::Int,
+        validator: whole,
+        int_as_number: true,
+    });
+    let value = CodecId(codecs.len() as u32 - 1);
+    codecs.push(Codec::Map {
+        key: CodecId(0),
+        value,
+        validator: any,
+    });
+    let map = CodecId(codecs.len() as u32 - 1);
+    (codecs, validators, map)
+}
+
 fn london() -> Value {
     let ordinal = jadpo_std::variant_ordinal(jadpo_std::ZONE, "europe_london").unwrap();
     Value::variant(jadpo_std::ZONE, ordinal, "europe_london", Vec::new())
@@ -393,6 +473,12 @@ fn every_standard_type_meets_the_contract() {
         let table = Codecs {
             codecs: &codecs,
             validators: &validators,
+            shapes: &shapes,
+        };
+        let (keyed_codecs, keyed_validators, map) = keyed(&codecs, &validators);
+        let keyed_table = Codecs {
+            codecs: &keyed_codecs,
+            validators: &keyed_validators,
             shapes: &shapes,
         };
         let mut values = Vec::new();
@@ -578,6 +664,44 @@ fn every_standard_type_meets_the_contract() {
                 Some(&value),
                 "{name}: {json} reads back ({problems:?})"
             );
+            if entry.text.is_some() {
+                // A place that holds text, a path, a query string, a header,
+                // a setting or a map's key, reads the canonical text as
+                // `text.parse` does (chunk 5.5w2).
+                let mut problems = Vec::new();
+                assert_eq!(
+                    table.read_text(CodecId(0), text, &Path::default(), &mut problems),
+                    Some(value.clone()),
+                    "{name}: `{text}` is read where text is held ({problems:?})"
+                );
+                assert_eq!(
+                    table.read_query(CodecId(0), &[(*text).to_string()], &Path::default(), &mut problems),
+                    Some(value.clone()),
+                    "{name}: `{text}` is read from a query string ({problems:?})"
+                );
+                // A map's key is its canonical text, written by `json.write`
+                // and read back by `json.read`.
+                let entries = Value::Map(std::rc::Rc::new(
+                    [(value.clone(), Value::Int(1))].into_iter().collect(),
+                ));
+                let written = keyed_table.write_value(map, &entries);
+                let mut expected = String::from("{");
+                jadpo_value::json::write_string(text, &mut expected);
+                expected.push_str(":1}");
+                assert_eq!(written, expected, "{name}: a key is its canonical text");
+                assert_eq!(
+                    keyed_table.read_value(map, &Value::text(&written)),
+                    Ok(entries),
+                    "{name}: {written} reads back keyed by `{text}`"
+                );
+                if a_setting_holds(entry) {
+                    assert_eq!(
+                        setting(&table, entry, text),
+                        Ok(value.clone()),
+                        "{name}: `{text}` is read as a setting"
+                    );
+                }
+            }
             // Storage, in its own column; a type stored as its JSON is
             // stored as the round trip above writes it; one stored in more
             // than one column (`Money`, area 19) as its parts, read back
@@ -670,6 +794,29 @@ fn every_standard_type_meets_the_contract() {
                     "{name}: `{text}` is refused"
                 ),
             }
+            // Every place that holds text refuses it as `text.parse` does
+            // (chunk 5.5w2): a path, a query string, a header, a map's key
+            // and a setting, and JSON where the type is sent as its text.
+            let mut problems = Vec::new();
+            assert_eq!(
+                table.read_text(CodecId(0), text, &Path::default(), &mut problems),
+                None,
+                "{name}: `{text}` isn't read where text is held"
+            );
+            if entry.json == Json::Text {
+                let json = serde_json::Value::String((*text).to_string());
+                assert_eq!(
+                    table.read(CodecId(0), &json, &Path::default(), &mut problems),
+                    None,
+                    "{name}: `{text}` isn't read from JSON"
+                );
+            }
+            if a_setting_holds(entry) {
+                assert!(
+                    setting(&table, entry, text).is_err(),
+                    "{name}: `{text}` isn't read as a setting"
+                );
+            }
             // A type held as text refuses it wherever it is built: its
             // own check breaks `format`, and JSON doesn't read it.
             if let Holds::Text { .. } = entry.holds {
@@ -718,6 +865,86 @@ fn representations_read_and_write_as_json_carries_them() {
         Ok(Value::text(" any text "))
     );
     assert_eq!(standard::from(&Value::Int(7)), Ok(Value::text("7")));
+}
+
+/// Every place a value is read from text reads it as `text.parse` does,
+/// no looser (chunk 5.5w2): a JSON body, a path, a query string, a header,
+/// a setting and a map's key refuse an `Int` with `+`, a `Decimal` written
+/// `1_000`, `.5` or `--5`, and an `Instant` with an offset, also as a
+/// `ZonedTime`'s instant.
+#[test]
+fn every_reader_is_as_strict_as_text_parse() {
+    for (builtin, refused, read) in [
+        (Builtin::Int, &["+5", "1_000", "--5", " 5", "5 "][..], "-5"),
+        (
+            Builtin::Decimal,
+            &["1_000", ".5", "5.", "--5", "+1.5", "1e3"][..],
+            "-1.50",
+        ),
+        (
+            Builtin::Instant,
+            &["2026-10-25T10:30:00+01:00", "2026-10-25T09:30:00-00:00"][..],
+            "2026-10-25T09:30:00Z",
+        ),
+        (Builtin::Duration, &["P+1D", "PT+5M", "5m"][..], "PT5M"),
+    ] {
+        let codecs = [Codec::Scalar {
+            builtin,
+            validator: ValidatorId(0),
+            int_as_number: false,
+        }];
+        let validators = [Validator::new(Some(builtin), Vec::new())];
+        let table = Codecs {
+            codecs: &codecs,
+            validators: &validators,
+            shapes: &[],
+        };
+        let name = builtin.name();
+        let parsed = standard::parse(read, name).expect("reads");
+        let mut problems = Vec::new();
+        assert_eq!(
+            table.read_text(CodecId(0), read, &Path::default(), &mut problems),
+            Some(parsed),
+            "{name}: `{read}`"
+        );
+        for text in refused {
+            assert!(standard::parse(text, name).is_err(), "{name}: `{text}`");
+            let json = serde_json::Value::String((*text).to_string());
+            assert_eq!(
+                table.read(CodecId(0), &json, &Path::default(), &mut problems),
+                None,
+                "{name}: `{text}` in JSON"
+            );
+            assert_eq!(
+                table.read_text(CodecId(0), text, &Path::default(), &mut problems),
+                None,
+                "{name}: `{text}` where text is held"
+            );
+        }
+    }
+    // A zoned time's instant, as JSON carries it.
+    let codecs = [Codec::Scalar {
+        builtin: Builtin::ZonedTime,
+        validator: ValidatorId(0),
+        int_as_number: false,
+    }];
+    let validators = [Validator::new(Some(Builtin::ZonedTime), Vec::new())];
+    let table = Codecs {
+        codecs: &codecs,
+        validators: &validators,
+        shapes: &[],
+    };
+    let mut problems = Vec::new();
+    let offset: serde_json::Value = serde_json::from_str(
+        r#"{"instant": "2026-10-25T10:30:00+01:00", "zone": "Europe/London"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        table.read(CodecId(0), &offset, &Path::default(), &mut problems),
+        None
+    );
+    assert_eq!(problems[0].field, "instant");
+    assert_eq!(problems[0].rule, "format");
 }
 
 #[test]

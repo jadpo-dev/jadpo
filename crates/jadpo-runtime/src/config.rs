@@ -388,10 +388,13 @@ pub fn decode(
     };
     // A zone or locale in any case, read as the codec spells it on the
     // wire: `europe/london` is `Europe/London`; a duration as source
-    // writes it, `5m`, is `PT5M`.
+    // writes it, `5m`, is `PT5M`, and its canonical text, `PT5M`, is read
+    // as `text.parse` reads it (area 10; chunk 5.5w2).
     let Some(read) = (match field.spelling {
         Spelling::Plain => Some(text.to_string()),
-        Spelling::Duration => Spelling::Duration.variant(text),
+        Spelling::Duration => {
+            Some(Spelling::Duration.variant(text).unwrap_or_else(|| text.to_string()))
+        }
         other => other.variant(text).map(|variant| other.spelling(&variant)),
     }) else {
         return Err("variant".to_string());
@@ -582,12 +585,17 @@ mod tests {
         let (plan, validators) = plan(vec![grace], Builtin::Duration);
         let given = decode(&plan, &validators, &plan.fields[0], "90s");
         assert_eq!(given, Ok(Value::Duration(90_000)));
-        let wire = decode(&plan, &validators, &plan.fields[0], "PT90S");
-        assert_eq!(
-            wire,
-            Err("variant".to_string()),
-            "the wire's spelling isn't a setting's"
-        );
+        // Its canonical text too, as `text.parse` reads it (decided by
+        // chunk 5.5w on area 10, built in 5.5w2).
+        let canonical = decode(&plan, &validators, &plan.fields[0], "PT90S");
+        assert_eq!(canonical, Ok(Value::Duration(90_000)));
+        for refused in ["ninety seconds", "P+1D", "PT90s"] {
+            assert_eq!(
+                decode(&plan, &validators, &plan.fields[0], refused),
+                Err("format".to_string()),
+                "{refused}"
+            );
+        }
         let fallen = check(&plan, &validators, &vars(&[]), Mode::Environment, NO_RANDOM);
         assert_eq!(fallen[0].state, State::Default);
     }

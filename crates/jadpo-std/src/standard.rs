@@ -1825,7 +1825,14 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 ("2026-10-25T09:30:00.250Z", "25 Oct 2026, 09:30:00"),
             ],
             format: Some("date_time_medium"),
-            malformed: &["2026-10-25", "2026-10-25T09:30:00", "yesterday"],
+            // An offset isn't its canonical text, which ends in `Z`, and
+            // no boundary reads one (chunk 5.5w2).
+            malformed: &[
+                "2026-10-25",
+                "2026-10-25T09:30:00",
+                "yesterday",
+                "2026-10-25T10:30:00+01:00",
+            ],
             of: None,
             settings: "",
         },
@@ -1873,7 +1880,11 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 "25 Oct 2026, 09:00:00 – 25 Oct 2026, 17:00:00",
             )],
             format: Some("date_time_medium"),
-            malformed: &["2026-10-25T09:00:00Z", "2026-10-25T09:00:00Z/tomorrow"],
+            malformed: &[
+                "2026-10-25T09:00:00Z",
+                "2026-10-25T09:00:00Z/tomorrow",
+                "2026-10-25T10:00:00+01:00/2026-10-25T17:00:00Z",
+            ],
             of: None,
             settings: "",
         },

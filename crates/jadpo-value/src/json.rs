@@ -29,7 +29,7 @@ use jadpo_std::Builtin;
 use jadpo_std::http::{Codec, CodecId};
 
 use crate::shape::Shape;
-use crate::{Decimal, Validator, Value};
+use crate::{Validator, Value};
 
 /// One problem with a request's input: the field and the rule.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -411,14 +411,19 @@ impl Codecs<'_> {
             Some(Codec::Scalar {
                 builtin, validator, ..
             }) => {
-                let value = match builtin.representation() {
-                    Builtin::Bool => match text {
-                        "true" => Ok(Value::Bool(true)),
-                        "false" => Ok(Value::Bool(false)),
-                        _ => Err("type"),
-                    },
-                    Builtin::Int => text.parse::<i64>().map(Value::Int).map_err(|_| "type"),
-                    _ => scalar_from_text(*builtin, text),
+                // A whole number with a text form of its own (an HTTP
+                // status, basis points) is read as `text.parse` reads it.
+                let whole = self
+                    .validators
+                    .get(validator.0 as usize)
+                    .and_then(Validator::standard)
+                    .and_then(jadpo_std::standard_type)
+                    .filter(|entry| {
+                        matches!(entry.holds, jadpo_std::standard::Holds::Whole { .. })
+                    });
+                let value = match whole {
+                    Some(entry) => crate::standard::read(entry, text).map_err(|_| "type"),
+                    None => text_scalar(*builtin, text),
                 };
                 match value {
                     Ok(value) => self.checked(*validator, value, path, problems),
@@ -434,6 +439,56 @@ impl Codecs<'_> {
                 path,
                 problems,
             ),
+            // A standard object sent as its fields, or a range as its ends,
+            // in a place that holds text (a query string, a setting, a
+            // map's key): its canonical text, read as `text.parse` reads
+            // it (chunk 5.5w2), then checked by its rules across its parts.
+            Some(Codec::Object {
+                shape,
+                fields,
+                validator,
+            }) => {
+                let ty = self.shapes.get(shape.0 as usize).map(Shape::ty);
+                let read_as = match ty {
+                    Some(jadpo_std::RANGE) => fields.first().and_then(|end| {
+                        match self.codec(*end) {
+                            Some(Codec::Nullable(inner)) => match self.codec(*inner) {
+                                Some(Codec::Scalar { builtin, .. }) => Some(format!(
+                                    "{}<{}>",
+                                    jadpo_std::RANGE,
+                                    builtin.representation().name()
+                                )),
+                                _ => None,
+                            },
+                            _ => None,
+                        }
+                    }),
+                    Some(ty) => jadpo_std::standard_type(ty)
+                        .filter(|entry| entry.text.is_some())
+                        .map(|entry| entry.name.to_string()),
+                    None => None,
+                };
+                let Some(read_as) = read_as else {
+                    Self::problem(problems, path, "type");
+                    return None;
+                };
+                match crate::standard::parse(text, &read_as) {
+                    Ok(value) => match crate::across::broken_standard(&value) {
+                        Some(rule) => {
+                            Self::problem(problems, path, rule);
+                            None
+                        }
+                        None => match validator {
+                            Some(validator) => self.checked(*validator, value, path, problems),
+                            None => Some(value),
+                        },
+                    },
+                    Err(_) => {
+                        Self::problem(problems, path, "format");
+                        None
+                    }
+                }
+            }
             // Its canonical text, read only as it is written.
             Some(Codec::Standard { ty }) => match crate::standard::parse(text, ty) {
                 // A standard object sent as its text keeps its rules across
@@ -712,7 +767,7 @@ fn zoned_from_json(
     let before = problems.len();
     let instant = match entries.get("instant") {
         Some(serde_json::Value::String(text)) => {
-            let found = jadpo_std::instant_millis(text);
+            let found = crate::standard::instant(text);
             if found.is_none() {
                 Codecs::problem(problems, &path.with("instant"), "format");
             }
@@ -888,53 +943,49 @@ fn json_quantity(
     }
 }
 
-/// A scalar read from its text, before its rules are checked. Every
-/// text a request carries comes through here, from a body, a path, a
-/// query string, a header or a map's key, and is composed to NFC first,
-/// so text that looks equal is equal and its rules count the code points
-/// it will be kept as (areas 2, 7 and 19).
+/// A scalar read from a JSON string, before its rules are checked: its
+/// text, read by [`text_scalar`]; a type sent as an object (`Money`, a
+/// quantity, a `ZonedTime`) is never a string (`type`).
 fn scalar_from_text(builtin: Builtin, text: &str) -> Result<Value, &'static str> {
+    match builtin.representation() {
+        Builtin::ZonedTime | Builtin::Money | Builtin::Quantity(_) => Err("type"),
+        _ => text_scalar(builtin, text),
+    }
+}
+
+/// A scalar read from its text, before its rules are checked: a JSON
+/// string, a path, a query string, a header, a setting or a map's key.
+/// Text is composed to NFC first, so text that looks equal is equal and
+/// its rules count the code points it will be kept as (areas 2, 7 and
+/// 19); every other type is read by the one reader `text.parse` reads it
+/// with ([`crate::standard::builtin_text`]), so no boundary is looser than
+/// another (chunk 5.5w2). Text that isn't a number or a `Bool` breaks
+/// `type`; any other unreadable text `format`.
+fn text_scalar(builtin: Builtin, text: &str) -> Result<Value, &'static str> {
     match builtin.representation() {
         Builtin::Text => Ok(Value::text(&crate::text::composed(text))),
         // Text for people is sent and read as the text it is (area 10).
         Builtin::PresentationText => Ok(Value::text(text)),
-        Builtin::Int => text.parse::<i64>().map(Value::Int).map_err(|_| "type"),
-        Builtin::Decimal => Decimal::parse(text).map(Value::Decimal).ok_or("type"),
-        Builtin::Uuid => {
-            jadpo_std::check_builtin_text(Builtin::Uuid, text).map_err(|_| "format")?;
-            Ok(Value::uuid(text))
-        }
-        Builtin::Instant => jadpo_std::instant_millis(text)
-            .map(Value::Instant)
-            .ok_or("format"),
-        Builtin::CalendarDate => jadpo_std::date_number(text)
-            .map(Value::Date)
-            .ok_or("format"),
-        // A `ZonedTime` is an object (`read`), never text.
-        Builtin::ZonedTime => Err("type"),
-        Builtin::Duration => iso_duration(text).map(Value::Duration).ok_or("format"),
-        Builtin::Bytes => crate::encoding::from_base64(text)
-            .map(|bytes| Value::Bytes(Rc::from(bytes)))
-            .ok_or("format"),
-        Builtin::Bool => match text {
-            "true" => Ok(Value::Bool(true)),
-            "false" => Ok(Value::Bool(false)),
-            _ => Err("type"),
-        },
-        // Its canonical text, `20%`, so a client never reads 0.2 as 0.2%
-        // (area 19).
-        Builtin::Percentage => jadpo_std::percentage::parse_text(text)
-            .map(|fraction| Value::Percentage(Decimal::new(fraction.mantissa, fraction.scale)))
-            .ok_or("format"),
-        _ => Err("type"),
+        representation => crate::standard::builtin_text(builtin, text).ok_or(
+            match representation {
+                Builtin::Int | Builtin::Decimal | Builtin::Bool => "type",
+                _ => "format",
+            },
+        ),
     }
 }
 
-/// A map key as JSON's object keys hold it.
+/// A map key as JSON's object keys hold it: text as it is, anything else
+/// as its canonical text, as `text.from` writes it and a key is read back
+/// (chunk 5.5w2). The checker refuses a key type with no single text form,
+/// so the last arm is only a value the checker let through by mistake.
 fn key_text(key: &Value) -> String {
     match key {
         Value::Text(text) | Value::Uuid(text) => text.to_string(),
-        other => other.to_string(),
+        other => match crate::standard::from(other) {
+            Ok(Value::Text(text)) => text.to_string(),
+            _ => other.to_string(),
+        },
     }
 }
 
@@ -1019,7 +1070,11 @@ pub(crate) fn iso_duration(text: &str) -> Option<i64> {
     };
     let mut total: i64 = 0;
     if !date_part.is_empty() {
-        let count: i64 = date_part.strip_suffix('D')?.parse().ok()?;
+        let days = date_part.strip_suffix('D')?;
+        if days.is_empty() || !days.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        let count: i64 = days.parse().ok()?;
         total = total.checked_add(count.checked_mul(86_400_000)?)?;
     }
     let mut number = String::new();
@@ -1074,6 +1129,8 @@ mod tests {
         assert_eq!(iso_duration("5m"), None);
         assert_eq!(iso_duration("-PT5M"), Some(-300_000));
         assert_eq!(iso_duration("--PT5M"), None);
+        assert_eq!(iso_duration("P+1D"), None);
+        assert_eq!(iso_duration("P-1D"), None);
         assert_eq!(iso_duration_text(-300_000), "-PT5M");
         assert_eq!(iso_duration_text(300_000), "PT5M");
         assert_eq!(iso_duration_text(1_500), "PT1.5S");
