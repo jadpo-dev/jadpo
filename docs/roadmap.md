@@ -786,6 +786,17 @@ reference only).
   UN/LOCODE list's terms are unclear and **needs Richard** to say whether
   it ships. What the pages left open is area 19's "Chosen in chunk
   5.5l2".
+- [ ] **5.5h4 Exchange rate types that fix their currencies** `opus ·
+  high` (area 19, "Money and payments"; decided by the lead session,
+  2026-10-18, following decision 16), after 5.5h2: a type built on
+  `ExchangeRate` may fix its currencies, `type PoundsToEuros =
+  ExchangeRate { from: Currency.gbp, to: Currency.eur }`, as a `Money`
+  type fixes its currency, so `money.convert` with an inverted or wrong
+  rate is a compile error across function boundaries, not only after a
+  condition; a rate read at the boundary is checked against them. Purely
+  additive. Done when an inverted typed rate passed through a function
+  fails to compile with a checked example, and a fixed-currency rate needs
+  no `attempt`.
 - [ ] **5.5i2 Payment records and identity documents** `opus · high` (area
   19, "The standard types", split from 5.5i), after 5.5j and 5.5l: the 15
   that are records or choices of other types. `Price`, `UnitPrice`,
