@@ -8,6 +8,7 @@ rules:
   - type.argument_empty
   - type.argument_negative
   - type.money_split
+  - type.password_hash_exposed
   - type.random_context
   - type.reserved_variant_name
   - type.standard_clash
