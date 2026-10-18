@@ -264,25 +264,19 @@ fn string_value(value: &Any<'_>) -> Option<Option<String>> {
     } else if tag == Tag::VisibleString {
         ascii(|b| (0x20..0x7f).contains(&b))?
     } else if tag == Tag::BmpString {
-        if data.len() % 2 != 0 {
+        let (pairs, []) = data.as_chunks::<2>() else {
             return None;
-        }
-        let units = data
-            .chunks_exact(2)
-            .map(|pair| Some(u16::from_be_bytes(pair.try_into().ok()?)))
-            .collect::<Option<Vec<u16>>>()?;
-        char::decode_utf16(units)
+        };
+        char::decode_utf16(pairs.iter().map(|pair| u16::from_be_bytes(*pair)))
             .collect::<Result<String, _>>()
             .ok()?
     } else if tag == Tag::UniversalString {
-        if data.len() % 4 != 0 {
+        let (quads, []) = data.as_chunks::<4>() else {
             return None;
-        }
-        data.chunks_exact(4)
-            .map(|quad| {
-                let bytes: [u8; 4] = quad.try_into().ok()?;
-                char::from_u32(u32::from_be_bytes(bytes))
-            })
+        };
+        quads
+            .iter()
+            .map(|quad| char::from_u32(u32::from_be_bytes(*quad)))
             .collect::<Option<String>>()?
     } else {
         return Some(None);
