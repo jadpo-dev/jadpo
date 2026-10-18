@@ -457,3 +457,6 @@ leaves
 moment
 opens
 starts
+# An attribute type's short name RFC 4514 §3 defines, which a certificate's
+# distinguished name is written with (chunk 5.5r5)
+street
