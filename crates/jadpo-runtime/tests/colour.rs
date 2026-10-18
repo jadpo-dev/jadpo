@@ -9,7 +9,7 @@
 //! on white 21:1, the 4.5:1 grey `#767676`, red on white 3.998:1). Cases
 //! whose f64 value lies within a millionth of a rounding boundary are left
 //! out of the generated tables, since an f64 can't say which side it is on.
-//! Its text, JSON and columns are the one harness's (`standard_types`).
+//! Its text, JSON and columns are the one harness's (`jadpo-interp`'s `standard_types`).
 
 use jadpo_std::{Op, QuantityKind};
 use jadpo_value::{Decimal, Value, colour, run, standard, units};

@@ -44,6 +44,7 @@ mod sets_maps;
 mod software;
 mod soundness;
 mod standard_rules;
+mod standard_types;
 mod text;
 mod text_formats;
 mod tokens;

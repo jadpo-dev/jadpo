@@ -1444,11 +1444,11 @@ pub const WEB_AUTHN_CREDENTIAL_ENTRY: StandardType = StandardType {
         // security key, never used since it was made.
         valid: &[
             (
-                r#"{"credential_id":"AAECAwQFBgcICQoLDA0ODw==","public_key":"pQECAyYgASFYIGXtpaEld8K66ClDf+M4cBoQqqN14btbXeEI3kOcCFUdIlggHlLtdXARY/f55A3fnzQbPcm6hgr34Mp8p+nuzQCE0Zw=","sign_count":"0","transports":["internal","hybrid"],"backup_eligible":true,"backed_up":true,"name":"Work phone","registered_at":"2026-10-18T09:00:00Z","last_used_at":"2026-10-18T09:05:00Z"}"#,
+                r#"{"credential_id":"AAECAwQFBgcICQoLDA0ODw==","public_key":"pQECAyYgASFYIGXtpaEld8K66ClDf+M4cBoQqqN14btbXeEI3kOcCFUdIlggHlLtdXARY/f55A3fnzQbPcm6hgr34Mp8p+nuzQCE0Zw=","sign_count":0,"transports":["internal","hybrid"],"backup_eligible":true,"backed_up":true,"name":"Work phone","registered_at":"2026-10-18T09:00:00Z","last_used_at":"2026-10-18T09:05:00Z"}"#,
                 "Work phone",
             ),
             (
-                r#"{"credential_id":"8dA=","public_key":"pAEBAycgBiFYINdamAGCsQq31Uv+08lkBzoO4XLz2qYjJa8CGmj3B1Ea","sign_count":"42","transports":["usb","nfc"],"backup_eligible":false,"backed_up":false,"name":"Security key","registered_at":"2026-10-18T09:00:00Z"}"#,
+                r#"{"credential_id":"8dA=","public_key":"pAEBAycgBiFYINdamAGCsQq31Uv+08lkBzoO4XLz2qYjJa8CGmj3B1Ea","sign_count":42,"transports":["usb","nfc"],"backup_eligible":false,"backed_up":false,"name":"Security key","registered_at":"2026-10-18T09:00:00Z"}"#,
                 "Security key",
             ),
         ],

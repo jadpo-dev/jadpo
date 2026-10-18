@@ -6,7 +6,7 @@
 //! read from its text and read from a request's JSON through the
 //! sanitiser, as the plan's validator and codec hold it; and a type built
 //! on `Html` counting what the sanitiser keeps. Their text, JSON and
-//! column are the one harness's (`standard_types`).
+//! column are the one harness's (`jadpo-interp`'s `standard_types`).
 
 use jadpo_std::http::{Codec, CodecId};
 use jadpo_std::types::ValidatorId;

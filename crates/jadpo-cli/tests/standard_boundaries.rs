@@ -12,7 +12,7 @@
 //!
 //! The same examples, written by the plan's own codecs, are held to the
 //! OpenAPI document's schema for each route's output. Settings are the
-//! runtime harness's (`jadpo-runtime`'s `standard_types`), which reads each
+//! per-type harness's (`jadpo-interp`'s `standard_types`), which reads each
 //! example through the setting's codec; the checker's half refuses a map
 //! key, a query string field and a setting of a type the boundary can't
 //! carry. Geometries and vectors wait on their areas; a secret value is

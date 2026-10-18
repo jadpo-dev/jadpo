@@ -656,8 +656,10 @@ builds that type once the text is read). `jadpo_check::types::decl`
 matches `type.standard_exists`. Two tests hold everything to the entries:
 `crates/jadpo-check/tests/standard_types.rs` (the stub against the entry,
 and what each call and `<` accept) and
-`crates/jadpo-runtime/tests/standard_types.rs` (text both ways, the
-format for people, JSON, storage, `==` and order, per example). A new
+`crates/jadpo-interp/tests/standard_types.rs` (text both ways, the
+format for people, JSON, storage, `==` and order, per example, through
+the codecs the plan's builder makes, `jadpo_plan::standard_codecs`, since
+chunk 5.5w3). A new
 `TextForm` or `FormatKey` variant is the only code a group may need, once,
 for every type that shares it. Operations that move are listed in
 `jadpo_std::MOVED` and reported as `semantic.standard_operation_moved`.
