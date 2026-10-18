@@ -5,6 +5,7 @@
 mod calendar;
 mod colour;
 mod formats;
+mod geodesics;
 mod geospatial;
 mod lists;
 mod maths;

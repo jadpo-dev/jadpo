@@ -1,4 +1,5 @@
-//! The geospatial types on the wire and for people (area 19, chunk 5.5s).
+//! The geospatial types on the wire and for people (area 19, chunk 5.5s),
+//! and the measures between them (area 20, chunk 5.5u2).
 //!
 //! A geometry is sent as GeoJSON (RFC 7946), and this module is the only
 //! place a position's `[longitude, latitude]` order exists: everywhere else
@@ -455,6 +456,136 @@ fn trimmed(mut value: Decimal) -> Decimal {
         value = Decimal::new(value.mantissa / 10, value.scale - 1);
     }
     value
+}
+
+/// A point's latitude and longitude, or a fault for anything else.
+fn position_of(point: &Value) -> Result<(Decimal, Decimal), Fault> {
+    axes(point).ok_or(Fault::Shape)
+}
+
+/// A length in metres at its kind's scale, as the quantity it is.
+fn length_of(metres: i128) -> Value {
+    Value::Quantity(crate::Quantity {
+        kind: QuantityKind::Length,
+        amount: metres,
+    })
+}
+
+/// `geo.distance(from, to)` (area 20): the geodesic between two points on
+/// the WGS84 ellipsoid, rounded half to even to the micrometre.
+pub fn distance(from: &Value, to: &Value) -> Result<Value, Fault> {
+    crate::maths::geodesic::distance(position_of(from)?, position_of(to)?)
+        .map(length_of)
+        .ok_or(Fault::DecimalOverflow)
+}
+
+/// Whether two positions are the same place: the same latitude and
+/// longitude, a longitude of -180 being 180's, or both at one pole,
+/// where every longitude meets.
+fn same_place((lat1, lon1): (Decimal, Decimal), (lat2, lon2): (Decimal, Decimal)) -> bool {
+    let pole = Decimal::new(90, 0);
+    let antimeridian = Decimal::new(180, 0);
+    let east = |lon: Decimal| {
+        if lon == Decimal::new(-180, 0) {
+            antimeridian
+        } else {
+            lon
+        }
+    };
+    lat1 == lat2 && (east(lon1) == east(lon2) || lat1 == pole || lat1 == Decimal::new(-90, 0))
+}
+
+/// `geo.bearing(from, to)` (area 20): the geodesic's direction as it
+/// leaves `from`, in degrees clockwise from true north, at least 0 and
+/// below 360, to 9 places; two equal points fail `same_point`.
+pub fn bearing(from: &Value, to: &Value) -> Result<Value, Fault> {
+    let (from, to) = (position_of(from)?, position_of(to)?);
+    if same_place(from, to) {
+        return Err(Fault::Broke(jadpo_std::RuleKey::SamePoint));
+    }
+    crate::maths::geodesic::bearing(from, to)
+        .map(|degrees| Value::Decimal(Decimal::new(degrees, 9)))
+        .ok_or(Fault::DecimalOverflow)
+}
+
+/// A line's points' positions.
+fn path(line: &Value) -> Result<Vec<(Decimal, Decimal)>, Fault> {
+    let Value::Record(record) = line else {
+        return Err(Fault::Shape);
+    };
+    list_of(record, "points")?.iter().map(position_of).collect()
+}
+
+/// `geo.length(line)` (area 20): a `LineString`'s or `MultiLineString`'s
+/// edges, each measured as `geo.distance` measures it, rounded to the
+/// micrometre, and summed, so a line of two points is their distance.
+pub fn length(line: &Value) -> Result<Value, Fault> {
+    let Value::Record(record) = line else {
+        return Err(Fault::Shape);
+    };
+    let lines = match &*record.ty {
+        LINE_STRING => vec![path(line)?],
+        MULTI_LINE_STRING => list_of(record, "lines")?
+            .iter()
+            .map(path)
+            .collect::<Result<_, _>>()?,
+        _ => return Err(Fault::Shape),
+    };
+    let mut total: i128 = 0;
+    for points in &lines {
+        for pair in points.windows(2) {
+            let [from, to] = pair else { continue };
+            let edge =
+                crate::maths::geodesic::distance(*from, *to).ok_or(Fault::DecimalOverflow)?;
+            total = total.checked_add(edge).ok_or(Fault::DecimalOverflow)?;
+        }
+    }
+    Ok(length_of(total))
+}
+
+/// A polygon's area, unrounded: its outer ring's less its holes'.
+fn polygon_area(polygon: &Value) -> Result<crate::maths::geodesic::Area, Fault> {
+    let Value::Record(record) = polygon else {
+        return Err(Fault::Shape);
+    };
+    let ring = |points: &[Value]| -> Result<Vec<(Decimal, Decimal)>, Fault> {
+        points.iter().map(position_of).collect()
+    };
+    let mut area = crate::maths::geodesic::Area::of_ring(&ring(list_of(record, "outer")?)?);
+    for hole in list_of(record, "holes")? {
+        let points = hole.items().ok_or(Fault::Shape)?;
+        area = area.less(&crate::maths::geodesic::Area::of_ring(&ring(points)?));
+    }
+    Ok(area)
+}
+
+/// `geo.area(shape)` (area 20): a `Polygon`'s or `MultiPolygon`'s area on
+/// the WGS84 ellipsoid, holes taken away, rounded half to even to the
+/// square millimetre (`Area`'s scale) once, after summing.
+pub fn area(shape: &Value) -> Result<Value, Fault> {
+    let Value::Record(record) = shape else {
+        return Err(Fault::Shape);
+    };
+    let total = match &*record.ty {
+        POLYGON => polygon_area(shape)?,
+        MULTI_POLYGON => {
+            let mut total = crate::maths::geodesic::Area::zero();
+            for polygon in list_of(record, "polygons")? {
+                total = total.plus(&polygon_area(polygon)?);
+            }
+            total
+        }
+        _ => return Err(Fault::Shape),
+    };
+    total
+        .square_metres()
+        .map(|amount| {
+            Value::Quantity(crate::Quantity {
+                kind: QuantityKind::Area,
+                amount,
+            })
+        })
+        .ok_or(Fault::DecimalOverflow)
 }
 
 /// A latitude or a longitude for people: the locale's digits for its size,

@@ -23,6 +23,7 @@ mod decode_problems;
 mod domain_names;
 mod effects;
 mod failures;
+mod geodesics;
 mod geospatial;
 mod lists;
 mod logic;

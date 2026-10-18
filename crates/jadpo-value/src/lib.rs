@@ -427,6 +427,12 @@ pub fn run(
             _,
         ) => Err(Fault::Shape),
         // SHA-256 of bytes, or of text's UTF-8 (area 19, question 24).
+        // The geospatial measures (area 20, "Operations").
+        (Op::GeoDistance, [from, to]) => geo::distance(from, to),
+        (Op::GeoBearing, [from, to]) => geo::bearing(from, to),
+        (Op::GeoLength, [line]) => geo::length(line),
+        (Op::GeoArea, [shape]) => geo::area(shape),
+        (Op::GeoDistance | Op::GeoBearing | Op::GeoLength | Op::GeoArea, _) => Err(Fault::Shape),
         (Op::HashSha256, [Value::Bytes(bytes)]) => Ok(bytes_value(&hash::sha256(bytes))),
         (Op::HashSha256, [Value::Text(text)]) => Ok(bytes_value(&hash::sha256(text.as_bytes()))),
         // An API key's or a bearer token's verifier, which is what is
@@ -856,6 +862,49 @@ mod tests {
                         Value::None,
                     ]
                 }
+                Op::GeoDistance | Op::GeoBearing => vec![
+                    geo::point(
+                        Decimal::new(515_072, 4),
+                        Decimal::new(-1276, 4),
+                        Value::None,
+                    ),
+                    geo::point(
+                        Decimal::new(488_566, 4),
+                        Decimal::new(23_522, 4),
+                        Value::None,
+                    ),
+                ],
+                Op::GeoLength => vec![Value::record(
+                    jadpo_std::standard::geo::LINE_STRING,
+                    vec![(
+                        "points".into(),
+                        Value::list(vec![
+                            geo::point(Decimal::new(0, 0), Decimal::new(0, 0), Value::None),
+                            geo::point(Decimal::new(0, 0), Decimal::new(1, 0), Value::None),
+                        ]),
+                    )],
+                )],
+                Op::GeoArea => vec![Value::record(
+                    jadpo_std::standard::geo::POLYGON,
+                    vec![
+                        (
+                            "outer".into(),
+                            Value::list(
+                                [(0, 0), (0, 1), (1, 1), (0, 0)]
+                                    .into_iter()
+                                    .map(|(lat, lon)| {
+                                        geo::point(
+                                            Decimal::new(lat, 0),
+                                            Decimal::new(lon, 0),
+                                            Value::None,
+                                        )
+                                    })
+                                    .collect(),
+                            ),
+                        ),
+                        ("holes".into(), Value::list(Vec::new())),
+                    ],
+                )],
                 Op::UnitsOf => vec![Value::Int(5), mile.clone()],
                 Op::UnitsIn => vec![
                     units::value(jadpo_std::QuantityKind::Length, 5_000_000_000),
