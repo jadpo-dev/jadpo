@@ -1,5 +1,5 @@
 /// An allergen a recipe can contain.
-type Allergen = Enum {
+type Hazard = Enum {
     gluten
     egg
     milk

@@ -854,7 +854,9 @@ pub fn shown(
         // 5.5i): grouped, or its last four after a mask.
         (FormatKey::Grouped(grouping), value) => grouping.apply(&canonical(entry, value)?),
         (FormatKey::LastFour { mask }, value) => last_four(mask, &canonical(entry, value)?),
-        // A card brand by the scheme's own name (chunk 5.5i2).
+        // A card brand by the scheme's own name (chunk 5.5i2); a closed
+        // list CLDR names none of by its authority's English wording
+        // (chunk 5.5m).
         (FormatKey::Names(names), Value::Variant(variant)) => names
             .get(variant.ordinal as usize)
             .map(|name| (*name).to_string())

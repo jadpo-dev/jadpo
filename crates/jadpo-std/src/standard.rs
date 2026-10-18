@@ -18,10 +18,12 @@ use crate::{Builtin, LOCALE, ZONE};
 
 pub mod addresses_data;
 pub mod card_types;
+mod codes;
 mod contact;
 pub mod documents;
 pub mod events;
 mod identifiers;
+pub mod lists;
 pub mod opening_hours;
 pub mod person_names_data;
 pub mod phones;
@@ -437,6 +439,18 @@ pub enum Validator {
     CallingCode,
     /// A UN/LOCODE whose country is a current one ([`places`]).
     UnLocode,
+    /// GS1's mod-10 check digit: a GTIN, an ISBN-13, an SSCC.
+    Gs1,
+    /// A VIN's check digit, where 49 CFR 565 requires one.
+    Vin,
+    /// An ISO 6346 container number's check digit.
+    ContainerNumber,
+    /// A SNOMED CT concept's partition and Verhoeff check digit.
+    SnomedConcept,
+    /// An ORCID iD's ISO 7064 MOD 11-2 check character.
+    Orcid,
+    /// An MPAN core's check digit.
+    Mpan,
 }
 
 impl Validator {
@@ -461,6 +475,12 @@ impl Validator {
             Validator::PhoneNumber => phones::is_valid(text),
             Validator::CallingCode => text.strip_prefix('+').is_some_and(phones::is_assigned),
             Validator::UnLocode => places::is_un_locode(text),
+            Validator::Gs1 => codes::passes_gs1(text),
+            Validator::Vin => codes::is_vin(text),
+            Validator::ContainerNumber => codes::is_container_number(text),
+            Validator::SnomedConcept => codes::is_snomed_concept(text),
+            Validator::Orcid => codes::is_orcid(text),
+            Validator::Mpan => codes::is_mpan(text),
         }
     }
 }
@@ -799,6 +819,7 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// `places`), and `CalendarEvent` (chunk 5.5k3, in `events`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
+    lists::ALLERGEN_ENTRY,
     quantity(
         crate::QuantityKind::Angle,
         &[
@@ -824,6 +845,9 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("100000000 bps", "100,000,000 bit/s"),
         ],
     ),
+    lists::BLOOD_TYPE_ENTRY,
+    codes::BOOKING_REFERENCE,
+    lists::CABIN_CLASS_ENTRY,
     // Day-and-month calendar dates, ordered by day.
     StandardType {
         name: "CalendarDate",
@@ -873,6 +897,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::CARD_BIN,
     card_types::CARD_BRAND_TYPE,
     card_types::CARD_EXPIRY_TYPE,
+    codes::CARRIER,
+    lists::CEFR_LEVEL_ENTRY,
     quantity(
         crate::QuantityKind::Concentration,
         &[
@@ -881,6 +907,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("35 gL", "35 g/L"),
         ],
     ),
+    codes::CONTAINER_NUMBER,
     places::CONTINENT_ENTRY,
     places::COUNTRY_ENTRY,
     places::COUNTRY_SUBDIVISION_ENTRY,
@@ -997,6 +1024,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    codes::EAN13,
     checked(
         "Email",
         Builtin::Email,
@@ -1018,6 +1046,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("3600000 J", "3,600,000 J"),
         ],
     ),
+    lists::EPC_RATING_ENTRY,
     // A rate between two currencies at an instant (area 19, "Money and
     // payments"): what `money.convert` applies, never fetched.
     StandardType {
@@ -1153,7 +1182,12 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         ],
     ),
     contact::GIVEN_NAME,
+    codes::HS_CODE,
+    codes::IATA_AIRLINE,
+    codes::IATA_AIRPORT,
     identifiers::IBAN,
+    codes::ICAO_AIRPORT,
+    codes::ICD10_CODE,
     documents::IDENTITY_DOCUMENT_TYPE,
     documents::IDENTITY_DOCUMENT_KIND_TYPE,
     quantity(
@@ -1164,6 +1198,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("100000 lx", "100,000 lx"),
         ],
     ),
+    lists::INCOTERM_ENTRY,
     StandardType {
         name: "Instant",
         holds: Holds::Builtin(Builtin::Instant),
@@ -1244,6 +1279,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
     ),
+    codes::ISBN,
     identifiers::ISIN,
     // A week of an ISO week-numbering year, ordered by year and week.
     time_object(
@@ -1262,6 +1298,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
     ),
     places::LANGUAGE_ENTRY,
+    lists::LAWFUL_BASIS_ENTRY,
     identifiers::LEI,
     quantity(
         crate::QuantityKind::Length,
@@ -1340,6 +1377,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    codes::LOT_NUMBER,
     card_types::MASKED_CARD_NUMBER_TYPE,
     quantity(
         crate::QuantityKind::Mass,
@@ -1440,9 +1478,12 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    codes::MPAN,
+    codes::MPRN,
     places::NATIONALITY_ENTRY,
     identifiers::NHS_NUMBER,
     schedules::OPENING_HOURS,
+    codes::ORCID,
     documents::PASSPORT_NUMBER_TYPE,
     identifiers::PAYMENT_CARD_NUMBER,
     identifiers::PAYMENT_REFERENCE,
@@ -1589,6 +1630,9 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         release: FIRST_RELEASE,
     },
     schedules::RECURRENCE_RULE,
+    codes::SERIAL_NUMBER,
+    codes::SKU,
+    codes::SNOMED_CONCEPT,
     quantity(
         crate::QuantityKind::SoundLevel,
         &[
@@ -1605,6 +1649,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("340 mps", "340 m/s"),
         ],
     ),
+    codes::SSCC,
     documents::TAX_ID_TYPE,
     quantity(
         crate::QuantityKind::Temperature,
@@ -1622,6 +1667,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("5 kelvin", "5 K"),
         ],
     ),
+    lists::TENURE_ENTRY,
     places::TEXT_DIRECTION_ENTRY,
     identifiers::UK_ACCOUNT_NUMBER,
     identifiers::UK_COMPANY_NUMBER,
@@ -1629,6 +1675,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::UK_SORT_CODE,
     identifiers::UK_UTR,
     places::UN_LOCODE,
+    codes::UN_NUMBER,
+    codes::UPC_A,
     contact::UPRN,
     checked(
         "Url",
@@ -1687,6 +1735,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         release: FIRST_RELEASE,
     },
     documents::VAT_NUMBER_TYPE,
+    codes::VIN,
     quantity(
         crate::QuantityKind::Voltage,
         &[
@@ -2036,6 +2085,7 @@ impl StandardType {
                 .iter()
                 .chain(card_types::PERSONAL)
                 .chain(documents::PERSONAL)
+                .chain(lists::PERSONAL)
                 .find(|(name, _)| *name == self.name)
                 .map(|(_, category)| *category),
         }
@@ -2155,7 +2205,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 97, "the 97 standard types built so far");
+        assert_eq!(names.len(), 126, "the 126 standard types built so far");
     }
 
     #[test]

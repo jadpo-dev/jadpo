@@ -1,4 +1,4 @@
-use baking/types { Allergen, Ingredient, Recipe }
+use baking/types { Hazard, Ingredient, Recipe }
 
 test "scaling multiplies every ingredient's weight" {
     var sponge: Recipe = Recipe {
@@ -12,7 +12,7 @@ test "scaling multiplies every ingredient's weight" {
                 weight: 150
             }
         ]
-        allergens: [Allergen.gluten, Allergen.egg]
+        allergens: [Hazard.gluten, Hazard.egg]
     }
     var double: Recipe = scale_recipe(sponge, 2).recipe
     assert list.map(double.ingredients, ingredient -> ingredient.weight) == [400, 300]
@@ -35,7 +35,7 @@ test "ingredients over 5 kg go on the floor scale, in recipe order" {
                 weight: 520
             }
         ]
-        allergens: [Allergen.gluten]
+        allergens: [Hazard.gluten]
     }
     // Ten loaves: 6000 g of flour, 100 g of salt and 5200 g of water.
     assert scale_recipe(loaf, 10).floor_scale == ["Flour", "Water"]

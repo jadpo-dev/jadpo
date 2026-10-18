@@ -134,9 +134,13 @@ pub const CLOSED_LISTS: &[ClosedList] = &[
     },
 ];
 
-/// The closed list `ty` names, if it is one.
+/// The closed list `ty` names, if it is one: of places and languages, or
+/// of commerce, health, travel and the rest (chunk 5.5m).
 pub fn closed_list(ty: &str) -> Option<&'static ClosedList> {
-    CLOSED_LISTS.iter().find(|list| list.ty == ty)
+    CLOSED_LISTS
+        .iter()
+        .chain(super::lists::CLOSED_LISTS)
+        .find(|list| list.ty == ty)
 }
 
 /// Whether variant `variant` of enum `ty` is retired, with its English
@@ -345,7 +349,7 @@ mod tests {
 
     #[test]
     fn each_form_has_a_code_for_every_variant() {
-        for list in CLOSED_LISTS {
+        for list in CLOSED_LISTS.iter().chain(super::super::lists::CLOSED_LISTS) {
             let entry = super::super::standard_type(list.ty).expect("a standard type");
             let codes = entry.codes().expect("an enum");
             for (form, listed) in list.forms {
