@@ -151,6 +151,11 @@ pub struct Decision {
     pub key: String,
     pub span: Span,
     pub value: DecisionValue,
+    /// Where it is: its `migration`'s place among the file's declarations
+    /// and its own among the migration's decisions, which name a computed
+    /// backfill's body (chunk 5.6b).
+    pub decl: u32,
+    pub member: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -169,7 +174,7 @@ pub enum DecisionValue {
 pub fn read_decisions(path: &str, source: &ast::SourceFile) -> (Vec<Decision>, Span) {
     let mut out = Vec::new();
     let mut at = file_span(path);
-    for decl in source.decls() {
+    for (decl_index, decl) in source.decls().enumerate() {
         let Decl::SingletonDecl(singleton) = decl else {
             continue;
         };
@@ -181,14 +186,15 @@ pub fn read_decisions(path: &str, source: &ast::SourceFile) -> (Vec<Decision>, S
         }
         let range = keyword.text_range();
         at = Span::new(path, range.start().into(), range.end().into());
-        for item in singleton
+        let members = singleton
             .member_list()
-            .iter()
+            .into_iter()
             .flat_map(|list| list.member_items())
-        {
-            let ast::MemberItem::Member(member) = item else {
-                continue;
-            };
+            .filter_map(|item| match item {
+                ast::MemberItem::Member(member) => Some(member),
+                _ => None,
+            });
+        for (member_index, member) in members.enumerate() {
             let Some(key) = member.member_key() else {
                 continue;
             };
@@ -223,10 +229,97 @@ pub fn read_decisions(path: &str, source: &ast::SourceFile) -> (Vec<Decision>, S
                 key: names.join("."),
                 span,
                 value,
+                decl: decl_index as u32,
+                member: member_index as u32,
             });
         }
     }
     (out, at)
+}
+
+/// The decision at `index` among a migration's, when it is a backfill:
+/// the entity and field it is about and its value (area 5, chunk 5.6b).
+pub fn backfill_member(
+    migration: &ast::SingletonDecl,
+    index: usize,
+) -> Option<(String, String, ast::Expr)> {
+    if migration.keyword()?.text() != "migration" {
+        return None;
+    }
+    let member = migration
+        .member_list()?
+        .member_items()
+        .filter_map(|item| match item {
+            ast::MemberItem::Member(member) => Some(member),
+            _ => None,
+        })
+        .nth(index)?;
+    let names: Vec<String> = member
+        .member_key()?
+        .names()
+        .filter_map(|n| tree::name_text(&n))
+        .collect();
+    let [entity, field] = names.as_slice() else {
+        return None;
+    };
+    let block = member.block().or_else(|| match member.value() {
+        Some(Expr::RecordExpr(record)) => record.member_list(),
+        _ => None,
+    })?;
+    let members = tree::members(Some(block));
+    let [(name, value)] = members.as_slice() else {
+        return None;
+    };
+    if tree::name_text(name).as_deref() != Some("backfill") {
+        return None;
+    }
+    Some((entity.clone(), field.clone(), value.value()?))
+}
+
+/// The fields of `entity` the latest migration retires, each with the
+/// built-in type its column holds: what that migration's computed
+/// backfills may still read (area 5, "Computed backfills"). A retired
+/// column of any other kind (an enum's text, a structured value) isn't
+/// offered, since its type is no longer declared anywhere.
+pub fn retired_fields(db: &dyn Db, project: Project, entity: &str) -> Vec<(String, Ty)> {
+    let set = migrations(db, project);
+    let (before, after) = (set.before_latest(), set.latest_schema());
+    let mut out = Vec::new();
+    for (store, tables) in &after.stores {
+        for (name, table) in &tables.tables {
+            if table.holds != Holds::Entity(entity.to_string()) {
+                continue;
+            }
+            let was = before.stores.get(store).and_then(|s| s.tables.get(name));
+            for (column, now) in &table.columns {
+                let held = was.and_then(|t| t.columns.get(column));
+                if !now.retired || held.is_none_or(|c| c.retired) {
+                    continue;
+                }
+                let enum_text = now.allows.as_ref().is_some_and(|a| !a.values.is_empty());
+                if let (Some(field), Some(prim), false) =
+                    (&now.field, retired_type(&now.sql_type), enum_text)
+                {
+                    out.push((field.clone(), Ty::Prim(prim)));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The built-in type a column of `sql_type` holds, when it holds one.
+fn retired_type(sql_type: &str) -> Option<Builtin> {
+    Some(match sql_type.split('(').next()?.trim() {
+        "boolean" => Builtin::Bool,
+        "text" => Builtin::Text,
+        "uuid" => Builtin::Uuid,
+        "smallint" | "integer" | "bigint" => Builtin::Int,
+        "numeric" => Builtin::Decimal,
+        "timestamptz" => Builtin::Instant,
+        "date" => Builtin::CalendarDate,
+        _ => return None,
+    })
 }
 
 fn backfill(path: &str, block: ast::MemberList, at: &Span) -> DecisionValue {
@@ -433,25 +526,132 @@ pub fn field_model<'m>(
         .find(|f| f.born == field)
 }
 
-/// What a needed decision is, as SQL, from what `changes.jadpo` says:
-/// `None` for one still to make, or that doesn't fit.
-pub fn decided(
-    lookup: &dyn TypeView,
-    model: &DataModel,
-    decisions: &[Decision],
-    need: &Needed,
-) -> Option<Decided> {
-    let decision = decisions.iter().find(|d| d.key == need.key())?;
-    match (&decision.value, need.kind) {
-        (DecisionValue::Backfill(value, _), NeededKind::Backfill | NeededKind::Refit) => {
-            let field = field_model(model, &need.entity, &need.field)?;
-            if backfill_problem(lookup, &field.ty, value).is_some() {
-                return None;
+/// What the decisions written in a migration's `changes.jadpo` decide:
+/// each needed decision as SQL, and why one doesn't fit its change.
+#[allow(missing_debug_implementations)]
+pub struct Decide<'a> {
+    pub db: &'a dyn Db,
+    pub project: Project,
+    pub lookup: &'a dyn TypeView,
+    pub model: &'a DataModel,
+    pub decisions: &'a [Decision],
+    /// The `changes.jadpo` they are written in, whose computed backfills
+    /// are checked as bodies (chunk 5.6b).
+    pub file: Option<File>,
+    /// The schema the migration starts from: the columns a computed
+    /// backfill reads.
+    pub before: &'a Schema,
+}
+
+/// A computed backfill checked (area 5, "Computed backfills"; chunk
+/// 5.6b): what is wrong with it, and its SQL when nothing is and every
+/// operation in it has a SQL form.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Computed {
+    pub problems: Vec<Diagnostic>,
+    pub sql: Option<String>,
+}
+
+impl Decide<'_> {
+    /// What a needed decision is, as SQL: `None` for one still to make,
+    /// or that doesn't fit, or a computed backfill that can't run yet.
+    pub fn decided(&self, need: &Needed) -> Option<Decided> {
+        let decision = self.decisions.iter().find(|d| d.key == need.key())?;
+        match (&decision.value, need.kind) {
+            (DecisionValue::Backfill(value, _), NeededKind::Backfill)
+                if self.is_computed(need, value) =>
+            {
+                let computed = self.computed(decision, need)?;
+                if !computed.problems.is_empty() {
+                    return None;
+                }
+                computed.sql.map(Decided::Computed)
             }
-            backfill_sql(field, value).map(Decided::Backfill)
+            (DecisionValue::Backfill(value, _), NeededKind::Refit) if self.is_computed(need, value) => {
+                None
+            }
+            (DecisionValue::Backfill(value, _), NeededKind::Backfill | NeededKind::Refit) => {
+                let field = field_model(self.model, &need.entity, &need.field)?;
+                if backfill_problem(self.lookup, &field.ty, value).is_some() {
+                    return None;
+                }
+                backfill_sql(field, value).map(Decided::Backfill)
+            }
+            (DecisionValue::Change(FieldChange::Retired), NeededKind::Retire) => {
+                Some(Decided::Retired)
+            }
+            _ => None,
         }
-        (DecisionValue::Change(FieldChange::Retired), NeededKind::Retire) => Some(Decided::Retired),
-        _ => None,
+    }
+
+    /// Why the decision written about `need` doesn't fit its change, when
+    /// one is written and doesn't: what `jadpo migrate new` shows beside
+    /// it. A computed backfill's own problems are `jadpo check`'s.
+    pub fn misfit(&self, need: &Needed) -> Option<String> {
+        let decision = self.decisions.iter().find(|d| d.key == need.key())?;
+        if matches!(decision.value, DecisionValue::Pending) {
+            return None;
+        }
+        if let DecisionValue::Backfill(value, _) = &decision.value
+            && self.is_computed(need, value)
+        {
+            return None;
+        }
+        misfit(self.lookup, self.model, need, decision).map(|(_, why)| why)
+    }
+
+    /// Whether a backfill's value is worked out from each row rather than
+    /// written out: anything but a literal or an enum's variant
+    /// (`Priority.normal`), which a backfill has given since chunk 3.1.
+    pub fn is_computed(&self, need: &Needed, value: &Const) -> bool {
+        match value {
+            Const::Other => true,
+            Const::Path(path) => !(path.len() == 2
+                && path[0] != need.entity
+                && (matches!(self.lookup.def(&path[0]), Some(Def::Enum { .. }))
+                    || jadpo_std::standard_type(&path[0]).is_some_and(|entry| {
+                        matches!(entry.holds, jadpo_std::standard::Holds::Enum(_))
+                    }))),
+            _ => false,
+        }
+    }
+
+    /// A computed backfill checked as a body, and its SQL.
+    pub fn computed(&self, decision: &Decision, need: &Needed) -> Option<Computed> {
+        let file = self.file?;
+        let callable = crate::types::Callable::new(self.db, file, decision.decl, Some(decision.member));
+        let checked = crate::types::typed_body(self.db, self.project, callable);
+        let mut problems: Vec<Diagnostic> = checked.problems.clone();
+        problems.extend(checked.deferred.iter().map(|(_, problem)| problem.clone()));
+        if !problems.is_empty() {
+            return Some(Computed {
+                problems,
+                sql: None,
+            });
+        }
+        let columns: BTreeMap<String, String> = self
+            .before
+            .stores
+            .get(&need.store)
+            .and_then(|store| store.tables.get(&need.table))
+            .map(|table| {
+                table
+                    .columns
+                    .iter()
+                    .filter_map(|(column, def)| Some((def.field.clone()?, column.clone())))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let scale = field_model(self.model, &need.entity, &need.field).and_then(|f| f.scale);
+        let row = super::backfill::Row {
+            table: &need.table,
+            columns: &columns,
+        };
+        let sql = super::backfill::sql(self.db, self.project, &checked.body, &row, scale);
+        Some(Computed {
+            problems: Vec::new(),
+            sql,
+        })
     }
 }
 
@@ -704,6 +904,15 @@ fn decision_problems(
         return out;
     }
     let lookup = Lookup::new(db, project);
+    let decide = Decide {
+        db,
+        project,
+        lookup: &lookup,
+        model,
+        decisions: &decisions,
+        file,
+        before: &before,
+    };
     for need in &needed {
         let key = need.key();
         let written = decisions.iter().find(|d| d.key == key);
@@ -720,6 +929,13 @@ fn decision_problems(
         let Some(decision) = written else {
             continue;
         };
+        // A computed backfill is checked as a body (chunk 5.6b).
+        if let DecisionValue::Backfill(value, span) = &decision.value
+            && decide.is_computed(need, value)
+        {
+            out.extend(computed_problems(&decide, need, decision, span));
+            continue;
+        }
         if let Some((span, reason)) = misfit(&lookup, model, need, decision) {
             out.push(
                 Diagnostic::new(
@@ -770,8 +986,8 @@ fn decision_problems(
         return out;
     }
     // Every decision is made: the SQL must hold them.
-    let decide = |need: &Needed| decided(&lookup, model, &decisions, need);
-    let Ok(sql) = migration_sql(&before, after, &decide) else {
+    let decided = |need: &Needed| decide.decided(need);
+    let Ok(sql) = migration_sql(&before, after, &decided) else {
         return out;
     };
     let written = migration.sql.as_ref().and_then(|s| s.as_ref().ok());
@@ -792,19 +1008,50 @@ fn decision_problems(
     out
 }
 
-/// Why the decision written about `need` doesn't fit its change, when one
-/// is written and doesn't: what `jadpo migrate new` shows beside it.
-pub fn decision_misfit(
-    lookup: &dyn TypeView,
-    model: &DataModel,
-    decisions: &[Decision],
+/// What is wrong with a computed backfill (area 5, "Computed backfills";
+/// chunk 5.6b): its body's problems, or that it can't run yet, for a
+/// field that allows less, or with an operation that has no SQL form,
+/// which `jadpo migrate apply` works out in Jadpo from chunk 5.6b2.
+fn computed_problems(
+    decide: &Decide<'_>,
     need: &Needed,
-) -> Option<String> {
-    let decision = decisions.iter().find(|d| d.key == need.key())?;
-    if matches!(decision.value, DecisionValue::Pending) {
-        return None;
+    decision: &Decision,
+    span: &Span,
+) -> Vec<Diagnostic> {
+    let key = need.key();
+    if need.kind == NeededKind::Refit {
+        return vec![
+            Diagnostic::new(
+                &rule::TOOLCHAIN_NOT_BUILT_YET,
+                format!("A backfill worked out from each record for `{key}` isn't built yet"),
+            )
+            .at(span.clone(), "worked out from each record")
+            .reason(format!(
+                "`{key}` allows less than it did, and this compiler replaces the values it no longer allows only with one value written out so far."
+            ))
+            .next(format!("Write `{key}: {{ backfill: <value> }}` with one value of its type")),
+        ];
     }
-    misfit(lookup, model, need, decision).map(|(_, why)| why)
+    let Some(computed) = decide.computed(decision, need) else {
+        return Vec::new();
+    };
+    if !computed.problems.is_empty() {
+        return computed.problems;
+    }
+    if computed.sql.is_some() {
+        return Vec::new();
+    }
+    vec![
+        Diagnostic::new(
+            &rule::TOOLCHAIN_NOT_BUILT_YET,
+            format!("Working out the backfill for `{key}` in Jadpo isn't built yet"),
+        )
+        .at(span.clone(), "no SQL form")
+        .reason("Something in this backfill has no SQL form (area 19), so `jadpo migrate apply` would work its values out in Jadpo, batch by batch, which comes with chunk 5.6b2; a backfill whose every operation has a SQL form runs as one `UPDATE` per batch.")
+        .next(format!(
+            "Work `{key}`'s value out with operators, `if`, `match` and standard operations that have a SQL form for now"
+        )),
+    ]
 }
 
 /// Why a written decision doesn't fit the change it is about, with where.

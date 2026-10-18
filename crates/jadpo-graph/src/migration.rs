@@ -54,6 +54,10 @@ impl Needed {
 pub enum Decided {
     /// The SQL literal existing rows get.
     Backfill(String),
+    /// A computed backfill (area 5, "Computed backfills"; chunk 5.6b):
+    /// the SQL expression each existing row gets, reading the row's own
+    /// columns as `"table"."column"`, filled in batches.
+    Computed(String),
     Retired,
 }
 
@@ -385,8 +389,9 @@ pub fn migration_sql(
                     });
                 }
                 if let Some(need) = need {
+                    let key = new.map(|t| t.primary_key.columns.clone()).unwrap_or_default();
                     plan.columns
-                        .extend(backfill(table, column, &[], need, decided));
+                        .extend(backfill(table, &key, column, &[], need, decided));
                 }
             }
             Change::AlterColumn { table, column, .. } => {
@@ -444,8 +449,10 @@ pub fn migration_sql(
                     .find(|n| &n.table == table && &n.column == column);
                 match need {
                     Some(need) => {
+                        let key = new.map(|t| t.primary_key.columns.clone()).unwrap_or_default();
                         plan.columns.extend(backfill(
                             table,
+                            &key,
                             column,
                             &refit(was, now, column),
                             need,
@@ -564,12 +571,35 @@ struct Plan {
 
 fn backfill(
     table: &str,
+    key: &[String],
     column: &str,
     broken: &[String],
     need: &Needed,
     decided: &dyn Fn(&Needed) -> Option<Decided>,
 ) -> Vec<Statement> {
     match (need.kind, decided(need)) {
+        // Filled in batches, each its own transaction, then the rows
+        // written meanwhile filled with the table locked against writes,
+        // and the column made required, in the migration's last step
+        // (chunk 5.6b). An entity's key is its one `id`.
+        (NeededKind::Backfill, Some(Decided::Computed(value))) if key.len() == 1 => vec![
+            Statement {
+                sql: table::backfill_in_batches(&need.key(), table, &key[0], column, &value),
+                does: "fill existing rows in batches",
+            },
+            Statement {
+                sql: table::lock_against_writes(table),
+                does: "lock against writes",
+            },
+            Statement {
+                sql: table::fill(table, column, &value, &[table::is_null(column)]),
+                does: "fill rows written meanwhile",
+            },
+            Statement {
+                sql: table::set_not_null(table, column),
+                does: "require a value",
+            },
+        ],
         (NeededKind::Backfill, Some(Decided::Backfill(value))) => {
             let mut empty = vec![table::is_null(column)];
             empty.extend(broken.iter().cloned());

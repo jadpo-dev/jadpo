@@ -12,8 +12,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use jadpo_check::data::migrations::{
-    self as records, Decision, Migration, Migrations, decided, decision_misfit, example_backfill,
-    field_type, read_decisions, store_steps,
+    self as records, Decide, Decision, Migration, Migrations, example_backfill, field_type,
+    read_decisions, store_steps,
 };
 use jadpo_check::data::{DataModel, data_model, schema};
 use jadpo_db::Loaded;
@@ -140,15 +140,25 @@ fn new(call: &Call) -> Reply {
     // The latest migration is finished once every decision it needs is
     // written and its SQL holds them; until then this finishes it.
     let latest = set.list.last();
-    let (decisions, unfinished) = match latest {
+    let (decisions, unfinished, changes) = match latest {
         Some(migration) if migration.changes => {
             let decisions = written_decisions(&loaded, migration);
             let before = set.before_latest();
             let after = set.latest_schema();
-            let finished = finished(&lookup, model, &decisions, &before, &after, migration);
-            (decisions, !finished)
+            let changes = loaded.file(&migration.changes_path());
+            let decide = Decide {
+                db,
+                project,
+                lookup: &lookup,
+                model,
+                decisions: &decisions,
+                file: changes,
+                before: &before,
+            };
+            let finished = finished(&decide, &before, &after, migration);
+            (decisions, !finished, changes)
         }
-        _ => (Vec::new(), false),
+        _ => (Vec::new(), false, None),
     };
     let (before, base, name) = if unfinished {
         let Some(migration) = latest else {
@@ -196,7 +206,16 @@ fn new(call: &Call) -> Reply {
     };
     let after = next_snapshot(&base, source);
     let needed = decisions_needed(&before, &after);
-    let decide = |need: &Needed| decided(&lookup, model, &decisions, need);
+    let decisions_of = Decide {
+        db,
+        project,
+        lookup: &lookup,
+        model,
+        decisions: &decisions,
+        file: changes,
+        before: &before,
+    };
+    let decide = |need: &Needed| decisions_of.decided(need);
     let sql = match migration_sql(&before, &after, &decide) {
         Ok(sql) => sql,
         Err(refusals) => return refused(&refusals),
@@ -209,9 +228,7 @@ fn new(call: &Call) -> Reply {
         .collect();
     let misfits: BTreeMap<String, String> = pending
         .iter()
-        .filter_map(|need| {
-            decision_misfit(&lookup, model, &decisions, need).map(|why| (need.key(), why))
-        })
+        .filter_map(|need| decisions_of.misfit(need).map(|why| (need.key(), why)))
         .collect();
     let written = match write(
         &folder,
@@ -258,22 +275,12 @@ fn written_decisions(loaded: &Loaded, migration: &Migration) -> Vec<Decision> {
 use jadpo_syntax::ast::AstNode as _;
 
 /// Whether every decision a migration needs is made and its SQL holds them.
-fn finished(
-    lookup: &dyn jadpo_check::types::TypeView,
-    model: &DataModel,
-    decisions: &[Decision],
-    before: &Schema,
-    after: &Schema,
-    migration: &Migration,
-) -> bool {
+fn finished(decide: &Decide<'_>, before: &Schema, after: &Schema, migration: &Migration) -> bool {
     let needed = decisions_needed(before, after);
-    if needed
-        .iter()
-        .any(|need| decided(lookup, model, decisions, need).is_none())
-    {
+    if needed.iter().any(|need| decide.decided(need).is_none()) {
         return false;
     }
-    let decide = |need: &Needed| decided(lookup, model, decisions, need);
+    let decide = |need: &Needed| decide.decided(need);
     match migration_sql(before, after, &decide) {
         Ok(sql) => {
             migration
@@ -1069,6 +1076,12 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
             },
             Decider::Human,
         ),
+        MigrateError::Stopped { name } => Diagnostic::new(
+            &rule::MIGRATION_APPLY_FAILED,
+            format!("Migrating `{store}` stopped during `{name}`"),
+        )
+        .reason("It stopped between two of its steps: every batch of its backfill that committed stays, the column stays optional until its last step, and the database records how far it got.")
+        .next_for("Run `jadpo migrate apply` again, which carries on where it stopped", Decider::Human),
         MigrateError::Store(store_error) => {
             let why = match store_error {
                 StoreError::Unavailable => "the database can't be reached".to_string(),
@@ -1081,7 +1094,7 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
                 &rule::MIGRATION_APPLY_FAILED,
                 format!("Migrating `{store}` failed"),
             )
-            .reason(format!("{why}. The migration that failed was rolled back; the ones before it stay applied."))
+            .reason(format!("{why}. The step that failed was rolled back; the migrations before it stay applied, as does every batch of a backfill that committed, and the next run carries on from there."))
             .next_for("Fix what stopped it, then run `jadpo migrate apply` again", Decider::Human)
         }
     }

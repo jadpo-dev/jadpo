@@ -15,6 +15,7 @@
 //! `jadpo migrate new` records and `jadpo check` compares with the latest
 //! migration ([`migrations`]).
 
+pub mod backfill;
 mod columns;
 pub mod lifecycle;
 pub mod migrations;

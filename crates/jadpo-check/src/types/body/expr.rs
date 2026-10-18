@@ -522,6 +522,12 @@ impl Body<'_> {
         let written = format!("{head}.{}", members.join("."));
         let span = self.span(expr);
         if head == CONFIG {
+            // A backfill gives the same value wherever the migration runs
+            // (area 5, chunk 5.6b).
+            if self.context == super::Context::Backfill {
+                self.backfill_outside_row(span, &written, "a setting");
+                return Ty::Error;
+            }
             return self.setting_read(rest, expr);
         }
         match members.as_slice() {
