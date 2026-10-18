@@ -1031,6 +1031,14 @@ reference only).
   `OneTimeCode`, `PasswordPolicy`, `WebAuthnCredential` (shaped to what
   `webauthn-rs` stores, for 5.5z) and `EncryptedValue`; `verify_totp`
   follows keys held as data. Done when every type passes the harness.
+  Split on 2026-10-18: `Certificate`, which needs an X.509 crate and parts
+  read from what it parses, is 5.5r5.
+- [ ] **5.5r5 Certificates** `opus · high` (area 19, "The standard
+  types"; split from 5.5r3), after 5.5r3: `Certificate`, an X.509
+  certificate (RFC 5280) read from PEM or DER on an audited crate built for
+  wasm32, its subject, issuer, validity and SHA-256 fingerprint (a `Hash`)
+  read-only, never set by code. Chain validation is out of scope unless
+  the page says otherwise. Done when the type passes the harness.
 - [ ] **5.5z Passkeys** `opus · high` (area 8, "Passkeys"; decided by
   Richard, 2026-10-18), after 5.5q2 and 5.5r3: passkeys (WebAuthn, FIDO2)
   as the third built-in way to check a person. First finish area 8's
