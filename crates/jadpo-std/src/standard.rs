@@ -3140,6 +3140,7 @@ impl StandardType {
             SqlType::LocalTimestamp => "timestamp",
             SqlType::Vector => "vector",
             SqlType::Geography => "geography",
+            SqlType::Float8 => "double precision",
             SqlType::Json | SqlType::Array(_) | SqlType::Range(_) => "jsonb",
         }
     }

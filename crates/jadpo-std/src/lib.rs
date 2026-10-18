@@ -62,7 +62,7 @@ mod isolation;
 pub mod jadpo_text;
 mod literal;
 mod locale;
-mod migration;
+pub mod migration;
 pub mod money;
 mod num;
 mod operations;
@@ -93,7 +93,7 @@ pub use format::{BuiltinFormat, Component, FormatLength, FormatPart, TimeFormatS
 pub use isolation::Isolation;
 pub use literal::Literal;
 pub use locale::{LocalePlan, locale_ordinal};
-pub use migration::Migration;
+pub use migration::{BACKFILL_MARKER, Batches, Migration, Step};
 pub use money::{CURRENCIES, CURRENCY, MONEY_FIELDS};
 pub use num::{Num, compare_exact};
 pub use operations::{

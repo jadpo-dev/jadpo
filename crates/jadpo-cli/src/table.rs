@@ -478,8 +478,9 @@ pub static COMMANDS: &[Command] = &[
                       database/migrations/: the whole schema as snapshot.json, the SQL that gets there \
                       as postgres.sql, and changes.jadpo when a change needs a decision, such as a \
                       value for existing rows; once the decisions are written, `new` again finishes \
-                      it. `apply` runs a database's pending migrations, each in a transaction; \
-                      `status` lists the migrations and, with --url, which a database has applied. \
+                      it. `apply` runs a database's pending migrations, each in a transaction, and a \
+                      computed backfill in batches, each in its own, carrying on where a stopped run \
+                      left off; `status` lists the migrations and, with --url, which a database has applied. \
                       Until configuration gives each connection its URL, --url names the database.",
         arguments: &[
             Argument {

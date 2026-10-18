@@ -1250,19 +1250,37 @@ reference only).
   (PostgreSQL 16.14, pgvector 0.8.7, PostGIS 3.6.4, since every
   `postgis/postgis` 16 tag is on Debian bullseye). What the chunk chose is
   area 21's "Chosen in chunk 5.5v1".
-- [ ] **5.5v1b Vectors in PostgreSQL: nearest queries** `opus · high`
+- [x] **5.5v1b Vectors in PostgreSQL: nearest queries** `opus · high`
   (area 21, "The nearest-neighbour query" and "The index"), after 5.5v1:
   `order: [F nearest v]` returning `Nearest<T>`, `ai.distance` as a SQL
   form in `where:`, a derived HNSW index with the type's operator class
-  (half-precision expression index from 2,001 to 4,000 dimensions, exact
-  search with a warning above), `kind: IndexKind.hnsw` with `m:` and
-  `ef_construction:`, `hnsw.ef_search` and strict iterative scans per
-  query (pgvector 0.8.0 or later: the chunk decides how a store with an
-  older pgvector is refused), and `query.nearest_unindexed`,
-  `query.nearest_type` and `query.nearest_page`. Done when a filtered
-  nearest query of five returns the same five records interpreted and on
-  PostgreSQL, its plan uses the index, and each new error has a checked
-  example.
+  for a type of up to 2,000 dimensions, `hnsw.ef_search` and strict
+  iterative scans per query (pgvector 0.8.0 or later: the chunk decides
+  how a store with an older pgvector is refused), and
+  `query.nearest_unindexed`, `query.nearest_type` and
+  `query.nearest_page`. Done when a filtered nearest query of five
+  returns the same five records interpreted and on PostgreSQL, its plan
+  uses the index, and each new error has a checked example. Split on
+  2026-10-18: longer vectors and tuning are 5.5v1c. Built: the query
+  orders by distance alone inside and by its `id` tie-break outside,
+  since PostgreSQL reads no HNSW index for a second key (verified); a
+  thousand-record filtered query of five, called by an action the
+  interpreter runs on PostgreSQL, returns the five records and the
+  distances `ai.distance` gives, through the index (`EXPLAIN`), in a live
+  test that skips on a server older than pgvector 0.8.0 and fails so
+  under CI; `migration.extension_outdated` refuses an older pgvector
+  wherever a migration builds an HNSW index; and the three
+  `query.nearest_` errors have checked examples. What the chunk chose is
+  area 21's "Chosen in chunk 5.5v1b".
+- [ ] **5.5v1c Vector indexes: longer vectors and tuning** `opus · high`
+  (area 21, "The index"), after 5.5v1b: a type of 2,001 to 4,000
+  dimensions indexed through a half-precision expression, the query
+  comparing the same expression; one over 4,000 searched exactly, with
+  the cost named as area 1's declinable error; and `kind: IndexKind.hnsw`
+  with `m:` and `ef_construction:` in an `indexes:` entry. Done when a
+  3,072-dimension type's nearest query uses its half-precision index, a
+  5,000-dimension one's error has a checked example, and a tuned index's
+  migration sets both.
 - [x] **5.5v2 Prompt files** `opus · high` (area 21, "Prompts as
   files"): the `Prompt` type base, `prompts/` in a domain,
   `<name>.prompt` with `# Instructions` and `# Request`, placeholders
@@ -1504,19 +1522,33 @@ reference only).
   gate); none dropped, three rewritten (`decimal.round` keeps fewer
   places, `period_between` without `age`, whole numbers widened to
   `bigint`), area 19's "Chosen in chunk 5.6".
-- [ ] **5.6b Computed backfills** `opus · high` (area 5, "Computed
+- [x] **5.6b Computed backfills** `opus · high` (area 5, "Computed
   backfills", 2026-10-15), after 5.6: `backfill:` as an expression over
   each row's own fields, constants and pure functions, typed against the
   field it fills; filled in batches, one `UPDATE` each where every
   operation in it has a SQL form (5.6's, and the operators' and
-  conditionals' forms, each tested the same way) and by `jadpo migrate
-  apply` otherwise, then made required. The batch size, locking (each
-  batch its own transaction, never a long table lock), resuming after a
-  crash and progress output chosen and recorded on area 5; a failure
-  midway leaves the column consistent and the migration resumable; `jadpo
-  migrate apply` says when a backfill runs in Jadpo and is slower; an
-  expression that can fail is refused unless area 5 says what a failing
-  row gets.
+  conditionals' forms, each tested the same way), then made required. The
+  batch size, locking (each batch its own transaction, never a long table
+  lock), resuming after a crash and progress output chosen and recorded on
+  area 5; a failure midway leaves the column consistent and the migration
+  resumable; an expression that can fail is refused unless area 5 says
+  what a failing row gets. A backfill without a full SQL form is refused
+  as not built yet, naming 5.6b2. (Split 2026-10-18: the backfills worked
+  out in Jadpo are 5.6b2.) Built: a computed backfill checked as a body
+  of its own (`migration.backfill_can_fail`, `migration.backfill_outside_row`),
+  written as SQL from its typed body with functions in place and `if` and
+  `match` as `CASE`; batches of 1000 rows by `UPDATE`, each its own
+  transaction, resumed from `jadpo_migration_steps` after a stop, then a
+  last step that locks the table against writes, fills what was written
+  meanwhile and makes the column required; the operators' and
+  conditionals' forms agree with the runtime on live PostgreSQL beside
+  the operations'; area 5's "Chosen in chunk 5.6b".
+- [ ] **5.6b2 Backfills worked out in Jadpo** `opus · high` (area 5,
+  "Computed backfills"), after 5.6b: a backfill with an operation that has
+  no SQL form runs through `jadpo migrate apply`, which reads each batch,
+  works the values out in the runtime and writes them back, in 5.6b's
+  batches, transactions and resume marker; `jadpo migrate apply` says when
+  a backfill runs in Jadpo and is slower, and the generated SQL says which.
 - [ ] **5.6c Aggregate queries** `opus · high` (area 6, decided by area 19,
   questions 21 and 28): `count`, `sum`, `min`, `max` and `average` in
   queries, grouped by a field or a time bucket, using the standard

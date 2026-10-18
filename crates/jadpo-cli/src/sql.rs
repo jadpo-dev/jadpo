@@ -464,6 +464,9 @@ fn render(query: &QueryModel, plan: &QueryPlan, place: &str) -> Reply {
     let what = match query.cardinality.word() {
         "one" => format!("one {}", query.element.ty),
         "optional" => format!("at most one {}", query.element.ty),
+        // A nearest-neighbour query's records, each with its distance
+        // (area 21, chunk 5.5v1b).
+        "list" if query.nearest.is_some() => format!("a list of Nearest<{}>", query.element.ty),
         "list" => format!("a list of {}", query.element.ty),
         _ => format!("a page of {}", query.element.ty),
     };
@@ -471,22 +474,27 @@ fn render(query: &QueryModel, plan: &QueryPlan, place: &str) -> Reply {
         query,
         include: None,
     };
+    let mut fields = vec![
+        ("reads".to_string(), format!("{}, {what}", query.entity)),
+        ("file".to_string(), place.to_string()),
+        (
+            "sends".to_string(),
+            if count == 1 {
+                "1 statement".to_string()
+            } else {
+                format!("{count} statements: this one, and one for each include")
+            },
+        ),
+    ];
+    // What runs first in its transaction: pgvector's search settings.
+    for setting in &plan.read.settings {
+        fields.push(("first".to_string(), setting.clone()));
+    }
     statement(
         &mut screen,
         &mut statements,
         format!("query {}", query.name),
-        vec![
-            ("reads".to_string(), format!("{}, {what}", query.entity)),
-            ("file".to_string(), place.to_string()),
-            (
-                "sends".to_string(),
-                if count == 1 {
-                    "1 statement".to_string()
-                } else {
-                    format!("{count} statements: this one, and one for each include")
-                },
-            ),
-        ],
+        fields,
         &plan.read.select,
         &names,
     );
@@ -504,6 +512,16 @@ fn render(query: &QueryModel, plan: &QueryPlan, place: &str) -> Reply {
         ("entity", query.entity.as_str().into()),
         ("cardinality", query.cardinality.word().into()),
         ("engine", "postgres".into()),
+        (
+            "settings",
+            Json::array(
+                plan.read
+                    .settings
+                    .iter()
+                    .map(|s| Json::from(s.as_str()))
+                    .collect::<Vec<Json>>(),
+            ),
+        ),
         ("statements", Json::array(statements)),
     ]);
     Reply::screen(screen, data)
@@ -650,6 +668,7 @@ fn pg_type(ty: SqlType) -> String {
         SqlType::Json => "jsonb".into(),
         SqlType::Vector => "vector".into(),
         SqlType::Geography => "geography".into(),
+        SqlType::Float8 => "double precision".into(),
         SqlType::Array(inner) => format!("{}[]", pg_type(*inner)),
         SqlType::Range(inner) => match inner {
             SqlType::Date => "daterange".into(),

@@ -251,6 +251,7 @@ pub fn system_table(name: &str) -> Table {
                     reason: "system outbox".into(),
                     predicate: None,
                     collate: Vec::new(),
+                    method: None,
                 },
             );
         }
@@ -285,6 +286,7 @@ pub fn system_table(name: &str) -> Table {
                     reason: "system deliveries".into(),
                     predicate: None,
                     collate: Vec::new(),
+                    method: None,
                 },
             );
         }
@@ -312,6 +314,7 @@ pub fn system_table(name: &str) -> Table {
                     reason: "system sessions".into(),
                     predicate: None,
                     collate: Vec::new(),
+                    method: None,
                 },
             );
             indexes.insert(
@@ -321,6 +324,7 @@ pub fn system_table(name: &str) -> Table {
                     reason: "system sessions".into(),
                     predicate: None,
                     collate: Vec::new(),
+                    method: None,
                 },
             );
         }
@@ -346,6 +350,7 @@ pub fn system_table(name: &str) -> Table {
                     reason: "system service keys".into(),
                     predicate: None,
                     collate: Vec::new(),
+                    method: None,
                 },
             );
         }
@@ -374,6 +379,7 @@ pub fn system_table(name: &str) -> Table {
                     reason: "system passkeys".into(),
                     predicate: None,
                     collate: Vec::new(),
+                    method: None,
                 },
             );
         }
@@ -411,6 +417,7 @@ pub fn system_table(name: &str) -> Table {
                     reason: "system passkey challenges".into(),
                     predicate: None,
                     collate: Vec::new(),
+                    method: None,
                 },
             );
         }
@@ -431,6 +438,7 @@ pub fn system_table(name: &str) -> Table {
                     reason: "system idempotency keys".into(),
                     predicate: None,
                     collate: Vec::new(),
+                    method: None,
                 },
             );
         }

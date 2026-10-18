@@ -15,6 +15,7 @@
 //! `jadpo migrate new` records and `jadpo check` compares with the latest
 //! migration ([`migrations`]).
 
+pub mod backfill;
 mod columns;
 pub mod lifecycle;
 pub mod migrations;
@@ -2141,6 +2142,68 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
                 reason: format!("query {query}"),
                 predicate,
                 collate,
+                method: None,
+            },
+        );
+    }
+    nearest_indexes(model, &queries.queries, schema);
+}
+
+/// The HNSW index each nearest-neighbour query searches (area 21, "The
+/// index"): on its vector field's column, with the operator class of the
+/// distance its type measures by, one for each field however many queries
+/// search it.
+fn nearest_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &mut Schema) {
+    for query in queries {
+        let Some(nearest) = &query.nearest else {
+            continue;
+        };
+        let Some(entity) = model.entity(&query.entity) else {
+            continue;
+        };
+        let Some(field) = entity.fields.iter().find(|f| f.name == nearest.field) else {
+            continue;
+        };
+        let Some(store) = &entity.store else { continue };
+        let Some(table) = schema
+            .stores
+            .get_mut(store)
+            .and_then(|store| store.tables.get_mut(&entity.table))
+        else {
+            continue;
+        };
+        let method = physical::IndexMethod {
+            name: "hnsw".to_string(),
+            operator_class: nearest.metric.operator_class().to_string(),
+        };
+        let column = field.born.clone();
+        if table.indexes.values().any(|index| {
+            index.columns == [column.clone()] && index.method.as_ref() == Some(&method)
+        }) {
+            continue;
+        }
+        let mut name = physical::object_name(&[entity.table.as_str(), column.as_str()], "idx");
+        if table.indexes.contains_key(&name) {
+            name = physical::object_name(&[entity.table.as_str(), column.as_str(), "hnsw"], "idx");
+        }
+        // Only the records its `visible:` lets queries see, as every
+        // query's index of an entity with a lifecycle (area 5, "Indexes").
+        let predicate = entity
+            .lifecycle
+            .as_ref()
+            .and_then(|lifecycle| lifecycle.visible.as_ref())
+            .filter(|visible| !lifecycle::reads_now(visible))
+            .and_then(|visible| {
+                jadpo_sql::condition(&mut jadpo_sql::Fixed, entity, visible, false)
+            });
+        table.indexes.insert(
+            name,
+            physical::Index {
+                columns: vec![column],
+                reason: format!("query {}", query.name),
+                predicate,
+                collate: Vec::new(),
+                method: Some(method),
             },
         );
     }
@@ -2295,6 +2358,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                         reason: format!("reference {}.{}", entity.born, field.born),
                         predicate: None,
                         collate: Vec::new(),
+                        method: None,
                     },
                 );
             }
@@ -2317,6 +2381,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                 reason: format!("index {}.{}", entity.born, index.name),
                 predicate: None,
                 collate: Vec::new(),
+                method: None,
             },
         );
     }

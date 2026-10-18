@@ -13,7 +13,9 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use jadpo_std::policy::CallerPart;
-use jadpo_std::read::{Cardinality, Column, Field, IncludeShape, ReadPlan, Select, Size, Source};
+use jadpo_std::read::{
+    Cardinality, Column, Field, IncludeShape, ReadPlan, Record, Select, Size, Source,
+};
 use jadpo_value::Value;
 
 use crate::{
@@ -276,6 +278,11 @@ async fn run_read(
     plan: &ReadPlan,
     env: &Env<'_>,
 ) -> Result<(Vec<Row>, Vec<Value>, bool), Problem> {
+    // A `nearest` query's search settings, for the rest of the
+    // transaction (area 21, chunk 5.5v1b).
+    for setting in &plan.settings {
+        transaction.batch(setting).await.map_err(Problem::Store)?;
+    }
     let mut rows = run(transaction, &plan.select, env).await?;
     let mut hidden = false;
     if let Some(at) = plan.select.permitted
@@ -353,50 +360,62 @@ fn records<'a>(
         }
         let mut out = Vec::with_capacity(rows.len());
         for row in rows {
-            let mut fields = Vec::with_capacity(select.record.fields.len());
-            for (name, field) in &select.record.fields {
-                let value = match field {
-                    Field::Column(at) => {
-                        field_value(row, &select.columns, *at, env.json).map_err(Problem::Defect)?
-                    }
-                    Field::Include(at) => {
-                        let (Some(include), Some(matched)) =
-                            (select.includes.get(*at as usize), found.get(*at as usize))
-                        else {
-                            return Err(Problem::Defect("an include the plan doesn't have".into()));
-                        };
-                        let records = row
-                            .get(include.key as usize)
-                            .and_then(|key| matched.get(key))
-                            .cloned()
-                            .unwrap_or_default();
-                        match include.shape {
-                            IncludeShape::List => Value::list(records),
-                            IncludeShape::Optional => {
-                                records.into_iter().next().unwrap_or(Value::None)
-                            }
-                            IncludeShape::One => match records.into_iter().next() {
-                                Some(value) => value,
-                                // The reference holds, so policy hid its
-                                // record from the caller (area 9).
-                                None if include.select.unpoliced.is_some() && !env.unpoliced => {
-                                    return Err(Problem::Refused);
-                                }
-                                None => {
-                                    return Err(Problem::Defect(
-                                        "a required reference whose record isn't there".into(),
-                                    ));
-                                }
-                            },
-                        }
-                    }
-                };
-                fields.push((Rc::from(name.as_str()), value));
-            }
-            out.push(Value::record(&select.record.ty, fields));
+            out.push(record(&select.record, row, select, &found, env)?);
         }
         Ok(out)
     })
+}
+
+/// The value `row` of `select` becomes as `shape`: each field from its
+/// column, its include's records, or a record of its own from the same
+/// row (a `Nearest<T>`'s `item`, chunk 5.5v1b).
+fn record(
+    shape: &Record,
+    row: &Row,
+    select: &Select,
+    found: &[BTreeMap<SqlValue, Vec<Value>>],
+    env: &Env<'_>,
+) -> Result<Value, Problem> {
+    let mut fields = Vec::with_capacity(shape.fields.len());
+    for (name, field) in &shape.fields {
+        let value = match field {
+            Field::Column(at) => {
+                field_value(row, &select.columns, *at, env.json).map_err(Problem::Defect)?
+            }
+            Field::Record(inner) => record(inner, row, select, found, env)?,
+            Field::Include(at) => {
+                let (Some(include), Some(matched)) =
+                    (select.includes.get(*at as usize), found.get(*at as usize))
+                else {
+                    return Err(Problem::Defect("an include the plan doesn't have".into()));
+                };
+                let records = row
+                    .get(include.key as usize)
+                    .and_then(|key| matched.get(key))
+                    .cloned()
+                    .unwrap_or_default();
+                match include.shape {
+                    IncludeShape::List => Value::list(records),
+                    IncludeShape::Optional => records.into_iter().next().unwrap_or(Value::None),
+                    IncludeShape::One => match records.into_iter().next() {
+                        Some(value) => value,
+                        // The reference holds, so policy hid its record
+                        // from the caller (area 9).
+                        None if include.select.unpoliced.is_some() && !env.unpoliced => {
+                            return Err(Problem::Refused);
+                        }
+                        None => {
+                            return Err(Problem::Defect(
+                                "a required reference whose record isn't there".into(),
+                            ));
+                        }
+                    },
+                }
+            }
+        };
+        fields.push((Rc::from(name.as_str()), value));
+    }
+    Ok(Value::record(&shape.ty, fields))
 }
 
 /// The value a source names among a read's arguments.
@@ -549,6 +568,8 @@ pub fn from_sql(sql: &SqlValue, column: &Column) -> Result<Value, String> {
         (SqlValue::Geography(shape), Column::Geography(ty)) => {
             jadpo_value::geo::from_shape(ty, shape)?
         }
+        // As `ai.distance` gives it (area 21, chunk 5.5v1b).
+        (SqlValue::Float8(bits), Column::Distance) => distance_value(f64::from_bits(*bits))?,
         (sql, column) => {
             return Err(format!("a `{:?}` column read as {column:?}", sql.ty()));
         }
@@ -656,6 +677,21 @@ fn vector_value(bits: &[u32]) -> Result<Value, String> {
     let floats: Vec<f32> = bits.iter().copied().map(f32::from_bits).collect();
     jadpo_value::vector::from_floats(&floats)
         .ok_or_else(|| "a vector with an item past a decimal's 38 digits".to_string())
+}
+
+/// A distance pgvector worked out, as `ai.distance` gives the same double:
+/// the decimal PostgreSQL writes it as. A cosine from a vector of zeros,
+/// which pgvector answers with `NaN`, has no direction, and is a fault as
+/// it is in code.
+fn distance_value(found: f64) -> Result<Value, String> {
+    if found.is_nan() {
+        return Err("a cosine distance from a vector of zeros, which has no direction".into());
+    }
+    if !found.is_finite() {
+        return Err("a distance past a decimal's range".into());
+    }
+    Value::decimal(&jadpo_std::standard::ai::distance_text(found))
+        .ok_or_else(|| "a distance past a decimal's range".to_string())
 }
 
 /// A whole number of any width as a cursor holds it.

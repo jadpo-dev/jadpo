@@ -52,6 +52,9 @@ pub enum SqlType {
     /// Its type is the extension's, so a parameter is sent without a
     /// number, as a vector's is, and PostgreSQL infers it (chunk 5.5u4).
     Geography,
+    /// `double precision`: only read, as the distance pgvector works out
+    /// for a `nearest` query (area 21, chunk 5.5v1b).
+    Float8,
 }
 
 impl SqlType {
@@ -72,8 +75,11 @@ impl SqlType {
             SqlType::LocalTimestamp => &SqlType::LocalTimestamp,
             SqlType::Json => &SqlType::Json,
             SqlType::Array(inner) => return SqlType::Array(inner),
-            // Arrays of ranges, vectors and geographies are never sent.
-            SqlType::Range(_) | SqlType::Vector | SqlType::Geography => &SqlType::Text,
+            // Arrays of ranges, vectors, doubles and geographies are never
+            // sent.
+            SqlType::Range(_) | SqlType::Vector | SqlType::Float8 | SqlType::Geography => {
+                &SqlType::Text
+            }
         })
     }
 
@@ -185,6 +191,9 @@ pub enum SqlValue {
     /// A PostGIS `geography` (area 20, chunk 5.5u4): a geometry, each
     /// coordinate the double PostGIS keeps.
     Geography(crate::geography::Shape),
+    /// A `double precision` by its bits (chunk 5.5v1b): a distance
+    /// pgvector worked out, held exactly, `NaN` included.
+    Float8(u64),
 }
 
 impl SqlValue {
@@ -209,6 +218,7 @@ impl SqlValue {
             SqlValue::Range { element, .. } => element.range(),
             SqlValue::Vector(_) => SqlType::Vector,
             SqlValue::Geography(_) => SqlType::Geography,
+            SqlValue::Float8(_) => SqlType::Float8,
         }
     }
 }
@@ -324,6 +334,10 @@ pub enum Column {
     /// 5.5u4), by the standard type the field holds: one of the six
     /// geometries, or `Geometry` for any of them.
     Geography(String),
+    /// The distance pgvector worked out for a `nearest` query (area 21,
+    /// chunk 5.5v1b), a `float8`, read as `ai.distance` gives it: the
+    /// decimal PostgreSQL writes the double as.
+    Distance,
 }
 
 /// Where a record's field comes from.
@@ -333,6 +347,9 @@ pub enum Field {
     Column(u32),
     /// The include at this position.
     Include(u32),
+    /// A record made from the same row: a `Nearest<T>`'s `item` (area 21,
+    /// chunk 5.5v1b).
+    Record(Box<Record>),
 }
 
 /// How a row becomes a value: the type's name and its fields in the order
@@ -419,6 +436,10 @@ pub struct PageRead {
 pub struct ReadPlan {
     /// The store it reads (a connection's name).
     pub store: String,
+    /// Statements run first, in the read's transaction: a `nearest`
+    /// query's `SET LOCAL` of pgvector's search settings (area 21, chunk
+    /// 5.5v1b). They take no parameters.
+    pub settings: Vec<String>,
     pub cardinality: Cardinality,
     pub select: Select,
     pub page: Option<PageRead>,

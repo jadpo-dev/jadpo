@@ -16,6 +16,7 @@ pub(crate) mod oid {
     pub const INT2: u32 = 21;
     pub const INT4: u32 = 23;
     pub const TEXT: u32 = 25;
+    pub const FLOAT8: u32 = 701;
     pub const JSON: u32 = 114;
     pub const BPCHAR: u32 = 1042;
     pub const VARCHAR: u32 = 1043;
@@ -97,6 +98,7 @@ pub(crate) fn param_oid(ty: SqlType) -> u32 {
         SqlType::LocalTimestamp => oid::TIMESTAMP,
         SqlType::Json => oid::JSONB,
         SqlType::Vector | SqlType::Geography => oid::UNSPECIFIED,
+        SqlType::Float8 => oid::FLOAT8,
         SqlType::Range(inner) => range_oid(*inner),
         SqlType::Array(inner) => match inner {
             SqlType::Bool => oid::BOOL_ARRAY,
@@ -112,11 +114,12 @@ pub(crate) fn param_oid(ty: SqlType) -> u32 {
             SqlType::Time => oid::TIME_ARRAY,
             SqlType::Json => oid::JSONB_ARRAY,
             // Arrays of arrays, of local timestamps, of ranges, of
-            // vectors and of geographies are never sent.
+            // vectors, of doubles and of geographies are never sent.
             SqlType::Array(_)
             | SqlType::LocalTimestamp
             | SqlType::Range(_)
             | SqlType::Vector
+            | SqlType::Float8
             | SqlType::Geography => oid::TEXT_ARRAY,
         },
     }
@@ -141,6 +144,8 @@ pub(crate) fn column_type(oid: u32) -> Option<SqlType> {
         oid::INT4 => SqlType::Int4,
         oid::INT8 => SqlType::Int8,
         oid::NUMERIC => SqlType::Numeric,
+        // A distance pgvector worked out (area 21, chunk 5.5v1b).
+        oid::FLOAT8 => SqlType::Float8,
         oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME => SqlType::Text,
         oid::BYTEA => SqlType::Bytes,
         oid::UUID => SqlType::Uuid,
@@ -205,6 +210,7 @@ pub(crate) fn encode(value: &SqlValue, out: &mut Vec<u8>) -> Result<bool, String
         SqlValue::Array(element, items) => array_to_wire(*element, items, out)?,
         SqlValue::Vector(bits) => vector_to_wire(bits, out)?,
         SqlValue::Geography(shape) => geography_to_wire(shape, out)?,
+        SqlValue::Float8(bits) => out.extend_from_slice(&bits.to_be_bytes()),
     }
     Ok(true)
 }
@@ -594,6 +600,7 @@ pub(crate) fn decode(oid: u32, raw: &[u8]) -> Result<SqlValue, String> {
         oid::INT4 => SqlValue::Int4(i32::from_be_bytes(fixed(raw, "int4")?)),
         oid::INT8 => SqlValue::Int8(i64::from_be_bytes(fixed(raw, "int8")?)),
         oid::NUMERIC => SqlValue::Numeric(numeric_from_wire(raw)?),
+        oid::FLOAT8 => SqlValue::Float8(u64::from_be_bytes(fixed(raw, "float8")?)),
         oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::JSON => {
             let text = String::from_utf8(raw.to_vec())
                 .map_err(|_| "the server sent text that isn't UTF-8".to_string())?;

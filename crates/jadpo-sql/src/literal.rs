@@ -60,6 +60,8 @@ pub fn sql(value: &SqlValue) -> Option<String> {
             format!("'{date}{era}'::date")
         }
         SqlValue::Time(micros) => format!("'{}'::time", time_of_day(*micros)),
+        // A double is only read, never written (chunk 5.5v1b).
+        SqlValue::Float8(_) => return None,
         SqlValue::Array(element, items) => {
             let ty = type_name(*element)?;
             if items.is_empty() {
@@ -215,6 +217,7 @@ fn type_name(ty: SqlType) -> Option<String> {
         SqlType::Json => "jsonb".into(),
         SqlType::Vector => "vector".into(),
         SqlType::Geography => "geography".into(),
+        SqlType::Float8 => "double precision".into(),
         SqlType::Array(inner) => format!("{}[]", type_name(*inner)?),
         SqlType::Range(element) => range_name(*element)?.into(),
     })

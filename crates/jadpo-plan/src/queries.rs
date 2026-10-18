@@ -149,6 +149,10 @@ struct Columns {
     kinds: Vec<Column>,
 }
 
+/// pgvector's default `hnsw.ef_search`: a nearest-neighbour query never
+/// searches fewer candidates than this (area 21, chunk 5.5v1b).
+const EF_SEARCH: u64 = 40;
+
 /// How a later column of a compound standard type (`Money`, area 19) is
 /// named among a statement's columns, after its field's name and before
 /// its place among the type's columns: `total#part1`.
@@ -192,7 +196,33 @@ impl Planner<'_> {
         let mut statement = Statement::default();
         let mut columns = Columns::default();
         // The record's own columns first, in its type's order.
-        let record = self.record(entity, &query.element, &query.includes, &mut columns)?;
+        let mut record = self.record(entity, &query.element, &query.includes, &mut columns)?;
+        // A nearest-neighbour query (area 21, chunk 5.5v1b): the distance
+        // from its vector, `$1`, the `id` its rows tie-break on, and each
+        // record a `Nearest<T>` of what its type holds.
+        let nearest = match &query.nearest {
+            Some(nearest) => {
+                let vector = field(entity, &nearest.field)?;
+                let id = field(entity, "id")?;
+                columns.add(&id.name, self.column(entity, id)?);
+                let from = statement.bind(&nearest.value, SqlType::Vector)?;
+                let distance = format!(
+                    "{} {} {from}",
+                    jadpo_sql::ident(&vector.born),
+                    nearest.metric.operator()
+                );
+                let at = u32::try_from(columns.names.len()).ok()?;
+                record = Record {
+                    ty: model::NEAREST.to_string(),
+                    fields: vec![
+                        ("item".to_string(), Field::Record(Box::new(record))),
+                        ("distance".to_string(), Field::Column(at)),
+                    ],
+                };
+                Some((distance, vector.born.clone(), nearest.most))
+            }
+            None => None,
+        };
         let mut cursor = Vec::new();
         if page {
             for order in &query.order {
@@ -205,6 +235,10 @@ impl Planner<'_> {
         let mut conditions: Vec<String> = Vec::new();
         for line in &query.filter {
             conditions.push(self.condition(&mut statement, entity, line, false)?);
+        }
+        // A record whose vector is `none` is never near anything.
+        if let Some((_, column, _)) = &nearest {
+            conditions.push(format!("{} IS NOT NULL", jadpo_sql::ident(column)));
         }
         conditions.extend(self.access(&mut statement, entity, Reach::Read)?);
         let policy = self.policy(&mut statement, entity, Effect::Read, &Row::Table)?;
@@ -239,6 +273,16 @@ impl Planner<'_> {
         // The statement with its policy, and without, which a test's call
         // without a caller runs.
         let write = |conditions: &[String]| {
+            if let (Some((distance, _, _)), Some(n)) = (&nearest, &limit) {
+                return text::nearest(
+                    &borns(entity, &columns.names),
+                    &entity.table,
+                    distance,
+                    conditions,
+                    n,
+                    "id",
+                );
+            }
             let mut sql = text::select(&borns(entity, &columns.names), &entity.table, "");
             text::where_clause(&mut sql, conditions, "");
             if let Some(order) = &order {
@@ -269,9 +313,23 @@ impl Planner<'_> {
         };
         let includes = self.includes(entity, &query.includes, &columns)?;
         let mut kinds = columns.kinds;
+        if nearest.is_some() {
+            kinds.push(Column::Distance);
+        }
         if permitted.is_some() {
             kinds.push(Column::Bool);
         }
+        // pgvector's search settings for the rest of the transaction: at
+        // least as many candidates as the query returns, and iterative
+        // scans in strict order, so a filtered search still fills its
+        // limit (pgvector 0.8.0 and later).
+        let settings = match &nearest {
+            Some((_, _, most)) => vec![
+                format!("SET LOCAL hnsw.ef_search = {}", (*most).max(EF_SEARCH)),
+                "SET LOCAL hnsw.iterative_scan = strict_order".to_string(),
+            ],
+            None => Vec::new(),
+        };
         let select = Select {
             sql,
             unpoliced,
@@ -311,6 +369,7 @@ impl Planner<'_> {
             caller,
             read: ReadPlan {
                 store,
+                settings,
                 cardinality,
                 select,
                 page,
@@ -722,6 +781,7 @@ impl Planner<'_> {
         );
         let get = ReadPlan {
             store: store.clone(),
+            settings: Vec::new(),
             cardinality: Cardinality::One,
             select: Select {
                 sql,

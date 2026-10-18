@@ -19,7 +19,7 @@ use crate::case::{starts_upper, to_snake};
 use crate::lookups::{Lookup, Name, NameView};
 use crate::std_lib::StdNames;
 use crate::tree::{self, name_span};
-use crate::types::{callables_of, typed_body};
+use crate::types::{backfill_callables, callables_of, typed_body};
 
 /// The declarations one file mentions.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -74,7 +74,12 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
         }
     }
     let host_of = |key: &Key| canonical_of(contested, key);
-    for callable in callables_of(db, file) {
+    // The latest migration's computed backfills use what they call (area
+    // 5, chunk 5.6b).
+    for callable in callables_of(db, file)
+        .into_iter()
+        .chain(backfill_callables(db, project, file))
+    {
         let body = &typed_body(db, project, callable).body;
         for name in &body.names {
             let Refers::Node { key, .. } = &name.refers else {

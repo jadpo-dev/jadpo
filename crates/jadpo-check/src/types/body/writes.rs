@@ -1571,12 +1571,30 @@ impl Body<'_> {
         }
         let [field] = rest else { return None };
         let field = text(field);
-        self.table.field(head, std::slice::from_ref(&field))?;
+        if self
+            .table
+            .field(head, std::slice::from_ref(&field))
+            .is_none()
+        {
+            // A field this migration retires, which its entity's backfill
+            // still reads (area 5, "Computed backfills").
+            if self.stored.as_deref() == Some(head)
+                && let Some(ty) = self.retired_field(&field)
+            {
+                self.facts.stored.insert(node_key(expr.syntax()));
+                return Some(ty);
+            }
+            return None;
+        }
         if self.stored.as_deref() == Some(head) {
             self.facts.stored.insert(node_key(expr.syntax()));
             return Some(self.table.field_type(head, &[field]));
         }
         let span = self.span(expr);
+        if self.context == super::Context::Backfill {
+            self.backfill_outside_row(span, &format!("{head}.{field}"), "another entity's field");
+            return Some(Ty::Error);
+        }
         let snake = crate::case::to_snake(head);
         let reason = match &self.stored {
             Some(other) => format!(

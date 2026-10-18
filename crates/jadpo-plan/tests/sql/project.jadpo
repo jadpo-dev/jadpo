@@ -585,3 +585,40 @@ action archive_card_by_id(card_id: Card.id) fails CardNotFound, CardArchived -> 
         }
     }
 }
+
+/// A help article's meaning, compared by straight-line distance.
+type ArticleMeaning = Vector {
+    dimensions: 3
+    distance: VectorDistance.euclidean
+}
+
+type ArticleTitle = Text {
+    max_length: 80
+}
+
+entity HelpArticle {
+    id: Uuid
+    title: ArticleTitle
+    shown_publicly: Bool
+    body_meaning: ArticleMeaning?
+
+    policy: {
+        read: [Access.public]
+    }
+}
+
+/// Without the `id`, which the tie-break selects anyway.
+type ArticleExcerpt = Output {
+    pick: [HelpArticle.title]
+}
+
+/// A nearest-neighbour query (area 21): its search settings, the distance
+/// as a column and a filter, and the `id` tie-break outside the order the
+/// index serves.
+query closest_articles(question_meaning: ArticleMeaning) -> List<Nearest<ArticleExcerpt>> {
+    from: HelpArticle
+    where: HelpArticle.shown_publicly == true
+    where: ai.distance(HelpArticle.body_meaning, question_meaning) <= 0.6
+    order: [HelpArticle.body_meaning nearest question_meaning]
+    limit: 50
+}

@@ -522,6 +522,12 @@ impl Body<'_> {
         let written = format!("{head}.{}", members.join("."));
         let span = self.span(expr);
         if head == CONFIG {
+            // A backfill gives the same value wherever the migration runs
+            // (area 5, chunk 5.6b).
+            if self.context == super::Context::Backfill {
+                self.backfill_outside_row(span, &written, "a setting");
+                return Ty::Error;
+            }
             return self.setting_read(rest, expr);
         }
         match members.as_slice() {
@@ -596,11 +602,19 @@ impl Body<'_> {
                 format!("{} can't {verb} `{written}`", super::capital(caller)),
             )
             .at(span, "reads the clock")
-            .reason(format!(
-                "{} is pure: it gives the same result for the same arguments, so the time it needs arrives as a parameter; only actions read the clock.",
-                super::capital(caller)
-            ))
-            .next("Pass the time in as a parameter, read in the action that calls this"),
+            .reason(if self.context == super::Context::Backfill {
+                "A backfill gives each record the value its own fields give, whenever the migration runs, so it never reads the clock; only actions read the clock.".to_string()
+            } else {
+                format!(
+                    "{} is pure: it gives the same result for the same arguments, so the time it needs arrives as a parameter; only actions read the clock.",
+                    super::capital(caller)
+                )
+            })
+            .next(if self.context == super::Context::Backfill {
+                "Work the value out from the record's own fields, or a constant"
+            } else {
+                "Pass the time in as a parameter, read in the action that calls this"
+            }),
         );
     }
 
@@ -617,11 +631,19 @@ impl Body<'_> {
                 format!("{} can't call `{written}`", super::capital(caller)),
             )
             .at(span, "reads the generator")
-            .reason(format!(
-                "{} is pure: it gives the same result for the same arguments, so a random value it needs arrives as a parameter; only actions read the generator, which a test seeds so that it repeats.",
-                super::capital(caller)
-            ))
-            .next("Pass the value in as a parameter, made in the action that calls this"),
+            .reason(if self.context == super::Context::Backfill {
+                "A backfill gives each record the value its own fields give, whenever the migration runs, so it never reads the generator; only actions read the generator, which a test seeds so that it repeats.".to_string()
+            } else {
+                format!(
+                    "{} is pure: it gives the same result for the same arguments, so a random value it needs arrives as a parameter; only actions read the generator, which a test seeds so that it repeats.",
+                    super::capital(caller)
+                )
+            })
+            .next(if self.context == super::Context::Backfill {
+                "Work the value out from the record's own fields, or a constant"
+            } else {
+                "Pass the value in as a parameter, made in the action that calls this"
+            }),
         );
     }
 
@@ -812,6 +834,25 @@ impl Body<'_> {
             self.facts
                 .fields
                 .insert(node_key(node.syntax()), (PAGE.to_string(), vec![field]));
+            return ty;
+        }
+        // A record a nearest-neighbour query found, with its distance
+        // (area 21, chunk 5.5v1b).
+        if let Ty::Opaque(nearest, args) = receiver
+            && nearest == NEAREST
+            && let [item] = args.as_slice()
+        {
+            let ty = match field.as_str() {
+                "item" => item.clone(),
+                "distance" => Ty::Prim(Prim::Decimal),
+                _ => {
+                    self.unknown_field(NEAREST, &field, &nearest_fields(item), span, false);
+                    return Ty::Error;
+                }
+            };
+            self.facts
+                .fields
+                .insert(node_key(node.syntax()), (NEAREST.to_string(), vec![field]));
             return ty;
         }
         // The instants a `temporal` bounds call gives (area 10), or a field
@@ -1729,6 +1770,17 @@ fn name_of(ty: &Ty) -> String {
 /// The standard type a page query returns (area 6): `Page<T>`.
 pub(crate) const PAGE: &str = "Page";
 
+/// Each record a nearest-neighbour query returns (area 21): `Nearest<T>`.
+pub(crate) const NEAREST: &str = crate::data::queries::NEAREST;
+
+/// `Nearest<T>`'s fields: the record, and its distance.
+fn nearest_fields(item: &Ty) -> Vec<FieldDef> {
+    vec![
+        plain_field("item", item.clone()),
+        plain_field("distance", Ty::Prim(Prim::Decimal)),
+    ]
+}
+
 /// `Page<T>`'s fields, as the unknown-field error lists them.
 /// A route test's response's fields, for messages.
 fn response_fields() -> Vec<FieldDef> {
@@ -1833,6 +1885,12 @@ pub(crate) fn members_of(
         && let [item] = args.as_slice()
     {
         return named(page_fields(item));
+    }
+    if let Ty::Opaque(nearest, args) = receiver
+        && nearest == NEAREST
+        && let [item] = args.as_slice()
+    {
+        return named(nearest_fields(item));
     }
     if let Ty::Opaque(issued, args) = receiver.strip_nullable()
         && args.is_empty()
