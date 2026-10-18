@@ -170,6 +170,7 @@ by_bob
 by_counter
 by_dee
 by_editor
+by_faster_payments
 by_member
 by_outsider
 by_owner
@@ -563,6 +564,7 @@ import_reference
 import_unreadable
 imported_line
 in_band
+in_dollars
 in_either
 in_euros
 in_feet
@@ -812,6 +814,7 @@ not_a_product_code
 not_a_rate
 not_a_vat_number
 not_a_version
+not_an_account
 not_an_address
 not_an_iban
 not_an_nhs_number
@@ -929,6 +932,7 @@ page_count
 page_link
 page_todos
 paid
+paid_by_faster_payments
 pale
 pantry
 parcel
@@ -958,6 +962,8 @@ patch_todo
 patient
 patient_number
 pay_deposit
+payee_account
+paying_account
 payment_intent
 payment_outcome
 payment_refused
@@ -1338,6 +1344,7 @@ sum_if_shared
 summarise_line
 summary_view
 supplier
+supplier_account
 supplier_code
 supplier_contact
 supplier_country

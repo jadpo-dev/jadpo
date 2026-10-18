@@ -305,8 +305,8 @@ pub const PAYMENT_REFERENCE: StandardType = identifier(
 );
 
 /// A UK bank account number (Pay.UK): eight digits, leading zeros kept.
-/// Its modulus check needs the sort code too, so it comes with
-/// `BankAccount` (chunk 5.5i2).
+/// Its modulus check needs the sort code too, so it is `BankAccount`'s
+/// ([`super::modulus`], chunk 5.5i4).
 pub const UK_ACCOUNT_NUMBER: StandardType = identifier(
     "UkAccountNumber",
     "[0-9]{8}",
