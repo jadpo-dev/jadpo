@@ -29,7 +29,7 @@ fn shown(source: &str) -> Vec<String> {
 
 const NONE: &[&str] = &[];
 
-const EVERY_OPERATION: &str = "action seal(note: Note, record: RecordId) -> Sealed {\n    return Sealed(crypto.encrypt(note, key: config.notes_key, context: record))\n}\n\nfunction open(sealed: Sealed, record: RecordId) fails NoteUnreadable -> Opened {\n    var bytes: Bytes = attempt crypto.decrypt(sealed, key: config.notes_key, context: record) {\n        unreadable: NoteUnreadable\n    }\n    return Opened(bytes)\n}\n\naction register(password: PasswordText) -> PasswordHash {\n    return crypto.hash_password(password)\n}\n\nfunction signs_in(password: PasswordText, stored: PasswordHash) -> PasswordCheck {\n    return crypto.verify_password(password, stored)\n}\n\nfunction mac(body: Note) -> Mac {\n    return Mac(crypto.hmac(body, key: config.webhook_secret))\n}\n\nfunction genuine(body: Note, given: Mac) -> Genuine {\n    return Genuine(crypto.verify_hmac(body, given, key: config.webhook_secret))\n}\n\nfunction signed(body: Note) -> Mac {\n    return Mac(crypto.sign(body, key: config.receipt_key))\n}\n\nfunction verified(body: Note, signature: Mac, signer: PublicKey) -> Genuine {\n    return Genuine(crypto.verify_signature(body, signature, signer))\n}\n";
+const EVERY_OPERATION: &str = "action seal(note: Note, record: RecordId) -> Sealed {\n    return Sealed(crypto.encrypt(note, key: config.notes_key, context: record))\n}\n\nfunction open(sealed: Sealed, record: RecordId) fails NoteUnreadable -> Opened {\n    var bytes: Bytes = attempt crypto.decrypt(sealed, key: config.notes_key, context: record) {\n        unreadable: NoteUnreadable\n    }\n    return Opened(bytes)\n}\n\naction register(password: PasswordText) -> PasswordHash {\n    return crypto.hash_password(password)\n}\n\nfunction signs_in(password: PasswordText, stored: PasswordHash) -> PasswordCheck {\n    return crypto.verify_password(password, stored)\n}\n\nfunction mac(body: Note) -> Mac {\n    return Mac(crypto.hmac(body, key: config.webhook_secret))\n}\n\nfunction genuine(body: Note, given: Mac) -> Genuine {\n    return Genuine(crypto.verify_hmac(body, given, key: config.webhook_secret))\n}\n\nfunction signed(body: Note) -> Mac {\n    return Mac(crypto.sign(body, key: config.receipt_key))\n}\n\nfunction verified(body: Note, signature: Mac, signer: PublicKey) -> Genuine {\n    return Genuine(crypto.verify_signature(body, signature, signer))\n}\n\nfunction published() -> PublicKey {\n    return crypto.public_key(key: config.receipt_key)\n}\n";
 
 #[test]
 fn every_operation_checks_with_its_key_setting() {
@@ -310,9 +310,46 @@ fn the_security_types_are_standard_types() {
         NONE
     );
     assert_eq!(
-        check(
-            "type Account = Output {\n    password_hash: PasswordHash\n    signer: PublicKey\n    last_check: PasswordCheck\n}\n"
-        ),
+        check("type Account = Output {\n    signer: PublicKey\n    last_check: PasswordCheck\n}\n"),
         NONE
+    );
+}
+
+#[test]
+fn a_password_hash_is_stored_but_never_leaves_the_server() {
+    // Stored, it is the PHC string.
+    assert_eq!(
+        check("entity Staff {\n    id: Uuid\n    password_hash: PasswordHash\n}\n"),
+        NONE
+    );
+    // Sent, received or put in a failure, however deep, it is refused.
+    for (declaration, why) in [
+        (
+            "type Account = Output {\n    password_hash: PasswordHash\n}\n",
+            "sent",
+        ),
+        (
+            "type Kept = PasswordHash {}\n\ntype Account = Output {\n    old_hashes: List<Kept>\n}\n",
+            "sent in a list, built on it",
+        ),
+        (
+            "type Holder = Object {\n    hash_kept: PasswordHash?\n}\n\ntype Account = Output {\n    holder: Holder\n}\n",
+            "sent inside an object",
+        ),
+        (
+            "type Signup = Input {\n    password_hash: PasswordHash\n}\n",
+            "received",
+        ),
+        (
+            "type WrongPassword = Failure {\n    kind: FailureKind.invalid_value\n    client: {\n        hash_tried: PasswordHash\n    }\n}\n",
+            "in a failure",
+        ),
+    ] {
+        assert_eq!(check(declaration), ["type.password_hash_exposed"], "{why}");
+    }
+    // `json.write` and `json.read` refuse it too.
+    assert_eq!(
+        check("function f(kept: PasswordHash) -> Shown {\n    return Shown(json.write(kept))\n}\n"),
+        ["type.mismatch"]
     );
 }

@@ -140,6 +140,15 @@ impl Body<'_> {
     /// The first type inside `ty` that has no JSON form here, with what it
     /// is, after "is": a failure, an event, an entity, a secret, `Unit`.
     fn unwritable(&self, ty: &Ty, seen: &mut BTreeSet<String>) -> Option<(String, String)> {
+        // A password's hash is stored and checked, never sent or read
+        // (area 19, decided by the lead session for chunk 5.5q2).
+        if let Some(hash) = self.password_hash(ty) {
+            return Some((
+                hash,
+                "a password's hash, which is stored and checked but never leaves the server"
+                    .to_string(),
+            ));
+        }
         let found = self.table.structure(ty);
         match &found {
             Ty::Error | Ty::Unknown(_) | Ty::Var(_) => None,
@@ -224,5 +233,27 @@ fn fields_base(base: FieldsBase) -> &'static str {
             "an entity, whose records reach a client only through an `Output` that picks what it sends"
         }
         FieldsBase::Object | FieldsBase::Input | FieldsBase::Output => "an object",
+    }
+}
+
+impl Body<'_> {
+    /// The type as written when it is a `PasswordHash` or built on one.
+    fn password_hash(&self, ty: &Ty) -> Option<String> {
+        let mut current = ty.strip_nullable().clone();
+        for _ in 0..16 {
+            let Ty::Named(name) = &current else {
+                return None;
+            };
+            if name == jadpo_std::standard::security::PASSWORD_HASH {
+                return Some(ty.strip_nullable().to_string());
+            }
+            match self.table.def(name) {
+                Some(super::super::table::Def::Scalar { parent, .. }) => {
+                    current = parent.strip_nullable().clone();
+                }
+                _ => return None,
+            }
+        }
+        None
     }
 }

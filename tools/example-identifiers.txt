@@ -273,6 +273,7 @@ class_schedule
 class_time
 clear_cart
 clearance
+clinic_public_key
 clinical_note
 clock_reading
 close_enough
@@ -566,6 +567,7 @@ handover_charge
 handovers
 harbour
 has_urgent
+hashed_password
 hazard
 headline_text
 heater_power
@@ -997,6 +999,7 @@ page_link
 page_todos
 paid
 paid_by_faster_payments
+paid_signature
 pale
 pantry
 parcel
@@ -1394,7 +1397,9 @@ staff_id
 staff_locale
 staff_member
 staff_membership
+staff_name
 staff_password
+staff_profile
 staff_role
 staff_view
 stage

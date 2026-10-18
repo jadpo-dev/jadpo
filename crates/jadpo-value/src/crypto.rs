@@ -331,6 +331,17 @@ pub fn sign(value: &[u8], keys: &KeyRing) -> Result<[u8; SIGNATURE_BYTES], Fault
     Ok(key.sign(value).to_bytes())
 }
 
+/// `crypto.public_key(key:)`: the Ed25519 public key of the `PrivateKey`
+/// setting's seed (RFC 8032, section 5.1.5), as a `PublicKey`'s unpadded
+/// Base64url, which the app may publish so others can check what it
+/// signs.
+pub fn public_key(keys: &KeyRing) -> Result<String, Fault> {
+    let key = SigningKey::from_bytes(keys.current_32()?);
+    Ok(crate::encoding::to_base64url(
+        key.verifying_key().as_bytes(),
+    ))
+}
+
 /// `crypto.verify_signature(value, signature, key)`: whether `signature`
 /// is `value`'s under the Ed25519 public key `public_key` (unpadded
 /// Base64url), verified strictly (RFC 8032's checks, with weak keys and
@@ -379,6 +390,7 @@ pub fn is_crypto(op: Op) -> bool {
             | Op::CryptoEncrypt
             | Op::CryptoHashPassword
             | Op::CryptoHmac
+            | Op::CryptoPublicKey
             | Op::CryptoSign
             | Op::CryptoVerifyHmac
             | Op::CryptoVerifyPassword
@@ -417,6 +429,7 @@ pub fn run(
         (Op::CryptoVerifyHmac, [value, Value::Bytes(mac), _]) => {
             Ok(Value::Bool(verify_hmac(bytes_of(value)?, mac, keys()?)))
         }
+        (Op::CryptoPublicKey, [_]) => Ok(Value::text(&public_key(keys()?)?)),
         (Op::CryptoSign, [value, _]) => Ok(bytes_value(&sign(bytes_of(value)?, keys()?)?)),
         (Op::CryptoVerifySignature, [value, Value::Bytes(signature), key]) => Ok(Value::Bool(
             verify_signature(bytes_of(value)?, signature, text_of(key)?),
@@ -608,6 +621,7 @@ mod tests {
             let public = crate::encoding::to_base64url(&hex(public));
             let message = hex(message);
             let keys = ring(&seed, None);
+            assert_eq!(public_key(&keys).as_deref(), Ok(public.as_str()));
             let signed = sign(&message, &keys).expect("signed");
             assert_eq!(to_hex(&signed), signature);
             assert!(verify_signature(&message, &signed, &public));

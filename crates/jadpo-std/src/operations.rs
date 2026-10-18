@@ -177,6 +177,7 @@ pub enum Op {
     CryptoEncrypt,
     CryptoHashPassword,
     CryptoHmac,
+    CryptoPublicKey,
     CryptoSign,
     CryptoVerifyHmac,
     CryptoVerifyPassword,
@@ -1058,6 +1059,14 @@ pub const OPERATIONS: &[Operation] = &[
         BYTES_VALUE,
         &[],
         "crypto::hmac",
+    ),
+    crypto(
+        Op::CryptoPublicKey,
+        "public_key",
+        &[param("key", PRIVATE_KEY)],
+        Kind::Std(crate::standard::security::PUBLIC_KEY),
+        &[],
+        "crypto::public_key",
     ),
     crypto(
         Op::CryptoSign,

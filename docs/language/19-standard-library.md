@@ -3622,6 +3622,7 @@ on its own line, and a `LocalisedText` as `text.pick` gives it.
 | `crypto.hmac(value, key:)` | `Bytes`, HMAC-SHA-256 with the current key | | none |
 | `crypto.verify_hmac(value, mac, key:)` | `Bool`, in constant time, against the current or previous key | | none |
 | `crypto.sign(value, key:)` | `Bytes`, an Ed25519 signature; `key:` a `PrivateKey` setting | | none |
+| `crypto.public_key(key:)` | `PublicKey`, the Ed25519 public half of a `PrivateKey` setting, which the app may publish so others can check what it signs (decided by the lead session for chunk 5.5q2) | | none |
 | `crypto.verify_signature(value, signature, key)` | `Bool`; `key` a `PublicKey`, which is not secret and may be read | | none |
 | `crypto.verify_jwt(token, keys:)` | `JwtClaims`, checked against a set of `Jwk`s, each key's own algorithm only (never `none`, never chosen by the token), with expiry and not-before against `clock.now` | `invalid_signature`, `expired`, `not_yet_valid`, `malformed` | none |
 | `crypto.verify_totp(code, secret)` | `Bool` for a `OneTimeCode` against a `TotpSecret`, RFC 6238 with one step either side. Waits for keys held as data | | none |
@@ -3751,6 +3752,12 @@ function receipt_signature(receipt: Receipt) -> ReceiptSignature {
     return ReceiptSignature(crypto.sign(receipt, key: config.receipt_key))
 }
 
+/// The clinic's public key, which it publishes so anyone can check its
+/// receipts.
+function clinic_public_key() -> PublicKey {
+    return crypto.public_key(key: config.receipt_key)
+}
+
 /// Whether a receipt was signed with the private half of `issuer_key`.
 function receipt_from(
     receipt: Receipt,
@@ -3802,6 +3809,12 @@ test "a receipt's signature checks with its issuer's public key" {
     assert not receipt_from("R", rfc_signature, "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw")
     assert text.length(encoding.to_hex(receipt_signature("r"))) == 128
 }
+
+test "what the clinic signs checks with the key it publishes" {
+    var paid_signature: ReceiptSignature = receipt_signature("Paid in full.")
+    assert receipt_from("Paid in full.", paid_signature, clinic_public_key())
+    assert not receipt_from("Paid in part.", paid_signature, clinic_public_key())
+}
 ```
 
 Reading a key anywhere but a `key:` is `configuration.secret_flow`
@@ -3835,7 +3848,7 @@ check failed: 1 error, 1 file
 ```
 
 > Built in chunk 5.5q2: the eight operations in `jadpo-value`'s `crypto`
-> module, on RustCrypto's `chacha20poly1305`, `argon2`, `hmac` and
+> module, with `public_key` beside them, on RustCrypto's `chacha20poly1305`, `argon2`, `hmac` and
 > `sha2` and dalek's `ed25519-dalek`, each checked against its standard's
 > known answers and built for wasm32; `EncryptionKey` and `PrivateKey` as
 > built-in secret types beside `SigningKey`, and `PasswordHash`,
@@ -6551,6 +6564,40 @@ error: A function can't call `random.code`
 check failed: 1 error, 1 file
 ```
 
+### `type.password_hash_exposed`
+
+A `PasswordHash` is stored and checked, and never leaves the server: an
+`Output`, a request's `Input` and a failure's fields refuse one, however
+deep, as `json.write` and `json.read` do (decided by the lead session for
+chunk 5.5q2). A client that needs to know whether a password is set is
+sent that instead.
+
+```jadpo check project=e-password-hash-exposed expect=type.password_hash_exposed
+type StaffName = Text {
+    max_length: 100
+}
+
+/// What the staff page shows of a member of staff.
+type StaffProfile = Output {
+    name: StaffName
+    hashed_password: PasswordHash
+}
+```
+
+```text output
+error: `StaffProfile.hashed_password` holds a password's hash
+ --> main.jadpo:8:22
+  |
+8 |     hashed_password: PasswordHash
+  |                      ^^^^^^^^^^^^ sent to a client
+  reason: A `PasswordHash` is stored and checked with `crypto.verify_password`, and never leaves the server. A client never needs a password's hash, and anyone who gets one can guess passwords against it offline, at their own pace.
+  next: Remove `hashed_password`, and send what the client needs instead, such as whether a password is set (agent)
+  rule: type.password_hash_exposed
+  help: docs/language/19-standard-library.html#type-password-hash-exposed
+
+check failed: 1 error, 1 file
+```
+
 ## Review
 
 ### Status
@@ -8844,8 +8891,8 @@ conservative reading:
   (RFC 9106's costliest recommendation), 16 passes and 16 lanes, a salt of
   8 to 64 bytes and a hash of 16 to 64, so a hash from outside can't make
   a sign-in allocate without bound. `verify_password` reads it again and
-  gives `wrong` for anything else, never a fault. It otherwise meets the
-  contract as every standard type does: stored and sent as its PHC string.
+  gives `wrong` for anything else, never a fault. It is stored as its PHC
+  string, and never leaves the server (decided by the lead session, below).
 - **`PublicKey` is an Ed25519 key's 32 bytes as unpadded Base64url,** the
   `PrivateKey` setting's spelling; its construction checks the spelling,
   and `verify_signature` verifies strictly (RFC 8032's checks, refusing
@@ -8939,6 +8986,8 @@ conservative reading:
 | `mmHg` and `bpm` suffixes | Question 17's table gains `mmHg` for a `Pressure` and `bpm` for a `Frequency`, purely additive and clashing with no suffix or keyword; a milligram a decilitre keeps no suffix, since a suffix can't hold `/`. Decided by the lead session, not a question for Richard | 2026-10-18 |
 | `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens; `HEAD`, `OPTIONS`, `CONNECT` and `TRACE` aren't variants, since the runtime answers `HEAD` and `OPTIONS` itself and adding them later breaks nothing (decided by the lead session, as chunk 5.5n recommended) | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
+| A `PasswordHash` never leaves the server | It is stored as its PHC string, but refused in an `Output` (so a response), a request's `Input`, a failure's fields and `json.write` and `json.read`, as `type.password_hash_exposed` or `type.mismatch`; no page needs one read for imports, so `Input` refuses it too (lead session, chunk 5.5q2) | 2026-10-18 |
+| `crypto.public_key` | `crypto.public_key(key: config.<name>)` gives the `PublicKey` of a `PrivateKey` setting, Ed25519's public half, so an app can publish its key and a test can sign and verify; the key is still read only through `key:` (lead session, chunk 5.5q2) | 2026-10-18 |
 
 ### Open questions
 

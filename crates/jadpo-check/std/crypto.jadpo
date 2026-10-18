@@ -30,6 +30,10 @@ public library crypto {
     /// HMAC-SHA-256 of `value` under the current key.
     function hmac(value: T, key: SigningKey) -> Bytes {}
 
+    /// The Ed25519 public key of the `PrivateKey` setting, which isn't
+    /// secret: published, others check what the app signs with it.
+    function public_key(key: PrivateKey) -> PublicKey {}
+
     /// The Ed25519 signature of `value`, 64 bytes.
     function sign(value: T, key: PrivateKey) -> Bytes {}
 

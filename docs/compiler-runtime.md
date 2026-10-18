@@ -320,7 +320,7 @@ operation being pure. The checker refuses them outside actions and tests
 (`type.random_context`, as `clock.now`'s `type.clock_context`), and each
 executor runs them through `jadpo_value::random::run`, given the
 invocation's source of random bytes, rather than `jadpo_value::run`.
-Since chunk 5.5q2 `crypto`'s eight operations run the same way, through
+Since chunk 5.5q2 `crypto`'s operations run the same way, through
 `jadpo_value::crypto::run`, given the invocation's random bytes (for
 `encrypt`'s nonce and `hash_password`'s salt, which read the generator)
 and the key its `key: config.<name>` names. A key is never a value: the
