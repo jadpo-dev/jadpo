@@ -241,6 +241,7 @@ chores
 citation
 citation_id
 citation_view
+citizen_of
 class_count
 class_schedule
 class_time
@@ -407,6 +408,7 @@ end_of_day
 end_of_january
 end_shift
 enrol
+enrolled
 entered
 entered_amount
 entry_count
@@ -567,6 +569,8 @@ jp_parcel
 judge_note
 keep_memo
 keeper
+kept_after
+kept_record
 key_bytes
 key_expires_at
 key_in_order
@@ -723,6 +727,7 @@ nand
 nearly
 needs_cooling
 never_rose
+new_address
 new_bakery
 new_card
 new_key
@@ -990,6 +995,8 @@ reaction
 read_by_bob
 read_by_dee
 read_clock
+readdress
+readdressed
 reader_locale
 reader_pick
 receipt
@@ -1004,6 +1011,7 @@ recipe_name
 recipe_scale
 recipe_title
 recipes
+recipient
 record_delivery
 record_payment
 record_payment_webhook
@@ -1127,6 +1135,7 @@ shelvable
 shelves
 shift_end
 ship_parcel
+ship_to
 shipment
 shipped
 shipping_address

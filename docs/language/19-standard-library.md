@@ -3212,6 +3212,90 @@ test "a closed list reads its codes and its other code systems" {
 }
 ```
 
+A recipient's name and address are stored a column per part, so a
+query can read a town or a country as it reads any column, and come back
+as they were written:
+
+```jadpo check project=recipient-addresses file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=recipient-addresses file=domains/mailroom/entities/recipient.jadpo migrate=initial
+/// Someone the mailroom sends parcels to.
+entity Recipient {
+    id: Uuid
+    name: PersonName  // columns `name_given` and `name_family`
+    ship_to: PostalAddress  // a column per part, its lines a `text[]`
+    citizen_of: Nationality?  // its code, `IN`
+}
+```
+
+```jadpo check project=recipient-addresses file=domains/mailroom/actions/enrol.jadpo hidden
+use mailroom/entities { Recipient }
+
+/// Enrols a recipient with the address the mailroom sends to.
+action enrol(name: PersonName, ship_to: PostalAddress, citizen_of: Nationality?) -> Recipient {
+    return Recipient.create {
+        set: {
+            name: name
+            ship_to: ship_to
+            citizen_of: citizen_of
+        }
+    }
+}
+```
+
+```jadpo check project=recipient-addresses file=domains/mailroom/actions/readdress.jadpo hidden
+use mailroom/entities { Recipient }
+
+/// Sends a recipient's parcels to a new address.
+action readdress(recipient: Recipient, new_address: PostalAddress) -> Recipient {
+    return Recipient.update(recipient) {
+        set: {
+            ship_to: new_address
+        }
+    }
+}
+```
+
+```jadpo check project=recipient-addresses file=domains/mailroom/actions/enrol.test.jadpo
+use mailroom/entities { Recipient }
+use mailroom/actions { readdress }
+
+test "a name and an address are kept part by part" {
+    var enrolled: Recipient = enrol(
+        PersonName {
+            given: "Mary"
+            family: none
+        },
+        PostalAddress {
+            lines: ["Flat 2", "14 Rue de Rivoli"]
+            locality: "Paris"
+            region: none
+            postal_code: "75004"
+            country: Country.fr
+        },
+        Nationality.in_
+    )
+    var kept_record: Recipient = attempt Recipient.get(enrolled.id)
+    assert kept_record.name == enrolled.name
+    assert kept_record.ship_to == enrolled.ship_to
+    assert kept_record.citizen_of == Nationality.in_
+    var readdressed: Recipient = readdress(
+        kept_record,
+        PostalAddress {
+            lines: ["2-7-2 Marunouchi"]
+            locality: "Chiyoda-ku"
+            region: "Tokyo"
+            postal_code: "100-8994"
+            country: Country.jp
+        }
+    )
+    var kept_after: Recipient = attempt Recipient.get(enrolled.id)
+    assert kept_after.ship_to == readdressed.ship_to
+}
+```
+
 > Built in chunk 5.5l for 15 of people and places: the closed lists
 > `Country`, `CountrySubdivision`, `Continent`, `Language`,
 > `WritingScript`, `TextDirection` and `Nationality`, each with `.all`,
