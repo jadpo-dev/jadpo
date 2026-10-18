@@ -229,6 +229,10 @@ std_enum! {
         /// A GiST index on one geometry field, which `geo.` conditions
         /// search (area 20, "Indexes"; chunk 5.5u4).
         Geographic: "geographic",
+        /// pgvector's HNSW index on one vector field, which `nearest`
+        /// searches, tuned by `m:` and `ef_construction:` (area 21, "The
+        /// index"; chunk 5.5v1c).
+        Hnsw: "hnsw",
     }
 }
 
@@ -499,6 +503,17 @@ impl VectorDistance {
             VectorDistance::Cosine => "vector_cosine_ops",
             VectorDistance::Euclidean => "vector_l2_ops",
             VectorDistance::InnerProduct => "vector_ip_ops",
+        }
+    }
+
+    /// pgvector's HNSW operator class for it on a half-precision
+    /// `halfvec`, which indexes a vector of 2,001 to 4,000 dimensions
+    /// (area 21, "The index"; chunk 5.5v1c).
+    pub fn half_operator_class(self) -> &'static str {
+        match self {
+            VectorDistance::Cosine => "halfvec_cosine_ops",
+            VectorDistance::Euclidean => "halfvec_l2_ops",
+            VectorDistance::InnerProduct => "halfvec_ip_ops",
         }
     }
 }

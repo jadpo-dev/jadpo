@@ -336,7 +336,7 @@ fn a_distance_is_between_two_vectors_of_one_type() {
 
 /// Two vector types of one length, an entity holding each kind of vector,
 /// and a result type picking its title.
-const SEARCH: &str = "/// A help article's meaning, as the configured embedding model makes it.\ntype ArticleMeaning = Vector {\n    dimensions: 8\n}\n\n/// A question's meaning, as the older model made it.\ntype QuestionMeaning = Vector {\n    dimensions: 8\n}\n\n/// A long embedding.\ntype LongMeaning = Vector {\n    dimensions: 3072\n    distance: VectorDistance.euclidean\n}\n\n/// A title.\ntype Title = Text {\n    max_length: 80\n}\n\n/// How many answers to show.\ntype AnswerCount = Int {\n    min: 1\n    max: 20\n}\n\n/// More answers than a nearest query gives.\ntype ManyAnswers = Int {\n    min: 1\n    max: 500\n}\n\nentity HelpArticle {\n    id: Uuid\n    title: Title\n    shown_publicly: Bool\n    body_meaning: ArticleMeaning?\n    long_meaning: LongMeaning?\n    loose: Vector?\n    embedding: Embedding?\n}\n\ntype ArticleExcerpt = Output {\n    pick: [HelpArticle.id, HelpArticle.title]\n}\n\n";
+const SEARCH: &str = "/// A help article's meaning, as the configured embedding model makes it.\ntype ArticleMeaning = Vector {\n    dimensions: 8\n}\n\n/// A question's meaning, as the older model made it.\ntype QuestionMeaning = Vector {\n    dimensions: 8\n}\n\n/// A long embedding.\ntype LongMeaning = Vector {\n    dimensions: 3072\n    distance: VectorDistance.euclidean\n}\n\n/// An embedding too long for any index.\ntype VeryLongMeaning = Vector {\n    dimensions: 5000\n}\n\n/// A title.\ntype Title = Text {\n    max_length: 80\n}\n\n/// How many answers to show.\ntype AnswerCount = Int {\n    min: 1\n    max: 20\n}\n\n/// More answers than a nearest query gives.\ntype ManyAnswers = Int {\n    min: 1\n    max: 500\n}\n\nentity HelpArticle {\n    id: Uuid\n    title: Title\n    shown_publicly: Bool\n    body_meaning: ArticleMeaning?\n    long_meaning: LongMeaning?\n    very_long_meaning: VeryLongMeaning?\n    loose: Vector?\n    embedding: Embedding?\n}\n\ntype ArticleExcerpt = Output {\n    pick: [HelpArticle.id, HelpArticle.title]\n}\n\n";
 
 fn searched(source: &str) -> Vec<String> {
     checked(&format!("{SEARCH}{source}"))
@@ -417,15 +417,253 @@ fn nearest_needs_a_vector_of_fixed_length() {
             "{field}"
         );
     }
-    // Over 2,000 dimensions waits on chunk 5.5v1c.
-    assert_eq!(
-        searched(&nearest_query(
-            "LongMeaning",
-            "List<Nearest<HelpArticle>>",
-            "    order: [HelpArticle.long_meaning nearest meaning]\n    limit: 5\n",
-        )),
-        ["toolchain.not_built_yet"]
+}
+
+/// The query model of `closest` in `source`, after `SEARCH`.
+fn closest_model(source: &str) -> jadpo_check::data::queries::QueryModel {
+    let db = Database::default();
+    let project = support::project(
+        &db,
+        Layout::Loose,
+        &[("main.jadpo", &format!("{SEARCH}{source}"))],
     );
+    let queries = jadpo_check::data::queries::query_models(&db, project);
+    queries.get("closest").expect("the query").clone()
+}
+
+/// The `help_article` table's indexes `source` derives or declares.
+fn article_indexes(source: &str) -> std::collections::BTreeMap<String, jadpo_graph::schema::Index> {
+    let db = Database::default();
+    let project = support::project(
+        &db,
+        Layout::Loose,
+        &[("main.jadpo", &format!("{SEARCH}{source}"))],
+    );
+    let schema = jadpo_check::data::schema(&db, project);
+    schema.stores["main"].tables["help_article"].indexes.clone()
+}
+
+#[test]
+fn a_longer_vector_is_searched_at_half_precision() {
+    // Area 21, "The index" (chunk 5.5v1c): 2,001 to 4,000 dimensions are
+    // indexed through a `halfvec` expression.
+    let source = nearest_query(
+        "LongMeaning",
+        "List<Nearest<HelpArticle>>",
+        "    order: [HelpArticle.long_meaning nearest meaning]\n    limit: 5\n",
+    );
+    assert_eq!(searched(&source), NONE);
+    let query = closest_model(&source);
+    let nearest = query.nearest.as_ref().expect("a nearest order");
+    assert_eq!(nearest.dimensions, 3072);
+    assert_eq!(
+        nearest.search,
+        jadpo_check::data::queries::VectorSearch::HalfPrecision(3072)
+    );
+    let indexes = article_indexes(&source);
+    let index = &indexes["help_article_long_meaning_idx"];
+    assert_eq!(index.columns, ["long_meaning"]);
+    let method = index.method.as_ref().expect("an HNSW index");
+    assert_eq!(method.name, "hnsw");
+    assert_eq!(method.operator_class, "halfvec_l2_ops");
+    assert_eq!(method.cast.as_deref(), Some("halfvec(3072)"));
+    assert!(method.with.is_empty());
+}
+
+#[test]
+fn a_vector_too_long_to_index_is_searched_exactly_once_declined() {
+    // Over 4,000 dimensions: the cost is named, and a decline accepts it.
+    let lines = "    order: [HelpArticle.very_long_meaning nearest meaning]\n    limit: 5\n";
+    let source = nearest_query("VeryLongMeaning", "List<Nearest<HelpArticle>>", lines);
+    assert_eq!(searched(&source), ["query.nearest_exact"]);
+    // The decline stands above the `order:` the finding is on.
+    let declined = nearest_query(
+        "VeryLongMeaning",
+        "List<Nearest<HelpArticle>>",
+        &format!(
+            "    decline query.nearest_exact: \"A few hundred articles, read in full\"\n{lines}"
+        ),
+    );
+    assert_eq!(searched(&declined), NONE);
+    let query = closest_model(&declined);
+    let nearest = query.nearest.as_ref().expect("a nearest order");
+    assert_eq!(
+        nearest.search,
+        jadpo_check::data::queries::VectorSearch::Exact
+    );
+    // No index is derived for it.
+    let indexes = article_indexes(&declined);
+    assert!(
+        indexes.values().all(|index| index.method.is_none()),
+        "{indexes:#?}"
+    );
+}
+
+/// `SEARCH` with an `indexes:` section of `entries` on `HelpArticle`, and
+/// a query searching `field`.
+fn tuned(entries: &str, field: &str) -> String {
+    let with_indexes = SEARCH.replace(
+        "    embedding: Embedding?\n}\n",
+        &format!("    embedding: Embedding?\n\n    indexes: {{\n{entries}    }}\n}}\n"),
+    );
+    let ty = match field {
+        "long_meaning" => "LongMeaning",
+        "very_long_meaning" => "VeryLongMeaning",
+        _ => "ArticleMeaning",
+    };
+    format!(
+        "{with_indexes}{}",
+        nearest_query(
+            ty,
+            "List<Nearest<HelpArticle>>",
+            &format!("    order: [HelpArticle.{field} nearest meaning]\n    limit: 5\n"),
+        )
+    )
+}
+
+/// An `indexes:` entry `by_meaning` on `field` with `settings`.
+fn hnsw_entry(field: &str, settings: &str) -> String {
+    format!(
+        "        by_meaning: {{\n            fields: [{field}]\n            kind: IndexKind.hnsw\n{settings}        }}\n"
+    )
+}
+
+#[test]
+fn a_tuned_hnsw_index_sets_m_and_ef_construction() {
+    let source = tuned(
+        &hnsw_entry(
+            "body_meaning",
+            "            m: 24\n            ef_construction: 128\n",
+        ),
+        "body_meaning",
+    );
+    assert_eq!(checked(&source), NONE);
+    let db = Database::default();
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", &source)]);
+    let schema = jadpo_check::data::schema(&db, project);
+    let indexes = &schema.stores["main"].tables["help_article"].indexes;
+    let hnsw: Vec<(&String, &jadpo_graph::schema::Index)> = indexes
+        .iter()
+        .filter(|(_, index)| index.method.is_some())
+        .collect();
+    assert_eq!(
+        hnsw.len(),
+        1,
+        "the declared index serves the query: {indexes:#?}"
+    );
+    let (name, index) = hnsw[0];
+    assert_eq!(name, "help_article_by_meaning_idx");
+    let method = index.method.as_ref().expect("a method");
+    assert_eq!(method.operator_class, "vector_cosine_ops");
+    assert_eq!(
+        method.with,
+        [("m".to_string(), 24), ("ef_construction".to_string(), 128)]
+    );
+    // At half precision too, and with neither setting.
+    let source = tuned(
+        &hnsw_entry("long_meaning", "            ef_construction: 200\n"),
+        "long_meaning",
+    );
+    assert_eq!(checked(&source), NONE);
+    let source = tuned(&hnsw_entry("body_meaning", ""), "body_meaning");
+    assert_eq!(checked(&source), NONE);
+    // The bounds pgvector takes.
+    for (settings, why) in [
+        (
+            "            m: 2\n            ef_construction: 4\n",
+            "the least",
+        ),
+        (
+            "            m: 100\n            ef_construction: 1000\n",
+            "the most",
+        ),
+        ("            m: 32\n", "twice 32 is the default 64"),
+        (
+            "            m: 16\n            ef_construction: 32\n",
+            "exactly twice",
+        ),
+    ] {
+        assert_eq!(
+            checked(&tuned(
+                &hnsw_entry("body_meaning", settings),
+                "body_meaning"
+            )),
+            NONE,
+            "{why}"
+        );
+    }
+}
+
+#[test]
+fn an_hnsw_index_s_tuning_stays_within_pgvector_s_bounds() {
+    for (settings, why) in [
+        ("            m: 1\n", "m below 2"),
+        (
+            "            m: 101\n            ef_construction: 1000\n",
+            "m above 100",
+        ),
+        (
+            "            ef_construction: 3\n",
+            "ef_construction below 4",
+        ),
+        (
+            "            ef_construction: 1001\n",
+            "ef_construction above 1,000",
+        ),
+        ("            m: 16.5\n", "not a whole number"),
+        ("            m: \"16\"\n", "text"),
+        (
+            "            m: 16\n            ef_construction: 31\n",
+            "less than twice m",
+        ),
+        (
+            "            m: 33\n",
+            "more than half the default ef_construction",
+        ),
+        (
+            "            ef_construction: 20\n",
+            "less than twice the default m",
+        ),
+    ] {
+        assert_eq!(
+            checked(&tuned(
+                &hnsw_entry("body_meaning", settings),
+                "body_meaning"
+            )),
+            ["type.setting_value"],
+            "{why}"
+        );
+    }
+    assert_eq!(
+        checked(&tuned(
+            &hnsw_entry("body_meaning", "            m: 16\n            m: 24\n"),
+            "body_meaning"
+        )),
+        ["data.duplicate_rule"],
+        "m twice"
+    );
+    // Only an HNSW index has them.
+    assert_eq!(
+        checked(&tuned(
+            "        by_title: {\n            fields: [title]\n            m: 24\n        }\n",
+            "body_meaning"
+        )),
+        ["type.unknown_setting"]
+    );
+    // On one vector field of fixed length, of at most 4,000 dimensions.
+    for (field, why) in [
+        ("title", "not a vector"),
+        ("loose", "no fixed length"),
+        ("embedding", "an embedding"),
+        ("very_long_meaning", "too long"),
+        ("body_meaning, long_meaning", "two fields"),
+    ] {
+        assert_eq!(
+            checked(&tuned(&hnsw_entry(field, ""), "body_meaning")),
+            ["type.setting_value"],
+            "{why}"
+        );
+    }
 }
 
 #[test]

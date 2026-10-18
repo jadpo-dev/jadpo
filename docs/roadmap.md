@@ -1284,7 +1284,7 @@ reference only).
   wherever a migration builds an HNSW index; and the three
   `query.nearest_` errors have checked examples. What the chunk chose is
   area 21's "Chosen in chunk 5.5v1b".
-- [ ] **5.5v1c Vector indexes: longer vectors and tuning** `opus · high`
+- [x] **5.5v1c Vector indexes: longer vectors and tuning** `opus · high`
   (area 21, "The index"), after 5.5v1b: a type of 2,001 to 4,000
   dimensions indexed through a half-precision expression, the query
   comparing the same expression; one over 4,000 searched exactly, with
@@ -1292,7 +1292,17 @@ reference only).
   with `m:` and `ef_construction:` in an `indexes:` entry. Done when a
   3,072-dimension type's nearest query uses its half-precision index, a
   5,000-dimension one's error has a checked example, and a tuned index's
-  migration sets both.
+  migration sets both. Built: a 3,072-dimension nearest query, called by
+  an action the interpreter runs on PostgreSQL, returns the five records
+  and the full-precision distances `ai.distance` gives, and its plan
+  reads its `halfvec` expression index (`EXPLAIN`), in a live test that
+  skips below pgvector 0.8.0 and fails so under CI; over 4,000 dimensions
+  `query.nearest_exact`, declinable, has a checked example, and declined
+  the query reads every record in one statement (live, on any pgvector);
+  a tuned index's migration writes `WITH (m = 24, ef_construction =
+  128)`, which PostgreSQL keeps; and out-of-range tuning is
+  `type.setting_value`. What the chunk chose is area 21's "Chosen in
+  chunk 5.5v1c".
 - [x] **5.5v2 Prompt files** `opus · high` (area 21, "Prompts as
   files"): the `Prompt` type base, `prompts/` in a domain,
   `<name>.prompt` with `# Instructions` and `# Request`, placeholders

@@ -63,14 +63,18 @@ pub const DISTANCE: &str = "jadpo_distance";
 
 /// A nearest-neighbour read (area 21, chunk 5.5v1b): `columns` of `table`
 /// and the `distance` expression as [`DISTANCE`], where `conditions`
-/// hold, nearest first by the distance alone and at most `limit`, the one
-/// order an HNSW index serves; then the rows it found ordered again by
-/// the distance and `tie` (the `id`), outside, since PostgreSQL reads no
-/// HNSW index for an order with a second key.
+/// hold, nearest first by the `order` expression alone and at most
+/// `limit`, the one order an HNSW index serves; then the rows it found
+/// ordered again by the distance and `tie` (the `id`), outside, since
+/// PostgreSQL reads no HNSW index for an order with a second key. `order`
+/// is the distance itself, or for a vector indexed at half precision the
+/// same distance between `halfvec` casts, as its index holds (chunk
+/// 5.5v1c).
 pub fn nearest<S: AsRef<str>>(
     columns: &[S],
     table: &str,
     distance: &str,
+    order: &str,
     conditions: &[String],
     limit: &str,
     tie: &str,
@@ -82,12 +86,39 @@ pub fn nearest<S: AsRef<str>>(
         ident(table)
     );
     where_clause(&mut inner, conditions, "  ");
-    inner.push_str(&format!("\n  ORDER BY {distance}\n  LIMIT {limit}"));
+    inner.push_str(&format!("\n  ORDER BY {order}\n  LIMIT {limit}"));
     format!(
         "SELECT *\nFROM (\n{inner}\n) AS \"nearest\"\nORDER BY {}, {}",
         ident(DISTANCE),
         ident(tie)
     )
+}
+
+/// An exact nearest-neighbour read, for a vector too long for an index
+/// (area 21, chunk 5.5v1c): every row where `conditions` hold measured,
+/// then ordered by the distance and `tie` in one statement, since no
+/// index is read.
+pub fn nearest_exact<S: AsRef<str>>(
+    columns: &[S],
+    table: &str,
+    distance: &str,
+    conditions: &[String],
+    limit: &str,
+    tie: &str,
+) -> String {
+    let mut sql = format!(
+        "SELECT {}, {distance} AS {}\nFROM {}",
+        idents(columns),
+        ident(DISTANCE),
+        ident(table)
+    );
+    where_clause(&mut sql, conditions, "");
+    sql.push_str(&format!(
+        "\nORDER BY {}, {}\nLIMIT {limit}",
+        ident(DISTANCE),
+        ident(tie)
+    ));
+    sql
 }
 
 /// The alias of an aggregate read's grouped rows.

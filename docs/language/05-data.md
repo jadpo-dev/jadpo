@@ -367,8 +367,10 @@ entity Todo {
 Built in chunk 3.1: an index is a list of fields; a `kind:` option is not
 built yet. Since chunk 5.5u4 an entry may be a block of `fields:` and
 `kind:`, and `kind: IndexKind.geographic` makes a GiST index on one
-geometry field ([area 20](20-geospatial.md), "Indexes"); the other kinds
-come with their areas. Since chunk 3.2 the queries' indexes are derived: for each
+geometry field ([area 20](20-geospatial.md), "Indexes"); since chunk
+5.5v1c `kind: IndexKind.hnsw`, with `m:` and `ef_construction:` for
+tuning, makes pgvector's HNSW index on one vector field
+([area 21](21-ai.md), "The index"); the other kinds come with their areas. Since chunk 3.2 the queries' indexes are derived: for each
 query, and each list it includes, the fields it always tests with `==` or
 `in`, then its order's fields, unless an index or unique key the table
 already has serves them; a reference's own index goes once a query's index

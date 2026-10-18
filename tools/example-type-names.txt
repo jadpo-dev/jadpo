@@ -47,6 +47,7 @@ Opening
 Opens
 Order
 Pair
+Paper
 Party
 Payment
 Pence
