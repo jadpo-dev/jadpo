@@ -253,6 +253,15 @@ impl Reader {
         Err(Refusal { at, rule })
     }
 
+    /// The characters from `start` to where the reader is.
+    fn text(&self, start: usize) -> String {
+        self.chars
+            .get(start..self.at)
+            .unwrap_or_default()
+            .iter()
+            .collect()
+    }
+
     fn spaces(&mut self) {
         while self.chars.get(self.at).is_some_and(|c| c.is_whitespace()) {
             self.at += 1;
@@ -289,7 +298,7 @@ impl Reader {
         {
             self.at += 1;
         }
-        let word: String = self.chars[start..self.at].iter().collect();
+        let word = self.text(start);
         (start, word.to_ascii_uppercase())
     }
 
@@ -329,7 +338,7 @@ impl Reader {
         while self.chars.get(self.at).is_some_and(char::is_ascii_digit) {
             self.at += 1;
         }
-        self.chars[start..self.at].iter().collect()
+        self.text(start)
     }
 
     /// A geometry from its keyword, which may carry its `Z` (`POINTZ`), as
@@ -523,8 +532,11 @@ impl Reader {
                 Ok(value)
             }
         };
-        let longitude = within(numbers[0], 180)?;
-        let latitude = within(numbers[1], 90)?;
+        let (Some(&first), Some(&second)) = (numbers.first(), numbers.get(1)) else {
+            return self.refused(start, MALFORMED);
+        };
+        let longitude = within(first, 180)?;
+        let latitude = within(second, 90)?;
         let altitude = match numbers.get(2) {
             Some((at, metres)) => {
                 let unit = QuantityKind::Length.base_unit();
@@ -573,7 +585,7 @@ impl Reader {
                 return self.refused(start, MALFORMED);
             }
         }
-        let written: String = self.chars[start..self.at].iter().collect();
+        let written = self.text(start);
         // A number past a double's range is past every coordinate's.
         let Some(nearest) = jadpo_std::standard::geo::nearest_double(&written) else {
             return self.refused(start, OUT_OF_RANGE);

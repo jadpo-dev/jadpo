@@ -733,7 +733,39 @@ LIMIT 20
 | WKB | The PostgreSQL driver's own encoding; no operation | Inside the driver |
 | Other coordinate systems | Left out: `EastingNorthing` stays a value with its `Crs`, not converted | |
 
-```jadpo fragment
+The map's delivery layer, built in chunk 5.5u6. A feature's identity goes
+in its properties, so the bakery a patch belongs to is a property, and a
+layer read from a mapping library comes back to it byte for byte:
+
+```jadpo check project=geo-interop file=bakeries.jadpo hidden
+type PatchName = Text {
+    max_length: 80
+}
+
+type LayerJson = Text {}
+
+type NotALayer = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A shop that bakes and delivers.
+entity Bakery {
+    id: Uuid
+    spot: Point
+}
+
+/// An area one bakery delivers to.
+entity DeliveryPatch {
+    id: Uuid
+    bakery_id: Bakery.id {
+        on_delete: OnDelete.cascade
+    }
+    name: PatchName
+    outline: Polygon
+}
+```
+
+```jadpo check project=geo-interop
 type PatchProperties = Object {
     name: PatchName
     bakery_id: Bakery.id
@@ -742,14 +774,97 @@ type PatchProperties = Object {
 /// The map's delivery layer, as a mapping library reads it.
 function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon, PatchProperties> {
     return FeatureCollection {
-        features: list.map(patches, patch -> Feature {
-            geometry: patch.outline
-            properties: PatchProperties {
-                name: patch.name
-                bakery_id: patch.bakery_id
+        features: list.map(
+            patches,
+            patch -> Feature {
+                geometry: patch.outline
+                properties: PatchProperties {
+                    name: patch.name
+                    bakery_id: patch.bakery_id
+                }
             }
-        })
+        )
     }
+}
+
+/// A layer as the map is sent it.
+function layer_sent(layer: FeatureCollection<Polygon, PatchProperties>) -> LayerJson {
+    return LayerJson(json.write(layer))
+}
+
+/// A layer the planner drew, as its mapping library sends it.
+function drawn_layer(
+    sent: LayerJson
+) fails NotALayer -> FeatureCollection<Polygon, PatchProperties> {
+    return attempt json.read(sent, as: FeatureCollection<Polygon, PatchProperties>) {
+        malformed: NotALayer
+        mismatch: NotALayer  // an `id`, a missing geometry, properties of another shape
+    }
+}
+```
+
+```jadpo check project=geo-interop file=main.test.jadpo
+test "a drawn layer goes back to the map as it came" {
+    var sent: LayerJson = LayerJson(
+        "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"geometry\":{\"type\":\"Polygon\",\"coordinates\":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]},\"properties\":{\"name\":\"Soho\",\"bakery_id\":\"7b0c1f8e-3a52-4d7e-9a41-2f1d5c6e8b90\"}}]}"
+    )
+    var layer: FeatureCollection<Polygon, PatchProperties> = attempt drawn_layer(sent)
+    assert layer_sent(layer) == sent
+    assert list.count(layer.features) == 1
+}
+
+test "a feature's identity is in its properties" {
+    assert drawn_layer(
+        LayerJson(
+            "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"id\":7,\"geometry\":{\"type\":\"Polygon\",\"coordinates\":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]},\"properties\":{\"name\":\"Soho\",\"bakery_id\":\"7b0c1f8e-3a52-4d7e-9a41-2f1d5c6e8b90\"}}]}"
+        )
+    ) fails NotALayer
+}
+```
+
+WKT, built in chunk 5.5u6, from the planner's spreadsheet, whose cells
+hold outlines as WKT, longitude first:
+
+```jadpo check project=geo-wkt
+type ExportCell = Text {}
+
+type NotAShape = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A patch's outline from the planner's spreadsheet, a cell of WKT.
+function outline_from(cell: ExportCell) fails NotAShape -> Geometry {
+    return attempt geo.from_wkt(cell) {
+        malformed: NotAShape  // not WKT, or rings that cross
+        out_of_range: NotAShape  // past the poles, or another system
+    }
+}
+
+/// An outline for the planner's spreadsheet, longitude first.
+function cell_for(outline: Geometry) -> ExportCell {
+    return ExportCell(geo.to_wkt(outline))
+}
+```
+
+```jadpo check project=geo-wkt file=main.test.jadpo
+test "a patch comes back from the spreadsheet as it went" {
+    var cell: ExportCell = ExportCell(
+        "POLYGON((-0.2 51.49,-0.05 51.49,-0.05 51.54,-0.2 51.54,-0.2 51.49))"
+    )
+    var outline: Geometry = attempt outline_from(cell)
+    assert cell_for(outline) == cell
+    var typed: Geometry = attempt outline_from(
+        ExportCell(
+            "SRID=4326;polygon ((-0.2 51.49, -0.05 51.49, -0.05 51.54, -0.2 51.54, -0.2 51.49))"
+        )
+    )
+    assert typed == outline
+}
+
+test "what isn't an outline is refused" {
+    assert outline_from(ExportCell("POINT(-0.1276 91)")) fails NotAShape
+    assert outline_from(ExportCell("SRID=4258;POINT(-0.1276 51.5072)")) fails NotAShape
+    assert outline_from(ExportCell("POLYGON((0 0,10 10,0 10,10 0,0 0))")) fails NotAShape
 }
 ```
 
@@ -776,7 +891,8 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
 | `geo.distance`, `length`, `bearing` and `area`; coordinates held as doubles' shortest decimals | Decided 2026-10-18; built (5.5u2) |
 | `geo.intersects`, `contains`, `within` (with `distance:`, a `BoundingBox` and a `Circle`), `centroid`, `bounding_box`; `rings_valid` | Decided 2026-10-18; built (5.5u3) |
 | Storage: `geography` columns and their checks, `BoundingBox` and `Circle` in named columns, PostGIS created by the first migration that needs it, `migration.extension_missing`, `kind: IndexKind.geographic` | Decided 2026-10-18; built (5.5u4) |
-| Everything else on this page | Decided 2026-10-18; built by 5.5u5 and 5.5u6 |
+| Interop: `Feature` and `FeatureCollection`, `geo.from_wkt` and `geo.to_wkt`, `type.standard_exists`' shapes for `LineString` and `Polygon` | Decided 2026-10-18; built (5.5u6) |
+| Everything else on this page | Decided 2026-10-18; built by 5.5u5 |
 
 ### Consistency with the rest of the language
 
@@ -1114,6 +1230,100 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
   PostGIS's `ST_DWithin` uses the declared index. It runs on CI's image
   (PostGIS 3.6.4) and on Postgres.app here (PostGIS 3.4.2).
 
+### Chosen in chunk 5.5u6
+
+- **`geo.from_wkt` gives a `Geometry`,** the variant of the kind the text
+  names, which the application matches, as it matches a `Geometry` read
+  from GeoJSON; no `as:` picks a kind, so a reader never has to say what
+  a polygon read as a line fails with.
+- **What WKT is read.** The six geometries, keywords in any case, `Z`
+  written apart or joined (`POINT Z (...)`, `POINTZ(...)`), a
+  multi-point's points with or without brackets, any spacing, numbers
+  with an exponent, `SRID=4326;` before it. A position is two or three
+  numbers, three for `Z`, each read as the double it is and held as that
+  double's shortest decimal (question 2); a third without `Z` is an
+  altitude, as PostGIS reads it. `M` and `ZM`, `EMPTY`,
+  `GEOMETRYCOLLECTION`, the curves and every other kind are `malformed`.
+  A coordinate out of its range is `out_of_range`, where PostGIS's
+  `ST_GeogFromText` coerces it into range with a notice (verified,
+  PostGIS 3.4.2), as is any SRID but 4326, which PostGIS's `geography`
+  takes for other geographic systems (`SRID=4258;` is read, verified).
+- **Rings are kept as written,** as storage keeps them (chunk 5.5u4),
+  not rewound: only GeoJSON winds rings by the right-hand rule. A polygon
+  is checked as one read from GeoJSON is, closed rings of four points or
+  more and `rings_valid`, and one that isn't valid is `malformed`.
+- **The exact place.** The one reader, `jadpo-value`'s `geo::wkt`,
+  reports the character it stopped at, counted from 0, with the
+  condition: the start of a word that isn't a geometry, the bracket of a
+  ring or line that isn't one, the number out of range, the SRID's code.
+  The operation's failure carries the condition only, as
+  `encoding.from_hex`'s does; the place is for the tests and for a later
+  failure that receives it.
+- **Positions with and without an altitude in one geometry,**
+  *provisional, pending Richard's answer on whether such a geometry is
+  valid at all:* WKT can't write one and PostGIS refuses it ("can not
+  mix dimensionality in a geometry", verified), so reading WKT that mixes
+  them is `malformed`, at the first position of the other size, and
+  `geo.to_wkt` of a geometry built in code that mixes them is a fault,
+  as storing one is (chunk 5.5u4). Nothing else changes until he decides.
+- **`geo.to_wkt` writes `ST_AsText`'s form:** the keyword in capitals,
+  ` Z ` before the brackets when every position has an altitude, no
+  space after a comma, a multi-point's points each in brackets, each
+  coordinate the decimal the value holds and an altitude in metres with
+  no trailing zeros. `ST_AsText` keeps at most 15 places after the point,
+  so a coordinate with more (below 10⁻¹⁵ of a degree) comes back from
+  PostGIS rounded: `0.30000000000000004` is written `0.3` (verified). The
+  Done-when test (`jadpo-cli`'s `geography`, "live PostgreSQL:
+  geography") holds a patch with a hole, a patch wound the other way, one
+  at a height and every other kind to come back from `ST_GeogFromText`
+  and `ST_AsText`, as WKT and as EWKT, exactly as written, and to read
+  back as the value it started from.
+- **A feature's arguments.** `G` is one of the six geometries or
+  `Geometry`; `P` is an `Object` type of the application's, not an
+  `Input`, an `Output` or a standard object, so its fields are the
+  properties; either refused as `type.mismatch` where the type is written
+  or where a literal's values give it. A literal takes its arguments from
+  the type its place expects, or else from its values: a feature's from
+  its geometry and its properties, a collection's from its features.
+- **Read strictly.** A feature's members are `type`, which must be
+  `Feature` (another is `variant`), `geometry`, `properties` and the
+  `bbox` RFC 7946 §5 lets any object carry, checked as four or six
+  numbers and ignored, as a geometry's is (chunk 5.5s); an `id` and any
+  foreign member are `unknown_field`. A `geometry` of `null`, which RFC
+  7946 allows, is `required`, as a feature with no geometry is left out;
+  so are `properties` of `null` or none. A collection's members are
+  `type`, `features` and `bbox`; a collection of no features is read, an
+  empty layer, though a multi-geometry of no parts isn't. Each problem is
+  at its place: `features.0.properties.vans`. Written in that order,
+  `type` first, with no `bbox`.
+- **No text, no form for people, no column yet.** `text.from`,
+  `text.parse` and `text.format` on a feature are `type.mismatch`; its
+  geometry and its properties have theirs. A feature field in an entity
+  is area 5's structured `jsonb`, which isn't built
+  (`toolchain.not_built_yet`); the application stores the geometry and
+  the properties as fields of their own.
+- **Sent from a route inside an `Output`.** Area 7 sends only an
+  `Output`, so a layer goes out as an `Output`'s field, described in
+  OpenAPI as RFC 7946's object with each feature's geometry and
+  properties, and in the API record as `FeatureCollection<Point,
+  PinProperties>`. Open for Richard: map libraries fetch a
+  `FeatureCollection` as the whole response, so letting a route send one
+  bare, as it sends a `List` or a `Page`, would save every map a wrapper.
+- **`type.standard_exists` for a list of points.** `LineString` and
+  `Polygon` share area 19's one shape, a single field `points` or
+  `coordinates` holding a list whose items are `Point`s or an `Object` of
+  `Point`'s shape, named list types included; a list that may hold `none`,
+  a set, or another field beside it isn't the shape. A list of points is a
+  path or an area's ring, and only the application knows which, so the
+  error names both, and `jadpo fix` swaps to `LineString`, the list read
+  as its `points`; a `Polygon` is the application's own edit. `jadpo
+  suggest` leaves the shape to the error, as it is only ever a type's
+  whole.
+- **Two names added,** `Feature` and `FeatureCollection`, in release
+  0.1.0 beside the others, so 259 standard types are built; and
+  `type.type_argument_count` lists them beside `List`, `Set`, `Map` and
+  `Range`.
+
 ### Open questions
 
 1. **Are edges great circles?** RFC 7946 §3.1.1 says a line between two
@@ -1250,4 +1460,5 @@ Five chunks, each one session, placed after 5.5u on the roadmap:
   `FeatureCollection`, `geo.from_wkt` and `geo.to_wkt`, and
   `type.standard_exists`' shapes for `LineString` and `Polygon`. Done
   when a feature collection round-trips through JSON and a WKT polygon
-  through PostGIS unchanged.
+  through PostGIS unchanged. *Built:* as "Chosen in chunk 5.5u6" records;
+  mixing altitudes in one geometry stays provisional, pending Richard.

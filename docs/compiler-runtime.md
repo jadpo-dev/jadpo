@@ -920,7 +920,15 @@ ranges, lengths, closure and members, rewinds rings to the right-hand rule
 on the way in and out, and reports a refusal at its place in
 `coordinates`. `Geometry` is a choice the plan sends the same way, never
 tagged. A geometry's storage is `Storage::Geography`, whose column type is
-`geography` (chunk 5.5u4, below). A type built on
+`geography` (chunk 5.5u4, below). Since chunk 5.5u6 `Feature<G, P>` and
+`FeatureCollection<G, P>` are standard types with two type arguments, as
+`Range<T>` has one: `Holds::Feature` and `Holds::FeatureCollection`, the
+checker's `Ty::Opaque("Feature", [G, P])` (its fields in
+`types::body::features`), one plan shape each, and `Codec::Feature` and
+`Codec::FeatureCollection` holding their arguments' codecs, which
+`jadpo_value::json` reads and writes as RFC 7946's objects
+(`Json::Feature`). WKT is read and written by `jadpo_value::geo::wkt`,
+the one reader, which reports a refusal at its character. A type built on
 `Decimal` with bounds (`Latitude`) has `TextForm::Decimal` and is named to
 `text.format` by the checker, so `FormatKey::Coordinate` can show its
 hemisphere; a compound type's column may now be `numeric`

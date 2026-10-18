@@ -1074,61 +1074,6 @@ pub fn geojson_type(name: &str) -> Option<&'static str> {
         .find(|ty| *ty == name)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_coordinate_is_the_nearest_double() {
-        let kept = |text: &str| nearest_double(text);
-        assert_eq!(kept("51.5072").as_deref(), Some("51.5072"));
-        assert_eq!(kept("-0.1276").as_deref(), Some("-0.1276"));
-        assert_eq!(kept("180").as_deref(), Some("180"));
-        assert_eq!(kept("-0").as_deref(), Some("0"));
-        // More digits than a double holds: PostGIS's own answer (area 20).
-        assert_eq!(
-            kept("51.50720000001234567").as_deref(),
-            Some("51.50720000001235")
-        );
-        assert_eq!(kept("0.0000001").as_deref(), Some("0.0000001"));
-        // A double of more than 38 places, rounded to 38.
-        assert_eq!(
-            kept("0.000000000000000000000000012345678901234567").as_deref(),
-            Some("0.00000000000000000000000001234567890123")
-        );
-        assert_eq!(kept("1e400"), None);
-    }
-
-    #[test]
-    fn h3_cells_are_checked_bit_by_bit() {
-        for valid in [
-            "8001fffffffffff",
-            "8009fffffffffff",
-            "80f3fffffffffff",
-            "8108bffffffffff",
-        ] {
-            assert!(is_h3_cell(valid), "{valid}");
-        }
-        for invalid in [
-            "80f5fffffffffff",
-            "81087ffffffffff",
-            "8009ffffffffff",
-            "9001fffffffffff",
-        ] {
-            assert!(!is_h3_cell(invalid), "{invalid}");
-        }
-    }
-
-    #[test]
-    fn every_geometry_has_its_geojson_type() {
-        for (variant, ty) in GEOJSON_TYPES {
-            assert!(GEOMETRY_VARIANTS.iter().any(|(name, _)| *name == variant));
-            assert_eq!(geojson_type(ty), Some(ty));
-        }
-        assert_eq!(geojson_type(GEOMETRY), None);
-    }
-}
-
 /// A GeoJSON `Feature` (RFC 7946 §3.2; area 20, "Interop", question 6):
 /// a geometry of the type `G` and the application's own `properties`, an
 /// `Object` of the type `P`, read strictly, with no `id`, since an
@@ -1197,3 +1142,58 @@ pub const FEATURE_COLLECTION_ENTRY: StandardType = StandardType {
     release: FIRST_RELEASE,
     signals: crate::standard::NO_SIGNALS,
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_coordinate_is_the_nearest_double() {
+        let kept = |text: &str| nearest_double(text);
+        assert_eq!(kept("51.5072").as_deref(), Some("51.5072"));
+        assert_eq!(kept("-0.1276").as_deref(), Some("-0.1276"));
+        assert_eq!(kept("180").as_deref(), Some("180"));
+        assert_eq!(kept("-0").as_deref(), Some("0"));
+        // More digits than a double holds: PostGIS's own answer (area 20).
+        assert_eq!(
+            kept("51.50720000001234567").as_deref(),
+            Some("51.50720000001235")
+        );
+        assert_eq!(kept("0.0000001").as_deref(), Some("0.0000001"));
+        // A double of more than 38 places, rounded to 38.
+        assert_eq!(
+            kept("0.000000000000000000000000012345678901234567").as_deref(),
+            Some("0.00000000000000000000000001234567890123")
+        );
+        assert_eq!(kept("1e400"), None);
+    }
+
+    #[test]
+    fn h3_cells_are_checked_bit_by_bit() {
+        for valid in [
+            "8001fffffffffff",
+            "8009fffffffffff",
+            "80f3fffffffffff",
+            "8108bffffffffff",
+        ] {
+            assert!(is_h3_cell(valid), "{valid}");
+        }
+        for invalid in [
+            "80f5fffffffffff",
+            "81087ffffffffff",
+            "8009ffffffffff",
+            "9001fffffffffff",
+        ] {
+            assert!(!is_h3_cell(invalid), "{invalid}");
+        }
+    }
+
+    #[test]
+    fn every_geometry_has_its_geojson_type() {
+        for (variant, ty) in GEOJSON_TYPES {
+            assert!(GEOMETRY_VARIANTS.iter().any(|(name, _)| *name == variant));
+            assert_eq!(geojson_type(ty), Some(ty));
+        }
+        assert_eq!(geojson_type(GEOMETRY), None);
+    }
+}

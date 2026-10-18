@@ -158,7 +158,9 @@ fn a_patch_round_trips_through_wkt_as_compiled_code_runs_it() {
     };
     assert_eq!(&*variant.name, "polygon");
     assert_eq!(
-        run(Op::GeoToWkt, &[read.clone()], None, &mut |_| None),
+        run(Op::GeoToWkt, std::slice::from_ref(&read), None, &mut |_| {
+            None
+        }),
         Ok(Value::text(patch))
     );
     assert_eq!(
