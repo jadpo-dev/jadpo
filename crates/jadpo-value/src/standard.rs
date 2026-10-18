@@ -147,6 +147,27 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
         (TextForm::Whole, Value::Int(n)) => n.to_string(),
         (TextForm::UtmQuery, Value::Record(record)) => crate::web::utm_text(record)?,
         (TextForm::SemanticVersion, Value::Record(record)) => crate::semver::version_text(record)?,
+        // A colour's hex, its parts' numbers joined, a rating's code and
+        // category, a cue (chunk 5.5p).
+        (TextForm::Colour, Value::Record(record)) => {
+            let channel = |name: &str| match record.get(name) {
+                Some(Value::Int(n)) => u8::try_from(*n).map_err(|_| Fault::Shape),
+                _ => Err(Fault::Shape),
+            };
+            jadpo_std::standard::colour::hex(
+                channel("red")?,
+                channel("green")?,
+                channel("blue")?,
+                channel("alpha")?,
+            )
+        }
+        (TextForm::Wholes(separator) | TextForm::Decimals(separator), Value::Record(record)) => {
+            crate::media::numbers_text(entry, record, separator)?
+        }
+        (TextForm::CodeThenText, Value::Record(record)) => {
+            crate::media::code_then_text(entry, record)?
+        }
+        (TextForm::Cue, Value::Record(record)) => crate::media::cue_text(record)?,
         (TextForm::Code, Value::Variant(variant)) => entry
             .codes()
             .and_then(|codes| codes.get(variant.ordinal as usize))
@@ -355,6 +376,9 @@ pub fn broken_part(record: &crate::Record) -> Option<&'static str> {
     if &*record.ty == jadpo_std::standard::events::CALENDAR_EVENT {
         return crate::event::broken_part(record).map(|broken| broken.part);
     }
+    if let Some(part) = crate::media::broken_part(record) {
+        return Some(part);
+    }
     jadpo_std::standard::part_rules(&record.ty)
         .iter()
         .find(|rule| {
@@ -499,6 +523,13 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         TextForm::SemanticVersion => crate::semver::read_version(raw),
         // Any text is `Html` once it is made safe (chunk 5.5o).
         TextForm::Html => Some(Value::text(&jadpo_std::standard::markup::sanitise(raw))),
+        TextForm::Colour => jadpo_std::standard::colour::read_hex(raw)
+            .map(|rgba| crate::colour::colour_value(rgba.map(i64::from))),
+        TextForm::Wholes(separator) | TextForm::Decimals(separator) => {
+            crate::media::read_numbers(entry, raw, separator)
+        }
+        TextForm::CodeThenText => crate::media::read_code_then_text(entry, raw),
+        TextForm::Cue => crate::media::read_cue(entry, raw),
         // Its ends' type is the range type's argument, which `parse` reads.
         TextForm::Range => return Err(Fault::Shape),
         // The time group's forms, which `calendar` reads above.
@@ -626,6 +657,11 @@ fn read_vat_number(entry: &StandardType, raw: &str) -> Option<Value> {
             ],
         )
     })
+}
+
+/// An enum's variant by its code, ignoring case (question 22).
+pub(crate) fn variant_of(entry: &StandardType, raw: &str) -> Option<Value> {
+    code(entry, raw)
 }
 
 /// An enum's variant by its code, ignoring case (question 22).
@@ -883,6 +919,8 @@ pub fn shown(
         }
         (FormatKey::PersonName, value) => present::contact::person_name(value, tag)?,
         (FormatKey::ProblemDetails, Value::Record(record)) => crate::web::problem_text(record)?,
+        // SMPTE's notation, the same in every locale (chunk 5.5p).
+        (FormatKey::Timecode, Value::Record(record)) => crate::media::timecode_shown(record)?,
         (FormatKey::PostalAddress, value) => present::contact::postal_address(value, tag)?,
         // National for a reader whose region shares the number's calling
         // code, international otherwise (chunk 5.5l2).

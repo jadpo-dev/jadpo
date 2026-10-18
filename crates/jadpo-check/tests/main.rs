@@ -13,6 +13,7 @@ mod calendar;
 mod calendar_events;
 mod cards_documents;
 mod client_address;
+mod colour_media;
 mod conditions;
 mod config;
 mod constants;

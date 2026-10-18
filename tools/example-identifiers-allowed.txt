@@ -20,6 +20,15 @@ apply_discount
 price
 # A `RichTextBlock`'s `quote`, Portable Text's block quote (chunk 5.5o2)
 quote
+# `colour`'s parameters and the media types' names and parts (chunk 5.5p)
+hue
+saturation
+lightness
+chroma
+rating
+paper
+video
+subtitle
 
 # HTML's own element names, which `Html`'s allow-list and the sanitiser's
 # nesting rule name (chunk 5.5o)

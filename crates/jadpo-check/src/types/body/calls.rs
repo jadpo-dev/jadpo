@@ -2435,9 +2435,27 @@ fn built_on(param: &Ty) -> Option<&'static [Prim]> {
         Ty::Prim(Prim::ZonedTime) => Some(&[Prim::ZonedTime]),
         Ty::Prim(Prim::Duration) => Some(&[Prim::Duration]),
         Ty::Prim(Prim::Money) => Some(&[Prim::Money]),
+        // A percentage or a quantity of one kind, as `colour.from_hsl`'s
+        // hue and saturation take (chunk 5.5p).
+        Ty::Prim(Prim::Percentage) => Some(&[Prim::Percentage]),
+        Ty::Prim(prim @ Prim::Quantity(_)) => QUANTITIES
+            .iter()
+            .find(|each| *each == prim)
+            .map(std::slice::from_ref),
         _ => None,
     }
 }
+
+/// Each quantity kind as the built-in type a value of it is built on.
+const QUANTITIES: [Prim; jadpo_std::QuantityKind::ALL.len()] = {
+    let mut out = [Prim::Int; jadpo_std::QuantityKind::ALL.len()];
+    let mut at = 0;
+    while at < out.len() {
+        out[at] = Prim::Quantity(jadpo_std::QuantityKind::ALL[at]);
+        at += 1;
+    }
+    out
+};
 
 /// `param` with its bound type variables filled in; an unbound one is a
 /// checked unknown, which fits anything but keeps its container's shape.
