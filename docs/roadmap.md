@@ -810,15 +810,25 @@ reference only).
   document's kind; forms from VIES, HMRC, the OECD's and the EU's TIN
   pages and each issuer's own, by length where a country publishes none.
   What the pages left open is area 19's "Chosen in chunk 5.5i2".
-- [ ] **5.5i3 Prices, discounts and bank accounts** `opus · high` (area
-  19, "The standard types", split from 5.5i2), after 5.5j2: `Price`,
-  `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints` and `InterestRate`,
-  on `Money`, `Percentage` and the quantities; `BankAccount`, with the UK
-  modulus check across a sort code and an account number by Vocalink's
-  published specification and test cases. `Discount` and `BankAccount`
-  are the first standard types that are a choice of other types. Done
-  when every type passes the harness with valid and invalid examples per
-  rule.
+- [ ] **5.5i3 Prices, discounts and rates** `opus · high` (area 19, "The
+  standard types", split from 5.5i2), after 5.5j2: `Price`, `UnitPrice`,
+  `TaxRate`, `Discount`, `BasisPoints` and `InterestRate`, on `Money`,
+  `Percentage` and the quantities. `Discount` is the first standard type
+  that is a choice of other types: the choice goes into the contract
+  generically (a stub and a data entry, no per-type code path), for
+  `BankAccount` and later choices to reuse. Done when every type passes
+  the harness with valid and invalid examples per rule, and a `Discount`
+  applied to a `Price` gives the right result for both kinds, interpreted
+  and in the runtime. Split on 2026-10-18; `BankAccount` is 5.5i4.
+- [ ] **5.5i4 Bank accounts** `opus · high` (area 19, "The standard
+  types", split from 5.5i3), after 5.5i3: `BankAccount`, a choice of a UK
+  sort code and account number, an IBAN, or another country's account,
+  on 5.5i3's choice; the UK modulus check across a sort code and an
+  account number by Vocalink's published specification (version 9.10, 5
+  Sept 2026), with all 34 of its Chapter 3 test cases, cited; masked as
+  financial personal data (area 15), as 5.5i did. Done when it passes the
+  harness with valid and invalid examples per rule and all 34 Vocalink
+  cases pass.
 - [x] **5.5m Commerce, health, travel and the rest: codes and lists**
   `opus · high` (area 19, "Groups with the baseline only"): the 29 of the
   45 that are codes or closed lists. Held as text with a pattern and,
