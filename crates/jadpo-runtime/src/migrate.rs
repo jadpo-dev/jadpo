@@ -51,6 +51,12 @@ pub enum MigrateError {
         name: String,
         missing: String,
     },
+    /// A migration creates `extension` (pgvector's `vector`, area 21),
+    /// which the database doesn't offer, or which the store doesn't have
+    /// though a migration it applied created it.
+    ExtensionMissing {
+        extension: String,
+    },
 }
 
 impl From<StoreError> for MigrateError {
@@ -76,6 +82,12 @@ pub async fn migrate(
     database: &dyn Database,
     migrations: &[Migration],
 ) -> Result<Vec<String>, MigrateError> {
+    // Every extension a pending migration creates is one the database
+    // offers, checked before anything runs (area 21, "Without pgvector").
+    let mut transaction = database.begin().await?;
+    let offered = offers_every_extension(transaction.as_mut(), migrations).await;
+    let _ = transaction.rollback().await;
+    offered?;
     let mut transaction = database.begin().await?;
     transaction.batch(CREATE).await?;
     transaction.commit().await?;
@@ -117,6 +129,68 @@ pub async fn migrate(
         }
         ran.push(migration.name.clone());
     }
+}
+
+/// The start-up check for extensions (area 21, "Without pgvector"): the
+/// store has every extension the migrations it applied created, so an
+/// application whose vectors need pgvector refuses a database without it
+/// rather than failing on its first search.
+pub async fn has_extensions(
+    database: &dyn Database,
+    migrations: &[Migration],
+) -> Result<(), MigrateError> {
+    let mut transaction = database.begin().await?;
+    let found = async {
+        let standing = compare(&recorded(transaction.as_mut(), false).await?, migrations)?;
+        for name in &standing.applied {
+            let Some(migration) = migrations.iter().find(|m| &m.name == name) else {
+                continue;
+            };
+            for extension in migration.extensions() {
+                let rows = transaction
+                    .query(
+                        "SELECT 1 FROM pg_extension WHERE extname = $1",
+                        &[SqlValue::Text(extension.clone())],
+                    )
+                    .await?;
+                if rows.is_empty() {
+                    return Err(MigrateError::ExtensionMissing { extension });
+                }
+            }
+        }
+        Ok(())
+    }
+    .await;
+    let _ = transaction.rollback().await;
+    found
+}
+
+/// Whether the database offers every extension a migration not yet
+/// applied creates: one installed or one its server could install
+/// (`pg_available_extensions`). Whether the role may create it is found
+/// when the migration runs.
+async fn offers_every_extension(
+    transaction: &mut dyn Transaction,
+    migrations: &[Migration],
+) -> Result<(), MigrateError> {
+    let standing = compare(&recorded(transaction, false).await?, migrations)?;
+    for name in &standing.pending {
+        let Some(migration) = migrations.iter().find(|m| &m.name == name) else {
+            continue;
+        };
+        for extension in migration.extensions() {
+            let rows = transaction
+                .query(
+                    "SELECT 1 FROM pg_available_extensions WHERE name = $1",
+                    &[SqlValue::Text(extension.clone())],
+                )
+                .await?;
+            if rows.is_empty() {
+                return Err(MigrateError::ExtensionMissing { extension });
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The first migration still to apply, under the table's lock.

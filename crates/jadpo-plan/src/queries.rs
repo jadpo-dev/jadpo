@@ -593,6 +593,10 @@ impl Planner<'_> {
                 may_be_none: field.nullable,
             });
         }
+        // A vector, in a pgvector column (area 21, chunk 5.5v1).
+        if column_type(field) == Some(jadpo_std::SqlType::Vector) {
+            return Some(Column::Vector);
+        }
         let ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
         if let Some(prim) = self.lookup.representation(&ty) {
             return Some(match prim {

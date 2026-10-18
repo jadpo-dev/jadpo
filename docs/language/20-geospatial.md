@@ -476,7 +476,11 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
   area 6 when 5.5u5 builds them.
 - **Area 13:** the test server needs PostGIS. Postgres.app's PostgreSQL
   16 ships PostGIS 3.4.2 (verified); CI's `postgres:16` image doesn't, so
-  CI moves to `postgis/postgis:16-3.4`.
+  CI moves to `postgis/postgis:16-3.4`. *Amended by chunk 5.5v1:* CI runs
+  `tools/postgres/Dockerfile`, PostgreSQL 16 with PostGIS 3.6 and pgvector
+  from apt.postgresql.org, since every `postgis/postgis` 16 tag is built on
+  Debian bullseye, whose support has ended (area 21, "Chosen in chunk
+  5.5v1").
 - **Area 14:** `migration.extension_missing` is raised by `jadpo migrate
   apply`, like the other `migration.*` rules no source can trigger.
 - **Area 15:** unchanged. A position isn't personal data by type; an

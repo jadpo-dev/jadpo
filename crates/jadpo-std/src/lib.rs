@@ -84,7 +84,7 @@ pub use enums::{
     ComponentStyle, Driver, Dst, FieldAccess, FieldChange, Generated, HttpMethod, Idempotency,
     InvalidDay, LOCALE, MembershipScope, MoneyDisplay, MoneyPrecision, MoneySign, Month, OnDelete,
     Rounding, RouteAuthentication, SuccessStatus, Tenancy, TextDirection, TextFormat,
-    TranslationReview, UuidVersion, Weekday, ZONE, enums, variant_ordinal,
+    TranslationReview, UuidVersion, VectorDistance, Weekday, ZONE, enums, variant_ordinal,
 };
 pub use format::{BuiltinFormat, Component, FormatLength, FormatPart, TimeFormatSpec};
 pub use isolation::Isolation;

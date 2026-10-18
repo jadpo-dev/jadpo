@@ -143,6 +143,9 @@ pub fn rule_pairs(rules: &Rules) -> Vec<(&'static str, String)> {
     if let Some(dimensions) = rules.dimensions {
         out.push(("dimensions", dimensions.to_string()));
     }
+    if let Some(distance) = rules.distance {
+        out.push(("distance", distance.name().to_string()));
+    }
     out
 }
 

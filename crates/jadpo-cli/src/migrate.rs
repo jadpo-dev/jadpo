@@ -1049,6 +1049,26 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
         )
         .reason("Migrations apply in the order of their names; one added before a migration that already ran would run after it, on a schema it wasn't written for.")
         .next_for(format!("Make `{missing}`'s change in a new migration after `{name}`"), Decider::Human),
+        // pgvector's `vector` first (area 21, "Without pgvector"); PostGIS
+        // later (area 20).
+        MigrateError::ExtensionMissing { extension } => Diagnostic::new(
+            &rule::MIGRATION_EXTENSION_MISSING,
+            format!("`{store}` has no `{extension}` extension"),
+        )
+        .reason(format!(
+            "{} The project's migrations create it, and its database server neither has it nor offers it, so nothing was applied.",
+            match extension.as_str() {
+                "vector" => "`vector` is pgvector, which stores and searches the project's vectors; there is no fallback, since a search held anywhere else would behave differently from the one that was tested.".to_string(),
+                other => format!("`{other}` is a PostgreSQL extension the project's columns need."),
+            }
+        ))
+        .next_for(
+            match extension.as_str() {
+                "vector" => "Install pgvector on the database server, or use a server that has it (the major hosted services do), then run the command again".to_string(),
+                other => format!("Install `{other}` on the database server, or use a server that has it, then run the command again"),
+            },
+            Decider::Human,
+        ),
         MigrateError::Store(store_error) => {
             let why = match store_error {
                 StoreError::Unavailable => "the database can't be reached".to_string(),

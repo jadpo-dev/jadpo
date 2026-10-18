@@ -40,5 +40,6 @@ mod translation_exchange;
 mod translation_jadpo;
 mod translation_tooling;
 mod translations;
+mod vectors;
 mod watch;
 mod writes;

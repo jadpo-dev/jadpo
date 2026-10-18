@@ -8,7 +8,7 @@
 //! by a `-- store: <name>` line; `migrate apply` and the test database run
 //! a store's section in one transaction, and record its digest.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_std::Num;
 
@@ -504,9 +504,20 @@ pub fn migration_sql(
     }
     let mut out = Sql::default();
     for (store, plan) in plans {
-        let statements: Vec<Statement> = plan
-            .drop
+        // An extension the store's columns need now and didn't before,
+        // created first (area 21, chunk 5.5v1).
+        let had = extensions(before, &store);
+        let created: Vec<Statement> = extensions(after, &store)
             .into_iter()
+            .filter(|extension| !had.contains(extension))
+            .map(|extension| Statement {
+                sql: table::create_extension(extension),
+                does: "create extension",
+            })
+            .collect();
+        let statements: Vec<Statement> = created
+            .into_iter()
+            .chain(plan.drop)
             .chain(plan.create)
             .chain(plan.columns)
             .chain(plan.constraints)
@@ -518,6 +529,24 @@ pub fn migration_sql(
         }
     }
     Ok(out)
+}
+
+/// The PostgreSQL extensions `store`'s columns need in `schema`: pgvector's
+/// `vector` for a vector column (area 21, chunk 5.5v1). An application
+/// with none needs none, so its migrations never create one.
+pub fn extensions(schema: &Schema, store: &str) -> BTreeSet<&'static str> {
+    let mut out = BTreeSet::new();
+    let Some(store) = schema.stores.get(store) else {
+        return out;
+    };
+    for table in store.tables.values() {
+        for column in table.columns.values() {
+            if column.sql_type.split('(').next() == Some("vector") {
+                out.insert("vector");
+            }
+        }
+    }
+    out
 }
 
 /// One store's statements, grouped so each can depend on the ones before:

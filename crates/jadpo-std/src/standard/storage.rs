@@ -388,6 +388,27 @@ pub fn bind(value: &Stored<'_>, ty: crate::SqlType) -> Result<crate::SqlValue, S
             }
             _ => return Err("a range without its two ends".into()),
         },
+        // A vector's items, each the single-precision float it keeps (area
+        // 21, chunk 5.5v1).
+        (Stored::List(items), SqlType::Vector) => SqlValue::Vector(
+            items
+                .iter()
+                .map(|item| {
+                    let text = match item {
+                        Stored::Decimal { mantissa, scale } => crate::Num {
+                            mantissa: *mantissa,
+                            scale: *scale,
+                        }
+                        .to_string(),
+                        Stored::Int(n) => n.to_string(),
+                        _ => return Err("a vector with an item that isn't a number"),
+                    };
+                    text.parse::<f32>()
+                        .map(f32::to_bits)
+                        .map_err(|_| "a vector with an item that isn't a number")
+                })
+                .collect::<Result<Vec<u32>, _>>()?,
+        ),
         (Stored::List(items) | Stored::Set(items), SqlType::Array(inner)) => SqlValue::Array(
             *inner,
             items
