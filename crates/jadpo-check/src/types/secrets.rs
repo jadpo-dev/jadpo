@@ -107,7 +107,7 @@ pub(crate) fn refuses(base: FieldsBase, failure: bool) -> bool {
 }
 
 /// `a` or `an` before a secret value's name, as it is read aloud.
-fn article(secret: &str) -> &'static str {
+fn indefinite(secret: &str) -> &'static str {
     if secret.starts_with(['A', 'E', 'I', 'O', 'U']) {
         "an"
     } else {
@@ -116,8 +116,8 @@ fn article(secret: &str) -> &'static str {
 }
 
 /// `A` or `An`, starting a sentence.
-fn capital(article: &str) -> &'static str {
-    if article == "an" { "An" } else { "A" }
+fn capital(written: &str) -> &'static str {
+    if written == "an" { "An" } else { "A" }
 }
 
 /// What a secret value is, for a reason line.
@@ -181,13 +181,12 @@ pub(crate) fn field(
     };
     Diagnostic::new(
         &rule::TYPE_SECRET_EXPOSED,
-        format!("`{host}.{name}` holds {} `{secret}`", article(secret)),
+        format!("`{host}.{name}` holds {} `{secret}`", indefinite(secret)),
     )
     .at(span, label)
     .reason(format!(
-        "{} `{secret}` is a secret value: it is never sent, logged, stored or shown. {} {why}",
-        capital(article(secret)),
-        what(secret)
+        "{} `{secret}` is a secret value: it is never sent, logged, stored or shown. {why}",
+        capital(indefinite(secret))
     ))
     .next(next)
 }
@@ -205,7 +204,7 @@ pub(crate) fn stored(entity: &str, name: &str, secret: &str, span: Span) -> Diag
         .at(span, "a secret, stored")
         .reason(format!(
             "{} `{secret}` is never stored as itself: it will be stored sealed with an encrypted field's key, once keys held as data and encrypted fields are built (area 19, \"Language gaps\"); until then this compiler can't keep `{entity}.{name}`.",
-            capital(article(secret))
+            capital(indefinite(secret))
         ))
         .next(format!("Keep `{entity}.{name}` out of storage for now"))
         .help_at("19-standard-library.html#secret-values");
@@ -223,12 +222,12 @@ pub(crate) fn stored(entity: &str, name: &str, secret: &str, span: Span) -> Diag
     };
     Diagnostic::new(
         &rule::TYPE_SECRET_EXPOSED,
-        format!("`{entity}.{name}` keeps {} `{secret}`", article(secret)),
+        format!("`{entity}.{name}` keeps {} `{secret}`", indefinite(secret)),
     )
     .at(span, "a secret, stored")
     .reason(format!(
         "{} `{secret}` is never stored as itself, so a copy of the database holds none. {}.",
-        capital(article(secret)),
+        capital(indefinite(secret)),
         what(secret)
     ))
     .next(next)
@@ -264,12 +263,12 @@ pub(crate) fn argument(written: &str, secret: &str, span: Span) -> Diagnostic {
     };
     Diagnostic::new(
         &rule::TYPE_SECRET_EXPOSED,
-        format!("`{written}` can't take {} `{secret}`", article(secret)),
+        format!("`{written}` can't take {} `{secret}`", indefinite(secret)),
     )
     .at(span, "a secret, read here")
     .reason(format!(
-        "{} `{secret}` is a secret value: only the operation made for it reads its text, so nothing derived from it (its length, a part, its text, a format for people) can carry it out. {}.",
-        capital(article(secret)),
+        "{} `{secret}` is a secret value: only the operation made for it reads its text, so nothing derived from it (its length, a part, its text, how it is shown) can carry it out. {}.",
+        capital(indefinite(secret)),
         what(secret)
     ))
     .next(next)
@@ -280,12 +279,12 @@ pub(crate) fn argument(written: &str, secret: &str, span: Span) -> Diagnostic {
 pub(crate) fn made_from(written: &str, secret: &str, span: Span) -> Diagnostic {
     Diagnostic::new(
         &rule::TYPE_SECRET_EXPOSED,
-        format!("{written} can't take {} `{secret}`", article(secret)),
+        format!("{written} can't take {} `{secret}`", indefinite(secret)),
     )
     .at(span, "a secret, read here")
     .reason(format!(
         "{} `{secret}` is a secret value: it is compared with `==` and `!=`, in constant time, and passed on as itself, but nothing else reads it, so no other value can carry it out.",
-        capital(article(secret))
+        capital(indefinite(secret))
     ))
     .next("Compare it with `==`, or pass it on as itself")
 }

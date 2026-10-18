@@ -1592,12 +1592,12 @@ fixture local {
 ### `configuration.fixture_secret_required`
 
 ```jadpo project=e-fixture-secret-required expect=configuration.fixture_secret_required
-type PartnerKey = Text {
+type ApiKey = Text {
     min_length: 8
 }
 
 config ApplicationConfiguration {
-    api_key: PartnerKey {
+    api_key: ApiKey {
         binding: "API_KEY"
         secret: true
     }

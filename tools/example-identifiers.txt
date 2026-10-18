@@ -266,6 +266,7 @@ chore
 chore_card
 chore_view
 chores
+chosen_password
 citation
 citation_id
 citation_view
@@ -662,13 +663,16 @@ judge_note
 keep_memo
 keeper
 kept_after
+kept_hash
 kept_record
+kept_verifier
 key_bytes
 key_expires_at
 key_fingerprint
 key_in_order
 key_set_text
 key_set_unreadable
+key_verifier
 keyed_count
 keyed_in
 keypad_entry
@@ -786,6 +790,7 @@ market_street
 max_login_attempts
 may_change
 member_by_email
+member_handle
 member_id
 member_loans
 member_not_found
@@ -907,6 +912,7 @@ oat_method
 off_menu_cake
 offcut
 offcut_label
+offered_key
 offered_release
 office_network
 oklch_swatch
@@ -1017,11 +1023,14 @@ partner
 partner_added
 partner_claims
 partner_id
+partner_key
 partner_key_set
 partner_keys
+partner_login
 partner_name
 partner_name_taken
 partner_not_found
+partner_profile
 partner_ref
 partner_sign_in
 partner_signing_keys
@@ -1035,6 +1044,7 @@ party_label
 party_title
 pass_rate
 passed_on
+password_to_keep
 past_expiry
 pasted_about
 pastry
@@ -1189,6 +1199,7 @@ recipe_scale
 recipe_title
 recipes
 recipient
+recognised
 record_delivery
 record_payment
 record_payment_webhook
@@ -1380,6 +1391,7 @@ sign_locale
 sign_out_everywhere
 sign_up
 sign_up_draft
+sign_up_form
 signed_in
 signed_up
 signup_ip

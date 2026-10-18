@@ -989,14 +989,23 @@ reference only).
   issuer is named); `exp` is required, with 30 seconds' leeway; it reads
   the clock, so actions call it. RS256 and ES256 aren't built. What the
   pages left open is area 19's "Chosen in chunk 5.5r".
-- [ ] **5.5r2 Secret values** `opus · high` (area 19, "The standard
+- [x] **5.5r2 Secret values** `opus · high` (area 19, "The standard
   types"; split from 5.5r), after 5.5r: `Password`, `ApiKey`,
   `BearerToken`, `TotpSecret`, `SecretText` and `Jwt` (a credential,
   decided by the lead session, 2026-10-18), never printed, logged or
   sent: refused in an `Output`, a failure's fields and `json.write` as a
   `PasswordHash` is, compared in constant time and redacted in reports.
   Done when every type passes the harness and each refusal has a checked
-  example.
+  example. Built: the runtime holds each as a secret written only as
+  `<redacted ApiKey>` and compared in constant time; `type.secret_exposed`
+  refuses one in an `Output`, a failure, an event, an email, a message or
+  an entity, and given to any operation but the one made for it, so
+  `crypto.hash_password` and `verify_password` now take a `Password`; a
+  password, key, token or JWT is kept only as a hash, and storing a
+  `TotpSecret` or `SecretText` is `toolchain.not_built_yet` until keys held
+  as data; the bytes of credentials the runtime makes never go on a replay
+  recording. What the pages left open is area 19's "Chosen in chunk
+  5.5r2".
 - [ ] **5.5r4 JWTs from identity providers** `opus · high` (area 19,
   "Hashing and cryptography"; decided by the lead session, 2026-10-18),
   after 5.5r: RS256 and ES256 verification on RustCrypto's `rsa` and

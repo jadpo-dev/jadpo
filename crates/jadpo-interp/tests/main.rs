@@ -35,6 +35,7 @@ mod randomness;
 mod records_measures;
 mod reports;
 mod schedules;
+mod secrets;
 mod sets_maps;
 mod software;
 mod soundness;

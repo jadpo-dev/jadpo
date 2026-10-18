@@ -14,6 +14,8 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::rc::Rc;
 
+use subtle::{Choice, ConstantTimeEq, ConstantTimeGreater};
+
 /// A secret value: the standard type it is and its text.
 #[derive(Clone)]
 pub struct Secret {
@@ -67,37 +69,36 @@ impl fmt::Display for Secret {
 }
 
 /// Whether `a` and `b` are the same bytes, in time that depends on their
-/// lengths alone: every byte up to the longer's length is compared,
-/// whatever the first difference, and the differences are folded together
-/// before one test at the end.
+/// lengths alone: `subtle` compares two of one length byte by byte,
+/// whatever the first difference, behind an optimisation barrier, and two
+/// of different lengths differ, which says only their lengths.
 pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    let mut difference = (a.len() ^ b.len()) as u64;
-    for at in 0..a.len().max(b.len()) {
-        let x = a.get(at).copied().unwrap_or(0);
-        let y = b.get(at).copied().unwrap_or(0);
-        difference |= u64::from(x ^ y);
-    }
-    std::hint::black_box(difference) == 0
+    bool::from(a.ct_eq(b))
 }
 
 /// `a` against `b` byte by byte, a prefix first, in time that depends on
 /// their lengths alone, for the canonical order a set or a map keeps
 /// (area 2, "Set order"): the first difference decides, but every byte is
-/// still looked at.
+/// still looked at, through `subtle`'s comparisons.
 pub fn constant_time_cmp(a: &[u8], b: &[u8]) -> Ordering {
-    // -1, 0 or 1 once decided; `decided` is all ones from then on.
-    let mut found: i32 = 0;
-    let mut decided: i32 = 0;
+    let mut less = Choice::from(0);
+    let mut greater = Choice::from(0);
     for at in 0..a.len().max(b.len()) {
-        // A missing byte is below every byte, so a prefix comes first.
-        let x = a.get(at).map_or(-1, |byte| i32::from(*byte));
-        let y = b.get(at).map_or(-1, |byte| i32::from(*byte));
-        let difference = x - y;
-        let sign = i32::from(difference > 0) - i32::from(difference < 0);
-        found |= sign & !decided;
-        decided |= -i32::from(difference != 0);
+        // A missing byte is below every byte, so a prefix comes first:
+        // 0 against a byte's 1 to 256.
+        let x = a.get(at).map_or(0u16, |byte| u16::from(*byte) + 1);
+        let y = b.get(at).map_or(0u16, |byte| u16::from(*byte) + 1);
+        let undecided = !(less | greater);
+        greater |= undecided & x.ct_gt(&y);
+        less |= undecided & y.ct_gt(&x);
     }
-    std::hint::black_box(found).cmp(&0)
+    if bool::from(less) {
+        Ordering::Less
+    } else if bool::from(greater) {
+        Ordering::Greater
+    } else {
+        Ordering::Equal
+    }
 }
 
 #[cfg(test)]

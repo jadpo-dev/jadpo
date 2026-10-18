@@ -184,6 +184,53 @@ test failed: 1 failed, 1 pure test
     );
 }
 
+/// A secret value is shown redacted wherever a failed test shows a value:
+/// each part, both sides and the diff, which still says which field
+/// differs (area 19, chunk 5.5r2).
+#[test]
+fn a_secret_in_a_failed_test_is_shown_redacted() {
+    let root = folder("secret");
+    write(
+        &root,
+        "logins.jadpo",
+        "type Handle = Text {\n    max_length: 40\n}\n\ntype Login = Object {\n    handle: Handle\n    key: ApiKey\n}\n\nfunction signed_in(handle: Handle, key: ApiKey) -> Login {\n    return Login {\n        handle: handle\n        key: key\n    }\n}\n",
+    );
+    write(
+        &root,
+        "logins.test.jadpo",
+        "test \"a login keeps its key\" {\n    var given: ApiKey = \"example_key_0123456789abcdef\"\n    assert signed_in(\"ada\", given) == Login {\n        handle: \"ada\"\n        key: \"example_key_9876543210fedcba\"\n    }\n}\n",
+    );
+    let output = jadpo(&root, &["test", ".", "--seed", "1"]);
+    assert_eq!(output.code, 1);
+    assert_eq!(
+        output.stdout,
+        "\
+FAIL  a login keeps its key
+ --> logins.test.jadpo:3
+
+  assert signed_in(\"ada\", given) == Login { ...
+         |                |         |
+         |                |         Login { handle: \"ada\", key: <redacted ApiKey> }
+         |                <redacted ApiKey>
+         Login { handle: \"ada\", key: <redacted ApiKey> }
+
+  expected: Login { handle: \"ada\", key: <redacted ApiKey> }
+  actual: Login { handle: \"ada\", key: <redacted ApiKey> }
+  diff: ~ key: expected <redacted ApiKey>, actual <redacted ApiKey>
+
+  rule: test.assertion_failed
+  rerun: jadpo test logins.test.jadpo:3 --seed 1
+
+test failed: 1 failed, 1 pure test
+"
+    );
+    // `--json` shows the same; only the assertion's own source, written in
+    // the test, holds the literal.
+    let json = jadpo(&root, &["test", ".", "--seed", "1", "--json"]).stdout;
+    assert!(!json.contains("example_key_0123456789abcdef"), "{json}");
+    assert!(json.contains("<redacted ApiKey>"), "{json}");
+}
+
 #[test]
 fn a_false_condition_shows_its_own_value_and_its_parts() {
     let root = loose("condition", &[READY]);

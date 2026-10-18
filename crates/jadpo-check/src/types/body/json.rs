@@ -71,7 +71,7 @@ impl Body<'_> {
         if target.has_error() {
             return None;
         }
-        if let Some((offending, what)) = self.unwritable(&target, &mut BTreeSet::new()) {
+        if let Some((offending, what)) = self.unwritable(&target, &mut BTreeSet::new(), true) {
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_MISMATCH,
@@ -121,7 +121,7 @@ impl Body<'_> {
         if ty.has_error() {
             return;
         }
-        let Some((offending, what)) = self.unwritable(ty, &mut BTreeSet::new()) else {
+        let Some((offending, what)) = self.unwritable(ty, &mut BTreeSet::new(), false) else {
             return;
         };
         self.out.push(
@@ -138,8 +138,15 @@ impl Body<'_> {
     }
 
     /// The first type inside `ty` that has no JSON form here, with what it
-    /// is, after "is": a failure, an event, an entity, a secret, `Unit`.
-    fn unwritable(&self, ty: &Ty, seen: &mut BTreeSet<String>) -> Option<(String, String)> {
+    /// is, after "is": a failure, an event, an entity, a secret, `Unit`;
+    /// `reading` for `json.read`, which reads a secret value but never
+    /// writes one.
+    fn unwritable(
+        &self,
+        ty: &Ty,
+        seen: &mut BTreeSet<String>,
+        reading: bool,
+    ) -> Option<(String, String)> {
         // A password's hash is stored and checked, never sent or read
         // (area 19, decided by the lead session for chunk 5.5q2).
         if let Some(hash) = self.password_hash(ty) {
@@ -149,8 +156,9 @@ impl Body<'_> {
                     .to_string(),
             ));
         }
-        // A secret value is never written out (area 19, chunk 5.5r2).
-        if let Some(secret) = super::super::secrets::secret_of(self.table, ty) {
+        // A secret value is never written out, though it is read, as a
+        // request's `Input` reads one (area 19, chunk 5.5r2).
+        if !reading && let Some(secret) = super::super::secrets::secret_of(self.table, ty) {
             return Some((
                 ty.strip_nullable().to_string(),
                 format!("a `{secret}`, a secret value, which is never written out"),
@@ -177,15 +185,14 @@ impl Body<'_> {
                 )),
                 _ => None,
             },
-            Ty::List(item) | Ty::Set(item) | Ty::Nullable(item) => self.unwritable(item, seen),
-            Ty::Map(key, value) => self
-                .unwritable(key, seen)
-                .or_else(|| self.unwritable(value, seen)),
+            Ty::List(item) | Ty::Set(item) | Ty::Nullable(item) => self.unwritable(item, seen, reading),
+            Ty::Map(key, value) => self.unwritable(key, seen, reading)
+                .or_else(|| self.unwritable(value, seen, reading)),
             Ty::Named(name) | Ty::Opaque(name, _) => {
                 if standard_type(name).is_some() {
                     return match &found {
                         Ty::Opaque(_, args) => {
-                            args.iter().find_map(|arg| self.unwritable(arg, seen))
+                            args.iter().find_map(|arg| self.unwritable(arg, seen, reading))
                         }
                         _ => None,
                     };
@@ -197,13 +204,13 @@ impl Body<'_> {
                     Some(Def::Fields { base, fields, .. }) => match base {
                         FieldsBase::Object | FieldsBase::Input | FieldsBase::Output => fields
                             .iter()
-                            .find_map(|field| self.unwritable(&field.declared, seen)),
+                            .find_map(|field| self.unwritable(&field.declared, seen, reading)),
                         other => Some((found.to_string(), fields_base(*other).to_string())),
                     },
                     Some(Def::Enum { variants }) => variants
                         .iter()
                         .flat_map(|variant| variant.fields.iter().flatten())
-                        .find_map(|field| self.unwritable(&field.declared, seen)),
+                        .find_map(|field| self.unwritable(&field.declared, seen, reading)),
                     // A refinement is followed to what it is built on.
                     Some(Def::Scalar { .. }) => None,
                     Some(Def::Format { .. }) => Some((
