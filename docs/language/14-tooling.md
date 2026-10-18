@@ -5,6 +5,10 @@ status: decided
 checked-with: the CLI's tests in this checkout (archived examples: v0 3ce094d0)
 rules:
   - toolchain.no_sources
+  - syntax.suggestions_unknown_option
+  - syntax.suggestions_duplicate_option
+  - type.suggestions_value_invalid
+  - semantic.multiple_suggestions
 ---
 
 # Tooling
@@ -627,9 +631,9 @@ text never does.
 ```text
 $ jadpo suggest share
 ✓ Sent 3 hashes to Jadpo HQ
-    kinds   1 accepted, 1 found, 1 ignored
-    asked   nothing more
-    token   new, in app.jadpo: commit it so the team counts as one project
+    kinds  1 accepted, 1 found, 1 ignored
+    asked  nothing more
+    token  new, in app.jadpo: commit it so the team counts as one project
 
 Sharing is on
   Only hashes went. To stop sharing, add `share: false` to `suggestions { }`.
@@ -641,8 +645,8 @@ then the decision, written so an agent can relay it:
 ```text
 $ jadpo suggest share
 ✓ Sent 3 hashes to Jadpo HQ
-    kinds   1 accepted, 1 found, 1 ignored
-    asked   1 snippet
+    kinds  1 accepted, 1 found, 1 ignored
+    asked  1 snippet
 
 What `jadpo suggest share --approve` sends
   POST https://hq.jadpo.dev/v1/suggestions/snippets
@@ -659,7 +663,9 @@ What `jadpo suggest share --approve` sends
   }
 
 ◆ decision  Jadpo HQ asks for 1 snippet of this project's code
-  next      Ask the person whether to send it, showing them the payload above. Run `jadpo suggest share --approve` only after they say yes; otherwise run `jadpo suggest share --decline`. (human)
+  next      Ask the person whether to send it, showing them the payload above.
+            Run `jadpo suggest share --approve` only after they say yes;
+            otherwise run `jadpo suggest share --decline`. (human)
 ```
 
 ```text
@@ -668,7 +674,7 @@ $ jadpo suggest share --approve
 
 $ JADPO_SUGGEST_SHARE=off jadpo suggest share
 ✓ Sent nothing: sharing is turned off
-    where   JADPO_SUGGEST_SHARE=off in the environment
+    where  JADPO_SUGGEST_SHARE=off in the environment
 ```
 
 `--json` gives the counts, the hashes HQ asked for, the payload, the
@@ -737,7 +743,7 @@ a versioned path.
   `504` for HQ's own trouble.
 - **Timeouts and retries.** 5 seconds to connect and 15 for each answer.
   A failed connection, a timeout, `429` and `500`, `502`, `503` and `504`
-  are tried again up to three times, after 1, 2 and 4 seconds, or after
+  are tried again up to three times, after half a second, 1 and 2 seconds, or after
   `Retry-After` when HQ gives one; a `Retry-After` over 60 seconds ends
   the attempt. Anything else is not retried. When the last try fails,
   `share` fails with `suggest.share_failed`, sends nothing more and keeps
@@ -782,12 +788,55 @@ one.
   ignores: roadmap 5.5y moves them to a committed
   `taught_suggestions.jadpo_record` at the project root (area 1's root list
   gains it), so a teammate's scan finds what another taught, and
-  `.jadpo/suggest_signals` stays only as a cache.
+  `.jadpo/suggest_signals` stays only as a cache. Built in chunk 5.5y.
 - **Hashes.** 16 hex digits of BLAKE3 for both the canonical form and the
   text.
 - **Validation texts are their own data.** Each type lists the texts a
   pattern must accept and refuse, rather than reusing its examples, so only
   the types that opt in fire.
+
+### Chosen in chunk 5.5y
+
+Choices the design left open, each the more conservative one.
+
+- **Signal and suggestion travel with each hash.** HQ reassesses a signal
+  by its ignore rate across projects, and most entries never send their
+  text, so each hash carries the signal's word and the standard type or
+  operation, Jadpo's own vocabulary; nothing else. No Jadpo version is sent,
+  in the body or the `User-Agent`.
+- **HQ asks for a hash and a kind**, not a hash alone, so an ignored entry's
+  reason can be asked for without the accepted ones' texts; at most 20 per
+  answer, so an approval stays readable.
+- **Snippets carry no token.** HQ needs a token only to count projects;
+  snippets are kept apart from it. A `found` entry's reason stays local,
+  as the design sends a reason only for an ignored snippet.
+- **What is approved is what is sent.** `share` writes the request's
+  address and body to `.jadpo/suggest_wanted` and shows them; `--approve`
+  sends those bytes to that address, whatever `JADPO_SUGGEST_HQ` says by
+  then. The next `share` replaces what waits, unsent. `--decline` drops it.
+- **Unattended** is `--unattended`, or `CI` set to anything; an agent with
+  nobody to ask leaves the request, and the next `share` drops it.
+- **Turned off is anything but `on`.** `JADPO_SUGGEST_SHARE` with any other
+  non-empty value turns sharing off, so a misspelling never sends. `share:
+  false` is honoured in whichever file the `suggestions { }` is, and turning
+  sharing off stops every form of `share`, `--approve` and `--new-token`
+  included, writes nothing, and keeps the pending entries (they are local);
+  the scan, `ignore` and `found` still record them.
+- **The token is checked.** Only 32 lower-case hex digits read as a token
+  (`type.suggestions_value_invalid`), so a repository's name can't be used
+  as one, and a `suggestions { }` with any problem stops `share`. It is made
+  from the operating system's generator. With nothing pending, `share`
+  writes no token; `--new-token` writes one and sends nothing.
+- **The first share is per checkout**, noted in `.jadpo/suggest_shared`, so
+  nothing is written outside the project.
+- **The default address is `https://hq.jadpo.dev`**, under the project's
+  public home. Until HQ runs there, `share` fails with
+  `suggest.share_failed` and keeps the entries.
+- **HTTPS through OpenSSL**, already linked by the passkey ceremonies, with
+  the platform's certificate store and the host name checked; the client is
+  a small HTTP/1.1 one of `jadpo`'s own, with `Connection: close`.
+- **The backoff is half a second, then 1 and 2 seconds**, so retrying adds
+  at most three and a half seconds of waiting to the tries themselves.
 
 ## Review and sign-off
 
@@ -943,7 +992,8 @@ each command is built.
 | `runtime.outcome_unknown` | the running app | Generated runtime could not confirm whether an effect committed |
 | `runtime.startup_failed` | the running app | Generated runtime failed during startup |
 | `runtime.unhandled_fault` | the running app | Generated runtime contained an unexpected fault |
-| `suggest.record_invalid` | `suggest` | Ignored suggestions record can't be read |
+| `suggest.record_invalid` | `suggest` | Suggestions record can't be read |
+| `suggest.share_failed` | `suggest share` | Jadpo HQ couldn't be reached or refused what was shared |
 | `test.failed` | `test` | Test run failed |
 | `test.no_tests` | `test` | No tests to run |
 | `test.runtime_start_failed` | `test` | Test runtime could not start |
@@ -987,6 +1037,111 @@ A project folder with no `.jadpo` files, here only a README:
 A project folder with notes but no .jadpo files.
 ```
 
+### `syntax.suggestions_unknown_option`
+
+`suggestions { }` takes `project_token:` and `share:`, nothing else.
+
+```jadpo check project=e-suggestions-unknown-option expect=syntax.suggestions_unknown_option
+suggestions {
+    shared: false
+}
+```
+
+```text output
+error: `suggestions` has no option `shared:`
+ --> main.jadpo:2:5
+  |
+2 |     shared: false
+  |     ^^^^^^ no such option
+  reason: `suggestions` takes `project_token:` and `share:`. Did you mean `share`?
+  next: Use `share:` instead of `shared:` (agent)
+  rule: syntax.suggestions_unknown_option
+  help: docs/language/14-tooling.html#syntax-suggestions-unknown-option
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.suggestions_duplicate_option`
+
+Each option is given once.
+
+```jadpo check project=e-suggestions-duplicate-option expect=syntax.suggestions_duplicate_option
+suggestions {
+    share: false
+    share: true
+}
+```
+
+```text output
+error: `share:` is given twice
+ --> main.jadpo:3:5
+  |
+2 |     share: false
+  |     ----- first given here
+3 |     share: true
+  |     ^^^^^ given again
+  reason: `suggestions` says each of `project_token:` and `share:` once.
+  next: Keep one `share:` and remove the other (agent)
+  rule: syntax.suggestions_duplicate_option
+  help: docs/language/14-tooling.html#syntax-suggestions-duplicate-option
+
+check failed: 1 error, 1 file
+```
+
+### `type.suggestions_value_invalid`
+
+A token is the 32 random hex digits `jadpo suggest share` writes, so a name can't stand in for one; `share:` is `true` or `false`.
+
+```jadpo check project=e-suggestions-value-invalid expect=type.suggestions_value_invalid
+suggestions {
+    project_token: "acme-shop"
+}
+```
+
+```text output
+error: `project_token: "acme-shop"` isn't a value `project_token` takes
+ --> main.jadpo:2:20
+  |
+2 |     project_token: "acme-shop"
+  |                    ^^^^^^^^^^^ not a token
+  reason: A project token is 32 random hex digits, tied to nothing, so Jadpo HQ can count distinct projects without knowing which they are.
+  next: Remove `project_token:`; `jadpo suggest share` writes a new one (agent)
+  rule: type.suggestions_value_invalid
+  help: docs/language/14-tooling.html#type-suggestions-value-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.multiple_suggestions`
+
+A project has one `suggestions { }`.
+
+```jadpo check project=e-suggestions-multiple expect=semantic.multiple_suggestions
+suggestions {
+    share: false
+}
+
+suggestions {
+    share: true
+}
+```
+
+```text output
+error: `suggestions { }` is declared twice
+ --> main.jadpo:5:1
+  |
+1 | suggestions {
+  | ----------- first declared here
+5 | suggestions {
+  | ^^^^^^^^^^^ declared again
+  reason: A project has one token and one answer to whether it shares, in one `suggestions { }` in `app.jadpo`.
+  next: Move what this `suggestions` holds into the first, and remove it (agent)
+  rule: semantic.multiple_suggestions
+  help: docs/language/14-tooling.html#semantic-multiple-suggestions
+
+check failed: 1 error, 1 file
+```
+
 ## Review
 
 ### Status
@@ -1005,7 +1160,7 @@ is decided but not built yet.
 | `build/` | Built (chunk 1.7): `jadpo check` writes `build/manifest.json` and the catalogues in `build/catalogue/`; `jadpo test` keeps its last run in `build/test/`. |
 | Language server | Built (chunk 1.7): diagnostics, hover and go to definition, from a `use` line too since chunk 3.5; completion since chunk 5.5a3. |
 | Agent tools | The catalogues and the similar-helper check are built (chunk 1.7), a declinable error since chunk 5.4b; `migrate` is built (chunk 3.1); `impact`, `domain`, `rename` and `seed` are decided, not built. |
-| Suggestions | Built (chunk 5.5x): `jadpo suggest` with its six signal kinds and taught signals, the catalogue, accepted findings, `ignore` and `found`; `share` is roadmap 5.5y. |
+| Suggestions | Built (chunk 5.5x): `jadpo suggest` with its six signal kinds and taught signals, the catalogue, accepted findings, `ignore` and `found`; `share`, `suggestions { }` and the committed taught record built in chunk 5.5y, against a fake of Jadpo HQ (HQ itself comes after the first build). |
 | Build-only errors | Not applicable yet: there is no `jadpo build` until Phase 8. |
 
 ### Consistency with the rest of the language
@@ -1229,4 +1384,5 @@ what other areas carried here and where this page answers it.
 | Making a constant a setting | `jadpo config move <constant>`, and the editor's "Make this a setting" code action through the same code, moves a constant into `config.jadpo` and rewrites every read (area 10); offered, never required, so not part of `jadpo fmt --layout`; the agent skill points at it. Built in chunk 5.3f (Richard) | 2026-10-16 |
 | Editor completion | Completion for everything as you type, generated from the declarations and data the compiler uses, never a list kept for the editor: names in scope, fields, operations with signature, failures and docs, variants with CLDR names, units after a number narrowed to the type required, named arguments, type names, declinable rules, settings, messages and keywords; snippets for calls with required arguments; no AI suggestions in the server. Built in chunk 5.5a3 (Richard) | 2026-10-17 |
 | Suggestions | `jadpo suggest` hints where code could use a standard type or operation and never edits; it formats, then matches signals held as data on the standard types' entries (shape, conversion constants, name hints, format literals, validation patterns) and a loop table for operations through canonical graph fragments, numbers its findings and ends with the agent's instruction; `ignore` writes the canonical hash, signal and reason to the committed `ignored_suggestions.jadpo_record`; `found` teaches a miss; a vanished finding is accepted; everything to share waits in `.jadpo/suggest_pending` for `share` (roadmap 5.5y). Built in chunk 5.5x (Richard) | 2026-10-17 |
+| Sharing with Jadpo HQ | Sharing is on unless `suggestions { share: false }` or `JADPO_SUGGEST_SHARE=off` turns it off; `share` sends the pending hashes with their kinds and a committed random project token at once, shows the snippets HQ asks for (those seen from enough distinct projects) as the exact payload, and sends them only with `--approve` after a person said yes; unattended runs send only hashes; the pending file is wiped after; taught patterns move to the committed `taught_suggestions.jadpo_record`; the protocol (HTTPS and JSON under `/v1/`) and HQ's agent are written on this page so the real HQ implements them unchanged. Built in chunk 5.5y against a fake of HQ (Richard; taught record: lead session, 2026-10-18) | 2026-10-17 |
 | Settings in name order | The formatter sorts `config { }` fields by name, the one exception to fields keeping their written order, so parallel workspaces adding settings rarely clash (area 10). Built in chunk 5.3f (Richard) | 2026-10-16 |

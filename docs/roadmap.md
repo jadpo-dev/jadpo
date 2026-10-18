@@ -1229,7 +1229,7 @@ reference only).
   Done when every signal kind has a finding and a non-finding test, an
   ignored snippet stays quiet until edited, a found snippet's text survives
   the fix, and a taught miss is found by the next scan.
-- [ ] **5.5y `jadpo suggest share`, against a fake Jadpo HQ** `opus ·
+- [x] **5.5y `jadpo suggest share`, against a fake Jadpo HQ** `opus ·
   high` (area 14; decided by Richard, 2026-10-17), after 5.5x: opt-in
   sharing, built in full against a local fake of Jadpo HQ that speaks the
   same protocol, since HQ doesn't exist yet. Sharing is on unless turned
