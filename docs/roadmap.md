@@ -728,12 +728,24 @@ reference only).
   recurrence a `RecurrenceRule`. Done when it passes the harness and an
   all-day event's text, JSON and storage round-trip without moving a
   day.
-- [ ] **5.5l People and places** `opus · high` (area 19, question 22): the
-  19 new types, the closed lists as built-in enums with `form:`, `.all`
-  and retired codes (`type.variant_retired`), `PhoneNumber`'s E.164
-  metadata, `PostalAddress` and `PersonName` in each locale's order, and
-  `PostalCode` per country. Done when every type passes the harness and
-  `text.format` writes an address in two locales' orders.
+- [ ] **5.5l People and places** `opus · high` (area 19, question 22): 15
+  of the 19 new types: the closed lists (`Country`, `CountrySubdivision`,
+  `Continent`, `Language`, `WritingScript`, `TextDirection`,
+  `Nationality`) as built-in enums with `form:`, `.all` and retired codes
+  (`type.variant_retired`, with the currencies 5.5h left out); `GivenName`,
+  `FamilyName`, `Username`, `PhoneExtension` and `Uprn`; and `PersonName`,
+  `EmailWithName` and `PostalAddress` as objects with optional parts,
+  stored in named columns, `PostalAddress` and `PersonName` in each
+  locale's order. Done when every type passes the harness and
+  `text.format` writes an address in two locales' orders and a name in
+  two orders. Split on 2026-10-18; the rest is 5.5l2.
+- [ ] **5.5l2 Phone numbers and postal codes** `opus · high` (area 19,
+  "Groups with the baseline only", split from 5.5l): `PhoneNumber` with
+  libphonenumber's E.164 metadata, `CallingCode` against the assigned
+  codes, `PostalCode` per country (and `PostalAddress`'s postal code
+  checked by its country), and `UnLocode` against its list. Done when
+  each passes the harness with valid and invalid examples per country
+  rule.
 - [ ] **5.5i2 Payment records and identity documents** `opus · high` (area
   19, "The standard types", split from 5.5i), after 5.5j and 5.5l: the 15
   that are records or choices of other types. `Price`, `UnitPrice`,
