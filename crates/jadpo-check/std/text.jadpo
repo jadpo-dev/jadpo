@@ -6,8 +6,9 @@
 // which fit, and how each is shown or written, is the type's data entry,
 // which the checker reads. `zone:` and `format:` mean something only for
 // the types whose entry takes them (the time types), and those need them;
-// `precision:`, `display:` and `sign:` only for `Money`, which may leave
-// them out.
+// `precision:`, `display:` and `sign:` only for `Money`, and `unit:`
+// (a unit of the quantity's kind, its base unit when left out) only for a
+// physical quantity, each of which may leave them out.
 // `as:` in `parse` is a type written out, a standard type or a type built
 // on one or on `Text`, `Int`, `Decimal` or `Bool`, and the result is that
 // type: text that isn't one at all fails `malformed`, and the type's own
@@ -33,7 +34,7 @@ public library text {
     function ends_with(value: Text, suffix: Text) -> Bool {}
 
     /// `value` shown to a person in `locale`, in the type's own words.
-    function format(value: T, locale: Locale, zone: Zone?, format: TimeFormat?, precision: MoneyPrecision?, display: MoneyDisplay?, sign: MoneySign?) -> PresentationText {}
+    function format(value: T, locale: Locale, zone: Zone?, format: TimeFormat?, precision: MoneyPrecision?, display: MoneyDisplay?, sign: MoneySign?, unit: QuantityUnit?) -> PresentationText {}
 
     /// `value`'s canonical text, the form `parse` reads back, or its code
     /// in another code system a closed list has, `form: CodeForm.alpha3`.

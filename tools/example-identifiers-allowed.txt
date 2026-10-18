@@ -369,3 +369,19 @@ bob
 # a word the language defines for money (area 19, chunk 5.5h2):
 # `ExchangeRate`'s field `rate`, which `money.convert` takes as `rate`
 rate
+# words the language defines for physical quantities (area 19, chunk
+# 5.5j): `quantity` and the standard types `Temperature` and
+# `TemperatureDifference`, the units' names (`celsius`, and `metres` and the
+# rest as completion describes a suffix), and the "product and quotient
+# table" of two kinds
+quantity
+temperature
+celsius
+metres
+centimetres
+miles
+pounds
+grams
+kilograms
+product
+products

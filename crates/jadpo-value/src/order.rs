@@ -39,6 +39,7 @@ fn rank(value: &Value) -> u8 {
         Value::Record(_) => 14,
         Value::Variant(_) => 15,
         Value::Money(_) => 16,
+        Value::Quantity(_) => 17,
     }
 }
 
@@ -67,6 +68,8 @@ pub fn compare(a: &Value, b: &Value) -> Ordering {
         // By currency code, then amount, so the order agrees with `==`;
         // `<` orders only amounts in one currency (area 19).
         (Value::Money(a), Value::Money(b)) => a.cmp(b),
+        // By kind, then amount in the base unit; `<` orders only one kind.
+        (Value::Quantity(a), Value::Quantity(b)) => a.cmp(b),
         (Value::List(a), Value::List(b)) | (Value::Set(a), Value::Set(b)) => items(a, b),
         (Value::Map(a), Value::Map(b)) => {
             for ((ak, av), (bk, bv)) in a.iter().zip(b.iter()) {

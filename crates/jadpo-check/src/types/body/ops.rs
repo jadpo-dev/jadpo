@@ -106,6 +106,9 @@ impl Body<'_> {
             Operand::Literal(Const::Str(_)) => Some(Prim::Text),
             Operand::Literal(Const::Bool(_)) => Some(Prim::Bool),
             Operand::Literal(Const::Duration(_)) => Some(Prim::Duration),
+            Operand::Literal(value @ Const::Quantity(_)) => {
+                value.quantity().map(|(unit, _)| Prim::Quantity(unit.kind))
+            }
             Operand::Literal(_) => None,
             Operand::Value(ty) => self.table.representation(ty),
         }
@@ -356,6 +359,28 @@ impl Body<'_> {
         false
     }
 
+    /// A bare number compared with a quantity, reported as
+    /// `type.unit_required` (area 19); whether one was.
+    fn bare_beside_quantity(
+        &mut self,
+        (lhs, a): (&Expr, &Operand),
+        (rhs, b): (&Expr, &Operand),
+    ) -> bool {
+        for (side, operand, other) in [(lhs, a, b), (rhs, b, a)] {
+            if let Some(Prim::Quantity(kind)) = self.rep(other)
+                && self.rep(operand).is_some_and(Prim::is_number)
+                && !self.nullable(operand)
+            {
+                let written = tree::written(side.syntax());
+                let span = self.span(side);
+                self.out
+                    .push(literal::unit_required(kind, &written, kind.name(), span));
+                return true;
+            }
+        }
+        false
+    }
+
     fn equality(
         &mut self,
         binary: &ast::BinExpr,
@@ -363,6 +388,9 @@ impl Body<'_> {
         (lhs, a): (&Expr, &Operand),
         (rhs, b): (&Expr, &Operand),
     ) {
+        if self.bare_beside_quantity((lhs, a), (rhs, b)) {
+            return;
+        }
         let span = self.span(binary);
         // `none` on one side: the other must be nullable.
         for (none, other, other_expr) in [(a, b, rhs), (b, a, lhs)] {
@@ -420,6 +448,9 @@ impl Body<'_> {
         (lhs, a): (&Expr, &Operand),
         (rhs, b): (&Expr, &Operand),
     ) {
+        if self.bare_beside_quantity((lhs, a), (rhs, b)) {
+            return;
+        }
         for (side, operand) in [(lhs, a), (rhs, b)] {
             let written = tree::written(side.syntax());
             let shown = operand.shown();
@@ -545,6 +576,12 @@ impl Body<'_> {
         if [ra, rb].contains(&Some(Prim::Money)) {
             return self.money_arithmetic(binary, op, (lhs, a), (rhs, b));
         }
+        if [ra, rb]
+            .iter()
+            .any(|prim| matches!(prim, Some(Prim::Quantity(_))))
+        {
+            return self.quantity_arithmetic(binary, op, (lhs, a), (rhs, b));
+        }
         if [ra, rb].iter().any(|prim| prim.is_some_and(is_time)) {
             return self.time_arithmetic(binary, op, a, b);
         }
@@ -667,6 +704,181 @@ impl Body<'_> {
             Ty::Prim(Prim::Decimal)
         } else {
             Ty::Prim(Prim::Int)
+        }
+    }
+
+    /// The operator table's quantity rows (area 19, "Physical quantities"):
+    /// `+` and `-` within one kind (but a `Temperature`, which adds only a
+    /// `TemperatureDifference`, and a `SoundLevel`, which never adds), `*`
+    /// and `/` by a plain number keeping the kind, one kind over the same
+    /// kind giving a `Decimal`, and the products and quotients the table
+    /// defines; any other mix is refused naming the two kinds. Area 3's
+    /// named-type rule holds for `+`, `-` and `/` of one kind, and the
+    /// quantity is written first.
+    fn quantity_arithmetic(
+        &mut self,
+        binary: &ast::BinExpr,
+        op: &str,
+        (lhs, a): (&Expr, &Operand),
+        (rhs, b): (&Expr, &Operand),
+    ) -> Ty {
+        use jadpo_std::quantity::{self, Side};
+        let (ra, rb) = (self.rep(a), self.rep(b));
+        let (sa, sb) = (a.shown(), b.shown());
+        let span = self.span(binary);
+        let side = |prim: Option<Prim>| match prim {
+            Some(Prim::Quantity(kind)) => Some(Side::Quantity(kind)),
+            Some(Prim::Duration) => Some(Side::Duration),
+            _ => None,
+        };
+        let of = |side: Side| match side {
+            Side::Quantity(kind) => Ty::Prim(Prim::Quantity(kind)),
+            Side::Duration => Ty::Prim(Prim::Duration),
+        };
+        let refuse =
+            |body: &mut Self, message: String, label: &str, reason: String, next: String| {
+                body.out.push(
+                    Diagnostic::new(&rule::TYPE_ARITHMETIC_OPERAND, message)
+                        .at(span.clone(), label.to_string())
+                        .reason(reason)
+                        .next(next),
+                );
+                Ty::Error
+            };
+        let symbol = op.chars().next().unwrap_or('+');
+        if let (Some(left), Some(right)) = (side(ra), side(rb))
+            && let Some(gives) = quantity::product(left, symbol, right)
+        {
+            if op == "/" {
+                self.divisor(rhs, b);
+            }
+            return of(gives);
+        }
+        let number = |prim: Option<Prim>| prim.is_some_and(Prim::is_number);
+        match (op, ra, rb) {
+            ("+" | "-" | "/", Some(Prim::Quantity(x)), Some(Prim::Quantity(y))) if x == y => {
+                if op != "/" && !x.adds_to_itself() {
+                    let reason = if x == jadpo_std::QuantityKind::Temperature {
+                        "Temperatures don't add: 20 °C and 20 °C isn't 40 °C. A `Temperature` adds only a `TemperatureDifference`, and two temperatures subtract to one.".to_string()
+                    } else {
+                        "A `SoundLevel` is logarithmic, so two don't add as numbers do: it compares, but never adds.".to_string()
+                    };
+                    return refuse(
+                        self,
+                        format!("{} and {sb} can't be {}", capital(&sa), verb(op)),
+                        &format!("two `{}` values", x.name()),
+                        reason,
+                        "Compare the values, or add a difference to a temperature".to_string(),
+                    );
+                }
+                if !Self::unitless(a) && !Self::unitless(b) && !self.same_type(a, b) {
+                    return refuse(
+                        self,
+                        format!("{} and {sb} can't be {}", capital(&sa), verb(op)),
+                        "different types",
+                        format!(
+                            "`{op}` needs the same named type on both sides, or a plain value another operator or a `units` operation made; {sa} and {sb} are different types."
+                        ),
+                        "Use two values of the same type".to_string(),
+                    );
+                }
+                if op == "/" {
+                    self.divisor(rhs, b);
+                    return Ty::Prim(Prim::Decimal);
+                }
+                Ty::Prim(Prim::Quantity(x))
+            }
+            ("*", Some(Prim::Quantity(x)), other) if number(other) => Ty::Prim(Prim::Quantity(x)),
+            ("/", Some(Prim::Quantity(x)), other) if number(other) => {
+                self.divisor(rhs, b);
+                Ty::Prim(Prim::Quantity(x))
+            }
+            ("*", other, Some(Prim::Quantity(_))) if number(other) => {
+                let (left, right) = (tree::written(lhs.syntax()), tree::written(rhs.syntax()));
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_ARITHMETIC_OPERAND,
+                        format!("{} and {sb} can't be multiplied this way round", capital(&sa)),
+                    )
+                    .at(span.clone(), "the number first")
+                    .reason(format!(
+                        "The standard operator table multiplies a quantity by a number, the quantity first, as it does money: `{right} * {left}`."
+                    ))
+                    .next(format!("Write `{right} * {left}`"))
+                    .edit(span, format!("{right} * {left}")),
+                );
+                Ty::Error
+            }
+            ("+" | "-", Some(Prim::Quantity(kind)), other)
+            | ("+" | "-", other, Some(Prim::Quantity(kind)))
+                if number(other) =>
+            {
+                let (bare, bare_expr) = if number(ra) { (a, lhs) } else { (b, rhs) };
+                let _ = bare;
+                let written = tree::written(bare_expr.syntax());
+                let span = self.span(bare_expr);
+                self.out.push(super::super::literal::unit_required(
+                    kind,
+                    &written,
+                    kind.name(),
+                    span,
+                ));
+                Ty::Error
+            }
+            _ => {
+                let kind_of = |prim: Option<Prim>, shown: &str| match prim {
+                    Some(prim @ (Prim::Quantity(_) | Prim::Duration)) => {
+                        let name = prim.name();
+                        let an = if name.starts_with(['A', 'E', 'I', 'O', 'U']) {
+                            "an"
+                        } else {
+                            "a"
+                        };
+                        format!("{an} `{name}`")
+                    }
+                    Some(prim) => format!("a `{}`", prim.name()),
+                    None => shown.to_string(),
+                };
+                let (ka, kb) = (kind_of(ra, &sa), kind_of(rb, &sb));
+                let (headline, reason) = match op {
+                    "+" | "-" => (
+                        format!("{ka} and {kb} are different kinds"),
+                        format!(
+                            "`{op}` works within one kind of quantity, in any of its units; {ka} and {kb} are different kinds, so the sum means nothing."
+                        ),
+                    ),
+                    "*" => (
+                        format!("{ka} times {kb} is no quantity"),
+                        format!(
+                            "Two kinds multiply only as the standard operator table defines (`Length * Length` is an `Area`, `Speed * Duration` a `Length`); {ka} times {kb} isn't one of its rows."
+                        ),
+                    ),
+                    "/" => (
+                        format!("{ka} over {kb} is no quantity"),
+                        format!(
+                            "Two kinds divide only as the standard operator table defines (`Length / Duration` is a `Speed`), and one kind over the same kind is a plain `Decimal`; {ka} over {kb} isn't one of its rows."
+                        ),
+                    ),
+                    _ => (
+                        "`%` takes whole numbers".to_string(),
+                        format!(
+                            "`%` gives the remainder of dividing whole numbers; {sa} and {sb} aren't."
+                        ),
+                    ),
+                };
+                refuse(
+                    self,
+                    format!(
+                        "{} and {sb} can't be {}: {headline}",
+                        capital(&sa),
+                        verb(op)
+                    ),
+                    "different kinds",
+                    reason,
+                    "Use values of one kind, or a product or quotient the table defines"
+                        .to_string(),
+                )
+            }
         }
     }
 
@@ -1050,16 +1262,29 @@ impl Body<'_> {
                     .next("Divide by a value whose type excludes zero, building it with its constructor where the zero case is handled"),
                 );
             }
+            // A quantity or a duration written as zero (area 19).
+            Operand::Literal(value @ Const::Quantity(_))
+                if value.quantity().is_some_and(|(_, amount)| amount == 0) =>
+            {
+                self.out.push(
+                    Diagnostic::new(&rule::TYPE_DIVISOR_ZERO, "This divides by zero")
+                        .at(span, "zero")
+                        .reason("Dividing by zero has no answer, so Jadpo rules it out while compiling.")
+                        .next("Divide by a quantity other than zero"),
+                );
+            }
             Operand::Literal(_) => {}
         }
     }
 
     /// Whether a type's rules leave zero out: a `min` above it or a `max`
-    /// below it, anywhere along its chain.
+    /// below it, anywhere along its chain, a duration's included.
     fn excludes_zero(&self, ty: &Ty) -> bool {
         self.table.rule_chain(ty).iter().any(|(_, rules)| {
             rules.min.is_some_and(|min| min.mantissa > 0)
                 || rules.max.is_some_and(|max| max.mantissa < 0)
+                || rules.min_duration.is_some_and(|min| min.millis > 0)
+                || rules.max_duration.is_some_and(|max| max.millis < 0)
         })
     }
 }

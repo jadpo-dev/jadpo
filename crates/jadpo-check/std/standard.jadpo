@@ -16,9 +16,21 @@
 /// checksum: `021000021`.
 public type AbaRoutingNumber = Text {}
 
+/// An angle, held in radians to 9 places (area 19), written `90deg` or
+/// `1.5rad`.
+public type Angle = Angle {}
+
+/// An area, held in square metres to 6 places (area 19), written `12sqm`
+/// or `2ha`; a `Length` times a `Length`.
+public type Area = Area {}
+
 /// A bank identifier code (area 19, ISO 9362), 8 or 11 characters:
 /// `DEUTDEFF`.
 public type Bic = Text {}
+
+/// Data per second, held in whole bits per second (area 19), written
+/// `100Mbps`; a `DataSize` over a `Duration`.
+public type Bitrate = Bitrate {}
 
 /// A calendar day with no time or zone (area 10), written `2026-10-25`.
 public type CalendarDate = CalendarDate {}
@@ -57,6 +69,18 @@ public type Country = Enum {}
 /// `GB-ENG`, its variant `CountrySubdivision.gb_eng`.
 public type CountrySubdivision = Enum {}
 
+/// A mass in a volume, held in kilograms per cubic metre to 9 places
+/// (area 19), written `5mgL` or `1gL`; a `Mass` over a `Volume`.
+public type Concentration = Concentration {}
+
+/// An electric current, held in amperes to 6 places (area 19), written
+/// `500mA`.
+public type Current = Current {}
+
+/// An amount of data, held in whole bytes (area 19), written `5MB` or
+/// `4KiB`.
+public type DataSize = DataSize {}
+
 /// The days from `start` to `end`, both included (area 19), written
 /// `2026-10-01/2026-10-31`.
 public type DateRange = Object {
@@ -80,6 +104,10 @@ public type EmailWithName = Object {
     address: Email
 }
 
+/// Energy, held in joules to 3 places (area 19), written `2kWh` or
+/// `250kcal`.
+public type Energy = Energy {}
+
 /// A rate between two currencies at an instant (area 19): one `from` is
 /// `rate` of `to`, written `GBP/EUR 1.17 2026-10-18T09:00:00Z`. An app holds
 /// one it was given; `money.convert` applies it.
@@ -101,10 +129,17 @@ public type FamilyName = Text {}
 /// data.
 public type GivenName = Text {}
 
+/// A frequency, held in hertz to 3 places (area 19), written `50Hz` or
+/// `2.4GHz`.
+public type Frequency = Frequency {}
+
 /// An IBAN (area 19, ISO 13616) in its electronic form, upper case with
 /// no spaces, its mod-97 check digits passing: `GB29NWBK60161331926819`.
 /// Shown to people in fours.
 public type Iban = Text {}
+
+/// Illuminance, held in lux to 3 places (area 19), written `500lx`.
+public type Illuminance = Illuminance {}
 
 /// One moment for everyone (area 10), written `2026-10-25T09:30:00Z`.
 public type Instant = Instant {}
@@ -142,6 +177,10 @@ public type Language = Enum {}
 /// digits passing: `506700GE1G29325QX363`.
 public type Lei = Text {}
 
+/// A length or distance, held in metres to 6 places (area 19), written
+/// `5km`, `45cm`, `3inch` or `2metre`; `m` is minutes.
+public type Length = Length {}
+
 /// A date and a clock time with no zone (area 19), written
 /// `2026-10-25T09:30:00`: not one moment until a zone is chosen.
 public type LocalDateTime = Object {
@@ -159,6 +198,10 @@ public type LocalTime = Object {
 
 /// A CLDR locale (area 10), written as its BCP 47 tag, `en-GB`.
 public type Locale = Enum {}
+
+/// A mass, held in kilograms to 6 places (area 19), written `250g` or
+/// `2.5kg`.
+public type Mass = Mass {}
 
 /// A month of the year (area 19).
 public type Month = Enum {
@@ -223,6 +266,12 @@ public type PostalAddress = Object {
     country: Country
 }
 
+/// Power, held in watts to 3 places (area 19), written `3kW`.
+public type Power = Power {}
+
+/// A pressure, held in pascals to 3 places (area 19), written `1013hPa`.
+public type Pressure = Pressure {}
+
 /// A quarter of a calendar year (area 19), written `2026-Q4`: `quarter`
 /// from 1 to 4.
 public type Quarter = Object {
@@ -254,6 +303,23 @@ public type TextDirection = Enum {
     left_to_right
     right_to_left
 }
+
+/// A sound level, held in decibels to 2 places (area 19), written
+/// `60dB`. It is logarithmic, so it compares but never adds.
+public type SoundLevel = SoundLevel {}
+
+/// A speed, held in metres per second to 6 places (area 19), written
+/// `30mph` or `100kmh`; a `Length` over a `Duration`.
+public type Speed = Speed {}
+
+/// A temperature, held in kelvin to 3 places (area 19), written
+/// `21degC`, `70degF` or `300kelvin`. It adds only a
+/// `TemperatureDifference`.
+public type Temperature = Temperature {}
+
+/// The difference between two temperatures, held in kelvin to 3 places
+/// (area 19): a `Temperature` minus a `Temperature`, or `units.of`.
+public type TemperatureDifference = TemperatureDifference {}
 
 /// A UK bank account number (area 19), eight digits with leading zeros
 /// kept: `66374958`. Personal data.
@@ -303,6 +369,13 @@ public type UtcOffset = Object {
 
 /// A UUID (area 2), written in lowercase hexadecimal with hyphens.
 public type Uuid = Uuid {}
+
+/// A voltage, held in volts to 6 places (area 19), written `230V`.
+public type Voltage = Voltage {}
+
+/// A volume, held in cubic metres to 9 places (area 19), written
+/// `500ml` or `2litre`; an `Area` times a `Length`.
+public type Volume = Volume {}
 
 /// A day of the week (area 10).
 public type Weekday = Enum {

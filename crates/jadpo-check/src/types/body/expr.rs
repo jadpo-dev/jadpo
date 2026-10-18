@@ -211,6 +211,22 @@ impl Body<'_> {
     pub(super) fn mismatch(&mut self, expr: &Expr, actual: &Ty, expected: &Ty) {
         let span = self.span(expr);
         let written = expr.syntax().text().to_string();
+        // A number where a quantity goes needs its unit (area 19).
+        if let Some(Prim::Quantity(kind)) = self.table.representation(expected)
+            && self
+                .table
+                .representation(actual)
+                .is_some_and(Prim::is_number)
+            && !self.table.is_nullable(actual)
+        {
+            self.out.push(literal::unit_required(
+                kind,
+                &written,
+                &expected.strip_nullable().to_string(),
+                span,
+            ));
+            return;
+        }
         if self.table.siblings(actual, expected) {
             let common = self
                 .table
@@ -293,6 +309,9 @@ impl Body<'_> {
     /// value given to `Type(...)`.
     pub(super) fn literal(&mut self, expr: &Expr, expected: &Ty, constructor: bool) {
         let value = Const::from_expr(expr);
+        if matches!(value, Const::Quantity(_)) && self.quantity_literal(expr, &value).is_error() {
+            return;
+        }
         if let Err(problem) = literal::check(self.table, expected, &value) {
             self.literal_problem(expr, expected, problem, constructor);
         }
@@ -317,6 +336,28 @@ impl Body<'_> {
         ));
     }
 
+    /// A quantity literal's type, its unit's kind; `Error` once a suffix
+    /// that names no unit is reported, once however often it is read
+    /// (area 19, `type.unit_unknown`).
+    pub(super) fn quantity_literal(&mut self, expr: &Expr, value: &Const) -> Ty {
+        if let Some((unit, _)) = value.quantity() {
+            return Ty::Prim(Prim::Quantity(unit.kind));
+        }
+        let span = self.span(expr);
+        let reported = self.out.iter().any(|found| {
+            found.rule.id == rule::TYPE_UNIT_UNKNOWN.id
+                && found
+                    .primary
+                    .as_ref()
+                    .is_some_and(|label| label.span == span)
+        });
+        if !reported {
+            let written = tree::written(expr.syntax());
+            self.out.push(literal::unit_unknown(&written, span));
+        }
+        Ty::Error
+    }
+
     // --- the type of an expression ----------------------------------------
 
     /// The type of an expression, remembered by position so a
@@ -335,6 +376,7 @@ impl Body<'_> {
                 Const::Str(_) => Ty::Prim(Prim::Text),
                 Const::Bool(_) => Ty::Prim(Prim::Bool),
                 Const::Duration(_) => Ty::Prim(Prim::Duration),
+                value @ Const::Quantity(_) => self.quantity_literal(expr, &value),
                 Const::None => Ty::None,
                 _ => Ty::Error,
             },
@@ -342,6 +384,7 @@ impl Body<'_> {
             Expr::PrefixExpr(prefix) if is_literal(expr) => match Const::from_expr(expr) {
                 Const::Number { decimal: true, .. } => Ty::Prim(Prim::Decimal),
                 Const::Number { .. } => Ty::Prim(Prim::Int),
+                value @ Const::Quantity(_) => self.quantity_literal(expr, &value),
                 _ => self.prefix(prefix),
             },
             Expr::PrefixExpr(prefix) => self.prefix(prefix),

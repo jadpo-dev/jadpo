@@ -813,6 +813,10 @@ impl Body<'_> {
         let mut summed: Option<Prim> = None;
         // The range type a `range` call's ranges are, which its result is.
         let mut ranged: Option<Ty> = None;
+        // The quantity kind a `units` call's value or items are, and the
+        // kind its unit is, with the unit as written (area 19).
+        let mut quantity: Option<jadpo_std::QuantityKind> = None;
+        let mut unit: Option<(jadpo_std::QuantityKind, Expr)> = None;
         for ((arg, slot), ty) in args.iter().zip(&slots).zip(actual) {
             let Some(value) = arg.expr() else { continue };
             let Some(slot) = slot else {
@@ -843,6 +847,30 @@ impl Body<'_> {
                 };
                 let name = params[*slot].0.clone();
                 self.range_argument(&value, &given, &mut ranged, (written, &name));
+                continue;
+            }
+            if kind == Some(jadpo_std::Kind::Quantity) {
+                let given = match ty {
+                    Some(ty) => ty,
+                    None => self.infer(&value),
+                };
+                let name = params[*slot].0.clone();
+                quantity = self.quantity_argument(&value, &given, written, &name);
+                continue;
+            }
+            if kind == Some(jadpo_std::Kind::QuantityUnit) {
+                let name = params[*slot].0.clone();
+                unit = self
+                    .unit_argument(&value, ty, written, &name)
+                    .map(|found| (found, value.clone()));
+                continue;
+            }
+            if table.is_some_and(|table| table.op == jadpo_std::Op::UnitsSum) {
+                let given = match ty {
+                    Some(ty) => ty,
+                    None => self.infer(&value),
+                };
+                quantity = self.quantities_argument(&value, &given, written);
                 continue;
             }
             if table
@@ -1061,6 +1089,27 @@ impl Body<'_> {
                     _ => None,
                 });
             self.form_option(table, &args, &slots, entry, target);
+        }
+        // `text.format`'s `unit:` is a unit of its value's kind (area 19).
+        if let Some((_, Some(entry))) = &contract
+            && let jadpo_std::standard::Holds::Builtin(Prim::Quantity(kind)) = entry.holds
+        {
+            quantity = Some(kind);
+        }
+        if let (Some(kind), Some((unit_kind, unit_expr))) = (quantity, &unit)
+            && kind != *unit_kind
+        {
+            self.unit_of_another_kind(unit_expr, (*unit_kind, kind), written);
+            if table.is_some_and(|table| table.result == jadpo_std::Kind::Quantity) {
+                return Ty::Error;
+            }
+        }
+        // A `units` call gives its unit's kind, or its items' (area 19).
+        if table.is_some_and(|table| table.result == jadpo_std::Kind::Quantity) {
+            return unit
+                .map(|(kind, _)| kind)
+                .or(quantity)
+                .map_or(Ty::Error, |kind| Ty::Prim(Prim::Quantity(kind)));
         }
         if let Some((target, _)) = parsed {
             let raw = args
@@ -2054,6 +2103,20 @@ impl Body<'_> {
         }
         let from = self.table.representation(&actual);
         let to = self.table.representation(&target);
+        // A number where a quantity goes needs its unit (area 19).
+        if let Some(Prim::Quantity(kind)) = to
+            && from.is_some_and(Prim::is_number)
+        {
+            let span = self.span(value);
+            let given = tree::written(value.syntax());
+            self.out.push(super::super::literal::unit_required(
+                kind,
+                &given,
+                &target.to_string(),
+                span,
+            ));
+            return (target, Fallible::Unknown);
+        }
         if from.is_none() || from != to {
             let span = self.span(value);
             let made_of = |ty: &Ty, prim: Option<Prim>| match prim {

@@ -442,6 +442,7 @@ const BODY: &[&str] = &[
     "literal negative number",
     "literal decimal",
     "literal duration",
+    "literal quantity",
     "literal text",
     "literal bool",
     "literal none",
@@ -641,6 +642,7 @@ fn literal(value: &Literal) -> &'static str {
         }
         Literal::Number { .. } => "literal whole number",
         Literal::Duration(_) => "literal duration",
+        Literal::Quantity(_) => "literal quantity",
         Literal::Text(_) => "literal text",
         Literal::Bool(_) => "literal bool",
         Literal::None => "literal none",

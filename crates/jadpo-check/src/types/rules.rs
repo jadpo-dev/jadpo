@@ -21,6 +21,10 @@ pub enum Const {
     },
     /// A duration such as `30s` (area 10).
     Duration(String),
+    /// A physical quantity such as `2.5kg` or `-40degC`, as written (area
+    /// 19, "Physical quantities"): any other suffix than a duration's,
+    /// which may name no unit at all (`type.unit_unknown`).
+    Quantity(String),
     /// A string, with its escapes decoded.
     Str(String),
     Bool(bool),
@@ -45,6 +49,7 @@ impl Const {
                 decimal: *decimal,
             },
             Const::Duration(written) => Literal::Duration(written.clone()),
+            Const::Quantity(written) => Literal::Quantity(written.clone()),
             Const::Str(text) => Literal::Text(text.clone()),
             Const::Bool(value) => Literal::Bool(*value),
             Const::None => Literal::None,
@@ -99,7 +104,19 @@ impl Const {
                     value,
                     decimal: true,
                 }),
-            jadpo_syntax::SyntaxKind::UNIT_NUMBER if !negative => Const::Duration(text.to_string()),
+            // A duration's suffix (`ms`, `s`, `m`, `h`, `d`) makes a
+            // duration; any other a quantity, which may be negative
+            // (`-40degC`), area 19.
+            jadpo_syntax::SyntaxKind::UNIT_NUMBER
+                if is_duration_suffix(jadpo_std::quantity::suffix_of(text)) =>
+            {
+                if negative {
+                    Const::Other
+                } else {
+                    Const::Duration(text.to_string())
+                }
+            }
+            jadpo_syntax::SyntaxKind::UNIT_NUMBER => Const::Quantity(format!("{sign}{text}")),
             jadpo_syntax::SyntaxKind::STRING if !negative => Const::Str(unescape(text)),
             jadpo_syntax::SyntaxKind::TRUE_KW if !negative => Const::Bool(true),
             jadpo_syntax::SyntaxKind::FALSE_KW if !negative => Const::Bool(false),
@@ -114,6 +131,7 @@ impl Const {
             Const::Number { decimal: true, .. } => "a decimal number",
             Const::Number { .. } => "a whole number",
             Const::Duration(_) => "a duration",
+            Const::Quantity(_) => "a quantity",
             Const::Str(_) => "text",
             Const::Bool(_) => "a `Bool`",
             Const::None => "`none`",
@@ -121,6 +139,22 @@ impl Const {
             Const::List(_) => "a list",
             Const::TooLong => "a number",
             Const::Other => "a computed value",
+        }
+    }
+}
+
+/// Whether `suffix` is a duration's unit (area 10): `5m` is minutes.
+pub fn is_duration_suffix(suffix: &str) -> bool {
+    matches!(suffix, "ms" | "s" | "m" | "h" | "d")
+}
+
+impl Const {
+    /// The unit and the value in its kind's base unit of a quantity
+    /// literal whose suffix names a unit.
+    pub fn quantity(&self) -> Option<(&'static jadpo_std::QuantityUnit, i128)> {
+        match self {
+            Const::Quantity(text) => jadpo_std::quantity::parse_literal(text).ok(),
+            _ => None,
         }
     }
 }
@@ -188,6 +222,9 @@ pub enum Problem {
     Value(String, Option<String>),
     /// A pattern Jadpo can't use, and why.
     Pattern(String),
+    /// A bare number as a quantity type's bound, which needs its unit
+    /// (area 19, `type.unit_required`).
+    UnitRequired,
 }
 
 /// One constraint read and checked against what it constrains.
@@ -264,9 +301,36 @@ pub fn constraint(
                         None,
                     ));
                 }
+                // A quantity's bounds are written with a unit and held in
+                // its kind's base unit at its scale, as its values are
+                // (area 19).
+                (Subject::Prim(Prim::Quantity(kind)), found) => match found.quantity() {
+                    Some((unit, amount)) if unit.kind == kind => Some(Num {
+                        mantissa: amount,
+                        scale: kind.scale(),
+                    }),
+                    _ if matches!(found, Const::Number { .. }) => {
+                        return Err(Problem::UnitRequired);
+                    }
+                    _ => {
+                        let base = kind.base_unit();
+                        let example = if base.suffix {
+                            format!("`0{}`", base.code)
+                        } else {
+                            format!("`units.of(0, {}.{})`", kind.unit_enum(), base.name)
+                        };
+                        return Err(Problem::Value(
+                            format!(
+                                "a `{}` written with its unit, such as {example}",
+                                kind.name()
+                            ),
+                            None,
+                        ));
+                    }
+                },
                 _ => {
                     return Err(Problem::Base(
-                        "`Int`, `Decimal`, `Duration` and `Money` types",
+                        "`Int`, `Decimal`, `Duration`, `Money` and quantity types",
                     ));
                 }
             };
@@ -488,6 +552,10 @@ pub fn check_rules(rules: &Rules, value: &Const) -> Result<(), Broken> {
             None => Ok(()),
         },
         Const::Str(text) => rules.check_text(text),
+        Const::Quantity(_) => match value.quantity() {
+            Some((unit, amount)) => rules.check_quantity(unit.kind, amount),
+            None => Ok(()),
+        },
         Const::List(items) => rules.check_length(items.len() as u64, "items"),
         _ => Ok(()),
     }
@@ -530,7 +598,7 @@ mod tests {
         assert_eq!(
             constraint(Subject::Prim(Prim::Text), "min", &number("1"), &mut rules),
             Err(Problem::Base(
-                "`Int`, `Decimal`, `Duration` and `Money` types"
+                "`Int`, `Decimal`, `Duration`, `Money` and quantity types"
             ))
         );
         assert!(

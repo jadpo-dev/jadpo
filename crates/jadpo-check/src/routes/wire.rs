@@ -632,6 +632,38 @@ pub fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
             out.set("required", vec![amount_field, currency_field]);
             out.set("additionalProperties", false);
         }
+        // A physical quantity: its number as a decimal string, as area 2
+        // sends every `Decimal`, and one of its kind's units by its code;
+        // written in the base unit, read in any (area 19).
+        Builtin::Quantity(kind) => {
+            out.set("type", "object");
+            let [value_field, unit_field] = jadpo_std::standard::QUANTITY_FIELDS;
+            let mut value = Value::object();
+            string(&mut value, None);
+            value.set("pattern", "^-?[0-9]+(\\.[0-9]+)?$");
+            value.set(
+                "description",
+                format!(
+                    "The number in `unit`, written as text; sent in {}.",
+                    kind.base_unit().meaning
+                ),
+            );
+            let mut unit = Value::object();
+            string(&mut unit, None);
+            unit.set(
+                "enum",
+                kind.units()
+                    .iter()
+                    .map(|unit| unit.code)
+                    .collect::<Vec<_>>(),
+            );
+            let mut properties = Value::object();
+            properties.set(value_field, value);
+            properties.set(unit_field, unit);
+            out.set("properties", properties);
+            out.set("required", vec![value_field, unit_field]);
+            out.set("additionalProperties", false);
+        }
         Builtin::Unit => out.set("type", "null"),
         _ => string(&mut out, None),
     }

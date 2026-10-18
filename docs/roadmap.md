@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-17. This page is the only list of outstanding work: the
+**Updated:** 2026-10-18. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here.
@@ -691,17 +691,30 @@ reference only).
   `NhsNumber`. Done when every type passes the contract's harness with
   valid and invalid examples per rule. Split on 2026-10-18; the rest is
   5.5i2. What the pages left open is area 19's "Chosen in chunk 5.5i".
-- [ ] **5.5j Quantities** `opus · high` (area 19, "Physical quantities",
-  question 17): the 17 physical quantities with `DataSize`, `Bitrate`,
-  `Percentage`, `Ratio` and `Fraction`; SI storage at each kind's scale;
-  the `%` literal and the operator table's `Percentage` rows, with
-  `Money * Percentage` and the refused `Money + Percentage` (5.5h built
-  `Money` by a number); suffixed
+- [x] **5.5j Quantities** `opus · high` (area 19, "Physical quantities",
+  question 17): the 17 physical quantities with `DataSize` and `Bitrate`,
+  each with its unit enum; SI storage at each kind's scale in one
+  `numeric` column; the wire's `{ "value": ..., "unit": ... }`; suffixed
   literals; the product and quotient table; `type.unit_required`; the 3
-  `units` operations; a `Decimal` ratio becomes a `Percentage` by
-  construction, `Percentage(ratio)`, 0.25 → 25%. Done when the quantity
-  examples pass, `1km == 1000metre`, and a bare number or a mixed kind is
-  a compile error with a checked example.
+  `units` operations and `text.format` in a chosen unit through the
+  locale. Done when the quantity examples pass, interpreted, in the
+  runtime and stored in PostgreSQL, `1km == 1000metre`, `2metre + 45cm +
+  3inch` gives the right metres and is shown in centimetres in two
+  locales, and a bare number or a mixed kind is a compile error with a
+  checked example. Split on 2026-10-18; the rest is 5.5j2. Built, with
+  `type.unit_unknown` and quantities compared and ordered in queries;
+  what the pages left open is area 19's "Chosen in chunk 5.5j".
+- [ ] **5.5j2 Percentages, ratios and fractions** `opus · high` (area 19,
+  "The standard operator table", questions 16 and 17; split from 5.5j):
+  `Percentage`, `Ratio` and `Fraction` on the contract; the `%` literal,
+  with remainder keeping its spaced `%` and `20%3` an error; the operator
+  table's `Percentage` rows, with `Money * Percentage`, the refused
+  `Money + Percentage` (5.5h built `Money` by a number) and a number or
+  quantity times a `Percentage` keeping its kind; `Percentage(ratio)`,
+  0.25 → 25%; `{n, number, percent}` in messages. Done when the
+  percentage examples pass and the showcase `var total: Length = 2metre
+  + 45cm + 3inch` then `var trim: Length = total * 15%` gives the right
+  metres, shown in centimetres in two locales.
 - [x] **5.5k Time and calendar** `opus · high` (area 19, "Time and
   calendar additions"): ten of the 13 new time types (`LocalTime`,
   `LocalDateTime`, `Month`, `YearMonth`, `Year`, `Quarter`, `IsoWeek`,

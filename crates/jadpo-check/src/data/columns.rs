@@ -46,6 +46,7 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
             | Builtin::ZonedTime
             | Builtin::Duration
             | Builtin::Money
+            | Builtin::Quantity(_)
             | Builtin::Unit
             | Builtin::Email
             | Builtin::Url

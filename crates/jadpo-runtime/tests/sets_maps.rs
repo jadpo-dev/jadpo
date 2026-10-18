@@ -339,7 +339,8 @@ fn a_range_of_any_ordered_type_gives_the_page_s_values() {
             ),
             &Value::None,
             &Value::None,
-            &Default::default()
+            &Default::default(),
+            &Value::None
         ),
         Ok(Value::text("1,200 – …"))
     );

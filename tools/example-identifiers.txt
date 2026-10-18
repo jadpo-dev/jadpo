@@ -206,8 +206,6 @@ catalogue_filter
 catalogue_name
 category_id
 category_page
-celsius
-centimetres
 change_email
 change_line
 change_order
@@ -323,6 +321,10 @@ customer_number
 customer_reference
 customer_status
 customs
+cut_length
+cut_shelf
+cut_to
+cut_to_order
 cyd
 day_count
 days_left
@@ -404,6 +406,7 @@ email_taken
 emma
 emptied
 empty_patch
+end_block
 end_of_day
 end_of_january
 end_shift
@@ -445,9 +448,11 @@ first_page
 first_placed
 first_quantity
 first_use
+fitted
 flapjack
 flavour
 flavours
+floor_of
 floor_scale
 flour
 flour_for
@@ -472,7 +477,6 @@ gluten
 goals
 golden
 grain
-grams
 grams_in
 greeting
 greeting_name
@@ -494,6 +498,7 @@ harbour
 has_urgent
 hazard
 headline_text
+heater_power
 heaviest
 heavy
 heavy_ingredients
@@ -519,7 +524,9 @@ imported_line
 in_band
 in_either
 in_euros
+in_feet
 in_house_uses
+in_miles
 in_name_order
 in_rental
 in_review
@@ -578,7 +585,6 @@ keyed_count
 keyed_in
 keypad_entry
 kickoff
-kilograms
 kilos
 kitchen
 kitchen_busy
@@ -708,7 +714,6 @@ menu_entry
 menu_filter
 menu_item
 meringue
-metres
 middle
 mild
 milk
@@ -858,6 +863,7 @@ owner
 owner_email
 owner_id
 owners
+pace_of
 packer
 page_count
 page_todos
@@ -915,6 +921,8 @@ placed_label
 placed_text
 placed_with
 plan_effort
+plank
+plank_label
 planned_shift
 platform_role
 platform_staff
@@ -925,7 +933,6 @@ postcode
 postcodes
 poster_line
 postpone_all
-pounds
 pounds_to_euros
 praised
 praised_notes
@@ -951,13 +958,11 @@ priority
 priority_too_high
 pristine
 problem_part
-product
 product_code
 product_id
 product_name
 product_slug
 product_view
-products
 project_board
 project_board_view
 project_card
@@ -976,7 +981,6 @@ published_at
 publisher
 publisher_id
 publisher_view
-quantity
 quantity_from
 quantity_out_of_range
 quantity_refused
@@ -990,6 +994,7 @@ quote_cake
 radius
 raise_priority
 rate_on
+rated
 raw_name
 reaction
 read_by_bob
@@ -1079,6 +1084,8 @@ revoke_outlet_key
 rise
 risen
 rival
+room_depth
+room_floor
 rotated
 rush
 rye
@@ -1129,8 +1136,16 @@ shelf
 shelf_card
 shelf_empty
 shelf_label
+shelf_length
+shelf_load
+shelf_made
 shelf_name
+shelf_on_file
+shelf_out_of_range
 shelf_size
+shelf_span
+shelf_unit_wrong
+shelf_unreadable
 shelvable
 shelves
 shift_end
@@ -1194,6 +1209,7 @@ stamp_card
 stamp_count
 stamped_once
 stamps_to_go
+standard_shelf
 standard_vat
 stars
 start_project
@@ -1213,6 +1229,8 @@ story
 street
 street_address
 stripe_v2024
+stroll
+stroll_time
 subscribe
 subscribed
 subscription
@@ -1246,7 +1264,6 @@ take_on
 takings
 team
 team_id
-temperature
 temperature_for
 tenth
 territory
@@ -1317,6 +1334,7 @@ trays_to_bake
 turned_down
 two_open_todos
 typed_name
+typed_shelf
 uk_bands
 uk_rate
 unknown_country
@@ -1358,6 +1376,8 @@ vouch
 vouched
 vouched_by
 voucher
+walk_time
+walking_pace
 wallet
 wallet_id
 warnings
@@ -1378,12 +1398,14 @@ whole_batch
 whole_team
 wholemeal
 wildcard_failure
+with_brackets
 with_delivery
 with_todos
 withdraw_copy
 withdrawn
 work_address
 work_email
+workshop_heater
 worn
 wrapper
 write_note

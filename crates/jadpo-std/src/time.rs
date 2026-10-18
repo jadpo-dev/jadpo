@@ -22,12 +22,12 @@ const UNITS: [(&str, i128, &str); 5] = [
     ("ms", 1, "milliseconds"),
 ];
 
-/// A unit a number may be written with, `30s` or `2h`: the built-in type
-/// the number is then a value of, the suffix, and what it means. Only
-/// `Duration` has units until quantities do (area 19); the editor offers
-/// them after a number, narrowed to the type expected there (area 14,
-/// "Completion"), so a type given units here is offered with no editor
-/// code of its own.
+/// A unit a number may be written with, `30s`, `2h` or `5km`: the
+/// built-in type the number is then a value of, the suffix, and what it
+/// means. `Duration`'s units and every quantity's suffixed units (area
+/// 19, "Physical quantities"); the editor offers them after a number,
+/// narrowed to the type expected there (area 14, "Completion"), so a type
+/// given units here is offered with no editor code of its own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct UnitSuffix {
     pub of: crate::Builtin,
@@ -35,16 +35,23 @@ pub struct UnitSuffix {
     pub name: &'static str,
 }
 
-/// Every unit a number may be written with, each type's longest first.
+/// Every unit a number may be written with: the durations longest first,
+/// then each quantity's suffixed units in its enum's order.
 pub fn unit_suffixes() -> Vec<UnitSuffix> {
-    UNITS
+    let durations = UNITS.iter().map(|(suffix, _, name)| UnitSuffix {
+        of: crate::Builtin::Duration,
+        suffix,
+        name,
+    });
+    let quantities = crate::quantity::UNITS
         .iter()
-        .map(|(suffix, _, name)| UnitSuffix {
-            of: crate::Builtin::Duration,
-            suffix,
-            name,
-        })
-        .collect()
+        .filter(|unit| unit.suffix)
+        .map(|unit| UnitSuffix {
+            of: crate::Builtin::Quantity(unit.kind),
+            suffix: unit.code,
+            name: unit.meaning,
+        });
+    durations.chain(quantities).collect()
 }
 
 impl Dur {

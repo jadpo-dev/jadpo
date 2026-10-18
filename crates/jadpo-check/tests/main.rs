@@ -42,6 +42,7 @@ mod one_error;
 mod people_places;
 mod policy;
 mod project;
+mod quantities;
 mod review;
 mod scale;
 mod schedules;

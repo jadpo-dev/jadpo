@@ -25,6 +25,12 @@ pub enum Constant {
     Date(i32),
     /// Milliseconds.
     Duration(i64),
+    /// A physical quantity: its kind and its amount in the kind's base
+    /// unit, a mantissa at the kind's scale (area 19).
+    Quantity {
+        kind: crate::QuantityKind,
+        amount: i128,
+    },
     /// A variant of an enum, the `ordinal`th it declares, with a payload's
     /// fields in their declared order: a field's default.
     Variant {

@@ -14,6 +14,9 @@ pub enum Literal {
     },
     /// A duration as written: `15m`.
     Duration(String),
+    /// A physical quantity as written, with its unit's suffix: `2.5kg`,
+    /// `-40degC` (area 19, "Physical quantities").
+    Quantity(String),
     Text(String),
     Bool(bool),
     None,
@@ -24,7 +27,7 @@ impl Literal {
     pub fn written(&self) -> String {
         match self {
             Literal::Number { value, .. } => value.to_string(),
-            Literal::Duration(written) => written.clone(),
+            Literal::Duration(written) | Literal::Quantity(written) => written.clone(),
             Literal::Text(text) => format!("{text:?}"),
             Literal::Bool(value) => value.to_string(),
             Literal::None => "none".to_string(),

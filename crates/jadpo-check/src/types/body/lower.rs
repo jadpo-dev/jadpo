@@ -182,6 +182,9 @@ fn literal_type(value: &Const) -> Ty {
         Const::Str(_) => Ty::Prim(Prim::Text),
         Const::Bool(_) => Ty::Prim(Prim::Bool),
         Const::Duration(_) => Ty::Prim(Prim::Duration),
+        Const::Quantity(_) => value
+            .quantity()
+            .map_or(Ty::Error, |(unit, _)| Ty::Prim(Prim::Quantity(unit.kind))),
         Const::None => Ty::None,
         _ => Ty::Error,
     }
