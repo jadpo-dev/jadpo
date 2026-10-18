@@ -432,6 +432,31 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
                 let (builtin, rules) = jadpo_std::standard::declared(name).expect("a range");
                 scalar_schema(builtin, &rules)
             }
+            // A geometry: its GeoJSON object (chunk 5.5s).
+            _ if entry.json == Json::GeoJson => {
+                let schema = standard_object_schema(entry);
+                let kinds: Vec<_> = match schema.get("oneOf").and_then(|v| v.as_array()) {
+                    Some(each) => each.to_vec(),
+                    None => vec![schema],
+                };
+                for kind in kinds {
+                    assert_eq!(
+                        kind.get("type").and_then(|v| v.as_str()),
+                        Some("object"),
+                        "{name}"
+                    );
+                    let properties = kind.get("properties").expect("properties");
+                    assert!(
+                        properties
+                            .get("type")
+                            .and_then(|t| t.get("const"))
+                            .is_some(),
+                        "{name}"
+                    );
+                    assert!(properties.get("coordinates").is_some(), "{name}");
+                }
+                continue;
+            }
             Holds::Object(_) => standard_object_schema(entry),
             // Its built-in type's, with its bounds (chunk 5.5i3).
             Holds::Bounded { of, .. } => {
@@ -484,6 +509,7 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
         match entry.json {
             Json::Text => assert_eq!(kind.as_deref(), Some("string"), "{name}"),
             Json::Tagged => unreachable!("{name}: only a choice is sent tagged"),
+            Json::GeoJson => unreachable!("{name}: a geometry's schema is above"),
             Json::Array => {
                 assert_eq!(kind.as_deref(), Some("array"), "{name}");
                 assert!(schema.get("items").is_some(), "{name}: its items");

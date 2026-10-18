@@ -2,7 +2,7 @@
 title: Standard library
 area: 19
 status: decided
-checked-with: this checkout's jadpo on every gate run, from chunk 5.5a; the other examples are fragments until chunks 5.5c to 5.5s build them
+checked-with: this checkout's jadpo on every gate run, from chunk 5.5a; the other examples are fragments until chunks 5.5c to 5.5s2 build them
 rules:
   - semantic.standard_operation_moved
   - type.argument_empty
@@ -29,7 +29,7 @@ own features needed. This page collects them, adds what real applications
 keep reaching for, says which gaps in the language block the rest and how
 to close them, and says what is left out on purpose and why.
 
-> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunks 5.5h2, 5.5k and 5.5k2: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2); `Money` and `Currency`, the operator table's `Money` rows and the money operations but `convert`, stored in two columns (5.5h); `ExchangeRate`, `money.convert` and `{price, number, currency}` in messages (5.5h2); ten of the time types, with `CalendarPeriod`'s operator rows and `temporal.period_between` (5.5k); `RecurrenceRule` and `OpeningHours`, with `temporal.occurrences` and `temporal.open_at` (5.5k2); `Colour` and the media types, with `colour`'s operations and `media.fit` (5.5p); and the `random` namespace, seeded per test (5.5q). The rest is built by chunks 5.5i to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
+> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunks 5.5h2, 5.5k and 5.5k2: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2); `Money` and `Currency`, the operator table's `Money` rows and the money operations but `convert`, stored in two columns (5.5h); `ExchangeRate`, `money.convert` and `{price, number, currency}` in messages (5.5h2); ten of the time types, with `CalendarPeriod`'s operator rows and `temporal.period_between` (5.5k); `RecurrenceRule` and `OpeningHours`, with `temporal.occurrences` and `temporal.open_at` (5.5k2); `Colour` and the media types, with `colour`'s operations and `media.fit` (5.5p); and the `random` namespace, seeded per test (5.5q); and the 17 geospatial types, sent as GeoJSON (5.5s). The rest is built by chunks 5.5i to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
 
 | Namespace | Holds | Operations | Decided in |
 |---|---|---|---|
@@ -105,7 +105,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 213 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2, `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims` in 5.5r); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: thirty are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 230 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2, the 17 geospatial types in 5.5s, `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims` in 5.5r); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: thirty are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -121,7 +121,7 @@ exception to the rule.
 |---|---|---|
 | People and contact (12) | **`PersonName`**, **`GivenName`**, **`FamilyName`**, **`Username`**, **`Email`**, **`EmailWithName`**, **`PhoneNumber`**, **`PhoneExtension`**, **`PostalAddress`**, **`PostalCode`**, **`Uprn`**, **`Nationality`** (enum) | `web` |
 | Places (10) | **`Country`** (enum), **`CountrySubdivision`** (enum), **`Continent`** (enum), **`UnLocode`**, **`CallingCode`**, **`Language`** (enum), **`WritingScript`** (enum), **`TextDirection`** (enum), **`Locale`** (enum), **`Zone`** (enum) | |
-| Geospatial (17) | `Point` (optional altitude), `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` | `geo` (future area) |
+| Geospatial (17) | **`Point`** (optional altitude), **`Latitude`**, **`Longitude`**, **`LineString`**, **`Polygon`**, **`MultiPoint`**, **`MultiLineString`**, **`MultiPolygon`**, **`Geometry`**, **`BoundingBox`**, **`Circle`**, **`Bearing`**, **`Crs`**, **`EastingNorthing`**, **`MapTile`**, **`H3Cell`**, **`Geohash`** | `geo` (future area) |
 | Money, payments, banking (24) | **`Money`**, **`Currency`** (enum), **`ExchangeRate`**, **`Price`**, **`UnitPrice`**, **`TaxRate`**, **`Discount`**, **`BasisPoints`**, **`InterestRate`**, **`PaymentCardNumber`**, **`MaskedCardNumber`**, **`CardBrand`** (enum), **`CardBin`**, **`CardExpiry`**, **`PaymentReference`**, **`InvoiceNumber`**, **`Iban`**, **`Bic`**, **`UkSortCode`**, **`UkAccountNumber`**, **`BankAccount`**, **`AbaRoutingNumber`**, **`Lei`**, **`Isin`** | `money` |
 | Tax and identity numbers (11, and `IdentityDocumentKind`) | **`VatNumber`**, **`TaxId`**, **`UkUtr`**, **`UkCompanyNumber`**, **`UkNationalInsuranceNumber`**, **`UsSsn`**, **`UsEin`**, **`PassportNumber`**, **`DrivingLicenceNumber`**, **`IdentityDocument`** with **`IdentityDocumentKind`** (enum), **`NhsNumber`** | |
 | Commerce and logistics (20, and `ClothingSizeSystem` and `ShoeSizeSystem`) | **`Sku`**, **`Ean13`**, **`UpcA`**, **`Isbn`**, **`Sscc`**, **`Barcode`**, **`UnitQuantity`**, **`Rating`**, **`ClothingSize`** with **`ClothingSizeSystem`** (enum), **`ShoeSize`** with **`ShoeSizeSystem`** (enum), **`Dimensions`**, **`HsCode`**, **`Incoterm`** (enum), **`TrackingNumber`**, **`Carrier`**, **`ContainerNumber`**, **`LotNumber`**, **`SerialNumber`**, **`Vin`**, **`VehicleRegistration`** | `units`, `media` |
@@ -342,6 +342,10 @@ required reason handles them, and review sees each one.
 > Packages' public types come with the publishing bar (chunk 7.1). Its
 > example is under "Errors". `Colour`'s signature came with it in chunk
 > 5.5p, its alpha the first field a shape lets an `Object` leave out.
+> `Point`'s came with it in chunk 5.5s, on app code, where its error reads
+> as under "Errors"; the wording above is a package's, which comes with
+> the publishing bar. `LineString`'s and `Polygon`'s, which match through
+> a list, come with the geospatial area ("Chosen in chunk 5.5s").
 
 The `Country`, `Language` and `PhoneNumber` lists ship with each Jadpo
 release, as the time-zone database does (#88, "built in or a library
@@ -398,7 +402,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `Barcode`, `BasisPoints`, `Bic`, `Bitrate`, `BloodGlucose`, `BloodPressure`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `ClothingSize`, `ClothingSizeSystem`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Dimensions`, `Discount`, `Doi`, `DomainName`, `DosageInstruction`, `Dose`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `FlightNumber`, `Fraction`, `FrameRate`, `Frequency`, `GitRef`, `GivenName`, `HeartRate`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Jurisdiction`, `Jwk`, `Jwt`, `JwtClaims`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `LotNumber`, `MacAddress`, `Markdown`, `MaskedCardNumber`, `Mass`, `ModelId`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OAuthScope`, `OidcClaims`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `PasswordCheck`, `PasswordHash`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PublicKey`, `PushToken`, `Quarter`, `Range`, `Rating`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `RouteOfAdministration`, `SemanticVersion`, `SerialNumber`, `ShoeSize`, `ShoeSizeSystem`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TraceId`, `TraceParent`, `TrackingNumber`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UnitQuantity`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VehicleRegistration`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `Barcode`, `BasisPoints`, `Bearing`, `Bic`, `Bitrate`, `BloodGlucose`, `BloodPressure`, `BloodType`, `BookingReference`, `BoundingBox`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Circle`, `ClothingSize`, `ClothingSizeSystem`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Crs`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Dimensions`, `Discount`, `Doi`, `DomainName`, `DosageInstruction`, `Dose`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `EastingNorthing`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `FlightNumber`, `Fraction`, `FrameRate`, `Frequency`, `Geohash`, `Geometry`, `GitRef`, `GivenName`, `H3Cell`, `HeartRate`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Jurisdiction`, `Jwk`, `Jwt`, `JwtClaims`, `Language`, `Latitude`, `LawfulBasis`, `Lei`, `Length`, `LineString`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `Longitude`, `LotNumber`, `MacAddress`, `MapTile`, `Markdown`, `MaskedCardNumber`, `Mass`, `ModelId`, `Money`, `Month`, `Mpan`, `Mprn`, `MultiLineString`, `MultiPoint`, `MultiPolygon`, `Nationality`, `NetworkPort`, `NhsNumber`, `OAuthScope`, `OidcClaims`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `PasswordCheck`, `PasswordHash`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `Point`, `Polygon`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PublicKey`, `PushToken`, `Quarter`, `Range`, `Rating`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `RouteOfAdministration`, `SemanticVersion`, `SerialNumber`, `ShoeSize`, `ShoeSizeSystem`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TraceId`, `TraceParent`, `TrackingNumber`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UnitQuantity`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VehicleRegistration`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -5857,6 +5861,13 @@ area page to specify:
 | Queries | `within`, `intersects` and `distance` as query conditions and order, with GiST indexes (area 5) |
 | Left out | Projections other than WGS84, routing, geocoding (provider packages) |
 
+> Built in chunk 5.5s: the 17 geospatial types of "The standard types",
+> each with its construction, GeoJSON on the wire and a form for people,
+> and `type.standard_exists`' shape for `Point`, as "Chosen in chunk 5.5s"
+> records. The `geo.` operations, PostGIS storage and the query conditions
+> are this area's; storing a geometry is `toolchain.not_built_yet` until
+> then.
+
 ## AI: a future area
 
 Area 11 and #88 decided that AI models are provider packages, and that
@@ -6160,6 +6171,31 @@ error: `Booking` is the standard `InstantRange` under another name
   |      ^^^^^^^ a start and an end
   reason: `Booking` has only a start (`starts_at`) and an end (`ends_at`), each built on `Instant`, which is the standard `InstantRange`. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.
   next: Run `jadpo fix Booking swap` to use `InstantRange` where `Booking` is used, then convert at the edge where data arrives in another shape, or write `decline type.standard_exists: "<why>"` above it if this is deliberate (agent)
+  rule: type.standard_exists
+  help: docs/language/19-standard-library.html#type-standard-exists
+
+check failed: 1 error, 1 file
+```
+
+`Point`'s shape is a latitude and a longitude by their common names, so a
+van's last position is the standard `Point`:
+
+```jadpo check project=e-standard-exists-point expect=type.standard_exists
+/// Where a delivery van was when its tracker last reported.
+type VanPosition = Object {
+    lat: Decimal
+    lng: Decimal
+}
+```
+
+```text output
+error: `VanPosition` is the standard `Point` under another name
+ --> main.jadpo:2:6
+  |
+2 | type VanPosition = Object {
+  |      ^^^^^^^^^^^ a latitude and a longitude
+  reason: `VanPosition` has only a latitude (`lat`) and a longitude (`lng`), each built on `Decimal` or `Int`, which is the standard `Point`. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.
+  next: Run `jadpo fix VanPosition swap` to use `Point` where `VanPosition` is used, then convert at the edge where data arrives in another shape, or write `decline type.standard_exists: "<why>"` above it if this is deliberate (agent)
   rule: type.standard_exists
   help: docs/language/19-standard-library.html#type-standard-exists
 
@@ -6707,7 +6743,7 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, `Html` and `Markdown` with `markup.to_html` and `to_plain_text` in 5.5o, `Colour` and the media types with `colour`'s five operations and `media.fit` in 5.5p, `RichText` and `LocalisedText` with `markup.rich_to_html` and `text.pick` in 5.5o2, `PasswordHash`, `PasswordCheck` and `PublicKey` with `crypto` in 5.5q2, each other group of types in the chunks after them to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, `Html` and `Markdown` with `markup.to_html` and `to_plain_text` in 5.5o, `Colour` and the media types with `colour`'s five operations and `media.fit` in 5.5p, `RichText` and `LocalisedText` with `markup.rich_to_html` and `text.pick` in 5.5o2, `PasswordHash`, `PasswordCheck` and `PublicKey` with `crypto` in 5.5q2, the 17 geospatial types in 5.5s, each other group of types in the chunks after them to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}`; `apply_discount` in 5.5i3 |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` built in 5.5o2 |
@@ -6718,7 +6754,7 @@ check failed: 1 error, 1 file
 | `random` | Decided 2026-10-17 (question 19); built in 5.5q, actions only, seeded per test, replayed from a recording; `crypto`'s 8 operations that need no keys held as data built in 5.5q2, with `key:` as a place the compiler owns |
 | The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
 | SQL forms | Decided; built with computed backfills (chunk 5.6) |
-| Geospatial, AI | Decided as future areas, planned in 5.5u and 5.5v |
+| Geospatial, AI | Decided as future areas, planned in 5.5u and 5.5v; the geospatial types' baseline built in 5.5s, the AI types' in 5.5s2 |
 
 ### Consistency with the rest of the language
 
@@ -9032,6 +9068,120 @@ conservative reading:
   `argon2` and `blake2` are optimised in test
   builds, since the release's Argon2id takes seconds unoptimised.
 
+### Chosen in chunk 5.5s
+
+- **Split.** The 17 geospatial types are built here; `Vector`,
+  `Embedding`, `TokenCount`, `TokenUsage` and `ChatMessage` are chunk
+  5.5s2.
+- **`Point`** is a `latitude`, a `longitude` and an `altitude` that may be
+  `none`. The first two are the standard `Latitude` and `Longitude`, each
+  a `Decimal` held as written, with no `scale:`, as a `Rating`'s parts
+  are: from -90 to 90 and from -180 to 180, both ends included, so -180
+  and 180 are both the antimeridian, as RFC 7946 takes them. The altitude
+  is a `Length` of either sign, the height above the WGS84 ellipsoid that
+  RFC 7946's third coordinate is.
+- **No single text form for a geometry,** a `Point` included, nor for a
+  `BoundingBox`, a `Circle`, an `EastingNorthing` or a `MapTile`:
+  `text.from` and `text.parse` on one are `type.mismatch`, as on a
+  `PostalAddress`. Every text form these have (WKT, the `geo:` URI, a
+  tile's `z/x/y`, a box's four numbers) is positional, and the page lets an
+  axis order exist only at a named edge. The catalogue made WKT a format,
+  not a type, so a conversion that names it is the geospatial area's to
+  place.
+- **GeoJSON is a geometry's JSON** (`Json::GeoJson`), read and written by
+  `jadpo-value`'s `geo` module, the one place `[longitude, latitude]`
+  exists. Each of the five geometries is its RFC 7946 object, and
+  `Geometry` the object of the geometry it holds, its `type` saying which,
+  never area 2's tagged form. Reading is strict where RFC 7946 says MUST
+  and refuses what the page leaves out:
+  - a latitude or a longitude out of range is refused, `min` or `max` at
+    its place in `coordinates`;
+  - a position is two or three numbers, more refused (RFC 7946 says not
+    to extend it);
+  - a line has two points or more, and a ring four or more, closed (its
+    last point its first), else `min_length` or `format`;
+  - a multi-geometry has at least one part, though RFC 7946 allows none,
+    and a polygon at least its outer ring;
+  - the members are `type`, `coordinates` and `bbox`, which is checked as
+    four or six numbers and otherwise ignored, since a value's box is its
+    points'; `crs` and any other foreign member are `unknown_field`, as
+    every input refuses a field it doesn't have, and WGS84 is the only
+    system;
+  - `GeometryCollection`, `Feature` and `FeatureCollection` aren't one of
+    the six geometries the page lists, so are refused.
+- **Ring winding:** a ring wound either way is read, and rewound to the
+  right-hand rule (the outer ring counterclockwise, each hole clockwise),
+  since RFC 7946 §3.1.6 asks a parser not to refuse one; every ring is
+  written by the rule, a polygon built in code too. The winding is found on
+  the plane of longitude and latitude, each rounded to 9 places, exactly,
+  and a ring with no area is kept as it is. Whether holes sit inside the
+  outer ring, rings cross, or a geometry should be cut at the antimeridian
+  are geometry operations, the geospatial area's.
+- **Numbers on the wire:** RFC 7946 is I-JSON, so a coordinate is read as
+  the double it is and held as the shortest decimal that is that double; a
+  whole number exactly. It is written as a JSON number with its places,
+  and an altitude in metres with no trailing zeros. A `Latitude`,
+  `Longitude` or `Bearing` on its own is a `Decimal`, sent as area 2 sends
+  one, as text.
+- **`Geometry`** is a choice of six variants, each holding its geometry by
+  the variant's own name: `Geometry.polygon { polygon: zone }`.
+- **The geometries' parts:** a `LineString` and a `MultiPoint` are their
+  `points`, a `Polygon` its `outer` ring and its `holes`, as the catalogue
+  sketches them, a `MultiLineString` its `lines` and a `MultiPolygon` its
+  `polygons`, each an object, so all six are built and read alike.
+- **`BoundingBox`** is its sides by name, `south`, `west`, `north` and
+  `east`, sent as named fields, never RFC 7946's positional `bbox` array.
+  Its south is at or below its north, proved on a literal and checked as
+  JSON is read, as a rating's parts are; a west east of its east crosses
+  the antimeridian (RFC 7946 §5.2). It is shown from its south-west corner
+  to its north-east one.
+- **`Circle`** is a `centre`, a `Point`, and a `radius`, a `Length` never
+  below 0, sent as named fields, its centre as GeoJSON, and shown `1,000 m
+  around 51.5072° N, 0.1276° W`.
+- **`Bearing`** is degrees clockwise from true north, from 0 to 360 as the
+  catalogue sketches it, both included, since no bound excludes its end;
+  360 and 0 are the same direction but different numbers, so an
+  application comparing bearings writes north one way. A wind's direction,
+  folded here, is the one it comes from, as WMO reports it.
+- **`Crs`** is `EPSG:` and the code, 1 to 6 digits with no leading zero;
+  WGS84 is `EPSG:4326`. URNs and `OGC:CRS84` aren't read.
+- **`Geohash`** is 1 to 12 characters of its base 32, in lower case only.
+- **`H3Cell`** is a cell's index (H3's mode 1) as 15 lower-case
+  hexadecimal digits, its bits checked: reserved bits clear, a resolution
+  from 0 to 15, one of the 122 base cells, a digit from 0 to 6 for each
+  resolution it has and 7 for each it hasn't, and no deleted subsequence
+  on a pentagon. An edge's or a vertex's index isn't a cell.
+- **`MapTile`** is OpenStreetMap's XYZ scheme, its row counted from the
+  north, not TMS's: a `zoom` from 0 to 30, which keeps `x` and `y` within a
+  32-bit integer as PostGIS's `ST_TileEnvelope` takes them, and each below
+  2 to the zoom, checked as JSON is read; one built in code from values
+  waits on cross-field rules (chunk 5.5t). It is shown as a tile's URL
+  writes it, `10/511/340`.
+- **`EastingNorthing`** is an `easting` and a `northing`, `Decimal`s held
+  as written, and its `Crs`, shown by name, `easting 530,000, northing
+  180,000 (EPSG:27700)`.
+- **Shown to people:** a latitude or a longitude in the locale's digits,
+  a degree sign and its hemisphere's letter, `N`, `S`, `E` or `W` in every
+  locale, and none for 0; a point as its latitude, then its longitude,
+  then its altitude; a line or a ring as its points in brackets joined by
+  `; `, and a geometry made of others as theirs in brackets joined by `, `.
+- **Storage:** a geometry, a `BoundingBox` and a `Circle` are stored in a
+  PostGIS `geography` column (`Storage::Geography`), which the geospatial
+  area builds, so a field of one is `toolchain.not_built_yet`, pointing at
+  it. A `Latitude`, `Longitude` or `Bearing` is one `numeric` column, a
+  `Crs`, `Geohash` or `H3Cell` one `text` column, and a `MapTile` and an
+  `EastingNorthing` a column per part, an easting's and a northing's
+  `numeric`.
+- **Shapes:** `type.standard_exists` matches `Point`'s, a latitude and a
+  longitude by their common names, each built on `Int` or `Decimal`, as
+  the page says. `LineString`'s and `Polygon`'s match through a list of a
+  type that matches `Point`, which no shape has done yet, and both are one
+  shape; they come with the geospatial area, which can say which a list of
+  points is.
+- **Not personal data:** a position is where a depot or a sensor is as
+  often as where a person is; an application marks a person's position
+  with area 15's `location`.
+
 ### Chosen in chunk 5.5r
 
 Choices the page left open when `verify_jwt` and the token types were
@@ -9654,10 +9804,14 @@ first; each group of types then arrives with its baseline and its extras.
   `BearerToken`, `TotpSecret`, `SecretText`) are 5.5r2, and `Hash`,
   `Hmac`, `Certificate`, `OneTimeCode`, `PasswordPolicy`,
   `WebAuthnCredential` and `EncryptedValue` 5.5r3. The first part built.
-- **5.5s Geospatial and AI types' baselines** `opus · high`: the 17
-  geospatial types and `Vector`, `Embedding`, `TokenCount`, `TokenUsage`
-  and `ChatMessage`, with construction, text and JSON from the contract;
-  their storage and operations come with their own areas.
+- **5.5s Geospatial types' baselines** `opus · high`: the 17
+  geospatial types, with construction, text and JSON from the contract;
+  their storage and operations come with the geospatial area. Split on
+  2026-10-18: the AI types are 5.5s2. Built.
+- **5.5s2 AI types' baselines** `opus · high`: `Vector`, `Embedding`,
+  `TokenCount`, `TokenUsage` and `ChatMessage`, with construction, text
+  and JSON from the contract; their storage and operations come with the
+  AI area.
 - **`type.standard_exists`**: on app code in 5.5a, after 5.4b's declines
   (area 1's question 11), the check in 5.5a and each type's match
   signature with its group; on packages' public types with the publishing

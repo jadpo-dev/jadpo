@@ -149,6 +149,20 @@ impl Codecs<'_> {
                     }
                 }
             }
+            // A geometry, as GeoJSON (chunk 5.5s).
+            Codec::Standard { ty } if crate::geo::is_geojson(ty) => {
+                match crate::geo::read(ty, json) {
+                    Ok(value) => Some(value),
+                    Err(refused) => {
+                        let at = refused
+                            .at
+                            .into_iter()
+                            .fold(path.clone(), |path, part| path.with(part));
+                        Self::problem(problems, &at, refused.rule);
+                        None
+                    }
+                }
+            }
             Codec::Standard { .. } => match json {
                 serde_json::Value::String(text) => self.read_text(id, text, path, problems),
                 _ => {
@@ -613,6 +627,11 @@ impl Codecs<'_> {
                     self.write(*codec, entry, out);
                 }
                 out.push('}');
+            }
+            (Some(Codec::Standard { ty }), value) if crate::geo::is_geojson(ty) => {
+                if !crate::geo::write(value, out) {
+                    out.push_str("null");
+                }
             }
             (Some(Codec::Standard { .. }), value) => match crate::standard::from(value) {
                 Ok(Value::Text(text)) => write_string(&text, out),

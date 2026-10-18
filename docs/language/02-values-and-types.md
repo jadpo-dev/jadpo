@@ -37,7 +37,7 @@ These types exist without being declared, and their names cannot be reused.
 > types are built-in names too, global and in one flat set (`Money`,
 > `Currency`, `Percentage`, `PostalAddress`, `Length` ...; the
 > list is area 19's "The standard types"), with `EncryptionKey` and
-> `PasswordCheck`. Each arrives with its chunk (5.5a to 5.5s), and the
+> `PasswordCheck`. Each arrives with its chunk (5.5a to 5.5s2), and the
 > page and example types that reuse one (`Money`, `Currency`,
 > `PostalCode`, `Sku`, `Dimensions`, `Price`) are renamed or replaced by
 > the built-in in that chunk: chunk 5.5h renamed this page's `Money`
@@ -2248,20 +2248,20 @@ type Count = Int {
     min: 0
 }
 
-struct Point {
+struct GridCell {
     across: Count
     down: Count
 }
 ```
 
 ```text output
-error: Jadpo writes `type Point = Object`, not `struct Point`
+error: Jadpo writes `type GridCell = Object`, not `struct GridCell`
  --> main.jadpo:5:1
   |
-5 | struct Point {
-  | ^^^^^^^^^^^^ write `type Point = Object`
+5 | struct GridCell {
+  | ^^^^^^^^^^^^^^^ write `type GridCell = Object`
   reason: `struct` declares a record in Rust, Go, Swift and C#, `interface` an object's shape in TypeScript, and `enum` a list of cases in most languages; every Jadpo type is `type Name = Base { ... }`, with `Object` or `Enum` as the base.
-  next: Write `type Point = Object` (agent)
+  next: Write `type GridCell = Object` (agent)
   rule: syntax.type_keyword
   help: docs/language/02-values-and-types.html#syntax-type-keyword
 

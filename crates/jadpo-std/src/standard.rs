@@ -25,6 +25,7 @@ mod contact;
 pub mod documents;
 pub mod emoji_data;
 pub mod events;
+pub mod geo;
 pub mod health;
 mod identifiers;
 pub mod lists;
@@ -365,6 +366,9 @@ pub enum TextForm {
     /// [`records`]): the airline's two characters, the number with no
     /// leading zero and the suffix, if it has one: `BA123`, `BA5A`.
     FlightNumber,
+    /// A decimal number with the places it was given and no exponent, as
+    /// area 2 writes a `Decimal`: a `Latitude`'s `51.5072` (chunk 5.5s).
+    Decimal,
     /// HTML as the sanitiser keeps it (chunk 5.5o, [`markup::sanitise`]):
     /// written as it is held, and read from any text, made safe rather than
     /// refused, so reading it never fails.
@@ -401,6 +405,12 @@ pub enum Json {
     /// language map, `{"en-GB": "Rye loaf", "fr-FR": "Pain de seigle"}`
     /// (chunk 5.5o2).
     Keyed,
+    /// A GeoJSON geometry object (RFC 7946, chunk 5.5s), `{"type":
+    /// "Point", "coordinates": [-0.1276, 51.5072]}`: the one place a
+    /// position's `[longitude, latitude]` order exists, read and written by
+    /// `jadpo-value`'s `geo` module, which checks each coordinate's range
+    /// and each ring's closure and writes rings by the right-hand rule.
+    GeoJson,
 }
 
 impl Json {
@@ -408,7 +418,12 @@ impl Json {
     pub const fn fields(self) -> Option<&'static [&'static str]> {
         match self {
             Json::Fields(names) | Json::Members(names) => Some(names),
-            Json::Text | Json::Number | Json::Tagged | Json::Array | Json::Keyed => None,
+            Json::Text
+            | Json::Number
+            | Json::Tagged
+            | Json::Array
+            | Json::Keyed
+            | Json::GeoJson => None,
         }
     }
 }
@@ -568,6 +583,22 @@ pub enum FormatKey {
     /// issuer; a key by its id, else the key itself. The last part named is
     /// one the value always has, so there is always something to show.
     FirstPart(&'static [&'static str]),
+    /// A latitude or a longitude in the locale's digits, a degree sign and
+    /// its hemisphere's letter, `positive` above 0 and `negative` below,
+    /// the same letters in every locale; 0 has none: `51.5072° N`, `0°`
+    /// (chunk 5.5s).
+    Coordinate {
+        positive: &'static str,
+        negative: &'static str,
+    },
+    /// A geospatial record as `jadpo-value`'s `geo` module shows it (chunk
+    /// 5.5s): a point as its latitude and longitude with their
+    /// hemispheres, and its altitude; a line or a ring as its points in
+    /// brackets, joined by `; `; a geometry made of others as theirs in
+    /// brackets, joined by `, `; a bounding box from its south-west corner
+    /// to its north-east one; projected coordinates by name; a tile as its
+    /// URL writes it.
+    Geometry,
 }
 
 /// A unit a measure is shown in (chunk 5.5m2): its kind, its name in the
@@ -622,6 +653,7 @@ impl OrderRule {
 pub fn order_rules(ty: &str) -> &'static [OrderRule] {
     match ty {
         records::RATING => records::order_rules(ty),
+        geo::BOUNDING_BOX => geo::order_rules(ty),
         _ => health::order_rules(ty),
     }
 }
@@ -765,6 +797,8 @@ pub enum Validator {
     Orcid,
     /// An MPAN core's check digit.
     Mpan,
+    /// An H3 cell's index, its bits valid ([`geo::is_h3_cell`]).
+    H3Cell,
     /// An Argon2id PHC string with bounded costs ([`security`]).
     PasswordHash,
     /// An Ed25519 public key as unpadded Base64url ([`security`]).
@@ -824,6 +858,7 @@ impl Validator {
             Validator::SnomedConcept => codes::is_snomed_concept(text),
             Validator::Orcid => codes::is_orcid(text),
             Validator::Mpan => codes::is_mpan(text),
+            Validator::H3Cell => geo::is_h3_cell(text),
             Validator::Html => markup::is_safe(text),
             Validator::PasswordHash => security::is_password_hash(text),
             Validator::PublicKey => security::is_public_key(text),
@@ -866,6 +901,11 @@ pub enum Storage {
         parts: &'static [(&'static str, &'static str)],
         fixed: Option<&'static str>,
     },
+    /// A PostGIS `geography` column in WGS84 (area 19, "Geospatial: a
+    /// future area"), which the geospatial area builds (roadmap 5.5u):
+    /// until then a field can't store one, `toolchain.not_built_yet`
+    /// (chunk 5.5s).
+    Geography,
 }
 
 /// The examples the harness checks a type with.
@@ -1176,8 +1216,9 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// and measures of commerce, health, travel and the rest with the size
 /// systems and `RouteOfAdministration` (chunk 5.5m2, in `records` and
 /// `health`), `PasswordHash`, `PasswordCheck` and `PublicKey` (chunk
-/// 5.5q2, in `security`), and `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and
-/// `OidcClaims` (chunk 5.5r, in `security`).
+/// 5.5q2, in `security`), the 17 geospatial types (chunk 5.5s, in
+/// `geo`), and `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims`
+/// (chunk 5.5r, in `security`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     lists::ALLERGEN_ENTRY,
@@ -1203,6 +1244,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     banks::BANK_ACCOUNT_ENTRY,
     records::BARCODE_ENTRY,
     prices::BASIS_POINTS_ENTRY,
+    geo::BEARING_ENTRY,
     identifiers::BIC,
     quantity(
         crate::QuantityKind::Bitrate,
@@ -1216,6 +1258,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     health::BLOOD_PRESSURE_ENTRY,
     lists::BLOOD_TYPE_ENTRY,
     codes::BOOKING_REFERENCE,
+    geo::BOUNDING_BOX_ENTRY,
     lists::CABIN_CLASS_ENTRY,
     // Day-and-month calendar dates, ordered by day.
     StandardType {
@@ -1269,6 +1312,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     codes::CARRIER,
     lists::CEFR_LEVEL_ENTRY,
     web::CIDR,
+    geo::CIRCLE_ENTRY,
     records::CLOTHING_SIZE_ENTRY,
     records::CLOTHING_SIZE_SYSTEM_ENTRY,
     colour::COLOUR_ENTRY,
@@ -1288,6 +1332,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     web::COOKIE,
     places::COUNTRY_ENTRY,
     places::COUNTRY_SUBDIVISION_ENTRY,
+    geo::CRS_ENTRY,
     // The active ISO 4217 codes (area 19, "Money and payments", question
     // 22), written as their codes and shown by CLDR's display names.
     StandardType {
@@ -1412,6 +1457,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         release: FIRST_RELEASE,
     },
     codes::EAN13,
+    geo::EASTING_NORTHING_ENTRY,
     checked(
         "Email",
         Builtin::Email,
@@ -1580,8 +1626,11 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("2400000000 Hz", "2,400,000,000 Hz"),
         ],
     ),
+    geo::GEOHASH_ENTRY,
+    geo::GEOMETRY_ENTRY,
     software::GIT_REF,
     contact::GIVEN_NAME,
+    geo::H3_CELL_ENTRY,
     health::HEART_RATE_ENTRY,
     web::HOSTNAME,
     codes::HS_CODE,
@@ -1717,6 +1766,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     security::JWT_ENTRY,
     security::JWT_CLAIMS_ENTRY,
     places::LANGUAGE_ENTRY,
+    geo::LATITUDE_ENTRY,
     lists::LAWFUL_BASIS_ENTRY,
     identifiers::LEI,
     quantity(
@@ -1727,6 +1777,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("1000 metre", "1,000 m"),
         ],
     ),
+    geo::LINE_STRING_ENTRY,
     // A date and a clock time with no zone: not an instant until a zone
     // is chosen.
     time_object(
@@ -1798,8 +1849,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     },
     rich_text::LOCALISED_TEXT_ENTRY,
     software::LOG_LEVEL,
+    geo::LONGITUDE_ENTRY,
     codes::LOT_NUMBER,
     web::MAC_ADDRESS,
+    geo::MAP_TILE_ENTRY,
     markup::MARKDOWN_ENTRY,
     card_types::MASKED_CARD_NUMBER_TYPE,
     quantity(
@@ -1906,6 +1959,9 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     },
     codes::MPAN,
     codes::MPRN,
+    geo::MULTI_LINE_STRING_ENTRY,
+    geo::MULTI_POINT_ENTRY,
+    geo::MULTI_POLYGON_ENTRY,
     places::NATIONALITY_ENTRY,
     web::NETWORK_PORT,
     identifiers::NHS_NUMBER,
@@ -1951,6 +2007,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     contact::PERSON_NAME,
     contact::PHONE_EXTENSION,
     phones::PHONE_NUMBER,
+    geo::POINT_ENTRY,
+    geo::POLYGON_ENTRY,
     contact::POSTAL_ADDRESS,
     postal::POSTAL_CODE,
     quantity(
@@ -2683,7 +2741,7 @@ impl StandardType {
     /// none for a type stored in one.
     pub fn columns(&self) -> &'static [(&'static str, &'static str)] {
         match self.storage {
-            Storage::Column(_) => &[],
+            Storage::Column(_) | Storage::Geography => &[],
             Storage::Columns { parts, .. } => parts,
         }
     }
@@ -2700,7 +2758,7 @@ impl StandardType {
     /// Of its named columns, the one a type built on it can fix.
     pub fn fixed_part(&self) -> Option<&'static str> {
         match self.storage {
-            Storage::Column(_) => None,
+            Storage::Column(_) | Storage::Geography => None,
             Storage::Columns { fixed, .. } => fixed,
         }
     }
@@ -2739,6 +2797,14 @@ impl StandardType {
                     ..
                 },
             ) => Column::Percentage,
+            // A latitude, a longitude, a bearing (chunk 5.5s).
+            (
+                SqlType::Numeric,
+                Holds::Bounded {
+                    of: Builtin::Decimal,
+                    ..
+                },
+            ) => Column::Decimal,
             _ => return None,
         })
     }
@@ -2759,6 +2825,7 @@ impl StandardType {
             Storage::Columns { parts, .. } => {
                 return parts.first().map_or("jsonb", |(_, ty)| *ty);
             }
+            Storage::Geography => return "geography",
         };
         match storage {
             SqlType::Bool => "boolean",
@@ -2805,7 +2872,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 222, "the 222 standard types built so far");
+        assert_eq!(names.len(), 239, "the 239 standard types built so far");
     }
 
     #[test]
@@ -2885,13 +2952,20 @@ mod tests {
                 assert_eq!(declared, names, "{}'s JSON is its fields", entry.name);
             }
             // A choice is sent in area 2's tagged form, and has no single
-            // text form (chunk 5.5i3).
+            // text form (chunk 5.5i3); `Geometry` is sent as the GeoJSON
+            // geometry it holds (chunk 5.5s).
             assert_eq!(
-                matches!(entry.holds, Holds::Choice(_)),
+                matches!(entry.holds, Holds::Choice(_)) && entry.json != Json::GeoJson,
                 entry.json == Json::Tagged,
                 "{} is sent tagged exactly when it is a choice",
                 entry.name
             );
+            // GeoJSON is a geometry's alone, and a geometry has no single
+            // text form, since one would hold an axis order (chunk 5.5s).
+            if entry.json == Json::GeoJson {
+                assert!(entry.text.is_none(), "{}", entry.name);
+                assert_eq!(entry.storage, Storage::Geography, "{}", entry.name);
+            }
             if let Holds::Choice(variants) = entry.holds {
                 assert!(entry.text.is_none(), "{}", entry.name);
                 assert!(variants.iter().all(|(_, fields)| !fields.is_empty()));

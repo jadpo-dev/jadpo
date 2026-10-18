@@ -486,6 +486,10 @@ pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
         out.set("type", "string");
         return out;
     }
+    // A geometry (chunk 5.5s): the GeoJSON object RFC 7946 defines.
+    if entry.json == jadpo_std::standard::Json::GeoJson {
+        return geojson_schema(entry.name);
+    }
     // A named collection (chunk 5.5o2): an array of its items, or an object
     // of its entries, each key its key part's text.
     match entry.holds {
@@ -544,6 +548,57 @@ pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
     }
     out.set("properties", properties);
     out.set("required", required);
+    out.set("additionalProperties", false);
+    out
+}
+
+/// A GeoJSON geometry's schema (RFC 7946, chunk 5.5s): its `type` and its
+/// `coordinates`, each position two or three numbers, longitude first;
+/// `Geometry`'s is one of the six.
+fn geojson_schema(name: &str) -> Value {
+    use jadpo_std::standard::geo;
+    let array = |items: Value, least: u32| {
+        let mut out = Value::object();
+        out.set("type", "array");
+        out.set("items", items);
+        out.set("minItems", least);
+        out
+    };
+    let mut number = Value::object();
+    number.set("type", "number");
+    let mut position = array(number, 2);
+    position.set("maxItems", 3u32);
+    let line = array(position.clone(), 2);
+    let polygon = array(array(position.clone(), 4), 1);
+    let coordinates = match name {
+        geo::POINT => position,
+        geo::LINE_STRING => line,
+        geo::POLYGON => polygon,
+        geo::MULTI_POINT => array(position, 1),
+        geo::MULTI_LINE_STRING => array(line, 1),
+        geo::MULTI_POLYGON => array(polygon, 1),
+        _ => {
+            let one_of: Vec<Value> = geo::GEOJSON_TYPES
+                .iter()
+                .map(|(_, ty)| geojson_schema(ty))
+                .collect();
+            let mut out = Value::object();
+            out.set("oneOf", one_of);
+            return out;
+        }
+    };
+    let mut ty = Value::object();
+    ty.set("const", name);
+    let mut properties = Value::object();
+    properties.set("type", ty);
+    properties.set("coordinates", coordinates);
+    let mut bbox = array(Value::object(), 4);
+    bbox.set("maxItems", 6u32);
+    properties.set("bbox", bbox);
+    let mut out = Value::object();
+    out.set("type", "object");
+    out.set("properties", properties);
+    out.set("required", vec!["type", "coordinates"]);
     out.set("additionalProperties", false);
     out
 }

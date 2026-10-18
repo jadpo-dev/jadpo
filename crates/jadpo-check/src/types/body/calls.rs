@@ -943,7 +943,8 @@ impl Body<'_> {
                     // text its value is, or which named collection (chunk
                     // 5.5o2), which the runtime can't see.
                     // So is a type built on a quantity shown in units of
-                    // its own (a heart rate, chunk 5.5m2).
+                    // its own (a heart rate, chunk 5.5m2), and one built on
+                    // `Decimal` (a latitude, chunk 5.5s).
                     if let Some(entry) = entry
                         && (matches!(
                             entry.holds,
@@ -954,6 +955,12 @@ impl Body<'_> {
                         ) || matches!(
                             entry.format.key,
                             jadpo_std::standard::FormatKey::UnitsIn(_)
+                        ) || matches!(
+                            entry.holds,
+                            jadpo_std::standard::Holds::Bounded {
+                                of: jadpo_std::Builtin::Decimal,
+                                ..
+                            }
                         ))
                     {
                         self.facts.shown.insert(node_key(call.syntax()), entry.name);

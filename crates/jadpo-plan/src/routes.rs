@@ -444,6 +444,14 @@ impl<'t> Codecs<'t> {
                     variants,
                 }
             }
+            // `Geometry`, sent as the GeoJSON geometry it holds (chunk
+            // 5.5s).
+            Made::StdEnum(name)
+                if jadpo_std::standard_type(&name)
+                    .is_some_and(|entry| entry.json == jadpo_std::standard::Json::GeoJson) =>
+            {
+                Codec::Standard { ty: name }
+            }
             Made::StdEnum(name) => {
                 let spelling = jadpo_std::config::Spelling::of(&name);
                 let listed: Vec<(usize, &str)> = jadpo_std::enums()
@@ -503,7 +511,11 @@ impl<'t> Codecs<'t> {
                 };
                 // Sent as its canonical text (area 19, "Time and calendar
                 // additions"), or as an object of its fields.
-                if entry.json == jadpo_std::standard::Json::Text {
+                // A geometry is sent as GeoJSON (chunk 5.5s).
+                if matches!(
+                    entry.json,
+                    jadpo_std::standard::Json::Text | jadpo_std::standard::Json::GeoJson
+                ) {
                     return Codec::Standard {
                         ty: entry.name.to_string(),
                     };

@@ -11,7 +11,7 @@ use crate::support;
 use jadpo_interp::{AssertionDetail, Got, Outcome, Program};
 use support::{program, run};
 
-const SIZES: &str = "type Count = Int {\n    min: 0\n}\n\ntype Point = Object {\n    x: Count\n    y: Count\n}\n\ntype TooBig = Failure {\n    kind: FailureKind.rejected\n}\n\nfunction add(a: Count, b: Count) -> Count {\n    return Count(a + b)\n}\n\nfunction double(n: Count) -> Count {\n    var twice: Count = add(n, n)\n    return twice\n}\n\naction check_size(n: Count) fails TooBig -> Count {\n    if (n > 10) {\n        reject TooBig\n    }\n    return n\n}\n";
+const SIZES: &str = "type Count = Int {\n    min: 0\n}\n\ntype GridCell = Object {\n    x: Count\n    y: Count\n}\n\ntype TooBig = Failure {\n    kind: FailureKind.rejected\n}\n\nfunction add(a: Count, b: Count) -> Count {\n    return Count(a + b)\n}\n\nfunction double(n: Count) -> Count {\n    var twice: Count = add(n, n)\n    return twice\n}\n\naction check_size(n: Count) fails TooBig -> Count {\n    if (n > 10) {\n        reject TooBig\n    }\n    return n\n}\n";
 
 fn sizes(tests: &str) -> Program {
     program(&[("sizes.jadpo", SIZES), ("sizes.test.jadpo", tests)])
@@ -80,12 +80,12 @@ fn a_false_condition_keeps_its_own_value_and_its_parts() {
 #[test]
 fn a_field_read_points_at_the_field() {
     let program = sizes(
-        "test \"the point is right\" {\n    var point: Point = Point {\n        x: 1\n        y: 2\n    }\n    assert point.x == 2\n}\n",
+        "test \"the point is right\" {\n    var point: GridCell = GridCell {\n        x: 1\n        y: 2\n    }\n    assert point.x == 2\n}\n",
     );
     assert_eq!(
         parts(&program, "the point is right"),
         [
-            part("point", "point", "Point { x: 1, y: 2 }"),
+            part("point", "point", "GridCell { x: 1, y: 2 }"),
             part("point.x", "x", "1"),
         ]
     );

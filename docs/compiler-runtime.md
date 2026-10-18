@@ -798,6 +798,21 @@ Four units joined the table with no literal suffix (`mmHg`, `bpm`,
 `mgdL` and the glucose millimole). `CodeForm::Isbn10` is a form read and
 never written (`standard::reads_form`), which `text.parse` turns into the
 13 digits through `standard::isbn_from_isbn10`.
+Since chunk 5.5s the geospatial types are entries in
+`jadpo_std::standard::geo`, with H3's index check there. A geometry is
+sent as GeoJSON (`Json::GeoJson`): the plan gives it a `Codec::Standard`,
+which `jadpo_value::json` hands to `jadpo_value::geo` to read and write,
+the one place a position's `[longitude, latitude]` exists; it checks
+ranges, lengths, closure and members, rewinds rings to the right-hand rule
+on the way in and out, and reports a refusal at its place in
+`coordinates`. `Geometry` is a choice the plan sends the same way, never
+tagged. A geometry's storage is `Storage::Geography`, whose column type is
+`geography`, and the data model reports a field of one as
+`toolchain.not_built_yet` until the geospatial area. A type built on
+`Decimal` with bounds (`Latitude`) has `TextForm::Decimal` and is named to
+`text.format` by the checker, so `FormatKey::Coordinate` can show its
+hemisphere; a compound type's column may now be `numeric`
+(`EastingNorthing`).
 Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
 text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
 `jadpo_std::standard::events`, which also holds the rules across its parts
