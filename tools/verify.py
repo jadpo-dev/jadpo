@@ -150,6 +150,9 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         # their guards; then purge through the runtime's entry point, with
         # cascades, restricted references and batches (area 5).
         ('live PostgreSQL: lifecycles and purge', [('jadpo-cli', 'lifecycle')], []),
+        # Every standard operation's SQL form gives what the runtime gives
+        # on the same inputs (area 19, "SQL forms"; chunk 5.6).
+        ('live PostgreSQL: SQL forms', [('jadpo-cli', 'sql_forms')], ['--nocapture']),
         # Routes over real HTTP: `jadpo dev` on the native host, requests
         # over TCP, the failure envelope, query and header input, rate
         # limits and reloading; and the golden OpenAPI document (area 7).

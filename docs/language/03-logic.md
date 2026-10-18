@@ -355,7 +355,7 @@ also what "constants" already means in the places that allow them:
 - **An update by `id`** may use parameters, constants, `clock.now` and the
   stored fields (area 6).
 - **A computed backfill** may use the row's stored fields, constants and
-  pure functions (area 5; backfills come with chunk 5.6).
+  pure functions (area 5; backfills come with chunk 5.6b).
 
 A setting's `default:` and `test:` take a literal but never a constant
 (revised 2026-10-16, Richard; see [A constant or a setting](#a-constant-or-a-setting)).

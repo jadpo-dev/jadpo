@@ -29,6 +29,7 @@ mod queries;
 mod round_trips;
 mod signed;
 mod sql;
+mod sql_forms;
 mod sql_literals;
 mod standard_boundaries;
 mod standard_storage;
