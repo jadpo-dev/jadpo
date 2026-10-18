@@ -92,13 +92,16 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
         {
             Some(Kind::Any)
         }
-        // A standard object type the runtime builds as a record, or one held
-        // as text (area 19).
+        // A standard object type the runtime builds as a record, one held
+        // as text (area 19), or a named collection (chunk 5.5o2).
         (other, 0)
             if jadpo_std::standard_type(other).is_some_and(|entry| {
                 matches!(
                     entry.holds,
-                    jadpo_std::standard::Holds::Object(_) | jadpo_std::standard::Holds::Text { .. }
+                    jadpo_std::standard::Holds::Object(_)
+                        | jadpo_std::standard::Holds::Text { .. }
+                        | jadpo_std::standard::Holds::List(_)
+                        | jadpo_std::standard::Holds::Map(..)
                 )
             }) =>
         {
@@ -134,8 +137,12 @@ pub struct Operation {
 /// written, and an object's fields.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StandardStub {
-    /// The name after `=`: its own for a built-in type, `Enum`, `Object`.
+    /// The name after `=`: its own for a built-in type, `Enum`, `Object`,
+    /// `List` or `Map`.
     pub base: String,
+    /// The type arguments written after it: a named collection's item, or
+    /// its key and value (chunk 5.5o2).
+    pub arguments: Vec<TypeRef>,
     /// An enum's variants, or an object's fields with their types, in
     /// declared order.
     pub members: Vec<(String, Option<TypeRef>)>,
@@ -242,9 +249,12 @@ impl StdNames {
                     let Some(name) = decl.name().as_ref().and_then(tree::name_text) else {
                         continue;
                     };
-                    let base = match decl.base().map(|base| TypeRef::from_type(&base)) {
-                        Some(TypeRef::Path(names, _)) => names.first().cloned().unwrap_or_default(),
-                        _ => String::new(),
+                    let (base, arguments) = match decl.base().map(|base| TypeRef::from_type(&base))
+                    {
+                        Some(TypeRef::Path(names, arguments)) => {
+                            (names.first().cloned().unwrap_or_default(), arguments)
+                        }
+                        _ => (String::new(), Vec::new()),
                     };
                     let mut members: Vec<(String, Option<TypeRef>)> = decl
                         .member_list()
@@ -295,6 +305,7 @@ impl StdNames {
                             name,
                             StandardStub {
                                 base,
+                                arguments,
                                 members,
                                 payloads,
                             },

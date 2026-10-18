@@ -1,10 +1,13 @@
-//! Area 19, "Text formats" (chunk 5.5o), in the checker: every way text
-//! becomes `Html` is the sanitiser and never fails, so it needs no
+//! Area 19, "Text formats" (chunks 5.5o and 5.5o2), in the checker: every
+//! way text becomes `Html` is the sanitiser and never fails, so it needs no
 //! `attempt`; a plain `Text` is never an `Html` without it; an `Html`
 //! literal must already be what the sanitiser keeps, or it is
-//! `type.invalid_literal` naming what would be kept; `markup`'s two
-//! operations are typed by their stubs; and an application's own type of
-//! either name is a clash.
+//! `type.invalid_literal` naming what would be kept; `markup`'s operations
+//! are typed by their stubs; a `RichText` is built as a named list of its
+//! blocks, its rules and its links proved where they are written; a
+//! `LocalisedText` is built as a named map; `text.pick`'s locale is checked
+//! as formatting's is; and an application's own type of any of their
+//! names is a clash.
 
 use crate::support;
 
@@ -198,4 +201,167 @@ fn markup_operations_take_markdown_and_html() {
 fn an_application_s_own_html_is_a_clash() {
     assert_eq!(rules("type Html = Text {}\n"), ["type.standard_clash"]);
     assert_eq!(rules("type Markdown = Text {}\n"), ["type.standard_clash"]);
+    assert_eq!(rules("type RichText = Text {}\n"), ["type.standard_clash"]);
+    assert_eq!(
+        rules("type LocalisedText = Text {}\n"),
+        ["type.standard_clash"]
+    );
+}
+
+/// A one-block document holding one span, with what is written for its
+/// heading's level, its text and its link.
+fn document(level: &str, text: &str, link: &str) -> String {
+    format!(
+        "function note() -> RichText {{\n    return RichText([\n        RichTextBlock.heading {{\n            level: {level}\n            spans: [\n                RichTextSpan {{\n                    text: {text}\n                    marks: [RichTextMark.strong, RichTextMark.emphasis]\n                    link: {link}\n                }}\n            ]\n        }}\n    ])\n}}\n"
+    )
+}
+
+#[test]
+fn a_document_is_its_blocks_with_their_rules_proved_where_written() {
+    assert_eq!(
+        rules(&document("2", "\"Menu\"", "\"https://example.com/menu\"")),
+        NONE
+    );
+    assert_eq!(
+        rules(&document(
+            "1",
+            "\"Write to us\"",
+            "\"mailto:hello@example.com\""
+        )),
+        NONE
+    );
+    assert_eq!(rules(&document("6", "\"Menu\"", "none")), NONE);
+    assert_eq!(
+        rules(&document("7", "\"Menu\"", "none")),
+        ["type.invalid_literal"],
+        "a heading is level 1 to 6"
+    );
+    assert_eq!(
+        rules(&document("2", "\"\"", "none")),
+        ["type.invalid_literal"],
+        "a span's text is never empty"
+    );
+    for link in [
+        "javascript:alert(1)",
+        "http://example.com/",
+        "/menu",
+        "//example.com/",
+        "https://192.168.0.1/",
+    ] {
+        assert_eq!(
+            rules(&document("2", "\"Menu\"", &format!("\"{link}\""))),
+            ["type.invalid_literal"],
+            "`{link}` isn't a link a document holds"
+        );
+    }
+    assert_eq!(
+        rules(
+            "function blocks(written: RichText) -> RichText {\n    return RichText(written)\n}\n"
+        ),
+        NONE,
+        "built from a list of its blocks"
+    );
+    assert_eq!(
+        rules(
+            "function page(written: RichText) -> Html {\n    return markup.rich_to_html(written)\n}\n"
+        ),
+        NONE
+    );
+    assert_eq!(
+        rules(
+            "function page(written: Markdown) -> Html {\n    return markup.rich_to_html(written)\n}\n"
+        ),
+        ["type.mismatch"],
+        "only a `RichText` is written as HTML by it"
+    );
+    assert_eq!(
+        rules(
+            "function shown(written: RichText, at: Locale) -> PresentationText {\n    return text.format(written, locale: at)\n}\n"
+        ),
+        NONE,
+        "shown as the text people read in it"
+    );
+    assert_eq!(
+        rules(
+            "function sent(written: RichText) -> Wire {\n    return Wire(text.from(written))\n}\n"
+        ),
+        ["type.mismatch"],
+        "no single text form"
+    );
+}
+
+#[test]
+fn a_bad_link_is_said_in_words() {
+    let db = jadpo_db::Database::default();
+    let project = support::project(
+        &db,
+        Layout::Loose,
+        &[(
+            "main.jadpo",
+            &document("2", "\"Menu\"", "\"javascript:steal()\""),
+        )],
+    );
+    let found = jadpo_check::check(&db, project);
+    let [problem] = found.as_slice() else {
+        panic!("one problem: {found:?}");
+    };
+    assert!(
+        problem
+            .message
+            .contains("isn't a link a `RichText` can hold"),
+        "{}",
+        problem.message
+    );
+    let reason = problem.reason.clone().unwrap_or_default();
+    assert!(!reason.contains("pattern"), "{reason}");
+    assert!(reason.contains("`https:`"), "{reason}");
+}
+
+#[test]
+fn localised_text_is_a_map_picked_in_a_supported_locale() {
+    let pick = "function shelf(name: LocalisedText, shopper: Locale) -> Wire {\n    return Wire(text.pick(name, locale: shopper))\n}\n";
+    assert_eq!(rules(pick), NONE);
+    assert_eq!(
+        rules(
+            "function name() -> LocalisedText {\n    return LocalisedText(map.with([], Locale.fr_fr, \"Pain de seigle\"))\n}\n"
+        ),
+        NONE,
+        "built from a map of locales to text"
+    );
+    assert_eq!(
+        rules(
+            "function shelf(name: Html, shopper: Locale) -> Wire {\n    return Wire(text.pick(name, locale: shopper))\n}\n"
+        ),
+        ["type.mismatch"],
+        "only a `LocalisedText` is picked from"
+    );
+    let app = "application {}\n\nlocales {\n    default: Locale.en_gb\n    supported: [Locale.en_gb, Locale.fr_fr]\n}\n";
+    let action = |shopper: &str| {
+        format!(
+            "type ShelfName = Text {{}}\n\naction shelf_name(name: LocalisedText) -> ShelfName {{\n    return ShelfName(text.pick(name, locale: {shopper}))\n}}\n"
+        )
+    };
+    let project = |shopper: &str, app: &str| {
+        support::rules(
+            Layout::Project,
+            &[
+                ("app.jadpo", app),
+                (
+                    "domains/catalogue/actions/shelf_name.jadpo",
+                    &action(shopper),
+                ),
+            ],
+        )
+    };
+    assert_eq!(project("Locale.fr_fr", app), NONE);
+    assert_eq!(
+        project("Locale.es_es", app),
+        ["type.locale_unsupported"],
+        "a locale written out is one the application supports"
+    );
+    assert_eq!(
+        project("Locale.fr_fr", "application {}\n"),
+        ["type.temporal_locales_required"],
+        "the application declares its locales"
+    );
 }

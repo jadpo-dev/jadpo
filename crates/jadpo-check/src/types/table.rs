@@ -507,6 +507,23 @@ impl TypeTable {
                     },
                 );
             }
+            // The named collections, each built on a list or a map of its
+            // parts as an application's own named collection is (chunk
+            // 5.5o2): a `RichText` is a `List<RichTextBlock>`.
+            let parent = match entry.holds {
+                jadpo_std::standard::Holds::List(item) => Ty::List(Box::new(part_ty(item))),
+                jadpo_std::standard::Holds::Map(key, value) => {
+                    Ty::Map(Box::new(part_ty(key)), Box::new(part_ty(value)))
+                }
+                _ => continue,
+            };
+            table.defs.insert(
+                entry.name.to_string(),
+                Def::Scalar {
+                    parent,
+                    rules: Box::default(),
+                },
+            );
         }
         for (name, variants) in std.enums() {
             table.defs.insert(
@@ -1017,10 +1034,16 @@ pub trait TypeView {
                     current = self.field(host, path)?.declared.strip_nullable().clone();
                 }
                 // One built on a built-in type with bounds of its own
-                // (chunk 5.5i3) is its own standard type too.
+                // (chunk 5.5i3), or a named collection (chunk 5.5o2), is
+                // its own standard type too.
                 Ty::Named(name)
                     if jadpo_std::standard_type(name).is_some_and(|entry| {
-                        matches!(entry.holds, jadpo_std::standard::Holds::Bounded { .. })
+                        matches!(
+                            entry.holds,
+                            jadpo_std::standard::Holds::Bounded { .. }
+                                | jadpo_std::standard::Holds::List(_)
+                                | jadpo_std::standard::Holds::Map(..)
+                        )
                     }) =>
                 {
                     return jadpo_std::standard_type(name);
@@ -1211,7 +1234,12 @@ fn part_ty(part: jadpo_std::Part) -> Ty {
         }
         jadpo_std::Part::Standard(other)
             if jadpo_std::standard_type(other).is_some_and(|entry| {
-                entry.codes().is_some() || jadpo_std::standard::declared(entry.name).is_some()
+                entry.variants().is_some()
+                    || jadpo_std::standard::declared(entry.name).is_some()
+                    || matches!(
+                        entry.holds,
+                        jadpo_std::standard::Holds::List(_) | jadpo_std::standard::Holds::Map(..)
+                    )
             }) =>
         {
             Ty::Named(other.to_string())

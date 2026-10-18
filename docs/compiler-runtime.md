@@ -727,6 +727,21 @@ neither needs an `attempt`. `jadpo_value::markup` renders CommonMark with
 pulldown-cmark (`jadpo-value` only) and sanitises the result for
 `markup.to_html`; `markup.to_plain_text` and `FormatKey::PlainText` read
 the sanitised text's tokens.
+Since chunk 5.5o2 a standard type may be a named collection: a list
+(`Holds::List`, `RichText`) or a map (`Holds::Map`, `LocalisedText`) of
+parts. The checker's type table builds each on `List<...>` or
+`Map<...>` as it builds an application's named collection, the plan
+gives it a list or map codec of its parts, and a map keyed by a standard
+enum is written by each key's wire text (a locale's tag). A part may now
+be a standard choice or object sent as its fields, which the plan
+already built recursively. `jadpo_std::standard::rich_text` holds the
+entries, the link pattern and `render`, which writes blocks and spans as
+HTML the sanitiser keeps unchanged; `jadpo_value::markup` reads a
+`RichText` value into those blocks for `markup.rich_to_html`
+(`Op::MarkupRichToHtml`), which sanitises the result, and
+`jadpo_value::locale::pick` walks area 10's fallback chain over a
+`LocalisedText` for `text.pick` (`Op::TextPick`) and `text.format`, with
+the application's default locale from the `LocalePlan` `run` is given.
 Since chunk 5.5p `jadpo_std::standard::colour` holds `Colour` and its
 hex text, and `jadpo_std::standard::media` the media types, the
 WebCodecs codec strings, SMPTE drop-frame and WebVTT rules and

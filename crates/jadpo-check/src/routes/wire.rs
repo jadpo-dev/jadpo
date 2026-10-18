@@ -164,13 +164,16 @@ impl<'g> Wire<'g> {
                     return Shape::Page(args.into_iter().next().unwrap_or(TypeRef::None));
                 }
                 TypeRef::Std(name, args) if args.is_empty() => {
-                    // A standard object, or a choice, sent tagged (chunk
-                    // 5.5i3), each described from its entry.
+                    // A standard object, a choice, sent tagged (chunk
+                    // 5.5i3), or a named collection (chunk 5.5o2), each
+                    // described from its entry.
                     if let Some(entry) = jadpo_std::standard_type(&name)
                         && matches!(
                             entry.holds,
                             jadpo_std::standard::Holds::Object(_)
                                 | jadpo_std::standard::Holds::Choice(_)
+                                | jadpo_std::standard::Holds::List(_)
+                                | jadpo_std::standard::Holds::Map(..)
                         )
                     {
                         return Shape::StdObject(entry);
@@ -308,7 +311,20 @@ impl<'g> Wire<'g> {
                 refs.insert(issued_key(name));
                 reference(name)
             }
-            Shape::StdObject(entry) => standard_object_schema(entry),
+            // A map keyed by a standard enum lists the keys the wire takes:
+            // a `LocalisedText`'s, the supported locales' tags (chunk
+            // 5.5o2).
+            Shape::StdObject(entry) => match entry.holds {
+                jadpo_std::standard::Holds::Map(jadpo_std::Part::Standard(key), _) => {
+                    let mut out = standard_object_schema(entry);
+                    out.set(
+                        "propertyNames",
+                        self.schema(&TypeRef::Std(key.to_string(), Vec::new()), refs),
+                    );
+                    out
+                }
+                _ => standard_object_schema(entry),
+            },
             Shape::StdEnum(name) => {
                 let mut out = Value::object();
                 out.set("type", "string");
@@ -469,6 +485,22 @@ pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
     if entry.json == jadpo_std::standard::Json::Text {
         out.set("type", "string");
         return out;
+    }
+    // A named collection (chunk 5.5o2): an array of its items, or an object
+    // of its entries, each key its key part's text.
+    match entry.holds {
+        jadpo_std::standard::Holds::List(item) => {
+            out.set("type", "array");
+            out.set("items", part_schema(item));
+            return out;
+        }
+        jadpo_std::standard::Holds::Map(key, value) => {
+            out.set("type", "object");
+            out.set("propertyNames", part_schema(key));
+            out.set("additionalProperties", part_schema(value));
+            return out;
+        }
+        _ => {}
     }
     // A choice (chunk 5.5i3): one of its variants, each an object of
     // `tag`, the variant's name, and its fields, as area 2 sends an enum's

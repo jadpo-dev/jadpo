@@ -912,14 +912,20 @@ reference only).
   CommonMark by pulldown-cmark. ammonia brings `cssparser` (MPL-2.0), the
   build's first MPL code, accepted by the lead session (2026-10-18).
   What the pages left open is area 19's "Chosen in chunk 5.5o".
-- [ ] **5.5o2 Rich and localised text** `opus · high` (area 19, "Text
+- [x] **5.5o2 Rich and localised text** `opus · high` (area 19, "Text
   formats", split from 5.5o), after 5.5o: `RichText`, a structured
   document of blocks and marks, with `markup.rich_to_html` through 5.5o's
   sanitiser; and `LocalisedText`, locales mapped to text, with
   `text.pick` taking the locale's entry, else its language's, else the
   default, as area 10's fallback chain does. Done when both pass the
   harness and `rich_to_html`'s and `pick`'s examples pass, interpreted and
-  in the runtime.
+  in the runtime. Built: `RichText` is Portable Text's flat shape with its
+  default schema, a named list of blocks whose parts `RichTextBlock`,
+  `RichTextSpan` and `RichTextMark` are standard types beside the 247
+  (accepted by the lead session), links only to what the sanitiser keeps, so `rich_to_html` writes
+  nothing it would change; `LocalisedText` is a named `Map<Locale, Text>`
+  sent as a JSON-LD language map, its keys `Locale`s like any other.
+  What the pages left open is area 19's "Chosen in chunk 5.5o2".
 - [x] **5.5p Media and colour** `opus · high` (area 19, "Colour" and
   "Media", question 13): the 15 types, `colour`'s 5 operations and
   `media.fit`. Done when each operation's example passes and `contrast`

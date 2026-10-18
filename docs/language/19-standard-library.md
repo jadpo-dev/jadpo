@@ -104,7 +104,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 187 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: twenty-seven are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 189 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: twenty-seven are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -131,7 +131,7 @@ exception to the rule.
 | Media and visual (15, and `ContentRatingScheme`) | **`Colour`**, **`ImageDimensions`**, **`AspectRatio`**, **`Rect`**, **`Insets`**, **`PaperSize`** (enum), **`ExifOrientation`** (enum), **`AltText`**, **`FrameRate`**, **`VideoResolution`**, **`VideoCodec`**, **`AudioCodec`**, **`Timecode`**, **`SubtitleCue`**, **`ContentRating`** with **`ContentRatingScheme`** (enum) | `colour`, `media` |
 | Web and network (23) | **`Url`**, **`UrlPath`**, **`RelativeUrl`**, **`Slug`**, **`DomainName`**, **`Hostname`**, **`WebOrigin`**, **`HttpMethod`** (enum), **`HttpStatus`**, **`HttpHeaderName`**, **`FileType`**, **`UserAgent`**, **`ProblemDetails`**, **`JsonPointer`**, **`Cookie`**, **`UtmParameters`**, **`IpAddress`**, **`Cidr`**, **`NetworkPort`**, **`MacAddress`**, **`Imei`**, **`Emoji`**, **`PushToken`** | `web` |
 | Software (19) | **`SemanticVersion`**, **`VersionRange`**, **`GitRef`**, **`PackageUrl`**, **`Cve`**, **`SpdxLicence`**, **`TraceId`**, **`SpanId`**, **`TraceParent`**, **`LogLevel`** (enum), **`FilePath`**, **`FileName`**, **`RegularExpression`**, **`ContainerImage`**, **`Digest`**, **`Uuid`**, **`Ulid`**, **`IdempotencyKey`**, **`Doi`** | `semver` |
-| Text formats (4) | **`Markdown`**, **`Html`**, `RichText`, `LocalisedText` | `markup`, `text` |
+| Text formats (4) | **`Markdown`**, **`Html`**, **`RichText`**, **`LocalisedText`** | `markup`, `text` |
 | Security (20) | `Password`, `PasswordHash`, `PasswordPolicy`, `Hash`, `Hmac`, `Jwt`, `JwtClaims`, `Jwk`, `PublicKey`, `PrivateKey`, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `SecretText`, `BearerToken`, `OAuthScope`, `OidcClaims`, `WebAuthnCredential`, `EncryptedValue` | `crypto` |
 | Travel (6) | **`IataAirport`**, **`IcaoAirport`**, **`IataAirline`**, `FlightNumber`, **`CabinClass`** (enum), **`BookingReference`** | |
 | Other with a published standard (10) | **`UnNumber`**, **`Orcid`**, **`CefrLevel`** (enum), **`Mpan`**, **`Mprn`**, **`EpcRating`** (enum), **`Tenure`** (enum), **`LawfulBasis`** (enum), `Jurisdiction`, `ModelId` | |
@@ -195,7 +195,10 @@ contract adds 2 names, not 700.
 > chunk 5.5c2"). Chunk 5.5i3 added choices of other types, `Discount` the
 > first, each an enum with data (area 2) whose variants' fields are its
 > entry's, and types built on a built-in type with bounds of their own,
-> `TaxRate` the first ("Chosen in chunk 5.5i3").
+> `TaxRate` the first ("Chosen in chunk 5.5i3"). Chunk 5.5o2 added named
+> collections, `RichText` a list and `LocalisedText` a map, each built,
+> sent and read as an application's named collection is ("Chosen in
+> chunk 5.5o2").
 
 A form sends a quantity as text, an order's time goes into a log line as
 its canonical text, and a day, a duration and a zone are shown to people
@@ -394,7 +397,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `BasisPoints`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Discount`, `Doi`, `DomainName`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `Fraction`, `FrameRate`, `Frequency`, `GitRef`, `GivenName`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LogLevel`, `LotNumber`, `MacAddress`, `Markdown`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PushToken`, `Quarter`, `Range`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `SemanticVersion`, `SerialNumber`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TraceId`, `TraceParent`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `BasisPoints`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Discount`, `Doi`, `DomainName`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `Fraction`, `FrameRate`, `Frequency`, `GitRef`, `GivenName`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `LotNumber`, `MacAddress`, `Markdown`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PushToken`, `Quarter`, `Range`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `SemanticVersion`, `SerialNumber`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TraceId`, `TraceParent`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -3470,11 +3473,142 @@ test "pasted HTML keeps only what is safe" {
 }
 ```
 
+A `RichText` is a document as a rich text editor holds one, in Portable
+Text's flat shape: a list of blocks, each a paragraph, a heading of level
+1 to 6, a quote, or a bulleted or numbered list item with its level, 1 to
+9, and each holding spans of text. A span has its marks (`strong`,
+`emphasis`, `code`, `underline`, `strike_through`) and at most one link.
+Nothing nests: a list item's level says how deep it sits. It is sent as
+an array of its blocks, each in area 2's tagged form, and a span leaves
+out the link it hasn't:
+
+```json
+[
+  {"tag": "heading", "level": 2, "spans": [{"text": "Method", "marks": []}]},
+  {"tag": "paragraph", "spans": [{"text": "our mill", "marks": ["emphasis"], "link": "https://example.com/mill"}]}
+]
+```
+
+Every block and mark is an element the sanitiser keeps, and a link is
+only an `https:` URL with a host or a `mailto:` address written so the
+sanitiser keeps it as it is. `markup.rich_to_html` therefore writes
+nothing the sanitiser would change, and sanitises it all the same. A link
+that isn't one is refused where the document is built or read, breaking
+`pattern`, rather than dropped. A recipe site keeps each method as its
+editor sends it:
+
+```jadpo check project=rich-text
+type EditorJson = Text {}
+
+type MethodUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A recipe's method as the editor sent it: its blocks and marks, with
+/// links only to `https:` and `mailto:` addresses.
+function method_from(sent: EditorJson) fails MethodUnreadable -> RichText {
+    return attempt json.read(sent, as: RichText) {
+        malformed: MethodUnreadable
+        mismatch: MethodUnreadable
+    }
+}
+
+/// The method on the recipe's page.
+function method_page(recipe_method: RichText) -> Html {
+    return markup.rich_to_html(recipe_method)
+}
+```
+
+```jadpo check project=rich-text file=main.test.jadpo
+test "a recipe's method becomes safe HTML" {
+    var oat_method: RichText = attempt method_from(
+        "[{\"tag\":\"heading\",\"level\":2,\"spans\":[{\"text\":\"Method\",\"marks\":[]}]},{\"tag\":\"numbered_item\",\"level\":1,\"spans\":[{\"text\":\"Soak the oats\",\"marks\":[]}]},{\"tag\":\"numbered_item\",\"level\":1,\"spans\":[{\"text\":\"Bake for \",\"marks\":[]},{\"text\":\"40 minutes\",\"marks\":[\"strong\"]}]},{\"tag\":\"paragraph\",\"spans\":[{\"text\":\"Flour from \",\"marks\":[]},{\"text\":\"our mill\",\"marks\":[\"emphasis\"],\"link\":\"https://example.com/mill\"}]}]"
+    )
+    assert method_page(
+        oat_method
+    ) == "<h2>Method</h2><ol><li>Soak the oats</li><li>Bake for <strong>40 minutes</strong></li></ol><p>Flour from <a href=\"https://example.com/mill\" rel=\"noopener noreferrer nofollow\"><em>our mill</em></a></p>"
+    assert text.format(
+        oat_method,
+        locale: Locale.en_gb
+    ) == "Method\nSoak the oats\nBake for 40 minutes\nFlour from our mill"
+}
+
+test "a link goes only to https: and mailto:" {
+    assert method_from(
+        "[{\"tag\":\"paragraph\",\"spans\":[{\"text\":\"prize\",\"marks\":[],\"link\":\"javascript:steal()\"}]}]"
+    ) fails MethodUnreadable
+    var note: RichText = RichText(
+        [
+            RichTextBlock.paragraph {
+                spans: [
+                    RichTextSpan {
+                        text: "Write to us"
+                        marks: []
+                        link: "mailto:hello@example.com"
+                    }
+                ]
+            }
+        ]
+    )
+    assert method_page(
+        note
+    ) == "<p><a href=\"mailto:hello@example.com\" rel=\"noopener noreferrer nofollow\">Write to us</a></p>"
+}
+```
+
+A `LocalisedText` maps locales to text, such as a product's name in each
+language a shop sells in. It is sent as JSON-LD sends a language map, an
+object keyed by each locale's tag, `{"en-GB": "Rye loaf", "fr-FR": "Pain
+de seigle"}`. Its keys are `Locale`s like any other, so one read from a
+request is a locale the application supports. `text.pick` takes the entry
+for a locale, else one in its language (the locale CLDR's likely subtags
+give for the language first), else the application's default locale's,
+as area 10's fallback chain finds wording. Text with none of those gives
+its first entry, so text that has any entry always shows one; an empty
+one gives `""`. A `locale:` written out must be one the application
+supports, as for `text.format`:
+
+```jadpo check project=localised-text file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.en_us, Locale.fr_fr, Locale.fr_ca, Locale.de_de]
+}
+```
+
+```jadpo check project=localised-text file=domains/catalogue/actions/shelf_name.jadpo
+type ShelfName = Text {}
+
+/// A loaf's name in the shopper's language: their locale's entry, else
+/// one in their language, else the shop's default locale's.
+action shelf_name(name: LocalisedText, shopper: Locale) -> ShelfName {
+    return ShelfName(text.pick(name, locale: shopper))
+}
+```
+
+```jadpo check project=localised-text file=domains/catalogue/actions/shelf_name.test.jadpo
+test "a loaf's name in the shopper's language" {
+    var rye: LocalisedText = LocalisedText(
+        map.with(map.with([], Locale.fr_fr, "Pain de seigle"), Locale.en_gb, "Rye loaf")
+    )
+    assert shelf_name(rye, Locale.fr_fr) == "Pain de seigle"  // its own entry
+    assert shelf_name(rye, Locale.fr_ca) == "Pain de seigle"  // its language's
+    assert shelf_name(rye, Locale.de_de) == "Rye loaf"  // the default locale's
+    var roggen: LocalisedText = LocalisedText(map.with([], Locale.de_de, "Roggenbrot"))
+    assert shelf_name(roggen, Locale.fr_fr) == "Roggenbrot"  // the only one it has
+}
+```
+
+`text.format` shows a `RichText` as the text people read in it, each block
+on its own line, and a `LocalisedText` as `text.pick` gives it.
+
 > Built in chunk 5.5o for `Html` and `Markdown`, with `markup.to_html` and
-> `markup.to_plain_text`; `RichText`, `LocalisedText`,
-> `markup.rich_to_html` and `text.pick` come in chunk 5.5o2. Templates
+> `markup.to_plain_text`, and in chunk 5.5o2 for `RichText` and
+> `LocalisedText`, with `markup.rich_to_html` and `text.pick`. Templates
 > that write `Html` out come with email (chunk 7.3). What the page left
-> open is "Chosen in chunk 5.5o", under "Review".
+> open is "Chosen in chunk 5.5o" and "Chosen in chunk 5.5o2", under
+> "Review".
 
 ## Hashing and cryptography
 
@@ -5960,10 +6094,10 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, `Html` and `Markdown` with `markup.to_html` and `to_plain_text` in 5.5o, `Colour` and the media types with `colour`'s five operations and `media.fit` in 5.5p, each other group of types in the chunks after them to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, `Html` and `Markdown` with `markup.to_html` and `to_plain_text` in 5.5o, `Colour` and the media types with `colour`'s five operations and `media.fit` in 5.5p, `RichText` and `LocalisedText` with `markup.rich_to_html` and `text.pick` in 5.5o2, each other group of types in the chunks after them to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}`; `apply_discount` in 5.5i3 |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
-| The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o2 |
+| The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` built in 5.5o2 |
 | A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2: `type.standard_clash`, `jadpo fix`'s swap and rename, the editor's swap |
 | `Email`, `Url`, `IpAddress`, `FileType`, `InstantRange` | Decided (areas 2, 10, 16) and built |
 | Everything else on this page | Decided 2026-10-17, as recommended; built in chunks 5.5a to 5.5s |
@@ -7852,8 +7986,84 @@ under "Errors").
   Accepted by the lead session (2026-10-18): they are unmodified, their
   source is available, and they serve only attributes the policy drops.
 - **Not personal data,** and no shapes. `RichText`, `LocalisedText`,
-  `markup.rich_to_html` and `text.pick` are chunk 5.5o2's. Templates that
-  write an `Html` out unescaped (area 16) come with email (chunk 7.3).
+  `markup.rich_to_html` and `text.pick` are chunk 5.5o2's ("Chosen in
+  chunk 5.5o2"). Templates that write an `Html` out unescaped (area 16)
+  come with email (chunk 7.3).
+
+### Chosen in chunk 5.5o2
+
+- **`RichText` is Portable Text's flat shape with its default schema,**
+  the most conservative documented shape: a list of blocks, each a
+  paragraph, a heading of level 1 to 6, a quote, or a bulleted or numbered
+  list item; each block holds spans, each with its marks and a link.
+  Portable Text's default decorators are the marks (`em` named
+  `emphasis`, `strike-through` named `strike_through`), its default styles
+  and its two list kinds the blocks, so there is no code block, rule,
+  image or table. Nothing nests, so no type refers to itself, which no
+  page decides: a list item's level, 1 to 9 as Word and Google Docs nest
+  lists, says how deep it sits, as Portable Text's `level` does. Its JSON
+  is Jadpo's own forms, not Portable Text's `_type`, `_key`, `children`
+  and `markDefs`: an array of blocks in area 2's tagged form, each span an
+  object of `text`, `marks` and `link`, the link left out when there is
+  none.
+- **A span links to one address at most,** as an HTML link can't hold
+  another, so the link is a part of the span, not a mark. Links follow
+  `Html`'s rule, refused rather than dropped: an `https:` URL whose host is
+  ASCII labels of letters, digits and single hyphens, the last beginning
+  with a letter (never an IP address or punycode), with a port up to
+  65535; or a `mailto:` address; each in the characters a URL writes
+  unescaped. That refuses some links the sanitiser would keep, such as a
+  host written in Unicode, and none it would drop, which a test of random
+  links holds to the sanitiser. A literal that breaks it is
+  `type.invalid_literal`, said in words rather than as its pattern.
+- **A span's text is never empty,** with no control character but a tab
+  or a line feed, and a line feed is written `<br>`. Its marks are written
+  once each in one nesting order, `strong` outermost and `strike_through`
+  innermost, inside the link, whatever order the span lists them in.
+- **`markup.rich_to_html` writes only what the sanitiser keeps:** `<p>`,
+  `<h1>` to `<h6>`, `<blockquote>`, list items in `<ul>` or `<ol>` (a
+  deeper item in a list inside the item before it), `<strong>`, `<em>`,
+  `<code>`, `<u>` and `<s>`, links with `rel="noopener noreferrer
+  nofollow"`, and text escaped as the sanitiser's serialiser escapes it,
+  with no white space between elements. It runs the sanitiser all the
+  same, so an `Html` is only ever what the sanitiser keeps, and tests hold
+  what it writes to come back unchanged.
+- **`LocalisedText` is a named map, `Map<Locale, Text>`,** sent as a
+  JSON-LD language map, an object keyed by each locale's BCP 47 tag,
+  rather than a list of entries, so each locale has one entry by
+  construction. Code builds one from a map,
+  `LocalisedText(map.with(...))`, as it builds an application's named
+  map, since a map literal with entries is still area 2's to design. It
+  may be empty.
+- **Its entries are `Locale`s like any other,** which the page left open:
+  read from a request or from JSON, only a supported locale is accepted
+  (an unsupported tag breaks `variant`, and OpenAPI lists only the
+  supported tags as its keys); written in code, any locale is, as for
+  any `Locale` value. That needs no new rule.
+- **`text.pick` walks area 10's chain** over the value's entries: the
+  locale's own; one of its language, CLDR's likely one first, then in the
+  canonical order; the application's default locale's. The page has it
+  never fail, so text with none of those gives its first entry in the
+  canonical order, and an empty one `""`. Its `locale:` is checked as
+  `text.format`'s is (`type.locale_unsupported`, and
+  `type.temporal_locales_required` in an application with no `locales
+  { }`), since it chooses text for a person.
+- **`text.format`** shows a `RichText`, a block or a span as the text
+  people read in it (its HTML's `markup.to_plain_text`), and a
+  `LocalisedText` as `text.pick` gives it in that locale. Neither has a
+  single text form, so `text.from` and `text.parse` refuse them, and
+  neither is ordered.
+- **Named collections on the contract:** a standard type may be a list or
+  a map of parts, held as a named collection the standard library
+  declares, sent as JSON's own collection, and stored as that JSON in one
+  `jsonb` column, which waits on area 5's structured storage as the money
+  group's records do.
+- **Three parts are standard types beside the 247:** `RichTextBlock` (a
+  choice), `RichTextSpan` (an object sent as its members) and
+  `RichTextMark` (an enum), since a part must be a standard type to be
+  read, sent and stored, as `IdentityDocumentKind` was. Accepted by the
+  lead session (2026-10-18, "Decisions").
+- **Not personal data,** and no shapes.
 
 ### Chosen in chunk 5.5p
 
@@ -8079,6 +8289,7 @@ under "Errors").
 | `IdentityDocumentKind` | A standard enum of `passport`, `identity_card`, `driving_licence` and `residence_permit`, an `IdentityDocument`'s kind, added in chunk 5.5i2 beside the 247 since a part must be a standard type to be read, sent and stored by its code. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `InterestRateBasis` | A standard enum of `aer`, `apr` and `flat`, an `InterestRate`'s basis, added in chunk 5.5i3 beside the 247 since a part must be a standard type to be read, sent and stored by its code. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `ContentRatingScheme` | A standard enum of `bbfc`, `mpa`, `pegi` and `esrb`, the body a `ContentRating` is by, added in chunk 5.5p beside the 247 since a part must be a standard type to be read, sent and stored by its code. Accepted by the lead session, not a question for Richard | 2026-10-18 |
+| `RichTextBlock`, `RichTextSpan` and `RichTextMark` | A `RichText`'s parts, a choice of block, an object of a span's text, marks and link, and an enum of marks, added in chunk 5.5o2 beside the 247 since a part must be a standard type to be read, sent and stored. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens; `HEAD`, `OPTIONS`, `CONNECT` and `TRACE` aren't variants, since the runtime answers `HEAD` and `OPTIONS` itself and adding them later breaks nothing (decided by the lead session, as chunk 5.5n recommended) | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 
@@ -8544,7 +8755,7 @@ first; each group of types then arrives with its baseline and its extras.
   `Markdown` built, with `to_html` and `to_plain_text`; split on
   2026-10-18, `RichText` and `LocalisedText` are 5.5o2.
 - **5.5o2 Rich and localised text** `opus · high`: `RichText` with
-  `markup.rich_to_html`, and `LocalisedText` with `text.pick`.
+  `markup.rich_to_html`, and `LocalisedText` with `text.pick`. Built.
 - **5.5p Media and colour** `opus · high`: the 15 types, `colour`'s 5
   operations and `media.fit`.
 - **5.5q Randomness** `opus · high`: the generated `random` namespace
