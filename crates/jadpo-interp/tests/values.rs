@@ -21,7 +21,7 @@ fn a_narrower_type_stands_in_for_its_parent() {
 #[test]
 fn literals_take_the_type_they_go_into() {
     let program = main(
-        "type Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\nfunction starting_quantity() -> Quantity {\n    return 1\n}\n\nfunction free() -> Price {\n    return 0.00\n}\n",
+        "type Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype ItemPrice = Decimal {\n    scale: 2\n    min: 0.00\n}\n\nfunction starting_quantity() -> Quantity {\n    return 1\n}\n\nfunction free() -> ItemPrice {\n    return 0.00\n}\n",
     );
     assert_eq!(value(&program, "starting_quantity", vec![]), int(1));
     let free = value(&program, "free", vec![]);
@@ -304,7 +304,7 @@ fn lists_are_built_counted_searched_and_looped_over() {
 fn a_share_is_divided_with_a_named_rounding() {
     // Question 8.
     let program = main(
-        "type Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype People = Int {\n    min: 1\n}\n\nfunction share(total: Price, people: People) -> Price {\n    var share: Price = Price(decimal.divide(total, people, rounding: Rounding.half_even))  // from zero up to the total\n    return share\n}\n",
+        "type ItemPrice = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype People = Int {\n    min: 1\n}\n\nfunction share(total: ItemPrice, people: People) -> ItemPrice {\n    var share: ItemPrice = ItemPrice(decimal.divide(total, people, rounding: Rounding.half_even))  // from zero up to the total\n    return share\n}\n",
     );
     assert_eq!(
         value(&program, "share", vec![decimal("10.00"), int(3)]).to_string(),
@@ -434,7 +434,7 @@ fn an_input_left_without_a_field_takes_its_default_or_none() {
     // A field an `Input` may leave out reads as `none`, and one with a
     // `default:` as that value (area 2, "Absent values").
     let program = main(
-        "type ProductName = Text {\n    max_length: 120\n}\n\ntype Price = Decimal {\n    scale: 2\n}\n\ntype ListProducts = Input {\n    name: ProductName {\n        optional: true\n    }\n    page_size: PageSize {\n        default: 25\n    }\n    subtitle: ProductName? {\n        default: none\n    }\n    floor: Price {\n        default: 1.5\n    }\n    sort: Sort {\n        default: Sort.newest\n    }\n}\n\ntype Sort = Enum {\n    newest\n    cheapest\n}\n\nfunction first_page() -> ListProducts {\n    return ListProducts {}\n}\n",
+        "type ProductName = Text {\n    max_length: 120\n}\n\ntype ItemPrice = Decimal {\n    scale: 2\n}\n\ntype ListProducts = Input {\n    name: ProductName {\n        optional: true\n    }\n    page_size: PageSize {\n        default: 25\n    }\n    subtitle: ProductName? {\n        default: none\n    }\n    floor: ItemPrice {\n        default: 1.5\n    }\n    sort: Sort {\n        default: Sort.newest\n    }\n}\n\ntype Sort = Enum {\n    newest\n    cheapest\n}\n\nfunction first_page() -> ListProducts {\n    return ListProducts {}\n}\n",
     );
     assert_eq!(
         value(&program, "first_page", vec![]).to_string(),

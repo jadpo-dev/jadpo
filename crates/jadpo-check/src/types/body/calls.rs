@@ -913,9 +913,15 @@ impl Body<'_> {
                     self.contract_value(table.op, &value, Some(given.clone()), written)
                 {
                     // `text.format` is told which standard type held as
-                    // text its value is, which the runtime can't see.
+                    // text its value is, or built on a built-in type with
+                    // bounds of its own (chunk 5.5i3), which the runtime
+                    // can't see.
                     if let Some(entry) = entry
-                        && matches!(entry.holds, jadpo_std::standard::Holds::Text { .. })
+                        && matches!(
+                            entry.holds,
+                            jadpo_std::standard::Holds::Text { .. }
+                                | jadpo_std::standard::Holds::Within { .. }
+                        )
                     {
                         self.facts.shown.insert(node_key(call.syntax()), entry.name);
                     }

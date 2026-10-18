@@ -43,7 +43,7 @@ These types exist without being declared, and their names cannot be reused.
 > the built-in in that chunk: chunk 5.5h renamed this page's `Money`
 > objects (`PriceTag`, `OrderLine`) and its `Currency` enum, chunk 5.5l2
 > its `PostalCode` (`ShippingCode`), chunk 5.5m its `Sku`
-> (`StockCode`), and chunk 5.5h gave a
+> (`StockCode`), chunk 5.5i3 its `Price` (`ItemPrice`), and chunk 5.5h gave a
 > `Money` type its `currency:` and `rounding:` settings, with `min:` and
 > `max:` in minor units (area 19, "Money and payments"). A shape that copies a standard type under
 > another name is the declinable error `type.standard_exists`. Still no
@@ -151,7 +151,7 @@ type Quantity = Int {
     max: 1000
 }
 
-type Price = Decimal {
+type ItemPrice = Decimal {
     scale: 2
     min: 0.00
 }
@@ -160,7 +160,7 @@ function starting_quantity() -> Quantity {
     return 1
 }
 
-function free() -> Price {
+function free() -> ItemPrice {
     return 0.00
 }
 ```
@@ -1841,16 +1841,16 @@ check failed: 1 error, 1 file
 ### `type.decimal_scale_required`
 
 ```jadpo check project=e-scale expect=type.decimal_scale_required
-type Price = Decimal {
+type ItemPrice = Decimal {
     min: 0.00
 }
 ```
 
 ```text output
-error: `Price` needs a `scale`
+error: `ItemPrice` needs a `scale`
  --> main.jadpo:1:6
   |
-1 | type Price = Decimal {
+1 | type ItemPrice = Decimal {
   |      ^^^^^ a `Decimal` type
   reason: A `Decimal` is exact with a fixed number of decimal places, its `scale`, which sets how it is stored and sent.
   next: Add `scale:` with the number of decimal places, such as `scale: 2` (agent)
@@ -2179,13 +2179,13 @@ check failed: 1 error, 1 file
 Every variable states its type, and a literal takes it:
 
 ```jadpo check project=e-variable-type expect=syntax.variable_type_required
-type Price = Decimal {
+type ItemPrice = Decimal {
     scale: 2
     min: 0.00
 }
 
-function free() -> Price {
-    var price = Price(0.00)
+function free() -> ItemPrice {
+    var price = ItemPrice(0.00)
     return price
 }
 ```
@@ -2194,10 +2194,10 @@ function free() -> Price {
 error: `price` needs a type
  --> main.jadpo:7:9
   |
-7 |     var price = Price(0.00)
+7 |     var price = ItemPrice(0.00)
   |         ^^^^^ expected `: Type` after the name
   reason: Every variable states its type, so a reader sees it where the value is introduced.
-  next: Write `var price: Price = 0.00` (agent)
+  next: Write `var price: ItemPrice = 0.00` (agent)
   rule: syntax.variable_type_required
   help: docs/language/02-values-and-types.html#syntax-variable-type-required
 
@@ -2558,12 +2558,12 @@ type OrderLineRequest = Input {
 
 entity Order {
     id: Uuid
-    total: Price
+    total: ItemPrice
 }
 ```
 
 ```jadpo check project=one-form file=main.jadpo
-type Price = Decimal {  // rules on a number
+type ItemPrice = Decimal {  // rules on a number
     scale: 2
     min: 0.00
 }
@@ -2576,7 +2576,7 @@ type OrderId = Uuid {}  // a new identity type with no extra rules
 
 type OrderLine = Object {  // fields
     sku: StockCode
-    price: Price
+    price: ItemPrice
 }
 
 type OrderStatus = Enum {  // variants
@@ -2604,7 +2604,7 @@ type CreateOrder = Input {  // an object arriving from outside
 
 type OrderView = Output {  // an object sent back
     id: Order.id
-    total: Price
+    total: ItemPrice
 }
 ```
 
@@ -2890,12 +2890,12 @@ type LedgerAmount = Int {
     min: 0             // no max: bigint column; JSON string when large
 }
 
-type Price = Decimal {
+type ItemPrice = Decimal {
     scale: 2
     min: 0.00          // numeric(p, 2); JSON "12.50"
 }
 
-var share: Price = decimal.divide(total, people, rounding: Rounding.half_even)
+var share: ItemPrice = decimal.divide(total, people, rounding: Rounding.half_even)
 ```
 
 #### Q9: patterns match the whole text and are checked while compiling
@@ -2953,7 +2953,7 @@ type PartnerRef = Uuid {
 #### Q15: literals take the type they go into
 
 ```jadpo fragment
-var price: Price = 0.00                          // checked while compiling
+var price: ItemPrice = 0.00                          // checked while compiling
 var line: OrderLine = OrderLine {
     quantity: 1                                  // 1 becomes a Quantity
 }
@@ -3120,7 +3120,7 @@ to when that page is written.
    exact 64-bit integer where overflow is an error, never a silent wrap; JSON
    carries it as a number when the declared range fits JavaScript's safe range
    and as a string otherwise. `Decimal` is exact, with a required `scale:`
-   (`type Price = Decimal { scale: 2 }`); operations that can produce extra
+   (`type ItemPrice = Decimal { scale: 2 }`); operations that can produce extra
    places, such as division or percentages, must name a rounding mode from
    the standard library. JSON carries a `Decimal` as a string (`"12.50"`).
    PostgreSQL stores `numeric(p, s)`; SQLite has no exact decimal, so it stores
@@ -3172,16 +3172,16 @@ to when that page is written.
     plain `Output { }` header; see "Building a type from other types".
 
 15. **Should a literal take on the type it is going into?** Today
-    `var price: Price = 0.0`, `return 0.0` and `Item { price: 0.0 }` are all
-    errors; you must write `Price(0.0)`. *Decided 2026-10-12 (agreed in discussion):* yes, for literals
+    `var price: ItemPrice = 0.0`, `return 0.0` and `Item { price: 0.0 }` are all
+    errors; you must write `ItemPrice(0.0)`. *Decided 2026-10-12 (agreed in discussion):* yes, for literals
     only. Where the expected type is known (a variable's declared type, a
     return, a field or an argument), a literal becomes that type and its rules
-    are checked while compiling, so `var price: Price = 0.0` and `return 1`
+    are checked while compiling, so `var price: ItemPrice = 0.0` and `return 1`
     from a function returning `Quantity` just work. Computed values still need
-    `Price(x)`, so a constructor in code always means a real check or a change
-    of type. Write the type once: `var price: Price = 0.0`, never
-    `var price: Price = Price(0.0)`, and the formatter rewrites
-    `var price = Price(0.0)` to that form. Rust adapts literals to built-in
+    `ItemPrice(x)`, so a constructor in code always means a real check or a change
+    of type. Write the type once: `var price: ItemPrice = 0.0`, never
+    `var price: ItemPrice = ItemPrice(0.0)`, and the formatter rewrites
+    `var price = ItemPrice(0.0)` to that form. Rust adapts literals to built-in
     integer types but not to its newtypes; this goes one step further because
     the check still happens at compile time.
 
@@ -3194,7 +3194,7 @@ to when that page is written.
     line that made it, and there is one rule with no exceptions to remember.
     The cost is verbosity, which falls on the agent writing the code rather
     than the person reviewing it, and literal typing (question 15) removes
-    most of the repetition: `var price: Price = 0.0`. Most modern languages
+    most of the repetition: `var price: ItemPrice = 0.0`. Most modern languages
     (TypeScript, Rust, Go, Kotlin) infer local types instead; Jadpo's
     audience, code written by agents and reviewed by people, favours the
     explicit form.

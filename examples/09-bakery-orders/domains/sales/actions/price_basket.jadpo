@@ -10,7 +10,7 @@ use sales/failures { BasketEmpty, CodeUnknown, DiscountTooLarge }
 use sales/actions { price_lines }
 
 /// What a discount code is worth: a share of the basket, or an amount.
-type Discount = Enum {
+type BasketDiscount = Enum {
     percent: {
         off: Percent
     }
@@ -20,12 +20,12 @@ type Discount = Enum {
 }
 
 /// The discount the code `code` gives.
-function discount_for(code: DiscountCode) fails CodeUnknown -> Discount {
+function discount_for(code: DiscountCode) fails CodeUnknown -> BasketDiscount {
     return match code {
-        "TENOFF" -> Discount.percent {
+        "TENOFF" -> BasketDiscount.percent {
             off: 10
         }
-        "FIVEPOUNDS" -> Discount.fixed {
+        "FIVEPOUNDS" -> BasketDiscount.fixed {
             off: 500
         }
         _ -> reject CodeUnknown {
@@ -35,10 +35,10 @@ function discount_for(code: DiscountCode) fails CodeUnknown -> Discount {
 }
 
 /// What `discount` takes off `subtotal`.
-function amount_off(discount: Discount, subtotal: Pence) -> Pence {
+function amount_off(discount: BasketDiscount, subtotal: Pence) -> Pence {
     return match discount {
-        Discount.percent(percent) -> pricing.percent_of(subtotal, percent.off)
-        Discount.fixed(fixed) -> fixed.off
+        BasketDiscount.percent(percent) -> pricing.percent_of(subtotal, percent.off)
+        BasketDiscount.fixed(fixed) -> fixed.off
     }
 }
 
@@ -55,7 +55,7 @@ public action price_basket(
     // a block arm rather than inside a value.
     match basket.code {
         some(code) -> {
-            var discount: Discount = attempt discount_for(code)
+            var discount: BasketDiscount = attempt discount_for(code)
             off = amount_off(discount, subtotal)
         }
         none -> {}

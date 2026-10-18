@@ -562,7 +562,7 @@ stand.
 | A number or quantity | `*` | `Percentage` | the same kind | `distance * 10%` |
 
 - **Money in one currency.** Where both types fix the currency
-  (`type Price = Money { currency: Currency.gbp }`), adding two currencies
+  (`type CakePrice = Money { currency: Currency.gbp }`), adding two currencies
   is a compile error. Where a currency is known only while running (a
   SaaS billing each customer in theirs), `+`, `-` and comparisons can fail
   with the condition `currency_mismatch`, mapped as any construction rule
@@ -571,7 +571,7 @@ stand.
   money.currency(b))` the checker has the proof and the operator is plain,
   as a range proves a construction (area 2).
 - **Rounding is the type's.** A Money type may declare `rounding:`
-  (`type Price = Money { currency: Currency.gbp  rounding: Rounding.half_up
+  (`type CakePrice = Money { currency: Currency.gbp  rounding: Rounding.half_up
   }`), used by `*` and `/`; without one it is `half_even`, as constructing
   into a type with a fixed `scale` rounds (area 2). So multiplying needs no
   call, and `money.multiply` and `money.divide` are gone.

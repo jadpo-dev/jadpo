@@ -1363,13 +1363,13 @@ type OrderTotal = Int {
 ```
 
 ```jadpo check project=e-direction file=domains/ordering/actions/apply_discount.jadpo hidden
-use shared/types { Discount }
+use shared/types { DiscountTerms }
 
-action apply_discount(discount: Discount) -> Unit {}
+action apply_discount(discount: DiscountTerms) -> Unit {}
 ```
 
 ```jadpo check project=e-direction file=shared/types/discount.jadpo expect=layout.call_direction
-type Discount = Object {
+type DiscountTerms = Object {
     applies_to: OrderTotal
 }
 ```

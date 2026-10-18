@@ -294,7 +294,7 @@ fn a_refinement_cannot_contradict_what_it_builds_on() {
     );
     assert_eq!(
         check(
-            "type Price = Decimal {\n    scale: 2\n}\n\ntype FinePrice = Price {\n    scale: 4\n}\n"
+            "type ItemPrice = Decimal {\n    scale: 2\n}\n\ntype FinePrice = ItemPrice {\n    scale: 4\n}\n"
         ),
         contradiction
     );
@@ -310,7 +310,7 @@ fn a_refinement_cannot_contradict_what_it_builds_on() {
     );
     assert_eq!(
         check(
-            "type P = Int {\n    min: 10\n}\n\ntype T = P {\n    max: 30\n}\n\ntype Price = Decimal {\n    scale: 2\n}\n\ntype Small = Price {\n    max: 9.99\n}\n"
+            "type P = Int {\n    min: 10\n}\n\ntype T = P {\n    max: 30\n}\n\ntype ItemPrice = Decimal {\n    scale: 2\n}\n\ntype Small = ItemPrice {\n    max: 9.99\n}\n"
         ),
         CLEAN
     );
@@ -546,22 +546,22 @@ fn an_entity_has_only_its_operations() {
 
 #[test]
 fn a_literal_takes_the_other_sides_type_in_arithmetic_as_in_comparison() {
-    let price = "type Price = Decimal {\n    scale: 2\n}\n\n";
+    let price = "type ItemPrice = Decimal {\n    scale: 2\n}\n\n";
     assert_eq!(
         check(&format!(
-            "{price}function f(a: Price) -> Price {{\n    return Price(a + 3)\n}}\n"
+            "{price}function f(a: ItemPrice) -> ItemPrice {{\n    return ItemPrice(a + 3)\n}}\n"
         )),
         ["type.arithmetic_operand"]
     );
     assert_eq!(
         check(&format!(
-            "{price}type Flag = Bool {{}}\n\nfunction f(a: Price) -> Flag {{\n    return Flag(a == 3)\n}}\n"
+            "{price}type Flag = Bool {{}}\n\nfunction f(a: ItemPrice) -> Flag {{\n    return Flag(a == 3)\n}}\n"
         )),
         ["type.incomparable"]
     );
     assert_eq!(
         check(&format!(
-            "{price}function f(a: Price) -> Price {{\n    return Price(a + 3.00)\n}}\n"
+            "{price}function f(a: ItemPrice) -> ItemPrice {{\n    return ItemPrice(a + 3.00)\n}}\n"
         )),
         CLEAN
     );

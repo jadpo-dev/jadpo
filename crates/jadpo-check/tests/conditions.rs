@@ -14,7 +14,7 @@ use support::{project, rules};
 const CLEAN: &[String] = &[];
 
 /// A cake count of 1 to 12, anything else, and the failures for both ends.
-const TYPES: &str = "type Count = Int {}\n\ntype Limit = Count {\n    max: 12\n}\n\ntype CakeCount = Int {\n    min: 1\n    max: 12\n}\n\ntype Stock = Int {\n    min: 0\n    max: 500\n}\n\ntype People = Int {\n    min: 1\n}\n\ntype Amount = Decimal {\n    scale: 4\n}\n\ntype Price = Decimal {\n    scale: 2\n    min: 0.00\n    max: 10.00\n}\n\ntype Flag = Bool {}\n\ntype Line = Object {\n    quantity: Count\n}\n\ntype Tag = Text {}\n\ntype Shelf = Object {\n    tags: List<Tag> {\n        max_length: 3\n    }\n}\n\ntype Order = Object {\n    count: Count {\n        min: 1\n        max: 12\n    }\n}\n\ntype OrderEmpty = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype OrderTooLarge = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction is_small(count: CakeCount) -> Flag {\n    return Flag(count < 4)\n}\n\n";
+const TYPES: &str = "type Count = Int {}\n\ntype Limit = Count {\n    max: 12\n}\n\ntype CakeCount = Int {\n    min: 1\n    max: 12\n}\n\ntype Stock = Int {\n    min: 0\n    max: 500\n}\n\ntype People = Int {\n    min: 1\n}\n\ntype Amount = Decimal {\n    scale: 4\n}\n\ntype ItemPrice = Decimal {\n    scale: 2\n    min: 0.00\n    max: 10.00\n}\n\ntype Flag = Bool {}\n\ntype Line = Object {\n    quantity: Count\n}\n\ntype Tag = Text {}\n\ntype Shelf = Object {\n    tags: List<Tag> {\n        max_length: 3\n    }\n}\n\ntype Order = Object {\n    count: Count {\n        min: 1\n        max: 12\n    }\n}\n\ntype OrderEmpty = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype OrderTooLarge = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction is_small(count: CakeCount) -> Flag {\n    return Flag(count < 4)\n}\n\n";
 
 fn with_types(source: &str) -> Vec<String> {
     rules(
@@ -88,7 +88,7 @@ fn a_condition_that_leaves_proves_the_construction_after_it() {
         "function build_order(n: Count) fails OrderTooLarge -> Order {\n    if (n < 1 or n > 12) {\n        reject OrderTooLarge\n    }\n    return Order {\n        count: n\n    }\n}\n",
         // Decimals: the value is rounded to the target's scale before its
         // rules are checked, so 10.004 is kept as 10.00.
-        "function priced(amount: Amount) fails OrderTooLarge -> Price {\n    if (amount < 0.00 or amount > 10.004) {\n        reject OrderTooLarge\n    }\n    return Price(amount)\n}\n",
+        "function priced(amount: Amount) fails OrderTooLarge -> ItemPrice {\n    if (amount < 0.00 or amount > 10.004) {\n        reject OrderTooLarge\n    }\n    return ItemPrice(amount)\n}\n",
         // A `var mut` keeps its bound until it is assigned.
         "function kept(start: Count) fails OrderTooLarge -> CakeCount {\n    var mut n: Count = start\n    if (n < 1 or n > 12) {\n        reject OrderTooLarge\n    }\n    return CakeCount(n)\n}\n",
         // Two branches that each bound a value leave the range covering
@@ -154,7 +154,7 @@ fn nothing_else_counts_as_proof() {
         // A bound on the whole says nothing about its parts.
         "function parts(count: Count) fails OrderTooLarge -> CakeCount {\n    if (count * 2 > 12 or count * 2 < 2) {\n        reject OrderTooLarge\n    }\n    return CakeCount(count)\n}\n",
         // A decimal that isn't 0 can still be as close to 0 as it likes.
-        "function nonzero(amount: Amount) fails OrderTooLarge -> Price {\n    if (amount < 0.00 or amount > 10.00 or amount == 0.00) {\n        reject OrderTooLarge\n    }\n    var priced: Price = Price(amount)\n    return Price(priced - 0.01)\n}\n",
+        "function nonzero(amount: Amount) fails OrderTooLarge -> ItemPrice {\n    if (amount < 0.00 or amount > 10.00 or amount == 0.00) {\n        reject OrderTooLarge\n    }\n    var priced: ItemPrice = ItemPrice(amount)\n    return ItemPrice(priced - 0.01)\n}\n",
     ];
     for source in cases {
         assert_eq!(

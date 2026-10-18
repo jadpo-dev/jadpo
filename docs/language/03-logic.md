@@ -95,10 +95,10 @@ public actions are called through that domain.
 
 ```jadpo fragment
 library rounding {
-    function half_even(amount: Price) -> Price { ... }
+    function half_even(amount: ItemPrice) -> ItemPrice { ... }
 }
 
-var total: Price = rounding.half_even(subtotal)                    // a library
+var total: ItemPrice = rounding.half_even(subtotal)                    // a library
 var line: Pence = line_total(price, quantity)                      // a helper in this file
 var stock: Reservation = attempt inventory.reserve_for_cart(cart)  // another domain
 var todo: Todo = attempt Todo.get(todo_id)                         // an entity
@@ -630,7 +630,7 @@ Questions 6 and 7 decided operator typing and division:
 var wrong: Pence = Pence(price + quantity)       // error: adds a Quantity to Pence
 var line: Pence = Pence(price * quantity)        // fine: multiplying different units
 var earlier: Bool = name < other_name             // error: text has no order; use a standard function
-var share: Price = decimal.divide(total, people, rounding: Rounding.half_even)
+var share: ItemPrice = decimal.divide(total, people, rounding: Rounding.half_even)
 var boxes: BoxCount = integer.divide(items, box_size, rounding: Rounding.up)   // box_size can't be zero
 ```
 
@@ -3620,7 +3620,7 @@ check failed: 1 error, 1 file
 A named argument is `name: value`.
 
 ```jadpo check project=e-habit-named-equals expect=syntax.named_argument_equals
-type Price = Decimal {
+type ItemPrice = Decimal {
     scale: 2
     min: 0.00
 }
@@ -3629,8 +3629,8 @@ type People = Int {
     min: 1
 }
 
-function share(total: Price, people: People) -> Price {
-    return Price(decimal.divide(total, people, rounding = Rounding.half_even))
+function share(total: ItemPrice, people: People) -> ItemPrice {
+    return ItemPrice(decimal.divide(total, people, rounding = Rounding.half_even))
 }
 ```
 
@@ -3638,7 +3638,7 @@ function share(total: Price, people: People) -> Price {
 error: Jadpo names an argument with `:`, not `=`
  --> main.jadpo:11:57
    |
-11 |     return Price(decimal.divide(total, people, rounding = Rounding.half_even))
+11 |     return ItemPrice(decimal.divide(total, people, rounding = Rounding.half_even))
    |                                                         ^ write `:`
   reason: `name = value` names an argument in Python, Kotlin and C#; Jadpo writes `name: value`.
   next: Use `:` instead of `=` (agent)

@@ -305,6 +305,9 @@ impl Body<'_> {
                 Holds::Builtin(builtin) => Some(Ty::Prim(builtin)),
                 // Its own check is what `malformed` already covers.
                 Holds::Text { .. } => Some(Ty::Named(entry.name.to_string())),
+                // Read as the type it is built on, its bounds checked as a
+                // construction's (chunk 5.5i3).
+                Holds::Within { of, .. } => Some(Ty::Prim(of)),
                 _ => None,
             },
             Contract::Representation(prim) => Some(Ty::Prim(prim)),

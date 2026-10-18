@@ -1014,13 +1014,24 @@ pub trait TypeView {
     }
 
     /// The standard type held as text (area 19) a value of this type is,
-    /// along its chain: `Iban` for a type built on `Iban`.
+    /// along its chain: `Iban` for a type built on `Iban`; or the one
+    /// built on a built-in type with bounds of its own, `TaxRate` (chunk
+    /// 5.5i3).
     fn standard_text(&self, ty: &Ty) -> Option<&'static jadpo_std::StandardType> {
         let mut current = ty.strip_nullable().clone();
         for _ in 0..DEPTH {
             match &current {
                 Ty::Field(host, path) => {
                     current = self.field(host, path)?.declared.strip_nullable().clone();
+                }
+                // One built on a built-in type with bounds of its own
+                // (chunk 5.5i3) is its own standard type too.
+                Ty::Named(name)
+                    if jadpo_std::standard_type(name).is_some_and(|entry| {
+                        matches!(entry.holds, jadpo_std::standard::Holds::Within { .. })
+                    }) =>
+                {
+                    return jadpo_std::standard_type(name);
                 }
                 Ty::Named(name) => match self.def(name)? {
                     Def::Scalar { parent, rules } => {
