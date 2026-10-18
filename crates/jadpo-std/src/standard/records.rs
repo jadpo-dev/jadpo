@@ -10,9 +10,10 @@
 //! like the rest; what the page left open is area 19's "Chosen in chunk
 //! 5.5m2".
 
+use super::across::{Order, StandardRule, in_order};
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, FormatOption, Holds, Json, NO_OPTIONS, OrderRule,
-    Part, ShownIn, StandardType, Storage, TextForm,
+    Examples, FIRST_RELEASE, Format, FormatKey, FormatOption, Holds, Json, NO_OPTIONS, Part,
+    ShownIn, StandardType, Storage, TextForm,
 };
 use crate::read::SqlType;
 use crate::{Builtin, Num, QuantityKind};
@@ -99,6 +100,7 @@ const fn system(
         shape: None,
         examples,
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -133,7 +135,10 @@ pub const BARCODE_ENTRY: StandardType = StandardType {
     holds: Holds::Choice(BARCODE_VARIANTS),
     text: None,
     json: Json::Tagged,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[("kind", "text"), ("data", "text")],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["data"],
@@ -170,6 +175,7 @@ pub const BARCODE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `UnitQuantity`'s variants: a count of items (UN/ECE Recommendation 20's
@@ -198,7 +204,14 @@ pub const UNIT_QUANTITY_ENTRY: StandardType = StandardType {
     holds: Holds::Choice(UNIT_QUANTITY_VARIANTS),
     text: None,
     json: Json::Tagged,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("kind", "text"),
+            ("count", "bigint"),
+            ("amount", "numeric(38, 9)"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["count", "amount"],
@@ -242,6 +255,7 @@ pub const UNIT_QUANTITY_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
@@ -256,35 +270,30 @@ pub const RATING_FIELDS: [(&str, Part); 3] = [
     ("worst", Part::Of(Builtin::Decimal)),
 ];
 
-/// The rules across a rating's parts: its scale runs from a worst below
-/// its best, and its value is on it.
-pub const RATING_RULES: &[OrderRule] = &[
-    OrderRule {
-        lower: "worst",
-        upper: "best",
-        strict: true,
-        at: "best",
+/// `Rating`'s rules across its parts (chunk 5.5t2): its scale runs from a
+/// worst below its best, and its value is on it.
+pub const RATING_RULES: &[StandardRule] = &[
+    StandardRule {
+        name: "best_above_worst",
+        written: "best > worst",
         label: "not above the worst",
         reason: "A `Rating`'s scale runs from its `worst` up to its `best`, so the best is above the worst (schema.org's `Rating`).",
         next: "Write a `best` above the `worst`",
+        check: in_order(&[Order::below("worst", "best")], "best"),
     },
-    OrderRule {
-        lower: "worst",
-        upper: "value",
-        strict: false,
-        at: "value",
-        label: "below the worst",
+    StandardRule {
+        name: "value_on_scale",
+        written: "worst <= value and value <= best",
+        label: "off its scale",
         reason: "A `Rating`'s `value` is on its scale, from its `worst` to its `best` (schema.org's `Rating`).",
         next: "Write a value from the `worst` to the `best`",
-    },
-    OrderRule {
-        lower: "value",
-        upper: "best",
-        strict: false,
-        at: "value",
-        label: "above the best",
-        reason: "A `Rating`'s `value` is on its scale, from its `worst` to its `best` (schema.org's `Rating`).",
-        next: "Write a value from the `worst` to the `best`",
+        check: in_order(
+            &[
+                Order::at_most("worst", "value"),
+                Order::at_most("value", "best"),
+            ],
+            "value",
+        ),
     },
 ];
 
@@ -296,7 +305,14 @@ pub const RATING_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&RATING_FIELDS),
     text: None,
     json: Json::Fields(&["value", "best", "worst"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("value", "numeric"),
+            ("best", "numeric"),
+            ("worst", "numeric"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["value", "best"],
@@ -327,6 +343,7 @@ pub const RATING_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `ClothingSizeSystem`'s variants, by the code a label writes: the UK's,
@@ -378,7 +395,7 @@ pub const CLOTHING_SIZE_ENTRY: StandardType = StandardType {
     json: Json::Text,
     storage: Storage::Columns {
         parts: &[("system", "text"), ("size", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: CANONICAL,
     ordered: false,
@@ -397,6 +414,7 @@ pub const CLOTHING_SIZE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A shoe size in its system, written as a box writes it, `UK 7.5`, `EU
@@ -411,7 +429,7 @@ pub const SHOE_SIZE_ENTRY: StandardType = StandardType {
     json: Json::Text,
     storage: Storage::Columns {
         parts: &[("system", "text"), ("size", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: CANONICAL,
     ordered: false,
@@ -427,6 +445,7 @@ pub const SHOE_SIZE_ENTRY: StandardType = StandardType {
         &["UK 7,5", "UK 7.25", "UK 07", "JP 26", "EU42", "US 9.0", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
@@ -457,7 +476,14 @@ pub const DIMENSIONS_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&DIMENSIONS_FIELDS),
     text: None,
     json: Json::Fields(&["length", "width", "height"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("length", "numeric(38, 6)"),
+            ("width", "numeric(38, 6)"),
+            ("height", "numeric(38, 6)"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Measures {
             parts: &["length", "width", "height"],
@@ -498,6 +524,7 @@ pub const DIMENSIONS_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A tracking number as Jadpo takes it: 6 to 40 capitals and digits, which
@@ -519,7 +546,7 @@ pub const TRACKING_NUMBER_ENTRY: StandardType = StandardType {
     json: Json::Text,
     storage: Storage::Columns {
         parts: &[("carrier", "text"), ("number", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: CANONICAL,
     ordered: false,
@@ -543,6 +570,7 @@ pub const TRACKING_NUMBER_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A registration mark as its plate shows it: one to four groups of one
@@ -564,7 +592,7 @@ pub const VEHICLE_REGISTRATION_ENTRY: StandardType = StandardType {
     json: Json::Text,
     storage: Storage::Columns {
         parts: &[("country", "text"), ("plate", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: CANONICAL,
     ordered: false,
@@ -588,6 +616,7 @@ pub const VEHICLE_REGISTRATION_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `FlightNumber`'s parts: the airline's IATA designator, the flight's
@@ -614,7 +643,7 @@ pub const FLIGHT_NUMBER_ENTRY: StandardType = StandardType {
             ("number", "integer"),
             ("suffix", "text"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     format: CANONICAL,
     ordered: false,
@@ -632,6 +661,7 @@ pub const FLIGHT_NUMBER_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
@@ -661,7 +691,14 @@ pub const JURISDICTION_ENTRY: StandardType = StandardType {
     holds: Holds::Choice(JURISDICTION_VARIANTS),
     text: None,
     json: Json::Tagged,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("kind", "text"),
+            ("country", "text"),
+            ("subdivision", "text"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["country", "subdivision"],
@@ -690,6 +727,7 @@ pub const JURISDICTION_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A model provider's name as Hugging Face writes an organisation: up to
@@ -714,7 +752,7 @@ pub const MODEL_ID_ENTRY: StandardType = StandardType {
     json: Json::Text,
     storage: Storage::Columns {
         parts: &[("provider", "text"), ("name", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: CANONICAL,
     ordered: false,
@@ -740,12 +778,5 @@ pub const MODEL_ID_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
-
-/// The rules across the parts of the records here.
-pub fn order_rules(ty: &str) -> &'static [OrderRule] {
-    match ty {
-        RATING => RATING_RULES,
-        _ => &[],
-    }
-}

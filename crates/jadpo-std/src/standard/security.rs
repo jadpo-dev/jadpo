@@ -35,9 +35,10 @@
 //! `PasswordPolicy`, NIST SP 800-63B's rules for a password; and
 //! `WebAuthnCredential`, a passkey as `webauthn-rs` keeps one.
 
+use super::across::{Order, StandardRule, in_order};
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, OrderRule, Part,
-    StandardType, Storage, TextForm, Validator,
+    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part, StandardType,
+    Storage, TextForm, Validator,
 };
 use crate::Builtin;
 use crate::read::SqlType;
@@ -228,6 +229,7 @@ const fn secret_entry(
         shape: None,
         examples,
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -640,6 +642,7 @@ pub const PASSWORD_HASH_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// An Ed25519 public key, as unpadded Base64url (area 19).
@@ -686,6 +689,7 @@ pub const PUBLIC_KEY_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// What checking a password says (area 19): `wrong`; `correct`; or
@@ -724,6 +728,7 @@ pub const PASSWORD_CHECK_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A JWT (area 19, chunk 5.5r), as its compact form: what
@@ -778,6 +783,7 @@ pub const JWT_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// What a `JwtClaims`' text claims (`iss`, `sub`, `jti` and each of
@@ -807,7 +813,18 @@ pub const JWT_CLAIMS_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&JWT_CLAIMS_FIELDS),
     text: None,
     json: Json::Members(&["iss", "sub", "aud", "exp", "nbf", "iat", "jti"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("iss", "text"),
+            ("sub", "text"),
+            ("aud", "text[]"),
+            ("exp", "timestamptz(3)"),
+            ("nbf", "timestamptz(3)"),
+            ("iat", "timestamptz(3)"),
+            ("jti", "text"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::FirstPart(&["sub", "iss", "jti", "exp"]),
         options: NO_OPTIONS,
@@ -846,6 +863,7 @@ pub const JWT_CLAIMS_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// What a `Jwk`'s `x` holds: an Ed25519 public key's 32 bytes as 43
@@ -878,7 +896,17 @@ pub const JWK_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&JWK_FIELDS),
     text: None,
     json: Json::Members(&["kty", "crv", "x", "kid", "alg", "use"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("kty", "text"),
+            ("crv", "text"),
+            ("x", "text"),
+            ("kid", "text"),
+            ("alg", "text"),
+            ("use", "text"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::FirstPart(&["kid", "x"]),
         options: NO_OPTIONS,
@@ -918,6 +946,7 @@ pub const JWK_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// An OAuth scope (area 19, RFC 6749 §3.3): one scope-token, printable
@@ -954,6 +983,7 @@ pub const OAUTH_SCOPE_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// What an `OidcClaims`' `sub` holds: OpenID Connect Core §2's subject
@@ -1003,7 +1033,21 @@ pub const OIDC_CLAIMS_ENTRY: StandardType = StandardType {
         "phone_number_verified",
         "picture",
     ]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("sub", "text"),
+            ("name", "text"),
+            ("given_name", "text"),
+            ("family_name", "text"),
+            ("preferred_username", "text"),
+            ("email", "text"),
+            ("email_verified", "boolean"),
+            ("phone_number", "text"),
+            ("phone_number_verified", "boolean"),
+            ("picture", "text"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::FirstPart(&["name", "email", "sub"]),
         options: NO_OPTIONS,
@@ -1039,6 +1083,7 @@ pub const OIDC_CLAIMS_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// How many bytes a `Hash` and an `Hmac` hold: SHA-256's digest, which
@@ -1121,6 +1166,7 @@ const fn bytes_entry(name: &'static str, validator: Validator, examples: Example
         shape: None,
         examples,
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -1231,16 +1277,15 @@ pub const PASSWORD_POLICY_FIELDS: [(&str, Part); 3] = [
     ("check_breached", Part::Of(Builtin::Bool)),
 ];
 
-/// A policy's fewest characters are never more than its most (chunk
-/// 5.5r3).
-pub const PASSWORD_POLICY_ORDER: &[OrderRule] = &[OrderRule {
-    lower: "min_length",
-    upper: "max_length",
-    strict: false,
-    at: "min_length",
+/// `PasswordPolicy`'s rule across its parts (chunk 5.5t2): its fewest
+/// characters are never more than its most (chunk 5.5r3).
+pub const PASSWORD_POLICY_RULES: &[StandardRule] = &[StandardRule {
+    name: "min_not_above_max",
+    written: "min_length <= max_length",
     label: "more than its `max_length`",
     reason: "A password policy's fewest characters can't be more than its most, or no password would meet it.",
     next: "Give `min_length` a number no greater than `max_length`",
+    check: in_order(&[Order::at_most("min_length", "max_length")], "min_length"),
 }];
 
 /// The rules a password must meet (NIST SP 800-63B, area 19, chunk 5.5r3):
@@ -1251,7 +1296,14 @@ pub const PASSWORD_POLICY_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&PASSWORD_POLICY_FIELDS),
     text: None,
     json: Json::Fields(&["min_length", "max_length", "check_breached"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("min_length", "smallint"),
+            ("max_length", "smallint"),
+            ("check_breached", "boolean"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["min_length", "max_length"],
@@ -1289,6 +1341,7 @@ pub const PASSWORD_POLICY_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// The transports a passkey says it can be reached by, as WebAuthn names
@@ -1364,7 +1417,20 @@ pub const WEB_AUTHN_CREDENTIAL_ENTRY: StandardType = StandardType {
         "registered_at",
         "last_used_at",
     ]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("credential_id", "bytea"),
+            ("public_key", "bytea"),
+            ("sign_count", "bigint"),
+            ("transports", "text[]"),
+            ("backup_eligible", "boolean"),
+            ("backed_up", "boolean"),
+            ("name", "text"),
+            ("registered_at", "timestamptz(3)"),
+            ("last_used_at", "timestamptz(3)"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::FirstPart(&["name"]),
         options: NO_OPTIONS,
@@ -1402,6 +1468,7 @@ pub const WEB_AUTHN_CREDENTIAL_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 #[cfg(test)]

@@ -522,6 +522,11 @@ fn rate_currencies(mut schema: Value, rules: &Rules) -> Value {
 
 pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
     let mut out = Value::object();
+    // OpenAPI can't say its rules across its parts, so its description
+    // lists them by name (chunk 5.5t2), as an object type's are (area 2).
+    if let Some(described) = jadpo_std::standard::across::described(entry.name) {
+        out.set("description", described);
+    }
     if entry.json == jadpo_std::standard::Json::Text {
         out.set("type", "string");
         return out;

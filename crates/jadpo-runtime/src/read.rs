@@ -443,6 +443,38 @@ pub fn to_sql(value: &Value, ty: SqlType) -> Result<SqlValue, String> {
         (Value::Variant(variant), SqlType::Text) if variant.fields.is_empty() => SqlValue::Text(
             jadpo_std::standard::stored_variant(&variant.ty, &variant.name).to_string(),
         ),
+        // A `LocalTime` and a `LocalDateTime`, as microseconds (chunk 5.5w).
+        (Value::Int(micros), SqlType::Time) => SqlValue::Time(*micros),
+        (Value::Int(micros), SqlType::LocalTimestamp) => SqlValue::LocalTimestamp(*micros),
+        // A range's ends and whether it holds its upper one (chunk 5.5w).
+        (Value::List(ends), SqlType::Range(element)) => match &ends[..] {
+            // One whose start is its end holds nothing, and PostgreSQL keeps
+            // such a range as `empty`, without its ends, so it wouldn't
+            // read back.
+            [lower, upper, Value::Bool(false)]
+                if !matches!(lower, Value::None) && lower == upper =>
+            {
+                return Err(
+                    "a range whose start is its end, which PostgreSQL keeps without its ends"
+                        .into(),
+                );
+            }
+            [lower, upper, Value::Bool(upper_held)] => {
+                let end = |value: &Value| -> Result<Option<Box<SqlValue>>, String> {
+                    Ok(match value {
+                        Value::None => None,
+                        value => Some(Box::new(to_sql(value, *element)?)),
+                    })
+                };
+                SqlValue::Range {
+                    element: *element,
+                    lower: end(lower)?,
+                    upper: end(upper)?,
+                    upper_held: *upper_held,
+                }
+            }
+            _ => return Err("a range without its two ends".into()),
+        },
         (Value::List(items) | Value::Set(items), SqlType::Array(inner)) => SqlValue::Array(
             *inner,
             items
@@ -515,21 +547,47 @@ pub fn field_value(row: &[SqlValue], columns: &[Column], at: u32) -> Result<Valu
     let (Some(sql), Some(column)) = (row.get(at), columns.get(at)) else {
         return Err("a row without a column it needs".into());
     };
-    let Column::Compound(ty) = column else {
+    let Column::Compound { ty, may_be_none } = column else {
         return from_sql(sql, column);
     };
+    // A range's type names its item, `Range<Duration>` (chunk 5.5w).
+    let name = ty.split('<').next().unwrap_or(ty);
     let entry =
-        jadpo_std::standard_type(ty).ok_or_else(|| format!("`{ty}` isn't a standard type"))?;
+        jadpo_std::standard_type(name).ok_or_else(|| format!("`{ty}` isn't a standard type"))?;
     let count = entry.columns().len();
     let parts = row
         .get(at..at + count)
         .ok_or_else(|| format!("a `{ty}` without its {count} columns"))?;
-    if parts.iter().all(|part| matches!(part, SqlValue::Null(_))) {
+    if *may_be_none && parts.iter().all(|part| matches!(part, SqlValue::Null(_))) {
         return Ok(Value::None);
     }
     fn part_value(part: &SqlValue, ty: &str) -> Result<Value, String> {
         match part {
             SqlValue::Null(_) => Ok(Value::None),
+            SqlValue::Bool(flag) => Ok(Value::Bool(*flag)),
+            SqlValue::Bytes(bytes) => Ok(Value::Bytes(Rc::from(bytes.as_slice()))),
+            SqlValue::Uuid(bytes) => Ok(Value::uuid(&uuid_text(bytes))),
+            SqlValue::Timestamp(micros) => Ok(Value::Instant(micros.div_euclid(1000))),
+            // A `LocalTime` and a `LocalDateTime`, as microseconds, and a
+            // range as its ends and whether it holds its upper one (chunk
+            // 5.5w).
+            SqlValue::Time(micros) | SqlValue::LocalTimestamp(micros) => Ok(Value::Int(*micros)),
+            SqlValue::Range {
+                lower,
+                upper,
+                upper_held,
+                ..
+            } => {
+                let end = |end: &Option<Box<SqlValue>>| match end {
+                    Some(end) => part_value(end, ty),
+                    None => Ok(Value::None),
+                };
+                Ok(Value::list(vec![
+                    end(lower)?,
+                    end(upper)?,
+                    Value::Bool(*upper_held),
+                ]))
+            }
             SqlValue::Int2(n) => Ok(Value::Int(i64::from(*n))),
             SqlValue::Int4(n) => Ok(Value::Int(i64::from(*n))),
             SqlValue::Int8(n) => Ok(Value::Int(*n)),
@@ -553,7 +611,7 @@ pub fn field_value(row: &[SqlValue], columns: &[Column], at: u32) -> Result<Valu
         .iter()
         .map(|part| part_value(part, ty))
         .collect::<Result<Vec<Value>, String>>()?;
-    jadpo_value::standard::from_parts(entry, &values)
+    jadpo_value::standard::from_parts_of(ty, &values)
         .map_err(|_| format!("columns that don't make a `{ty}`"))
 }
 

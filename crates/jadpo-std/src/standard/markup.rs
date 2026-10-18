@@ -478,6 +478,7 @@ const fn text_format(
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 

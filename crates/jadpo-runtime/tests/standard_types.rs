@@ -218,10 +218,15 @@ fn type_codec(entry: &StandardType, tables: &mut Tables) -> CodecId {
                 variant: None,
                 fields: plans,
             }));
+            // Its rules across its parts, checked once it is read (chunk
+            // 5.5t2), as the plan's validator checks them.
+            let across = jadpo_std::standard::across::cross_rules(entry.name);
+            let validator = (!across.is_empty())
+                .then(|| tables.validator(Validator::new(None, Vec::new()).with_across(across)));
             tables.codecs[at.0 as usize] = Codec::Object {
                 shape,
                 fields: tops,
-                validator: None,
+                validator,
             };
             at
         }
@@ -287,10 +292,12 @@ fn type_codec(entry: &StandardType, tables: &mut Tables) -> CodecId {
                 variant: None,
                 fields: plans,
             }));
+            let across = jadpo_std::standard::across::cross_rules(jadpo_std::RANGE);
+            let validator = tables.validator(Validator::new(None, Vec::new()).with_across(across));
             tables.codecs[at.0 as usize] = Codec::Object {
                 shape,
                 fields: vec![end, end],
-                validator: None,
+                validator: Some(validator),
             };
             at
         }
@@ -583,12 +590,24 @@ fn every_standard_type_meets_the_contract() {
                     .iter()
                     .zip(entry.columns())
                     .map(|(part, (_, column))| {
+                        // A range's column is its item's range type (chunk
+                        // 5.5w).
+                        let column = match (entry.name, entry.examples.of) {
+                            (jadpo_std::RANGE, Some("CalendarDate")) => "daterange",
+                            (jadpo_std::RANGE, Some("Instant")) => "tstzrange",
+                            (jadpo_std::RANGE, Some("Decimal")) => "numrange",
+                            (jadpo_std::RANGE, _) => "int8range",
+                            _ => column,
+                        };
                         let sql = jadpo_std::SqlType::of_column(column).expect("a column type");
                         jadpo_runtime::to_sql(part, sql)
                             .unwrap_or_else(|why| panic!("{name}: a part is stored ({why})"))
                     })
                     .collect();
-                let mut columns = vec![jadpo_std::read::Column::Compound(name.to_string())];
+                let mut columns = vec![jadpo_std::read::Column::Compound {
+                    ty: parsed_as(entry),
+                    may_be_none: false,
+                }];
                 columns.resize(row.len(), jadpo_std::read::Column::Part);
                 assert_eq!(
                     jadpo_runtime::field_value(&row, &columns, 0),
@@ -638,11 +657,19 @@ fn every_standard_type_meets_the_contract() {
                 assert_eq!(read_json(&table, text), None, "{name}: {text} isn't one");
                 continue;
             }
-            assert_eq!(
-                read(entry, text),
-                Err(Fault::Broke(RuleKey::Malformed)),
-                "{name}: `{text}` is malformed"
-            );
+            // Text that isn't one at all, or one that breaks a rule across
+            // its parts, which it is checked by once read (chunk 5.5t2).
+            match read(entry, text) {
+                Err(fault) => assert_eq!(
+                    fault,
+                    Fault::Broke(RuleKey::Malformed),
+                    "{name}: `{text}` is malformed"
+                ),
+                Ok(value) => assert!(
+                    jadpo_value::across::broken_standard(&value).is_some(),
+                    "{name}: `{text}` is refused"
+                ),
+            }
             // A type held as text refuses it wherever it is built: its
             // own check breaks `format`, and JSON doesn't read it.
             if let Holds::Text { .. } = entry.holds {
@@ -803,10 +830,13 @@ fn postal_codes_follow_each_country_s_rules() {
             );
             let (read, problems) = posted(typed, examples.country);
             assert_eq!(read, None, "{typed} in an address in {}", examples.country);
+            // Refused at `postal_code` by its own check, or by the rule
+            // across the address's parts (chunk 5.5t2).
             assert!(
                 problems
                     .iter()
-                    .any(|problem| problem.field.ends_with("postal_code")),
+                    .any(|problem| problem.field.ends_with("postal_code")
+                        || problem.rule == "postal_code_of_country"),
                 "{problems:?}"
             );
         }
@@ -833,7 +863,13 @@ fn identity_documents_follow_each_country_s_forms() {
                     matches!(read, Ok(_) | Err(Fault::Broke(RuleKey::Malformed))),
                     "{text}: {read:?}"
                 );
-                return (read.ok(), vec!["number".to_string()]);
+                // A number not in its country's form breaks the type's
+                // rule, which the value is checked by once read (chunk
+                // 5.5t2).
+                let kept = read
+                    .ok()
+                    .filter(|value| jadpo_value::across::broken_standard(value).is_none());
+                return (kept, vec!["number".to_string()]);
             }
             let mut json = serde_json::json!({
                 "country": examples.country,
@@ -845,7 +881,10 @@ fn identity_documents_follow_each_country_s_forms() {
             }
             let mut problems = Vec::new();
             let read = table.read(CodecId(0), &json, &Path::default(), &mut problems);
-            let fields = problems.iter().map(|p| p.field.clone()).collect();
+            let fields = problems
+                .iter()
+                .map(|p| format!("{} {}", p.field, p.rule))
+                .collect();
             (read, fields)
         };
         for number in examples.valid {
@@ -864,8 +903,10 @@ fn identity_documents_follow_each_country_s_forms() {
                 "{} {number} isn't one of {}'s",
                 examples.ty, examples.country
             );
+            // Refused at `number` by its own pattern, or by the rule
+            // across its parts, `number_of_country` (chunk 5.5t2).
             assert!(
-                problems.iter().any(|field| field.ends_with("number")),
+                problems.iter().any(|problem| problem.contains("number")),
                 "{} {number}: {problems:?}",
                 examples.ty
             );
@@ -935,26 +976,34 @@ fn an_event_s_parts_are_checked_together_as_json_is_read() {
     };
     let (read, problems) = posted(serde_json::json!({}));
     assert!(read.is_some(), "{problems:?}");
-    let broken = |changes: serde_json::Value, part: &str| {
+    // Each rule broken is reported by its name at the event's path
+    // (chunk 5.5t2).
+    let broken = |changes: serde_json::Value, rule: &str| {
         let (read, problems) = posted(changes.clone());
         assert_eq!(read, None, "{changes}");
         assert!(
             problems
                 .iter()
-                .any(|problem| problem.field.ends_with(part) && problem.rule == "format"),
+                .any(|problem| problem.field.is_empty() && problem.rule == rule),
             "{changes}: {problems:?}"
         );
     };
-    broken(serde_json::json!({ "first_day": "2026-10-24" }), "last_day");
+    broken(
+        serde_json::json!({ "first_day": "2026-10-24" }),
+        "days_or_times",
+    );
     broken(
         serde_json::json!({ "first_day": "2026-10-24", "last_day": "2026-10-26" }),
-        "start",
+        "days_or_times",
     );
-    broken(serde_json::json!({ "zone": null }), "zone");
-    broken(serde_json::json!({ "end": "2026-10-24T21:00:00" }), "end");
+    broken(serde_json::json!({ "zone": null }), "days_or_times");
+    broken(
+        serde_json::json!({ "end": "2026-10-24T21:00:00" }),
+        "end_after_start",
+    );
     broken(
         serde_json::json!({ "recurrence": "DTSTART;TZID=Europe/Paris:20261024T220000\nRRULE:FREQ=WEEKLY" }),
-        "recurrence",
+        "recurrence_from_start",
     );
     broken(
         serde_json::json!({
@@ -965,6 +1014,27 @@ fn an_event_s_parts_are_checked_together_as_json_is_read() {
             "zone": null,
             "recurrence": null,
         }),
-        "last_day",
+        "last_day_not_before_first",
     );
+}
+
+/// A range whose start is its end holds nothing, and PostgreSQL keeps every
+/// such range as `empty`, without its ends: storing one is refused rather
+/// than losing where it was (chunk 5.5w), while one that holds its end, a
+/// `DateRange` of one day, is stored.
+#[test]
+fn a_range_that_holds_nothing_is_not_stored() {
+    let empty = standard::parse("2026-10-25T09:00:00Z/2026-10-25T09:00:00Z", "InstantRange")
+        .expect("an empty range");
+    let parts = standard::to_parts(&empty).expect("its column");
+    let sql = jadpo_std::SqlType::of_column("tstzrange").expect("a range type");
+    let refused = jadpo_runtime::to_sql(&parts[0], sql).expect_err("refused");
+    assert!(
+        refused.contains("PostgreSQL keeps without its ends"),
+        "{refused}"
+    );
+    let day = standard::parse("2026-10-25/2026-10-25", "DateRange").expect("one day");
+    let parts = standard::to_parts(&day).expect("its column");
+    let sql = jadpo_std::SqlType::of_column("daterange").expect("a range type");
+    assert!(jadpo_runtime::to_sql(&parts[0], sql).is_ok());
 }

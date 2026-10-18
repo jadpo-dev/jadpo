@@ -313,7 +313,9 @@ fn every_standard_type_meets_the_contract_in_the_checker() {
         // its examples' settings give it.
         // A type with rules of its own breaks them by name: a `Money`
         // type's currency, a `TaxRate`'s bounds (chunk 5.5i3).
-        let bounded = matches!(entry.holds, Holds::Bounded { min, max, .. } if min.is_some() || max.is_some());
+        // So does one with rules across its parts (chunk 5.5t2).
+        let bounded = matches!(entry.holds, Holds::Bounded { min, max, .. } if min.is_some() || max.is_some())
+            || !jadpo_std::standard::across::rules(name).is_empty();
         let mut others = if entry.examples.settings.is_empty() && !bounded {
             String::new()
         } else {

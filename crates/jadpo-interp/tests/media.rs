@@ -29,6 +29,7 @@ function thumbnail(video_still: ImageDimensions) -> ImageDimensions {
 function film_rating(raw: FormText) fails NotARating -> ContentRating {
     var typed_rating: ContentRating = attempt text.parse(raw, as: ContentRating) {
         malformed: NotARating
+        rating_of_scheme: NotARating
     }
     return typed_rating
 }
@@ -135,6 +136,7 @@ function audio_codec(raw: FormText) fails Unreadable -> AudioCodec {
 function caption(raw: FormText) fails Unreadable -> SubtitleCue {
     return attempt text.parse(raw, as: SubtitleCue) {
         malformed: Unreadable
+        invalid: Unreadable
     }
 }
 

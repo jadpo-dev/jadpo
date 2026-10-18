@@ -68,6 +68,18 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
                 return Err(prim.name().to_string());
             }
         },
+        // A range in PostgreSQL's range type of its ends (area 19,
+        // "Ranges", chunk 5.5w).
+        Ty::Opaque(name, args) if name == jadpo_std::RANGE => {
+            let item = args.first().and_then(|item| table.representation(item));
+            match item {
+                Some(Builtin::Int | Builtin::Duration) => "int8range".into(),
+                Some(Builtin::Decimal) => "numrange".into(),
+                Some(Builtin::Instant) => "tstzrange".into(),
+                Some(Builtin::CalendarDate) => "daterange".into(),
+                _ => return Err(structure.to_string()),
+            }
+        }
         Ty::Named(name) | Ty::Opaque(name, _)
             if let Some(entry) = jadpo_std::standard_type(name) =>
         {
@@ -195,6 +207,7 @@ fn column(position: u32, sql_type: &str, nullable: bool) -> Column {
         nullable,
         retired: false,
         allows: None,
+        comment: None,
     }
 }
 

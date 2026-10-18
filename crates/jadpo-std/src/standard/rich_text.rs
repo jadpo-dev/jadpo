@@ -148,6 +148,7 @@ pub const RICH_TEXT_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// One block of a document: a choice, sent tagged, stored as that JSON and
@@ -193,6 +194,7 @@ pub const RICH_TEXT_BLOCK_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A run of text with its marks and link: sent as its members, the link
@@ -202,7 +204,10 @@ pub const RICH_TEXT_SPAN_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&RICH_TEXT_SPAN_FIELDS),
     text: None,
     json: Json::Members(&["text", "marks", "link"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[("text", "text"), ("marks", "text[]"), ("link", "text")],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::PlainText,
         options: NO_OPTIONS,
@@ -240,6 +245,7 @@ pub const RICH_TEXT_SPAN_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A mark on a span of text, each its own code.
@@ -267,6 +273,7 @@ pub const RICH_TEXT_MARK_ENTRY: StandardType = StandardType {
         &["bold", "em", "strike-through", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// Text in several locales: sent as an object keyed by each locale's tag,
@@ -303,6 +310,7 @@ pub const LOCALISED_TEXT_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------

@@ -360,6 +360,7 @@ pub const PHONE_NUMBER: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A country calling code ITU-T assigned (E.164), with its `+`: `+44`,
@@ -388,6 +389,7 @@ pub const CALLING_CODE: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A number rule's examples for one country, the harness's: each as people

@@ -27,6 +27,7 @@ pub(crate) const SINGLETONS: &[&str] = &[
     "migration",
     "policy",
     "principal",
+    "suggestions",
     "translations",
 ];
 

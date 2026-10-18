@@ -1,0 +1,187 @@
+//! `ignored_suggestions.jadpo_record` (area 14, "Ignoring a suggestion";
+//! area 18's record format): the suggestions a team keeps quiet, one line
+//! each, sorted, under the header every record has.
+//!
+//! ```text
+//! ignore 3f9a1c0e2b7d4a51 conversion Money "Basis points, not money"
+//! ```
+//!
+//! The hash is the snippet's canonical form's, so every variant of it stays
+//! quiet; the signal and what it suggests say which finding; the reason is
+//! quoted, with `\"` and `\\` inside.
+
+use super::Signal;
+
+/// The record's file name, at the project root.
+pub const FILE: &str = "ignored_suggestions.jadpo_record";
+
+/// The first line of the record.
+pub const HEADER: &str = "// Written by `jadpo suggest ignore`; `jadpo suggest` drops entries whose code has gone. Never edit it by hand.";
+
+/// The second line.
+const KIND: &str = "record ignored_suggestions 1";
+
+/// One ignored suggestion.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Ignore {
+    pub hash: String,
+    pub signal: Signal,
+    /// The standard type or operation it suggested.
+    pub suggestion: String,
+    pub reason: String,
+}
+
+impl Ignore {
+    /// Whether it keeps a finding with this hash, signal and suggestion
+    /// quiet.
+    pub fn covers(&self, hash: &str, signal: Signal, suggestion: &str) -> bool {
+        self.hash == hash && self.signal == signal && self.suggestion == suggestion
+    }
+}
+
+/// The record's lines, sorted, under its header.
+pub fn render(entries: &[Ignore]) -> String {
+    let mut sorted: Vec<&Ignore> = entries.iter().collect();
+    sorted.sort_by(|a, b| {
+        (&a.hash, a.signal.word(), &a.suggestion).cmp(&(&b.hash, b.signal.word(), &b.suggestion))
+    });
+    sorted.dedup_by(|a, b| a.covers(&b.hash, b.signal, &b.suggestion));
+    let mut out = format!("{HEADER}\n{KIND}\n");
+    if !sorted.is_empty() {
+        out.push('\n');
+    }
+    for entry in sorted {
+        out.push_str(&format!(
+            "ignore {} {} {} {}\n",
+            entry.hash,
+            entry.signal.word(),
+            entry.suggestion,
+            quote(&entry.reason)
+        ));
+    }
+    out
+}
+
+/// `text` quoted, with `\"` and `\\` inside and a line break as `\n`.
+pub(crate) fn quote(text: &str) -> String {
+    let mut out = String::from('"');
+    for c in text.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            other => out.push(other),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// The lines of a record, or what is wrong with it and on which line
+/// (from 0).
+pub fn parse(text: &str) -> Result<Vec<Ignore>, (usize, String)> {
+    let mut lines = text.lines().enumerate();
+    match lines.next() {
+        Some((_, line)) if line == HEADER => {}
+        Some((at, _)) => {
+            return Err((at, "the first line is not the header Jadpo writes".into()));
+        }
+        None => return Err((0, "the file is empty".into())),
+    }
+    match lines.next() {
+        Some((_, line)) if line == KIND => {}
+        Some((at, line)) if line.starts_with("record ignored_suggestions ") => {
+            return Err((at, "this record was written by a newer Jadpo".into()));
+        }
+        Some((at, _)) => {
+            return Err((at, format!("the second line is not `{KIND}`")));
+        }
+        None => return Err((1, "the file ends after the header".into())),
+    }
+    let mut entries = Vec::new();
+    for (at, line) in lines {
+        if line.is_empty() {
+            continue;
+        }
+        let wrong = || (at, "this line is not an ignored suggestion".to_string());
+        let rest = line.strip_prefix("ignore ").ok_or_else(wrong)?;
+        let mut words = rest.splitn(4, ' ');
+        let (Some(hash), Some(signal), Some(suggestion), Some(reason)) =
+            (words.next(), words.next(), words.next(), words.next())
+        else {
+            return Err(wrong());
+        };
+        let is_hash = hash.len() == 16
+            && hash
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+        let Some(signal) = Signal::from_word(signal) else {
+            return Err((at, format!("`{signal}` isn't a signal")));
+        };
+        let reason = unquote(reason).ok_or_else(wrong)?;
+        if !is_hash || suggestion.is_empty() {
+            return Err(wrong());
+        }
+        entries.push(Ignore {
+            hash: hash.to_string(),
+            signal,
+            suggestion: suggestion.to_string(),
+            reason,
+        });
+    }
+    Ok(entries)
+}
+
+/// The text inside `"…"`, its escapes undone.
+pub(crate) fn unquote(text: &str) -> Option<String> {
+    let inner = text.strip_prefix('"')?.strip_suffix('"')?;
+    let mut out = String::new();
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => match chars.next()? {
+                'n' => out.push('\n'),
+                other => out.push(other),
+            },
+            '"' => return None,
+            other => out.push(other),
+        }
+    }
+    Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_record_reads_back_what_it_wrote() {
+        let entries = vec![
+            Ignore {
+                hash: "3f9a1c0e2b7d4a51".into(),
+                signal: Signal::Conversion,
+                suggestion: "Money".into(),
+                reason: "Basis points, \"not\" money \\ really".into(),
+            },
+            Ignore {
+                hash: "0000000000000001".into(),
+                signal: Signal::Name,
+                suggestion: "Duration".into(),
+                reason: String::new(),
+            },
+        ];
+        let text = render(&entries);
+        assert!(text.starts_with(HEADER));
+        let back = parse(&text).expect("reads");
+        assert_eq!(back.len(), 2);
+        assert_eq!(back[0].suggestion, "Duration");
+        assert_eq!(back[1].reason, entries[0].reason);
+    }
+
+    #[test]
+    fn a_hand_edit_is_refused_by_line() {
+        let text = format!("{HEADER}\n{KIND}\n\nignore nothash conversion Money \"x\"\n");
+        assert_eq!(parse(&text).expect_err("refused").0, 3);
+        assert!(parse("ignore").is_err());
+    }
+}

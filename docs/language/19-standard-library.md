@@ -106,7 +106,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 246 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2, the 17 geospatial types in 5.5s, `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims` in 5.5r, the secret values `Password`, `ApiKey`, `BearerToken`, `TotpSecret` and `SecretText` in 5.5r2, the five AI types in 5.5s2, the security records `Hash`, `Hmac`, `EncryptedValue`, `OneTimeCode`, `PasswordPolicy` and `WebAuthnCredential` in 5.5r3); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (accepted by the lead session, "Decisions"), and `ChatRole`, who wrote a `ChatMessage`, in chunk 5.5s2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: thirty-one are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2, `ChatRole` in 5.5s2), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, all of them built (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2, the 17 geospatial types in 5.5s, `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims` in 5.5r, the secret values `Password`, `ApiKey`, `BearerToken`, `TotpSecret` and `SecretText` in 5.5r2, the five AI types in 5.5s2, the security records `Hash`, `Hmac`, `EncryptedValue`, `OneTimeCode`, `PasswordPolicy` and `WebAuthnCredential` in 5.5r3, `Certificate` in 5.5r5); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (accepted by the lead session, "Decisions"), and `ChatRole`, who wrote a `ChatMessage`, in chunk 5.5s2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: thirty-one are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2, `ChatRole` in 5.5s2), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -134,7 +134,7 @@ exception to the rule.
 | Web and network (23) | **`Url`**, **`UrlPath`**, **`RelativeUrl`**, **`Slug`**, **`DomainName`**, **`Hostname`**, **`WebOrigin`**, **`HttpMethod`** (enum), **`HttpStatus`**, **`HttpHeaderName`**, **`FileType`**, **`UserAgent`**, **`ProblemDetails`**, **`JsonPointer`**, **`Cookie`**, **`UtmParameters`**, **`IpAddress`**, **`Cidr`**, **`NetworkPort`**, **`MacAddress`**, **`Imei`**, **`Emoji`**, **`PushToken`** | `web` |
 | Software (19) | **`SemanticVersion`**, **`VersionRange`**, **`GitRef`**, **`PackageUrl`**, **`Cve`**, **`SpdxLicence`**, **`TraceId`**, **`SpanId`**, **`TraceParent`**, **`LogLevel`** (enum), **`FilePath`**, **`FileName`**, **`RegularExpression`**, **`ContainerImage`**, **`Digest`**, **`Uuid`**, **`Ulid`**, **`IdempotencyKey`**, **`Doi`** | `semver` |
 | Text formats (4) | **`Markdown`**, **`Html`**, **`RichText`**, **`LocalisedText`** | `markup`, `text` |
-| Security (20) | **`Password`**, **`PasswordHash`**, **`PasswordPolicy`**, **`Hash`**, **`Hmac`**, **`Jwt`**, **`JwtClaims`**, **`Jwk`**, **`PublicKey`**, **`PrivateKey`**, `Certificate`, **`TotpSecret`**, **`OneTimeCode`**, **`ApiKey`**, **`SecretText`**, **`BearerToken`**, **`OAuthScope`**, **`OidcClaims`**, **`WebAuthnCredential`**, **`EncryptedValue`** | `crypto` |
+| Security (20) | **`Password`**, **`PasswordHash`**, **`PasswordPolicy`**, **`Hash`**, **`Hmac`**, **`Jwt`**, **`JwtClaims`**, **`Jwk`**, **`PublicKey`**, **`PrivateKey`**, **`Certificate`**, **`TotpSecret`**, **`OneTimeCode`**, **`ApiKey`**, **`SecretText`**, **`BearerToken`**, **`OAuthScope`**, **`OidcClaims`**, **`WebAuthnCredential`**, **`EncryptedValue`** | `crypto` |
 | Travel (6) | **`IataAirport`**, **`IcaoAirport`**, **`IataAirline`**, **`FlightNumber`**, **`CabinClass`** (enum), **`BookingReference`** | |
 | Other with a published standard (10) | **`UnNumber`**, **`Orcid`**, **`CefrLevel`** (enum), **`Mpan`**, **`Mprn`**, **`EpcRating`** (enum), **`Tenure`** (enum), **`LawfulBasis`** (enum), **`Jurisdiction`**, **`ModelId`** | |
 | AI (3, and `ChatRole`) | **`TokenCount`**, **`TokenUsage`**, **`ChatMessage`** with **`ChatRole`** (enum) | AI area |
@@ -200,7 +200,15 @@ contract adds 2 names, not 700.
 > `TaxRate` the first ("Chosen in chunk 5.5i3"). Chunk 5.5o2 added named
 > collections, `RichText` a list and `LocalisedText` a map, each built,
 > sent and read as an application's named collection is ("Chosen in
-> chunk 5.5o2").
+> chunk 5.5o2"). Chunk 5.5x gave each entry its `signals`, the data
+> `jadpo suggest` finds hand-rolled uses of the type by: conversion
+> constants, the words of names, format literals and validation texts,
+> beside the shape it already had (area 14, "Suggestions").
+>
+> Chunk 5.5w stored every standard object and choice through named
+> columns laid out from its parts, and decided each boundary's encoding,
+> under "Every boundary through the contract" below and "Chosen in chunk
+> 5.5w".
 
 A form sends a quantity as text, an order's time goes into a log line as
 its canonical text, and a day, a duration and a zone are shown to people
@@ -273,6 +281,38 @@ test "standard values are read, written and shown one way" {
 | Geometry | `geo.intersects`, `contains`, `within`, `distance`, `bounds` | Future area |
 | AI (`Vector`, `Embedding`, `ChatMessage`) | Similarity and generation | Future area |
 | People, places, identity numbers, commerce codes, health, travel, other | Baseline only: each identifier's check digit or pattern is its construction | |
+
+### Every boundary through the contract
+
+Decided 2026-10-17 (Richard): no standard type loses its currency, unit or
+precision on the way into or out of a program, so every place a value
+crosses encodes a standard type only through the contract's JSON, storage
+and text shapes, never an encoder of its own. Where a boundary's pages
+left its encoding open, the lead session decided it on 2026-10-18 under
+that instruction, each the most conservative reading:
+
+| Boundary | Encoding | Decided on |
+|---|---|---|
+| HTTP requests and responses, OpenAPI | The contract's JSON, through the route codec | Area 7, this page |
+| Storage and migrations | The contract's storage: one column, named columns laid out from the type's parts, or a native PostgreSQL type (a range, `time`, `timestamp`); a quantity's column carries a comment naming its SI unit; a fixed currency or rate a check constraint | Area 5, this page |
+| Caches and Redis entities | The contract's JSON, as area 5 holds the API's JSON there | Area 5 |
+| Event, job and batch payloads | The contract's JSON of the event's or the job's type, written and read by the route codec, and a batch's captured values the same; read with the type as it is when delivered, so a change an API record would call breaking needs area 18's acceptance, and a payload that no longer reads is parked, never dropped | Area 12 |
+| CSV and TSV cells | A standard type's canonical text (`text.from`), read by `text.parse`; a type with no single text form (`PostalAddress`, `Price`, a choice) is the compile error naming JSON Lines that a list or an object is | This page, "Data formats" |
+| JSON Lines rows, `json.read` and `json.write` | The contract's JSON | This page |
+| Logs and traces | Values as area 4 and area 15 allow; a personal value's keyed hash covers the UTF-8 of its canonical text, or of its contract JSON where it has no single text form | Area 15 |
+| Settings | `text.parse`'s canonical text, with the source spellings a setting also takes (`5m`) | Area 10 |
+| Translation placeholders and email | Shown to people by `text.format` (`PresentationText`), never read back | Areas 10 and 16 |
+| Outbound provider calls and webhooks | The contract's JSON for a field without `wire:`; `wire:` only names another encoding a provider uses | Area 11 |
+| Records and the manifest | Types and defaults as source writes them; no runtime values | Area 18 |
+| Test fixtures and seeds | Written through the actions they call, so through storage | Areas 5 and 13 |
+| Files | Bytes; the format namespaces above turn them into values | Area 16 |
+| Developer reports | A value as code makes one (`money.from_minor(1050, Currency.gbp)`), which keeps its currency, unit and places and is never read back | Area 17 |
+| The interpreter and compiled code, native and wasm32 | One runtime crate, so one codec for each shape | compiler-runtime §2 |
+
+> Built in chunk 5.5w: storage. The JSON-held values (`RichText`,
+> `RichTextBlock`, `LocalisedText`) and the other built boundaries are
+> chunk 5.5w2, the single encoders 5.5w3; the boundaries not built yet
+> take these encodings in the chunks that build them.
 
 ### Packages use the standard types
 
@@ -403,7 +443,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `ApiKey`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `Barcode`, `BasisPoints`, `BearerToken`, `Bearing`, `Bic`, `Bitrate`, `BloodGlucose`, `BloodPressure`, `BloodType`, `BookingReference`, `BoundingBox`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `ChatMessage`, `ChatRole`, `Cidr`, `Circle`, `ClothingSize`, `ClothingSizeSystem`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Crs`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Dimensions`, `Discount`, `Doi`, `DomainName`, `DosageInstruction`, `Dose`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `EastingNorthing`, `Email`, `EmailWithName`, `Embedding`, `Emoji`, `EncryptedValue`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `FlightNumber`, `Fraction`, `FrameRate`, `Frequency`, `Geohash`, `Geometry`, `GitRef`, `GivenName`, `H3Cell`, `Hash`, `HeartRate`, `Hmac`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Jurisdiction`, `Jwk`, `Jwt`, `JwtClaims`, `Language`, `Latitude`, `LawfulBasis`, `Lei`, `Length`, `LineString`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `Longitude`, `LotNumber`, `MacAddress`, `MapTile`, `Markdown`, `MaskedCardNumber`, `Mass`, `ModelId`, `Money`, `Month`, `Mpan`, `Mprn`, `MultiLineString`, `MultiPoint`, `MultiPolygon`, `Nationality`, `NetworkPort`, `NhsNumber`, `OAuthScope`, `OidcClaims`, `OneTimeCode`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `Password`, `PasswordCheck`, `PasswordHash`, `PasswordPolicy`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `Point`, `Polygon`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PublicKey`, `PushToken`, `Quarter`, `Range`, `Rating`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `RouteOfAdministration`, `SecretText`, `SemanticVersion`, `SerialNumber`, `ShoeSize`, `ShoeSizeSystem`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TokenCount`, `TokenUsage`, `TotpSecret`, `TraceId`, `TraceParent`, `TrackingNumber`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UnitQuantity`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `Vector`, `VehicleRegistration`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebAuthnCredential`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `ApiKey`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `Barcode`, `BasisPoints`, `BearerToken`, `Bearing`, `Bic`, `Bitrate`, `BloodGlucose`, `BloodPressure`, `BloodType`, `BookingReference`, `BoundingBox`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Certificate`, `ChatMessage`, `ChatRole`, `Cidr`, `Circle`, `ClothingSize`, `ClothingSizeSystem`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Crs`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Dimensions`, `Discount`, `Doi`, `DomainName`, `DosageInstruction`, `Dose`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `EastingNorthing`, `Email`, `EmailWithName`, `Embedding`, `Emoji`, `EncryptedValue`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `FlightNumber`, `Fraction`, `FrameRate`, `Frequency`, `Geohash`, `Geometry`, `GitRef`, `GivenName`, `H3Cell`, `Hash`, `HeartRate`, `Hmac`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Jurisdiction`, `Jwk`, `Jwt`, `JwtClaims`, `Language`, `Latitude`, `LawfulBasis`, `Lei`, `Length`, `LineString`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `Longitude`, `LotNumber`, `MacAddress`, `MapTile`, `Markdown`, `MaskedCardNumber`, `Mass`, `ModelId`, `Money`, `Month`, `Mpan`, `Mprn`, `MultiLineString`, `MultiPoint`, `MultiPolygon`, `Nationality`, `NetworkPort`, `NhsNumber`, `OAuthScope`, `OidcClaims`, `OneTimeCode`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `Password`, `PasswordCheck`, `PasswordHash`, `PasswordPolicy`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `Point`, `Polygon`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PublicKey`, `PushToken`, `Quarter`, `Range`, `Rating`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `RouteOfAdministration`, `SecretText`, `SemanticVersion`, `SerialNumber`, `ShoeSize`, `ShoeSizeSystem`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TokenCount`, `TokenUsage`, `TotpSecret`, `TraceId`, `TraceParent`, `TrackingNumber`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UnitQuantity`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `Vector`, `VehicleRegistration`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebAuthnCredential`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -1203,7 +1243,14 @@ read; `map.has` says whether it is there without reading it.
 which may be `none` for an open end; `DateRange` includes its end date and
 `InstantRange` excludes its end instant, each saying so once in its type.
 Stored as PostgreSQL's range types (`daterange`, `tstzrange`,
-`numrange`), so the SQL forms are the range operators.
+`numrange`, and `int8range` for whole numbers and durations), so the SQL
+forms are the range operators. A range that holds nothing, its start its
+end, isn't stored: PostgreSQL keeps every such range as `empty`, without
+its ends, so storing one is a fault rather than losing where it was
+(chunk 5.5w). A range's start is
+never after its end, its rule `start_not_after_end`, so one built from
+values is proved by a condition or attempted, as an object's rule across
+its fields is (chunk 5.5t2, under "Review").
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -2344,9 +2391,11 @@ check failed: 1 error, 1 file
 ```
 
 A `TaxRate` is kept in one `numeric` column and `BasisPoints` in one
-`bigint`; the four records and their choices are stored as their JSON in
-one `jsonb` column, as an `ExchangeRate` is, which waits on area 5's
-structured storage:
+`bigint`; the four records and their choices are stored in a column per
+part, as an `ExchangeRate` is (chunk 5.5w): a `Price` in `amount`,
+`currency` and `includes_tax`, a `Discount` in its variant's name
+(`kind`) and each part its variants hold, `NULL` where the stored
+variant hasn't it:
 
 ```jadpo check project=loan-rates file=app.jadpo hidden
 application {}
@@ -2422,8 +2471,9 @@ Each part keeps its own type's rules: a sort code's six digits, an IBAN's
 mod-97 and its country's length. It is financial personal data, as an
 IBAN and a UK account number are, and `text.format` shows it masked to
 its number's last four, `•••• 4958`, as it shows a card number. It has no
-single text form, and is stored as its JSON in one `jsonb` column, which
-waits on area 5's structured storage, as a `Discount` does.
+single text form, and is stored as a choice is (chunk 5.5w): its
+variant's name, then each part its variants hold, `kind`, `sort_code`,
+`account_number`, `iban`, `country` and `bank_code`, as a `Discount` is.
 
 A UK account number also has to fit its sort code, by the modulus check
 Vocalink publishes for Pay.UK's schemes ("Validating account numbers: UK
@@ -2853,7 +2903,9 @@ Area 10's 21 `temporal` operations stand. The new time types add three.
 whole years, months and days, unlike a `Duration`, which is exact time,
 and a `DateRange`, which is a span between two dates. It has no order
 (one month and 30 days don't compare) and `==` compares part by part. It
-is stored as an `interval` holding only years, months and days.
+is stored as its three parts in `integer` columns, not as an `interval`,
+which PostgreSQL keeps as months and days, so `P12M` would come back as
+`P1Y` (chunk 5.5w; accepted by the lead session, 2026-10-18).
 `CalendarDate + CalendarPeriod` (the operator table) applies years, then
 months, then days, and clamps a day past the month's end to its last day,
 so 31 January plus one month is 28 or 29 February. That is area 10's
@@ -3107,6 +3159,7 @@ type ShiftCount = Int {
 function diary_entry_from_text(calendar_text: DiaryText) fails DiaryUnreadable -> CalendarEvent {
     return attempt text.parse(calendar_text, as: CalendarEvent) {
         malformed: DiaryUnreadable
+        invalid: DiaryUnreadable
     }
 }
 
@@ -3126,13 +3179,7 @@ function covers_reader_day(event: CalendarEvent, at: SeenAt, zone: Zone) -> Cove
     return match event.first_day {
         some(first) -> match event.last_day {
             some(last) -> CoversReaderDay(
-                range.contains(
-                    DateRange {
-                        start: first
-                        end: last
-                    },
-                    reader_local_day
-                )
+                ReaderDay(first) <= reader_local_day and reader_local_day <= ReaderDay(last)
             )
             none -> CoversReaderDay(false)
         }
@@ -4571,8 +4618,124 @@ it, and when it was made and last used; never a biometric.
 > each built from its operation with no arm; every `Bytes` compared in
 > constant time; `OneTimeCode` a secret value; `PasswordPolicy` and
 > `WebAuthnCredential` standard objects, the passkey's parts mapped to
-> what `webauthn-rs` keeps. `Certificate` is chunk 5.5r5. What the page
-> left open is under "Chosen in chunk 5.5r3".
+> what `webauthn-rs` keeps. `Certificate` followed in chunk 5.5r5. What
+> the page left open is under "Chosen in chunk 5.5r3".
+
+A `Certificate` is an X.509 certificate (RFC 5280), read from its PEM
+(RFC 7468): its subject and its issuer as RFC 4514 writes a distinguished
+name, its serial number, the first and last instants it is valid at, both
+included, the SHA-256 of its DER as a `Hash`, and the DER itself. Each part
+is read from what its issuer signed, so code reads them and never sets
+them, and nothing here checks its chain or its signature. It is sent,
+stored and read back as its PEM, and shown to people by its subject. A
+certificate isn't secret; a key's PEM is never one, and reading one fails
+`malformed`.
+
+A clinic receives lab results from a partner, which sends the certificate
+it signs them with. The clinic pins that certificate by its fingerprint
+and checks it is in date:
+
+```jadpo check project=certificates
+type PartnerPem = Text {
+    max_length: 100000
+}
+
+type CertificateRefused = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type CheckedAt = Instant {}
+
+type CertificateHolds = Bool {}
+
+/// The certificate a partner sent, read from its PEM.
+function partner_certificate(sent_pem: PartnerPem) fails CertificateRefused -> Certificate {
+    return attempt text.parse(sent_pem, as: Certificate) {
+        malformed: CertificateRefused
+    }
+}
+
+/// Whether a certificate is the one pinned for the partner: its SHA-256
+/// fingerprint, compared in constant time.
+function is_pinned(presented: Certificate, pinned_fingerprint: Hash) -> CertificateHolds {
+    return CertificateHolds(presented.fingerprint == pinned_fingerprint)
+}
+
+/// Whether a certificate is in date: its first and last instants are both
+/// included.
+function in_date(presented: Certificate, checked_at: CheckedAt) -> CertificateHolds {
+    return CertificateHolds(
+        presented.not_before <= checked_at and checked_at <= presented.not_after
+    )
+}
+```
+
+```jadpo check project=certificates file=main.test.jadpo
+test "a partner's certificate is read, pinned and dated" {
+    var lab_certificate: Certificate = attempt partner_certificate(
+        "-----BEGIN CERTIFICATE-----\nMIIBljCCAUigAwIBAgIIHy49TFtqeYgwBQYDK2VwMEgxCzAJBgNVBAYTAkdCMRww\nGgYDVQQKDBNKYWRwbyBUZXN0LCBTaWduaW5nMRswGQYDVQQDDBJqYWRwby10ZXN0\nLmV4YW1wbGUwHhcNMjYxMDAxMDAwMDAwWhcNMzYxMDAxMDAwMDAwWjBIMQswCQYD\nVQQGEwJHQjEcMBoGA1UECgwTSmFkcG8gVGVzdCwgU2lnbmluZzEbMBkGA1UEAwwS\namFkcG8tdGVzdC5leGFtcGxlMCowBQYDK2VwAyEAAJyTOxfkgCmTOYhl/AXEMRpT\n07QqDzpBZIRCSESxhYejUDBOMB0GA1UdDgQWBBTH4Arltue6aEupl+oqXRoIZos6\nLTAfBgNVHSMEGDAWgBTH4Arltue6aEupl+oqXRoIZos6LTAMBgNVHRMBAf8EAjAA\nMAUGAytlcANBAHkV9ilHQ5TVpSZyPobRcjo9bERYbugOAsKXD4ZJjCRPqpyK+aDc\n+FxV2FFnXI2UQxnYsieWNSclooiCSIuDmwA=\n-----END CERTIFICATE-----\n"
+    )
+    assert lab_certificate.subject == "CN=jadpo-test.example,O=Jadpo Test\\, Signing,C=GB"
+    assert lab_certificate.issuer == lab_certificate.subject
+    assert lab_certificate.serial_number == "1f2e3d4c5b6a7988"
+    var pinned: Hash = lab_certificate.fingerprint
+    assert text.from(pinned) == "18Ma3EAjFJeXynaXWJODAHbnCHr90gDsttEzYJqXWg0="
+    assert is_pinned(lab_certificate, pinned)
+    assert in_date(lab_certificate, "2026-10-18T09:00:00Z")
+    assert in_date(lab_certificate, "2036-10-01T00:00:00Z")
+    assert not in_date(lab_certificate, "2036-10-01T00:00:01Z")
+    assert partner_certificate(
+        "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=\n-----END PUBLIC KEY-----\n"
+    ) fails CertificateRefused
+}
+```
+
+Building a certificate from parts chosen in code is refused, since
+nothing would have signed them:
+
+```jadpo check project=e-certificate-made-up expect=type.constructor_input
+type CertificateDer = Bytes {}
+
+type IssuedAt = Instant {}
+
+/// A certificate made up in code, its parts chosen rather than signed.
+function made_up(
+    chosen_der: CertificateDer,
+    chosen_digest: Hash,
+    issued_at: IssuedAt
+) -> Certificate {
+    return Certificate {
+        subject: "CN=bank.example"
+        issuer: "CN=Trusted Root"
+        serial_number: "01"
+        not_before: issued_at
+        not_after: issued_at
+        fingerprint: chosen_digest
+        der: chosen_der
+    }
+}
+```
+
+```text output
+error: `Certificate` isn't built from its parts
+ --> main.jadpo:11:12
+   |
+11 |     return Certificate {
+   |            ^^^^^^^^^^^ parts set in code
+  reason: A `Certificate`'s subject, issuer, serial number, validity and fingerprint are read from the DER its issuer signed, so code reads them and never sets them.
+  next: Read the `Certificate` from its PEM with `text.parse(..., as: Certificate)`, or from JSON with `json.read` (agent)
+  rule: type.constructor_input
+  help: docs/language/02-values-and-types.html#type-constructor-input
+
+check failed: 1 error, 1 file
+```
+
+> Built in chunk 5.5r5: `Certificate` on the contract as a standard object
+> whose canonical text and JSON are its PEM (`TextForm::Pem`), read by
+> `jadpo-value`'s `certificate` module on `x509-parser`, strictly, and
+> stored in a column per part since chunk 5.5w; an object literal of one is
+> `type.constructor_input`.
+> What the page left open is under "Chosen in chunk 5.5r5".
 
 ## Randomness
 
@@ -4864,6 +5027,15 @@ stays area 12's.
   (`Wire.day_month_year`) or a pure `decode:` function. A CSV row holds
   single values only: a list or an object in one is a compile error
   naming JSON Lines.
+- **A standard type in a cell is its canonical text** (`text.from`,
+  `GBP 10.50`, `2.5 kg`, `2026-10-25T09:30:00Z`), read by `text.parse`
+  with its failures as the row's problems, so a cell keeps a currency, a
+  unit and every place. A standard type with no single text form
+  (`PostalAddress`, `PersonName`, `Price`, a choice such as `Discount`) is
+  an object for this rule, the compile error naming JSON Lines, whose rows
+  carry the contract's JSON (decided by the lead session, 2026-10-18,
+  under Richard's instruction of 2026-10-17 that every boundary goes
+  through the contract).
 - **Writing names its reader.** `CsvFormat.spreadsheet` writes a
   byte-order mark, CRLF line endings and escapes formula-like text;
   `CsvFormat.standard` writes CRLF only. A write without `format:` is a
@@ -5342,6 +5514,7 @@ function thumbnail(video_still: ImageDimensions) -> ImageDimensions {
 function film_rating(raw: FormText) fails NotARating -> ContentRating {
     var typed_rating: ContentRating = attempt text.parse(raw, as: ContentRating) {
         malformed: NotARating
+        rating_of_scheme: NotARating
     }
     return typed_rating
 }
@@ -5749,6 +5922,7 @@ function card_on_file(card: PaymentCardNumber) -> MaskedCardNumber {
 function supplier_vat(raw: FormText) fails NotAVatNumber -> VatNumber {
     var number: VatNumber = attempt text.parse(raw, as: VatNumber) {
         malformed: NotAVatNumber
+        number_of_country: NotAVatNumber
     }
     return number
 }
@@ -5816,13 +5990,13 @@ function shown_at_desk() -> PassportNumber {
 ```
 
 ```text output
-error: `"123456789"` isn't a passport number of its country
+error: This `PassportNumber` breaks its rule `number_of_country`
  --> main.jadpo:5:17
   |
 5 |         number: "123456789"
-  |                 ^^^^^^^^^^^ not a passport number of `Country.fr`
-  reason: A `PassportNumber`'s `number` is in the form the passport office of its `country` writes, and a literal is checked while compiling.
-  next: Write a passport number of `Country.fr` in its canonical text, or change `country` (agent)
+  |                 ^^^^^^^^^^^ not a number of the document's country
+  reason: A `PassportNumber`'s `number` is in the form its `country`'s passport office writes. A literal is checked while compiling.
+  next: Write a number in the country's form, or change `country` (agent)
   rule: type.invalid_literal
   help: docs/language/02-values-and-types.html#type-invalid-literal
 
@@ -6415,12 +6589,12 @@ function typed_reading() -> BloodPressure {
 ```
 
 ```text output
-error: This `BloodPressure`'s `diastolic` breaks a rule across its parts
+error: This `BloodPressure` breaks its rule `diastolic_below_systolic`
  --> main.jadpo:5:20
   |
 5 |         diastolic: 120mmHg
   |                    ^^^^^^^ not below the systolic
-  reason: A `BloodPressure`'s `diastolic`, the pressure between beats, is below its `systolic`, the pressure as the heart beats (LOINC 85354-9).
+  reason: A `BloodPressure`'s `diastolic`, the pressure between beats, is below its `systolic`, the pressure as the heart beats (LOINC 85354-9). A literal is checked while compiling.
   next: Write a `diastolic` below the `systolic`, or swap the two (agent)
   rule: type.invalid_literal
   help: docs/language/02-values-and-types.html#type-invalid-literal
@@ -7665,8 +7839,8 @@ under "Errors").
   given, `none` for an open one. Where a `Range<T>` is expected its ends
   are checked as `T?`; elsewhere its first end that isn't `none` gives
   `T`. Its ends are read as `range.start` and `range.end`, each a `T?`.
-  Nothing checks that the start isn't after the end, as for an
-  `InstantRange`, until the standard types' rules across fields (5.5t2).
+  Its start not after its end is its rule `start_not_after_end`, as an
+  `InstantRange`'s and a `DateRange`'s is, since chunk 5.5t2.
 - **A `range` call's ranges are all one range type,** since each keeps its
   own end rule: an `InstantRange` and a `Range<Instant>` don't mix
   (`type.mismatch`). A range it gives is that range type, so
@@ -7674,7 +7848,8 @@ under "Errors").
   `range.contains`' value is built on the range's item type.
 - **The contract.** Its canonical text is each end's canonical text joined
   by `/`, an open end written `..` as ISO 8601-2 writes one
-  (`2026-10-01/..`); a start after its end is `malformed`. JSON is an
+  (`2026-10-01/..`); a start after its end breaks `start_not_after_end`
+  (`malformed` until chunk 5.5t2). JSON is an
   object of `start` and `end`, `null` for an open end. Storage is its JSON,
   as `InstantRange`'s is. `text.format` shows each end as its item type is
   shown, with the item type's options, joined by ` – `, and an open end as
@@ -8290,9 +8465,8 @@ under "Errors").
   each range as an object's field rules are proved (area 2):
   `type.invalid_literal` for a literal, `type.field_unproved` for a
   value, and `LocalTime.hour(raw)` builds one with its `min` and `max`.
-  A rule across fields, an `IsoWeek`'s week 53 in a year with 52, waits
-  for 5.5t2, as `InstantRange`'s start after its end does; its text is
-  refused. `Year` is a record of one `year`, since a standard type
+  A rule across fields, an `IsoWeek`'s week 53 in a year with 52, is its
+  rule `week_in_year` since chunk 5.5t2, text included. `Year` is a record of one `year`, since a standard type
   built on `Int` with rules of its own would need declarations the
   project doesn't have.
 - **Canonical text** is ISO 8601's, to the second and with nothing
@@ -8310,8 +8484,10 @@ under "Errors").
   (`Codec::Standard`), except a `DateRange`, which is an object of its
   two dates as `InstantRange` is. **Storage** is that JSON in one
   `jsonb` column, as `InstantRange`'s is, rather than chunk 5.5h's named
-  columns; chunk 5.5w moves ranges and periods to the native `daterange`
-  and `interval` columns the page names.
+  columns; chunk 5.5w moved ranges to the native `daterange` column the
+  page names, and periods to three `integer` columns rather than an
+  `interval` (accepted by the lead session, 2026-10-18, "Chosen in chunk
+  5.5w").
 - **Order.** `LocalTime`, `LocalDateTime`, `YearMonth`, `Year`,
   `Quarter` and `IsoWeek` are ordered, part by part in declared order,
   which is the canonical order; `UtcOffset`, `Month` (an enum, as
@@ -8468,10 +8644,11 @@ under "Errors").
   postal code is (chunk 5.5l2): a part written `none` is known to be
   absent and one written out (text, a variant, an object) known to be
   given, so a literal that breaks one is `type.invalid_literal`, no new
-  rule. A part built from a value that may be `none` waits on cross-field
-  rules (chunk 5.5t2). A value read from text or JSON is checked as it is
-  read: text that breaks one is `malformed`, and JSON breaks `format` at
-  the part.
+  rule. Since chunk 5.5t2 they are its named rules, `days_or_times`,
+  `last_day_not_before_first`, `end_after_start` and
+  `recurrence_from_start`: a part built from a value is proved or
+  attempted by them, and text or JSON that breaks one breaks it by name,
+  where this chunk made text `malformed` and JSON `format` at the part.
 - **Its text** is the `VEVENT`'s lines joined by line feeds, as a
   `RecurrenceRule`'s are, in one order: `BEGIN:VEVENT`, `DTSTART`, `DTEND`,
   `SUMMARY`, then `LOCATION`, `DESCRIPTION` and `RRULE` where it has them,
@@ -8547,7 +8724,8 @@ under "Errors").
   on dates whose start is its `first_day`, and a timed event's a zoned
   rule from its `start` in its `zone`, as before. A rule of the other form
   is refused by the same rules across parts: `type.invalid_literal` where
-  a literal shows it, `malformed` in text, `format` in JSON. An all-day
+  a literal shows it, and `recurrence_from_start` by name since chunk
+  5.5t2. An all-day
   `VEVENT`'s `RRULE` is read with its `DTSTART;VALUE=DATE:` line as the
   rule's start, and written back the same way.
 
@@ -8781,9 +8959,9 @@ under "Errors").
   country.** An object literal never fails (area 2), so the rule is proved
   where a literal writes both the postal code and the country
   (`type.invalid_literal`), and checked when an address is read from JSON,
-  in a request or `json.read`, breaking `format` at `postal_code`. One
-  built in code from values isn't checked until cross-field rules (chunk
-  5.5t2) make it a named rule, proved or attempted. Stored addresses are
+  in a request or `json.read`. Since chunk 5.5t2 it is the named rule
+  `postal_code_of_country`: one built in code from values is attempted,
+  and JSON breaks it by name at the address's path. Stored addresses are
   read as written.
 - **`UnLocode`** is its five characters with no space, `GBLON`, its
   country a current ISO 3166-1 code, and printed with the space, `GB LON`.
@@ -8833,10 +9011,10 @@ under "Errors").
   given day is an operation no page decides, so none is built.
 - **A number is upper case with no spaces or punctuation,** as the
   payment numbers are (chunk 5.5i), and fits its country's published
-  form, `PartRule` now reading any number of parts (a document's kind and
-  country), proved where a literal writes them all and checked as JSON is
-  read, breaking `format` at `number`; one built in code from values waits
-  on cross-field rules (chunk 5.5t2). A country that publishes no form
+  form, proved where a literal writes its kind and country and checked as
+  JSON is read. Since chunk 5.5t2 it is the named rule `number_of_country`
+  (`number_of_kind_and_country` for an `IdentityDocument`), attempted
+  where it is built from values and broken by name in text and JSON. A country that publishes no form
   takes any number within the type's bounds, 1 to 25 capitals and digits
   (the longest a US state's licence number may be, by AAMVA's 2020 card
   standard), and 2 to 15 for a VAT number, so a number is never refused
@@ -9600,9 +9778,10 @@ under "Errors").
   skips (frames 0 and 1, or 0 to 3, at each minute but every tenth). Its
   notation, `01:00:00;00`, doesn't say its rate, so it has no single text
   form: it is sent as its parts, stored as `jsonb`, and shown in that
-  notation. A literal is checked while compiling, a value read from JSON
-  as it is read, and one built in code from values waits on cross-field
-  rules (chunk 5.5t2).
+  notation. A literal is checked while compiling and a value read from
+  JSON as it is read; since chunk 5.5t2 these are its named rules
+  `frames_within_rate`, `drop_frame_rate` and `frame_not_dropped`, and one
+  built in code from values is attempted by them.
 - **`SubtitleCue`** is WebVTT's: a `start` and an `end`, `Duration`s from
   the start of the media to the millisecond, the start at 0 or after and
   the end after it, and its `text`, lines with no control character, no
@@ -9695,8 +9874,9 @@ under "Errors").
   of 10 differ) and shown `4.5/5`.
 - **Rules across parts,** a rating's and a blood pressure's, are proved for
   a literal that writes both parts as numbers or as quantities of one kind,
-  and checked as JSON is read; one built in code from values waits on
-  cross-field rules (chunk 5.5t2).
+  and checked as JSON is read; since chunk 5.5t2 they are the named rules
+  `best_above_worst`, `value_on_scale` and `diastolic_below_systolic`, so
+  one built in code from values is proved or attempted.
 - **`Dimensions`** is a `length`, `width` and `height`, none below 0, sent
   as named fields, stored as `jsonb` and shown in centimetres, or the unit
   `unit:` names, written once, `30 × 20 × 10 cm`. A parcel's weight, which
@@ -9939,8 +10119,8 @@ conservative reading:
 - **`MapTile`** is OpenStreetMap's XYZ scheme, its row counted from the
   north, not TMS's: a `zoom` from 0 to 30, which keeps `x` and `y` within a
   32-bit integer as PostGIS's `ST_TileEnvelope` takes them, and each below
-  2 to the zoom, checked as JSON is read; one built in code from values
-  waits on cross-field rules (chunk 5.5t2). It is shown as a tile's URL
+  2 to the zoom, checked as JSON is read: its rule `within_zoom` since
+  chunk 5.5t2, attempted where it is built from values. It is shown as a tile's URL
   writes it, `10/511/340`.
 - **`EastingNorthing`** is an `easting` and a `northing`, `Decimal`s held
   as written, and its `Crs`, shown by name, `easting 530,000, northing
@@ -10296,6 +10476,286 @@ most conservative reading:
   bytes as Base64 and the count as area 2 sends an `Int`, stored as that
   JSON, and shown by its name.
 
+### Chosen in chunk 5.5t2
+
+The cross-part checks the standard object types ran only on literals and
+decoded JSON became named rules across their parts, as an application's
+object type names its own (area 2, "Rules across fields"), so a value built
+in code is proved or attempted like a declared type's. Each type's rules,
+in the order they are checked, and as OpenAPI's description lists them:
+
+| Type | Rule | What it holds |
+|---|---|---|
+| `InstantRange`, `DateRange`, `Range<T>` | `start_not_after_end` | `start <= end`; an open end of a `Range<T>` keeps it |
+| `IsoWeek` | `week_in_year` | week 53 only in a year with 53 ISO weeks |
+| `CalendarEvent` | `days_or_times` | both days and no start, end or zone, or all three and no days |
+| | `last_day_not_before_first` | `last_day >= first_day` |
+| | `end_after_start` | `end > start` |
+| | `recurrence_from_start` | the recurrence starts on `first_day`, or at `start` in `zone` |
+| `PostalAddress` | `postal_code_of_country` | `postal_code`, where it has one, in its `country`'s form |
+| `IdentityDocument` | `number_of_kind_and_country` | `number` in the form of its `kind` from its `country` |
+| `PassportNumber`, `DrivingLicenceNumber`, `TaxId`, `VatNumber` | `number_of_country` | `number` in its `country`'s form |
+| `ContentRating` | `rating_of_scheme` | `rating` one of its `scheme`'s categories |
+| `Timecode` | `frames_within_rate` | `frames` below the rate's whole frames a second |
+| | `drop_frame_rate` | drop-frame only at 30000/1001 and 60000/1001 |
+| | `frame_not_dropped` | never a label drop-frame counting skips |
+| `SubtitleCue` | `start_not_negative` | `start >= 0ms` |
+| | `end_after_start` | `end > start` |
+| | `text_without_arrow` | `text` holds no `-->` |
+| `Rating` | `best_above_worst` | `best > worst` |
+| | `value_on_scale` | `worst <= value and value <= best` |
+| `BloodPressure` | `diastolic_below_systolic` | `diastolic < systolic` |
+| `MapTile` | `within_zoom` | `x` and `y` each below 2 to the `zoom` |
+| `TokenUsage` | `cached_within_input` | `cached <= input`, where it is given |
+| `PasswordPolicy` | `min_not_above_max` | `min_length <= max_length` |
+| `BoundingBox` | `south_not_above_north` | `south <= north` |
+
+A slot built from two instants a form sent is attempted by its rule, and
+one a condition orders needs no `attempt`:
+
+```jadpo check project=standard-rules
+type SlotBackwards = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A slot from one booking's start to another's end.
+function combined_slot(
+    earlier_booking: InstantRange,
+    later_booking: InstantRange
+) fails SlotBackwards -> InstantRange {
+    return attempt InstantRange {
+        start: earlier_booking.start
+        end: later_booking.end
+    } {
+        start_not_after_end: SlotBackwards
+    }
+}
+
+/// The same, refused before it is built.
+function combined_slot_checked(
+    earlier_booking: InstantRange,
+    later_booking: InstantRange
+) fails SlotBackwards -> InstantRange {
+    if (later_booking.end < earlier_booking.start) {
+        reject SlotBackwards
+    }
+    return InstantRange {  // the condition proves `start_not_after_end`
+        start: earlier_booking.start
+        end: later_booking.end
+    }
+}
+```
+
+```jadpo check project=standard-rules file=main.test.jadpo
+test "a slot never ends before it starts" {
+    var morning_slot: InstantRange = InstantRange {
+        start: "2026-10-26T09:00:00Z"
+        end: "2026-10-26T12:00:00Z"
+    }
+    var afternoon_slot: InstantRange = InstantRange {
+        start: "2026-10-26T13:00:00Z"
+        end: "2026-10-26T17:00:00Z"
+    }
+    var whole_day: InstantRange = attempt combined_slot(morning_slot, afternoon_slot)
+    assert whole_day.end == afternoon_slot.end
+    assert combined_slot(afternoon_slot, morning_slot) fails SlotBackwards
+    assert combined_slot_checked(afternoon_slot, morning_slot) fails SlotBackwards
+}
+```
+
+What the pages left open, each the most conservative reading:
+
+- **Every rule is a check of its own in `jadpo-std`**
+  (`standard::across`), not a condition written in Jadpo. A postal code by
+  its country and a document's number by its kind and country read tables
+  no operator can, and making them standard operations a rule may call
+  would add names to the language, so each stays a check, named, proved,
+  attempted and reported exactly as a condition is; the simple orderings
+  are checks too, so there is one way. Each rule has one implementation,
+  which the checker reads a literal by and the runtime runs on every value
+  made: an object literal, `text.parse`, a request's JSON and
+  `json.read`, compiled code included.
+- **Proof.** A literal is read by what it shows of each part: a part
+  written out is known, one written `none` absent, and one built from a
+  value of a type that can't be `none` given. A rule its parts decide
+  holds, or is `type.invalid_literal` naming it. A rule ordering two
+  parts (a range's, a rating's, a policy's lengths) is otherwise proved as
+  a condition comparing two fields is: by a comparison known around the
+  construction, or by the declared ranges (a policy's 8 is never above
+  its most, at least 64). Any other rule built from values is attempted.
+- **Every cross-part check, not only those the roadmap named:**
+  `DateRange`, whose text already refused a start after its end, keeps
+  `InstantRange`'s rule; `ContentRating`, the tax and document numbers
+  and `BoundingBox` had the same kind of check, so they became rules too,
+  leaving no second mechanism.
+- **A rule may read one part.** A cue's start at 0 or after and its text
+  without `-->` were checked with its order, so they stay named rules
+  rather than becoming part bounds a value would be built for alone.
+- **One rule where one statement holds:** a rating's value from its worst
+  to its best is `value_on_scale`, and a tile's column and row below 2 to
+  its zoom `within_zoom`.
+- **Text and JSON break them by name.** Text that is the type's form but
+  breaks a rule (week 53 of 2027, a cue ending before it starts, `PEGI
+  12A`) is read and then breaks the rule, no longer `malformed`; text that
+  isn't the type at all still is. So `attempt text.parse(raw, as: T)` maps
+  `T`'s rules, or `invalid:`. JSON reports the rule at the object's path,
+  or at the field's for a type sent as its text, where it was `format` at
+  the part.
+- **Stored values are read as written,** as before. A rule the running
+  program can't decide (a part of the wrong kind) counts as broken.
+- **OpenAPI** describes a standard object's schema with "Rules across its
+  parts:" and each rule. `Range<T>` has no schema of its own yet, so its
+  rule is listed here only.
+- **What changed for existing code:** a standard object literal built from
+  values that may break a rule now needs an `attempt` or a condition, and
+  a `text.parse` into one maps its rules. The calendar events example
+  compares its days directly instead of building a `DateRange` from them,
+  and the media and cards examples' `text.parse` calls map
+  `rating_of_scheme` and `number_of_country`; the passport and pressure
+  errors name their rules. Tests updated: the checker's calendar events,
+  cards and documents, people and places, sets and maps, standard types
+  and fixes, and the CLI's fix tests (their swapped slot is built from
+  literals); the interpreter's media; the runtime's media, records and measures and standard types.
+
+### Chosen in chunk 5.5r5
+
+Choices the page left open when `Certificate` was built, each the most
+conservative reading:
+
+- **The crate.** Rusticata's `x509-parser` 0.16.0, MIT or Apache-2.0, pure
+  Rust and built for wasm32, already in the lock through `webauthn-rs`, so
+  no crate was added (RustCrypto's `x509-cert` isn't in the lock). It is
+  used without its `verify` feature, so no `ring`: a certificate is read,
+  and nothing checks its signature, its chain, its extensions or whether
+  it was revoked.
+- **A standard object read only from its DER.** Its parts are `subject`,
+  `issuer`, `serial_number`, `not_before`, `not_after`, `fingerprint` (a
+  `Hash`) and `der`, the DER itself, so a program can pass it on. Every one
+  is read from the DER, so an object literal of one is
+  `type.constructor_input`, which says to read it with `text.parse` or
+  `json.read`; values never change (area 2), so nothing sets a part later.
+  There is no common-name part, since the page names none: an application
+  reads the subject.
+- **Its text and its JSON are its PEM** (RFC 7468's strict form): one
+  `CERTIFICATE` block, its DER in standard Base64 lines of 64 characters,
+  the last 1 to 64, each line ending in a line feed. It is read with line
+  feeds, or with a carriage return and a line feed throughout, the last
+  line's ending optional, and nothing else: no text before or after the
+  block, no headers, no white space, no second block and no other label,
+  `TRUSTED CERTIFICATE` and every key's included, each `malformed`. Its
+  JSON is that text, as every type with a canonical text is sent, not its
+  DER in Base64; it is stored as that JSON (`jsonb`) and read back through
+  the same reader, so a stored part is never trusted.
+- **Reading DER bytes is chunk 5.5r4's.** The DER inside a PEM is read
+  here; a certificate from bytes (a file's contents, a key set's `x5c`) is
+  read by `crypto.read_certificate(der)`, giving a `Certificate` and
+  failing `malformed`, on this chunk's reader, built with 5.5r4's JWTs
+  from identity providers, whose `x5c` needs it (decided by the lead
+  session, 2026-10-18).
+- **DER and nothing else**, at most 64 KiB: each length definite and in its
+  fewest octets, no tag number of 31 or more, each INTEGER in its fewest
+  octets, a BOOLEAN all ones or all zeros, a BIT STRING's unused bits
+  zero, each arc of an OBJECT IDENTIFIER in its fewest octets, no universal
+  type but a SEQUENCE or a SET constructed, each time in RFC 5280's form
+  (`YYMMDDHHMMSSZ`, `YYYYMMDDHHMMSSZ`), and nothing after the certificate.
+  The algorithm outside what was signed must be the one inside (RFC 5280
+  §4.1.1.2), each compared as its DER.
+- **The serial number** is positive and at most 20 octets, its sign octet
+  included (RFC 5280 §4.1.2.2), so a negative or a zero one is
+  `malformed`; it is written in lowercase hexadecimal, two digits an
+  octet, without the sign octet and with no separators,
+  `8210cfb0d240e3594463e0bb63828b00` for ISRG Root X1.
+- **Names as RFC 4514 writes them:** the relative names last first,
+  joined by `,`, the attributes of one by `+`; the nine types RFC 4514 §3
+  names by their short names (`CN`, `L`, `ST`, `O`, `OU`, `C`, `STREET`,
+  `DC`, `UID`) and any other by its dotted OID; a value of a known string
+  kind (UTF8String, PrintableString, IA5String, NumericString,
+  VisibleString, BMPString, UniversalString) as its text, escaped as §2.4
+  says and with every control character as `\` and its hexadecimal, so a
+  name shows on one line; a TeletexString, any other kind and any type
+  without a short name as `#` and the hexadecimal of its DER. A string that
+  isn't its kind's (UTF-8 that isn't) makes the certificate `malformed`.
+- **Validity** is two instants, both included (RFC 5280 §4.1.2.5).
+  `99991231235959Z`, which RFC 5280 writes for no well-defined expiry, is
+  past the latest instant Jadpo holds, so a time in the last hours of 9999
+  reads as that instant. A certificate whose last instant is before its
+  first is read, and is valid at no instant.
+- **Shown by its subject**, else by its serial number, since RFC 5280 lets
+  a certificate whose names are all in its extensions have an empty
+  subject; `FormatKey::FirstPart` now passes over empty text. It is not
+  ordered, and `==` compares every part, the bytes in constant time.
+
+### Chosen in chunk 5.5w
+
+Richard's instruction of 2026-10-17, that no standard type loses its
+currency, unit or precision on the way in or out, left storage's shape for
+most objects and choices open. The lead session chose, each the most
+conservative reading, and these supersede the "stored as its JSON" of the
+chunks before:
+
+- **Re-audit.** Of the 2026-10-17 audit's findings, the map keys
+  `json.write` writes by `Display`, the readers looser than `text.parse`
+  (an `Instant` with an offset, an `Int` with `+`, a `Decimal` as `1_000`),
+  a `Duration` setting refusing `PT5M`, and the JSON, OpenAPI and storage
+  encoders matching on built-in types are still open (5.5w2 and 5.5w3); a
+  quantity's `value` is a string and a `CalendarDate` is checked for 30
+  February, so those two are fixed. Most other boundaries aren't built yet
+  (caches, events, jobs and batches, CSV, logs, email, outbound calls,
+  files): their encodings are decided under "Every boundary through the
+  contract".
+- **One layout, from the parts.** An entry still names its columns, and
+  `jadpo_std::standard::storage::layout` says from its parts alone what
+  each holds, a test holding the two together: an object's parts in
+  order, each in as many columns as it takes (an amount of money in two,
+  its minor units and its currency's code; another standard object or
+  choice in its own; a list of text or codes in `text[]`); a choice's
+  variant's name in `kind`, then each field its variants use once, in the
+  order they first appear, sharing a column where two variants use one
+  name (a `UnitQuantity`'s `amount`, at the finest scale any kind keeps),
+  `NULL` where the stored variant hasn't it. Only a choice whose variants
+  hold lists of objects, `RichTextBlock`, stays JSON, with the collections
+  (5.5w2).
+- **Native where PostgreSQL has the type,** one column named for the field
+  (a suffix of `""`): ranges in `daterange`, `tstzrange`, `numrange` and
+  `int8range` (a `Range<Duration>` in milliseconds), a `LocalTime` in
+  `time`, a `LocalDateTime` and an event's local times in `timestamp`
+  without a zone, a `Year` and a `UtcOffset` in `smallint`.
+- **A range that holds nothing isn't stored.** PostgreSQL keeps every range
+  whose start is its end, and that doesn't hold its end, as `empty`,
+  without its ends, so it couldn't read back: storing one is a fault
+  naming that, and reading `empty` is one too. A `DateRange` of one day
+  holds that day, so it is stored. It stays a refusal when stored: proving
+  a stored range non-empty at compile time would be a language change,
+  not wanted now (decided by the lead session, 2026-10-18).
+- **`CalendarPeriod` is three `integer` columns,** `years`, `months` and
+  `days`, not the `interval` "Time and calendar additions" named:
+  PostgreSQL keeps an interval as months, days and microseconds, so
+  `P12M` would come back as `P1Y`, two values `==` tells apart (accepted
+  by the lead session, 2026-10-18).
+- **Every standard enum is stored by its code,** as the closed lists and
+  `Currency` were: `Zone` as `Europe/London`, `Locale` as `en-GB`,
+  `HttpMethod` as `GET`, `FileType` as `image/png`; an enum's part in an
+  object already was. Nothing is deployed, so no migration path is needed
+  for columns that held names.
+- **A quantity's column carries a comment,** its kind and SI unit as the
+  units table means and writes it, `Length in metres (m)`; a column a
+  choice shares names each kind's unit with the variant that holds it. A
+  migration sets the comment with the column and changes it with the
+  type, and the snapshot records it.
+- **Fixed currencies** are each column a type fixes, by the setting that
+  fixes it: a `Money` type's `currency:`, and now a rate type's `from:` and
+  `to:` (`<table>_<column>_from_check`), so a stored rate's currencies are
+  its type's, as 5.5h4 promised.
+- **A field that can't be `none`** whose type's parts may all be `none`, a
+  `ProblemDetails` that says nothing, reads back as that value; in a field
+  that may be `none`, every column `NULL` is `none`, so an empty
+  `ProblemDetails` there reads back as `none`.
+- **One codec.** `jadpo-value`'s `standard::to_parts` and `from_parts` turn
+  every compound value into its columns and back from the layout, and the
+  plan reads any compound field through them; the plan's codec for a part
+  that is a built-in type held as a standard type (`OidcClaims`' `email`)
+  now reads it as that type, which `json.read` refused before.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -10347,6 +10807,7 @@ most conservative reading:
 | The clinical units | `PressureUnit.millimetre_of_mercury`, `FrequencyUnit.beat_per_minute`, `ConcentrationUnit.milligram_per_decilitre` and the glucose-only `ConcentrationUnit.millimole_of_glucose_per_litre` (glucose's molar mass fixed at CLDR's 180.1557 g/mol), as UK meters report glucose, added in chunk 5.5m2. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `mmHg` and `bpm` suffixes | Question 17's table gains `mmHg` for a `Pressure` and `bpm` for a `Frequency`, purely additive and clashing with no suffix or keyword; a milligram a decilitre keeps no suffix, since a suffix can't hold `/`. Decided by the lead session, not a question for Richard | 2026-10-18 |
 | `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens; `HEAD`, `OPTIONS`, `CONNECT` and `TRACE` aren't variants, since the runtime answers `HEAD` and `OPTIONS` itself and adding them later breaks nothing (decided by the lead session, as chunk 5.5n recommended) | 2026-10-18 |
+| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes (Richard); the encodings the pages left open, event, job and batch payloads, CSV cells, a personal value's log hash, developer reports and integration fields without `wire:`, decided under "Every boundary through the contract" by the lead session, as was storing every object and choice in named columns ("Chosen in chunk 5.5w") | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 | A `PasswordHash` never leaves the server | It is stored as its PHC string, but refused in an `Output` (so a response), a request's `Input`, a failure's fields and `json.write` and `json.read`, as `type.password_hash_exposed` or `type.mismatch`; no page needs one read for imports, so `Input` refuses it too (lead session, chunk 5.5q2) | 2026-10-18 |
 | `crypto.public_key` | `crypto.public_key(key: config.<name>)` gives the `PublicKey` of a `PrivateKey` setting, Ed25519's public half, so an app can publish its key and a test can sign and verify; the key is still read only through `key:` (lead session, chunk 5.5q2) | 2026-10-18 |
@@ -10848,7 +11309,8 @@ first; each group of types then arrives with its baseline and its extras.
   5.5r5.
 - **5.5r5 Certificates** `opus · high`: `Certificate`, X.509 from PEM or
   DER on an audited crate, its subject, issuer, validity and fingerprint
-  read-only.
+  read-only. Built, read from its PEM; reading DER bytes is 5.5r4's
+  `crypto.read_certificate(der)`.
 - **5.5s Geospatial types' baselines** `opus · high`: the 17
   geospatial types, with construction, text and JSON from the contract;
   their storage and operations come with the geospatial area. Split on

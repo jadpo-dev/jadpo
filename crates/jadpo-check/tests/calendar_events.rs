@@ -206,12 +206,21 @@ fn an_event_recurs_from_its_start() {
 }
 
 #[test]
-fn parts_from_values_wait_for_cross_field_rules() {
+fn parts_from_values_are_attempted_by_their_rules() {
+    // Days that may be `none` may break `days_or_times`, and their order
+    // `last_day_not_before_first` (chunk 5.5t2).
+    let made = |arms: &str| {
+        rules(&format!(
+            "function made(holiday: CalendarEvent) fails Unreadable -> CalendarEvent {{\n    return attempt CalendarEvent {{\n        summary: \"Holiday\"\n        first_day: holiday.first_day\n        last_day: holiday.last_day\n        start: none\n        end: none\n        zone: none\n        location: none\n        description: none\n        recurrence: none\n    }} {{\n{arms}    }}\n}}\n"
+        ))
+    };
     assert_eq!(
-        rules(
-            "function made(holiday: CalendarEvent) -> CalendarEvent {\n    return CalendarEvent {\n        summary: \"Holiday\"\n        first_day: holiday.first_day\n        last_day: holiday.last_day\n        start: none\n        end: none\n        zone: none\n        location: none\n        description: none\n        recurrence: none\n    }\n}\n"
-        ),
+        made("        days_or_times: Unreadable\n        last_day_not_before_first: Unreadable\n"),
         NONE
+    );
+    assert_eq!(
+        made("        days_or_times: Unreadable\n"),
+        ["failure.rule_unmapped"]
     );
     assert_eq!(
         rules(
@@ -260,7 +269,7 @@ fn an_event_has_its_text_and_is_read_from_it() {
     );
     assert_eq!(
         rules(
-            "function read(raw: Wire) fails Unreadable -> CalendarEvent {\n    var event: CalendarEvent = attempt text.parse(raw, as: CalendarEvent) {\n        malformed: Unreadable\n    }\n    return event\n}\n"
+            "function read(raw: Wire) fails Unreadable -> CalendarEvent {\n    var event: CalendarEvent = attempt text.parse(raw, as: CalendarEvent) {\n        malformed: Unreadable\n        invalid: Unreadable\n    }\n    return event\n}\n"
         ),
         NONE
     );
@@ -307,8 +316,8 @@ fn an_event_is_stored_in_a_column_per_part() {
             ("slot_summary", "text"),
             ("slot_first_day", "date"),
             ("slot_last_day", "date"),
-            ("slot_start", "text"),
-            ("slot_end", "text"),
+            ("slot_start", "timestamp"),
+            ("slot_end", "timestamp"),
             ("slot_zone", "text"),
             ("slot_location", "text"),
             ("slot_description", "text"),

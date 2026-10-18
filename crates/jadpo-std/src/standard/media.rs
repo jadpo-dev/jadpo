@@ -12,10 +12,10 @@
 //!
 //! `media.fit`'s arithmetic is here too ([`fit`]), in whole numbers.
 
-use super::events::{Broken, PartsRule};
+use super::across::{Check, Known, Order, StandardRule, Verdict, fits, in_order};
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part, PartRule,
-    StandardType, Storage, TextForm,
+    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part, StandardType,
+    Storage, TextForm,
 };
 use crate::Builtin;
 use crate::read::SqlType;
@@ -108,7 +108,7 @@ const fn dimensions(
         json: Json::Fields(&["width", "height"]),
         storage: Storage::Columns {
             parts: &[("width", "integer"), ("height", "integer")],
-            fixed: None,
+            fixed: &[],
         },
         format: CANONICAL,
         ordered: false,
@@ -131,6 +131,7 @@ const fn dimensions(
             ],
         ),
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -168,7 +169,10 @@ pub const ASPECT_RATIO_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&ASPECT_RATIO_FIELDS),
     text: Some(TextForm::Wholes(":")),
     json: Json::Text,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[("width", "integer"), ("height", "integer")],
+        fixed: &[],
+    },
     format: CANONICAL,
     ordered: false,
     validator: None,
@@ -186,6 +190,7 @@ pub const ASPECT_RATIO_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `Rect`'s parts, in order: its top-left corner and its size.
@@ -204,7 +209,15 @@ pub const RECT_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&RECT_FIELDS),
     text: Some(TextForm::Decimals(" ")),
     json: Json::Fields(&["x", "y", "width", "height"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("x", "numeric"),
+            ("y", "numeric"),
+            ("width", "numeric"),
+            ("height", "numeric"),
+        ],
+        fixed: &[],
+    },
     format: CANONICAL,
     ordered: false,
     validator: None,
@@ -229,6 +242,7 @@ pub const RECT_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `Insets`' parts, in CSS's order.
@@ -247,7 +261,15 @@ pub const INSETS_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&INSETS_FIELDS),
     text: Some(TextForm::Decimals(" ")),
     json: Json::Fields(&["top", "right", "bottom", "left"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("top", "numeric"),
+            ("right", "numeric"),
+            ("bottom", "numeric"),
+            ("left", "numeric"),
+        ],
+        fixed: &[],
+    },
     format: CANONICAL,
     ordered: false,
     validator: None,
@@ -269,6 +291,7 @@ pub const INSETS_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// The paper sizes, each its own code: ISO 216's A and B series and the
@@ -317,6 +340,7 @@ pub const PAPER_SIZE_ENTRY: StandardType = StandardType {
         &["A11", "C4", "Executive", "210x297mm", "A 4", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
@@ -353,6 +377,7 @@ pub const EXIF_ORIENTATION_ENTRY: StandardType = StandardType {
         &["0", "9", "06", "top_left", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// What an image shows, for someone who can't see it (WCAG 2.2's text
@@ -382,6 +407,7 @@ pub const ALT_TEXT_ENTRY: StandardType = StandardType {
         &["", " Logo", "Logo ", "Two\nlines", "Tab\tinside"],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
@@ -402,7 +428,10 @@ pub const FRAME_RATE_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&FRAME_RATE_FIELDS),
     text: Some(TextForm::Wholes("/")),
     json: Json::Text,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[("numerator", "integer"), ("denominator", "integer")],
+        fixed: &[],
+    },
     format: CANONICAL,
     ordered: false,
     validator: None,
@@ -427,6 +456,7 @@ pub const FRAME_RATE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A video codec string the W3C WebCodecs Codec Registry lists, in RFC
@@ -473,6 +503,7 @@ pub const VIDEO_CODEC_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// An audio codec, as a media type's `codecs` parameter names it.
@@ -499,6 +530,7 @@ pub const AUDIO_CODEC_ENTRY: StandardType = StandardType {
         &["aac", "mp4a", "Opus", "pcm-s8", "avc1.42001E", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `Timecode`'s parts, in order: SMPTE ST 12-1's address, the rate it
@@ -528,7 +560,18 @@ pub const TIMECODE_ENTRY: StandardType = StandardType {
         "rate",
         "drop_frame",
     ]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("hours", "smallint"),
+            ("minutes", "smallint"),
+            ("seconds", "smallint"),
+            ("frames", "smallint"),
+            ("rate_numerator", "integer"),
+            ("rate_denominator", "integer"),
+            ("drop_frame", "boolean"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Timecode,
         options: NO_OPTIONS,
@@ -567,6 +610,7 @@ pub const TIMECODE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `SubtitleCue`'s parts, in order.
@@ -593,7 +637,10 @@ pub const SUBTITLE_CUE_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&SUBTITLE_CUE_FIELDS),
     text: Some(TextForm::Cue),
     json: Json::Fields(&["start", "end", "text"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[("start", "bigint"), ("end", "bigint"), ("text", "text")],
+        fixed: &[],
+    },
     format: CANONICAL,
     ordered: false,
     validator: None,
@@ -632,6 +679,7 @@ pub const SUBTITLE_CUE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
@@ -678,6 +726,7 @@ pub const CONTENT_RATING_SCHEME_ENTRY: StandardType = StandardType {
         &["MPAA", "USK", "BBFC ", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// Whether `rating` is one of the categories of the body coded `scheme`.
@@ -689,18 +738,20 @@ pub fn is_rating_of(rating: &str, scheme: &str) -> bool {
         .is_some_and(|ratings| ratings.contains(&rating))
 }
 
-/// The rule across a `ContentRating`'s parts: its rating is one of its
-/// body's categories.
-pub const CONTENT_RATING_RULES: &[PartRule] = &[PartRule {
-    part: "rating",
-    by: &["scheme"],
-    fits: |rating, by| {
-        by.first()
-            .is_some_and(|scheme| is_rating_of(rating, scheme))
-    },
-    says: "one of the rating body's categories",
-    noun: "a category",
-    authority: "the rating body",
+/// `ContentRating`'s rule across its parts (chunk 5.5t2): its rating is
+/// one of its body's categories.
+pub const CONTENT_RATING_RULES: &[StandardRule] = &[StandardRule {
+    name: "rating_of_scheme",
+    written: "rating is one of its scheme's categories",
+    label: "not one of the rating body's categories",
+    reason: "A `ContentRating`'s `rating` is one of the categories its `scheme`'s body publishes, so `BBFC 12A` is one and `PEGI 12A` isn't.",
+    next: "Write one of the body's categories, or change `scheme`",
+    check: Check::By(|parts| {
+        fits(parts, "rating", &["scheme"], |rating, by| {
+            by.first()
+                .is_some_and(|scheme| is_rating_of(rating, scheme))
+        })
+    }),
 }];
 
 /// An age rating by the body that gave it, written as people write one,
@@ -715,7 +766,7 @@ pub const CONTENT_RATING_ENTRY: StandardType = StandardType {
     json: Json::Text,
     storage: Storage::Columns {
         parts: &[("scheme", "text"), ("rating", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: CANONICAL,
     ordered: false,
@@ -740,54 +791,135 @@ pub const CONTENT_RATING_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
 // Rules across a timecode's and a cue's parts
 // ---------------------------------------------------------------------
 
-/// A timecode's frames are fewer than its rate's frames a second.
-pub const FRAMES_WITHIN_RATE: PartsRule = PartsRule {
-    label: "a frame past its rate",
-    reason: "A `Timecode`'s `frames` count from 0 to one below its rate's whole frames a second, rounded up: 0 to 24 at 25/1, 0 to 29 at 30000/1001 (SMPTE ST 12-1).",
-    next: "Write a frame below the rate's frames a second, or the rate the timecode counts at",
-};
+/// `Timecode`'s rules across its parts (chunk 5.5t2), in order: its frames
+/// below its rate, drop-frame only at 29.97 and 59.94, and never on a
+/// label drop-frame counting skips.
+pub const TIMECODE_RULES: &[StandardRule] = &[
+    StandardRule {
+        name: "frames_within_rate",
+        written: "frames is below the rate's whole frames a second",
+        label: "a frame past its rate",
+        reason: "A `Timecode`'s `frames` count from 0 to one below its rate's whole frames a second, rounded up: 0 to 24 at 25/1, 0 to 29 at 30000/1001 (SMPTE ST 12-1).",
+        next: "Write a frame below the rate's frames a second, or the rate the timecode counts at",
+        check: Check::By(|parts| {
+            match (
+                parts.part("frames").value().and_then(|f| f.whole()),
+                parts.part("rate").value().and_then(|r| r.rate()),
+            ) {
+                (Some(frames), Some((n, d))) if frames < nominal_frames(n, d) => Verdict::Holds,
+                (Some(_), Some(_)) => Verdict::Breaks("frames"),
+                _ => Verdict::Unknown,
+            }
+        }),
+    },
+    StandardRule {
+        name: "drop_frame_rate",
+        written: "drop_frame only at 30000/1001 or 60000/1001",
+        label: "drop-frame at a rate with none",
+        reason: "SMPTE ST 12-1 counts drop-frame only at 30000/1001 and 60000/1001 frames a second, where it keeps the timecode in step with the clock; every other rate counts each frame.",
+        next: "Write `drop_frame: false`, or the rate the drop-frame timecode counts at",
+        check: Check::By(|parts| {
+            let drop = parts.part("drop_frame").value().and_then(|d| d.flag());
+            let rate = parts.part("rate").value().and_then(|r| r.rate());
+            match (drop, rate.map(|(n, d)| dropped_frames(n, d))) {
+                (Some(false), _) | (_, Some(Some(_))) => Verdict::Holds,
+                (Some(true), Some(None)) => Verdict::Breaks("drop_frame"),
+                _ => Verdict::Unknown,
+            }
+        }),
+    },
+    StandardRule {
+        name: "frame_not_dropped",
+        written: "a drop-frame timecode is never a label drop-frame counting skips",
+        label: "a label drop-frame skips",
+        reason: "Drop-frame counting skips frames 0 and 1 (0 to 3 at 60000/1001) at the start of each minute except minutes 0, 10, 20, 30, 40 and 50, so that address is never a frame (SMPTE ST 12-1).",
+        next: "Write the frame after the skipped ones, or count without drop-frame",
+        check: Check::By(|parts| {
+            let whole = |name: &str| parts.part(name).value().and_then(|n| n.whole());
+            let drop = parts.part("drop_frame").value().and_then(|d| d.flag());
+            let dropped = parts
+                .part("rate")
+                .value()
+                .and_then(|r| r.rate())
+                .map(|(n, d)| dropped_frames(n, d));
+            // Counted without drop-frame, or at a rate with none, which
+            // `drop_frame_rate` refuses, nothing is skipped.
+            if drop == Some(false) || dropped == Some(None) {
+                return Verdict::Holds;
+            }
+            let (minutes, seconds, frames) = (whole("minutes"), whole("seconds"), whole("frames"));
+            // Off the minute's first labels, nothing is skipped either.
+            if minutes.is_some_and(|m| m % 10 == 0)
+                || seconds.is_some_and(|s| s != 0)
+                || frames.is_some_and(|f| f >= 4)
+            {
+                return Verdict::Holds;
+            }
+            match (drop, dropped, frames) {
+                (Some(true), Some(Some(skipped)), Some(frames))
+                    if minutes.is_some() && seconds.is_some() =>
+                {
+                    if frames < skipped {
+                        Verdict::Breaks("frames")
+                    } else {
+                        Verdict::Holds
+                    }
+                }
+                _ => Verdict::Unknown,
+            }
+        }),
+    },
+];
 
-/// Drop-frame counting exists only at 29.97 and 59.94 frames a second.
-pub const DROP_FRAME_RATE: PartsRule = PartsRule {
-    label: "drop-frame at a rate with none",
-    reason: "SMPTE ST 12-1 counts drop-frame only at 30000/1001 and 60000/1001 frames a second, where it keeps the timecode in step with the clock; every other rate counts each frame.",
-    next: "Write `drop_frame: false`, or the rate the drop-frame timecode counts at",
-};
-
-/// Drop-frame counting skips the first labels of each minute but every
-/// tenth.
-pub const DROPPED_LABEL: PartsRule = PartsRule {
-    label: "a label drop-frame skips",
-    reason: "Drop-frame counting skips frames 0 and 1 (0 to 3 at 60000/1001) at the start of each minute except minutes 0, 10, 20, 30, 40 and 50, so that address is never a frame (SMPTE ST 12-1).",
-    next: "Write the frame after the skipped ones, or count without drop-frame",
-};
-
-/// A cue starts at or after the start of the media.
-pub const CUE_START: PartsRule = PartsRule {
-    label: "before the media starts",
-    reason: "A `SubtitleCue`'s times are from the start of the media, so it starts at 0 or after (WebVTT).",
-    next: "Write a start of 0 or more",
-};
-
-/// A cue ends after it starts.
-pub const CUE_END: PartsRule = PartsRule {
-    label: "not after the start",
-    reason: "WebVTT requires a cue's end to be after its start.",
-    next: "Write an end after the start",
-};
-
-/// A cue's text never holds the arrow.
-pub const CUE_TEXT: PartsRule = PartsRule {
-    label: "an arrow in the text",
-    reason: "WebVTT reads `-->` as the line of a cue's times, so its text never holds one.",
-    next: "Write the text without `-->`",
-};
+/// `SubtitleCue`'s rules across its parts (chunk 5.5t2), in order: it
+/// starts at or after the start of the media, ends after it starts, and its
+/// text never holds the arrow.
+pub const SUBTITLE_CUE_RULES: &[StandardRule] = &[
+    StandardRule {
+        name: "start_not_negative",
+        written: "start >= 0ms",
+        label: "before the media starts",
+        reason: "A `SubtitleCue`'s times are from the start of the media, so it starts at 0 or after (WebVTT).",
+        next: "Write a start of 0 or more",
+        check: Check::By(
+            |parts| match parts.part("start").value().and_then(|s| s.millis()) {
+                Some(start) if start >= 0 => Verdict::Holds,
+                Some(_) => Verdict::Breaks("start"),
+                None => Verdict::Unknown,
+            },
+        ),
+    },
+    StandardRule {
+        name: "end_after_start",
+        written: "end > start",
+        label: "not after the start",
+        reason: "WebVTT requires a cue's end to be after its start.",
+        next: "Write an end after the start",
+        check: in_order(&[Order::below("start", "end")], "end"),
+    },
+    StandardRule {
+        name: "text_without_arrow",
+        written: "text holds no `-->`",
+        label: "an arrow in the text",
+        reason: "WebVTT reads `-->` as the line of a cue's times, so its text never holds one.",
+        next: "Write the text without `-->`",
+        check: Check::By(|parts| match parts.part("text") {
+            Known::Given(Some(given)) => match given.text() {
+                Some(text) if text.contains(CUE_ARROW) => Verdict::Breaks("text"),
+                Some(_) => Verdict::Holds,
+                None => Verdict::Unknown,
+            },
+            _ => Verdict::Unknown,
+        }),
+    },
+];
 
 /// Frames a second at `rate`, a fraction, rounded up: a timecode's frames
 /// count up to one below it.
@@ -811,71 +943,6 @@ pub fn dropped_frames(numerator: i64, denominator: i64) -> Option<i64> {
     } else {
         None
     }
-}
-
-/// The first rule across a timecode's parts its known parts break; a part
-/// that is `None` isn't known (a literal built from values) and the rules
-/// reading it are left to the running program.
-pub fn timecode_broken(
-    minutes: Option<i64>,
-    seconds: Option<i64>,
-    frames: Option<i64>,
-    rate: Option<(i64, i64)>,
-    drop_frame: Option<bool>,
-) -> Option<Broken> {
-    if let (Some(frames), Some((n, d))) = (frames, rate)
-        && frames >= nominal_frames(n, d)
-    {
-        return Some(Broken {
-            part: "frames",
-            rule: &FRAMES_WITHIN_RATE,
-        });
-    }
-    if drop_frame != Some(true) {
-        return None;
-    }
-    let (n, d) = rate?;
-    let Some(dropped) = dropped_frames(n, d) else {
-        return Some(Broken {
-            part: "drop_frame",
-            rule: &DROP_FRAME_RATE,
-        });
-    };
-    match (minutes, seconds, frames) {
-        (Some(minutes), Some(0), Some(frames)) if minutes % 10 != 0 && frames < dropped => {
-            Some(Broken {
-                part: "frames",
-                rule: &DROPPED_LABEL,
-            })
-        }
-        _ => None,
-    }
-}
-
-/// The first rule across a cue's parts its known parts break, its times in
-/// milliseconds; a part that is `None` isn't known.
-pub fn cue_broken(start: Option<i64>, end: Option<i64>, text: Option<&str>) -> Option<Broken> {
-    if start.is_some_and(|start| start < 0) {
-        return Some(Broken {
-            part: "start",
-            rule: &CUE_START,
-        });
-    }
-    if let (Some(start), Some(end)) = (start, end)
-        && end <= start
-    {
-        return Some(Broken {
-            part: "end",
-            rule: &CUE_END,
-        });
-    }
-    if text.is_some_and(|text| text.contains(CUE_ARROW)) {
-        return Some(Broken {
-            part: "text",
-            rule: &CUE_TEXT,
-        });
-    }
-    None
 }
 
 // ---------------------------------------------------------------------
@@ -971,14 +1038,13 @@ pub fn cue_text(start: i64, end: i64, text: &str) -> Option<String> {
 }
 
 /// A cue read from its canonical text: its start, its end, and its text,
-/// with the rules across them held.
+/// its text's own pattern held. The rules across them are its rules
+/// (`SUBTITLE_CUE_RULES`), which the cue is checked by once it is read.
 pub fn read_cue(raw: &str) -> Option<(i64, i64, &str)> {
     let (timings, text) = raw.split_once('\n')?;
     let (start, end) = timings.split_once(&format!(" {CUE_ARROW} "))?;
     let (start, end) = (read_cue_time(start)?, read_cue_time(end)?);
-    let pattern_ok = super::matches_whole(CUE_TEXT_PATTERN, text);
-    (pattern_ok && cue_broken(Some(start), Some(end), Some(text)).is_none())
-        .then_some((start, end, text))
+    super::matches_whole(CUE_TEXT_PATTERN, text).then_some((start, end, text))
 }
 
 /// A timecode in SMPTE ST 12-1's notation: `hh:mm:ss:ff`, with `;` before
@@ -1048,12 +1114,51 @@ mod tests {
         );
     }
 
+    /// The first of a timecode's rules its known parts break, by name.
+    fn timecode_broken(
+        minutes: Option<i64>,
+        seconds: Option<i64>,
+        frames: Option<i64>,
+        rate: Option<(i64, i64)>,
+        drop_frame: Option<bool>,
+    ) -> Option<(&'static str, Verdict)> {
+        use super::super::across::{Given, Listed};
+        let whole = |n: Option<i64>| match n {
+            Some(n) => Known::Given(Some(Given::Number(crate::Num::whole(i128::from(n))))),
+            None => Known::Unknown,
+        };
+        let parts = Listed {
+            parts: vec![
+                ("minutes", whole(minutes)),
+                ("seconds", whole(seconds)),
+                ("frames", whole(frames)),
+                (
+                    "rate",
+                    rate.map_or(Known::Unknown, |(n, d)| {
+                        Known::Given(Some(Given::Rate(n, d)))
+                    }),
+                ),
+                (
+                    "drop_frame",
+                    drop_frame.map_or(Known::Unknown, |flag| Known::Given(Some(Given::Bool(flag)))),
+                ),
+            ],
+        };
+        TIMECODE_RULES
+            .iter()
+            .find_map(|rule| match rule.verdict(&parts) {
+                Verdict::Holds | Verdict::Unknown => None,
+                broken => Some((rule.name, broken)),
+            })
+    }
+
     #[test]
     fn drop_frame_skips_two_labels_a_minute_but_every_tenth() {
         let ntsc = Some((30_000, 1001));
         let skipped = |m, s, f| timecode_broken(Some(m), Some(s), Some(f), ntsc, Some(true));
-        assert_eq!(skipped(1, 0, 0).map(|b| b.rule), Some(&DROPPED_LABEL));
-        assert_eq!(skipped(1, 0, 1).map(|b| b.rule), Some(&DROPPED_LABEL));
+        let dropped = Some(("frame_not_dropped", Verdict::Breaks("frames")));
+        assert_eq!(skipped(1, 0, 0), dropped);
+        assert_eq!(skipped(1, 0, 1), dropped);
         assert_eq!(skipped(1, 0, 2), None);
         assert_eq!(skipped(10, 0, 0), None);
         assert_eq!(skipped(1, 1, 0), None);
@@ -1067,8 +1172,8 @@ mod tests {
         assert_eq!(dropped_frames(2997, 100), None);
         assert_eq!(dropped_frames(60_000, 2002), Some(2));
         assert_eq!(
-            timecode_broken(None, None, Some(0), Some((25, 1)), Some(true)).map(|b| b.part),
-            Some("drop_frame")
+            timecode_broken(None, None, Some(0), Some((25, 1)), Some(true)),
+            Some(("drop_frame_rate", Verdict::Breaks("drop_frame")))
         );
         assert_eq!(nominal_frames(30_000, 1001), 30);
         assert_eq!(nominal_frames(25, 1), 25);

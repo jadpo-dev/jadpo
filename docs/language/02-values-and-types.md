@@ -758,6 +758,10 @@ test "a booking that ends before it starts is refused" {
   fields, never rules: a type built from `Booking` writes the rule again if
   it holds there too. Only an `Object`, `Input` or `Output` has rules
   (`type.rule_outside_object`).
+- **The standard object types have rules too** (area 19, chunk 5.5t2): an
+  `InstantRange`'s `start_not_after_end`, a `PostalAddress`'s
+  `postal_code_of_country`, each named, proved, attempted and reported as
+  a rule written here is. Area 19's "Chosen in chunk 5.5t2" lists them.
 
 Numbers are proved by their ranges as a field's rules are, and a field
 that may be `none` is matched:

@@ -57,6 +57,7 @@ const fn text(
         shape: None,
         examples,
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -154,7 +155,7 @@ pub const EMAIL_WITH_NAME: StandardType = StandardType {
     json: Json::Fields(&["name", "address"]),
     storage: Storage::Columns {
         parts: &[("name", "text"), ("address", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::Canonical,
@@ -185,6 +186,7 @@ pub const EMAIL_WITH_NAME: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A person's name: their given name and, where they have one, their
@@ -200,7 +202,7 @@ pub const PERSON_NAME: StandardType = StandardType {
     json: Json::Fields(&["given", "family"]),
     storage: Storage::Columns {
         parts: &[("given", "text"), ("family", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::PersonName,
@@ -225,17 +227,37 @@ pub const PERSON_NAME: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
+
+/// `PostalAddress`.
+pub const POSTAL_ADDRESS_NAME: &str = "PostalAddress";
+
+/// `PostalAddress`'s rule across its parts (chunk 5.5t2): its postal code,
+/// where it has one, in its country's form (chunk 5.5l2).
+pub const POSTAL_ADDRESS_RULES: &[super::across::StandardRule] = &[super::across::StandardRule {
+    name: "postal_code_of_country",
+    written: "postal_code is in the form of its country's postal codes",
+    label: "not a postal code of the address's country",
+    reason: "A `PostalAddress`'s `postal_code` is in the form its `country`'s postal service writes, so an address's code and country agree.",
+    next: "Write a postal code of the country in its canonical text, or change `country`",
+    check: super::across::Check::By(|parts| {
+        super::across::fits(parts, "postal_code", &["country"], |code, by| {
+            by.first()
+                .is_some_and(|country| super::postal::fits(code, country))
+        })
+    }),
+}];
 
 /// A postal address in any country: its street lines, its locality, its
 /// region and its postal code where the country uses them, and the
 /// country. The lines are text as the person wrote them, as the catalogue
 /// sketched them, stored as a `text[]`; the locality and region are one
 /// line each, and the postal code a `PostalCode` that fits the country
-/// (`part_rules`, chunk 5.5l2).
+/// (its rule `postal_code_of_country`, chunk 5.5t2).
 /// It has no single text form; its examples are its JSON.
 pub const POSTAL_ADDRESS: StandardType = StandardType {
-    name: "PostalAddress",
+    name: POSTAL_ADDRESS_NAME,
     holds: Holds::Object(&[
         ("lines", Part::List(&Part::Of(Builtin::Text))),
         ("locality", Part::Optional(&Part::Line)),
@@ -253,7 +275,7 @@ pub const POSTAL_ADDRESS: StandardType = StandardType {
             ("postal_code", "text"),
             ("country", "text"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::PostalAddress,
@@ -283,4 +305,5 @@ pub const POSTAL_ADDRESS: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
