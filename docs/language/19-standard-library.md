@@ -10553,8 +10553,8 @@ What the pages left open, each the most conservative reading:
   `rating_of_scheme` and `number_of_country`; the passport and pressure
   errors name their rules. Tests updated: the checker's calendar events,
   cards and documents, people and places, sets and maps, standard types
-  and fixes (its swapped slot is built from literals); the interpreter's
-  media; the runtime's media, records and measures and standard types.
+  and fixes, and the CLI's fix tests (their swapped slot is built from
+  literals); the interpreter's media; the runtime's media, records and measures and standard types.
 
 ### Chosen in chunk 5.5r5
 
