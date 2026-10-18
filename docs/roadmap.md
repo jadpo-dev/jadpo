@@ -1229,7 +1229,7 @@ reference only).
   Done when every signal kind has a finding and a non-finding test, an
   ignored snippet stays quiet until edited, a found snippet's text survives
   the fix, and a taught miss is found by the next scan.
-- [ ] **5.5y `jadpo suggest share`, against a fake Jadpo HQ** `opus ·
+- [x] **5.5y `jadpo suggest share`, against a fake Jadpo HQ** `opus ·
   high` (area 14; decided by Richard, 2026-10-17), after 5.5x: opt-in
   sharing, built in full against a local fake of Jadpo HQ that speaks the
   same protocol, since HQ doesn't exist yet. Sharing is on unless turned
@@ -1267,6 +1267,9 @@ reference only).
   gains it), so a teammate's scan finds what another taught;
   `.jadpo/suggest_signals` stays only as a cache (lead session,
   2026-10-18).
+  No HQ address is set by default until HQ runs (lead decision,
+  2026-10-18): the release that launches HQ, with the registry after the
+  first build, sets the real address and flips the default.
   Done when the whole exchange runs against the fake in tests, nothing is
   sent when sharing is off, no snippet text is sent without approval, a
   hash below the threshold never has its text requested, and an ignored

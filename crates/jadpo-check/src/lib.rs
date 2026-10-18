@@ -155,6 +155,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         );
         out.extend(locales::locale_problems(db, project).iter().cloned());
         out.extend(
+            suggest::settings::settings_problems(db, project)
+                .iter()
+                .cloned(),
+        );
+        out.extend(
             translations::translation_problems(db, project)
                 .iter()
                 .cloned(),

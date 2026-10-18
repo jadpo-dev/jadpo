@@ -12,6 +12,8 @@
 
 pub mod canonical;
 pub mod record;
+pub mod settings;
+pub mod taught;
 
 use std::collections::{BTreeMap, HashMap};
 

@@ -52,13 +52,28 @@ pub fn render(entries: &[Ignore]) -> String {
     }
     for entry in sorted {
         out.push_str(&format!(
-            "ignore {} {} {} \"{}\"\n",
+            "ignore {} {} {} {}\n",
             entry.hash,
             entry.signal.word(),
             entry.suggestion,
-            entry.reason.replace('\\', "\\\\").replace('"', "\\\"")
+            quote(&entry.reason)
         ));
     }
+    out
+}
+
+/// `text` quoted, with `\"` and `\\` inside and a line break as `\n`.
+pub(crate) fn quote(text: &str) -> String {
+    let mut out = String::from('"');
+    for c in text.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            other => out.push(other),
+        }
+    }
+    out.push('"');
     out
 }
 
@@ -118,13 +133,16 @@ pub fn parse(text: &str) -> Result<Vec<Ignore>, (usize, String)> {
 }
 
 /// The text inside `"…"`, its escapes undone.
-fn unquote(text: &str) -> Option<String> {
+pub(crate) fn unquote(text: &str) -> Option<String> {
     let inner = text.strip_prefix('"')?.strip_suffix('"')?;
     let mut out = String::new();
     let mut chars = inner.chars();
     while let Some(c) = chars.next() {
         match c {
-            '\\' => out.push(chars.next()?),
+            '\\' => match chars.next()? {
+                'n' => out.push('\n'),
+                other => out.push(other),
+            },
             '"' => return None,
             other => out.push(other),
         }

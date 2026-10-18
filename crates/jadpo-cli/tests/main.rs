@@ -29,6 +29,7 @@ mod round_trips;
 mod signed;
 mod sql;
 mod suggest;
+mod suggest_share;
 #[path = "test.rs"]
 mod test_command;
 mod translation_exchange;
