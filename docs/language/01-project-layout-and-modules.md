@@ -1368,7 +1368,7 @@ use shared/types { DiscountTerms }
 action apply_discount(discount: DiscountTerms) -> Unit {}
 ```
 
-```jadpo check project=e-direction file=shared/types/discount.jadpo expect=layout.call_direction
+```jadpo check project=e-direction file=shared/types/discount_terms.jadpo expect=layout.call_direction
 type DiscountTerms = Object {
     applies_to: OrderTotal
 }
@@ -1376,7 +1376,7 @@ type DiscountTerms = Object {
 
 ```text output
 error: Shared code uses `OrderTotal` from domain `ordering`
- --> shared/types/discount.jadpo:2:17
+ --> shared/types/discount_terms.jadpo:2:17
   |
 2 |     applies_to: OrderTotal
   |                 ^^^^^^^^^^ domain code

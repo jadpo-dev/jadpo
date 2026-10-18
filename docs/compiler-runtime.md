@@ -694,6 +694,31 @@ standard enums in `standard::lists`, whose `ClosedList`s `closed_list`
 reads beside the places'. A list CLDR names none of is shown by its
 authority's English wording through chunk 5.5i2's `FormatKey::Names`;
 no other code was needed.
+Since chunk 5.5i3 a standard type may be a choice of other types
+(`Holds::Choice`, `Discount` and `UnitPrice` first): its stub is `= Enum
+{ ... }` with each variant's fields written as the built-in types its
+parts are built on (`StandardStub::payloads`), and its entry lists each
+variant's parts. The checker's type table declares it as an enum with
+data whose variants' fields come from the parts (`standard_field`), so
+construction, `match`, a binding's fields and literal proofs are area 2's
+own; `jadpo_std::enums()` lists it, and the plan gives each variant the
+shape and the parts' codecs of its entry (`standard_variant_fields`,
+`Routes::choice_fields`, keyed `field <Choice>.<variant>.<field>`, whose
+chain `standard_part` reads), so the interpreter builds and reads a
+`Value::Variant` with fields, and JSON is area 2's tagged form
+(`Json::Tagged`, `Codec::Enum` with payload variants). OpenAPI describes
+it as `oneOf` its tagged variants. A later choice (`BankAccount`) is a
+stub and an entry. A standard type may also be built on a built-in type
+with bounds of its own (`Holds::Within`, `TaxRate` and `BasisPoints`):
+the table declares it as a refinement whose rules are its bounds
+(`standard::within_rules`), the plan's chain and the wire read a
+`TypeRef::Std` of it as that built-in type with those rules, and
+`text.format` is given its name, as for a type held as text, so its own
+format applies. A part may keep bounds too (`Part::Within`). Two
+`FormatKey`s came with them: `Parts` (named parts each shown as their own
+type is, joined) and `Suffixed` (a number and a fixed unit, `25 bp`).
+`money.apply_discount` (`Op::MoneyApplyDiscount`) takes a `Discount` off
+a `Price` in `jadpo_value::money`.
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from

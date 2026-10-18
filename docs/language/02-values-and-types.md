@@ -1851,7 +1851,7 @@ error: `ItemPrice` needs a `scale`
  --> main.jadpo:1:6
   |
 1 | type ItemPrice = Decimal {
-  |      ^^^^^ a `Decimal` type
+  |      ^^^^^^^^^ a `Decimal` type
   reason: A `Decimal` is exact with a fixed number of decimal places, its `scale`, which sets how it is stored and sent.
   next: Add `scale:` with the number of decimal places, such as `scale: 2` (agent)
   rule: type.decimal_scale_required

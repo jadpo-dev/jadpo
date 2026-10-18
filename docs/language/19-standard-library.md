@@ -37,7 +37,7 @@ to close them, and says what is left out on purpose and why.
 | `range` | Operations on `Range<T>` and the ranges built on it | 3, new | This page |
 | `integer` | Operations on values built on `Int` | 5 (1 decided, 4 new) | [Area 3](03-logic.md), question 7 |
 | `decimal` | Operations on values built on `Decimal` | 13 (1 decided, 12 new) | [Area 3](03-logic.md), question 7 |
-| `money` | `Money` and its rates | 8, new | This page |
+| `money` | `Money`, its rates and discounts | 10, new | This page |
 | `units` | Physical quantities, `DataSize` and `Bitrate` | 3, new | This page |
 | `text` | Operations on text, and the contract's `parse`, `format` and `from` for every type | 21, new | This page |
 | `hash` | SHA-256 digests | 1, new | This page |
@@ -56,7 +56,7 @@ to close them, and says what is left out on purpose and why.
 | `media` | Fitting dimensions | 1, new | This page |
 | `markup` | Markdown and HTML, made safe | 3, new | This page |
 
-169 operations in all: 28 decided in areas 2, 3 and 10, 8 file helpers decided with batches (area 12), and 133 decided here, beside the operators of the standard operator table. On top of them every
+171 operations in all: 28 decided in areas 2, 3 and 10, 8 file helpers decided with batches (area 12), and 135 decided here, beside the operators of the standard operator table. On top of them every
 standard type has the contract's baseline (construction, `text.parse`,
 `text.format`, `text.from`, JSON, storage, `==` and order), generated, not
 counted per type. Of the new operations, 8 wait on maths on `Decimal`
@@ -103,7 +103,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 125 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, and `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: twenty-two are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 131 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the money group's six records in 5.5i3); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason ("Chosen in chunk 5.5i3"). "(enum)" marks a closed list held as a built-in enum: twenty-two are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -120,7 +120,7 @@ exception to the rule.
 | People and contact (12) | **`PersonName`**, **`GivenName`**, **`FamilyName`**, **`Username`**, **`Email`**, **`EmailWithName`**, **`PhoneNumber`**, **`PhoneExtension`**, **`PostalAddress`**, **`PostalCode`**, **`Uprn`**, **`Nationality`** (enum) | `web` |
 | Places (10) | **`Country`** (enum), **`CountrySubdivision`** (enum), **`Continent`** (enum), **`UnLocode`**, **`CallingCode`**, **`Language`** (enum), **`WritingScript`** (enum), **`TextDirection`** (enum), **`Locale`** (enum), **`Zone`** (enum) | |
 | Geospatial (17) | `Point` (optional altitude), `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` | `geo` (future area) |
-| Money, payments, banking (24) | **`Money`**, **`Currency`** (enum), **`ExchangeRate`**, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, **`PaymentCardNumber`**, **`MaskedCardNumber`**, **`CardBrand`** (enum), **`CardBin`**, **`CardExpiry`**, **`PaymentReference`**, **`InvoiceNumber`**, **`Iban`**, **`Bic`**, **`UkSortCode`**, **`UkAccountNumber`**, `BankAccount`, **`AbaRoutingNumber`**, **`Lei`**, **`Isin`** | `money` |
+| Money, payments, banking (24) | **`Money`**, **`Currency`** (enum), **`ExchangeRate`**, **`Price`**, **`UnitPrice`**, **`TaxRate`**, **`Discount`**, **`BasisPoints`**, **`InterestRate`**, **`PaymentCardNumber`**, **`MaskedCardNumber`**, **`CardBrand`** (enum), **`CardBin`**, **`CardExpiry`**, **`PaymentReference`**, **`InvoiceNumber`**, **`Iban`**, **`Bic`**, **`UkSortCode`**, **`UkAccountNumber`**, `BankAccount`, **`AbaRoutingNumber`**, **`Lei`**, **`Isin`** | `money` |
 | Tax and identity numbers (11, and `IdentityDocumentKind`) | **`VatNumber`**, **`TaxId`**, **`UkUtr`**, **`UkCompanyNumber`**, **`UkNationalInsuranceNumber`**, **`UsSsn`**, **`UsEin`**, **`PassportNumber`**, **`DrivingLicenceNumber`**, **`IdentityDocument`** with **`IdentityDocumentKind`** (enum), **`NhsNumber`** | |
 | Commerce and logistics (20) | **`Sku`**, **`Ean13`**, **`UpcA`**, **`Isbn`**, **`Sscc`**, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, **`HsCode`**, **`Incoterm`** (enum), `TrackingNumber`, **`Carrier`**, **`ContainerNumber`**, **`LotNumber`**, **`SerialNumber`**, **`Vin`**, `VehicleRegistration` | `units`, `media` |
 | Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), **`LocalTime`**, **`LocalDateTime`**, **`Month`** (enum), **`YearMonth`**, **`Year`**, **`Quarter`**, **`IsoWeek`**, **`UtcOffset`**, **`DateRange`**, **`InstantRange`**, **`CalendarPeriod`**, **`RecurrenceRule`**, **`OpeningHours`**, **`CalendarEvent`** | `temporal`, `range` |
@@ -191,7 +191,10 @@ contract adds 2 names, not 700.
 > later group arrives as stubs and entries ("Chosen in chunk 5.5a", under
 > "Review"). Chunk 5.5c2 added `Range<T>`, the first that takes a type
 > argument, whose entry's examples name the type they hold ("Chosen in
-> chunk 5.5c2").
+> chunk 5.5c2"). Chunk 5.5i3 added choices of other types, `Discount` the
+> first, each an enum with data (area 2) whose variants' fields are its
+> entry's, and types built on a built-in type with bounds of their own,
+> `TaxRate` the first ("Chosen in chunk 5.5i3").
 
 A form sends a quantity as text, an order's time goes into a log line as
 its canonical text, and a day, a duration and a zone are shown to people
@@ -251,7 +254,7 @@ test "standard values are read, written and shown one way" {
 
 | Group | Extras | Count |
 |---|---|---|
-| Money and payments | `money.from_minor`, `of`, `minor`, `currency`, `sum`, `allocate`, `split`, `convert` (with a given `ExchangeRate`, never fetched), `mask` (a `MaskedCardNumber` from a `PaymentCardNumber`, chunk 5.5i2) | 9; arithmetic by the operator table |
+| Money and payments | `money.from_minor`, `of`, `minor`, `currency`, `sum`, `allocate`, `split`, `convert` (with a given `ExchangeRate`, never fetched), `mask` (a `MaskedCardNumber` from a `PaymentCardNumber`, chunk 5.5i2), `apply_discount` (a `Discount` off a `Price`, chunk 5.5i3) | 10; arithmetic by the operator table |
 | Physical quantities, `DataSize`, `Bitrate` | `units.of`, `in`, `sum`; operators within a kind and the defined products and quotients | 3 |
 | Time and calendar | Area 10's 21, plus `temporal.occurrences`, `temporal.open_at` and `temporal.period_between`; `CalendarPeriod` arithmetic by the operator table | 3 new |
 | Ranges (`Range<T>`, `DateRange`, `InstantRange`) | `range.contains`, `range.overlaps`, `range.intersection` | 3 |
@@ -1885,6 +1888,7 @@ check failed: 1 error, 1 file
 | `money.split(total, parts)` | `List<Money>`, `parts` near-equal shares adding up to `total`; `parts` at least 1 | | none |
 | `money.mask(card)` | `MaskedCardNumber` of a `PaymentCardNumber`: its brand by its issuer range (`none` for a range no listed scheme issues) and its last four (chunk 5.5i2) | | none |
 | `money.convert(value, rate)` | `Money` in the rate's other currency, rounded half to even to its minor unit; `rate` an `ExchangeRate` the app was given | `currency_mismatch` (the rate is for another currency) | none |
+| `money.apply_discount(price, discount)` | `Price`, `discount` taken off its amount and `includes_tax` kept: an amount off, or that percentage of the amount rounded half to even to a minor unit; more off than the price leaves nothing (chunk 5.5i3) | `currency_mismatch` (an amount off in another currency) | none |
 
 - **Arithmetic is the standard operator table's:** `+`, `-` and
   comparisons within one currency (a compile error where both types fix
@@ -2002,6 +2006,225 @@ test "an order keeps its amounts as they were written" {
 }
 ```
 
+### Prices, discounts and rates
+
+The money group's records are built on `Money`, `Percentage` and the
+quantities (chunk 5.5i3):
+
+| Type | What it holds | Sent as | Shown as |
+|---|---|---|---|
+| `Price` | `amount`, a `Money` never below 0, and `includes_tax`, a `Bool`, so a gross price is never taken for a net one | `{"amount": {"amount": 1050, "currency": "GBP"}, "includes_tax": true}` | Its amount, `£10.50` |
+| `Discount` | A choice: `amount_off { amount }`, a `Money` never below 0, or `percentage_off { percentage }`, from 0% to 100% | `{"tag": "percentage_off", "percentage": "20%"}` | Its part, `£5.00` or `20%` |
+| `UnitPrice` | A choice by the quantity's kind, as the UK's Price Marking Order prices goods: `per_mass`, `per_volume`, `per_length` or `per_area`, each a `price` and the amount it is `per` | `{"tag": "per_mass", "price": {...}, "per": {"value": "1", "unit": "kg"}}` | `£2.50/1 kg` |
+| `TaxRate` | A `Percentage` never below 0% | `"20%"` | `20%` |
+| `BasisPoints` | A whole number of hundredths of a percent, of any sign | `"25"`, as area 2 sends an `Int` with no bounds | `25 bp` |
+| `InterestRate` | `rate`, a `Percentage` a year that may be below 0%, and `basis`, an `InterestRateBasis`: `aer`, `apr` or `flat` | `{"rate": "5.5%", "basis": "apr"}` | `5.5% APR` |
+
+`Discount` and `UnitPrice` are the first standard types that are a
+choice of other types: each is an enum with data (area 2), built and
+matched as an application's own is, `Discount.percentage_off {
+percentage: 20% }`, and sent in area 2's tagged form. None of the four
+records has a single text form, so `text.from` and `text.parse` refuse
+them, as they refuse a `PostalAddress`. `money.apply_discount` takes a
+discount off a price; a percentage's share is rounded before it comes
+off, so a receipt's discount line and its total agree.
+
+A bakery puts offers on its cakes, works out the VAT on a net price, and
+labels its apples and its loan as the law and the lender write them:
+
+```jadpo check project=prices
+type WrongCurrency = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type ShareOff = Percentage {}
+
+type CakeAmount = Money {}
+
+type FormText = Text {}
+
+type NotARate = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A cake's price with an offer taken off it; an amount off in another
+/// currency fails.
+function on_offer(price: Price, offer: Discount) fails WrongCurrency -> Price {
+    var reduced: Price = attempt money.apply_discount(price, offer) {
+        currency_mismatch: WrongCurrency
+    }
+    return reduced
+}
+
+/// An offer as the shop's window shows it.
+function offer_label(offer: Discount, customer: Locale) -> PresentationText {
+    return text.format(offer, locale: customer)
+}
+
+/// The share of the price an offer takes off, where it names one.
+function share_off(offer: Discount) -> ShareOff? {
+    return match offer {
+        Discount.amount_off -> none
+        Discount.percentage_off(off) -> ShareOff(off.percentage)
+    }
+}
+
+/// The tax on a net price at `rate`, rounded half to even to a penny.
+function tax_on(net: Price, rate: TaxRate) -> CakeAmount {
+    return CakeAmount(net.amount * rate)
+}
+
+/// A tax rate typed into the till's settings.
+function tax_rate(raw: FormText) fails NotARate -> TaxRate {
+    var rate: TaxRate = attempt text.parse(raw, as: TaxRate) {
+        malformed: NotARate
+        invalid: NotARate
+    }
+    return rate
+}
+
+/// Apples, priced by the kilogram as the shelf label must show them.
+function apples() -> UnitPrice {
+    return UnitPrice.per_mass {
+        price: money.from_minor(250, Currency.gbp)
+        per: 1kg
+    }
+}
+
+/// The rate on the bakery's loan, as the lender quotes it.
+function loan_rate() -> InterestRate {
+    return InterestRate {
+        rate: 6.9%
+        basis: InterestRateBasis.apr
+    }
+}
+```
+
+```jadpo check project=prices file=main.test.jadpo
+test "an offer comes off a price either way" {
+    var cake: Price = Price {
+        amount: money.from_minor(1250, Currency.gbp)
+        includes_tax: true
+    }
+    var five_off: Discount = Discount.amount_off {
+        amount: money.from_minor(500, Currency.gbp)
+    }
+    var fifth_off: Discount = Discount.percentage_off {
+        percentage: 20%
+    }
+    var after_five: Price = attempt on_offer(cake, five_off)
+    assert after_five.amount == money.from_minor(750, Currency.gbp)
+    assert after_five.includes_tax
+    var after_fifth: Price = attempt on_offer(cake, fifth_off)
+    assert after_fifth.amount == money.from_minor(1000, Currency.gbp)
+    var in_euros: Discount = Discount.amount_off {
+        amount: money.from_minor(500, Currency.eur)
+    }
+    assert on_offer(cake, in_euros) fails WrongCurrency
+    assert offer_label(five_off, Locale.en_gb) == "£5.00"
+    assert offer_label(fifth_off, Locale.en_gb) == "20%"
+    assert share_off(fifth_off) == 20%
+    assert share_off(five_off) == none
+}
+
+test "more off than the price leaves nothing" {
+    var bun: Price = Price {
+        amount: money.from_minor(300, Currency.gbp)
+        includes_tax: true
+    }
+    var five_off: Discount = Discount.amount_off {
+        amount: money.from_minor(500, Currency.gbp)
+    }
+    var after: Price = attempt on_offer(bun, five_off)
+    assert after.amount == money.from_minor(0, Currency.gbp)
+}
+
+test "rates are shown as they are quoted" {
+    var net: Price = Price {
+        amount: money.from_minor(1000, Currency.gbp)
+        includes_tax: false
+    }
+    var vat: TaxRate = attempt tax_rate("20%")
+    assert tax_on(net, vat) == money.from_minor(200, Currency.gbp)
+    assert tax_rate("-5%") fails NotARate
+    assert tax_rate("20") fails NotARate
+    assert text.format(apples(), locale: Locale.en_gb) == "£2.50/1 kg"
+    assert text.format(loan_rate(), locale: Locale.en_gb) == "6.9% APR"
+    var spread: BasisPoints = 25
+    assert text.format(spread, locale: Locale.en_gb) == "25 bp"
+    assert text.from(spread) == "25"
+}
+```
+
+A percentage off past 100% doesn't compile, as a literal past any type's
+bounds doesn't:
+
+```jadpo check project=discount-past-whole expect=type.invalid_literal
+/// Everything off, and more.
+function clearance() -> Discount {
+    return Discount.percentage_off {
+        percentage: 120%
+    }
+}
+```
+
+```text output
+error: `120%` isn't a valid `Discount.percentage_off.percentage`
+ --> main.jadpo:4:21
+  |
+4 |         percentage: 120%
+  |                     ^^^^ breaks `max: 100%`
+  reason: `Discount.percentage_off.percentage` declares `max: 100%`, and the value is above 100%. A literal is checked against every rule while compiling.
+  next: Use a value that `Discount.percentage_off.percentage` allows (agent)
+  rule: type.invalid_literal
+  help: docs/language/02-values-and-types.html#type-invalid-literal
+
+check failed: 1 error, 1 file
+```
+
+A `TaxRate` is kept in one `numeric` column and `BasisPoints` in one
+`bigint`; the four records and their choices are stored as their JSON in
+one `jsonb` column, as an `ExchangeRate` is, which waits on area 5's
+structured storage:
+
+```jadpo check project=loan-rates file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=loan-rates file=domains/bakery/entities/loan.jadpo migrate=initial
+/// A loan the bakery took out, at a rate above base.
+entity Loan {
+    id: Uuid
+    spread: BasisPoints  // one `bigint` column: 25 for 0.25%
+    tax: TaxRate  // one `numeric` column: 0.2 for 20%
+}
+```
+
+```jadpo check project=loan-rates file=domains/bakery/actions/take_loan.jadpo hidden
+use bakery/entities { Loan }
+
+/// Records a loan at `spread` over base.
+action take_loan(spread: BasisPoints, tax: TaxRate) -> Loan {
+    return Loan.create {
+        set: {
+            spread: spread
+            tax: tax
+        }
+    }
+}
+```
+
+```jadpo check project=loan-rates file=domains/bakery/actions/take_loan.test.jadpo
+use bakery/entities { Loan }
+
+test "a loan keeps its spread as it was written" {
+    var taken: Loan = take_loan(25, 20%)
+    var on_file: Loan = attempt Loan.get(taken.id)
+    assert on_file.spread == 25
+    assert on_file.tax == 20%
+}
+```
+
 > Built in chunk 5.5h: `Money` and `Currency` on the contract, the
 > operations but `convert`, the operator table's `Money` rows with
 > `currency_mismatch`, `rounding:` and `type.money_split`, the two
@@ -2012,6 +2235,11 @@ test "an order keeps its amounts as they were written" {
 > translation messages (area 10); what the pages left open is "Chosen in
 > chunk 5.5h2". `Money * Percentage` came with `Percentage` in chunk
 > 5.5j2, under "The standard operator table".
+> Built in chunk 5.5i3: `Price`, `UnitPrice`, `TaxRate`, `Discount`,
+> `BasisPoints` and `InterestRate`, with `InterestRateBasis`, on the
+> contract, and `money.apply_discount`; storing the records and choices
+> waits, as an `ExchangeRate` does, on area 5's structured storage. What
+> the pages left open is "Chosen in chunk 5.5i3".
 
 ## Physical quantities
 
@@ -3716,7 +3944,7 @@ test "they are shown as they are printed" {
 > `UkNationalInsuranceNumber`, `UsSsn`, `UsEin` and `NhsNumber`, each a
 > pattern and, where the table above names one, a validator; the UK
 > modulus check, which needs a sort code and an account number together,
-> comes with `BankAccount` in chunk 5.5i3, with the money group's records.
+> comes with `BankAccount` in chunk 5.5i4, on 5.5i3's choice of types.
 > The identity documents are chunk 5.5i2's. What the page left open is "Chosen in chunk
 > 5.5i", under "Review".
 
@@ -3827,8 +4055,9 @@ check failed: 1 error, 1 file
 > `IdentityDocumentKind`, each number checked by its country's published
 > form where a literal writes both and as JSON is read, and each stored in
 > a column per part. `Price`, `UnitPrice`, `TaxRate`, `Discount`,
-> `BasisPoints`, `InterestRate` and `BankAccount` are chunk 5.5i3's. What
-> the page left open is "Chosen in chunk 5.5i2", under "Review".
+> `BasisPoints` and `InterestRate` were built in chunk 5.5i3, under "Money
+> and payments"; `BankAccount` is chunk 5.5i4's. What the page left open
+> is "Chosen in chunk 5.5i2", under "Review".
 
 A shop sends parcels abroad and prints each label for the person who
 packs it, greets its customers by name, and reads the countries a
@@ -4978,8 +5207,8 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, each other group of types in 5.5i3 to 5.5s |
-| `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}` |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the money group's records in 5.5i3, each other group of types in 5.5i4 to 5.5s |
+| `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}`; `apply_discount` in 5.5i3 |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
 | A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2: `type.standard_clash`, `jadpo fix`'s swap and rename, the editor's swap |
@@ -6062,7 +6291,7 @@ under "Errors").
   sort code, an account number, a UTR, a company number, an EIN, and an
   SSN with the areas, groups and serials the SSA never issues refused.
   The UK modulus check needs a sort code and an account number together,
-  so it is `BankAccount`'s, in 5.5i2.
+  so it is `BankAccount`'s, in 5.5i4.
 - **Test values are published ones** where a scheme publishes them
   (SWIFT's registry IBANs, Stripe's test cards, the NHS Number standard's
   example and the 999 test range, Vocalink's modulus checking test cases,
@@ -6444,6 +6673,75 @@ under "Errors").
   `StockCode` and area 19's JSON example's `SupplierCode`; example 10's
   `Isbn` is `BookNumber`, example 03's `Allergen` `Allergy`, and examples
   04's and 12's `Allergen` enums `Hazard`, as question 3 listed.
+
+### Chosen in chunk 5.5i3
+
+- **Split.** The money group's six records are built here, with choices
+  of types on the contract; `BankAccount` and the UK modulus check are
+  chunk 5.5i4, on the same choice.
+- **A choice of types is an enum with data** (area 2), the language's
+  tagged union: a stub `= Enum { ... }` whose variants carry fields, each
+  written as the built-in type its part is built on, and an entry
+  (`Holds::Choice`) holding each variant's parts. It is built, matched and
+  read as an application's enum with data is (`Discount.percentage_off {
+  percentage: 20% }`, `Discount.percentage_off(off) -> off.percentage`),
+  sent in area 2's tagged form (`Json::Tagged`), stored as that JSON, and
+  shown by the parts its variant has. None has a single text form, none is
+  ordered, and `.all` refuses one, as it refuses any enum with data.
+- **A type built on a built-in type with bounds of its own**
+  (`Holds::Within`) is a refinement the standard library declares, as a
+  type held as text is: `TaxRate` is a `Percentage` whose `min` is 0%, and
+  building one below breaks `min`; its text, JSON, storage and format are
+  its built-in type's, but for `BasisPoints`' format. A part may keep
+  bounds the same way (`Part::Within`): a price's or an amount off's
+  `Money` never below 0, a percentage off from 0% to 100%, a unit price's
+  amount never below 0.
+- **`Price`** is the catalogue's shape, `amount` and `includes_tax`, the
+  amount never below 0. It is shown as its amount, since CLDR words no tax
+  status; an application words "inc. VAT" itself.
+- **`Discount`** is `amount_off { amount }` or `percentage_off {
+  percentage }`: the catalogue's `amount(Money)` and `percentage(Percentage)`,
+  each with one named field, since a variant's data is named fields.
+- **Applying a discount is `money.apply_discount(price, discount)`,** an
+  operation in `money`, not a row of the standard operator table: the
+  table has no row for a `Discount`, and adding one would change decided
+  question 16's table, while an operation is what `money.mask` was. It
+  takes a `Price` and gives one, keeping `includes_tax`. A percentage's
+  share is rounded half to even to a minor unit before it comes off, so a
+  receipt's discount line and total agree, and more off than the price
+  leaves nothing, never less, as Stripe applies a coupon. An amount off in
+  another currency fails `currency_mismatch`; since what a choice holds is
+  known only while running, every call needs its `attempt`.
+- **`UnitPrice` is a choice by the quantity's kind,** `per_mass`,
+  `per_volume`, `per_length` and `per_area`, the kinds the Price Marking
+  Order 2004 (Schedule 1) prices goods by, each a `price` and the amount
+  it is `per` (`1kg`, `100g`): a field holding a quantity of any kind
+  isn't a type the language has. It is shown as the price over the amount
+  in its kind's base unit, `£2.50/1 kg`, by CLDR's short "per" pattern;
+  a release adds a kind (energy, per kWh) when an application needs one.
+- **`TaxRate`** has no maximum, since some duties are set above 100%.
+- **`BasisPoints`** is a whole number of any sign, as the catalogue has
+  it, with no bounds: its text is its digits, it is sent as a string, as
+  area 2 sends an `Int` with no bounds, stored in a `bigint`, and shown
+  with `bp`, `25 bp`, in every locale, since CLDR's only name for it is
+  the per-myriad sign. No page decides a conversion to a `Percentage`, so
+  none is built.
+- **`InterestRate`** is the catalogue's shape, a `rate` a year, which may
+  be below 0%, and a `basis`, **`InterestRateBasis`**, a standard enum of
+  `aer`, `apr` and `flat`, each its own code and shown as lenders write
+  it, `AER`, `APR`, `flat`, in every locale. It is added beside the 247,
+  as `IdentityDocumentKind` was, since a part must be a standard type to
+  be sent and stored by its code; the lead session hasn't accepted it
+  yet.
+- **Storage.** A `TaxRate` is one `numeric` column and `BasisPoints` one
+  `bigint`; the four records and choices are stored as their JSON in one
+  `jsonb` column, which, as for an `ExchangeRate`, waits on area 5's
+  structured storage, so storing one is still `toolchain.not_built_yet`.
+- **No shapes,** and none is personal data.
+- **Renamed,** as question 3 asks: the pages' and examples' `Price`
+  (`ItemPrice`, areas 2 and 3, example 05), area 1's `Discount`
+  (`DiscountTerms`) and example 09's (`BasketDiscount`), which moves to
+  the standard `Discount` in 5.7.
 
 ### Decisions
 
@@ -6901,10 +7199,14 @@ first; each group of types then arrives with its baseline and its extras.
 - **5.5i2 Cards and identity documents** `opus · high`, after 5.5l:
   `CardBrand`, `MaskedCardNumber`, `CardExpiry` and the identity
   documents on `Country`. Split on 2026-10-18, the rest is 5.5i3.
-- **5.5i3 Prices, discounts and bank accounts** `opus · high`: the money
-  group's records (`Price`, `UnitPrice`, `TaxRate`, `Discount`,
-  `BasisPoints`, `InterestRate`) and `BankAccount` with the UK modulus
-  check.
+- **5.5i3 Prices, discounts and rates** `opus · high`: the money group's
+  records (`Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`,
+  `InterestRate`), with choices of types on the contract and
+  `money.apply_discount`. Built; split on 2026-10-18, `BankAccount` is
+  5.5i4.
+- **5.5i4 Bank accounts** `opus · high`: `BankAccount` on 5.5i3's choice,
+  with the UK modulus check by Vocalink's specification and its 34 test
+  cases.
 - **5.5j Quantities** `opus · high`: the 17 physical quantities with
   `DataSize` and `Bitrate`, their units, SI storage at each kind's
   scale, suffixed literals, the product and quotient table,

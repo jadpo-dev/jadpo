@@ -3636,10 +3636,10 @@ function share(total: ItemPrice, people: People) -> ItemPrice {
 
 ```text output
 error: Jadpo names an argument with `:`, not `=`
- --> main.jadpo:11:57
+ --> main.jadpo:11:61
    |
 11 |     return ItemPrice(decimal.divide(total, people, rounding = Rounding.half_even))
-   |                                                         ^ write `:`
+   |                                                             ^ write `:`
   reason: `name = value` names an argument in Python, Kotlin and C#; Jadpo writes `name: value`.
   next: Use `:` instead of `=` (agent)
   rule: syntax.named_argument_equals
