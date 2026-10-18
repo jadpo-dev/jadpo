@@ -1492,7 +1492,7 @@ reference only).
   gate); none dropped, three rewritten (`decimal.round` keeps fewer
   places, `period_between` without `age`, whole numbers widened to
   `bigint`), area 19's "Chosen in chunk 5.6".
-- [ ] **5.6b Computed backfills** `opus · high` (area 5, "Computed
+- [x] **5.6b Computed backfills** `opus · high` (area 5, "Computed
   backfills", 2026-10-15), after 5.6: `backfill:` as an expression over
   each row's own fields, constants and pure functions, typed against the
   field it fills; filled in batches, one `UPDATE` each where every
@@ -1504,7 +1504,15 @@ reference only).
   resumable; an expression that can fail is refused unless area 5 says
   what a failing row gets. A backfill without a full SQL form is refused
   as not built yet, naming 5.6b2. (Split 2026-10-18: the backfills worked
-  out in Jadpo are 5.6b2.)
+  out in Jadpo are 5.6b2.) Built: a computed backfill checked as a body
+  of its own (`migration.backfill_can_fail`, `migration.backfill_outside_row`),
+  written as SQL from its typed body with functions in place and `if` and
+  `match` as `CASE`; batches of 1000 rows by `UPDATE`, each its own
+  transaction, resumed from `jadpo_migration_steps` after a stop, then a
+  last step that locks the table against writes, fills what was written
+  meanwhile and makes the column required; the operators' and
+  conditionals' forms agree with the runtime on live PostgreSQL beside
+  the operations'; area 5's "Chosen in chunk 5.6b".
 - [ ] **5.6b2 Backfills worked out in Jadpo** `opus · high` (area 5,
   "Computed backfills"), after 5.6b: a backfill with an operation that has
   no SQL form runs through `jadpo migrate apply`, which reads each batch,
