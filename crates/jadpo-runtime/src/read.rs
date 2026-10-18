@@ -534,6 +534,8 @@ pub fn field_value(row: &[SqlValue], columns: &[Column], at: u32) -> Result<Valu
             SqlValue::Int4(n) => Ok(Value::Int(i64::from(*n))),
             SqlValue::Int8(n) => Ok(Value::Int(*n)),
             SqlValue::Text(text) => Ok(Value::text(text)),
+            // An identity document's expiry (chunk 5.5i2).
+            SqlValue::Date(day) => Ok(Value::Date(*day)),
             // An address's lines (chunk 5.5l).
             SqlValue::Array(_, items) => items
                 .iter()

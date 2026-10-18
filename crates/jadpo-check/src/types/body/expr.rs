@@ -1457,49 +1457,75 @@ impl Body<'_> {
                 .find(|(field, _)| tree::name_text(field).as_deref() == Some(part))
                 .and_then(|(_, member)| member.value())
         };
-        for rule in jadpo_std::standard::part_rules(name) {
-            let (Some(written), Some(by)) = (value_of(rule.part), value_of(rule.by)) else {
+        'rules: for rule in jadpo_std::standard::part_rules(name) {
+            let Some(written) = value_of(rule.part) else {
                 continue;
             };
             let Const::Str(given) = Const::from_expr(&written) else {
                 continue;
             };
-            let Some(jadpo_std::Part::Standard(list)) = parts
+            // Text that breaks the part's own rules is reported by them.
+            let own = parts
                 .iter()
-                .find(|(field, _)| *field == rule.by)
-                .map(|(_, part)| part.required().0)
-            else {
+                .find(|(field, _)| *field == rule.part)
+                .map(|(_, part)| part.rules());
+            if own.is_some_and(|rules| rules.check_text(&given).is_err()) {
                 continue;
-            };
-            let Some((head, rest)) = dotted(&by) else {
-                continue;
-            };
-            let ([variant], true) = (rest.as_slice(), text(&head) == list) else {
-                continue;
-            };
-            let variant = text(variant);
-            let Some(code) = jadpo_std::standard_type(list)
-                .and_then(jadpo_std::StandardType::codes)
-                .and_then(|codes| codes.iter().find(|(listed, _)| *listed == variant))
-                .map(|(_, code)| *code)
-            else {
-                continue;
-            };
-            if (rule.fits)(&given, code) {
+            }
+            // Each part the rule reads, written out as a variant of its
+            // enum: its code, and how the code names it.
+            let mut codes = Vec::new();
+            let mut named = Vec::new();
+            for by in rule.by {
+                let Some(value) = value_of(by) else {
+                    continue 'rules;
+                };
+                let Some(jadpo_std::Part::Standard(list)) = parts
+                    .iter()
+                    .find(|(field, _)| field == by)
+                    .map(|(_, part)| part.required().0)
+                else {
+                    continue 'rules;
+                };
+                let Some((head, rest)) = dotted(&value) else {
+                    continue 'rules;
+                };
+                let ([variant], true) = (rest.as_slice(), text(&head) == list) else {
+                    continue 'rules;
+                };
+                let variant = text(variant);
+                let Some(code) = jadpo_std::standard_type(list)
+                    .and_then(jadpo_std::StandardType::codes)
+                    .and_then(|codes| codes.iter().find(|(listed, _)| *listed == variant))
+                    .map(|(_, code)| *code)
+                else {
+                    continue 'rules;
+                };
+                codes.push(code);
+                named.push(format!("`{list}.{variant}`"));
+            }
+            if (rule.fits)(&given, &codes) {
                 continue;
             }
             let shown = tree::written(written.syntax());
+            let by = rule
+                .by
+                .iter()
+                .map(|by| format!("`{by}`"))
+                .collect::<Vec<_>>()
+                .join(" and ");
+            let of = named.join(" and ");
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_INVALID_LITERAL,
                     format!("`{shown}` isn't {}", rule.says),
                 )
-                .at(self.span(&written), format!("not a postal code of `{list}.{variant}`"))
+                .at(self.span(&written), format!("not {} of {of}", rule.noun))
                 .reason(format!(
-                    "A `{name}`'s `{}` fits its `{}`: `{code}`'s are in the form its postal service writes them, and a literal is checked while compiling.",
-                    rule.part, rule.by
+                    "A `{name}`'s `{}` is in the form {} of its {by} writes, and a literal is checked while compiling.",
+                    rule.part, rule.authority
                 ))
-                .next(format!("Write a postal code of `{list}.{variant}` in its canonical text, or the address's own country")),
+                .next(format!("Write {} of {of} in its canonical text, or change {by}", rule.noun)),
             );
         }
     }

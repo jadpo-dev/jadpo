@@ -51,6 +51,27 @@ public type CallingCode = Text {}
 /// 19): `424242`.
 public type CardBin = Text {}
 
+/// A card scheme (area 19), written as its own name, `visa`, and shown
+/// by the scheme's, "Visa". `money.mask` tells it from a card's number.
+public type CardBrand = Enum {
+    american_express
+    diners_club
+    discover
+    jcb
+    maestro
+    mastercard
+    unionpay
+    visa
+}
+
+/// The month a payment card runs to, to its end (area 19), written
+/// `2028-12` and shown as the card prints it, `12/28`: `year` from 2000 to
+/// 2099, `month` from 1 to 12. Personal data.
+public type CardExpiry = Object {
+    year: Int
+    month: Int
+}
+
 /// A continent (area 19), as UN M49 groups the world: written as its own
 /// name, `europe`, and as M49's number with `form: CodeForm.numeric`.
 public type Continent = Enum {
@@ -93,6 +114,15 @@ public type DateRange = Object {
 
 /// An active ISO 4217 currency (area 19), written as its code, `GBP`.
 public type Currency = Enum {}
+
+/// A driving licence's number with the country that issued it (area 19):
+/// the number upper case with no spaces, in that country's form where it
+/// publishes one, `MCADI801206HZ9HM` for Great Britain. Shown masked to
+/// its last four. Personal data.
+public type DrivingLicenceNumber = Object {
+    country: Country
+    number: Text
+}
 
 /// A length of time, exact to the millisecond (area 10), written `PT1H30M`.
 public type Duration = Duration {}
@@ -147,6 +177,27 @@ public type Frequency = Frequency {}
 /// no spaces, its mod-97 check digits passing: `GB29NWBK60161331926819`.
 /// Shown to people in fours.
 public type Iban = Text {}
+
+/// What kind of identity document one is (area 19), written as its own
+/// name: `passport`, `identity_card`, `driving_licence`,
+/// `residence_permit`.
+public type IdentityDocumentKind = Enum {
+    passport
+    identity_card
+    driving_licence
+    residence_permit
+}
+
+/// An identity document (area 19): its kind, the country that issued it,
+/// its number in that country's form for its kind, and the day it
+/// expires, if it does. Shown as its number masked to its last four.
+/// Personal data.
+public type IdentityDocument = Object {
+    kind: IdentityDocumentKind
+    country: Country
+    number: Text
+    expires: CalendarDate?
+}
 
 /// Illuminance, held in lux to 3 places (area 19), written `500lx`.
 public type Illuminance = Illuminance {}
@@ -209,6 +260,15 @@ public type LocalTime = Object {
 /// A CLDR locale (area 10), written as its BCP 47 tag, `en-GB`.
 public type Locale = Enum {}
 
+/// What may be kept of a payment card once its number is gone (area 19,
+/// PCI DSS): its brand, where a listed scheme issued it, and its last four
+/// digits, shown as `Visa •••• 4242`. `money.mask` makes one from a
+/// `PaymentCardNumber`. Personal data.
+public type MaskedCardNumber = Object {
+    brand: CardBrand?
+    last_four: Text
+}
+
 /// A mass, held in kilograms to 9 places, a microgram (area 19), written
 /// `250g`, `2.5kg` or `500mcg`.
 public type Mass = Mass {}
@@ -242,6 +302,15 @@ public type NhsNumber = Text {}
 /// 09:00-17:30; Sa 10:00-16:00; 2026 Dec 25 off [Europe/London]`.
 /// `temporal.open_at` asks whether it is open at an instant.
 public type OpeningHours = Text {}
+
+/// A passport's number with the country that issued it (area 19, ICAO
+/// Doc 9303): the number upper case, in that country's form where it
+/// publishes one, `123456789` for the United Kingdom. Shown masked to its
+/// last four. Personal data.
+public type PassportNumber = Object {
+    country: Country
+    number: Text
+}
 
 /// A payment card's number (area 19, ISO/IEC 7812), 12 to 19 digits with
 /// a Luhn check digit: `4242424242424242`. Shown to people as its last
@@ -342,6 +411,15 @@ public type SoundLevel = SoundLevel {}
 /// `30mph` or `100kmh`; a `Length` over a `Duration`.
 public type Speed = Speed {}
 
+/// A taxpayer's identification number with the country that issued it
+/// (area 19), as the OECD's common reporting standard records one: any of
+/// that country's forms, a UTR or a National Insurance number for the
+/// United Kingdom. Shown masked to its last four. Personal data.
+public type TaxId = Object {
+    country: Country
+    number: Text
+}
+
 /// A temperature, held in kelvin to 3 places (area 19), written
 /// `21degC`, `70degF` or `300kelvin`. It adds only a
 /// `TemperatureDifference`.
@@ -403,6 +481,14 @@ public type UtcOffset = Object {
 
 /// A UUID (area 2), written in lowercase hexadecimal with hyphens.
 public type Uuid = Uuid {}
+
+/// A VAT registration number (area 19), written as VIES writes it: its
+/// country's code (`EL` for Greece) and the number in that country's form,
+/// `GB980780684`.
+public type VatNumber = Object {
+    country: Country
+    number: Text
+}
 
 /// A voltage, held in volts to 6 places (area 19), written `230V`.
 public type Voltage = Voltage {}

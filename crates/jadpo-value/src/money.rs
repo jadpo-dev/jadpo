@@ -192,6 +192,41 @@ fn shared_out(total: Money, ratios: &[i64]) -> Result<Value, Fault> {
     Ok(Value::list(items))
 }
 
+/// `money.mask(card)`: what may be kept of a card once its number is gone,
+/// a `MaskedCardNumber` of its brand, told by its issuer range (`none` for
+/// a range no listed scheme issues), and its last four digits (chunk
+/// 5.5i2).
+pub fn mask(card: &Value) -> Result<Value, Fault> {
+    use jadpo_std::standard::cards;
+    let Value::Text(number) = card else {
+        return Err(Fault::Shape);
+    };
+    let count = number.chars().count();
+    if count < 4 || !number.chars().all(|c| c.is_ascii_digit()) {
+        return Err(Fault::Shape);
+    }
+    let last_four: String = number.chars().skip(count - 4).collect();
+    let brand = match cards::brand_of(number) {
+        Some(at) => {
+            let (name, _) = cards::CARD_BRANDS.get(at).ok_or(Fault::Shape)?;
+            Value::variant(
+                cards::CARD_BRAND,
+                u32::try_from(at).map_err(|_| Fault::Shape)?,
+                name,
+                Vec::new(),
+            )
+        }
+        None => Value::None,
+    };
+    Ok(Value::record(
+        cards::MASKED_CARD_NUMBER,
+        vec![
+            ("brand".into(), brand),
+            ("last_four".into(), Value::text(&last_four)),
+        ],
+    ))
+}
+
 /// `money.convert(value, rate)`: `value` in the rate's `to` currency,
 /// given in its `from` one: the major units times the rate, rounded half
 /// to even to the `to` currency's minor unit. An amount in any other

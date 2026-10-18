@@ -666,6 +666,15 @@ across a standard object's parts (`standard::part_rules`, a postal code
 fitting its address's country) is proved for a literal in
 `types/body/expr.rs` and checked by the JSON codec as an object is read
 (`jadpo_value::standard::broken_part`).
+Since chunk 5.5i2 the cards (`jadpo_std::standard::cards`) and the
+identity documents (`standard::documents`) are entries like the rest: a
+`PartRule` reads any number of parts (`by`, a document's kind and
+country), its wording from the rule, and each country's forms are tables
+of a pattern and an optional check digit (`CountryForm`), with bounds for
+a country that has none. `Part::Matching` is a part of text matching a
+pattern (a masked card's last four). `money.mask` (`Op::MoneyMask`) makes
+a `MaskedCardNumber` from a `PaymentCardNumber` by its issuer range
+(`cards::brand_of`), and a compound column may now hold a `date` part.
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from

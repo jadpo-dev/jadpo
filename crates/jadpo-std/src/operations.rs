@@ -240,6 +240,7 @@ pub enum Op {
     MoneyConvert,
     MoneyCurrency,
     MoneyFromMinor,
+    MoneyMask,
     MoneyMinor,
     MoneyOf,
     MoneySplit,
@@ -1406,6 +1407,15 @@ pub const OPERATIONS: &[Operation] = &[
         &[param("amount", INT), param("currency", CURRENCY)],
         MONEY,
         "money::from_minor",
+    ),
+    // What may be kept of a card: its brand, told by its first digits,
+    // and its last four (chunk 5.5i2).
+    money(
+        Op::MoneyMask,
+        "mask",
+        &[param("card", Kind::Std("PaymentCardNumber"))],
+        Kind::Std(crate::standard::cards::MASKED_CARD_NUMBER),
+        "money::mask",
     ),
     money(
         Op::MoneyMinor,

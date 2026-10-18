@@ -773,7 +773,7 @@ reference only).
   UN/LOCODE list's terms are unclear and **needs Richard** to say whether
   it ships. What the pages left open is area 19's "Chosen in chunk
   5.5l2".
-- [ ] **5.5i2 Cards and identity documents** `opus · high` (area 19,
+- [x] **5.5i2 Cards and identity documents** `opus · high` (area 19,
   "The standard types", split from 5.5i), after 5.5l: `CardBrand`,
   `MaskedCardNumber` with its conversion from a `PaymentCardNumber`, and
   `CardExpiry`; `VatNumber`, `TaxId`, `PassportNumber`,
@@ -781,7 +781,11 @@ reference only).
   checked by its country's published format (at least GB, DE, FR, IE, US
   and one country outside Europe), by length where none is published.
   Done when every type passes the harness with valid and invalid
-  examples per rule. Split on 2026-10-18; the rest is 5.5i3.
+  examples per rule. Split on 2026-10-18; the rest is 5.5i3. Built, with
+  `money.mask` for the conversion and `IdentityDocumentKind` as the
+  document's kind; forms from VIES, HMRC, the OECD's and the EU's TIN
+  pages and each issuer's own, by length where a country publishes none.
+  What the pages left open is area 19's "Chosen in chunk 5.5i2".
 - [ ] **5.5i3 Prices, discounts and bank accounts** `opus · high` (area
   19, "The standard types", split from 5.5i2), after 5.5j2: `Price`,
   `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints` and `InterestRate`,
