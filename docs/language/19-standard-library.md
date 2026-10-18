@@ -1909,7 +1909,7 @@ type PoundsToEuros = ExchangeRate {
     to: Currency.eur
 }
 
-type RateText = Text {}
+type QuoteJson = Text {}
 
 type WrongRate = Failure {
     kind: FailureKind.invalid_value
@@ -1926,15 +1926,15 @@ function priced_in_euros(cake: CakePrice, rate: PoundsToEuros) -> EuroPrice {
 }
 
 /// The morning's rate, checked once, where it arrives.
-function morning_rate(given: ExchangeRate) fails WrongRate -> PoundsToEuros {
-    return attempt PoundsToEuros(given) {
+function morning_rate(todays_quote: ExchangeRate) fails WrongRate -> PoundsToEuros {
+    return attempt PoundsToEuros(todays_quote) {
         from: WrongRate  // a rate from euros, the wrong way round
         to: WrongRate  // a rate to dollars
     }
 }
 
 /// A rate a provider sent as JSON.
-function sent_rate(sent: RateText) fails NotARate -> PoundsToEuros {
+function sent_rate(sent: QuoteJson) fails NotARate -> PoundsToEuros {
     return attempt json.read(sent, as: PoundsToEuros) {
         malformed: NotARate
         mismatch: NotARate  // other currencies
@@ -1944,22 +1944,22 @@ function sent_rate(sent: RateText) fails NotARate -> PoundsToEuros {
 
 ```jadpo check project=money-rate-types file=main.test.jadpo
 test "a rate type converts from its own currency only" {
-    var given: ExchangeRate = ExchangeRate {
+    var todays_quote: ExchangeRate = ExchangeRate {
         from: Currency.gbp
         to: Currency.eur
         rate: 1.17
         at: "2026-10-18T09:00:00Z"
     }
-    var inverted: ExchangeRate = ExchangeRate {
+    var backwards_quote: ExchangeRate = ExchangeRate {
         from: Currency.eur
         to: Currency.gbp
         rate: 0.85
         at: "2026-10-18T09:00:00Z"
     }
-    var rate: PoundsToEuros = attempt morning_rate(given)
+    var rate: PoundsToEuros = attempt morning_rate(todays_quote)
     var cake: CakePrice = CakePrice(money.from_minor(1050, Currency.gbp))
     assert priced_in_euros(cake, rate) == money.from_minor(1228, Currency.eur)
-    assert morning_rate(inverted) fails WrongRate
+    assert morning_rate(backwards_quote) fails WrongRate
     var sent: PoundsToEuros = attempt sent_rate(
         "{\"from\":\"GBP\",\"to\":\"EUR\",\"rate\":\"1.17\",\"at\":\"2026-10-18T09:00:00Z\"}"
     )
@@ -7694,7 +7694,7 @@ under "Errors").
   in the type's `to`. An amount whose currency only the running program
   knows still takes `currency_mismatch` under `attempt`.
 - **A type built on an object is built from a value of that object,**
-  its representation in area 2's sense: `PoundsToEuros(given)` from an
+  its representation in area 2's sense: `PoundsToEuros(rate)` from an
   `ExchangeRate`, or from another type built on one, which a constructor
   refused before as `type.constructor_input`. It is checked against the
   rules the type adds; a rate type's break as `from` and `to`, new rule

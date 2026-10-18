@@ -82,6 +82,7 @@ avoid
 avoids_all
 awaited_delivery
 ba_flight
+backwards_quote
 bad_glucose
 bad_pulse
 badge
@@ -837,6 +838,7 @@ monday_classes
 monitor_text
 monitored_pulse
 morning
+morning_rate
 moved_in
 munich_plate
 my_bakeries
@@ -1123,6 +1125,7 @@ price_range
 price_tag
 priced_abroad
 priced_if_from_pounds
+priced_in_euros
 pricing
 primary_database
 print_label
@@ -1170,6 +1173,7 @@ quantity_unreadable
 queue_overdue_reminders
 quiz_rounds
 quote_cake
+quote_json
 raise_priority
 rate_label
 rate_on
@@ -1331,6 +1335,7 @@ sent_at
 sent_attachment
 sent_order
 sent_photo
+sent_rate
 sent_text
 service_fake_identity
 set_oven
@@ -1537,6 +1542,7 @@ title_back
 title_blank
 titles
 to_belgrade
+todays_quote
 todo
 todo_by_id
 todo_changes
