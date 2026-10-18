@@ -353,6 +353,18 @@ check, the data model, `json.write`, every standard operation's arguments,
 the operators and construction report `type.secret_exposed`. Credentials
 the runtime makes draw on `Ctx::secret_random_bytes`, never on a
 recording's tape.
+Since chunk 5.5r3 a standard type may be built on `Bytes` (`Holds::Bytes`,
+`Hash`, `Hmac` and `EncryptedValue`): `standard::declared` gives it as
+`Bytes` whose rules name it as their `standard`, which
+`Rules::check_bytes` checks through the entry's `Validator::accepts_bytes`,
+so the type table, the plan's chain, the wire and storage treat it as
+`Bytes` (Base64 in JSON, `bytea`), and `TextForm::Base64` is its canonical
+text. The checker proves a construction from the operation that makes its
+bytes (`security::made_by`, read in the rule verdict), so
+`Hash(hash.sha256(x))` needs no arm. `Value`'s `PartialEq` and the
+canonical order compare every `Bytes` in constant time. `OneTimeCode`
+joined the secret values, and a `Bytes` part of a standard object is
+bounded by its length (`Part::Bounded` on `Bytes`).
 Since chunk 5.5g2 an `attempt` arm that maps `json.read`'s `mismatch` to
 a failure declaring `problem: DecodeProblem` carries that field's place
 (`RuleArm::problem` in the graph, `Raise::problem` in the plan), and the

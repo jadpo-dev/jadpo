@@ -121,6 +121,15 @@ pub enum Holds {
     /// entries, sent as a JSON object keyed by each key's wire text and
     /// stored as that JSON.
     Map(Part, Part),
+    /// Bytes with a check of their own (chunk 5.5r3): a SHA-256 digest, a
+    /// sealed value. A program holds it as a type built on `Bytes` that
+    /// the standard library declares, whose own check
+    /// ([`crate::Rules::standard`], the entry's validator over the bytes)
+    /// a value of other bytes breaks as `format`, so `Hash(hash.sha256(x))`
+    /// builds one and the runtime holds it as the bytes. Its canonical text
+    /// and its JSON are area 2's Base64 of the bytes ([`TextForm::Base64`]),
+    /// as every `Bytes` is sent, and it is stored as `bytea`.
+    Bytes,
 }
 
 /// What one field of a standard object type holds (area 19, chunk 5.5k).
@@ -202,6 +211,16 @@ impl Part {
             } => crate::Rules {
                 min_duration: min.map(|n| crate::Dur { millis: n.mantissa }),
                 max_duration: max.map(|n| crate::Dur { millis: n.mantissa }),
+                ..crate::Rules::default()
+            },
+            // Bytes are bounded by their length (chunk 5.5r3).
+            Part::Bounded {
+                of: Builtin::Bytes,
+                min,
+                max,
+            } => crate::Rules {
+                min_length: min.and_then(|n| u64::try_from(n.mantissa).ok()),
+                max_length: max.and_then(|n| u64::try_from(n.mantissa).ok()),
                 ..crate::Rules::default()
             },
             Part::Bounded { min, max, .. } => crate::Rules {
@@ -379,6 +398,10 @@ pub enum TextForm {
     /// A decimal number with the places it was given and no exponent, as
     /// area 2 writes a `Decimal`: a `Latitude`'s `51.5072` (chunk 5.5s).
     Decimal,
+    /// Area 2's Base64 of a type built on `Bytes` (chunk 5.5r3): RFC
+    /// 4648's standard alphabet, padded, in its one spelling, as `Bytes`
+    /// is sent in JSON, its bytes passing the entry's check.
+    Base64,
     /// HTML as the sanitiser keeps it (chunk 5.5o, [`markup::sanitise`]):
     /// written as it is held, and read from any text, made safe rather than
     /// refused, so reading it never fails.
@@ -683,6 +706,7 @@ pub fn order_rules(ty: &str) -> &'static [OrderRule] {
     match ty {
         records::RATING => records::order_rules(ty),
         geo::BOUNDING_BOX => geo::order_rules(ty),
+        security::PASSWORD_POLICY => security::PASSWORD_POLICY_ORDER,
         ai::TOKEN_USAGE => ai::order_rules(ty),
         _ => health::order_rules(ty),
     }
@@ -845,6 +869,15 @@ pub enum Validator {
     TotpSecret,
     /// Any secret text ([`security`]).
     SecretText,
+    /// Six to eight digits ([`security`], chunk 5.5r3).
+    OneTimeCode,
+    /// A SHA-256 digest's 32 bytes ([`security`], chunk 5.5r3).
+    Hash,
+    /// An HMAC-SHA-256 tag's 32 bytes ([`security`], chunk 5.5r3).
+    Hmac,
+    /// The sealed format's version and algorithm, and room for its key
+    /// identity, nonce and tag ([`security`], chunk 5.5r3).
+    EncryptedValue,
     /// HTML already as the sanitiser keeps it ([`markup::is_safe`]): what
     /// an `Html` literal must be, since its construction from any other
     /// text makes it safe first (chunk 5.5o).
@@ -908,6 +941,23 @@ impl Validator {
             Validator::BearerToken => security::is_bearer_token(text),
             Validator::TotpSecret => security::is_totp_secret(text),
             Validator::SecretText => security::is_secret_text(text),
+            Validator::OneTimeCode => security::is_one_time_code(text),
+            // A type built on `Bytes`: its canonical text, its Base64,
+            // holding bytes that pass (chunk 5.5r3).
+            Validator::Hash | Validator::Hmac | Validator::EncryptedValue => {
+                security::decode_base64(text).is_some_and(|bytes| self.accepts_bytes(&bytes))
+            }
+        }
+    }
+
+    /// Whether `bytes` pass, for a type built on `Bytes` (chunk 5.5r3);
+    /// `false` for a validator of text.
+    pub fn accepts_bytes(self, bytes: &[u8]) -> bool {
+        match self {
+            Validator::Hash => security::is_hash(bytes),
+            Validator::Hmac => security::is_hmac(bytes),
+            Validator::EncryptedValue => security::is_sealed(bytes),
+            _ => false,
         }
     }
 }
@@ -1533,6 +1583,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     contact::EMAIL_WITH_NAME,
     ai::EMBEDDING_ENTRY,
     web::EMOJI_ENTRY,
+    security::ENCRYPTED_VALUE_ENTRY,
     quantity(
         crate::QuantityKind::Energy,
         &[
@@ -1692,7 +1743,9 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     software::GIT_REF,
     contact::GIVEN_NAME,
     geo::H3_CELL_ENTRY,
+    security::HASH_ENTRY,
     health::HEART_RATE_ENTRY,
+    security::HMAC_ENTRY,
     web::HOSTNAME,
     codes::HS_CODE,
     markup::HTML_ENTRY,
@@ -2028,6 +2081,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::NHS_NUMBER,
     security::OAUTH_SCOPE_ENTRY,
     security::OIDC_CLAIMS_ENTRY,
+    security::ONE_TIME_CODE_ENTRY,
     schedules::OPENING_HOURS,
     codes::ORCID,
     software::PACKAGE_URL,
@@ -2036,6 +2090,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     security::PASSWORD_ENTRY,
     security::PASSWORD_CHECK_ENTRY,
     security::PASSWORD_HASH_ENTRY,
+    security::PASSWORD_POLICY_ENTRY,
     identifiers::PAYMENT_CARD_NUMBER,
     identifiers::PAYMENT_REFERENCE,
     // A proportion where 0.20 is 20% (chunk 5.5j2): one `numeric` column
@@ -2347,6 +2402,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("2 cubic_metre", "2 m³"),
         ],
     ),
+    security::WEB_AUTHN_CREDENTIAL_ENTRY,
     web::WEB_ORIGIN,
     StandardType {
         name: crate::Weekday::NAME,
@@ -2628,6 +2684,14 @@ pub fn declared(name: &str) -> Option<(Builtin, crate::Rules)> {
                 ..crate::Rules::default()
             },
         )),
+        // Bytes with the entry's own check (chunk 5.5r3).
+        Holds::Bytes => Some((
+            Builtin::Bytes,
+            crate::Rules {
+                standard: Some(entry.name),
+                ..crate::Rules::default()
+            },
+        )),
         _ => None,
     }
 }
@@ -2850,6 +2914,7 @@ impl StandardType {
                 variants: codes.iter().map(|(name, _)| (*name).to_string()).collect(),
             },
             (SqlType::Text, _) => Column::Text,
+            (SqlType::Bytes, Holds::Bytes) => Column::Bytes,
             (SqlType::Uuid, _) => Column::Uuid,
             (SqlType::Timestamp, _) => Column::Instant,
             (SqlType::Date, _) => Column::Date,
@@ -2948,7 +3013,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 250, "the 250 standard types built so far");
+        assert_eq!(names.len(), 256, "the 256 standard types built so far");
     }
 
     #[test]

@@ -444,6 +444,26 @@ impl Rules {
         Ok(())
     }
 
+    /// Bytes against their length and the check of the standard type built
+    /// on `Bytes` they must be (chunk 5.5r3): a `Hash`'s 32, an
+    /// `EncryptedValue`'s sealed format, broken as `format`.
+    pub fn check_bytes(&self, bytes: &[u8]) -> Result<(), Broken> {
+        self.check_length(bytes.len() as u64, "bytes")?;
+        if let Some(name) = self.standard
+            && let Some(entry) = crate::standard::standard_type(name)
+            && !entry
+                .validator
+                .is_some_and(|validator| validator.accepts_bytes(bytes))
+        {
+            return broken(
+                RuleKey::Format,
+                name.to_string(),
+                format!("isn't a valid `{name}`"),
+            );
+        }
+        Ok(())
+    }
+
     /// Text against its length in characters, `pattern`, `format` and
     /// `version`.
     pub fn check_text(&self, text: &str) -> Result<(), Broken> {

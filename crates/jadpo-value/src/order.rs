@@ -60,7 +60,10 @@ pub fn compare(a: &Value, b: &Value) -> Ordering {
         (Value::Text(a), Value::Text(b)) | (Value::Uuid(a), Value::Uuid(b)) => {
             a.as_bytes().cmp(b.as_bytes())
         }
-        (Value::Bytes(a), Value::Bytes(b)) => a.cmp(b),
+        // In time that depends on the lengths alone, as `==` compares
+        // them, so a set of digests says nothing of where two differ (chunk
+        // 5.5r3).
+        (Value::Bytes(a), Value::Bytes(b)) => crate::secret::constant_time_cmp(a, b),
         // By kind, then by text in time that depends on the lengths alone
         // (chunk 5.5r2).
         (Value::Secret(a), Value::Secret(b)) => a.kind().cmp(b.kind()).then_with(|| {
