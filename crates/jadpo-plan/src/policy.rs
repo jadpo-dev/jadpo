@@ -525,6 +525,7 @@ pub(crate) fn gates(
     db: &dyn jadpo_db::Db,
     project: jadpo_db::Project,
     types: &mut crate::types::Types,
+    json: &std::cell::RefCell<Vec<jadpo_graph::TypeRef>>,
 ) -> std::collections::HashMap<String, Gate> {
     let model = jadpo_check::data::data_model(db, project);
     let lookup = jadpo_check::lookups::Lookup::new(db, project);
@@ -535,6 +536,7 @@ pub(crate) fn gates(
         types,
         access,
         action: None,
+        json,
     };
     access
         .root

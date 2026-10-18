@@ -6,8 +6,9 @@
 //! are typed by their stubs; a `RichText` is built as a named list of its
 //! blocks, its rules and its links proved where they are written; a
 //! `LocalisedText` is built as a named map; `text.pick`'s locale is checked
-//! as formatting's is; and an application's own type of any of their
-//! names is a clash.
+//! as formatting's is; an application's own type of any of their names
+//! is a clash; and the three are stored as their JSON, which a query
+//! doesn't compare yet (chunk 5.5w2b).
 
 use crate::support;
 
@@ -363,5 +364,47 @@ fn localised_text_is_a_map_picked_in_a_supported_locale() {
         project("Locale.fr_fr", "application {}\n"),
         ["type.temporal_locales_required"],
         "the application declares its locales"
+    );
+}
+
+/// The rules a project of `source` gives, checked whole, its storage
+/// with it.
+fn checked(source: &str) -> Vec<String> {
+    let db = jadpo_db::Database::default();
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", source)]);
+    jadpo_check::check(&db, project)
+        .iter()
+        .map(|d| d.rule.id.to_string())
+        .collect()
+}
+
+#[test]
+fn the_json_held_values_are_stored_but_not_compared_in_a_query() {
+    // Stored as their contract's JSON in one `jsonb` column (chunk
+    // 5.5w2b), which an application's own structured field isn't yet.
+    for ty in [
+        "RichText",
+        "RichTextBlock",
+        "LocalisedText",
+        "LocalisedText?",
+    ] {
+        assert_eq!(
+            checked(&format!(
+                "entity Dish {{\n    id: Uuid\n    about: {ty}\n}}\n"
+            )),
+            NONE,
+            "{ty}"
+        );
+    }
+    assert_eq!(
+        checked("entity Dish {\n    id: Uuid\n    tags: List<Text>\n}\n"),
+        ["toolchain.not_built_yet"]
+    );
+    assert_eq!(
+        checked(
+            "entity Dish {\n    id: Uuid\n    name: LocalisedText\n}\n\nquery named(name: LocalisedText) -> List<Dish> {\n    from: Dish\n    where: Dish.name == name\n    order: [Dish.id asc]\n    limit: 20\n}\n"
+        ),
+        ["toolchain.not_built_yet"],
+        "compared in a query"
     );
 }

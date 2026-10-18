@@ -590,7 +590,9 @@ The migration's SQL is `UPDATE "parcel" SET "size" = 'medium' WHERE
 > (`Length in metres (m)`), and a rate type's fixed `from:` and `to:` get
 > check constraints, as a `Money` type's `currency:` does. Only the
 > standard collections (`RichText`, `RichTextBlock`, `LocalisedText`)
-> stay structured `jsonb`, with the rest of this table's last row.
+> stay structured `jsonb`, holding their contract's JSON, which the route
+> codec writes and reads back (chunk 5.5w2b); a query doesn't compare
+> one yet.
 
 ## Migrations
 
@@ -2017,10 +2019,11 @@ Not built yet, and said so where it is used (`toolchain.not_built_yet`):
   `jadpo migrate` takes it with `--url`, and the application's refusal to
   start against a database that doesn't match comes with the compiled
   deployables (Phase 8).
-- Structured fields (an enum with data, an object, a list, a set or a
-  map) on an entity: their `jsonb` holds the API's JSON, which comes with
-  area 7, so until then the field is refused where it is declared rather
-  than every read and write of it failing as it runs (chunk 3.10):
+- An application's own structured fields (an enum with data, an object,
+  a list, a set or a map) on an entity: their `jsonb` holds the API's
+  JSON, whose codec only the standard collections' columns have so far
+  (chunk 5.5w2b), so until then the field is refused where it is declared
+  rather than every read and write of it failing as it runs (chunk 3.10):
 
 ```jadpo check project=e-structured-field expect=toolchain.not_built_yet
 type Tag = Text {
