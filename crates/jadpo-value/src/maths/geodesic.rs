@@ -318,7 +318,7 @@ impl Ellipsoid {
         (ssig1, csig1, dn1): (&Real, &Real, &Real),
         (ssig2, csig2, dn2): (&Real, &Real, &Real),
         distance: bool,
-        reduced: bool,
+        with_m12: bool,
     ) -> (Real, Real) {
         let u = &self.unit;
         let one = self.one();
@@ -327,7 +327,7 @@ impl Ellipsoid {
         let mut a2 = Real::zero();
         let mut cb = vec![Real::zero(); ORDER + 1];
         let mut m0x = Real::zero();
-        if reduced {
+        if with_m12 {
             a2 = a2m1f(u, eps);
             cb = c2f(u, eps);
             m0x = a1.sub(&a2);
@@ -340,14 +340,14 @@ impl Ellipsoid {
             let b1 = sin_cos_series(u, true, ssig2, csig2, &ca, ORDER)
                 .sub(&sin_cos_series(u, true, ssig1, csig1, &ca, ORDER));
             s12b = u.mul(&a1, &sig12.add(&b1));
-            if reduced {
+            if with_m12 {
                 let b2 = sin_cos_series(u, true, ssig2, csig2, &cb, ORDER)
                     .sub(&sin_cos_series(u, true, ssig1, csig1, &cb, ORDER));
                 j12 = u
                     .mul(&m0x, sig12)
                     .add(&u.mul(&a1, &b1).sub(&u.mul(&a2, &b2)));
             }
-        } else if reduced {
+        } else if with_m12 {
             for l in 1..=ORDER {
                 let (Some(c1), Some(c2)) = (ca.get(l), cb.get(l)) else {
                     continue;
@@ -363,7 +363,7 @@ impl Ellipsoid {
             );
         }
         let mut m12b = Real::zero();
-        if reduced {
+        if with_m12 {
             m12b = u
                 .mul(dn2, &u.mul(csig1, ssig2))
                 .sub(&u.mul(dn1, &u.mul(ssig1, csig2)))
@@ -772,13 +772,13 @@ impl Ellipsoid {
         let latsign: i64 = if lat1.is_negative() { 1 } else { -1 };
         lat1 = lat1.times(latsign);
         lat2 = lat2.times(latsign);
-        let reduced = |lat: &Real| {
+        let on_sphere = |lat: &Real| {
             let (s, c) = self.sin_cos_degrees(lat);
             let (s, c) = u.norm(&u.mul(&s, &self.f1), &c);
             (s, c.max(Real::tiny()))
         };
-        let (sbet1, cbet1) = reduced(&lat1);
-        let (mut sbet2, mut cbet2) = reduced(&lat2);
+        let (sbet1, cbet1) = on_sphere(&lat1);
+        let (mut sbet2, mut cbet2) = on_sphere(&lat2);
         if cbet1 < sbet1.neg() {
             if cbet2 == cbet1 {
                 sbet2 = if sbet2.is_negative() {

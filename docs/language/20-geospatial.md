@@ -2,7 +2,7 @@
 title: Geospatial
 area: 20
 status: decided
-checked-with: nothing yet; the examples are fragments until chunks 5.5u2 to 5.5u6 build them
+checked-with: this checkout's jadpo on every gate run, from chunk 5.5u2; the other examples are fragments until chunks 5.5u3 to 5.5u6 build them
 rules: []
 ---
 
@@ -17,7 +17,7 @@ other geometries and `Geometry`, all in WGS84 and sent as GeoJSON. This
 page adds what they were waiting for: the `geo.` operations, storage in
 PostGIS, query conditions and indexes, and the formats other systems use.
 
-> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Nothing on this page beyond area 19's types is built yet; chunks 5.5u2 to 5.5u6 build it, in the order under "Building it". Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
+> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Chunk 5.5u2 built the measures, `geo.distance`, `length`, `bearing` and `area`, and every coordinate held as the shortest decimal of the nearest double, as "Chosen in chunk 5.5u2" records; chunks 5.5u3 to 5.5u6 build the rest, in the order under "Building it". Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
 
 | Part | Decided | Builds on |
 |---|---|---|
@@ -48,9 +48,9 @@ PostGIS, query conditions and indexes, and the formats other systems use.
   `ST_Contains` or `ST_Within` (verified), and the boundary-inclusive
   meaning is the one an application expects.
 - **Pure and the same everywhere.** Every operation is worked out by
-  Jadpo's own decimal code (chunk 5.5e's fixed point to 18 places in an
-  `i128`), so the interpreter, native builds and wasm32 give the same
-  digits. "Precision and determinism" says where floats still appear.
+  Jadpo's own whole-number code (fixed point in 256 bits, chunk 5.5u2),
+  so the interpreter, native builds and wasm32 give the same digits.
+  "Precision and determinism" says where floats still appear.
 - **A geometry argument** takes any of the six geometries or a
   `Geometry`, as `list.` operations take any list.
 
@@ -74,18 +74,20 @@ The SQL forms are what query conditions compile to (below) and what
 use. `ST_Azimuth` gives `NULL` for two equal points (verified), which a
 query never needs, so `same_point` exists only in code.
 
-- **Distance and length agree with PostGIS to well under a micrometre
-  before rounding** (estimate: Karney's method is accurate to 15
-  nanometres in doubles, and Jadpo works to 18 decimal places). London
-  (51.5072° N, 0.1276° W) to Paris (48.8566° N, 2.3522° E) is
-  343,896.891267 m; on a sphere it would be 343,530.338 m, 367 m short
-  (both verified with PostGIS).
+- **Distance and length agree with GeographicLib to well under a
+  micrometre before rounding:** within 75 femtometres of every distance
+  in its published test set (chunk 5.5u2, "Chosen in chunk 5.5u2"),
+  where PostGIS's doubles are good to 15 nanometres. London (51.5072° N,
+  0.1276° W) to Paris (48.8566° N, 2.3522° E) is 343,896.891267 m; on a
+  sphere it would be 343,530.338 m, 367 m short (both verified with
+  PostGIS).
 - **Bearing to 9 places,** as an `Angle` keeps radians. Two equal points
   have no direction, so a call maps `same_point`, as a local time that
   doesn't exist is mapped (area 10).
 - **Area by Karney's polygon method,** each edge a geodesic. PostGIS's
   `ST_Area` gives 12,308,778,361.47 m² for the 1° square at the equator
-  (verified); the build holds Jadpo's result to GeographicLib's.
+  (verified); Jadpo gives 12,308,778,361.469453 m², and each geodesic's
+  area to GeographicLib's test set's square millimetre.
 - **`centroid` on the sphere** (each point a unit vector, weighted and
   summed, then back to latitude and longitude), as PostGIS's
   `ST_Centroid(x, false)`, which is simpler to state and to reproduce
@@ -97,7 +99,23 @@ query never needs, so `same_point` exists only in code.
 - **Not here:** `buffer` (see "Left out"); distance between a point and a
   line or polygon (question 10).
 
-```jadpo fragment
+A bakery's van, its round and its patches, through the measures chunk
+5.5u2 built:
+
+```jadpo check project=geo-measures
+type SameSpot = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type VanLeg = Object {
+    trip_length: Length
+    bearing_out: Bearing
+}
+
+type RoundLength = Length {}
+
+type PatchArea = Area {}
+
 /// How far a bakery's van drives to a customer, and which way it sets off.
 function first_leg(bakery: Point, customer: Point) fails SameSpot -> VanLeg {
     var setting_off: Bearing = attempt geo.bearing(bakery, customer) {
@@ -105,28 +123,67 @@ function first_leg(bakery: Point, customer: Point) fails SameSpot -> VanLeg {
     }
     return VanLeg {
         trip_length: geo.distance(bakery, customer)
-        heading: setting_off
+        bearing_out: setting_off
     }
 }
 
-/// Whether a customer is inside one of the bakery's patches.
-function delivers_to(patches: List<Polygon>, customer: Point) -> Bool {
-    return list.any(patches, patch -> geo.contains(patch, customer))
+/// How far a van drives on its round, stop to stop.
+function round_length(van_round: LineString) -> RoundLength {
+    return RoundLength(geo.length(van_round))
+}
+
+/// How much ground a delivery patch covers, its holes left out.
+function patch_area(patch: Polygon) -> PatchArea {
+    return PatchArea(geo.area(patch))
 }
 ```
 
-```jadpo fragment
+A point gives every field, its `altitude` as `none` when it has none (area
+2). The page's values:
+
+```jadpo check project=geo-measures file=main.test.jadpo
 test "London to Paris is measured on the ellipsoid" {
     var big_ben: Point = Point {
         latitude: 51.5072
         longitude: -0.1276
+        altitude: none
     }
     var eiffel_tower: Point = Point {
         latitude: 48.8566
         longitude: 2.3522
+        altitude: none
     }
     assert geo.distance(big_ben, eiffel_tower) == 343896.891267metre
     assert geo.distance(eiffel_tower, big_ben) == geo.distance(big_ben, eiffel_tower)
+    var leg: VanLeg = attempt first_leg(big_ben, eiffel_tower)
+    assert leg.bearing_out == 148.046085477
+    assert first_leg(big_ben, big_ben) fails SameSpot
+}
+
+test "a round is its legs summed" {
+    var bakery: Point = Point {
+        latitude: 51.5072
+        longitude: -0.1276
+        altitude: none
+    }
+    var customer: Point = Point {
+        latitude: 48.8566
+        longitude: 2.3522
+        altitude: none
+    }
+    var van_round: LineString = LineString {
+        points: [bakery, customer, bakery]
+    }
+    assert round_length(van_round) == 687793.782534metre
+}
+```
+
+`delivers_to` waits for `geo.contains` (chunk 5.5u3):
+
+```jadpo fragment
+/// Whether a customer is inside one of the bakery's patches.
+function delivers_to(patches: List<Polygon>, customer: Point) -> Bool {
+    return list.any(patches, patch -> geo.contains(patch, customer))
 }
 ```
 
@@ -326,7 +383,7 @@ LIMIT 20
 
 | Where | Arithmetic | Same on every target? |
 |---|---|---|
-| `geo.` operations in code: interpreter, native, wasm32 | Jadpo's decimal, fixed point to 18 places in an `i128`, through 5.5e's `sqrt`, `sin`, `cos` and `atan2` kernels; results rounded half to even to the result type's scale | Yes: integer arithmetic only, no platform maths library |
+| `geo.` operations in code: interpreter, native, wasm32 | Jadpo's own whole-number fixed point, 256 bits with 136 after the point (about 41 decimal places), its `sqrt` a whole square root and its `sin`, `cos` and `atan2` the series 5.5e's kernels use; results rounded half to even to the result type's scale (chunk 5.5u2) | Yes: integer arithmetic only, no platform maths library |
 | Reading GeoJSON | The double JSON gives, held as its shortest decimal (5.5s) | Yes |
 | Coordinates built in code | Rounded to the nearest double's shortest decimal at construction (question 2) | Yes |
 | Storage | PostGIS doubles; exact, given the row above | Yes |
@@ -334,16 +391,17 @@ LIMIT 20
 
 - **No floats in Jadpo's own code.** Karney's inverse method is
   additions, multiplications, divisions, square roots, `sin`, `cos` and
-  `atan2`, with a few rounds of Newton's method and series to the sixth
-  order in the ellipsoid's flattening; all of it runs on the decimal
-  kernels, which carry guard digits internally and round once at the end.
-  A float's `sin` differs between platforms' maths libraries (area 19,
-  question 18), so a float version could give different digits on
-  wasm32.
-- **What it costs** (estimate): tens to hundreds of microseconds per
-  distance, against well under one in doubles. A request measures a
-  handful; a batch measuring millions would notice, and 5.5u2 benchmarks
-  it before anything is tuned.
+  `atan2`, with a few rounds of Newton's method and series to the eighth
+  order in the ellipsoid's third flattening; all of it runs on whole
+  numbers far wider than the result, rounded once at the end. A float's
+  `sin` differs between platforms' maths libraries (area 19, question
+  18), so a float version could give different digits on wasm32.
+- **What it costs** (measured in chunk 5.5u2, native release build):
+  9 µs for a distance along a meridian, 30 to 65 µs for any other, about
+  45 µs per edge of a polygon's area; WebAssembly takes about 2.8 times
+  as long. A request measures a handful; a batch measuring millions, or
+  the area of a 10,000-point outline (about half a second), would
+  notice. "Chosen in chunk 5.5u2" has the figures.
 - **Where code and the database can disagree:** a point on, or within a
   hair of, a polygon's edge, and a distance within a hair of a radius,
   since PostGIS decides in doubles with its own tolerances and Jadpo in
@@ -403,7 +461,8 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
 | Feature | Status |
 |---|---|
 | The 17 geospatial types, GeoJSON geometries, `type.standard_exists` for `Point` | Decided (area 19) and built (5.5s) |
-| Everything else on this page | Decided 2026-10-18; built by 5.5u2 to 5.5u6 |
+| `geo.distance`, `length`, `bearing` and `area`; coordinates held as doubles' shortest decimals | Decided 2026-10-18; built (5.5u2) |
+| Everything else on this page | Decided 2026-10-18; built by 5.5u3 to 5.5u6 |
 
 ### Consistency with the rest of the language
 
@@ -445,6 +504,105 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
 | Point-only distance | `geo.distance` and `within(distance:)` between points only for now (Richard, as recommended, question 10) | 2026-10-18 |
 | Box filter | On `Point` fields only, through an index on the column cast to `geometry` (Richard, as recommended, question 11) | 2026-10-18 |
 | The rest of the page | Operations, storage, queries, precision, interop and what is left out, as written (Richard, as recommended) | 2026-10-18 |
+
+### Chosen in chunk 5.5u2
+
+- **Karney's inverse problem, ported, not called.** GeographicLib's
+  `Geodesic::GenInverse` and `PolygonArea` (C++, MIT licence), step for
+  step, in `jadpo-value`'s `maths::geodesic`, with its series'
+  coefficients for its highest order, 8: the terms left out are below
+  ε⁹, about 10⁻²⁵ of the leading one. GeographicLib's floating-point
+  devices become whole-number ones: its `tiny_` is one unit of the last
+  place, its machine epsilon 10⁴ of them (about 10⁻³⁷), so Newton's method
+  on the azimuth runs until the longitude it reaches is that close, its
+  bisection kept; exact decimals need no `AngRound`.
+- **Working precision.** A working value is a 256-bit two's-complement
+  whole number over 2¹³⁶, about 41 decimal places, on the stack; each
+  product and quotient is cut toward zero, `sqrt` and `hypot` are whole
+  square roots, `sin` and `cos` Taylor's series after taking out quarter
+  turns, `atan2` Euler's series after taking out the nearest `atan(k/16)`.
+  Binary rather than decimal places: the same determinism, 15 times
+  faster than 5.5e's decimal big numbers (600 µs a distance there); 18
+  decimal places in an `i128`, the estimate above, can't keep a continent's
+  area to the square millimetre. Each result is rounded half to even from
+  the exact binary value; it is not correctly rounded, the series being
+  finite, but it is the same digits on every target.
+- **The test set.** C. F. F. Karney's "Test set for geodesics" (2010,
+  doi:10.5281/zenodo.32156, Creative Commons Zero), as GeographicLib
+  publishes it: `GeodTest-short.dat`, 10,000 geodesics in nine groups.
+  `tools/geodtest_sample.py` writes every 20th line, 500 of them, with
+  its group and line number, to
+  `crates/jadpo-value/examples/geodesics/reference.tsv`; it checks the
+  file's SHA-256 and `--check` holds the sample to it. The full file isn't
+  committed, so the gate needs no network. The check runs natively
+  (`jadpo-runtime`'s `geodesics` tests) and under WebAssembly (the gate's
+  wasm32 steps), and both must give one digest of every answer.
+- **What "to the micrometre" means for each measure.** The test set's
+  distance and point 1 are exact; point 2 is rounded to 10⁻¹⁸ degrees,
+  which moves it up to 1.6 × 10⁻¹³ m. `geo.distance` must be the
+  reference distance rounded half to even to the micrometre (either way
+  for one within a nanometre of a tie). `geo.bearing` must be the
+  reference azimuth within half its 9th place plus how far moving point 2
+  can turn it, `1.6 × 10⁻¹³ m / m₁₂`. `geo.area`, of the polygon from point
+  1 down its meridian, along the equator and up to point 2, must be the
+  reference's within its stated square millimetre, half `Area`'s last
+  place, and what moving point 2 can change it by. Where the reduced
+  length `m₁₂` is below a metre (a geodesic ending near the point
+  conjugate to its start, half of the "between vertices" group), the
+  direction and area at point 2 are too sensitive to check and only the
+  distance is.
+- **Accuracy achieved.** Every one of the 10,000 lines passes, not only
+  the sample. Before rounding, every distance is within 7.5 × 10⁻¹⁴ m
+  (75 femtometres) of the reference, which is as close as rounding point
+  2 allows; every azimuth within `6.4 × 10⁻¹² m / m₁₂` degrees, the same
+  limit; and each geodesic's area within 8.4 × 10⁻⁷ m² for the short and
+  near-pole groups, where rounding point 2 barely moves it, and within the
+  allowance elsewhere (at most 46% of it, near-antipodal lines).
+- **Benchmarks.** `cargo run --release -p jadpo-value --example
+  geodesics -- bench`, natively on the machine this chunk was built on
+  (an Apple M1 Pro): a distance along a meridian 9 µs; 2 km across London
+  31 µs; London to Paris 42 µs; London to Sydney 58 µs; nearly antipodal
+  64 µs; a bearing 47 µs; an 11-point line's length 315 µs; the 1° square's
+  area 71 µs (meridians and the equator are quick); a 100-point patch's
+  area 4.5 ms, about 45 µs an edge. The 500-line check takes 0.30 s
+  natively and 0.83 s under Node's WebAssembly, about 2.8 times, so a
+  distance there is about 110 µs and 10 ms of CPU measures about 90. No
+  budget is asserted, as no timing is elsewhere; the figures are the
+  baseline a tuning chunk measures against.
+- **`same_point`** is the two points being one place: the same latitude
+  and the same longitude, -180 being 180, or the same pole at any
+  longitude. Two points a picometre apart have a direction. It is
+  settled only by `attempt`, as decoding is: whether two points are equal
+  is known only when the program runs.
+- **A bearing that rounds to 360 is 0,** `Bearing`'s range being at
+  least 0 and below 360 here; at a pole it is GeographicLib's, the
+  meridian of the pole's given longitude.
+- **`geo.length` sums each edge's distance as `geo.distance` rounds it,**
+  so a line of two points is their distance exactly; a
+  `MultiLineString`'s lines are summed the same way. A distance is never
+  past 38 digits on Earth; a sum past them is a defect, as `+` is.
+- **`geo.area` rounds once:** each ring's area, the smaller of the two
+  sides it bounds, is worked out unrounded, the holes taken away and a
+  `MultiPolygon`'s polygons added, then the total is rounded half to even
+  to the square millimetre. Until chunk 5.5u3's `rings_valid`, a polygon
+  whose holes outweigh its outer ring gives the difference as it is.
+- **What each measure takes.** `distance` and `bearing` take `Point`s
+  only (question 10); `length` a `LineString` or a `MultiLineString`;
+  `area` a `Polygon` or a `MultiPolygon`. Anything else, a `Geometry`
+  included, is `type.mismatch` naming this page: the application matches
+  a `Geometry` first, so it decides what a point's area is. A new
+  operation kind, `Shapes`, lists the types a parameter takes.
+- **Coordinates held as the nearest double** (question 2): a `Latitude`
+  or a `Longitude`, as a value, a field or a point's part, is rounded to
+  the shortest decimal of the nearest IEEE double as it is built, before
+  its range is checked, as a `Vector`'s items are; Rust's own correctly
+  rounded parsing and printing do it, the same on every target. Rounding
+  can't take a value in range out of it (±90 and ±180 are doubles), and a
+  double whose shortest decimal has more than 38 places (below 10⁻²³ of a
+  degree) is rounded half to even to 38. A literal is checked as written.
+- **The page's examples corrected:** a `Point` written in code gives
+  `altitude: none`, since area 2 has every field given when a value is
+  built.
 
 ### Open questions
 

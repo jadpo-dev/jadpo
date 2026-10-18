@@ -400,17 +400,17 @@ impl Real {
     /// mantissa: exact, the binary value being a fraction over a power of
     /// two; `None` past 38 digits.
     pub(crate) fn rounded(&self, scale: u32, rounding: Rounding) -> Option<i128> {
-        let mut scaled = wide(&self.magnitude());
+        let mut in_places = wide(&self.magnitude());
         for _ in 0..scale.min(Decimal::MAX_DIGITS) {
             let mut carry: u128 = 0;
-            for limb in &mut scaled {
+            for limb in &mut in_places {
                 let product = u128::from(*limb) * 10 + carry;
                 *limb = product as u64;
                 carry = product >> 64;
             }
         }
-        let whole = shr_wide(&scaled, FRACTION);
-        let fraction = sub_limbs(&scaled, &shl_wide(&whole, FRACTION));
+        let whole = shr_wide(&in_places, FRACTION);
+        let fraction = sub_limbs(&in_places, &shl_wide(&whole, FRACTION));
         let half = shl_wide(&[1], FRACTION - 1);
         let against_half = order(&fraction, &half);
         let odd = at(&whole, 0) & 1 == 1;
@@ -669,13 +669,13 @@ impl Unit {
         let nearest = t.times(16).add(&self.ratio(1, 2));
         let k = nearest.rounded(0, Rounding::Down).unwrap_or(0).clamp(0, 16);
         let c = self.ratio(k as i64, 16);
-        let reduced = self.div(&t.sub(&c), &self.int(1).add(&self.mul(&t, &c)));
+        let remainder_t = self.div(&t.sub(&c), &self.int(1).add(&self.mul(&t, &c)));
         let base = self
             .arctangents
             .get(k as usize)
             .copied()
             .unwrap_or_else(Real::zero);
-        let mut angle = base.add(&self.atan_series(&reduced));
+        let mut angle = base.add(&self.atan_series(&remainder_t));
         if steep {
             angle = self.half_pi.sub(&angle);
         }
