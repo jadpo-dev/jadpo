@@ -225,7 +225,10 @@ fn an_hmac_is_the_signing_key_s_and_checks_in_both_keys() {
     let rotated = started(&[
         ("NOTES_KEY", NOTES_KEY),
         ("RECEIPT_KEY", RECEIPT_KEY),
-        ("WEBHOOK_SECRET", "test-signing-key-fedcba9876543210fedcba9876543210"),
+        (
+            "WEBHOOK_SECRET",
+            "test-signing-key-fedcba9876543210fedcba9876543210",
+        ),
         ("WEBHOOK_SECRET_PREVIOUS", WEBHOOK_SECRET),
     ]);
     assert_eq!(
