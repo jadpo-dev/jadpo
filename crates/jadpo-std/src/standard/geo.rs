@@ -620,6 +620,37 @@ pub const LINE_STRING_ENTRY: StandardType = StandardType {
 /// last point its first) with four points or more.
 pub const POLYGON_FIELDS: [(&str, Part); 2] = [("outer", POINTS), ("holes", Part::List(&POINTS))];
 
+/// `Polygon`'s rule across its rings (area 20, "Polygons are valid when
+/// built", chunk 5.5u3): each ring closed with four points or more, no
+/// edge of half the globe or more, no ring crossing or touching itself or
+/// another, the holes inside the outer ring and none inside another, and
+/// no ring on one great circle, so the polygon is the smaller side, under
+/// half the globe. Checked on the sphere, exactly
+/// ([`crate::sphere::rings_broken`]).
+pub const POLYGON_RULES: &[StandardRule] = &[StandardRule {
+    name: "rings_valid",
+    written: "each ring closed and simple, no rings touching, holes inside the outer ring, every edge under half the globe",
+    label: "these rings don't make a valid polygon",
+    reason: "A `Polygon`'s rings are closed with four points or more, never cross or touch themselves or each other, keep each hole inside the outer ring, and have every edge shorter than half the globe, so the polygon is the smaller side its outer ring bounds (area 20, \"Polygons are valid when built\").",
+    next: "Close each ring and move its points so no edge meets another, with each hole inside the outer ring",
+    check: Check::By(|parts| {
+        let (Some(outer), Some(holes)) = (
+            parts.rings("outer").into_value(),
+            parts.rings("holes").into_value(),
+        ) else {
+            return Verdict::Unknown;
+        };
+        let Some(outer) = outer.into_iter().next() else {
+            return Verdict::Breaks("outer");
+        };
+        match crate::sphere::rings_broken(&outer, &holes) {
+            None => Verdict::Holds,
+            Some(0) => Verdict::Breaks("outer"),
+            Some(_) => Verdict::Breaks("holes"),
+        }
+    }),
+}];
+
 /// An area with any holes: a GeoJSON `Polygon`, each ring closed, written
 /// by RFC 7946's right-hand rule (the outer ring counterclockwise, each
 /// hole clockwise) and read in either winding, rewound to it.

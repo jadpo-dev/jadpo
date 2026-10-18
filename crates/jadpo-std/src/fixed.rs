@@ -1,5 +1,8 @@
-//! Fixed-point real numbers for the geodesics (area 20, "Precision and
-//! determinism"): a [`Real`] is a 256-bit two's-complement whole number
+//! Fixed-point real numbers for the geodesics and the great-circle
+//! geometry (area 20, "Precision and determinism"), shared by the checker,
+//! which reads a polygon literal's rings by them, and the runtime, which
+//! measures with them (chunk 5.5u3 moved them here from `jadpo-value`): a
+//! [`Real`] is a 256-bit two's-complement whole number
 //! `x × 2^136`, so every step is whole-number arithmetic on the stack and
 //! every target gives the same digits. Each product and quotient is cut
 //! toward zero, under a unit of the last place (2⁻¹³⁶, about 10⁻⁴¹) off;
@@ -9,9 +12,11 @@
 //! to the last place, and where a result goes out ([`Real::rounded`],
 //! rounded half to even from the exact binary value).
 
-use crate::value::Decimal;
-use jadpo_std::Rounding;
+use crate::{Num, Rounding};
 use std::cmp::Ordering;
+
+/// The most digits an exact number holds (a `Decimal`'s).
+const MAX_DIGITS: u32 = 38;
 
 /// The bits after the point: 136, about 41 decimal places, so a
 /// coordinate's places are kept to within 10⁻⁴¹ of a degree, and a
@@ -19,7 +24,7 @@ use std::cmp::Ordering;
 /// far below the micrometre and the square millimetre its results keep.
 /// The 119 bits before the point hold the ellipsoid's area in square
 /// metres (5 × 10¹⁴) with room to spare.
-pub(crate) const FRACTION: u32 = 136;
+pub const FRACTION: u32 = 136;
 
 const LIMBS: usize = 4;
 const WIDE: usize = 2 * LIMBS;
@@ -27,7 +32,7 @@ const WIDE: usize = 2 * LIMBS;
 /// A real number: `x × 2^FRACTION` in 256 bits, two's complement, the
 /// least significant 64 bits first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Real([u64; LIMBS]);
+pub struct Real([u64; LIMBS]);
 
 impl PartialOrd for Real {
     fn partial_cmp(&self, other: &Real) -> Option<Ordering> {
@@ -298,20 +303,20 @@ fn mul_small(x: &[u64; LIMBS], n: u64) -> [u64; WIDE] {
 }
 
 impl Real {
-    pub(crate) fn zero() -> Real {
+    pub fn zero() -> Real {
         Real([0; LIMBS])
     }
 
     /// The smallest positive value, a unit of the last place: what
     /// GeographicLib's `tiny_` stands in for, a value that is not zero
     /// but too small to change any sum.
-    pub(crate) fn tiny() -> Real {
+    pub fn tiny() -> Real {
         Real([1, 0, 0, 0])
     }
 
     /// The smallest value with the sign of `self`, or 0: GeographicLib's
     /// `tiny_ * x` for an `x` below 1.
-    pub(crate) fn tiny_as(&self) -> Real {
+    pub fn tiny_as(&self) -> Real {
         match self.signum() {
             1 => Real::tiny(),
             -1 => Real::tiny().neg(),
@@ -319,16 +324,16 @@ impl Real {
         }
     }
 
-    pub(crate) fn is_negative(&self) -> bool {
+    pub fn is_negative(&self) -> bool {
         at(&self.0, LIMBS - 1) >> 63 == 1
     }
 
-    pub(crate) fn is_zero(&self) -> bool {
+    pub fn is_zero(&self) -> bool {
         self.0 == [0; LIMBS]
     }
 
     /// -1, 0 or 1.
-    pub(crate) fn signum(&self) -> i32 {
+    pub fn signum(&self) -> i32 {
         if self.is_zero() {
             0
         } else if self.is_negative() {
@@ -338,11 +343,11 @@ impl Real {
         }
     }
 
-    pub(crate) fn add(&self, other: &Real) -> Real {
+    pub fn add(&self, other: &Real) -> Real {
         Real(add_limbs(&self.0, &other.0))
     }
 
-    pub(crate) fn neg(&self) -> Real {
+    pub fn neg(&self) -> Real {
         let mut out = [0u64; LIMBS];
         let mut carry = true;
         for (slot, &limb) in out.iter_mut().zip(&self.0) {
@@ -353,11 +358,11 @@ impl Real {
         Real(out)
     }
 
-    pub(crate) fn sub(&self, other: &Real) -> Real {
+    pub fn sub(&self, other: &Real) -> Real {
         self.add(&other.neg())
     }
 
-    pub(crate) fn abs(&self) -> Real {
+    pub fn abs(&self) -> Real {
         if self.is_negative() {
             self.neg()
         } else {
@@ -377,13 +382,13 @@ impl Real {
     }
 
     /// `self × n`.
-    pub(crate) fn times(&self, n: i64) -> Real {
+    pub fn times(&self, n: i64) -> Real {
         let product = narrow(&mul_small(&self.magnitude(), n.unsigned_abs()));
         Real::signed(self.is_negative() != (n < 0), product)
     }
 
     /// `self / n`, cut toward zero; 0 for an `n` of 0.
-    pub(crate) fn div_whole(&self, n: i64) -> Real {
+    pub fn div_whole(&self, n: i64) -> Real {
         if n == 0 {
             return Real::zero();
         }
@@ -391,17 +396,34 @@ impl Real {
         Real::signed(self.is_negative() != (n < 0), narrow(&quotient))
     }
 
+    /// Its sign and its size: whether it is below 0, and `|x| × 2^136` as
+    /// four 64-bit limbs, the least significant first, for the exact
+    /// arithmetic wider than a working value that the great-circle
+    /// predicates do ([`crate::sphere`]).
+    pub fn parts(&self) -> (bool, [u64; LIMBS]) {
+        (self.is_negative(), self.magnitude())
+    }
+
+    /// `x × 2^bits`, cut toward zero, for a value small enough that it
+    /// fits: a unit vector's coordinate at 40 bits, which a box around an
+    /// edge is drawn in ([`crate::sphere`]).
+    pub fn scaled(&self, bits: u32) -> i64 {
+        let size = shr_wide(&wide(&self.magnitude()), FRACTION.saturating_sub(bits));
+        let whole = i64::try_from(at(&size, 0) & (u64::MAX >> 1)).unwrap_or(i64::MAX);
+        if self.is_negative() { -whole } else { whole }
+    }
+
     /// The larger of the two.
-    pub(crate) fn max(self, other: Real) -> Real {
+    pub fn max(self, other: Real) -> Real {
         if other > self { other } else { self }
     }
 
     /// The value rounded to `scale` places by `rounding`, as a `Decimal`'s
     /// mantissa: exact, the binary value being a fraction over a power of
     /// two; `None` past 38 digits.
-    pub(crate) fn rounded(&self, scale: u32, rounding: Rounding) -> Option<i128> {
+    pub fn rounded(&self, scale: u32, rounding: Rounding) -> Option<i128> {
         let mut in_places = wide(&self.magnitude());
-        for _ in 0..scale.min(Decimal::MAX_DIGITS) {
+        for _ in 0..scale.min(MAX_DIGITS) {
             let mut carry: u128 = 0;
             for limb in &mut in_places {
                 let product = u128::from(*limb) * 10 + carry;
@@ -430,7 +452,7 @@ impl Real {
         let magnitude =
             (u128::from(at(&whole, 0)) | (u128::from(at(&whole, 1)) << 64)) + u128::from(step);
         let magnitude = i128::try_from(magnitude).ok()?;
-        if magnitude >= 10i128.pow(Decimal::MAX_DIGITS) {
+        if magnitude >= 10i128.pow(MAX_DIGITS) {
             return None;
         }
         Some(if self.is_negative() {
@@ -444,14 +466,21 @@ impl Real {
 /// The working constants the functions need, worked out once: π, π/2,
 /// and the arctangents of `k/16` that bring an arctangent's argument
 /// below 1/32.
-pub(crate) struct Unit {
+#[derive(Debug)]
+pub struct Unit {
     pi: Real,
     half_pi: Real,
     arctangents: Vec<Real>,
 }
 
+impl Default for Unit {
+    fn default() -> Unit {
+        Unit::new()
+    }
+}
+
 impl Unit {
-    pub(crate) fn new() -> Unit {
+    pub fn new() -> Unit {
         let pi = machin();
         let mut unit = Unit {
             pi,
@@ -462,17 +491,17 @@ impl Unit {
         unit
     }
 
-    pub(crate) fn pi(&self) -> &Real {
+    pub fn pi(&self) -> &Real {
         &self.pi
     }
 
     /// A whole number.
-    pub(crate) fn int(&self, n: i64) -> Real {
+    pub fn int(&self, n: i64) -> Real {
         Real::signed(n < 0, narrow(&shl_wide(&[n.unsigned_abs()], FRACTION)))
     }
 
     /// `numerator / denominator`, cut toward zero.
-    pub(crate) fn ratio(&self, numerator: i64, denominator: i64) -> Real {
+    pub fn ratio(&self, numerator: i64, denominator: i64) -> Real {
         self.int(numerator).div_whole(denominator)
     }
 
@@ -480,9 +509,9 @@ impl Unit {
     /// place: its whole part exactly, its fraction cut toward zero, its
     /// sign kept, so a coordinate and its negation are each other's
     /// negation exactly.
-    pub(crate) fn decimal(&self, value: Decimal) -> Real {
+    pub fn decimal(&self, value: Num) -> Real {
         let size = value.mantissa.unsigned_abs();
-        let power = 10u128.pow(value.scale.min(Decimal::MAX_DIGITS));
+        let power = 10u128.pow(value.scale.min(MAX_DIGITS));
         let (whole, rest) = (size / power, size % power);
         let whole = Real(narrow(&shl_wide(
             &[whole as u64, (whole >> 64) as u64],
@@ -494,7 +523,7 @@ impl Unit {
         Real::signed(value.mantissa < 0, total.0)
     }
 
-    pub(crate) fn mul(&self, a: &Real, b: &Real) -> Real {
+    pub fn mul(&self, a: &Real, b: &Real) -> Real {
         let product = mul_wide(&a.magnitude(), &b.magnitude());
         Real::signed(
             a.is_negative() != b.is_negative(),
@@ -503,7 +532,7 @@ impl Unit {
     }
 
     /// `a / b`; 0 for a `b` of 0, which no caller divides by.
-    pub(crate) fn div(&self, a: &Real, b: &Real) -> Real {
+    pub fn div(&self, a: &Real, b: &Real) -> Real {
         if b.is_zero() {
             return Real::zero();
         }
@@ -511,12 +540,12 @@ impl Unit {
         Real::signed(a.is_negative() != b.is_negative(), narrow(&quotient))
     }
 
-    pub(crate) fn sq(&self, a: &Real) -> Real {
+    pub fn sq(&self, a: &Real) -> Real {
         self.mul(a, a)
     }
 
     /// The square root of `a`, 0 for one below 0.
-    pub(crate) fn sqrt(&self, a: &Real) -> Real {
+    pub fn sqrt(&self, a: &Real) -> Real {
         if a.is_negative() {
             return Real::zero();
         }
@@ -524,7 +553,7 @@ impl Unit {
     }
 
     /// `√(a² + b²)`, from the whole square root of the exact sum.
-    pub(crate) fn hypot(&self, a: &Real, b: &Real) -> Real {
+    pub fn hypot(&self, a: &Real, b: &Real) -> Real {
         let (a, b) = (a.magnitude(), b.magnitude());
         Real(narrow(&isqrt_wide(&add_limbs(
             &mul_wide(&a, &a),
@@ -534,7 +563,7 @@ impl Unit {
 
     /// The cube root of `a`, its sign kept: Newton's method from a power
     /// of two above it, `x ← (2x + a/x²) / 3`, until it stops falling.
-    pub(crate) fn cbrt(&self, a: &Real) -> Real {
+    pub fn cbrt(&self, a: &Real) -> Real {
         let m = a.abs();
         let size = bits(&m.0);
         if size == 0 {
@@ -560,7 +589,7 @@ impl Unit {
 
     /// `(s, c) / √(s² + c²)`: a sine and a cosine from any two values
     /// proportional to them.
-    pub(crate) fn norm(&self, s: &Real, c: &Real) -> (Real, Real) {
+    pub fn norm(&self, s: &Real, c: &Real) -> (Real, Real) {
         let r = self.hypot(s, c);
         (self.div(s, &r), self.div(c, &r))
     }
@@ -568,7 +597,7 @@ impl Unit {
     /// The sine and cosine of `x` radians: `x` brought within π/4 of 0 by
     /// whole quarter turns, then eighthed, Taylor's series to the last
     /// place, and doubled back three times.
-    pub(crate) fn sin_cos(&self, x: &Real) -> (Real, Real) {
+    pub fn sin_cos(&self, x: &Real) -> (Real, Real) {
         if x.is_zero() {
             return (Real::zero(), self.int(1));
         }
@@ -618,6 +647,46 @@ impl Unit {
         }
     }
 
+    /// The sine and cosine of an angle written in degrees, as a
+    /// coordinate is: the angle taken to within 45° of 0 by whole quarter
+    /// turns exactly, on the decimal, before it becomes radians, so a
+    /// multiple of 90° gives exactly 0, 1 or -1, -180 gives what 180 does,
+    /// and `-x` gives `-sin x` and `cos x` exactly. The great-circle
+    /// predicates rely on it: points on one meridian, on the equator or at
+    /// a pole are then exactly where they are ([`crate::sphere`]).
+    pub fn sin_cos_degrees(&self, degrees: Num) -> (Real, Real) {
+        let power = 10i128
+            .checked_pow(degrees.scale.min(MAX_DIGITS))
+            .unwrap_or(1);
+        let quarter = power.saturating_mul(90);
+        let size = degrees.mantissa.unsigned_abs();
+        let quarter_size = quarter.unsigned_abs();
+        // The nearest whole number of quarter turns, a tie away from 0.
+        let turns = (size + quarter_size / 2) / quarter_size;
+        let rest = size as i128 - (turns * quarter_size) as i128;
+        let (rest, turns) = if degrees.mantissa < 0 {
+            (-rest, -(turns as i64))
+        } else {
+            (rest, turns as i64)
+        };
+        let radians = self
+            .mul(
+                &self.decimal(Num {
+                    mantissa: rest,
+                    scale: degrees.scale,
+                }),
+                &self.pi,
+            )
+            .div_whole(180);
+        let (sin, cos) = self.sin_cos(&radians);
+        match turns.rem_euclid(4) {
+            0 => (sin, cos),
+            1 => (cos, sin.neg()),
+            2 => (sin.neg(), cos.neg()),
+            _ => (cos.neg(), sin),
+        }
+    }
+
     /// `atan(t)` for `t` from 0 to 1: the angle halved, `t / (1 + √(1 +
     /// t²))`, until `t` is at most 1/8, then the series, doubled back.
     fn atan(&self, t: &Real) -> Real {
@@ -654,7 +723,7 @@ impl Unit {
     /// of `|x|` and `|y|` over the greater, `t` at most 1, is taken from
     /// the nearest `k/16`: `atan t = atan(k/16) + atan((t - k/16) / (1 +
     /// t k/16))`, the second's argument below 1/32.
-    pub(crate) fn atan2(&self, y: &Real, x: &Real) -> Real {
+    pub fn atan2(&self, y: &Real, x: &Real) -> Real {
         match (y.signum(), x.signum()) {
             (0, 0 | 1) => return Real::zero(),
             (0, _) => return self.pi,
@@ -689,7 +758,7 @@ impl Unit {
     /// sum divided by `divisor`: how GeographicLib writes its series'
     /// coefficients, each polynomial exact in whole numbers over one
     /// divisor.
-    pub(crate) fn polynomial(&self, p: &[i64], x: &Real, divisor: i64) -> Real {
+    pub fn polynomial(&self, p: &[i64], x: &Real, divisor: i64) -> Real {
         let mut sum = Real::zero();
         for &coefficient in p {
             sum = self.mul(&sum, x).add(&self.int(coefficient));
@@ -698,7 +767,7 @@ impl Unit {
     }
 
     /// `p[0] x^N + ... + p[N]`, each `p` a working value.
-    pub(crate) fn horner(&self, p: &[Real], x: &Real) -> Real {
+    pub fn horner(&self, p: &[Real], x: &Real) -> Real {
         let mut sum = Real::zero();
         for coefficient in p {
             sum = self.mul(&sum, x).add(coefficient);
@@ -737,7 +806,14 @@ mod tests {
 
     fn shown(value: &Real, places: u32) -> String {
         let mantissa = value.rounded(places, Rounding::HalfEven).unwrap_or(0);
-        Decimal::new(mantissa, places).to_string()
+        let digits = format!(
+            "{:0>width$}",
+            mantissa.unsigned_abs(),
+            width = places as usize + 1
+        );
+        let (whole, fraction) = digits.split_at(digits.len() - places as usize);
+        let sign = if mantissa < 0 { "-" } else { "" };
+        format!("{sign}{whole}.{fraction}")
     }
 
     #[test]
@@ -780,8 +856,50 @@ mod tests {
             "5.0000000000000000000000000000000000000"
         );
         assert_eq!(
-            shown(&unit.decimal(Decimal::new(-12345, 4)), 37),
+            shown(
+                &unit.decimal(Num {
+                    mantissa: -12345,
+                    scale: 4
+                }),
+                37
+            ),
             "-1.2345000000000000000000000000000000000"
+        );
+    }
+
+    #[test]
+    fn degrees_are_exact_at_quarter_turns_and_symmetric() {
+        let unit = Unit::new();
+        let deg = |text: &str| unit.sin_cos_degrees(Num::parse(text).expect("a number"));
+        let one = unit.int(1);
+        assert_eq!(deg("0"), (Real::zero(), one));
+        assert_eq!(deg("90"), (one, Real::zero()));
+        assert_eq!(deg("-90"), (one.neg(), Real::zero()));
+        assert_eq!(deg("180"), (Real::zero(), one.neg()));
+        assert_eq!(deg("-180"), deg("180"));
+        let (sin, cos) = deg("51.5072");
+        let (sin_neg, cos_neg) = deg("-51.5072");
+        assert_eq!((sin_neg, cos_neg), (sin.neg(), cos));
+        // λ and λ + 180 are exactly opposite.
+        let (s1, c1) = deg("10.25");
+        let (s2, c2) = deg("-169.75");
+        assert_eq!((s2, c2), (s1.neg(), c1.neg()));
+        // sin 30° and cos 60° to 37 places.
+        assert_eq!(
+            shown(&deg("30").0, 37),
+            "0.5000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            shown(&deg("60").1, 37),
+            "0.5000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            shown(&deg("45").0, 37),
+            "0.7071067811865475244008443621048490393"
+        );
+        assert_eq!(
+            shown(&deg("-135").1, 37),
+            "-0.7071067811865475244008443621048490393"
         );
     }
 

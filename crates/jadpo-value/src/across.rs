@@ -11,7 +11,7 @@
 use std::cmp::Ordering;
 
 use jadpo_std::across::{CrossRule, RuleExpr, RuleOp, RulePattern};
-use jadpo_std::standard::across::{Given, Known, Parts};
+use jadpo_std::standard::across::{Given, Known, Parts, Rings};
 
 use crate::{Fault, Record, Value, ops};
 
@@ -166,6 +166,14 @@ impl Parts for Fields<'_> {
             .and_then(|at| self.values.get(at))
             .map_or(Known::Unknown, |value| given(value, standard))
     }
+
+    fn rings(&self, name: &str) -> Known<Rings> {
+        self.names
+            .iter()
+            .position(|listed| *listed == name)
+            .and_then(|at| self.values.get(at))
+            .map_or(Known::Unknown, |value| rings_of(self.ty, name, value))
+    }
 }
 
 impl Parts for Record {
@@ -174,6 +182,51 @@ impl Parts for Record {
         self.get(name)
             .map_or(Known::Unknown, |value| given(value, standard))
     }
+
+    fn rings(&self, name: &str) -> Known<Rings> {
+        self.get(name)
+            .map_or(Known::Unknown, |value| rings_of(&self.ty, name, value))
+    }
+}
+
+/// A polygon's ring part as `rings_valid` reads it (area 20): its points'
+/// latitudes and longitudes, one ring for `outer`, each ring for `holes`;
+/// given with no value for anything else, which counts as broken.
+fn rings_of(ty: &str, name: &str, value: &Value) -> Known<Rings> {
+    let Some(depth) = jadpo_std::standard::across::ring_depth(ty, name) else {
+        return Known::Unknown;
+    };
+    let ring = |value: &Value| -> Option<Vec<(jadpo_std::Num, jadpo_std::Num)>> {
+        value
+            .items()?
+            .iter()
+            .map(|point| {
+                let Value::Record(record) = point else {
+                    return None;
+                };
+                match (record.get("latitude"), record.get("longitude")) {
+                    (Some(Value::Decimal(latitude)), Some(Value::Decimal(longitude))) => Some((
+                        jadpo_std::Num {
+                            mantissa: latitude.mantissa,
+                            scale: latitude.scale,
+                        },
+                        jadpo_std::Num {
+                            mantissa: longitude.mantissa,
+                            scale: longitude.scale,
+                        },
+                    )),
+                    _ => None,
+                }
+            })
+            .collect()
+    };
+    let read = match depth {
+        1 => ring(value).map(|one| vec![one]),
+        _ => value
+            .items()
+            .and_then(|rings| rings.iter().map(ring).collect::<Option<Vec<_>>>()),
+    };
+    Known::Given(read)
 }
 
 /// What a standard rule reads of a part's value: `none` absent, and every

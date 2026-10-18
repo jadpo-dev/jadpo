@@ -188,6 +188,17 @@ fn polygon(json: &serde_json::Value, at: &[String]) -> Result<Value, Unreadable>
         }
         rings.push(wound(points, n == 0));
     }
+    // Valid on the sphere (area 20, "Polygons are valid when built"), or
+    // refused at the first ring that isn't.
+    let positions: Vec<Vec<jadpo_std::sphere::Position>> = rings
+        .iter()
+        .map(|ring| ring.iter().filter_map(position_num).collect())
+        .collect();
+    if let Some((outer, holes)) = positions.split_first()
+        && let Some(broken) = jadpo_std::sphere::rings_broken(outer, holes)
+    {
+        return refused(&step(at, broken), "format");
+    }
     let outer = rings.remove(0);
     Ok(Value::record(
         POLYGON,
@@ -289,6 +300,20 @@ fn axes(point: &Value) -> Option<(Decimal, Decimal)> {
             Some((*latitude, *longitude))
         }
         _ => None,
+    }
+}
+
+/// A point's latitude and longitude as the sphere's geometry reads them.
+fn position_num(point: &Value) -> Option<jadpo_std::sphere::Position> {
+    let (latitude, longitude) = axes(point)?;
+    Some((num(latitude), num(longitude)))
+}
+
+/// A decimal as an exact number.
+fn num(value: Decimal) -> jadpo_std::Num {
+    jadpo_std::Num {
+        mantissa: value.mantissa,
+        scale: value.scale,
     }
 }
 
