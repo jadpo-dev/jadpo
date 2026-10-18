@@ -44,8 +44,8 @@ function basket_from(page: ShopLink, basket: UrlPath) -> ShopLink {
 }
 
 /// Whether a caller is on the office's network.
-function from_office(office: Cidr, caller: CallerAddress) -> YesNo {
-    return YesNo(web.cidr_contains(office, caller))
+function from_office(office_network: Cidr, caller: CallerAddress) -> YesNo {
+    return YesNo(web.cidr_contains(office_network, caller))
 }
 
 /// The domain a seller typed for their shop.
