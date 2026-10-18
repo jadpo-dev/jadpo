@@ -333,6 +333,24 @@ impl fmt::Display for Money {
     }
 }
 
+/// A physical quantity, `DataSize` or `Bitrate` (area 19, "Physical
+/// quantities"): its kind and its amount in the kind's SI base unit, a
+/// mantissa at the kind's scale, so `1km` and `1000metre` are the same
+/// value. Only quantities of one kind are ordered by `<`; the canonical
+/// order puts the kind first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Quantity {
+    pub kind: jadpo_std::QuantityKind,
+    pub amount: i128,
+}
+
+impl Quantity {
+    /// The amount in the base unit as a decimal at the kind's scale.
+    pub fn decimal(self) -> Decimal {
+        Decimal::new(self.amount, self.kind.scale())
+    }
+}
+
 /// A runtime value. Named types are erased to what they are built on: a
 /// value has already been checked against its type's rules when it was
 /// built. A nullable value is the value itself or [`Value::None`].
@@ -358,6 +376,8 @@ pub enum Value {
     Duration(i64),
     /// An amount of money in a currency (area 19).
     Money(Money),
+    /// A physical quantity in its kind's base unit (area 19).
+    Quantity(Quantity),
     List(Rc<[Value]>),
     /// Kept in the canonical order without repeats, so equality is set
     /// equality.
@@ -442,6 +462,10 @@ impl Value {
             Constant::Instant(millis) => Value::Instant(*millis),
             Constant::Date(day) => Value::Date(*day),
             Constant::Duration(millis) => Value::Duration(*millis),
+            Constant::Quantity { kind, amount } => Value::Quantity(Quantity {
+                kind: *kind,
+                amount: *amount,
+            }),
             Constant::Variant {
                 ty,
                 ordinal,
@@ -498,6 +522,11 @@ impl fmt::Display for Value {
                 jadpo_std::CURRENCY,
                 jadpo_std::money::variant(money.currency).unwrap_or("?")
             ),
+            // As code writes one: its base unit's suffix (area 19).
+            Value::Quantity(quantity) => f.write_str(&jadpo_std::quantity::written(
+                quantity.kind,
+                quantity.amount,
+            )),
             Value::List(items) | Value::Set(items) => {
                 f.write_str("[")?;
                 for (i, item) in items.iter().enumerate() {

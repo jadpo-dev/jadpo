@@ -975,6 +975,19 @@ impl Decls<'_> {
                         None => problem.next(format!("Give `{key}` {expected}")),
                     });
                 }
+                Err(Problem::UnitRequired) => {
+                    if let Subject::Prim(Prim::Quantity(kind)) = subject {
+                        let written = value_node
+                            .as_ref()
+                            .map_or_else(String::new, |node| crate::tree::written(node.syntax()));
+                        self.out.push(super::literal::unit_required(
+                            kind,
+                            &written,
+                            &format!("{key}:"),
+                            value_span,
+                        ));
+                    }
+                }
                 Err(Problem::Pattern(why)) => {
                     self.out.push(
                         Diagnostic::new(

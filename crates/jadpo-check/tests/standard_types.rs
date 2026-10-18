@@ -179,11 +179,15 @@ fn every_standard_type_meets_the_contract_in_the_checker() {
         }
         // `text.parse`: the type, failing `malformed`, and by the rules
         // its examples' settings give it.
-        let others = if entry.examples.settings.is_empty() {
-            ""
+        let mut others = if entry.examples.settings.is_empty() {
+            String::new()
         } else {
-            "\n        invalid: Unreadable"
+            "\n        invalid: Unreadable".to_string()
         };
+        // A quantity's text may have a unit of another kind (area 19).
+        if matches!(entry.holds, Holds::Builtin(Builtin::Quantity(_))) {
+            others.push_str("\n        unknown_unit: Unreadable");
+        }
         assert_eq!(
             check(&format!(
                 "{declared}function f(raw: Wire) fails Unreadable -> {value} {{\n    var read: {value} = attempt text.parse(raw, as: {value}) {{\n        malformed: Unreadable{others}\n    }}\n    return read\n}}\n"

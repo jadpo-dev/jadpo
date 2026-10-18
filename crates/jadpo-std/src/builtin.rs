@@ -2,6 +2,8 @@
 //! what they are made of, so the compiler and the runtime both know them
 //! from here.
 
+use crate::QuantityKind;
+
 /// A built-in type.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Builtin {
@@ -24,6 +26,11 @@ pub enum Builtin {
     /// whole number of its currency's minor units (pence, cents) and its
     /// `Currency`, never a decimal of pounds.
     Money,
+    /// A physical quantity, `DataSize` or `Bitrate` (area 19, "Physical
+    /// quantities", question 17): an exact number in its kind's SI base
+    /// unit at the kind's scale, its unit chosen only where it is made or
+    /// shown.
+    Quantity(crate::QuantityKind),
     Unit,
     /// The opaque cursor a page of results gives for the next one (area
     /// 6, "Order and pages"): text to the program, read only by the query
@@ -85,7 +92,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
 };
 
 impl Builtin {
-    pub const ALL: [Builtin; 24] = [
+    pub const ALL: [Builtin; 43] = [
         Builtin::Bool,
         Builtin::Int,
         Builtin::Decimal,
@@ -100,6 +107,25 @@ impl Builtin {
         Builtin::ZonedTime,
         Builtin::Duration,
         Builtin::Money,
+        Builtin::Quantity(QuantityKind::Length),
+        Builtin::Quantity(QuantityKind::Area),
+        Builtin::Quantity(QuantityKind::Volume),
+        Builtin::Quantity(QuantityKind::Angle),
+        Builtin::Quantity(QuantityKind::Mass),
+        Builtin::Quantity(QuantityKind::Pressure),
+        Builtin::Quantity(QuantityKind::Energy),
+        Builtin::Quantity(QuantityKind::Power),
+        Builtin::Quantity(QuantityKind::Temperature),
+        Builtin::Quantity(QuantityKind::TemperatureDifference),
+        Builtin::Quantity(QuantityKind::Speed),
+        Builtin::Quantity(QuantityKind::Frequency),
+        Builtin::Quantity(QuantityKind::Voltage),
+        Builtin::Quantity(QuantityKind::Current),
+        Builtin::Quantity(QuantityKind::Illuminance),
+        Builtin::Quantity(QuantityKind::SoundLevel),
+        Builtin::Quantity(QuantityKind::Concentration),
+        Builtin::Quantity(QuantityKind::DataSize),
+        Builtin::Quantity(QuantityKind::Bitrate),
         Builtin::Unit,
         Builtin::PageCursor,
         Builtin::PageSize,
@@ -128,6 +154,7 @@ impl Builtin {
             Builtin::ZonedTime => "ZonedTime",
             Builtin::Duration => "Duration",
             Builtin::Money => "Money",
+            Builtin::Quantity(kind) => kind.name(),
             Builtin::Unit => "Unit",
             Builtin::PageCursor => "PageCursor",
             Builtin::PageSize => "PageSize",

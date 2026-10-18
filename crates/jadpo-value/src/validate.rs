@@ -154,6 +154,9 @@ impl Validator {
                     millis: i128::from(*millis),
                 }),
                 Value::Money(money) => rules.check_money(money.minor, money.currency),
+                // A quantity type's bounds are held in its base unit at its
+                // kind's scale, as the value is (area 19).
+                Value::Quantity(quantity) => rules.check_quantity(quantity.kind, quantity.amount),
                 _ => Ok(()),
             }
             .map_err(Invalid::Broken)?;

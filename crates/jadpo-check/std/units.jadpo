@@ -1,0 +1,30 @@
+// The `units` namespace (area 19, "Physical quantities", question 17).
+// Each operation is listed, typed, in `jadpo-std`'s operation table, which
+// names the Rust function in `jadpo-value` that runs it; a test holds
+// these stubs to that table.
+//
+// A quantity is held in its kind's SI base unit at the kind's scale, so a
+// unit exists only where a value is made or shown. `Quantity` is any
+// kind, fixed at each call by the value or by the unit given, and
+// `QuantityUnit` a variant of one kind's unit enum (`LengthUnit.mile`).
+// `+`, `-`, comparisons and the products and quotients of two kinds are
+// the standard operator table's; these operations say what no operator
+// says. `in` is a keyword, so its declaration takes a trailing `_`, and a
+// call writes `units.in`.
+
+public library units {
+    /// `value` in `unit`, a unit of its kind, as a `Decimal` of `scale`
+    /// places rounded by `rounding`: `units.in(5km, LengthUnit.mile, scale:
+    /// 2, rounding: Rounding.half_even)` is `3.11`.
+    function in_(value: Quantity, unit: QuantityUnit, scale: Int, rounding: Rounding) -> Decimal {}
+
+    /// `value` of `unit`, an `Int` or a `Decimal`, as the quantity of
+    /// `unit`'s kind, converted exactly to the base unit and rounded half to
+    /// even to the kind's scale: `units.of(5, LengthUnit.mile)`.
+    function of(value: Number, unit: QuantityUnit) -> Quantity {}
+
+    /// The items added up, all of one kind; nothing for no items. A
+    /// `Temperature` or a `SoundLevel` doesn't add to itself, so neither is
+    /// summed.
+    function sum(items: List<Quantity>) -> Quantity {}
+}

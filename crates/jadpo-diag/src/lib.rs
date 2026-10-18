@@ -1016,6 +1016,10 @@ rules! {
         "02-values-and-types.html#type-type-argument-count", "Type has the wrong number of type arguments";
     TYPE_UNARY_OPERAND: "type.unary_operand", area 3, Error, Agent,
         "03-logic.html#type-unary-operand", "Operator cannot be used with this value";
+    TYPE_UNIT_REQUIRED: "type.unit_required", area 19, Error, Agent,
+        "19-standard-library.html#type-unit-required", "Number is given where a quantity needs a unit";
+    TYPE_UNIT_UNKNOWN: "type.unit_unknown", area 19, Error, Agent,
+        "19-standard-library.html#type-unit-unknown", "Number is written with a suffix that is no unit";
     TYPE_UNKNOWN_ENUM_VARIANT: "type.unknown_enum_variant", area 2, Error, Agent,
         "02-values-and-types.html#type-unknown-enum-variant", "Enum has no such variant";
     TYPE_UNKNOWN_FIELD: "type.unknown_field", area 2, Error, Agent,

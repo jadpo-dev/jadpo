@@ -101,6 +101,7 @@ pub fn add(a: &Value, b: &Value) -> Result<Value, Fault> {
         }
         (a, b) if crate::calendar::is_period(a) => crate::calendar::combine(a, b, false),
         (Value::Money(x), Value::Money(y)) => crate::money::add(*x, *y).map(Value::Money),
+        (Value::Quantity(_), _) | (_, Value::Quantity(_)) => crate::units::add(a, b),
         _ => {
             let (x, y) = decimals(a, b).ok_or(Fault::Shape)?;
             decimal_result(x.checked_add(y))
@@ -122,6 +123,7 @@ pub fn subtract(a: &Value, b: &Value) -> Result<Value, Fault> {
         }
         (a, b) if crate::calendar::is_period(a) => crate::calendar::combine(a, b, true),
         (Value::Money(x), Value::Money(y)) => crate::money::subtract(*x, *y).map(Value::Money),
+        (Value::Quantity(_), _) | (_, Value::Quantity(_)) => crate::units::subtract(a, b),
         _ => {
             let (x, y) = decimals(a, b).ok_or(Fault::Shape)?;
             decimal_result(x.checked_sub(y))
@@ -152,6 +154,7 @@ pub fn multiply_rounded(
         (Value::Money(amount), factor) => {
             crate::money::multiply(*amount, factor, rounding).map(Value::Money)
         }
+        (Value::Quantity(_), _) | (_, Value::Quantity(_)) => crate::units::multiply(a, b),
         (Value::Int(x), Value::Int(y)) => int_multiply(*x, *y).map(Value::Int),
         // A period's parts each multiplied (area 19).
         (period, Value::Int(n)) if crate::calendar::is_period(period) => {
@@ -177,6 +180,7 @@ pub fn divide_rounded(a: &Value, b: &Value, rounding: jadpo_std::Rounding) -> Re
         (Value::Money(amount), rate) => {
             crate::money::divide(*amount, rate, rounding).map(Value::Money)
         }
+        (Value::Quantity(_), _) | (_, Value::Quantity(_)) => crate::units::divide(a, b),
         (Value::Int(x), Value::Int(y)) => int_divide(*x, *y).map(Value::Int),
         _ => {
             let (x, y) = decimals(a, b).ok_or(Fault::Shape)?;
@@ -230,6 +234,7 @@ pub fn order(a: &Value, b: &Value) -> Result<Ordering, Fault> {
 pub fn compare(a: &Value, b: &Value) -> Option<Ordering> {
     match (a, b) {
         (Value::Money(x), Value::Money(y)) => crate::money::compare(*x, *y).ok(),
+        (Value::Quantity(x), Value::Quantity(y)) => crate::units::compare(*x, *y),
         (Value::Int(x), Value::Int(y)) => Some(x.cmp(y)),
         (Value::Instant(x), Value::Instant(y)) | (Value::Duration(x), Value::Duration(y)) => {
             Some(x.cmp(y))

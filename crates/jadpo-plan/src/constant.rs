@@ -38,6 +38,27 @@ pub fn literal(
         Literal::Duration(written) => Dur::parse(written)
             .and_then(|dur| i64::try_from(dur.millis).ok())
             .map(Constant::Duration),
+        Literal::Quantity(written) => {
+            jadpo_std::quantity::parse_literal(written)
+                .ok()
+                .map(|(unit, amount)| Constant::Quantity {
+                    kind: unit.kind,
+                    amount,
+                })
+        }
+        // Only the zero `units.sum` is given for no items, which the
+        // checker fills: a written number never stands for a quantity
+        // (area 19, `type.unit_required`).
+        Literal::Number { value, .. } if matches!(builtin, Some(Builtin::Quantity(_))) => {
+            let Some(Builtin::Quantity(kind)) = builtin else {
+                return None;
+            };
+            let kept = value.at_scale(kind.scale())?;
+            Some(Constant::Quantity {
+                kind,
+                amount: kept.mantissa,
+            })
+        }
         Literal::Number { value, decimal } => {
             let decimal = match builtin {
                 Some(builtin) => builtin.representation() == Builtin::Decimal,

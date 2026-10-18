@@ -821,6 +821,14 @@ pub trait TypeView {
         if stub && name == "Number" && args.is_empty() {
             return Ty::Number;
         }
+        // A quantity of any kind and a unit of one (area 19): fixed at each
+        // call by the value or the unit given.
+        if stub
+            && args.is_empty()
+            && (name == crate::std_lib::QUANTITY || name == crate::std_lib::QUANTITY_UNIT)
+        {
+            return Ty::Var(name.to_string());
+        }
         // `Function<T, U>` takes one parameter, `Function<K, V, U>` two
         // (area 19): the last type is the result.
         if stub && name == "Function" && (2..=3).contains(&args.len()) {

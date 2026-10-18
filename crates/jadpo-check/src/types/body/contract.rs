@@ -304,6 +304,10 @@ impl Body<'_> {
         if base != Some(Ty::Prim(Prim::Text)) {
             rules.push(RuleKey::Malformed.word().to_string());
         }
+        // A number and a unit of another kind (area 19).
+        if matches!(base, Some(Ty::Prim(Prim::Quantity(_)))) {
+            rules.push(RuleKey::UnknownUnit.word().to_string());
+        }
         if let Some(base) = base {
             rules.extend(self.verdict(raw, &base, target).breakable);
         }
@@ -334,6 +338,12 @@ impl Body<'_> {
             RuleKey::Malformed.word().to_string(),
         )];
         if let Some(target) = self.facts.parsed.get(&node_key(call.syntax())) {
+            if matches!(self.table.representation(target), Some(Prim::Quantity(_))) {
+                rules.push((
+                    RuleKey::UnknownUnit.word(),
+                    RuleKey::UnknownUnit.word().to_string(),
+                ));
+            }
             rules.extend(self.rules_of(target));
         }
         rules
@@ -448,6 +458,17 @@ fn option_unused(option: &str, entry: Option<&StandardType>, shown: &Ty) -> (Str
                 ),
             )
         }
+        "unit" => (
+            format!("`{shown}` isn't a quantity"),
+            format!(
+                "`unit:` says which unit a physical quantity is shown in; `{shown}` is a {}, which `text.format` shows in its own words, with no unit to choose.",
+                if entry.is_some() {
+                    format!("`{kind}`")
+                } else {
+                    kind.to_string()
+                }
+            ),
+        ),
         _ => (
             format!("`{shown}` isn't a time"),
             format!(

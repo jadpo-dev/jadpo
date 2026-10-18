@@ -22,7 +22,7 @@ use crate::types::{BASES, Prim, TypeRef, container_arity};
 const NAMES: &str = include_str!("../std/names.txt");
 
 /// The stub files, by name.
-const STUBS: [(&str, &str); 15] = [
+const STUBS: [(&str, &str); 16] = [
     ("types.jadpo", include_str!("../std/types.jadpo")),
     ("standard.jadpo", include_str!("../std/standard.jadpo")),
     ("text.jadpo", include_str!("../std/text.jadpo")),
@@ -38,10 +38,19 @@ const STUBS: [(&str, &str); 15] = [
     ("encoding.jadpo", include_str!("../std/encoding.jadpo")),
     ("hash.jadpo", include_str!("../std/hash.jadpo")),
     ("json.jadpo", include_str!("../std/json.jadpo")),
+    ("units.jadpo", include_str!("../std/units.jadpo")),
 ];
 
 /// The standard types' stub file (area 19).
 const STANDARD_STUB: &str = "standard.jadpo";
+
+/// A quantity of any kind, as a stub writes one: fixed at each call by the
+/// argument or by the unit given (area 19, "Physical quantities").
+pub const QUANTITY: &str = "Quantity";
+
+/// A unit of a quantity, as a stub writes one: a variant of one kind's
+/// unit enum, which fixes the call's kind.
+pub const QUANTITY_UNIT: &str = "QuantityUnit";
 
 /// A stub operation's signature as kinds (see [`StdNames::signatures`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -86,6 +95,10 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
             jadpo_std::standard_type(other).map(|entry| Kind::Std(entry.name))
         }
         (crate::types::TIME_FORMAT, 0) => Some(Kind::Format),
+        // A quantity of any kind and a unit of one (area 19); only in
+        // stubs.
+        (QUANTITY, 0) => Some(Kind::Quantity),
+        (QUANTITY_UNIT, 0) => Some(Kind::QuantityUnit),
         // A type written out, `as: Email` (area 19); only in stubs.
         ("Type", 0) => Some(Kind::Type),
         (other, 0) => Builtin::from_name(other).map(Kind::Builtin).or_else(|| {
@@ -254,9 +267,20 @@ impl StdNames {
                     };
                     let operations = self.declared.entry(namespace).or_default();
                     for function in tree::library_functions(&library) {
-                        let Some(name) = function.name().as_ref().and_then(tree::name_text) else {
+                        let Some(mut name) = function.name().as_ref().and_then(tree::name_text)
+                        else {
                             continue;
                         };
+                        // A keyword takes a trailing `_` where it is
+                        // declared (`function in_`), as a reserved word does
+                        // as an enum's variant (area 19, question 22); a
+                        // call writes it after `.`, `units.in`, where any
+                        // word is a name.
+                        if let Some(stem) = name.strip_suffix('_')
+                            && jadpo_syntax::SyntaxKind::from_keyword(stem).is_some()
+                        {
+                            name = stem.to_string();
+                        }
                         let params = function
                             .param_list()
                             .into_iter()

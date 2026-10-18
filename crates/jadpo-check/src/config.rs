@@ -623,6 +623,9 @@ impl Reader<'_> {
                     "`{name}` is `{ty}`, and this is a different kind of value; the {word} must be a literal of the setting's own type."
                 ))
                 .next(format!("Write a `{ty}` value after `{word}:`")),
+                Problem::UnitRequired(kind) => {
+                    literal::unit_required(kind, &shown, &ty.to_string(), at)
+                }
                 Problem::Builtin(why) => Diagnostic::new(
                     &rule::CONFIGURATION_DEFAULT_INVALID,
                     format!("`{shown}` isn't a valid `{ty}`"),

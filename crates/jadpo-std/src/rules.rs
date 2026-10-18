@@ -76,13 +76,17 @@ pub enum RuleKey {
     /// A JSON document `json.read` decodes isn't the type `as:` names: a
     /// field missing, unknown or breaking a rule (area 19, "Data formats").
     Mismatch,
+    /// Text `text.parse` reads as a physical quantity has a number and a
+    /// unit, but the unit isn't one of the quantity's kind (area 19,
+    /// "Physical quantities"): `5 kg` read as a `Length`.
+    UnknownUnit,
 }
 
 impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 16] = [
+    pub const ALL: [RuleKey; 17] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -99,6 +103,7 @@ impl RuleKey {
         RuleKey::CurrencyMismatch,
         RuleKey::TooManyPlaces,
         RuleKey::Mismatch,
+        RuleKey::UnknownUnit,
     ];
 
     /// The key as written: `max`, `min_length`.
@@ -120,6 +125,7 @@ impl RuleKey {
             RuleKey::CurrencyMismatch => "currency_mismatch",
             RuleKey::TooManyPlaces => "too_many_places",
             RuleKey::Mismatch => "mismatch",
+            RuleKey::UnknownUnit => "unknown_unit",
         }
     }
 
@@ -219,6 +225,43 @@ impl Rules {
             );
         }
         self.check_number(Num::whole(i128::from(minor)))
+    }
+
+    /// A physical quantity of `kind` against `min` and `max`, both held in
+    /// its base unit at its scale as the value is (area 19), and written
+    /// as code writes a quantity, `min: 1metre`.
+    pub fn check_quantity(&self, kind: crate::QuantityKind, amount: i128) -> Result<(), Broken> {
+        let value = Num {
+            mantissa: amount,
+            scale: kind.scale(),
+        };
+        let shown = |bound: Num| {
+            bound.at_scale(kind.scale()).map_or_else(
+                || bound.to_string(),
+                |at| crate::quantity::written(kind, at.mantissa),
+            )
+        };
+        if let Some(min) = self.min
+            && value.compare(min) == Ordering::Less
+        {
+            let min = shown(min);
+            return broken(
+                RuleKey::Min,
+                format!("min: {min}"),
+                format!("is below {min}"),
+            );
+        }
+        if let Some(max) = self.max
+            && value.compare(max) == Ordering::Greater
+        {
+            let max = shown(max);
+            return broken(
+                RuleKey::Max,
+                format!("max: {max}"),
+                format!("is above {max}"),
+            );
+        }
+        Ok(())
     }
 
     /// A length against `min_length` and `max_length`; `unit` names what
