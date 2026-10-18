@@ -3473,8 +3473,8 @@ test "they are shown as they are printed" {
 > `UkNationalInsuranceNumber`, `UsSsn`, `UsEin` and `NhsNumber`, each a
 > pattern and, where the table above names one, a validator; the UK
 > modulus check, which needs a sort code and an account number together,
-> comes with `BankAccount` in chunk 5.5i2, with the money group's records
-> and the identity documents. What the page left open is "Chosen in chunk
+> comes with `BankAccount` in chunk 5.5i3, with the money group's records.
+> The identity documents are chunk 5.5i2's. What the page left open is "Chosen in chunk
 > 5.5i", under "Review".
 
 A shop sends parcels abroad and prints each label for the person who
@@ -6199,10 +6199,13 @@ first; each group of types then arrives with its baseline and its extras.
   identity numbers that are text, each a pattern or check digit (mod-97,
   Luhn, mod-11) on the contract. Built; split on 2026-10-18, the rest is
   5.5i2.
-- **5.5i2 Payment records and identity documents** `opus · high`, after
-  5.5j and 5.5l: the money group's records (`Price`, `TaxRate`,
-  `Discount`, `MaskedCardNumber`, `BankAccount` with the UK modulus check,
-  and the rest) and the identity documents on `Country`.
+- **5.5i2 Cards and identity documents** `opus · high`, after 5.5l:
+  `CardBrand`, `MaskedCardNumber`, `CardExpiry` and the identity
+  documents on `Country`. Split on 2026-10-18, the rest is 5.5i3.
+- **5.5i3 Prices, discounts and bank accounts** `opus · high`: the money
+  group's records (`Price`, `UnitPrice`, `TaxRate`, `Discount`,
+  `BasisPoints`, `InterestRate`) and `BankAccount` with the UK modulus
+  check.
 - **5.5j Quantities** `opus · high`: the 17 physical quantities with
   `DataSize` and `Bitrate`, their units, SI storage at each kind's
   scale, suffixed literals, the product and quotient table,
