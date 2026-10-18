@@ -1,0 +1,32 @@
+// The `geo` namespace (area 20, "Operations"). Each operation is listed,
+// typed, in `jadpo-std`'s operation table, which names the Rust function
+// in `jadpo-value` that runs it; a test holds these stubs to that table.
+//
+// The measures are on the WGS84 ellipsoid by C. F. F. Karney's geodesic
+// methods, as PostGIS's `geography` measures, in Jadpo's own fixed-point
+// code, so every target gives the same digits; altitude is ignored. A
+// shape's parameter, `T`, takes only the geometries the operation names:
+// `length` a `LineString` or a `MultiLineString`, `area` a `Polygon` or a
+// `MultiPolygon`. The other operations area 20 lists are named in
+// `names.txt` until their chunks build them.
+
+public library geo {
+    /// A `Polygon`'s or `MultiPolygon`'s area on the ellipsoid, each edge a
+    /// geodesic and each ring the smaller of the two sides it bounds, holes
+    /// taken away, rounded half to even to the square millimetre.
+    function area(shape: T) -> Area {}
+
+    /// The direction the geodesic leaves `from` in, in degrees clockwise
+    /// from true north, at least 0 and below 360, to 9 places. Two equal
+    /// points have none: the call fails with `same_point`, which its
+    /// `attempt` maps.
+    function bearing(from: Point, to: Point) -> Bearing {}
+
+    /// The geodesic distance between two points on the ellipsoid, rounded
+    /// half to even to the micrometre.
+    function distance(from: Point, to: Point) -> Length {}
+
+    /// A `LineString`'s or `MultiLineString`'s length: each edge measured
+    /// as `distance` measures it, and summed.
+    function length(line: T) -> Length {}
+}

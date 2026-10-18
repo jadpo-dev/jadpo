@@ -110,6 +110,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
     rate_to: None,
     dimensions: None,
     standard: None,
+    double: false,
 };
 
 impl Builtin {

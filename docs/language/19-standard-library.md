@@ -6671,7 +6671,7 @@ area page to specify:
 | Types | `Point { latitude, longitude }`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon` and `Geometry` (the standard types), in WGS84; named fields, never a pair |
 | Wire | GeoJSON, whose `[longitude, latitude]` order exists only inside the conversion |
 | Construction | `geo.from_geojson(text)`, `geo.from_lng_lat(numbers)`, `geo.from_lat_lng(numbers)`, each failing `malformed` or `out_of_range`; a polygon's ring closed and valid |
-| Operations | `geo.intersects`, `geo.contains`, `geo.within`, `geo.distance` (metres, on the sphere, using the `Decimal` maths here) |
+| Operations | `geo.intersects`, `geo.contains`, `geo.within`, `geo.distance` (metres, on the WGS84 ellipsoid by Karney's method, in Jadpo's own whole-number code; amended by area 20, question 3) |
 | Storage | PostGIS `geography` columns |
 | Queries | `within`, `intersects` and `distance` as query conditions and order, with GiST indexes (area 5) |
 | Left out | Projections other than WGS84, routing, geocoding (provider packages) |
@@ -6680,8 +6680,9 @@ area page to specify:
 > each with its construction, GeoJSON on the wire and a form for people,
 > and `type.standard_exists`' shape for `Point`, as "Chosen in chunk 5.5s"
 > records. The `geo.` operations, PostGIS storage and the query conditions
-> are this area's; storing a geometry is `toolchain.not_built_yet` until
-> then.
+> are [area 20](20-geospatial.md)'s; storing a geometry is
+> `toolchain.not_built_yet` until then. Chunk 5.5u2 built area 20's
+> measures, `geo.distance`, `length`, `bearing` and `area`.
 
 ## AI: a future area
 
@@ -7645,7 +7646,7 @@ check failed: 1 error, 1 file
 | `random` | Decided 2026-10-17 (question 19); built in 5.5q, actions only, seeded per test, replayed from a recording; `crypto`'s 8 operations that need no keys held as data built in 5.5q2, with `key:` as a place the compiler owns |
 | The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
 | SQL forms | Decided; built with computed backfills (chunk 5.6) |
-| Geospatial, AI | Decided as future areas, planned in 5.5u and 5.5v; the geospatial types' baseline built in 5.5s, the AI types' in 5.5s2 |
+| Geospatial, AI | Decided as future areas, planned in 5.5u ([area 20](20-geospatial.md)) and 5.5v; the geospatial types' baseline built in 5.5s, area 20's measures in 5.5u2, the AI types' in 5.5s2 |
 
 ### Consistency with the rest of the language
 
@@ -10066,8 +10067,12 @@ conservative reading:
   5.5s2.
 - **`Point`** is a `latitude`, a `longitude` and an `altitude` that may be
   `none`. The first two are the standard `Latitude` and `Longitude`, each
-  a `Decimal` held as written, with no `scale:`, as a `Rating`'s parts
-  are: from -90 to 90 and from -180 to 180, both ends included, so -180
+  a `Decimal` with no `scale:`, held as the shortest decimal of the
+  nearest IEEE double since chunk 5.5u2 (area 20, question 2, which
+  amended "held as written": `51.50720000001234567` is kept as
+  `51.50720000001235`, as PostGIS would store it, and every coordinate
+  of up to 15 significant digits is unchanged): from -90 to 90 and from
+  -180 to 180, both ends included, so -180
   and 180 are both the antimeridian, as RFC 7946 takes them. The altitude
   is a `Length` of either sign, the height above the WGS84 ellipsoid that
   RFC 7946's third coordinate is.

@@ -73,6 +73,9 @@ pub enum Kind {
     /// kind's unit enum (`LengthUnit.kilometre`), which fixes the call's
     /// quantity kind.
     QuantityUnit,
+    /// One of these standard geometry types (area 20), `T` in its stub:
+    /// `geo.length`'s line is a `LineString` or a `MultiLineString`.
+    Shapes(&'static [&'static str]),
 }
 
 /// One parameter: its name, which a call may give it by (area 3), and its
@@ -210,6 +213,10 @@ pub enum Op {
     EncodingToHex,
     EncodingToUrlComponent,
     EncodingToUtf8,
+    GeoArea,
+    GeoBearing,
+    GeoDistance,
+    GeoLength,
     HashSha256,
     IntegerAbs,
     IntegerDivide,
@@ -829,6 +836,37 @@ const fn units(
 }
 const CURRENCY: Kind = Kind::Enum(crate::CURRENCY);
 
+/// A `geo` measure (area 20, "Operations"), each one function in
+/// `jadpo-value`'s `geo` module, by Karney's geodesics on the WGS84
+/// ellipsoid in Jadpo's own fixed-point code.
+const fn geo(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace: "geo",
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: &[],
+        rust,
+    }
+}
+
+const POINT_VALUE: Kind = Kind::Std(crate::standard::geo::POINT);
+const LENGTH_VALUE: Kind = Kind::Builtin(Builtin::Quantity(crate::QuantityKind::Length));
+
+/// Two equal points, which have no direction between them (area 20).
+const ON_SAME_POINT: Condition = Condition {
+    key: RuleKey::SamePoint,
+    option: None,
+};
+
 /// A `web` operation (area 19, "Web and software", chunk 5.5n), each one
 /// function in `jadpo-value`'s `web` module over `jadpo_std::standard::web`.
 const fn web(
@@ -1391,6 +1429,52 @@ pub const OPERATIONS: &[Operation] = &[
         BYTES_VALUE,
         false,
         "encoding::to_utf8",
+    ),
+    // The geospatial measures (area 20, "Operations"): distance and
+    // bearing between points only (question 10); a line's length is its
+    // edges' distances summed, and an area takes its holes away.
+    geo(
+        Op::GeoArea,
+        "area",
+        &[param(
+            "shape",
+            Kind::Shapes(&[
+                crate::standard::geo::POLYGON,
+                crate::standard::geo::MULTI_POLYGON,
+            ]),
+        )],
+        Kind::Builtin(Builtin::Quantity(crate::QuantityKind::Area)),
+        "geo::area",
+    ),
+    Operation {
+        conditions: &[ON_SAME_POINT],
+        ..geo(
+            Op::GeoBearing,
+            "bearing",
+            &[param("from", POINT_VALUE), param("to", POINT_VALUE)],
+            Kind::Std(crate::standard::geo::BEARING),
+            "geo::bearing",
+        )
+    },
+    geo(
+        Op::GeoDistance,
+        "distance",
+        &[param("from", POINT_VALUE), param("to", POINT_VALUE)],
+        LENGTH_VALUE,
+        "geo::distance",
+    ),
+    geo(
+        Op::GeoLength,
+        "length",
+        &[param(
+            "line",
+            Kind::Shapes(&[
+                crate::standard::geo::LINE_STRING,
+                crate::standard::geo::MULTI_LINE_STRING,
+            ]),
+        )],
+        LENGTH_VALUE,
+        "geo::length",
     ),
     // SHA-256 (area 19, "Hashing and cryptography", question 24): a
     // digest is `Bytes`, written as text by `encoding`.
