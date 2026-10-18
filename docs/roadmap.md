@@ -1026,13 +1026,22 @@ reference only).
   token verify against the RFCs' vectors, the attack suite refuses each
   attack under both, and a token's custom claims decode as a declared
   type or fail `mismatch`.
-- [ ] **5.5r3 Security records** `opus · high` (area 19, "The standard
+- [x] **5.5r3 Security records** `opus · high` (area 19, "The standard
   types"; split from 5.5r), after 5.5r2: `Hash`, `Hmac`, `Certificate`,
   `OneTimeCode`, `PasswordPolicy`, `WebAuthnCredential` (shaped to what
   `webauthn-rs` stores, for 5.5z) and `EncryptedValue`; `verify_totp`
   follows keys held as data. Done when every type passes the harness.
   Split on 2026-10-18: `Certificate`, which needs an X.509 crate and parts
-  read from what it parses, is 5.5r5.
+  read from what it parses, is 5.5r5. Built, with no new crate: `Hash`,
+  `Hmac` and `EncryptedValue` are types built on `Bytes`, sent and stored
+  as `Bytes` is (Base64, `bytea`), each built with no arm from the call
+  that makes it (`Hash(hash.sha256(x))`), and every `Bytes` now compares
+  in constant time; `OneTimeCode` is a secret value of six to eight digits;
+  `PasswordPolicy` is NIST SP 800-63B's lengths and a breach-check flag,
+  the check itself not built; `WebAuthnCredential` maps part by part to
+  `webauthn-rs` 0.5.2's stored `Credential`, its key a COSE_Key in CBOR,
+  what it doesn't hold filled by 5.5z as it loads one. What the pages left
+  open is area 19's "Chosen in chunk 5.5r3".
 - [ ] **5.5r5 Certificates** `opus · high` (area 19, "The standard
   types"; split from 5.5r3), after 5.5r3: `Certificate`, an X.509
   certificate (RFC 5280) read from PEM or DER on an audited crate built for

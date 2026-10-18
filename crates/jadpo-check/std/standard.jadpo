@@ -833,7 +833,7 @@ public type WebAuthnCredential = Object {
     backup_eligible: Bool
     backed_up: Bool
     name: Text
-    created_at: Instant
+    registered_at: Instant
     last_used_at: Instant?
 }
 
