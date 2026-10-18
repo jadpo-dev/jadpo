@@ -51,6 +51,11 @@ const EXPECTED_TO_FAIL: &[(&str, &str, &str)] = &[
         "metric checkouts_completed = Counter {",
         "`metric` declarations, decided 2026-10-16 (area 16), parse once telemetry is built; the block also shows a bare statement",
     ),
+    (
+        "docs/language/21-ai.md",
+        "order: [HelpArticle.body_meaning nearest question_meaning]",
+        "`nearest` in a query's `order:`, decided 2026-10-18 (area 21), parses with vectors in PostgreSQL (chunk 5.5v1)",
+    ),
 ];
 
 fn expected_failure(example: &examples::Example) -> Option<&'static str> {
