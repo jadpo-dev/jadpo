@@ -22,6 +22,19 @@ pub struct Migration {
 /// the rows left and one filling the next batch.
 pub const BACKFILL_MARKER: &str = "-- backfill ";
 
+/// How a backfill with an operation that has no SQL form is worked out,
+/// in its marker's words (area 5, "Computed backfills"; chunk 5.6b2):
+/// `jadpo migrate apply` reads each batch, works the values out in the
+/// runtime and writes them back. Its marker is followed by three
+/// statements: the count, the read and the write.
+pub const IN_JADPO: &str = "in Jadpo";
+
+/// The line that opens the last step's fill of a backfill worked out in
+/// Jadpo (chunk 5.6b2): the rows servers still on the old build wrote
+/// meanwhile, read and written back with the table locked against
+/// writes, in the transaction that makes the column required.
+pub const FILL_MARKER: &str = "-- fill ";
+
 /// What a store's section of a migration does, step by step: statements
 /// run together in one transaction, and backfills filled in batches,
 /// each batch in its own transaction (chunk 5.6b).
@@ -30,6 +43,32 @@ pub enum Step {
     /// Statements run as one batch, in one transaction.
     Once(String),
     Batches(Batches),
+    /// Statements and fills worked out in Jadpo, run in order in one
+    /// transaction: a backfill's last step when Jadpo works it out
+    /// (chunk 5.6b2).
+    Together(Vec<Part>),
+}
+
+/// One part of a [`Step::Together`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Part {
+    /// Statements run as one batch.
+    Sql(String),
+    Fill(Fill),
+}
+
+/// The rows still without a value, worked out in Jadpo and written back
+/// (chunk 5.6b2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Fill {
+    /// The field it fills, `Todo.priority`.
+    pub field: String,
+    /// A statement giving each row still without a value: its key, then
+    /// the columns the backfill reads.
+    pub read: String,
+    /// A statement taking the keys as `$1` and their values as `$2`, two
+    /// arrays in the same order, and filling the rows still without one.
+    pub write: String,
 }
 
 /// A backfill filled in batches until a batch finds no row left.
@@ -37,15 +76,22 @@ pub enum Step {
 pub struct Batches {
     /// The field it fills, `Todo.priority`.
     pub field: String,
-    /// How each batch is worked out, in the marker's words: `by UPDATE`.
+    /// How each batch is worked out, in the marker's words: `by UPDATE`,
+    /// or [`IN_JADPO`].
     pub how: String,
     /// One statement giving how many rows are left to fill.
     pub count: String,
     /// One batch: a statement taking the key the last batch ended at as
-    /// `$1` (a `uuid`, the nil UUID before the first) and giving the key
-    /// this batch ended at, `NULL` when no row is left past it, and how
-    /// many rows it filled.
+    /// `$1` (a `uuid`, the nil UUID before the first). By `UPDATE`, it
+    /// gives the key this batch ended at, `NULL` when no row is left past
+    /// it, and how many rows it filled. In Jadpo, it gives the batch's
+    /// rows still without a value, locked, each its key and then the
+    /// columns the backfill reads, and [`Batches::write`] writes their
+    /// values back.
     pub batch: String,
+    /// In Jadpo: the statement writing a batch's values back, as
+    /// [`Fill::write`] does.
+    pub write: Option<String>,
 }
 
 /// How a migration creates an extension, as `jadpo migrate new` writes it.
@@ -83,48 +129,77 @@ impl Migration {
     }
 
     /// Its steps, in order: everything up to a backfill's marker is one
-    /// step, the backfill's two statements another, and so on.
+    /// step, the backfill's statements another, and so on. A fill worked
+    /// out in Jadpo joins the statements around it in one step.
     pub fn steps(&self) -> Vec<Step> {
         let mut out = Vec::new();
         let mut once = String::new();
+        let mut parts: Vec<Part> = Vec::new();
         let mut lines = self.sql.lines();
-        let close = |once: &mut String, out: &mut Vec<Step>| {
+        let close = |once: &mut String, parts: &mut Vec<Part>, out: &mut Vec<Step>| {
             let sql = once.trim();
             if !sql.is_empty() {
-                out.push(Step::Once(sql.to_string()));
+                parts.push(Part::Sql(sql.to_string()));
             }
             once.clear();
+            match parts.len() {
+                0 => {}
+                1 if matches!(parts[0], Part::Sql(_)) => {
+                    if let Some(Part::Sql(sql)) = parts.pop() {
+                        out.push(Step::Once(sql));
+                    }
+                }
+                _ => out.push(Step::Together(std::mem::take(parts))),
+            }
         };
+        fn statement<'l>(lines: &mut impl Iterator<Item = &'l str>) -> String {
+            let mut text = String::new();
+            for line in lines.by_ref() {
+                text.push_str(line);
+                if let Some(done) = text.strip_suffix(';') {
+                    return done.to_string();
+                }
+                text.push('\n');
+            }
+            text
+        }
         while let Some(line) = lines.next() {
+            if let Some(rest) = line.strip_prefix(FILL_MARKER) {
+                let sql = once.trim();
+                if !sql.is_empty() {
+                    parts.push(Part::Sql(sql.to_string()));
+                }
+                once.clear();
+                let field = rest.split(' ').next().unwrap_or_default();
+                let read = statement(&mut lines);
+                let write = statement(&mut lines);
+                parts.push(Part::Fill(Fill {
+                    field: field.to_string(),
+                    read,
+                    write,
+                }));
+                continue;
+            }
             let Some(rest) = line.strip_prefix(BACKFILL_MARKER) else {
                 once.push_str(line);
                 once.push('\n');
                 continue;
             };
-            close(&mut once, &mut out);
+            close(&mut once, &mut parts, &mut out);
             let (field, how) = rest.split_once(": ").unwrap_or((rest, ""));
             let how = how.split(',').next().unwrap_or_default().trim();
-            let mut statement = || {
-                let mut text = String::new();
-                for line in lines.by_ref() {
-                    text.push_str(line);
-                    if let Some(done) = text.strip_suffix(';') {
-                        return done.to_string();
-                    }
-                    text.push('\n');
-                }
-                text
-            };
-            let count = statement();
-            let batch = statement();
+            let count = statement(&mut lines);
+            let batch = statement(&mut lines);
+            let write = (how == IN_JADPO).then(|| statement(&mut lines));
             out.push(Step::Batches(Batches {
                 field: field.to_string(),
                 how: how.to_string(),
                 count,
                 batch,
+                write,
             }));
         }
-        close(&mut once, &mut out);
+        close(&mut once, &mut parts, &mut out);
         out
     }
 
@@ -236,8 +311,42 @@ mod tests {
                     how: "by UPDATE".into(),
                     count: "SELECT count(*) FROM \"todo\"".into(),
                     batch: "WITH batch AS (\nSELECT 1\n) SELECT 2".into(),
+                    write: None,
                 }),
                 Step::Once("ALTER TABLE \"todo\" ALTER COLUMN \"priority\" SET NOT NULL;".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_backfill_in_jadpo_reads_and_writes_each_batch_and_fills_the_rest_in_its_last_step() {
+        let migration = Migration {
+            name: "20261101T0900_priority".into(),
+            digest: "0".into(),
+            sql: "ALTER TABLE \"todo\" ADD COLUMN \"priority\" text;\n-- backfill Todo.priority: in Jadpo, 1000 rows a batch\nSELECT count(*) FROM \"todo\";\nSELECT \"id\" FROM \"todo\";\nUPDATE \"todo\" SET x;\nLOCK TABLE \"todo\" IN SHARE ROW EXCLUSIVE MODE;\n-- fill Todo.priority in Jadpo: the rows written meanwhile\nSELECT \"id\" FROM \"todo\" WHERE y;\nUPDATE \"todo\" SET z;\nALTER TABLE \"todo\" ALTER COLUMN \"priority\" SET NOT NULL;".into(),
+        };
+        assert_eq!(
+            migration.steps(),
+            vec![
+                Step::Once("ALTER TABLE \"todo\" ADD COLUMN \"priority\" text;".into()),
+                Step::Batches(Batches {
+                    field: "Todo.priority".into(),
+                    how: IN_JADPO.into(),
+                    count: "SELECT count(*) FROM \"todo\"".into(),
+                    batch: "SELECT \"id\" FROM \"todo\"".into(),
+                    write: Some("UPDATE \"todo\" SET x".into()),
+                }),
+                Step::Together(vec![
+                    Part::Sql("LOCK TABLE \"todo\" IN SHARE ROW EXCLUSIVE MODE;".into()),
+                    Part::Fill(Fill {
+                        field: "Todo.priority".into(),
+                        read: "SELECT \"id\" FROM \"todo\" WHERE y".into(),
+                        write: "UPDATE \"todo\" SET z".into(),
+                    }),
+                    Part::Sql(
+                        "ALTER TABLE \"todo\" ALTER COLUMN \"priority\" SET NOT NULL;".into()
+                    ),
+                ]),
             ]
         );
     }

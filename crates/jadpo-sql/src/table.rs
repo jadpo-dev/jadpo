@@ -126,6 +126,79 @@ pub fn backfill_in_batches(
     )
 }
 
+/// A computed backfill of `column` worked out in Jadpo (area 5,
+/// "Computed backfills"; chunk 5.6b2), in the batches of
+/// [`backfill_in_batches`]: the line naming `field` and saying so, with
+/// the digest of the code it runs (`code`), the statement counting the
+/// rows left, one batch's read, and its write. The read takes the key the
+/// last batch ended at as `$1` and gives the next rows still without a
+/// value, in key order, each its key and then the `reads` columns, locked
+/// as an `UPDATE` would lock them; the write takes their keys and values
+/// as two arrays (`$1`, `$2`) and fills those still without one, so a
+/// batch run twice fills nothing twice.
+pub fn backfill_in_jadpo(
+    field: &str,
+    table: &str,
+    key: &str,
+    column: &str,
+    sql_type: &str,
+    reads: &[String],
+    code: &str,
+) -> String {
+    let (t, c) = (ident(table), ident(column));
+    format!(
+        "{marker}{field}: {how}, {BATCH_ROWS} rows a batch, each batch its own transaction, slower than by UPDATE since something in it has no SQL form; its code {code}\n\
+         SELECT count(*) FROM {t} WHERE {c} IS NULL;\n\
+         {read} WHERE {k} > $1 AND {c} IS NULL ORDER BY {k} LIMIT {BATCH_ROWS} FOR NO KEY UPDATE;\n\
+         {write}",
+        marker = jadpo_std::BACKFILL_MARKER,
+        how = jadpo_std::IN_JADPO,
+        k = ident(key),
+        read = jadpo_read(table, key, reads),
+        write = jadpo_write(table, key, column, sql_type),
+    )
+}
+
+/// The last step's fill of a backfill worked out in Jadpo (chunk 5.6b2),
+/// run once the table is locked against writes: the line naming `field`,
+/// the read of every row still without a value, and the write, as in
+/// [`backfill_in_jadpo`].
+pub fn fill_in_jadpo(
+    field: &str,
+    table: &str,
+    key: &str,
+    column: &str,
+    sql_type: &str,
+    reads: &[String],
+) -> String {
+    format!(
+        "{marker}{field} {how}: the rows written meanwhile\n\
+         {read} WHERE {c} IS NULL ORDER BY {k};\n\
+         {write}",
+        marker = jadpo_std::FILL_MARKER,
+        how = jadpo_std::IN_JADPO,
+        c = ident(column),
+        k = ident(key),
+        read = jadpo_read(table, key, reads),
+        write = jadpo_write(table, key, column, sql_type),
+    )
+}
+
+/// `SELECT key, reads… FROM table`.
+fn jadpo_read(table: &str, key: &str, reads: &[String]) -> String {
+    let mut columns = vec![ident(key)];
+    columns.extend(reads.iter().map(|read| ident(read)));
+    format!("SELECT {} FROM {}", columns.join(", "), ident(table))
+}
+
+/// Fills `column` from two arrays, the keys and their values.
+fn jadpo_write(table: &str, key: &str, column: &str, sql_type: &str) -> String {
+    let (t, k, c) = (ident(table), ident(key), ident(column));
+    format!(
+        "UPDATE {t} SET {c} = \"jadpo_value\".\"value\" FROM unnest($1::uuid[], $2::{sql_type}[]) AS \"jadpo_value\"(\"key\", \"value\") WHERE {t}.{k} = \"jadpo_value\".\"key\" AND {t}.{c} IS NULL"
+    )
+}
+
 /// Keeps every other transaction from writing `table` until this one
 /// ends, while reads go on: what a computed backfill's last step takes
 /// before it fills the rows written meanwhile and makes the column

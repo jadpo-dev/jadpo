@@ -92,7 +92,7 @@ pub use format::{BuiltinFormat, Component, FormatLength, FormatPart, TimeFormatS
 pub use isolation::Isolation;
 pub use literal::Literal;
 pub use locale::{LocalePlan, locale_ordinal};
-pub use migration::{BACKFILL_MARKER, Batches, Migration, Step};
+pub use migration::{BACKFILL_MARKER, Batches, FILL_MARKER, IN_JADPO, Migration, Step};
 pub use money::{CURRENCIES, CURRENCY, MONEY_FIELDS};
 pub use num::{Num, compare_exact};
 pub use operations::{
