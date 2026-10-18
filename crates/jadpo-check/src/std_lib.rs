@@ -22,7 +22,7 @@ use crate::types::{BASES, Prim, TypeRef, container_arity};
 const NAMES: &str = include_str!("../std/names.txt");
 
 /// The stub files, by name.
-const STUBS: [(&str, &str); 19] = [
+const STUBS: [(&str, &str); 21] = [
     ("types.jadpo", include_str!("../std/types.jadpo")),
     ("standard.jadpo", include_str!("../std/standard.jadpo")),
     ("text.jadpo", include_str!("../std/text.jadpo")),
@@ -42,6 +42,8 @@ const STUBS: [(&str, &str); 19] = [
     ("web.jadpo", include_str!("../std/web.jadpo")),
     ("semver.jadpo", include_str!("../std/semver.jadpo")),
     ("markup.jadpo", include_str!("../std/markup.jadpo")),
+    ("colour.jadpo", include_str!("../std/colour.jadpo")),
+    ("media.jadpo", include_str!("../std/media.jadpo")),
 ];
 
 /// The standard types' stub file (area 19).

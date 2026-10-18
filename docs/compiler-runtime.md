@@ -721,6 +721,21 @@ neither needs an `attempt`. `jadpo_value::markup` renders CommonMark with
 pulldown-cmark (`jadpo-value` only) and sanitises the result for
 `markup.to_html`; `markup.to_plain_text` and `FormatKey::PlainText` read
 the sanitised text's tokens.
+Since chunk 5.5p `jadpo_std::standard::colour` holds `Colour` and its
+hex text, and `jadpo_std::standard::media` the media types, the
+WebCodecs codec strings, SMPTE drop-frame and WebVTT rules and
+`media.fit`'s whole-number arithmetic. Generic text forms carry objects
+whose parts are numbers joined by a separator (`TextForm::Wholes`,
+`TextForm::Decimals`), an enum's code then text (`TextForm::CodeThenText`)
+and a WebVTT cue (`TextForm::Cue`); `Timecode` has no text form and is
+shown by `FormatKey::Timecode`. `jadpo_value::colour` runs `colour`'s five
+operations by CSS Color 4's conversions in fixed point at 18 places over
+`maths`' correctly rounded functions, so every target gives the same
+channels, and `jadpo_value::media` runs `media.fit` and checks a timecode's
+and a cue's rules where JSON is read; the checker proves them on literals
+(`types/body/media.rs`). A shape's `FieldMatch` may be `optional`
+(`Colour`'s alpha), and a stub parameter written `Percentage` or a
+quantity kind takes any type built on it.
 Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
 text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
 `jadpo_std::standard::events`, which also holds the rules across its parts

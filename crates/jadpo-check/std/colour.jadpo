@@ -1,0 +1,32 @@
+// The `colour` namespace (area 19, "Colour", question 13). Each operation
+// is listed, typed, in `jadpo-std`'s operation table, which names the Rust
+// function in `jadpo-value` that runs it; a test holds these stubs to that
+// table. None fails: each gives an sRGB `Colour`, a percentage or a chroma
+// out of range is clamped as CSS clamps it, and an OKLCH colour sRGB can't
+// show is clipped into it, channel by channel.
+
+public library colour {
+    /// The colour of a CSS Color 4 HSL hue, saturation and lightness, the
+    /// percentages clamped to 0% to 100%: `colour.from_hsl(120deg, 100%,
+    /// 25%)` is `#008000`.
+    function from_hsl(hue: Angle, saturation: Percentage, lightness: Percentage) -> Colour {}
+
+    /// The colour of an OKLCH lightness, chroma and hue, clipped into sRGB,
+    /// the lightness clamped to 0% to 100% and the chroma to 0 or more:
+    /// `colour.from_oklch(62.8%, 0.2577, 29.23deg)` is `#ff0000`.
+    function from_oklch(lightness: Percentage, chroma: Decimal, hue: Angle) -> Colour {}
+
+    /// `a` and `b` mixed in OKLCH as CSS's `color-mix(in oklch, a, b
+    /// ratio)` mixes them: `ratio` of `b`, the rest of `a`, the hue the
+    /// shorter way round, with their alphas.
+    function mix(a: Colour, b: Colour, ratio: Percentage) -> Colour {}
+
+    /// `value` with its OKLCH lightness set to `lightness`, its chroma, hue
+    /// and alpha kept, clipped into sRGB.
+    function with_lightness(value: Colour, lightness: Percentage) -> Colour {}
+
+    /// WCAG 2's contrast ratio between `a` and `b`, from 1.00 to 21.00,
+    /// rounded down to 2 places, so `>= 4.5` never passes a ratio below
+    /// it. Alpha isn't read: WCAG 2 defines contrast for opaque colours.
+    function contrast(a: Colour, b: Colour) -> Decimal {}
+}

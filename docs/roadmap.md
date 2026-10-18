@@ -920,10 +920,15 @@ reference only).
   default, as area 10's fallback chain does. Done when both pass the
   harness and `rich_to_html`'s and `pick`'s examples pass, interpreted and
   in the runtime.
-- [ ] **5.5p Media and colour** `opus · high` (area 19, "Colour" and
+- [x] **5.5p Media and colour** `opus · high` (area 19, "Colour" and
   "Media", question 13): the 15 types, `colour`'s 5 operations and
   `media.fit`. Done when each operation's example passes and `contrast`
-  matches WCAG 2's reference ratios.
+  matches WCAG 2's reference ratios. Built, with CSS Color 4's conversions
+  and CSS Color 5's `color-mix()` in Jadpo's own fixed point, `contrast`
+  rounded down to 2 places, `media.fit` as `object-fit: scale-down`, and
+  `ContentRatingScheme` (BBFC, MPA, PEGI, ESRB) beside the 15, accepted by
+  the lead session (2026-10-18). What the pages left open is area 19's "Chosen in
+  chunk 5.5p".
 - [ ] **5.5q Randomness and cryptography** `opus · high` (area 19,
   "Randomness" and "Hashing and cryptography", questions 9 and 19): the
   generated `random` namespace, actions only, seeded per test and

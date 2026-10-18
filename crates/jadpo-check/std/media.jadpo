@@ -1,0 +1,12 @@
+// The `media` namespace (area 19, "Media"). Its operation is listed,
+// typed, in `jadpo-std`'s operation table, which names the Rust function in
+// `jadpo-value` that runs it; a test holds this stub to that table. It
+// never fails.
+
+public library media {
+    /// `dimensions` scaled to fit inside `within`, keeping its aspect ratio
+    /// and never made larger, each side rounded down to a whole pixel and
+    /// never below 1, as CSS's `object-fit: scale-down` fits an image:
+    /// `media.fit(photo, within: tile)`.
+    function fit(dimensions: ImageDimensions, within: ImageDimensions) -> ImageDimensions {}
+}

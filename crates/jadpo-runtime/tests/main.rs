@@ -3,9 +3,11 @@
 //! --test integration <module>::` runs one.
 
 mod calendar;
+mod colour;
 mod formats;
 mod lists;
 mod maths;
+mod media;
 mod money;
 mod numbers;
 mod percentages;
