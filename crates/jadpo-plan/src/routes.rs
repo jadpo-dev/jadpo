@@ -290,6 +290,9 @@ enum Made {
     Enum(Key),
     StdEnum(String),
     List(TypeRef),
+    /// A `Vector` (area 19, chunk 5.5s2): a list of single-precision
+    /// floats, each a JSON number.
+    Floats,
     Set(TypeRef),
     Map(TypeRef, TypeRef),
     Page(TypeRef),
@@ -488,6 +491,14 @@ impl<'t> Codecs<'t> {
                 item: self.codec(&item),
                 validator: self.types.validator_id(ty),
             },
+            Made::Floats => {
+                let item = CodecId(self.codecs.len() as u32);
+                self.codecs.push(Codec::Float);
+                Codec::List {
+                    item,
+                    validator: self.types.validator_id(ty),
+                }
+            }
             Made::Set(item) => Codec::Set {
                 item: self.codec(&item),
                 validator: self.types.validator_id(ty),
@@ -641,6 +652,9 @@ impl<'t> Codecs<'t> {
                         match entry.holds {
                             jadpo_std::standard::Holds::Object(_) => {
                                 return Made::StdObject(entry);
+                            }
+                            jadpo_std::standard::Holds::List(jadpo_std::Part::Float) => {
+                                return Made::Floats;
                             }
                             jadpo_std::standard::Holds::List(item) => {
                                 return Made::List(part("item", item));

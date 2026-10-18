@@ -37,6 +37,10 @@ pub struct Rules {
     /// its place among `Currency`'s variants.
     pub rate_from: Option<u32>,
     pub rate_to: Option<u32>,
+    /// `dimensions:` on a type built on `Vector` (area 19, chunk 5.5s2):
+    /// the one number of items its vectors have, as a model's embeddings
+    /// all have the same.
+    pub dimensions: Option<u64>,
     /// The standard type held as text whose own check the text passes
     /// (area 19, "Groups with the baseline only"): its pattern and its
     /// named validator, an IBAN's mod-97, broken as `format`, as an
@@ -68,6 +72,9 @@ pub enum RuleKey {
     From,
     /// An exchange rate to another currency than its type's `to:`.
     To,
+    /// A vector of another length than its type's `dimensions:` (area
+    /// 19, chunk 5.5s2).
+    Dimensions,
     /// A local time a temporal operation makes falls in a daylight-saving
     /// gap or overlap, and its `dst:` didn't say which instant to take
     /// (area 10, "Zones and local times").
@@ -125,7 +132,7 @@ impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 25] = [
+    pub const ALL: [RuleKey; 26] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -137,6 +144,7 @@ impl RuleKey {
         RuleKey::Currency,
         RuleKey::From,
         RuleKey::To,
+        RuleKey::Dimensions,
         RuleKey::Dst,
         RuleKey::InvalidDay,
         RuleKey::Malformed,
@@ -167,6 +175,7 @@ impl RuleKey {
             RuleKey::Currency => "currency",
             RuleKey::From => "from",
             RuleKey::To => "to",
+            RuleKey::Dimensions => "dimensions",
             RuleKey::Dst => "dst",
             RuleKey::InvalidDay => "invalid_day",
             RuleKey::Malformed => "malformed",
@@ -399,6 +408,15 @@ impl Rules {
     /// A length against `min_length` and `max_length`; `unit` names what
     /// was counted, `characters` or `items`.
     pub fn check_length(&self, length: u64, unit: &str) -> Result<(), Broken> {
+        if let Some(dimensions) = self.dimensions
+            && length != dimensions
+        {
+            return broken(
+                RuleKey::Dimensions,
+                format!("dimensions: {dimensions}"),
+                format!("has {length} {unit}"),
+            );
+        }
         if let Some(min) = self.min_length
             && length < min
         {

@@ -149,6 +149,24 @@ impl Validator {
         {
             return Some(Value::secret(kind, text));
         }
+        // A `Vector`'s items are kept as the nearest single-precision
+        // floats, whatever decimals it is built from (chunk 5.5s2).
+        if let Value::List(items) = &value
+            && self
+                .rules
+                .iter()
+                .any(|(rules, _)| rules.standard.is_some_and(jadpo_std::standard::ai::rounds))
+        {
+            let mut kept = Vec::with_capacity(items.len());
+            for item in items.iter() {
+                let Value::Decimal(decimal) = item else {
+                    return None;
+                };
+                let text = jadpo_std::standard::ai::float(&decimal.to_string())?;
+                kept.push(Value::decimal(&text)?);
+            }
+            return Some(Value::list(kept));
+        }
         match (value, self.scale) {
             (Value::Decimal(d), Some(scale)) if d.scale != scale => {
                 d.rescale(scale, Rounding::HalfEven).map(Value::Decimal)

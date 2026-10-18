@@ -215,10 +215,17 @@ fn type_codec(entry: &StandardType, tables: &mut Tables) -> CodecId {
         }
         // A named collection: an array of its items, an object of its
         // entries (chunk 5.5o2).
+        // A vector keeps its lengths, and its items as floats (chunk
+        // 5.5s2).
         Holds::List(item) => {
             let at = tables.reserve();
             let item = part_codec(item, tables);
-            let validator = tables.validator(Validator::new(None, Vec::new()));
+            let validator = tables.validator(Validator::new(
+                None,
+                jadpo_std::standard::collection_rules(entry.name)
+                    .into_iter()
+                    .collect(),
+            ));
             tables.codecs[at.0 as usize] = Codec::List { item, validator };
             at
         }
@@ -290,6 +297,8 @@ fn part_codec(part: jadpo_std::Part, tables: &mut Tables) -> CodecId {
             let inner = part_codec(*inner, tables);
             tables.push(Codec::Nullable(inner))
         }
+        // A vector's item, a JSON number (chunk 5.5s2).
+        jadpo_std::Part::Float => tables.push(Codec::Float),
         jadpo_std::Part::List(inner) => {
             let item = part_codec(*inner, tables);
             let validator = tables.validator(Validator::new(None, Vec::new()));
@@ -588,6 +597,10 @@ fn every_standard_type_meets_the_contract() {
                 // A PostGIS `geography` column, which the geospatial area
                 // builds (chunk 5.5s).
                 assert_eq!(entry.column_type(), "geography", "{name}");
+            } else if entry.storage == jadpo_std::standard::Storage::Vector {
+                // A pgvector `vector` column, which the AI area builds
+                // (chunk 5.5s2).
+                assert_eq!(entry.column_type(), "vector", "{name}");
             } else {
                 assert_eq!(entry.column_type(), "jsonb", "{name}");
             }

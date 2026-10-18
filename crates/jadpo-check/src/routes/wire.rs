@@ -57,6 +57,7 @@ pub fn merge<'r>(chain: impl IntoIterator<Item = &'r Rules>) -> Rules {
         out.rounding = out.rounding.or(rules.rounding);
         out.rate_from = out.rate_from.or(rules.rate_from);
         out.rate_to = out.rate_to.or(rules.rate_to);
+        out.dimensions = out.dimensions.or(rules.dimensions);
         out.standard = out.standard.or(rules.standard);
     }
     out
@@ -327,6 +328,12 @@ impl<'g> Wire<'g> {
                     );
                     out
                 }
+                // A vector type's lengths (chunk 5.5s2).
+                jadpo_std::standard::Holds::List(_) => {
+                    let mut out = standard_object_schema(entry);
+                    item_counts(&mut out, &rules);
+                    out
+                }
                 _ => rate_currencies(standard_object_schema(entry), &rules),
             },
             Shape::StdEnum(name) => {
@@ -349,7 +356,7 @@ impl<'g> Wire<'g> {
                 let mut out = Value::object();
                 out.set("type", "array");
                 out.set("items", self.schema(&inner, refs));
-                lengths(&mut out, &rules, "minItems", "maxItems");
+                item_counts(&mut out, &rules);
                 if set {
                     out.set("uniqueItems", true);
                 }
@@ -464,6 +471,17 @@ pub fn reference(name: &str) -> Value {
     out
 }
 
+/// A list's lengths as `minItems` and `maxItems`, a vector type's
+/// `dimensions:` as both (chunk 5.5s2).
+fn item_counts(out: &mut Value, rules: &Rules) {
+    lengths(out, rules, "minItems", "maxItems");
+    if let Some(n) = rules.dimensions {
+        let n = i64::try_from(n).unwrap_or(i64::MAX);
+        out.set("minItems", n);
+        out.set("maxItems", n);
+    }
+}
+
 fn lengths(out: &mut Value, rules: &Rules, min: &str, max: &str) {
     if let Some(n) = rules.min_length {
         out.set(min, i64::try_from(n).unwrap_or(i64::MAX));
@@ -518,6 +536,10 @@ pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
         jadpo_std::standard::Holds::List(item) => {
             out.set("type", "array");
             out.set("items", part_schema(item));
+            // A vector's own lengths (chunk 5.5s2).
+            if let Some(rules) = jadpo_std::standard::collection_rules(entry.name) {
+                item_counts(&mut out, &rules);
+            }
             return out;
         }
         jadpo_std::standard::Holds::Map(key, value) => {
@@ -665,6 +687,14 @@ fn part_schema(part: jadpo_std::Part) -> Value {
             },
             None => Value::object(),
         },
+        // A vector's item, a JSON number held as a single-precision float
+        // (chunk 5.5s2).
+        jadpo_std::Part::Float => {
+            let mut out = Value::object();
+            out.set("type", "number");
+            out.set("format", "float");
+            out
+        }
         part => match part.builtin() {
             Some(builtin) => scalar_schema(builtin, &part.rules()),
             None => Value::object(),

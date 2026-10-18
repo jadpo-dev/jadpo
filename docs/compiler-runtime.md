@@ -837,6 +837,21 @@ tagged. A geometry's storage is `Storage::Geography`, whose column type is
 `text.format` by the checker, so `FormatKey::Coordinate` can show its
 hemisphere; a compound type's column may now be `numeric`
 (`EastingNorthing`).
+Since chunk 5.5s2 the AI types are entries in `jadpo_std::standard::ai`.
+`Vector` is a named collection of `Part::Float`, a single-precision float
+held as the decimal `standard::ai::float` gives; its type rules
+(`standard::collection_rules`: 1 to 16,000 items, `standard` naming it)
+make `Validator::store` keep every item as that float, as it makes
+`Html` safe, so the checker's `verdict` never counts `format` breakable
+for it. The plan sends one as a `Codec::List` of `Codec::Float`, a JSON
+number each. A type built on `Vector` takes `dimensions:` (`Subject::Vector`
+in the checker's constraints, `Rules::dimensions`, `RuleKey::Dimensions`),
+checked by `Rules::check_length` before the lengths it decides, proved by
+`verdict` from a list's counted items, and shown in the API record and as
+OpenAPI's `minItems` and `maxItems`. A vector's storage is
+`Storage::Vector`, a pgvector `vector` column the data model reports as
+`toolchain.not_built_yet` until the AI area. `FormatKey::Vector` and
+`FormatKey::ByLabel` show vectors and labelled parts.
 Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
 text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
 `jadpo_std::standard::events`, which also holds the rules across its parts

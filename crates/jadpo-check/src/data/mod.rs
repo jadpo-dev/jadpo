@@ -898,6 +898,26 @@ impl Reader<'_> {
                 );
                 field.sql_type = Some(sql);
             }
+            // A vector or an embedding is stored in a pgvector `vector`
+            // column, which the AI area builds (area 19, chunk 5.5s2).
+            Ok(sql) if sql == "vector" => {
+                let shown = ty.strip_nullable().to_string();
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TOOLCHAIN_NOT_BUILT_YET,
+                        format!("Storing a `{shown}` field isn't built yet"),
+                    )
+                    .at(node_span(path, value.syntax()), "a vector, stored in pgvector")
+                    .reason(format!(
+                        "Area 19 stores a vector in a pgvector `vector` column, with its index and nearest-neighbour queries, and that storage comes with the AI area (roadmap 5.5v); until then this compiler can't read or write `{entity}.{name}`."
+                    ))
+                    .next(format!(
+                        "Keep what `{entity}.{name}` holds out of storage for now, and make it again from its text when it is needed"
+                    ))
+                    .help_at("19-standard-library.html#ai-a-future-area"),
+                );
+                field.sql_type = Some(sql);
+            }
             // A structured field is stored as `jsonb` in the API's JSON
             // (area 5), whose codec comes with area 7.
             Ok(sql) if sql == "jsonb" => {

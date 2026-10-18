@@ -108,6 +108,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
     rounding: None,
     rate_from: None,
     rate_to: None,
+    dimensions: None,
     standard: None,
 };
 
