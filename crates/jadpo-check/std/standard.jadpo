@@ -1421,3 +1421,126 @@ public type BloodPressure = Object {
 /// `units.of(5.5, ConcentrationUnit.millimole_of_glucose_per_litre)`, shown
 /// `5.5 mmol/L`. Health data.
 public type BloodGlucose = Concentration {}
+
+// The geospatial types (area 19, "Geospatial: a future area", chunk 5.5s):
+// positions in WGS84 by `latitude` and `longitude`, never a pair, and the
+// geometries made of them, sent as GeoJSON (RFC 7946), whose `[longitude,
+// latitude]` order exists only on the wire. Storing one and the `geo.`
+// operations come with the geospatial area.
+
+/// Degrees north of the equator in WGS84 (area 19), from -90 to 90, held
+/// as written: `51.5072`, shown `51.5072° N`.
+public type Latitude = Decimal {}
+
+/// Degrees east of the prime meridian in WGS84 (area 19), from -180 to 180,
+/// held as written: `-0.1276`, shown `0.1276° W`.
+public type Longitude = Decimal {}
+
+/// A compass direction (area 19), degrees clockwise from true north, from
+/// 0 to 360: `247.5`, shown `247.5°`.
+public type Bearing = Decimal {}
+
+/// A coordinate reference system by its EPSG code (area 19): `EPSG:27700`.
+public type Crs = Text {}
+
+/// A geohash cell (area 19, geohash.org): 1 to 12 characters, in lower
+/// case: `gcpvj0duq`.
+public type Geohash = Text {}
+
+/// An H3 cell (area 19, Uber's H3 index), 15 lower-case hexadecimal
+/// digits, its bits valid: `8928308280fffff`.
+public type H3Cell = Text {}
+
+/// A web map tile on OpenStreetMap's XYZ scheme (area 19): a zoom from 0 to
+/// 30 and a column and row each below 2 to the zoom, shown `10/511/340`.
+public type MapTile = Object {
+    zoom: Int
+    x: Int
+    y: Int
+}
+
+/// Projected coordinates (area 19): an easting and a northing, by name, in
+/// their reference system's units.
+public type EastingNorthing = Object {
+    easting: Decimal
+    northing: Decimal
+    crs: Crs
+}
+
+/// A position on Earth in WGS84 (area 19): its latitude and longitude by
+/// name, and its height above the ellipsoid where it has one. Sent as a
+/// GeoJSON `Point`, shown `51.5072° N, 0.1276° W`.
+public type Point = Object {
+    latitude: Latitude
+    longitude: Longitude
+    altitude: Length?
+}
+
+/// A path of two points or more, in order (area 19): a GeoJSON
+/// `LineString`.
+public type LineString = Object {
+    points: List<Point>
+}
+
+/// An area with any holes (area 19): a GeoJSON `Polygon`, each ring closed
+/// with four points or more, the outer counterclockwise and each hole
+/// clockwise when written.
+public type Polygon = Object {
+    outer: List<Point>
+    holes: List<List<Point>>
+}
+
+/// Points, at least one (area 19): a GeoJSON `MultiPoint`.
+public type MultiPoint = Object {
+    points: List<Point>
+}
+
+/// Paths, at least one (area 19): a GeoJSON `MultiLineString`.
+public type MultiLineString = Object {
+    lines: List<LineString>
+}
+
+/// Areas, at least one (area 19): a GeoJSON `MultiPolygon`.
+public type MultiPolygon = Object {
+    polygons: List<Polygon>
+}
+
+/// Any one of the six geometries (area 19), sent as the GeoJSON geometry it
+/// holds.
+public type Geometry = Enum {
+    point: {
+        point: Point
+    }
+    line_string: {
+        line_string: LineString
+    }
+    polygon: {
+        polygon: Polygon
+    }
+    multi_point: {
+        multi_point: MultiPoint
+    }
+    multi_line_string: {
+        multi_line_string: MultiLineString
+    }
+    multi_polygon: {
+        multi_polygon: MultiPolygon
+    }
+}
+
+/// A rectangle on the map by its sides (area 19, RFC 7946's bounding box),
+/// named: its south at or below its north, and a west east of its east
+/// across the antimeridian.
+public type BoundingBox = Object {
+    south: Latitude
+    west: Longitude
+    north: Latitude
+    east: Longitude
+}
+
+/// A centre and a radius on the ground (area 19), the radius never below
+/// 0: shown `1,000 m around 51.5072° N, 0.1276° W`.
+public type Circle = Object {
+    centre: Point
+    radius: Length
+}

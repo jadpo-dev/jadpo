@@ -36,6 +36,7 @@ pub mod colour;
 pub mod decimal;
 pub mod encoding;
 mod event;
+pub mod geo;
 pub mod hash;
 pub mod integer;
 pub mod json;

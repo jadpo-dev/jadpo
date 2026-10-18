@@ -90,6 +90,8 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
     Ok(match (form, value) {
         (TextForm::Checked | TextForm::Html, Value::Text(text)) => text.to_string(),
         (TextForm::Uuid, Value::Uuid(text)) => text.to_ascii_lowercase(),
+        // A latitude, a longitude, a bearing, with its places (chunk 5.5s).
+        (TextForm::Decimal, Value::Decimal(decimal)) => decimal.to_string(),
         (TextForm::Instant, Value::Instant(millis)) => jadpo_std::format_instant(*millis),
         (TextForm::Date, Value::Date(day)) => jadpo_std::format_date(*day),
         (TextForm::Zoned, Value::Zoned(zoned)) => zoned.to_string(),
@@ -394,6 +396,9 @@ pub fn broken_part(record: &crate::Record) -> Option<&'static str> {
     if let Some(part) = crate::measures::broken_part(record) {
         return Some(part);
     }
+    if let Some(part) = crate::geo::broken_part(record) {
+        return Some(part);
+    }
     jadpo_std::standard::part_rules(&record.ty)
         .iter()
         .find(|rule| {
@@ -482,6 +487,8 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         TextForm::Zoned => zoned(raw).map(Value::Zoned),
         TextForm::Duration => crate::json::iso_duration(raw).map(Value::Duration),
         TextForm::Code => code(entry, raw),
+        // Its bounds are its construction's, as a `TaxRate`'s are.
+        TextForm::Decimal => decimal(raw).map(Value::Decimal),
         TextForm::Money => crate::money::read(raw).map(Value::Money),
         TextForm::Quantity => {
             // A quantity, or a type built on one with bounds of its own (a
@@ -808,6 +815,22 @@ pub fn format_as(
         let tag = present::tag_of(locale)?;
         return Ok(Value::text(&shown(entry, value, tag, zone, format_spec)?));
     }
+    // A type built on `Decimal` shown in a form of its own (a latitude
+    // with its hemisphere, a bearing in degrees, chunk 5.5s), which the
+    // runtime holds as the decimal.
+    if let (Value::Text(name), Value::Decimal(_)) = (standard, value)
+        && let Some(entry) = standard_type(name)
+        && matches!(
+            entry.holds,
+            Holds::Bounded {
+                of: jadpo_std::Builtin::Decimal,
+                ..
+            }
+        )
+    {
+        let tag = present::tag_of(locale)?;
+        return Ok(Value::text(&shown(entry, value, tag, zone, format_spec)?));
+    }
     // A type built on a quantity shown in units of its own (a heart rate
     // in beats a minute, chunk 5.5m2), which the runtime holds as the
     // quantity.
@@ -969,6 +992,12 @@ pub fn shown(
             crate::measures::measures(entry, value, &Value::None, tag)?
         }
         (FormatKey::Dosage, Value::Record(record)) => crate::measures::dosage(record, tag)?,
+        // A latitude or a longitude with its hemisphere, a geospatial
+        // record (chunk 5.5s).
+        (FormatKey::Coordinate { positive, negative }, Value::Decimal(value)) => {
+            crate::geo::coordinate(*value, positive, negative, tag)?
+        }
+        (FormatKey::Geometry, value) => crate::geo::shown(value, tag)?,
         (FormatKey::PostalAddress, value) => present::contact::postal_address(value, tag)?,
         // National for a reader whose region shares the number's calling
         // code, international otherwise (chunk 5.5l2).

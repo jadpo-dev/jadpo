@@ -867,6 +867,26 @@ impl Reader<'_> {
             return Some(field);
         }
         match column_type(self.lookup, &ty) {
+            // A geometry is stored in a PostGIS `geography` column, which
+            // the geospatial area builds (area 19, chunk 5.5s).
+            Ok(sql) if sql == "geography" => {
+                let shown = ty.strip_nullable().to_string();
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TOOLCHAIN_NOT_BUILT_YET,
+                        format!("Storing a `{shown}` field isn't built yet"),
+                    )
+                    .at(node_span(path, value.syntax()), "a geometry, stored as `geography`")
+                    .reason(format!(
+                        "Area 19 stores a geometry in a PostGIS `geography` column in WGS84, with its query conditions and indexes, and that storage comes with the geospatial area (roadmap 5.5u); until then this compiler can't read or write `{entity}.{name}`."
+                    ))
+                    .next(format!(
+                        "Keep what `{entity}.{name}` holds out of storage for now, or store its latitude and longitude as `Latitude` and `Longitude` fields of their own"
+                    ))
+                    .help_at("19-standard-library.html#geospatial-a-future-area"),
+                );
+                field.sql_type = Some(sql);
+            }
             // A structured field is stored as `jsonb` in the API's JSON
             // (area 5), whose codec comes with area 7.
             Ok(sql) if sql == "jsonb" => {

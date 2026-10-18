@@ -974,7 +974,7 @@ reference only).
   follows keys held as data. Done when every type passes the harness and
   `verify_jwt` refuses `none`, a token-chosen algorithm and an expired
   token.
-- [ ] **5.5s Geospatial types' baselines** `opus · high` (area 19,
+- [x] **5.5s Geospatial types' baselines** `opus · high` (area 19,
   "The standard types"): the 17 geospatial types, with construction, text
   and JSON from the contract, GeoJSON (RFC 7946) on the wire and
   `latitude` and `longitude` by name everywhere else, and
@@ -982,7 +982,13 @@ reference only).
   with the geospatial area (5.5u). Done when every type passes the
   harness's construction, text and JSON cases, a point round-trips
   through GeoJSON with its axes unswapped, and the `Point` shape has a
-  checked example. Split on 2026-10-18; the AI types are 5.5s2.
+  checked example. Split on 2026-10-18; the AI types are 5.5s2. Built:
+  a geometry has no single text form, since every one is positional;
+  GeoJSON is read strictly (ranges, closed rings, no foreign members, no
+  empty multi-geometries), a ring wound either way rewound and every ring
+  written by the right-hand rule; `Latitude` and `Longitude` are decimals
+  held as written; storing a geometry is `toolchain.not_built_yet` until
+  5.5u. What the pages left open is area 19's "Chosen in chunk 5.5s".
 - [ ] **5.5s2 AI types' baselines** `opus · high` (area 19, "The
   standard types"; split from 5.5s), after 5.5s: `Vector`, `Embedding`,
   `TokenCount`, `TokenUsage` and `ChatMessage`, with construction, text

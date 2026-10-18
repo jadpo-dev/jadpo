@@ -26,6 +26,7 @@ mod examples;
 mod failures;
 mod fixes;
 mod formats;
+mod geospatial;
 mod graph;
 mod habits;
 mod identity;

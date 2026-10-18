@@ -86,6 +86,11 @@ fn type_codec(entry: &StandardType, tables: &mut Tables) -> CodecId {
         int_as_number: false,
     };
     match entry.holds {
+        // A geometry, sent as GeoJSON by the contract's one implementation
+        // (chunk 5.5s).
+        _ if entry.json == Json::GeoJson => tables.push(Codec::Standard {
+            ty: entry.name.to_string(),
+        }),
         Holds::Builtin(builtin) => {
             let validator = tables.validator(Validator::new(Some(builtin), Vec::new()));
             tables.push(scalar(builtin, validator))
@@ -479,6 +484,13 @@ fn every_standard_type_meets_the_contract() {
                     serde_json::from_str::<serde_json::Value>(text).unwrap(),
                     "{name}: {json} is an object keyed as its example is"
                 ),
+                // A GeoJSON geometry, written exactly as its example is:
+                // its `type`, then its `coordinates`, each position
+                // longitude first (chunk 5.5s).
+                Json::GeoJson => {
+                    assert_eq!(json, *text, "{name}: {json} is its GeoJSON");
+                    assert!(json.starts_with("{\"type\":"), "{name}: {json}");
+                }
             }
             let mut problems = Vec::new();
             let back = table.read(CodecId(0), &parsed, &Path::default(), &mut problems);
@@ -521,6 +533,10 @@ fn every_standard_type_meets_the_contract() {
                     Ok(value.clone()),
                     "{name}: `{text}` reads back from its column"
                 );
+            } else if entry.storage == jadpo_std::standard::Storage::Geography {
+                // A PostGIS `geography` column, which the geospatial area
+                // builds (chunk 5.5s).
+                assert_eq!(entry.column_type(), "geography", "{name}");
             } else {
                 assert_eq!(entry.column_type(), "jsonb", "{name}");
             }
