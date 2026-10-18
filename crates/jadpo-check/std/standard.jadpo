@@ -35,6 +35,23 @@ public type Bitrate = Bitrate {}
 /// A calendar day with no time or zone (area 10), written `2026-10-25`.
 public type CalendarDate = CalendarDate {}
 
+/// A calendar event (area 19, RFC 5545's `VEVENT`): an all-day event's
+/// first and last days, both included, or a timed event's local start and
+/// end and its zone, never both, with what it is called and, where it has
+/// them, where it is, what it is about and how it repeats. Written as a
+/// `VEVENT`, an all-day event's `DTEND` the day after its last.
+public type CalendarEvent = Object {
+    summary: Text
+    first_day: CalendarDate?
+    last_day: CalendarDate?
+    start: LocalDateTime?
+    end: LocalDateTime?
+    zone: Zone?
+    location: Text?
+    description: Text?
+    recurrence: RecurrenceRule?
+}
+
 /// An amount of calendar time in whole years, months and days (area 19),
 /// written `P1Y2M10D`: unlike a `Duration`, a month is a month, however
 /// many days it has. It has no order, and `==` compares part by part.

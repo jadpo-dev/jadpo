@@ -190,6 +190,11 @@ fn part_codec(
                         int_as_number: false,
                     }
                 }
+                // Another standard object sent as its canonical text: an
+                // event's local times (chunk 5.5k3).
+                (None, Holds::Object(_)) if other.json == Json::Text => Codec::Standard {
+                    ty: other.name.to_string(),
+                },
                 _ => panic!("{}: a part sent as fields", other.name),
             }
         }
