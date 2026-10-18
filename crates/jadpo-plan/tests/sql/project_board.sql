@@ -37,14 +37,15 @@ WHERE "id" = $1
     SELECT "project_id", "id", "title", "owner_id", "created_at"
     FROM "todo"
     WHERE "project_id" = "key"."id"
-      AND "status" <> 'done'
-      AND "todo"."owner_id" = $2
+      AND "status" <> $2
+      AND "todo"."owner_id" = $3
     ORDER BY "created_at" ASC, "id" ASC
     LIMIT 50
   ) AS "row"
   ORDER BY "key"."id", "row"."created_at" ASC, "row"."id" ASC
   -- $1: keys as Array(Uuid)
-  -- $2: caller User as Uuid
+  -- $2: literal Text("done") as Text
+  -- $3: caller User as Uuid
   -- columns: uuid, uuid, text, uuid, instant
   -- record TodoWithOwner: id = column 1, title = column 2, owner = include 0
 

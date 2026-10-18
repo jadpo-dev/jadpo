@@ -7,6 +7,8 @@
 //!   query's `where:` lines, a lifecycle's `visible:` and `when:`) and its
 //!   renderer, which the plan's statements and the checker's partial
 //!   indexes both use, through a [`Bind`] that says where a parameter goes.
+//! - [`literal`]: a value written into a statement's text where it takes
+//!   no parameters, as the storage codec made it (chunk 5.5w3b).
 //! - [`statement`]: the reads, writes and purges the plan runs.
 //! - [`table`]: what a migration does to a store's tables.
 //!

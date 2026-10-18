@@ -295,6 +295,7 @@ that instruction, each the most conservative reading:
 |---|---|---|
 | HTTP requests and responses, OpenAPI | The contract's JSON, through the route codec | Area 7, this page |
 | Storage and migrations | The contract's storage: one column, named columns laid out from the type's parts, or a native PostgreSQL type (a range, `time`, `timestamp`); a quantity's column carries a comment naming its SI unit; a fixed currency or rate a check constraint | Area 5, this page |
+| SQL literals: a query's or a lifecycle's condition, a transition's `set:`, a backfill | The value the storage codec makes, which the runtime binds: a parameter wherever the statement takes one, otherwise that value written as SQL text | Areas 5 and 6, this page |
 | Caches and Redis entities | The contract's JSON, as area 5 holds the API's JSON there | Area 5 |
 | Event, job and batch payloads | The contract's JSON of the event's or the job's type, written and read by the route codec, and a batch's captured values the same; read with the type as it is when delivered, so a change an API record would call breaking needs area 18's acceptance, and a payload that no longer reads is parked, never dropped | Area 12 |
 | CSV and TSV cells | A standard type's canonical text (`text.from`), read by `text.parse`; a type with no single text form (`PostalAddress`, `Price`, a choice) is the compile error naming JSON Lines that a list or an object is | This page, "Data formats" |
@@ -317,9 +318,10 @@ that instruction, each the most conservative reading:
 > (`RichText`, `RichTextBlock`, `LocalisedText`) as their contract's JSON
 > ("Chosen in chunk 5.5w2b"); chunk 5.5w3 gave the JSON boundary and
 > OpenAPI one encoder for every standard type, read from its entry
-> ("Chosen in chunk 5.5w3"), and the SQL literals' is 5.5w3b; the
-> boundaries not built yet take these encodings in the chunks that build
-> them.
+> ("Chosen in chunk 5.5w3"), and chunk 5.5w3b made every SQL literal
+> the value the runtime's storage codec binds ("Chosen in chunk 5.5w3b");
+> the boundaries not built yet take these encodings in the chunks that
+> build them.
 
 ### Packages use the standard types
 
@@ -10973,6 +10975,56 @@ What the pages left open, each the most conservative reading:
     passkeys the runtime keeps wrote it as text. Nothing is deployed, so
     nothing needs migrating.
 
+### Chosen in chunk 5.5w3b
+
+What the pages left open, each the most conservative reading:
+
+- **One storage codec, in the shared leaf.** The runtime's encoder of a
+  parameter moved to `jadpo_std::standard::storage::bind`, with the
+  `SqlValue` it makes; the runtime's `to_sql` calls it, and the compiler
+  makes every literal in SQL with it, after decoding the literal for its
+  field exactly as the plan decodes a body's
+  (`jadpo_std::constant::literal`): `"2026-10-25"` where a `CalendarDate`
+  goes is the date, `5` where `scale: 2` goes is `5.00`, `20%` the
+  fraction `0.20`, `2.5km` its metres, `Currency.gbp` the code `GBP`.
+- **A parameter wherever the statement takes one.** A query's, a `get`'s
+  and an include's conditions, a lifecycle's `visible:` and `when:`, a
+  transition's `set:`, a create's `initial:`, a purge, and a membership's
+  roles in policy bind each literal and enum value as a parameter, the
+  value the codec made. PostgreSQL plans an unnamed statement with its
+  parameters' values, so a bound `visible:` still proves a partial
+  index's predicate.
+- **Written as SQL text only where a statement takes no parameters,**
+  each place listed: a partial index's predicate (DDL), a migration's
+  backfill (its `postgres.sql` runs as written), and the identity
+  statements whose parameters are fixed (a passkey's, a session's and a
+  service key's lookup, for the caller's `active:` and its policy). The
+  compiler's own text, a column's comment and the codes a check
+  constraint names, is escaped the same way. The text is PostgreSQL's
+  spelling of the codec's value, cast where the bare spelling could read
+  as another type: text quoted with each `'` doubled, and, when it holds
+  a backslash or an ASCII control character, an escape string (`E'...'`)
+  with each backslash doubled and each control character escaped, so
+  `standard_conforming_strings` can't change its meaning and it stays on
+  one line (a migration's sections are read line by line, which dropped a
+  `\r` and would read a line of text starting `-- store:` as a section of
+  its own); an instant in UTC with `+00`, so the session's `TimeZone`
+  can't change it; a number only when it is digits, a sign and a point.
+- **Text holding NUL is never stored.** PostgreSQL text can't hold the
+  NUL character: a backfill holding it is `migration.decision_invalid`, a
+  predicate holding it isn't written (the index holds every row), and a
+  condition binds it, which the store refuses as it refuses a runtime
+  value holding one.
+- **A backfill takes every literal its field's type has,** an instant, a
+  date, a duration, a quantity and a percentage now too, each checked as
+  any literal of its type is, so a standard type's own check (an email
+  address's) refuses a backfill it used to store.
+- **A literal is never absent.** Comparing an optional field with a
+  literal in a `where:` line, or testing it `in` a list of literals, was
+  refused as `query.optional_value`; it compiles now.
+- **`jadpo sql`** shows a bound literal's parameter as SQL writes its
+  value: `$3: 'live' · text`.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -11024,7 +11076,7 @@ What the pages left open, each the most conservative reading:
 | The clinical units | `PressureUnit.millimetre_of_mercury`, `FrequencyUnit.beat_per_minute`, `ConcentrationUnit.milligram_per_decilitre` and the glucose-only `ConcentrationUnit.millimole_of_glucose_per_litre` (glucose's molar mass fixed at CLDR's 180.1557 g/mol), as UK meters report glucose, added in chunk 5.5m2. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `mmHg` and `bpm` suffixes | Question 17's table gains `mmHg` for a `Pressure` and `bpm` for a `Frequency`, purely additive and clashing with no suffix or keyword; a milligram a decilitre keeps no suffix, since a suffix can't hold `/`. Decided by the lead session, not a question for Richard | 2026-10-18 |
 | `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens; `HEAD`, `OPTIONS`, `CONNECT` and `TRACE` aren't variants, since the runtime answers `HEAD` and `OPTIONS` itself and adding them later breaks nothing (decided by the lead session, as chunk 5.5n recommended) | 2026-10-18 |
-| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes (Richard); the encodings the pages left open, event, job and batch payloads, CSV cells, a personal value's log hash, developer reports and integration fields without `wire:`, decided under "Every boundary through the contract" by the lead session, as was storing every object and choice in named columns ("Chosen in chunk 5.5w"); built for the boundaries that are built, with fault text that never carries a value, one reader per text form and map keys as canonical text ("Chosen in chunk 5.5w2"), and the JSON-held values stored as their contract's JSON ("Chosen in chunk 5.5w2b"); one JSON encoder and one OpenAPI schema for every standard type, read from its entry ("Chosen in chunk 5.5w3") | 2026-10-18 |
+| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes (Richard); the encodings the pages left open, event, job and batch payloads, CSV cells, a personal value's log hash, developer reports and integration fields without `wire:`, decided under "Every boundary through the contract" by the lead session, as was storing every object and choice in named columns ("Chosen in chunk 5.5w"); built for the boundaries that are built, with fault text that never carries a value, one reader per text form and map keys as canonical text ("Chosen in chunk 5.5w2"), and the JSON-held values stored as their contract's JSON ("Chosen in chunk 5.5w2b"); one JSON encoder and one OpenAPI schema for every standard type, read from its entry ("Chosen in chunk 5.5w3"); every SQL literal the value the runtime's storage codec binds, a parameter wherever the statement takes one ("Chosen in chunk 5.5w3b") | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 | A `PasswordHash` never leaves the server | It is stored as its PHC string, but refused in an `Output` (so a response), a request's `Input`, a failure's fields and `json.write` and `json.read`, as `type.password_hash_exposed` or `type.mismatch`; no page needs one read for imports, so `Input` refuses it too (lead session, chunk 5.5q2) | 2026-10-18 |
 | `crypto.public_key` | `crypto.public_key(key: config.<name>)` gives the `PublicKey` of a `PrivateKey` setting, Ed25519's public half, so an app can publish its key and a test can sign and verify; the key is still read only through `key:` (lead session, chunk 5.5q2) | 2026-10-18 |
