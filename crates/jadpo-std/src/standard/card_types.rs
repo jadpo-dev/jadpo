@@ -134,7 +134,7 @@ pub const CARD_BRAND_TYPE: StandardType = StandardType {
             ("mastercard", "Mastercard"),
             ("visa", "Visa"),
         ],
-        &["amex", "Visa Electron", "master_card", ""],
+        &["americanexpress", "Visa Electron", "master_card", ""],
     ),
     release: FIRST_RELEASE,
 };
@@ -202,7 +202,7 @@ pub const MASKED_CARD_NUMBER_TYPE: StandardType = StandardType {
         &[
             r#"{"brand":"visa","last_four":"424"}"#,
             r#"{"brand":"visa","last_four":"42424"}"#,
-            r#"{"brand":"amex","last_four":"0005"}"#,
+            r#"{"brand":"diners","last_four":"0005"}"#,
             r#"{"brand":"visa"}"#,
             r#""4242""#,
         ],

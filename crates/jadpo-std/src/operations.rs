@@ -1414,7 +1414,7 @@ pub const OPERATIONS: &[Operation] = &[
         Op::MoneyMask,
         "mask",
         &[param("card", Kind::Std("PaymentCardNumber"))],
-        Kind::Std(crate::standard::cards::MASKED_CARD_NUMBER),
+        Kind::Std(crate::standard::card_types::MASKED_CARD_NUMBER),
         "money::mask",
     ),
     money(

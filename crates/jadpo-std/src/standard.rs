@@ -17,7 +17,7 @@ use crate::read::SqlType;
 use crate::{Builtin, LOCALE, ZONE};
 
 pub mod addresses_data;
-pub mod cards;
+pub mod card_types;
 mod contact;
 pub mod documents;
 mod identifiers;
@@ -857,8 +857,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     phones::CALLING_CODE,
     identifiers::CARD_BIN,
-    cards::CARD_BRAND_TYPE,
-    cards::CARD_EXPIRY_TYPE,
+    card_types::CARD_BRAND_TYPE,
+    card_types::CARD_EXPIRY_TYPE,
     quantity(
         crate::QuantityKind::Concentration,
         &[
@@ -1326,7 +1326,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
-    cards::MASKED_CARD_NUMBER_TYPE,
+    card_types::MASKED_CARD_NUMBER_TYPE,
     quantity(
         crate::QuantityKind::Mass,
         &[
@@ -2020,7 +2020,7 @@ impl StandardType {
             Holds::Text { personal, .. } => personal,
             _ => contact::PERSONAL
                 .iter()
-                .chain(cards::PERSONAL)
+                .chain(card_types::PERSONAL)
                 .chain(documents::PERSONAL)
                 .find(|(name, _)| *name == self.name)
                 .map(|(_, category)| *category),

@@ -197,7 +197,7 @@ fn shared_out(total: Money, ratios: &[i64]) -> Result<Value, Fault> {
 /// a range no listed scheme issues), and its last four digits (chunk
 /// 5.5i2).
 pub fn mask(card: &Value) -> Result<Value, Fault> {
-    use jadpo_std::standard::cards;
+    use jadpo_std::standard::card_types;
     let Value::Text(number) = card else {
         return Err(Fault::Shape);
     };
@@ -206,11 +206,11 @@ pub fn mask(card: &Value) -> Result<Value, Fault> {
         return Err(Fault::Shape);
     }
     let last_four: String = number.chars().skip(count - 4).collect();
-    let brand = match cards::brand_of(number) {
+    let brand = match card_types::brand_of(number) {
         Some(at) => {
-            let (name, _) = cards::CARD_BRANDS.get(at).ok_or(Fault::Shape)?;
+            let (name, _) = card_types::CARD_BRANDS.get(at).ok_or(Fault::Shape)?;
             Value::variant(
-                cards::CARD_BRAND,
+                card_types::CARD_BRAND,
                 u32::try_from(at).map_err(|_| Fault::Shape)?,
                 name,
                 Vec::new(),
@@ -219,7 +219,7 @@ pub fn mask(card: &Value) -> Result<Value, Fault> {
         None => Value::None,
     };
     Ok(Value::record(
-        cards::MASKED_CARD_NUMBER,
+        card_types::MASKED_CARD_NUMBER,
         vec![
             ("brand".into(), brand),
             ("last_four".into(), Value::text(&last_four)),

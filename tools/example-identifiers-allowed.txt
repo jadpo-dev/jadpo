@@ -9,6 +9,8 @@
 all
 phone
 postal_code
+passport
+vat
 
 # Rust keywords and ordinary programming vocabulary
 # ordinary English: `configuration.move_name_taken`

@@ -403,7 +403,7 @@ fn british_vat(number: &str) -> bool {
         .iter()
         .take(7)
         .zip([8, 7, 6, 5, 4, 3, 2])
-        .map(|(digit, weight)| digit * weight)
+        .map(|(digit, factor)| digit * factor)
         .sum();
     let check = digits.get(7).zip(digits.get(8)).map(|(a, b)| a * 10 + b);
     check.is_some_and(|check| {
@@ -476,7 +476,7 @@ fn irish_check_letter(number: &str) -> bool {
     let mut total: u32 = body
         .iter()
         .zip([8, 7, 6, 5, 4, 3, 2])
-        .map(|(digit, weight)| digit * weight)
+        .map(|(digit, factor)| digit * factor)
         .sum();
     if let Some(second) = second {
         total += 9 * letter_value(*second);
@@ -504,7 +504,7 @@ fn australian_business_number(number: &str) -> bool {
     let total: u32 = digits
         .iter()
         .zip([10, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19])
-        .map(|(digit, weight)| digit * weight)
+        .map(|(digit, factor)| digit * factor)
         .sum();
     digits.len() == 11 && total.is_multiple_of(89)
 }
@@ -521,7 +521,7 @@ fn australian_tax_file_number(number: &str) -> bool {
             let total: u32 = digits
                 .iter()
                 .zip([1, 4, 3, 7, 5, 8, 6, 9, 10])
-                .map(|(digit, weight)| digit * weight)
+                .map(|(digit, factor)| digit * factor)
                 .sum();
             total.is_multiple_of(11)
         }

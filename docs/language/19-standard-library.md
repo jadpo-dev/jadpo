@@ -3510,35 +3510,35 @@ function card_label(card: MaskedCardNumber, viewer: Locale) -> PresentationText 
 }
 
 /// A document as a booking shows it: its number's last four.
-function document_label(document: IdentityDocument, viewer: Locale) -> PresentationText {
-    return text.format(document, locale: viewer)
+function document_label(held_document: IdentityDocument, viewer: Locale) -> PresentationText {
+    return text.format(held_document, locale: viewer)
 }
 ```
 
 ```jadpo check project=cards-and-documents file=main.test.jadpo
 test "a card is kept as its brand and last four" {
-    var kept: MaskedCardNumber = card_on_file(PaymentCardNumber("4242424242424242"))
-    assert kept == MaskedCardNumber {
+    var stored_card: MaskedCardNumber = card_on_file(PaymentCardNumber("4242424242424242"))
+    assert stored_card == MaskedCardNumber {
         brand: CardBrand.visa
         last_four: "4242"
     }
-    assert card_label(kept, Locale.en_gb) == "Visa •••• 4242"
-    var amex: MaskedCardNumber = card_on_file(PaymentCardNumber("378282246310005"))
-    assert amex.brand == CardBrand.american_express
-    var expiry: CardExpiry = CardExpiry {
+    assert card_label(stored_card, Locale.en_gb) == "Visa •••• 4242"
+    var charge_card: MaskedCardNumber = card_on_file(PaymentCardNumber("378282246310005"))
+    assert charge_card.brand == CardBrand.american_express
+    var runs_until: CardExpiry = CardExpiry {
         year: 2028
         month: 12
     }
-    assert text.from(expiry) == "2028-12"
-    assert text.format(expiry, locale: Locale.en_gb) == "12/28"
+    assert text.from(runs_until) == "2028-12"
+    assert text.format(runs_until, locale: Locale.en_gb) == "12/28"
 }
 
 test "a VAT number fits its country's form" {
     var supplier: VatNumber = attempt supplier_vat("DE143454214")
     assert supplier.country == Country.de
     assert supplier_vat("DE143454215") fails NotAVatNumber
-    var athens: VatNumber = attempt supplier_vat("EL094259216")
-    assert athens.country == Country.gr
+    var greek_supplier: VatNumber = attempt supplier_vat("EL094259216")
+    assert greek_supplier.country == Country.gr
     assert supplier_vat("GR094259216") fails NotAVatNumber
 }
 
