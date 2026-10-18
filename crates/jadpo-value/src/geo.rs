@@ -86,16 +86,15 @@ pub fn read(ty: &str, json: &serde_json::Value) -> Result<Value, Unreadable> {
         return refused(&step(&at, "coordinates"), "required");
     };
     let value = geometry(wanted, coordinates, &step(&at, "coordinates"))?;
-    match (ty == GEOMETRY, variant) {
-        (true, Some(ordinal)) => {
-            let (name, _) = GEOJSON_TYPES[ordinal];
-            Ok(Value::variant(
-                GEOMETRY,
-                ordinal as u32,
-                name,
-                vec![(name.into(), value)],
-            ))
-        }
+    let listed =
+        variant.and_then(|ordinal| GEOJSON_TYPES.get(ordinal).map(|(name, _)| (ordinal, *name)));
+    match (ty == GEOMETRY, listed) {
+        (true, Some((ordinal, name))) => Ok(Value::variant(
+            GEOMETRY,
+            ordinal as u32,
+            name,
+            vec![(name.into(), value)],
+        )),
         _ => Ok(value),
     }
 }
@@ -223,7 +222,9 @@ fn position(json: &serde_json::Value, at: &[String]) -> Result<Value, Unreadable
         }
     }
     let within = |n: usize, bound: i128| -> Result<Decimal, Unreadable> {
-        let value = read[n];
+        let Some(value) = read.get(n).copied() else {
+            return refused(at, "format");
+        };
         let limit = Decimal::new(bound, 0);
         if value < Decimal::new(-bound, 0) {
             return refused(&step(at, n), "min");
@@ -290,9 +291,9 @@ fn axes(point: &Value) -> Option<(Decimal, Decimal)> {
     }
 }
 
-/// A coordinate at nine places, a tenth of a millimetre at the equator,
+/// A coordinate at 9 places, a tenth of a millimetre at the equator,
 /// as a whole number, so a ring's winding is found exactly.
-fn nine_places(value: Decimal) -> i128 {
+fn fixed_point(value: Decimal) -> i128 {
     value
         .rescale(9, Rounding::HalfEven)
         .map_or(0, |fixed| fixed.mantissa)
@@ -304,11 +305,12 @@ fn twice_area(ring: &[Value]) -> i128 {
     let corners: Vec<(i128, i128)> = ring
         .iter()
         .filter_map(axes)
-        .map(|(latitude, longitude)| (nine_places(longitude), nine_places(latitude)))
+        .map(|(latitude, longitude)| (fixed_point(longitude), fixed_point(latitude)))
         .collect();
     corners
-        .windows(2)
-        .map(|pair| pair[0].0 * pair[1].1 - pair[1].0 * pair[0].1)
+        .iter()
+        .zip(corners.iter().skip(1))
+        .map(|(from, to)| from.0 * to.1 - to.0 * from.1)
         .sum()
 }
 
