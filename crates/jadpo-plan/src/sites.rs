@@ -149,6 +149,10 @@ pub enum ArmPattern {
 }
 
 /// Decodes a body's sites, adding constants and type plans as it goes.
+/// A prompt's place in the plan's prompts, and the type of each field its
+/// text writes, in its entry's order (area 21).
+pub(crate) type PromptFields = (u32, Vec<TypeRef>);
+
 pub(crate) struct Decoder<'a> {
     pub types: &'a mut Types,
     pub constants: &'a mut Vec<Constant>,
@@ -167,7 +171,7 @@ pub(crate) struct Decoder<'a> {
     pub json: &'a mut Vec<TypeRef>,
     /// Each prompt's place in the plan's prompts, by its name, and the type
     /// of each field its text writes (area 21).
-    pub prompt: &'a dyn Fn(&str) -> Option<(u32, Vec<TypeRef>)>,
+    pub prompt: &'a dyn Fn(&str) -> Option<PromptFields>,
 }
 
 impl Decoder<'_> {

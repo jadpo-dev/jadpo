@@ -12,7 +12,9 @@
 
 use jadpo_db::{Base, Db, ItemKind, Layout, PROMPT_EXTENSION, Project, Symbol, symbols};
 use jadpo_diag::{Diagnostic, Span, rule};
-use jadpo_std::prompt::{self, Form, Piece, Problem, PromptEntry, PromptField, PromptPlan, SectionKind};
+use jadpo_std::prompt::{
+    self, Form, Piece, Problem, PromptEntry, PromptField, PromptPlan, SectionKind,
+};
 use jadpo_syntax::ast::{AstNode, Decl};
 use sha2::{Digest, Sha256};
 
@@ -143,7 +145,10 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
         let field_spans: Vec<(String, Span)> = tree::members(decl.member_list())
             .into_iter()
             .filter_map(|(name, _)| {
-                Some((tree::name_text(&name)?, node_span(&symbol.path, name.syntax())))
+                Some((
+                    tree::name_text(&name)?,
+                    node_span(&symbol.path, name.syntax()),
+                ))
             })
             .collect();
         let lookup = Lookup::within(db, project, &symbol.ownership);
@@ -168,9 +173,9 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
         };
         let entry = match text_of(&path) {
             Some(Ok(text)) => reading.text(text, &sent).map(|(instructions, request)| {
-                let conversation = sent.iter().find_map(|(name, how)| {
-                    (*how == Sent::Conversation).then(|| name.clone())
-                });
+                let conversation = sent
+                    .iter()
+                    .find_map(|(name, how)| (*how == Sent::Conversation).then(|| name.clone()));
                 PromptEntry {
                     key: key.clone(),
                     type_name: canonical.clone(),
@@ -193,7 +198,9 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
             // A file that can't be read is the loader's to report.
             Some(Err(_)) => None,
             None => {
-                reading.problems.push(no_file(&symbol.name, &path, name_span.clone()));
+                reading
+                    .problems
+                    .push(no_file(&symbol.name, &path, name_span.clone()));
                 None
             }
         };
@@ -221,7 +228,8 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
             jadpo_db::is_prompt_text(path)
         };
         if is_text && !claimed.contains(path) {
-            out.problems.push(no_type(path, record.text.as_deref().unwrap_or("")));
+            out.problems
+                .push(no_type(path, record.text.as_deref().unwrap_or("")));
         }
     }
     out.prompts.sort_by(|a, b| a.key.cmp(&b.key));
@@ -352,12 +360,13 @@ impl Reading<'_> {
             match problem {
                 Problem::Unclosed { .. } | Problem::Lone { .. } => {
                     unknown = true;
-                    self.problems.push(brace(self.text_path, text, problem));
+                    self.problems.push(brace(self.text_path, problem));
                 }
                 Problem::Missing(SectionKind::Request) if both_missing => {}
                 _ => {
                     structure = true;
-                    self.problems.push(section(self.text_path, text, &file, problem, both_missing));
+                    self.problems
+                        .push(section(self.text_path, text, &file, problem, both_missing));
                 }
             }
         }
@@ -368,7 +377,11 @@ impl Reading<'_> {
             };
             for (name, start, end) in section.fields() {
                 let span = Span::new(self.text_path, start, end);
-                match sent.iter().find(|(field, _)| field == name).map(|(_, how)| how) {
+                match sent
+                    .iter()
+                    .find(|(field, _)| field == name)
+                    .map(|(_, how)| how)
+                {
                     None => {
                         unknown = true;
                         self.problems.push(self.unknown(name, span, sent));
@@ -413,7 +426,8 @@ impl Reading<'_> {
             .filter(|(_, how)| matches!(how, Sent::Written(_)))
             .map(|(name, _)| name.as_str())
             .collect();
-        let placeholders: Vec<String> = written.iter().map(|name| format!("`{{{name}}}`")).collect();
+        let placeholders: Vec<String> =
+            written.iter().map(|name| format!("`{{{name}}}`")).collect();
         let may = if placeholders.is_empty() {
             "it has no field its text can write".to_string()
         } else {
@@ -571,9 +585,7 @@ fn binary(lookup: &Lookup<'_>, ty: &Ty, depth: u32) -> bool {
     match lookup.structure(ty) {
         Ty::Opaque(name, _) => name == "File",
         Ty::List(item) | Ty::Set(item) | Ty::Nullable(item) => binary(lookup, &item, depth + 1),
-        Ty::Map(key, value) => {
-            binary(lookup, &key, depth + 1) || binary(lookup, &value, depth + 1)
-        }
+        Ty::Map(key, value) => binary(lookup, &key, depth + 1) || binary(lookup, &value, depth + 1),
         _ => false,
     }
 }
@@ -669,7 +681,10 @@ fn no_type(path: &str, text: &str) -> Diagnostic {
 /// The line a byte offset is on, and that line's start and end.
 fn line_at(text: &str, at: u32) -> (u32, u32) {
     let at = (at as usize).min(text.len());
-    let start = text.get(..at).and_then(|before| before.rfind('\n')).map_or(0, |n| n + 1);
+    let start = text
+        .get(..at)
+        .and_then(|before| before.rfind('\n'))
+        .map_or(0, |n| n + 1);
     let end = text
         .get(at..)
         .and_then(|after| after.find('\n'))
@@ -680,7 +695,7 @@ fn line_at(text: &str, at: u32) -> (u32, u32) {
     )
 }
 
-fn brace(path: &str, _text: &str, problem: &Problem) -> Diagnostic {
+fn brace(path: &str, problem: &Problem) -> Diagnostic {
     let file = path.rsplit('/').next().unwrap_or(path);
     let (start, end, message, label, next) = match problem {
         Problem::Lone { start, end } => (
@@ -727,7 +742,8 @@ fn section(
             format!("`{name}` has neither `# Instructions` nor `# Request`"),
             first_line(),
             "no sections",
-            "Start the file with `# Instructions` and its text, then `# Request` and its text".to_string(),
+            "Start the file with `# Instructions` and its text, then `# Request` and its text"
+                .to_string(),
         ),
         Problem::Missing(kind) => {
             let other = match kind {
@@ -774,12 +790,9 @@ fn section(
             "empty",
             "Write the section's text under its heading".to_string(),
         ),
-        Problem::Unclosed { .. } | Problem::Lone { .. } => (
-            String::new(),
-            first_line(),
-            "",
-            String::new(),
-        ),
+        Problem::Unclosed { .. } | Problem::Lone { .. } => {
+            (String::new(), first_line(), "", String::new())
+        }
     };
     Diagnostic::new(&rule::PROMPT_SECTION_MISSING, message)
         .at(at, label)

@@ -13,7 +13,7 @@
 use std::path::PathBuf;
 
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_std::prompt::{Form, Piece, PromptEntry, outline};
+use jadpo_std::prompt::{Form, Piece, PromptEntry, as_reviewed};
 use jadpo_term::{Block, Fact, Json, Outcome, Screen};
 
 use crate::fmt::project_needed;
@@ -68,7 +68,7 @@ pub fn ai(call: &Call) -> Reply {
                     "`jadpo ai` needs to know what to do",
                 )
                 .reason("`show` shows what a prompt sends: its instructions, the conversation's turns and its request.")
-                .next("Run `jadpo ai show <prompt>`, such as `jadpo ai show answer_question`"),
+                .next("Run `jadpo ai show <prompt>` with one of the project's prompts"),
             );
         }
     }
@@ -79,7 +79,11 @@ pub fn ai(call: &Call) -> Reply {
     let loaded = jadpo_db::load(&root);
     let (db, project) = (&loaded.db, loaded.project);
     let analysis = jadpo_check::prompts::analysis(db, project);
-    let keys: Vec<&str> = analysis.prompts.iter().map(|facts| facts.key.as_str()).collect();
+    let keys: Vec<&str> = analysis
+        .prompts
+        .iter()
+        .map(|facts| facts.key.as_str())
+        .collect();
     let Some(written) = call.arguments.get(1) else {
         return Reply::failed(
             Diagnostic::new(&rule::CLI_AI_ARGUMENTS, "`jadpo ai show` needs a prompt's name")
@@ -154,8 +158,8 @@ fn show(entry: &PromptEntry, type_name: &str, file: &str) -> Reply {
         ("file".to_string(), file.to_string()),
         ("version".to_string(), version.clone()),
     ]));
-    let instructions = outline(&entry.instructions, &entry.fields);
-    let request = outline(&entry.request, &entry.fields);
+    let instructions = as_reviewed(&entry.instructions, &entry.fields);
+    let request = as_reviewed(&entry.request, &entry.fields);
     screen.push(Block::Section {
         heading: "system  # Instructions".to_string(),
         lines: instructions.lines().map(str::to_string).collect(),
@@ -171,23 +175,24 @@ fn show(entry: &PromptEntry, type_name: &str, file: &str) -> Reply {
         lines: request.lines().map(str::to_string).collect(),
     });
     // Each field written, and how many of its placeholders are data blocks.
-    let written: Vec<&str> = entry
-        .fields
-        .iter()
-        .map(|field| field.name.as_str())
-        .filter(|name| {
-            entry
-                .instructions
-                .iter()
-                .chain(&entry.request)
-                .any(|piece| matches!(piece, Piece::Field { name: written, .. } if written == name))
-        })
-        .collect();
+    let written: Vec<&str> =
+        entry
+            .fields
+            .iter()
+            .map(|field| field.name.as_str())
+            .filter(|name| {
+                entry.instructions.iter().chain(&entry.request).any(
+                    |piece| matches!(piece, Piece::Field { name: written, .. } if written == name),
+                )
+            })
+            .collect();
     let blocks = entry
         .request
         .iter()
         .filter(|piece| match piece {
-            Piece::Field { name, .. } => entry.field(name).is_some_and(|field| field.form.is_free()),
+            Piece::Field { name, .. } => {
+                entry.field(name).is_some_and(|field| field.form.is_free())
+            }
             Piece::Text(_) => false,
         })
         .count();

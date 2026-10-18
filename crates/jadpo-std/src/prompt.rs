@@ -157,7 +157,8 @@ pub fn parse(text: &str) -> PromptFile {
         .filter(|line| !line.text.trim().is_empty())
         .collect();
     // A file with no heading at all is only missing its sections.
-    if let (false, Some(start), Some(end)) = (headings.is_empty(), written.first(), written.last()) {
+    if let (false, Some(start), Some(end)) = (headings.is_empty(), written.first(), written.last())
+    {
         out.problems.push(Problem::Before {
             start: offset(start.start),
             end: offset(end.start + end.text.len()),
@@ -411,7 +412,7 @@ pub fn fill(
 
 /// A section's text as `jadpo ai show` shows it for review: a closed
 /// placeholder as written, a free one in the block it is sent in.
-pub fn outline(pieces: &[Piece], fields: &[PromptField]) -> String {
+pub fn as_reviewed(pieces: &[Piece], fields: &[PromptField]) -> String {
     let mut out = String::new();
     for piece in pieces {
         match piece {
@@ -451,26 +452,49 @@ pub fn outline(pieces: &[Piece], fields: &[PromptField]) -> String {
 /// Characters read as `<`: the ASCII one, its fullwidth and small forms,
 /// the angle brackets and Unicode's confusables for it.
 const LESS_THAN: &[char] = &[
-    '<', '\u{FF1C}', '\u{FE64}', '\u{2039}', '\u{2329}', '\u{3008}', '\u{27E8}', '\u{02C2}',
-    '\u{1438}', '\u{16B2}', '\u{276E}', '\u{29FC}', '\u{1D236}',
+    '<',
+    '\u{FF1C}',
+    '\u{FE64}',
+    '\u{2039}',
+    '\u{2329}',
+    '\u{3008}',
+    '\u{27E8}',
+    '\u{02C2}',
+    '\u{1438}',
+    '\u{16B2}',
+    '\u{276E}',
+    '\u{29FC}',
+    '\u{1D236}',
 ];
 
 /// Characters read as `/`: the ASCII one, its fullwidth form and
 /// Unicode's confusables for it.
 const SLASH: &[char] = &[
-    '/', '\u{FF0F}', '\u{1735}', '\u{2041}', '\u{2044}', '\u{2215}', '\u{2571}', '\u{27CB}',
-    '\u{29F8}', '\u{2CC6}', '\u{2F03}', '\u{3033}', '\u{30CE}', '\u{31D3}', '\u{4E3F}',
+    '/',
+    '\u{FF0F}',
+    '\u{1735}',
+    '\u{2041}',
+    '\u{2044}',
+    '\u{2215}',
+    '\u{2571}',
+    '\u{27CB}',
+    '\u{29F8}',
+    '\u{2CC6}',
+    '\u{2F03}',
+    '\u{3033}',
+    '\u{30CE}',
+    '\u{31D3}',
+    '\u{4E3F}',
     '\u{1D23A}',
 ];
 
 /// Characters a reader skips over: those that show nothing (zero-width
 /// spaces and joiners, the soft hyphen, direction marks and the rest).
 const INVISIBLE: &[char] = &[
-    '\u{00AD}', '\u{034F}', '\u{061C}', '\u{115F}', '\u{1160}', '\u{17B4}', '\u{17B5}',
-    '\u{180E}', '\u{200B}', '\u{200C}', '\u{200D}', '\u{200E}', '\u{200F}', '\u{202A}',
-    '\u{202B}', '\u{202C}', '\u{202D}', '\u{202E}', '\u{2060}', '\u{2061}', '\u{2062}',
-    '\u{2063}', '\u{2064}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}', '\u{3164}',
-    '\u{FEFF}', '\u{FFA0}',
+    '\u{00AD}', '\u{034F}', '\u{061C}', '\u{115F}', '\u{1160}', '\u{17B4}', '\u{17B5}', '\u{180E}',
+    '\u{200B}', '\u{200C}', '\u{200D}', '\u{200E}', '\u{200F}', '\u{202A}', '\u{202B}', '\u{202C}',
+    '\u{202D}', '\u{202E}', '\u{2060}', '\u{2061}', '\u{2062}', '\u{2063}', '\u{2064}', '\u{2066}',
+    '\u{2067}', '\u{2068}', '\u{2069}', '\u{3164}', '\u{FEFF}', '\u{FFA0}',
 ];
 
 /// The HTML character references by name that read as `<`, `/` or a
@@ -873,37 +897,56 @@ language of {reader_locale}. Never promise refunds or delivery dates.
             )
         );
         let instructions = parse(ANSWER_QUESTION).instructions.expect("instructions");
-        let written = fill(&instructions.pieces, &fields(), &mut |_| Some("en-GB".into()));
+        let written = fill(&instructions.pieces, &fields(), &mut |_| {
+            Some("en-GB".into())
+        });
         assert!(
             written
                 .as_deref()
                 .is_some_and(|text| text.starts_with("You answer questions")
-                    && text.ends_with("language of en-GB. Never promise refunds or delivery dates."))
+                    && text
+                        .ends_with("language of en-GB. Never promise refunds or delivery dates."))
         );
     }
 
     #[test]
     fn braces_are_doubled_and_a_lone_one_is_a_problem() {
-        let file = parse("# Instructions\n\nReply as {{\"ok\": true}}.\n\n# Request\n\n{question}\n");
+        let file =
+            parse("# Instructions\n\nReply as {{\"ok\": true}}.\n\n# Request\n\n{question}\n");
         assert_eq!(file.problems, Vec::new());
         assert_eq!(
             file.instructions.expect("instructions").pieces,
             vec![Piece::Text("Reply as {\"ok\": true}.".into())]
         );
-        let file = parse("# Instructions\n\nReply as {\"ok\": true}.\n\n# Request\n\n{question} }\n");
-        assert!(file.problems.iter().any(|p| matches!(p, Problem::Lone { .. })));
+        let file =
+            parse("# Instructions\n\nReply as {\"ok\": true}.\n\n# Request\n\n{question} }\n");
+        assert!(
+            file.problems
+                .iter()
+                .any(|p| matches!(p, Problem::Lone { .. }))
+        );
         let file = parse("# Instructions\n\nAnswer {question\n\n# Request\n\n{question}\n");
-        assert!(file.problems.iter().any(|p| matches!(p, Problem::Unclosed { .. })));
+        assert!(
+            file.problems
+                .iter()
+                .any(|p| matches!(p, Problem::Unclosed { .. }))
+        );
     }
 
     #[test]
     fn a_file_without_its_sections_in_order_is_a_problem() {
         let missing = parse("# Instructions\n\nAnswer kindly.\n");
-        assert_eq!(missing.problems, vec![Problem::Missing(SectionKind::Request)]);
+        assert_eq!(
+            missing.problems,
+            vec![Problem::Missing(SectionKind::Request)]
+        );
         let before = parse("Notes\n# Instructions\n\nA\n\n# Request\n\nB\n");
         assert_eq!(before.problems, vec![Problem::Before { start: 0, end: 5 }]);
         let order = parse("# Request\n\nB\n\n# Instructions\n\nA\n");
-        assert!(matches!(order.problems.as_slice(), [Problem::OutOfOrder { .. }]));
+        assert!(matches!(
+            order.problems.as_slice(),
+            [Problem::OutOfOrder { .. }]
+        ));
         let twice = parse("# Instructions\n\nA\n\n# Request\n\nB\n\n# Request\n\nC\n");
         assert!(matches!(
             twice.problems.as_slice(),
@@ -1008,7 +1051,11 @@ language of {reader_locale}. Never promise refunds or delivery dates.
                 "{attack:?} escaped to {escaped:?}, read as {read:?}"
             );
             // Only backslashes are added.
-            assert_eq!(escaped.replace('\\', ""), attack.replace('\\', ""), "{attack:?}");
+            assert_eq!(
+                escaped.replace('\\', ""),
+                attack.replace('\\', ""),
+                "{attack:?}"
+            );
         }
         // Text with no closing tag is sent as it is.
         for kept in [
@@ -1036,8 +1083,10 @@ language of {reader_locale}. Never promise refunds or delivery dates.
             form: Form::Text,
         }];
         for attack in ATTACKS {
-            let rendered = fill(&request.pieces, &fields, &mut |_| Some((*attack).to_string()))
-                .expect("rendered");
+            let rendered = fill(&request.pieces, &fields, &mut |_| {
+                Some((*attack).to_string())
+            })
+            .expect("rendered");
             assert!(rendered.starts_with("<question>\n"), "{rendered:?}");
             assert!(rendered.ends_with("\n</question>"), "{rendered:?}");
             let read = as_read(&rendered);

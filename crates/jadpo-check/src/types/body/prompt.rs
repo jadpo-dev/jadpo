@@ -38,7 +38,7 @@ impl Body<'_> {
                     format!("`{written}` takes one prompt"),
                 )
                 .at(span, format!("{} given", args.len()))
-                .reason("`prompts.render(AnswerQuestion { ... })` renders one value of a prompt's type as the messages a model is sent.")
+                .reason("`prompts.render` renders one value of a prompt's type, a `type X = Prompt { ... }`, as the messages a model is sent.")
                 .next("Pass one prompt, built with its fields"),
             );
             return (result, pure, Reach::Unknown);
@@ -58,7 +58,7 @@ impl Body<'_> {
             )
             .at(span, format!("this is `{ty}`"))
             .reason("`prompts.render` renders a prompt: a value of a `type X = Prompt { ... }`, whose fields fill the placeholders of its `.prompt` file.")
-            .next("Pass a prompt, such as `AnswerQuestion { ... }`, built with its fields"),
+            .next("Pass a value of a prompt's type, built with its fields"),
         );
         (result, pure, Reach::Unknown)
     }

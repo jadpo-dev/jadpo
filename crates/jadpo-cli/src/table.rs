@@ -624,7 +624,7 @@ pub static COMMANDS: &[Command] = &[
             },
             Argument {
                 name: "prompt",
-                description: "The prompt's name, such as answer_question",
+                description: "The prompt's name, such as summarise_ticket",
                 required: false,
                 values: Values::Fixed(&[]),
             },
@@ -632,12 +632,12 @@ pub static COMMANDS: &[Command] = &[
         flags: &[],
         examples: &[
             Example {
-                description: "See what the answer_question prompt sends",
-                command: "jadpo ai show answer_question",
+                description: "See what the summarise_ticket prompt sends",
+                command: "jadpo ai show summarise_ticket",
             },
             Example {
                 description: "Print it as data for tools",
-                command: "jadpo ai show answer_question --json",
+                command: "jadpo ai show summarise_ticket --json",
             },
         ],
         arguments_rule: &rule::CLI_AI_ARGUMENTS,

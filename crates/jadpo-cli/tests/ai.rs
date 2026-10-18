@@ -120,7 +120,11 @@ fn show_names_a_prompt_the_project_has() {
         none.stderr
     );
     let other = jadpo(&root, &["ai", "shwo", "answer_question"]);
-    assert!(other.stderr.contains("Use `jadpo ai show`"), "{}", other.stderr);
+    assert!(
+        other.stderr.contains("Use `jadpo ai show`"),
+        "{}",
+        other.stderr
+    );
     let later = jadpo(&root, &["ai", "record", "answer_question"]);
     assert!(
         later.stderr.contains("rule: toolchain.not_built_yet"),
@@ -140,8 +144,11 @@ fn a_prompt_with_errors_shows_them_instead() {
     let done = jadpo(&root, &["ai", "show", "answer_question"]);
     assert_eq!(done.code, 1, "{}", done.stdout);
     assert!(
-        done.stdout.contains("error: `{questoin}` isn't a field of `AnswerQuestion`")
-            && done.stdout.contains("--> domains/support/prompts/answer_question.prompt:7:1")
+        done.stdout
+            .contains("error: `{questoin}` isn't a field of `AnswerQuestion`")
+            && done
+                .stdout
+                .contains("--> domains/support/prompts/answer_question.prompt:7:1")
             && done.stdout.contains("ai show stopped: 1 error"),
         "{}",
         done.stdout

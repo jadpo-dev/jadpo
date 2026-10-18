@@ -465,9 +465,11 @@ pub fn prompt_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
         else {
             continue;
         };
-        let Some(file) =
-            crate::lookups::file_at(db, project, crate::lookups::Name::new(db, facts.path.clone()))
-        else {
+        let Some(file) = crate::lookups::file_at(
+            db,
+            project,
+            crate::lookups::Name::new(db, facts.path.clone()),
+        ) else {
             continue;
         };
         let mut node = Node::new(
@@ -483,7 +485,10 @@ pub fn prompt_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
             end,
             lines: (1, lines.line(end.saturating_sub(1)).max(1)),
         });
-        node.digest = Some(jadpo_graph::Digest::of([file.text(db).as_str(), text.as_str()]));
+        node.digest = Some(jadpo_graph::Digest::of([
+            file.text(db).as_str(),
+            text.as_str(),
+        ]));
         node.domain = facts.ownership.domain().map(str::to_string);
         node.parent = Some(item_key(
             registry,

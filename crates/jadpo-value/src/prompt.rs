@@ -22,7 +22,10 @@ fn message(role: &str, content: Value) -> Value {
     Value::record(
         CHAT_MESSAGE,
         vec![
-            (Rc::from("role"), Value::variant(CHAT_ROLE, ordinal, role, Vec::new())),
+            (
+                Rc::from("role"),
+                Value::variant(CHAT_ROLE, ordinal, role, Vec::new()),
+            ),
             (Rc::from("content"), content),
         ],
     )

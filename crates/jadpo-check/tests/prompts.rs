@@ -58,7 +58,10 @@ fn diagnostics(
     let db = Database::default();
     let mut files = vec![APP, SLUG, EXCERPT, (TYPE_PATH, prompt_type)];
     files.extend_from_slice(more);
-    let records: Vec<(&str, &str)> = prompt_text.map(|text| (TEXT_PATH, text)).into_iter().collect();
+    let records: Vec<(&str, &str)> = prompt_text
+        .map(|text| (TEXT_PATH, text))
+        .into_iter()
+        .collect();
     let project = support::project_with_records(&db, Layout::Project, &files, &records);
     jadpo_check::check(&db, project)
 }
@@ -103,9 +106,15 @@ fn a_placeholder_names_a_field() {
     // A brace not doubled, or never closed, is a placeholder that names
     // nothing.
     let lone = PROMPT_TEXT.replace("delivery dates.", "delivery dates. }");
-    assert_eq!(rules(PROMPT_TYPE, Some(&lone)), ["prompt.placeholder_unknown"]);
+    assert_eq!(
+        rules(PROMPT_TYPE, Some(&lone)),
+        ["prompt.placeholder_unknown"]
+    );
     let open = PROMPT_TEXT.replace("delivery dates.", "delivery dates. {");
-    assert_eq!(rules(PROMPT_TYPE, Some(&open)), ["prompt.placeholder_unknown"]);
+    assert_eq!(
+        rules(PROMPT_TYPE, Some(&open)),
+        ["prompt.placeholder_unknown"]
+    );
     // Doubled braces write one.
     let doubled = PROMPT_TEXT.replace("delivery dates.", "delivery dates. Reply {{as JSON}}.");
     assert_eq!(rules(PROMPT_TYPE, Some(&doubled)), NONE);
@@ -177,7 +186,10 @@ fn a_prompt_has_its_file_and_two_sections() {
 
 #[test]
 fn free_text_is_only_in_the_request() {
-    let text = PROMPT_TEXT.replace("delivery dates.", "delivery dates. The question: {question}");
+    let text = PROMPT_TEXT.replace(
+        "delivery dates.",
+        "delivery dates. The question: {question}",
+    );
     let found = problems(PROMPT_TYPE, Some(&text));
     assert_eq!(found.len(), 1, "{found:#?}");
     assert!(
@@ -303,7 +315,10 @@ fn a_prompt_s_name_is_the_project_s_own() {
                 "domains/billing/prompts/answer_question.jadpo",
                 "/// Answers a question about a bill.\ntype AnswerQuestion = Prompt {\n    question: Text\n}\n",
             ),
-            ("domains/billing/actions/noop.jadpo", "/// Nothing.\naction noop() {\n}\n"),
+            (
+                "domains/billing/actions/noop.jadpo",
+                "/// Nothing.\naction noop() {\n}\n",
+            ),
         ],
     );
     assert!(
@@ -335,8 +350,20 @@ fn prompts_render_gives_the_messages() {
         &db,
         Layout::Loose,
         &[
-            ("main.jadpo", &format!("{}\n{}", SLUG.1, EXCERPT.1.replace("use support/types { ArticleSlug }\n\n", ""))),
-            ("answer_question.jadpo", &PROMPT_TYPE.replace("use support/types { ArticleExcerpt }\n\n", "")),
+            (
+                "main.jadpo",
+                &format!(
+                    "{}\n{}",
+                    SLUG.1,
+                    EXCERPT
+                        .1
+                        .replace("use support/types { ArticleSlug }\n\n", "")
+                ),
+            ),
+            (
+                "answer_question.jadpo",
+                &PROMPT_TYPE.replace("use support/types { ArticleExcerpt }\n\n", ""),
+            ),
             (
                 "sending.jadpo",
                 &RENDERS
@@ -399,7 +426,10 @@ fn each_prompt_is_in_the_manifest_with_its_digest() {
     // The digest is a SHA-256 over the two files, each with its length.
     assert_eq!(first, format!("answer_question@{}", expected_digest()));
     // Either file changing changes it.
-    assert_ne!(version(&PROMPT_TEXT.replace("bakery", "bakehouse"), PROMPT_TYPE), first);
+    assert_ne!(
+        version(&PROMPT_TEXT.replace("bakery", "bakehouse"), PROMPT_TYPE),
+        first
+    );
     assert_ne!(
         version(PROMPT_TEXT, &PROMPT_TYPE.replace("Answers", "Replies to")),
         first
