@@ -947,7 +947,12 @@ reference only).
   as a compiler-owned place, on audited crates with the standards'
   known-answer tests, built for wasm32. Done when the examples pass, a
   tampered or wrongly keyed ciphertext fails to decrypt, and reading a
-  key anywhere but `key:` is `configuration.secret_flow`.
+  key anywhere but `key:` is `configuration.secret_flow`. Decided by the
+  lead session (2026-10-18): an `EncryptionKey` or `PrivateKey` in an
+  environment variable is 32 bytes as unpadded Base64url, anything else
+  refused at startup by the pre-start check; `crypto.hmac` with a
+  `SigningKey` uses the key's text bytes directly, so outside systems that
+  share the secret can verify.
 - [ ] **5.5r Security types** `opus · high` (area 19, "The standard
   types"): the other 17 security types (`Password`, `Jwt`, `Jwk`,
   `Certificate`, `ApiKey` ...) and `crypto.verify_jwt`; `verify_totp`

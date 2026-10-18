@@ -8025,6 +8025,14 @@ under "Errors").
   code's `length` is proved from 4 to 32 and a sample's `count` not
   negative, as `temporal.occurrences`' `count` and `list.slice`'s are.
 
+- **For 5.5q2, decided by the lead session (2026-10-18), as this chunk
+  recommended:** an `EncryptionKey` or `PrivateKey` setting's environment
+  variable holds its 32 bytes as unpadded Base64url (43 characters), and
+  anything else is refused at startup by the check before the app starts;
+  `crypto.hmac` and `crypto.verify_hmac` with a `SigningKey` use the key's
+  text bytes directly as the HMAC key, so an outside system that shares
+  the secret can verify what the app signs.
+
 ### Decisions
 
 | Topic | Decision | Date |
