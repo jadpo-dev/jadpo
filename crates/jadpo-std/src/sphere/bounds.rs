@@ -55,10 +55,10 @@ impl Latitude {
 fn powers() -> &'static [Wide] {
     static POWERS: std::sync::OnceLock<Vec<Wide>> = std::sync::OnceLock::new();
     POWERS.get_or_init(|| {
-        let ten = Wide::from_i64(10);
+        let base = Wide::from_i64(10);
         let mut out = vec![Wide::from_i64(1)];
         for _ in 0..PLACES {
-            let next = out.last().map_or(Wide::from_i64(1), |last| last.mul(&ten));
+            let next = out.last().map_or(Wide::from_i64(1), |last| last.mul(&base));
             out.push(next);
         }
         out
@@ -204,11 +204,11 @@ fn add_edge(
         reach.runs.push((east, west));
     }
     // The great circle's highest point and its opposite, the lowest.
-    let (highest, lowest) = extremes_on_arc(pp, qp);
-    if highest {
+    let (north_on, south_on) = extremes_on_arc(pp, qp);
+    if north_on {
         reach.latitude(Latitude::Worked(top_latitude(pu, qu)));
     }
-    if lowest {
+    if south_on {
         reach.latitude(Latitude::Worked(top_latitude(pu, qu).neg()));
     }
 }

@@ -631,7 +631,7 @@ pub const POLYGON_RULES: &[StandardRule] = &[StandardRule {
     name: "rings_valid",
     written: "each ring closed and simple, no rings touching, holes inside the outer ring, every edge under half the globe",
     label: "these rings don't make a valid polygon",
-    reason: "A `Polygon`'s rings are closed with four points or more, never cross or touch themselves or each other, keep each hole inside the outer ring, and have every edge shorter than half the globe, so the polygon is the smaller side its outer ring bounds (area 20, \"Polygons are valid when built\").",
+    reason: "A `Polygon`'s rings are closed with four points or more, never cross or meet themselves or each other, keep each hole inside the outer ring, and have every edge shorter than half the globe, so the polygon is the smaller side its outer ring bounds (area 20, \"Polygons are valid when built\").",
     next: "Close each ring and move its points so no edge meets another, with each hole inside the outer ring",
     check: Check::By(|parts| {
         let (Some(outer), Some(holes)) = (

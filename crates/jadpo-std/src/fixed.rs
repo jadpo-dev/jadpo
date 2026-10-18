@@ -404,15 +404,6 @@ impl Real {
         (self.is_negative(), self.magnitude())
     }
 
-    /// `x × 2^bits`, cut toward zero, for a value small enough that it
-    /// fits: a unit vector's coordinate at 40 bits, which a box around an
-    /// edge is drawn in ([`crate::sphere`]).
-    pub fn scaled(&self, bits: u32) -> i64 {
-        let size = shr_wide(&wide(&self.magnitude()), FRACTION.saturating_sub(bits));
-        let whole = i64::try_from(at(&size, 0) & (u64::MAX >> 1)).unwrap_or(i64::MAX);
-        if self.is_negative() { -whole } else { whole }
-    }
-
     /// The larger of the two.
     pub fn max(self, other: Real) -> Real {
         if other > self { other } else { self }

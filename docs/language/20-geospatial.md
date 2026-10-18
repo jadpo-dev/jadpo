@@ -196,18 +196,18 @@ function delivers_to(patches: List<Polygon>, customer: Point) -> Delivers {
 }
 
 /// Whether a van's round passes through a patch.
-function passes_through(round: LineString, patch: Polygon) -> Delivers {
-    return Delivers(geo.intersects(round, patch))
+function passes_through(van_round: LineString, patch: Polygon) -> Delivers {
+    return Delivers(geo.intersects(van_round, patch))
 }
 
 /// Whether a shop's pin is inside the map a person is looking at.
-function in_view(pin: Point, view: BoundingBox) -> InView {
-    return InView(geo.within(pin, view))
+function in_view(shop_pin: Point, view: BoundingBox) -> InView {
+    return InView(geo.within(shop_pin, view))
 }
 
 /// Whether two shops are near enough to walk between.
-function walkable(from: Point, to: Point, reach: WalkingReach) -> InView {
-    return InView(geo.within(from, to, distance: reach))
+function walkable(from: Point, to: Point, walking_distance: WalkingReach) -> InView {
+    return InView(geo.within(from, to, distance: walking_distance))
 }
 
 /// Where a patch's name goes on the map.
@@ -362,13 +362,13 @@ function patch_from(clicked: List<Point>, first: Point) fails NotAPatch -> Polyg
 
 ```jadpo check project=geo-shapes file=patches.test.jadpo
 test "a patch whose edges cross isn't one" {
-    var corner: Point = Point {
+    var bow_start: Point = Point {
         latitude: 0.0
         longitude: 0.0
         altitude: none
     }
     var bow_tie: List<Point> = [
-        corner,
+        bow_start,
         Point {
             latitude: 10.0
             longitude: 10.0
@@ -385,7 +385,7 @@ test "a patch whose edges cross isn't one" {
             altitude: none
         }
     ]
-    assert patch_from(bow_tie, corner) fails NotAPatch
+    assert patch_from(bow_tie, bow_start) fails NotAPatch
 }
 ```
 
@@ -433,7 +433,7 @@ error: This `Polygon` breaks its rule `rings_valid`
   |
 4 |         outer: [
   |                ^ these rings don't make a valid polygon
-  reason: A `Polygon`'s rings are closed with four points or more, never cross or touch themselves or each other, keep each hole inside the outer ring, and have every edge shorter than half the globe, so the polygon is the smaller side its outer ring bounds (area 20, "Polygons are valid when built"). A literal is checked while compiling.
+  reason: A `Polygon`'s rings are closed with four points or more, never cross or meet themselves or each other, keep each hole inside the outer ring, and have every edge shorter than half the globe, so the polygon is the smaller side its outer ring bounds (area 20, "Polygons are valid when built"). A literal is checked while compiling.
   next: Close each ring and move its points so no edge meets another, with each hole inside the outer ring (agent)
   rule: type.invalid_literal
   help: docs/language/02-values-and-types.html#type-invalid-literal

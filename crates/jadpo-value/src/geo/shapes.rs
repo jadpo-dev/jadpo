@@ -162,7 +162,7 @@ fn add(a: &[Real; 3], b: &[Real; 3]) -> [Real; 3] {
     [a[0].add(&b[0]), a[1].add(&b[1]), a[2].add(&b[2])]
 }
 
-fn scaled(unit: &Unit, v: &[Real; 3], w: &Real) -> [Real; 3] {
+fn times(unit: &Unit, v: &[Real; 3], w: &Real) -> [Real; 3] {
     [unit.mul(&v[0], w), unit.mul(&v[1], w), unit.mul(&v[2], w)]
 }
 
@@ -259,8 +259,8 @@ pub fn centroid(shape_value: &Value) -> Result<Value, Fault> {
                 let vectors: Vec<[Real; 3]> = line.iter().map(unit_vector).collect();
                 for pair in vectors.windows(2) {
                     let [a, b] = pair else { continue };
-                    let weight = angle(unit, a, b);
-                    sum = add(&sum, &scaled(unit, &add(a, b), &weight));
+                    let share = angle(unit, a, b);
+                    sum = add(&sum, &times(unit, &add(a, b), &share));
                 }
             }
         }
@@ -282,9 +282,9 @@ pub fn centroid(shape_value: &Value) -> Result<Value, Fault> {
                     let vectors: Vec<[Real; 3]> = ring.iter().map(unit_vector).collect();
                     for pair in vectors.windows(2) {
                         let [a, b] = pair else { continue };
-                        let weight = excess(unit, a, b, &reference);
+                        let share = excess(unit, a, b, &reference);
                         let centre = normalised(unit, &add(&add(a, b), &reference));
-                        sum = add(&sum, &scaled(unit, &centre, &weight));
+                        sum = add(&sum, &times(unit, &centre, &share));
                     }
                 }
             }

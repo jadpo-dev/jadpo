@@ -84,15 +84,15 @@ pub fn rings_broken(outer: &[Position], holes: &[Vec<Position>]) -> Option<usize
         return Some(0);
     };
     for (h, hole) in holes.iter().enumerate() {
-        let Some(corner) = hole.points.first() else {
+        let Some(first_point) = hole.points.first() else {
             note(h + 1);
             continue;
         };
-        if !outer.inside(corner) {
+        if !outer.inside(first_point) {
             note(h + 1);
         }
         for (other, around) in holes.iter().enumerate() {
-            if other != h && around.inside(corner) {
+            if other != h && around.inside(first_point) {
                 note(h.max(other) + 1);
             }
         }

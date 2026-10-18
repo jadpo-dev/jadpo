@@ -176,9 +176,9 @@ fn pieces(a: &Point, b: &Point, cutters: &[Edge]) -> Vec<Point> {
             cuts.extend(meeting(a, b, &cutter.a, &cutter.b));
         }
     }
-    let normal = a.v.cross(&b.v);
-    cuts.sort_by(|x, y| along(&normal, x, y));
-    cuts.dedup_by(|x, y| along(&normal, x, y) == Ordering::Equal);
+    let pole = a.v.cross(&b.v);
+    cuts.sort_by(|x, y| along(&pole, x, y));
+    cuts.dedup_by(|x, y| along(&pole, x, y) == Ordering::Equal);
     cuts
 }
 
@@ -228,13 +228,13 @@ pub fn covers(a: &Shape, b: &Shape) -> bool {
         if same(&edge.a, &edge.b) {
             continue;
         }
-        let normal = edge.a.v.cross(&edge.b.v);
-        let away = normal.neg();
+        let pole = edge.a.v.cross(&edge.b.v);
+        let away = pole.neg();
         let cuts = pieces(&edge.a, &edge.b, &borders);
         for piece in cuts.windows(2) {
             let [x, y] = piece else { continue };
             let m = x.between(y);
-            for towards in [&normal, &away] {
+            for towards in [&pole, &away] {
                 if b.beside(&m, towards) && !a.beside(&m, towards) {
                     return false;
                 }

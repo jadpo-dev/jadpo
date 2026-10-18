@@ -110,8 +110,8 @@ impl Vector {
         if length == 0 {
             return [0; 3];
         }
-        let scaled = |c: i128| ((c << APPROX) / length) as i64;
-        [scaled(x), scaled(y), scaled(z)]
+        let per_unit = |c: i128| ((c << APPROX) / length) as i64;
+        [per_unit(x), per_unit(y), per_unit(z)]
     }
 }
 
@@ -224,8 +224,8 @@ pub fn on_arc(a: &Point, b: &Point, x: &Point) -> bool {
     if side(a, b, x) != 0 {
         return false;
     }
-    let normal = a.v.cross(&b.v);
-    a.v.cross(&x.v).dot(&normal).signum() >= 0 && x.v.cross(&b.v).dot(&normal).signum() >= 0
+    let pole = a.v.cross(&b.v);
+    a.v.cross(&x.v).dot(&pole).signum() >= 0 && x.v.cross(&b.v).dot(&pole).signum() >= 0
 }
 
 /// Whether the highest point of the great circle through `a` and `b`
@@ -293,8 +293,8 @@ pub fn arcs_meet(a: &Point, b: &Point, c: &Point, d: &Point) -> bool {
 
 /// How two points on the shorter arc from `a` to `b` are ordered along it:
 /// `x` before `y` when the turn from `x` to `y` is the arc's own.
-pub fn along(normal: &Vector, x: &Point, y: &Point) -> Ordering {
-    match x.v.cross(&y.v).dot(normal).signum() {
+pub fn along(pole: &Vector, x: &Point, y: &Point) -> Ordering {
+    match x.v.cross(&y.v).dot(pole).signum() {
         1 => Ordering::Less,
         -1 => Ordering::Greater,
         _ => Ordering::Equal,
