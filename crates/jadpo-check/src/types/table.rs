@@ -526,27 +526,24 @@ impl TypeTable {
         // parts as fields, as an application's enum with data does (chunk
         // 5.5i3).
         for entry in jadpo_std::STANDARD_TYPES {
-            match entry.holds {
-                jadpo_std::standard::Holds::Choice(variants) => {
-                    table.defs.insert(
-                        entry.name.to_string(),
-                        Def::Enum {
-                            variants: variants
-                                .iter()
-                                .map(|(variant, fields)| VariantDef {
-                                    name: (*variant).to_string(),
-                                    fields: Some(
-                                        fields
-                                            .iter()
-                                            .map(|(field, part)| standard_field(field, *part))
-                                            .collect(),
-                                    ),
-                                })
-                                .collect(),
-                        },
-                    );
-                }
-                _ => {}
+            if let jadpo_std::standard::Holds::Choice(variants) = entry.holds {
+                table.defs.insert(
+                    entry.name.to_string(),
+                    Def::Enum {
+                        variants: variants
+                            .iter()
+                            .map(|(variant, fields)| VariantDef {
+                                name: (*variant).to_string(),
+                                fields: Some(
+                                    fields
+                                        .iter()
+                                        .map(|(field, part)| standard_field(field, *part))
+                                        .collect(),
+                                ),
+                            })
+                            .collect(),
+                    },
+                );
             }
         }
         for (name, kind) in shapes {

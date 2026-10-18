@@ -810,7 +810,7 @@ reference only).
   document's kind; forms from VIES, HMRC, the OECD's and the EU's TIN
   pages and each issuer's own, by length where a country publishes none.
   What the pages left open is area 19's "Chosen in chunk 5.5i2".
-- [ ] **5.5i3 Prices, discounts and rates** `opus · high` (area 19, "The
+- [x] **5.5i3 Prices, discounts and rates** `opus · high` (area 19, "The
   standard types", split from 5.5i2), after 5.5j2: `Price`, `UnitPrice`,
   `TaxRate`, `Discount`, `BasisPoints` and `InterestRate`, on `Money`,
   `Percentage` and the quantities. `Discount` is the first standard type
@@ -820,6 +820,12 @@ reference only).
   the harness with valid and invalid examples per rule, and a `Discount`
   applied to a `Price` gives the right result for both kinds, interpreted
   and in the runtime. Split on 2026-10-18; `BankAccount` is 5.5i4.
+  Built, with `money.apply_discount` for applying a discount,
+  `InterestRateBasis` as an interest rate's basis, `UnitPrice` a choice by
+  the quantity's kind and `BasisPoints` one of 5.5n's whole numbers;
+  storing the four records waits on area 5's structured storage, as an
+  `ExchangeRate`'s does. What the pages left open is area 19's "Chosen in
+  chunk 5.5i3".
 - [ ] **5.5i4 Bank accounts** `opus · high` (area 19, "The standard
   types", split from 5.5i3), after 5.5i3: `BankAccount`, a choice of a UK
   sort code and account number, an IBAN, or another country's account,

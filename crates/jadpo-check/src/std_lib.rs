@@ -136,8 +136,11 @@ pub struct StandardStub {
     pub members: Vec<(String, Option<TypeRef>)>,
     /// A choice's variants that carry data, each with its fields and
     /// their types, in declared order (chunk 5.5i3).
-    pub payloads: Vec<(String, Vec<(String, Option<TypeRef>)>)>,
+    pub payloads: Vec<(String, Vec<StubField>)>,
 }
+
+/// A field a stub declares, with its type as written.
+pub type StubField = (String, Option<TypeRef>);
 
 #[derive(Debug, Default)]
 pub struct StdNames {
