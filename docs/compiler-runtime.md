@@ -448,6 +448,14 @@ canonical text has `Codec::Standard`, read and written through
 texts, `CalendarPeriod`'s operator rows (which `ops::add`, `subtract`
 and `multiply` reach by the value's shape) and `temporal.period_between`,
 and `ops::compare` orders a record its entry marks ordered, part by part.
+Since chunk 5.5k2 a standard type held as text is a stub's kind
+`Std` too (`RecurrenceRule`, `OpeningHours`), the runtime giving the
+operation its text; `jadpo_std::standard::recurrence` reads an RFC 5545
+rule and expands it in local time, and `opening_hours` reads OpenStreetMap's
+hours, each shared by the type's validator and by `jadpo_value::temporal`'s
+`occurrences` and `open_at`, which put the local times in the zone with
+jiff. A `within` parameter (`occurrences`' `count`) is a whole number
+proved between two bounds as a count's sign is.
 Since chunk 5.5d (area 19, "Numbers") a `written_out` parameter
 (`decimal.round`'s `scale:`) takes only a whole number from 0 to 18
 written at the call, and an operation whose `OneOf` result shares its `T`
@@ -581,6 +589,17 @@ the checker carries what it knows of an amount's currency
 `known.rs`), an `attempt` covers a chain of operators that can fail
 `currency_mismatch`, and the plan gives each `*` or `/` of an amount its
 type's `rounding:` (`Decoded::Rounding`).
+Since chunk 5.5i a standard type can be held as text (`Holds::Text`, the
+payment and identity numbers in `jadpo_std::standard::identifiers`): its
+stub is `= Text {}`, the checker's type table declares it as a type built
+on `Text` whose one rule is `Rules::standard`, its own check (its pattern
+and named validator, broken as `format`), and the plan's chain, the wire
+and OpenAPI read a `TypeRef::Std` of it as text with that rule
+(`standard::text_rules`), so construction, JSON and storage need nothing
+new. `text.format` is given the type's name by an implicit argument the
+checker fills (`standard`), since the runtime holds only the text, and
+shows it grouped or masked to its last four (`FormatKey::Grouped`,
+`FormatKey::LastFour`).
 Since chunk 5.5j (area 19, "Physical quantities") each of the 17
 quantities with `DataSize` and `Bitrate` is `Builtin::Quantity(kind)`
 (`jadpo_std::QuantityKind`), held as `Value::Quantity`, a mantissa in the

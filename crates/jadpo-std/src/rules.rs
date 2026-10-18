@@ -32,6 +32,12 @@ pub struct Rules {
     /// `rounding:` on a `Money` type: how `*` and `/` round an amount to a
     /// whole minor unit, `half_even` when not declared.
     pub rounding: Option<Rounding>,
+    /// The standard type held as text whose own check the text passes
+    /// (area 19, "Groups with the baseline only"): its pattern and its
+    /// named validator, an IBAN's mod-97, broken as `format`, as an
+    /// `Email`'s check is. Only the standard library sets it; no block
+    /// can write it.
+    pub standard: Option<&'static str>,
 }
 
 /// Which rule a value breaks, by the key an `attempt`'s arm names it with
@@ -332,6 +338,15 @@ impl Rules {
                 RuleKey::Version,
                 format!("version: {}.{}", UuidVersion::NAME, version.name()),
                 format!("isn't a version {} UUID", version.digit()),
+            );
+        }
+        if let Some(name) = self.standard
+            && !crate::standard::standard_type(name).is_some_and(|entry| entry.accepts(text))
+        {
+            return broken(
+                RuleKey::Format,
+                name.to_string(),
+                format!("isn't a valid `{name}`"),
             );
         }
         Ok(())

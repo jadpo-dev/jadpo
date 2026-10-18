@@ -32,8 +32,9 @@ pub enum Kind {
     /// fixed by the argument, so a result of the same kind keeps the
     /// argument's named type (area 10, question 6).
     OneOf(&'static [Builtin]),
-    /// A standard-library type the checker knows by name, whose fields
-    /// the runtime builds as a record.
+    /// A standard-library type the checker knows by name: an object,
+    /// whose fields the runtime builds as a record, or a type held as text
+    /// (`RecurrenceRule`, area 19), which the runtime holds as its text.
     Std(&'static str),
     /// A range (area 19, "Ranges"): `Range<T>`, or a standard range type
     /// whose ends are a `T`, `InstantRange`'s instants. A result of this
@@ -111,7 +112,8 @@ pub struct Param {
     /// Never written by a call: the checker fills it from the call's types
     /// and the operation is given it like any other value. `list.sum`'s
     /// `zero` is `0` of its items' representation, so an empty list sums
-    /// to the `Int` or the `Decimal` its type says.
+    /// to the `Int` or the `Decimal` its type says; `text.format`'s
+    /// `standard` names the standard type held as text its value is.
     pub implicit: bool,
     /// A whole number written out at the call, never a value (area 19,
     /// "Numbers"): `decimal.round`'s `scale:`, from 0 to 18 places as a
@@ -140,6 +142,12 @@ pub struct Param {
     /// or a value whose type's `min` is, the call never fails; otherwise
     /// it may fail with the operation's condition that no option settles.
     pub above_zero: bool,
+    /// A whole number from the first to the second, both included, proved
+    /// while compiling as `never_negative` is (area 19, "Time and calendar
+    /// additions"): a literal within them, or a value whose type's `min`
+    /// and `max` are, so `temporal.occurrences`' `count` is always from 1
+    /// to 1000 and an unbounded rule is never expanded without a bound.
+    pub within: Option<(i64, i64)>,
 }
 
 /// A condition an operation fails on unless an option settles it (area
@@ -260,6 +268,8 @@ pub enum Op {
     TemporalMinute,
     TemporalMonth,
     TemporalMonthBounds,
+    TemporalOccurrences,
+    TemporalOpenAt,
     TemporalPeriodBetween,
     TemporalResolve,
     TemporalWeekBounds,
@@ -337,6 +347,7 @@ const fn param(name: &'static str, kind: Kind) -> Param {
         character: false,
         bounds_length: false,
         above_zero: false,
+        within: None,
     }
 }
 
@@ -1644,6 +1655,33 @@ pub const OPERATIONS: &[Operation] = &[
         RANGE,
         "temporal::month_bounds",
     ),
+    // A recurrence's next occurrences (RFC 5545) and whether opening hours
+    // are open (area 19, "Time and calendar additions"): each reads its
+    // value's text, which construction checked.
+    temporal(
+        Op::TemporalOccurrences,
+        "occurrences",
+        &[
+            param("rule", Kind::Std(crate::standard::RECURRENCE_RULE)),
+            param("from", INSTANT),
+            Param {
+                within: Some((1, 1000)),
+                ..param("count", INT)
+            },
+        ],
+        Kind::List,
+        "temporal::occurrences",
+    ),
+    temporal(
+        Op::TemporalOpenAt,
+        "open_at",
+        &[
+            param("hours", Kind::Std(crate::standard::OPENING_HOURS)),
+            param("at", INSTANT),
+        ],
+        BOOL,
+        "temporal::open_at",
+    ),
     // Whole years, months and days from one date to another (area 19,
     // "Time and calendar additions").
     temporal(
@@ -1756,6 +1794,12 @@ pub const OPERATIONS: &[Operation] = &[
             by_type("display", Kind::Enum(crate::MoneyDisplay::NAME)),
             by_type("sign", Kind::Enum(crate::MoneySign::NAME)),
             by_type("unit", Kind::QuantityUnit),
+            // The standard type held as text the value is (an IBAN is text
+            // to the runtime), or `none` (area 19, chunk 5.5i).
+            Param {
+                implicit: true,
+                ..param("standard", Kind::Builtin(Builtin::Text))
+            },
         ],
         result: SHOWN_TEXT,
         at_least: None,
@@ -2023,6 +2067,10 @@ mod tests {
                 assert!(
                     !param.written_out || param.kind == INT,
                     "a scale is a whole number"
+                );
+                assert!(
+                    param.within.is_none() || param.kind == INT,
+                    "a bounded count is a whole number"
                 );
                 assert!(
                     !(param.character || param.bounds_length) || param.kind == TEXT,

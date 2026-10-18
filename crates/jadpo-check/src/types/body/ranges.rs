@@ -334,6 +334,9 @@ struct Combined {
     checked: Option<Prim>,
     /// A `Money` type's one currency (area 19).
     currency: Option<u32>,
+    /// The standard type held as text whose own check the chain makes
+    /// (area 19, chunk 5.5i), which counts as `format`.
+    standard: Option<&'static str>,
 }
 
 /// A validated built-in text type: its own check of the text is what
@@ -381,6 +384,7 @@ fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
             out.version = rules.version;
         }
         out.currency = out.currency.or(rules.currency);
+        out.standard = out.standard.or(rules.standard);
     }
     out
 }
@@ -413,6 +417,8 @@ impl Combined {
             out.push(("format", "format: TextFormat.email".to_string()));
         } else if let Some(builtin) = self.checked {
             out.push(("format", builtin.name().to_string()));
+        } else if let Some(standard) = self.standard {
+            out.push(("format", standard.to_string()));
         }
         if let Some(scale) = self.scale {
             out.push(("scale", format!("scale: {scale}")));
@@ -727,7 +733,10 @@ impl Body<'_> {
             Some(Prim::Email) => is_email,
             Some(builtin) => base == Some(builtin),
         };
-        if (needs.email && !is_email) || !checked {
+        // A standard type held as text: the value's own type makes the
+        // same check only when it is built on the same one.
+        let standard = needs.standard.is_none_or(|name| has.standard == Some(name));
+        if (needs.email && !is_email) || !checked || !standard {
             out.push("format".to_string());
         }
         if needs.version.is_some() && needs.version != has.version {

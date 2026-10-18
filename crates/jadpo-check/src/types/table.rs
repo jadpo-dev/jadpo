@@ -486,6 +486,20 @@ impl TypeTable {
         // First every name with its kind and field names, so types can be
         // resolved; then the types and rules themselves.
         let mut table = TypeTable::default();
+        // The standard types held as text (area 19, "Groups with the
+        // baseline only"): each a type built on `Text` the standard
+        // library declares, with its own check as its rule.
+        for entry in jadpo_std::STANDARD_TYPES {
+            if let Some(rules) = jadpo_std::standard::text_rules(entry.name) {
+                table.defs.insert(
+                    entry.name.to_string(),
+                    Def::Scalar {
+                        parent: Ty::Prim(Prim::Text),
+                        rules: Box::new(rules),
+                    },
+                );
+            }
+        }
         for (name, variants) in std.enums() {
             table.defs.insert(
                 name.clone(),
@@ -957,6 +971,30 @@ pub trait TypeView {
             }
         }
         current
+    }
+
+    /// The standard type held as text (area 19) a value of this type is,
+    /// along its chain: `Iban` for a type built on `Iban`.
+    fn standard_text(&self, ty: &Ty) -> Option<&'static jadpo_std::StandardType> {
+        let mut current = ty.strip_nullable().clone();
+        for _ in 0..DEPTH {
+            match &current {
+                Ty::Field(host, path) => {
+                    current = self.field(host, path)?.declared.strip_nullable().clone();
+                }
+                Ty::Named(name) => match self.def(name)? {
+                    Def::Scalar { parent, rules } => {
+                        if let Some(standard) = rules.standard {
+                            return jadpo_std::standard_type(standard);
+                        }
+                        current = parent.strip_nullable().clone();
+                    }
+                    _ => return None,
+                },
+                _ => return None,
+            }
+        }
+        None
     }
 
     /// What a value of this type is made of: the validated text types are

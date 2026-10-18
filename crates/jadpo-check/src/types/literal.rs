@@ -249,6 +249,24 @@ pub fn diagnostic(
             ))
             .next(format!("Write a valid `{base}` value"))
         }
+        // A standard type held as text: its own check, as a built-in
+        // type's is (area 19, chunk 5.5i).
+        Problem::Broken(_, broken)
+            if broken.key == jadpo_std::RuleKey::Format
+                && jadpo_std::standard::text_rules(&broken.rule).is_some() =>
+        {
+            let standard = broken.rule;
+            Diagnostic::new(
+                &rule::TYPE_INVALID_LITERAL,
+                format!("`{written}` isn't a valid `{expected}`"),
+            )
+            .at(span, format!("not a valid `{standard}`"))
+            .reason(format!(
+                "The value {}: its pattern and check digits accept only `{standard}`'s canonical text, and a literal is checked while compiling.",
+                broken.why
+            ))
+            .next(format!("Write a valid `{standard}` in its canonical text"))
+        }
         Problem::Broken(host, broken) => Diagnostic::new(
             &rule::TYPE_INVALID_LITERAL,
             format!("`{written}` isn't a valid `{expected}`"),

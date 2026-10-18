@@ -681,11 +681,16 @@ reference only).
   example, example app and test fixture reformatted. Done when the
   ordering has tests for each tie rule and a cycle, and the gate's docs and
   examples steps pass on the reordered sources.
-- [ ] **5.5i Payment and identity numbers** `opus · high` (area 19, "Groups
-  with the baseline only"): the money group's other 21 types and the 11
-  tax and identity numbers, each a pattern or check digit (mod-97, Luhn,
-  mod-11) on the contract. Done when every type passes the contract's
-  harness with valid and invalid examples per rule.
+- [x] **5.5i Payment and identity numbers** `opus · high` (area 19, "Groups
+  with the baseline only"): the 17 of the money group and the tax and
+  identity numbers that are text, each a pattern or check digit (mod-97,
+  Luhn, mod-11) on the contract: `PaymentCardNumber`, `CardBin`,
+  `PaymentReference`, `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`,
+  `UkAccountNumber`, `AbaRoutingNumber`, `Lei`, `Isin`, `UkUtr`,
+  `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin` and
+  `NhsNumber`. Done when every type passes the contract's harness with
+  valid and invalid examples per rule. Split on 2026-10-18; the rest is
+  5.5i2. What the pages left open is area 19's "Chosen in chunk 5.5i".
 - [x] **5.5j Quantities** `opus · high` (area 19, "Physical quantities",
   question 17): the 17 physical quantities with `DataSize` and `Bitrate`,
   each with its unit enum; SI storage at each kind's scale in one
@@ -718,19 +723,40 @@ reference only).
   `range` operations. Done when each of the ten passes the harness and
   `period_between`'s example passes across a daylight-saving change.
   Split on 2026-10-17; the rest is 5.5k2.
-- [ ] **5.5k2 Recurrence and opening hours** `opus · high` (area 19,
+- [x] **5.5k2 Recurrence and opening hours** `opus · high` (area 19,
   "Time and calendar additions"): `RecurrenceRule` (RFC 5545) with its
   expansion, `temporal.occurrences`; `OpeningHours` with
-  `temporal.open_at`; and `CalendarEvent`. Done when each of the three
-  passes the harness and the two operations' examples pass across spring
-  forward and fall back in Europe/London and America/New_York,
-  interpreted and in the runtime.
+  `temporal.open_at`. Done when each passes the harness and the two
+  operations' examples pass across spring forward and fall back in
+  Europe/London and America/New_York, interpreted and in the runtime.
+  Split on 2026-10-18; `CalendarEvent` is 5.5k3. Both held as their
+  standard text; what the pages left open is area 19's "Chosen in chunk
+  5.5k2".
+- [ ] **5.5k3 Calendar events** `opus · high` (area 19, "Time and
+  calendar additions", split from 5.5k2): `CalendarEvent` as an object
+  whose parts code reads, which first needs optional parts in a standard
+  object (`Part`), and an all-day event's dates beside a timed one's
+  local times and zone; its canonical text an RFC 5545 `VEVENT` (an
+  all-day end exclusive, as the RFC writes it), its JSON its parts, its
+  recurrence a `RecurrenceRule`. Done when it passes the harness and an
+  all-day event's text, JSON and storage round-trip without moving a
+  day.
 - [ ] **5.5l People and places** `opus · high` (area 19, question 22): the
   19 new types, the closed lists as built-in enums with `form:`, `.all`
   and retired codes (`type.variant_retired`), `PhoneNumber`'s E.164
   metadata, `PostalAddress` and `PersonName` in each locale's order, and
   `PostalCode` per country. Done when every type passes the harness and
   `text.format` writes an address in two locales' orders.
+- [ ] **5.5i2 Payment records and identity documents** `opus · high` (area
+  19, "The standard types", split from 5.5i), after 5.5j and 5.5l: the 15
+  that are records or choices of other types. `Price`, `UnitPrice`,
+  `TaxRate`, `Discount`, `BasisPoints` and `InterestRate`, on `Percentage`
+  and the quantities (5.5j); `CardBrand`, `MaskedCardNumber` with its
+  conversion from a `PaymentCardNumber`, and `CardExpiry`; `BankAccount`,
+  with the UK modulus check across a sort code and an account number; and
+  `VatNumber`, `TaxId`, `PassportNumber`, `DrivingLicenceNumber` and
+  `IdentityDocument`, on `Country` (5.5l). Done when every type passes the
+  harness.
 - [ ] **5.5m Commerce, health, travel and the rest** `opus · high` (area
   19, "Groups with the baseline only"): 45 types, mostly codes with a
   pattern or check digit (`Ean13`, `Isbn`, `Vin`, `IataAirport`). Done

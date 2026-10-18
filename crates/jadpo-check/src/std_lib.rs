@@ -86,10 +86,14 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
         {
             Some(Kind::Any)
         }
-        // A standard object type the runtime builds as a record (area 19).
+        // A standard object type the runtime builds as a record, or one held
+        // as text (area 19).
         (other, 0)
             if jadpo_std::standard_type(other).is_some_and(|entry| {
-                matches!(entry.holds, jadpo_std::standard::Holds::Object(_))
+                matches!(
+                    entry.holds,
+                    jadpo_std::standard::Holds::Object(_) | jadpo_std::standard::Holds::Text { .. }
+                )
             }) =>
         {
             jadpo_std::standard_type(other).map(|entry| Kind::Std(entry.name))
@@ -337,6 +341,13 @@ impl StdNames {
             .chain(self.enums.keys().map(String::as_str))
             .chain(self.opaque.iter().copied())
             .chain(self.standard_objects())
+            // The standard types held as text (area 19, chunk 5.5i).
+            .chain(
+                self.standard
+                    .iter()
+                    .filter(|(_, stub)| stub.base == "Text")
+                    .map(|(name, _)| name.as_str()),
+            )
     }
 
     /// The standard object types (`InstantRange`), which the checker

@@ -820,10 +820,13 @@ impl Lower<'_> {
                     }
                 }
                 // What the checker fills, never written (`list.sum`'s
-                // `zero`).
+                // `zero`, `text.format`'s `standard`).
                 for (place, param) in args.iter_mut().zip(params) {
                     if param.implicit {
-                        *place = Some(self.zero(call));
+                        *place = Some(match op {
+                            jadpo_std::Op::TextFormat => self.shown_standard(call),
+                            _ => self.zero(call),
+                        });
                     }
                 }
                 args
@@ -862,6 +865,24 @@ impl Lower<'_> {
         });
         let ty = self.ty(&ty);
         self.fill(id, call.syntax(), ty, typed::Node::Expr(zero));
+        SiteId(id as u32)
+    }
+
+    /// `text.format`'s `standard`, which the checker fills: the name of
+    /// the standard type held as text its value is, or `none` (area 19).
+    fn shown_standard(&mut self, call: &ast::CallExpr) -> SiteId {
+        let (literal, ty) = match self.facts.shown.get(&node_key(call.syntax())) {
+            Some(name) => (Literal::Text((*name).to_string()), Ty::Prim(Prim::Text)),
+            None => (Literal::None, Ty::None),
+        };
+        let id = self.alloc();
+        let ty = self.ty(&ty);
+        self.fill(
+            id,
+            call.syntax(),
+            ty,
+            typed::Node::Expr(typed::Expr::Literal(literal)),
+        );
         SiteId(id as u32)
     }
 

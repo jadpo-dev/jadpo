@@ -282,6 +282,8 @@ pub fn run(
             | Op::TemporalMinute
             | Op::TemporalMonth
             | Op::TemporalMonthBounds
+            | Op::TemporalOccurrences
+            | Op::TemporalOpenAt
             | Op::TemporalPeriodBetween
             | Op::TemporalResolve
             | Op::TemporalWeekBounds
@@ -300,16 +302,28 @@ pub fn run(
         // The standard type contract (area 19): one implementation each,
         // over the types' data entries. `text.parse` is given the name of
         // the standard type or representation it reads.
-        (Op::TextFormat, [value, locale, zone, format, precision, display, sign, unit]) => {
-            standard::format(
+        (
+            Op::TextFormat,
+            [
                 value,
                 locale,
                 zone,
                 format,
-                &standard::MoneyOptions::of(precision, display, sign)?,
+                precision,
+                display,
+                sign,
                 unit,
-            )
-        }
+                standard,
+            ],
+        ) => standard::format_as(
+            standard,
+            value,
+            locale,
+            zone,
+            format,
+            &standard::MoneyOptions::of(precision, display, sign)?,
+            unit,
+        ),
         (Op::TextFrom, [value]) => standard::from(value),
         (Op::TextParse, [Value::Text(raw), Value::Text(ty)]) => standard::parse(raw, ty),
         (Op::TextFormat | Op::TextFrom | Op::TextParse, _) => Err(Fault::Shape),
@@ -612,6 +626,13 @@ fn run_temporal(op: Op, args: &[Value]) -> Result<Value, Fault> {
         (Op::TemporalPeriodBetween, [Value::Date(start), Value::Date(end)]) => {
             calendar::period_between(*start, *end)
         }
+        (Op::TemporalOccurrences, [Value::Text(rule), Value::Instant(from), Value::Int(count)]) => {
+            temporal::occurrences(rule, *from, *count)
+                .map(|found| Value::list(found.into_iter().map(Value::Zoned).collect()))
+        }
+        (Op::TemporalOpenAt, [Value::Text(hours), Value::Instant(at)]) => {
+            temporal::open_at(hours, *at).map(Value::Bool)
+        }
         _ => Err(Fault::Shape),
     }
 }
@@ -701,6 +722,7 @@ mod tests {
                         english.clone(),
                         london.clone(),
                         Value::text("date_long"),
+                        Value::None,
                         Value::None,
                         Value::None,
                         Value::None,
@@ -852,6 +874,17 @@ mod tests {
                 }
                 Op::TemporalBetween => vec![Value::Instant(0), Value::Instant(1000)],
                 Op::TemporalPeriodBetween => vec![date.clone(), date.clone()],
+                Op::TemporalOccurrences => vec![
+                    Value::text(
+                        "DTSTART;TZID=Europe/London:20261026T093000\nRRULE:FREQ=WEEKLY;BYDAY=MO",
+                    ),
+                    Value::Instant(0),
+                    Value::Int(3),
+                ],
+                Op::TemporalOpenAt => vec![
+                    Value::text("Mo-Fr 09:00-17:30 [Europe/London]"),
+                    Value::Instant(0),
+                ],
                 Op::TemporalInZone => vec![Value::Instant(0), london.clone()],
                 Op::TemporalResolve => vec![
                     date.clone(),

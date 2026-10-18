@@ -16,6 +16,11 @@
 use crate::read::SqlType;
 use crate::{Builtin, LOCALE, ZONE};
 
+mod identifiers;
+pub mod opening_hours;
+pub mod recurrence;
+mod schedules;
+
 /// What a standard type's values are held as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Holds {
@@ -32,6 +37,18 @@ pub enum Holds {
     /// of one ordered type, the type argument, either of them `none` for
     /// an open end.
     Range,
+    /// Text that matches `pattern` whole and passes the entry's named
+    /// validator, if it has one (area 19, "Groups with the baseline
+    /// only"): an IBAN, a card number. A program holds it as a type built
+    /// on `Text` that the standard library declares, whose own check
+    /// ([`crate::Rules::standard`]) a value of other text breaks as
+    /// `format`. `personal` is the `PersonalData.` category its values
+    /// are (area 15), for a type that is personal data whatever field
+    /// holds it: area 15's build treats such a field as marked with it.
+    Text {
+        pattern: &'static str,
+        personal: Option<&'static str>,
+    },
 }
 
 /// What one field of a standard object type holds (area 19, chunk 5.5k).
@@ -66,7 +83,8 @@ impl Part {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextForm {
     /// The text itself, accepted when the type's named validator accepts
-    /// it: an email address, a URL, an IP address.
+    /// it: an email address, a URL, an IP address; for a type held as
+    /// text, when its pattern matches too ([`StandardType::accepts`]).
     Checked,
     /// A UUID in lowercase hexadecimal with hyphens, read in either case.
     Uuid,
@@ -192,6 +210,40 @@ pub enum FormatKey {
     /// ICU4X has one (`2.5 m`, `247,62 cm`), else the number, a space and
     /// the unit's symbol (`21 °C`) (chosen in chunk 5.5j).
     Units,
+    /// Its canonical text in groups, as it is printed: an IBAN in fours,
+    /// a sort code in pairs with dashes. The locale doesn't change it.
+    Grouped(Grouping),
+    /// Its last four characters after `mask`, as PCI DSS lets a card
+    /// number be shown: `•••• 4242`.
+    LastFour { mask: &'static str },
+}
+
+/// How a printed form groups its canonical text: groups of `sizes` in
+/// order, the last size repeating to the end, joined by `separator`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Grouping {
+    pub sizes: &'static [usize],
+    pub separator: &'static str,
+}
+
+impl Grouping {
+    /// `text` in its groups: `GB29 NWBK 6016 1331 9268 19`.
+    pub fn apply(&self, text: &str) -> String {
+        let chars: Vec<char> = text.chars().collect();
+        let mut groups: Vec<String> = Vec::new();
+        let mut at = 0;
+        let mut sizes = self.sizes.iter();
+        let mut size = sizes.next().copied().unwrap_or(chars.len()).max(1);
+        while at < chars.len() {
+            let end = (at + size).min(chars.len());
+            groups.push(chars.get(at..end).unwrap_or_default().iter().collect());
+            at = end;
+            if let Some(next) = sizes.next() {
+                size = (*next).max(1);
+            }
+        }
+        groups.join(self.separator)
+    }
 }
 
 /// An option `text.format` takes for a type, by its parameter's name.
@@ -212,14 +264,32 @@ pub struct Format {
 }
 
 /// A named validator: the one check a type's text needs that its rules
-/// can't say (area 19, question 2): IBAN's mod-97, Luhn and the rest
-/// arrive with their groups.
+/// can't say (area 19, question 2), one function each.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Validator {
     Email,
     Url,
     IpAddress,
     Uuid,
+    /// An IBAN's length for its country and its mod-97 (ISO 13616).
+    Iban,
+    /// A card number's Luhn check digit (ISO/IEC 7812).
+    Luhn,
+    /// An ISIN's Luhn check digit over its letters as numbers (ISO 6166).
+    Isin,
+    /// An LEI's mod-97 (ISO 17442, ISO 7064 mod 97-10).
+    Lei,
+    /// An ABA routing number's 3-7-1 checksum.
+    AbaRoutingNumber,
+    /// An NHS number's mod-11 check digit.
+    NhsNumber,
+    /// A National Insurance number's prefix, none HMRC never allocates.
+    UkNationalInsuranceNumber,
+    /// An RFC 5545 recurrence whose start is its rule's first occurrence
+    /// ([`recurrence`]).
+    RecurrenceRule,
+    /// OpenStreetMap's opening hours with a zone ([`opening_hours`]).
+    OpeningHours,
 }
 
 impl Validator {
@@ -230,6 +300,17 @@ impl Validator {
             Validator::Url => crate::is_url(text),
             Validator::IpAddress => crate::is_ip_address(text),
             Validator::Uuid => crate::uuid_version(text).is_some(),
+            Validator::Iban => identifiers::is_iban(text),
+            Validator::Luhn => identifiers::passes_luhn(text),
+            Validator::Isin => identifiers::is_isin(text),
+            Validator::Lei => identifiers::is_lei(text),
+            Validator::AbaRoutingNumber => identifiers::is_aba_routing_number(text),
+            Validator::NhsNumber => identifiers::is_nhs_number(text),
+            Validator::UkNationalInsuranceNumber => {
+                identifiers::is_uk_national_insurance_number(text)
+            }
+            Validator::RecurrenceRule => recurrence::Rule::read(text).is_some(),
+            Validator::OpeningHours => opening_hours::OpeningHours::read(text).is_some(),
         }
     }
 }
@@ -498,6 +579,14 @@ pub const CALENDAR_PERIOD_FIELDS: [(&str, Part); 3] = [
     ("days", Part::Of(Builtin::Int)),
 ];
 
+/// `RecurrenceRule` (area 19, "Time and calendar additions"), held as its
+/// RFC 5545 text.
+pub const RECURRENCE_RULE: &str = "RecurrenceRule";
+
+/// `OpeningHours` (area 19, "Time and calendar additions"), held as its
+/// OpenStreetMap text and zone.
+pub const OPENING_HOURS: &str = "OpeningHours";
+
 /// `DateRange`: the dates from `start` to `end`, both included (area 19,
 /// "Ranges").
 pub const DATE_RANGE: &str = "DateRange";
@@ -529,9 +618,13 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 
 /// Every standard type built so far, sorted by name: the 13 areas 2, 10
 /// and 16 built, run through the contract in chunk 5.5a, `Range<T>`
-/// (chunk 5.5c2), `Money` and `Currency` (chunk 5.5h), and ten of the time
-/// group (chunk 5.5k), and `ExchangeRate` (chunk 5.5h2).
+/// (chunk 5.5c2), `Money` and `Currency` (chunk 5.5h), ten of the time
+/// group (chunk 5.5k), `ExchangeRate` (chunk 5.5h2), the 17 payment
+/// and identity numbers held as text (chunk 5.5i, in `identifiers`), and
+/// `RecurrenceRule` and `OpeningHours`, held as text (chunk 5.5k2, in
+/// `schedules`).
 pub const STANDARD_TYPES: &[StandardType] = &[
+    identifiers::ABA_ROUTING_NUMBER,
     quantity(
         crate::QuantityKind::Angle,
         &[
@@ -548,6 +641,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("10000 sqm", "10,000 m²"),
         ],
     ),
+    identifiers::BIC,
     quantity(
         crate::QuantityKind::Bitrate,
         &[
@@ -600,6 +694,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
     ),
+    identifiers::CARD_BIN,
     quantity(
         crate::QuantityKind::Concentration,
         &[
@@ -830,6 +925,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("2400000000 Hz", "2,400,000,000 Hz"),
         ],
     ),
+    identifiers::IBAN,
     quantity(
         crate::QuantityKind::Illuminance,
         &[
@@ -905,6 +1001,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    identifiers::INVOICE_NUMBER,
     checked(
         "IpAddress",
         Builtin::IpAddress,
@@ -917,6 +1014,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
     ),
+    identifiers::ISIN,
     // A week of an ISO week-numbering year, ordered by year and week.
     time_object(
         "IsoWeek",
@@ -933,6 +1031,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
     ),
+    identifiers::LEI,
     quantity(
         crate::QuantityKind::Length,
         &[
@@ -1109,6 +1208,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    identifiers::NHS_NUMBER,
+    schedules::OPENING_HOURS,
+    identifiers::PAYMENT_CARD_NUMBER,
+    identifiers::PAYMENT_REFERENCE,
     quantity(
         crate::QuantityKind::Power,
         &[
@@ -1179,6 +1282,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    schedules::RECURRENCE_RULE,
     quantity(
         crate::QuantityKind::SoundLevel,
         &[
@@ -1211,6 +1315,11 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("5 kelvin", "5 K"),
         ],
     ),
+    identifiers::UK_ACCOUNT_NUMBER,
+    identifiers::UK_COMPANY_NUMBER,
+    identifiers::UK_NATIONAL_INSURANCE_NUMBER,
+    identifiers::UK_SORT_CODE,
+    identifiers::UK_UTR,
     checked(
         "Url",
         Builtin::Url,
@@ -1223,6 +1332,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
     ),
+    identifiers::US_EIN,
+    identifiers::US_SSN,
     // An offset from UTC, as a zone has at a moment; unordered.
     time_object(
         "UtcOffset",
@@ -1500,7 +1611,32 @@ pub fn of_builtin(builtin: Builtin) -> Option<&'static StandardType> {
         .find(|entry| entry.holds == Holds::Builtin(builtin))
 }
 
+/// The rules a type held as text adds where a program builds one (area
+/// 19, "Groups with the baseline only"): its own check, broken as
+/// `format`. `None` for any other type.
+pub fn text_rules(name: &str) -> Option<crate::Rules> {
+    let entry = standard_type(name)?;
+    matches!(entry.holds, Holds::Text { .. }).then(|| crate::Rules {
+        standard: Some(entry.name),
+        ..crate::Rules::default()
+    })
+}
+
 impl StandardType {
+    /// Whether `text` is this type's canonical text: its pattern matched
+    /// whole, for a type held as text, and its named validator.
+    pub fn accepts(&self, text: &str) -> bool {
+        let pattern = match self.holds {
+            Holds::Text { pattern, .. } => Some(pattern),
+            _ => None,
+        };
+        pattern.is_none_or(|pattern| matches_whole(pattern, text))
+            && self
+                .validator
+                .is_none_or(|validator| validator.accepts(text))
+            && (pattern.is_some() || self.validator.is_some())
+    }
+
     /// The enum's variants and their codes, for an enum.
     pub fn codes(&self) -> Option<&'static [(&'static str, &'static str)]> {
         match self.holds {
@@ -1585,6 +1721,23 @@ impl StandardType {
     }
 }
 
+/// Whether the standard pattern `pattern` matches the whole of `text`,
+/// each pattern compiled once.
+fn matches_whole(pattern: &'static str, text: &str) -> bool {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static COMPILED: OnceLock<Mutex<HashMap<&'static str, Option<crate::Pattern>>>> =
+        OnceLock::new();
+    let Ok(mut compiled) = COMPILED.get_or_init(Mutex::default).lock() else {
+        return false;
+    };
+    compiled
+        .entry(pattern)
+        .or_insert_with(|| crate::compile_pattern(pattern).ok())
+        .as_ref()
+        .is_some_and(|compiled| compiled.is_match(text))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1596,7 +1749,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 46, "the 46 standard types built so far");
+        assert_eq!(names.len(), 65, "the 65 standard types built so far");
     }
 
     #[test]
@@ -1608,7 +1761,44 @@ mod tests {
                 entry.name
             );
             if entry.text == Some(TextForm::Checked) {
-                assert!(entry.validator.is_some(), "{} checks its text", entry.name);
+                assert!(
+                    entry.validator.is_some() || matches!(entry.holds, Holds::Text { .. }),
+                    "{} checks its text",
+                    entry.name
+                );
+            }
+            if let Holds::Text { pattern, personal } = entry.holds {
+                assert!(crate::compile_pattern(pattern).is_ok(), "{}", entry.name);
+                assert_eq!(entry.text, Some(TextForm::Checked), "{}", entry.name);
+                assert_eq!(entry.storage, Storage::Column(SqlType::Text));
+                // Area 15's categories.
+                let categories = [
+                    "identifying",
+                    "contact",
+                    "financial",
+                    "online",
+                    "demographic",
+                    "government_id",
+                    "location",
+                    "health",
+                    "biometric",
+                    "genetic",
+                    "beliefs",
+                    "ethnicity",
+                    "sex_life",
+                    "criminal",
+                ];
+                assert!(
+                    personal.is_none_or(|category| categories.contains(&category)),
+                    "{}",
+                    entry.name
+                );
+                for (text, _) in entry.examples.valid {
+                    assert!(entry.accepts(text), "{}: `{text}`", entry.name);
+                }
+                for text in entry.examples.malformed {
+                    assert!(!entry.accepts(text), "{}: `{text}`", entry.name);
+                }
             }
             if let Holds::Enum(codes) = entry.holds {
                 assert_eq!(entry.text, Some(TextForm::Code), "{}", entry.name);
@@ -1684,5 +1874,33 @@ mod tests {
         assert!(!Validator::Url.accepts("example.com"));
         assert!(Validator::IpAddress.accepts("::1"));
         assert!(!Validator::Uuid.accepts("0192f0c4"));
+        let iban = standard_type("Iban").expect("an IBAN");
+        assert!(iban.accepts("GB29NWBK60161331926819"));
+        assert!(!iban.accepts("GB29NWBK60161331926818"));
+        assert_eq!(
+            text_rules("Iban").and_then(|rules| rules.standard),
+            Some("Iban")
+        );
+        assert_eq!(text_rules("Email"), None);
+        let broken = text_rules("NhsNumber")
+            .expect("rules")
+            .check_text("9434765918")
+            .expect_err("the check digit");
+        assert_eq!(broken.key, crate::RuleKey::Format);
+    }
+
+    #[test]
+    fn printed_forms_group_the_canonical_text() {
+        let fours = Grouping {
+            sizes: &[4],
+            separator: " ",
+        };
+        assert_eq!(fours.apply("NO9386011117947"), "NO93 8601 1117 947");
+        let nhs = Grouping {
+            sizes: &[3, 3, 4],
+            separator: " ",
+        };
+        assert_eq!(nhs.apply("9434765919"), "943 476 5919");
+        assert_eq!(fours.apply(""), "");
     }
 }

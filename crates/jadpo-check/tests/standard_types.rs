@@ -106,6 +106,12 @@ fn every_stub_agrees_with_its_data_entry() {
                     .collect();
                 assert_eq!(declared, expected, "{}'s fields", entry.name);
             }
+            // A type built on `Text` the standard library declares, its
+            // check in its entry (area 19, chunk 5.5i).
+            Holds::Text { .. } => {
+                assert_eq!(base, "Text", "{} is text", entry.name);
+                assert!(members.is_empty(), "{}'s check is its entry's", entry.name);
+            }
             Holds::Range => {
                 assert_eq!(base, "Object", "{}", entry.name);
                 let end = jadpo_check::types::TypeRef::Nullable(Box::new(
@@ -168,6 +174,7 @@ fn every_standard_type_meets_the_contract_in_the_checker() {
         // `text.from`: the canonical text, except for a type built on
         // `Text`, which is text already.
         let has_text = entry.text.is_some()
+            && !matches!(entry.holds, Holds::Text { .. })
             && !matches!(entry.holds, Holds::Builtin(builtin) if builtin.representation() == Builtin::Text);
         let from = check(&format!(
             "{declared}function f(value: {value}) -> Wire {{\n    return Wire(text.from(value))\n}}\n"
@@ -305,6 +312,16 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
         let name = entry.name;
         let schema = match entry.holds {
             Holds::Builtin(builtin) => scalar_schema(builtin, &jadpo_std::Rules::default()),
+            Holds::Text { pattern, .. } => {
+                let rules = jadpo_std::standard::text_rules(name).expect("a text type");
+                let schema = scalar_schema(Builtin::Text, &rules);
+                assert_eq!(
+                    schema.get("pattern").and_then(|v| v.as_str()),
+                    Some(format!("^(?:{pattern})$").as_str()),
+                    "{name}: OpenAPI shows its pattern"
+                );
+                schema
+            }
             Holds::Object(_) => standard_object_schema(entry),
             Holds::Enum(codes) => {
                 let spelling = Spelling::of(name);

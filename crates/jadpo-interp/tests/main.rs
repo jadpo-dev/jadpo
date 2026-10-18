@@ -27,6 +27,7 @@ mod numbers;
 mod proofs;
 mod quantities;
 mod reports;
+mod schedules;
 mod sets_maps;
 mod soundness;
 mod text;

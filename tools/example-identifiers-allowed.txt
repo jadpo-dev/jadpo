@@ -228,6 +228,18 @@ members
 membership
 money
 currency
+# the standard types `PaymentCardNumber`, `PaymentReference`,
+# `InvoiceNumber` and `UkCompanyNumber` (area 19, chunk 5.5i)
+payment
+card
+card_number
+invoice
+company
+# the standard type `OpeningHours` and RFC 5545's frequencies (area 19,
+# chunk 5.5k2)
+hours
+opening_hours
+daily
 principal
 retention
 role

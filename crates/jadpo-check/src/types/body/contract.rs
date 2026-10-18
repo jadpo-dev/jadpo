@@ -30,6 +30,11 @@ enum Contract {
 impl Body<'_> {
     /// What `ty` is to the contract.
     fn contract_of(&self, ty: &Ty) -> Contract {
+        // A payment or identity number is text to the runtime, but a
+        // standard type to the contract (area 19, chunk 5.5i).
+        if let Some(entry) = self.table.standard_text(ty) {
+            return Contract::Standard(entry);
+        }
         match self.table.structure(ty) {
             Ty::Prim(prim) => match jadpo_std::standard::of_builtin(prim) {
                 Some(entry) => Contract::Standard(entry),
@@ -111,7 +116,10 @@ impl Body<'_> {
                 format!("`{ty}` has no single text form, so it has no canonical text"),
             ),
             // A value built on `Text` already is text (area 19, "Text").
-            (Op::TextFrom, Contract::Standard(entry)) if matches!(entry.holds, Holds::Builtin(builtin) if builtin.representation() == Prim::Text) => {
+            (Op::TextFrom, Contract::Standard(entry))
+                if matches!(entry.holds, Holds::Text { .. })
+                    || matches!(entry.holds, Holds::Builtin(builtin) if builtin.representation() == Prim::Text) =>
+            {
                 (
                     false,
                     None,
@@ -295,6 +303,8 @@ impl Body<'_> {
         let base = match self.contract_of(target) {
             Contract::Standard(entry) => match entry.holds {
                 Holds::Builtin(builtin) => Some(Ty::Prim(builtin)),
+                // Its own check is what `malformed` already covers.
+                Holds::Text { .. } => Some(Ty::Named(entry.name.to_string())),
                 _ => None,
             },
             Contract::Representation(prim) => Some(Ty::Prim(prim)),

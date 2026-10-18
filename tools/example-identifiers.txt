@@ -5,6 +5,7 @@ accept_invitation
 accept_invitation_in_app
 accepted_at
 account_id
+account_label
 account_locked
 account_orders
 act_as
@@ -97,6 +98,7 @@ balance
 band
 band_rate
 bap
+bar_hours
 basket
 basket_empty
 basket_line
@@ -189,12 +191,11 @@ candles
 cap_total
 capped
 caption
-card
 card_already_issued
 card_full
+card_label
 card_name
 card_not_full
-card_number
 card_view
 cards
 carrot
@@ -223,6 +224,7 @@ check_note
 check_out
 check_shelf
 check_title
+checked_at
 checked_note
 checked_on
 checkout
@@ -237,11 +239,15 @@ chores
 citation
 citation_id
 citation_view
+class_count
+class_schedule
+class_time
 clear_cart
 clock_reading
 close_enough
 close_outlet
 close_project
+club_hours
 code_bytes
 code_digest
 code_unknown
@@ -253,7 +259,6 @@ combo
 comment_body
 common_time
 common_weights
-company
 company_chores
 company_id
 company_membership
@@ -321,7 +326,6 @@ cut_shelf
 cut_to
 cut_to_order
 cyd
-daily
 day_count
 days_left
 days_overdue
@@ -450,6 +454,7 @@ flour
 flour_for
 flour_needed
 flour_short
+fold_days
 follow_up
 forget_memos
 form_text
@@ -462,6 +467,7 @@ free_delivery_from
 from_address
 from_count
 from_flag
+gap_days
 give_note
 gluten
 goals
@@ -538,12 +544,12 @@ invalid_configuration
 invalid_success
 invitation
 invited
-invoice
 invoice_address
 invoice_date
 invoice_dated
 invoice_document
 invoice_transfer
+is_open
 is_overdue
 isbn
 issue_card
@@ -707,6 +713,7 @@ missing_success
 misuse_test_boundary
 mix_dough
 mixed_currencies
+monday_classes
 morning
 moved_in
 my_bakeries
@@ -724,6 +731,7 @@ new_staff
 new_todo
 new_york_autumn
 new_york_spring
+next_classes
 next_day
 next_free
 next_page
@@ -739,6 +747,8 @@ northing_after
 northwind
 not_a_call
 not_an_address
+not_an_iban
+not_an_nhs_number
 not_praised
 not_work
 not_your_order
@@ -778,7 +788,6 @@ open_outlet
 open_outlets
 open_project_with_board
 open_todos
-opening_hours
 opening_sign
 opening_unclear
 openings
@@ -869,12 +878,14 @@ party_title
 passed_on
 pastry
 patch_todo
+patient
+patient_number
 pay_deposit
-payment
 payment_intent
 payment_outcome
 payment_refused
 payment_succeeded
+payout_account
 people
 per_kilo
 per_todo
@@ -952,6 +963,7 @@ projects
 proving
 proving_time
 proxy_hops
+pub_hours
 publish_appraisal
 published_at
 publisher
@@ -1078,6 +1090,7 @@ scale_recipe
 scaled
 scaled_recipe
 scone
+search_from
 search_phrase
 search_todos
 seat_count

@@ -53,6 +53,7 @@ pub fn merge<'r>(chain: impl IntoIterator<Item = &'r Rules>) -> Rules {
         out.max_duration = out.max_duration.or(rules.max_duration);
         out.currency = out.currency.or(rules.currency);
         out.rounding = out.rounding.or(rules.rounding);
+        out.standard = out.standard.or(rules.standard);
     }
     out
 }
@@ -146,6 +147,14 @@ impl<'g> Wire<'g> {
                 TypeRef::List(inner) => return Shape::List(*inner, merge(&rules)),
                 TypeRef::Set(inner) => return Shape::Set(*inner, merge(&rules)),
                 TypeRef::Map(key, value) => return Shape::Map(*key, *value, merge(&rules)),
+                // A standard type held as text (area 19, chunk 5.5i): text
+                // with its own check, whose pattern OpenAPI shows.
+                TypeRef::Std(name, args)
+                    if args.is_empty() && jadpo_std::standard::text_rules(&name).is_some() =>
+                {
+                    rules.extend(jadpo_std::standard::text_rules(&name));
+                    current = TypeRef::Builtin(Builtin::Text);
+                }
                 TypeRef::Std(name, args) if name == "Page" && args.len() == 1 => {
                     return Shape::Page(args.into_iter().next().unwrap_or(TypeRef::None));
                 }
@@ -509,7 +518,14 @@ pub fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
             };
             string(&mut out, format);
             lengths(&mut out, rules, "minLength", "maxLength");
-            if let Some(pattern) = &rules.pattern {
+            let standard = rules
+                .standard
+                .and_then(jadpo_std::standard_type)
+                .and_then(|entry| match entry.holds {
+                    jadpo_std::standard::Holds::Text { pattern, .. } => Some(pattern),
+                    _ => None,
+                });
+            if let Some(pattern) = rules.pattern.as_deref().or(standard) {
                 out.set("pattern", format!("^(?:{pattern})$"));
             }
         }

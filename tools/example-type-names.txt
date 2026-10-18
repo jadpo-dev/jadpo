@@ -6,11 +6,14 @@ Batches
 Blank
 Broken
 BrowserSession
+Card
+CardNumber
 Celsius
 Centimetres
 Choice
 Code
 Comment
+Company
 Count
 Cutoff
 Day
@@ -24,6 +27,7 @@ Flag
 Grams
 Handle
 Health
+Invoice
 Item
 Kilograms
 Label
@@ -40,6 +44,7 @@ Open
 Opening
 Order
 Pair
+Payment
 Pence
 Percent
 Phrase
