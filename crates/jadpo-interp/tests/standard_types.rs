@@ -661,6 +661,19 @@ fn enum_codes_and_zones_read_ignoring_case() {
         standard::read(entry, "2026-07-01T09:30:00+00:00[Europe/London]"),
         Err(Fault::Broke(RuleKey::Malformed))
     );
+    // As is a zoned time's zone in JSON (chunk 5.5w3).
+    let (tables, _) = codecs(entry);
+    let mut problems = Vec::new();
+    let sent: serde_json::Value =
+        serde_json::from_str(r#"{"instant": "2026-07-01T08:30:00Z", "zone": "europe/london"}"#)
+            .unwrap();
+    assert_eq!(
+        tables
+            .view()
+            .read(CodecId(0), &sent, &Path::default(), &mut problems),
+        standard::read(entry, "2026-07-01T09:30:00+01:00[Europe/London]").ok(),
+        "{problems:?}"
+    );
 }
 
 /// A `Country` value, by its ISO 3166-1 code.
