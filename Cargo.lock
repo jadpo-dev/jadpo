@@ -1373,6 +1373,7 @@ dependencies = [
  "jadpo-runtime",
  "jadpo-std",
  "jadpo-value",
+ "serde_json",
 ]
 
 [[package]]
