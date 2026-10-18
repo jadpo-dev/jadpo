@@ -8,6 +8,7 @@ rules:
   - type.argument_empty
   - type.argument_negative
   - type.money_split
+  - type.random_context
   - type.reserved_variant_name
   - type.standard_clash
   - syntax.percent_ambiguous
@@ -27,7 +28,7 @@ own features needed. This page collects them, adds what real applications
 keep reaching for, says which gaps in the language block the rest and how
 to close them, and says what is left out on purpose and why.
 
-> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunks 5.5h2, 5.5k and 5.5k2: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2); `Money` and `Currency`, the operator table's `Money` rows and the money operations but `convert`, stored in two columns (5.5h); `ExchangeRate`, `money.convert` and `{price, number, currency}` in messages (5.5h2); ten of the time types, with `CalendarPeriod`'s operator rows and `temporal.period_between` (5.5k); `RecurrenceRule` and `OpeningHours`, with `temporal.occurrences` and `temporal.open_at` (5.5k2); and `Colour` and the media types, with `colour`'s operations and `media.fit` (5.5p). The rest is built by chunks 5.5i to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
+> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunks 5.5h2, 5.5k and 5.5k2: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2); `Money` and `Currency`, the operator table's `Money` rows and the money operations but `convert`, stored in two columns (5.5h); `ExchangeRate`, `money.convert` and `{price, number, currency}` in messages (5.5h2); ten of the time types, with `CalendarPeriod`'s operator rows and `temporal.period_between` (5.5k); `RecurrenceRule` and `OpeningHours`, with `temporal.occurrences` and `temporal.open_at` (5.5k2); `Colour` and the media types, with `colour`'s operations and `media.fit` (5.5p); and the `random` namespace, seeded per test (5.5q). The rest is built by chunks 5.5i to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
 
 | Namespace | Holds | Operations | Decided in |
 |---|---|---|---|
@@ -3671,6 +3672,82 @@ area 17 already lists randomness among the effects.
 `random.token` is what Richard's point 6 called `crypto.random_token`; it
 lives here because the test seed does.
 
+Every value is as likely as every other: a code's character is five bits
+of a byte, and a whole number below a bound is drawn again rather than
+taken as a remainder that would favour the low numbers. With no generator
+to read and no seed, a call is a fault, never a weaker value. A test's
+generator is seeded by the test, not by the run, so a test can name the
+very code it expects, and `random.integer(1, 6)` is proved from 1 to 6
+for the type it builds.
+
+A shop gives each order a reference a customer reads out on the phone and
+a cancel link no one types; a board game throws a die; a quiz asks its
+rounds in a random order and a prize draw picks its winners:
+
+```jadpo check project=randomness
+type OrderReference = Text {}
+
+type CancelToken = Text {}
+
+type DiceRoll = Int {
+    min: 1
+    max: 6
+}
+
+type Entrant = Text {
+    max_length: 40
+}
+
+type WinnerCount = Int {
+    min: 0
+    max: 10
+}
+
+/// An order's reference, which a customer reads out on the phone.
+action new_order_reference() -> OrderReference {
+    return OrderReference(random.code(8))
+}
+
+/// The token in a booking's cancel link, which no one types.
+action new_cancel_token() -> CancelToken {
+    return CancelToken(random.token())
+}
+
+/// A die's throw in a board game.
+action throw_die() -> DiceRoll {
+    return DiceRoll(random.integer(1, 6))
+}
+
+/// The order a quiz asks its rounds in.
+action round_order(quiz_rounds: List<Entrant>) -> List<Entrant> {
+    return random.shuffle(quiz_rounds)
+}
+
+/// A prize draw's winners, each entrant at most once.
+action prize_winners(entrants: List<Entrant>, count: WinnerCount) -> List<Entrant> {
+    return random.sample(entrants, count)
+}
+```
+
+```jadpo check project=randomness file=main.test.jadpo
+test "an order's reference is the same on every run" {
+    var reference: OrderReference = new_order_reference()
+    assert reference == "QHSF1J29"
+    assert text.length(new_cancel_token()) == 43
+}
+
+test "a prize draw picks different entrants" {
+    var winners: List<Entrant> = prize_winners(["Ada", "Grace", "Alan", "Edsger"], 2)
+    assert winners == ["Alan", "Edsger"]
+    assert list.count(round_order(["Ada", "Grace", "Alan"])) == 3
+}
+```
+
+> Built in chunk 5.5q: the five operations in `jadpo-value`'s `random`
+> module, each given the invocation's random bytes; reading them anywhere
+> but an action or a test is `type.random_context` ("Chosen in chunk
+> 5.5q").
+
 ## Encodings
 
 Each operation is called as `encoding.<name>`.
@@ -5660,9 +5737,9 @@ operations it unblocks kept on this page.
 | No map literal | `[]` where a map is expected; a literal with entries designed in area 2 | 2 | 5.5c, built | Building maps |
 | Inline functions take one parameter | Two parameters, `(a, b) -> ...`, for standard operations only (area 3's question 13 widened) | 3 | 5.5c2, built | `list.zip_with`, `map.filter`, `map.map_values` |
 | No `Float` and no maths | Maths on `Decimal` with `scale:` and `rounding:`, deterministic everywhere; still no `Float` | 2 (question 8 there) | 5.5e, built | 8 `decimal` operations; geospatial distance |
-| Code can't read a secret | Opaque key settings, used only as a `crypto` call's `key:` | 10 | 5.5q | `crypto` |
+| Code can't read a secret | Opaque key settings, used only as a `crypto` call's `key:` | 10 | 5.5q2 | `crypto` |
 | Keys held as data (per device, per person) | An encrypted field of a key type, usable only as `key:` | 10, 15 | With encrypted fields, after the first build (personal data) | Per-device signatures, `crypto.verify_totp` |
-| No randomness | Generated `random`, actions only, seeded in tests, recorded for replay | 10, 13, 17 | 5.5q | `random.*`, `encrypt`, `hash_password` |
+| No randomness | Generated `random`, actions only, seeded in tests, recorded for replay | 10, 13, 17 | 5.5q, built | `random.*`, `encrypt`, `hash_password` |
 | Text has no locale order or case | `locale:` on `list.sort_by`, `text.lower` and `text.upper`, through ICU4X's collator and case mapping (two more crates of the pinned ICU4X) | 10 | 5.5f, built | Locale sorting and case |
 | Values formatted for people only in translations | The contract's `text.format`, giving `PresentationText`, for every standard type | 10 | 5.5a | Showing numbers, money, quantities and addresses in code |
 | No parsing from text | The contract's `text.parse(raw, as: T)`, canonical forms only | 2 | 5.5a | Text from a person or a file cell |
@@ -6247,6 +6324,34 @@ error: `all` can't be a variant of `Newsletter`
 check failed: 1 error, 1 file
 ```
 
+### `type.random_context`
+
+A `random` operation reads the generator, so only actions and tests call
+it; a function is pure, and so is an inline function or a constant.
+
+```jadpo check project=e-random-context expect=type.random_context
+type OrderReference = Text {}
+
+/// An order's reference, which a customer reads out on the phone.
+function order_reference() -> OrderReference {
+    return OrderReference(random.code(8))
+}
+```
+
+```text output
+error: A function can't call `random.code`
+ --> main.jadpo:5:27
+  |
+5 |     return OrderReference(random.code(8))
+  |                           ^^^^^^^^^^^^^^ reads the generator
+  reason: A function is pure: it gives the same result for the same arguments, so a random value it needs arrives as a parameter; only actions read the generator, which a test seeds so that it repeats.
+  next: Pass the value in as a parameter, made in the action that calls this (agent)
+  rule: type.random_context
+  help: docs/language/19-standard-library.html#type-random-context
+
+check failed: 1 error, 1 file
+```
+
 ## Review
 
 ### Status
@@ -6266,6 +6371,7 @@ check failed: 1 error, 1 file
 | `Email`, `Url`, `IpAddress`, `FileType`, `InstantRange` | Decided (areas 2, 10, 16) and built |
 | Everything else on this page | Decided 2026-10-17, as recommended; built in chunks 5.5a to 5.5s |
 | `hash.sha256`, the 9 `encoding` operations | Decided 2026-10-17 (question 24); built in 5.5g |
+| `random` | Decided 2026-10-17 (question 19); built in 5.5q, actions only, seeded per test, replayed from a recording; `crypto` in 5.5q2 |
 | The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
 | SQL forms | Decided; built with computed backfills (chunk 5.6) |
 | Geospatial, AI | Decided as future areas, planned in 5.5u and 5.5v |
@@ -8461,6 +8567,54 @@ under "Errors").
 - **Clashes renamed:** area 2's `syntax.type_parent_required` example's
   `Dimensions` is `BoxSize`.
 
+### Chosen in chunk 5.5q
+
+- **`random` is a stub, `random.jadpo`,** declared and typed like the
+  standard namespaces, so its calls are checked as theirs are; what makes
+  it generated is the operation table's `Op::reads_generator`, which the
+  checker reads for `type.random_context` (new, beside area 10's
+  `type.clock_context`) and each executor for the bytes it hands the
+  operation. A test and a fixture may call it; a function, an inline
+  function and a constant can't, as with `clock.now`.
+- **A test's seed is its own,** from the test's key alone, so every run
+  gives a test the same values, whatever seed orders the run, as its clock
+  is fixed; a test can assert the exact code it gets. New identities share
+  the seed, so they no longer change with the order seed either; `--seed`
+  now decides only the order.
+- **One source of random bytes,** the invocation's context: a replayed
+  run's recorded bytes first, then the host's generator, then the test's
+  seed. With none, the call is a fault (`internal_fault`), never a weaker
+  value. The native host reads the operating system's generator through
+  `getrandom` 0.4.3 (getrandom(2), getentropy), replacing its own read of
+  `/dev/urandom`; a Workers host will read the Web Crypto API's.
+  `jadpo-value` never reads randomness itself, so it builds for wasm32
+  with no generator of its own.
+- **Recorded for replay** is the context's tape: while recording, every
+  byte handed out is kept, and a replayed run is given them back in order,
+  making the same tokens, codes and shuffles; when they run out there is no
+  randomness to give. `jadpo replay` itself is area 17's tooling, not built
+  yet; the bytes can hold tokens, so nothing writes them out until it is.
+- **Uniform values.** A token is 32 bytes as Base64url without padding.
+  A code's character is the low five bits of its own byte, so each of the
+  32 is as likely. A whole number is drawn by rejection: a 64-bit draw
+  below 2^64 mod the count is drawn again, then the remainder taken; the
+  whole range of `Int` is a draw itself. A shuffle is Fisher and Yates's;
+  a sample is the first `count` steps of it, so its items are in random
+  order too.
+- **`min` above `max`** in `random.integer` is a defect where it runs, as
+  overflow is; the checker proves the result's bounds from the arguments'
+  (`DiceRoll(random.integer(1, 6))` needs no arm) but not their order. A
+  code's `length` is proved from 4 to 32 and a sample's `count` not
+  negative, as `temporal.occurrences`' `count` and `list.slice`'s are.
+
+- **For 5.5q2, decided by the lead session (2026-10-18), as this chunk
+  recommended:** an `EncryptionKey` or `PrivateKey` setting's environment
+  variable holds its 32 bytes as unpadded Base64url (43 characters), and
+  anything else is refused at startup by the check before the app starts;
+  `crypto.hmac` and `crypto.verify_hmac` with a `SigningKey` use the key's
+  text bytes directly as the HMAC key, so an outside system that shares
+  the secret can verify what the app signs.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -8976,8 +9130,9 @@ first; each group of types then arrives with its baseline and its extras.
   `markup.rich_to_html`, and `LocalisedText` with `text.pick`. Built.
 - **5.5p Media and colour** `opus · high`: the 15 types, `colour`'s 5
   operations and `media.fit`.
-- **5.5q Randomness and cryptography** `opus · high`: the generated
-  `random` namespace with test seeding; `crypto`'s 8 operations that need
+- **5.5q Randomness** `opus · high`: the generated `random` namespace
+  with test seeding. Split on 2026-10-18, cryptography is 5.5q2. Built.
+- **5.5q2 Cryptography** `opus · high`: `crypto`'s 8 operations that need
   no keys held as data; `EncryptionKey`, `PasswordHash`, `PasswordCheck`,
   `PrivateKey`, `PublicKey` and `key:` as a compiler-owned place.
 - **5.5r Security types** `opus · high`: the other 17 security types

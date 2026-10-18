@@ -206,6 +206,7 @@ cakes
 calendar_text
 caller_address
 can_take
+cancel_token
 cancel_unpaid_orders
 candle_count
 candles
@@ -394,6 +395,7 @@ diary_entry_from_text
 diary_json
 diary_text
 diary_unreadable
+dice_roll
 disable_user
 disabled_at
 discount_code
@@ -457,6 +459,8 @@ enrol
 enrolled
 entered
 entered_amount
+entrant
+entrants
 entry_count
 entry_id
 euro_price
@@ -823,8 +827,10 @@ needs_cooling
 never_rose
 new_address
 new_bakery
+new_cancel_token
 new_card
 new_key
+new_order_reference
 new_outlet_key
 new_staff
 new_todo
@@ -1089,6 +1095,7 @@ priorities
 priority
 priority_too_high
 pristine
+prize_winners
 problem_part
 problem_sent
 problem_shown
@@ -1124,6 +1131,7 @@ quantity_too_small
 quantity_unavailable
 quantity_unreadable
 queue_overdue_reminders
+quiz_rounds
 quote_cake
 radius
 raise_priority
@@ -1229,6 +1237,7 @@ roggen
 room_depth
 room_floor
 rotated
+round_order
 royal_code
 runs_until
 rush
@@ -1451,6 +1460,7 @@ test_configuration
 text_colour
 the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest
 this_partner
+throw_die
 thumbnail
 ticket_status
 tidied
@@ -1600,6 +1610,8 @@ whole_team
 wholemeal
 wide_still
 wildcard_failure
+winner_count
+winners
 with_brackets
 with_deal
 with_delivery

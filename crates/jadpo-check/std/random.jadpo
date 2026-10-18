@@ -1,0 +1,30 @@
+// The `random` namespace (area 19, "Randomness", question 19). Every other
+// operation is pure; these read the generator: the operating system's
+// cryptographic generator in production, and in a test one seeded by the
+// test, so a rerun gives the same values, as the test clock is fixed. They
+// are called only in actions, as `clock.now` is, and a recorded run
+// replays what they gave (area 17). Each is listed, typed, in `jadpo-std`'s
+// operation table, which names the Rust function in `jadpo-value` that
+// runs it; a test holds these stubs to that table. `T` is any type, fixed
+// by the list a call gives.
+
+public library random {
+    /// 32 random bytes as Base64url, 43 characters: for links and keys a
+    /// person never types.
+    function token() -> Text {}
+
+    /// `length` characters from Crockford's Base32 (digits and capitals
+    /// without `I`, `L`, `O` and `U`): references a person reads out;
+    /// `length` is from 4 to 32.
+    function code(length: Int) -> Text {}
+
+    /// A whole number from `min` to `max`, both included, each as likely.
+    function integer(min: Int, max: Int) -> Int {}
+
+    /// The items in random order.
+    function shuffle(items: List<T>) -> List<T> {}
+
+    /// `count` items from different positions, in random order; all of
+    /// them when `count` is larger.
+    function sample(items: List<T>, count: Int) -> List<T> {}
+}

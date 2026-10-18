@@ -1180,3 +1180,31 @@ fn a_public_fixture_runs_from_another_domains_test_and_a_scenario() {
     assert_eq!(output.stdout, "tested: 3 passed, 3 action tests\n");
     assert_eq!(output.code, 0);
 }
+
+#[test]
+fn a_tests_random_values_repeat_whatever_the_order_seed() {
+    // Area 19, "Randomness" (chunk 5.5q): a test's generator is seeded by
+    // the test itself, as its clock is fixed, so every run gives it the
+    // same codes and tokens, whatever seed orders the run.
+    let root = folder("random-rerun");
+    write(
+        &root,
+        "bookings.jadpo",
+        "type Reference = Text {}\n\naction booking_reference() -> Reference {\n    return Reference(random.code(8))\n}\n\naction cancel_link() -> Reference {\n    return Reference(random.token())\n}\n",
+    );
+    write(
+        &root,
+        "bookings.test.jadpo",
+        "test \"a booking's reference repeats on a rerun\" {\n    var reference: Reference = booking_reference()\n    assert reference == \"ZJ3NYM4W\"\n}\n\ntest \"a cancel link repeats on a rerun\" {\n    var link: Reference = cancel_link()\n    assert link == \"bgrwI3SUrLucKK9Pu5l_YK3HNumx246PyvKf3kStPCk\"\n}\n",
+    );
+    for seed in ["1", "2", "48213"] {
+        let output = jadpo(&root, &["test", ".", "--seed", seed]);
+        assert_eq!(
+            output.stdout, "tested: 2 passed, 2 action tests\n",
+            "--seed {seed}"
+        );
+        assert_eq!(output.code, 0);
+    }
+    let output = jadpo(&root, &["test", "."]);
+    assert_eq!(output.code, 0, "a new order seed: {}", output.stdout);
+}

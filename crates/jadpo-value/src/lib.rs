@@ -51,6 +51,7 @@ pub mod money;
 pub mod ops;
 pub mod order;
 pub mod present;
+pub mod random;
 pub mod range;
 mod rounding;
 pub mod semver;
@@ -428,6 +429,17 @@ pub fn run(
         // through [`json::Codecs::read_value`] and
         // [`json::Codecs::write_value`] over the plan's codecs.
         (Op::JsonRead | Op::JsonWrite, _) => Err(Fault::Shape),
+        // `random` reads the generator, so each executor runs it through
+        // [`random::run`] with the invocation's source of random bytes
+        // (area 19, question 19).
+        (
+            Op::RandomCode
+            | Op::RandomInteger
+            | Op::RandomSample
+            | Op::RandomShuffle
+            | Op::RandomToken,
+            _,
+        ) => Err(Fault::Shape),
         (
             Op::TextContains
             | Op::TextDropFirst
@@ -769,6 +781,12 @@ mod tests {
             let args: Vec<Value> = match operation.op {
                 // Run with the plan's codecs (`json`'s own tests).
                 Op::JsonRead | Op::JsonWrite => continue,
+                // Run with a source of random bytes (`random`'s own tests).
+                Op::RandomCode
+                | Op::RandomInteger
+                | Op::RandomSample
+                | Op::RandomShuffle
+                | Op::RandomToken => continue,
                 Op::EncodingToBase64
                 | Op::EncodingToBase64url
                 | Op::EncodingToHex

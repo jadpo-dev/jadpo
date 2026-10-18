@@ -980,6 +980,8 @@ rules! {
         "08-identity.html#type-principal-subject-invalid", "Principal's subject is not a field of a stored entity";
     TYPE_PRINCIPAL_SUBJECT_NOT_UNIQUE: "type.principal_subject_not_unique", area 8, Error, Agent,
         "08-identity.html#type-principal-subject-not-unique", "Principal's subject field is not unique";
+    TYPE_RANDOM_CONTEXT: "type.random_context", area 19, Error, Agent,
+        "19-standard-library.html#type-random-context", "Randomness is read outside an action";
     TYPE_REDUNDANT_NULLABILITY: "type.redundant_nullability", area 2, Error, Agent,
         "02-values-and-types.html#type-redundant-nullability", "Type is already nullable";
     TYPE_RESERVED_FIELD_NAME: "type.reserved_field_name", area 2, Error, Agent,

@@ -2085,6 +2085,15 @@ impl<'p> Machine<'p> {
         if matches!(op, Op::JsonRead | Op::JsonWrite) {
             return self.json(ctx, op, values, at);
         }
+        // `random` reads the invocation's random bytes: the host's
+        // generator, a test's seed or a recorded run's (area 19, question
+        // 19).
+        if op.reads_generator() {
+            let made = jadpo_value::random::run(op, values, &mut |bytes: &mut [u8]| {
+                ctx.random_bytes(bytes)
+            });
+            return made.map_err(|fault| self.value_fault(ctx, fault, at));
+        }
         let mut stopped: Option<Stop> = None;
         let locales = self.program.plan().locales();
         // An inline function's expressions give a value per item, not one

@@ -445,7 +445,8 @@ most conservative reading:
 > config.<name>` with an `EncryptionKey` (new) or `SigningKey` setting;
 > any other read stays `configuration.secret_flow`. Area 19 also adds a
 > generated `random` namespace, read only in actions as `clock.now` is
-> (question 19). Both built in chunk 5.5q.
+> (question 19). `random` built in chunk 5.5q (`type.random_context`
+> beside `type.clock_context`); the `key:` place comes with 5.5q2.
 
 `secret: true` marks a value that must never leave the server. The compiler
 accepts it only at places the compiler itself owns: a connection's `url:`, an

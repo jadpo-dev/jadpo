@@ -69,6 +69,12 @@ impl From<jadpo_value::Fault> for FaultKind {
             jadpo_value::Fault::DivisionByZero => {
                 FaultKind::Defect("a division by zero, which the checker rules out".into())
             }
+            jadpo_value::Fault::NoRandomness => {
+                FaultKind::Defect("randomness on a host with no generator and no seed".into())
+            }
+            jadpo_value::Fault::EmptyRange => {
+                FaultKind::Defect("`random.integer` given a `min` above its `max`".into())
+            }
             jadpo_value::Fault::Shape | jadpo_value::Fault::Stopped => {
                 FaultKind::Defect("a value of a kind the checker would have refused".into())
             }

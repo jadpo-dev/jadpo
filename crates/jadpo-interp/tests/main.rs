@@ -29,6 +29,7 @@ mod numbers;
 mod percentages;
 mod proofs;
 mod quantities;
+mod randomness;
 mod records_measures;
 mod reports;
 mod schedules;

@@ -380,8 +380,15 @@ impl Body<'_> {
             }
             if let Some(operation) = names.operation(&head, member) {
                 let ty = self.std_call(operation, call, &written, expected);
-                let reach = jadpo_std::operation(&head, member)
-                    .map_or(Reach::Unknown, |operation| Reach::Std(operation.op));
+                let table = jadpo_std::operation(&head, member);
+                let reach = table.map_or(Reach::Unknown, |operation| Reach::Std(operation.op));
+                // `random` reads the generator: an effect, only actions'
+                // (area 19, question 19).
+                if table.is_some_and(|operation| operation.op.reads_generator()) {
+                    let span = self.span(call);
+                    self.random_read(span, &written);
+                    return (ty, CallKind::Effect(written), reach);
+                }
                 return (ty, CallKind::Pure(written), reach);
             }
             if names.name_only(&head, member) {

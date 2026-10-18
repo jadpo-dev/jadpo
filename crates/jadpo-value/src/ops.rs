@@ -33,6 +33,11 @@ pub enum Fault {
     /// `attempt` maps by this key, as a construction's broken rule
     /// (area 10, question 7).
     Broke(jadpo_std::RuleKey),
+    /// No random bytes to give: a host with no generator and no seed, which
+    /// never falls back to a weaker source (area 19, "Randomness").
+    NoRandomness,
+    /// `random.integer` given a `min` above its `max`.
+    EmptyRange,
 }
 
 pub fn int_add(a: i64, b: i64) -> Result<i64, Fault> {
