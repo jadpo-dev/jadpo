@@ -193,7 +193,7 @@ fn a_map_key_has_one_text_form() {
     let mut refused = Vec::new();
     let mut at = 0;
     for entry in STANDARD_TYPES {
-        if matches!(entry.json, Json::GeoJson | Json::Secret)
+        if matches!(entry.json, Json::GeoJson | Json::Secret | Json::Feature)
             || entry.storage == Storage::Vector
             || entry.storage == Storage::Never
         {

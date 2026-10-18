@@ -132,7 +132,7 @@ impl Case {
 fn cases() -> Vec<Case> {
     let mut out = Vec::new();
     for entry in STANDARD_TYPES {
-        if matches!(entry.json, Json::GeoJson | Json::Secret)
+        if matches!(entry.json, Json::GeoJson | Json::Secret | Json::Feature)
             || entry.storage == Storage::Vector
             || entry.name == jadpo_std::standard::security::PASSWORD_HASH
         {

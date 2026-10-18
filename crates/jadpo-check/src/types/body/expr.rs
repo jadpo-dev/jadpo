@@ -69,6 +69,22 @@ impl Body<'_> {
             self.facts.types.insert(node_key(expr.syntax()), actual);
             return;
         }
+        // `Feature { ... }` where a `Feature<G, P>` is expected, or a
+        // collection where its type is (area 20): its fields are typed by
+        // the arguments.
+        if let Expr::RecordExpr(record) = expr
+            && let Some(head) = record.expr()
+            && let Ty::Opaque(feature, args) = self.table.structure(expected)
+            && super::features::is_feature(&feature)
+            && tree::written(head.syntax()) == feature
+            && args.len() == 2
+            && !self.table.is_nullable(expected)
+        {
+            self.resolved_by(|names, out| crate::resolve::record_head(names, record, out));
+            let actual = self.feature_literal(record, &feature, Some(args));
+            self.facts.types.insert(node_key(expr.syntax()), actual);
+            return;
+        }
         if let Expr::ListExpr(list) = expr {
             match &self.table.structure(expected) {
                 Ty::List(item) | Ty::Set(item) => {
@@ -906,6 +922,21 @@ impl Body<'_> {
                 .insert(node_key(node.syntax()), (range.clone(), vec![field]));
             return item.clone().nullable();
         }
+        // A feature's geometry and properties, a collection's features
+        // (area 20), typed by its arguments.
+        if let Ty::Opaque(feature, args) = &through
+            && let Some(fields) = super::features::feature_fields(feature, args)
+        {
+            let Some(found) = fields.iter().find(|f| f.name == field) else {
+                self.unknown_field(feature, &field, &fields, span, false);
+                return Ty::Error;
+            };
+            let declared = found.declared.clone();
+            self.facts
+                .fields
+                .insert(node_key(node.syntax()), (feature.clone(), vec![field]));
+            return declared;
+        }
         // A standard object type's fields (area 19): an `InstantRange`'s
         // instants, a `LocalTime`'s hour, minute and second, each read as
         // what it is built on.
@@ -1120,6 +1151,11 @@ impl Body<'_> {
             // `Range { start: ..., end: ... }` (area 19), its ends' type
             // from its first end that isn't `none`.
             ([], None) if name == jadpo_std::RANGE => self.range_literal(record, None),
+            // `Feature { ... }` and `FeatureCollection { ... }` (area 20),
+            // their type arguments from their fields' values.
+            ([], None) if super::features::is_feature(&name) => {
+                self.feature_literal(record, &name, None)
+            }
             // A certificate's parts are read from the DER its issuer
             // signed, so code never sets them (area 19, chunk 5.5r5).
             ([], None) if jadpo_std::standard::certificates::read_only(&name) => {
@@ -1908,6 +1944,14 @@ pub(crate) fn members_of(
         return jadpo_std::RANGE_FIELDS
             .iter()
             .map(|name| plain(name, item.clone().nullable()))
+            .collect();
+    }
+    if let Ty::Opaque(feature, args) = receiver.strip_nullable()
+        && let Some(fields) = super::features::feature_fields(feature, args)
+    {
+        return fields
+            .into_iter()
+            .map(|field| plain(&field.name, field.declared))
             .collect();
     }
     if let Ty::Opaque(object, args) = receiver.strip_nullable()

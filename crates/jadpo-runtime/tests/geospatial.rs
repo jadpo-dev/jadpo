@@ -180,3 +180,91 @@ fn a_patch_round_trips_through_wkt_as_compiled_code_runs_it() {
         Err(jadpo_value::Fault::Broke(jadpo_std::RuleKey::Malformed))
     );
 }
+
+/// A GeoJSON feature collection read and written by the codec compiled
+/// code uses (area 20, "Interop"; chunk 5.5u6): its features' geometries
+/// as GeoJSON, their properties as their own type's JSON, and back
+/// unchanged; the interpreter's `geo_interop` tests run the same through
+/// `json.read` and `json.write`.
+#[test]
+fn a_feature_collection_round_trips_through_json_as_compiled_code_runs_it() {
+    use jadpo_std::types::{FieldPlan, ShapeId, ShapePlan, ValidatorId};
+    let properties = ShapePlan {
+        ty: "PinProperties".to_string(),
+        variant: None,
+        fields: vec![FieldPlan {
+            key: "field PinProperties.label".to_string(),
+            name: "label".to_string(),
+            validator: ValidatorId(0),
+            absent: None,
+            omittable: false,
+            none_left_out: false,
+            section: None,
+        }],
+    };
+    let codecs = vec![
+        Codec::FeatureCollection {
+            feature: CodecId(1),
+        },
+        Codec::Feature {
+            geometry: CodecId(2),
+            properties: CodecId(3),
+        },
+        Codec::Standard {
+            ty: "Point".to_string(),
+        },
+        Codec::Object {
+            shape: ShapeId(0),
+            fields: vec![CodecId(4)],
+            validator: None,
+        },
+        Codec::Scalar {
+            builtin: jadpo_std::Builtin::Text,
+            validator: ValidatorId(0),
+            int_as_number: false,
+        },
+    ];
+    let validators = vec![jadpo_value::Validator::new(
+        Some(jadpo_std::Builtin::Text),
+        Vec::new(),
+    )];
+    let shapes = vec![jadpo_value::shape::Shape::new(&properties)];
+    let codecs = Codecs {
+        codecs: &codecs,
+        validators: &validators,
+        shapes: &shapes,
+    };
+    let layer = r#"{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"label":"Crumbs"}}]}"#;
+    let mut problems = Vec::new();
+    let read = codecs
+        .read(
+            CodecId(0),
+            &serde_json::from_str(layer).expect("JSON"),
+            &Path::default(),
+            &mut problems,
+        )
+        .unwrap_or_else(|| panic!("{problems:?}"));
+    let mut written = String::new();
+    codecs.write(CodecId(0), &read, &mut written);
+    assert_eq!(written, layer);
+    // An `id` is refused at its place.
+    let mut problems = Vec::new();
+    let with_id = layer.replace(r#"{"type":"Feature","#, r#"{"type":"Feature","id":1,"#);
+    assert!(
+        codecs
+            .read(
+                CodecId(0),
+                &serde_json::from_str(&with_id).expect("JSON"),
+                &Path::default(),
+                &mut problems
+            )
+            .is_none()
+    );
+    assert_eq!(
+        problems,
+        [jadpo_value::json::Problem {
+            field: "features.0.id".to_string(),
+            rule: "unknown_field".to_string(),
+        }]
+    );
+}

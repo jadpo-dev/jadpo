@@ -48,6 +48,30 @@ pub const MULTI_POLYGON: &str = "MultiPolygon";
 pub const GEOMETRY: &str = "Geometry";
 /// `BoundingBox`.
 pub const BOUNDING_BOX: &str = "BoundingBox";
+/// `Feature<G, P>`.
+pub const FEATURE: &str = "Feature";
+/// `FeatureCollection<G, P>`.
+pub const FEATURE_COLLECTION: &str = "FeatureCollection";
+
+/// `Feature<G, P>`'s fields, in order: its geometry, a `G`, and its
+/// properties, a `P` (area 20, "Interop").
+pub const FEATURE_FIELDS: [&str; 2] = ["geometry", "properties"];
+
+/// `FeatureCollection<G, P>`'s one field: its features, a list of
+/// `Feature<G, P>`.
+pub const FEATURE_COLLECTION_FIELDS: [&str; 1] = ["features"];
+
+/// What a feature's geometry, `G`, may be: one of the six geometries, or
+/// `Geometry` for any of them.
+pub const FEATURE_GEOMETRIES: [&str; 7] = [
+    POINT,
+    LINE_STRING,
+    POLYGON,
+    MULTI_POINT,
+    MULTI_LINE_STRING,
+    MULTI_POLYGON,
+    GEOMETRY,
+];
 /// `Circle`.
 pub const CIRCLE: &str = "Circle";
 
@@ -1104,3 +1128,72 @@ mod tests {
         assert_eq!(geojson_type(GEOMETRY), None);
     }
 }
+
+/// A GeoJSON `Feature` (RFC 7946 §3.2; area 20, "Interop", question 6):
+/// a geometry of the type `G` and the application's own `properties`, an
+/// `Object` of the type `P`, read strictly, with no `id`, since an
+/// application's identity goes in its properties. Sent as `{"type":
+/// "Feature", "geometry": ..., "properties": {...}}`, a map library's
+/// layer; it has no text and no form for people, and storing one is
+/// area 5's structured JSON, not built yet. Its examples are a feature of
+/// a `Point` whose properties are a name.
+pub const FEATURE_ENTRY: StandardType = StandardType {
+    name: FEATURE,
+    holds: Holds::Feature,
+    text: None,
+    json: Json::Feature,
+    storage: Storage::Column(SqlType::Json),
+    format: CANONICAL,
+    ordered: false,
+    validator: None,
+    shape: None,
+    examples: examples(
+        &[(
+            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"name":"Crumbs"}}"#,
+            "",
+        )],
+        &[
+            // An `id`, which properties carry; no geometry; properties
+            // left out or `null`; another GeoJSON object; a foreign member.
+            r#"{"type":"Feature","id":7,"geometry":{"type":"Point","coordinates":[0,0]},"properties":{"name":"Crumbs"}}"#,
+            r#"{"type":"Feature","geometry":null,"properties":{"name":"Crumbs"}}"#,
+            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]}}"#,
+            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":null}"#,
+            r#"{"type":"Point","coordinates":[0,0]}"#,
+            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":{"name":"Crumbs"},"title":"A bakery"}"#,
+        ],
+    ),
+    release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
+};
+
+/// A GeoJSON `FeatureCollection` (RFC 7946 §3.3; area 20, "Interop"):
+/// features of one geometry type and one properties type, in order, as a
+/// map library takes a layer. Its examples are as `Feature`'s.
+pub const FEATURE_COLLECTION_ENTRY: StandardType = StandardType {
+    name: FEATURE_COLLECTION,
+    holds: Holds::FeatureCollection,
+    text: None,
+    json: Json::Feature,
+    storage: Storage::Column(SqlType::Json),
+    format: CANONICAL,
+    ordered: false,
+    validator: None,
+    shape: None,
+    examples: examples(
+        &[
+            (
+                r#"{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"name":"Crumbs"}}]}"#,
+                "",
+            ),
+            (r#"{"type":"FeatureCollection","features":[]}"#, ""),
+        ],
+        &[
+            r#"{"type":"FeatureCollection"}"#,
+            r#"{"type":"FeatureCollection","features":[{"type":"Point","coordinates":[0,0]}]}"#,
+            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":{"name":"Crumbs"}}"#,
+        ],
+    ),
+    release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
+};

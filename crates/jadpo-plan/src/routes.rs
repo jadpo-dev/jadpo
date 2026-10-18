@@ -381,6 +381,11 @@ enum Made {
     StdObject(&'static jadpo_std::StandardType),
     /// `Range<T>` (area 19): its two ends, each a `T` or `null`.
     Range(TypeRef),
+    /// `Feature<G, P>` (area 20): its geometry's and its properties'
+    /// types.
+    Feature(TypeRef, TypeRef),
+    /// `FeatureCollection<G, P>` (area 20): its type arguments.
+    FeatureCollection(Vec<TypeRef>),
     Unknown,
 }
 
@@ -653,6 +658,18 @@ impl<'t> Codecs<'t> {
                     validator: Some(self.types.validator_id(&range)),
                 }
             }
+            // A GeoJSON feature and a collection of them (area 20, chunk
+            // 5.5u6), through their arguments' codecs.
+            Made::Feature(geometry, properties) => Codec::Feature {
+                geometry: self.codec(&geometry),
+                properties: self.codec(&properties),
+            },
+            Made::FeatureCollection(args) => {
+                let feature = TypeRef::Std(jadpo_std::standard::geo::FEATURE.to_string(), args);
+                Codec::FeatureCollection {
+                    feature: self.codec(&feature),
+                }
+            }
             Made::Unknown => self.made_unknown(),
         }
     }
@@ -724,6 +741,17 @@ impl<'t> Codecs<'t> {
                 }
                 TypeRef::Std(name, mut args) if name == jadpo_std::RANGE && args.len() == 1 => {
                     return Made::Range(args.remove(0));
+                }
+                TypeRef::Std(name, mut args)
+                    if name == jadpo_std::standard::geo::FEATURE && args.len() == 2 =>
+                {
+                    let properties = args.remove(1);
+                    return Made::Feature(args.remove(0), properties);
+                }
+                TypeRef::Std(name, args)
+                    if name == jadpo_std::standard::geo::FEATURE_COLLECTION && args.len() == 2 =>
+                {
+                    return Made::FeatureCollection(args);
                 }
                 TypeRef::Std(name, args) if args.is_empty() => {
                     if let Some(entry) = jadpo_std::standard_type(&name) {

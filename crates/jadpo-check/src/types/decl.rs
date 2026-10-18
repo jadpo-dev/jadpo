@@ -253,6 +253,9 @@ impl Decls<'_> {
                         Some(arity) => Some(arity),
                         // `Range<T>` (area 19, "Ranges").
                         None if first == jadpo_std::RANGE => Some(1),
+                        // `Feature<G, P>` and `FeatureCollection<G, P>`
+                        // (area 20, "Interop").
+                        None if super::body::is_feature(first) => Some(2),
                         None if Prim::from_name(first).is_some()
                             || self.table.contains(first)
                             || BASES.contains(&first) =>
@@ -269,6 +272,9 @@ impl Decls<'_> {
                         let needs = match arity {
                             0 => "no type arguments".to_string(),
                             1 => format!("one type argument, as in `{first}<Tag>`"),
+                            _ if super::body::is_feature(first) => format!(
+                                "two type arguments, its geometry's and its properties', as in `{first}<Polygon, PatchProperties>`"
+                            ),
                             _ => format!("{arity} type arguments, as in `{first}<Key, Value>`"),
                         };
                         self.out.push(
@@ -278,7 +284,7 @@ impl Decls<'_> {
                             )
                             .at(span, format!("{} given", args.len()))
                             .reason(match arity {
-                                0 => format!("`{first}` isn't generic: only `List`, `Set`, `Map` and `Range` take types in `< >`."),
+                                0 => format!("`{first}` isn't generic: only `List`, `Set`, `Map`, `Range`, `Feature` and `FeatureCollection` take types in `< >`."),
                                 _ => format!("`{first}` holds values of the type in `< >`, so it needs exactly {arity}."),
                             })
                             .next(format!("Write `{first}` with {needs}")),
@@ -312,6 +318,19 @@ impl Decls<'_> {
                     if !item_ty.has_error() && !ordered {
                         let span = self.span(node.syntax());
                         self.out.push(super::body::range_unordered(&item_ty, span));
+                        return false;
+                    }
+                }
+                // A feature's geometry is a geometry type and its properties
+                // an `Object` type (area 20).
+                if ok && names.len() == 1 && super::body::is_feature(first) {
+                    let resolved: Vec<Ty> =
+                        args.iter().map(|arg| self.table.resolve(arg)).collect();
+                    let span = self.span(node.syntax());
+                    if let Some(wrong) =
+                        super::body::feature_arguments(self.table, first, &resolved, span)
+                    {
+                        self.out.push(wrong);
                         return false;
                     }
                 }

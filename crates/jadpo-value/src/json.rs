@@ -320,6 +320,84 @@ impl Codecs<'_> {
                 }
                 self.checked(*validator, Value::Map(Rc::new(map)), path, problems)
             }
+            // A GeoJSON feature and a collection of them (area 20, chunk
+            // 5.5u6), read strictly as RFC 7946 §3.2 and §3.3 write them.
+            Codec::Feature {
+                geometry,
+                properties,
+            } => {
+                let entries = Self::geojson_object(
+                    json,
+                    jadpo_std::standard::geo::FEATURE,
+                    &["geometry", "properties"],
+                    path,
+                    problems,
+                )?;
+                let before = problems.len();
+                let geometry = self.read(
+                    *geometry,
+                    entries.get("geometry").unwrap_or(&serde_json::Value::Null),
+                    &path.with("geometry"),
+                    problems,
+                );
+                let properties = self.read(
+                    *properties,
+                    entries
+                        .get("properties")
+                        .unwrap_or(&serde_json::Value::Null),
+                    &path.with("properties"),
+                    problems,
+                );
+                match (geometry, properties) {
+                    (Some(geometry), Some(properties)) if problems.len() == before => {
+                        Some(Value::record(
+                            jadpo_std::standard::geo::FEATURE,
+                            vec![
+                                (Rc::from("geometry"), geometry),
+                                (Rc::from("properties"), properties),
+                            ],
+                        ))
+                    }
+                    _ => None,
+                }
+            }
+            Codec::FeatureCollection { feature } => {
+                let entries = Self::geojson_object(
+                    json,
+                    jadpo_std::standard::geo::FEATURE_COLLECTION,
+                    &["features"],
+                    path,
+                    problems,
+                )?;
+                let at = path.with("features");
+                let listed = match entries.get("features") {
+                    Some(serde_json::Value::Array(listed)) => listed,
+                    None | Some(serde_json::Value::Null) => {
+                        Self::problem(problems, &at, "required");
+                        return None;
+                    }
+                    Some(_) => {
+                        Self::problem(problems, &at, "type");
+                        return None;
+                    }
+                };
+                let before = problems.len();
+                let mut features = Vec::with_capacity(listed.len());
+                for (n, entry) in listed.iter().enumerate() {
+                    if let Some(value) =
+                        self.read(*feature, entry, &at.with(n.to_string()), problems)
+                    {
+                        features.push(value);
+                    }
+                }
+                if problems.len() > before {
+                    return None;
+                }
+                Some(Value::record(
+                    jadpo_std::standard::geo::FEATURE_COLLECTION,
+                    vec![(Rc::from("features"), Value::list(features))],
+                ))
+            }
             // A page is only ever an output, read back by a route test as
             // `Response.output`: `items` and the `next` cursor, as written.
             Codec::Page { item } => {
@@ -357,6 +435,49 @@ impl Codecs<'_> {
                 ))
             }
         }
+    }
+
+    /// A GeoJSON object whose `type` is `ty`, with `members` besides and
+    /// the `bbox` RFC 7946 §5 lets any object carry, checked as four or six
+    /// numbers and otherwise ignored, as a geometry's is (chunk 5.5s); any
+    /// other member is `unknown_field`, an `id` included, since an
+    /// application's identity goes in its properties (area 20, question 6).
+    fn geojson_object<'j>(
+        json: &'j serde_json::Value,
+        ty: &str,
+        members: &[&str],
+        path: &Path,
+        problems: &mut Vec<Problem>,
+    ) -> Option<&'j serde_json::Map<String, serde_json::Value>> {
+        let serde_json::Value::Object(entries) = json else {
+            Self::problem(problems, path, "type");
+            return None;
+        };
+        let before = problems.len();
+        for name in entries.keys() {
+            if name != "type" && name != "bbox" && !members.contains(&name.as_str()) {
+                Self::problem(problems, &path.with(name.clone()), "unknown_field");
+            }
+        }
+        match entries.get("type") {
+            Some(serde_json::Value::String(given)) if given == ty => {}
+            Some(serde_json::Value::String(_)) => {
+                Self::problem(problems, &path.with("type"), "variant")
+            }
+            None | Some(serde_json::Value::Null) => {
+                Self::problem(problems, &path.with("type"), "required")
+            }
+            Some(_) => Self::problem(problems, &path.with("type"), "type"),
+        }
+        if let Some(bbox) = entries.get("bbox") {
+            let numbers = bbox.as_array().is_some_and(|items| {
+                matches!(items.len(), 4 | 6) && items.iter().all(serde_json::Value::is_number)
+            });
+            if !numbers {
+                Self::problem(problems, &path.with("bbox"), "type");
+            }
+        }
+        (problems.len() == before).then_some(entries)
     }
 
     fn object(
@@ -748,6 +869,41 @@ impl Codecs<'_> {
             },
             // A vector's item, as the number it holds (chunk 5.5s2).
             (Some(Codec::Float), Value::Decimal(decimal)) => out.push_str(&decimal.to_string()),
+            (
+                Some(Codec::Feature {
+                    geometry,
+                    properties,
+                }),
+                Value::Record(record),
+            ) => {
+                out.push_str("{\"type\":\"Feature\",\"geometry\":");
+                self.write(
+                    *geometry,
+                    record.get("geometry").unwrap_or(&Value::None),
+                    out,
+                );
+                out.push_str(",\"properties\":");
+                self.write(
+                    *properties,
+                    record.get("properties").unwrap_or(&Value::None),
+                    out,
+                );
+                out.push('}');
+            }
+            (Some(Codec::FeatureCollection { feature }), Value::Record(record)) => {
+                out.push_str("{\"type\":\"FeatureCollection\",\"features\":[");
+                let features = record
+                    .get("features")
+                    .and_then(Value::items)
+                    .unwrap_or_default();
+                for (at, entry) in features.iter().enumerate() {
+                    if at > 0 {
+                        out.push(',');
+                    }
+                    self.write(*feature, entry, out);
+                }
+                out.push_str("]}");
+            }
             (Some(Codec::Page { item }), Value::Record(record)) => {
                 out.push_str("{\"items\":[");
                 let items = record

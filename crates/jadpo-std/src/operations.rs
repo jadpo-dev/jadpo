@@ -2912,6 +2912,10 @@ mod tests {
                     // running program knows, as is the price's (chunk
                     // 5.5i3).
                     None if operation.op == Op::MoneyApplyDiscount => true,
+                    // Whether WKT's coordinates are in range, or its SRID
+                    // WGS84's, is known only when the program runs, as
+                    // whether it is WKT at all is (chunk 5.5u6).
+                    None if operation.op == Op::GeoFromWkt => true,
                     // `ln`'s by a value proved above 0; the money
                     // operations' by a currency the types or the call fix,
                     // and `convert`'s by a rate's currency a condition

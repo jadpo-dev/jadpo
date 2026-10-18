@@ -963,6 +963,13 @@ pub trait TypeView {
         if name == jadpo_std::RANGE && args.len() != 1 {
             return Ty::Error;
         }
+        // `Feature<G, P>` and `FeatureCollection<G, P>` take two (area 20).
+        if (name == jadpo_std::standard::geo::FEATURE
+            || name == jadpo_std::standard::geo::FEATURE_COLLECTION)
+            && args.len() != 2
+        {
+            return Ty::Error;
+        }
         if StdNames::get().is_opaque(name) {
             return Ty::Opaque(name.to_string(), args);
         }

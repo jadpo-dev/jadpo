@@ -169,3 +169,145 @@ function stepped() -> Exported {
         "{found:?}"
     );
 }
+
+const LAYER: &str = "type Sent = Text {}
+
+type Unreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// What a delivery patch is called.
+type PatchName = Text {
+    max_length: 80
+}
+
+/// How many vans serve a patch.
+type VanCount = Int {
+    min: 0
+    max: 50
+}
+
+/// What the map shows beside a patch.
+type PatchProperties = Object {
+    bakery_id: Uuid
+    name: PatchName
+    vans: VanCount
+    note: PatchName?
+}
+
+/// The map's delivery layer, as a mapping library reads it.
+function patch_layer(outlines: List<Polygon>, names: List<PatchName>) -> FeatureCollection<Polygon, PatchProperties> {
+    return FeatureCollection {
+        features: list.map(outlines, outline -> Feature {
+            geometry: outline
+            properties: PatchProperties {
+                bakery_id: \"7b0c1f8e-3a52-4d7e-9a41-2f1d5c6e8b90\"
+                name: PatchName(\"Soho\")
+                vans: 3
+                note: none
+            }
+        })
+    }
+}
+
+/// The layer as the map is sent it.
+function sent(layer: FeatureCollection<Polygon, PatchProperties>) -> Sent {
+    return Sent(json.write(layer))
+}
+
+/// A layer the planner drew, as its map library sends it.
+function drawn(given: Sent) fails Unreadable -> FeatureCollection<Polygon, PatchProperties> {
+    return attempt json.read(given, as: FeatureCollection<Polygon, PatchProperties>) {
+        malformed: Unreadable
+        mismatch: Unreadable
+    }
+}
+
+/// Each patch's name, as the map labels it.
+function labels(layer: FeatureCollection<Polygon, PatchProperties>) -> List<PatchName> {
+    return list.map(layer.features, feature -> feature.properties.name)
+}
+
+/// Each patch's outline.
+function outlines(layer: FeatureCollection<Polygon, PatchProperties>) -> List<Polygon> {
+    return list.map(layer.features, feature -> feature.geometry)
+}
+";
+
+const DRAWN: &str = r#"{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]},"properties":{"bakery_id":"7b0c1f8e-3a52-4d7e-9a41-2f1d5c6e8b90","name":"Soho","vans":3,"note":null}},{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]},"properties":{"bakery_id":"0f8e2d4c-6b1a-4e3f-8c5d-9a7b1e2f3c4d","name":"Null Island","vans":0,"note":"Boat only"}}]}"#;
+
+#[test]
+fn a_feature_collection_round_trips_through_json_unchanged() {
+    let program = main(LAYER).with_proof_checks();
+    // Read, typed: each feature's properties by their own types, `null`
+    // as `none`, and written back byte for byte.
+    let layer = value(&program, "drawn", vec![text(DRAWN)]);
+    assert_eq!(value(&program, "sent", vec![layer.clone()]), text(DRAWN));
+    assert_eq!(
+        value(&program, "labels", vec![layer.clone()]),
+        support::list(vec![text("Soho"), text("Null Island")])
+    );
+    let again = value(
+        &program,
+        "drawn",
+        vec![value(&program, "sent", vec![layer.clone()])],
+    );
+    assert_eq!(again, layer);
+    // Built in code, sent, and read back as the same value.
+    let outlines = value(&program, "outlines", vec![layer]);
+    let built = value(
+        &program,
+        "patch_layer",
+        vec![outlines, support::list(vec![text("Soho")])],
+    );
+    let back = value(
+        &program,
+        "drawn",
+        vec![value(&program, "sent", vec![built.clone()])],
+    );
+    assert_eq!(back, built);
+}
+
+#[test]
+fn what_isn_t_the_layer_is_refused() {
+    let program = main(LAYER).with_proof_checks();
+    let feature = |members: &str| {
+        format!(r#"{{"type":"FeatureCollection","features":[{{"type":"Feature",{members}}}]}}"#)
+    };
+    let point = r#""geometry":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}"#;
+    let properties = r#""properties":{"bakery_id":"7b0c1f8e-3a52-4d7e-9a41-2f1d5c6e8b90","name":"Soho","vans":3,"note":null}"#;
+    for given in [
+        // An `id`, which properties carry.
+        feature(&format!(r#""id":1,{point},{properties}"#)),
+        // No geometry, or one of another kind.
+        feature(&format!(r#""geometry":null,{properties}"#)),
+        feature(&format!(
+            r#""geometry":{{"type":"Point","coordinates":[0,0]}},{properties}"#
+        )),
+        // Properties missing, `null`, untyped or past their rules.
+        feature(point),
+        feature(&format!(r#"{point},"properties":null"#)),
+        feature(&format!(r#"{point},"properties":{{"name":"Soho"}}"#)),
+        feature(&format!(
+            r#"{point},"properties":{{"bakery_id":"7b0c1f8e-3a52-4d7e-9a41-2f1d5c6e8b90","name":"Soho","vans":51,"note":null}}"#
+        )),
+        // A foreign member, and another GeoJSON object.
+        feature(&format!(r#"{point},{properties},"title":"A patch""#)),
+        r#"{"type":"Feature","geometry":null,"properties":{}}"#.to_string(),
+        r#"{"type":"FeatureCollection"}"#.to_string(),
+        r#"{"features":[]}"#.to_string(),
+    ] {
+        assert_eq!(
+            failure(&program, "drawn", vec![text(&given)]).name,
+            "Unreadable",
+            "{given}"
+        );
+    }
+    // A box, which any GeoJSON object may carry, is checked and ignored.
+    let boxed = r#"{"type":"FeatureCollection","bbox":[0,0,1,1],"features":[]}"#;
+    let layer = value(&program, "drawn", vec![text(boxed)]);
+    assert_eq!(
+        value(&program, "sent", vec![layer]),
+        text(r#"{"type":"FeatureCollection","features":[]}"#)
+    );
+}

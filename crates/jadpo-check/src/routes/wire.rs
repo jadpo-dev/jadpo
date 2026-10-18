@@ -38,6 +38,9 @@ pub enum Shape {
     /// `Range<T>` (area 19, "Ranges"): an object of its two ends, each
     /// its item or `null` for an open end; with the type as written.
     Range(TypeRef, String),
+    /// `Feature<G, P>` or `FeatureCollection<G, P>` (area 20, chunk
+    /// 5.5u6): its name, its geometry's type and its properties' type.
+    Feature(&'static str, TypeRef, TypeRef),
     /// Not a type the boundary carries.
     Other(String),
 }
@@ -172,6 +175,21 @@ impl<'g> Wire<'g> {
                     let written = TypeRef::Std(name, args.clone()).to_string();
                     return Shape::Range(args.into_iter().next().unwrap_or(TypeRef::None), written);
                 }
+                TypeRef::Std(name, args)
+                    if (name == jadpo_std::standard::geo::FEATURE
+                        || name == jadpo_std::standard::geo::FEATURE_COLLECTION)
+                        && args.len() == 2 =>
+                {
+                    let mut args = args.into_iter();
+                    let geometry = args.next().unwrap_or(TypeRef::None);
+                    let properties = args.next().unwrap_or(TypeRef::None);
+                    let name = if name == jadpo_std::standard::geo::FEATURE {
+                        jadpo_std::standard::geo::FEATURE
+                    } else {
+                        jadpo_std::standard::geo::FEATURE_COLLECTION
+                    };
+                    return Shape::Feature(name, geometry, properties);
+                }
                 TypeRef::Std(name, args) if name == "Page" && args.len() == 1 => {
                     return Shape::Page(args.into_iter().next().unwrap_or(TypeRef::None));
                 }
@@ -299,6 +317,11 @@ impl<'g> Wire<'g> {
                 rules_text(&rules)
             ),
             Shape::Page(inner) => format!("Page<{}>", self.render(&inner, refs)),
+            Shape::Feature(name, geometry, properties) => format!(
+                "{name}<{}, {}>",
+                self.render(&geometry, refs),
+                self.render(&properties, refs)
+            ),
             Shape::Range(_, written) | Shape::Other(written) => written,
         };
         if self.nullable(ty) {
@@ -414,6 +437,43 @@ impl<'g> Wire<'g> {
                 out.set("type", "object");
                 out.set("properties", properties);
                 out.set("required", jadpo_std::RANGE_FIELDS.to_vec());
+                out.set("additionalProperties", false);
+                out
+            }
+            // A GeoJSON feature, or a collection of them, as RFC 7946
+            // writes one (area 20, chunk 5.5u6).
+            Shape::Feature(name, geometry, properties) => {
+                let mut ty = Value::object();
+                ty.set("const", name);
+                let mut number = Value::object();
+                number.set("type", "number");
+                let mut bbox = Value::object();
+                bbox.set("type", "array");
+                bbox.set("items", number);
+                bbox.set("minItems", 4u32);
+                bbox.set("maxItems", 6u32);
+                let mut members = Value::object();
+                members.set("type", ty);
+                let required = if name == jadpo_std::standard::geo::FEATURE {
+                    members.set("geometry", self.schema(&geometry, refs));
+                    members.set("properties", self.schema(&properties, refs));
+                    vec!["type", "geometry", "properties"]
+                } else {
+                    let feature = TypeRef::Std(
+                        jadpo_std::standard::geo::FEATURE.to_string(),
+                        vec![geometry, properties],
+                    );
+                    let mut features = Value::object();
+                    features.set("type", "array");
+                    features.set("items", self.schema(&feature, refs));
+                    members.set("features", features);
+                    vec!["type", "features"]
+                };
+                members.set("bbox", bbox);
+                let mut out = Value::object();
+                out.set("type", "object");
+                out.set("properties", members);
+                out.set("required", required);
                 out.set("additionalProperties", false);
                 out
             }

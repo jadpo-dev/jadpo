@@ -184,6 +184,11 @@ fn london() -> Value {
 fn every_standard_type_meets_the_contract() {
     for entry in STANDARD_TYPES {
         let name = entry.name;
+        // A feature takes two type arguments, the second an application's
+        // own `Object`; `geo_interop`'s tests run it (area 20).
+        if entry.json == Json::Feature {
+            continue;
+        }
         let (tables, map) = codecs(entry);
         let table = tables.view();
         let keyed_table = tables.view();
@@ -367,6 +372,7 @@ fn every_standard_type_meets_the_contract() {
                     assert_eq!(json, *text, "{name}: {json} is its GeoJSON");
                     assert!(json.starts_with("{\"type\":"), "{name}: {json}");
                 }
+                Json::Feature => unreachable!("{name}: a feature is skipped above"),
             }
             let mut problems = Vec::new();
             let back = table.read(CodecId(0), &parsed, &Path::default(), &mut problems);

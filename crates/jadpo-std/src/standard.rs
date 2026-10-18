@@ -136,6 +136,14 @@ pub enum Holds {
     /// and its JSON are area 2's Base64 of the bytes ([`TextForm::Base64`]),
     /// as every `Bytes` is sent, and it is stored as `bytea`.
     Bytes,
+    /// `Feature<G, P>` (area 20, "Interop"; chunk 5.5u6): a GeoJSON
+    /// `Feature`, its `geometry` of the geometry type `G` and its
+    /// `properties` of the application's `Object` type `P`, the two type
+    /// arguments ([`geo::FEATURE_FIELDS`]).
+    Feature,
+    /// `FeatureCollection<G, P>` (chunk 5.5u6): a GeoJSON
+    /// `FeatureCollection`, its `features` a list of `Feature<G, P>`.
+    FeatureCollection,
 }
 
 /// What one field of a standard object type holds (area 19, chunk 5.5k).
@@ -466,6 +474,12 @@ pub enum Json {
     /// `jadpo-value`'s `geo` module, which checks each coordinate's range
     /// and each ring's closure and writes rings by the right-hand rule.
     GeoJson,
+    /// A GeoJSON `Feature` or `FeatureCollection` object (RFC 7946 §3.2
+    /// and §3.3, chunk 5.5u6), `{"type": "Feature", "geometry": ...,
+    /// "properties": {...}}`: its geometry as [`Json::GeoJson`] and its
+    /// properties as their own type's JSON, read and written through the
+    /// codecs of its type arguments.
+    Feature,
 }
 
 impl Json {
@@ -480,7 +494,8 @@ impl Json {
             | Json::Tagged
             | Json::Array
             | Json::Keyed
-            | Json::GeoJson => None,
+            | Json::GeoJson
+            | Json::Feature => None,
         }
     }
 }
@@ -1744,6 +1759,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     },
     media::EXIF_ORIENTATION_ENTRY,
     contact::FAMILY_NAME,
+    geo::FEATURE_ENTRY,
+    geo::FEATURE_COLLECTION_ENTRY,
     software::FILE_NAME,
     software::FILE_PATH,
     StandardType {
@@ -3193,7 +3210,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 257, "the 257 standard types built so far");
+        assert_eq!(names.len(), 259, "the 259 standard types built so far");
     }
 
     #[test]
@@ -3376,10 +3393,15 @@ mod tests {
                 "{}'s examples hold a type argument exactly when it takes one",
                 entry.name
             );
-            // A distinctive shape (question 5): two fields or more, at
+            // A distinctive shape (question 5): two fields or more, or a
+            // list of a shape (`LineString`'s points, chunk 5.5u6), at
             // least one named for the domain.
             if let Some(fields) = entry.shape {
-                assert!(fields.len() >= 2, "{}", entry.name);
+                assert!(
+                    fields.len() >= 2 || fields.iter().any(|field| field.list_of.is_some()),
+                    "{}",
+                    entry.name
+                );
                 let generic = ["name", "value", "id", "code", "type", "text"];
                 assert!(
                     fields
