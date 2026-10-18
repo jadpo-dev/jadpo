@@ -440,6 +440,17 @@ timeline, `why` answers, the graph and the review report. The console and
 MCP read those same files, so an agent never scrapes text meant for people
 (question 10).
 
+A value in a report (a failed assertion, a failure's fields, a fault, a
+timeline and their `--json`) is written as code makes it,
+`money.from_minor(1050, Currency.gbp)`, `2.5262metre`, `"2026-10-25"`,
+`PostalAddress { ... }`: it keeps a standard type's currency, unit and
+every place, and an agent can paste it into a test. A report is read by
+people and agents and never read back as data, so it is not one of area
+19's boundaries, and a personal value in one follows area 15's rules
+(decided by the lead session, 2026-10-18, under Richard's instruction of
+2026-10-17 that no standard type loses its currency, unit or precision;
+area 19, "Every boundary through the contract").
+
 ## Review
 
 ### Status

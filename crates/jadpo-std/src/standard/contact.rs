@@ -155,7 +155,7 @@ pub const EMAIL_WITH_NAME: StandardType = StandardType {
     json: Json::Fields(&["name", "address"]),
     storage: Storage::Columns {
         parts: &[("name", "text"), ("address", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::Canonical,
@@ -202,7 +202,7 @@ pub const PERSON_NAME: StandardType = StandardType {
     json: Json::Fields(&["given", "family"]),
     storage: Storage::Columns {
         parts: &[("given", "text"), ("family", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::PersonName,
@@ -275,7 +275,7 @@ pub const POSTAL_ADDRESS: StandardType = StandardType {
             ("postal_code", "text"),
             ("country", "text"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::PostalAddress,

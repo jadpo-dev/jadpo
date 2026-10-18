@@ -813,7 +813,18 @@ pub const JWT_CLAIMS_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&JWT_CLAIMS_FIELDS),
     text: None,
     json: Json::Members(&["iss", "sub", "aud", "exp", "nbf", "iat", "jti"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("iss", "text"),
+            ("sub", "text"),
+            ("aud", "text[]"),
+            ("exp", "timestamptz(3)"),
+            ("nbf", "timestamptz(3)"),
+            ("iat", "timestamptz(3)"),
+            ("jti", "text"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::FirstPart(&["sub", "iss", "jti", "exp"]),
         options: NO_OPTIONS,
@@ -885,7 +896,17 @@ pub const JWK_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&JWK_FIELDS),
     text: None,
     json: Json::Members(&["kty", "crv", "x", "kid", "alg", "use"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("kty", "text"),
+            ("crv", "text"),
+            ("x", "text"),
+            ("kid", "text"),
+            ("alg", "text"),
+            ("use", "text"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::FirstPart(&["kid", "x"]),
         options: NO_OPTIONS,
@@ -1012,7 +1033,21 @@ pub const OIDC_CLAIMS_ENTRY: StandardType = StandardType {
         "phone_number_verified",
         "picture",
     ]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("sub", "text"),
+            ("name", "text"),
+            ("given_name", "text"),
+            ("family_name", "text"),
+            ("preferred_username", "text"),
+            ("email", "text"),
+            ("email_verified", "boolean"),
+            ("phone_number", "text"),
+            ("phone_number_verified", "boolean"),
+            ("picture", "text"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::FirstPart(&["name", "email", "sub"]),
         options: NO_OPTIONS,
@@ -1261,7 +1296,14 @@ pub const PASSWORD_POLICY_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&PASSWORD_POLICY_FIELDS),
     text: None,
     json: Json::Fields(&["min_length", "max_length", "check_breached"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("min_length", "smallint"),
+            ("max_length", "smallint"),
+            ("check_breached", "boolean"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["min_length", "max_length"],
@@ -1375,7 +1417,20 @@ pub const WEB_AUTHN_CREDENTIAL_ENTRY: StandardType = StandardType {
         "registered_at",
         "last_used_at",
     ]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("credential_id", "bytea"),
+            ("public_key", "bytea"),
+            ("sign_count", "bigint"),
+            ("transports", "text[]"),
+            ("backup_eligible", "boolean"),
+            ("backed_up", "boolean"),
+            ("name", "text"),
+            ("registered_at", "timestamptz(3)"),
+            ("last_used_at", "timestamptz(3)"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::FirstPart(&["name"]),
         options: NO_OPTIONS,

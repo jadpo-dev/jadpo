@@ -354,7 +354,9 @@ fn related_column_types_read_as_the_runtimes_types() {
                 SqlValue::Text("c  ".into()),
                 SqlValue::Text("n".into()),
                 SqlValue::Json("{\"a\":1}".into()),
-                SqlValue::Timestamp(946_684_801_000_000),
+                // A `timestamp` without a zone is a local one, a
+                // `LocalDateTime`'s column (chunk 5.5w).
+                SqlValue::LocalTimestamp(946_684_801_000_000),
                 SqlValue::Null(SqlType::Text),
             ]]
         );

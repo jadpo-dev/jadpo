@@ -238,40 +238,215 @@ pub fn read_range(raw: &str, item: &str) -> Result<Value, Fault> {
 }
 
 /// A compound standard type's value as the columns its entry lists hold
-/// it (area 19): `Money`'s minor units and currency code, an object's parts
-/// in its fields' order (chunk 5.5l), a standard enum's as its code, and
-/// another standard object as its canonical text (an event's local times,
-/// chunk 5.5k3). `None` for a type stored in one column.
+/// it (area 19; laid out by `jadpo_std::standard::storage`, chunk 5.5w):
+/// `Money`'s minor units and currency code, a `ZonedTime`'s instant and
+/// zone, an object's parts in its fields' order (chunk 5.5l), each in as
+/// many columns as it takes, a choice's variant's name and then each field
+/// its variants use, `none` where the stored variant hasn't it, and a type
+/// stored natively as its one column's value: a range as its ends and
+/// whether it holds its end, a `LocalTime` as microseconds since midnight,
+/// a `LocalDateTime` as microseconds since 1970-01-01T00:00:00 on no zone.
+/// A standard enum is its code, and another standard type stored in one
+/// column as it is stored there. `None` for a type stored in one column of
+/// its own.
 pub fn to_parts(value: &Value) -> Option<Vec<Value>> {
     match value {
         Value::Money(money) => Some(vec![Value::Int(money.minor), Value::text(money.code())]),
+        Value::Zoned(zoned) => Some(vec![
+            Value::Instant(zoned.millis),
+            Value::text(zoned.zone_name()),
+        ]),
         Value::Record(record) => {
             let entry = standard_type(&record.ty)?;
+            if let Some(native) = native_part(entry, value) {
+                return Some(vec![native?]);
+            }
             let Holds::Object(fields) = entry.holds else {
                 return None;
             };
-            if entry.columns().len() != fields.len() {
+            if entry.columns().is_empty() {
                 return None;
             }
-            fields
-                .iter()
-                .map(|(name, _)| match record.get(name)? {
-                    Value::Variant(variant) => standard_type(&variant.ty)
-                        .and_then(StandardType::codes)
-                        .and_then(|codes| codes.get(variant.ordinal as usize))
-                        .map(|(_, code)| Value::text(code)),
-                    part @ Value::Record(_) => from(part).ok(),
-                    other => Some(other.clone()),
-                })
-                .collect()
+            let mut out = Vec::new();
+            for (name, part) in fields {
+                out.extend(part_values(record.get(name)?, *part)?);
+            }
+            Some(out)
+        }
+        Value::Variant(variant) => {
+            let entry = standard_type(&variant.ty)?;
+            let Holds::Choice(variants) = entry.holds else {
+                return None;
+            };
+            if entry.columns().is_empty() {
+                return None;
+            }
+            let mut out = vec![Value::text(&variant.name)];
+            for (name, part) in jadpo_std::standard::storage::choice_fields(variants) {
+                match variant.get(name) {
+                    Some(field) => out.extend(part_values(
+                        field,
+                        own_part(variants, &variant.name, name).unwrap_or(part),
+                    )?),
+                    None => out.extend(std::iter::repeat_n(
+                        Value::None,
+                        jadpo_std::standard::storage::width(part),
+                    )),
+                }
+            }
+            Some(out)
         }
         _ => None,
     }
 }
 
+/// The part a choice's variant `variant` declares its field `field` as.
+fn own_part(
+    variants: &[(&str, &[(&str, jadpo_std::Part)])],
+    variant: &str,
+    field: &str,
+) -> Option<jadpo_std::Part> {
+    variants
+        .iter()
+        .find(|(name, _)| *name == variant)?
+        .1
+        .iter()
+        .find(|(name, _)| *name == field)
+        .map(|(_, part)| *part)
+}
+
+/// The value a type stored natively in one column (`[("", ...)]`) has
+/// there; `None` for any other type, `Some(None)` for a value that isn't
+/// one.
+fn native_part(entry: &StandardType, value: &Value) -> Option<Option<Value>> {
+    let [("", sql_type)] = entry.columns() else {
+        return None;
+    };
+    let Value::Record(record) = value else {
+        return Some(None);
+    };
+    let base = sql_type.split('(').next().unwrap_or(sql_type);
+    Some(match base {
+        "time" => local_micros(value),
+        "timestamp" => match (record.get("date"), record.get("time")) {
+            (Some(Value::Date(day)), Some(time)) => i64::from(*day)
+                .checked_mul(MICROS_A_DAY)
+                .and_then(|day| match local_micros(time)? {
+                    Value::Int(micros) => day.checked_add(micros),
+                    _ => None,
+                })
+                .map(Value::Int),
+            _ => None,
+        },
+        "daterange" | "tstzrange" | "range" => {
+            let start = record.get("start")?.clone();
+            let end = record.get("end")?.clone();
+            let holds_end = jadpo_std::range_type(&record.ty).is_some_and(|(_, held)| held);
+            Some(Value::list(vec![start, end, Value::Bool(holds_end)]))
+        }
+        // An object of one part (`Year`, `UtcOffset`): that part.
+        _ => match entry.holds {
+            Holds::Object([(name, _)]) => record.get(name).cloned(),
+            _ => None,
+        },
+    })
+}
+
+/// Microseconds in a day.
+const MICROS_A_DAY: i64 = 86_400_000_000;
+
+/// A `LocalTime` as microseconds since midnight.
+fn local_micros(time: &Value) -> Option<Value> {
+    let Value::Record(time) = time else {
+        return None;
+    };
+    let part = |name: &str| match time.get(name) {
+        Some(Value::Int(n)) => Some(*n),
+        _ => None,
+    };
+    let seconds = part("hour")? * 3600 + part("minute")? * 60 + part("second")?;
+    Some(Value::Int(seconds * 1_000_000))
+}
+
+/// A `LocalTime` from microseconds since midnight.
+fn local_time(micros: i64) -> Result<Value, Fault> {
+    if !(0..MICROS_A_DAY).contains(&micros) || micros % 1_000_000 != 0 {
+        return Err(Fault::Shape);
+    }
+    let seconds = micros / 1_000_000;
+    Ok(Value::record(
+        "LocalTime",
+        vec![
+            ("hour".into(), Value::Int(seconds / 3600)),
+            ("minute".into(), Value::Int(seconds / 60 % 60)),
+            ("second".into(), Value::Int(seconds % 60)),
+        ],
+    ))
+}
+
+/// The columns' values of one part of a standard object or choice.
+fn part_values(value: &Value, part: jadpo_std::Part) -> Option<Vec<Value>> {
+    use jadpo_std::Part;
+    match (part, value) {
+        (Part::Optional(inner), Value::None) => {
+            Some(vec![
+                Value::None;
+                jadpo_std::standard::storage::width(*inner)
+            ])
+        }
+        (Part::Optional(inner), value) => part_values(value, *inner),
+        (Part::List(inner), Value::List(items)) => Some(vec![Value::list(
+            items
+                .iter()
+                .map(|item| match part_values(item, *inner)?.as_slice() {
+                    [one] => Some(one.clone()),
+                    _ => None,
+                })
+                .collect::<Option<Vec<Value>>>()?,
+        )]),
+        (_, Value::Money(_) | Value::Zoned(_)) => to_parts(value),
+        // A standard enum, as its code.
+        (_, Value::Variant(variant)) if variant.fields.is_empty() => {
+            match standard_type(&variant.ty).and_then(StandardType::codes) {
+                Some(codes) => codes
+                    .get(variant.ordinal as usize)
+                    .map(|(_, code)| vec![Value::text(code)]),
+                None => to_parts(value),
+            }
+        }
+        (_, Value::Variant(_)) => to_parts(value),
+        // Another standard object: its own columns, or its one column.
+        (_, Value::Record(record)) => match standard_type(&record.ty) {
+            Some(other) if !other.columns().is_empty() => to_parts(value),
+            Some(_) => Some(vec![from(value).ok()?]),
+            None => None,
+        },
+        (_, other) => Some(vec![other.clone()]),
+    }
+}
+
 /// A compound standard type's value from its columns' values, in the order
-/// its entry lists them.
+/// its entry lists them, as [`to_parts`] gives them.
 pub fn from_parts(entry: &StandardType, parts: &[Value]) -> Result<Value, Fault> {
+    from_columns(entry, None, parts)
+}
+
+/// As [`from_parts`], for the type `ty` names, which may be a range of an
+/// item type (`Range<Duration>`), whose ends need it.
+pub fn from_parts_of(ty: &str, parts: &[Value]) -> Result<Value, Fault> {
+    let item = range_item(ty);
+    let name = if item.is_some() { jadpo_std::RANGE } else { ty };
+    let entry = standard_type(name).ok_or(Fault::Shape)?;
+    from_columns(entry, item, parts)
+}
+
+fn from_columns(entry: &StandardType, item: Option<&str>, parts: &[Value]) -> Result<Value, Fault> {
+    if let [("", _)] = entry.columns() {
+        let [part] = parts else {
+            return Err(Fault::Shape);
+        };
+        return from_native(entry, item, part);
+    }
     match (entry.holds, parts) {
         (Holds::Builtin(jadpo_std::Builtin::Money), [Value::Int(minor), Value::Text(code)]) => {
             let currency = jadpo_std::money::ordinal_of_code(code.trim()).ok_or(Fault::Shape)?;
@@ -280,25 +455,208 @@ pub fn from_parts(entry: &StandardType, parts: &[Value]) -> Result<Value, Fault>
                 crate::money::minor(i128::from(*minor))?,
             ))
         }
-        (Holds::Object(fields), parts) if parts.len() == fields.len() => {
-            let values = fields
+        (
+            Holds::Builtin(jadpo_std::Builtin::ZonedTime),
+            [Value::Instant(millis), Value::Text(zone)],
+        ) => {
+            let zone = jadpo_std::ZONES
                 .iter()
-                .zip(parts)
-                .map(|((name, part), value)| {
-                    let value = match (part.required().0, value) {
-                        (jadpo_std::Part::Standard(other), Value::Text(code)) => {
-                            let other = standard_type(other).ok_or(Fault::Shape)?;
-                            read(other, code.trim()).map_err(|_| Fault::Shape)?
-                        }
-                        (_, value) => value.clone(),
-                    };
-                    Ok(((*name).into(), value))
-                })
-                .collect::<Result<Vec<_>, Fault>>()?;
+                .position(|(_, name)| *name == &**zone)
+                .ok_or(Fault::Shape)?;
+            Ok(Value::Zoned(Zoned {
+                millis: *millis,
+                zone: u32::try_from(zone).map_err(|_| Fault::Shape)?,
+            }))
+        }
+        (Holds::Object(fields), parts) => {
+            let mut rest = parts;
+            let mut values = Vec::new();
+            for (name, part) in fields {
+                let (value, after) = take_part(*part, rest)?;
+                values.push(((*name).into(), value));
+                rest = after;
+            }
+            if !rest.is_empty() {
+                return Err(Fault::Shape);
+            }
             Ok(Value::record(entry.name, values))
+        }
+        (Holds::Choice(variants), [Value::Text(kind), rest @ ..]) => {
+            let (ordinal, (variant, fields)) = variants
+                .iter()
+                .enumerate()
+                .find(|(_, (name, _))| *name == &**kind)
+                .ok_or(Fault::Shape)?;
+            // Where each stored field starts among the columns after the
+            // kind.
+            let mut at = 0;
+            let mut starts = Vec::new();
+            for (name, part) in jadpo_std::standard::storage::choice_fields(variants) {
+                starts.push((name, at));
+                at += jadpo_std::standard::storage::width(part);
+            }
+            if at != rest.len() {
+                return Err(Fault::Shape);
+            }
+            let mut values = Vec::new();
+            for (name, part) in *fields {
+                let start = starts
+                    .iter()
+                    .find(|(field, _)| field == name)
+                    .map(|(_, start)| *start)
+                    .ok_or(Fault::Shape)?;
+                let (value, _) = take_part(*part, rest.get(start..).ok_or(Fault::Shape)?)?;
+                values.push(((*name).into(), value));
+            }
+            Ok(Value::variant(
+                entry.name,
+                u32::try_from(ordinal).map_err(|_| Fault::Shape)?,
+                variant,
+                values,
+            ))
         }
         _ => Err(Fault::Shape),
     }
+}
+
+/// The value of a type stored natively in one column, from that column's
+/// value as [`native_part`] gives it.
+fn from_native(entry: &StandardType, item: Option<&str>, part: &Value) -> Result<Value, Fault> {
+    let [("", sql_type)] = entry.columns() else {
+        return Err(Fault::Shape);
+    };
+    let base = sql_type.split('(').next().unwrap_or(sql_type);
+    match (base, part) {
+        ("time", Value::Int(micros)) => local_time(*micros),
+        ("timestamp", Value::Int(micros)) => {
+            let day = micros.div_euclid(MICROS_A_DAY);
+            Ok(Value::record(
+                entry.name,
+                vec![
+                    (
+                        "date".into(),
+                        Value::Date(i32::try_from(day).map_err(|_| Fault::Shape)?),
+                    ),
+                    ("time".into(), local_time(micros.rem_euclid(MICROS_A_DAY))?),
+                ],
+            ))
+        }
+        ("daterange" | "tstzrange" | "range", Value::List(ends)) => {
+            let [start, end, Value::Bool(held)] = &ends[..] else {
+                return Err(Fault::Shape);
+            };
+            let holds_end = jadpo_std::range_type(entry.name).is_some_and(|(_, held)| held);
+            let end_of = |value: &Value| -> Result<Value, Fault> {
+                Ok(match (item, value) {
+                    (Some("Duration"), Value::Int(millis)) => Value::Duration(*millis),
+                    _ => value.clone(),
+                })
+            };
+            let (start, mut end) = (end_of(start)?, end_of(end)?);
+            // A range held up to and including its end (`DateRange`) comes
+            // back from PostgreSQL's discrete form, which holds up to its
+            // next day, not including it.
+            if holds_end && !held {
+                end = match end {
+                    Value::Date(day) => Value::Date(day - 1),
+                    other => other,
+                };
+            }
+            if entry.name == jadpo_std::RANGE {
+                let open = |value: Value| (!matches!(value, Value::None)).then_some(value);
+                return Ok(crate::range::range_of(open(start), open(end)));
+            }
+            Ok(Value::record(
+                entry.name,
+                vec![("start".into(), start), ("end".into(), end)],
+            ))
+        }
+        (_, value) => match entry.holds {
+            Holds::Object([(name, _)]) => Ok(Value::record(
+                entry.name,
+                vec![((*name).into(), value.clone())],
+            )),
+            _ => Err(Fault::Shape),
+        },
+    }
+}
+
+/// One part's value from the columns at the front of `parts`, and the
+/// columns after it.
+fn take_part(part: jadpo_std::Part, parts: &[Value]) -> Result<(Value, &[Value]), Fault> {
+    use jadpo_std::{Builtin, Part};
+    let width = jadpo_std::standard::storage::width(part);
+    let (mine, rest) = parts.split_at_checked(width).ok_or(Fault::Shape)?;
+    let (part, may_be_none) = part.required();
+    if may_be_none && mine.iter().all(|value| matches!(value, Value::None)) {
+        return Ok((Value::None, rest));
+    }
+    let one = || match mine {
+        [one] => Ok(one),
+        _ => Err(Fault::Shape),
+    };
+    let value = match part {
+        Part::Of(builtin) | Part::Bounded { of: builtin, .. } => match (builtin, mine) {
+            (Builtin::Money, _) => from_parts(
+                jadpo_std::standard::of_builtin(Builtin::Money).ok_or(Fault::Shape)?,
+                mine,
+            )?,
+            (builtin, [value]) => as_builtin(builtin, value)?,
+            _ => return Err(Fault::Shape),
+        },
+        Part::List(inner) => match one()? {
+            Value::List(items) => Value::list(
+                items
+                    .iter()
+                    .map(|item| {
+                        take_part(*inner, std::slice::from_ref(item)).map(|(value, _)| value)
+                    })
+                    .collect::<Result<Vec<Value>, Fault>>()?,
+            ),
+            _ => return Err(Fault::Shape),
+        },
+        Part::Standard(name) => {
+            let other = standard_type(name).ok_or(Fault::Shape)?;
+            if !other.columns().is_empty() {
+                from_parts(other, mine)?
+            } else {
+                match (other.holds, one()?) {
+                    (Holds::Builtin(builtin) | Holds::Bounded { of: builtin, .. }, value) => {
+                        as_builtin(builtin, value)?
+                    }
+                    (_, Value::Text(code)) => read(other, code.trim()).map_err(|_| Fault::Shape)?,
+                    (_, value) => value.clone(),
+                }
+            }
+        }
+        Part::Whole(..) | Part::Line | Part::Matching(_) | Part::Paragraph | Part::Float => {
+            one()?.clone()
+        }
+        Part::Optional(_) => return Err(Fault::Shape),
+    };
+    Ok((value, rest))
+}
+
+/// A column's value as a value built on `builtin`: a quantity from its
+/// number in the base unit, a percentage from its fraction, a duration
+/// from its milliseconds.
+fn as_builtin(builtin: jadpo_std::Builtin, value: &Value) -> Result<Value, Fault> {
+    use jadpo_std::Builtin;
+    Ok(match (builtin, value) {
+        (Builtin::Quantity(kind), Value::Decimal(number)) => {
+            let amount = number
+                .rescale(kind.scale(), jadpo_std::Rounding::HalfEven)
+                .ok_or(Fault::Shape)?;
+            Value::Quantity(crate::Quantity {
+                kind,
+                amount: amount.mantissa,
+            })
+        }
+        (Builtin::Percentage, Value::Decimal(fraction)) => Value::Percentage(*fraction),
+        (Builtin::Decimal, Value::Int(n)) => Value::Decimal(Decimal::from_int(*n)),
+        (Builtin::Duration, Value::Int(millis)) => Value::Duration(*millis),
+        (_, value) => value.clone(),
+    })
 }
 
 /// The item type a range type's name gives it: `Int` for `Range<Int>`.

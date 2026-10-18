@@ -114,7 +114,7 @@ pub const TOKEN_USAGE_ENTRY: StandardType = StandardType {
             ("output", "bigint"),
             ("cached", "bigint"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::ByLabel(&[
@@ -208,7 +208,7 @@ pub const CHAT_MESSAGE_ENTRY: StandardType = StandardType {
     json: Json::Fields(&["role", "content"]),
     storage: Storage::Columns {
         parts: &[("role", "text"), ("content", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::Parts {

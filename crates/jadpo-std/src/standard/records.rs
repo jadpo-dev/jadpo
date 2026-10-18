@@ -135,7 +135,10 @@ pub const BARCODE_ENTRY: StandardType = StandardType {
     holds: Holds::Choice(BARCODE_VARIANTS),
     text: None,
     json: Json::Tagged,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[("kind", "text"), ("data", "text")],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["data"],
@@ -201,7 +204,14 @@ pub const UNIT_QUANTITY_ENTRY: StandardType = StandardType {
     holds: Holds::Choice(UNIT_QUANTITY_VARIANTS),
     text: None,
     json: Json::Tagged,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("kind", "text"),
+            ("count", "bigint"),
+            ("amount", "numeric(38, 9)"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["count", "amount"],
@@ -295,7 +305,14 @@ pub const RATING_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&RATING_FIELDS),
     text: None,
     json: Json::Fields(&["value", "best", "worst"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("value", "numeric"),
+            ("best", "numeric"),
+            ("worst", "numeric"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["value", "best"],
@@ -378,7 +395,7 @@ pub const CLOTHING_SIZE_ENTRY: StandardType = StandardType {
     json: Json::Text,
     storage: Storage::Columns {
         parts: &[("system", "text"), ("size", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: CANONICAL,
     ordered: false,
@@ -412,7 +429,7 @@ pub const SHOE_SIZE_ENTRY: StandardType = StandardType {
     json: Json::Text,
     storage: Storage::Columns {
         parts: &[("system", "text"), ("size", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: CANONICAL,
     ordered: false,
@@ -459,7 +476,14 @@ pub const DIMENSIONS_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&DIMENSIONS_FIELDS),
     text: None,
     json: Json::Fields(&["length", "width", "height"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("length", "numeric(38, 6)"),
+            ("width", "numeric(38, 6)"),
+            ("height", "numeric(38, 6)"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Measures {
             parts: &["length", "width", "height"],
@@ -522,7 +546,7 @@ pub const TRACKING_NUMBER_ENTRY: StandardType = StandardType {
     json: Json::Text,
     storage: Storage::Columns {
         parts: &[("carrier", "text"), ("number", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: CANONICAL,
     ordered: false,
@@ -568,7 +592,7 @@ pub const VEHICLE_REGISTRATION_ENTRY: StandardType = StandardType {
     json: Json::Text,
     storage: Storage::Columns {
         parts: &[("country", "text"), ("plate", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: CANONICAL,
     ordered: false,
@@ -619,7 +643,7 @@ pub const FLIGHT_NUMBER_ENTRY: StandardType = StandardType {
             ("number", "integer"),
             ("suffix", "text"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     format: CANONICAL,
     ordered: false,
@@ -667,7 +691,14 @@ pub const JURISDICTION_ENTRY: StandardType = StandardType {
     holds: Holds::Choice(JURISDICTION_VARIANTS),
     text: None,
     json: Json::Tagged,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("kind", "text"),
+            ("country", "text"),
+            ("subdivision", "text"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["country", "subdivision"],
@@ -721,7 +752,7 @@ pub const MODEL_ID_ENTRY: StandardType = StandardType {
     json: Json::Text,
     storage: Storage::Columns {
         parts: &[("provider", "text"), ("name", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: CANONICAL,
     ordered: false,

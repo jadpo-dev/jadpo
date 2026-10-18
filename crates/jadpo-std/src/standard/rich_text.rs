@@ -204,7 +204,10 @@ pub const RICH_TEXT_SPAN_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&RICH_TEXT_SPAN_FIELDS),
     text: None,
     json: Json::Members(&["text", "marks", "link"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[("text", "text"), ("marks", "text[]"), ("link", "text")],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::PlainText,
         options: NO_OPTIONS,

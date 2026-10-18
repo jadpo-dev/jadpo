@@ -567,7 +567,7 @@ The migration's SQL is `UPDATE "parcel" SET "size" = 'medium' WHERE
 | `Bool`, `Text`, `Bytes` | `boolean`, `text`, `bytea` |
 | `Instant`, `CalendarDate` | `timestamptz(3)`, `date` |
 | `Duration` | `bigint`, in milliseconds |
-| `Enum` without data | `text` holding the variant name; `Currency` holds its ISO 4217 code, `GBP` |
+| `Enum` without data | `text` holding the variant name; a standard enum holds its code, `GBP`, `Europe/London` |
 | `Money` (area 19) | two columns, always: `<field>_amount bigint` of minor units and `<field>_currency char(3)`, with a check constraint holding the currency to the one a type fixes |
 | `Enum` with data, `Object`, `List`, `Set`, `Map`, `ZonedTime` (its instant and zone, area 10) | `jsonb` |
 
@@ -575,6 +575,22 @@ The migration's SQL is `UPDATE "parcel" SET "size" = 'medium' WHERE
 > whose data entry lists named columns is stored in those, as `Money` is,
 > rather than as `jsonb`; the same mechanism takes later compound
 > standard types. A query doesn't compare or order by one yet.
+>
+> Amended 2026-10-18 by area 19 (chunk 5.5w, "Every boundary through the
+> contract"): every standard object and choice type is stored in named
+> columns laid out from its parts, `<field>_<part>`, a part that may be
+> `none` a column that may be `NULL` (an amount of money in two, another
+> standard object in its own, a choice's variant's name in `<field>_kind`
+> and then each part its variants hold); a `ZonedTime` in
+> `<field>_instant` and `<field>_zone`; a range in PostgreSQL's range type
+> of its ends, a `LocalTime` in `time` and a `LocalDateTime` in
+> `timestamp` without a zone, each one column named for the field. Every
+> standard enum holds its code (`Europe/London`, `GET`), as `Currency`
+> does. A quantity's column carries a comment naming its kind and SI unit
+> (`Length in metres (m)`), and a rate type's fixed `from:` and `to:` get
+> check constraints, as a `Money` type's `currency:` does. Only the
+> standard collections (`RichText`, `RichTextBlock`, `LocalisedText`)
+> stay structured `jsonb`, with the rest of this table's last row.
 
 ## Migrations
 

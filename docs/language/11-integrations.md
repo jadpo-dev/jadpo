@@ -918,6 +918,14 @@ public resource tracking {
 | `output_at:` | An operation | The path of the real object inside an envelope |
 | `failed_when:` | An operation | A `200` answer that is really a failure, by a path and the value that marks it (`ok` is `false`); the failure's code is then read from `error_code:` |
 
+- **A field without `wire:` is the contract's JSON.** A standard type in a
+  provider's request, response or webhook is encoded as area 19's
+  contract writes it, by the route codec a request's body goes through,
+  so an amount is `{"amount": 1250, "currency": "GBP"}` and a quantity
+  keeps its unit; `wire:` names another encoding only where the provider
+  uses one (decided by the lead session, 2026-10-18, under Richard's
+  instruction of 2026-10-17 that every boundary goes through the
+  contract).
 - **Byte formats stay in the runtime**: JSON, form-encoded, multipart, XML
   later. Package functions reshape values, never bytes.
 - **Decoding is lazy where it can be.** A field decoder runs only when code

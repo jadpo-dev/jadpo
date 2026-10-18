@@ -333,6 +333,19 @@ pub fn migration_sql(
                         sql: create_table(table, new),
                         does: "create table",
                     });
+                    // What a quantity's column holds (area 19, chunk 5.5w).
+                    let mut commented: Vec<(&String, &Column)> = new
+                        .columns
+                        .iter()
+                        .filter(|(_, column)| column.comment.is_some())
+                        .collect();
+                    commented.sort_by_key(|(_, column)| column.position);
+                    for (name, column) in commented {
+                        plan.create.push(Statement {
+                            sql: table::comment_on_column(table, name, column.comment.as_deref()),
+                            does: "comment on column",
+                        });
+                    }
                     for name in new.unique.keys() {
                         plan.constraints.push(add_unique(table, name, new));
                     }
@@ -365,6 +378,12 @@ pub fn migration_sql(
                     sql: table::add_column(table, column, &col.sql_type),
                     does: "add column",
                 });
+                if let Some(comment) = &col.comment {
+                    plan.columns.push(Statement {
+                        sql: table::comment_on_column(table, column, Some(comment)),
+                        does: "comment on column",
+                    });
+                }
                 if let Some(need) = need {
                     plan.columns
                         .extend(backfill(table, column, &[], need, decided));
@@ -377,6 +396,12 @@ pub fn migration_sql(
                 ) else {
                     continue;
                 };
+                if was.comment != now.comment {
+                    plan.columns.push(Statement {
+                        sql: table::comment_on_column(table, column, now.comment.as_deref()),
+                        does: "comment on column",
+                    });
+                }
                 if was.sql_type != now.sql_type {
                     if widens(&was.sql_type, &now.sql_type) {
                         plan.columns.push(Statement {
@@ -673,6 +698,7 @@ mod tests {
                     nullable: *nullable,
                     retired: *retired,
                     allows: None,
+                    comment: None,
                 },
             );
         }

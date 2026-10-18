@@ -204,6 +204,11 @@ contract adds 2 names, not 700.
 > `jadpo suggest` finds hand-rolled uses of the type by: conversion
 > constants, the words of names, format literals and validation texts,
 > beside the shape it already had (area 14, "Suggestions").
+>
+> Chunk 5.5w stored every standard object and choice through named
+> columns laid out from its parts, and decided each boundary's encoding,
+> under "Every boundary through the contract" below and "Chosen in chunk
+> 5.5w".
 
 A form sends a quantity as text, an order's time goes into a log line as
 its canonical text, and a day, a duration and a zone are shown to people
@@ -276,6 +281,38 @@ test "standard values are read, written and shown one way" {
 | Geometry | `geo.intersects`, `contains`, `within`, `distance`, `bounds` | Future area |
 | AI (`Vector`, `Embedding`, `ChatMessage`) | Similarity and generation | Future area |
 | People, places, identity numbers, commerce codes, health, travel, other | Baseline only: each identifier's check digit or pattern is its construction | |
+
+### Every boundary through the contract
+
+Decided 2026-10-17 (Richard): no standard type loses its currency, unit or
+precision on the way into or out of a program, so every place a value
+crosses encodes a standard type only through the contract's JSON, storage
+and text shapes, never an encoder of its own. Where a boundary's pages
+left its encoding open, the lead session decided it on 2026-10-18 under
+that instruction, each the most conservative reading:
+
+| Boundary | Encoding | Decided on |
+|---|---|---|
+| HTTP requests and responses, OpenAPI | The contract's JSON, through the route codec | Area 7, this page |
+| Storage and migrations | The contract's storage: one column, named columns laid out from the type's parts, or a native PostgreSQL type (a range, `time`, `timestamp`); a quantity's column carries a comment naming its SI unit; a fixed currency or rate a check constraint | Area 5, this page |
+| Caches and Redis entities | The contract's JSON, as area 5 holds the API's JSON there | Area 5 |
+| Event, job and batch payloads | The contract's JSON of the event's or the job's type, written and read by the route codec, and a batch's captured values the same; read with the type as it is when delivered, so a change an API record would call breaking needs area 18's acceptance, and a payload that no longer reads is parked, never dropped | Area 12 |
+| CSV and TSV cells | A standard type's canonical text (`text.from`), read by `text.parse`; a type with no single text form (`PostalAddress`, `Price`, a choice) is the compile error naming JSON Lines that a list or an object is | This page, "Data formats" |
+| JSON Lines rows, `json.read` and `json.write` | The contract's JSON | This page |
+| Logs and traces | Values as area 4 and area 15 allow; a personal value's keyed hash covers the UTF-8 of its canonical text, or of its contract JSON where it has no single text form | Area 15 |
+| Settings | `text.parse`'s canonical text, with the source spellings a setting also takes (`5m`) | Area 10 |
+| Translation placeholders and email | Shown to people by `text.format` (`PresentationText`), never read back | Areas 10 and 16 |
+| Outbound provider calls and webhooks | The contract's JSON for a field without `wire:`; `wire:` only names another encoding a provider uses | Area 11 |
+| Records and the manifest | Types and defaults as source writes them; no runtime values | Area 18 |
+| Test fixtures and seeds | Written through the actions they call, so through storage | Areas 5 and 13 |
+| Files | Bytes; the format namespaces above turn them into values | Area 16 |
+| Developer reports | A value as code makes one (`money.from_minor(1050, Currency.gbp)`), which keeps its currency, unit and places and is never read back | Area 17 |
+| The interpreter and compiled code, native and wasm32 | One runtime crate, so one codec for each shape | compiler-runtime §2 |
+
+> Built in chunk 5.5w: storage. The JSON-held values (`RichText`,
+> `RichTextBlock`, `LocalisedText`) and the other built boundaries are
+> chunk 5.5w2, the single encoders 5.5w3; the boundaries not built yet
+> take these encodings in the chunks that build them.
 
 ### Packages use the standard types
 
@@ -1206,7 +1243,11 @@ read; `map.has` says whether it is there without reading it.
 which may be `none` for an open end; `DateRange` includes its end date and
 `InstantRange` excludes its end instant, each saying so once in its type.
 Stored as PostgreSQL's range types (`daterange`, `tstzrange`,
-`numrange`), so the SQL forms are the range operators. A range's start is
+`numrange`, and `int8range` for whole numbers and durations), so the SQL
+forms are the range operators. A range that holds nothing, its start its
+end, isn't stored: PostgreSQL keeps every such range as `empty`, without
+its ends, so storing one is a fault rather than losing where it was
+(chunk 5.5w). A range's start is
 never after its end, its rule `start_not_after_end`, so one built from
 values is proved by a condition or attempted, as an object's rule across
 its fields is (chunk 5.5t2, under "Review").
@@ -2350,9 +2391,11 @@ check failed: 1 error, 1 file
 ```
 
 A `TaxRate` is kept in one `numeric` column and `BasisPoints` in one
-`bigint`; the four records and their choices are stored as their JSON in
-one `jsonb` column, as an `ExchangeRate` is, which waits on area 5's
-structured storage:
+`bigint`; the four records and their choices are stored in a column per
+part, as an `ExchangeRate` is (chunk 5.5w): a `Price` in `amount`,
+`currency` and `includes_tax`, a `Discount` in its variant's name
+(`kind`) and each part its variants hold, `NULL` where the stored
+variant hasn't it:
 
 ```jadpo check project=loan-rates file=app.jadpo hidden
 application {}
@@ -2428,8 +2471,9 @@ Each part keeps its own type's rules: a sort code's six digits, an IBAN's
 mod-97 and its country's length. It is financial personal data, as an
 IBAN and a UK account number are, and `text.format` shows it masked to
 its number's last four, `•••• 4958`, as it shows a card number. It has no
-single text form, and is stored as its JSON in one `jsonb` column, which
-waits on area 5's structured storage, as a `Discount` does.
+single text form, and is stored as a choice is (chunk 5.5w): its
+variant's name, then each part its variants hold, `kind`, `sort_code`,
+`account_number`, `iban`, `country` and `bank_code`, as a `Discount` is.
 
 A UK account number also has to fit its sort code, by the modulus check
 Vocalink publishes for Pay.UK's schemes ("Validating account numbers: UK
@@ -2859,7 +2903,9 @@ Area 10's 21 `temporal` operations stand. The new time types add three.
 whole years, months and days, unlike a `Duration`, which is exact time,
 and a `DateRange`, which is a span between two dates. It has no order
 (one month and 30 days don't compare) and `==` compares part by part. It
-is stored as an `interval` holding only years, months and days.
+is stored as its three parts in `integer` columns, not as an `interval`,
+which PostgreSQL keeps as months and days, so `P12M` would come back as
+`P1Y` (chunk 5.5w; accepted by the lead session, 2026-10-18).
 `CalendarDate + CalendarPeriod` (the operator table) applies years, then
 months, then days, and clamps a day past the month's end to its last day,
 so 31 January plus one month is 28 or 29 February. That is area 10's
@@ -4687,7 +4733,8 @@ check failed: 1 error, 1 file
 > Built in chunk 5.5r5: `Certificate` on the contract as a standard object
 > whose canonical text and JSON are its PEM (`TextForm::Pem`), read by
 > `jadpo-value`'s `certificate` module on `x509-parser`, strictly, and
-> stored as that JSON; an object literal of one is `type.constructor_input`.
+> stored in a column per part since chunk 5.5w; an object literal of one is
+> `type.constructor_input`.
 > What the page left open is under "Chosen in chunk 5.5r5".
 
 ## Randomness
@@ -4980,6 +5027,15 @@ stays area 12's.
   (`Wire.day_month_year`) or a pure `decode:` function. A CSV row holds
   single values only: a list or an object in one is a compile error
   naming JSON Lines.
+- **A standard type in a cell is its canonical text** (`text.from`,
+  `GBP 10.50`, `2.5 kg`, `2026-10-25T09:30:00Z`), read by `text.parse`
+  with its failures as the row's problems, so a cell keeps a currency, a
+  unit and every place. A standard type with no single text form
+  (`PostalAddress`, `PersonName`, `Price`, a choice such as `Discount`) is
+  an object for this rule, the compile error naming JSON Lines, whose rows
+  carry the contract's JSON (decided by the lead session, 2026-10-18,
+  under Richard's instruction of 2026-10-17 that every boundary goes
+  through the contract).
 - **Writing names its reader.** `CsvFormat.spreadsheet` writes a
   byte-order mark, CRLF line endings and escapes formula-like text;
   `CsvFormat.standard` writes CRLF only. A write without `format:` is a
@@ -8428,8 +8484,10 @@ under "Errors").
   (`Codec::Standard`), except a `DateRange`, which is an object of its
   two dates as `InstantRange` is. **Storage** is that JSON in one
   `jsonb` column, as `InstantRange`'s is, rather than chunk 5.5h's named
-  columns; chunk 5.5w moves ranges and periods to the native `daterange`
-  and `interval` columns the page names.
+  columns; chunk 5.5w moved ranges to the native `daterange` column the
+  page names, and periods to three `integer` columns rather than an
+  `interval` (accepted by the lead session, 2026-10-18, "Chosen in chunk
+  5.5w").
 - **Order.** `LocalTime`, `LocalDateTime`, `YearMonth`, `Year`,
   `Quarter` and `IsoWeek` are ordered, part by part in declared order,
   which is the canonical order; `UtcOffset`, `Month` (an enum, as
@@ -10627,6 +10685,77 @@ conservative reading:
   subject; `FormatKey::FirstPart` now passes over empty text. It is not
   ordered, and `==` compares every part, the bytes in constant time.
 
+### Chosen in chunk 5.5w
+
+Richard's instruction of 2026-10-17, that no standard type loses its
+currency, unit or precision on the way in or out, left storage's shape for
+most objects and choices open. The lead session chose, each the most
+conservative reading, and these supersede the "stored as its JSON" of the
+chunks before:
+
+- **Re-audit.** Of the 2026-10-17 audit's findings, the map keys
+  `json.write` writes by `Display`, the readers looser than `text.parse`
+  (an `Instant` with an offset, an `Int` with `+`, a `Decimal` as `1_000`),
+  a `Duration` setting refusing `PT5M`, and the JSON, OpenAPI and storage
+  encoders matching on built-in types are still open (5.5w2 and 5.5w3); a
+  quantity's `value` is a string and a `CalendarDate` is checked for 30
+  February, so those two are fixed. Most other boundaries aren't built yet
+  (caches, events, jobs and batches, CSV, logs, email, outbound calls,
+  files): their encodings are decided under "Every boundary through the
+  contract".
+- **One layout, from the parts.** An entry still names its columns, and
+  `jadpo_std::standard::storage::layout` says from its parts alone what
+  each holds, a test holding the two together: an object's parts in
+  order, each in as many columns as it takes (an amount of money in two,
+  its minor units and its currency's code; another standard object or
+  choice in its own; a list of text or codes in `text[]`); a choice's
+  variant's name in `kind`, then each field its variants use once, in the
+  order they first appear, sharing a column where two variants use one
+  name (a `UnitQuantity`'s `amount`, at the finest scale any kind keeps),
+  `NULL` where the stored variant hasn't it. Only a choice whose variants
+  hold lists of objects, `RichTextBlock`, stays JSON, with the collections
+  (5.5w2).
+- **Native where PostgreSQL has the type,** one column named for the field
+  (a suffix of `""`): ranges in `daterange`, `tstzrange`, `numrange` and
+  `int8range` (a `Range<Duration>` in milliseconds), a `LocalTime` in
+  `time`, a `LocalDateTime` and an event's local times in `timestamp`
+  without a zone, a `Year` and a `UtcOffset` in `smallint`.
+- **A range that holds nothing isn't stored.** PostgreSQL keeps every range
+  whose start is its end, and that doesn't hold its end, as `empty`,
+  without its ends, so it couldn't read back: storing one is a fault
+  naming that, and reading `empty` is one too. A `DateRange` of one day
+  holds that day, so it is stored. It stays a refusal when stored: proving
+  a stored range non-empty at compile time would be a language change,
+  not wanted now (decided by the lead session, 2026-10-18).
+- **`CalendarPeriod` is three `integer` columns,** `years`, `months` and
+  `days`, not the `interval` "Time and calendar additions" named:
+  PostgreSQL keeps an interval as months, days and microseconds, so
+  `P12M` would come back as `P1Y`, two values `==` tells apart (accepted
+  by the lead session, 2026-10-18).
+- **Every standard enum is stored by its code,** as the closed lists and
+  `Currency` were: `Zone` as `Europe/London`, `Locale` as `en-GB`,
+  `HttpMethod` as `GET`, `FileType` as `image/png`; an enum's part in an
+  object already was. Nothing is deployed, so no migration path is needed
+  for columns that held names.
+- **A quantity's column carries a comment,** its kind and SI unit as the
+  units table means and writes it, `Length in metres (m)`; a column a
+  choice shares names each kind's unit with the variant that holds it. A
+  migration sets the comment with the column and changes it with the
+  type, and the snapshot records it.
+- **Fixed currencies** are each column a type fixes, by the setting that
+  fixes it: a `Money` type's `currency:`, and now a rate type's `from:` and
+  `to:` (`<table>_<column>_from_check`), so a stored rate's currencies are
+  its type's, as 5.5h4 promised.
+- **A field that can't be `none`** whose type's parts may all be `none`, a
+  `ProblemDetails` that says nothing, reads back as that value; in a field
+  that may be `none`, every column `NULL` is `none`, so an empty
+  `ProblemDetails` there reads back as `none`.
+- **One codec.** `jadpo-value`'s `standard::to_parts` and `from_parts` turn
+  every compound value into its columns and back from the layout, and the
+  plan reads any compound field through them; the plan's codec for a part
+  that is a built-in type held as a standard type (`OidcClaims`' `email`)
+  now reads it as that type, which `json.read` refused before.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -10678,6 +10807,7 @@ conservative reading:
 | The clinical units | `PressureUnit.millimetre_of_mercury`, `FrequencyUnit.beat_per_minute`, `ConcentrationUnit.milligram_per_decilitre` and the glucose-only `ConcentrationUnit.millimole_of_glucose_per_litre` (glucose's molar mass fixed at CLDR's 180.1557 g/mol), as UK meters report glucose, added in chunk 5.5m2. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `mmHg` and `bpm` suffixes | Question 17's table gains `mmHg` for a `Pressure` and `bpm` for a `Frequency`, purely additive and clashing with no suffix or keyword; a milligram a decilitre keeps no suffix, since a suffix can't hold `/`. Decided by the lead session, not a question for Richard | 2026-10-18 |
 | `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens; `HEAD`, `OPTIONS`, `CONNECT` and `TRACE` aren't variants, since the runtime answers `HEAD` and `OPTIONS` itself and adding them later breaks nothing (decided by the lead session, as chunk 5.5n recommended) | 2026-10-18 |
+| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes (Richard); the encodings the pages left open, event, job and batch payloads, CSV cells, a personal value's log hash, developer reports and integration fields without `wire:`, decided under "Every boundary through the contract" by the lead session, as was storing every object and choice in named columns ("Chosen in chunk 5.5w") | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 | A `PasswordHash` never leaves the server | It is stored as its PHC string, but refused in an `Output` (so a response), a request's `Input`, a failure's fields and `json.write` and `json.read`, as `type.password_hash_exposed` or `type.mismatch`; no page needs one read for imports, so `Input` refuses it too (lead session, chunk 5.5q2) | 2026-10-18 |
 | `crypto.public_key` | `crypto.public_key(key: config.<name>)` gives the `PublicKey` of a `PrivateKey` setting, Ed25519's public half, so an app can publish its key and a test can sign and verify; the key is still read only through `key:` (lead session, chunk 5.5q2) | 2026-10-18 |

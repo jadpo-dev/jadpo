@@ -1163,7 +1163,16 @@ pub const PROBLEM_DETAILS_ENTRY: StandardType = StandardType {
     // Stored as its JSON, as `InstantRange` is: every member may be
     // `none`, so a column per member couldn't tell an empty problem from
     // no problem at all.
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("type", "text"),
+            ("status", "smallint"),
+            ("title", "text"),
+            ("detail", "text"),
+            ("instance", "text"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::ProblemDetails,
         options: NO_OPTIONS,
@@ -1340,7 +1349,7 @@ pub const UTM_PARAMETERS_ENTRY: StandardType = StandardType {
             ("term", "text"),
             ("content", "text"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::Canonical,

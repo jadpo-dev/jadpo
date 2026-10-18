@@ -878,7 +878,13 @@ pub(crate) fn part_type(host: &str, field: &str, part: jadpo_std::Part) -> TypeR
         | jadpo_std::Part::Paragraph => {
             TypeRef::Field(Key::from_text(format!("field {host}.{field}")))
         }
-        jadpo_std::Part::Standard(name) => TypeRef::Std(name.to_string(), Vec::new()),
+        // A type built into the language held as a standard type (an
+        // `Email`, a `Url`) is that built-in type, as a field of it is
+        // (chunk 5.5w).
+        jadpo_std::Part::Standard(name) => match jadpo_std::standard_type(name).map(|e| e.holds) {
+            Some(jadpo_std::standard::Holds::Builtin(builtin)) => TypeRef::Builtin(builtin),
+            _ => TypeRef::Std(name.to_string(), Vec::new()),
+        },
         jadpo_std::Part::Optional(inner) => {
             TypeRef::Nullable(Box::new(part_type(host, field, *inner)))
         }

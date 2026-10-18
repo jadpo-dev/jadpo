@@ -152,7 +152,7 @@ pub const CARD_EXPIRY_TYPE: StandardType = StandardType {
     json: Json::Text,
     storage: Storage::Columns {
         parts: &[("year", "integer"), ("month", "integer")],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::CardExpiry,
@@ -183,7 +183,7 @@ pub const MASKED_CARD_NUMBER_TYPE: StandardType = StandardType {
     json: Json::Fields(&["brand", "last_four"]),
     storage: Storage::Columns {
         parts: &[("brand", "text"), ("last_four", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::MaskedCard,

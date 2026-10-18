@@ -150,8 +150,9 @@ impl Columns {
             None => {
                 let at = self.names.len();
                 let parts = match &kind {
-                    Column::Compound(ty) => {
-                        jadpo_std::standard_type(ty).map_or(1, |entry| entry.columns().len())
+                    Column::Compound { ty, .. } => {
+                        jadpo_std::standard_type(ty.split('<').next().unwrap_or(ty))
+                            .map_or(1, |entry| entry.columns().len())
                     }
                     _ => 1,
                 };
@@ -545,13 +546,14 @@ impl Planner<'_> {
 
     /// What a field's column becomes.
     pub(crate) fn column(&self, entity: &EntityModel, field: &FieldModel) -> Option<Column> {
-        // A standard object stored in a column per part (area 19, chunk
-        // 5.5l), read from its several columns as `Money` is.
-        if let Some(entry) = field
-            .compound_entry()
-            .filter(|entry| matches!(entry.holds, jadpo_std::standard::Holds::Object(_)))
-        {
-            return Some(Column::Compound(entry.name.to_string()));
+        // A compound standard type, read from its several columns (area
+        // 19): `Money`, a standard object (chunk 5.5l) or choice, and a type
+        // stored natively in one column (chunk 5.5w).
+        if field.compound_entry().is_some() {
+            return Some(Column::Compound {
+                ty: field.compound_type(),
+                may_be_none: field.nullable,
+            });
         }
         let ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
         if let Some(prim) = self.lookup.representation(&ty) {
@@ -568,13 +570,6 @@ impl Planner<'_> {
                 // In its kind's base unit (area 19).
                 Prim::Quantity(kind) => Column::Quantity(kind),
                 Prim::Percentage => Column::Percentage,
-                // A compound standard type, read from its several columns
-                // (area 19).
-                prim if let Some(entry) = jadpo_std::standard::of_builtin(prim)
-                    .filter(|entry| !entry.columns().is_empty()) =>
-                {
-                    Column::Compound(entry.name.to_string())
-                }
                 _ => return None,
             });
         }

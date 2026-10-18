@@ -175,7 +175,15 @@ pub const DISCOUNT_ENTRY: StandardType = StandardType {
     holds: Holds::Choice(DISCOUNT_VARIANTS),
     text: None,
     json: Json::Tagged,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("kind", "text"),
+            ("amount", "bigint"),
+            ("currency", "char(3)"),
+            ("percentage", "numeric"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["amount", "percentage"],
@@ -220,7 +228,10 @@ pub const INTEREST_RATE_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&INTEREST_RATE_FIELDS),
     text: None,
     json: Json::Fields(&["rate", "basis"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[("rate", "numeric"), ("basis", "text")],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["rate", "basis"],
@@ -279,7 +290,14 @@ pub const PRICE_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&PRICE_FIELDS),
     text: None,
     json: Json::Fields(&["amount", "includes_tax"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("amount", "bigint"),
+            ("currency", "char(3)"),
+            ("includes_tax", "boolean"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["amount"],
@@ -352,7 +370,15 @@ pub const UNIT_PRICE_ENTRY: StandardType = StandardType {
     holds: Holds::Choice(UNIT_PRICE_VARIANTS),
     text: None,
     json: Json::Tagged,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("kind", "text"),
+            ("price", "bigint"),
+            ("price_currency", "char(3)"),
+            ("per", "numeric(38, 9)"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["price", "per"],

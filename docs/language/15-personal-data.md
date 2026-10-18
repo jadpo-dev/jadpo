@@ -78,7 +78,14 @@ extra ones CCPA/CPRA lists, government IDs and precise location.
 
 - **Logs.** A marked field is written to logs as a keyed hash whatever its
   type, so a marked `date_of_birth: CalendarDate` is hashed too (question
-  10). This refines area 4, which logs dates and numbers as values.
+  10). This refines area 4, which logs dates and numbers as values. The
+  hash covers the UTF-8 bytes of the value's canonical text (`text.from`,
+  `2026-10-25` for a date, `GBP 10.50` for an amount), or of its contract
+  JSON as `json.write` writes it for a type with no single text form (a
+  `PostalAddress`), so one value hashes the same in every log and on both
+  executors (decided by the lead session, 2026-10-18, under Richard's
+  instruction of 2026-10-17 that every boundary goes through area 19's
+  contract).
 - **Sensitive fields** are never put in a cache, and every read of one is
   recorded (question 9).
 - **Records a person owns** need no marking on every field. A todo's title is
