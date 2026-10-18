@@ -41,7 +41,8 @@ These types exist without being declared, and their names cannot be reused.
 > page and example types that reuse one (`Money`, `Currency`,
 > `PostalCode`, `Sku`, `Dimensions`, `Price`) are renamed or replaced by
 > the built-in in that chunk: chunk 5.5h renamed this page's `Money`
-> objects (`PriceTag`, `OrderLine`) and its `Currency` enum, and gave a
+> objects (`PriceTag`, `OrderLine`) and its `Currency` enum, chunk 5.5l2
+> its `PostalCode` (`ShippingCode`), and chunk 5.5h gave a
 > `Money` type its `currency:` and `rounding:` settings, with `min:` and
 > `max:` in minor units (area 19, "Money and payments"). A shape that copies a standard type under
 > another name is the declinable error `type.standard_exists`. Still no
@@ -2360,19 +2361,19 @@ check failed: 1 error, 1 file
 A field of a value that may be `none` is read in a `match` too.
 
 ```jadpo check project=e-habit-chaining expect=syntax.optional_chaining
-type PostalCode = Text {
+type ShippingCode = Text {
     max_length: 10
 }
 
 type Address = Object {
-    postal_code: PostalCode
+    postal_code: ShippingCode
 }
 
 type Customer = Object {
     address: Address?
 }
 
-function postal_code(customer: Customer) -> PostalCode? {
+function postal_code(customer: Customer) -> ShippingCode? {
     return customer.address?.postal_code
 }
 ```

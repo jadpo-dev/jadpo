@@ -464,3 +464,105 @@ fn enum_codes_and_zones_read_ignoring_case() {
         Err(Fault::Broke(RuleKey::Malformed))
     );
 }
+
+/// A `Country` value, by its ISO 3166-1 code.
+fn country(code: &str) -> Value {
+    let entry = jadpo_std::standard_type("Country").unwrap();
+    let codes = entry.codes().unwrap();
+    let at = codes.iter().position(|(_, c)| *c == code).unwrap();
+    Value::variant("Country", at as u32, codes[at].0, Vec::new())
+}
+
+#[test]
+fn phone_numbers_follow_each_country_s_rules() {
+    let entry = jadpo_std::standard_type("PhoneNumber").unwrap();
+    for examples in jadpo_std::standard::phones::PHONE_EXAMPLES {
+        let home = country(examples.country);
+        for (written, e164, at_home, abroad) in examples.valid {
+            // A reader in a region with another calling code sees the
+            // international format.
+            let abroad_tag = if e164.starts_with("+44") {
+                "en-US"
+            } else {
+                "en-GB"
+            };
+            let read = standard::parse_in(written, entry.name, &Value::None, &home);
+            assert_eq!(
+                read,
+                Ok(Value::text(e164)),
+                "{written} in {}",
+                examples.country
+            );
+            assert_eq!(standard::parse(e164, entry.name), Ok(Value::text(e164)));
+            let value = Value::text(e164);
+            let shown = |tag: &str| standard::shown(entry, &value, tag, &Value::None, &Value::None);
+            assert_eq!(shown(examples.locale).as_deref(), Ok(*at_home), "{e164}");
+            assert_eq!(shown(abroad_tag).as_deref(), Ok(*abroad), "{e164}");
+        }
+        for written in examples.invalid {
+            assert_eq!(
+                standard::parse_in(written, entry.name, &Value::None, &home),
+                Err(Fault::Broke(RuleKey::Malformed)),
+                "{written} isn't a number of {}",
+                examples.country
+            );
+        }
+    }
+    // Only E.164 is read without a country.
+    assert_eq!(
+        standard::parse("07400 123456", entry.name),
+        Err(Fault::Broke(RuleKey::Malformed))
+    );
+}
+
+#[test]
+fn postal_codes_follow_each_country_s_rules() {
+    let address = jadpo_std::standard_type("PostalAddress").unwrap();
+    let (codecs, validators, shapes) = codecs(address);
+    let table = Codecs {
+        codecs: &codecs,
+        validators: &validators,
+        shapes: &shapes,
+    };
+    let posted = |code: &str, country: &str| {
+        let json = serde_json::json!({
+            "lines": ["1 High Street"],
+            "locality": "Town",
+            "region": null,
+            "postal_code": code,
+            "country": country,
+        });
+        let mut problems = Vec::new();
+        let read = table.read(CodecId(0), &json, &Path::default(), &mut problems);
+        (read, problems)
+    };
+    for examples in jadpo_std::standard::postal::POSTAL_EXAMPLES {
+        let home = country(examples.country);
+        for (typed, canonical) in examples.valid {
+            assert_eq!(
+                standard::parse_in(typed, "PostalCode", &Value::None, &home),
+                Ok(Value::text(canonical)),
+                "{typed} in {}",
+                examples.country
+            );
+            let (read, problems) = posted(canonical, examples.country);
+            assert!(read.is_some(), "{canonical}: {problems:?}");
+        }
+        for typed in examples.invalid {
+            assert_eq!(
+                standard::parse_in(typed, "PostalCode", &Value::None, &home),
+                Err(Fault::Broke(RuleKey::Malformed)),
+                "{typed} isn't a postal code of {}",
+                examples.country
+            );
+            let (read, problems) = posted(typed, examples.country);
+            assert_eq!(read, None, "{typed} in an address in {}", examples.country);
+            assert!(
+                problems
+                    .iter()
+                    .any(|problem| problem.field.ends_with("postal_code")),
+                "{problems:?}"
+            );
+        }
+    }
+}

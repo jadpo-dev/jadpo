@@ -438,6 +438,53 @@ impl Body<'_> {
 }
 
 impl Body<'_> {
+    /// `country:` on `text.parse` (area 19, chunk 5.5l2): it reads a phone
+    /// number or a postal code as people write it in a country, so it
+    /// means nothing for any other type.
+    pub(super) fn country_option(
+        &mut self,
+        table: &Operation,
+        args: &[ast::Arg],
+        slots: &[Option<usize>],
+        entry: Option<&'static StandardType>,
+        shown: &Ty,
+    ) {
+        let Some(slot) = table
+            .params
+            .iter()
+            .position(|param| param.name == "country")
+        else {
+            return;
+        };
+        let Some(arg) = args
+            .iter()
+            .zip(slots)
+            .find(|(_, at)| **at == Some(slot))
+            .map(|(arg, _)| arg)
+        else {
+            return;
+        };
+        if entry.is_some_and(|entry| jadpo_std::standard::reads_by_country(entry.name)) {
+            return;
+        }
+        let span = arg
+            .name()
+            .map_or_else(|| self.span(arg), |name| self.span(&name));
+        let removal = self.argument_removal(arg);
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_TEMPORAL_OPTION_UNUSED,
+                format!("`country:` means nothing for a `{shown}`"),
+            )
+            .at(span, "not read by country")
+            .reason(format!(
+                "`country:` reads a `PhoneNumber` or a `PostalCode` as people write it in that country; `{shown}` is read from its canonical text alone."
+            ))
+            .next("Remove `country: ...`")
+            .edit(removal, ""),
+        );
+    }
+
     /// `form:` on `text.parse` and `text.from` (area 19, question 22): a
     /// `CodeForm` written out, for a closed list with data in that code
     /// system.

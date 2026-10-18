@@ -326,8 +326,8 @@ pub fn run(
             unit,
         ),
         (Op::TextFrom, [value, form]) => standard::from_in(value, form),
-        (Op::TextParse, [Value::Text(raw), Value::Text(ty), form]) => {
-            standard::parse_in(raw, ty, form)
+        (Op::TextParse, [Value::Text(raw), Value::Text(ty), form, country]) => {
+            standard::parse_in(raw, ty, form, country)
         }
         (Op::TextFormat | Op::TextFrom | Op::TextParse, _) => Err(Fault::Shape),
         // The encodings (area 19, "Encodings"): decoding fails `malformed`.
@@ -765,6 +765,7 @@ mod tests {
                 Op::TextParse => vec![
                     Value::text("2026-10-25"),
                     Value::text("CalendarDate"),
+                    Value::None,
                     Value::None,
                 ],
                 Op::TemporalFormatRelative => {

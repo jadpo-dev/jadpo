@@ -240,11 +240,15 @@ fn interval<'v>(
     }
 }
 
-/// `text.parse(raw, as:, form:)`: as [`parse`], or, given a `CodeForm`
-/// variant, a closed list's variant by its code in that code system,
-/// ignoring case; a code a retired variant shares with a current one reads
-/// as the current one.
-pub fn parse_in(raw: &str, ty: &str, form: &Value) -> Result<Value, Fault> {
+/// `text.parse(raw, as:, form:, country:)`: as [`parse`]; given a
+/// `CodeForm` variant, a closed list's variant by its code in that code
+/// system, ignoring case, a code a retired variant shares with a current
+/// one read as the current one; given a `Country`, a phone number or a
+/// postal code as people write it there (chunk 5.5l2).
+pub fn parse_in(raw: &str, ty: &str, form: &Value, country: &Value) -> Result<Value, Fault> {
+    if let Value::Variant(country) = country {
+        return written_in(raw, ty, country);
+    }
     let Some(form) = code_form(form)? else {
         return parse(raw, ty);
     };
@@ -271,6 +275,46 @@ pub fn parse_in(raw: &str, ty: &str, form: &Value) -> Result<Value, Fault> {
         name,
         Vec::new(),
     ))
+}
+
+/// A phone number or a postal code as people write it in `country`, a
+/// `Country` variant: its canonical text, or `malformed` where it isn't
+/// one of the country's.
+fn written_in(raw: &str, ty: &str, country: &crate::Variant) -> Result<Value, Fault> {
+    if &*country.ty != jadpo_std::standard::places::COUNTRY {
+        return Err(Fault::Shape);
+    }
+    let code = standard_type(&country.ty)
+        .and_then(StandardType::codes)
+        .and_then(|codes| codes.get(country.ordinal as usize))
+        .map(|(_, code)| *code)
+        .ok_or(Fault::Shape)?;
+    let read = match ty {
+        "PhoneNumber" => jadpo_std::standard::phones::from_written(raw, code),
+        "PostalCode" => jadpo_std::standard::postal::from_written(raw, code),
+        _ => return Err(Fault::Shape),
+    };
+    read.map(|text| Value::text(&text)).ok_or(MALFORMED)
+}
+
+/// The part of a standard object a rule across its parts refuses (an
+/// address's postal code that doesn't fit its country), if any.
+pub fn broken_part(record: &crate::Record) -> Option<&'static str> {
+    jadpo_std::standard::part_rules(&record.ty)
+        .iter()
+        .find(|rule| {
+            let (Some(Value::Text(text)), Some(Value::Variant(by))) =
+                (record.get(rule.part), record.get(rule.by))
+            else {
+                return false;
+            };
+            let code = standard_type(&by.ty)
+                .and_then(StandardType::codes)
+                .and_then(|codes| codes.get(by.ordinal as usize))
+                .map(|(_, code)| *code);
+            code.is_some_and(|code| !(rule.fits)(text, code))
+        })
+        .map(|rule| rule.part)
 }
 
 /// `text.parse(raw, as:)`, given the name of the standard type or the
@@ -671,6 +715,13 @@ pub fn shown(
         }
         (FormatKey::PersonName, value) => present::contact::person_name(value, tag)?,
         (FormatKey::PostalAddress, value) => present::contact::postal_address(value, tag)?,
+        // National for a reader whose region shares the number's calling
+        // code, international otherwise (chunk 5.5l2).
+        (FormatKey::PhoneNumber, value) => {
+            let text = canonical(entry, value)?;
+            let reader = present::contact::reader_region(tag)?;
+            jadpo_std::standard::phones::shown(&text, reader.as_deref()).ok_or(Fault::Shape)?
+        }
         // A payment or identity number's printed form (area 19, chunk
         // 5.5i): grouped, or its last four after a mask.
         (FormatKey::Grouped(grouping), value) => grouping.apply(&canonical(entry, value)?),
