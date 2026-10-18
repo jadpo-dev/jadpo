@@ -27,6 +27,7 @@ pub mod lookups;
 mod naming;
 mod not_value;
 pub mod policy;
+pub mod prompts;
 mod resolve;
 pub mod routes;
 pub mod setting_move;
@@ -164,6 +165,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .iter()
                 .cloned(),
         );
+        out.extend(prompts::prompt_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(routes::table_problems(db, project).iter().cloned());
         out.extend(routes::signin_problems(db, project).iter().cloned());

@@ -647,6 +647,26 @@ against by the same `Ctx` as a folder's, a feature being on when a route
 `Locale.en_xa` is a `Locale` variant that `fallback_chain` sends straight to
 the default locale, and `present::pseudo` accents and lengthens the text of
 the wording while the values it writes stay as they are.
+
+Prompts (area 21, "Prompts as files", chunk 5.5v2) are read in
+`jadpo-check`'s `prompts` module: a `type X = Prompt` (`Base::Prompt`,
+`FieldsBase::Prompt`, `Folder::Prompts` in a domain or `shared/`) and its
+text, `<name>.prompt` beside it, which `jadpo-db` reads as a record
+(`is_prompt_text`; in loose files any `.prompt`) and `source_texts` hands
+to the renderer so its errors quote it. `jadpo-std`'s `prompt` module
+parses the two sections into `Piece`s, fills them (`fill`) and escapes a
+data block's closing tags (`escape`), for text and for JSON; `analysis`
+decides how each field is sent (`Form::Closed`, `Text` or `Json`, or the
+conversation's turns), reports the `prompt.` rules and gives each checked
+prompt a `PromptEntry` with its digest, a SHA-256 over its two files. The
+graph gets a `prompt` node per prompt (`Detail::Prompt { version }`) and a
+`uses` edge from each callable that renders it. `prompts.render(value)`,
+a member of the generated `prompts` namespace, is checked from the value's
+type alone and lowered to `Callee::Prompt(name)`; `jadpo-plan` numbers a
+JSON codec for each field the text writes (`Decoded::Prompt`) and carries
+the `PromptPlan`, and `jadpo_value::prompt::render` builds the
+`List<ChatMessage>` for both executors. `jadpo ai show` (`jadpo-cli`'s
+`ai`) prints a prompt's messages from `outline`, unfilled.
 Enums that Rust code interprets (`Rounding`, `TextFormat`,
 `UuidVersion`, `Weekday`, `Dst`, `InvalidDay`, `ComponentStyle`, `TextDirection`, `TranslationReview`, and `Zone` and `Locale` from their tables) are
 declared once, in `jadpo-std`. The namespaces the compiler fills from the
