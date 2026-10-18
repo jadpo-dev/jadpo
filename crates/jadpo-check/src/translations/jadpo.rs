@@ -91,6 +91,9 @@ pub fn features(db: &dyn Db, project: Project) -> BTreeSet<Feature> {
     if locales(db, project).declared {
         out.insert(Feature::Locales);
     }
+    if crate::identity::identity(db, project).passkeys().is_some() {
+        out.insert(Feature::Passkey);
+    }
     out
 }
 

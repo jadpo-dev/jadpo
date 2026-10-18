@@ -40,6 +40,8 @@ pub enum Feature {
     /// Magic-link sign-in (area 8): its email and its failures. Not built
     /// yet, so no application has it on.
     MagicLink,
+    /// Passkeys (area 8, "Passkeys"): their failures.
+    Passkey,
 }
 
 impl Feature {
@@ -54,6 +56,7 @@ impl Feature {
             Feature::BrowserSession => "Browser sessions",
             Feature::Locales => "Locales",
             Feature::MagicLink => "Magic links",
+            Feature::Passkey => "Passkeys",
         }
     }
 
@@ -67,6 +70,7 @@ impl Feature {
             Feature::BrowserSession => "browser_session",
             Feature::Locales => "locales",
             Feature::MagicLink => "magic_link",
+            Feature::Passkey => "passkey",
         }
     }
 
@@ -80,10 +84,11 @@ impl Feature {
             Feature::BrowserSession => "an API accepts browser sessions",
             Feature::Locales => "the application declares its locales",
             Feature::MagicLink => "the application signs users in with magic links",
+            Feature::Passkey => "the application signs users in with passkeys",
         }
     }
 
-    pub const ALL: [Feature; 7] = [
+    pub const ALL: [Feature; 8] = [
         Feature::Requests,
         Feature::SignIn,
         Feature::UserSignIn,
@@ -91,6 +96,7 @@ impl Feature {
         Feature::BrowserSession,
         Feature::Locales,
         Feature::MagicLink,
+        Feature::Passkey,
     ];
 }
 
@@ -210,7 +216,7 @@ const fn message(
 
 /// Every message, in the order `jadpo translations builtin` lists a
 /// feature's.
-pub static MESSAGES: [Message; 31] = [
+pub static MESSAGES: [Message; 36] = [
     failure(
         "invalid_request",
         Feature::Requests,
@@ -407,6 +413,36 @@ pub static MESSAGES: [Message; 31] = [
         Feature::MagicLink,
         "The sign-in was refused.",
         "We couldn't sign you in.",
+    ),
+    failure(
+        "passkey_challenge_expired",
+        Feature::Passkey,
+        "A passkey request expired, was used, or came from another browser.",
+        "That took too long. Try your passkey again.",
+    ),
+    failure(
+        "passkey_rejected",
+        Feature::Passkey,
+        "A passkey's answer couldn't be checked, or the passkey isn't registered.",
+        "We couldn't sign you in with that passkey. Try another passkey, or sign in with your email.",
+    ),
+    failure(
+        "passkey_already_registered",
+        Feature::Passkey,
+        "The passkey is registered already.",
+        "This passkey is already set up.",
+    ),
+    failure(
+        "passkey_limit_reached",
+        Feature::Passkey,
+        "The person has as many passkeys as an account holds.",
+        "You have as many passkeys as an account can hold. Remove one to add another.",
+    ),
+    failure(
+        "passkey_not_found",
+        Feature::Passkey,
+        "No passkey of the signed-in person has the id given.",
+        "That passkey isn't on your account.",
     ),
 ];
 
