@@ -691,10 +691,13 @@ fn search_project(name: &str, dimensions: u32, indexes: &str, decline: &str) -> 
     root
 }
 
+/// An article's `id` and its meaning, if it has one.
+type Article = ([u8; 16], Option<Vec<f32>>);
+
 /// A question of `dimensions` and `count` articles: the first five near it,
 /// the `k`th with `k` items a sixteenth away, so each is nearer than the
 /// next; the rest elsewhere, one in ten without a meaning.
-fn planted(dimensions: usize, count: u64) -> (Vec<f32>, Vec<([u8; 16], Option<Vec<f32>>)>) {
+fn planted(dimensions: usize, count: u64) -> (Vec<f32>, Vec<Article>) {
     let question = sixteenths(7, dimensions);
     let mut articles = Vec::new();
     for i in 0..count {
@@ -725,7 +728,7 @@ fn planted(dimensions: usize, count: u64) -> (Vec<f32>, Vec<([u8; 16], Option<Ve
 
 /// Applies the project's migration to a new database and stores
 /// `articles` in it; the database's address.
-fn stored(root: &Path, stem: &str, articles: &[([u8; 16], Option<Vec<f32>>)]) -> String {
+fn stored(root: &Path, stem: &str, articles: &[Article]) -> String {
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
     let url = server.create_database(stem).expect("database");
     let applied = jadpo(root, &["migrate", "apply", "--url", &url]);
@@ -758,10 +761,7 @@ fn stored(root: &Path, stem: &str, articles: &[([u8; 16], Option<Vec<f32>>)]) ->
 
 /// The five `ai.distance` puts nearest `question`, ties by `id`, each as
 /// its distance's text and its `id`.
-fn nearest_in_code(
-    question: &[f32],
-    articles: &[([u8; 16], Option<Vec<f32>>)],
-) -> Vec<(String, String)> {
+fn nearest_in_code(question: &[f32], articles: &[Article]) -> Vec<(String, String)> {
     let mut expected: Vec<(f64, String)> = articles
         .iter()
         .filter_map(|(id, meaning)| {
