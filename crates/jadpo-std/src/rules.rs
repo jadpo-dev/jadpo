@@ -87,13 +87,17 @@ pub enum RuleKey {
     /// unit, but the unit isn't one of the quantity's kind (area 19,
     /// "Physical quantities"): `5 kg` read as a `Length`.
     UnknownUnit,
+    /// A value `crypto.decrypt` opens wasn't sealed with the current or
+    /// the previous key for this context, or was altered since (area 19,
+    /// "Hashing and cryptography"): never which of those it was.
+    Unreadable,
 }
 
 impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 17] = [
+    pub const ALL: [RuleKey; 18] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -111,6 +115,7 @@ impl RuleKey {
         RuleKey::TooManyPlaces,
         RuleKey::Mismatch,
         RuleKey::UnknownUnit,
+        RuleKey::Unreadable,
     ];
 
     /// The key as written: `max`, `min_length`.
@@ -133,6 +138,7 @@ impl RuleKey {
             RuleKey::TooManyPlaces => "too_many_places",
             RuleKey::Mismatch => "mismatch",
             RuleKey::UnknownUnit => "unknown_unit",
+            RuleKey::Unreadable => "unreadable",
         }
     }
 
@@ -451,6 +457,11 @@ pub fn check_builtin_text(builtin: Builtin, text: &str) -> Result<(), String> {
             "isn't a signing key, which is at least {} characters with no spaces",
             crate::builtin::SIGNING_KEY_MIN
         )),
+        Builtin::EncryptionKey | Builtin::PrivateKey if !is_key_text(text) => Err(format!(
+            "isn't a key, which is {} random bytes written as {} characters of Base64url without padding",
+            crate::builtin::KEY_BYTES,
+            KEY_TEXT_LENGTH
+        )),
         Builtin::IpAddress if !is_ip_address(text) => Err("isn't an IPv4 or IPv6 address".into()),
         Builtin::Instant => crate::time::check_instant(text),
         Builtin::CalendarDate => crate::time::check_calendar_date(text),
@@ -523,6 +534,59 @@ pub fn is_signing_key(text: &str) -> bool {
         && text.chars().all(|c| c.is_ascii_graphic())
 }
 
+/// How many characters a key's text has: 32 bytes as unpadded Base64url.
+pub const KEY_TEXT_LENGTH: usize = 43;
+
+/// The 32 bytes an `EncryptionKey`'s or a `PrivateKey`'s text holds:
+/// exactly 43 characters of RFC 4648's URL alphabet with no padding, whose
+/// last character carries no bits past the 256th, so each key has one
+/// spelling (decided by the lead session for chunk 5.5q2); `None` for
+/// anything else, which the check before the app starts refuses.
+pub fn key_bytes(text: &str) -> Option<[u8; crate::builtin::KEY_BYTES]> {
+    fn sextet(byte: u8) -> Option<u32> {
+        Some(match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'-' => 62,
+            b'_' => 63,
+            _ => return None,
+        } as u32)
+    }
+    let bytes = text.as_bytes();
+    if bytes.len() != KEY_TEXT_LENGTH {
+        return None;
+    }
+    let mut out = [0u8; crate::builtin::KEY_BYTES];
+    let mut at = 0;
+    for chunk in bytes.chunks(4) {
+        let mut bits: u32 = 0;
+        for &byte in chunk {
+            bits = (bits << 6) | sextet(byte)?;
+        }
+        // 43 characters are ten groups of four and one of three: 258 bits,
+        // the last two of which must be zero.
+        let (count, spare) = match chunk.len() {
+            4 => (3, 0),
+            _ => (2, 2),
+        };
+        if bits & ((1 << spare) - 1) != 0 {
+            return None;
+        }
+        bits >>= spare;
+        for shift in (0..count).rev() {
+            *out.get_mut(at)? = (bits >> (8 * shift)) as u8;
+            at += 1;
+        }
+    }
+    (at == out.len()).then_some(out)
+}
+
+/// Whether `text` is a key's text ([`key_bytes`]).
+pub fn is_key_text(text: &str) -> bool {
+    key_bytes(text).is_some()
+}
+
 pub fn is_ip_address(text: &str) -> bool {
     text.parse::<std::net::IpAddr>().is_ok()
 }
@@ -530,6 +594,38 @@ pub fn is_ip_address(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_key_is_32_bytes_of_unpadded_base64url_with_one_spelling() {
+        // RFC 8032's first test key, and RFC 4648's URL alphabet at both
+        // ends.
+        let key = "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A";
+        let bytes = key_bytes(key).expect("a key");
+        assert_eq!(bytes[0], 0x9d);
+        assert_eq!(bytes[31], 0x60);
+        assert_eq!(key_bytes(&format!("{}8", "_".repeat(42))), Some([0xff; 32]));
+        assert_eq!(key_bytes(&"A".repeat(43)), Some([0; 32]));
+        for refused in [
+            // Padded, standard alphabet, too short, too long, spare bits
+            // set, a space, empty.
+            "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A=",
+            "nWGxne/9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A",
+            "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2",
+            "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2AA",
+            "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2B",
+            "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2 ",
+            "",
+        ] {
+            assert_eq!(key_bytes(refused), None, "{refused:?}");
+            assert!(check_builtin_text(Builtin::EncryptionKey, refused).is_err());
+            assert!(check_builtin_text(Builtin::PrivateKey, refused).is_err());
+        }
+        // A signing key's 64 hexadecimal digits are no encryption key.
+        let hex = "0123456789abcdef".repeat(4);
+        assert!(check_builtin_text(Builtin::SigningKey, &hex).is_ok());
+        assert!(check_builtin_text(Builtin::EncryptionKey, &hex).is_err());
+        assert!(check_builtin_text(Builtin::EncryptionKey, key).is_ok());
+    }
 
     fn num(text: &str) -> Num {
         Num::parse(text).expect("a number")

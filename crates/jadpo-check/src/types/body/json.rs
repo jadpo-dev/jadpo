@@ -149,7 +149,9 @@ impl Body<'_> {
                 | Prim::ServiceKey
                 | Prim::PostgresUrl
                 | Prim::RedisUrl
-                | Prim::SigningKey => Some((
+                | Prim::SigningKey
+                | Prim::EncryptionKey
+                | Prim::PrivateKey => Some((
                     found.to_string(),
                     "a secret, which only a route's `Output` or the setting it is read from ever holds".to_string(),
                 )),

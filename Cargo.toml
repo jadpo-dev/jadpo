@@ -140,6 +140,18 @@ writeable = { version = "=0.6.4", default-features = false }
 # lock through tokio-postgres's SCRAM. No default features: no `alloc`
 # or OIDs are needed for a one-shot digest.
 sha2 = { version = "=0.11.1", default-features = false }
+# `crypto` (area 19, "Hashing and cryptography", chunk 5.5q2; jadpo-value
+# only): RustCrypto's audited, pure-Rust constructions, one per job and no
+# algorithm choices: XChaCha20-Poly1305 for `encrypt` and `decrypt`,
+# Argon2id with its PHC strings for passwords, HMAC-SHA-256 over the `sha2`
+# above, and dalek's Ed25519 for signatures. None reads randomness itself
+# (no `getrandom` or `rand_core` features): a nonce and a salt are the
+# invocation's random bytes, as `random`'s are, so a test repeats and
+# everything builds for wasm32. `zeroize` wipes key material when dropped.
+chacha20poly1305 = { version = "=0.11.0", default-features = false, features = ["alloc", "zeroize"] }
+argon2 = { version = "=0.6.0", default-features = false, features = ["alloc", "password-hash", "zeroize"] }
+hmac = { version = "=0.13.0", default-features = false }
+ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast", "zeroize"] }
 # Pinned exactly and confined to jadpo-db and jadpo-check (docs/compiler-runtime.md §2.4).
 salsa = { version = "=0.28.5", default-features = false, features = ["macros", "inventory"] }
 # Node digests (docs/compiler-runtime.md §2.3). `pure` keeps the build free of
@@ -177,3 +189,13 @@ missing_debug_implementations = "warn"
 [workspace.lints.clippy]
 dbg_macro = "deny"
 todo = "deny"
+
+# Argon2id at the release's parameters (19 MiB, 2 passes) takes seconds
+# unoptimised, and every test that hashes a password runs it, so the
+# password and cipher crates are optimised in test builds too; the gate's
+# timings are of Jadpo's own code, which stays unoptimised.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3

@@ -75,7 +75,7 @@ pub mod types;
 pub mod write;
 mod zones;
 
-pub use builtin::{Builtin, SIGNING_KEY_MIN};
+pub use builtin::{Builtin, KEY_BYTES, SIGNING_KEY_MIN};
 pub use constant::Constant;
 pub use enums::{
     Access, AuthenticationMethod, AuthenticationStrength, ClientAddressSource, CodeForm,
@@ -98,8 +98,8 @@ pub use operations::{
 pub use quantity::{QuantityKind, Unit as QuantityUnit};
 pub use read::SqlType;
 pub use rules::{
-    Broken, Pattern, RuleKey, Rules, check_builtin_text, compile_pattern, is_email, is_ip_address,
-    is_url, uuid_version,
+    Broken, KEY_TEXT_LENGTH, Pattern, RuleKey, Rules, check_builtin_text, compile_pattern,
+    is_email, is_ip_address, is_key_text, is_url, key_bytes, uuid_version,
 };
 pub use standard::{
     CALENDAR_PERIOD, DATE_RANGE, FILE_TYPE, FILE_TYPES, INSTANT_RANGE, INSTANT_RANGE_FIELDS, Part,
