@@ -392,9 +392,11 @@ pub fn decode(
     // as `text.parse` reads it (area 10; chunk 5.5w2).
     let Some(read) = (match field.spelling {
         Spelling::Plain => Some(text.to_string()),
-        Spelling::Duration => {
-            Some(Spelling::Duration.variant(text).unwrap_or_else(|| text.to_string()))
-        }
+        Spelling::Duration => Some(
+            Spelling::Duration
+                .variant(text)
+                .unwrap_or_else(|| text.to_string()),
+        ),
         other => other.variant(text).map(|variant| other.spelling(&variant)),
     }) else {
         return Err("variant".to_string());

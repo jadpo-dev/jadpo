@@ -408,9 +408,7 @@ impl<'g> Wire<'g> {
                     properties.set(name, end.clone());
                 }
                 let mut out = Value::object();
-                if let Some(described) =
-                    jadpo_std::standard::across::described(jadpo_std::RANGE)
-                {
+                if let Some(described) = jadpo_std::standard::across::described(jadpo_std::RANGE) {
                     out.set("description", described);
                 }
                 out.set("type", "object");

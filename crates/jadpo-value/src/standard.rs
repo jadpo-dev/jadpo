@@ -9,7 +9,9 @@
 //! separators (area 19, "Numbers").
 
 use jadpo_std::RuleKey;
-use jadpo_std::standard::{FormatKey, Holds, STANDARD_TYPES, StandardType, TextForm, standard_type};
+use jadpo_std::standard::{
+    FormatKey, Holds, STANDARD_TYPES, StandardType, TextForm, standard_type,
+};
 
 use crate::{Decimal, Fault, Value, Zoned, present, temporal};
 
@@ -815,8 +817,9 @@ pub fn builtin_text(builtin: jadpo_std::Builtin, raw: &str) -> Option<Value> {
             "false" => Some(Value::Bool(false)),
             _ => None,
         },
-        Builtin::Bytes => crate::encoding::from_base64(raw)
-            .map(|bytes| Value::Bytes(std::rc::Rc::from(bytes))),
+        Builtin::Bytes => {
+            crate::encoding::from_base64(raw).map(|bytes| Value::Bytes(std::rc::Rc::from(bytes)))
+        }
         Builtin::Text | Builtin::PresentationText => Some(Value::text(raw)),
         representation => STANDARD_TYPES
             .iter()

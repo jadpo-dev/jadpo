@@ -450,8 +450,8 @@ impl Codecs<'_> {
             }) => {
                 let ty = self.shapes.get(shape.0 as usize).map(Shape::ty);
                 let read_as = match ty {
-                    Some(jadpo_std::RANGE) => fields.first().and_then(|end| {
-                        match self.codec(*end) {
+                    Some(jadpo_std::RANGE) => {
+                        fields.first().and_then(|end| match self.codec(*end) {
                             Some(Codec::Nullable(inner)) => match self.codec(*inner) {
                                 Some(Codec::Scalar { builtin, .. }) => Some(format!(
                                     "{}<{}>",
@@ -461,8 +461,8 @@ impl Codecs<'_> {
                                 _ => None,
                             },
                             _ => None,
-                        }
-                    }),
+                        })
+                    }
                     Some(ty) => jadpo_std::standard_type(ty)
                         .filter(|entry| entry.text.is_some())
                         .map(|entry| entry.name.to_string()),
@@ -966,12 +966,12 @@ fn text_scalar(builtin: Builtin, text: &str) -> Result<Value, &'static str> {
         Builtin::Text => Ok(Value::text(&crate::text::composed(text))),
         // Text for people is sent and read as the text it is (area 10).
         Builtin::PresentationText => Ok(Value::text(text)),
-        representation => crate::standard::builtin_text(builtin, text).ok_or(
-            match representation {
+        representation => {
+            crate::standard::builtin_text(builtin, text).ok_or(match representation {
                 Builtin::Int | Builtin::Decimal | Builtin::Bool => "type",
                 _ => "format",
-            },
-        ),
+            })
+        }
     }
 }
 

@@ -435,10 +435,7 @@ fn setting(table: &Codecs<'_>, entry: &StandardType, text: &str) -> Result<Value
 
 /// The entry's codecs with a map keyed by its type, of whole numbers, at
 /// the end: what `json.write` and `json.read` send a `Map<T, Int>` with.
-fn keyed(
-    codecs: &[Codec],
-    validators: &[Validator],
-) -> (Vec<Codec>, Vec<Validator>, CodecId) {
+fn keyed(codecs: &[Codec], validators: &[Validator]) -> (Vec<Codec>, Vec<Validator>, CodecId) {
     let mut codecs = codecs.to_vec();
     let mut validators = validators.to_vec();
     validators.push(Validator::new(Some(Builtin::Int), Vec::new()));
@@ -675,7 +672,12 @@ fn every_standard_type_meets_the_contract() {
                     "{name}: `{text}` is read where text is held ({problems:?})"
                 );
                 assert_eq!(
-                    table.read_query(CodecId(0), &[(*text).to_string()], &Path::default(), &mut problems),
+                    table.read_query(
+                        CodecId(0),
+                        &[(*text).to_string()],
+                        &Path::default(),
+                        &mut problems
+                    ),
                     Some(value.clone()),
                     "{name}: `{text}` is read from a query string ({problems:?})"
                 );

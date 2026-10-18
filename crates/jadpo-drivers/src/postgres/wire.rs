@@ -535,16 +535,22 @@ mod tests {
     #[test]
     fn a_refused_value_never_appears_in_the_error() {
         let secret = "4111111111111111.99s3cret";
-        let refused = encode(&SqlValue::Numeric(secret.into()), &mut Vec::new())
-            .expect_err("not a decimal");
-        assert!(!refused.contains(secret) && !refused.contains("4111"), "{refused}");
+        let refused =
+            encode(&SqlValue::Numeric(secret.into()), &mut Vec::new()).expect_err("not a decimal");
+        assert!(
+            !refused.contains(secret) && !refused.contains("4111"),
+            "{refused}"
+        );
         for value in [
             SqlValue::Timestamp(i64::MIN + 7),
             SqlValue::LocalTimestamp(i64::MIN + 7),
             SqlValue::Date(i32::MIN + 7),
         ] {
             let refused = encode(&value, &mut Vec::new()).expect_err("out of range");
-            assert!(!refused.contains("775807") && !refused.contains("483641"), "{refused}");
+            assert!(
+                !refused.contains("775807") && !refused.contains("483641"),
+                "{refused}"
+            );
         }
     }
 

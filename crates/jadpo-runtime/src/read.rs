@@ -855,7 +855,10 @@ mod tests {
                 Value::record("Card", vec![("number".into(), Value::text(secret))]),
                 SqlType::Text,
             ),
-            (Value::list(vec![Value::text(secret)]), SqlType::Int8.array()),
+            (
+                Value::list(vec![Value::text(secret)]),
+                SqlType::Int8.array(),
+            ),
         ] {
             let why = to_sql(&value, ty).expect_err("refused");
             assert!(

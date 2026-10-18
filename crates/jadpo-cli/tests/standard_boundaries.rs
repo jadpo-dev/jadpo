@@ -185,7 +185,10 @@ fn project() -> PathBuf {
             write(
                 &root,
                 &format!("domains/edge/types/{}.jadpo", snake(ty)),
-                &format!("/// A `{name}`, sent.\ntype {ty} = {name} {{}}\n", name = case.entry.name),
+                &format!(
+                    "/// A `{name}`, sent.\ntype {ty} = {name} {{}}\n",
+                    name = case.entry.name
+                ),
             );
             sent.push(ty.clone());
             format!("use edge/types {{ {ty} }}\n\n")
@@ -258,7 +261,11 @@ fn project() -> PathBuf {
                     &format!("domains/edge/fixtures/{keyed}.jadpo"),
                     &format!(
                         "use edge/libraries {{ examples }}\nuse edge/types {{ Count{sent_one} }}\n\n/// Example {n} of `{ty}` as a map's key, read back.\nfixture {keyed}() -> Map<{ty}, Count> {{\n    return attempt examples.keyed_{at}({key})\n}}\n",
-                        sent_one = if used.is_empty() { String::new() } else { format!(", {ty}") },
+                        sent_one = if used.is_empty() {
+                            String::new()
+                        } else {
+                            format!(", {ty}")
+                        },
                         key = literal(&key),
                     ),
                 );
@@ -401,10 +408,18 @@ fn meets(
     }
     if let J::Number(number) = value {
         let n = number.as_f64().unwrap_or_default();
-        if schema.get("minimum").and_then(J::as_f64).is_some_and(|min| n < min) {
+        if schema
+            .get("minimum")
+            .and_then(J::as_f64)
+            .is_some_and(|min| n < min)
+        {
             return fail("below `minimum`");
         }
-        if schema.get("maximum").and_then(J::as_f64).is_some_and(|max| n > max) {
+        if schema
+            .get("maximum")
+            .and_then(J::as_f64)
+            .is_some_and(|max| n > max)
+        {
             return fail("above `maximum`");
         }
     }
@@ -429,7 +444,12 @@ fn meets(
                 },
             }
             if let Some(names) = schema.get("propertyNames") {
-                meets(&J::String(name.clone()), names, components, &format!("{at} key"))?;
+                meets(
+                    &J::String(name.clone()),
+                    names,
+                    components,
+                    &format!("{at} key"),
+                )?;
             }
         }
     }
@@ -463,7 +483,12 @@ fn every_standard_type_crosses_every_built_boundary() {
     let documents = jadpo_check::routes::openapi::documents(&loaded.db, loaded.project, "edge");
     let document: BTreeMap<String, serde_json::Value> = documents
         .into_iter()
-        .map(|(name, value)| (name, serde_json::from_str(&value.to_document()).expect("JSON")))
+        .map(|(name, value)| {
+            (
+                name,
+                serde_json::from_str(&value.to_document()).expect("JSON"),
+            )
+        })
         .collect();
     let document = document.values().next().expect("an OpenAPI document");
     let components = &document["components"]["schemas"];

@@ -254,12 +254,24 @@ fn a_value_sent_as_an_object_never_goes_in_a_url() {
     let route = |field: &str, method: &str, path: &str| {
         check(&format!(
             "type Fare = Money {{}}\n\ntype ShelfLength = Length {{}}\n\ntype Seen = ZonedTime {{}}\n\ntype Find = Input {{\n    value: {field}\n}}\n\ntype Found = Output {{\n    note: Note\n}}\n\naction find(input: Find) -> Found {{\n    return Found {{\n        note: \"found\"\n    }}\n}}\n\naction find_at(at: {field}) -> Found {{\n    return Found {{\n        note: \"found\"\n    }}\n}}\n\nroutes Finds {{\n    prefix: /finds\n\n    {method} {path} {{\n        authentication: RouteAuthentication.none\n        {input}output: Found\n        run: {run}\n    }}\n}}\n\npolicy {{\n    actions: {{\n        find: [Access.public]\n        find_at: [Access.public]\n    }}\n}}\n",
-            input = if path == "/" { "input: Find\n        " } else { "" },
-            run = if path == "/" { "find(input)" } else { "find_at(at)" },
+            input = if path == "/" {
+                "input: Find\n        "
+            } else {
+                ""
+            },
+            run = if path == "/" {
+                "find(input)"
+            } else {
+                "find_at(at)"
+            },
         ))
     };
     for field in ["Fare", "ShelfLength", "Seen"] {
-        assert_eq!(route(field, "GET", "/"), ["route.query_field_unsupported"], "{field}");
+        assert_eq!(
+            route(field, "GET", "/"),
+            ["route.query_field_unsupported"],
+            "{field}"
+        );
         assert_eq!(route(field, "POST", "/"), NONE, "{field} in a body");
         assert_eq!(
             route(field, "GET", &format!("/{{at: {field}}}")),
