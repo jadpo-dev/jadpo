@@ -1238,7 +1238,7 @@ reference only).
   (PostgreSQL 16.14, pgvector 0.8.7, PostGIS 3.6.4, since every
   `postgis/postgis` 16 tag is on Debian bullseye). What the chunk chose is
   area 21's "Chosen in chunk 5.5v1".
-- [ ] **5.5v1b Vectors in PostgreSQL: nearest queries** `opus · high`
+- [x] **5.5v1b Vectors in PostgreSQL: nearest queries** `opus · high`
   (area 21, "The nearest-neighbour query" and "The index"), after 5.5v1:
   `order: [F nearest v]` returning `Nearest<T>`, `ai.distance` as a SQL
   form in `where:`, a derived HNSW index with the type's operator class
@@ -1249,7 +1249,17 @@ reference only).
   `query.nearest_page`. Done when a filtered nearest query of five
   returns the same five records interpreted and on PostgreSQL, its plan
   uses the index, and each new error has a checked example. Split on
-  2026-10-18: longer vectors and tuning are 5.5v1c.
+  2026-10-18: longer vectors and tuning are 5.5v1c. Built: the query
+  orders by distance alone inside and by its `id` tie-break outside,
+  since PostgreSQL reads no HNSW index for a second key (verified); a
+  thousand-record filtered query of five, called by an action the
+  interpreter runs on PostgreSQL, returns the five records and the
+  distances `ai.distance` gives, through the index (`EXPLAIN`), in a live
+  test that skips on a server older than pgvector 0.8.0 and fails so
+  under CI; `migration.extension_outdated` refuses an older pgvector
+  wherever a migration builds an HNSW index; and the three
+  `query.nearest_` errors have checked examples. What the chunk chose is
+  area 21's "Chosen in chunk 5.5v1b".
 - [ ] **5.5v1c Vector indexes: longer vectors and tuning** `opus · high`
   (area 21, "The index"), after 5.5v1b: a type of 2,001 to 4,000
   dimensions indexed through a half-precision expression, the query
