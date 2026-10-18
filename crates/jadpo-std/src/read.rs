@@ -33,10 +33,16 @@ pub enum SqlType {
     Date,
     /// `time`.
     Time,
+    /// `timestamp`, without a zone: a `LocalDateTime` (area 19, chunk
+    /// 5.5w).
+    LocalTimestamp,
     /// `jsonb`.
     Json,
     /// An array of values of the inner type.
     Array(&'static SqlType),
+    /// A range of values of the inner type (area 19, "Ranges"):
+    /// `daterange`, `tstzrange`, `int8range` or `numrange` (chunk 5.5w).
+    Range(&'static SqlType),
 }
 
 impl SqlType {
@@ -54,8 +60,23 @@ impl SqlType {
             SqlType::Timestamp => &SqlType::Timestamp,
             SqlType::Date => &SqlType::Date,
             SqlType::Time => &SqlType::Time,
+            SqlType::LocalTimestamp => &SqlType::LocalTimestamp,
             SqlType::Json => &SqlType::Json,
             SqlType::Array(inner) => return SqlType::Array(inner),
+            // Arrays of ranges are never sent.
+            SqlType::Range(_) => &SqlType::Text,
+        })
+    }
+
+    /// A range of `self` (chunk 5.5w); `Text` for a type PostgreSQL has no
+    /// range of, which is never sent.
+    pub fn range(self) -> SqlType {
+        SqlType::Range(match self {
+            SqlType::Date => &SqlType::Date,
+            SqlType::Timestamp => &SqlType::Timestamp,
+            SqlType::Int2 | SqlType::Int4 | SqlType::Int8 => &SqlType::Int8,
+            SqlType::Numeric => &SqlType::Numeric,
+            _ => &SqlType::Text,
         })
     }
 
@@ -73,8 +94,14 @@ impl SqlType {
             "bytea" => SqlType::Bytes,
             "uuid" => SqlType::Uuid,
             "timestamptz" => SqlType::Timestamp,
+            "timestamp" => SqlType::LocalTimestamp,
             "date" => SqlType::Date,
             "time" => SqlType::Time,
+            // A range (chunk 5.5w).
+            "daterange" => SqlType::Range(&SqlType::Date),
+            "tstzrange" => SqlType::Range(&SqlType::Timestamp),
+            "int8range" => SqlType::Range(&SqlType::Int8),
+            "numrange" => SqlType::Range(&SqlType::Numeric),
             "jsonb" => SqlType::Json,
             // A currency's code (area 19).
             "char" => SqlType::Text,
@@ -176,10 +203,16 @@ pub enum Column {
         variants: Vec<String>,
     },
     /// The first of the columns a compound standard type is stored in
-    /// (`Money`'s amount and currency, area 19), by the type's name: the
-    /// value is read from it and the [`Column::Part`]s after it, as the
-    /// type's data entry lists its columns.
-    Compound(String),
+    /// (`Money`'s amount and currency, area 19), by the type's name (a
+    /// range's with its item, `Range<Duration>`, chunk 5.5w): the value is
+    /// read from it and the [`Column::Part`]s after it, as the type's data
+    /// entry lists its columns. `may_be_none` for a field that may be
+    /// `none`, which every column `NULL` is; a field that can't is then the
+    /// value with none of its parts, a `ProblemDetails` that says nothing.
+    Compound {
+        ty: String,
+        may_be_none: bool,
+    },
     /// A later column of a compound type, read by the [`Column::Compound`]
     /// before it and never on its own.
     Part,

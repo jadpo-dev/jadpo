@@ -112,6 +112,9 @@ pub struct Column {
     /// 3.10, which didn't record it: the next migration does, with nothing
     /// to decide, since the application always checked it.
     pub allows: Option<Allows>,
+    /// The comment PostgreSQL keeps on it: for a quantity, its kind and the
+    /// SI unit it holds, `Length in metre (m)` (area 19, chunk 5.5w).
+    pub comment: Option<String>,
 }
 
 /// What a column's field allows beyond its column type: an enum's
@@ -346,6 +349,9 @@ impl Table {
             if let Some(allows) = &column.allows {
                 entry.set("allows", allows.to_value());
             }
+            if let Some(comment) = &column.comment {
+                entry.set("comment", comment);
+            }
             columns.set(name, entry);
         }
         value.set("columns", columns);
@@ -414,6 +420,10 @@ impl Table {
                     nullable: flag(entry, "nullable"),
                     retired: flag(entry, "retired"),
                     allows: entry.get("allows").map(Allows::from_value),
+                    comment: entry
+                        .get("comment")
+                        .and_then(Value::as_str)
+                        .map(String::from),
                 },
             );
         }
@@ -919,6 +929,7 @@ mod tests {
                 nullable: false,
                 retired: false,
                 allows: None,
+                comment: None,
             },
         );
         if extra {
@@ -931,6 +942,7 @@ mod tests {
                     nullable: true,
                     retired: false,
                     allows: None,
+                    comment: None,
                 },
             );
         }

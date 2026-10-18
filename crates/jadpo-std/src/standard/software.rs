@@ -1068,6 +1068,7 @@ const fn text_type(
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -1359,6 +1360,7 @@ pub const LOG_LEVEL: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A package URL (ECMA-427).
@@ -1452,7 +1454,7 @@ pub const SEMANTIC_VERSION_ENTRY: StandardType = StandardType {
             ("pre_release", "text"),
             ("build", "text"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::Canonical,
@@ -1497,6 +1499,7 @@ pub const SEMANTIC_VERSION_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A span's id (W3C Trace Context's `parent-id`): 16 lower-case

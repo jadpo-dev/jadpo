@@ -147,8 +147,8 @@ pub fn joined_text(
 }
 
 /// An object of an enum and a text part read from its canonical text: the
-/// enum's code, ignoring case, one space, and text its part's pattern and
-/// the rules across the parts take.
+/// enum's code, ignoring case, one space, and text its part's pattern
+/// takes.
 pub fn read_code_then_text(entry: &StandardType, raw: &str) -> Option<Value> {
     read_joined(entry, raw, " ")
 }
@@ -157,7 +157,8 @@ pub fn read_code_then_text(entry: &StandardType, raw: &str) -> Option<Value> {
 /// first `separator` (`TextForm::Joined`, chunk 5.5m2): the first an
 /// enum's code, ignoring case, text a standard type held as text accepts,
 /// or text its part's pattern takes; the second text its part's pattern
-/// takes; the rules across the parts held.
+/// takes. The rules across the parts are the type's rules, which the value
+/// is checked by once it is read (chunk 5.5t2).
 pub fn read_joined(entry: &StandardType, raw: &str, separator: &str) -> Option<Value> {
     let [(first, head_part), (second, tail_part)] = fields(entry).ok()? else {
         return None;
@@ -179,17 +180,13 @@ pub fn read_joined(entry: &StandardType, raw: &str, separator: &str) -> Option<V
     if tail_part.rules().check_text(tail).is_err() {
         return None;
     }
-    let record = Value::record(
+    Some(Value::record(
         entry.name,
         vec![
             ((*first).into(), head),
             ((*second).into(), Value::text(tail)),
         ],
-    );
-    match &record {
-        Value::Record(built) if crate::standard::broken_part(built).is_none() => Some(record),
-        _ => None,
-    }
+    ))
 }
 
 /// A `SubtitleCue`'s canonical text.
@@ -225,45 +222,4 @@ pub fn timecode_shown(record: &Record) -> Result<String, Fault> {
         whole(record, "frames")?,
         drop,
     ))
-}
-
-/// A frame rate record's numerator and denominator.
-fn rate_of(value: Option<&Value>) -> Option<(i64, i64)> {
-    let Some(Value::Record(rate)) = value else {
-        return None;
-    };
-    Some((
-        whole(rate, "numerator").ok()?,
-        whole(rate, "denominator").ok()?,
-    ))
-}
-
-/// The part of a `Timecode` or a `SubtitleCue` a rule across its parts
-/// refuses, if any, for a value read from JSON.
-pub fn broken_part(record: &Record) -> Option<&'static str> {
-    match &*record.ty {
-        media::TIMECODE => media::timecode_broken(
-            whole(record, "minutes").ok(),
-            whole(record, "seconds").ok(),
-            whole(record, "frames").ok(),
-            rate_of(record.get("rate")),
-            match record.get("drop_frame") {
-                Some(Value::Bool(flag)) => Some(*flag),
-                _ => None,
-            },
-        ),
-        media::SUBTITLE_CUE => {
-            let millis = |name: &str| match record.get(name) {
-                Some(Value::Duration(ms)) => Some(*ms),
-                _ => None,
-            };
-            let text = match record.get("text") {
-                Some(Value::Text(text)) => Some(&**text),
-                _ => None,
-            };
-            media::cue_broken(millis("start"), millis("end"), text)
-        }
-        _ => None,
-    }
-    .map(|broken| broken.part)
 }

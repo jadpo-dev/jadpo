@@ -28,6 +28,7 @@
 //! recurrence's start is. Text values escape `\`, `;`, `,` and a line feed
 //! as RFC 5545 3.3.11 writes them.
 
+use super::across::{Check, Given, Known, Order, Parts, StandardRule, Verdict, in_order};
 use super::recurrence::{LocalAt, Rule};
 use super::{
     Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part, RECURRENCE_RULE,
@@ -89,192 +90,169 @@ pub struct Event {
     pub recurrence: Option<String>,
 }
 
-/// What a rule across an event's parts knows of one of them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Known<T> {
-    /// It is `none`.
-    Absent,
-    /// It is given, with its value where that is known.
-    Given(Option<T>),
-    /// It may or may not be `none`: a value built in code.
-    Unknown,
+/// `CalendarEvent`'s rules across its parts (chunk 5.5t2), in order: its
+/// days or its times, a last day on or after the first, an end after the
+/// start, and a recurrence from the event's own start.
+pub const RULES: &[StandardRule] = &[
+    StandardRule {
+        name: "days_or_times",
+        written: "first_day and last_day with no start, end or zone, or start, end and zone with no days",
+        label: "an event has its days or its times",
+        reason: "A `CalendarEvent` is all-day, with a `first_day` and a `last_day`, or timed, with a `start`, an `end` and a `zone`; never parts of both.",
+        next: "Give an all-day event both days and `none` for `start`, `end` and `zone`, or a timed one those three and `none` for both days",
+        check: Check::By(days_or_times),
+    },
+    StandardRule {
+        name: "last_day_not_before_first",
+        written: "last_day >= first_day",
+        label: "before the first day",
+        reason: "An all-day event's `last_day` is the last day it covers, included, so it is on or after its `first_day`; a one-day event's two days are the same.",
+        next: "Write a last day on or after the first",
+        check: in_order(&[Order::at_most("first_day", "last_day")], "last_day"),
+    },
+    StandardRule {
+        name: "end_after_start",
+        written: "end > start",
+        label: "not after the start",
+        reason: "A timed event's `end` is later than its `start`, as RFC 5545 requires; one that runs past midnight ends on the next day's date.",
+        next: "Write an end later than the start",
+        check: in_order(&[Order::below("start", "end")], "end"),
+    },
+    StandardRule {
+        name: "recurrence_from_start",
+        written: "recurrence starts on first_day, or at start in zone",
+        label: "doesn't start when the event does",
+        reason: "An event's recurrence starts when the event does, a `VEVENT` writing one `DTSTART` for both: an all-day event's on its `first_day`, a date with no clock time or zone (`DTSTART;VALUE=DATE:`), a timed one's at its `start` in its `zone`.",
+        next: "Write the recurrence's `DTSTART` as the event's first day, `DTSTART;VALUE=DATE:`, or as its start in its zone",
+        check: Check::By(recurrence_from_start),
+    },
+];
+
+const DAYS: [&str; 2] = ["first_day", "last_day"];
+const TIMES: [&str; 3] = ["start", "end", "zone"];
+
+/// An event has both days and no times, or all three times and no days.
+fn days_or_times(parts: &dyn Parts) -> Verdict {
+    let known = |names: &[&'static str]| -> Vec<(&'static str, Known<()>)> {
+        names
+            .iter()
+            .map(|name| (*name, parts.part(name).map(|_| Some(()))))
+            .collect()
+    };
+    let (days, times) = (known(&DAYS), known(&TIMES));
+    let undecided = days.iter().chain(&times).any(|(_, k)| *k == Known::Unknown);
+    let (first, second) = if days.iter().any(|(_, k)| k.given()) {
+        (days, times)
+    } else if times.iter().any(|(_, k)| k.given()) {
+        (times, days)
+    } else if undecided {
+        return Verdict::Unknown;
+    } else {
+        // Nothing at all: neither days nor times.
+        return Verdict::Breaks("first_day");
+    };
+    // The kind it is, all of its parts given; and none of the other.
+    if let Some((name, _)) = first.iter().find(|(_, k)| k.absent()) {
+        return Verdict::Breaks(name);
+    }
+    if let Some((name, _)) = second.iter().find(|(_, k)| k.given()) {
+        return Verdict::Breaks(name);
+    }
+    if undecided {
+        Verdict::Unknown
+    } else {
+        Verdict::Holds
+    }
 }
 
-impl<T> Known<T> {
-    fn given(&self) -> bool {
-        matches!(self, Known::Given(_))
-    }
-
-    fn absent(&self) -> bool {
-        matches!(self, Known::Absent)
-    }
-
-    fn value(&self) -> Option<&T> {
-        match self {
-            Known::Given(value) => value.as_ref(),
-            _ => None,
+/// A recurrence starts when the event does: on an all-day event's first
+/// day, as a date-only rule (chunk 5.5k4), or at a timed event's start in
+/// its zone.
+fn recurrence_from_start(parts: &dyn Parts) -> Verdict {
+    let text = match parts.part("recurrence") {
+        Known::Absent => return Verdict::Holds,
+        Known::Given(Some(given)) => match given.text() {
+            Some(text) => text,
+            None => return Verdict::Unknown,
+        },
+        _ => return Verdict::Unknown,
+    };
+    let refused = |held: bool| {
+        if held {
+            Verdict::Holds
+        } else {
+            Verdict::Breaks("recurrence")
         }
+    };
+    match (parts.part("first_day"), parts.part("start")) {
+        (Known::Given(Some(first)), _) => {
+            let Some(first) = first.date() else {
+                return Verdict::Unknown;
+            };
+            refused(
+                Rule::read(text)
+                    .is_some_and(|rule| rule.zone.is_none() && rule.start.date == first),
+            )
+        }
+        (Known::Absent, Known::Given(Some(start))) => {
+            let (Some(start), Some(zone)) = (
+                start.local(),
+                parts.part("zone").value().and_then(|zone| zone.ordinal()),
+            ) else {
+                return Verdict::Unknown;
+            };
+            refused(
+                Rule::read(text).is_some_and(|rule| rule.start == start && rule.zone == Some(zone)),
+            )
+        }
+        // Neither days nor a start: `days_or_times` refuses it.
+        (Known::Absent, Known::Absent) => Verdict::Holds,
+        _ => Verdict::Unknown,
     }
 }
 
-/// An event's parts the rules across them read.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Parts<'a> {
-    pub first_day: Known<i32>,
-    pub last_day: Known<i32>,
-    pub start: Known<LocalAt>,
-    pub end: Known<LocalAt>,
-    pub zone: Known<u32>,
-    pub recurrence: Known<&'a str>,
+/// What the rules across an event's parts see of a whole event.
+#[derive(Clone, Debug)]
+pub struct EventParts<'a> {
+    event: &'a Event,
 }
 
-/// A rule across an event's parts: what a part breaking it is, as a
-/// problem's label says, why (its reason), and what to write instead.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PartsRule {
-    pub label: &'static str,
-    pub reason: &'static str,
-    pub next: &'static str,
-}
-
-/// A rule across an event's parts that they break, and the part it points
-/// at.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Broken {
-    pub part: &'static str,
-    pub rule: &'static PartsRule,
-}
-
-/// An event has its days or its times, never both.
-pub const DAYS_OR_TIMES: PartsRule = PartsRule {
-    label: "an event has its days or its times",
-    reason: "A `CalendarEvent` is all-day, with a `first_day` and a `last_day`, or timed, with a `start`, an `end` and a `zone`; never parts of both.",
-    next: "Give an all-day event both days and `none` for `start`, `end` and `zone`, or a timed one those three and `none` for both days",
-};
-
-/// An all-day event's last day is on or after its first.
-pub const LAST_DAY_FIRST: PartsRule = PartsRule {
-    label: "before the first day",
-    reason: "An all-day event's `last_day` is the last day it covers, included, so it is on or after its `first_day`; a one-day event's two days are the same.",
-    next: "Write a last day on or after the first",
-};
-
-/// A timed event ends after it starts.
-pub const END_AFTER_START: PartsRule = PartsRule {
-    label: "not after the start",
-    reason: "A timed event's `end` is later than its `start`, as RFC 5545 requires; one that runs past midnight ends on the next day's date.",
-    next: "Write an end later than the start",
-};
-
-/// An all-day event's recurrence starts on its first day (chunk 5.5k4).
-pub const DAY_RECURRENCE_STARTS: PartsRule = PartsRule {
-    label: "doesn't start on the event's first day",
-    reason: "An all-day event's recurrence starts on the event's own `first_day`, a date with no clock time or zone, `DTSTART;VALUE=DATE:`: a `VEVENT` writes one `DTSTART` for both.",
-    next: "Write the recurrence's `DTSTART` as `DTSTART;VALUE=DATE:` and the event's first day",
-};
-
-/// A timed event's recurrence starts when it does.
-pub const RECURRENCE_STARTS: PartsRule = PartsRule {
-    label: "doesn't start when the event does",
-    reason: "A timed event's recurrence starts at the event's own `start`, in its `zone`: a `VEVENT` writes one `DTSTART` for both.",
-    next: "Write the recurrence's `DTSTART` as the event's start in its zone",
-};
-
-/// The first rule across an event's parts that `parts` breaks, by what is
-/// known of them; a part whose value isn't known breaks nothing.
-pub fn broken(parts: &Parts<'_>) -> Option<Broken> {
-    let refuse = |part, rule| Some(Broken { part, rule });
-    if parts.first_day.given() || parts.last_day.given() {
-        // All day.
-        for (part, known) in [("first_day", parts.first_day), ("last_day", parts.last_day)] {
-            if known.absent() {
-                return refuse(part, &DAYS_OR_TIMES);
-            }
+impl Parts for EventParts<'_> {
+    fn part(&self, name: &str) -> Known<Given<'_>> {
+        let event = self.event;
+        let given = |value| Known::Given(Some(value));
+        match (name, event.when) {
+            ("first_day", When::Days { first, .. }) => given(Given::Date(first)),
+            ("last_day", When::Days { last, .. }) => given(Given::Date(last)),
+            ("start", When::Timed { start, .. }) => given(Given::Local(start)),
+            ("end", When::Timed { end, .. }) => given(Given::Local(end)),
+            ("zone", When::Timed { zone, .. }) => given(Given::Variant {
+                ordinal: zone,
+                code: "",
+            }),
+            ("first_day" | "last_day", _) | ("start" | "end" | "zone", _) => Known::Absent,
+            ("summary", _) => given(Given::Text(&event.summary)),
+            ("location", _) => event
+                .location
+                .as_deref()
+                .map_or(Known::Absent, |text| given(Given::Text(text))),
+            ("description", _) => event
+                .description
+                .as_deref()
+                .map_or(Known::Absent, |text| given(Given::Text(text))),
+            ("recurrence", _) => event
+                .recurrence
+                .as_deref()
+                .map_or(Known::Absent, |text| given(Given::Text(text))),
+            _ => Known::Unknown,
         }
-        for (part, given) in [
-            ("start", parts.start.given()),
-            ("end", parts.end.given()),
-            ("zone", parts.zone.given()),
-        ] {
-            if given {
-                return refuse(part, &DAYS_OR_TIMES);
-            }
-        }
-        if let (Some(first), Some(last)) = (parts.first_day.value(), parts.last_day.value())
-            && last < first
-        {
-            return refuse("last_day", &LAST_DAY_FIRST);
-        }
-        // A date-only rule from the first day, so the event recurs on
-        // days, an anniversary, wherever it is read.
-        if let (Some(text), Some(first)) = (parts.recurrence.value(), parts.first_day.value())
-            && Rule::read(text).is_none_or(|rule| rule.zone.is_some() || rule.start.date != *first)
-        {
-            return refuse("recurrence", &DAY_RECURRENCE_STARTS);
-        }
-        return None;
     }
-    let timed = [
-        ("start", parts.start.given(), parts.start.absent()),
-        ("end", parts.end.given(), parts.end.absent()),
-        ("zone", parts.zone.given(), parts.zone.absent()),
-    ];
-    if timed.iter().any(|(_, given, _)| *given) {
-        if let Some((part, _, _)) = timed.iter().find(|(_, _, absent)| *absent) {
-            return refuse(part, &DAYS_OR_TIMES);
-        }
-    } else if parts.first_day.absent()
-        && parts.last_day.absent()
-        && timed.iter().all(|(_, _, absent)| *absent)
-    {
-        return refuse("first_day", &DAYS_OR_TIMES);
-    }
-    if let (Some(start), Some(end)) = (parts.start.value(), parts.end.value())
-        && end <= start
-    {
-        return refuse("end", &END_AFTER_START);
-    }
-    if let (Some(text), Some(start), Some(zone)) = (
-        parts.recurrence.value(),
-        parts.start.value(),
-        parts.zone.value(),
-    ) && Rule::read(text).is_none_or(|rule| rule.start != *start || rule.zone != Some(*zone))
-    {
-        return refuse("recurrence", &RECURRENCE_STARTS);
-    }
-    None
 }
 
 impl Event {
-    /// What the rules across its parts see of a whole event.
-    pub fn parts(&self) -> Parts<'_> {
-        let (first_day, last_day, start, end, zone) = match self.when {
-            When::Days { first, last } => (
-                Known::Given(Some(first)),
-                Known::Given(Some(last)),
-                Known::Absent,
-                Known::Absent,
-                Known::Absent,
-            ),
-            When::Timed { start, end, zone } => (
-                Known::Absent,
-                Known::Absent,
-                Known::Given(Some(start)),
-                Known::Given(Some(end)),
-                Known::Given(Some(zone)),
-            ),
-        };
-        Parts {
-            first_day,
-            last_day,
-            start,
-            end,
-            zone,
-            recurrence: match &self.recurrence {
-                Some(text) => Known::Given(Some(text.as_str())),
-                None => Known::Absent,
-            },
-        }
+    /// What the rules across its parts see of it.
+    pub fn parts(&self) -> EventParts<'_> {
+        EventParts { event: self }
     }
 
     /// Its canonical text; `None` when its last day is the last a
@@ -307,7 +285,8 @@ impl Event {
     }
 
     /// The event `text` holds, or `None` when it isn't one's canonical
-    /// text or its parts break a rule across them.
+    /// text. The rules across its parts are its rules ([`RULES`]), which
+    /// it is checked by once it is read.
     pub fn read(text: &str) -> Option<Event> {
         let mut lines = text
             .strip_prefix("BEGIN:VEVENT\n")?
@@ -364,14 +343,13 @@ impl Event {
         if lines.next().is_some() {
             return None;
         }
-        let event = Event {
+        Some(Event {
             summary,
             when,
             location,
             description,
             recurrence,
-        };
-        broken(&event.parts()).is_none().then_some(event)
+        })
     }
 }
 
@@ -607,21 +585,21 @@ pub const CALENDAR_EVENT_ENTRY: StandardType = StandardType {
         "description",
         "recurrence",
     ]),
-    // A column per part: the days as `date`s, a local time as its
-    // canonical text, the zone as its IANA name.
+    // A column per part: the days as `date`s, a local time as a
+    // `timestamp` without a zone (chunk 5.5w), the zone as its IANA name.
     storage: Storage::Columns {
         parts: &[
             ("summary", "text"),
             ("first_day", "date"),
             ("last_day", "date"),
-            ("start", "text"),
-            ("end", "text"),
+            ("start", "timestamp"),
+            ("end", "timestamp"),
             ("zone", "text"),
             ("location", "text"),
             ("description", "text"),
             ("recurrence", "text"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     // CLDR has no pattern for an event: an application shows the parts it
     // wants, each by its own format.
@@ -640,6 +618,7 @@ pub const CALENDAR_EVENT_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 #[cfg(test)]
@@ -656,8 +635,14 @@ mod tests {
             let event = Event::read(text).unwrap_or_else(|| panic!("`{text}` reads"));
             assert_eq!(event.text().as_deref(), Some(*text));
         }
+        // Text that isn't an event, or an event that breaks one of its
+        // rules, which it is checked by once it is read.
         for text in MALFORMED {
-            assert_eq!(Event::read(text), None, "`{text}`");
+            assert!(
+                Event::read(text)
+                    .is_none_or(|event| RULES.iter().any(|rule| !rule.holds(&event.parts()))),
+                "`{text}`"
+            );
         }
     }
 
@@ -687,61 +672,94 @@ mod tests {
         assert_eq!(last.text(), None);
     }
 
+    /// The first rule `parts` break, by name, with the part pointed at.
+    fn broken(
+        parts: &[(&'static str, Known<Given<'static>>)],
+    ) -> Option<(&'static str, &'static str)> {
+        let listed = super::super::across::Listed {
+            parts: parts.to_vec(),
+        };
+        RULES.iter().find_map(|rule| match rule.verdict(&listed) {
+            Verdict::Breaks(at) => Some((rule.name, at)),
+            _ => None,
+        })
+    }
+
     #[test]
     fn rules_across_parts_refuse_only_what_is_known() {
-        let unknown = Parts {
-            first_day: Known::Unknown,
-            last_day: Known::Unknown,
-            start: Known::Unknown,
-            end: Known::Unknown,
-            zone: Known::Unknown,
-            recurrence: Known::Unknown,
+        let all = |known: Known<Given<'static>>| -> Vec<(&'static str, Known<Given<'static>>)> {
+            [
+                "first_day",
+                "last_day",
+                "start",
+                "end",
+                "zone",
+                "recurrence",
+            ]
+            .into_iter()
+            .map(|name| (name, known))
+            .collect()
         };
-        assert_eq!(broken(&unknown), None);
-        let nothing = Parts {
-            first_day: Known::Absent,
-            last_day: Known::Absent,
-            start: Known::Absent,
-            end: Known::Absent,
-            zone: Known::Absent,
-            recurrence: Known::Absent,
+        let with = |base: &[(&'static str, Known<Given<'static>>)],
+                    changes: &[(&'static str, Known<Given<'static>>)]| {
+            base.iter()
+                .map(|(name, known)| {
+                    changes
+                        .iter()
+                        .find(|(changed, _)| changed == name)
+                        .map_or((*name, *known), |change| *change)
+                })
+                .collect::<Vec<_>>()
         };
-        assert_eq!(broken(&nothing).map(|b| b.part), Some("first_day"));
-        let half = Parts {
-            first_day: Known::Given(None),
-            ..nothing
-        };
-        assert_eq!(broken(&half).map(|b| b.part), Some("last_day"));
-        let both = Parts {
-            first_day: Known::Given(None),
-            last_day: Known::Given(None),
-            zone: Known::Given(None),
-            ..nothing
-        };
-        assert_eq!(broken(&both).map(|b| b.part), Some("zone"));
-        let timed = Parts {
-            start: Known::Given(None),
-            end: Known::Unknown,
-            zone: Known::Given(None),
-            ..nothing
-        };
+        assert_eq!(broken(&all(Known::Unknown)), None);
+        let nothing = all(Known::Absent);
+        assert_eq!(broken(&nothing), Some(("days_or_times", "first_day")));
+        let half = with(&nothing, &[("first_day", Known::Given(None))]);
+        assert_eq!(broken(&half), Some(("days_or_times", "last_day")));
+        let both = with(
+            &nothing,
+            &[
+                ("first_day", Known::Given(None)),
+                ("last_day", Known::Given(None)),
+                ("zone", Known::Given(None)),
+            ],
+        );
+        assert_eq!(broken(&both), Some(("days_or_times", "zone")));
+        let timed = with(
+            &nothing,
+            &[
+                ("start", Known::Given(None)),
+                ("end", Known::Unknown),
+                ("zone", Known::Given(None)),
+            ],
+        );
         assert_eq!(broken(&timed), None);
-        let backwards = Parts {
-            first_day: Known::Given(Some(day("2026-12-26"))),
-            last_day: Known::Given(Some(day("2026-12-25"))),
-            ..nothing
-        };
-        assert_eq!(broken(&backwards).map(|b| b.part), Some("last_day"));
+        let date = |text| Known::Given(Some(Given::Date(day(text))));
+        let backwards = with(
+            &nothing,
+            &[
+                ("first_day", date("2026-12-26")),
+                ("last_day", date("2026-12-25")),
+            ],
+        );
+        assert_eq!(
+            broken(&backwards),
+            Some(("last_day_not_before_first", "last_day"))
+        );
         // An all-day event recurs on days from its first (chunk 5.5k4),
         // never at a time; a timed one at its start, never on days.
-        let christmas = Parts {
-            first_day: Known::Given(Some(day("2026-12-25"))),
-            last_day: Known::Given(Some(day("2026-12-25"))),
-            ..nothing
-        };
-        let yearly = |text| Parts {
-            recurrence: Known::Given(Some(text)),
-            ..christmas
+        let christmas = with(
+            &nothing,
+            &[
+                ("first_day", date("2026-12-25")),
+                ("last_day", date("2026-12-25")),
+            ],
+        );
+        let yearly = |text: &'static str| {
+            with(
+                &christmas,
+                &[("recurrence", Known::Given(Some(Given::Text(text))))],
+            )
         };
         assert_eq!(
             broken(&yearly("DTSTART;VALUE=DATE:20261225\nRRULE:FREQ=YEARLY")),
@@ -752,24 +770,40 @@ mod tests {
             "DTSTART;TZID=Europe/London:20261225T000000\nRRULE:FREQ=YEARLY",
         ] {
             assert_eq!(
-                broken(&yearly(text)).map(|b| (b.part, b.rule)),
-                Some(("recurrence", &DAY_RECURRENCE_STARTS)),
+                broken(&yearly(text)),
+                Some(("recurrence_from_start", "recurrence")),
                 "`{text}`"
             );
         }
-        let shift = Parts {
-            start: Known::Given(Some(LocalAt {
-                date: day("2026-12-25"),
-                second: 0,
-            })),
-            end: Known::Unknown,
-            zone: Known::Given(Some(0)),
-            recurrence: Known::Given(Some("DTSTART;VALUE=DATE:20261225\nRRULE:FREQ=YEARLY")),
-            ..nothing
-        };
+        let shift = with(
+            &nothing,
+            &[
+                (
+                    "start",
+                    Known::Given(Some(Given::Local(LocalAt {
+                        date: day("2026-12-25"),
+                        second: 0,
+                    }))),
+                ),
+                ("end", Known::Unknown),
+                (
+                    "zone",
+                    Known::Given(Some(Given::Variant {
+                        ordinal: 0,
+                        code: "",
+                    })),
+                ),
+                (
+                    "recurrence",
+                    Known::Given(Some(Given::Text(
+                        "DTSTART;VALUE=DATE:20261225\nRRULE:FREQ=YEARLY",
+                    ))),
+                ),
+            ],
+        );
         assert_eq!(
-            broken(&shift).map(|b| (b.part, b.rule)),
-            Some(("recurrence", &RECURRENCE_STARTS))
+            broken(&shift),
+            Some(("recurrence_from_start", "recurrence"))
         );
     }
 }

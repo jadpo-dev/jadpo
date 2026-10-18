@@ -10,9 +10,10 @@
 //! (chunk 5.5m). What the page left open is area 19's "Chosen in chunk
 //! 5.5m2".
 
+use super::across::{Order, StandardRule, in_order};
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, FormatOption, Holds, Json, NO_OPTIONS, OrderRule,
-    Part, QUANTITY_FIELDS, ShownIn, StandardType, Storage, TextForm,
+    Examples, FIRST_RELEASE, Format, FormatKey, FormatOption, Holds, Json, NO_OPTIONS, Part,
+    QUANTITY_FIELDS, ShownIn, StandardType, Storage, TextForm,
 };
 use crate::read::SqlType;
 use crate::{Builtin, Num, QuantityKind};
@@ -110,7 +111,10 @@ pub const DOSE_ENTRY: StandardType = StandardType {
     holds: Holds::Choice(DOSE_VARIANTS),
     text: None,
     json: Json::Tagged,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[("kind", "text"), ("amount", "numeric(38, 9)")],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Measures {
             parts: &["amount"],
@@ -154,6 +158,7 @@ pub const DOSE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `RouteOfAdministration`'s variants, each its own code, in order: the
@@ -218,6 +223,7 @@ pub const ROUTE_OF_ADMINISTRATION_ENTRY: StandardType = StandardType {
         &["by mouth", "IV", "Oral use", "po", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `DosageInstruction`'s parts, in order: the dose, the route it is taken
@@ -251,7 +257,17 @@ pub const DOSAGE_INSTRUCTION_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&DOSAGE_INSTRUCTION_FIELDS),
     text: None,
     json: Json::Fields(&["dose", "route", "times", "per", "as_needed"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("dose_kind", "text"),
+            ("dose_amount", "numeric(38, 9)"),
+            ("route", "text"),
+            ("times", "integer"),
+            ("per", "bigint"),
+            ("as_needed", "boolean"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Dosage,
         options: NO_OPTIONS,
@@ -285,6 +301,7 @@ pub const DOSAGE_INSTRUCTION_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
@@ -336,6 +353,7 @@ pub const HEART_RATE_ENTRY: StandardType = StandardType {
         &["72", "bpm", "", "seventy-two", "1.2.3 Hz"],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A blood pressure in millimetres of mercury, shown whole.
@@ -368,14 +386,13 @@ pub const BLOOD_PRESSURE_FIELDS: [(&str, Part); 2] = [
 
 /// The rule across a blood pressure's parts: the pressure between beats is
 /// below the pressure as the heart beats.
-pub const BLOOD_PRESSURE_RULES: &[OrderRule] = &[OrderRule {
-    lower: "diastolic",
-    upper: "systolic",
-    strict: true,
-    at: "diastolic",
+pub const BLOOD_PRESSURE_RULES: &[StandardRule] = &[StandardRule {
+    name: "diastolic_below_systolic",
+    written: "diastolic < systolic",
     label: "not below the systolic",
     reason: "A `BloodPressure`'s `diastolic`, the pressure between beats, is below its `systolic`, the pressure as the heart beats (LOINC 85354-9).",
     next: "Write a `diastolic` below the `systolic`, or swap the two",
+    check: in_order(&[Order::below("diastolic", "systolic")], "diastolic"),
 }];
 
 /// A blood pressure (LOINC 85354-9): its systolic and diastolic
@@ -387,7 +404,13 @@ pub const BLOOD_PRESSURE_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&BLOOD_PRESSURE_FIELDS),
     text: None,
     json: Json::Fields(&["systolic", "diastolic"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("systolic", "numeric(38, 3)"),
+            ("diastolic", "numeric(38, 3)"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Measures {
             parts: &["systolic", "diastolic"],
@@ -427,6 +450,7 @@ pub const BLOOD_PRESSURE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A blood glucose level in millimoles of glucose a litre, to one place,
@@ -479,12 +503,5 @@ pub const BLOOD_GLUCOSE_ENTRY: StandardType = StandardType {
         &["5.5", "mmol/L", "", "high", "5.5.5 gL"],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
-
-/// The rules across the parts of the measures here.
-pub fn order_rules(ty: &str) -> &'static [OrderRule] {
-    match ty {
-        BLOOD_PRESSURE => BLOOD_PRESSURE_RULES,
-        _ => &[],
-    }
-}

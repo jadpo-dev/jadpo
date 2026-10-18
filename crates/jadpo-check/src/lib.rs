@@ -31,6 +31,7 @@ mod resolve;
 pub mod routes;
 pub mod setting_move;
 mod std_lib;
+pub mod suggest;
 pub mod translations;
 mod tree;
 pub mod types;
@@ -153,6 +154,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .cloned(),
         );
         out.extend(locales::locale_problems(db, project).iter().cloned());
+        out.extend(
+            suggest::settings::settings_problems(db, project)
+                .iter()
+                .cloned(),
+        );
         out.extend(
             translations::translation_problems(db, project)
                 .iter()

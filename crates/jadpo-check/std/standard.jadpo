@@ -837,6 +837,22 @@ public type WebAuthnCredential = Object {
     last_used_at: Instant?
 }
 
+/// An X.509 certificate (area 19, RFC 5280), read from its PEM with
+/// `text.parse` or `json.read`: its subject and issuer as RFC 4514 writes
+/// them, its serial number in hexadecimal, the first and last instants it
+/// is valid at, the SHA-256 of its DER, and the DER. Each is read from
+/// what its issuer signed, so code reads them and never sets them. Its
+/// chain isn't checked.
+public type Certificate = Object {
+    subject: Text
+    issuer: Text
+    serial_number: Text
+    not_before: Instant
+    not_after: Instant
+    fingerprint: Hash
+    der: Bytes
+}
+
 /// A payment card's number (area 19, ISO/IEC 7812), 12 to 19 digits with
 /// a Luhn check digit: `4242424242424242`. Shown to people as its last
 /// four only, `•••• 4242`. Personal data.

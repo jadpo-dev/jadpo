@@ -16,10 +16,12 @@
 use crate::read::SqlType;
 use crate::{Builtin, LOCALE, ZONE};
 
+pub mod across;
 pub mod addresses_data;
 pub mod ai;
 pub mod banks;
 pub mod card_types;
+pub mod certificates;
 mod codes;
 pub mod colour;
 mod contact;
@@ -47,12 +49,15 @@ pub mod recurrence;
 pub mod rich_text;
 mod schedules;
 pub mod security;
+pub mod signals;
 pub mod software;
+pub mod storage;
 pub mod web;
 
 pub use codes::isbn_from_isbn10;
 pub use contact::{LINE_MAX, LINE_PATTERN};
 pub use places::{ClosedList, closed_list, retired, subdivision_name};
+pub use signals::{LOOP_SIGNALS, LoopShape, LoopSignal, NO_SIGNALS, Signals, Validation};
 
 /// What a standard type's values are held as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -402,6 +407,11 @@ pub enum TextForm {
     /// 4648's standard alphabet, padded, in its one spelling, as `Bytes`
     /// is sent in JSON, its bytes passing the entry's check.
     Base64,
+    /// An X.509 certificate's PEM (RFC 7468, chunk 5.5r5,
+    /// [`certificates`]): one `CERTIFICATE` block, its DER in Base64 lines
+    /// of 64 characters, each line ending in a line feed (or each in a
+    /// carriage return and a line feed, when read), and nothing else.
+    Pem,
     /// HTML as the sanitiser keeps it (chunk 5.5o, [`markup::sanitise`]):
     /// written as it is held, and read from any text, made safe rather than
     /// refused, so reading it never fails.
@@ -667,48 +677,6 @@ impl ShownIn {
     /// The unit itself.
     pub fn unit(&self) -> Option<&'static crate::QuantityUnit> {
         self.kind.unit_named(self.unit)
-    }
-}
-
-/// A rule that one part of a standard object is below another (chunk
-/// 5.5m2): a rating's worst below its best, a blood pressure's diastolic
-/// below its systolic. Proved for a literal that writes both parts as
-/// numbers or quantities, and checked as JSON is read, breaking `format`
-/// at `at`; one built in code from values waits on cross-field rules
-/// (chunk 5.5t), as a postal code's fit to its country does.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct OrderRule {
-    pub lower: &'static str,
-    pub upper: &'static str,
-    /// Whether the two may not be equal.
-    pub strict: bool,
-    /// The part a refusal points at.
-    pub at: &'static str,
-    pub label: &'static str,
-    pub reason: &'static str,
-    pub next: &'static str,
-}
-
-impl OrderRule {
-    /// Whether `lower` and `upper`, in that order, keep the rule.
-    pub fn holds(&self, order: std::cmp::Ordering) -> bool {
-        match order {
-            std::cmp::Ordering::Less => true,
-            std::cmp::Ordering::Equal => !self.strict,
-            std::cmp::Ordering::Greater => false,
-        }
-    }
-}
-
-/// The rules ordering the parts of standard object type `ty` (chunk
-/// 5.5m2).
-pub fn order_rules(ty: &str) -> &'static [OrderRule] {
-    match ty {
-        records::RATING => records::order_rules(ty),
-        geo::BOUNDING_BOX => geo::order_rules(ty),
-        security::PASSWORD_POLICY => security::PASSWORD_POLICY_ORDER,
-        ai::TOKEN_USAGE => ai::order_rules(ty),
-        _ => health::order_rules(ty),
     }
 }
 
@@ -987,14 +955,18 @@ pub enum Storage {
     Column(SqlType),
     /// Named columns, each its suffix, joined to the field's column name
     /// with `_`, and its PostgreSQL type, in order, always all of them
-    /// (`Money`: `amount bigint` and `currency char(3)`). `fixed` names the
-    /// one a type built on it can fix to one value, which a check
-    /// constraint then holds it to (`Money`'s `currency`, which a type's
-    /// `currency:` fixes). One codec turns a value into its columns and
-    /// back (`jadpo-value`'s `standard::to_parts` and `from_parts`).
+    /// (`Money`: `amount bigint` and `currency char(3)`); a suffix of `""`
+    /// is the field's own name, for a type stored natively in one column
+    /// (a range, a `LocalTime`, chunk 5.5w). What each column holds follows
+    /// from the type's parts ([`storage::layout`]). `fixed` names those a
+    /// type built on it can fix to one value, each with the setting that
+    /// fixes it, which a check constraint then holds it to (`Money`'s
+    /// `currency`, which a type's `currency:` fixes; a rate's `from` and
+    /// `to`). One codec turns a value into its columns and back
+    /// (`jadpo-value`'s `standard::to_parts` and `from_parts`).
     Columns {
         parts: &'static [(&'static str, &'static str)],
-        fixed: Option<&'static str>,
+        fixed: &'static [(&'static str, Fixed)],
     },
     /// A PostGIS `geography` column in WGS84 (area 19, "Geospatial: a
     /// future area"), which the geospatial area builds (roadmap 5.5u):
@@ -1009,6 +981,30 @@ pub enum Storage {
     /// in an entity the checker refuses, or reports as not built yet where
     /// it will be stored encrypted.
     Never,
+}
+
+/// The setting of a type built on a standard type that fixes one of its
+/// named columns to one currency (area 19, chunks 5.5h and 5.5w).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fixed {
+    /// A `Money` type's `currency:`.
+    Currency,
+    /// A rate type's `from:`.
+    RateFrom,
+    /// A rate type's `to:`.
+    RateTo,
+}
+
+impl Fixed {
+    /// The currency `rules` fix the column to, by its place among
+    /// `Currency`'s variants.
+    pub fn of(self, rules: &crate::Rules) -> Option<u32> {
+        match self {
+            Fixed::Currency => rules.currency,
+            Fixed::RateFrom => rules.rate_from,
+            Fixed::RateTo => rules.rate_to,
+        }
+    }
 }
 
 /// The examples the harness checks a type with.
@@ -1058,6 +1054,9 @@ pub struct StandardType {
     /// `type.standard_clash` says since when, and the release's notes list
     /// it under "Names each release adds".
     pub release: &'static str,
+    /// What `jadpo suggest` finds hand-rolled uses of it by (area 14,
+    /// "Suggestions"), beside [`StandardType::shape`].
+    pub signals: Signals,
 }
 
 /// The release the standard types built before Jadpo's first release
@@ -1127,16 +1126,18 @@ const fn checked(
         shape: None,
         examples,
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     }
 }
 
 /// A time type held as an object (area 19, "Time and calendar
 /// additions", chunk 5.5k): its fields for code to read, its canonical
-/// text as its JSON, as a `Duration`'s is, and stored as that JSON until
-/// objects get columns of their own.
+/// text as its JSON, as a `Duration`'s is, and stored in `columns` (chunk
+/// 5.5w): its parts, or one native column.
 const fn time_object(
     name: &'static str,
     fields: &'static [(&'static str, Part)],
+    columns: &'static [(&'static str, &'static str)],
     text: TextForm,
     format: Format,
     ordered: bool,
@@ -1147,13 +1148,17 @@ const fn time_object(
         holds: Holds::Object(fields),
         text: Some(text),
         json: Json::Text,
-        storage: Storage::Column(SqlType::Json),
+        storage: Storage::Columns {
+            parts: columns,
+            fixed: &[],
+        },
         format,
         ordered,
         validator: None,
         shape: None,
         examples,
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     }
 }
 
@@ -1196,6 +1201,7 @@ const fn quantity(
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: signals::QUANTITY,
     }
 }
 
@@ -1390,6 +1396,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     events::CALENDAR_EVENT_ENTRY,
     // An amount of calendar time, unordered: one month and 30 days don't
@@ -1397,6 +1404,11 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     time_object(
         CALENDAR_PERIOD,
         &CALENDAR_PERIOD_FIELDS,
+        &[
+            ("years", "integer"),
+            ("months", "integer"),
+            ("days", "integer"),
+        ],
         TextForm::Period,
         shown_as(FormatKey::PeriodUnits),
         false,
@@ -1419,6 +1431,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     card_types::CARD_EXPIRY_TYPE,
     codes::CARRIER,
     lists::CEFR_LEVEL_ENTRY,
+    certificates::CERTIFICATE_ENTRY,
     ai::CHAT_MESSAGE_ENTRY,
     ai::CHAT_ROLE_ENTRY,
     web::CIDR,
@@ -1470,6 +1483,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     quantity(
         crate::QuantityKind::Current,
@@ -1491,7 +1505,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         text: Some(TextForm::Interval),
         json: Json::Fields(&["start", "end"]),
         // Stored as its JSON, as `InstantRange` is.
-        storage: Storage::Column(SqlType::Json),
+        storage: Storage::Columns {
+            parts: &[("", "daterange")],
+            fixed: &[],
+        },
         format: Format {
             key: FormatKey::Interval,
             options: &[FORMAT],
@@ -1530,6 +1547,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     software::DIGEST,
     records::DIMENSIONS_ENTRY,
@@ -1565,6 +1583,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: signals::DURATION,
     },
     codes::EAN13,
     geo::EASTING_NORTHING_ENTRY,
@@ -1579,7 +1598,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             of: None,
             settings: "",
         },
-    ),
+    )
+    .with_signals(signals::EMAIL),
     contact::EMAIL_WITH_NAME,
     ai::EMBEDDING_ENTRY,
     web::EMOJI_ENTRY,
@@ -1601,7 +1621,15 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         text: Some(TextForm::ExchangeRate),
         json: Json::Fields(&["from", "to", "rate", "at"]),
         // Stored as its JSON, as `InstantRange` is.
-        storage: Storage::Column(SqlType::Json),
+        storage: Storage::Columns {
+            parts: &[
+                ("from", "char(3)"),
+                ("to", "char(3)"),
+                ("rate", "numeric"),
+                ("at", "timestamptz(3)"),
+            ],
+            fixed: &[("from", Fixed::RateFrom), ("to", Fixed::RateTo)],
+        },
         format: canonical(),
         ordered: false,
         validator: None,
@@ -1660,6 +1688,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     media::EXIF_ORIENTATION_ENTRY,
     contact::FAMILY_NAME,
@@ -1686,6 +1715,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     records::FLIGHT_NUMBER_ENTRY,
     // An exact rational number as written (chunk 5.5j2): `1/2` and `2/4`
@@ -1696,7 +1726,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Object(&FRACTION_FIELDS),
         text: Some(TextForm::Fraction),
         json: Json::Text,
-        storage: Storage::Column(SqlType::Json),
+        storage: Storage::Columns {
+            parts: &[("numerator", "bigint"), ("denominator", "bigint")],
+            fixed: &[],
+        },
         format: canonical(),
         ordered: false,
         validator: None,
@@ -1728,6 +1761,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     media::FRAME_RATE_ENTRY,
     quantity(
@@ -1796,6 +1830,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: signals::INSTANT,
     },
     // A half-open range of instants, from `start` up to but not including
     // `end` (area 10, "Zones and local times").
@@ -1806,7 +1841,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Fields(&["start", "end"]),
         // Stored as its JSON, as an object is, until objects get named
         // columns with `Money` (chunk 5.5h).
-        storage: Storage::Column(SqlType::Json),
+        storage: Storage::Columns {
+            parts: &[("", "tstzrange")],
+            fixed: &[],
+        },
         format: Format {
             key: FormatKey::Interval,
             options: &[ZONE_OPTION, FORMAT],
@@ -1840,6 +1878,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     prices::INTEREST_RATE_ENTRY,
     prices::INTEREST_RATE_BASIS_ENTRY,
@@ -1860,8 +1899,9 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ISIN,
     // A week of an ISO week-numbering year, ordered by year and week.
     time_object(
-        "IsoWeek",
+        ISO_WEEK,
         &[("year", YEARS), ("week", Part::Whole(1, 53))],
+        &[("year", "smallint"), ("week", "smallint")],
         TextForm::IsoWeek,
         // CLDR's week patterns aren't in ICU4X yet (chosen in chunk 5.5k).
         canonical(),
@@ -1900,6 +1940,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("date", Part::Of(Builtin::CalendarDate)),
             ("time", Part::Standard("LocalTime")),
         ],
+        &[("", "timestamp")],
         TextForm::LocalDateTime,
         IN_A_FORMAT,
         true,
@@ -1924,6 +1965,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     time_object(
         "LocalTime",
         &LOCAL_TIME_FIELDS,
+        &[("", "time")],
         TextForm::LocalTime,
         IN_A_FORMAT,
         true,
@@ -1960,6 +2002,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     rich_text::LOCALISED_TEXT_ENTRY,
     software::LOG_LEVEL,
@@ -1990,7 +2033,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Fields(&crate::MONEY_FIELDS),
         storage: Storage::Columns {
             parts: &[("amount", "bigint"), ("currency", "char(3)")],
-            fixed: Some("currency"),
+            fixed: &[("currency", Fixed::Currency)],
         },
         format: Format {
             key: FormatKey::Money,
@@ -2049,6 +2092,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "currency: Currency.gbp",
         },
         release: FIRST_RELEASE,
+        signals: signals::MONEY,
     },
     // A month of the year (question 22): its own name is its code, as a
     // `Weekday`'s is.
@@ -2070,6 +2114,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     codes::MPAN,
     codes::MPRN,
@@ -2120,6 +2165,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     contact::PERSON_NAME,
     contact::PHONE_EXTENSION,
@@ -2152,6 +2198,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     time_object(
         "Quarter",
         &[("year", YEARS), ("quarter", Part::Whole(1, 4))],
+        &[("year", "smallint"), ("quarter", "smallint")],
         TextForm::Quarter,
         // CLDR's quarter patterns aren't in ICU4X yet (chosen in chunk
         // 5.5k).
@@ -2174,7 +2221,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         text: Some(TextForm::Range),
         json: Json::Fields(&RANGE_FIELDS),
         // Stored as its JSON, as `InstantRange` is.
-        storage: Storage::Column(SqlType::Json),
+        storage: Storage::Columns {
+            parts: &[("", "range")],
+            fixed: &[],
+        },
         // The options its item type takes (`zone:`, `format:`).
         format: Format {
             key: FormatKey::Range,
@@ -2201,6 +2251,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     records::RATING_ENTRY,
     // One number to another as written (chunk 5.5j2): `16:9` and `32:18`
@@ -2211,7 +2262,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Object(&RATIO_FIELDS),
         text: Some(TextForm::Ratio),
         json: Json::Text,
-        storage: Storage::Column(SqlType::Json),
+        storage: Storage::Columns {
+            parts: &[("numerator", "numeric"), ("denominator", "numeric")],
+            fixed: &[],
+        },
         format: canonical(),
         ordered: false,
         validator: None,
@@ -2243,6 +2297,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     media::RECT_ENTRY,
     schedules::RECURRENCE_RULE,
@@ -2331,7 +2386,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             of: None,
             settings: "",
         },
-    ),
+    )
+    .with_signals(signals::URL),
     web::URL_PATH,
     identifiers::US_EIN,
     identifiers::US_SSN,
@@ -2341,6 +2397,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     time_object(
         "UtcOffset",
         &[("minutes", Part::Whole(-1080, 1080))],
+        &[("", "smallint")],
         TextForm::UtcOffset,
         shown_as(FormatKey::OffsetName),
         false,
@@ -2378,6 +2435,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: signals::UUID,
     },
     documents::VAT_NUMBER_TYPE,
     ai::VECTOR_ENTRY,
@@ -2425,12 +2483,14 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     places::WRITING_SCRIPT_ENTRY,
     // A calendar year on its own, ordered.
     time_object(
         "Year",
         &[("year", YEARS)],
+        &[("", "smallint")],
         TextForm::Year,
         shown_as(FormatKey::Year),
         true,
@@ -2446,6 +2506,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     time_object(
         "YearMonth",
         &[("year", YEARS), ("month", Part::Whole(1, 12))],
+        &[("year", "smallint"), ("month", "smallint")],
         TextForm::YearMonth,
         shown_as(FormatKey::YearMonth),
         true,
@@ -2481,6 +2542,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     StandardType {
         name: "ZonedTime",
@@ -2489,7 +2551,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         json: Json::Fields(&["instant", "zone"]),
         // An instant and its zone, stored as its JSON (area 5's structured
         // values), as an object is.
-        storage: Storage::Column(SqlType::Json),
+        storage: Storage::Columns {
+            parts: &[("instant", "timestamptz(3)"), ("zone", "text")],
+            fixed: &[],
+        },
         format: Format {
             key: FormatKey::DateTime,
             options: &[FORMAT],
@@ -2509,6 +2574,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
 ];
 
@@ -2522,6 +2588,31 @@ pub const INSTANT_RANGE_FIELDS: [(&str, Part); 2] = [
     ("start", Part::Of(Builtin::Instant)),
     ("end", Part::Of(Builtin::Instant)),
 ];
+
+/// `IsoWeek` (area 19, "Time and calendar additions").
+pub const ISO_WEEK: &str = "IsoWeek";
+
+/// `IsoWeek`'s rule across its parts (chunk 5.5t2): week 53 only in a year
+/// that has one.
+pub const ISO_WEEK_RULES: &[across::StandardRule] = &[across::StandardRule {
+    name: "week_in_year",
+    written: "week is 53 only in a year with 53 ISO weeks",
+    label: "a week its year doesn't have",
+    reason: "An ISO 8601 week-numbering year has 53 weeks when it starts on a Thursday, or on a Wednesday in a leap year, and 52 otherwise, so week 53 of a 52-week year isn't a week.",
+    next: "Write a week from 1 to 52, or a year with 53 weeks",
+    check: across::Check::By(|parts| {
+        let week = parts.part("week").value().and_then(|week| week.whole());
+        if week.is_some_and(|week| week <= 52) {
+            return across::Verdict::Holds;
+        }
+        let year = parts.part("year").value().and_then(|year| year.whole());
+        match (week, year.and_then(crate::iso_weeks_in)) {
+            (Some(week), Some(weeks)) if week <= weeks => across::Verdict::Holds,
+            (Some(_), Some(_)) => across::Verdict::Breaks("week"),
+            _ => across::Verdict::Unknown,
+        }
+    }),
+}];
 
 /// `Month` (area 19, question 22).
 pub const MONTH: &str = "Month";
@@ -2566,13 +2657,12 @@ pub const OPEN_END: &str = "..";
 
 /// The enums whose columns hold each variant's code rather than its name,
 /// so the database reads as the wire does: `Currency` holds `GBP` (chosen
-/// in chunk 5.5h), and every closed list holds its code, `Country` `GB`
-/// and `IN` rather than `in_` (chunk 5.5l). Whether every standard enum
-/// should is chunk 5.5w's.
+/// in chunk 5.5h), every closed list its code, `Country` `GB` and `IN`
+/// rather than `in_` (chunk 5.5l), and every other standard enum too,
+/// `Zone` `Europe/London` and `HttpMethod` `GET` (chunk 5.5w): each
+/// standard enum by its entry's codes.
 pub fn stored_by_code(ty: &str) -> Option<&'static [(&'static str, &'static str)]> {
-    closed_list(ty)
-        .and(standard_type(ty))
-        .and_then(StandardType::codes)
+    standard_type(ty).and_then(StandardType::codes)
 }
 
 /// What variant `variant` of enum `ty` is stored as in its column: its
@@ -2736,51 +2826,13 @@ pub fn reads_by_country(name: &str) -> bool {
     matches!(name, "PhoneNumber" | "PostalCode")
 }
 
-/// A rule across the parts of a standard object (chunk 5.5l2): the text
-/// in part `part` fits the codes of the enums in parts `by`, as a postal
-/// code fits its address's country and a passport number its issuing
-/// country (chunk 5.5i2). A literal that writes them all is proved while
-/// compiling and a value read from JSON is checked as it is read, breaking
-/// `format` at `part`; one built in code from values waits on cross-field
-/// rules (chunk 5.5t).
-#[derive(Clone, Copy, Debug)]
-pub struct PartRule {
-    pub part: &'static str,
-    pub by: &'static [&'static str],
-    /// Whether the part's text fits the other parts' codes, in `by`'s
-    /// order.
-    pub fits: fn(&str, &[&str]) -> bool,
-    /// What a refusal says the part must be: "a postal code of the
-    /// address's country".
-    pub says: &'static str,
-    /// What the part is, as a refusal's label says it: "a postal code".
-    pub noun: &'static str,
-    /// Who decides the part's form, as a refusal's reason says it: "the
-    /// postal service" (of the address's country).
-    pub authority: &'static str,
-}
-
-/// The rules across the parts of standard object type `ty`.
-pub fn part_rules(ty: &str) -> &'static [PartRule] {
-    const POSTAL_ADDRESS: &[PartRule] = &[PartRule {
-        part: "postal_code",
-        by: &["country"],
-        fits: |code, by| {
-            by.first()
-                .is_some_and(|country| postal::fits(code, country))
-        },
-        says: "a postal code of the address's country",
-        noun: "a postal code",
-        authority: "the postal service",
-    }];
-    match ty {
-        "PostalAddress" => POSTAL_ADDRESS,
-        media::CONTENT_RATING => media::CONTENT_RATING_RULES,
-        _ => documents::part_rules(ty),
-    }
-}
-
 impl StandardType {
+    /// The entry with `signals` (area 14, "Suggestions"), for an entry a
+    /// helper builds.
+    pub const fn with_signals(self, signals: Signals) -> StandardType {
+        StandardType { signals, ..self }
+    }
+
     /// Whether `text` is this type's canonical text: its pattern matched
     /// whole, for a type held as text, and its named validator.
     pub fn accepts(&self, text: &str) -> bool {
@@ -2884,19 +2936,27 @@ impl StandardType {
         }
     }
 
-    /// Whether the part its named column `at` holds may be `none`: an
-    /// object's part written `Part::Optional` (chunk 5.5l).
+    /// Whether its named column `at` may be `NULL` while the value is
+    /// there: one holding an object's part written `Part::Optional` (chunk
+    /// 5.5l), or a field a choice's stored variant may not have (chunk
+    /// 5.5w).
     pub fn part_may_be_none(&self, at: usize) -> bool {
-        match self.holds {
-            Holds::Object(fields) => fields.get(at).is_some_and(|(_, part)| part.required().1),
-            _ => false,
-        }
+        storage::layout(self)
+            .and_then(|columns| columns.get(at).map(|column| column.nullable))
+            .unwrap_or(false)
     }
 
-    /// Of its named columns, the one a type built on it can fix.
-    pub fn fixed_part(&self) -> Option<&'static str> {
+    /// The comment on its named column `at`: the unit a quantity there is
+    /// held in (chunk 5.5w).
+    pub fn part_comment(&self, at: usize) -> Option<String> {
+        storage::layout(self)?.get(at)?.comment.clone()
+    }
+
+    /// Of its named columns, those a type built on it can fix, each with
+    /// the setting that fixes it.
+    pub fn fixed_parts(&self) -> &'static [(&'static str, Fixed)] {
         match self.storage {
-            Storage::Column(_) | Storage::Geography | Storage::Vector | Storage::Never => None,
+            Storage::Column(_) | Storage::Geography | Storage::Vector | Storage::Never => &[],
             Storage::Columns { fixed, .. } => fixed,
         }
     }
@@ -2980,7 +3040,8 @@ impl StandardType {
             SqlType::Timestamp => "timestamptz(3)",
             SqlType::Date => "date",
             SqlType::Time => "time",
-            SqlType::Json | SqlType::Array(_) => "jsonb",
+            SqlType::LocalTimestamp => "timestamp",
+            SqlType::Json | SqlType::Array(_) | SqlType::Range(_) => "jsonb",
         }
     }
 }
@@ -3013,7 +3074,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 256, "the 256 standard types built so far");
+        assert_eq!(names.len(), 257, "the 257 standard types built so far");
     }
 
     #[test]
@@ -3223,7 +3284,7 @@ mod tests {
         assert_eq!(of_builtin(Builtin::Text), None);
         assert_eq!(
             standard_type(INSTANT_RANGE).map(StandardType::column_type),
-            Some("jsonb")
+            Some("tstzrange")
         );
     }
 
@@ -3273,5 +3334,90 @@ mod tests {
         };
         assert_eq!(nhs.apply("9434765919"), "943 476 5919");
         assert_eq!(fours.apply(""), "");
+    }
+
+    /// Every standard object and choice is stored through named columns
+    /// (chunk 5.5w): each entry's columns hold its parts as
+    /// [`storage::layout`] lays them out, a whole number in a column of any
+    /// width, and a choice's kind is a column no variant's field takes.
+    /// Only the collections stay JSON, and the types whose storage another
+    /// area builds.
+    #[test]
+    fn objects_and_choices_are_stored_in_named_columns() {
+        for entry in STANDARD_TYPES {
+            let collection = matches!(entry.holds, Holds::List(_) | Holds::Map(..));
+            let elsewhere = matches!(
+                entry.storage,
+                Storage::Geography | Storage::Vector | Storage::Never
+            );
+            if matches!(entry.holds, Holds::Object(_) | Holds::Choice(_)) && !elsewhere {
+                // A choice whose variants hold lists of objects (a rich
+                // text's blocks) is stored as JSON, with the collections.
+                if entry.name == rich_text::RICH_TEXT_BLOCK {
+                    assert_eq!(entry.storage, Storage::Column(SqlType::Json));
+                    continue;
+                }
+                assert!(
+                    !entry.columns().is_empty(),
+                    "{} is stored in named columns",
+                    entry.name
+                );
+            }
+            if collection && !elsewhere {
+                assert_eq!(
+                    entry.storage,
+                    Storage::Column(SqlType::Json),
+                    "{}",
+                    entry.name
+                );
+            }
+            if entry.columns().is_empty() {
+                continue;
+            }
+            let laid = storage::layout(entry)
+                .unwrap_or_else(|| panic!("{}: its parts are laid out", entry.name));
+            assert_eq!(laid.len(), entry.columns().len(), "{}", entry.name);
+            let class = |ty: &str| SqlType::of_column(ty).map(SqlType::param);
+            for ((suffix, declared), column) in entry.columns().iter().zip(&laid) {
+                if entry.name == RANGE {
+                    continue;
+                }
+                assert!(
+                    class(declared).is_some(),
+                    "{}: `{declared}` is a column type",
+                    entry.name
+                );
+                let same = if class(declared) == Some(SqlType::Int8) {
+                    class(&column.sql_type) == Some(SqlType::Int8)
+                } else {
+                    *declared == column.sql_type
+                };
+                assert!(
+                    same,
+                    "{}.{suffix}: declared `{declared}`, its part is `{}`",
+                    entry.name, column.sql_type
+                );
+            }
+            let suffixes: Vec<&str> = entry.columns().iter().map(|(suffix, _)| *suffix).collect();
+            let mut unique = suffixes.clone();
+            unique.sort_unstable();
+            unique.dedup();
+            assert_eq!(
+                unique.len(),
+                suffixes.len(),
+                "{}: its columns' names",
+                entry.name
+            );
+            if let Holds::Choice(variants) = entry.holds {
+                assert_eq!(suffixes.first(), Some(&storage::KIND), "{}", entry.name);
+                assert!(
+                    storage::choice_fields(variants)
+                        .iter()
+                        .all(|(name, _)| *name != storage::KIND),
+                    "{}: no variant's field is called `kind`",
+                    entry.name
+                );
+            }
+        }
     }
 }

@@ -329,7 +329,7 @@ fn an_address_s_postal_code_fits_its_country() {
         rules(
             "function posted(code: PostalCode, country: Country) -> PostalAddress {\n    return PostalAddress {\n        lines: [\"1 High Street\"]\n        locality: none\n        region: none\n        postal_code: code\n        country: country\n    }\n}\n"
         ),
-        NONE,
-        "built from values, the rule waits on cross-field rules (chunk 5.5t)"
+        ["failure.attempt_required"],
+        "built from values, the rule is attempted by its name (chunk 5.5t2)"
     );
 }

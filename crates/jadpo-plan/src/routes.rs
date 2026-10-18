@@ -598,13 +598,10 @@ impl<'t> Codecs<'t> {
                     .collect();
                 // A type built on it with rules of its own, a rate type's
                 // currencies, checks the whole value once read (chunk
-                // 5.5h4).
-                let validator = (!self
-                    .types
-                    .validator_plan(ty)
-                    .rules
-                    .iter()
-                    .all(jadpo_std::Rules::is_empty))
+                // 5.5h4), as its rules across its parts do (chunk 5.5t2).
+                let plan = self.types.validator_plan(ty);
+                let validator = (!plan.across.is_empty()
+                    || !plan.rules.iter().all(jadpo_std::Rules::is_empty))
                 .then(|| self.types.validator_id(ty));
                 Codec::Object {
                     shape,
@@ -612,13 +609,16 @@ impl<'t> Codecs<'t> {
                     validator,
                 }
             }
+            // Its start not after its end, by the rule every range keeps
+            // (chunk 5.5t2).
             Made::Range(item) => {
                 let shape = self.types.range_shape();
                 let end = self.codec(&TypeRef::Nullable(Box::new(item)));
+                let range = TypeRef::Std(jadpo_std::RANGE.to_string(), Vec::new());
                 Codec::Object {
                     shape,
                     fields: vec![end, end],
-                    validator: None,
+                    validator: Some(self.types.validator_id(&range)),
                 }
             }
             Made::Unknown => self.made_unknown(),

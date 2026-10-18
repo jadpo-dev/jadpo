@@ -27,6 +27,7 @@ adults
 after_fifth
 after_five
 afternoon
+afternoon_slot
 afterwards
 agreed_term
 alg_none_token
@@ -247,6 +248,9 @@ catalogue_page
 catalogued_book
 category_id
 category_page
+certificate_der
+certificate_holds
+certificate_refused
 change_email
 change_line
 change_order
@@ -305,6 +309,8 @@ coffee
 collect_at
 collect_on
 collection_day
+combined_slot
+combined_slot_checked
 combo
 comment_body
 common_time
@@ -624,6 +630,7 @@ import_reference
 import_unreadable
 imported_line
 in_band
+in_date
 in_dollars
 in_either
 in_euros
@@ -662,6 +669,7 @@ invoice_document
 invoice_transfer
 is_open
 is_overdue
+is_pinned
 issue_card
 issue_outlet_key
 issue_voucher
@@ -706,6 +714,7 @@ kilos
 kitchen
 kitchen_busy
 kitchen_staff
+lab_certificate
 label_jar
 label_line
 label_weight
@@ -812,6 +821,7 @@ loyalty
 lunch
 lunch_overlap
 made_in
+made_up
 mail_api_key
 make_badge
 manual
@@ -866,6 +876,7 @@ monitor_text
 monitored_pulse
 morning
 morning_rate
+morning_slot
 moved_in
 munich_plate
 my_bakeries
@@ -1065,6 +1076,7 @@ parcels
 paris_price
 partner
 partner_added
+partner_certificate
 partner_claims
 partner_id
 partner_key
@@ -1076,6 +1088,7 @@ partner_login
 partner_name
 partner_name_taken
 partner_not_found
+partner_pem
 partner_profile
 partner_ref
 partner_sign_in
@@ -1127,6 +1140,7 @@ pickup_outlet
 piece_count
 pin_note
 ping
+pinned_fingerprint
 place_order
 place_request
 placed_label
@@ -1154,6 +1168,7 @@ postpone_all
 pounds_to_euros
 praised
 praised_notes
+presented
 pressure_shown
 pretend_pure
 preview
@@ -1387,6 +1402,7 @@ send_sign_in_link
 sent_at
 sent_attachment
 sent_order
+sent_pem
 sent_photo
 sent_rate
 sent_text
@@ -1463,6 +1479,7 @@ size_price
 slice_count
 slices
 slices_in
+slot_backwards
 slot_request
 slot_taken
 slot_time
@@ -1519,7 +1536,6 @@ stored_card
 stored_hash
 stored_password
 story
-street
 street_address
 stripe_v2024
 stroll
@@ -1726,6 +1742,7 @@ when_needed
 white
 whoami
 whole_batch
+whole_day
 whole_team
 wholemeal
 wide_still

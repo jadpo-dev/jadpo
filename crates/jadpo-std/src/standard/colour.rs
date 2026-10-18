@@ -93,7 +93,7 @@ pub const COLOUR_ENTRY: StandardType = StandardType {
             ("blue", "smallint"),
             ("alpha", "smallint"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::Canonical,
@@ -126,6 +126,7 @@ pub const COLOUR_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 #[cfg(test)]

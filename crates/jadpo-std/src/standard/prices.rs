@@ -165,6 +165,7 @@ pub const BASIS_POINTS_ENTRY: StandardType = StandardType {
         &["25bp", "25 bp", "0.25%", "2.5", "+25", "-0", "025", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// An amount off or a percentage off: a choice, sent tagged and stored as
@@ -174,7 +175,15 @@ pub const DISCOUNT_ENTRY: StandardType = StandardType {
     holds: Holds::Choice(DISCOUNT_VARIANTS),
     text: None,
     json: Json::Tagged,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("kind", "text"),
+            ("amount", "bigint"),
+            ("currency", "char(3)"),
+            ("percentage", "numeric"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["amount", "percentage"],
@@ -209,6 +218,7 @@ pub const DISCOUNT_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A rate of interest a year and its basis, sent as its fields, stored as
@@ -218,7 +228,10 @@ pub const INTEREST_RATE_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&INTEREST_RATE_FIELDS),
     text: None,
     json: Json::Fields(&["rate", "basis"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[("rate", "numeric"), ("basis", "text")],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["rate", "basis"],
@@ -245,6 +258,7 @@ pub const INTEREST_RATE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// The basis an interest rate is quoted on.
@@ -266,6 +280,7 @@ pub const INTEREST_RATE_BASIS_ENTRY: StandardType = StandardType {
         &["apy", "annual", "a p r", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// An amount and whether it includes tax, sent as its fields, stored as
@@ -275,7 +290,14 @@ pub const PRICE_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&PRICE_FIELDS),
     text: None,
     json: Json::Fields(&["amount", "includes_tax"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("amount", "bigint"),
+            ("currency", "char(3)"),
+            ("includes_tax", "boolean"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["amount"],
@@ -310,6 +332,7 @@ pub const PRICE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A rate of tax, a percentage never below 0%: its text, JSON, storage and
@@ -336,6 +359,7 @@ pub const TAX_RATE_ENTRY: StandardType = StandardType {
         &["20", "0.2", "twenty percent", "%", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A price per an amount of a quantity: a choice by the quantity's kind,
@@ -346,7 +370,15 @@ pub const UNIT_PRICE_ENTRY: StandardType = StandardType {
     holds: Holds::Choice(UNIT_PRICE_VARIANTS),
     text: None,
     json: Json::Tagged,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("kind", "text"),
+            ("price", "bigint"),
+            ("price_currency", "char(3)"),
+            ("per", "numeric(38, 9)"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["price", "per"],
@@ -383,4 +415,5 @@ pub const UNIT_PRICE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };

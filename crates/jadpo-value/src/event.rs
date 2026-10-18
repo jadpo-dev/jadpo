@@ -1,11 +1,11 @@
 //! A `CalendarEvent`'s values (area 19, "Time and calendar additions",
 //! chunk 5.5k3): its record turned into the event `jadpo-std`'s `events`
-//! writes as an RFC 5545 `VEVENT` and reads back, and the rules across its
-//! parts checked on a value read from JSON.
+//! writes as an RFC 5545 `VEVENT` and reads back. The rules across its
+//! parts are its named rules (chunk 5.5t2), run as every standard type's.
 
 use std::rc::Rc;
 
-use jadpo_std::standard::events::{Broken, Event, Known, Parts, When, broken};
+use jadpo_std::standard::events::{Event, When};
 use jadpo_std::standard::recurrence::LocalAt;
 
 use crate::{Fault, Record, Value};
@@ -134,32 +134,4 @@ pub fn read_event(raw: &str) -> Option<Value> {
         jadpo_std::standard::events::CALENDAR_EVENT,
         fields,
     ))
-}
-
-/// The first rule across a `CalendarEvent`'s parts that a record breaks.
-pub fn broken_part(record: &Record) -> Option<Broken> {
-    fn known<'v, T>(value: Option<&'v Value>, read: impl Fn(&'v Value) -> Option<T>) -> Known<T> {
-        match value {
-            None | Some(Value::None) => Known::Absent,
-            Some(value) => Known::Given(read(value)),
-        }
-    }
-    let parts = Parts {
-        first_day: known(record.get("first_day"), |value| match value {
-            Value::Date(day) => Some(*day),
-            _ => None,
-        }),
-        last_day: known(record.get("last_day"), |value| match value {
-            Value::Date(day) => Some(*day),
-            _ => None,
-        }),
-        start: known(record.get("start"), |value| local_at(value).ok()),
-        end: known(record.get("end"), |value| local_at(value).ok()),
-        zone: known(record.get("zone"), zone_of),
-        recurrence: known(record.get("recurrence"), |value| match value {
-            Value::Text(text) => Some(&**text),
-            _ => None,
-        }),
-    };
-    broken(&parts)
 }

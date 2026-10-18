@@ -241,6 +241,7 @@ const fn closed(
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 

@@ -1277,6 +1277,7 @@ dependencies = [
 name = "jadpo-cli"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.4.3",
  "jadpo-check",
  "jadpo-db",
  "jadpo-diag",
@@ -1293,6 +1294,7 @@ dependencies = [
  "jadpo-term",
  "jadpo-test",
  "jadpo-value",
+ "openssl",
  "serde_json",
  "tokio",
 ]
@@ -1491,6 +1493,7 @@ dependencies = [
  "sha2",
  "subtle",
  "writeable",
+ "x509-parser",
 ]
 
 [[package]]

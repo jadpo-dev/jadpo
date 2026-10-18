@@ -6,9 +6,10 @@
 //! [`Storage::Vector`], which a field can't use yet. What the page left
 //! open is area 19's "Chosen in chunk 5.5s2".
 
+use super::across::{Order, StandardRule, in_order};
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, OrderRule, Part,
-    StandardType, Storage, TextForm,
+    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part, StandardType,
+    Storage, TextForm,
 };
 use crate::Builtin;
 use crate::read::SqlType;
@@ -78,6 +79,7 @@ pub const TOKEN_COUNT_ENTRY: StandardType = StandardType {
         &["-1", "1.5", "1,200", "+5", "05", "", "9007199254740992"],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `TokenUsage`'s parts: the tokens a call read and wrote, and of those it
@@ -88,15 +90,15 @@ pub const TOKEN_USAGE_FIELDS: [(&str, Part); 3] = [
     ("cached", Part::Optional(&Part::Standard(TOKEN_COUNT))),
 ];
 
-/// The cached tokens are some of the input's.
-pub const TOKEN_USAGE_RULES: &[OrderRule] = &[OrderRule {
-    lower: "cached",
-    upper: "input",
-    strict: false,
-    at: "cached",
+/// `TokenUsage`'s rule across its parts (chunk 5.5t2): the cached tokens
+/// are some of the input's.
+pub const TOKEN_USAGE_RULES: &[StandardRule] = &[StandardRule {
+    name: "cached_within_input",
+    written: "cached <= input, where it is given",
     label: "more than the input",
     reason: "A `TokenUsage`'s `cached` tokens are the input tokens the provider's cache served, counted within its `input`, so they are never more.",
     next: "Write a `cached` count at or below the `input`",
+    check: in_order(&[Order::at_most("cached", "input")], "cached"),
 }];
 
 /// The tokens one call to a model used: sent as named fields and stored a
@@ -112,7 +114,7 @@ pub const TOKEN_USAGE_ENTRY: StandardType = StandardType {
             ("output", "bigint"),
             ("cached", "bigint"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::ByLabel(&[
@@ -150,6 +152,7 @@ pub const TOKEN_USAGE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `ChatRole`'s variants, each its own name, as the providers' APIs write
@@ -186,6 +189,7 @@ pub const CHAT_ROLE_ENTRY: StandardType = StandardType {
         &["developer", "model", "human", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `ChatMessage`'s parts: who wrote it and what it says, as text.
@@ -204,7 +208,7 @@ pub const CHAT_MESSAGE_ENTRY: StandardType = StandardType {
     json: Json::Fields(&["role", "content"]),
     storage: Storage::Columns {
         parts: &[("role", "text"), ("content", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::Parts {
@@ -237,6 +241,7 @@ pub const CHAT_MESSAGE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A list of numbers, each a single-precision float, as a model's
@@ -273,6 +278,7 @@ pub const VECTOR_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `Embedding`'s parts: the model that made it and its vector, since
@@ -317,6 +323,7 @@ pub const EMBEDDING_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// The rules a `Vector` keeps as a type: from 1 to [`MOST_DIMENSIONS`]
@@ -372,14 +379,6 @@ pub fn float(text: &str) -> Option<String> {
         return None;
     }
     Some(written)
-}
-
-/// The rules ordering the parts of the AI type `ty`.
-pub fn order_rules(ty: &str) -> &'static [OrderRule] {
-    match ty {
-        TOKEN_USAGE => TOKEN_USAGE_RULES,
-        _ => &[],
-    }
 }
 
 #[cfg(test)]

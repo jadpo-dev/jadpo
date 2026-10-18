@@ -825,7 +825,12 @@ runtime writes it: `"PT5M"`, `"PT1.5S"`, `"PT720H"` for `30d`, `"-PT5M"`
 for a negative one. A request's JSON, query string, path and headers give
 it the same way, with days (`"P1DT2H"`) accepted as 24 hours each; `5m` is
 the source's spelling and is refused there (chosen in chunk 5.2). A setting
-is the exception, read as source writes it, `5m` (chunk 5.1).
+is the exception, read as source writes it, `5m` (chunk 5.1), and also as
+the contract's canonical text, `PT5M`, as `text.parse` reads it, so a
+value copied from a response or a log is a setting too: every boundary
+reads a standard type through its contract (area 19, "Every boundary
+through the contract"; decided by the lead session, 2026-10-18, under
+Richard's instruction of 2026-10-17; built in chunk 5.5w2).
 
 ## The current time: `clock.now`
 

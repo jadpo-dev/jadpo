@@ -29,7 +29,7 @@ use super::{Body, Fallible, Local, LocalKind, node_key};
 use crate::tree;
 
 /// What a rule comes to at one construction.
-enum Truth {
+pub(super) enum Truth {
     /// It always holds, by these comparisons (none for literals and the
     /// declared ranges alone).
     Holds(BTreeSet<Origin>),
@@ -239,14 +239,19 @@ impl Body<'_> {
     // --- object literals ---------------------------------------------------
 
     /// The rules across `host`'s fields, by name and as its type writes
-    /// them.
+    /// them, or a standard object type's rules across its parts (area 19,
+    /// chunk 5.5t2).
     pub(super) fn across_rules(&self, host: &str) -> Vec<(String, String)> {
         match self.table.def(host) {
             Some(Def::Fields { rules, .. }) => rules
                 .iter()
                 .map(|rule| (rule.name.clone(), rule.shown()))
                 .collect(),
-            _ => Vec::new(),
+            Some(_) => Vec::new(),
+            None => jadpo_std::standard::across::rules(host)
+                .iter()
+                .map(|rule| (rule.name.to_string(), rule.shown()))
+                .collect(),
         }
     }
 
@@ -313,7 +318,12 @@ impl Body<'_> {
         );
     }
 
-    fn unhandled_record(&mut self, record: &ast::RecordExpr, host: &str, breakable: &[String]) {
+    pub(super) fn unhandled_record(
+        &mut self,
+        record: &ast::RecordExpr,
+        host: &str,
+        breakable: &[String],
+    ) {
         let rules = self.across_rules(host);
         let listed: Vec<String> = breakable
             .iter()
@@ -347,7 +357,7 @@ impl Body<'_> {
 
     // --- proof ---------------------------------------------------------------
 
-    fn truth(&self, cond: &Cond, given: &BTreeMap<String, Expr>, host: &str) -> Truth {
+    pub(super) fn truth(&self, cond: &Cond, given: &BTreeMap<String, Expr>, host: &str) -> Truth {
         match cond {
             Cond::Bool(true) => Truth::Holds(BTreeSet::new()),
             Cond::Bool(false) => Truth::Breaks,

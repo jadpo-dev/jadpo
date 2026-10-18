@@ -30,6 +30,11 @@ jadpo-term.workspace = true
 jadpo-test.workspace = true
 jadpo-value.workspace = true
 serde_json.workspace = true
+# `jadpo suggest share` (area 14, chunk 5.5y): the project token from the
+# operating system's generator, and HTTPS to Jadpo HQ through the OpenSSL
+# `webauthn-rs` already links, so no crate is added.
+getrandom.workspace = true
+openssl.workspace = true
 
 [dev-dependencies]
 jadpo-drivers.workspace = true

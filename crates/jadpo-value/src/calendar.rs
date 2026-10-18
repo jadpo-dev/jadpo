@@ -197,7 +197,9 @@ pub fn read(form: TextForm, raw: &str) -> Option<Option<Value>> {
         }),
         TextForm::IsoWeek => raw.split_once("-W").and_then(|(year, week)| {
             let (year, week) = (year_of(year)?, digits(week, 2)?);
-            (1..=weeks_in(year)?).contains(&week).then(|| {
+            // Week 53 of a year with 52 breaks its rule `week_in_year`,
+            // which it is checked by once it is read (chunk 5.5t2).
+            (1..=53).contains(&week).then(|| {
                 record(
                     "IsoWeek",
                     &[("year", Value::Int(year)), ("week", Value::Int(week))],
@@ -289,20 +291,6 @@ fn period_of(text: &str) -> Option<(i64, i64, i64)> {
     }
     let [years, months, days] = parts;
     Some((years, months, days))
-}
-
-/// How many weeks ISO week-numbering year `year` has: 53 when it starts
-/// on a Thursday, or on a Wednesday in a leap year, and 52 otherwise.
-fn weeks_in(year: i64) -> Option<i64> {
-    let first = jadpo_std::epoch_day(year, 1, 1)?;
-    // 1970-01-01 was a Thursday; Monday is 0.
-    let weekday = (i64::from(first) + 3).rem_euclid(7);
-    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    Some(if weekday == 3 || (leap && weekday == 2) {
-        53
-    } else {
-        52
-    })
 }
 
 /// `date + period` (the operator table): its years, then its months,
@@ -482,7 +470,10 @@ mod tests {
                 .unwrap_or_else(|| panic!("{text}"));
             assert_eq!(canonical(form, &value).unwrap().as_deref(), Ok(text));
         }
-        assert_eq!(read(TextForm::IsoWeek, "2021-W53"), Some(None));
+        // Week 53 of a year with 52 is read, and breaks its rule.
+        let short = read(TextForm::IsoWeek, "2021-W53").flatten().expect("read");
+        assert_eq!(crate::across::broken_standard(&short), Some("week_in_year"));
+        assert_eq!(read(TextForm::IsoWeek, "2021-W54"), Some(None));
         assert_eq!(read(TextForm::Period, "P01M"), Some(None));
         assert_eq!(read(TextForm::Period, "P-0D"), Some(None));
         assert!(read(TextForm::UtcOffset, "+18:00").flatten().is_some());

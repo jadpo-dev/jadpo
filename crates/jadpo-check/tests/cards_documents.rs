@@ -96,13 +96,13 @@ fn a_document_s_number_fits_its_country() {
         ["type.invalid_literal"],
         "a German VAT number's check digit"
     );
-    // Built from values, the rule waits on cross-field rules (chunk 5.5t).
+    // Built from values, the rule is attempted by its name (chunk 5.5t2).
     assert_eq!(
         rules(
-            "type Unreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction typed(raw: Wire, to: Country) fails Unreadable -> DrivingLicenceNumber {\n    var number: DrivingLicenceNumber.number = attempt DrivingLicenceNumber.number(raw) {\n        pattern: Unreadable\n    }\n    return DrivingLicenceNumber {\n        country: to\n        number: number\n    }\n}\n"
+            "type Unreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction typed(raw: Wire, to: Country) fails Unreadable -> DrivingLicenceNumber {\n    var number: DrivingLicenceNumber.number = attempt DrivingLicenceNumber.number(raw) {\n        pattern: Unreadable\n    }\n    return attempt DrivingLicenceNumber {\n        country: to\n        number: number\n    } {\n        number_of_country: Unreadable\n    }\n}\n"
         ),
         NONE,
-        "a number from a value is checked when cross-field rules come"
+        "a number from a value is attempted by its rule"
     );
     assert_eq!(
         rules(

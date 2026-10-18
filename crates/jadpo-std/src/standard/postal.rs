@@ -115,6 +115,7 @@ pub const POSTAL_CODE: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A country's postal codes as the harness checks them: each as people
