@@ -42,6 +42,9 @@ pub enum Fault {
     /// dates, which has days and no zone (chunk 5.5k4): its days are asked
     /// for from a date.
     DateOnlyRule,
+    /// `geo.centroid` of a shape whose weights cancel, two points opposite
+    /// each other, which leaves no direction (area 20, "Operations").
+    NoCentre,
 }
 
 pub fn int_add(a: i64, b: i64) -> Result<i64, Fault> {

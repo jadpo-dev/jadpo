@@ -19,6 +19,10 @@ use jadpo_std::{QuantityKind, Rounding};
 use crate::value::Decimal;
 use crate::{Fault, Record, Value, present};
 
+mod shapes;
+
+pub use shapes::{bounding_box, centroid, contains, intersects, within};
+
 /// Why a GeoJSON geometry wasn't read: where in it, below the field being
 /// read (`coordinates.0.3.1`), and the rule it broke.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -79,6 +79,10 @@ impl From<jadpo_value::Fault> for FaultKind {
                 "a recurrence on dates asked for instants; its days come from a date `from:`"
                     .into(),
             ),
+            jadpo_value::Fault::NoCentre => FaultKind::Defect(
+                "`geo.centroid` of a shape whose weights cancel, such as two opposite points"
+                    .into(),
+            ),
             jadpo_value::Fault::Shape | jadpo_value::Fault::Stopped => {
                 FaultKind::Defect("a value of a kind the checker would have refused".into())
             }

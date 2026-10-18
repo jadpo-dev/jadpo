@@ -174,6 +174,19 @@ pub fn from_degrees(latitude: Num, longitude: Num) -> (Point, [Real; 3]) {
     (Point::new(v), real)
 }
 
+/// A position's unit vector in working values alone, for the measures
+/// that need no exactness.
+pub fn unit_vector(latitude: Num, longitude: Num) -> [Real; 3] {
+    let unit = unit();
+    let (sin_lat, cos_lat) = unit.sin_cos_degrees(latitude);
+    let (sin_lon, cos_lon) = unit.sin_cos_degrees(longitude);
+    [
+        unit.mul(&cos_lat, &cos_lon),
+        unit.mul(&cos_lat, &sin_lon),
+        sin_lat,
+    ]
+}
+
 /// The determinant of three approximate vectors, in whole numbers over
 /// `2^120`.
 fn approximate_det(a: &[i64; 3], b: &[i64; 3], c: &[i64; 3]) -> i128 {
@@ -213,6 +226,19 @@ pub fn on_arc(a: &Point, b: &Point, x: &Point) -> bool {
     }
     let normal = a.v.cross(&b.v);
     a.v.cross(&x.v).dot(&normal).signum() >= 0 && x.v.cross(&b.v).dot(&normal).signum() >= 0
+}
+
+/// Whether the highest point of the great circle through `a` and `b`
+/// lies on the shorter arc between them, and whether the lowest does,
+/// ends included. With `n = a × b`, the highest point is `t = z(n·n) −
+/// n(n·z)`, so `t·a = (n·n) a_z` and `t·b = (n·n) b_z`, and `t` is past `a`
+/// towards `b`, `(a × t)·n ≥ 0`, exactly when `(a·a) b_z ≥ (a·b) a_z`, and
+/// before `b` when `(b·b) a_z ≥ (a·b) b_z`; the lowest point is `-t`.
+pub fn extremes_on_arc(a: &Point, b: &Point) -> (bool, bool) {
+    let ab = a.v.dot(&b.v);
+    let past_a = a.v.dot(&a.v).mul(&b.v.z).sub(&ab.mul(&a.v.z)).signum();
+    let before_b = b.v.dot(&b.v).mul(&a.v.z).sub(&ab.mul(&b.v.z)).signum();
+    (past_a >= 0 && before_b >= 0, past_a <= 0 && before_b <= 0)
 }
 
 /// Where the edges `a`–`b` and `c`–`d` meet, as points on `a`–`b`, ends

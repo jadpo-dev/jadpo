@@ -28,6 +28,13 @@ mod wide;
 pub use bounds::{Latitude, Reach, box_holds, outward, reach, smallest_box};
 pub use shape::{Area, Position, Shape, covers, intersects};
 pub use valid::rings_broken;
+pub use vector::unit_vector;
+
+/// The fixed module's working constants, worked out once, which the
+/// measures on the sphere share.
+pub fn working_unit() -> &'static crate::fixed::Unit {
+    vector::unit()
+}
 
 #[cfg(test)]
 mod tests {

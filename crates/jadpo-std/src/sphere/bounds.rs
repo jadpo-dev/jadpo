@@ -17,7 +17,7 @@ use std::cmp::Ordering;
 
 use super::ring::Place;
 use super::shape::{Position, Shape, point, region};
-use super::vector::{Point, Vector, from_degrees, on_arc, same};
+use super::vector::{Point, extremes_on_arc, from_degrees, same};
 use super::wide::Wide;
 use crate::Num;
 use crate::fixed::Real;
@@ -43,19 +43,32 @@ impl Latitude {
 
     fn compare(&self, other: &Latitude) -> Ordering {
         match (self, other) {
-            (Latitude::Exact(a), Latitude::Exact(b)) => exact(*a).cmp(&exact(*b)),
+            (Latitude::Exact(a), Latitude::Exact(b)) => a.compare(*b),
             _ => self.real().cmp(&other.real()),
         }
     }
 }
 
+/// `10^k` for each `k` up to [`PLACES`], worked out once.
+fn powers() -> &'static [Wide] {
+    static POWERS: std::sync::OnceLock<Vec<Wide>> = std::sync::OnceLock::new();
+    POWERS.get_or_init(|| {
+        let ten = Wide::from_i64(10);
+        let mut out = vec![Wide::from_i64(1)];
+        for _ in 0..PLACES {
+            let next = out.last().map_or(Wide::from_i64(1), |last| last.mul(&ten));
+            out.push(next);
+        }
+        out
+    })
+}
+
 /// A decimal as a whole number of `10^-40`.
 fn exact(n: Num) -> Wide {
-    let mut power = Wide::from_i64(1);
-    let ten = Wide::from_i64(10);
-    for _ in 0..PLACES.saturating_sub(n.scale) {
-        power = power.mul(&ten);
-    }
+    let power = powers()
+        .get(PLACES.saturating_sub(n.scale) as usize)
+        .cloned()
+        .unwrap_or_else(|| Wide::from_i64(1));
     let mantissa = Wide::from_parts(
         n.mantissa < 0,
         &[
@@ -201,17 +214,11 @@ fn add_edge(
         reach.runs.push((east, west));
     }
     // The great circle's highest point and its opposite, the lowest.
-    let n = pp.v.cross(&qp.v);
-    let top = Vector {
-        x: n.x.mul(&n.z).neg(),
-        y: n.y.mul(&n.z).neg(),
-        z: n.x.mul(&n.x).add(&n.y.mul(&n.y)),
-    };
-    let top = Point::new(top);
-    if on_arc(pp, qp, &top) {
+    let (highest, lowest) = extremes_on_arc(pp, qp);
+    if highest {
         reach.latitude(Latitude::Worked(top_latitude(pu, qu)));
     }
-    if on_arc(pp, qp, &top.neg()) {
+    if lowest {
         reach.latitude(Latitude::Worked(top_latitude(pu, qu).neg()));
     }
 }

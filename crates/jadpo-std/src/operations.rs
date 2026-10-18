@@ -215,8 +215,13 @@ pub enum Op {
     EncodingToUtf8,
     GeoArea,
     GeoBearing,
+    GeoBoundingBox,
+    GeoCentroid,
+    GeoContains,
     GeoDistance,
+    GeoIntersects,
     GeoLength,
+    GeoWithin,
     HashSha256,
     IntegerAbs,
     IntegerDivide,
@@ -859,6 +864,38 @@ const fn geo(
 }
 
 const POINT_VALUE: Kind = Kind::Std(crate::standard::geo::POINT);
+
+/// Any geometry, or a `Geometry` holding one (area 20, "What every
+/// geospatial operation follows"): what the predicates compare and the
+/// shapes take.
+const GEOMETRIES: &[&str] = &[
+    crate::standard::geo::POINT,
+    crate::standard::geo::LINE_STRING,
+    crate::standard::geo::POLYGON,
+    crate::standard::geo::MULTI_POINT,
+    crate::standard::geo::MULTI_LINE_STRING,
+    crate::standard::geo::MULTI_POLYGON,
+    crate::standard::geo::GEOMETRY,
+];
+
+/// What `geo.contains` looks inside: a geometry, a `BoundingBox` or a
+/// `Circle` (area 20, "Operations").
+const CONTAINERS: &[&str] = &[
+    crate::standard::geo::POINT,
+    crate::standard::geo::LINE_STRING,
+    crate::standard::geo::POLYGON,
+    crate::standard::geo::MULTI_POINT,
+    crate::standard::geo::MULTI_LINE_STRING,
+    crate::standard::geo::MULTI_POLYGON,
+    crate::standard::geo::GEOMETRY,
+    crate::standard::geo::BOUNDING_BOX,
+    crate::standard::geo::CIRCLE,
+];
+
+/// A geometry argument.
+const fn shape(name: &'static str) -> Param {
+    param(name, Kind::Shapes(GEOMETRIES))
+}
 const LENGTH_VALUE: Kind = Kind::Builtin(Builtin::Quantity(crate::QuantityKind::Length));
 
 /// Two equal points, which have no direction between them (area 20).
@@ -1457,11 +1494,43 @@ pub const OPERATIONS: &[Operation] = &[
         )
     },
     geo(
+        Op::GeoBoundingBox,
+        "bounding_box",
+        &[shape("shape")],
+        Kind::Std(crate::standard::geo::BOUNDING_BOX),
+        "geo::bounding_box",
+    ),
+    geo(
+        Op::GeoCentroid,
+        "centroid",
+        &[shape("shape")],
+        POINT_VALUE,
+        "geo::centroid",
+    ),
+    // The predicates (area 20, "Operations"): edges included, as PostGIS's
+    // `ST_Covers` and `ST_Intersects` on `geography`; `contains` may look
+    // inside a box or a circle, and `within` is it the other way round, or
+    // a distance between two points with `distance:`.
+    geo(
+        Op::GeoContains,
+        "contains",
+        &[param("a", Kind::Shapes(CONTAINERS)), shape("b")],
+        Kind::Builtin(Builtin::Bool),
+        "geo::contains",
+    ),
+    geo(
         Op::GeoDistance,
         "distance",
         &[param("from", POINT_VALUE), param("to", POINT_VALUE)],
         LENGTH_VALUE,
         "geo::distance",
+    ),
+    geo(
+        Op::GeoIntersects,
+        "intersects",
+        &[shape("a"), shape("b")],
+        Kind::Builtin(Builtin::Bool),
+        "geo::intersects",
     ),
     geo(
         Op::GeoLength,
@@ -1475,6 +1544,20 @@ pub const OPERATIONS: &[Operation] = &[
         )],
         LENGTH_VALUE,
         "geo::length",
+    ),
+    geo(
+        Op::GeoWithin,
+        "within",
+        &[
+            shape("a"),
+            param("b", Kind::Shapes(CONTAINERS)),
+            Param {
+                never_negative: true,
+                ..option("distance", LENGTH_VALUE)
+            },
+        ],
+        Kind::Builtin(Builtin::Bool),
+        "geo::within",
     ),
     // SHA-256 (area 19, "Hashing and cryptography", question 24): a
     // digest is `Bytes`, written as text by `encoding`.
