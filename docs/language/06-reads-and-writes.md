@@ -307,6 +307,11 @@ different maximum declares its own `Int` type with a `max:`, because a page
 size must have an upper limit. There is no offset, because a large
 offset is slow and skips or repeats records when rows are added.
 
+A vector field is ordered by nearness instead, `order: [F nearest v]`,
+the only order of a query returning `List<Nearest<T>>`, with
+`ai.distance(F, v)` compared with a bound in `where:` (area 21, "The
+nearest-neighbour query", built in chunk 5.5v1b).
+
 ```jadpo check project=page-input file=types.jadpo hidden
 type TodoStatus = Enum {
     open

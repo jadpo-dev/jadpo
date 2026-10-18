@@ -709,8 +709,11 @@ fn create_index(table: &str, name: &str, def: &Table) -> Statement {
         })
         .unwrap_or_default();
     let predicate = index.and_then(|i| i.predicate.as_deref());
+    let method = index
+        .and_then(|i| i.method.as_ref())
+        .map(|m| (m.name.as_str(), m.operator_class.as_str()));
     Statement {
-        sql: table::create_index(table, name, &columns, predicate),
+        sql: table::create_index(table, name, &columns, predicate, method),
         does: "create index",
     }
 }
@@ -893,6 +896,7 @@ mod tests {
                     reason: "index Todo.by_old".into(),
                     predicate: None,
                     collate: Vec::new(),
+                    method: None,
                 },
             );
         }

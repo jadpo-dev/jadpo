@@ -58,6 +58,38 @@ fn parenthesised(condition: &str) -> String {
     }
 }
 
+/// The column a nearest-neighbour read selects its distance as.
+pub const DISTANCE: &str = "jadpo_distance";
+
+/// A nearest-neighbour read (area 21, chunk 5.5v1b): `columns` of `table`
+/// and the `distance` expression as [`DISTANCE`], where `conditions`
+/// hold, nearest first by the distance alone and at most `limit`, the one
+/// order an HNSW index serves; then the rows it found ordered again by
+/// the distance and `tie` (the `id`), outside, since PostgreSQL reads no
+/// HNSW index for an order with a second key.
+pub fn nearest<S: AsRef<str>>(
+    columns: &[S],
+    table: &str,
+    distance: &str,
+    conditions: &[String],
+    limit: &str,
+    tie: &str,
+) -> String {
+    let mut inner = format!(
+        "  SELECT {}, {distance} AS {}\n  FROM {}",
+        idents(columns),
+        ident(DISTANCE),
+        ident(table)
+    );
+    where_clause(&mut inner, conditions, "  ");
+    inner.push_str(&format!("\n  ORDER BY {distance}\n  LIMIT {limit}"));
+    format!(
+        "SELECT *\nFROM (\n{inner}\n) AS \"nearest\"\nORDER BY {}, {}",
+        ident(DISTANCE),
+        ident(tie)
+    )
+}
+
 /// `SELECT 1` from `table`: whether a row is there.
 pub fn select_one(table: &str) -> String {
     format!("SELECT 1\nFROM {}", ident(table))

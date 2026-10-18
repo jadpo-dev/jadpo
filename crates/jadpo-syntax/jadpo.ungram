@@ -349,9 +349,10 @@ ParenExpr =
 ListExpr =
   '[' (Expr (',' Expr)* ','?)? ']'
 
-// `order: [Todo.created_at desc]` (area 6).
+// `order: [Todo.created_at desc]` (area 6), and
+// `order: [HelpArticle.body_meaning nearest question_meaning]` (area 21).
 OrderedExpr =
-  Expr direction:('asc' | 'desc')
+  expr:Expr direction:('asc' | 'desc' | 'nearest') target:Expr?
 
 BinExpr =
   lhs:Expr

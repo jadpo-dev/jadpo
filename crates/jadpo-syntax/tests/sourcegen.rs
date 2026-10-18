@@ -83,8 +83,8 @@ const KEYWORDS: &[&str] = &[
 /// Words that are keywords only where the grammar expects them and names
 /// everywhere else.
 const CONTEXTUAL_KEYWORDS: &[&str] = &[
-    "asc", "desc", "end", "include", "matches", "package", "provide", "resource", "rule", "seed",
-    "test", "use",
+    "asc", "desc", "end", "include", "matches", "nearest", "package", "provide", "resource",
+    "rule", "seed", "test", "use",
 ];
 
 /// Tokens whose text varies.

@@ -836,6 +836,25 @@ impl Body<'_> {
                 .insert(node_key(node.syntax()), (PAGE.to_string(), vec![field]));
             return ty;
         }
+        // A record a nearest-neighbour query found, with its distance
+        // (area 21, chunk 5.5v1b).
+        if let Ty::Opaque(nearest, args) = receiver
+            && nearest == NEAREST
+            && let [item] = args.as_slice()
+        {
+            let ty = match field.as_str() {
+                "item" => item.clone(),
+                "distance" => Ty::Prim(Prim::Decimal),
+                _ => {
+                    self.unknown_field(NEAREST, &field, &nearest_fields(item), span, false);
+                    return Ty::Error;
+                }
+            };
+            self.facts
+                .fields
+                .insert(node_key(node.syntax()), (NEAREST.to_string(), vec![field]));
+            return ty;
+        }
         // The instants a `temporal` bounds call gives (area 10), or a field
         // declared `InstantRange` (area 19, the standard types).
         let mut through = receiver.strip_nullable().clone();
@@ -1751,6 +1770,17 @@ fn name_of(ty: &Ty) -> String {
 /// The standard type a page query returns (area 6): `Page<T>`.
 pub(crate) const PAGE: &str = "Page";
 
+/// Each record a nearest-neighbour query returns (area 21): `Nearest<T>`.
+pub(crate) const NEAREST: &str = crate::data::queries::NEAREST;
+
+/// `Nearest<T>`'s fields: the record, and its distance.
+fn nearest_fields(item: &Ty) -> Vec<FieldDef> {
+    vec![
+        plain_field("item", item.clone()),
+        plain_field("distance", Ty::Prim(Prim::Decimal)),
+    ]
+}
+
 /// `Page<T>`'s fields, as the unknown-field error lists them.
 /// A route test's response's fields, for messages.
 fn response_fields() -> Vec<FieldDef> {
@@ -1855,6 +1885,12 @@ pub(crate) fn members_of(
         && let [item] = args.as_slice()
     {
         return named(page_fields(item));
+    }
+    if let Ty::Opaque(nearest, args) = receiver
+        && nearest == NEAREST
+        && let [item] = args.as_slice()
+    {
+        return named(nearest_fields(item));
     }
     if let Ty::Opaque(issued, args) = receiver.strip_nullable()
         && args.is_empty()

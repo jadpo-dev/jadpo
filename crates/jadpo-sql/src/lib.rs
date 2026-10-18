@@ -76,4 +76,32 @@ mod tests {
         assert_eq!(text_literal("a\\b"), "E'a\\\\b'");
         assert_eq!(placeholder(0), "$1");
     }
+
+    #[test]
+    fn a_vector_s_index_is_hnsw_with_its_operator_class() {
+        let column = [table::IndexColumn {
+            name: "body_meaning",
+            collate: false,
+        }];
+        assert_eq!(
+            table::create_index(
+                "help_article",
+                "help_article_body_meaning_idx",
+                &column,
+                None,
+                Some(("hnsw", "vector_cosine_ops"))
+            ),
+            "CREATE INDEX \"help_article_body_meaning_idx\" ON \"help_article\" USING hnsw (\"body_meaning\" vector_cosine_ops)"
+        );
+        assert_eq!(
+            table::create_index(
+                "help_article",
+                "help_article_title_idx",
+                &column,
+                None,
+                None
+            ),
+            "CREATE INDEX \"help_article_title_idx\" ON \"help_article\" (\"body_meaning\")"
+        );
+    }
 }

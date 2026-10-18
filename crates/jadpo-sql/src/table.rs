@@ -248,29 +248,33 @@ pub struct IndexColumn<'a> {
 }
 
 /// Creates the index `name` on `columns` of `table`, holding only the rows
-/// `predicate` (a condition, without parameters) lets through when given.
+/// `predicate` (a condition, without parameters) lets through when given,
+/// by `method` (an access method and its columns' operator class, `hnsw`
+/// with `vector_cosine_ops`, area 21) when given, else a B-tree.
 pub fn create_index(
     table: &str,
     name: &str,
     columns: &[IndexColumn<'_>],
     predicate: Option<&str>,
+    method: Option<(&str, &str)>,
 ) -> String {
     let columns = columns
         .iter()
-        .map(|column| {
-            if column.collate {
-                format!("{} COLLATE \"C\"", ident(column.name))
-            } else {
-                ident(column.name)
-            }
+        .map(|column| match method {
+            Some((_, class)) => format!("{} {class}", ident(column.name)),
+            None if column.collate => format!("{} COLLATE \"C\"", ident(column.name)),
+            None => ident(column.name),
         })
         .collect::<Vec<_>>()
         .join(", ");
+    let using = method
+        .map(|(method, _)| format!(" USING {method}"))
+        .unwrap_or_default();
     let partial = predicate
         .map(|predicate| format!(" WHERE {predicate}"))
         .unwrap_or_default();
     format!(
-        "CREATE INDEX {} ON {} ({columns}){partial}",
+        "CREATE INDEX {} ON {}{using} ({columns}){partial}",
         ident(name),
         ident(table)
     )

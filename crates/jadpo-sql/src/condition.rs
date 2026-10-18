@@ -126,6 +126,17 @@ pub enum Condition {
         value: Value,
         condition: Box<Condition>,
     },
+    /// `ai.distance(Entity.field, value) <op> bound` (area 21, chunk
+    /// 5.5v1b): the distance the field's vector type measures by, as
+    /// pgvector's operator for `metric`, compared with a number. A record
+    /// whose vector is `none` never meets it, whichever way it is compared.
+    Distance {
+        field: String,
+        metric: jadpo_std::VectorDistance,
+        value: Value,
+        op: Compare,
+        bound: Value,
+    },
 }
 
 impl Condition {
@@ -134,7 +145,8 @@ impl Condition {
         match self {
             Condition::Compare { field, .. }
             | Condition::IsNone { field, .. }
-            | Condition::In { field, .. } => {
+            | Condition::In { field, .. }
+            | Condition::Distance { field, .. } => {
                 out.insert(field.clone());
             }
             Condition::And(all) | Condition::Or(all) => {
@@ -292,6 +304,37 @@ pub fn condition(
         }
         Condition::Not(inner) => {
             return self::condition(bind, entity, inner, !negated);
+        }
+        Condition::Distance {
+            field: name,
+            metric,
+            value,
+            op,
+            bound,
+        } => {
+            let field = entity.column(name)?;
+            let vector = match value {
+                Value::Param { .. } => bind.bind(value, SqlType::Vector)?,
+                _ => return None,
+            };
+            // The number it is compared with, as a decimal is sent; `none`
+            // never meets it, so a pushed-down `not` only flips the
+            // comparison.
+            let number = Column {
+                name: field.name,
+                nullable: false,
+                ty: Some(SqlType::Numeric),
+                builtin: Some(Builtin::Decimal),
+                scale: None,
+            };
+            let bound = self::value(bind, bound, &number)?;
+            let op = if negated { op.negated() } else { *op };
+            format!(
+                "{} {} {vector} {} {bound}",
+                ident(field.name),
+                metric.operator(),
+                op.sql()
+            )
         }
         Condition::Present { value, condition } => {
             let ty = match condition.as_ref() {
@@ -579,6 +622,59 @@ mod tests {
             self::condition(&mut Fixed, &Notes, &nul, false),
             None,
             "PostgreSQL text can't hold NUL, so no predicate is written"
+        );
+    }
+
+    /// A table of one optional vector field, `meaning`.
+    struct Meanings;
+
+    impl Columns for Meanings {
+        fn column(&self, field: &str) -> Option<Column<'_>> {
+            (field == "meaning").then_some(Column {
+                name: "meaning",
+                nullable: true,
+                ty: Some(SqlType::Vector),
+                builtin: None,
+                scale: None,
+            })
+        }
+    }
+
+    #[test]
+    fn a_distance_is_pgvector_s_operator_and_none_never_meets_it() {
+        let near = Condition::Distance {
+            field: "meaning".into(),
+            metric: jadpo_std::VectorDistance::InnerProduct,
+            value: Value::Param {
+                index: 0,
+                path: Vec::new(),
+            },
+            op: Compare::LessEqual,
+            bound: Value::Literal(Literal::Number {
+                value: jadpo_std::Num::parse("0.6").expect("a number"),
+                decimal: true,
+            }),
+        };
+        assert_eq!(
+            condition(&mut Params::default(), &Meanings, &near, false).as_deref(),
+            Some("\"meaning\" <#> $1 <= $2")
+        );
+        // `not` flips the comparison, with no `IS NULL`: a record without
+        // a vector meets neither.
+        assert_eq!(
+            condition(
+                &mut Params::default(),
+                &Meanings,
+                &Condition::Not(Box::new(near.clone())),
+                false
+            )
+            .as_deref(),
+            Some("\"meaning\" <#> $1 > $2")
+        );
+        assert_eq!(
+            condition(&mut Fixed, &Meanings, &near, false),
+            None,
+            "a predicate takes no parameters"
         );
     }
 }

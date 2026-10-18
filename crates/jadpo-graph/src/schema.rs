@@ -248,6 +248,17 @@ pub struct Index {
     /// The text columns it keeps in code-point order (`COLLATE "C"`), as a
     /// query sorts them (area 6), so a sorted read can use it.
     pub collate: Vec<String>,
+    /// An access method other than a B-tree, with the operator class of
+    /// its one column: `hnsw` with `vector_cosine_ops` for a vector a
+    /// `nearest` query searches (area 21, chunk 5.5v1b).
+    pub method: Option<IndexMethod>,
+}
+
+/// An index's access method and its column's operator class.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IndexMethod {
+    pub name: String,
+    pub operator_class: String,
 }
 
 /// A name the database keeps whole: `table_part1_suffix`, cut to fit
@@ -385,6 +396,10 @@ impl Table {
                 entry.set("where", predicate);
             }
             entry.set_some("collate_c", strings(&index.collate));
+            if let Some(method) = &index.method {
+                entry.set("method", &method.name);
+                entry.set("operator_class", &method.operator_class);
+            }
             indexes.set(name, entry);
         }
         value.set_some("indexes", indexes);
@@ -464,6 +479,13 @@ impl Table {
                     reason: text_of(entry, "reason")?,
                     predicate: entry.get("where").and_then(Value::as_str).map(String::from),
                     collate: list_of(entry, "collate_c").unwrap_or_default(),
+                    method: match entry.get("method").and_then(Value::as_str) {
+                        Some(method) => Some(IndexMethod {
+                            name: method.to_string(),
+                            operator_class: text_of(entry, "operator_class")?,
+                        }),
+                        None => None,
+                    },
                 },
             );
         }
