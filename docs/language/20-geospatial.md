@@ -547,9 +547,10 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
   1 down its meridian, along the equator and up to point 2, must be the
   reference's within its stated square millimetre, half `Area`'s last
   place, and what moving point 2 can change it by. Where the reduced
-  length `m₁₂` is below a metre (a geodesic ending near the point
-  conjugate to its start, half of the "between vertices" group), the
-  direction and area at point 2 are too sensitive to check and only the
+  length `m₁₂` is below a metre (a geodesic ending at or near the point
+  conjugate to its start: the "between vertices" and "ending close to
+  vertices" groups, and one line between the poles), the direction and
+  area are too sensitive to point 2's rounding to check, and only the
   distance is.
 - **Accuracy achieved.** Every one of the 10,000 lines passes, not only
   the sample. Before rounding, every distance is within 7.5 × 10⁻¹⁴ m
