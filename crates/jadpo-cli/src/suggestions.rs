@@ -596,7 +596,7 @@ fn ignore(call: &Call, root: &Path) -> Reply {
     if reason.is_empty() {
         return arguments(
             format!("`jadpo suggest ignore {wanted}` needs a reason"),
-            "A reason tells the team, and Jadpo when it is shared, why the suggestion is wrong here.",
+            "A reason tells whoever reads the record, and Jadpo when it is shared, why the suggestion is wrong here.",
             format!("Run `jadpo suggest ignore {wanted} \"<why>\"`"),
         );
     }
@@ -674,7 +674,7 @@ fn found(call: &Call, cwd: &Path, root: &Path) -> Reply {
     else {
         return arguments(
             format!("`{place}` isn't a place"),
-            "A place is a file and a line, such as `domains/shop/libraries/pricing.jadpo:9`.",
+            "A place is a file and a line, such as `domains/shop/actions/pence_of.jadpo:5`.",
             usage,
         );
     };
@@ -715,7 +715,7 @@ fn found(call: &Call, cwd: &Path, root: &Path) -> Reply {
     if reason.is_empty() {
         return arguments(
             format!("`jadpo suggest found {place} {suggestion}` needs a reason"),
-            "A reason says why the code should use it, for the team and for Jadpo when it is shared.",
+            "A reason says why the code should use it, for whoever reads it and for Jadpo when it is shared.",
             format!("Run `jadpo suggest found {place} {suggestion} \"<why>\"`"),
         );
     }

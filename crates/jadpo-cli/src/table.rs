@@ -805,7 +805,7 @@ pub static COMMANDS: &[Command] = &[
             },
             Example {
                 description: "Record a miss before fixing it",
-                command: "jadpo suggest found domains/shop/libraries/pricing.jadpo:9 Money \"Pence held as Int\"",
+                command: "jadpo suggest found domains/shop/actions/pence_of.jadpo:5 Money \"Pence held as Int\"",
             },
             Example {
                 description: "See every signal it looks for",

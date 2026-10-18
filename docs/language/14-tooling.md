@@ -431,7 +431,7 @@ every entry.
 
 The first entries with signals: `Money` (× or ÷ 100 and 1000, the minor
 units of two- and three-place currencies; `price`, `pence`, `cents`,
-`cost`, `fee`; `£`, `$`, `€`, `¥`), every quantity (its units),
+`cost`; `£`, `$`, `€`, `¥`), every quantity (its units),
 `Duration` (1000, 60, 3600, 86400; `ms`, `millis`, `seconds`, `minutes`,
 `hours`, `timeout`), `Instant` (1000; `epoch`, `timestamp`, `unix`),
 `Point` (its shape), `Email`, `Url` and `Uuid` (their validation texts,
@@ -537,8 +537,8 @@ in `.jadpo/suggest_signals`, so the next scan finds the same pattern
 anywhere as a `taught` finding.
 
 ```text
-$ jadpo suggest found domains/shop/libraries/pricing.jadpo:9 Money "Pence held as Int"
-✓ Recorded a missed Money at domains/shop/libraries/pricing.jadpo:9
+$ jadpo suggest found domains/shop/actions/pence_of.jadpo:5 Money "Pence held as Int"
+✓ Recorded a missed Money at domains/shop/actions/pence_of.jadpo:5
   snippet  subtotal + delivery_pence
   reason   Pence held as Int
 

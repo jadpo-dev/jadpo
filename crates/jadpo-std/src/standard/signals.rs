@@ -66,7 +66,7 @@ impl Signals {
 /// currencies, 1000 for three-place ones), named as prices, and shown with
 /// a currency symbol by hand.
 pub const MONEY: Signals = Signals {
-    names: &["price", "pence", "penny", "cents", "cost", "fee"],
+    names: &["price", "pence", "penny", "cents", "cost"],
     named_on: &[Builtin::Int, Builtin::Decimal],
     conversions: &["100", "1000"],
     units: false,

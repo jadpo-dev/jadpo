@@ -686,7 +686,7 @@ fn declarations(
             let mut taken: Vec<&Field<'_>> = Vec::new();
             let mut missing = false;
             for wanted in shape {
-                let hit = members.iter().find(|field| {
+                let matching = members.iter().find(|field| {
                     wanted.names.contains(&field.name.as_str())
                         && !matches!(field.ty, TypeRef::Nullable(_))
                         && (base_builtin(graph, field.ty)
@@ -694,7 +694,7 @@ fn declarations(
                             || (wanted.or_enum && is_enum(graph, field.ty)))
                         && !taken.iter().any(|t| t.name == field.name)
                 });
-                match hit {
+                match matching {
                     Some(field) => taken.push(field),
                     None if wanted.optional => {}
                     None => {
@@ -734,7 +734,7 @@ fn declarations(
                 .join("\n");
             snip.text_hash = hash(&without_comments(&snip.text));
             let reason = format!(
-                "`{host_name}` holds {}, which together are a `{}`; the standard type has one construction, wire shape and storage shape.",
+                "`{host_name}` holds {}, which make a `{}`; the standard type has one construction, wire shape and storage shape.",
                 crate::and_list(&names.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>()),
                 reading.entry.name
             );
@@ -988,14 +988,14 @@ fn format(readings: &[Reading], shape: &C, snip: impl Fn() -> Snippet, found: &m
         return;
     }
     for reading in readings {
-        let hit = operands.iter().find_map(|operand| match operand {
+        let matching = operands.iter().find_map(|operand| match operand {
             C::Text(text) => reading
                 .format_literals
                 .iter()
                 .find(|token| holds_token(text, token)),
             _ => None,
         });
-        if let Some(token) = hit {
+        if let Some(token) = matching {
             let reason = format!(
                 "Joining `{token}` to a value formats a `{}` by hand; `text.format` shows one for the reader's locale.",
                 reading.entry.name
@@ -1053,10 +1053,10 @@ fn loop_operation(item: &str, only: &C) -> Option<LoopShape> {
             let starts =
                 |c: &C, name: &[String]| matches!(c, C::Name(path) if path.first() == name.first());
             match sides.as_slice() {
-                [smaller, larger] if starts(smaller, value) && starts(larger, kept) => {
+                [smaller, bigger] if starts(smaller, value) && starts(bigger, kept) => {
                     Some(LoopShape::KeepSmallest)
                 }
-                [smaller, larger] if starts(smaller, kept) && starts(larger, value) => {
+                [smaller, bigger] if starts(smaller, kept) && starts(bigger, value) => {
                     Some(LoopShape::KeepLargest)
                 }
                 _ => None,
