@@ -728,7 +728,11 @@ migration {
 - Freeform SQL in migrations stays out: a backfill is checked Jadpo, so a
   migration can't write a value its field's rules forbid.
 
-Not built yet: the SQL forms come with chunk 5.6, the backfills with 5.6b.
+The SQL forms a batch's `UPDATE` uses are built (chunk 5.6): each
+standard operation's, tested against the runtime on live PostgreSQL, and
+what that chunk chose for them (a whole number always `bigint`, a
+decimal's places kept, a defect failing the statement) is area 19's
+"Chosen in chunk 5.6". The backfills themselves come with chunk 5.6b.
 
 A migration's `postgres.sql` holds a section per store, each opened by a
 `-- store: <name>` line, and names every table, column, constraint and index

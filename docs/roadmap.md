@@ -1451,7 +1451,7 @@ reference only).
   sent when sharing is off, no snippet text is sent without approval, a
   hash below the threshold never has its text requested, and an ignored
   snippet's text can be shared once approved.
-- [ ] **5.6 SQL forms** `opus · high` (area 19, "SQL forms", decided
+- [x] **5.6 SQL forms** `opus · high` (area 19, "SQL forms", decided
   2026-10-17), the first half of computed backfills: the SQL form of each
   standard operation the operation tables give one, rendered in one place
   (`jadpo-sql`) from its arguments' SQL, and each tested against the
@@ -1462,7 +1462,12 @@ reference only).
   caveats earlier chunks flagged: `temporal.period_between` against
   `age`, `web.cidr_contains`). The page's SQL form column and the
   renderer agree, by a test. Split on 2026-10-18 because the whole chunk
-  is more than a session: the backfills themselves are 5.6b.
+  is more than a session: the backfills themselves are 5.6b. Built: all
+  38 operations' forms in `jadpo_sql::form`, agreeing with the runtime on
+  over a hundred thousand inputs (`live PostgreSQL: SQL forms` in the
+  gate); none dropped, three rewritten (`decimal.round` keeps fewer
+  places, `period_between` without `age`, whole numbers widened to
+  `bigint`), area 19's "Chosen in chunk 5.6".
 - [ ] **5.6b Computed backfills** `opus · high` (area 5, "Computed
   backfills", 2026-10-15), after 5.6: `backfill:` as an expression over
   each row's own fields, constants and pure functions, typed against the
