@@ -966,7 +966,9 @@ impl Place<'_> {
                         ),
                         None if matches!(
                             condition.key,
-                            jadpo_std::RuleKey::Malformed | jadpo_std::RuleKey::Mismatch
+                            jadpo_std::RuleKey::Malformed
+                                | jadpo_std::RuleKey::Mismatch
+                                | jadpo_std::RuleKey::Unreadable
                         ) =>
                         {
                             format!("`{}`", condition.key.word())

@@ -44,6 +44,7 @@ pub mod records;
 pub mod recurrence;
 pub mod rich_text;
 mod schedules;
+pub mod security;
 pub mod software;
 pub mod web;
 
@@ -758,6 +759,10 @@ pub enum Validator {
     Orcid,
     /// An MPAN core's check digit.
     Mpan,
+    /// An Argon2id PHC string with bounded costs ([`security`]).
+    PasswordHash,
+    /// An Ed25519 public key as unpadded Base64url ([`security`]).
+    PublicKey,
     /// HTML already as the sanitiser keeps it ([`markup::is_safe`]): what
     /// an `Html` literal must be, since its construction from any other
     /// text makes it safe first (chunk 5.5o).
@@ -812,6 +817,8 @@ impl Validator {
             Validator::Orcid => codes::is_orcid(text),
             Validator::Mpan => codes::is_mpan(text),
             Validator::Html => markup::is_safe(text),
+            Validator::PasswordHash => security::is_password_hash(text),
+            Validator::PublicKey => security::is_public_key(text),
         }
     }
 }
@@ -1156,10 +1163,11 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// `software`), `Html` and `Markdown` (chunk 5.5o, in `markup`), the 15
 /// media and visual types with `ContentRatingScheme` (chunk 5.5p, in
 /// `colour` and `media`), `RichText` with its blocks, spans and marks,
-/// and `LocalisedText` (chunk 5.5o2, in `rich_text`), and the 16 records
+/// and `LocalisedText` (chunk 5.5o2, in `rich_text`), the 16 records
 /// and measures of commerce, health, travel and the rest with the size
 /// systems and `RouteOfAdministration` (chunk 5.5m2, in `records` and
-/// `health`).
+/// `health`), and `PasswordHash`, `PasswordCheck` and `PublicKey` (chunk
+/// 5.5q2, in `security`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     lists::ALLERGEN_ENTRY,
@@ -1893,6 +1901,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     software::PACKAGE_URL,
     media::PAPER_SIZE_ENTRY,
     documents::PASSPORT_NUMBER_TYPE,
+    security::PASSWORD_CHECK_ENTRY,
+    security::PASSWORD_HASH_ENTRY,
     identifiers::PAYMENT_CARD_NUMBER,
     identifiers::PAYMENT_REFERENCE,
     // A proportion where 0.20 is 20% (chunk 5.5j2): one `numeric` column
@@ -1946,6 +1956,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     prices::PRICE_ENTRY,
     web::PROBLEM_DETAILS_ENTRY,
+    security::PUBLIC_KEY_ENTRY,
     web::PUSH_TOKEN,
     // A quarter of a calendar year, ordered by year and quarter.
     time_object(
@@ -2779,7 +2790,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 214, "the 214 standard types built so far");
+        assert_eq!(names.len(), 217, "the 217 standard types built so far");
     }
 
     #[test]

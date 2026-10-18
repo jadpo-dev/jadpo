@@ -14,6 +14,7 @@ mod calendar;
 mod colour;
 mod conditions;
 mod constants;
+mod crypto;
 mod data_formats;
 mod decode_problems;
 mod domain_names;

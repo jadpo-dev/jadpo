@@ -173,6 +173,15 @@ pub enum Op {
     ColourFromOklch,
     ColourMix,
     ColourWithLightness,
+    CryptoDecrypt,
+    CryptoEncrypt,
+    CryptoHashPassword,
+    CryptoHmac,
+    CryptoPublicKey,
+    CryptoSign,
+    CryptoVerifyHmac,
+    CryptoVerifyPassword,
+    CryptoVerifySignature,
     DecimalAbs,
     DecimalAtan2,
     DecimalCos,
@@ -650,6 +659,42 @@ const fn random(
     }
 }
 
+/// A `crypto` operation (area 19, "Hashing and cryptography"), by its
+/// parameters, result and the conditions it fails on.
+const fn crypto(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    conditions: &'static [Condition],
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace: "crypto",
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions,
+        rust,
+    }
+}
+
+/// The keys a `crypto` call's `key:` takes, each a setting's.
+const ENCRYPTION_KEY: Kind = Kind::Builtin(Builtin::EncryptionKey);
+const SIGNING_KEY: Kind = Kind::Builtin(Builtin::SigningKey);
+const PRIVATE_KEY: Kind = Kind::Builtin(Builtin::PrivateKey);
+/// What `crypto.hash_password` gives: the PHC string.
+const PASSWORD_HASH: Kind = Kind::Std(crate::standard::security::PASSWORD_HASH);
+
+/// A sealed value no key opens for its context, or one altered since:
+/// known only when the program runs, so only an `attempt` settles it.
+const ON_UNREADABLE: Condition = Condition {
+    key: RuleKey::Unreadable,
+    option: None,
+};
+
 const SET: Param = param("items", Kind::Set);
 
 /// A `set` operation that never fails (area 19, "Sets"), by its
@@ -967,6 +1012,101 @@ pub const OPERATIONS: &[Operation] = &[
         &[param("value", COLOUR), param("lightness", PERCENTAGE)],
         COLOUR,
         "colour::with_lightness",
+    ),
+    // Cryptography (area 19, "Hashing and cryptography", question 9): one
+    // construction per job and no algorithm choices, each one function in
+    // `jadpo-value`'s `crypto` module. A `key:` is a key setting, written
+    // `key: config.<name>` and nowhere else, so the checker owns the place
+    // and code never reads the key ([`Builtin::is_key`]); `encrypt` and
+    // `hash_password` read the generator for a nonce and a salt, so only
+    // actions call them ([`Op::reads_generator`]).
+    crypto(
+        Op::CryptoDecrypt,
+        "decrypt",
+        &[
+            param("sealed", BYTES_VALUE),
+            param("key", ENCRYPTION_KEY),
+            param("context", TEXT),
+        ],
+        BYTES_VALUE,
+        &[ON_UNREADABLE],
+        "crypto::decrypt",
+    ),
+    crypto(
+        Op::CryptoEncrypt,
+        "encrypt",
+        &[
+            param("value", TEXT_OR_BYTES),
+            param("key", ENCRYPTION_KEY),
+            param("context", TEXT),
+        ],
+        BYTES_VALUE,
+        &[],
+        "crypto::encrypt",
+    ),
+    crypto(
+        Op::CryptoHashPassword,
+        "hash_password",
+        &[param("password", TEXT)],
+        PASSWORD_HASH,
+        &[],
+        "crypto::hash_password",
+    ),
+    crypto(
+        Op::CryptoHmac,
+        "hmac",
+        &[param("value", TEXT_OR_BYTES), param("key", SIGNING_KEY)],
+        BYTES_VALUE,
+        &[],
+        "crypto::hmac",
+    ),
+    crypto(
+        Op::CryptoPublicKey,
+        "public_key",
+        &[param("key", PRIVATE_KEY)],
+        Kind::Std(crate::standard::security::PUBLIC_KEY),
+        &[],
+        "crypto::public_key",
+    ),
+    crypto(
+        Op::CryptoSign,
+        "sign",
+        &[param("value", TEXT_OR_BYTES), param("key", PRIVATE_KEY)],
+        BYTES_VALUE,
+        &[],
+        "crypto::sign",
+    ),
+    crypto(
+        Op::CryptoVerifyHmac,
+        "verify_hmac",
+        &[
+            param("value", TEXT_OR_BYTES),
+            param("mac", BYTES_VALUE),
+            param("key", SIGNING_KEY),
+        ],
+        BOOL,
+        &[],
+        "crypto::verify_hmac",
+    ),
+    crypto(
+        Op::CryptoVerifyPassword,
+        "verify_password",
+        &[param("password", TEXT), param("hash", PASSWORD_HASH)],
+        Kind::Enum(crate::standard::security::PASSWORD_CHECK),
+        &[],
+        "crypto::verify_password",
+    ),
+    crypto(
+        Op::CryptoVerifySignature,
+        "verify_signature",
+        &[
+            param("value", TEXT_OR_BYTES),
+            param("signature", BYTES_VALUE),
+            param("key", Kind::Std(crate::standard::security::PUBLIC_KEY)),
+        ],
+        BOOL,
+        &[],
+        "crypto::verify_signature",
     ),
     // The number operations (area 19, "Numbers"), each one function in
     // `jadpo-value`'s `integer` or `decimal` module. `min` and `max` give
@@ -2367,10 +2507,14 @@ impl Op {
     /// called only in actions, as `clock.now` is, and given the
     /// invocation's random bytes, which a test seeds and a recorded run
     /// replays (question 19).
+    /// `crypto.encrypt`'s nonce and `crypto.hash_password`'s salt are read
+    /// from it too, so a test's ciphertexts and hashes repeat.
     pub fn reads_generator(self) -> bool {
         matches!(
             self,
-            Op::RandomCode
+            Op::CryptoEncrypt
+                | Op::CryptoHashPassword
+                | Op::RandomCode
                 | Op::RandomInteger
                 | Op::RandomSample
                 | Op::RandomShuffle
@@ -2462,7 +2606,13 @@ mod tests {
                         .any(|param| param.name == option && param.optional),
                     // What text or bytes decode to is known only when the
                     // program runs, so only an `attempt` settles it.
-                    None if matches!(condition.key, RuleKey::Malformed | RuleKey::Mismatch) => true,
+                    None if matches!(
+                        condition.key,
+                        RuleKey::Malformed | RuleKey::Mismatch | RuleKey::Unreadable
+                    ) =>
+                    {
+                        true
+                    }
                     // A discount's amount off is in a currency only the
                     // running program knows, as is the price's (chunk
                     // 5.5i3).

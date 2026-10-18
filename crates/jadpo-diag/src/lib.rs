@@ -970,6 +970,8 @@ rules! {
         "02-values-and-types.html#type-optional-outside-input", "Optional or default field outside an Input";
     TYPE_ORDERING_OPERAND: "type.ordering_operand", area 3, Error, Agent,
         "03-logic.html#type-ordering-operand", "Values cannot be ordered";
+    TYPE_PASSWORD_HASH_EXPOSED: "type.password_hash_exposed", area 19, Error, Agent,
+        "19-standard-library.html#type-password-hash-exposed", "Password hash is sent, read from a request or put in a failure";
     TYPE_PRESENTATION_TEXT_PERSISTENCE: "type.presentation_text_persistence", area 10, Error, Agent,
         "10-configuration-and-time.html#type-presentation-text-persistence", "Formatted text is stored";
     TYPE_PRIMITIVE_SIGNATURE: "type.primitive_signature", area 2, Error, Agent,

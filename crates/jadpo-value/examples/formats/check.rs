@@ -1,7 +1,9 @@
 //! Area 19's hashing, encodings and JSON (chunk 5.5g) against fixed
 //! answers: SHA-256 against NIST's examples for FIPS 180-4, Base64
 //! against RFC 4648's test vectors, and `json.write` against the exact
-//! text one document gives. Shared by this example, which the gate runs
+//! text one document gives; and `crypto` (chunk 5.5q2) against its
+//! standards' known answers: XChaCha20-Poly1305's draft, RFC 4231's
+//! HMAC-SHA-256, RFC 8032's Ed25519 and OpenSSL's Argon2id. Shared by this example, which the gate runs
 //! under WebAssembly, and the native test
 //! (crates/jadpo-runtime/tests/formats.rs), so both targets are held to
 //! the same bytes, each call made as both executors make it: through
@@ -409,5 +411,133 @@ pub fn mismatches() -> (Vec<String>, usize) {
         format!("{invalid:?}"),
         &format!("{:?}", Err::<Value, _>(Unread::Malformed)),
     );
+    crypto_checks(&mut expect);
     (wrong, count)
+}
+
+/// draft-irtf-cfrg-xchacha-03, appendix A.3.1: the key (as an
+/// `EncryptionKey` setting's text), the nonce, the plaintext and the
+/// ciphertext, which the associated data doesn't change.
+const XCHACHA_KEY: &str = "gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp8";
+const XCHACHA_NONCE: &str = "404142434445464748494a4b4c4d4e4f5051525354555657";
+const SUNSCREEN: &str = "Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.";
+const XCHACHA_CIPHERTEXT: &str = "bd6d179d3e83d43b9576579493c0e939572a1700252bfaccbed2902c21396cbb731c7f1b0b4aa6440bf3a82f4eda7e39ae64c6708c54c216cb96b72e1213b4522f8c9ba40db5d945b11b69b982c1bb9e3f3fac2bc369488f76b2383565d3fff921f9664c97637da9768812f615c68b13b52e";
+
+/// `crypto`'s known answers, each made as both executors make the call.
+fn crypto_checks(expect: &mut impl FnMut(String, String, &str)) {
+    use jadpo_value::crypto::{self, KeyRing, PasswordCheck};
+    use jadpo_value::encoding::{from_hex, to_hex};
+    let hex_of = |text: &str| from_hex(text).unwrap_or_default();
+    // A sealed value's ciphertext is XChaCha20-Poly1305's, with the nonce
+    // the invocation's random bytes gave.
+    let keys = KeyRing::from_key_text(XCHACHA_KEY, None);
+    let nonce = hex_of(XCHACHA_NONCE);
+    let sealed = keys.as_ref().map(|keys| {
+        let mut given = nonce.clone().into_iter();
+        crypto::encrypt(
+            SUNSCREEN.as_bytes(),
+            keys,
+            "row",
+            &mut |out: &mut [u8]| {
+                out.iter_mut()
+                    .for_each(|byte| *byte = given.next().unwrap_or(0));
+                true
+            },
+        )
+    });
+    match (keys.as_ref(), sealed) {
+        (Some(keys), Some(Ok(sealed))) => {
+            let body = sealed
+                .get(30..sealed.len().saturating_sub(16))
+                .unwrap_or(&[]);
+            expect(
+                "XChaCha20-Poly1305's ciphertext".to_string(),
+                to_hex(body),
+                XCHACHA_CIPHERTEXT,
+            );
+            expect(
+                "a sealed value opens for its context".to_string(),
+                format!(
+                    "{:?}",
+                    crypto::decrypt(&sealed, keys, "row").map(|v| v.len())
+                ),
+                &format!("{:?}", Ok::<_, Fault>(SUNSCREEN.len())),
+            );
+            expect(
+                "a sealed value fails for another context".to_string(),
+                format!("{:?}", crypto::decrypt(&sealed, keys, "other")),
+                &format!("{:?}", Err::<Vec<u8>, _>(Fault::Broke(RuleKey::Unreadable))),
+            );
+        }
+        other => expect(
+            "XChaCha20-Poly1305".to_string(),
+            format!("{:?}", other.1),
+            "sealed",
+        ),
+    }
+    // RFC 4231's first two cases.
+    for (key, data, mac) in [
+        (
+            vec![0x0b; 20],
+            "Hi There",
+            "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7",
+        ),
+        (
+            b"Jefe".to_vec(),
+            "what do ya want for nothing?",
+            "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
+        ),
+    ] {
+        let keys = KeyRing::from_signing_text(&String::from_utf8_lossy(&key), None);
+        let made = crypto::hmac(data.as_bytes(), &keys).unwrap_or_default();
+        expect(format!("HMAC-SHA-256 of {data:?}"), to_hex(&made), mac);
+        expect(
+            format!("HMAC-SHA-256 of {data:?} checks"),
+            crypto::verify_hmac(data.as_bytes(), &made, &keys).to_string(),
+            "true",
+        );
+    }
+    // RFC 8032's second test: the message 0x72.
+    let seed = "TM0Imyj_ltqdtsNG7BFOD1uKMZ81q6Yk2oz27U-4pvs";
+    let public = "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw";
+    let signature = KeyRing::from_key_text(seed, None)
+        .ok_or(Fault::Shape)
+        .and_then(|keys| crypto::sign(b"r", &keys));
+    expect(
+        "Ed25519's signature".to_string(),
+        signature
+            .as_ref()
+            .map_or_else(|f| format!("{f:?}"), |s| to_hex(s)),
+        "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00",
+    );
+    if let Ok(signature) = signature {
+        expect(
+            "Ed25519's signature checks".to_string(),
+            crypto::verify_signature(b"r", &signature, public).to_string(),
+            "true",
+        );
+    }
+    // OpenSSL 3.6's Argon2id at the release's parameters, with the salt
+    // 00 01 ... 0f.
+    let mut salt = 0u8..16;
+    let hash = crypto::hash_password("correct horse battery staple", &mut |out: &mut [u8]| {
+        out.iter_mut()
+            .for_each(|byte| *byte = salt.next().unwrap_or(0));
+        true
+    });
+    expect(
+        "Argon2id's PHC string".to_string(),
+        hash.clone().unwrap_or_else(|f| format!("{f:?}")),
+        "$argon2id$v=19$m=19456,t=2,p=1$AAECAwQFBgcICQoLDA0ODw$gYJZtjEAJqjg26xdLmknq8/bB7MiWPrE9hsYuA+SkIU",
+    );
+    if let Ok(hash) = hash {
+        expect(
+            "a password checks against its hash".to_string(),
+            format!(
+                "{:?}",
+                crypto::verify_password("correct horse battery staple", &hash)
+            ),
+            &format!("{:?}", PasswordCheck::Correct),
+        );
+    }
 }

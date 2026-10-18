@@ -163,6 +163,10 @@ pub struct Program {
     /// The settings' values, decoded, by the setting's number in the plan:
     /// `None` for one no value reached ([`Program::with_config`]).
     settings: Vec<Option<Value>>,
+    /// The key settings' keys, by the setting's number: what a `crypto`
+    /// call's `key: config.<name>` gives it (area 19), held apart from the
+    /// values code reads, since code never reads a key.
+    keys: Vec<Option<jadpo_value::crypto::KeyRing>>,
     /// What signing in reads from them: the signing keys and the browser
     /// session's origin (area 8).
     auth: jadpo_runtime::http::signed::AuthSettings,
@@ -224,6 +228,10 @@ impl Program {
             .as_ref()
             .map(|values| Self::decoded(&prepared, values))
             .unwrap_or_default();
+        let keys = values
+            .as_ref()
+            .map(|values| Self::key_rings(&prepared, values))
+            .unwrap_or_default();
         let auth = values
             .as_ref()
             .map(|values| Self::auth(&prepared, values))
@@ -238,6 +246,7 @@ impl Program {
             shapes,
             proof_checks: false,
             settings,
+            keys,
             auth,
             client,
         }
@@ -264,6 +273,7 @@ impl Program {
     /// the application started with, or a test run's.
     pub fn with_config(mut self, values: &jadpo_runtime::config::ConfigValues) -> Program {
         self.settings = Self::decoded(&self.prepared, values);
+        self.keys = Self::key_rings(&self.prepared, values);
         self.auth = Self::auth(&self.prepared, values);
         self.client = Self::client(&self.prepared, values);
         self
@@ -293,6 +303,22 @@ impl Program {
             prepared.plan.routes().identity.as_ref(),
             values,
         )
+    }
+
+    /// The keys the key settings in `values` hold, by their numbers.
+    fn key_rings(
+        prepared: &Prepared,
+        values: &jadpo_runtime::config::ConfigValues,
+    ) -> Vec<Option<jadpo_value::crypto::KeyRing>> {
+        let config = prepared.plan.config();
+        (0..config.fields.len())
+            .map(|at| jadpo_runtime::config::key_ring(config, values, at as u32))
+            .collect()
+    }
+
+    /// The key setting number `at` holds, for a `crypto` call's `key:`.
+    pub(crate) fn key(&self, at: u32) -> Option<&jadpo_value::crypto::KeyRing> {
+        self.keys.get(at as usize)?.as_ref()
     }
 
     /// The settings `values` hold, decoded, by their numbers.

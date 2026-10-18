@@ -80,6 +80,9 @@ pub enum TestSecret {
     PostgresUrl,
     /// A Redis address no one listens at.
     RedisUrl,
+    /// A key's 32 random bytes as unpadded Base64url: an `EncryptionKey`
+    /// or a `PrivateKey` (area 19).
+    Key,
 }
 
 /// One setting.
@@ -102,8 +105,8 @@ pub struct ConfigField {
     pub test: Option<String>,
     /// How a test run makes a secret's value.
     pub generated: Option<TestSecret>,
-    /// A signing key, which a previous value may also be given for
-    /// ([`previous_variable`]).
+    /// A signing key or an encryption key, which a previous value may also
+    /// be given for ([`previous_variable`]).
     pub rotates: bool,
 }
 
@@ -156,9 +159,10 @@ pub fn derived_variable(field: &str) -> String {
     field.to_ascii_uppercase()
 }
 
-/// The variable holding the previous key of a `SigningKey` setting read
-/// from `variable`, which new tokens are no longer signed with but old
-/// ones are still accepted by (area 10, "Signing key rotation").
+/// The variable holding the previous key of a `SigningKey` or an
+/// `EncryptionKey` setting read from `variable`, which new tokens and
+/// sealed values are no longer made with but old ones are still read with
+/// (area 10, "Signing key rotation"; area 19).
 pub fn previous_variable(variable: &str) -> String {
     format!("{variable}_PREVIOUS")
 }

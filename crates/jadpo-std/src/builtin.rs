@@ -57,6 +57,15 @@ pub enum Builtin {
     /// A key sessions and tokens are signed with (area 10, "Signing key
     /// rotation"): at least [`SIGNING_KEY_MIN`] characters. Always secret.
     SigningKey,
+    /// The key `crypto.encrypt` and `crypto.decrypt` seal with (area 19,
+    /// "Hashing and cryptography"): 32 random bytes, written as 43
+    /// characters of unpadded Base64url ([`is_key_text`]). Always secret,
+    /// and rotates through `NAME_PREVIOUS` as a `SigningKey` does.
+    EncryptionKey,
+    /// The Ed25519 key `crypto.sign` signs with (area 19): its 32-byte
+    /// seed, written as unpadded Base64url like an `EncryptionKey`. Always
+    /// secret; only a setting holds one until keys held as data arrive.
+    PrivateKey,
     /// Text for a person, in their language, as `text.format` and
     /// translations give it (area 10, "Showing dates and times to
     /// people"): it goes into a response, an email or a page, and is never
@@ -72,6 +81,10 @@ pub enum Builtin {
 /// The fewest characters a [`Builtin::SigningKey`] has: 256 bits of a
 /// hexadecimal key, as `jadpo test` generates for a test run.
 pub const SIGNING_KEY_MIN: usize = 32;
+
+/// How many bytes an [`Builtin::EncryptionKey`] and a
+/// [`Builtin::PrivateKey`] hold: 256 bits.
+pub const KEY_SIZE: usize = 32;
 
 /// `PageSize`'s own rules: from 1 to 100 (area 6, "Order and pages").
 static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
@@ -97,7 +110,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
 };
 
 impl Builtin {
-    pub const ALL: [Builtin; 44] = [
+    pub const ALL: [Builtin; 46] = [
         Builtin::Bool,
         Builtin::Int,
         Builtin::Decimal,
@@ -140,6 +153,8 @@ impl Builtin {
         Builtin::PostgresUrl,
         Builtin::RedisUrl,
         Builtin::SigningKey,
+        Builtin::EncryptionKey,
+        Builtin::PrivateKey,
         Builtin::PresentationText,
         Builtin::PluralCount,
     ];
@@ -170,6 +185,8 @@ impl Builtin {
             Builtin::PostgresUrl => "PostgresUrl",
             Builtin::RedisUrl => "RedisUrl",
             Builtin::SigningKey => "SigningKey",
+            Builtin::EncryptionKey => "EncryptionKey",
+            Builtin::PrivateKey => "PrivateKey",
             Builtin::PresentationText => "PresentationText",
             Builtin::PluralCount => "PluralCount",
         }
@@ -192,7 +209,9 @@ impl Builtin {
             | Builtin::ServiceKey
             | Builtin::PostgresUrl
             | Builtin::RedisUrl
-            | Builtin::SigningKey => Builtin::Text,
+            | Builtin::SigningKey
+            | Builtin::EncryptionKey
+            | Builtin::PrivateKey => Builtin::Text,
             Builtin::PageSize | Builtin::PluralCount => Builtin::Int,
             other => other,
         }
@@ -215,6 +234,8 @@ impl Builtin {
                 | Builtin::PostgresUrl
                 | Builtin::RedisUrl
                 | Builtin::SigningKey
+                | Builtin::EncryptionKey
+                | Builtin::PrivateKey
                 | Builtin::PresentationText
                 | Builtin::PluralCount
         )
@@ -222,12 +243,33 @@ impl Builtin {
 
     /// Whether a configuration value of this type is secret whatever the
     /// field says (area 10): an address that normally carries a password,
-    /// and a signing key.
+    /// and a key.
     pub fn is_secret(self) -> bool {
         matches!(
             self,
-            Builtin::PostgresUrl | Builtin::RedisUrl | Builtin::SigningKey
+            Builtin::PostgresUrl
+                | Builtin::RedisUrl
+                | Builtin::SigningKey
+                | Builtin::EncryptionKey
+                | Builtin::PrivateKey
         )
+    }
+
+    /// Whether it is a key a `crypto` operation takes as its `key:`, the
+    /// one place code may give it (area 19, "Hashing and cryptography"):
+    /// opaque, never read, printed, stored or compared.
+    pub fn is_key(self) -> bool {
+        matches!(
+            self,
+            Builtin::SigningKey | Builtin::EncryptionKey | Builtin::PrivateKey
+        )
+    }
+
+    /// Whether a setting of this type also reads `NAME_PREVIOUS`, the key
+    /// it replaced, still accepted while a deployment rotates (area 10,
+    /// "Signing keys"; area 19 for an `EncryptionKey`).
+    pub fn rotates(self) -> bool {
+        matches!(self, Builtin::SigningKey | Builtin::EncryptionKey)
     }
 
     /// The rules the type itself carries, below any a declaration adds:

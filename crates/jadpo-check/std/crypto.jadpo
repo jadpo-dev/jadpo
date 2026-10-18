@@ -1,0 +1,52 @@
+// The `crypto` namespace (area 19, "Hashing and cryptography", question
+// 9): one construction per job and no algorithm choices. A key is an
+// opaque setting given as `key: config.<name>` and nowhere else, a place
+// the compiler owns, so code never reads it: an `EncryptionKey` for
+// `encrypt` and `decrypt`, a `SigningKey` for `hmac` and `verify_hmac`,
+// whose text's bytes are the HMAC key, and a `PrivateKey` for `sign`.
+// `encrypt` and `hash_password` read the generator for a nonce and a salt,
+// so they are called only in actions, as `random`'s operations are. Each
+// is listed, typed, in `jadpo-std`'s operation table, which names the
+// Rust function in `jadpo-value` that runs it; a test holds these stubs to
+// that table. `T` is a value built on `Bytes`, or a `Text`, whose UTF-8 is
+// used.
+
+public library crypto {
+    /// `sealed` opened with the current key or, after a rotation, the
+    /// previous one, for the same `context`; fails `unreadable` when
+    /// neither sealed it for this context, or it was altered.
+    function decrypt(sealed: Bytes, key: EncryptionKey, context: Text) -> Bytes {}
+
+    /// `value` sealed with XChaCha20-Poly1305 under the current key, with
+    /// a fresh random nonce, the format's version and the key's identity
+    /// in front; `context` (a record's id) is bound to it, so it opens
+    /// only for that context.
+    function encrypt(value: T, key: EncryptionKey, context: Text) -> Bytes {}
+
+    /// The password's Argon2id hash at the release's parameters (19 MiB,
+    /// 2 passes, 1 lane), as a PHC string, with a fresh random salt.
+    function hash_password(password: Text) -> PasswordHash {}
+
+    /// HMAC-SHA-256 of `value` under the current key.
+    function hmac(value: T, key: SigningKey) -> Bytes {}
+
+    /// The Ed25519 public key of the `PrivateKey` setting, which isn't
+    /// secret: published, others check what the app signs with it.
+    function public_key(key: PrivateKey) -> PublicKey {}
+
+    /// The Ed25519 signature of `value`, 64 bytes.
+    function sign(value: T, key: PrivateKey) -> Bytes {}
+
+    /// Whether `mac` is `value`'s HMAC-SHA-256 under the current or the
+    /// previous key, compared in constant time.
+    function verify_hmac(value: T, mac: Bytes, key: SigningKey) -> Bool {}
+
+    /// `correct`, `wrong`, or `correct_outdated` when the hash was made
+    /// with older parameters and a fresh one should be stored; compared in
+    /// constant time.
+    function verify_password(password: Text, hash: PasswordHash) -> PasswordCheck {}
+
+    /// Whether `signature` is `value`'s Ed25519 signature under `key`,
+    /// which is not secret and may be read.
+    function verify_signature(value: T, signature: Bytes, key: PublicKey) -> Bool {}
+}
