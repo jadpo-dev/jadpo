@@ -8393,8 +8393,9 @@ first; each group of types then arrives with its baseline and its extras.
   `markup.rich_to_html`, and `LocalisedText` with `text.pick`.
 - **5.5p Media and colour** `opus · high`: the 15 types, `colour`'s 5
   operations and `media.fit`.
-- **5.5q Randomness and cryptography** `opus · high`: the generated
-  `random` namespace with test seeding; `crypto`'s 8 operations that need
+- **5.5q Randomness** `opus · high`: the generated `random` namespace
+  with test seeding. Split on 2026-10-18, cryptography is 5.5q2.
+- **5.5q2 Cryptography** `opus · high`: `crypto`'s 8 operations that need
   no keys held as data; `EncryptionKey`, `PasswordHash`, `PasswordCheck`,
   `PrivateKey`, `PublicKey` and `key:` as a compiler-owned place.
 - **5.5r Security types** `opus · high`: the other 17 security types

@@ -929,13 +929,19 @@ reference only).
   `ContentRatingScheme` (BBFC, MPA, PEGI, ESRB) beside the 15, accepted by
   the lead session (2026-10-18). What the pages left open is area 19's "Chosen in
   chunk 5.5p".
-- [ ] **5.5q Randomness and cryptography** `opus · high` (area 19,
-  "Randomness" and "Hashing and cryptography", questions 9 and 19): the
-  generated `random` namespace, actions only, seeded per test and
-  recorded for replay; `crypto`'s 8 operations that need no keys held as
-  data; `EncryptionKey`, `PasswordHash`, `PasswordCheck`, `PrivateKey`,
-  `PublicKey` and `key:` as a compiler-owned place. Done when the
-  examples pass, a test's random values repeat on a rerun, and reading a
+- [ ] **5.5q Randomness** `opus · high` (area 19, "Randomness",
+  question 19): the generated `random` namespace's 5 operations, actions
+  only, seeded per test and recorded for replay, reading the operating
+  system's generator outside tests. Done when the examples pass,
+  interpreted and in the runtime, and a test's random values repeat on a
+  rerun. Split on 2026-10-18; cryptography is 5.5q2.
+- [ ] **5.5q2 Cryptography** `opus · high` (area 19, "Hashing and
+  cryptography", question 9; split from 5.5q), after 5.5q: `crypto`'s 8
+  operations that need no keys held as data; `EncryptionKey`,
+  `PasswordHash`, `PasswordCheck`, `PrivateKey`, `PublicKey` and `key:`
+  as a compiler-owned place, on audited crates with the standards'
+  known-answer tests, built for wasm32. Done when the examples pass, a
+  tampered or wrongly keyed ciphertext fails to decrypt, and reading a
   key anywhere but `key:` is `configuration.secret_flow`.
 - [ ] **5.5r Security types** `opus · high` (area 19, "The standard
   types"): the other 17 security types (`Password`, `Jwt`, `Jwk`,
