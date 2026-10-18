@@ -1217,7 +1217,12 @@ impl Reader<'_> {
     /// `sign_in: { ... }`: the ways the language checks a person. Only
     /// `passkey:` is built; it is given with where it is written when it
     /// reads cleanly.
-    fn sign_in(&mut self, path: &str, span: &Span, member: &ast::Member) -> Option<(Passkey, Span)> {
+    fn sign_in(
+        &mut self,
+        path: &str,
+        span: &Span,
+        member: &ast::Member,
+    ) -> Option<(Passkey, Span)> {
         let Some(list) = member.block() else {
             self.out.problems.push(
                 Diagnostic::new(

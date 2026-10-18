@@ -129,7 +129,9 @@ fn its_settings_are_checked() {
         assert!(
             has(
                 &found,
-                &format!("semantic.auth_setting_invalid: `{written}` can't be how long a passkey's challenge lasts")
+                &format!(
+                    "semantic.auth_setting_invalid: `{written}` can't be how long a passkey's challenge lasts"
+                )
             ),
             "{written}: {found:?}"
         );

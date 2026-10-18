@@ -1350,9 +1350,12 @@ dependencies = [
  "jadpo-drivers",
  "jadpo-runtime",
  "jadpo-std",
+ "openssl",
+ "serde_cbor_2",
  "serde_json",
  "tokio",
  "webauthn-rs",
+ "webauthn-rs-core",
 ]
 
 [[package]]

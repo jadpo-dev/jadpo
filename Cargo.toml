@@ -197,9 +197,15 @@ getrandom = { version = "=0.4.3", default-features = false }
 # `danger-allow-state-serialisation` keeps a ceremony's state in the
 # database, server-side and single-use, never in a cookie; and
 # `danger-credential-internals` loads a stored `WebAuthnCredential` part by
-# part. `serde_cbor_2` reads and writes the COSE key, and `uuid` and `url`
-# are the user handle and origin it takes, all already under it.
+# part, whose types `webauthn-rs-core` names; `serde_cbor_2` reads and
+# writes its COSE key. Both are already under `webauthn-rs`.
 webauthn-rs = { version = "=0.5.5", default-features = false, features = ["conditional-ui", "danger-allow-state-serialisation", "danger-credential-internals"] }
+webauthn-rs-core = { version = "=0.5.5", default-features = false }
+serde_cbor_2 = { version = "=0.13.0", default-features = false, features = ["std"] }
+# The test authenticator's ES256 keys (jadpo-host-native's
+# `test-authenticator`, for tests only): the OpenSSL bindings `webauthn-rs`
+# already links.
+openssl = { version = "=0.10.81", default-features = false }
 # HTTP for the native host (jadpo-host-native only; docs/compiler-runtime.md §2.6).
 hyper = { version = "=1.12.0", default-features = false }
 hyper-util = { version = "=0.1.21", default-features = false }

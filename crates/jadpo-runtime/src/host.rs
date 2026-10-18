@@ -209,8 +209,106 @@ pub struct Event {
     pub value: Value,
 }
 
+/// What is kept of a passkey for its ceremonies (area 8, "Passkeys"):
+/// `WebAuthnCredential`'s parts that `webauthn-rs` reads (area 19, chosen
+/// in chunk 5.5r3), never a secret.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PasskeyParts {
+    pub credential_id: Vec<u8>,
+    /// The COSE_Key (RFC 9052 §7) in CBOR.
+    pub public_key: Vec<u8>,
+    pub sign_count: u32,
+    /// WebAuthn's names: `usb`, `nfc`, `ble`, `internal`, `hybrid`.
+    pub transports: Vec<String>,
+    pub backup_eligible: bool,
+    pub backed_up: bool,
+}
+
+/// What an answer from a device says before it is checked: the challenge
+/// it answers, the passkey it is from, and on signing in the user handle
+/// it gives.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PasskeyAnswer {
+    pub challenge: Vec<u8>,
+    pub credential_id: Vec<u8>,
+    pub user_handle: Option<Vec<u8>>,
+}
+
+/// Why a passkey ceremony couldn't go on.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PasskeyError {
+    /// The answer doesn't check: origin, relying party, presence,
+    /// verification, signature or counter. Which isn't said.
+    Rejected,
+    /// The origin can't be a relying party, or the state kept is no
+    /// longer readable.
+    Misconfigured,
+}
+
+/// The passkey ceremonies (area 8, "Passkeys"), on an audited WebAuthn
+/// implementation the host carries: `webauthn-rs` natively. `origin` is
+/// the browser session's configured origin, whose host is the
+/// relying-party ID; nothing here reads the request. A ceremony's state
+/// is JSON the runtime keeps server-side, used once.
+pub trait Passkeys {
+    /// The options for adding a passkey, as WebAuthn's
+    /// `PublicKeyCredentialCreationOptionsJSON` inside `publicKey`, and
+    /// the state to check the answer with: a discoverable passkey that
+    /// verifies the person, with no attestation, none of `exclude` again.
+    fn start_registration(
+        &self,
+        origin: &str,
+        timeout_ms: u32,
+        user_handle: [u8; 16],
+        user_name: &str,
+        exclude: &[Vec<u8>],
+    ) -> Result<(String, String), PasskeyError>;
+
+    /// The new passkey, once its answer checks against `state`.
+    fn finish_registration(
+        &self,
+        origin: &str,
+        timeout_ms: u32,
+        state: &str,
+        credential: &str,
+    ) -> Result<PasskeyParts, PasskeyError>;
+
+    /// The options for signing in with any of the person's discoverable
+    /// passkeys, and the state to check the answer with.
+    fn start_sign_in(
+        &self,
+        origin: &str,
+        timeout_ms: u32,
+    ) -> Result<(String, String), PasskeyError>;
+
+    /// What `credential`, a device's answer as WebAuthn's `toJSON()`
+    /// writes it, says before it is checked; `None` when it can't be read.
+    fn read_answer(&self, credential: &str) -> Option<PasskeyAnswer>;
+
+    /// `stored` after signing in with it: the answer checked against
+    /// `state`, the user handle `user_handle` and the stored key, its
+    /// counter, backup state and eligibility updated. A counter that
+    /// didn't go up, when either is above zero, is `Rejected`.
+    fn finish_sign_in(
+        &self,
+        origin: &str,
+        timeout_ms: u32,
+        state: &str,
+        credential: &str,
+        stored: &PasskeyParts,
+        user_handle: [u8; 16],
+    ) -> Result<PasskeyParts, PasskeyError>;
+}
+
 /// The platform: the capabilities one invocation runs against.
 pub trait Host {
+    /// The passkey ceremonies (area 8, "Passkeys"): `None` on a host that
+    /// carries no WebAuthn implementation, whose passkey routes answer
+    /// `authentication_misconfigured`.
+    fn passkeys(&self) -> Option<&dyn Passkeys> {
+        None
+    }
+
     /// The store named `store` (a connection in `app.jadpo`, area 11), or
     /// `None` when the host has none by that name.
     fn database(&self, store: &str) -> Option<&dyn Database>;
