@@ -103,7 +103,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 169 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, the 18 software types in 5.5n2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: twenty-four are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 171 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: twenty-four are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -130,7 +130,7 @@ exception to the rule.
 | Media and visual (15) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize` (enum), `ExifOrientation` (enum), `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating` | `colour`, `media` |
 | Web and network (23) | **`Url`**, **`UrlPath`**, **`RelativeUrl`**, **`Slug`**, **`DomainName`**, **`Hostname`**, **`WebOrigin`**, **`HttpMethod`** (enum), **`HttpStatus`**, **`HttpHeaderName`**, **`FileType`**, **`UserAgent`**, **`ProblemDetails`**, **`JsonPointer`**, **`Cookie`**, **`UtmParameters`**, **`IpAddress`**, **`Cidr`**, **`NetworkPort`**, **`MacAddress`**, **`Imei`**, **`Emoji`**, **`PushToken`** | `web` |
 | Software (19) | **`SemanticVersion`**, **`VersionRange`**, **`GitRef`**, **`PackageUrl`**, **`Cve`**, **`SpdxLicence`**, **`TraceId`**, **`SpanId`**, **`TraceParent`**, **`LogLevel`** (enum), **`FilePath`**, **`FileName`**, **`RegularExpression`**, **`ContainerImage`**, **`Digest`**, **`Uuid`**, **`Ulid`**, **`IdempotencyKey`**, **`Doi`** | `semver` |
-| Text formats (4) | `Markdown`, `Html`, `RichText`, `LocalisedText` | `markup`, `text` |
+| Text formats (4) | **`Markdown`**, **`Html`**, `RichText`, `LocalisedText` | `markup`, `text` |
 | Security (20) | `Password`, `PasswordHash`, `PasswordPolicy`, `Hash`, `Hmac`, `Jwt`, `JwtClaims`, `Jwk`, `PublicKey`, `PrivateKey`, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `SecretText`, `BearerToken`, `OAuthScope`, `OidcClaims`, `WebAuthnCredential`, `EncryptedValue` | `crypto` |
 | Travel (6) | **`IataAirport`**, **`IcaoAirport`**, **`IataAirline`**, `FlightNumber`, **`CabinClass`** (enum), **`BookingReference`** | |
 | Other with a published standard (10) | **`UnNumber`**, **`Orcid`**, **`CefrLevel`** (enum), **`Mpan`**, **`Mprn`**, **`EpcRating`** (enum), **`Tenure`** (enum), **`LawfulBasis`** (enum), `Jurisdiction`, `ModelId` | |
@@ -392,7 +392,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `Angle`, `Area`, `BasisPoints`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Concentration`, `ContainerImage`, `ContainerNumber`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Discount`, `Doi`, `DomainName`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `Fraction`, `Frequency`, `GitRef`, `GivenName`, `Hostname`, `HsCode`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `Imei`, `Incoterm`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LogLevel`, `LotNumber`, `MacAddress`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PackageUrl`, `PassportNumber`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PushToken`, `Quarter`, `Range`, `Ratio`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `SemanticVersion`, `SerialNumber`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `TraceId`, `TraceParent`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VersionRange`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `Angle`, `Area`, `BasisPoints`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Concentration`, `ContainerImage`, `ContainerNumber`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Discount`, `Doi`, `DomainName`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `Fraction`, `Frequency`, `GitRef`, `GivenName`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `Imei`, `Incoterm`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LogLevel`, `LotNumber`, `MacAddress`, `Markdown`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PackageUrl`, `PassportNumber`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PushToken`, `Quarter`, `Range`, `Ratio`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `SemanticVersion`, `SerialNumber`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `TraceId`, `TraceParent`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VersionRange`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -3275,6 +3275,65 @@ CommonMark text; `RichText` is a structured document of blocks and marks;
 | `markup.rich_to_html(rich)` | `Html` from a `RichText` | | none |
 | `markup.to_plain_text(html)` | `Text`, the text content, with a new line between blocks | | none |
 
+Every way text becomes `Html` runs the one sanitiser: `Html(raw)`,
+`text.parse(raw, as: Html)`, a request's JSON and `markup.to_html`. None
+of them fails, since whatever the text holds, only the safe part is kept,
+so none needs an `attempt`. A literal written where an `Html` goes must
+already be what the sanitiser keeps, so code never holds HTML that changes
+when it runs; anything else is `type.invalid_literal`, naming what would
+be kept. A plain `Text` is never an `Html` without `Html(...)`, which is
+the sanitiser, and text operations on an `Html` give plain `Text`, so the
+only `Html` a template may write out unescaped (area 16) is one made safe.
+What it keeps is "Chosen in chunk 5.5o", under "Review".
+
+A food blog turns a post written in Markdown into its page, keeps only
+the safe part of a profile pasted from a rich text editor, and shows the
+words of a post in a notification:
+
+```jadpo check project=text-formats
+type FormText = Text {}
+
+type PreviewText = Text {}
+
+/// A post's body as its author wrote it, made into the page's HTML.
+function post_body(post_markdown: Markdown) -> Html {
+    return markup.to_html(post_markdown)
+}
+
+/// A profile's about section, pasted from a rich text editor: whatever it
+/// holds, only the safe part is kept.
+function about_section(pasted_about: FormText) -> Html {
+    return Html(pasted_about)
+}
+
+/// The words a notification shows from a post, without its markup.
+function preview(post_page: Html) -> PreviewText {
+    return PreviewText(markup.to_plain_text(post_page))
+}
+```
+
+```jadpo check project=text-formats file=main.test.jadpo
+test "a post's Markdown becomes safe HTML" {
+    assert post_body("Soup of the **day**") == "<p>Soup of the <strong>day</strong></p>\n"
+    assert post_body(
+        "[menu](https://example.com/menu) or [prize](javascript:steal())"
+    ) == "<p><a href=\"https://example.com/menu\" rel=\"noopener noreferrer nofollow\">menu</a> or <a rel=\"noopener noreferrer nofollow\">prize</a></p>\n"
+}
+
+test "pasted HTML keeps only what is safe" {
+    assert about_section("<p onclick=\"steal()\">Chef</p><script>steal()</script>") == "<p>Chef</p>"
+    assert preview(
+        about_section("<h2>Menu</h2><ul><li>Soup</li><li>Bread</li></ul>")
+    ) == "Menu\nSoup\nBread"
+}
+```
+
+> Built in chunk 5.5o for `Html` and `Markdown`, with `markup.to_html` and
+> `markup.to_plain_text`; `RichText`, `LocalisedText`,
+> `markup.rich_to_html` and `text.pick` come in chunk 5.5o2. Templates
+> that write `Html` out come with email (chunk 7.3). What the page left
+> open is "Chosen in chunk 5.5o", under "Review".
+
 ## Hashing and cryptography
 
 | Operation | Gives | Fails | SQL form |
@@ -5428,10 +5487,10 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, the 18 software types with `semver.satisfies` in 5.5n2, each other group of types in 5.5i4 to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, the 18 software types with `semver.satisfies` in 5.5n2, `Html` and `Markdown` with `markup.to_html` and `to_plain_text` in 5.5o, each other group of types in 5.5i4 to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}`; `apply_discount` in 5.5i3 |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
-| The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
+| The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o2 |
 | A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2: `type.standard_clash`, `jadpo fix`'s swap and rename, the editor's swap |
 | `Email`, `Url`, `IpAddress`, `FileType`, `InstantRange` | Decided (areas 2, 10, 16) and built |
 | Everything else on this page | Decided 2026-10-17, as recommended; built in chunks 5.5a to 5.5s |
@@ -7200,6 +7259,71 @@ under "Errors").
   a shape added later reports every such type at once.
 - **Clashes renamed:** the tests' `Digest` (bytes) is `HashBytes`.
 
+### Chosen in chunk 5.5o
+
+- **`Html` is text that the sanitiser has kept.** Its sanitiser is
+  ammonia 4.2.4 (MIT or Apache-2.0), an allow-list over html5ever, which
+  parses as browsers do, rather than one written here. The page names no
+  scripts, no event handlers and links only to `https:` and `mailto:`;
+  the rest of its policy is the most conservative choice. It keeps `a`
+  (`href`, `title`), `abbr` (`title`), `b`, `blockquote`, `br`, `code`,
+  `del`, `em`, `h1` to `h6`, `hr`, `i`, `ins`, `kbd`, `li`, `mark`, `ol`
+  (`start`), `p`, `pre`, `q`, `s`, `small`, `strong`, `sub`, `sup`, `u`
+  and `ul`, and no other element or attribute: no images (a remote image
+  tells its server who read the page), tables, forms, frames, media,
+  styles, classes or ids. A link without its own `https:` or `mailto:`
+  scheme (relative, protocol-relative `//host`, `http:`, `javascript:`
+  however it is encoded) loses its `href`. Every link gets `rel="noopener
+  noreferrer nofollow"`, whatever it was written with. Comments go. A
+  `script`, `style`, `svg`, `math`, `template`, `iframe`, `object`,
+  `embed`, `noscript`, `noembed`, `noframes`, `textarea`, `title`, `xmp`,
+  `plaintext`, `select`, `applet`, `frame` or `frameset` goes with
+  everything inside it. Any other disallowed element leaves its text.
+- **What it keeps is a fixed point.** The sanitiser's output, sanitised
+  again, must come back unchanged, so a browser parsing the page builds
+  the tree the allow-list kept. That is the defence against mutation XSS.
+  Output that doesn't come back unchanged is kept as escaped text
+  instead, and as nothing when even that doesn't. Markup nested more than
+  512 elements deep, Blink's limit, is kept as text too: html5ever parses
+  deep nesting in quadratic time, so one large value could stall a
+  program.
+- **Every way in is the sanitiser, and none fails:** `Html(raw)` needs no
+  `attempt`, `text.parse(raw, as: Html)` is never `malformed`, and a
+  request's JSON is made safe as it is read. A type built on `Html` keeps
+  its own rules, counted on what is kept (`max_length` after the script
+  is gone), and naming `format` in its `attempt` is
+  `failure.rule_cannot_break`. A value read back from storage is the text
+  that was stored, which was made safe when it was built.
+- **An `Html` literal must already be what the sanitiser keeps,** since
+  a literal is checked while compiling. Code then never holds HTML that
+  changes when it runs, and a test compares against what is really kept.
+  Anything else is `type.invalid_literal`, whose reason and `next:` give
+  the kept form, so `"Tom & Jerry"` is written `"Tom &amp; Jerry"`.
+- **`text.format` shows the text people read in it:** an `Html` value's
+  `markup.to_plain_text`, and a `Markdown` text's once rendered. An
+  `Html` value's `text.from` is the HTML itself.
+- **`Markdown` is CommonMark 0.31.2,** rendered by pulldown-cmark 0.13.4
+  (MIT) with none of its extensions (no tables, strikethrough, task lists
+  or footnotes). It is any text with no control character but a tab, a
+  line feed or a carriage return, so a form's text area, whose lines end
+  CRLF, sends Markdown as it is. `markup.to_html` renders raw HTML inside
+  it as CommonMark says, then sanitises the whole result, so raw HTML is
+  never passed through unsanitised. An image is shown as its
+  description, since `Html` keeps no images.
+- **`markup.to_plain_text`** sanitises, then puts each block (a
+  paragraph, a heading, a list item, a quote, a code block, a rule) on
+  its own line and turns `<br>` into a line break. It runs white space
+  together as a browser shows it, trims each line and leaves out empty
+  ones. Inside `<pre>` it keeps the lines as written, less blank ones at
+  either end. A list item gets no bullet or number.
+- **Licences:** ammonia brings Servo's `cssparser` and `dtoa-short`
+  (MPL-2.0), the first MPL code in the build, for the `style` attributes
+  the policy never keeps. MPL-2.0 is file-level copyleft: unmodified, it
+  asks only that its source stays available, as crates.io keeps it.
+- **Not personal data,** and no shapes. `RichText`, `LocalisedText`,
+  `markup.rich_to_html` and `text.pick` are chunk 5.5o2's. Templates that
+  write an `Html` out unescaped (area 16) come with email (chunk 7.3).
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -7632,7 +7756,7 @@ first; each group of types then arrives with its baseline and its extras.
 - **5.5e Decimal maths** `opus · high`: the eight
   correctly rounded operations, tested against reference values. Built.
 - **5.5f Text** `opus · high`: the 17 text operations (the contract's
-  three come in 5.5a, `text.pick` in 5.5o), `locale:` on case
+  three come in 5.5a, `text.pick` in 5.5o2), `locale:` on case
   and sorting, NFC at the boundary; `never_empty`, `fill:`,
   `at_most_length_of`; `text` reserved and the clashing examples renamed.
   Built.
@@ -7706,7 +7830,11 @@ first; each group of types then arrives with its baseline and its extras.
   `semver.satisfies`. Built.
 - **5.5o Text formats** `opus · high`: `Markdown`, `Html` (whose
   construction is the sanitiser, a security boundary per #88), `RichText`
-  and `LocalisedText`, `markup`'s 3 operations and `text.pick`.
+  and `LocalisedText`, `markup`'s 3 operations and `text.pick`. `Html` and
+  `Markdown` built, with `to_html` and `to_plain_text`; split on
+  2026-10-18, `RichText` and `LocalisedText` are 5.5o2.
+- **5.5o2 Rich and localised text** `opus · high`: `RichText` with
+  `markup.rich_to_html`, and `LocalisedText` with `text.pick`.
 - **5.5p Media and colour** `opus · high`: the 15 types, `colour`'s 5
   operations and `media.fit`.
 - **5.5q Randomness and cryptography** `opus · high`: the generated

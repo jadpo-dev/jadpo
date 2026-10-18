@@ -272,13 +272,25 @@ fn every_standard_type_meets_the_contract_in_the_checker() {
         if matches!(entry.holds, Holds::Builtin(Builtin::Quantity(_))) {
             others.push_str("\n        unknown_unit: Unreadable");
         }
-        assert_eq!(
-            check(&format!(
-                "{declared}function f(raw: Wire) fails Unreadable -> {value} {{\n    var read: {value} = attempt text.parse(raw, as: {value}) {{\n        malformed: Unreadable{others}\n    }}\n    return read\n}}\n"
-            )),
-            parsed,
-            "{name}: text.parse"
-        );
+        // Any text is `Html` once it is made safe (chunk 5.5o): reading
+        // one never fails, so it needs no `attempt`.
+        if jadpo_std::standard::markup::sanitises(name) {
+            assert_eq!(
+                check(&format!(
+                    "{declared}function f(raw: Wire) -> {value} {{\n    return text.parse(raw, as: {value})\n}}\n"
+                )),
+                Vec::<String>::new(),
+                "{name}: text.parse never fails"
+            );
+        } else {
+            assert_eq!(
+                check(&format!(
+                    "{declared}function f(raw: Wire) fails Unreadable -> {value} {{\n    var read: {value} = attempt text.parse(raw, as: {value}) {{\n        malformed: Unreadable{others}\n    }}\n    return read\n}}\n"
+                )),
+                parsed,
+                "{name}: text.parse"
+            );
+        }
         // `<`, where the type is ordered.
         let ordered = check(&format!(
             "{declared}function f(a: {value}, b: {value}) -> Answer {{\n    return Answer(a < b)\n}}\n"

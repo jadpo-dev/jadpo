@@ -893,12 +893,19 @@ reference only).
   3.29.0 from Embark's `spdx` crate 0.13.6; `LogLevel` is OpenTelemetry's
   six severities, and area 10's own `LogLevel` example is `Verbosity`.
   What the pages left open is area 19's "Chosen in chunk 5.5n2".
-- [ ] **5.5o Text formats** `opus · high` (area 19, "Text formats"):
+- [x] **5.5o Text formats** `opus · high` (area 19, "Text formats"):
   `Html` (whose construction is the sanitiser, a security boundary) and
   `Markdown`, with `markup.to_html` and `markup.to_plain_text`. Done when
   the examples pass, interpreted and in the runtime, and a sanitiser test
   suite of script, event-handler, link and mutation attacks comes out
   safe. Split on 2026-10-18; `RichText` and `LocalisedText` are 5.5o2.
+  Built on ammonia 4.2.4 over html5ever, with a conservative allow-list
+  (links only to `https:` and `mailto:`, no images), output that is a
+  fixed point and a nesting limit of 512; every way in sanitises and none
+  fails, and an `Html` literal must already be safe. Markdown is
+  CommonMark by pulldown-cmark. ammonia brings `cssparser` (MPL-2.0), the
+  build's first MPL code, which **needs Richard** to accept or replace.
+  What the pages left open is area 19's "Chosen in chunk 5.5o".
 - [ ] **5.5o2 Rich and localised text** `opus · high` (area 19, "Text
   formats", split from 5.5o), after 5.5o: `RichText`, a structured
   document of blocks and marks, with `markup.rich_to_html` through 5.5o's

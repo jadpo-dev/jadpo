@@ -1,0 +1,19 @@
+// The `markup` namespace (area 19, "Text formats"). Each operation is
+// listed, typed, in `jadpo-std`'s operation table, which names the Rust
+// function in `jadpo-value` that runs it; a test holds these stubs to that
+// table. Neither fails: every text is CommonMark, and every `Html` was made
+// safe when it was built.
+
+public library markup {
+    /// `markdown` rendered as CommonMark (0.31.2), then made safe as every
+    /// `Html` is: raw HTML inside it is kept only where the sanitiser keeps
+    /// it, and an image is shown as its description, since `Html` keeps no
+    /// images.
+    function to_html(markdown: Markdown) -> Html {}
+
+    /// The text people read in `html`: each block (a paragraph, a heading,
+    /// a list item, a quote, a code block) on its own line, `<br>` a line
+    /// break, white space run together as a browser shows it, kept as
+    /// written in a code block.
+    function to_plain_text(html: Html) -> Text {}
+}

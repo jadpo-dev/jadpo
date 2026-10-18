@@ -1,5 +1,6 @@
 a_days_flour
 abc_photo
+about_section
 abroad
 accept_invitation
 accept_invitation_in_app
@@ -201,7 +202,6 @@ candle_count
 candles
 cap_total
 capped
-caption
 card_already_issued
 card_full
 card_label
@@ -952,6 +952,7 @@ party_label
 party_title
 pass_rate
 passed_on
+pasted_about
 pastry
 patch_release
 patch_todo
@@ -996,6 +997,9 @@ plugin_version
 pong
 portion_count
 portions
+post_body
+post_markdown
+post_page
 postcode
 postcode_unreadable
 postcodes
@@ -1005,6 +1009,8 @@ pounds_to_euros
 praised
 praised_notes
 pretend_pure
+preview
+preview_text
 price_basket
 price_flour
 price_item
@@ -1279,7 +1285,6 @@ slices_in
 slot_request
 slot_taken
 slot_time
-small
 small_order_fee
 snooze_days
 snooze_todo

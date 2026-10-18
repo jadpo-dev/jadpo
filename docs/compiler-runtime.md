@@ -704,6 +704,23 @@ per part; `<` on it is its precedence (`jadpo_value::ops::compare`, build
 metadata ignored), and the one order (`jadpo_value::order`) sorts it by
 precedence then build metadata, so `sort_by` agrees with `<`.
 `jadpo_value::semver` runs `semver.satisfies` (`Op::SemverSatisfies`).
+Since chunk 5.5o `jadpo_std::standard::markup` is the HTML sanitiser
+every `Html` value is built with: ammonia over html5ever, with Jadpo's
+allow-list as data there, its output always a fixed point, and markup
+nested past 512 elements kept as text. ammonia and html5ever are
+`jadpo-std`'s fourth and fifth dependencies, so the checker proves an
+`Html` literal (`Validator::Html`, a literal already safe) with the code
+the runtime builds values with. `Html` is held as text (`Holds::Text`,
+`TextForm::Html`). Its construction is a transformation, not a refusal:
+`jadpo_value::Validator::store` sanitises text whose chain names it, as
+it turns a ratio into a percentage. Every construction, a write's input,
+a request's JSON and the probes go through `store`, and `text.parse`
+reads it through `TextForm::Html`. The checker's `verdict` never counts
+`format` breakable for it, and `parse_fallible` reads it as text, so
+neither needs an `attempt`. `jadpo_value::markup` renders CommonMark with
+pulldown-cmark (`jadpo-value` only) and sanitises the result for
+`markup.to_html`; `markup.to_plain_text` and `FormatKey::PlainText` read
+the sanitised text's tokens.
 Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
 text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
 `jadpo_std::standard::events`, which also holds the rules across its parts

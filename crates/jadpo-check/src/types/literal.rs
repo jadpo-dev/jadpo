@@ -286,6 +286,35 @@ pub fn diagnostic(
             ))
             .next(format!("Write a valid `{base}` value"))
         }
+        // `Html` written in code must already be safe: its construction
+        // makes any other text safe, but a literal is checked while
+        // compiling, so it says what it means (area 19, chunk 5.5o).
+        Problem::Broken(_, broken)
+            if broken.key == jadpo_std::RuleKey::Format
+                && jadpo_std::standard::markup::sanitises(&broken.rule) =>
+        {
+            let standard = broken.rule;
+            let kept = broken
+                .why
+                .split_once("keeps `")
+                .map(|(_, kept)| kept.trim_end_matches('`'));
+            let next = match kept {
+                Some(kept) if !kept.is_empty() => {
+                    format!("Write it as the sanitiser keeps it: `{kept}`")
+                }
+                _ => "Write only the elements and attributes the sanitiser keeps".to_string(),
+            };
+            Diagnostic::new(
+                &rule::TYPE_INVALID_LITERAL,
+                format!("`{written}` isn't safe `{expected}` as written"),
+            )
+            .at(span, format!("not what `{standard}`'s sanitiser keeps"))
+            .reason(format!(
+                "The value {}. An `{standard}` keeps only the allowed elements and attributes, with no scripts, no event handlers and links only to `https:` and `mailto:`; a literal is checked while compiling, so it is written as it is kept.",
+                broken.why
+            ))
+            .next(next)
+        }
         // A standard type held as text: its own check, as a built-in
         // type's is (area 19, chunk 5.5i).
         Problem::Broken(_, broken)
