@@ -55,7 +55,11 @@ fn every_stub_agrees_with_its_data_entry() {
         "a stub for every entry, an entry for every stub"
     );
     for entry in STANDARD_TYPES {
-        let StandardStub { base, members } = &stubs[entry.name];
+        let StandardStub {
+            base,
+            members,
+            payloads,
+        } = &stubs[entry.name];
         match entry.holds {
             Holds::Builtin(builtin) => {
                 assert_eq!(base, builtin.name(), "{} is built in", entry.name);
@@ -116,6 +120,52 @@ fn every_stub_agrees_with_its_data_entry() {
                     })
                     .collect();
                 assert_eq!(declared, expected, "{}'s fields", entry.name);
+            }
+            // A type built on a built-in type, its bounds in its entry
+            // (chunk 5.5i3).
+            Holds::Bounded { of, .. } => {
+                assert_eq!(base, of.name(), "{} is built on {}", entry.name, of.name());
+                assert!(
+                    members.is_empty(),
+                    "{}'s bounds are its entry's",
+                    entry.name
+                );
+            }
+            // A choice: an enum whose variants carry their entry's parts
+            // as fields, each written as the type it is built on (chunk
+            // 5.5i3).
+            Holds::Choice(variants) => {
+                assert_eq!(base, "Enum", "{}", entry.name);
+                let listed: Vec<&str> = members.iter().map(|(name, _)| name.as_str()).collect();
+                let names: Vec<&str> = variants.iter().map(|(name, _)| *name).collect();
+                assert_eq!(listed, names, "{}'s variants", entry.name);
+                let declared: Vec<(String, Vec<(String, String)>)> = payloads
+                    .iter()
+                    .map(|(variant, fields)| {
+                        let fields = fields
+                            .iter()
+                            .map(|(name, ty)| (name.clone(), format!("{ty:?}")))
+                            .collect();
+                        (variant.clone(), fields)
+                    })
+                    .collect();
+                let expected: Vec<(String, Vec<(String, String)>)> = variants
+                    .iter()
+                    .map(|(variant, fields)| {
+                        let fields = fields
+                            .iter()
+                            .map(|(name, part)| {
+                                let ty = jadpo_check::types::TypeRef::Path(
+                                    vec![part.builtin().map_or("", Builtin::name).to_string()],
+                                    Vec::new(),
+                                );
+                                ((*name).to_string(), format!("{:?}", Some(ty)))
+                            })
+                            .collect();
+                        ((*variant).to_string(), fields)
+                    })
+                    .collect();
+                assert_eq!(declared, expected, "{}'s variants' fields", entry.name);
             }
             // A type built on `Text` the standard library declares, its
             // check in its entry (area 19, chunk 5.5i), or on the standard
@@ -204,7 +254,10 @@ fn every_standard_type_meets_the_contract_in_the_checker() {
         }
         // `text.parse`: the type, failing `malformed`, and by the rules
         // its examples' settings give it.
-        let mut others = if entry.examples.settings.is_empty() {
+        // A type with rules of its own breaks them by name: a `Money`
+        // type's currency, a `TaxRate`'s bounds (chunk 5.5i3).
+        let bounded = matches!(entry.holds, Holds::Bounded { min, max, .. } if min.is_some() || max.is_some());
+        let mut others = if entry.examples.settings.is_empty() && !bounded {
             String::new()
         } else {
             "\n        invalid: Unreadable".to_string()
@@ -351,6 +404,37 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
                 scalar_schema(builtin, &rules)
             }
             Holds::Object(_) => standard_object_schema(entry),
+            // Its built-in type's, with its bounds (chunk 5.5i3).
+            Holds::Bounded { of, .. } => {
+                let (_, rules) = jadpo_std::standard::declared(name).expect("its bounds");
+                scalar_schema(of, &rules)
+            }
+            // One of its variants, each an object of `tag` and its fields
+            // (chunk 5.5i3).
+            Holds::Choice(variants) => {
+                let schema = standard_object_schema(entry);
+                let one_of = schema
+                    .get("oneOf")
+                    .and_then(|v| v.as_array())
+                    .expect("one of its variants");
+                assert_eq!(one_of.len(), variants.len(), "{name}");
+                for (schema, (variant, fields)) in one_of.iter().zip(variants) {
+                    let properties = schema.get("properties").expect("properties");
+                    assert_eq!(
+                        properties
+                            .get("tag")
+                            .and_then(|tag| tag.get("const"))
+                            .and_then(|v| v.as_str()),
+                        Some(*variant),
+                        "{name}.{variant}"
+                    );
+                    for (field, _) in *fields {
+                        assert!(properties.get(field).is_some(), "{name}.{variant}.{field}");
+                    }
+                }
+                assert_eq!(entry.json, Json::Tagged, "{name}");
+                continue;
+            }
             Holds::Enum(codes) => {
                 let spelling = Spelling::of(name);
                 for (variant, code) in codes {
@@ -367,6 +451,7 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
             .map(str::to_string);
         match entry.json {
             Json::Text => assert_eq!(kind.as_deref(), Some("string"), "{name}"),
+            Json::Tagged => unreachable!("{name}: only a choice is sent tagged"),
             Json::Number => assert_eq!(kind.as_deref(), Some("integer"), "{name}"),
             Json::Fields(fields) | Json::Members(fields) => {
                 assert_eq!(kind.as_deref(), Some("object"), "{name}");

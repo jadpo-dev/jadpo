@@ -131,13 +131,13 @@ fn the_standard_divisions_are_proved_like_slash() {
     // `integer.divide` and `decimal.divide` of a value never below zero by
     // a divisor of at least 1 give a result from zero up to the dividend,
     // whichever way they round, as `/` does.
-    let source = "type Buns = Int {\n    min: 0\n    max: 500\n}\n\ntype PerTray = Int {\n    min: 1\n    max: 48\n}\n\ntype Trays = Int {\n    min: 0\n    max: 500\n}\n\ntype Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype People = Int {\n    min: 1\n}\n\nfunction trays(buns: Buns, per_tray: PerTray) -> Trays {\n    return Trays(integer.divide(buns, per_tray, rounding: Rounding.up))\n}\n\nfunction share(bill: Price, people: People) -> Price {\n    return Price(decimal.divide(dividend: bill, divisor: people, rounding: Rounding.half_up))\n}\n";
+    let source = "type Buns = Int {\n    min: 0\n    max: 500\n}\n\ntype PerTray = Int {\n    min: 1\n    max: 48\n}\n\ntype Trays = Int {\n    min: 0\n    max: 500\n}\n\ntype ItemPrice = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype People = Int {\n    min: 1\n}\n\nfunction trays(buns: Buns, per_tray: PerTray) -> Trays {\n    return Trays(integer.divide(buns, per_tray, rounding: Rounding.up))\n}\n\nfunction share(bill: ItemPrice, people: People) -> ItemPrice {\n    return ItemPrice(decimal.divide(dividend: bill, divisor: people, rounding: Rounding.half_up))\n}\n";
     assert_eq!(one(source), CLEAN);
     // A divisor that may be below 1 can make the result larger than the
     // dividend, so a bounded result still needs its check.
     assert_eq!(
         one(
-            "type Price = Decimal {\n    scale: 2\n    min: 0.00\n    max: 10.00\n}\n\ntype Portion = Decimal {\n    scale: 2\n    min: 0.01\n    max: 1.00\n}\n\nfunction scaled(bill: Price, by: Portion) -> Price {\n    return Price(decimal.divide(bill, by, rounding: Rounding.half_up))\n}\n"
+            "type ItemPrice = Decimal {\n    scale: 2\n    min: 0.00\n    max: 10.00\n}\n\ntype Portion = Decimal {\n    scale: 2\n    min: 0.01\n    max: 1.00\n}\n\nfunction scaled(bill: ItemPrice, by: Portion) -> ItemPrice {\n    return ItemPrice(decimal.divide(bill, by, rounding: Rounding.half_up))\n}\n"
         ),
         ["failure.attempt_required"]
     );
@@ -490,7 +490,7 @@ fn each_mistake_gives_its_rule() {
 }
 
 /// Types with more than one rule that can break, for mapping by rule.
-const RULES: &str = "type Count = Int {}\n\ntype Amount = Decimal {\n    scale: 4\n}\n\ntype Small = Quantity {\n    max: 10\n}\n\ntype Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype StockCode = Text {\n    max_length: 8\n    pattern: \"[A-Z]{3}-[0-9]{4}\"\n}\n\ntype Written = Text {\n    max_length: 8\n}\n\ntype QuantityTooSmall = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype SkuRejected = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
+const RULES: &str = "type Count = Int {}\n\ntype Amount = Decimal {\n    scale: 4\n}\n\ntype Small = Quantity {\n    max: 10\n}\n\ntype ItemPrice = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype StockCode = Text {\n    max_length: 8\n    pattern: \"[A-Z]{3}-[0-9]{4}\"\n}\n\ntype Written = Text {\n    max_length: 8\n}\n\ntype QuantityTooSmall = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype SkuRejected = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
 
 fn with_rules(source: &str) -> Vec<String> {
     with_quantity(&format!("{RULES}{source}"))
@@ -518,7 +518,7 @@ fn construction_failures_are_mapped_by_rule() {
         // the length is proved.
         "function parse(written: Written) fails SkuRejected -> StockCode {\n    var sku: StockCode = attempt StockCode(written) {\n        pattern: SkuRejected\n    }\n    return sku\n}\n",
         // `scale` rounds the value as it is kept, so it never breaks.
-        "function price(amount: Amount) fails QuantityTooSmall -> Price {\n    var result: Price = attempt Price(amount) {\n        min: QuantityTooSmall\n    }\n    return result\n}\n",
+        "function price(amount: Amount) fails QuantityTooSmall -> ItemPrice {\n    var result: ItemPrice = attempt ItemPrice(amount) {\n        min: QuantityTooSmall\n    }\n    return result\n}\n",
     ];
     for source in clean {
         assert_eq!(with_rules(source), CLEAN, "for:\n{source}");
@@ -537,7 +537,7 @@ fn construction_failures_are_mapped_by_rule() {
             "failure.rule_cannot_break",
         ),
         (
-            "function price(amount: Amount) fails QuantityTooSmall, QuantityTooLarge -> Price {\n    var result: Price = attempt Price(amount) {\n        min: QuantityTooSmall\n        scale: QuantityTooLarge\n    }\n    return result\n}\n",
+            "function price(amount: Amount) fails QuantityTooSmall, QuantityTooLarge -> ItemPrice {\n    var result: ItemPrice = attempt ItemPrice(amount) {\n        min: QuantityTooSmall\n        scale: QuantityTooLarge\n    }\n    return result\n}\n",
             "failure.rule_cannot_break",
         ),
         (

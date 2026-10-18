@@ -250,8 +250,10 @@ pub fn run(
         (Op::MoneyAllocate, [total, ratios]) => money::allocate(total, ratios),
         (Op::MoneyConvert, [amount, rate]) => money::convert(amount, rate),
         (Op::MoneyMask, [card]) => money::mask(card),
+        (Op::MoneyApplyDiscount, [price, discount]) => money::apply_discount(price, discount),
         (
-            Op::MoneyConvert
+            Op::MoneyApplyDiscount
+            | Op::MoneyConvert
             | Op::MoneyMask
             | Op::MoneyFromMinor
             | Op::MoneyOf
@@ -768,6 +770,21 @@ mod tests {
                 Op::MoneyOf => vec![Value::Decimal(Decimal::new(1050, 2)), pounds.clone()],
                 Op::MoneyMinor | Op::MoneyCurrency => vec![price.clone()],
                 Op::MoneyMask => vec![Value::text("4242424242424242")],
+                Op::MoneyApplyDiscount => vec![
+                    Value::record(
+                        jadpo_std::standard::prices::PRICE,
+                        vec![
+                            ("amount".into(), price.clone()),
+                            ("includes_tax".into(), Value::Bool(true)),
+                        ],
+                    ),
+                    Value::variant(
+                        jadpo_std::standard::prices::DISCOUNT,
+                        1,
+                        "percentage_off",
+                        vec![("percentage".into(), Value::Percentage(Decimal::new(20, 2)))],
+                    ),
+                ],
                 Op::MoneySum => vec![Value::list(vec![price.clone()]), pounds.clone()],
                 Op::MoneySplit => vec![price.clone(), Value::Int(3)],
                 Op::MoneyAllocate => vec![price.clone(), items.clone()],

@@ -446,29 +446,31 @@ impl<'t> Codecs<'t> {
             }
             Made::StdEnum(name) => {
                 let spelling = jadpo_std::config::Spelling::of(&name);
-                Codec::Enum {
-                    variants: jadpo_std::enums()
-                        .into_iter()
-                        .find(|(written, _)| *written == name)
-                        .map(|(_, variants)| variants)
-                        .unwrap_or_default()
-                        .into_iter()
-                        .enumerate()
-                        .filter(|(ordinal, _)| {
-                            name != jadpo_std::LOCALE
-                                || self.locales.as_ref().is_none_or(|plan| {
-                                    u32::try_from(*ordinal).is_ok_and(|at| plan.supports(at))
-                                })
-                        })
-                        .map(|(ordinal, variant)| VariantCodec {
-                            name: variant.to_string(),
-                            wire: spelling.spelling(variant),
-                            ordinal: ordinal as u32,
-                            fields: None,
-                        })
-                        .collect(),
-                    ty: name,
-                }
+                let listed: Vec<(usize, &str)> = jadpo_std::enums()
+                    .into_iter()
+                    .find(|(written, _)| *written == name)
+                    .map(|(_, variants)| variants)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(ordinal, _)| {
+                        name != jadpo_std::LOCALE
+                            || self.locales.as_ref().is_none_or(|plan| {
+                                u32::try_from(*ordinal).is_ok_and(|at| plan.supports(at))
+                            })
+                    })
+                    .collect();
+                // A choice's variants carry their parts (chunk 5.5i3).
+                let variants = listed
+                    .into_iter()
+                    .map(|(ordinal, variant)| VariantCodec {
+                        name: variant.to_string(),
+                        wire: spelling.spelling(variant),
+                        ordinal: ordinal as u32,
+                        fields: self.choice_fields(&name, variant),
+                    })
+                    .collect();
+                Codec::Enum { variants, ty: name }
             }
             Made::List(item) => Codec::List {
                 item: self.codec(&item),
@@ -525,6 +527,25 @@ impl<'t> Codecs<'t> {
             }
             Made::Unknown => self.made_unknown(),
         }
+    }
+
+    /// A standard choice's variant's shape and its fields' codecs, from its
+    /// entry's parts (chunk 5.5i3); `None` for a variant with no data.
+    fn choice_fields(
+        &mut self,
+        choice: &str,
+        variant: &str,
+    ) -> Option<(jadpo_std::types::ShapeId, Vec<CodecId>)> {
+        let fields = jadpo_std::standard::choice_variant(choice, variant)?;
+        let shape = self
+            .types
+            .shape_id(&Key::new(Kind::Variant, &format!("{choice}.{variant}")))?;
+        let host = format!("{choice}.{variant}");
+        let codecs = fields
+            .iter()
+            .map(|(field, part)| self.codec(&crate::types::part_type(&host, field, *part)))
+            .collect();
+        Some((shape, codecs))
     }
 
     /// A type the boundary can't carry, which the checker rules out: `Unit`.

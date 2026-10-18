@@ -810,15 +810,31 @@ reference only).
   document's kind; forms from VIES, HMRC, the OECD's and the EU's TIN
   pages and each issuer's own, by length where a country publishes none.
   What the pages left open is area 19's "Chosen in chunk 5.5i2".
-- [ ] **5.5i3 Prices, discounts and bank accounts** `opus · high` (area
-  19, "The standard types", split from 5.5i2), after 5.5j2: `Price`,
-  `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints` and `InterestRate`,
-  on `Money`, `Percentage` and the quantities; `BankAccount`, with the UK
-  modulus check across a sort code and an account number by Vocalink's
-  published specification and test cases. `Discount` and `BankAccount`
-  are the first standard types that are a choice of other types. Done
-  when every type passes the harness with valid and invalid examples per
-  rule.
+- [x] **5.5i3 Prices, discounts and rates** `opus · high` (area 19, "The
+  standard types", split from 5.5i2), after 5.5j2: `Price`, `UnitPrice`,
+  `TaxRate`, `Discount`, `BasisPoints` and `InterestRate`, on `Money`,
+  `Percentage` and the quantities. `Discount` is the first standard type
+  that is a choice of other types: the choice goes into the contract
+  generically (a stub and a data entry, no per-type code path), for
+  `BankAccount` and later choices to reuse. Done when every type passes
+  the harness with valid and invalid examples per rule, and a `Discount`
+  applied to a `Price` gives the right result for both kinds, interpreted
+  and in the runtime. Split on 2026-10-18; `BankAccount` is 5.5i4.
+  Built, with `money.apply_discount` for applying a discount,
+  `InterestRateBasis` as an interest rate's basis, `UnitPrice` a choice by
+  the quantity's kind and `BasisPoints` one of 5.5n's whole numbers;
+  storing the four records waits on area 5's structured storage, as an
+  `ExchangeRate`'s does. What the pages left open is area 19's "Chosen in
+  chunk 5.5i3".
+- [ ] **5.5i4 Bank accounts** `opus · high` (area 19, "The standard
+  types", split from 5.5i3), after 5.5i3: `BankAccount`, a choice of a UK
+  sort code and account number, an IBAN, or another country's account,
+  on 5.5i3's choice; the UK modulus check across a sort code and an
+  account number by Vocalink's published specification (version 9.10, 5
+  Sept 2026), with all 34 of its Chapter 3 test cases, cited; masked as
+  financial personal data (area 15), as 5.5i did. Done when it passes the
+  harness with valid and invalid examples per rule and all 34 Vocalink
+  cases pass.
 - [x] **5.5m Commerce, health, travel and the rest: codes and lists**
   `opus · high` (area 19, "Groups with the baseline only"): the 29 of the
   45 that are codes or closed lists. Held as text with a pattern and,
@@ -930,9 +946,14 @@ reference only).
   unit or precision on the way out. Compound types store as named columns
   (`Money` as amount and currency, the currency kept and checked even when
   the type fixes it), quantities as one SI-unit column with the unit in
-  the column's comment, ranges as native range types. Done when a test per
-  boundary round-trips one value of every standard type, and any boundary
-  with its own encoder is gone. A read-only audit (2026-10-17) found what
+  the column's comment, ranges as native range types. Every standard
+  object and choice type (`Price`, `Discount`, `UnitPrice`,
+  `InterestRate`, `ExchangeRate` and the rest, which storing now fails
+  with `toolchain.not_built_yet`) is made storable through the named-column
+  mechanism or its decided storage shape. Done when a test per
+  boundary round-trips one value of every standard type, an entity stores
+  and reads back one of each standard object and choice type, and any
+  boundary with its own encoder is gone. A read-only audit (2026-10-17) found what
   to fix, beyond what 5.5h fixes for Money (OpenAPI for standard object
   types, enum spellings from `entry.codes()`, storage as named columns):
   `json.write`'s map keys use debug text and don't read back

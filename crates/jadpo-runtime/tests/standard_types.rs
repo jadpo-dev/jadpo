@@ -81,6 +81,66 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
             Vec::new(),
         ),
         Holds::Enum(codes) => (vec![enum_codec(entry, codes)], Vec::new(), Vec::new()),
+        // Its built-in type with its bounds as rules (chunk 5.5i3).
+        Holds::Bounded { of, .. } => (
+            vec![scalar(of, 0)],
+            vec![Validator::new(
+                Some(of),
+                jadpo_std::standard::declared(entry.name)
+                    .map(|(_, rules)| rules)
+                    .into_iter()
+                    .collect(),
+            )],
+            Vec::new(),
+        ),
+        // A choice: an enum whose variants carry their parts, each
+        // variant's a shape of its own (chunk 5.5i3).
+        Holds::Choice(variants) => {
+            let mut codecs = vec![Codec::Enum {
+                ty: entry.name.to_string(),
+                variants: Vec::new(),
+            }];
+            let mut validators = Vec::new();
+            let mut shapes = Vec::new();
+            let mut listed = Vec::new();
+            for (ordinal, (variant, fields)) in variants.iter().enumerate() {
+                let mut plans = Vec::new();
+                let mut tops = Vec::new();
+                for (name, part) in *fields {
+                    let validator = ValidatorId(validators.len() as u32);
+                    tops.push(part_codec(*part, &mut codecs, &mut validators));
+                    plans.push(FieldPlan {
+                        key: format!("field {}.{variant}.{name}", entry.name),
+                        name: (*name).to_string(),
+                        validator,
+                        omittable: false,
+                        absent: None,
+                        none_left_out: false,
+                        section: None,
+                    });
+                }
+                let shape = ShapeId(shapes.len() as u32);
+                shapes.push(Shape::new(&ShapePlan {
+                    ty: entry.name.to_string(),
+                    variant: Some(jadpo_std::types::VariantPlan {
+                        name: (*variant).to_string(),
+                        ordinal: ordinal as u32,
+                    }),
+                    fields: plans,
+                }));
+                listed.push(VariantCodec {
+                    name: (*variant).to_string(),
+                    wire: (*variant).to_string(),
+                    ordinal: ordinal as u32,
+                    fields: Some((shape, tops)),
+                });
+            }
+            codecs[0] = Codec::Enum {
+                ty: entry.name.to_string(),
+                variants: listed,
+            };
+            (codecs, validators, shapes)
+        }
         // Sent as its canonical text (chunk 5.5k).
         Holds::Object(_) if entry.json == Json::Text => (
             vec![Codec::Standard {
@@ -350,6 +410,28 @@ fn every_standard_type_meets_the_contract() {
                         "{name}: {json} is an object of its fields in order"
                     );
                     assert_eq!(parsed.as_object().map(|o| o.len()), Some(fields.len()));
+                }
+                // Area 2's form of a variant with data: `tag` first, then
+                // the variant's fields (chunk 5.5i3).
+                Json::Tagged => {
+                    let Holds::Choice(variants) = entry.holds else {
+                        panic!("{name}: only a choice is sent tagged");
+                    };
+                    let tag = parsed.get("tag").and_then(|tag| tag.as_str());
+                    let fields = variants
+                        .iter()
+                        .find(|(variant, _)| Some(*variant) == tag)
+                        .map(|(_, fields)| *fields)
+                        .unwrap_or_else(|| panic!("{name}: {json} names its variant"));
+                    assert!(
+                        json.starts_with("{\"tag\":"),
+                        "{name}: {json} is tagged first"
+                    );
+                    assert_eq!(
+                        parsed.as_object().map(|o| o.len()),
+                        Some(fields.len() + 1),
+                        "{name}: {json} is its tag and its variant's fields"
+                    );
                 }
                 // The members it has, in order, and none of those that are
                 // `none`: as its example writes it.

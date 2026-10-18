@@ -12,7 +12,7 @@ fn check(source: &str) -> Vec<String> {
     rules(Layout::Loose, &[("main.jadpo", source)])
 }
 
-const NAMES: &str = "type ProductName = Text {\n    min_length: 1\n    max_length: 120\n}\n\ntype Pence = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\n";
+const NAMES: &str = "type ProductName = Text {\n    min_length: 1\n    max_length: 120\n}\n\ntype Pence = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype ItemPrice = Decimal {\n    scale: 2\n    min: 0.00\n}\n\n";
 
 fn with_names(source: &str) -> Vec<String> {
     check(&format!("{NAMES}{source}"))
@@ -22,7 +22,7 @@ fn with_names(source: &str) -> Vec<String> {
 fn named_types_refinements_and_literals_check() {
     assert_eq!(
         with_names(
-            "type OrderId = Uuid {}\n\ntype ShortProductName = ProductName {\n    max_length: 40\n}\n\nfunction catalogue_name(name: ShortProductName) -> ProductName {\n    return name\n}\n\nfunction starting_quantity() -> Quantity {\n    return 1\n}\n\nfunction free() -> Price {\n    return 0.00\n}\n\nfunction short() -> ShortProductName {\n    var name: ShortProductName = \"Mug\"\n    return name\n}\n"
+            "type OrderId = Uuid {}\n\ntype ShortProductName = ProductName {\n    max_length: 40\n}\n\nfunction catalogue_name(name: ShortProductName) -> ProductName {\n    return name\n}\n\nfunction starting_quantity() -> Quantity {\n    return 1\n}\n\nfunction free() -> ItemPrice {\n    return 0.00\n}\n\nfunction short() -> ShortProductName {\n    var name: ShortProductName = \"Mug\"\n    return name\n}\n"
         ),
         Vec::<String>::new()
     );
@@ -54,11 +54,11 @@ fn each_mistake_gives_its_rule() {
             "type.invalid_literal",
         ),
         (
-            "function cheap() -> Price {\n    return 1.255\n}\n",
+            "function cheap() -> ItemPrice {\n    return 1.255\n}\n",
             "type.invalid_literal",
         ),
         (
-            "function cheap() -> Price {\n    return 1\n}\n",
+            "function cheap() -> ItemPrice {\n    return 1\n}\n",
             "type.mismatch",
         ),
         (
@@ -422,11 +422,11 @@ fn standard_operations_check_their_arguments_shape_and_kind() {
             &["type.mismatch", "type.mismatch"],
         ),
         (
-            "function f(a: Price, b: Quantity) -> Pence {\n    return Pence(integer.divide(a, b, rounding: Rounding.up))\n}\n",
+            "function f(a: ItemPrice, b: Quantity) -> Pence {\n    return Pence(integer.divide(a, b, rounding: Rounding.up))\n}\n",
             &["type.mismatch"],
         ),
         (
-            "function f(total: Price, people: Quantity) -> Tip {\n    return attempt Tip(decimal.divide(total, people, rounding: Rounding.half_even)) {\n        invalid: Refused\n    }\n}\n\ntype Tip = Decimal {\n    scale: 2\n    min: 0.00\n    max: 1.00\n}\n\ntype Refused = Failure {\n    kind: FailureKind.invalid_value\n}\n",
+            "function f(total: ItemPrice, people: Quantity) -> Tip {\n    return attempt Tip(decimal.divide(total, people, rounding: Rounding.half_even)) {\n        invalid: Refused\n    }\n}\n\ntype Tip = Decimal {\n    scale: 2\n    min: 0.00\n    max: 1.00\n}\n\ntype Refused = Failure {\n    kind: FailureKind.invalid_value\n}\n",
             &["failure.undeclared_propagation"],
         ),
         (

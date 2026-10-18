@@ -237,6 +237,7 @@ pub enum Op {
     MapWith,
     MapWithout,
     MoneyAllocate,
+    MoneyApplyDiscount,
     MoneyConvert,
     MoneyCurrency,
     MoneyFromMinor,
@@ -1404,6 +1405,22 @@ pub const OPERATIONS: &[Operation] = &[
         Kind::List,
         "money::allocate",
     ),
+    // A discount taken off a price (chunk 5.5i3): an amount off in the
+    // price's currency, or a percentage of it rounded half to even to a
+    // minor unit, never below nothing.
+    Operation {
+        conditions: &[ON_CURRENCY_MISMATCH],
+        ..money(
+            Op::MoneyApplyDiscount,
+            "apply_discount",
+            &[
+                param("price", Kind::Std(crate::standard::prices::PRICE)),
+                param("discount", Kind::Enum(crate::standard::prices::DISCOUNT)),
+            ],
+            Kind::Std(crate::standard::prices::PRICE),
+            "money::apply_discount",
+        )
+    },
     // A rate applied, never fetched: the amount must be in the rate's
     // `from` currency, and the result is in its `to`, rounded half to
     // even to a whole minor unit.
@@ -2166,6 +2183,10 @@ mod tests {
                     // What text or bytes decode to is known only when the
                     // program runs, so only an `attempt` settles it.
                     None if matches!(condition.key, RuleKey::Malformed | RuleKey::Mismatch) => true,
+                    // A discount's amount off is in a currency only the
+                    // running program knows, as is the price's (chunk
+                    // 5.5i3).
+                    None if operation.op == Op::MoneyApplyDiscount => true,
                     // `ln`'s by a value proved above 0; the money
                     // operations' by a currency the types or the call fix,
                     // and `convert`'s by a rate's currency a condition
