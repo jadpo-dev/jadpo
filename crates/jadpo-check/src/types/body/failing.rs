@@ -77,7 +77,12 @@ fn options_named(keys: &[String]) -> String {
 /// (area 19, "Numbers"), what proves it.
 fn condition_clause(keys: &[String]) -> String {
     if keys.iter().any(|key| key == "invalid_signature") {
-        "What a token says is only known when the program runs: one not signed by a key it is given fails `invalid_signature`, one past its time `expired` or `not_yet_valid`, one for another app `wrong_audience` or `wrong_issuer`, and one that isn't a token `malformed`".to_string()
+        let claims = if keys.iter().any(|key| key == "mismatch") {
+            ", and claims that aren't the type `as:` names `mismatch`"
+        } else {
+            ""
+        };
+        format!("What a token says is only known when the program runs: one not signed by a key it is given fails `invalid_signature`, one past its time `expired` or `not_yet_valid`, one for another app `wrong_audience` or `wrong_issuer`, and one that isn't a token `malformed`{claims}")
     } else if keys.iter().any(|key| key == "mismatch") {
         "What a document holds is only known when the program runs: text that isn't one JSON document fails `malformed`, and a document that isn't the type `as:` names fails `mismatch`".to_string()
     } else if keys.iter().any(|key| key == "malformed") {
@@ -1079,9 +1084,11 @@ impl Body<'_> {
         // `json.read`'s `mismatch` fills a `problem: DecodeProblem` field
         // of the failure it maps to (area 19, "Data formats"): its own
         // arm's, or `invalid:`'s when that covers `mismatch` alone.
+        // `crypto.verify_jwt`'s `mismatch` too, its claims read as
+        // `json.read` reads them (chunk 5.5r4).
         let reads = matches!(attempt.expr(), Some(Expr::CallExpr(call)) if matches!(
             self.facts.reaches.get(&node_key(call.syntax())),
-            Some(Reach::Std(jadpo_std::Op::JsonRead))
+            Some(Reach::Std(jadpo_std::Op::JsonRead | jadpo_std::Op::CryptoVerifyJwt))
         ));
         let own: Vec<&str> = arms
             .iter()

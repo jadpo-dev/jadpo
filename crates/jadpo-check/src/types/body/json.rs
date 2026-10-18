@@ -116,6 +116,74 @@ impl Body<'_> {
         }
     }
 
+    /// `crypto.verify_jwt`'s `as:` (chunk 5.5r4): a type a document can be
+    /// read as, which is an object type of the application's naming none
+    /// of the seven registered claims, which the call checks itself and
+    /// gives as `JwtClaims` without `as:`; what is wrong is reported.
+    pub(super) fn claims_type_argument(&mut self, value: &Expr, written: &str) -> Option<Ty> {
+        let target = self.json_type_argument(value, written)?;
+        let fields = match &target {
+            Ty::Named(name) if standard_type(name).is_none() => match self.table.def(name) {
+                Some(Def::Fields {
+                    base: FieldsBase::Object,
+                    fields,
+                    ..
+                }) => Some(fields.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some(fields) = fields else {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{written}`'s `as:` is an object type of the application's, not `{target}`"),
+                )
+                .at(self.span(value), "not an `Object` of the application's")
+                .reason(format!(
+                    "`{written}` with `as:` reads a token's own claims, the ones beyond the seven RFC 7519 registers, into an `Object` the application declares, a field for each claim it reads; the claims it doesn't name are ignored."
+                ))
+                .next("Declare an `Object` with a field for each claim, such as `type SignIn = Object { email: Email }`"),
+            );
+            return None;
+        };
+        let registered = fields.iter().find(|field| {
+            jadpo_std::standard::security::JWT_CLAIMS_FIELDS
+                .iter()
+                .any(|(claim, _)| *claim == field.name)
+        });
+        if let Some(field) = registered {
+            let claim = &field.name;
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{target}.{claim}` is a registered claim, which `{written}` with `as:` doesn't read"),
+                )
+                .at(self.span(value), format!("`{target}` has `{claim}`"))
+                .reason(format!(
+                    "`{written}` checks the seven claims RFC 7519 registers (`iss`, `sub`, `aud`, `exp`, `nbf`, `iat`, `jti`) itself and gives them as `JwtClaims` when it has no `as:`; `as:` reads only the claims beyond them."
+                ))
+                .next(format!(
+                    "Remove `{claim}` from `{target}`, and read it from `{written}` without `as:`"
+                )),
+            );
+            return None;
+        }
+        Some(target)
+    }
+
+    /// `crypto.verify_jwt`'s result with `as:`: the type it names, or
+    /// `Error` once what is wrong with `as:` is reported (chunk 5.5r4).
+    pub(super) fn claims_result(&mut self, call: &ast::CallExpr, target: Option<Ty>) -> Ty {
+        let Some(target) = target else {
+            return Ty::Error;
+        };
+        // The call's site is the type it gives, however the call is
+        // reached, which the plan reads its codec from.
+        self.facts.types.insert(node_key(call.syntax()), target.clone());
+        target
+    }
+
     /// `json.write`'s value: one an `Output` may hold.
     pub(super) fn json_value(&mut self, value: &Expr, ty: &Ty, written: &str) {
         if ty.has_error() {

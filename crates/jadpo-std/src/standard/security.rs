@@ -397,13 +397,6 @@ pub const JWT_MAX_LENGTH: usize = 8192;
 /// §4.1.4 allows "some small leeway"): 30 seconds (chosen in chunk 5.5r).
 pub const JWT_LEEWAY_SECONDS: i64 = 30;
 
-/// The one algorithm a `Jwk` holds a key for, and so the one a token is
-/// checked with: Ed25519 (RFC 8037's `EdDSA`), the signature `crypto`
-/// already makes and checks (chosen in chunk 5.5r). A token's own `alg`
-/// header never chooses it; one naming anything else, `none` included,
-/// fails `invalid_signature`.
-pub const JWT_ALGORITHM: &str = "EdDSA";
-
 /// The bytes `text` holds as RFC 4648's URL alphabet with no padding, in
 /// its one spelling (the bits past the last whole byte zero), as JOSE
 /// writes every part (RFC 7515 §2); `None` for anything else, an empty
@@ -866,49 +859,76 @@ pub const JWT_CLAIMS_ENTRY: StandardType = StandardType {
     signals: crate::standard::NO_SIGNALS,
 };
 
-/// What a `Jwk`'s `x` holds: an Ed25519 public key's 32 bytes as 43
-/// characters of unpadded Base64url, the last carrying no bits past the
-/// 256th (RFC 8037 §2).
-pub const ED25519_X_PATTERN: &str = r"[A-Za-z0-9_\-]{42}[AEIMQUYcgkosw048]";
+/// What a `Jwk`'s `x` and `y` hold: a coordinate's or an Ed25519 public
+/// key's 32 bytes as 43 characters of unpadded Base64url, the last carrying
+/// no bits past the 256th (RFC 8037 §2, RFC 7518 §6.2.1.2, which sends a
+/// coordinate in full, its leading zeros included).
+pub const KEY_32_PATTERN: &str = r"[A-Za-z0-9_\-]{42}[AEIMQUYcgkosw048]";
+
+/// What a `Jwk`'s `n` holds: an RSA modulus of 2,048 to 4,096 bits as
+/// unpadded Base64url; its exact size, its oddness and its fewest octets
+/// are its rule `a_usable_key`'s (chunk 5.5r4).
+pub const RSA_MODULUS_PATTERN: &str = r"[A-Za-z0-9_\-]{342,683}";
+
+/// What a `Jwk`'s `e` holds: an RSA public exponent of 1 to 4 octets as
+/// unpadded Base64url (chunk 5.5r4).
+pub const RSA_EXPONENT_PATTERN: &str = r"[A-Za-z0-9_\-]{2,6}";
+
+/// What each of a `Jwk`'s `x5c` holds: a certificate's DER in standard
+/// Base64 with its padding (RFC 7517 §4.7), read with
+/// `encoding.from_base64` and `crypto.read_certificate` (chunk 5.5r4).
+pub const X5C_PATTERN: &str =
+    r"(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)";
 
 /// What a `Jwk`'s `kid` holds: 1 to 256 printable ASCII characters
 /// (chosen in chunk 5.5r).
 pub const KEY_ID_PATTERN: &str = r"[\x21-\x7E]{1,256}";
 
-/// `Jwk`'s parts, in order: RFC 7517's members for an Ed25519 public key
-/// (RFC 8037 §2), `use_` sent as `use`, which is a reserved word. No part
-/// holds a private key (`d`) or a shared secret (an `oct` key's `k`):
-/// JSON naming either isn't a `Jwk`, so a key set read from outside can't
-/// put a secret in a program (chosen in chunk 5.5r).
-pub const JWK_FIELDS: [(&str, Part); 6] = [
-    ("kty", Part::Matching("OKP")),
-    ("crv", Part::Matching("Ed25519")),
-    ("x", Part::Matching(ED25519_X_PATTERN)),
+/// `Jwk`'s parts, in order: RFC 7517's members for a public key of one of
+/// three kinds (chunk 5.5r4), an `OKP` Ed25519 key's `crv` and `x` (RFC
+/// 8037 §2), an `RSA` key's `n` and `e` and an `EC` P-256 key's `crv`, `x`
+/// and `y` (RFC 7518 §6), which its rules across its parts hold it to
+/// ([`super::jwk::RULES`]); and the members a key set sends with any:
+/// `kid`, `alg`, `use_`, sent as `use`, which is a reserved word, and
+/// `x5c`, its certificates. No part holds a private key or a shared
+/// secret, and JSON naming one isn't a `Jwk` ([`super::jwk::REFUSED_MEMBERS`]).
+pub const JWK_FIELDS: [(&str, Part); 10] = [
+    ("kty", Part::Matching("OKP|RSA|EC")),
+    ("crv", Part::Optional(&Part::Matching("Ed25519|P-256"))),
+    ("x", Part::Optional(&Part::Matching(KEY_32_PATTERN))),
+    ("y", Part::Optional(&Part::Matching(KEY_32_PATTERN))),
+    ("n", Part::Optional(&Part::Matching(RSA_MODULUS_PATTERN))),
+    ("e", Part::Optional(&Part::Matching(RSA_EXPONENT_PATTERN))),
     ("kid", Part::Optional(&Part::Matching(KEY_ID_PATTERN))),
-    ("alg", Part::Optional(&Part::Matching(JWT_ALGORITHM))),
+    ("alg", Part::Optional(&Part::Matching("EdDSA|RS256|ES256"))),
     ("use_", Part::Optional(&Part::Matching("sig"))),
+    ("x5c", Part::Optional(&Part::List(&Part::Matching(X5C_PATTERN)))),
 ];
 
 /// A public key a token is checked against, as RFC 7517 sends one in a
-/// key set: Ed25519 only, the one algorithm `verify_jwt` checks with.
+/// key set: Ed25519, RSA or P-256, each used with its own algorithm.
 pub const JWK_ENTRY: StandardType = StandardType {
     name: JWK,
     holds: Holds::Object(&JWK_FIELDS),
     text: None,
-    json: Json::Members(&["kty", "crv", "x", "kid", "alg", "use"]),
+    json: Json::Members(&["kty", "crv", "x", "y", "n", "e", "kid", "alg", "use", "x5c"]),
     storage: Storage::Columns {
         parts: &[
             ("kty", "text"),
             ("crv", "text"),
             ("x", "text"),
+            ("y", "text"),
+            ("n", "text"),
+            ("e", "text"),
             ("kid", "text"),
             ("alg", "text"),
             ("use", "text"),
+            ("x5c", "text[]"),
         ],
         fixed: &[],
     },
     format: Format {
-        key: FormatKey::FirstPart(&["kid", "x"]),
+        key: FormatKey::FirstPart(&["kid", "x", "n"]),
         options: NO_OPTIONS,
     },
     ordered: false,
@@ -916,7 +936,9 @@ pub const JWK_ENTRY: StandardType = StandardType {
     shape: None,
     examples: Examples {
         // RFC 8037 §A.2's public key, with a key id and the optional
-        // members, and RFC 8032's second test key alone.
+        // members, and RFC 8032's second test key alone; RFC 7517 §A.1's
+        // P-256 and RSA keys, the first for signing; RFC 7515 §A.3's P-256
+        // key and §A.2's RSA key, as Google's key set sends one.
         valid: &[
             (
                 r#"{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo","kid":"2026-10","alg":"EdDSA","use":"sig"}"#,
@@ -926,17 +948,41 @@ pub const JWK_ENTRY: StandardType = StandardType {
                 r#"{"kty":"OKP","crv":"Ed25519","x":"PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw"}"#,
                 "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
             ),
+            (
+                r#"{"kty":"EC","crv":"P-256","x":"MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4","y":"4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM","use":"sig","kid":"1"}"#,
+                "1",
+            ),
+            (
+                r#"{"kty":"RSA","n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw","e":"AQAB","alg":"RS256","kid":"2011-04-29"}"#,
+                "2011-04-29",
+            ),
+            (
+                r#"{"kty":"EC","crv":"P-256","x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU","y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0","alg":"ES256"}"#,
+                "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
+            ),
+            (
+                r#"{"kty":"RSA","n":"ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddxHmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMsD1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSHSXndS5z5rexMdbBYUsLA9e-KXBdQOS-UTo7WTBEMa2R2CapHg665xsmtdVMTBQY4uDZlxvb3qCo5ZwKh9kG4LT6_I5IhlJH7aGhyxXFvUK-DWNmoudF8NAco9_h9iaGNj8q2ethFkMLs91kzk2PAcDTW9gb54h4FRWyuXpoQ","e":"AQAB"}"#,
+                "ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddxHmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMsD1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSHSXndS5z5rexMdbBYUsLA9e-KXBdQOS-UTo7WTBEMa2R2CapHg665xsmtdVMTBQY4uDZlxvb3qCo5ZwKh9kG4LT6_I5IhlJH7aGhyxXFvUK-DWNmoudF8NAco9_h9iaGNj8q2ethFkMLs91kzk2PAcDTW9gb54h4FRWyuXpoQ",
+            ),
         ],
         format: None,
         malformed: &[
             // RFC 8037 §A.1's private key (`d`), RFC 7517 §A.3's shared
-            // secret, RFC 7517 §A.1's P-256 and RSA public keys, another
-            // algorithm, an encryption key, a key one character short,
-            // and not an object.
+            // secret, RFC 7517 §A.1's P-256 key for encryption, RFC 7515
+            // §A.3's private P-256 key, a P-256 point off the curve, an
+            // RSA key with the EC key's algorithm, an EC key with an RSA
+            // key's part, an Ed25519 key with another curve, a P-256 key
+            // without its y, another algorithm, an encryption key, a key
+            // one character short, and not an object.
             r#"{"kty":"OKP","crv":"Ed25519","d":"nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}"#,
             r#"{"kty":"oct","alg":"A128KW","k":"GawgguFyGrWKav7AX4VKUg"}"#,
             r#"{"kty":"EC","crv":"P-256","x":"MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4","y":"4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM","use":"enc","kid":"1"}"#,
-            r#"{"kty":"RSA","n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw","e":"AQAB","alg":"RS256","kid":"2011-04-29"}"#,
+            r#"{"kty":"EC","crv":"P-256","x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU","y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0","d":"jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI"}"#,
+            r#"{"kty":"EC","crv":"P-256","x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU","y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a4"}"#,
+            r#"{"kty":"RSA","n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw","e":"AQAB","alg":"ES256"}"#,
+            r#"{"kty":"EC","crv":"P-256","x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU","y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0","e":"AQAB"}"#,
+            r#"{"kty":"OKP","crv":"P-256","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}"#,
+            r#"{"kty":"EC","crv":"P-256","x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU"}"#,
             r#"{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo","alg":"HS256"}"#,
             r#"{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo","use":"enc"}"#,
             r#"{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHUR"}"#,

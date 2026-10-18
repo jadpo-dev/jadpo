@@ -4,7 +4,8 @@
 //! text one document gives; and `crypto` (chunk 5.5q2) against its
 //! standards' known answers: XChaCha20-Poly1305's draft, RFC 4231's
 //! HMAC-SHA-256, RFC 8032's Ed25519 and OpenSSL's Argon2id, and a JWT
-//! `verify_jwt` checks (chunk 5.5r). Shared by this example, which the gate runs
+//! `verify_jwt` checks (chunk 5.5r), and RFC 7515's RS256 and ES256 tokens
+//! (chunk 5.5r4). Shared by this example, which the gate runs
 //! under WebAssembly, and the native test
 //! (crates/jadpo-runtime/tests/formats.rs), so both targets are held to
 //! the same bytes, each call made as both executors make it: through
@@ -546,20 +547,12 @@ fn crypto_checks(expect: &mut impl FnMut(String, String, &str)) {
     // `verify_jwt` (chunk 5.5r): a token signed with RFC 8032's first test
     // key gives its subject at 2026-10-18T09:00:00Z, and the same claims
     // under `alg: none` are refused.
-    let key = Value::record(
-        "Jwk",
-        vec![
-            (Rc::from("kty"), Value::text("OKP")),
-            (Rc::from("crv"), Value::text("Ed25519")),
-            (
-                Rc::from("x"),
-                Value::text("11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"),
-            ),
-            (Rc::from("kid"), Value::text("2026-10")),
-            (Rc::from("alg"), Value::None),
-            (Rc::from("use_"), Value::None),
-        ],
-    );
+    let key = jwk(&[
+        ("kty", Value::text("OKP")),
+        ("crv", Value::text("Ed25519")),
+        ("x", Value::text("11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo")),
+        ("kid", Value::text("2026-10")),
+    ]);
     let now = 1_792_314_000_000;
     let subject = jadpo_value::jwt::verify_jwt(
         JWT_GOOD,
@@ -588,7 +581,71 @@ fn crypto_checks(expect: &mut impl FnMut(String, String, &str)) {
             Err::<Value, _>(Fault::Broke(RuleKey::InvalidSignature))
         ),
     );
+    // RS256 and ES256 (chunk 5.5r4): RFC 7515 §A.2's and §A.3's tokens
+    // under their keys, a minute before they expire, and each refused
+    // under the other's.
+    let rsa = jwk(&[
+        ("kty", Value::text("RSA")),
+        ("n", Value::text(RFC_7515_RSA_N)),
+        ("e", Value::text("AQAB")),
+    ]);
+    let ec = jwk(&[
+        ("kty", Value::text("EC")),
+        ("crv", Value::text("P-256")),
+        ("x", Value::text("f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU")),
+        ("y", Value::text("x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0")),
+    ]);
+    let then = 1_300_819_320_000;
+    for (name, token, own, other) in [
+        ("RS256", RFC_7515_RS256, &rsa, &ec),
+        ("ES256", RFC_7515_ES256, &ec, &rsa),
+    ] {
+        let issuer = jadpo_value::jwt::verify_jwt(token, std::slice::from_ref(own), None, None, then)
+            .map(|claims| match claims {
+                Value::Record(record) => format!("{:?}", record.get("iss")),
+                other => format!("{other:?}"),
+            });
+        expect(
+            format!("RFC 7515's {name} token's issuer"),
+            issuer.unwrap_or_else(|fault| format!("{fault:?}")),
+            &format!("{:?}", Some(&Value::text("joe"))),
+        );
+        expect(
+            format!("RFC 7515's {name} token under the other key is refused"),
+            format!(
+                "{:?}",
+                jadpo_value::jwt::verify_jwt(token, std::slice::from_ref(other), None, None, then)
+            ),
+            &format!(
+                "{:?}",
+                Err::<Value, _>(Fault::Broke(RuleKey::InvalidSignature))
+            ),
+        );
+    }
 }
+
+/// A `Jwk` value with these parts, each other part `none`.
+fn jwk(parts: &[(&str, Value)]) -> Value {
+    Value::record(
+        "Jwk",
+        jadpo_std::standard::security::JWK_FIELDS
+            .iter()
+            .map(|(name, _)| {
+                let value = parts
+                    .iter()
+                    .find(|(given, _)| given == name)
+                    .map_or(Value::None, |(_, value)| value.clone());
+                (Rc::from(*name), value)
+            })
+            .collect(),
+    )
+}
+
+/// RFC 7515 §A.2's RSA modulus and its RS256 token, and §A.3's ES256
+/// token (chunk 5.5r4).
+const RFC_7515_RSA_N: &str = "ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddxHmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMsD1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSHSXndS5z5rexMdbBYUsLA9e-KXBdQOS-UTo7WTBEMa2R2CapHg665xsmtdVMTBQY4uDZlxvb3qCo5ZwKh9kG4LT6_I5IhlJH7aGhyxXFvUK-DWNmoudF8NAco9_h9iaGNj8q2ethFkMLs91kzk2PAcDTW9gb54h4FRWyuXpoQ";
+const RFC_7515_RS256: &str = "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ.cC4hiUPoj9Eetdgtv3hF80EGrhuB__dzERat0XF9g2VtQgr9PJbu3XOiZj5RZmh7AAuHIm4Bh-0Qc_lF5YKt_O8W2Fp5jujGbds9uJdbF9CUAr7t1dnZcAcQjbKBYNX4BAynRFdiuB--f_nZLgrnbyTyWzO75vRK5h6xBArLIARNPvkSjtQBMHlb1L07Qe7K0GarZRmB_eSN9383LcOLn6_dO--xi12jzDwusC-eOkHWEsqtFZESc6BfI7noOPqvhJ1phCnvWh6IeYI2w9QOYEUipUTI8np6LbgGY9Fs98rqVt5AXLIhWkWywlVmtVrBp0igcN_IoypGlUPQGe77Rw";
+const RFC_7515_ES256: &str = "eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ.DtEhU3ljbEg8L38VWAfUAqOyKAM6-Xx-F4GawxaepmXFCgfTjDxw5djxLa8ISlSApmWQxfKTUJqPP3-Kg6NU1Q";
 
 /// A token signed with RFC 8032's first test key, and the same claims
 /// under `alg: none` with that signature (chunk 5.5r).

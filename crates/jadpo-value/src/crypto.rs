@@ -447,7 +447,9 @@ pub fn run(
         (Op::CryptoVerifySignature, [value, Value::Bytes(signature), key]) => Ok(Value::Bool(
             verify_signature(bytes_of(value)?, signature, text_of(key)?),
         )),
-        (Op::CryptoVerifyJwt, [token, Value::List(keys), issuer, audience]) => {
+        // Without `as:`, whose claims of the application's own type each
+        // executor reads with the plan's codecs ([`crate::jwt::verify_jwt_as`]).
+        (Op::CryptoVerifyJwt, [token, Value::List(keys), issuer, audience, ..]) => {
             let option = |value: &Value| match value {
                 Value::None => Ok(None),
                 Value::Text(text) => Ok(Some(text.to_string())),

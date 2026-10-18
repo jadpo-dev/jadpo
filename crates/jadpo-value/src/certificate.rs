@@ -18,7 +18,9 @@ use jadpo_std::standard::certificates::{
 };
 use x509_parser::certificate::X509Certificate;
 use x509_parser::der_parser::asn1_rs::{Any, Tag, ToDer};
+use x509_parser::oid_registry;
 use x509_parser::prelude::FromDer;
+use x509_parser::public_key::PublicKey;
 use x509_parser::x509::{AttributeTypeAndValue, X509Name};
 
 use crate::{Fault, Record, Value};
@@ -55,6 +57,61 @@ pub fn read_der(der: &[u8]) -> Option<Value> {
             .map(|((name, _), value)| ((*name).into(), value))
             .collect(),
     ))
+}
+
+/// `crypto.read_certificate(der)` (chunk 5.5r4): the `Certificate` `der`
+/// is, read as its PEM's DER is, or `malformed`.
+pub fn read_certificate(der: &[u8]) -> Result<Value, Fault> {
+    read_der(der).ok_or(Fault::Broke(jadpo_std::RuleKey::Malformed))
+}
+
+/// The public key a certificate holds, in the forms a `Jwk` sends one
+/// (chunk 5.5r4): an RSA key's modulus and exponent in their fewest
+/// octets, a P-256 key's point, or an Ed25519 key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SubjectKey {
+    Rsa { n: Vec<u8>, e: Vec<u8> },
+    P256 { x: Vec<u8>, y: Vec<u8> },
+    Ed25519(Vec<u8>),
+}
+
+/// The public key of the certificate `der` is, read strictly, as a key
+/// set's `x5c` is checked against its key; `None` for DER that isn't a
+/// certificate, or a key of another kind.
+pub fn subject_key(der: &[u8]) -> Option<SubjectKey> {
+    parts(der)?;
+    let (_, certificate) = X509Certificate::from_der(der).ok()?;
+    let info = certificate.public_key();
+    let algorithm = &info.algorithm.algorithm;
+    let fewest = |octets: &[u8]| {
+        let start = octets.iter().position(|byte| *byte != 0).unwrap_or(octets.len());
+        octets[start..].to_vec()
+    };
+    if *algorithm == oid_registry::OID_PKCS1_RSAENCRYPTION {
+        let PublicKey::RSA(key) = info.parsed().ok()? else {
+            return None;
+        };
+        return Some(SubjectKey::Rsa {
+            n: fewest(key.modulus),
+            e: fewest(key.exponent),
+        });
+    }
+    if *algorithm == oid_registry::OID_KEY_TYPE_EC_PUBLIC_KEY {
+        let curve = info.algorithm.parameters.as_ref()?.as_oid().ok()?;
+        let point = &info.subject_public_key.data;
+        if curve != oid_registry::OID_EC_P256 || point.len() != 65 || point[0] != 4 {
+            return None;
+        }
+        return Some(SubjectKey::P256 {
+            x: point[1..33].to_vec(),
+            y: point[33..].to_vec(),
+        });
+    }
+    if *algorithm == oid_registry::OID_SIG_ED25519 {
+        let key = &info.subject_public_key.data;
+        return (key.len() == 32).then(|| SubjectKey::Ed25519(key.to_vec()));
+    }
+    None
 }
 
 /// A certificate's canonical text: its DER as one PEM block.
