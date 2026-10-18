@@ -710,13 +710,24 @@ reference only).
   `range` operations. Done when each of the ten passes the harness and
   `period_between`'s example passes across a daylight-saving change.
   Split on 2026-10-17; the rest is 5.5k2.
-- [ ] **5.5k2 Recurrence and opening hours** `opus · high` (area 19,
+- [x] **5.5k2 Recurrence and opening hours** `opus · high` (area 19,
   "Time and calendar additions"): `RecurrenceRule` (RFC 5545) with its
   expansion, `temporal.occurrences`; `OpeningHours` with
-  `temporal.open_at`; and `CalendarEvent`. Done when each of the three
-  passes the harness and the two operations' examples pass across spring
-  forward and fall back in Europe/London and America/New_York,
-  interpreted and in the runtime.
+  `temporal.open_at`. Done when each passes the harness and the two
+  operations' examples pass across spring forward and fall back in
+  Europe/London and America/New_York, interpreted and in the runtime.
+  Split on 2026-10-18; `CalendarEvent` is 5.5k3. Both held as their
+  standard text; what the pages left open is area 19's "Chosen in chunk
+  5.5k2".
+- [ ] **5.5k3 Calendar events** `opus · high` (area 19, "Time and
+  calendar additions", split from 5.5k2): `CalendarEvent` as an object
+  whose parts code reads, which first needs optional parts in a standard
+  object (`Part`), and an all-day event's dates beside a timed one's
+  local times and zone; its canonical text an RFC 5545 `VEVENT` (an
+  all-day end exclusive, as the RFC writes it), its JSON its parts, its
+  recurrence a `RecurrenceRule`. Done when it passes the harness and an
+  all-day event's text, JSON and storage round-trip without moving a
+  day.
 - [ ] **5.5l People and places** `opus · high` (area 19, question 22): the
   19 new types, the closed lists as built-in enums with `form:`, `.all`
   and retired codes (`type.variant_retired`), `PhoneNumber`'s E.164

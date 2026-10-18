@@ -1378,7 +1378,7 @@ impl Body<'_> {
                     param.name
                 ))
                 .next(format!(
-                    "Pass a value whose type has `min: {low}` and `max: {high}` or narrower, building it where a larger one is handled"
+                    "Pass a value whose type has `min: {low}` and `max: {high}`, or narrower bounds"
                 )),
             );
         }

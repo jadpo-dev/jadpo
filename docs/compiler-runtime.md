@@ -448,6 +448,14 @@ canonical text has `Codec::Standard`, read and written through
 texts, `CalendarPeriod`'s operator rows (which `ops::add`, `subtract`
 and `multiply` reach by the value's shape) and `temporal.period_between`,
 and `ops::compare` orders a record its entry marks ordered, part by part.
+Since chunk 5.5k2 a standard type held as text is a stub's kind
+`Std` too (`RecurrenceRule`, `OpeningHours`), the runtime giving the
+operation its text; `jadpo_std::standard::recurrence` reads an RFC 5545
+rule and expands it in local time, and `opening_hours` reads OpenStreetMap's
+hours, each shared by the type's validator and by `jadpo_value::temporal`'s
+`occurrences` and `open_at`, which put the local times in the zone with
+jiff. A `within` parameter (`occurrences`' `count`) is a whole number
+proved between two bounds as a count's sign is.
 Since chunk 5.5d (area 19, "Numbers") a `written_out` parameter
 (`decimal.round`'s `scale:`) takes only a whole number from 0 to 18
 written at the call, and an operation whose `OneOf` result shares its `T`

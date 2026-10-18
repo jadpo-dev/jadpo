@@ -1138,7 +1138,7 @@ dependency change of its own (chosen in chunk 5.2).
 > `temporal.format_relative` stays. Built in chunk 5.5a, and the examples
 > here use `text.format`. Area 19 also adds
 > three `temporal` operations (`occurrences`, `open_at`,
-> `period_between`, chunk 5.5k) and `{price, number, currency}` to the
+> `period_between`, chunks 5.5k and 5.5k2) and `{price, number, currency}` to the
 > placeholder styles, built in chunk 5.5h2 ("Messages", below).
 
 Formatting needs three things the server must never guess: the zone, the
