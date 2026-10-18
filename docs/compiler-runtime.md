@@ -1963,7 +1963,16 @@ splits a section there, and `jadpo_runtime::migrate_reporting` runs each
 step in its own read-committed transaction under `jadpo_migrations`'
 lock, recording how far it got in `jadpo_migration_steps` in the same
 transaction, so a stopped run carries on; `Progress` tells `jadpo migrate
-apply` each batch.
+apply` each batch. Since chunk 5.6b2 a computed backfill with no SQL form
+is decided as `Decided::InJadpo` (`data::backfill::InJadpo`: its body as
+a function of the stored fields it reads, `as_function`, and the digest
+of the code it runs, `code_digest`): its marker says `in Jadpo` and is
+followed by a count, a locked read and a write, and the last step holds
+a `-- fill` read and write (`Step::Together`). `Plan::with_backfills`
+plans the latest migration's as callables of their own, and `jadpo
+migrate apply` hands `jadpo_runtime::migrate_with` a `Backfills` that
+runs them in the interpreter, reading and binding through the storage
+codec.
 
 Built in chunk 3.4: `jadpo-plan`'s `Planner::access` adds an entity's
 `visible:` to every query, `get`, child include, update, delete and

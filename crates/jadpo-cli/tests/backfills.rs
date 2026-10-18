@@ -509,7 +509,7 @@ fn a_backfill_without_a_sql_form_is_worked_out_in_jadpo_with_the_runtimes_values
     // and writes the values back, and fills the rows written meanwhile in
     // Jadpo too.
     assert!(
-        sql.contains("-- backfill Todo.shouted: in Jadpo, 1000 rows a batch, each batch its own transaction, slower than by UPDATE since something in it has no SQL form; its code "),
+        sql.contains("-- backfill Todo.shouted: in Jadpo, 1000 rows a batch, each batch its own transaction, slower than by UPDATE since something in it has no SQL form; its code's digest "),
         "{sql}"
     );
     assert!(
@@ -526,7 +526,9 @@ fn a_backfill_without_a_sql_form_is_worked_out_in_jadpo_with_the_runtimes_values
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
-    let url = server.create_database("backfill_in_jadpo").expect("database");
+    let url = server
+        .create_database("backfill_in_jadpo")
+        .expect("database");
     let migrations = steps(&root);
     let runtime = jadpo_host_native::Runtime::new().expect("runtime");
     let store = jadpo_host_native::postgres(&url).expect("store");
@@ -716,7 +718,12 @@ fn an_earlier_migrations_backfill_in_jadpo_waits_for_the_build_it_was_written_in
     );
     let later = jadpo(&root, &["migrate", "new", "add_tag"]);
     assert_eq!(later.code, 0, "{}{}", later.stdout, later.stderr);
-    assert_eq!(jadpo(&root, &["check"]).code, 0);
+    // Nothing checks the earlier migration's decisions now, so nothing
+    // uses `from_flag`, and it goes.
+    fs::remove_file(root.join("domains/planning/libraries/priorities.jadpo")).expect("remove");
+    fs::remove_file(root.join("domains/planning/types/legacy_flag.jadpo")).expect("remove");
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
     let url = server
         .create_database("backfill_in_jadpo_earlier")
@@ -731,11 +738,11 @@ fn an_earlier_migrations_backfill_in_jadpo_waits_for_the_build_it_was_written_in
     let applied = jadpo(&root, &["migrate", "apply", "--url", &url]);
     assert_eq!(applied.code, 1, "{}{}", applied.stdout, applied.stderr);
     assert!(
-        applied.stdout.contains(&format!(
+        applied.stderr.contains(&format!(
             "error: Filling `Todo.priority` for `{name}` needs the build it was written in\n"
         )),
         "{}",
-        applied.stdout
+        applied.stderr
     );
     let (counts, nullable) = priorities(&url);
     assert_eq!(counts.len(), 2, "{counts:?}");

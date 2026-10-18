@@ -147,7 +147,7 @@ pub fn backfill_in_jadpo(
 ) -> String {
     let (t, c) = (ident(table), ident(column));
     format!(
-        "{marker}{field}: {how}, {BATCH_ROWS} rows a batch, each batch its own transaction, slower than by UPDATE since something in it has no SQL form; its code {code}\n\
+        "{marker}{field}: {how}, {BATCH_ROWS} rows a batch, each batch its own transaction, slower than by UPDATE since something in it has no SQL form; its code's digest {code}\n\
          SELECT count(*) FROM {t} WHERE {c} IS NULL;\n\
          {read} WHERE {k} > $1 AND {c} IS NULL ORDER BY {k} LIMIT {BATCH_ROWS} FOR NO KEY UPDATE;\n\
          {write}",

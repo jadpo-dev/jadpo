@@ -981,24 +981,144 @@ fn apply(call: &Call) -> Reply {
     };
     let list = steps.get(&store).map(Vec::as_slice).unwrap_or_default();
     let migrations = list.to_vec();
-    let ran = run(&url, |database| {
-        Box::pin(async move {
-            let mut filled: Vec<Filled> = Vec::new();
-            let ran = jadpo_runtime::migrate_reporting(database, &migrations, &mut |progress| {
-                track(&mut filled, progress);
-                std::ops::ControlFlow::Continue(())
+    // A backfill worked out in Jadpo runs the project's code (chunk
+    // 5.6b2): the latest migration's, checked, which needs a project that
+    // checks without errors. Whether one has rows to fill is known only
+    // as it runs, so code errors stop it only then.
+    let in_jadpo = migrations.iter().any(|migration| {
+        migration
+            .steps()
+            .iter()
+            .any(|step| matches!(step, jadpo_std::Step::Batches(b) if b.write.is_some()))
+    });
+    let (prepared, code_errors) = match in_jadpo
+        .then(|| jadpo_interp::Prepared::with_backfills(&loaded.db, loaded.project))
+    {
+        Some(Ok(prepared)) => (Some(prepared), Vec::new()),
+        Some(Err(errors)) => (None, errors),
+        None => (None, Vec::new()),
+    };
+    let latest = set.list.last().map(|migration| migration.name.clone());
+    // The interpreter's values never cross threads, so the program is made
+    // on the thread that runs it, with the stack its recursion needs.
+    let ran = jadpo_interp::on_large_stack(move || {
+        let worker = Worker {
+            program: prepared.map(jadpo_interp::Program::new),
+        };
+        run(&url, |database| {
+            Box::pin(async move {
+                let mut filled: Vec<Filled> = Vec::new();
+                let ran =
+                    jadpo_runtime::migrate_with(database, &migrations, &worker, &mut |progress| {
+                        track(&mut filled, progress);
+                        std::ops::ControlFlow::Continue(())
+                    })
+                    .await;
+                ran.map(|ran| (ran, filled))
             })
-            .await;
-            ran.map(|ran| (ran, filled))
         })
     });
     match ran {
-        Ok(Ok((ran, filled))) => applied(&store, &ran, &filled),
-        Ok(Err(error)) => Reply::failed(migrate_failed(&store, error)),
-        Err(error) => Reply::failed(migrate_failed(
+        Ok(Ok(Ok((ran, filled)))) => applied(&store, &ran, &filled),
+        // The latest migration's backfill can't run while the code doesn't
+        // check: its errors are what to fix.
+        Ok(Ok(Err(jadpo_runtime::MigrateError::Unworked { name, .. })))
+            if Some(&name) == latest.as_ref() && !code_errors.is_empty() =>
+        {
+            blocked(&loaded, &cwd, code_errors, "migrate apply stopped")
+        }
+        Ok(Ok(Err(error))) => Reply::failed(migrate_failed(&store, error)),
+        Ok(Err(error)) => Reply::failed(migrate_failed(
             &store,
             jadpo_runtime::MigrateError::Store(error),
         )),
+        Err(error) => Reply::failed(migrate_failed(
+            &store,
+            jadpo_runtime::MigrateError::Store(jadpo_runtime::StoreError::Fault(error.to_string())),
+        )),
+    }
+}
+
+/// Works out in Jadpo, with the project's interpreter, the latest
+/// migration's backfills that have no SQL form (chunk 5.6b2): each row's
+/// columns read through the storage codec, the backfill run as a function
+/// of them, and its value written back through the codec, at its field's
+/// places for a decimal.
+pub(crate) struct Worker {
+    program: Option<jadpo_interp::Program>,
+}
+
+impl Worker {
+    pub(crate) fn new(program: Option<jadpo_interp::Program>) -> Worker {
+        Worker { program }
+    }
+}
+
+impl jadpo_runtime::Backfills for Worker {
+    fn work_out(
+        &self,
+        migration: &str,
+        field: &str,
+        rows: &[&[jadpo_runtime::SqlValue]],
+    ) -> Result<Vec<jadpo_runtime::SqlValue>, jadpo_runtime::Unworked> {
+        use jadpo_runtime::{Outcome, Unworked};
+        let program = self.program.as_ref().ok_or(Unworked::Unavailable)?;
+        let plan = program
+            .plan()
+            .backfills()
+            .iter()
+            .find(|plan| plan.migration == migration && plan.field == field)
+            .ok_or(Unworked::Unavailable)?;
+        let mut out = Vec::with_capacity(rows.len());
+        for (at, row) in rows.iter().enumerate() {
+            let stopped = |reason: String| Unworked::Stopped { at, reason };
+            if row.len() != plan.reads.len() {
+                return Err(stopped("its row didn't hold every column it reads".into()));
+            }
+            let args = row
+                .iter()
+                .zip(&plan.reads)
+                .map(|(sql, column)| jadpo_runtime::from_sql(sql, column))
+                .collect::<Result<Vec<_>, String>>()
+                .map_err(|why| stopped(format!("a column it reads held {why}")))?;
+            let outcome = program
+                .call_id(plan.callable, args)
+                .map_err(|error| stopped(error.to_string()))?;
+            let value = match outcome {
+                Outcome::Value(value) => value,
+                Outcome::Fault(fault) => {
+                    let place = fault
+                        .stack(program.places())
+                        .into_iter()
+                        .next()
+                        .map(|place| format!(" at {place}"))
+                        .unwrap_or_default();
+                    let what = match &fault.kind {
+                        jadpo_runtime::FaultKind::Defect(what)
+                        | jadpo_runtime::FaultKind::NotBuiltYet(what)
+                        | jadpo_runtime::FaultKind::Store(what) => format!(" ({what})"),
+                        _ => String::new(),
+                    };
+                    return Err(stopped(format!(
+                        "it faulted with `{}`{what}{place}",
+                        fault.kind.classification()
+                    )));
+                }
+                Outcome::Failed(_) | Outcome::Assertion(_) => {
+                    return Err(stopped("it failed, which the checker rules out".into()));
+                }
+            };
+            let value = match (value, plan.scale) {
+                (jadpo_value::Value::Decimal(decimal), Some(scale)) => jadpo_value::Value::Decimal(
+                    decimal
+                        .rescale(scale, jadpo_value::Rounding::HalfEven)
+                        .ok_or_else(|| stopped("its decimal has more than 38 digits".into()))?,
+                ),
+                (value, _) => value,
+            };
+            out.push(jadpo_runtime::to_sql(&value, plan.write).map_err(stopped)?);
+        }
+        Ok(out)
     }
 }
 
@@ -1036,7 +1156,11 @@ fn track(filled: &mut Vec<Filled>, progress: &jadpo_runtime::Progress<'_>) {
                 batches: 0,
                 resumed: *resumed,
             });
-            crate::run::say(&format!("Filling {field}  0 of {}", rows(*left)));
+            crate::run::say(&format!(
+                "Filling {field}{}  0 of {}",
+                in_jadpo_words(how),
+                rows(*left)
+            ));
         }
         Progress::Filled {
             migration,
@@ -1051,13 +1175,24 @@ fn track(filled: &mut Vec<Filled>, progress: &jadpo_runtime::Progress<'_>) {
                 found.rows += batch;
                 found.batches += 1;
                 crate::run::say(&format!(
-                    "Filling {field}  {} of {}",
+                    "Filling {field}{}  {} of {}",
+                    in_jadpo_words(&found.how),
                     found.rows,
                     rows(found.left.max(found.rows))
                 ));
             }
         }
         Progress::Applied { .. } => crate::run::say("Applying migrations"),
+    }
+}
+
+/// ` in Jadpo` on the live line for a backfill worked out in Jadpo (chunk
+/// 5.6b2), so a slower run says why while it runs.
+fn in_jadpo_words(how: &str) -> &'static str {
+    if how == jadpo_std::IN_JADPO {
+        " in Jadpo"
+    } else {
+        ""
     }
 }
 
@@ -1096,6 +1231,11 @@ fn applied(store: &str, ran: &[String], filled: &[Filled]) -> Reply {
                 format!("{} batches", fill.batches)
             };
             let mut said = format!("{} filled in {batches} {}", rows(fill.rows), fill.how);
+            // Worked out row by row in Jadpo, which is slower (chunk
+            // 5.6b2).
+            if fill.how == jadpo_std::IN_JADPO {
+                said.push_str(" (slower than SQL)");
+            }
             if fill.resumed {
                 said.push_str(", carrying on from an earlier run");
             }
@@ -1177,6 +1317,35 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
                 "vector" => "Install pgvector on the database server, or use a server that has it (the major hosted services do), then run the command again".to_string(),
                 other => format!("Install `{other}` on the database server, or use a server that has it, then run the command again"),
             },
+            Decider::Human,
+        ),
+        // Only the latest migration's backfills are checked against the
+        // code that works them out (chunk 5.6b2).
+        MigrateError::Unworked { name, field } => Diagnostic::new(
+            &rule::MIGRATION_APPLY_FAILED,
+            format!("Filling `{field}` for `{name}` needs the build it was written in"),
+        )
+        .reason(format!(
+            "`{field}`'s backfill has an operation with no SQL form, so `jadpo migrate apply` works it out in Jadpo with the project's code, and only the latest migration's backfills are checked against that code; `{name}` isn't the latest, so this build can't vouch for the values it would give. Nothing of `{name}` past its last committed step was applied, and `{field}` stays optional."
+        ))
+        .next_for(
+            format!("Run `jadpo migrate apply` with the build that wrote `{name}` (its commit), then with this one"),
+            Decider::Human,
+        ),
+        MigrateError::BackfillStopped {
+            name,
+            field,
+            record,
+            reason,
+        } => Diagnostic::new(
+            &rule::MIGRATION_APPLY_FAILED,
+            format!("Working out `{field}` in Jadpo stopped at record `{record}`"),
+        )
+        .reason(format!(
+            "While `{name}` filled `{field}`, {reason}. That batch rolled back: every batch before it stays, `{field}` stays optional, and the database records how far it got."
+        ))
+        .next_for(
+            "Fix what stopped it, then run `jadpo migrate apply` again",
             Decider::Human,
         ),
         MigrateError::Stopped { name } => Diagnostic::new(

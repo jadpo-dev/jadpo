@@ -545,11 +545,13 @@ pub struct Decide<'a> {
 
 /// A computed backfill checked (area 5, "Computed backfills"; chunk
 /// 5.6b): what is wrong with it, and its SQL when nothing is and every
-/// operation in it has a SQL form.
+/// operation in it has a SQL form, or otherwise how `jadpo migrate apply`
+/// works it out in Jadpo (chunk 5.6b2) when it can.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Computed {
     pub problems: Vec<Diagnostic>,
     pub sql: Option<String>,
+    pub jadpo: Option<super::backfill::InJadpo>,
 }
 
 impl Decide<'_> {
@@ -565,7 +567,14 @@ impl Decide<'_> {
                 if !computed.problems.is_empty() {
                     return None;
                 }
-                computed.sql.map(Decided::Computed)
+                match (computed.sql, computed.jadpo) {
+                    (Some(sql), _) => Some(Decided::Computed(sql)),
+                    (None, Some(jadpo)) => Some(Decided::InJadpo {
+                        reads: jadpo.reads.iter().map(|read| read.column.clone()).collect(),
+                        code: jadpo.code,
+                    }),
+                    (None, None) => None,
+                }
             }
             (DecisionValue::Backfill(value, _), NeededKind::Refit)
                 if self.is_computed(need, value) =>
@@ -632,6 +641,7 @@ impl Decide<'_> {
             return Some(Computed {
                 problems,
                 sql: None,
+                jadpo: None,
             });
         }
         let columns: BTreeMap<String, String> = self
@@ -653,11 +663,184 @@ impl Decide<'_> {
             columns: &columns,
         };
         let sql = super::backfill::sql(self.db, self.project, &checked.body, &row, scale);
+        let jadpo = match sql {
+            Some(_) => None,
+            None => self.in_jadpo(need, &checked.body, &columns, scale),
+        };
         Some(Computed {
             problems: Vec::new(),
             sql,
+            jadpo,
         })
     }
+
+    /// How `jadpo migrate apply` works out in Jadpo a computed backfill
+    /// with no SQL form (chunk 5.6b2), whose typed body is `body` and which
+    /// reads the row's `columns` (by born name): `None` when it reads or
+    /// fills a value held in several columns or as JSON, which this
+    /// compiler doesn't read or write one value at a time yet.
+    fn in_jadpo(
+        &self,
+        need: &Needed,
+        body: &jadpo_graph::body::Body,
+        columns: &BTreeMap<String, String>,
+        scale: Option<u32>,
+    ) -> Option<super::backfill::InJadpo> {
+        let entity = self.model.entities.iter().find(|e| e.born == need.entity)?;
+        let field = field_model(self.model, &need.entity, &need.field)?;
+        decode_column(self.lookup, &entity.name, field)?;
+        let sql_type = field.sql_type.clone()?;
+        let write = jadpo_std::SqlType::of_column(&sql_type)?;
+        let (function, names) = super::backfill::as_function(body);
+        let retired = retired_fields(self.db, self.project, &need.entity);
+        let mut reads = Vec::new();
+        for name in names {
+            let decode = match retired.iter().find(|(field, _)| *field == name) {
+                Some((_, Ty::Prim(builtin))) => super::backfill::builtin_column(*builtin)?,
+                Some(_) => return None,
+                None => decode_column(
+                    self.lookup,
+                    &entity.name,
+                    field_model(self.model, &need.entity, &name)?,
+                )?,
+            };
+            reads.push(super::backfill::Read {
+                column: columns.get(&name)?.clone(),
+                field: name,
+                decode,
+            });
+        }
+        Some(super::backfill::InJadpo {
+            body: Arc::new(function),
+            reads,
+            write,
+            sql_type,
+            scale,
+            code: super::backfill::code_digest(self.db, self.project, body),
+        })
+    }
+}
+
+/// How a field's one column is read, as the plan reads it for a query:
+/// `None` for a value held in several columns, as JSON or as a vector.
+fn decode_column(
+    lookup: &dyn TypeView,
+    entity: &str,
+    field: &super::FieldModel,
+) -> Option<jadpo_std::read::Column> {
+    if field.json.is_some() || field.compound.is_some() || field.range_item.is_some() {
+        return None;
+    }
+    if field
+        .sql_type
+        .as_deref()
+        .is_some_and(|ty| ty.starts_with("vector"))
+    {
+        return None;
+    }
+    let ty = Ty::Field(entity.to_string(), vec![field.name.clone()]);
+    if let Some(builtin) = lookup.representation(&ty) {
+        return super::backfill::builtin_column(builtin);
+    }
+    match lookup.structure(&ty) {
+        Ty::Named(name) => match lookup.def(&name) {
+            Some(Def::Enum { variants }) if variants.iter().all(|v| v.fields.is_none()) => {
+                Some(jadpo_std::read::Column::Enum {
+                    ty: name.clone(),
+                    variants: variants.iter().map(|v| v.name.clone()).collect(),
+                })
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The latest migration's computed backfills that `jadpo migrate apply`
+/// works out in Jadpo (chunk 5.6b2), each with the migration and field it
+/// fills and where its decision is written: what the interpreter plans to
+/// run. Only the latest migration's are checked against the project's
+/// code, so only they are offered.
+pub fn jadpo_backfills(db: &dyn Db, project: Project) -> Vec<JadpoBackfill> {
+    let mut out = Vec::new();
+    if project.layout(db) != Layout::Project {
+        return out;
+    }
+    let set = migrations(db, project);
+    let Some(migration) = set.list.last() else {
+        return out;
+    };
+    let Some(after) = migration.schema() else {
+        return out;
+    };
+    let before = set.before_latest();
+    let path = migration.changes_path();
+    let Some(file) = project
+        .files(db)
+        .iter()
+        .copied()
+        .find(|f| f.path(db) == &path)
+    else {
+        return out;
+    };
+    let Some(source) = tree::source(db, file) else {
+        return out;
+    };
+    let (decisions, _) = read_decisions(&path, &source);
+    let model = data_model(db, project);
+    let lookup = Lookup::new(db, project);
+    let decide = Decide {
+        db,
+        project,
+        lookup: &lookup,
+        model,
+        decisions: &decisions,
+        file: Some(file),
+        before: &before,
+    };
+    for need in decisions_needed(&before, after) {
+        let Some(decision) = decisions.iter().find(|d| d.key == need.key()) else {
+            continue;
+        };
+        let DecisionValue::Backfill(value, span) = &decision.value else {
+            continue;
+        };
+        if need.kind != NeededKind::Backfill || !decide.is_computed(&need, value) {
+            continue;
+        }
+        let Some(computed) = decide.computed(decision, &need) else {
+            continue;
+        };
+        if !computed.problems.is_empty() || computed.sql.is_some() {
+            continue;
+        }
+        if let Some(plan) = computed.jadpo {
+            out.push(JadpoBackfill {
+                migration: migration.name.clone(),
+                field: need.key(),
+                file: path.clone(),
+                line: file
+                    .text(db)
+                    .get(..span.start as usize)
+                    .map_or(1, |text| text.matches('\n').count() as u32 + 1),
+                plan,
+            });
+        }
+    }
+    out
+}
+
+/// A backfill `jadpo migrate apply` works out in Jadpo (chunk 5.6b2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JadpoBackfill {
+    /// The migration's folder name.
+    pub migration: String,
+    /// `Todo.priority`.
+    pub field: String,
+    /// Its `changes.jadpo`, and the line its value is written on.
+    pub file: String,
+    pub line: u32,
+    pub plan: super::backfill::InJadpo,
 }
 
 /// What `jadpo check` says about the migrations: unreadable records,
@@ -1015,8 +1198,9 @@ fn decision_problems(
 
 /// What is wrong with a computed backfill (area 5, "Computed backfills";
 /// chunk 5.6b): its body's problems, or that it can't run yet, for a
-/// field that allows less, or with an operation that has no SQL form,
-/// which `jadpo migrate apply` works out in Jadpo from chunk 5.6b2.
+/// field that allows less, or with an operation that has no SQL form
+/// reading or filling a value `jadpo migrate apply` can't yet work out in
+/// Jadpo (chunk 5.6b2).
 fn computed_problems(
     decide: &Decide<'_>,
     need: &Needed,
@@ -1043,7 +1227,7 @@ fn computed_problems(
     if !computed.problems.is_empty() {
         return computed.problems;
     }
-    if computed.sql.is_some() {
+    if computed.sql.is_some() || computed.jadpo.is_some() {
         return Vec::new();
     }
     vec![
@@ -1052,7 +1236,9 @@ fn computed_problems(
             format!("Working out the backfill for `{key}` in Jadpo isn't built yet"),
         )
         .at(span.clone(), "no SQL form")
-        .reason("Something in this backfill has no SQL form (area 19), so `jadpo migrate apply` would work its values out in Jadpo, batch by batch, which comes with chunk 5.6b2; a backfill whose every operation has a SQL form runs as one `UPDATE` per batch.")
+        .reason(format!(
+            "Something in this backfill has no SQL form (area 19), so `jadpo migrate apply` would work its values out in Jadpo, row by row; it reads and writes values held in one column, and `{key}` or a field it reads is held in several columns or as JSON."
+        ))
         .next(format!(
             "Work `{key}`'s value out with operators, `if`, `match` and standard operations that have a SQL form for now"
         )),

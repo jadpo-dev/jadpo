@@ -6,14 +6,19 @@
 //! parameters replaced by its arguments' SQL, and its `if` chains and
 //! `match`es become `CASE`. Anything without a form (a loop, a `var mut`,
 //! an operation the tables give none, a value in several columns) gives
-//! the whole backfill none, and it can't run by `UPDATE`.
+//! the whole backfill none, and it can't run by `UPDATE`: `jadpo migrate
+//! apply` then works it out in Jadpo (chunk 5.6b2), running the body as a
+//! function whose parameters are the stored fields it reads
+//! ([`as_function`]), and the SQL names the digest of the code it runs
+//! ([`code_digest`]), so a change to that code changes the migration.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use jadpo_db::{Db, Project};
 use jadpo_graph::body::{
-    ArmBody, BinaryOp, Body, Callee, Expr, Literal, LocalId, Node, Pattern, SiteId, Stmt, UnaryOp,
+    ArmBody, BinaryOp, Body, Callee, Expr, Literal, Local, LocalId, LocalKind, Node, Pattern,
+    SiteId, Stmt, UnaryOp,
 };
 use jadpo_graph::{Base, Detail, Graph, Key, TypeRef};
 use jadpo_sql::form::{self, Arg, Held, Operator};
@@ -67,6 +72,175 @@ pub fn sql(
         }
         _ => Some(value),
     }
+}
+
+/// A computed backfill worked out in Jadpo (area 5, "Computed backfills";
+/// chunk 5.6b2): what `jadpo migrate apply` runs for each row.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InJadpo {
+    /// The backfill's body as a function, each stored field it reads a
+    /// parameter, in the order of [`InJadpo::reads`].
+    pub body: Arc<Body>,
+    pub reads: Vec<Read>,
+    /// The column type its value is written as, through the storage codec,
+    /// and as the SQL names it (`numeric(12,2)`).
+    pub write: jadpo_std::SqlType,
+    pub sql_type: String,
+    /// The places a decimal is stored at, rounded half to even.
+    pub scale: Option<u32>,
+    /// The digest of the code it runs.
+    pub code: String,
+}
+
+/// A stored field a backfill worked out in Jadpo reads.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Read {
+    /// Its born name.
+    pub field: String,
+    /// Its column, as the snapshot before the migration has it.
+    pub column: String,
+    /// How its column's value is read.
+    pub decode: jadpo_std::read::Column,
+}
+
+/// `body` as a function whose parameters are the stored fields it reads,
+/// each once, in the order it first reads them: the function and their
+/// born names.
+pub fn as_function(body: &Body) -> (Body, Vec<String>) {
+    let mut out = body.clone();
+    let mut reads: Vec<(String, LocalId)> = Vec::new();
+    for at in 0..out.sites.len() {
+        let Node::Expr(Expr::Stored { field }) = &out.sites[at].node else {
+            continue;
+        };
+        let name = field
+            .written()
+            .rsplit('.')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        let local = match reads.iter().find(|(read, _)| *read == name) {
+            Some((_, local)) => *local,
+            None => {
+                let local = LocalId(out.locals.len() as u32);
+                out.locals.push(Local {
+                    name: name.clone(),
+                    ty: out.sites[at].ty.clone(),
+                    kind: LocalKind::Param,
+                    start: 0,
+                    end: 0,
+                });
+                out.params.push(local);
+                reads.push((name, local));
+                local
+            }
+        };
+        out.sites[at].node = Node::Expr(Expr::Local(local));
+    }
+    (out, reads.into_iter().map(|(name, _)| name).collect())
+}
+
+/// The digest of the code a backfill worked out in Jadpo runs: its body
+/// and every function it reaches, with where each is written left out,
+/// and the value of every constant they read. A change to any of them
+/// changes the migration's SQL, as a change to a backfill by `UPDATE`
+/// does, so `jadpo check` asks for the migration to be written again
+/// before it runs anywhere, and a database that ran the old code refuses
+/// the new one as changed.
+pub fn code_digest(db: &dyn Db, project: Project, body: &Body) -> String {
+    let bodies = bodies(db, project);
+    let table = crate::constants::constant_table(db, project);
+    let mut text = canonical(body);
+    let mut seen: Vec<Key> = Vec::new();
+    let mut constants: Vec<Key> = Vec::new();
+    let mut queue: Vec<Arc<Body>> = vec![Arc::new(body.clone())];
+    while let Some(next) = queue.pop() {
+        for site in &next.sites {
+            match &site.node {
+                Node::Expr(Expr::Call {
+                    callee: Callee::Function(key) | Callee::LibraryFunction(key),
+                    ..
+                }) if !seen.contains(key) => {
+                    seen.push(key.clone());
+                    if let Some(found) = bodies.get(key) {
+                        queue.push(Arc::clone(found));
+                    }
+                }
+                Node::Expr(Expr::Constant { constant }) if !constants.contains(constant) => {
+                    constants.push(constant.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+    seen.sort();
+    for key in &seen {
+        text.push_str(&format!("\n{}: ", key.as_str()));
+        if let Some(found) = bodies.get(key) {
+            text.push_str(&canonical(found));
+        }
+    }
+    constants.sort();
+    for key in &constants {
+        let name = key.written();
+        let value = table
+            .values()
+            .find(|evaluated| {
+                evaluated.name == name || name.ends_with(&format!(".{}", evaluated.name))
+            })
+            .map(|evaluated| format!("{:?}", evaluated.value));
+        text.push_str(&format!("\n{}: {value:?}", key.as_str()));
+    }
+    jadpo_graph::migration::section_digest(&text)
+}
+
+/// A body as text, without where anything in it is written.
+fn canonical(body: &Body) -> String {
+    let mut body = body.clone();
+    for site in &mut body.sites {
+        (site.start, site.end, site.line) = (0, 0, 0);
+    }
+    for local in &mut body.locals {
+        (local.start, local.end) = (0, 0);
+    }
+    for branch in &mut body.branches {
+        (branch.start, branch.end, branch.line) = (0, 0, 0);
+    }
+    body.names.clear();
+    format!("{body:?}")
+}
+
+/// Every callable's typed body, by key.
+fn bodies(db: &dyn Db, project: Project) -> HashMap<Key, Arc<Body>> {
+    let mut out = HashMap::new();
+    for &file in project.files(db) {
+        for callable in crate::types::callables_of(db, file) {
+            let checked = crate::types::typed_body(db, project, callable);
+            if let Some(key) = &checked.key {
+                out.insert(key.clone(), Arc::clone(&checked.body));
+            }
+        }
+    }
+    out
+}
+
+/// How a column holding a value built on `builtin` is read, for those a
+/// backfill worked out in Jadpo reads and writes: one column the storage
+/// codec reads and binds.
+pub fn builtin_column(builtin: Builtin) -> Option<jadpo_std::read::Column> {
+    use jadpo_std::read::Column;
+    Some(match builtin {
+        Builtin::Bool => Column::Bool,
+        Builtin::Int => Column::Int,
+        Builtin::Decimal => Column::Decimal,
+        Builtin::Text => Column::Text,
+        Builtin::Bytes => Column::Bytes,
+        Builtin::Uuid => Column::Uuid,
+        Builtin::Instant => Column::Instant,
+        Builtin::CalendarDate => Column::Date,
+        Builtin::Duration => Column::Duration,
+        _ => return None,
+    })
 }
 
 /// How deep functions may call functions before a backfill has no form.
@@ -544,16 +718,7 @@ impl Render<'_> {
     /// The typed body of the callable with key `key`.
     fn body_of(&mut self, key: &Key) -> Option<Arc<Body>> {
         if self.bodies.is_none() {
-            let mut bodies = HashMap::new();
-            for &file in self.project.files(self.db) {
-                for callable in crate::types::callables_of(self.db, file) {
-                    let checked = crate::types::typed_body(self.db, self.project, callable);
-                    if let Some(key) = &checked.key {
-                        bodies.insert(key.clone(), Arc::clone(&checked.body));
-                    }
-                }
-            }
-            self.bodies = Some(bodies);
+            self.bodies = Some(bodies(self.db, self.project));
         }
         self.bodies.as_ref()?.get(key).cloned()
     }

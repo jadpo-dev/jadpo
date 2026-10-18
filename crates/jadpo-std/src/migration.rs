@@ -142,12 +142,11 @@ impl Migration {
                 parts.push(Part::Sql(sql.to_string()));
             }
             once.clear();
-            match parts.len() {
-                0 => {}
-                1 if matches!(parts[0], Part::Sql(_)) => {
-                    if let Some(Part::Sql(sql)) = parts.pop() {
-                        out.push(Step::Once(sql));
-                    }
+            match parts.as_slice() {
+                [] => {}
+                [Part::Sql(sql)] => {
+                    out.push(Step::Once(sql.clone()));
+                    parts.clear();
                 }
                 _ => out.push(Step::Together(std::mem::take(parts))),
             }

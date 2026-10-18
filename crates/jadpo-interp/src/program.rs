@@ -46,9 +46,32 @@ impl Prepared {
         Ok(Prepared::checked(db, project))
     }
 
+    /// Reads `project` as [`Prepared::load`] does, with the latest
+    /// migration's backfills that `jadpo migrate apply` works out in Jadpo
+    /// (chunk 5.6b2), each a callable of its own.
+    pub fn with_backfills(db: &dyn Db, project: Project) -> Result<Arc<Prepared>, Vec<Diagnostic>> {
+        let errors: Vec<Diagnostic> = jadpo_check::check(db, project)
+            .into_iter()
+            .filter(jadpo_check::blocks_running)
+            .collect();
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        Ok(Prepared::checked_with_backfills(db, project))
+    }
+
+    /// [`Prepared::with_backfills`], for a project the caller has checked
+    /// has no errors.
+    pub fn checked_with_backfills(db: &dyn Db, project: Project) -> Arc<Prepared> {
+        Prepared::from_plan(Plan::with_backfills(db, project))
+    }
+
     /// Reads `project`, which the caller has checked has no errors.
     pub fn checked(db: &dyn Db, project: Project) -> Arc<Prepared> {
-        let plan = Plan::build(db, project);
+        Prepared::from_plan(Plan::build(db, project))
+    }
+
+    fn from_plan(plan: Plan) -> Arc<Prepared> {
         let validators = plan
             .types()
             .validators()
@@ -420,6 +443,12 @@ impl Program {
     pub fn call(&self, name: &str, args: Vec<Value>) -> Result<Outcome, CallError> {
         let unknown = || CallError::Unknown(name.to_string());
         let id = self.plan().find(name).ok_or_else(unknown)?;
+        self.call_id(id, args)
+    }
+
+    /// [`Program::call`], for the callable numbered `id` in the plan.
+    pub fn call_id(&self, id: u32, args: Vec<Value>) -> Result<Outcome, CallError> {
+        let unknown = || CallError::Unknown(format!("callable {id}"));
         let callable = self.plan().callable(id).ok_or_else(unknown)?;
         if callable.body.params.len() != args.len() {
             return Err(CallError::Arity {

@@ -181,12 +181,46 @@ pub struct Plan {
     /// Every prompt that checks, which `prompts.render` fills (area 21,
     /// chunk 5.5v2).
     prompts: jadpo_std::prompt::PromptPlan,
+    /// The latest migration's backfills `jadpo migrate apply` works out in
+    /// Jadpo (chunk 5.6b2), in a plan built for it.
+    backfills: Vec<BackfillPlan>,
+}
+
+/// A backfill `jadpo migrate apply` works out in Jadpo (area 5, "Computed
+/// backfills"; chunk 5.6b2): the callable that works out one row's value
+/// from the stored fields it reads, and how they are read and it is
+/// written.
+#[derive(Clone, Debug)]
+pub struct BackfillPlan {
+    /// The migration's folder name.
+    pub migration: String,
+    /// `Todo.priority`.
+    pub field: String,
+    /// The callable, whose parameters are the stored fields it reads.
+    pub callable: u32,
+    /// How each of their columns is read, in parameter order.
+    pub reads: Vec<jadpo_std::read::Column>,
+    /// The column type its value is written as.
+    pub write: jadpo_std::SqlType,
+    /// The places a decimal is stored at, rounded half to even.
+    pub scale: Option<u32>,
 }
 
 impl Plan {
     /// The plan of `project`, which checked without errors: a project with
     /// errors has bodies with nothing to run where the errors are.
     pub fn build(db: &dyn Db, project: Project) -> Plan {
+        Plan::build_with(db, project, false)
+    }
+
+    /// The plan of `project` with the latest migration's backfills that
+    /// `jadpo migrate apply` works out in Jadpo (chunk 5.6b2), each a
+    /// callable of its own.
+    pub fn with_backfills(db: &dyn Db, project: Project) -> Plan {
+        Plan::build_with(db, project, true)
+    }
+
+    fn build_with(db: &dyn Db, project: Project, with_backfills: bool) -> Plan {
         let graph = Arc::clone(jadpo_check::graph::graph(db, project));
         let mut files = BTreeMap::new();
         let mut found: Vec<(Key, Kind, String, Arc<Body>)> = Vec::new();
@@ -220,6 +254,38 @@ impl Plan {
         // checker reports, and the first is kept.
         found.sort_by(|a, b| a.0.cmp(&b.0));
         found.dedup_by(|a, b| a.0 == b.0);
+        // Each backfill worked out in Jadpo, numbered after every callable
+        // the project declares, keyed by its migration and field.
+        let mut backfills = Vec::new();
+        let mut backfill_lines: HashMap<Key, (String, u32)> = HashMap::new();
+        if with_backfills {
+            for backfill in jadpo_check::data::migrations::jadpo_backfills(db, project) {
+                let key = Key::new(
+                    Kind::Function,
+                    &format!("backfill {} {}", backfill.migration, backfill.field),
+                );
+                backfills.push(BackfillPlan {
+                    migration: backfill.migration.clone(),
+                    field: backfill.field.clone(),
+                    callable: found.len() as u32,
+                    reads: backfill
+                        .plan
+                        .reads
+                        .iter()
+                        .map(|read| read.decode.clone())
+                        .collect(),
+                    write: backfill.plan.write,
+                    scale: backfill.plan.scale,
+                });
+                backfill_lines.insert(key.clone(), (backfill.field.clone(), backfill.line));
+                found.push((
+                    key,
+                    Kind::Function,
+                    backfill.file.clone(),
+                    Arc::clone(&backfill.plan.body),
+                ));
+            }
+        }
         let by_key: HashMap<Key, u32> = found
             .iter()
             .enumerate()
@@ -322,13 +388,15 @@ impl Plan {
         for (key, kind, file, body) in found {
             let node = graph.get(&key);
             let name = node.map_or(key.name(), |node| node.name.as_str());
-            let label = match kind {
-                Kind::Test => format!("test \"{name}\""),
-                kind => format!("{} {name}", kind.word()),
+            let backfill = backfill_lines.get(&key);
+            let label = match (kind, backfill) {
+                (_, Some((field, _))) => format!("backfill {field}"),
+                (Kind::Test, _) => format!("test \"{name}\""),
+                (kind, _) => format!("{} {name}", kind.word()),
             };
             let line = node
                 .and_then(|node| node.place.as_ref())
-                .map_or(1, |place| place.lines.0);
+                .map_or(backfill.map_or(1, |(_, line)| *line), |place| place.lines.0);
             let isolation = node.and_then(|node| node.isolation()).unwrap_or_default();
             let text = files.get(&file).map(String::as_str).unwrap_or_default();
             let number = |key: &Key| by_key.get(key).copied();
@@ -415,7 +483,14 @@ impl Plan {
             locales: jadpo_check::locales::locales(db, project).plan.clone(),
             json,
             prompts,
+            backfills,
         }
+    }
+
+    /// The latest migration's backfills worked out in Jadpo, in a plan
+    /// built [`Plan::with_backfills`].
+    pub fn backfills(&self) -> &[BackfillPlan] {
+        &self.backfills
     }
 
     /// Every callable with a body, by number.

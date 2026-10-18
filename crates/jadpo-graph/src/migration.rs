@@ -949,7 +949,10 @@ mod tests {
         );
         let write = "UPDATE \"todo\" SET \"rank\" = \"jadpo_value\".\"value\" FROM unnest($1::uuid[], $2::bigint[]) AS \"jadpo_value\"(\"key\", \"value\") WHERE \"todo\".\"id\" = \"jadpo_value\".\"key\" AND \"todo\".\"rank\" IS NULL";
         assert_eq!(batches.write.as_deref(), Some(write));
-        assert!(document.contains("its code 0123456789abcdef\n"), "{document}");
+        assert!(
+            document.contains("its code's digest 0123456789abcdef\n"),
+            "{document}"
+        );
         assert_eq!(
             steps[2],
             jadpo_std::Step::Together(vec![
