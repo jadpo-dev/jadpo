@@ -248,3 +248,88 @@ fn a_part_that_may_be_none_is_a_column_that_may_be_null() {
     assert_eq!(nullable("address_region"), Some(true));
     assert_eq!(nullable("address_country"), Some(false));
 }
+
+#[test]
+fn phone_numbers_and_postal_codes_are_checked_as_literals() {
+    assert_eq!(
+        rules("function office() -> PhoneNumber {\n    return \"+441212345678\"\n}\n"),
+        NONE
+    );
+    assert_eq!(
+        rules("function office() -> PhoneNumber {\n    return \"0121 234 5678\"\n}\n"),
+        ["type.invalid_literal"],
+        "a literal is E.164"
+    );
+    assert_eq!(
+        rules("function office() -> PhoneNumber {\n    return \"+441000123456\"\n}\n"),
+        ["type.invalid_literal"],
+        "in no range a UK number type has"
+    );
+    assert_eq!(
+        rules("function uk() -> CallingCode {\n    return \"+44\"\n}\n"),
+        NONE
+    );
+    assert_eq!(
+        rules("function port() -> UnLocode {\n    return \"GBLON\"\n}\n"),
+        NONE
+    );
+    assert_eq!(
+        rules("function port() -> UnLocode {\n    return \"UKLON\"\n}\n"),
+        ["type.invalid_literal"],
+        "`UK` isn't ISO 3166-1's code"
+    );
+    assert_eq!(
+        rules("function palace() -> PostalCode {\n    return \"sw1a 1aa\"\n}\n"),
+        ["type.invalid_literal"],
+        "a literal is the canonical text"
+    );
+}
+
+#[test]
+fn country_reads_a_phone_number_or_a_postal_code_as_people_write_it() {
+    assert_eq!(
+        rules(
+            "function phone_from(raw: Wire, home: Country) fails Unreadable -> PhoneNumber {\n    var phone: PhoneNumber = attempt text.parse(raw, as: PhoneNumber, country: home) {\n        malformed: Unreadable\n    }\n    return phone\n}\n"
+        ),
+        NONE
+    );
+    assert_eq!(
+        rules(
+            "function postcode_from(raw: Wire) fails Unreadable -> PostalCode {\n    var code: PostalCode = attempt text.parse(raw, as: PostalCode, country: Country.gb) {\n        malformed: Unreadable\n    }\n    return code\n}\n"
+        ),
+        NONE
+    );
+    assert_eq!(
+        rules(
+            "function email_from(raw: Wire) fails Unreadable -> Email {\n    var email: Email = attempt text.parse(raw, as: Email, country: Country.gb) {\n        malformed: Unreadable\n    }\n    return email\n}\n"
+        ),
+        ["type.temporal_option_unused"],
+        "only a phone number and a postal code are read by country"
+    );
+}
+
+#[test]
+fn an_address_s_postal_code_fits_its_country() {
+    let address = "function palace() -> PostalAddress {\n    return PostalAddress {\n        lines: [\"Buckingham Palace\"]\n        locality: \"London\"\n        region: none\n        postal_code: \"SW1A 1AA\"\n        country: Country.gb\n    }\n}\n";
+    assert_eq!(rules(address), NONE);
+    assert_eq!(
+        rules(&address.replace("\"SW1A 1AA\"", "\"75004\"")),
+        ["type.invalid_literal"],
+        "a French postal code in a British address"
+    );
+    assert_eq!(
+        rules(
+            &address
+                .replace("Country.gb", "Country.fr")
+                .replace("\"SW1A 1AA\"", "\"75004\"")
+        ),
+        NONE
+    );
+    assert_eq!(
+        rules(
+            "function posted(code: PostalCode, country: Country) -> PostalAddress {\n    return PostalAddress {\n        lines: [\"1 High Street\"]\n        locality: none\n        region: none\n        postal_code: code\n        country: country\n    }\n}\n"
+        ),
+        NONE,
+        "built from values, the rule waits on cross-field rules (chunk 5.5t)"
+    );
+}

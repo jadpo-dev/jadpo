@@ -340,7 +340,16 @@ impl Codecs<'_> {
         if problems.len() > before {
             return None;
         }
-        shape.build(given)
+        let built = shape.build(given)?;
+        // A rule across a standard object's parts: an address's postal
+        // code fits its country (chunk 5.5l2).
+        if let Value::Record(record) = &built
+            && let Some(part) = crate::standard::broken_part(record)
+        {
+            Self::problem(problems, &path.with(part), "format");
+            return None;
+        }
+        Some(built)
     }
 
     /// The value `text` holds as a value of codec `id`'s type: a path

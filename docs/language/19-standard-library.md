@@ -102,7 +102,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 80 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: twelve are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 84 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: twelve are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -116,8 +116,8 @@ exception to the rule.
 
 | Group | Types | Extras in |
 |---|---|---|
-| People and contact (12) | **`PersonName`**, **`GivenName`**, **`FamilyName`**, **`Username`**, **`Email`**, **`EmailWithName`**, `PhoneNumber`, **`PhoneExtension`**, **`PostalAddress`**, `PostalCode`, **`Uprn`**, **`Nationality`** (enum) | `web` |
-| Places (10) | **`Country`** (enum), **`CountrySubdivision`** (enum), **`Continent`** (enum), `UnLocode`, `CallingCode`, **`Language`** (enum), **`WritingScript`** (enum), **`TextDirection`** (enum), **`Locale`** (enum), **`Zone`** (enum) | |
+| People and contact (12) | **`PersonName`**, **`GivenName`**, **`FamilyName`**, **`Username`**, **`Email`**, **`EmailWithName`**, **`PhoneNumber`**, **`PhoneExtension`**, **`PostalAddress`**, **`PostalCode`**, **`Uprn`**, **`Nationality`** (enum) | `web` |
+| Places (10) | **`Country`** (enum), **`CountrySubdivision`** (enum), **`Continent`** (enum), **`UnLocode`**, **`CallingCode`**, **`Language`** (enum), **`WritingScript`** (enum), **`TextDirection`** (enum), **`Locale`** (enum), **`Zone`** (enum) | |
 | Geospatial (17) | `Point` (optional altitude), `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` | `geo` (future area) |
 | Money, payments, banking (24) | **`Money`**, **`Currency`** (enum), **`ExchangeRate`**, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, **`PaymentCardNumber`**, `MaskedCardNumber`, `CardBrand` (enum), **`CardBin`**, `CardExpiry`, **`PaymentReference`**, **`InvoiceNumber`**, **`Iban`**, **`Bic`**, **`UkSortCode`**, **`UkAccountNumber`**, `BankAccount`, **`AbaRoutingNumber`**, **`Lei`**, **`Isin`** | `money` |
 | Tax and identity numbers (11) | `VatNumber`, `TaxId`, **`UkUtr`**, **`UkCompanyNumber`**, **`UkNationalInsuranceNumber`**, **`UsSsn`**, **`UsEin`**, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, **`NhsNumber`** | |
@@ -388,7 +388,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Angle`, `Area`, `Bic`, `Bitrate`, `CalendarDate`, `CalendarPeriod`, `CardBin`, `Concentration`, `Continent`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `DataSize`, `DateRange`, `Duration`, `Email`, `EmailWithName`, `Energy`, `ExchangeRate`, `FamilyName`, `FileType`, `Frequency`, `GivenName`, `Iban`, `Illuminance`, `Instant`, `InstantRange`, `InvoiceNumber`, `IpAddress`, `Isin`, `IsoWeek`, `Language`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `Mass`, `Money`, `Month`, `Nationality`, `NhsNumber`, `OpeningHours`, `PaymentCardNumber`, `PaymentReference`, `PersonName`, `PhoneExtension`, `PostalAddress`, `Power`, `Pressure`, `Quarter`, `Range`, `RecurrenceRule`, `SoundLevel`, `Speed`, `Temperature`, `TemperatureDifference`, `TextDirection`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Uprn`, `Url`, `UsEin`, `UsSsn`, `Username`, `UtcOffset`, `Uuid`, `Voltage`, `Volume`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Angle`, `Area`, `Bic`, `Bitrate`, `CalendarDate`, `CalendarPeriod`, `CallingCode`, `CardBin`, `Concentration`, `Continent`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `DataSize`, `DateRange`, `Duration`, `Email`, `EmailWithName`, `Energy`, `ExchangeRate`, `FamilyName`, `FileType`, `Frequency`, `GivenName`, `Iban`, `Illuminance`, `Instant`, `InstantRange`, `InvoiceNumber`, `IpAddress`, `Isin`, `IsoWeek`, `Language`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `Mass`, `Money`, `Month`, `Nationality`, `NhsNumber`, `OpeningHours`, `PaymentCardNumber`, `PaymentReference`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Quarter`, `Range`, `RecurrenceRule`, `SoundLevel`, `Speed`, `Temperature`, `TemperatureDifference`, `TextDirection`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `UnLocode`, `Uprn`, `Url`, `UsEin`, `UsSsn`, `Username`, `UtcOffset`, `Uuid`, `Voltage`, `Volume`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -3504,9 +3504,84 @@ test "a name and an address are kept part by part" {
 > `PostalAddress` as objects with parts that may be `none`, each stored in
 > a column per part. A name is shown by CLDR's person-name patterns and an
 > address by libaddressinput's formats, since CLDR has none for
-> addresses. `PhoneNumber`, `CallingCode`, `PostalCode` and `UnLocode` are
-> chunk 5.5l2. What the page left open is "Chosen in chunk 5.5l", under
-> "Review".
+> addresses. `PhoneNumber`, `CallingCode`, `PostalCode` and `UnLocode`
+> were built in chunk 5.5l2, below. What the page left open is "Chosen in
+> chunk 5.5l", under "Review".
+
+A shop takes a customer's phone number and postcode as they type them in
+their own country, and shows the number to its staff as their region
+dials it:
+
+```jadpo check project=phones-and-postcodes
+type TypedText = Text {}
+
+type PhoneUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type PostcodeUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A customer's phone number as they typed it in their country: national
+/// or international, with any spaces and brackets.
+function typed_phone(raw: TypedText, typed_in: Country) fails PhoneUnreadable -> PhoneNumber {
+    var phone: PhoneNumber = attempt text.parse(raw, as: PhoneNumber, country: typed_in) {
+        malformed: PhoneUnreadable
+    }
+    return phone
+}
+
+/// A customer's postcode as they typed it, in their country's own form.
+function typed_postcode(raw: TypedText, typed_in: Country) fails PostcodeUnreadable -> PostalCode {
+    var postcode: PostalCode = attempt text.parse(raw, as: PostalCode, country: typed_in) {
+        malformed: PostcodeUnreadable
+    }
+    return postcode
+}
+
+/// A number as someone in the staff_locale's region dials it.
+function dialled_as(phone: PhoneNumber, staff_locale: Locale) -> PresentationText {
+    return text.format(phone, locale: staff_locale)
+}
+```
+
+```jadpo check project=phones-and-postcodes file=main.test.jadpo
+test "a phone number is read as it is typed and kept in E.164" {
+    var mobile: PhoneNumber = attempt typed_phone("07400 123456", Country.gb)
+    assert mobile == PhoneNumber("+447400123456")
+    var from_abroad: PhoneNumber = attempt typed_phone("+44 (0)7400 123456", Country.fr)
+    assert from_abroad == mobile
+    assert typed_phone("07400 12345", Country.gb) fails PhoneUnreadable
+    assert typed_phone("07400 123456", Country.us) fails PhoneUnreadable
+}
+
+test "a phone number is shown as the staff_locale's region dials it" {
+    var mobile: PhoneNumber = PhoneNumber("+447400123456")
+    assert dialled_as(mobile, Locale.en_gb) == "07400 123456"
+    assert dialled_as(mobile, Locale.fr_fr) == "+44 7400 123456"
+    assert dialled_as(PhoneNumber("+12015550123"), Locale.en_us) == "(201) 555-0123"
+}
+
+test "a postcode is in its country's form" {
+    var royal_code: PostalCode = attempt typed_postcode("sw1a1aa", Country.gb)
+    assert royal_code == PostalCode("SW1A 1AA")
+    var us_code: PostalCode = attempt typed_postcode("221621010", Country.us)
+    assert us_code == PostalCode("22162-1010")
+    assert typed_postcode("75004", Country.gb) fails PostcodeUnreadable
+    assert typed_postcode("2A004", Country.fr) fails PostcodeUnreadable
+}
+```
+
+> Built in chunk 5.5l2: `PhoneNumber`, valid by libphonenumber's metadata
+> for its region, `CallingCode` against the codes ITU-T assigned,
+> `PostalCode` with each country's pattern from libaddressinput, and
+> `UnLocode` by its pattern with its country checked, each held as text;
+> `country:` on `text.parse` for the first and third; and a
+> `PostalAddress`'s postal code, now a `PostalCode`, fitting its country,
+> proved in a literal and checked as JSON is read. The UN/LOCODE list
+> itself isn't shipped: its terms are unclear. What the page left open is
+> "Chosen in chunk 5.5l2", under "Review".
 
 ## Logic and bits
 
@@ -4269,7 +4344,7 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, ten time types in 5.5k, 15 of people and places in 5.5l, each other group of types in 5.5i2 to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, each other group of types in 5.5i2 to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
@@ -5323,6 +5398,73 @@ under "Errors").
 - **Area 6's rename:** `query.include_depth`'s `Country` entity is
   `Territory`.
 
+### Chosen in chunk 5.5l2
+
+- **Held as text,** as the payment numbers are (chunk 5.5i): each a
+  pattern and, where it needs one, a named validator, its canonical text
+  the value; none is ordered.
+- **`PhoneNumber`** is its E.164 text, `+447400123456`, and is valid as
+  libphonenumber's `isValidNumber` says, the stricter of its two levels:
+  the national number matches one of its region's number types (fixed
+  line, mobile, freephone ...) with that type's lengths, not merely a
+  length the region uses. Its metadata is libphonenumber's
+  `PhoneNumberMetadata.xml`, release v9.0.41 (2026-10-08, Apache-2.0),
+  generated once into `jadpo_std::standard::phones_data`; a range a
+  regulator opens later is refused until a release brings newer
+  metadata, as a currency is. It is `contact` personal data.
+- **`text.parse` reads E.164 only,** as it reads only canonical text
+  everywhere; **`country:`**, a `Country` value, is the one way to read a
+  number as people write it: national with its prefix (`07400 123456`),
+  or international after `+` or the region's international prefix (`00
+  44 ...`, `011 44 ...`), a national prefix after the code left out (`+44
+  (0)7400 ...`), with spaces, dashes, dots, slashes and brackets
+  anywhere. A number valid in another region of the same calling code is
+  taken (a Jersey number typed in Britain). An extension is
+  `PhoneExtension`'s, so text with one is `malformed`. `country:` on any
+  other type is `type.temporal_option_unused`, as an option that means
+  nothing is, so no new rule.
+- **`text.format` chooses the format by the locale,** with no option: the
+  national format, `07400 123456`, for a reader whose region (the
+  locale's, or its likely one, as an address's reader's is) has the
+  number's calling code, and the international format, `+44 7400 123456`,
+  for any other, by libphonenumber's formats for the code's main region.
+- **`CallingCode`** is a code ITU-T assigned, with its `+` (`+44`, `+1`
+  for the whole North American plan, `+800` and the other
+  non-geographic codes), the list libphonenumber's metadata holds; not
+  personal data.
+- **`PostalCode`** on its own is text any country's postal code could be:
+  capitals, digits, spaces and dashes, 1 to 12, a letter or digit at each
+  end. Its country's rule applies where the country is known: in a
+  `PostalAddress` and in `text.parse(raw, as: PostalCode, country:)`.
+  The patterns are libaddressinput's (the commit chunk 5.5l's formats
+  come from, Apache-2.0), in `postal_codes_data`, each separator a
+  pattern leaves optional made fixed where the country's own examples all
+  write it one way (a space in `SW1A 1AA`, a dash in `154-0023` and
+  `22162-1010`, none in `75004`), so one postal code has one text and `==`
+  holds. With `country:` it is read as typed: capitals, one space between
+  words, the separators where the country writes them (`sw1a1aa` is `SW1A
+  1AA`), refused where two readings fit. A country libaddressinput has no
+  pattern for (Ireland, whose Eircodes it doesn't hold) takes any postal
+  code. It is `contact` personal data, as an address is.
+- **`PostalAddress`'s postal code is a `PostalCode` that fits its
+  country.** An object literal never fails (area 2), so the rule is proved
+  where a literal writes both the postal code and the country
+  (`type.invalid_literal`), and checked when an address is read from JSON,
+  in a request or `json.read`, breaking `format` at `postal_code`. One
+  built in code from values isn't checked until cross-field rules (chunk
+  5.5t) make it a named rule, proved or attempted. Stored addresses are
+  read as written.
+- **`UnLocode`** is its five characters with no space, `GBLON`, its
+  country a current ISO 3166-1 code, and printed with the space, `GB LON`.
+  The UN/LOCODE list isn't shipped: UNECE's site terms allow only
+  personal, non-commercial use without redistribution, while its footer
+  says UN/CEFACT standards are under CC BY 4.0, and which covers the code
+  list isn't stated (as the `datasets/un-locode` package records it).
+  Checking against the list waits on that.
+- **No shapes:** `type.standard_exists` matches none of the four, each a
+  single value.
+- **Area 2's** `PostalCode` example type is `ShippingCode`.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -5800,6 +5942,9 @@ first; each group of types then arrives with its baseline and its extras.
   locale's order, and `PostalCode` per country. 15 built; split on
   2026-10-18, `PhoneNumber`, `CallingCode`, `PostalCode` and `UnLocode`
   are 5.5l2.
+- **5.5l2 Phone numbers and postal codes** `opus · high`: the other four,
+  with libphonenumber's metadata and libaddressinput's patterns. Built;
+  the UN/LOCODE list waits on its terms.
 - **5.5m Commerce, health, travel and the rest** `opus · high`: 45 types,
   mostly codes with a pattern or check digit (`Ean13`, `Isbn`, `Vin`,
   `IataAirport`).

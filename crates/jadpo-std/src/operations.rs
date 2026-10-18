@@ -1880,6 +1880,9 @@ pub const OPERATIONS: &[Operation] = &[
             param("raw", Kind::Builtin(Builtin::Text)),
             param("as", Kind::Type),
             by_type("form", Kind::Enum(crate::CodeForm::NAME)),
+            // A phone number or a postal code as people write it in a
+            // country (area 19, chunk 5.5l2).
+            by_type("country", Kind::Enum(crate::standard::places::COUNTRY)),
         ],
         result: Kind::Any,
         at_least: None,

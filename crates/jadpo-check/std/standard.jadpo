@@ -44,6 +44,9 @@ public type CalendarPeriod = Object {
     days: Int
 }
 
+/// A country calling code (area 19, ITU-T E.164) with its `+`: `+44`.
+public type CallingCode = Text {}
+
 /// The first 6 or 8 digits of a card number, naming its issuer (area
 /// 19): `424242`.
 public type CardBin = Text {}
@@ -254,6 +257,10 @@ public type PersonName = Object {
 /// digits. Personal data.
 public type PhoneExtension = Text {}
 
+/// A phone number (area 19) in E.164, `+447400123456`, valid by
+/// libphonenumber's metadata for its region. Personal data.
+public type PhoneNumber = Text {}
+
 /// A postal address in any country (area 19): its street lines, its
 /// locality, region and postal code where its country uses them, and the
 /// country. It has no single text form; `text.format` writes it in its
@@ -262,9 +269,13 @@ public type PostalAddress = Object {
     lines: List<Text>
     locality: Text?
     region: Text?
-    postal_code: Text?
+    postal_code: PostalCode?
     country: Country
 }
+
+/// A postal code (area 19), `SW1A 1AA`, checked by its country's pattern
+/// where the country is known. Personal data.
+public type PostalCode = Text {}
 
 /// Power, held in watts to 3 places (area 19), written `3kW`.
 public type Power = Power {}
@@ -340,6 +351,10 @@ public type UkSortCode = Text {}
 
 /// A UK Unique Taxpayer Reference (area 19), ten digits. Personal data.
 public type UkUtr = Text {}
+
+/// A place in trade and transport (area 19, UN/LOCODE): a country's code
+/// and three letters or digits, `GBLON`.
+public type UnLocode = Text {}
 
 /// A Unique Property Reference Number (area 19, GeoPlace): up to 12
 /// digits, held as text so no zero is lost: `100023336956`. Personal data.
