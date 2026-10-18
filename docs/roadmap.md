@@ -787,10 +787,27 @@ reference only).
   `VatNumber`, `TaxId`, `PassportNumber`, `DrivingLicenceNumber` and
   `IdentityDocument`, on `Country` (5.5l). Done when every type passes the
   harness.
-- [ ] **5.5m Commerce, health, travel and the rest** `opus · high` (area
-  19, "Groups with the baseline only"): 45 types, mostly codes with a
-  pattern or check digit (`Ean13`, `Isbn`, `Vin`, `IataAirport`). Done
-  when every type passes the harness.
+- [ ] **5.5m Commerce, health, travel and the rest: codes and lists**
+  `opus · high` (area 19, "Groups with the baseline only"): the 29 of the
+  45 that are codes or closed lists. Held as text with a pattern and,
+  where the page names one, a check digit: `Sku`, `Ean13`, `UpcA`,
+  `Isbn`, `Sscc`, `HsCode`, `Carrier`, `ContainerNumber`, `LotNumber`,
+  `SerialNumber`, `Vin`, `Icd10Code`, `SnomedConcept`, `IataAirport`,
+  `IcaoAirport`, `IataAirline`, `BookingReference`, `UnNumber`, `Orcid`,
+  `Mpan` and `Mprn`; and the closed lists `Incoterm`, `BloodType`,
+  `Allergen`, `CabinClass`, `CefrLevel`, `EpcRating`, `Tenure` and
+  `LawfulBasis` as built-in enums. Done when every type passes the
+  harness with valid and invalid examples per rule. Split on 2026-10-18;
+  the records and measures are 5.5m2.
+- [ ] **5.5m2 Commerce, health, travel and the rest: records and
+  measures** `opus · high` (area 19, "Groups with the baseline only",
+  split from 5.5m): the other 16, each a record of other types or a
+  measure: `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`,
+  `ShoeSize`, `Dimensions`, `TrackingNumber` (on 5.5m's `Carrier`),
+  `VehicleRegistration`, `Dose`, `DosageInstruction`, `HeartRate`,
+  `BloodPressure`, `BloodGlucose`, `FlightNumber` (on 5.5m's
+  `IataAirline`), `Jurisdiction` and `ModelId`. Done when every type
+  passes the harness.
 - [ ] **5.5n Web and software** `opus · high` (area 19, "Web and
   software"): 38 types, `web`'s 3 operations and `semver.satisfies`. Done
   when every type passes the harness and the four operations' examples
