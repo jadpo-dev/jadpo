@@ -46,6 +46,17 @@ pub fn add_column(table: &str, column: &str, sql_type: &str) -> String {
     )
 }
 
+/// Sets the comment on `column`, or removes it for `None`: what a
+/// quantity's column holds, its kind and SI unit (area 19, chunk 5.5w).
+pub fn comment_on_column(table: &str, column: &str, comment: Option<&str>) -> String {
+    format!(
+        "COMMENT ON COLUMN {}.{} IS {}",
+        ident(table),
+        ident(column),
+        comment.map_or_else(|| "NULL".to_string(), text_literal)
+    )
+}
+
 /// Changes `column`'s type to `sql_type`.
 pub fn change_type(table: &str, column: &str, sql_type: &str) -> String {
     format!(

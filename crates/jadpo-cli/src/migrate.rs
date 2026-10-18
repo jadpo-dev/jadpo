@@ -740,6 +740,18 @@ fn change_groups(
                     (Some(was), Some(now)) if was.nullable && !now.nullable => {
                         "now required".into()
                     }
+                    // Only its comment, the unit a quantity is held in
+                    // (area 19, chunk 5.5w).
+                    (Some(was), Some(now))
+                        if was.comment != now.comment
+                            && was.nullable == now.nullable
+                            && was.allows == now.allows =>
+                    {
+                        match &now.comment {
+                            Some(comment) => format!("holds {comment}"),
+                            None => "comment removed".into(),
+                        }
+                    }
                     (Some(was), Some(now)) if was.nullable == now.nullable => {
                         if was.allows.is_none() {
                             "what it allows, recorded".into()

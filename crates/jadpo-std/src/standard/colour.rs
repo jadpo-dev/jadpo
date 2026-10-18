@@ -93,7 +93,7 @@ pub const COLOUR_ENTRY: StandardType = StandardType {
             ("blue", "smallint"),
             ("alpha", "smallint"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::Canonical,

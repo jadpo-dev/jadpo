@@ -28,6 +28,7 @@ mod queries;
 mod round_trips;
 mod signed;
 mod sql;
+mod standard_storage;
 mod suggest;
 #[path = "test.rs"]
 mod test_command;

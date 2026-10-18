@@ -590,12 +590,24 @@ fn every_standard_type_meets_the_contract() {
                     .iter()
                     .zip(entry.columns())
                     .map(|(part, (_, column))| {
+                        // A range's column is its item's range type (chunk
+                        // 5.5w).
+                        let column = match (entry.name, entry.examples.of) {
+                            (jadpo_std::RANGE, Some("CalendarDate")) => "daterange",
+                            (jadpo_std::RANGE, Some("Instant")) => "tstzrange",
+                            (jadpo_std::RANGE, Some("Decimal")) => "numrange",
+                            (jadpo_std::RANGE, _) => "int8range",
+                            _ => column,
+                        };
                         let sql = jadpo_std::SqlType::of_column(column).expect("a column type");
                         jadpo_runtime::to_sql(part, sql)
                             .unwrap_or_else(|why| panic!("{name}: a part is stored ({why})"))
                     })
                     .collect();
-                let mut columns = vec![jadpo_std::read::Column::Compound(name.to_string())];
+                let mut columns = vec![jadpo_std::read::Column::Compound {
+                    ty: parsed_as(entry),
+                    may_be_none: false,
+                }];
                 columns.resize(row.len(), jadpo_std::read::Column::Part);
                 assert_eq!(
                     jadpo_runtime::field_value(&row, &columns, 0),
@@ -1004,4 +1016,25 @@ fn an_event_s_parts_are_checked_together_as_json_is_read() {
         }),
         "last_day_not_before_first",
     );
+}
+
+/// A range whose start is its end holds nothing, and PostgreSQL keeps every
+/// such range as `empty`, without its ends: storing one is refused rather
+/// than losing where it was (chunk 5.5w), while one that holds its end, a
+/// `DateRange` of one day, is stored.
+#[test]
+fn a_range_that_holds_nothing_is_not_stored() {
+    let empty = standard::parse("2026-10-25T09:00:00Z/2026-10-25T09:00:00Z", "InstantRange")
+        .expect("an empty range");
+    let parts = standard::to_parts(&empty).expect("its column");
+    let sql = jadpo_std::SqlType::of_column("tstzrange").expect("a range type");
+    let refused = jadpo_runtime::to_sql(&parts[0], sql).expect_err("refused");
+    assert!(
+        refused.contains("PostgreSQL keeps without its ends"),
+        "{refused}"
+    );
+    let day = standard::parse("2026-10-25/2026-10-25", "DateRange").expect("one day");
+    let parts = standard::to_parts(&day).expect("its column");
+    let sql = jadpo_std::SqlType::of_column("daterange").expect("a range type");
+    assert!(jadpo_runtime::to_sql(&parts[0], sql).is_ok());
 }

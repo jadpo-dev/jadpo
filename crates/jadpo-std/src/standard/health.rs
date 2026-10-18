@@ -111,7 +111,10 @@ pub const DOSE_ENTRY: StandardType = StandardType {
     holds: Holds::Choice(DOSE_VARIANTS),
     text: None,
     json: Json::Tagged,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[("kind", "text"), ("amount", "numeric(38, 9)")],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Measures {
             parts: &["amount"],
@@ -254,7 +257,17 @@ pub const DOSAGE_INSTRUCTION_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&DOSAGE_INSTRUCTION_FIELDS),
     text: None,
     json: Json::Fields(&["dose", "route", "times", "per", "as_needed"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("dose_kind", "text"),
+            ("dose_amount", "numeric(38, 9)"),
+            ("route", "text"),
+            ("times", "integer"),
+            ("per", "bigint"),
+            ("as_needed", "boolean"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Dosage,
         options: NO_OPTIONS,
@@ -391,7 +404,13 @@ pub const BLOOD_PRESSURE_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&BLOOD_PRESSURE_FIELDS),
     text: None,
     json: Json::Fields(&["systolic", "diastolic"]),
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("systolic", "numeric(38, 3)"),
+            ("diastolic", "numeric(38, 3)"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Measures {
             parts: &["systolic", "diastolic"],

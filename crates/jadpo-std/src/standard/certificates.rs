@@ -15,7 +15,6 @@ use super::{
     Storage, TextForm,
 };
 use crate::Builtin;
-use crate::read::SqlType;
 
 /// `Certificate` (area 19).
 pub const CERTIFICATE: &str = "Certificate";
@@ -277,7 +276,18 @@ pub const CERTIFICATE_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&CERTIFICATE_FIELDS),
     text: Some(TextForm::Pem),
     json: Json::Text,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("subject", "text"),
+            ("issuer", "text"),
+            ("serial_number", "text"),
+            ("not_before", "timestamptz(3)"),
+            ("not_after", "timestamptz(3)"),
+            ("fingerprint", "bytea"),
+            ("der", "bytea"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::FirstPart(&["subject", "serial_number"]),
         options: NO_OPTIONS,

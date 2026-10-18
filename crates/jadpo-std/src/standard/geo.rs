@@ -346,7 +346,7 @@ pub const MAP_TILE_ENTRY: StandardType = StandardType {
     json: Json::Fields(&["zoom", "x", "y"]),
     storage: Storage::Columns {
         parts: &[("zoom", "smallint"), ("x", "integer"), ("y", "integer")],
-        fixed: None,
+        fixed: &[],
     },
     format: GEOMETRY_FORMAT,
     ordered: false,
@@ -394,7 +394,7 @@ pub const EASTING_NORTHING_ENTRY: StandardType = StandardType {
             ("northing", "numeric"),
             ("crs", "text"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     format: GEOMETRY_FORMAT,
     ordered: false,

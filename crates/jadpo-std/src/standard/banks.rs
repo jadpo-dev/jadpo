@@ -11,7 +11,6 @@ use super::{
     Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part, StandardType,
     Storage,
 };
-use crate::read::SqlType;
 
 /// `BankAccount`.
 pub const BANK_ACCOUNT: &str = "BankAccount";
@@ -64,7 +63,17 @@ pub const BANK_ACCOUNT_ENTRY: StandardType = StandardType {
     holds: Holds::Choice(BANK_ACCOUNT_VARIANTS),
     text: None,
     json: Json::Tagged,
-    storage: Storage::Column(SqlType::Json),
+    storage: Storage::Columns {
+        parts: &[
+            ("kind", "text"),
+            ("sort_code", "text"),
+            ("account_number", "text"),
+            ("iban", "text"),
+            ("country", "text"),
+            ("bank_code", "text"),
+        ],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::PartLastFour {
             parts: &["account_number", "iban"],

@@ -68,11 +68,23 @@ pub enum SqlValue {
     Date(i32),
     /// Microseconds since midnight.
     Time(i64),
+    /// Microseconds since 1970-01-01T00:00:00 on no zone: a `timestamp`
+    /// without a zone, a `LocalDateTime` (area 19, chunk 5.5w).
+    LocalTimestamp(i64),
     /// JSON text.
     Json(String),
     /// An array of values of one type, none of them `NULL`: a list a field
     /// is tested `in`, or an include's keys.
     Array(SqlType, Vec<SqlValue>),
+    /// A range of values of the element type (area 19, "Ranges", chunk
+    /// 5.5w): from its lower end, held, to its upper end, held when
+    /// `upper_held`; an end that is `None` is open.
+    Range {
+        element: SqlType,
+        lower: Option<Box<SqlValue>>,
+        upper: Option<Box<SqlValue>>,
+        upper_held: bool,
+    },
 }
 
 impl SqlValue {
@@ -91,8 +103,10 @@ impl SqlValue {
             SqlValue::Timestamp(_) => SqlType::Timestamp,
             SqlValue::Date(_) => SqlType::Date,
             SqlValue::Time(_) => SqlType::Time,
+            SqlValue::LocalTimestamp(_) => SqlType::LocalTimestamp,
             SqlValue::Json(_) => SqlType::Json,
             SqlValue::Array(element, _) => element.array(),
+            SqlValue::Range { element, .. } => element.range(),
         }
     }
 }

@@ -672,7 +672,7 @@ const fn issued(
         json: Json::Fields(&["country", "number"]),
         storage: Storage::Columns {
             parts: &[("country", "text"), ("number", "text")],
-            fixed: None,
+            fixed: &[],
         },
         format: MASKED,
         ordered: false,
@@ -695,7 +695,7 @@ pub const VAT_NUMBER_TYPE: StandardType = StandardType {
     json: Json::Text,
     storage: Storage::Columns {
         parts: &[("country", "text"), ("number", "text")],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::Canonical,
@@ -821,7 +821,7 @@ pub const IDENTITY_DOCUMENT_TYPE: StandardType = StandardType {
             ("number", "text"),
             ("expires", "date"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     format: MASKED,
     ordered: false,

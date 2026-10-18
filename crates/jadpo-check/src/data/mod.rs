@@ -211,6 +211,17 @@ pub struct FieldModel {
     /// (area 19): `Money`, in `<column>_amount`, a `bigint` of minor units
     /// that `sql_type` is, and `<column>_currency`, the currency's code.
     pub compound: Option<&'static str>,
+    /// For a `Range<T>` field, the built-in type its ends are built on
+    /// (chunk 5.5w): `Duration` for a `Range<Duration>`.
+    pub range_item: Option<&'static str>,
+    /// Of a compound type's columns, those its type fixes to one currency,
+    /// each by its suffix with that currency's code (chunk 5.5w): a
+    /// `Money` type's `currency:`, a rate type's `from:` and `to:`.
+    pub fixed: Vec<(&'static str, String)>,
+    /// The comment on its column, for a quantity: its kind and the SI unit
+    /// it holds (area 19, chunk 5.5w). A compound type's columns take
+    /// theirs from its layout.
+    pub comment: Option<String>,
 }
 
 impl FieldModel {
@@ -220,9 +231,21 @@ impl FieldModel {
         self.compound.and_then(jadpo_std::standard_type)
     }
 
+    /// The compound type's name as a read takes it: its entry's, or a
+    /// range's with its item, `Range<Duration>` (chunk 5.5w).
+    pub fn compound_type(&self) -> String {
+        match (self.compound, self.range_item) {
+            (Some(name), Some(item)) => format!("{name}<{item}>"),
+            (Some(name), None) => name.to_string(),
+            (None, _) => String::new(),
+        }
+    }
+
     /// The columns the field is stored in, by name, each with its type: one,
     /// or a compound type's, its column suffixes joined to the field's
-    /// column name with `_`, in its entry's order.
+    /// column name with `_`, in its entry's order; a suffix of `""` is the
+    /// field's own column, of the type it was given (a range's, by its
+    /// item, chunk 5.5w).
     pub fn columns(&self) -> Vec<(String, String)> {
         let Some(sql_type) = &self.sql_type else {
             return Vec::new();
@@ -231,7 +254,13 @@ impl FieldModel {
             Some(entry) => entry
                 .columns()
                 .iter()
-                .map(|(part, ty)| (format!("{}_{part}", self.born), (*ty).to_string()))
+                .map(|(part, ty)| {
+                    if part.is_empty() {
+                        (self.born.clone(), sql_type.clone())
+                    } else {
+                        (format!("{}_{part}", self.born), (*ty).to_string())
+                    }
+                })
                 .collect(),
             None => vec![(self.born.clone(), sql_type.clone())],
         }
@@ -773,6 +802,9 @@ impl Reader<'_> {
             immutable: false,
             allows: physical::Allows::default(),
             compound: None,
+            range_item: None,
+            fixed: Vec::new(),
+            comment: None,
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -943,10 +975,19 @@ impl Reader<'_> {
                 // A compound standard type (area 19): `Money`, built in, or
                 // an object stored in a column per part (`PostalAddress`,
                 // chunk 5.5l).
-                let object = match self.lookup.structure(&ty) {
-                    Ty::Named(name) | Ty::Opaque(name, _) => jadpo_std::standard_type(&name),
+                let structure = self.lookup.structure(&ty);
+                let object = match &structure {
+                    Ty::Named(name) | Ty::Opaque(name, _) => jadpo_std::standard_type(name),
                     _ => None,
                 };
+                // A range's ends' type, which its column and its reading
+                // need (chunk 5.5w).
+                if let Ty::Opaque(name, args) = &structure
+                    && name == jadpo_std::RANGE
+                    && let [item] = args.as_slice()
+                {
+                    field.range_item = self.lookup.representation(item).map(|item| item.name());
+                }
                 field.compound = self
                     .lookup
                     .representation(&ty)
@@ -954,6 +995,24 @@ impl Reader<'_> {
                     .or(object)
                     .filter(|entry| !entry.columns().is_empty())
                     .map(|entry| entry.name);
+                if let Some(jadpo_std::Builtin::Quantity(kind)) = self.lookup.representation(&ty) {
+                    field.comment = Some(jadpo_std::standard::storage::unit_comment(kind));
+                }
+                // The columns its type fixes, each held to its currency by a
+                // check constraint.
+                if let Some(entry) = field.compound_entry() {
+                    let field_ty = Ty::Field(entity.to_string(), vec![name.to_string()]);
+                    let chain = self.lookup.rule_chain(&field_ty);
+                    for (suffix, fixed) in entry.fixed_parts() {
+                        if let Some(code) = chain
+                            .iter()
+                            .find_map(|(_, rules)| fixed.of(rules))
+                            .and_then(jadpo_std::money::code)
+                        {
+                            field.fixed.push((suffix, code.to_string()));
+                        }
+                    }
+                }
                 field.sql_type = Some(sql);
             }
             Err(what) => {
@@ -1933,16 +1992,26 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
         let columns = field.columns();
         let entry = field.compound_entry();
         for (at, (name, sql_type)) in columns.iter().enumerate() {
-            // Of a compound type's columns (area 19), the one its type can
-            // fix holds the values the field allows, under a check
-            // constraint, and the first takes the field's other rules.
-            let fixed = entry
-                .and_then(|entry| entry.fixed_part())
-                .is_some_and(|part| name == &format!("{}_{part}", field.born));
+            // Of a compound type's columns (area 19), each one its type
+            // fixes holds the currency it allows, under a check constraint,
+            // and the first takes the field's other rules.
+            let fixed = entry.and_then(|_| {
+                field
+                    .fixed
+                    .iter()
+                    .find(|(suffix, _)| name == &format!("{}_{suffix}", field.born))
+                    .map(|(_, code)| vec![code.clone()])
+            });
+            let fixable = entry.is_some_and(|entry| {
+                entry
+                    .fixed_parts()
+                    .iter()
+                    .any(|(suffix, _)| name == &format!("{}_{suffix}", field.born))
+            });
             let allows = match entry {
                 None => field.allows.clone(),
-                Some(_) if fixed => physical::Allows {
-                    values: field.allows.values.clone(),
+                Some(_) if fixable => physical::Allows {
+                    values: fixed.clone().unwrap_or_default(),
                     ..physical::Allows::default()
                 },
                 Some(_) if at == 0 => physical::Allows {
@@ -1951,12 +2020,12 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                 },
                 Some(_) => physical::Allows::default(),
             };
-            if fixed && !field.allows.values.is_empty() {
+            if let Some(values) = fixed {
                 out.checks.insert(
                     physical::object_name(&[table, name], "check"),
                     physical::Check {
                         column: name.clone(),
-                        values: field.allows.values.clone(),
+                        values,
                     },
                 );
             }
@@ -1972,6 +2041,10 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                         || entry.is_some_and(|entry| entry.part_may_be_none(at)),
                     retired: false,
                     allows: Some(allows),
+                    comment: match entry {
+                        Some(entry) => entry.part_comment(at),
+                        None => field.comment.clone(),
+                    },
                 },
             );
             position += 1;

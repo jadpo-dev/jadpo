@@ -37,7 +37,18 @@ pub(crate) mod oid {
     pub const NUMERIC_ARRAY: u32 = 1231;
     pub const UUID_ARRAY: u32 = 2951;
     pub const JSONB_ARRAY: u32 = 3807;
+    pub const NUMRANGE: u32 = 3906;
+    pub const TSTZRANGE: u32 = 3910;
+    pub const DATERANGE: u32 = 3912;
+    pub const INT8RANGE: u32 = 3926;
 }
+
+/// A range's flags in its binary format (`rangetypes.h`).
+const RANGE_EMPTY: u8 = 0x01;
+const RANGE_LOWER_HELD: u8 = 0x02;
+const RANGE_UPPER_HELD: u8 = 0x04;
+const RANGE_LOWER_OPEN: u8 = 0x08;
+const RANGE_UPPER_OPEN: u8 = 0x10;
 
 /// PostgreSQL counts time from 2000-01-01; the runtime from 1970-01-01.
 const EPOCH_MICROS: i64 = 946_684_800_000_000;
@@ -66,7 +77,9 @@ pub(crate) fn param_oid(ty: SqlType) -> u32 {
         SqlType::Timestamp => oid::TIMESTAMPTZ,
         SqlType::Date => oid::DATE,
         SqlType::Time => oid::TIME,
+        SqlType::LocalTimestamp => oid::TIMESTAMP,
         SqlType::Json => oid::JSONB,
+        SqlType::Range(inner) => range_oid(*inner),
         SqlType::Array(inner) => match inner {
             SqlType::Bool => oid::BOOL_ARRAY,
             SqlType::Int2 => oid::INT2_ARRAY,
@@ -80,9 +93,20 @@ pub(crate) fn param_oid(ty: SqlType) -> u32 {
             SqlType::Date => oid::DATE_ARRAY,
             SqlType::Time => oid::TIME_ARRAY,
             SqlType::Json => oid::JSONB_ARRAY,
-            // Arrays of arrays are never sent.
-            SqlType::Array(_) => oid::TEXT_ARRAY,
+            // Arrays of arrays, of local timestamps and of ranges are
+            // never sent.
+            SqlType::Array(_) | SqlType::LocalTimestamp | SqlType::Range(_) => oid::TEXT_ARRAY,
         },
+    }
+}
+
+/// The range type of ranges of `element` (chunk 5.5w).
+fn range_oid(element: SqlType) -> u32 {
+    match element {
+        SqlType::Date => oid::DATERANGE,
+        SqlType::Timestamp => oid::TSTZRANGE,
+        SqlType::Numeric => oid::NUMRANGE,
+        _ => oid::INT8RANGE,
     }
 }
 
@@ -98,8 +122,14 @@ pub(crate) fn column_type(oid: u32) -> Option<SqlType> {
         oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME => SqlType::Text,
         oid::BYTEA => SqlType::Bytes,
         oid::UUID => SqlType::Uuid,
-        oid::TIMESTAMPTZ | oid::TIMESTAMP => SqlType::Timestamp,
+        oid::TIMESTAMPTZ => SqlType::Timestamp,
+        oid::TIMESTAMP => SqlType::LocalTimestamp,
         oid::DATE => SqlType::Date,
+        // The ranges area 19 stores (chunk 5.5w).
+        oid::DATERANGE => SqlType::Date.range(),
+        oid::TSTZRANGE => SqlType::Timestamp.range(),
+        oid::INT8RANGE => SqlType::Int8.range(),
+        oid::NUMRANGE => SqlType::Numeric.range(),
         oid::TIME => SqlType::Time,
         oid::JSONB | oid::JSON => SqlType::Json,
         // An address's lines (area 19, chunk 5.5l).
@@ -134,6 +164,18 @@ pub(crate) fn encode(value: &SqlValue, out: &mut Vec<u8>) -> Result<bool, String
             out.extend_from_slice(&wire.to_be_bytes());
         }
         SqlValue::Time(micros) => out.extend_from_slice(&micros.to_be_bytes()),
+        SqlValue::LocalTimestamp(micros) => {
+            let wire = micros
+                .checked_sub(EPOCH_MICROS)
+                .ok_or_else(|| format!("the timestamp {micros} is out of PostgreSQL's range"))?;
+            out.extend_from_slice(&wire.to_be_bytes());
+        }
+        SqlValue::Range {
+            lower,
+            upper,
+            upper_held,
+            ..
+        } => range_to_wire(lower.as_deref(), upper.as_deref(), *upper_held, out)?,
         SqlValue::Json(text) => {
             out.push(JSONB_VERSION);
             out.extend_from_slice(text.as_bytes());
@@ -141,6 +183,79 @@ pub(crate) fn encode(value: &SqlValue, out: &mut Vec<u8>) -> Result<bool, String
         SqlValue::Array(element, items) => array_to_wire(*element, items, out)?,
     }
     Ok(true)
+}
+
+/// A range in its binary format: its flags, then each end that isn't open,
+/// its length and bytes. Its lower end is always held; the runtime never
+/// sends one that holds nothing (`jadpo_runtime::to_sql`).
+fn range_to_wire(
+    lower: Option<&SqlValue>,
+    upper: Option<&SqlValue>,
+    upper_held: bool,
+    out: &mut Vec<u8>,
+) -> Result<(), String> {
+    let mut flags = 0u8;
+    match lower {
+        Some(_) => flags |= RANGE_LOWER_HELD,
+        None => flags |= RANGE_LOWER_OPEN,
+    }
+    match upper {
+        Some(_) if upper_held => flags |= RANGE_UPPER_HELD,
+        Some(_) => {}
+        None => flags |= RANGE_UPPER_OPEN,
+    }
+    out.push(flags);
+    for end in [lower, upper].into_iter().flatten() {
+        let at = out.len();
+        out.extend_from_slice(&0i32.to_be_bytes());
+        if !encode(end, out)? {
+            return Err("a range's end was `NULL`".into());
+        }
+        let length = i32::try_from(out.len() - at - 4)
+            .map_err(|_| "a range's end too long to send".to_string())?;
+        if let Some(prefix) = out.get_mut(at..at + 4) {
+            prefix.copy_from_slice(&length.to_be_bytes());
+        }
+    }
+    Ok(())
+}
+
+/// A range of the type `element` names, from its binary format; one that
+/// is `empty` is refused, as the runtime writes none.
+fn range_from_wire(element: u32, raw: &[u8]) -> Result<SqlValue, String> {
+    let (&flags, mut rest) = raw.split_first().ok_or_else(|| length("range", raw))?;
+    if flags & RANGE_EMPTY != 0 {
+        return Err(
+            "the runtime holds no empty range: PostgreSQL keeps it without its ends".into(),
+        );
+    }
+    let mut end = |open: bool| -> Result<Option<Box<SqlValue>>, String> {
+        if open {
+            return Ok(None);
+        }
+        let (size, after) = rest
+            .split_at_checked(4)
+            .ok_or_else(|| length("range", raw))?;
+        let size = usize::try_from(i32::from_be_bytes(fixed(size, "range")?))
+            .map_err(|_| length("range", raw))?;
+        let (bytes, after) = after
+            .split_at_checked(size)
+            .ok_or_else(|| length("range", raw))?;
+        rest = after;
+        Ok(Some(Box::new(decode(element, bytes)?)))
+    };
+    let lower = end(flags & RANGE_LOWER_OPEN != 0)?;
+    let upper = end(flags & RANGE_UPPER_OPEN != 0)?;
+    if flags & RANGE_LOWER_HELD == 0 && lower.is_some() {
+        return Err("the runtime reads ranges that hold their lower end".into());
+    }
+    let element = column_type(element).ok_or_else(|| format!("a range of type OID {element}"))?;
+    Ok(SqlValue::Range {
+        element,
+        lower,
+        upper,
+        upper_held: flags & RANGE_UPPER_HELD != 0,
+    })
 }
 
 /// A one-dimensional array without `NULL`s in its binary format: the
@@ -198,11 +313,19 @@ pub(crate) fn decode(oid: u32, raw: &[u8]) -> Result<SqlValue, String> {
             if wire == i64::MAX || wire == i64::MIN {
                 return Err("the runtime holds no infinite timestamp".into());
             }
-            SqlValue::Timestamp(
-                wire.checked_add(EPOCH_MICROS)
-                    .ok_or_else(|| "a timestamp is out of the runtime's range".to_string())?,
-            )
+            let micros = wire
+                .checked_add(EPOCH_MICROS)
+                .ok_or_else(|| "a timestamp is out of the runtime's range".to_string())?;
+            if oid == oid::TIMESTAMP {
+                SqlValue::LocalTimestamp(micros)
+            } else {
+                SqlValue::Timestamp(micros)
+            }
         }
+        oid::DATERANGE => range_from_wire(oid::DATE, raw)?,
+        oid::TSTZRANGE => range_from_wire(oid::TIMESTAMPTZ, raw)?,
+        oid::INT8RANGE => range_from_wire(oid::INT8, raw)?,
+        oid::NUMRANGE => range_from_wire(oid::NUMERIC, raw)?,
         oid::DATE => {
             let wire = i32::from_be_bytes(fixed(raw, "date")?);
             if wire == i32::MAX || wire == i32::MIN {
@@ -470,6 +593,33 @@ mod tests {
             SqlValue::Date(20_000),
             SqlValue::Json("{\"a\":[1,2]}".into()),
             SqlValue::Time(45_296_789_000),
+            SqlValue::LocalTimestamp(1_760_000_000_000_000),
+            // A range of each kind area 19 stores (chunk 5.5w), with an
+            // open end, and one that holds its upper end.
+            SqlValue::Range {
+                element: SqlType::Date,
+                lower: Some(Box::new(SqlValue::Date(20_000))),
+                upper: Some(Box::new(SqlValue::Date(20_030))),
+                upper_held: false,
+            },
+            SqlValue::Range {
+                element: SqlType::Timestamp,
+                lower: Some(Box::new(SqlValue::Timestamp(1_760_000_000_000_000))),
+                upper: None,
+                upper_held: false,
+            },
+            SqlValue::Range {
+                element: SqlType::Int8,
+                lower: None,
+                upper: Some(Box::new(SqlValue::Int8(12))),
+                upper_held: false,
+            },
+            SqlValue::Range {
+                element: SqlType::Numeric,
+                lower: Some(Box::new(SqlValue::Numeric("1.5".into()))),
+                upper: Some(Box::new(SqlValue::Numeric("2.25".into()))),
+                upper_held: true,
+            },
         ];
         for value in values {
             let mut out = Vec::new();
@@ -538,7 +688,9 @@ mod tests {
             decode(oid::JSON, b"[1]").unwrap(),
             SqlValue::Json("[1]".into())
         );
-        assert_eq!(column_type(oid::TIMESTAMP), Some(SqlType::Timestamp));
+        assert_eq!(column_type(oid::TIMESTAMPTZ), Some(SqlType::Timestamp));
+        assert_eq!(column_type(oid::TIMESTAMP), Some(SqlType::LocalTimestamp));
+        assert_eq!(column_type(oid::DATERANGE), Some(SqlType::Date.range()));
         assert_eq!(column_type(oid::NAME), Some(SqlType::Text));
         assert_eq!(column_type(600), None);
     }

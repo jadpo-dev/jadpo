@@ -585,21 +585,21 @@ pub const CALENDAR_EVENT_ENTRY: StandardType = StandardType {
         "description",
         "recurrence",
     ]),
-    // A column per part: the days as `date`s, a local time as its
-    // canonical text, the zone as its IANA name.
+    // A column per part: the days as `date`s, a local time as a
+    // `timestamp` without a zone (chunk 5.5w), the zone as its IANA name.
     storage: Storage::Columns {
         parts: &[
             ("summary", "text"),
             ("first_day", "date"),
             ("last_day", "date"),
-            ("start", "text"),
-            ("end", "text"),
+            ("start", "timestamp"),
+            ("end", "timestamp"),
             ("zone", "text"),
             ("location", "text"),
             ("description", "text"),
             ("recurrence", "text"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     // CLDR has no pattern for an event: an application shows the parts it
     // wants, each by its own format.

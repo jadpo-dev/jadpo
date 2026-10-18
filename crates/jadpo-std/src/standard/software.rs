@@ -1454,7 +1454,7 @@ pub const SEMANTIC_VERSION_ENTRY: StandardType = StandardType {
             ("pre_release", "text"),
             ("build", "text"),
         ],
-        fixed: None,
+        fixed: &[],
     },
     format: Format {
         key: FormatKey::Canonical,
