@@ -315,9 +315,11 @@ that instruction, each the most conservative reading:
 > `text.from`), each with a test made from every standard type's entry
 > ("Chosen in chunk 5.5w2"); chunk 5.5w2b stored the JSON-held values
 > (`RichText`, `RichTextBlock`, `LocalisedText`) as their contract's JSON
-> ("Chosen in chunk 5.5w2b"); the single encoders are 5.5w3;
-> the boundaries not built yet take these encodings in the chunks that
-> build them.
+> ("Chosen in chunk 5.5w2b"); chunk 5.5w3 gave the JSON boundary and
+> OpenAPI one encoder for every standard type, read from its entry
+> ("Chosen in chunk 5.5w3"), and the SQL literals' is 5.5w3b; the
+> boundaries not built yet take these encodings in the chunks that build
+> them.
 
 ### Packages use the standard types
 
@@ -10943,6 +10945,34 @@ session, 2026-10-18):
   one was already refused; an application's own structured fields stay
   refused where they are declared, since their codec isn't built.
 
+### Chosen in chunk 5.5w3
+
+What the pages left open, each the most conservative reading:
+
+- **One encoder, the entry's.** `Money`, `ZonedTime` and every quantity
+  are sent as an object of the members their entry lists, each a kind of
+  member (a whole number of minor units, a standard enum's code, an
+  instant, a decimal written as text, one of the kind's units); one
+  implementation reads and writes every standard type's JSON from its
+  entry, and OpenAPI describes it from the same list. The JSON reader and
+  writer and OpenAPI name no standard type a built-in type holds, which a
+  test made from the entries holds them to. The per-type harness reads
+  every type through the codecs the plan's own builder makes.
+- **A part is described as its type.** In OpenAPI, a standard object's
+  part that is a standard type a built-in type holds is that type's
+  schema: `OidcClaims`' `email` is a string of `format: email` and its
+  `picture` one of `format: uri`, where both were any string.
+- **What clients see change,** each a reader, a writer or a schema that
+  disagreed with the contract:
+  - a `ZonedTime`'s `zone` is read ignoring case, as a `Zone` is
+    (question 22): `"europe/london"` was refused as `variant`;
+  - OpenAPI lists a `ZonedTime`'s zones by name, as it does a `Zone`'s,
+    where its `zone` was any string;
+  - a `WebAuthnCredential`'s `sign_count` is a JSON number, as the route
+    codec always wrote it and OpenAPI described it; its examples and the
+    passkeys the runtime keeps wrote it as text. Nothing is deployed, so
+    nothing needs migrating.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -10994,7 +11024,7 @@ session, 2026-10-18):
 | The clinical units | `PressureUnit.millimetre_of_mercury`, `FrequencyUnit.beat_per_minute`, `ConcentrationUnit.milligram_per_decilitre` and the glucose-only `ConcentrationUnit.millimole_of_glucose_per_litre` (glucose's molar mass fixed at CLDR's 180.1557 g/mol), as UK meters report glucose, added in chunk 5.5m2. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `mmHg` and `bpm` suffixes | Question 17's table gains `mmHg` for a `Pressure` and `bpm` for a `Frequency`, purely additive and clashing with no suffix or keyword; a milligram a decilitre keeps no suffix, since a suffix can't hold `/`. Decided by the lead session, not a question for Richard | 2026-10-18 |
 | `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens; `HEAD`, `OPTIONS`, `CONNECT` and `TRACE` aren't variants, since the runtime answers `HEAD` and `OPTIONS` itself and adding them later breaks nothing (decided by the lead session, as chunk 5.5n recommended) | 2026-10-18 |
-| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes (Richard); the encodings the pages left open, event, job and batch payloads, CSV cells, a personal value's log hash, developer reports and integration fields without `wire:`, decided under "Every boundary through the contract" by the lead session, as was storing every object and choice in named columns ("Chosen in chunk 5.5w"); built for the boundaries that are built, with fault text that never carries a value, one reader per text form and map keys as canonical text ("Chosen in chunk 5.5w2"), and the JSON-held values stored as their contract's JSON ("Chosen in chunk 5.5w2b") | 2026-10-18 |
+| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes (Richard); the encodings the pages left open, event, job and batch payloads, CSV cells, a personal value's log hash, developer reports and integration fields without `wire:`, decided under "Every boundary through the contract" by the lead session, as was storing every object and choice in named columns ("Chosen in chunk 5.5w"); built for the boundaries that are built, with fault text that never carries a value, one reader per text form and map keys as canonical text ("Chosen in chunk 5.5w2"), and the JSON-held values stored as their contract's JSON ("Chosen in chunk 5.5w2b"); one JSON encoder and one OpenAPI schema for every standard type, read from its entry ("Chosen in chunk 5.5w3") | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 | A `PasswordHash` never leaves the server | It is stored as its PHC string, but refused in an `Output` (so a response), a request's `Input`, a failure's fields and `json.write` and `json.read`, as `type.password_hash_exposed` or `type.mismatch`; no page needs one read for imports, so `Input` refuses it too (lead session, chunk 5.5q2) | 2026-10-18 |
 | `crypto.public_key` | `crypto.public_key(key: config.<name>)` gives the `PublicKey` of a `PrivateKey` setting, Ed25519's public half, so an app can publish its key and a test can sign and verify; the key is still read only through `key:` (lead session, chunk 5.5q2) | 2026-10-18 |

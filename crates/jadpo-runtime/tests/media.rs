@@ -4,7 +4,7 @@
 //! across a timecode's and a cue's parts as a value read from JSON meets
 //! them. The page's test (`project=media`) and the interpreter's `media`
 //! tests assert the same values. The types' text, JSON and columns are the
-//! one harness's (`standard_types`).
+//! one harness's (`jadpo-interp`'s `standard_types`).
 
 use jadpo_std::Op;
 use jadpo_std::standard::media::{IMAGE_DIMENSIONS, SUBTITLE_CUE, TIMECODE};

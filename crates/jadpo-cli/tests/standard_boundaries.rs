@@ -12,7 +12,7 @@
 //!
 //! The same examples, written by the plan's own codecs, are held to the
 //! OpenAPI document's schema for each route's output. Settings are the
-//! runtime harness's (`jadpo-runtime`'s `standard_types`), which reads each
+//! per-type harness's (`jadpo-interp`'s `standard_types`), which reads each
 //! example through the setting's codec; the checker's half refuses a map
 //! key, a query string field and a setting of a type the boundary can't
 //! carry. Geometries and vectors wait on their areas; a secret value is
@@ -549,4 +549,91 @@ fn every_standard_type_crosses_every_built_boundary() {
                 .unwrap_or_else(|why| panic!("{}: {why}", case.ty));
         }
     }
+}
+
+// --- No boundary has an encoder of its own (chunk 5.5w3) -------------------
+
+/// The source files that encode a value at a boundary: the JSON reader
+/// and writer (requests, responses, `json.read`, `json.write`, query
+/// strings, headers, settings and map keys all read through them) and
+/// OpenAPI's schemas. The plan's codecs name only which codec a type
+/// takes, never how it is written.
+const BOUNDARIES: &[&str] = &[
+    "crates/jadpo-value/src/json.rs",
+    "crates/jadpo-check/src/routes/wire.rs",
+];
+
+/// A file's code, without its comments and its tests: what it runs.
+fn code_of(text: &str) -> String {
+    let text = text
+        .split("#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or_default();
+    text.lines()
+        .map(|line| line.split("//").next().unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// No boundary encodes a standard type of its own (area 19, "Every
+/// boundary through the contract"): none names a standard type a built-in
+/// type holds, the runtime value that holds it, or the parts the contract
+/// sends one as, so each reads the type's entry and calls the contract's
+/// JSON or text. The names are made from the entries, so a type added
+/// later is held to it without a line here.
+#[test]
+fn no_boundary_has_an_encoder_of_its_own() {
+    let mut names = std::collections::BTreeSet::new();
+    for entry in STANDARD_TYPES {
+        let Holds::Builtin(builtin) = entry.holds else {
+            continue;
+        };
+        let shown = format!("{builtin:?}");
+        names.insert(format!(
+            "Builtin::{}",
+            shown.split('(').next().unwrap_or_default()
+        ));
+        // The runtime value one of its examples is, unless that is text,
+        // which a `Text` is too.
+        if let Some((example, _)) = entry.examples.valid.first() {
+            let value = jadpo_value::standard::read(entry, example)
+                .unwrap_or_else(|fault| panic!("{}: {example} ({fault:?})", entry.name));
+            let shown = format!("{value:?}");
+            let variant = shown
+                .split(|c: char| !c.is_ascii_alphanumeric())
+                .next()
+                .unwrap_or_default();
+            if variant != "Text" {
+                names.insert(format!("Value::{variant}"));
+            }
+        }
+    }
+    // The parts the contract sends an object of, and its writers of text.
+    names.extend(
+        [
+            "MONEY_FIELDS",
+            "QUANTITY_FIELDS",
+            "format_instant",
+            "format_date",
+            "iso_duration",
+            "zone_name",
+        ]
+        .map(String::from),
+    );
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut found = Vec::new();
+    for file in BOUNDARIES {
+        let text = fs::read_to_string(root.join(file)).expect("a boundary's source");
+        let code = code_of(&text);
+        for name in &names {
+            if code.contains(name.as_str()) {
+                found.push(format!("{file}: {name}"));
+            }
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "a boundary encodes a standard type of its own:\n{}",
+        found.join("\n")
+    );
 }

@@ -5,7 +5,7 @@
 //! and a blood pressure's parts as a value read from JSON meets them. The
 //! page's tests (`project=records`, `project=health-measures`) and the
 //! interpreter's `records_measures` tests assert the same values; the
-//! types' text, JSON and columns are the one harness's (`standard_types`).
+//! types' text, JSON and columns are the one harness's (`jadpo-interp`'s `standard_types`).
 
 use jadpo_std::{Op, QuantityKind};
 use jadpo_value::{Decimal, Fault, Quantity, Value, run};

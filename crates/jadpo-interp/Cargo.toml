@@ -21,6 +21,11 @@ jadpo-runtime.workspace = true
 jadpo-std.workspace = true
 jadpo-value.workspace = true
 
+# The per-type harness reads each standard type's JSON examples
+# (tests/standard_types.rs, chunk 5.5w3).
+[dev-dependencies]
+serde_json.workspace = true
+
 [lints]
 workspace = true
 

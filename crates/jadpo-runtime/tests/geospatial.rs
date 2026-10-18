@@ -5,7 +5,7 @@
 //! and a bearing shown as compiled code calls `text.format`, with the
 //! standard type the checker names. The interpreter's `geospatial` tests
 //! assert the same values; the types' text, JSON and columns are the one
-//! harness's (`standard_types`).
+//! harness's (`jadpo-interp`'s `standard_types`).
 
 use jadpo_std::Op;
 use jadpo_std::http::{Codec, CodecId};

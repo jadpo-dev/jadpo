@@ -629,6 +629,21 @@ pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
     out
 }
 
+/// A standard type's schema with no rules of a type built on it, from its
+/// entry (chunk 5.5w3): a type a built-in type holds as that type's
+/// (`OidcClaims`' `email` as an `Email`), a type held as text, a whole
+/// number or bytes with its own check, and an object, a choice or a
+/// collection as its parts.
+pub fn standard_schema(entry: &jadpo_std::StandardType) -> Value {
+    match (entry.holds, jadpo_std::standard::declared(entry.name)) {
+        (jadpo_std::standard::Holds::Builtin(builtin), _) => {
+            scalar_schema(builtin, &Rules::default())
+        }
+        (_, Some((builtin, rules))) => scalar_schema(builtin, &rules),
+        _ => standard_object_schema(entry),
+    }
+}
+
 /// A GeoJSON geometry's schema (RFC 7946, chunk 5.5s): its `type` and its
 /// `coordinates`, each position two or three numbers, longitude first;
 /// `Geometry`'s is one of the six.
@@ -714,10 +729,7 @@ fn part_schema(part: jadpo_std::Part) -> Value {
                 );
                 out
             }
-            Some(entry) => match jadpo_std::standard::declared(entry.name) {
-                Some((builtin, rules)) => scalar_schema(builtin, &rules),
-                None => standard_object_schema(entry),
-            },
+            Some(entry) => standard_schema(entry),
             None => Value::object(),
         },
         // A vector's item, a JSON number held as a single-precision float
@@ -735,16 +747,18 @@ fn part_schema(part: jadpo_std::Part) -> Value {
     }
 }
 
-/// A built-in type's schema, with its rules; a standard type stored and
-/// sent as an object (`Money`, `ZonedTime`) is that object.
+/// A built-in type's schema, with its rules: a representation's as area 2
+/// sends it, and a standard type's as its entry says the contract sends it
+/// (chunk 5.5w3): its canonical text as a string, with the format its text
+/// form or its check names, or an object of its members.
 pub fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
+    let entry = jadpo_std::standard::of_builtin(builtin);
+    if let Some(entry) = entry
+        && let jadpo_std::standard::Json::Parts(members) = entry.json
+    {
+        return parts_schema(entry, members, rules);
+    }
     let mut out = Value::object();
-    let string = |out: &mut Value, format: Option<&str>| {
-        out.set("type", "string");
-        if let Some(format) = format {
-            out.set("format", format);
-        }
-    };
     match builtin.representation() {
         Builtin::Bool => out.set("type", "boolean"),
         Builtin::Int if int_as_number(rules) => {
@@ -757,23 +771,20 @@ pub fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
             }
         }
         Builtin::Int => {
-            string(&mut out, None);
+            out.set("type", "string");
             out.set("pattern", "^-?[0-9]+$");
             describe_range(&mut out, rules);
         }
         Builtin::Decimal => {
-            string(&mut out, None);
+            out.set("type", "string");
             out.set("pattern", "^-?[0-9]+(\\.[0-9]+)?$");
             describe_range(&mut out, rules);
         }
         Builtin::Text => {
-            let format = match builtin {
-                Builtin::Email => Some("email"),
-                Builtin::Url => Some("uri"),
-                Builtin::IpAddress => Some("ip-address"),
-                _ => rules.format.map(|_| "email"),
-            };
-            string(&mut out, format);
+            out.set("type", "string");
+            if rules.format.is_some() {
+                out.set("format", "email");
+            }
             lengths(&mut out, rules, "minLength", "maxLength");
             let standard = rules
                 .standard
@@ -798,110 +809,125 @@ pub fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
             }
         }
         Builtin::Bytes => {
-            string(&mut out, None);
+            out.set("type", "string");
             out.set("contentEncoding", "base64");
         }
-        Builtin::Uuid => string(&mut out, Some("uuid")),
-        Builtin::Instant => string(&mut out, Some("date-time")),
-        Builtin::CalendarDate => string(&mut out, Some("date")),
-        Builtin::Duration => string(&mut out, Some("duration")),
-        // An instant and the zone it is seen in (area 10).
-        Builtin::ZonedTime => {
-            out.set("type", "object");
-            let mut instant = Value::object();
-            string(&mut instant, Some("date-time"));
-            let mut zone = Value::object();
-            string(&mut zone, None);
-            zone.set(
-                "description",
-                "An IANA time zone name, such as `Europe/London`.",
-            );
-            let mut properties = Value::object();
-            properties.set("instant", instant);
-            properties.set("zone", zone);
-            out.set("properties", properties);
-            out.set("required", vec!["instant", "zone"]);
-            out.set("additionalProperties", false);
-        }
-        // An amount of money in minor units and its currency's code, as
-        // Stripe sends it (area 19, "Money and payments").
-        Builtin::Money => {
-            out.set("type", "object");
-            let [amount_field, currency_field] = jadpo_std::MONEY_FIELDS;
-            let mut amount = Value::object();
-            amount.set("type", "integer");
-            if let Some(min) = rules.min.and_then(whole) {
-                amount.set("minimum", min);
-            }
-            if let Some(max) = rules.max.and_then(whole) {
-                amount.set("maximum", max);
-            }
-            amount.set(
-                "description",
-                "The amount in the currency's minor units: pence, cents.",
-            );
-            let mut currency = Value::object();
-            string(&mut currency, None);
-            // The one code its type fixes, or every code `Currency` has.
-            let codes: Vec<&str> = match rules.currency.and_then(jadpo_std::money::code) {
-                Some(code) => vec![code],
-                None => jadpo_std::CURRENCIES
-                    .iter()
-                    .map(|(_, code)| *code)
-                    .collect(),
-            };
-            currency.set("enum", codes);
-            let mut properties = Value::object();
-            properties.set(amount_field, amount);
-            properties.set(currency_field, currency);
-            out.set("properties", properties);
-            out.set("required", vec![amount_field, currency_field]);
-            out.set("additionalProperties", false);
-        }
-        // A physical quantity: its number as a decimal string, as area 2
-        // sends every `Decimal`, and one of its kind's units by its code;
-        // written in the base unit, read in any (area 19).
-        Builtin::Quantity(kind) => {
-            out.set("type", "object");
-            let [value_field, unit_field] = jadpo_std::standard::QUANTITY_FIELDS;
-            let mut value = Value::object();
-            string(&mut value, None);
-            value.set("pattern", "^-?[0-9]+(\\.[0-9]+)?$");
-            value.set(
-                "description",
-                format!(
-                    "The number in `unit`, written as text; sent in {}.",
-                    kind.base_unit().meaning
-                ),
-            );
-            let mut unit = Value::object();
-            string(&mut unit, None);
-            unit.set(
-                "enum",
-                kind.units()
-                    .iter()
-                    .map(|unit| unit.code)
-                    .collect::<Vec<_>>(),
-            );
-            let mut properties = Value::object();
-            properties.set(value_field, value);
-            properties.set(unit_field, unit);
-            out.set("properties", properties);
-            out.set("required", vec![value_field, unit_field]);
-            out.set("additionalProperties", false);
-        }
-        // Its canonical text, so a client never reads 0.2 as 0.2% (area 19).
-        Builtin::Percentage => {
-            string(&mut out, None);
+        Builtin::Unit => out.set("type", "null"),
+        _ => out.set("type", "string"),
+    }
+    if let Some(entry) = entry {
+        text_form_schema(entry, &mut out);
+    }
+    out
+}
+
+/// What a standard type sent as its canonical text adds to a string's
+/// schema: the format its text form or its check names (an instant's
+/// `date-time`, an email address's `email`), or a percentage's pattern,
+/// so a client never reads 0.2 as 0.2% (area 19).
+fn text_form_schema(entry: &jadpo_std::StandardType, out: &mut Value) {
+    use jadpo_std::standard::{TextForm, Validator};
+    let format = match (entry.text, entry.validator) {
+        (Some(TextForm::Instant), _) => "date-time",
+        (Some(TextForm::Date), _) => "date",
+        (Some(TextForm::Duration), _) => "duration",
+        (Some(TextForm::Uuid), _) => "uuid",
+        (Some(TextForm::Percentage), _) => {
             out.set("pattern", "^-?[0-9]+(\\.[0-9]+)?%$");
             out.set(
                 "description",
                 "A percentage written with `%`, such as `20%`.",
             );
+            return;
         }
-        Builtin::Unit => out.set("type", "null"),
-        _ => string(&mut out, None),
+        (_, Some(Validator::Email)) => "email",
+        (_, Some(Validator::Url)) => "uri",
+        (_, Some(Validator::IpAddress)) => "ip-address",
+        _ => return,
+    };
+    out.set("format", format);
+}
+
+/// A standard type sent as an object of its members (chunk 5.5w3): each
+/// member's schema as its [`jadpo_std::standard::Member`] says, every one
+/// required. A member a type built on it fixes (a `Money` type's
+/// `currency:`) is that one code.
+fn parts_schema(
+    entry: &jadpo_std::StandardType,
+    members: &[(&'static str, jadpo_std::standard::Member)],
+    rules: &Rules,
+) -> Value {
+    use jadpo_std::standard::Member;
+    let mut properties = Value::object();
+    for (name, member) in members {
+        let mut one = Value::object();
+        match member {
+            Member::MinorUnits => {
+                one.set("type", "integer");
+                if let Some(min) = rules.min.and_then(whole) {
+                    one.set("minimum", min);
+                }
+                if let Some(max) = rules.max.and_then(whole) {
+                    one.set("maximum", max);
+                }
+                one.set(
+                    "description",
+                    "The amount in the currency's minor units: pence, cents.",
+                );
+            }
+            Member::Code(of) => {
+                one.set("type", "string");
+                let codes = jadpo_std::standard_type(of)
+                    .and_then(jadpo_std::StandardType::codes)
+                    .unwrap_or_default();
+                let fixed = entry
+                    .fixed_parts()
+                    .iter()
+                    .find(|(column, _)| column == name)
+                    .and_then(|(_, fixed)| fixed.of(rules))
+                    .and_then(|at| codes.get(at as usize));
+                let listed: Vec<&str> = match fixed {
+                    Some((_, code)) => vec![*code],
+                    None => codes.iter().map(|(_, code)| *code).collect(),
+                };
+                one.set("enum", listed);
+            }
+            Member::Instant => {
+                one.set("type", "string");
+                one.set("format", "date-time");
+            }
+            Member::Number => {
+                one.set("type", "string");
+                one.set("pattern", "^-?[0-9]+(\\.[0-9]+)?$");
+                if let Some(kind) = entry.quantity() {
+                    one.set(
+                        "description",
+                        format!(
+                            "The number in `unit`, written as text; sent in {}.",
+                            kind.base_unit().meaning
+                        ),
+                    );
+                }
+            }
+            Member::Unit => {
+                one.set("type", "string");
+                let units: Vec<&str> = entry
+                    .quantity()
+                    .map(|kind| kind.units().iter().map(|unit| unit.code).collect())
+                    .unwrap_or_default();
+                one.set("enum", units);
+            }
+        }
+        properties.set(name, one);
     }
+    let mut out = Value::object();
+    out.set("type", "object");
+    out.set("properties", properties);
+    out.set(
+        "required",
+        members.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
+    );
+    out.set("additionalProperties", false);
     out
 }
 
