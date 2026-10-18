@@ -547,6 +547,14 @@ pub fn to_sql(value: &Value, ty: SqlType) -> Result<SqlValue, String> {
             }
             _ => return Err("a range without its two ends".into()),
         },
+        // A vector's items, each the float it keeps (area 21, chunk 5.5v1).
+        (vector @ Value::List(_), SqlType::Vector) => SqlValue::Vector(
+            jadpo_value::vector::floats(vector)
+                .map_err(|_| "a vector with an item that isn't a number")?
+                .into_iter()
+                .map(f32::to_bits)
+                .collect(),
+        ),
         (Value::List(items) | Value::Set(items), SqlType::Array(inner)) => SqlValue::Array(
             *inner,
             items
@@ -608,6 +616,8 @@ pub fn from_sql(sql: &SqlValue, column: &Column) -> Result<Value, String> {
                 .ok_or_else(|| format!("a stored code that isn't a variant of `{ty}`"))?;
             Value::variant(ty, ordinal as u32, name, Vec::new())
         }
+        // Each item the decimal its float is (area 21, chunk 5.5v1).
+        (SqlValue::Vector(bits), Column::Vector) => vector_value(bits)?,
         (sql, column) => {
             return Err(format!("a `{:?}` column read as {column:?}", sql.ty()));
         }
@@ -692,6 +702,8 @@ pub fn field_value(
                 .map(|item| part_value(item, ty))
                 .collect::<Result<Vec<Value>, String>>()
                 .map(Value::list),
+            // An embedding's vector (chunk 5.5v1).
+            SqlValue::Vector(bits) => vector_value(bits),
             other => Err(format!("a `{:?}` column of a `{ty}`", other.ty())),
         }
     }
@@ -701,6 +713,14 @@ pub fn field_value(
         .collect::<Result<Vec<Value>, String>>()?;
     jadpo_value::standard::from_parts_of(ty, &values)
         .map_err(|_| format!("columns that don't make a `{ty}`"))
+}
+
+/// A vector read back from pgvector: each float as the decimal a vector
+/// keeps it as (chunk 5.5s2), so what was written reads back unchanged.
+fn vector_value(bits: &[u32]) -> Result<Value, String> {
+    let floats: Vec<f32> = bits.iter().copied().map(f32::from_bits).collect();
+    jadpo_value::vector::from_floats(&floats)
+        .ok_or_else(|| "a vector with an item past a decimal's 38 digits".to_string())
 }
 
 /// A whole number of any width as a cursor holds it.

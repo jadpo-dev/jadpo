@@ -41,7 +41,19 @@ pub(crate) mod oid {
     pub const TSTZRANGE: u32 = 3910;
     pub const DATERANGE: u32 = 3912;
     pub const INT8RANGE: u32 = 3926;
+    /// No type: PostgreSQL infers the parameter's from where it is used.
+    /// A vector is sent so, since the extension's type has a number each
+    /// database gives it (chunk 5.5v1).
+    pub const UNSPECIFIED: u32 = 0;
 }
+
+/// pgvector's type, by the name its extension gives it: its number differs
+/// in each database, so a column of it is known by name (area 21, chunk
+/// 5.5v1).
+pub(crate) const VECTOR: &str = "vector";
+
+/// The most items pgvector's `vector` has.
+const VECTOR_MOST: usize = 16_000;
 
 /// A range's flags in its binary format (`rangetypes.h`).
 const RANGE_EMPTY: u8 = 0x01;
@@ -79,6 +91,7 @@ pub(crate) fn param_oid(ty: SqlType) -> u32 {
         SqlType::Time => oid::TIME,
         SqlType::LocalTimestamp => oid::TIMESTAMP,
         SqlType::Json => oid::JSONB,
+        SqlType::Vector => oid::UNSPECIFIED,
         SqlType::Range(inner) => range_oid(*inner),
         SqlType::Array(inner) => match inner {
             SqlType::Bool => oid::BOOL_ARRAY,
@@ -93,9 +106,11 @@ pub(crate) fn param_oid(ty: SqlType) -> u32 {
             SqlType::Date => oid::DATE_ARRAY,
             SqlType::Time => oid::TIME_ARRAY,
             SqlType::Json => oid::JSONB_ARRAY,
-            // Arrays of arrays, of local timestamps and of ranges are
-            // never sent.
-            SqlType::Array(_) | SqlType::LocalTimestamp | SqlType::Range(_) => oid::TEXT_ARRAY,
+            // Arrays of arrays, of local timestamps, of ranges and of
+            // vectors are never sent.
+            SqlType::Array(_) | SqlType::LocalTimestamp | SqlType::Range(_) | SqlType::Vector => {
+                oid::TEXT_ARRAY
+            }
         },
     }
 }
@@ -181,8 +196,49 @@ pub(crate) fn encode(value: &SqlValue, out: &mut Vec<u8>) -> Result<bool, String
             out.extend_from_slice(text.as_bytes());
         }
         SqlValue::Array(element, items) => array_to_wire(*element, items, out)?,
+        SqlValue::Vector(bits) => vector_to_wire(bits, out)?,
     }
     Ok(true)
+}
+
+/// A pgvector `vector` in its binary format (`vector_send`): its number of
+/// items and a reserved zero, each a 16-bit integer, then each item's
+/// single-precision float, every number big-endian.
+fn vector_to_wire(bits: &[u32], out: &mut Vec<u8>) -> Result<(), String> {
+    if bits.is_empty() || bits.len() > VECTOR_MOST {
+        return Err("a vector of more items than pgvector holds, or none".into());
+    }
+    let count = i16::try_from(bits.len()).map_err(|_| "a vector of too many items")?;
+    out.extend_from_slice(&count.to_be_bytes());
+    out.extend_from_slice(&0i16.to_be_bytes());
+    for item in bits {
+        out.extend_from_slice(&item.to_be_bytes());
+    }
+    Ok(())
+}
+
+/// A pgvector `vector` read from its binary format (`vector_recv`'s).
+pub(crate) fn vector_from_wire(raw: &[u8]) -> Result<SqlValue, String> {
+    let header = |at: usize| -> Result<[u8; 2], String> {
+        raw.get(at..at + 2)
+            .and_then(|bytes| <[u8; 2]>::try_from(bytes).ok())
+            .ok_or_else(|| length("vector", raw))
+    };
+    let count =
+        usize::try_from(i16::from_be_bytes(header(0)?)).map_err(|_| length("vector", raw))?;
+    let items = raw.get(4..).unwrap_or_default();
+    if header(2)? != [0, 0] || items.len() != count * 4 {
+        return Err(length("vector", raw));
+    }
+    items
+        .chunks_exact(4)
+        .map(|item| {
+            <[u8; 4]>::try_from(item)
+                .map(u32::from_be_bytes)
+                .map_err(|_| length("vector", raw))
+        })
+        .collect::<Result<Vec<u32>, String>>()
+        .map(SqlValue::Vector)
 }
 
 /// A range in its binary format: its flags, then each end that isn't open,
@@ -522,6 +578,27 @@ fn numeric_from_wire(raw: &[u8]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vector_is_its_count_a_reserved_zero_and_its_floats() {
+        let vector = SqlValue::Vector(vec![
+            0.5f32.to_bits(),
+            (-0.25f32).to_bits(),
+            1.0f32.to_bits(),
+        ]);
+        let mut out = Vec::new();
+        assert_eq!(encode(&vector, &mut out), Ok(true));
+        assert_eq!(
+            out,
+            [
+                0, 3, 0, 0, 0x3F, 0, 0, 0, 0xBE, 0x80, 0, 0, 0x3F, 0x80, 0, 0
+            ]
+        );
+        assert_eq!(vector_from_wire(&out), Ok(vector));
+        assert!(vector_from_wire(&[0, 2, 0, 0, 0x3F, 0, 0, 0]).is_err());
+        assert!(encode(&SqlValue::Vector(Vec::new()), &mut Vec::new()).is_err());
+        assert_eq!(param_oid(SqlType::Vector), oid::UNSPECIFIED);
+    }
 
     fn numeric_round_trip(text: &str) -> String {
         let mut out = Vec::new();

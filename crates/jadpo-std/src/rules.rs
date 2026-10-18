@@ -7,7 +7,7 @@
 
 use std::cmp::Ordering;
 
-use crate::{Builtin, Dur, Num, Rounding, TextFormat, UuidVersion};
+use crate::{Builtin, Dur, Num, Rounding, TextFormat, UuidVersion, VectorDistance};
 
 /// The rules one declaration adds: a type's block, or a field's settings.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -41,6 +41,10 @@ pub struct Rules {
     /// the one number of items its vectors have, as a model's embeddings
     /// all have the same.
     pub dimensions: Option<u64>,
+    /// `distance:` on a type built on `Vector` (area 21, decision 14):
+    /// how its vectors are compared, by `ai.distance` and its index;
+    /// cosine when no type in its chain says.
+    pub distance: Option<VectorDistance>,
     /// The standard type held as text whose own check the text passes
     /// (area 19, "Groups with the baseline only"): its pattern and its
     /// named validator, an IBAN's mod-97, broken as `format`, as an

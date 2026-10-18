@@ -830,6 +830,9 @@ impl Body<'_> {
         let mut summed: Option<Prim> = None;
         // The range type a `range` call's ranges are, which its result is.
         let mut ranged: Option<Ty> = None;
+        // The vector type an `ai.distance` call's vectors are, which says
+        // how they are compared (area 21, chunk 5.5v1).
+        let mut measured: Option<Ty> = None;
         // The quantity kind a `units` call's value or items are, and the
         // kind its unit is, with the unit as written (area 19).
         let mut quantity: Option<jadpo_std::QuantityKind> = None;
@@ -890,6 +893,15 @@ impl Body<'_> {
                 };
                 let name = params[*slot].0.clone();
                 self.range_argument(&value, &given, &mut ranged, (written, &name));
+                continue;
+            }
+            if table.is_some_and(|table| table.op == jadpo_std::Op::AiDistance) {
+                let given = match ty {
+                    Some(ty) => ty,
+                    None => self.infer(&value),
+                };
+                let name = params[*slot].0.clone();
+                self.vector_argument(&value, &given, &mut measured, (written, &name));
                 continue;
             }
             if kind == Some(jadpo_std::Kind::Quantity) {
@@ -1078,6 +1090,12 @@ impl Body<'_> {
                     self.sort_locale(table, &args, &slots, &key, written);
                 }
             }
+        }
+        if let Some(vector) = &measured {
+            let metric = self.metric(vector);
+            self.facts
+                .metric
+                .insert(node_key(call.syntax()), metric.name());
         }
         self.divisors(&args, &slots, written);
         if let Some(table) = table {
@@ -1842,6 +1860,110 @@ impl Body<'_> {
             Some(_) => {}
             None => *ranged = Some(structure),
         }
+    }
+
+    /// One of `ai.distance`'s vectors (area 21, chunk 5.5v1): a value of a
+    /// type built on `Vector` that is never `none`, and of the same vector
+    /// type as the other, since vectors of two types come from different
+    /// models or are compared differently, and their distance means
+    /// nothing.
+    fn vector_argument(
+        &mut self,
+        value: &Expr,
+        given: &Ty,
+        measured: &mut Option<Ty>,
+        (written, param): (&str, &str),
+    ) {
+        if given.has_error() {
+            return;
+        }
+        let vector = self.vector_type(given);
+        let why = if self.table.is_nullable(given) {
+            Some(format!(
+                "`{given}` may be `none`, and `{written}` takes a vector"
+            ))
+        } else if vector.is_none() {
+            Some(format!(
+                "`{written}`'s `{param}` takes a vector, a value of a type built on `Vector`; `{given}` is {}",
+                super::super::literal::what(self.table, given)
+            ))
+        } else {
+            None
+        };
+        if let Some(why) = why {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{given}` can't be used where a vector is required"),
+                )
+                .at(self.span(value), format!("this is `{given}`"))
+                .reason(format!("{why}."))
+                .next(if self.table.is_nullable(given) {
+                    "Pass a vector that is there here, after checking it isn't `none`"
+                } else {
+                    "Pass a vector here"
+                }),
+            );
+            return;
+        }
+        let Some(vector) = vector else { return };
+        match measured {
+            Some(first) if *first != vector && !first.has_error() => {
+                let first = first.clone();
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_MISMATCH,
+                        format!("`{vector}` can't be used where `{first}` is required"),
+                    )
+                    .at(self.span(value), format!("this is `{vector}`"))
+                    .reason(format!(
+                        "`{written}` measures between two vectors of one type, which fixes their dimensions and how they are compared; its first is `{first}`, and a `{vector}` may come from another model or be compared another way."
+                    ))
+                    .next(format!("Pass a `{first}` here")),
+                );
+            }
+            Some(_) => {}
+            None => *measured = Some(vector),
+        }
+    }
+
+    /// The vector type a value is, by its own name: the type a field or a
+    /// parameter declares, or `Vector` itself; `None` for a value that
+    /// isn't built on `Vector`.
+    fn vector_type(&self, given: &Ty) -> Option<Ty> {
+        let mut current = given.strip_nullable().clone();
+        for _ in 0..64 {
+            match &current {
+                Ty::Field(host, path) => {
+                    current = self
+                        .table
+                        .field(host, path)?
+                        .declared
+                        .strip_nullable()
+                        .clone();
+                }
+                Ty::Named(_) => {
+                    return self
+                        .table
+                        .rule_chain(&current)
+                        .iter()
+                        .any(|(_, rules)| rules.standard == Some(jadpo_std::standard::ai::VECTOR))
+                        .then_some(current);
+                }
+                _ => return None,
+            }
+        }
+        None
+    }
+
+    /// How a vector type compares its vectors: the `distance:` nearest it
+    /// in its chain, cosine when none says (area 21, decision 14).
+    pub(crate) fn metric(&self, vector: &Ty) -> jadpo_std::VectorDistance {
+        self.table
+            .rule_chain(vector)
+            .iter()
+            .find_map(|(_, rules)| rules.distance)
+            .unwrap_or(jadpo_std::VectorDistance::Cosine)
     }
 
     pub(super) fn unknown_argument(

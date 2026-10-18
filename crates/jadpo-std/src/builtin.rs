@@ -109,6 +109,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
     rate_from: None,
     rate_to: None,
     dimensions: None,
+    distance: None,
     standard: None,
 };
 

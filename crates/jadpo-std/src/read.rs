@@ -43,6 +43,11 @@ pub enum SqlType {
     /// A range of values of the inner type (area 19, "Ranges"):
     /// `daterange`, `tstzrange`, `int8range` or `numrange` (chunk 5.5w).
     Range(&'static SqlType),
+    /// A pgvector `vector` (area 21, "Storing a vector"): single-precision
+    /// floats, with or without a fixed length. Its type is the extension's,
+    /// whose number each database gives it, so a parameter is sent without
+    /// one and PostgreSQL infers it from the column (chunk 5.5v1).
+    Vector,
 }
 
 impl SqlType {
@@ -63,8 +68,8 @@ impl SqlType {
             SqlType::LocalTimestamp => &SqlType::LocalTimestamp,
             SqlType::Json => &SqlType::Json,
             SqlType::Array(inner) => return SqlType::Array(inner),
-            // Arrays of ranges are never sent.
-            SqlType::Range(_) => &SqlType::Text,
+            // Arrays of ranges and of vectors are never sent.
+            SqlType::Range(_) | SqlType::Vector => &SqlType::Text,
         })
     }
 
@@ -105,6 +110,8 @@ impl SqlType {
             "jsonb" => SqlType::Json,
             // A currency's code (area 19).
             "char" => SqlType::Text,
+            // A vector, `vector(1536)` (area 21, chunk 5.5v1).
+            "vector" => SqlType::Vector,
             // An address's lines (area 19, chunk 5.5l).
             "text[]" => SqlType::Text.array(),
             _ => return None,
@@ -223,6 +230,10 @@ pub enum Column {
     /// `json.read`'s site numbers its type, so a stored value is read
     /// exactly as a request's body is.
     Json(u32),
+    /// A vector, kept in a pgvector `vector` column (area 21, chunk
+    /// 5.5v1): each item read back as the decimal that is its
+    /// single-precision float.
+    Vector,
 }
 
 /// Where a record's field comes from.

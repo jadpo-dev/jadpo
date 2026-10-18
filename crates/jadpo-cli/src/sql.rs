@@ -640,6 +640,7 @@ fn pg_type(ty: SqlType) -> String {
         SqlType::Time => "time".into(),
         SqlType::LocalTimestamp => "timestamp".into(),
         SqlType::Json => "jsonb".into(),
+        SqlType::Vector => "vector".into(),
         SqlType::Array(inner) => format!("{}[]", pg_type(*inner)),
         SqlType::Range(inner) => match inner {
             SqlType::Date => "daterange".into(),

@@ -616,6 +616,7 @@ fn rules(rules: &Rules, used: &mut BTreeSet<String>) {
         rate_from,
         rate_to,
         dimensions,
+        distance,
         // Set only by the standard library, never written in a block.
         standard: _,
     } = rules;
@@ -633,6 +634,7 @@ fn rules(rules: &Rules, used: &mut BTreeSet<String>) {
         ("from", rate_from.is_some()),
         ("to", rate_to.is_some()),
         ("dimensions", dimensions.is_some()),
+        ("distance", distance.is_some()),
     ];
     for (rule, present) in set {
         if present {

@@ -272,6 +272,15 @@ impl FieldModel {
     }
 }
 
+/// Whether a field keeps a vector: a vector type's column, or an
+/// `Embedding`'s vector column (area 21, chunk 5.5v1).
+pub fn holds_vector(field: &FieldModel) -> bool {
+    field
+        .columns()
+        .iter()
+        .any(|(_, sql_type)| sql_type.split('(').next() == Some("vector"))
+}
+
 /// A reference: the entity a field typed `X.id` points at.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Reference {
@@ -609,7 +618,8 @@ impl Reader<'_> {
         if let Some(member) = indexes {
             entity.indexes = self.rules(path, &entity, &member, false);
         }
-        entity.store = self.placement(store, &name, &name_span);
+        let field_spans = self.spans.fields.clone();
+        entity.store = self.placement(store, &name, &name_span, (&entity.fields, &field_spans));
         if let Some(member) = lifecycle {
             let lookup = self.lookup;
             entity.lifecycle = lifecycle::read(
@@ -710,6 +720,7 @@ impl Reader<'_> {
         store: Option<(String, Span)>,
         entity: &str,
         at: &Span,
+        (fields, field_spans): (&[FieldModel], &[Span]),
     ) -> Option<String> {
         let databases = self.connections.databases();
         let Some((name, span)) = store else {
@@ -735,6 +746,30 @@ impl Reader<'_> {
         };
         match self.connections.kind(&name) {
             Some(ConnectionKind::Postgres) => Some(name),
+            // A vector needs pgvector, which only PostgreSQL has (area 21,
+            // "Without pgvector"): said before Redis entities' own gap,
+            // since it stays when they are built.
+            Some(ConnectionKind::Redis) if let Some(at) = fields.iter().position(holds_vector) => {
+                let field = &fields[at];
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::DATA_VECTOR_STORE_UNSUPPORTED,
+                        format!("`{entity}.{}` is a vector, which `{name}` can't store", field.name),
+                    )
+                    .at(field_spans[at].clone(), "a vector, in Redis")
+                    .reason(format!(
+                        "A vector is stored and searched by pgvector, an extension of PostgreSQL, and `{name}` is a Redis connection. There is no fallback, since a search held anywhere else would behave differently from the one that was tested."
+                    ))
+                    .next(if self.connections.kind(MAIN) == Some(ConnectionKind::Postgres) {
+                        format!("Remove `store: {name}` to keep `{entity}` in `main`, a PostgreSQL store")
+                    } else if let Some(first) = databases.first() {
+                        format!("Write `store: {first}` to keep `{entity}` in a PostgreSQL store")
+                    } else {
+                        format!("Declare a connection with `driver: Driver.postgres` in `app.jadpo`, and keep `{entity}` there")
+                    }),
+                );
+                None
+            }
             Some(ConnectionKind::Redis) => {
                 self.out.push(
                     Diagnostic::new(
@@ -937,25 +972,22 @@ impl Reader<'_> {
                 );
                 field.sql_type = Some(sql);
             }
-            // A vector or an embedding is stored in a pgvector `vector`
-            // column, which the AI area builds (area 19, chunk 5.5s2).
+            // A vector is stored in a pgvector `vector` column, fixed to its
+            // type's `dimensions:` where it has them (area 21, chunk
+            // 5.5v1). The column keeps its length, and pgvector its 1 to
+            // 16,000 items, so no length is checked beside it.
             Ok(sql) if sql == "vector" => {
-                let shown = ty.strip_nullable().to_string();
-                self.out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!("Storing a `{shown}` field isn't built yet"),
-                    )
-                    .at(node_span(path, value.syntax()), "a vector, stored in pgvector")
-                    .reason(format!(
-                        "Area 19 stores a vector in a pgvector `vector` column, with its index and nearest-neighbour queries, and that storage comes with the AI area (roadmap 5.5v); until then this compiler can't read or write `{entity}.{name}`."
-                    ))
-                    .next(format!(
-                        "Keep what `{entity}.{name}` holds out of storage for now, and make it again from its text when it is needed"
-                    ))
-                    .help_at("19-standard-library.html#ai-a-future-area"),
-                );
-                field.sql_type = Some(sql);
+                let dimensions = self
+                    .lookup
+                    .rule_chain(&Ty::Field(entity.to_string(), vec![name.to_string()]))
+                    .iter()
+                    .find_map(|(_, rules)| rules.dimensions);
+                field.sql_type = Some(match dimensions {
+                    Some(n) => format!("vector({n})"),
+                    None => sql,
+                });
+                field.allows.min_length = None;
+                field.allows.max_length = None;
             }
             // A JSON-held standard type is stored as its contract's JSON,
             // written and read by the route codec (area 19, chunk 5.5w2b).

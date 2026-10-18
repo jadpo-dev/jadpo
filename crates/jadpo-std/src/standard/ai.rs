@@ -1,10 +1,10 @@
 //! The AI types' baselines (area 19, "The standard types" and "AI: a
 //! future area", chunk 5.5s2): token counts and a call's usage, a message
 //! in a conversation with a model, and vectors and the embeddings a model
-//! makes. Storing a vector in pgvector, similarity and `ai.generate` come
-//! with the AI area (roadmap 5.5v); until then a vector's storage is
-//! [`Storage::Vector`], which a field can't use yet. What the page left
-//! open is area 19's "Chosen in chunk 5.5s2".
+//! makes. A vector is stored in a pgvector `vector` column
+//! ([`Storage::Vector`], chunk 5.5v1, area 21), and compared as its type's
+//! `distance:` says ([`distance`]). What the page left open is area 19's
+//! "Chosen in chunk 5.5s2" and area 21's "Chosen in chunk 5.5v1".
 
 use super::across::{Order, StandardRule, in_order};
 use super::{
@@ -28,7 +28,7 @@ pub const VECTOR: &str = "Vector";
 pub const EMBEDDING: &str = "Embedding";
 
 /// The most items a vector has: pgvector's limit for its `vector` column,
-/// so every vector can be stored once the AI area stores them.
+/// so every vector can be stored.
 pub const MOST_DIMENSIONS: u64 = 16_000;
 
 /// The categories of these types that are personal data whatever field
@@ -289,14 +289,17 @@ pub const EMBEDDING_FIELDS: [(&str, Part); 2] = [
 ];
 
 /// A vector with the model that made it: sent as named fields, its model
-/// as `ModelId`'s text, and stored with its vector in pgvector once the AI
-/// area does.
+/// as `ModelId`'s text, and stored in two columns, its model as text and
+/// its vector in a pgvector `vector` (chunk 5.5v1).
 pub const EMBEDDING_ENTRY: StandardType = StandardType {
     name: EMBEDDING,
     holds: Holds::Object(&EMBEDDING_FIELDS),
     text: None,
     json: Json::Fields(&["model", "vector"]),
-    storage: Storage::Vector,
+    storage: Storage::Columns {
+        parts: &[("model", "text"), ("vector", "vector")],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Vector,
         options: NO_OPTIONS,
@@ -381,9 +384,156 @@ pub fn float(text: &str) -> Option<String> {
     Some(written)
 }
 
+/// The distance between two vectors of one type as pgvector works it out
+/// for `metric` (area 21, "Storing a vector"; chunk 5.5v1), so
+/// `ai.distance` in code gives what its operator gives in a query: each
+/// item a single-precision float, the sums kept in single precision item
+/// by item as pgvector's C does, and what follows in double precision.
+/// Cosine is one less `dot / sqrt(|a|² · |b|²)`, kept between -1 and 1
+/// first (`<=>`); euclidean the square root of the summed squared
+/// differences (`<->`); inner product the sum of the products, negated
+/// (`<#>`). Smaller is always nearer.
+///
+/// `None` when there is no such number: vectors of different lengths, a
+/// cosine with a vector of zeros (which has no direction, and which
+/// pgvector answers with `NaN`), or a sum past a float's range (which
+/// pgvector answers with infinity).
+///
+/// pgvector's compiler may add its items in another order (it vectorises
+/// the loop) or fuse a multiply and an add, so on items whose products and
+/// running sums aren't exact floats the two can differ in a float's last
+/// place; on items that are (small integers, halves, quarters), they
+/// agree exactly, which is what the tests hold them to.
+pub fn distance(a: &[f32], b: &[f32], metric: crate::VectorDistance) -> Option<f64> {
+    if a.len() != b.len() || a.is_empty() {
+        return None;
+    }
+    let found = match metric {
+        crate::VectorDistance::Euclidean => {
+            let mut sum = 0.0f32;
+            for (x, y) in a.iter().zip(b) {
+                let diff = x - y;
+                sum += diff * diff;
+            }
+            f64::from(sum).sqrt()
+        }
+        crate::VectorDistance::InnerProduct => {
+            let mut sum = 0.0f32;
+            for (x, y) in a.iter().zip(b) {
+                sum += x * y;
+            }
+            f64::from(sum) * -1.0
+        }
+        crate::VectorDistance::Cosine => {
+            let (mut dot, mut norm_a, mut norm_b) = (0.0f32, 0.0f32, 0.0f32);
+            for (x, y) in a.iter().zip(b) {
+                dot += x * y;
+                norm_a += x * x;
+                norm_b += y * y;
+            }
+            let similarity = f64::from(dot) / (f64::from(norm_a) * f64::from(norm_b)).sqrt();
+            if similarity.is_nan() {
+                return None;
+            }
+            1.0 - similarity.clamp(-1.0, 1.0)
+        }
+    };
+    found.is_finite().then_some(found)
+}
+
+/// A double-precision distance as the decimal it is: the shortest decimal
+/// that reads back as the same double, as PostgreSQL writes a `float8`,
+/// rounded half to even to a decimal's 38 places where it has more (only
+/// a distance below `1e-21` does).
+pub fn distance_text(found: f64) -> String {
+    let written = format!("{}", if found == 0.0 { 0.0 } else { found });
+    let Some((whole, places)) = written.split_once('.') else {
+        return written;
+    };
+    if places.len() <= 38 {
+        return written;
+    }
+    // Rounded at the 38th place, half to even.
+    let negative = whole.starts_with('-');
+    let digits: Vec<u8> = places.bytes().map(|b| b - b'0').collect();
+    let mut kept: Vec<u8> = digits[..38].to_vec();
+    let rest = &digits[38..];
+    let half =
+        rest[0] > 5 || (rest[0] == 5 && (rest[1..].iter().any(|d| *d > 0) || kept[37] % 2 == 1));
+    let mut whole_part: u128 = whole.trim_start_matches('-').parse().unwrap_or(0);
+    if half {
+        let mut at = kept.len();
+        loop {
+            if at == 0 {
+                whole_part += 1;
+                break;
+            }
+            at -= 1;
+            if kept[at] == 9 {
+                kept[at] = 0;
+            } else {
+                kept[at] += 1;
+                break;
+            }
+        }
+    }
+    while kept.last() == Some(&0) {
+        kept.pop();
+    }
+    let sign = if negative && (whole_part > 0 || !kept.is_empty()) {
+        "-"
+    } else {
+        ""
+    };
+    if kept.is_empty() {
+        format!("{sign}{whole_part}")
+    } else {
+        let places: String = kept.iter().map(|d| char::from(b'0' + d)).collect();
+        format!("{sign}{whole_part}.{places}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::VectorDistance::{Cosine, Euclidean, InnerProduct};
+
+    #[test]
+    fn distances_are_worked_out_as_pgvector_works_them_out() {
+        let a = [1.0f32, 2.0, 3.0];
+        let b = [4.0f32, -5.0, 6.0];
+        // dot 12, |a|² 14, |b|² 77: one less 12 / sqrt(1078).
+        assert_eq!(distance(&a, &b, Cosine), Some(1.0 - 12.0 / 1078f64.sqrt()));
+        // Differences -3, 7, -3: sqrt(67).
+        assert_eq!(distance(&a, &b, Euclidean), Some(67f64.sqrt()));
+        assert_eq!(distance(&a, &b, InnerProduct), Some(-12.0));
+        // The same vector is no distance away, its opposite as far as can be.
+        assert_eq!(distance(&a, &a, Cosine), Some(0.0));
+        assert_eq!(distance(&a, &[-1.0, -2.0, -3.0], Cosine), Some(2.0));
+        // A vector of zeros has no direction, and lengths must agree.
+        assert_eq!(distance(&[0.0, 0.0], &[1.0, 0.0], Cosine), None);
+        assert_eq!(distance(&[0.0, 0.0], &[1.0, 0.0], Euclidean), Some(1.0));
+        assert_eq!(distance(&[1.0], &[1.0, 2.0], Euclidean), None);
+        // Past a float's range there is no number.
+        assert_eq!(distance(&[3e38], &[-3e38], Euclidean), None);
+        assert_eq!(distance(&[3e38, 3e38], &[3e38, 3e38], InnerProduct), None);
+    }
+
+    #[test]
+    fn a_distance_is_written_as_postgresql_writes_a_double() {
+        assert_eq!(distance_text(-12.0), "-12");
+        assert_eq!(distance_text(0.5), "0.5");
+        assert_eq!(distance_text(-0.0), "0");
+        assert_eq!(distance_text(67f64.sqrt()), "8.18535277187245");
+        assert_eq!(distance_text(1e-20), "0.00000000000000000001");
+        // Past 38 places, rounded half to even.
+        assert_eq!(
+            distance_text(1.25e-37),
+            "0.00000000000000000000000000000000000012"
+        );
+        assert_eq!(distance_text(1e-40), "0");
+    }
 
     #[test]
     fn an_item_is_the_nearest_single_precision_float() {

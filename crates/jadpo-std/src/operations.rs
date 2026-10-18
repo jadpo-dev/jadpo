@@ -172,6 +172,7 @@ pub struct Condition {
 /// Which operation, for an exhaustive match in each executor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Op {
+    AiDistance,
     ColourContrast,
     ColourFromHsl,
     ColourFromOklch,
@@ -1000,9 +1001,31 @@ const COLOUR: Kind = Kind::Std(crate::standard::colour::COLOUR);
 const PERCENTAGE: Kind = Kind::Builtin(Builtin::Percentage);
 const ANGLE: Kind = Kind::Builtin(Builtin::Quantity(crate::QuantityKind::Angle));
 const DIMENSIONS: Kind = Kind::Std(crate::standard::media::IMAGE_DIMENSIONS);
+const VECTOR: Kind = Kind::Std(crate::standard::ai::VECTOR);
 
 /// Every operation, sorted by namespace and name.
 pub const OPERATIONS: &[Operation] = &[
+    // `ai`'s one standard operation (area 21, "The nearest-neighbour
+    // query"; chunk 5.5v1): the distance between two vectors of one type,
+    // as its `distance:` says and pgvector works it out. The checker
+    // fills `metric` from the vectors' type, as `VectorDistance`'s variant
+    // name, `cosine` when no type in its chain says. The `ai` capability's operations are not in this table:
+    // they are outside calls (area 11).
+    media_op(
+        Op::AiDistance,
+        "ai",
+        "distance",
+        &[
+            param("a", VECTOR),
+            param("b", VECTOR),
+            Param {
+                implicit: true,
+                ..param("metric", Kind::Builtin(Builtin::Text))
+            },
+        ],
+        DECIMAL,
+        "vector::distance",
+    ),
     // `colour`'s operations (area 19, "Colour"): each gives an sRGB
     // `Colour`, worked out through CSS Color 4's conversions.
     media_op(

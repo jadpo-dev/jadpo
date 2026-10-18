@@ -163,6 +163,10 @@ pub(crate) struct Facts {
     /// text, with that type's name, which the call is given (area 19,
     /// chunk 5.5i).
     pub shown: BTreeMap<NodeKey, &'static str>,
+    /// Each `ai.distance` call, with how its vectors' type compares them,
+    /// as `VectorDistance`'s variant name, which the call is given (area
+    /// 21, chunk 5.5v1).
+    pub metric: BTreeMap<NodeKey, &'static str>,
     /// Each read of a constant (area 3): its library, if it is a
     /// library's, and its name as written.
     pub constants: BTreeMap<NodeKey, (Option<String>, String)>,

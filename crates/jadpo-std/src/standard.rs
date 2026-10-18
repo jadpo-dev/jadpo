@@ -3138,6 +3138,7 @@ impl StandardType {
             SqlType::Date => "date",
             SqlType::Time => "time",
             SqlType::LocalTimestamp => "timestamp",
+            SqlType::Vector => "vector",
             SqlType::Json | SqlType::Array(_) | SqlType::Range(_) => "jsonb",
         }
     }

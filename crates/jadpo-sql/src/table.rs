@@ -236,6 +236,13 @@ pub fn create_index(
     )
 }
 
+/// Creates the extension `name` unless the database has it: pgvector's
+/// `vector` for a store's first vector column (area 21, chunk 5.5v1).
+/// `jadpo migrate apply` checks it is available before running anything.
+pub fn create_extension(name: &str) -> String {
+    format!("CREATE EXTENSION IF NOT EXISTS {}", ident(name))
+}
+
 /// A line for a person, not the database: `-- text`.
 pub fn comment(text: &str) -> String {
     format!("-- {text}")

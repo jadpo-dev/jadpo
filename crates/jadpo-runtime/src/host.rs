@@ -85,6 +85,10 @@ pub enum SqlValue {
         upper: Option<Box<SqlValue>>,
         upper_held: bool,
     },
+    /// A pgvector `vector` (area 21, chunk 5.5v1): each item's
+    /// single-precision float by its bits, so a vector is compared and
+    /// ordered exactly, as the other values are.
+    Vector(Vec<u32>),
 }
 
 impl SqlValue {
@@ -107,6 +111,7 @@ impl SqlValue {
             SqlValue::Json(_) => SqlType::Json,
             SqlValue::Array(element, _) => element.array(),
             SqlValue::Range { element, .. } => element.range(),
+            SqlValue::Vector(_) => SqlType::Vector,
         }
     }
 }

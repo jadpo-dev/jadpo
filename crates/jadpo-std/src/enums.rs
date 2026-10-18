@@ -456,6 +456,43 @@ std_enum! {
     }
 }
 
+std_enum! {
+    /// How a vector type's vectors are compared (area 21, "Storing a
+    /// vector"; decision 14): a property of the model that made them, so
+    /// `distance:` sets it on the type and every comparison and index
+    /// follows it. Smaller is always nearer.
+    VectorDistance: "VectorDistance" {
+        /// One less the cosine of the angle between them, pgvector's
+        /// `<=>`: most text embeddings. The default.
+        Cosine: "cosine",
+        /// The straight-line distance, pgvector's `<->`.
+        Euclidean: "euclidean",
+        /// The negative inner product, pgvector's `<#>`: for normalised
+        /// vectors.
+        InnerProduct: "inner_product",
+    }
+}
+
+impl VectorDistance {
+    /// pgvector's operator for it.
+    pub fn operator(self) -> &'static str {
+        match self {
+            VectorDistance::Cosine => "<=>",
+            VectorDistance::Euclidean => "<->",
+            VectorDistance::InnerProduct => "<#>",
+        }
+    }
+
+    /// pgvector's HNSW operator class for it on a `vector` column.
+    pub fn operator_class(self) -> &'static str {
+        match self {
+            VectorDistance::Cosine => "vector_cosine_ops",
+            VectorDistance::Euclidean => "vector_l2_ops",
+            VectorDistance::InnerProduct => "vector_ip_ops",
+        }
+    }
+}
+
 impl HttpMethod {
     /// As a route entry and HTTP write it: `GET`.
     pub fn word(self) -> &'static str {
@@ -537,6 +574,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (crate::FILE_TYPE, names(crate::FILE_TYPES)),
         (crate::CURRENCY, names(crate::CURRENCIES)),
         (CodeForm::NAME, CodeForm::NAMES.to_vec()),
+        (VectorDistance::NAME, VectorDistance::NAMES.to_vec()),
     ];
     // The standard enums, and the choices, whose variants carry data
     // (chunk 5.5i3).
@@ -598,6 +636,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         crate::FILE_TYPE => crate::FILE_TYPES.iter().position(|(v, _)| *v == variant),
         crate::CURRENCY => crate::CURRENCIES.iter().position(|(v, _)| *v == variant),
         CodeForm::NAME => position(CodeForm::NAMES),
+        VectorDistance::NAME => position(VectorDistance::NAMES),
         other => crate::QuantityKind::of_unit_enum(other)
             .and_then(|kind| kind.units().iter().position(|unit| unit.name == variant))
             .or_else(|| {

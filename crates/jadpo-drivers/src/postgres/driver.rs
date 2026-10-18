@@ -10,7 +10,7 @@ use std::task::{Poll, Waker};
 use bytes::BytesMut;
 use jadpo_runtime::{Database, Isolation, LocalFuture, Row, SqlValue, StoreError, Transaction};
 use tokio_postgres::config::Host;
-use tokio_postgres::types::{FromSql, IsNull, ToSql, Type, to_sql_checked};
+use tokio_postgres::types::{FromSql, IsNull, Kind, ToSql, Type, to_sql_checked};
 use tokio_postgres::{Client, Config, NoTls};
 
 use super::classify::{Cause, classify};
@@ -546,6 +546,13 @@ fn bind(params: &[SqlValue]) -> Result<Vec<Param<'_>>, StoreError> {
         .iter()
         .map(|value| {
             let oid = wire::param_oid(value.ty());
+            // A vector's type is the extension's, whose number differs in
+            // each database: sent with none, PostgreSQL infers it from the
+            // column it meets (chunk 5.5v1).
+            if oid == wire::oid::UNSPECIFIED {
+                let ty = Type::new("unknown".into(), oid, Kind::Pseudo, "pg_catalog".into());
+                return Ok(Param { value, ty });
+            }
             let ty = Type::from_oid(oid).ok_or_else(|| {
                 StoreError::Fault(format!("PostgreSQL client: no built-in type has OID {oid}"))
             })?;
@@ -592,26 +599,44 @@ impl<'a> FromSql<'a> for Cell {
         ty: &Type,
         raw: &'a [u8],
     ) -> Result<Cell, Box<dyn std::error::Error + Sync + Send>> {
+        if is_vector(ty) {
+            return Ok(Cell(wire::vector_from_wire(raw)?));
+        }
         Ok(Cell(wire::decode(ty.oid(), raw)?))
     }
 
     fn from_sql_null(ty: &Type) -> Result<Cell, Box<dyn std::error::Error + Sync + Send>> {
-        match wire::column_type(ty.oid()) {
+        match column_type(ty) {
             Some(sql_type) => Ok(Cell(SqlValue::Null(sql_type))),
             None => Err(format!("the runtime doesn't read type {}", ty.name()).into()),
         }
     }
 
     fn accepts(ty: &Type) -> bool {
-        wire::column_type(ty.oid()).is_some()
+        column_type(ty).is_some()
     }
+}
+
+/// The runtime's type for a column of type `ty`: a built-in one by its
+/// number, pgvector's by its name (chunk 5.5v1).
+fn column_type(ty: &Type) -> Option<jadpo_runtime::SqlType> {
+    if is_vector(ty) {
+        return Some(jadpo_runtime::SqlType::Vector);
+    }
+    wire::column_type(ty.oid())
+}
+
+/// Whether `ty` is pgvector's `vector`, which an extension adds, so it has
+/// no built-in number.
+fn is_vector(ty: &Type) -> bool {
+    wire::column_type(ty.oid()).is_none() && ty.name() == wire::VECTOR
 }
 
 fn read_row(row: &tokio_postgres::Row) -> Result<Row, StoreError> {
     let mut out = Vec::with_capacity(row.len());
     for (index, column) in row.columns().iter().enumerate() {
         let ty = column.type_();
-        if wire::column_type(ty.oid()).is_none() {
+        if column_type(ty).is_none() {
             return Err(StoreError::Fault(format!(
                 "column `{}` has type {}, which the runtime doesn't read",
                 column.name(),
