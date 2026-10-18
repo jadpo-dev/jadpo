@@ -95,7 +95,17 @@ pub fn suggest(call: &Call) -> Reply {
     let Some(root) = jadpo_db::find_root(&cwd) else {
         return project_needed("suggest");
     };
-    match call.arguments.first().map(String::as_str) {
+    let action = call.arguments.first().map(String::as_str);
+    if action != Some("share")
+        && let Some(flag) = crate::share::FLAGS.iter().find(|flag| call.flag(flag))
+    {
+        return arguments(
+            format!("`{flag}` goes with `jadpo suggest share`"),
+            "Only sharing sends, approves, declines or replaces the token.",
+            format!("Run `jadpo suggest share {flag}`"),
+        );
+    }
+    match action {
         None => scan(call, &cwd, &root),
         Some("ignore") => ignore(call, &root),
         Some("found") => found(call, &cwd, &root),

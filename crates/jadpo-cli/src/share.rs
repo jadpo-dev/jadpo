@@ -51,6 +51,9 @@ use crate::migrate::blocked;
 use crate::run::{Call, Reply};
 use crate::suggestions::{arguments, count, read_lines, text, write_failed};
 
+/// The flags only `share` takes.
+pub const FLAGS: [&str; 4] = ["--approve", "--decline", "--new-token", "--unattended"];
+
 /// The variable that turns sharing off for a machine.
 pub const SWITCH: &str = "JADPO_SUGGEST_SHARE";
 
@@ -195,6 +198,20 @@ pub fn share(call: &Call, cwd: &Path, root: &Path) -> Reply {
             "Run one of them at a time",
         );
     }
+    let unattended =
+        call.flag("--unattended") || call.environment.var("CI").is_some_and(|v| !v.is_empty());
+    if approve && unattended {
+        return arguments(
+            "An unattended run can't approve",
+            "`--approve` sends code, and only a person who has seen the payload can say yes; an unattended run (`--unattended`, or `CI` set) sends only hashes.",
+            "Ask the person, then run `jadpo suggest share --approve` where they can see it",
+        );
+    }
+    let shown_root = jadpo_db::shown_root(cwd, root);
+    // The environment turns sharing off before anything is read.
+    if let Some(place) = turned_off(call, &Settings::default(), root, None) {
+        return off(place);
+    }
     let loaded = jadpo_db::load(root);
     let syntax: Vec<Diagnostic> = jadpo_check::check(&loaded.db, loaded.project)
         .into_iter()
@@ -206,18 +223,8 @@ pub fn share(call: &Call, cwd: &Path, root: &Path) -> Reply {
         return blocked(&loaded, cwd, syntax, "share stopped");
     }
     let settings = settings::settings(&loaded.db, loaded.project).clone();
-    let shown_root = jadpo_db::shown_root(cwd, root);
     if let Some(place) = turned_off(call, &settings, root, shown_root.as_deref()) {
-        let screen = Screen::new().with(Block::Status {
-            outcome: Outcome::Success,
-            text: "Sent nothing: sharing is turned off".to_string(),
-            rows: vec![("where".to_string(), place.clone())],
-        });
-        let data = Json::object([
-            ("sent", 0usize.into()),
-            ("turnedOff", Json::from(place.as_str())),
-        ]);
-        return Reply::screen(screen, data);
+        return off(place);
     }
     if !settings.problems.is_empty() {
         return blocked(&loaded, cwd, settings.problems.clone(), "share stopped");
@@ -228,7 +235,21 @@ pub fn share(call: &Call, cwd: &Path, root: &Path) -> Reply {
     if decline {
         return drop_snippets(root);
     }
-    send_hashes(call, root, &settings, new_token)
+    send_hashes(call, root, &settings, new_token, unattended)
+}
+
+/// Sharing is turned off: nothing is sent or written.
+fn off(place: String) -> Reply {
+    let screen = Screen::new().with(Block::Status {
+        outcome: Outcome::Success,
+        text: "Sent nothing: sharing is turned off".to_string(),
+        rows: vec![("where".to_string(), place.clone())],
+    });
+    let data = Json::object([
+        ("sent", 0usize.into()),
+        ("turnedOff", Json::from(place.as_str())),
+    ]);
+    Reply::screen(screen, data)
 }
 
 /// One pending entry.
@@ -329,7 +350,13 @@ fn local_write(root: &Path, file: &str, text: &str) -> Result<(), Box<Diagnostic
         .map_err(|error| write_failed(file, &error))
 }
 
-fn send_hashes(call: &Call, root: &Path, settings: &Settings, rotate: bool) -> Reply {
+fn send_hashes(
+    call: &Call,
+    root: &Path,
+    settings: &Settings,
+    rotate: bool,
+    unattended: bool,
+) -> Reply {
     let entries = pending(root);
     if entries.is_empty() && !rotate {
         let screen = Screen::new().with(Block::Status {
@@ -343,8 +370,6 @@ fn send_hashes(call: &Call, root: &Path, settings: &Settings, rotate: bool) -> R
         Ok(address) => address,
         Err(reply) => return *reply,
     };
-    let unattended =
-        call.flag("--unattended") || call.environment.var("CI").is_some_and(|v| !v.is_empty());
 
     // The token: written when missing, replaced when asked.
     let mut token_file = None;

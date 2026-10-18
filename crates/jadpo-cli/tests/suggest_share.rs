@@ -695,3 +695,29 @@ fn a_teammates_checkout_picks_up_taught_patterns() {
     );
     assert!(hq.requests().is_empty());
 }
+
+#[test]
+fn an_unattended_run_cannot_approve_and_share_flags_need_share() {
+    let hq = FakeHq::start(1);
+    let root = ignored_shop("unattended-approve", &hq);
+    jadpo(&root, &hq, &["suggest", "share"]);
+    let output = jadpo_with(
+        &root,
+        &["suggest", "share", "--approve"],
+        &[("JADPO_SUGGEST_HQ", &hq.url), ("CI", "1")],
+    );
+    assert!(
+        output.stderr.contains("An unattended run can't approve"),
+        "{}",
+        output.stderr
+    );
+    assert_eq!(hq.requests().len(), 1);
+    assert!(hq.snippets().is_empty());
+    let output = jadpo(&root, &hq, &["suggest", "--approve"]);
+    assert!(
+        output.stderr.contains("goes with `jadpo suggest share`"),
+        "{}",
+        output.stderr
+    );
+    assert_eq!(hq.requests().len(), 1);
+}

@@ -815,7 +815,9 @@ Choices the design left open, each the more conservative one.
   sends those bytes to that address, whatever `JADPO_SUGGEST_HQ` says by
   then. The next `share` replaces what waits, unsent. `--decline` drops it.
 - **Unattended** is `--unattended`, or `CI` set to anything; an agent with
-  nobody to ask leaves the request, and the next `share` drops it.
+  nobody to ask leaves the request, and the next `share` drops it. An
+  unattended run can't `--approve` (`cli.suggest_arguments`), and `share`'s
+  flags given without `share` are refused rather than ignored.
 - **Turned off is anything but `on`.** `JADPO_SUGGEST_SHARE` with any other
   non-empty value turns sharing off, so a misspelling never sends. `share:
   false` is honoured in whichever file the `suggestions { }` is, and turning
