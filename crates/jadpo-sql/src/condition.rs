@@ -317,6 +317,11 @@ pub fn literal(literal: &Literal, ty: SqlType) -> Option<String> {
             jadpo_std::quantity::number_text(amount, unit.kind.scale())
         }
         Literal::Quantity(_) => return None,
+        // A percentage is held as the fraction it is (area 19).
+        Literal::Percentage(written) if ty == SqlType::Numeric => {
+            jadpo_std::percentage::parse_literal(written)?.to_string()
+        }
+        Literal::Percentage(_) => return None,
     })
 }
 

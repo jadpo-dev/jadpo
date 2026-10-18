@@ -14,7 +14,7 @@ use crate::support;
 use jadpo_db::{Database, Layout};
 use jadpo_diag::Diagnostic;
 
-const NAMES: &str = "type CakePrice = Money {\n    currency: Currency.gbp\n    min: 0\n    rounding: Rounding.half_up\n}\n\ntype EuroPrice = Money {\n    currency: Currency.eur\n    min: 0\n}\n\ntype Charge = Money {\n    min: 0\n}\n\ntype Fee = Money {\n    currency: Currency.gbp\n    min: 1\n}\n\ntype Guests = Int {\n    min: 1\n    max: 20\n}\n\ntype Share = Int {\n    min: 0\n}\n\ntype Rate = Decimal {\n    scale: 2\n    min: 0.01\n}\n\ntype Pounds = Decimal {\n    scale: 2\n}\n\ntype Answer = Bool {}\n\ntype Ratio = Decimal {\n    scale: 4\n}\n\ntype Amount = Money {}\n\ntype Euros = Money {\n    currency: Currency.eur\n}\n\ntype Pence = Int {}\n\ntype Mismatch = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype WrongCurrency = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype TooPrecise = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
+const NAMES: &str = "type CakePrice = Money {\n    currency: Currency.gbp\n    min: 0\n    rounding: Rounding.half_up\n}\n\ntype EuroPrice = Money {\n    currency: Currency.eur\n    min: 0\n}\n\ntype Charge = Money {\n    min: 0\n}\n\ntype Fee = Money {\n    currency: Currency.gbp\n    min: 1\n}\n\ntype Guests = Int {\n    min: 1\n    max: 20\n}\n\ntype Share = Int {\n    min: 0\n}\n\ntype Rate = Decimal {\n    scale: 2\n    min: 0.01\n}\n\ntype Pounds = Decimal {\n    scale: 2\n}\n\ntype Answer = Bool {}\n\ntype Factor = Decimal {\n    scale: 4\n}\n\ntype Amount = Money {}\n\ntype Euros = Money {\n    currency: Currency.eur\n}\n\ntype Pence = Int {}\n\ntype Mismatch = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype WrongCurrency = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype TooPrecise = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
 
 fn diagnostics(source: &str) -> Vec<Diagnostic> {
     let db = Database::default();
@@ -63,7 +63,7 @@ fn a_money_type_fixes_its_currency_bounds_and_rounding() {
 
 #[test]
 fn amounts_in_one_currency_add_compare_and_scale() {
-    let source = "function total(a: CakePrice, b: CakePrice) -> CakePrice {\n    return CakePrice(a + b)\n}\n\nfunction cheaper(a: CakePrice, b: CakePrice) -> Answer {\n    return Answer(a < b)\n}\n\nfunction doubled(a: CakePrice) -> CakePrice {\n    return CakePrice(a * 2)\n}\n\nfunction tax(a: CakePrice) -> CakePrice {\n    return CakePrice(a * 0.2)\n}\n\nfunction net(a: CakePrice) -> CakePrice {\n    return CakePrice(a / 1.20)\n}\n\nfunction scaled(a: CakePrice, rate: Rate) -> CakePrice {\n    return CakePrice(a / rate)\n}\n\nfunction times(a: Fee, fee: Fee) -> Ratio {\n    return Ratio(a / fee)\n}\n\nfunction same(a: CakePrice, b: CakePrice) -> Answer {\n    return Answer(a == b)\n}\n\nfunction plain(a: CakePrice) -> Answer {\n    return Answer(a == money.from_minor(500, Currency.gbp))\n}\n";
+    let source = "function total(a: CakePrice, b: CakePrice) -> CakePrice {\n    return CakePrice(a + b)\n}\n\nfunction cheaper(a: CakePrice, b: CakePrice) -> Answer {\n    return Answer(a < b)\n}\n\nfunction doubled(a: CakePrice) -> CakePrice {\n    return CakePrice(a * 2)\n}\n\nfunction tax(a: CakePrice) -> CakePrice {\n    return CakePrice(a * 0.2)\n}\n\nfunction net(a: CakePrice) -> CakePrice {\n    return CakePrice(a / 1.20)\n}\n\nfunction scaled(a: CakePrice, rate: Rate) -> CakePrice {\n    return CakePrice(a / rate)\n}\n\nfunction times(a: Fee, fee: Fee) -> Factor {\n    return Factor(a / fee)\n}\n\nfunction same(a: CakePrice, b: CakePrice) -> Answer {\n    return Answer(a == b)\n}\n\nfunction plain(a: CakePrice) -> Answer {\n    return Answer(a == money.from_minor(500, Currency.gbp))\n}\n";
     assert_eq!(rules(source), NONE);
 }
 
@@ -176,7 +176,7 @@ fn only_the_operator_tables_rows_take_money() {
             "type.arithmetic_operand",
         ),
         (
-            "function f(a: CakePrice, b: CakePrice) -> Ratio {\n    return Ratio(a / b)\n}\n",
+            "function f(a: CakePrice, b: CakePrice) -> Factor {\n    return Factor(a / b)\n}\n",
             "type.divisor_zero",
         ),
     ] {
@@ -190,7 +190,7 @@ fn the_money_operations_check() {
     assert_eq!(rules(source), NONE);
     assert_eq!(
         rules(
-            "function f(amount: Ratio) -> Amount {\n    return Amount(money.of(amount, Currency.gbp))\n}\n"
+            "function f(amount: Factor) -> Amount {\n    return Amount(money.of(amount, Currency.gbp))\n}\n"
         ),
         ["failure.attempt_required"],
         "a decimal with any places can have too many"
@@ -392,13 +392,13 @@ fn an_inverted_rate_is_a_compile_error() {
 fn an_exchange_rate_is_an_object_of_its_fields() {
     assert_eq!(
         rules(
-            "type Pair = Object {\n    from: Currency\n    to: Currency\n    rate: Ratio\n    at: Instant\n}\n"
+            "type Pair = Object {\n    from: Currency\n    to: Currency\n    rate: Factor\n    at: Instant\n}\n"
         ),
         ["type.standard_exists"],
         "its shape is the standard `ExchangeRate`"
     );
     assert_eq!(
-        rules("function f(rate: ExchangeRate) -> Ratio {\n    return Ratio(rate.rate)\n}\n"),
+        rules("function f(rate: ExchangeRate) -> Factor {\n    return Factor(rate.rate)\n}\n"),
         NONE,
         "its fields are read as an object's"
     );

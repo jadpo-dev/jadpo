@@ -50,7 +50,7 @@ fn an_else_if_chain_takes_the_first_condition_that_holds() {
 #[test]
 fn operators_work_on_the_representation() {
     let program = main(
-        "type Score = Int {}\n\ntype Ratio = Decimal {\n    scale: 2\n}\n\ntype Phrase = Text {}\n\ntype Flag = Bool {}\n\ntype Divisor = Int {\n    min: 1\n}\n\nfunction total(left: Score, right: Score) -> Score {\n    return Score(left + right * 2 - left % 3)\n}\n\nfunction label(prefix: Phrase, suffix: Phrase) -> Phrase {\n    return Phrase(prefix + \" \" + suffix)\n}\n\nfunction allowed(left: Score, right: Score, disabled: Flag) -> Flag {\n    return Flag(not disabled and (left < right or left == right))\n}\n\nfunction flip(n: Score) -> Score {\n    return Score(-n)\n}\n\nfunction halves(n: Divisor, d: Divisor) -> Score {\n    return Score(n / d)\n}\n\nfunction scaled(r: Ratio, n: Score) -> Ratio {\n    return Ratio(r * n)\n}\n",
+        "type Score = Int {}\n\ntype Factor = Decimal {\n    scale: 2\n}\n\ntype Phrase = Text {}\n\ntype Flag = Bool {}\n\ntype Divisor = Int {\n    min: 1\n}\n\nfunction total(left: Score, right: Score) -> Score {\n    return Score(left + right * 2 - left % 3)\n}\n\nfunction label(prefix: Phrase, suffix: Phrase) -> Phrase {\n    return Phrase(prefix + \" \" + suffix)\n}\n\nfunction allowed(left: Score, right: Score, disabled: Flag) -> Flag {\n    return Flag(not disabled and (left < right or left == right))\n}\n\nfunction flip(n: Score) -> Score {\n    return Score(-n)\n}\n\nfunction halves(n: Divisor, d: Divisor) -> Score {\n    return Score(n / d)\n}\n\nfunction scaled(r: Factor, n: Score) -> Factor {\n    return Factor(r * n)\n}\n",
     );
     assert_eq!(value(&program, "total", vec![int(7), int(5)]), int(16));
     assert_eq!(
@@ -107,7 +107,7 @@ fn and_and_or_stop_as_soon_as_the_answer_is_known() {
 fn division_rounds_where_it_is_stored_and_by_name_otherwise() {
     // Question 7.
     let program = main(
-        "type Amount = Decimal {\n    scale: 2\n    min: 0.01\n}\n\ntype Ratio = Decimal {\n    scale: 2\n}\n\ntype ItemCount = Int {\n    min: 0\n}\n\ntype BoxSize = Int {\n    min: 1\n}\n\ntype BoxCount = Int {}\n\nfunction ratio(a: Amount, b: Amount) -> Ratio {\n    return Ratio(a / b)\n}\n\nfunction boxes(items: ItemCount, box_size: BoxSize) -> BoxCount {\n    var boxes: BoxCount = BoxCount(integer.divide(items, box_size, rounding: Rounding.up))  // box_size can't be zero\n    return boxes\n}\n",
+        "type Amount = Decimal {\n    scale: 2\n    min: 0.01\n}\n\ntype Factor = Decimal {\n    scale: 2\n}\n\ntype ItemCount = Int {\n    min: 0\n}\n\ntype BoxSize = Int {\n    min: 1\n}\n\ntype BoxCount = Int {}\n\nfunction ratio(a: Amount, b: Amount) -> Factor {\n    return Factor(a / b)\n}\n\nfunction boxes(items: ItemCount, box_size: BoxSize) -> BoxCount {\n    var boxes: BoxCount = BoxCount(integer.divide(items, box_size, rounding: Rounding.up))  // box_size can't be zero\n    return boxes\n}\n",
     );
     let ratio =
         |a: &str, b: &str| value(&program, "ratio", vec![decimal(a), decimal(b)]).to_string();

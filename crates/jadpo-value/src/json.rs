@@ -818,6 +818,11 @@ fn scalar_from_text(builtin: Builtin, text: &str) -> Result<Value, &'static str>
             "false" => Ok(Value::Bool(false)),
             _ => Err("type"),
         },
+        // Its canonical text, `20%`, so a client never reads 0.2 as 0.2%
+        // (area 19).
+        Builtin::Percentage => jadpo_std::percentage::parse_text(text)
+            .map(|fraction| Value::Percentage(Decimal::new(fraction.mantissa, fraction.scale)))
+            .ok_or("format"),
         _ => Err("type"),
     }
 }

@@ -164,6 +164,9 @@ pub enum Column {
     /// A physical quantity, kept as `numeric` in its kind's base unit at
     /// its scale (area 19).
     Quantity(crate::QuantityKind),
+    /// A percentage, kept as `numeric`, the fraction it is: 20% is 0.20
+    /// (area 19).
+    Percentage,
     /// A plain variant, stored as its name: the enum and its variants in
     /// declared order.
     Enum {

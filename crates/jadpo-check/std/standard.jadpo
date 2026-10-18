@@ -93,6 +93,13 @@ public type ExchangeRate = Object {
 /// A file's IANA media type (area 16), written `image/png`.
 public type FileType = Enum {}
 
+/// An exact rational number as written (area 19), `3/4`: `1/2` and `2/4`
+/// are two values. `denominator` is at least 1.
+public type Fraction = Object {
+    numerator: Int
+    denominator: Int
+}
+
 /// A frequency, held in hertz to 3 places (area 19), written `50Hz` or
 /// `2.4GHz`.
 public type Frequency = Frequency {}
@@ -198,6 +205,11 @@ public type PaymentCardNumber = Text {}
 /// of Bacs's characters, `INV-2026/0042`.
 public type PaymentReference = Text {}
 
+/// A proportion where 0.20 is 20% (area 19), written `20%`: held as the
+/// exact fraction, shown as the reader's locale writes a percentage.
+/// `Percentage(ratio)` makes one from a `Decimal` ratio, 0.25 being 25%.
+public type Percentage = Percentage {}
+
 /// Power, held in watts to 3 places (area 19), written `3kW`.
 public type Power = Power {}
 
@@ -221,6 +233,13 @@ public type Money = Money {}
 public type Range = Object {
     start: T?
     end: T?
+}
+
+/// One number to another as written (area 19), `16:9`: `16:9` and `32:18`
+/// are two values.
+public type Ratio = Object {
+    numerator: Decimal
+    denominator: Decimal
 }
 
 /// When something recurs (area 19, RFC 5545): its first occurrence as a

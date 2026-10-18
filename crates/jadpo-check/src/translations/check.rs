@@ -637,9 +637,9 @@ impl Ctx<'_> {
         for field in uses {
             used.push(field.name.clone());
             if let Some((_, kind)) = allowed.iter().find(|(name, _)| *name == field.name) {
-                // An amount of money is written with its style, and only an
-                // amount of money is (area 19, question 16).
-                if (*kind == ParamKind::Money) != field.currency {
+                // An amount of money and a percentage are each written with
+                // its style, and nothing else is (area 19, question 16).
+                if jadpo_std::translation::Style::of(*kind) != field.style {
                     clean = false;
                     self.problems
                         .push(style_problem(subject, written, &field, *kind));
@@ -973,42 +973,58 @@ fn feature_off(
     ))
 }
 
-/// `{price}` for an amount of money, which is written `{price, number,
-/// currency}`, or that style on a field that isn't one.
+/// A field written with the wrong style: `{price}` for an amount of
+/// money, which is written `{price, number, currency}`, `{rate}` for a
+/// percentage, written `{rate, number, percent}`, or a style on a field
+/// of another kind.
 fn style_problem(
     subject: &Subject,
     written: &Written,
     field: &jadpo_std::translation::FieldUse,
     kind: ParamKind,
 ) -> Diagnostic {
+    use jadpo_std::translation::Style;
     let name = &field.name;
-    let styled = format!("{{{name}{}}}", jadpo_std::translation::CURRENCY_STYLE);
     let plain = format!("{{{name}}}");
     let span = written.range(field.start, field.end);
-    if kind == ParamKind::Money {
-        Diagnostic::new(
+    let styled = |style: Style| format!("{{{name}{}}}", style.written());
+    if let Some(style) = Style::of(kind) {
+        let right = styled(style);
+        let (what, shown) = match style {
+            Style::Currency => ("money", "with its symbol and the currency's places"),
+            Style::Percent => ("a percentage", "with the `%` where the locale writes it"),
+        };
+        let (as_written, label) = match field.style {
+            Some(other) => (styled(other), "another style"),
+            None => (plain, "no style"),
+        };
+        return Diagnostic::new(
             &rule::TRANSLATION_PLACEHOLDER_STYLE,
-            format!("`{plain}` is an amount of money, written `{styled}`"),
+            format!("`{as_written}` is {}, written `{right}`", kind.word()),
         )
-        .at(span.clone(), "no style")
+        .at(span.clone(), label)
         .reason(format!(
-            "`{}.{name}` is money, and a wording writes an amount of money with its style, `{styled}`, so the translator sees it is one; it is shown as `text.format` shows it in the reader's locale, with its symbol and the currency's places.",
-            subject.type_name
-        ))
-        .next(format!("Write `{styled}`"))
-        .edit(span, styled)
-    } else {
-        Diagnostic::new(
-            &rule::TRANSLATION_PLACEHOLDER_STYLE,
-            format!("`{styled}` writes {} as money", kind.word()),
-        )
-        .at(span.clone(), "not money")
-        .reason(format!(
-            "`, number, currency` is the style of an amount of money, and `{}.{name}` is {}, which a wording writes as `{plain}`.",
+            "`{}.{name}` is {what}, and a wording writes {} with its style, `{right}`, so the translator sees it is one; it is shown as `text.format` shows it in the reader's locale, {shown}.",
             subject.type_name,
             kind.word()
         ))
-        .next(format!("Write `{plain}`"))
-        .edit(span, plain)
+        .next(format!("Write `{right}`"))
+        .edit(span, right);
     }
+    let written_style = field.style.unwrap_or(Style::Currency);
+    let wrong = styled(written_style);
+    let as_what = written_style.kind().word();
+    Diagnostic::new(
+        &rule::TRANSLATION_PLACEHOLDER_STYLE,
+        format!("`{wrong}` writes {} as {as_what}", kind.word()),
+    )
+    .at(span.clone(), format!("not {as_what}"))
+    .reason(format!(
+        "`{}` is the style of {as_what}, and `{}.{name}` is {}, which a wording writes as `{plain}`.",
+        written_style.written(),
+        subject.type_name,
+        kind.word()
+    ))
+    .next(format!("Write `{plain}`"))
+    .edit(span, plain)
 }

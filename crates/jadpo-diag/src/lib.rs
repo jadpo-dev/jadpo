@@ -720,6 +720,8 @@ rules! {
         "02-values-and-types.html#syntax-nullable-type", "Nullable type written in another language's form";
     SYNTAX_OPTIONAL_CHAINING: "syntax.optional_chaining", area 2, Error, Agent,
         "02-values-and-types.html#syntax-optional-chaining", "Field of a missing value read with `?.`";
+    SYNTAX_PERCENT_AMBIGUOUS: "syntax.percent_ambiguous", area 19, Error, Agent,
+        "19-standard-library.html#syntax-percent-ambiguous", "A number, `%` and a value with no spaces could be a percentage or a remainder";
     SYNTAX_POSITIONAL_AFTER_NAMED: "syntax.positional_after_named", area 3, Error, Agent,
         "03-logic.html#syntax-positional-after-named", "Positional argument follows a named one";
     SYNTAX_RETURN_TYPE_ARROW: "syntax.return_type_arrow", area 3, Error, Agent,

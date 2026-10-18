@@ -25,6 +25,9 @@ pub enum Const {
     /// 19, "Physical quantities"): any other suffix than a duration's,
     /// which may name no unit at all (`type.unit_unknown`).
     Quantity(String),
+    /// A percentage such as `20%` or `-12.5%`, as written (area 19): the
+    /// fraction its number over 100 is.
+    Percentage(String),
     /// A string, with its escapes decoded.
     Str(String),
     Bool(bool),
@@ -50,6 +53,7 @@ impl Const {
             },
             Const::Duration(written) => Literal::Duration(written.clone()),
             Const::Quantity(written) => Literal::Quantity(written.clone()),
+            Const::Percentage(written) => Literal::Percentage(written.clone()),
             Const::Str(text) => Literal::Text(text.clone()),
             Const::Bool(value) => Literal::Bool(*value),
             Const::None => Literal::None,
@@ -104,6 +108,11 @@ impl Const {
                     value,
                     decimal: true,
                 }),
+            // A number and `%` is a percentage, which may be negative
+            // (area 19).
+            jadpo_syntax::SyntaxKind::UNIT_NUMBER if text.ends_with('%') => {
+                Const::Percentage(format!("{sign}{text}"))
+            }
             // A duration's suffix (`ms`, `s`, `m`, `h`, `d`) makes a
             // duration; any other a quantity, which may be negative
             // (`-40degC`), area 19.
@@ -132,6 +141,7 @@ impl Const {
             Const::Number { .. } => "a whole number",
             Const::Duration(_) => "a duration",
             Const::Quantity(_) => "a quantity",
+            Const::Percentage(_) => "a percentage",
             Const::Str(_) => "text",
             Const::Bool(_) => "a `Bool`",
             Const::None => "`none`",
@@ -154,6 +164,14 @@ impl Const {
     pub fn quantity(&self) -> Option<(&'static jadpo_std::QuantityUnit, i128)> {
         match self {
             Const::Quantity(text) => jadpo_std::quantity::parse_literal(text).ok(),
+            _ => None,
+        }
+    }
+
+    /// The fraction a percentage literal is: `20%` is 0.20.
+    pub fn percentage(&self) -> Option<Num> {
+        match self {
+            Const::Percentage(text) => jadpo_std::percentage::parse_literal(text),
             _ => None,
         }
     }
@@ -301,6 +319,27 @@ pub fn constraint(
                         None,
                     ));
                 }
+                // A percentage's bounds are written with `%` and held as
+                // fractions, as its values are (area 19).
+                (Subject::Prim(Prim::Percentage), found @ Const::Percentage(_)) => {
+                    match found.percentage() {
+                        Some(fraction) => Some(fraction),
+                        None => {
+                            return Err(Problem::Value(
+                                "a percentage written with `%`, such as `0%`".into(),
+                                None,
+                            ));
+                        }
+                    }
+                }
+                // A bare number could be a ratio or a percentage (0.2 or
+                // 20), so no edit guesses which.
+                (Subject::Prim(Prim::Percentage), _) => {
+                    return Err(Problem::Value(
+                        "a percentage written with `%`, such as `0%`".into(),
+                        None,
+                    ));
+                }
                 // A quantity's bounds are written with a unit and held in
                 // its kind's base unit at its scale, as its values are
                 // (area 19).
@@ -330,7 +369,7 @@ pub fn constraint(
                 },
                 _ => {
                     return Err(Problem::Base(
-                        "`Int`, `Decimal`, `Duration`, `Money` and quantity types",
+                        "`Int`, `Decimal`, `Duration`, `Money`, `Percentage` and quantity types",
                     ));
                 }
             };
@@ -554,6 +593,10 @@ pub fn check_rules(rules: &Rules, value: &Const) -> Result<(), Broken> {
         Const::Str(text) => rules.check_text(text),
         Const::Quantity(_) => match value.quantity() {
             Some((unit, amount)) => rules.check_quantity(unit.kind, amount),
+            None => Ok(()),
+        },
+        Const::Percentage(_) => match value.percentage() {
+            Some(fraction) => rules.check_percentage(fraction),
             None => Ok(()),
         },
         Const::List(items) => rules.check_length(items.len() as u64, "items"),

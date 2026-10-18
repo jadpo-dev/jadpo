@@ -38,11 +38,13 @@ use crate::{Fault, Value, Zoned, temporal};
 mod message;
 pub mod money;
 pub(crate) mod names;
+mod percent;
 pub mod pseudo;
 mod relative;
 pub mod units;
 
 pub use message::{number, translate};
+pub use percent::percent;
 pub use relative::format_relative;
 
 type Zdt = ZonedDateTime<Gregorian, TimeZoneInfo<models::AtTime>>;

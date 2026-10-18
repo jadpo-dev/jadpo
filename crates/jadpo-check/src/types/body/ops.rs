@@ -109,6 +109,7 @@ impl Body<'_> {
             Operand::Literal(value @ Const::Quantity(_)) => {
                 value.quantity().map(|(unit, _)| Prim::Quantity(unit.kind))
             }
+            Operand::Literal(Const::Percentage(_)) => Some(Prim::Percentage),
             Operand::Literal(_) => None,
             Operand::Value(ty) => self.table.representation(ty),
         }
@@ -139,7 +140,7 @@ impl Body<'_> {
             (Operand::Literal(value), Operand::Value(ty))
             | (Operand::Value(ty), Operand::Literal(value)) => !matches!(
                 literal::check(self.table, ty.strip_nullable(), value),
-                Err(literal::Problem::Kind { .. })
+                Err(literal::Problem::Kind { .. } | literal::Problem::PercentRequired(_))
             ),
             (Operand::Value(x), Operand::Value(y)) => {
                 let (x, y) = (x.strip_nullable(), y.strip_nullable());
@@ -381,6 +382,43 @@ impl Body<'_> {
         false
     }
 
+    /// A bare number compared with a percentage (area 19): it could be a
+    /// ratio or a percentage already, so the next step names both; whether
+    /// one was.
+    fn bare_beside_percentage(
+        &mut self,
+        binary: &ast::BinExpr,
+        rule: &'static jadpo_diag::Rule,
+        done: &str,
+        (lhs, a): (&Expr, &Operand),
+        (rhs, b): (&Expr, &Operand),
+    ) -> bool {
+        for (side, operand, other) in [(lhs, a, b), (rhs, b, a)] {
+            if let (Operand::Literal(Const::Number { value, .. }), Some(Prim::Percentage)) =
+                (operand, self.rep(other))
+            {
+                let written = tree::written(side.syntax());
+                let span = self.span(binary);
+                self.out.push(
+                    Diagnostic::new(
+                        rule,
+                        format!(
+                            "{} and `{written}` can't be {done}: `{written}` is a bare number",
+                            capital(&other.shown())
+                        ),
+                    )
+                    .at(span, "a percentage and a bare number")
+                    .reason(format!(
+                        "A percentage is written with `%`, so `{written}` could be read two ways: as a ratio, where 0.2 is 20%, or as a percentage already, where 20 is 20%."
+                    ))
+                    .next(literal::percent_readings(*value, &written)),
+                );
+                return true;
+            }
+        }
+        false
+    }
+
     fn equality(
         &mut self,
         binary: &ast::BinExpr,
@@ -388,7 +426,15 @@ impl Body<'_> {
         (lhs, a): (&Expr, &Operand),
         (rhs, b): (&Expr, &Operand),
     ) {
-        if self.bare_beside_quantity((lhs, a), (rhs, b)) {
+        if self.bare_beside_quantity((lhs, a), (rhs, b))
+            || self.bare_beside_percentage(
+                binary,
+                &rule::TYPE_INCOMPARABLE,
+                "compared",
+                (lhs, a),
+                (rhs, b),
+            )
+        {
             return;
         }
         let span = self.span(binary);
@@ -448,7 +494,15 @@ impl Body<'_> {
         (lhs, a): (&Expr, &Operand),
         (rhs, b): (&Expr, &Operand),
     ) {
-        if self.bare_beside_quantity((lhs, a), (rhs, b)) {
+        if self.bare_beside_quantity((lhs, a), (rhs, b))
+            || self.bare_beside_percentage(
+                binary,
+                &rule::TYPE_ORDERING_OPERAND,
+                "ordered",
+                (lhs, a),
+                (rhs, b),
+            )
+        {
             return;
         }
         for (side, operand) in [(lhs, a), (rhs, b)] {
@@ -581,6 +635,9 @@ impl Body<'_> {
             .any(|prim| matches!(prim, Some(Prim::Quantity(_))))
         {
             return self.quantity_arithmetic(binary, op, (lhs, a), (rhs, b));
+        }
+        if [ra, rb].contains(&Some(Prim::Percentage)) {
+            return self.percentage_arithmetic(binary, op, (lhs, a), (rhs, b));
         }
         if [ra, rb].iter().any(|prim| prim.is_some_and(is_time)) {
             return self.time_arithmetic(binary, op, a, b);
@@ -788,12 +845,18 @@ impl Body<'_> {
                 }
                 Ty::Prim(Prim::Quantity(x))
             }
-            ("*", Some(Prim::Quantity(x)), other) if number(other) => Ty::Prim(Prim::Quantity(x)),
+            ("*", Some(Prim::Quantity(x)), other)
+                if number(other) || other == Some(Prim::Percentage) =>
+            {
+                Ty::Prim(Prim::Quantity(x))
+            }
             ("/", Some(Prim::Quantity(x)), other) if number(other) => {
                 self.divisor(rhs, b);
                 Ty::Prim(Prim::Quantity(x))
             }
-            ("*", other, Some(Prim::Quantity(_))) if number(other) => {
+            ("*", other, Some(Prim::Quantity(_)))
+                if number(other) || other == Some(Prim::Percentage) =>
+            {
                 let (left, right) = (tree::written(lhs.syntax()), tree::written(rhs.syntax()));
                 self.out.push(
                     Diagnostic::new(
@@ -802,7 +865,7 @@ impl Body<'_> {
                     )
                     .at(span.clone(), "the number first")
                     .reason(format!(
-                        "The standard operator table multiplies a quantity by a number, the quantity first, as it does money: `{right} * {left}`."
+                        "The standard operator table multiplies a quantity by a number or a percentage, the quantity first, as it does money: `{right} * {left}`."
                     ))
                     .next(format!("Write `{right} * {left}`"))
                     .edit(span, format!("{right} * {left}")),
@@ -882,6 +945,98 @@ impl Body<'_> {
         }
     }
 
+    /// The operator table's `Percentage` rows (area 19, "The standard
+    /// operator table") besides money's and quantities': two percentages
+    /// add, subtract and multiply to a percentage (area 3's named-type
+    /// rule holding for `+` and `-`), a percentage times a number is a
+    /// percentage, and a number times a percentage keeps the number's kind,
+    /// a `Decimal`, as `*` by a `Decimal` gives (area 3). Anything else is
+    /// refused: no row divides a percentage or adds one to a number.
+    fn percentage_arithmetic(
+        &mut self,
+        binary: &ast::BinExpr,
+        op: &str,
+        (lhs, a): (&Expr, &Operand),
+        (rhs, b): (&Expr, &Operand),
+    ) -> Ty {
+        let (ra, rb) = (self.rep(a), self.rep(b));
+        let (sa, sb) = (a.shown(), b.shown());
+        let span = self.span(binary);
+        let pct = Some(Prim::Percentage);
+        let number = |prim: Option<Prim>| prim.is_some_and(Prim::is_number);
+        let refuse = |body: &mut Self, label: &str, reason: String, next: String| {
+            body.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_ARITHMETIC_OPERAND,
+                    format!("{} and {} can't be {}", capital(&sa), sb, verb(op)),
+                )
+                .at(span.clone(), label.to_string())
+                .reason(reason)
+                .next(next),
+            );
+            Ty::Error
+        };
+        match (op, ra, rb) {
+            ("+" | "-", x, y) if x == pct && y == pct => {
+                if !Self::unitless(a) && !Self::unitless(b) && !self.same_type(a, b) {
+                    return refuse(
+                        self,
+                        "different types",
+                        format!(
+                            "`{op}` needs the same named type on both sides, or a plain percentage a literal or another operator made; {sa} and {sb} are different types."
+                        ),
+                        "Use two percentages of the same type".to_string(),
+                    );
+                }
+                Ty::Prim(Prim::Percentage)
+            }
+            ("*", x, y) if x == pct && (y == pct || number(y)) => Ty::Prim(Prim::Percentage),
+            ("*", x, y) if number(x) && y == pct => Ty::Prim(Prim::Decimal),
+            ("+" | "-", x, y) if (x == pct && number(y)) || (number(x) && y == pct) => {
+                let (bare, bare_expr) = if number(ra) { (a, lhs) } else { (b, rhs) };
+                match bare {
+                    Operand::Literal(Const::Number { value, .. }) => {
+                        let written = tree::written(bare_expr.syntax());
+                        refuse(
+                            self,
+                            "a bare number",
+                            format!(
+                                "A percentage adds only a percentage, and `{written}` is a bare number, which could be read two ways: as a ratio, where 0.2 is 20%, or as a percentage already, where 20 is 20%."
+                            ),
+                            literal::percent_readings(*value, &written),
+                        )
+                    }
+                    _ => refuse(
+                        self,
+                        "a number and a percentage",
+                        format!(
+                            "A percentage adds only a percentage; {} is a number. A number is scaled by a percentage with `*`.",
+                            bare.shown()
+                        ),
+                        "Multiply the number by the percentage, or add two percentages".to_string(),
+                    ),
+                }
+            }
+            ("/", x, _) if x == pct => refuse(
+                self,
+                "a percentage divided",
+                "The standard operator table multiplies by a percentage and adds percentages; no row divides one, which would leave the reader to work out what the result is.".to_string(),
+                format!(
+                    "Multiply instead, such as `{} * 50%` to halve it",
+                    tree::written(lhs.syntax())
+                ),
+            ),
+            _ => refuse(
+                self,
+                "not in the operator table",
+                format!(
+                    "A percentage adds to and subtracts from a percentage, and is multiplied by a number or a percentage, or scales a number, an amount of money or a quantity written before it; {sa} and {sb} are none of those."
+                ),
+                "Use an operator the standard operator table gives percentages".to_string(),
+            ),
+        }
+    }
+
     /// The operator table's `Money` rows (area 19, "The standard operator
     /// table"): `+` and `-` of two amounts in one currency, `*` by a
     /// number, `/` by a `Decimal` rate, each giving a plain `Money`, and
@@ -943,7 +1098,51 @@ impl Body<'_> {
                     Ty::Prim(Prim::Money)
                 }
             }
-            ("*", true, false) if number(rb) => Ty::Prim(Prim::Money),
+            ("*", true, false) if number(rb) || rb == Some(Prim::Percentage) => {
+                Ty::Prim(Prim::Money)
+            }
+            // Adding a percentage to money could mean two things (area
+            // 19): the fix writes each.
+            ("+" | "-", true, false) if rb == Some(Prim::Percentage) => {
+                let price = tree::written(lhs.syntax());
+                let rate = tree::written(rhs.syntax());
+                let scaled = match b {
+                    Operand::Literal(value) => value.percentage().and_then(|fraction| {
+                        let whole = jadpo_std::Num {
+                            mantissa: 10i128.checked_pow(fraction.scale)?,
+                            scale: fraction.scale,
+                        };
+                        let mantissa = if op == "+" {
+                            whole.mantissa.checked_add(fraction.mantissa)?
+                        } else {
+                            whole.mantissa.checked_sub(fraction.mantissa)?
+                        };
+                        Some(jadpo_std::percentage::canonical(mantissa, fraction.scale))
+                    }),
+                    Operand::Value(_) => None,
+                }
+                .unwrap_or_else(|| format!("(100% {op} {rate})"));
+                let span = span.clone();
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_ARITHMETIC_OPERAND,
+                        format!(
+                            "{} and {} can't be {}: it could mean two things",
+                            capital(&sa),
+                            sb,
+                            verb(op)
+                        ),
+                    )
+                    .at(span, "an amount and a percentage")
+                    .reason(format!(
+                        "`{price} {op} {rate}` could mean {} by {rate} of itself, or {rate} of some other amount; the standard operator table refuses it rather than guess. A percentage scales money by `*`."
+                    , if op == "+" { "the amount raised" } else { "the amount lowered" }))
+                    .next(format!(
+                        "Write `{price} * {scaled}`, or `{price} {op} {price} * {rate}`, whichever is meant"
+                    )),
+                );
+                Ty::Error
+            }
             ("/", true, false) if rb == Some(Prim::Decimal) => {
                 self.divisor(rhs, b);
                 Ty::Prim(Prim::Money)
@@ -968,7 +1167,12 @@ impl Body<'_> {
                 );
                 Ty::Error
             }
-            (_, false, true) if number(ra) || matches!(a, Operand::Literal(_)) => refuse(
+            (_, false, true)
+                if number(ra)
+                    || ra == Some(Prim::Percentage)
+                    || matches!(a, Operand::Literal(_)) =>
+            {
+                refuse(
                 self,
                 "a number and an amount",
                 format!(
@@ -983,7 +1187,8 @@ impl Body<'_> {
                 } else {
                     "Use an amount on the left of the operator".to_string()
                 },
-            ),
+            )
+            }
             ("*", true, true) => refuse(
                 self,
                 "two amounts",

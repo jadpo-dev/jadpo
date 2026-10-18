@@ -69,14 +69,18 @@ pub fn int_negate(a: i64) -> Result<i64, Fault> {
     a.checked_neg().ok_or(Fault::IntOverflow)
 }
 
-/// Both operands as decimals when either is one.
-fn decimals(a: &Value, b: &Value) -> Option<(Decimal, Decimal)> {
-    let decimal = |value: &Value| match value {
+/// A number as a decimal.
+fn as_decimal(value: &Value) -> Option<Decimal> {
+    match value {
         Value::Decimal(d) => Some(*d),
         Value::Int(n) => Some(Decimal::from_int(*n)),
         _ => None,
-    };
-    Some((decimal(a)?, decimal(b)?))
+    }
+}
+
+/// Both operands as decimals when either is one.
+fn decimals(a: &Value, b: &Value) -> Option<(Decimal, Decimal)> {
+    Some((as_decimal(a)?, as_decimal(b)?))
 }
 
 fn decimal_result(result: Option<Decimal>) -> Result<Value, Fault> {
@@ -102,11 +106,19 @@ pub fn add(a: &Value, b: &Value) -> Result<Value, Fault> {
         (a, b) if crate::calendar::is_period(a) => crate::calendar::combine(a, b, false),
         (Value::Money(x), Value::Money(y)) => crate::money::add(*x, *y).map(Value::Money),
         (Value::Quantity(_), _) | (_, Value::Quantity(_)) => crate::units::add(a, b),
+        // Two percentages add to a percentage; nothing else adds one
+        // (area 19, the standard operator table).
+        (Value::Percentage(x), Value::Percentage(y)) => percentage(x.checked_add(*y)),
+        (Value::Percentage(_), _) | (_, Value::Percentage(_)) => Err(Fault::Shape),
         _ => {
             let (x, y) = decimals(a, b).ok_or(Fault::Shape)?;
             decimal_result(x.checked_add(y))
         }
     }
+}
+
+fn percentage(result: Option<Decimal>) -> Result<Value, Fault> {
+    result.map(Value::Percentage).ok_or(Fault::DecimalOverflow)
 }
 
 /// `a - b`: numbers, two durations, an instant moved back by a duration,
@@ -124,6 +136,8 @@ pub fn subtract(a: &Value, b: &Value) -> Result<Value, Fault> {
         (a, b) if crate::calendar::is_period(a) => crate::calendar::combine(a, b, true),
         (Value::Money(x), Value::Money(y)) => crate::money::subtract(*x, *y).map(Value::Money),
         (Value::Quantity(_), _) | (_, Value::Quantity(_)) => crate::units::subtract(a, b),
+        (Value::Percentage(x), Value::Percentage(y)) => percentage(x.checked_sub(*y)),
+        (Value::Percentage(_), _) | (_, Value::Percentage(_)) => Err(Fault::Shape),
         _ => {
             let (x, y) = decimals(a, b).ok_or(Fault::Shape)?;
             decimal_result(x.checked_sub(y))
@@ -151,10 +165,27 @@ pub fn multiply_rounded(
     rounding: jadpo_std::Rounding,
 ) -> Result<Value, Fault> {
     match (a, b) {
+        // An amount or a quantity times a percentage is times the fraction
+        // it is (area 19, the standard operator table).
+        (Value::Money(amount), Value::Percentage(fraction)) => {
+            crate::money::multiply(*amount, &Value::Decimal(*fraction), rounding).map(Value::Money)
+        }
         (Value::Money(amount), factor) => {
             crate::money::multiply(*amount, factor, rounding).map(Value::Money)
         }
+        (Value::Quantity(_), Value::Percentage(fraction)) => {
+            crate::units::multiply(a, &Value::Decimal(*fraction))
+        }
         (Value::Quantity(_), _) | (_, Value::Quantity(_)) => crate::units::multiply(a, b),
+        // A percentage times a number or a percentage is a percentage; a
+        // number times a percentage is the number's kind, a `Decimal`.
+        (Value::Percentage(x), Value::Percentage(y)) => percentage(x.checked_mul(*y)),
+        (Value::Percentage(x), number) => {
+            percentage(x.checked_mul(as_decimal(number).ok_or(Fault::Shape)?))
+        }
+        (number, Value::Percentage(y)) => {
+            decimal_result(as_decimal(number).ok_or(Fault::Shape)?.checked_mul(*y))
+        }
         (Value::Int(x), Value::Int(y)) => int_multiply(*x, *y).map(Value::Int),
         // A period's parts each multiplied (area 19).
         (period, Value::Int(n)) if crate::calendar::is_period(period) => {
@@ -235,6 +266,7 @@ pub fn compare(a: &Value, b: &Value) -> Option<Ordering> {
     match (a, b) {
         (Value::Money(x), Value::Money(y)) => crate::money::compare(*x, *y).ok(),
         (Value::Quantity(x), Value::Quantity(y)) => crate::units::compare(*x, *y),
+        (Value::Percentage(x), Value::Percentage(y)) => Some(x.cmp(y)),
         (Value::Int(x), Value::Int(y)) => Some(x.cmp(y)),
         (Value::Instant(x), Value::Instant(y)) | (Value::Duration(x), Value::Duration(y)) => {
             Some(x.cmp(y))
