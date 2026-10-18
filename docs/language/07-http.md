@@ -1296,7 +1296,7 @@ check failed: 1 error, 1 file
 
 ### `route.query_field_unsupported`
 
-A `GET` or `DELETE` reads its input from the query string, which holds scalars, enums and lists of them:
+A `GET` or `DELETE` reads its input from the query string, which holds scalars, enums and lists of them (an amount of money, a quantity and a `ZonedTime`, which JSON sends as objects, are objects here too, chunk 5.5w2):
 
 ```jadpo check project=e-query-field-unsupported expect=route.query_field_unsupported
 type Memo = Text {

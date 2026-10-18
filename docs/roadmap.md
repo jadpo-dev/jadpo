@@ -1186,7 +1186,7 @@ reference only).
   that is a built-in type held as a standard type (`OidcClaims`' `email`)
   as that type. What the chunk chose is area 19's "Chosen in chunk 5.5w",
   the encodings its "Every boundary through the contract".
-- [ ] **5.5w2 Every boundary through the contract: JSON and the built
+- [x] **5.5w2 Every boundary through the contract: JSON and the built
   boundaries** `opus · high` (area 19; split from 5.5w), after 5.5w.
   First, a privacy fix (lead session, 2026-10-18): a value that a column
   can't hold is written into the fault's text (`jadpo-runtime/src/read.rs`
@@ -1210,7 +1210,14 @@ reference only).
   and traces, email, outbound provider calls, files) take their
   round-trip test with the chunk that builds each, by the encoding 5.5w
   decided. Split on 2026-10-18: the `jsonb` storage of the JSON-held
-  values is 5.5w2b.
+  values is 5.5w2b. Built: one reader per built-in type's text
+  (`jadpo_value::standard::builtin_text`) behind every boundary; map keys
+  as canonical text, a key type with none `type.mismatch`; money,
+  quantities and zoned times refused in a URL; OpenAPI's `Range<T>`; the
+  boundary test generated from the entries
+  (`jadpo-cli/tests/standard_boundaries.rs`, with settings in the
+  runtime harness). What it chose, and what clients see change, is area
+  19's "Chosen in chunk 5.5w2".
 - [ ] **5.5w2b Every boundary through the contract: the JSON-held values
   in storage** `opus · high` (area 19; split from 5.5w2), after 5.5w2:
   `RichText`, `RichTextBlock` and `LocalisedText` are stored as area 5's
