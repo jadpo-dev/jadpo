@@ -385,6 +385,54 @@ fn every_standard_type_meets_the_contract() {
                 read(entry, text)
                     .unwrap_or_else(|fault| panic!("{name}: `{text}` reads ({fault:?})"))
             };
+            if entry.text == Some(jadpo_std::standard::TextForm::Secret) {
+                // A secret value (chunk 5.5r2): read from text and JSON,
+                // compared, and never written, shown or stored.
+                assert!(matches!(value, Value::Secret(_)), "{name}: held secret");
+                assert_eq!(
+                    standard::parse(text, &parsed_as(entry)),
+                    Ok(value.clone()),
+                    "{name}: `text.parse` reads it"
+                );
+                assert_eq!(standard::from(&value), Err(Fault::Shape), "{name}");
+                assert_eq!(
+                    standard::canonical(entry, &value),
+                    Err(Fault::Shape),
+                    "{name}"
+                );
+                assert_eq!(value.to_string(), *shown, "{name}: written redacted");
+                assert!(
+                    !format!("{value:?}").contains(text),
+                    "{name}: never debugged"
+                );
+                assert_eq!(
+                    standard::shown(entry, &value, "en-GB", &Value::None, &Value::None).as_deref(),
+                    Ok(*shown),
+                    "{name}: never shown"
+                );
+                let mut json = String::new();
+                table.write(CodecId(0), &value, &mut json);
+                assert_eq!(
+                    json,
+                    format!("\"{shown}\""),
+                    "{name}: never written as JSON"
+                );
+                let mut problems = Vec::new();
+                let sent = serde_json::Value::String((*text).to_string());
+                assert_eq!(
+                    table.read(CodecId(0), &sent, &Path::default(), &mut problems),
+                    Some(value.clone()),
+                    "{name}: read from JSON ({problems:?})"
+                );
+                assert_eq!(entry.storage, jadpo_std::standard::Storage::Never, "{name}");
+                assert!(
+                    jadpo_runtime::to_sql(&value, jadpo_std::SqlType::Text)
+                        .is_err_and(|why| !why.contains(text)),
+                    "{name}: never stored"
+                );
+                values.push(value);
+                continue;
+            }
             if entry.text.is_none() {
                 assert_eq!(
                     standard::from(&value),
@@ -436,6 +484,7 @@ fn every_standard_type_meets_the_contract() {
             let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
             match entry.json {
                 Json::Text if entry.text.is_none() => panic!("{name}: JSON is its fields"),
+                Json::Secret => unreachable!("{name}: a secret value is checked above"),
                 Json::Text => assert_eq!(
                     parsed,
                     serde_json::Value::String((*text).to_string()),

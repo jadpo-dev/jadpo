@@ -273,6 +273,28 @@ impl Body<'_> {
                 Ty::Error
             };
         }
+        // A secret value is compared with `==` and `!=`, in constant time,
+        // and nothing else (area 19, chunk 5.5r2): an order, a match or a
+        // sum would make another value from it.
+        if !matches!(op.as_str(), "==" | "!=" | "and" | "or") {
+            for (side, operand) in [(&lhs, &a), (&rhs, &b)] {
+                if let Operand::Value(ty) = operand
+                    && let Some(secret) = super::super::secrets::secret_in(self.table, ty)
+                {
+                    let span = self.span(side);
+                    self.out.push(super::super::secrets::made_from(
+                        &format!("`{op}`"),
+                        secret,
+                        span,
+                    ));
+                    return if comparison {
+                        Ty::Prim(Prim::Bool)
+                    } else {
+                        Ty::Error
+                    };
+                }
+            }
+        }
         match op.as_str() {
             "and" | "or" => {
                 for (side, operand) in [(&lhs, &a), (&rhs, &b)] {

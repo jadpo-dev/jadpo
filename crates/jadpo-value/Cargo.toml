@@ -23,7 +23,8 @@ license.workspace = true
 # person's name in (area 19, "People and contact"). pulldown-cmark renders
 # CommonMark for `markup.to_html` (area 19, "Text formats"). serde's
 # traits read a token's JSON refusing a member named twice
-# (`crypto.verify_jwt`, area 19, chunk 5.5r).
+# (`crypto.verify_jwt`, area 19, chunk 5.5r). subtle compares a secret
+# value in constant time (area 19, chunk 5.5r2).
 [dependencies]
 jadpo-std.workspace = true
 jiff.workspace = true
@@ -49,6 +50,7 @@ chacha20poly1305.workspace = true
 argon2.workspace = true
 hmac.workspace = true
 ed25519-dalek.workspace = true
+subtle.workspace = true
 pulldown-cmark.workspace = true
 
 [lints]

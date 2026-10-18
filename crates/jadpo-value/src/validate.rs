@@ -141,6 +141,14 @@ impl Validator {
         {
             return Some(Value::text(&jadpo_std::standard::markup::sanitise(text)));
         }
+        // A secret value is held so that it is never written out (area 19,
+        // chunk 5.5r2), whatever text it is built from: a literal, a
+        // request's JSON, `json.read`.
+        if let Value::Text(text) = &value
+            && let Some(kind) = self.secret()
+        {
+            return Some(Value::secret(kind, text));
+        }
         // A `Vector`'s items are kept as the nearest single-precision
         // floats, whatever decimals it is built from (chunk 5.5s2).
         if let Value::List(items) = &value
@@ -170,6 +178,16 @@ impl Validator {
         }
     }
 
+    /// The secret value standard type its chain is built on, if any: a
+    /// `Password`, or a type built on one (chunk 5.5r2).
+    pub fn secret(&self) -> Option<&'static str> {
+        self.rules.iter().find_map(|(rules, _)| {
+            rules
+                .standard
+                .and_then(jadpo_std::standard::security::secret_value)
+        })
+    }
+
     /// Checks `value` against the built-in type and every rule.
     pub fn check(&self, value: &Value) -> Result<(), Invalid> {
         if let (Some(builtin), Value::Text(text) | Value::Uuid(text)) = (self.builtin, value) {
@@ -185,6 +203,9 @@ impl Validator {
                 Value::Text(text) | Value::Uuid(text) => {
                     rules.check_text_with(text, pattern.as_ref())
                 }
+                // A broken rule names the rule, never the text (chunk
+                // 5.5r2).
+                Value::Secret(secret) => rules.check_text_with(secret.expose(), pattern.as_ref()),
                 Value::Bytes(bytes) => rules.check_length(bytes.len() as u64, "bytes"),
                 Value::List(items) | Value::Set(items) => {
                     rules.check_length(items.len() as u64, "items")

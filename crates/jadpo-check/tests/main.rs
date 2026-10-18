@@ -55,6 +55,7 @@ mod records_measures;
 mod review;
 mod scale;
 mod schedules;
+mod secrets;
 mod sets_maps;
 mod setting_move;
 mod signed;

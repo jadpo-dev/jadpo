@@ -84,6 +84,10 @@ pub fn from(value: &Value) -> Result<Value, Fault> {
 /// writes it.
 pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
     let form = entry.text.ok_or(Fault::Shape)?;
+    // A secret value has no text a program reads back (chunk 5.5r2).
+    if form == TextForm::Secret {
+        return Err(Fault::Shape);
+    }
     if let Some(text) = crate::calendar::canonical(form, value) {
         return text;
     }
@@ -474,6 +478,9 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
     }
     let read = match form {
         TextForm::Checked => entry.accepts(raw).then(|| Value::text(raw)),
+        // A secret value, held so that it is never written out (chunk
+        // 5.5r2).
+        TextForm::Secret => entry.accepts(raw).then(|| Value::secret(entry.name, raw)),
         TextForm::Uuid => entry
             .validator
             .is_some_and(|validator| validator.accepts(raw))
@@ -889,6 +896,9 @@ pub fn shown(
 ) -> Result<String, Fault> {
     Ok(match (entry.format.key, value) {
         (FormatKey::Canonical, value) => canonical(entry, value)?,
+        // A secret value is never shown: only as a report writes it
+        // (chunk 5.5r2).
+        (FormatKey::Redacted, value @ Value::Secret(_)) => value.to_string(),
         // The text people read in it (chunk 5.5o).
         (FormatKey::PlainText, Value::Text(text))
             if entry.name == jadpo_std::standard::markup::MARKDOWN =>

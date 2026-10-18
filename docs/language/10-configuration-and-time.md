@@ -3362,12 +3362,12 @@ check failed: 1 error, 1 file
 ### `configuration.secret_default`
 
 ```jadpo check project=e-secret-default expect=configuration.secret_default
-type ApiKey = Text {
+type PartnerKey = Text {
     min_length: 8
 }
 
 config {
-    api_key: ApiKey {
+    api_key: PartnerKey {
         secret: true
         default: "development-key"
     }
@@ -3415,17 +3415,17 @@ check failed: 1 error, 1 file
 ### `configuration.secret_flow`
 
 ```jadpo check project=e-secret-flow expect=configuration.secret_flow
-type ApiKey = Text {
+type PartnerKey = Text {
     min_length: 8
 }
 
 config {
-    api_key: ApiKey {
+    api_key: PartnerKey {
         secret: true
     }
 }
 
-function expose_secret() -> ApiKey {
+function expose_secret() -> PartnerKey {
     return config.api_key
 }
 ```

@@ -11,6 +11,7 @@ rules:
   - type.password_hash_exposed
   - type.random_context
   - type.reserved_variant_name
+  - type.secret_exposed
   - type.standard_clash
   - syntax.percent_ambiguous
   - type.standard_exists
@@ -105,7 +106,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 235 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2, the 17 geospatial types in 5.5s, `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims` in 5.5r, the five AI types in 5.5s2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (accepted by the lead session, "Decisions"), and `ChatRole`, who wrote a `ChatMessage`, in chunk 5.5s2, for the same reason. "(enum)" marks a closed list held as a built-in enum: thirty-one are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2, `ChatRole` in 5.5s2), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 240 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2, the 17 geospatial types in 5.5s, `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims` in 5.5r, the secret values `Password`, `ApiKey`, `BearerToken`, `TotpSecret` and `SecretText` in 5.5r2, the five AI types in 5.5s2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (accepted by the lead session, "Decisions"), and `ChatRole`, who wrote a `ChatMessage`, in chunk 5.5s2, for the same reason. "(enum)" marks a closed list held as a built-in enum: thirty-one are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2, `ChatRole` in 5.5s2), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -133,7 +134,7 @@ exception to the rule.
 | Web and network (23) | **`Url`**, **`UrlPath`**, **`RelativeUrl`**, **`Slug`**, **`DomainName`**, **`Hostname`**, **`WebOrigin`**, **`HttpMethod`** (enum), **`HttpStatus`**, **`HttpHeaderName`**, **`FileType`**, **`UserAgent`**, **`ProblemDetails`**, **`JsonPointer`**, **`Cookie`**, **`UtmParameters`**, **`IpAddress`**, **`Cidr`**, **`NetworkPort`**, **`MacAddress`**, **`Imei`**, **`Emoji`**, **`PushToken`** | `web` |
 | Software (19) | **`SemanticVersion`**, **`VersionRange`**, **`GitRef`**, **`PackageUrl`**, **`Cve`**, **`SpdxLicence`**, **`TraceId`**, **`SpanId`**, **`TraceParent`**, **`LogLevel`** (enum), **`FilePath`**, **`FileName`**, **`RegularExpression`**, **`ContainerImage`**, **`Digest`**, **`Uuid`**, **`Ulid`**, **`IdempotencyKey`**, **`Doi`** | `semver` |
 | Text formats (4) | **`Markdown`**, **`Html`**, **`RichText`**, **`LocalisedText`** | `markup`, `text` |
-| Security (20) | `Password`, **`PasswordHash`**, `PasswordPolicy`, `Hash`, `Hmac`, **`Jwt`**, **`JwtClaims`**, **`Jwk`**, **`PublicKey`**, **`PrivateKey`**, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `SecretText`, `BearerToken`, **`OAuthScope`**, **`OidcClaims`**, `WebAuthnCredential`, `EncryptedValue` | `crypto` |
+| Security (20) | **`Password`**, **`PasswordHash`**, `PasswordPolicy`, `Hash`, `Hmac`, **`Jwt`**, **`JwtClaims`**, **`Jwk`**, **`PublicKey`**, **`PrivateKey`**, `Certificate`, **`TotpSecret`**, `OneTimeCode`, **`ApiKey`**, **`SecretText`**, **`BearerToken`**, **`OAuthScope`**, **`OidcClaims`**, `WebAuthnCredential`, `EncryptedValue` | `crypto` |
 | Travel (6) | **`IataAirport`**, **`IcaoAirport`**, **`IataAirline`**, **`FlightNumber`**, **`CabinClass`** (enum), **`BookingReference`** | |
 | Other with a published standard (10) | **`UnNumber`**, **`Orcid`**, **`CefrLevel`** (enum), **`Mpan`**, **`Mprn`**, **`EpcRating`** (enum), **`Tenure`** (enum), **`LawfulBasis`** (enum), **`Jurisdiction`**, **`ModelId`** | |
 | AI (3, and `ChatRole`) | **`TokenCount`**, **`TokenUsage`**, **`ChatMessage`** with **`ChatRole`** (enum) | AI area |
@@ -402,7 +403,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `Barcode`, `BasisPoints`, `Bearing`, `Bic`, `Bitrate`, `BloodGlucose`, `BloodPressure`, `BloodType`, `BookingReference`, `BoundingBox`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `ChatMessage`, `ChatRole`, `Cidr`, `Circle`, `ClothingSize`, `ClothingSizeSystem`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Crs`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Dimensions`, `Discount`, `Doi`, `DomainName`, `DosageInstruction`, `Dose`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `EastingNorthing`, `Email`, `EmailWithName`, `Embedding`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `FlightNumber`, `Fraction`, `FrameRate`, `Frequency`, `Geohash`, `Geometry`, `GitRef`, `GivenName`, `H3Cell`, `HeartRate`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Jurisdiction`, `Jwk`, `Jwt`, `JwtClaims`, `Language`, `Latitude`, `LawfulBasis`, `Lei`, `Length`, `LineString`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `Longitude`, `LotNumber`, `MacAddress`, `MapTile`, `Markdown`, `MaskedCardNumber`, `Mass`, `ModelId`, `Money`, `Month`, `Mpan`, `Mprn`, `MultiLineString`, `MultiPoint`, `MultiPolygon`, `Nationality`, `NetworkPort`, `NhsNumber`, `OAuthScope`, `OidcClaims`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `PasswordCheck`, `PasswordHash`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `Point`, `Polygon`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PublicKey`, `PushToken`, `Quarter`, `Range`, `Rating`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `RouteOfAdministration`, `SemanticVersion`, `SerialNumber`, `ShoeSize`, `ShoeSizeSystem`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TokenCount`, `TokenUsage`, `TraceId`, `TraceParent`, `TrackingNumber`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UnitQuantity`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `Vector`, `VehicleRegistration`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `ApiKey`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `Barcode`, `BasisPoints`, `BearerToken`, `Bearing`, `Bic`, `Bitrate`, `BloodGlucose`, `BloodPressure`, `BloodType`, `BookingReference`, `BoundingBox`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `ChatMessage`, `ChatRole`, `Cidr`, `Circle`, `ClothingSize`, `ClothingSizeSystem`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Crs`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Dimensions`, `Discount`, `Doi`, `DomainName`, `DosageInstruction`, `Dose`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `EastingNorthing`, `Email`, `EmailWithName`, `Embedding`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `FlightNumber`, `Fraction`, `FrameRate`, `Frequency`, `Geohash`, `Geometry`, `GitRef`, `GivenName`, `H3Cell`, `HeartRate`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Jurisdiction`, `Jwk`, `Jwt`, `JwtClaims`, `Language`, `Latitude`, `LawfulBasis`, `Lei`, `Length`, `LineString`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `Longitude`, `LotNumber`, `MacAddress`, `MapTile`, `Markdown`, `MaskedCardNumber`, `Mass`, `ModelId`, `Money`, `Month`, `Mpan`, `Mprn`, `MultiLineString`, `MultiPoint`, `MultiPolygon`, `Nationality`, `NetworkPort`, `NhsNumber`, `OAuthScope`, `OidcClaims`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `Password`, `PasswordCheck`, `PasswordHash`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `Point`, `Polygon`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PublicKey`, `PushToken`, `Quarter`, `Range`, `Rating`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `RouteOfAdministration`, `SecretText`, `SemanticVersion`, `SerialNumber`, `ShoeSize`, `ShoeSizeSystem`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TokenCount`, `TokenUsage`, `TotpSecret`, `TraceId`, `TraceParent`, `TrackingNumber`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UnitQuantity`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `Vector`, `VehicleRegistration`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -3936,8 +3937,8 @@ on its own line, and a `LocalisedText` as `text.pick` gives it.
 | `hash.sha256(value)` | `Bytes`, the 32-byte SHA-256 digest of a value built on `Bytes`, or of a `Text`'s UTF-8 bytes | | `sha256(x)`, or `sha256(convert_to(x, 'UTF8'))` for text |
 | `crypto.encrypt(value, key:, context:)` | `Bytes`: XChaCha20-Poly1305 with a fresh random nonce, the format's version and the key's identity in front. `value` is `Bytes` or a `Text`'s UTF-8; `context:` text bound to the result (a record's id), so a sealed value can't be moved to another row. Actions only | | none |
 | `crypto.decrypt(sealed, key:, context:)` | `Bytes`, trying the current key, then `_PREVIOUS` | `unreadable` (wrong key or context, or altered) | none |
-| `crypto.hash_password(password)` | `PasswordHash`, a built-in text type holding the PHC string: Argon2id at the parameters fixed for the release (OWASP's: 19 MiB, 2 passes, 1 lane). Actions only | | none |
-| `crypto.verify_password(password, hash)` | `PasswordCheck`: `wrong`, `correct`, or `correct_outdated` (store a fresh hash) | | none |
+| `crypto.hash_password(password)` | `PasswordHash` of a `Password`, a built-in text type holding the PHC string: Argon2id at the parameters fixed for the release (OWASP's: 19 MiB, 2 passes, 1 lane). Actions only | | none |
+| `crypto.verify_password(password, hash)` | `PasswordCheck` for a `Password`: `wrong`, `correct`, or `correct_outdated` (store a fresh hash) | | none |
 | `crypto.hmac(value, key:)` | `Bytes`, HMAC-SHA-256 with the current key | | none |
 | `crypto.verify_hmac(value, mac, key:)` | `Bool`, in constant time, against the current or previous key | | none |
 | `crypto.sign(value, key:)` | `Bytes`, an Ed25519 signature; `key:` a `PrivateKey` setting | | none |
@@ -3995,7 +3996,7 @@ type NoteId = Text {}
 
 type SealedNote = Bytes {}
 
-type StaffPassword = Text {
+type StaffPassword = Password {
     min_length: 12
     max_length: 128
 }
@@ -4272,6 +4273,185 @@ test "a partner's token signs in only while it holds" {
 > 8725's best practices and are tested against RFC 7519's and RFC 8037's
 > examples and the classic attacks. What the page left open is under
 > "Chosen in chunk 5.5r".
+
+### Secret values
+
+A `Password`, an `ApiKey`, a `BearerToken`, a `TotpSecret`, a `SecretText`
+and a `Jwt` are secret values (chunk 5.5r2): each arrives, in a request's
+`Input` or through `text.parse` and `json.read`, and is never sent,
+logged, stored or shown.
+
+- **It never leaves.** An `Output`, a failure's fields, an event, an email
+  and a message refuse one, however deep, as `type.secret_exposed`, and
+  `json.write` can't write one (`type.mismatch`). A failure's fields are
+  logged, so that keeps secrets out of logs too.
+- **It is never stored as itself.** A password is kept as its
+  `PasswordHash`, an API key or a bearer token as `hash.sha256` of it, and
+  a token is checked when it arrives and never kept; an entity's field of
+  one is `type.secret_exposed`. A `TotpSecret` and a `SecretText` will be
+  stored sealed with an encrypted field's key once keys held as data
+  arrive ("Language gaps"); until then storing one is
+  `toolchain.not_built_yet`.
+- **Only the operation made for it reads it.** `crypto.hash_password` and
+  `verify_password` take a `Password`, `verify_jwt` a `Jwt`, and
+  `hash.sha256` an `ApiKey` or a `BearerToken`. Any other operation, any
+  operator but `==` and `!=`, and building any other type from one is
+  `type.secret_exposed`, so no length, part, text or format for people can
+  carry it out.
+- **`==` and `!=` compare in constant time:** every byte is looked at
+  whatever the first difference, so how long a comparison takes says
+  nothing of where two values differ.
+- **Reports show it redacted,** as `<redacted ApiKey>`: a failed test's
+  values, a failure's report and anything a debugger or `jadpo watch` will
+  show, since every one writes a value the same way. A recording kept for
+  replay holds no credential the runtime made (area 17).
+
+A sign-up form takes a password, which goes no further than its hash, and
+a partner's API key is recognised by what is kept of it:
+
+```jadpo check project=secret-values
+type MemberHandle = Text {
+    max_length: 40
+}
+
+type ChosenPassword = Password {
+    min_length: 15
+}
+
+/// What the sign-up form sends: the password arrives, and goes no further
+/// than its hash.
+type SignUpForm = Input {
+    handle: MemberHandle
+    chosen_password: ChosenPassword
+}
+
+type KeyVerifier = Bytes {}
+
+type Recognised = Bool {}
+
+/// The hash a new member's password is kept as.
+action password_to_keep(sign_up: SignUpForm) -> PasswordHash {
+    return crypto.hash_password(sign_up.chosen_password)
+}
+
+/// What is kept of a partner's API key: its SHA-256, which signs no one
+/// in.
+function key_verifier(partner_key: ApiKey) -> KeyVerifier {
+    return KeyVerifier(hash.sha256(partner_key))
+}
+
+/// Whether a key a partner sends is the one it was issued.
+function recognised(offered_key: ApiKey, kept_verifier: KeyVerifier) -> Recognised {
+    return Recognised(key_verifier(offered_key) == kept_verifier)
+}
+```
+
+```jadpo check project=secret-values file=main.test.jadpo
+test "a password is kept as its hash" {
+    var sign_up: SignUpForm = SignUpForm {
+        handle: "ada"
+        chosen_password: "correct horse battery staple"
+    }
+    var kept_hash: PasswordHash = password_to_keep(sign_up)
+    assert crypto.verify_password(sign_up.chosen_password, kept_hash) == PasswordCheck.correct
+}
+
+test "a partner's key is recognised by its verifier" {
+    var kept_verifier: KeyVerifier = key_verifier("example_key_0123456789abcdef")
+    assert recognised("example_key_0123456789abcdef", kept_verifier)
+    assert not recognised("example_key_0123456789abcdeX", kept_verifier)
+}
+```
+
+Keeping the password itself is refused, and the error says what to keep
+instead:
+
+```jadpo check project=e-password-stored expect=type.secret_exposed
+type MemberHandle = Text {
+    max_length: 40
+}
+
+entity Member {
+    id: Uuid
+    handle: MemberHandle {
+        unique: true
+    }
+    chosen_password: Password
+}
+```
+
+```text output
+error: `Member.chosen_password` keeps a `Password`
+ --> main.jadpo:10:22
+   |
+10 |     chosen_password: Password
+   |                      ^^^^^^^^ a secret, stored
+  reason: A `Password` is never stored as itself, so a copy of the database holds none. A password is hashed with `crypto.hash_password` and checked with `crypto.verify_password`.
+  next: Store `crypto.hash_password(...)` of it in a `PasswordHash` field in `chosen_password`'s place (agent)
+  rule: type.secret_exposed
+  help: docs/language/19-standard-library.html#type-secret-exposed
+
+check failed: 1 error, 1 file
+```
+
+A test that fails over a secret shows it redacted wherever it shows a
+value, and its diff still says which field differs:
+
+```jadpo check project=secret-redacted
+type PartnerName = Text {
+    max_length: 100
+}
+
+type PartnerLogin = Object {
+    name: PartnerName
+    partner_key: ApiKey
+}
+
+/// A partner, signed in with the key it sent.
+function signed_in(name: PartnerName, offered_key: ApiKey) -> PartnerLogin {
+    return PartnerLogin {
+        name: name
+        partner_key: offered_key
+    }
+}
+```
+
+```jadpo check project=secret-redacted file=main.test.jadpo expect=test.assertion_failed
+test "a partner keeps the key it signed in with" {
+    var issued_key: ApiKey = "example_key_0123456789abcdef"
+    assert signed_in("Northwind", issued_key) == PartnerLogin {
+        name: "Northwind"
+        partner_key: "example_key_9876543210fedcba"
+    }
+}
+```
+
+```text output
+FAIL  a partner keeps the key it signed in with
+ --> main.test.jadpo:3
+
+  assert signed_in("Northwind", issued_key) == PartnerLogin { ...
+         |                      |              |
+         |                      |              PartnerLogin { name: "Northwind", partner_key: <redacted ApiKey> }
+         |                      <redacted ApiKey>
+         PartnerLogin { name: "Northwind", partner_key: <redacted ApiKey> }
+
+  expected: PartnerLogin { name: "Northwind", partner_key: <redacted ApiKey> }
+  actual: PartnerLogin { name: "Northwind", partner_key: <redacted ApiKey> }
+  diff: ~ partner_key: expected <redacted ApiKey>, actual <redacted ApiKey>
+
+  rule: test.assertion_failed
+  rerun: jadpo test main.test.jadpo:3 --seed 1
+
+test failed: 1 failed, 1 pure test
+```
+
+> Built in chunk 5.5r2: the five secret values on the contract, and `Jwt`
+> made one, read from text and JSON and never written, shown or stored
+> (`TextForm::Secret`, `Json::Secret`, `FormatKey::Redacted`,
+> `Storage::Never`); `jadpo-value`'s `Secret`, compared in constant time
+> and written only redacted; and `type.secret_exposed`. What the page left
+> open is under "Chosen in chunk 5.5r2".
 
 ## Randomness
 
@@ -6412,7 +6592,7 @@ operations it unblocks kept on this page.
 | Inline functions take one parameter | Two parameters, `(a, b) -> ...`, for standard operations only (area 3's question 13 widened) | 3 | 5.5c2, built | `list.zip_with`, `map.filter`, `map.map_values` |
 | No `Float` and no maths | Maths on `Decimal` with `scale:` and `rounding:`, deterministic everywhere; still no `Float` | 2 (question 8 there) | 5.5e, built | 8 `decimal` operations; geospatial distance |
 | Code can't read a secret | Opaque key settings, used only as a `crypto` call's `key:` | 10 | 5.5q2, built | `crypto` |
-| Keys held as data (per device, per person) | An encrypted field of a key type, usable only as `key:` | 10, 15 | With encrypted fields, after the first build (personal data) | Per-device signatures, `crypto.verify_totp`, `crypto.verify_jwt` with a shared secret (HS256) |
+| Keys held as data (per device, per person) | An encrypted field of a key type, usable only as `key:` | 10, 15 | With encrypted fields, after the first build (personal data) | Per-device signatures, `crypto.verify_totp`, `crypto.verify_jwt` with a shared secret (HS256), storing a `TotpSecret` or a `SecretText` |
 | No randomness | Generated `random`, actions only, seeded in tests, recorded for replay | 10, 13, 17 | 5.5q, built | `random.*`, `encrypt`, `hash_password` |
 | Text has no locale order or case | `locale:` on `list.sort_by`, `text.lower` and `text.upper`, through ICU4X's collator and case mapping (two more crates of the pinned ICU4X) | 10 | 5.5f, built | Locale sorting and case |
 | Values formatted for people only in translations | The contract's `text.format`, giving `PresentationText`, for every standard type | 10 | 5.5a | Showing numbers, money, quantities and addresses in code |
@@ -7087,6 +7267,41 @@ error: `StaffProfile.hashed_password` holds a password's hash
 check failed: 1 error, 1 file
 ```
 
+### `type.secret_exposed`
+
+A secret value ("Secret values", chunk 5.5r2) is never sent, logged,
+stored or shown: an `Output`, a failure's fields, an event, an email, a
+message and an entity refuse one, however deep, and so does any
+operation, operator or construction but the one made to take it. It
+arrives in an `Input`. A client that needs to know whether a key is set is
+sent that instead.
+
+```jadpo check project=e-secret-exposed expect=type.secret_exposed
+type PartnerName = Text {
+    max_length: 100
+}
+
+/// What the partners page shows of a partner.
+type PartnerProfile = Output {
+    name: PartnerName
+    partner_key: ApiKey
+}
+```
+
+```text output
+error: `PartnerProfile.partner_key` holds an `ApiKey`
+ --> main.jadpo:8:18
+  |
+8 |     partner_key: ApiKey
+  |                  ^^^^^^ sent to a client
+  reason: An `ApiKey` is a secret value: it is never sent, logged, stored or shown. A response is written out, logged by proxies and kept by browsers, and a client never needs a secret back.
+  next: Remove `partner_key`, and send what the client needs instead, such as whether one is set (agent)
+  rule: type.secret_exposed
+  help: docs/language/19-standard-library.html#type-secret-exposed
+
+check failed: 1 error, 1 file
+```
+
 ## Review
 
 ### Status
@@ -7098,7 +7313,7 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2; `resolve` of a `LocalDateTime` and `occurrences` of days in 5.5k4 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, `Html` and `Markdown` with `markup.to_html` and `to_plain_text` in 5.5o, `Colour` and the media types with `colour`'s five operations and `media.fit` in 5.5p, `RichText` and `LocalisedText` with `markup.rich_to_html` and `text.pick` in 5.5o2, `PasswordHash`, `PasswordCheck` and `PublicKey` with `crypto` in 5.5q2, the 17 geospatial types in 5.5s, the AI types with a vector type's `dimensions:` in 5.5s2, each other group of types in the chunks after them to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, `Html` and `Markdown` with `markup.to_html` and `to_plain_text` in 5.5o, `Colour` and the media types with `colour`'s five operations and `media.fit` in 5.5p, `RichText` and `LocalisedText` with `markup.rich_to_html` and `text.pick` in 5.5o2, `PasswordHash`, `PasswordCheck` and `PublicKey` with `crypto` in 5.5q2, the 17 geospatial types in 5.5s, the token types in 5.5r, the secret values in 5.5r2, the AI types with a vector type's `dimensions:` in 5.5s2, each other group of types in the chunks after them to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; a rate type's `from:` and `to:` in 5.5h4; the `Percentage` rows in 5.5j2 with `{rate, number, percent}`; `apply_discount` in 5.5i3 |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` built in 5.5o2 |
@@ -9772,10 +9987,10 @@ built, each the most conservative reading:
   says it can't call it; a test's fixed clock is the one it reads.
 - **`Jwt`** is a JWS in compact form: three parts of unpadded Base64url in
   one spelling, none empty, so an unsecured token (RFC 7519 §6) is never
-  one, and at most 8,192 characters. A token is a credential, so it is
-  shown to people as its last four only; it is also a secret value, kept
-  out of responses and reports, in 5.5r2 (decided by the lead session,
-  "Decisions").
+  one, and at most 8,192 characters. A token is a credential, so it was
+  shown to people as its last four only; since 5.5r2 it is a secret value,
+  never shown at all, kept out of responses and reports (decided by the
+  lead session, "Decisions").
 - **`JwtClaims`** holds RFC 7519's seven registered claims by their own
   names: `aud` a list (one audience is read as a list of one), `exp`
   always there, and each text claim one line of 1 to 1,024 characters. It
@@ -9801,6 +10016,79 @@ built, each the most conservative reading:
   shown by its name, else its email, else its subject.
 - **No new crate.** The JSON is read through `serde`'s traits, already in
   the lock under `serde_json`, now a direct dependency of `jadpo-value`.
+
+### Chosen in chunk 5.5r2
+
+Choices the page left open when the secret values were built, each the
+most conservative reading:
+
+- **A sibling rule.** `type.secret_exposed` covers the six secret values;
+  `type.password_hash_exposed` stays for a `PasswordHash`, which is
+  stored, so its rule differs. A secret value is refused in an `Output`, a
+  failure's client and internal fields, an event (kept in the outbox and
+  handed on), an email and a message, however deep, through lists, maps,
+  options, objects, `Input`s and a variant's data. It is allowed in an
+  `Input`, an `Object`, a variable and a parameter, and `json.read` reads
+  one, since each stays on the server.
+- **What may be stored.** Nothing, as itself. A password is kept as its
+  `PasswordHash`, an `ApiKey` or a `BearerToken` as `hash.sha256` of it
+  (as area 8 keeps a token's verifier), and a `Jwt` is checked when it
+  arrives and never kept; a field of any of these is `type.secret_exposed`,
+  whose `next:` names what to keep. A `TotpSecret` (which checking a code
+  needs back) and a `SecretText` will be kept sealed with an encrypted
+  field's key, so storing one is `toolchain.not_built_yet` until keys held
+  as data arrive, never refused for ever.
+- **Only the operation made for it reads one.** `crypto.hash_password` and
+  `verify_password` now take a `Password`, where they took any text, so a
+  password is redacted wherever it goes; `verify_jwt` takes a `Jwt`; and
+  `hash.sha256` takes an `ApiKey` or a `BearerToken`, never a `Password`,
+  whose hash is Argon2id's alone. Any other operation (a collection of
+  secrets included, so `text.join` can't join them), every operator but
+  `==` and `!=` (an order or `matches` would answer questions about the
+  text), `text.from`, `text.format`, and building a type not built on the
+  same secret are `type.secret_exposed`. Building a type built on it
+  (`StaffPassword(password)`) is allowed.
+- **Their texts.** A `Password` is 8 to 256 characters with no control
+  character, any other Unicode and spaces allowed (NIST SP 800-63B's
+  minimum; an application raises it with `min_length:`, to 15 where a
+  password is the only factor). An `ApiKey` is 1 to 512 printable ASCII
+  characters with no spaces, whatever a provider's prefix. A `BearerToken`
+  is RFC 6750's `b64token`, at most 8,192 characters, as a `Jwt` is. A
+  `TotpSecret` is RFC 4648 Base32 in upper case without padding, in its
+  one spelling, holding 16 to 64 bytes (RFC 4226's 128 bits at least). A
+  `SecretText` is 1 to 8,192 characters of anything, line breaks included,
+  room for a PEM key. None is ordered.
+- **`Jwt` is never shown.** 5.5r showed one by its last four; as a secret
+  value it has no `text.format` and no `text.from`, like the others.
+- **How the runtime holds one.** `jadpo-value`'s `Value::Secret`, with the
+  standard type it is, built wherever a value of a type built on one is:
+  a construction, a request's or `json.read`'s JSON, `text.parse`, a
+  setting, and a literal in a test, which the plan keeps as
+  `Constant::Secret`, its text printed `Hidden(..)`. It is written
+  `<redacted ApiKey>` by `Display` and `Secret(ApiKey, redacted)` by
+  `Debug`, so a report, `jadpo test`'s output and `--json`, a fault and any
+  later debugger show it so; a JSON writer it reached anyway writes that
+  text, and storage refuses it.
+- **Constant time.** `==` looks at every byte up to the longer value's
+  length and folds the differences together before one test, so its time
+  depends on the lengths alone, as area 8's verifiers' comparison does; a
+  secret beside text written in source compares the same way. A set or a
+  map orders secrets by a comparison that also looks at every byte.
+- **Settings.** A setting of a secret value type follows its `secret:`
+  flag as every setting does (area 10). With `secret: true` it goes only
+  where the compiler owns the place; without it, code reads it as a
+  secret value, which these rules keep in, redacted.
+- **Replay recordings** (area 17). The bytes the runtime makes a session,
+  an API token, a service key or a CSRF token from are never kept on a
+  recording's tape nor taken from a replayed one
+  (`Ctx::secret_random_bytes`), so a recording holds no credential and a
+  replay makes fresh ones while the program's own draws still replay in
+  order. A program's own `random` draws stay on the tape, and nothing
+  writes a tape out yet (5.5q); `jadpo replay`, when it is built, keeps
+  out the draws a secret value was made from.
+- **OpenAPI** describes a secret value as a `writeOnly` string, and a
+  `Password` with `format: password`, so generated clients hide it as it is
+  typed.
 
 ### Decisions
 

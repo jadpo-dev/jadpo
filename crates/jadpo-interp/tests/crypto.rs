@@ -18,7 +18,7 @@ use jadpo_runtime::config::{Mode, ProblemKind};
 use jadpo_runtime::{Clock, Ctx, Env, MemoryHost};
 use support::{failure, main, text, value};
 
-const SOURCE: &str = "type Note = Text {\n    max_length: 2000\n}\n\ntype RecordId = Text {}\n\ntype Sealed = Bytes {}\n\ntype Opened = Bytes {}\n\ntype Mac = Bytes {}\n\ntype Genuine = Bool {}\n\ntype PasswordText = Text {}\n\ntype NoteUnreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\nconfig {\n    notes_key: EncryptionKey\n    receipt_key: PrivateKey\n    webhook_secret: SigningKey\n}\n\naction seal(note: Note, record: RecordId) -> Sealed {\n    return Sealed(crypto.encrypt(note, key: config.notes_key, context: record))\n}\n\nfunction open(sealed: Sealed, record: RecordId) fails NoteUnreadable -> Opened {\n    var bytes: Bytes = attempt crypto.decrypt(sealed, key: config.notes_key, context: record) {\n        unreadable: NoteUnreadable\n    }\n    return Opened(bytes)\n}\n\naction register(password: PasswordText) -> PasswordHash {\n    return crypto.hash_password(password)\n}\n\nfunction signs_in(password: PasswordText, stored: PasswordHash) -> PasswordCheck {\n    return crypto.verify_password(password, stored)\n}\n\nfunction mac(body: Note) -> Mac {\n    return Mac(crypto.hmac(body, key: config.webhook_secret))\n}\n\nfunction genuine(body: Note, given: Mac) -> Genuine {\n    return Genuine(crypto.verify_hmac(body, given, key: config.webhook_secret))\n}\n\nfunction signed(body: Note) -> Mac {\n    return Mac(crypto.sign(body, key: config.receipt_key))\n}\n\nfunction verified(body: Note, signature: Mac, signer: PublicKey) -> Genuine {\n    return Genuine(crypto.verify_signature(body, signature, signer))\n}\n\nfunction published() -> PublicKey {\n    return crypto.public_key(key: config.receipt_key)\n}\n";
+const SOURCE: &str = "type Note = Text {\n    max_length: 2000\n}\n\ntype RecordId = Text {}\n\ntype Sealed = Bytes {}\n\ntype Opened = Bytes {}\n\ntype Mac = Bytes {}\n\ntype Genuine = Bool {}\n\ntype PasswordText = Password {}\n\ntype NoteUnreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\nconfig {\n    notes_key: EncryptionKey\n    receipt_key: PrivateKey\n    webhook_secret: SigningKey\n}\n\naction seal(note: Note, record: RecordId) -> Sealed {\n    return Sealed(crypto.encrypt(note, key: config.notes_key, context: record))\n}\n\nfunction open(sealed: Sealed, record: RecordId) fails NoteUnreadable -> Opened {\n    var bytes: Bytes = attempt crypto.decrypt(sealed, key: config.notes_key, context: record) {\n        unreadable: NoteUnreadable\n    }\n    return Opened(bytes)\n}\n\naction register(password: PasswordText) -> PasswordHash {\n    return crypto.hash_password(password)\n}\n\nfunction signs_in(password: PasswordText, stored: PasswordHash) -> PasswordCheck {\n    return crypto.verify_password(password, stored)\n}\n\nfunction mac(body: Note) -> Mac {\n    return Mac(crypto.hmac(body, key: config.webhook_secret))\n}\n\nfunction genuine(body: Note, given: Mac) -> Genuine {\n    return Genuine(crypto.verify_hmac(body, given, key: config.webhook_secret))\n}\n\nfunction signed(body: Note) -> Mac {\n    return Mac(crypto.sign(body, key: config.receipt_key))\n}\n\nfunction verified(body: Note, signature: Mac, signer: PublicKey) -> Genuine {\n    return Genuine(crypto.verify_signature(body, signature, signer))\n}\n\nfunction published() -> PublicKey {\n    return crypto.public_key(key: config.receipt_key)\n}\n";
 
 /// The draft-irtf-cfrg-xchacha key, 80 81 ... 9f.
 const NOTES_KEY: &str = "gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp8";
@@ -27,7 +27,7 @@ const OTHER_KEY: &str = "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A";
 /// RFC 8032's second test key's seed, and its public key.
 const RECEIPT_KEY: &str = "TM0Imyj_ltqdtsNG7BFOD1uKMZ81q6Yk2oz27U-4pvs";
 const RECEIPT_PUBLIC: &str = "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw";
-const WEBHOOK_SECRET: &str = "whsec_0123456789abcdef0123456789abcdef";
+const WEBHOOK_SECRET: &str = "test-signing-key-0123456789abcdef0123456789abcdef";
 
 fn variables(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
     pairs
@@ -225,7 +225,10 @@ fn an_hmac_is_the_signing_key_s_and_checks_in_both_keys() {
     let rotated = started(&[
         ("NOTES_KEY", NOTES_KEY),
         ("RECEIPT_KEY", RECEIPT_KEY),
-        ("WEBHOOK_SECRET", "whsec_fedcba9876543210fedcba9876543210"),
+        (
+            "WEBHOOK_SECRET",
+            "test-signing-key-fedcba9876543210fedcba9876543210",
+        ),
         ("WEBHOOK_SECRET_PREVIOUS", WEBHOOK_SECRET),
     ]);
     assert_eq!(

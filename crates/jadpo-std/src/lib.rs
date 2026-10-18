@@ -76,7 +76,7 @@ pub mod write;
 mod zones;
 
 pub use builtin::{Builtin, KEY_SIZE, SIGNING_KEY_MIN};
-pub use constant::Constant;
+pub use constant::{Constant, Hidden};
 pub use enums::{
     Access, AuthenticationMethod, AuthenticationStrength, ClientAddressSource, CodeForm,
     ComponentStyle, Driver, Dst, FieldAccess, FieldChange, Generated, HttpMethod, Idempotency,

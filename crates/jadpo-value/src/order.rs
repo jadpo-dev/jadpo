@@ -41,6 +41,7 @@ fn rank(value: &Value) -> u8 {
         Value::Money(_) => 16,
         Value::Quantity(_) => 17,
         Value::Percentage(_) => 18,
+        Value::Secret(_) => 19,
     }
 }
 
@@ -60,6 +61,11 @@ pub fn compare(a: &Value, b: &Value) -> Ordering {
             a.as_bytes().cmp(b.as_bytes())
         }
         (Value::Bytes(a), Value::Bytes(b)) => a.cmp(b),
+        // By kind, then by text in time that depends on the lengths alone
+        // (chunk 5.5r2).
+        (Value::Secret(a), Value::Secret(b)) => a.kind().cmp(b.kind()).then_with(|| {
+            crate::secret::constant_time_cmp(a.expose().as_bytes(), b.expose().as_bytes())
+        }),
         (Value::Instant(a), Value::Instant(b)) | (Value::Duration(a), Value::Duration(b)) => {
             a.cmp(b)
         }
