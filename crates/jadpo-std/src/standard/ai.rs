@@ -31,10 +31,11 @@ pub const EMBEDDING: &str = "Embedding";
 pub const MOST_DIMENSIONS: u64 = 16_000;
 
 /// The categories of these types that are personal data whatever field
-/// holds them (area 15): a message to or from a model is free text a
-/// person writes or is written to, which can name them and say anything
-/// about them.
-pub const PERSONAL: &[(&str, &str)] = &[(CHAT_MESSAGE, "identifying")];
+/// holds them (area 15): a message to or from a model is free text that
+/// can hold anything a person says, their health included, so it takes
+/// the sensitive category that fits such text (decided by the lead
+/// session, 2026-10-18).
+pub const PERSONAL: &[(&str, &str)] = &[(CHAT_MESSAGE, "health")];
 
 /// The most a token count goes to: JavaScript's largest safe integer, so
 /// it is always sent as a JSON number a client reads exactly.

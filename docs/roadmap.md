@@ -1065,7 +1065,7 @@ reference only).
   floats, held as decimals and sent as JSON numbers; a vector type fixes
   its length with `dimensions:`; `ChatRole` names a message's role;
   `TokenUsage`'s cached tokens are within its input, its total not kept;
-  a message is personal data; storing a vector is
+  a message is sensitive personal data (`health`); storing a vector is
   `toolchain.not_built_yet` until 5.5v. What the pages left open is area
   19's "Chosen in chunk 5.5s2".
 - [ ] **5.5t Cross-field rules** `opus · high` (area 2, decided by area 19,
