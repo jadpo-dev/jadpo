@@ -736,7 +736,7 @@ fn every_standard_type_meets_the_contract() {
                 }];
                 columns.resize(row.len(), jadpo_std::read::Column::Part);
                 assert_eq!(
-                    jadpo_runtime::field_value(&row, &columns, 0),
+                    jadpo_runtime::field_value(&row, &columns, 0, jadpo_runtime::JsonCodecs::NONE),
                     Ok(value.clone()),
                     "{name}: `{text}` reads back from its columns"
                 );

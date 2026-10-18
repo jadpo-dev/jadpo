@@ -494,6 +494,7 @@ fn send_as(
             shapes: &[],
         },
         failures: &[],
+        json: crate::JsonCodecs::NONE,
     };
     let env = Env {
         seed: Some(1),
@@ -607,6 +608,7 @@ fn a_worker_reuses_its_readiness_check_for_a_second() {
             shapes: &[],
         },
         failures: &[],
+        json: crate::JsonCodecs::NONE,
     };
     let host = Fake {
         still: Some(Cell::new(5_000)),

@@ -18,7 +18,7 @@ use jadpo_std::read::Field;
 use jadpo_std::write::{PolicyRefusal, WriteParam, WritePlan, WriteSource};
 use jadpo_value::Value;
 
-use crate::read::{Interrupt, defect, field_value, refused, to_sql, uuid_text};
+use crate::read::{Interrupt, JsonCodecs, defect, field_value, refused, to_sql, uuid_text};
 use crate::{Ctx, Failure, FaultKind, SqlValue, StoreError};
 
 /// What a write did.
@@ -45,11 +45,12 @@ pub(crate) enum Written {
 pub(crate) async fn write(
     ctx: &mut Ctx<'_>,
     plan: &WritePlan,
+    json: JsonCodecs<'_>,
     inputs: &[Value],
     site: u32,
 ) -> Result<Written, Interrupt> {
     let now = ctx.now();
-    let params = params_of(ctx, &plan.params, inputs, site, now)?;
+    let params = params_of(ctx, &plan.params, json, inputs, site, now)?;
     let unpoliced = ctx.unpoliced();
     let sql = match (&plan.unpoliced, unpoliced) {
         (Some(sql), true) => sql,
@@ -99,7 +100,7 @@ pub(crate) async fn write(
         // A transition whose `when:` can refuse a visible record asks
         // whether the record is there: then the condition refused it.
         if let Some(guard) = &plan.guard {
-            let params = params_of(ctx, &guard.params, inputs, site, now)?;
+            let params = params_of(ctx, &guard.params, json, inputs, site, now)?;
             let probe = match (&guard.unpoliced, unpoliced) {
                 (Some(sql), true) => sql,
                 _ => &guard.sql,
@@ -139,7 +140,7 @@ pub(crate) async fn write(
                 }),
                 false,
             ) => {
-                let params = params_of(ctx, asked, inputs, site, now)?;
+                let params = params_of(ctx, asked, json, inputs, site, now)?;
                 let found = match ctx.transaction(&plan.store).await {
                     Ok(transaction) => transaction.query(sql, &params).await,
                     Err(error) => Err(error),
@@ -151,7 +152,7 @@ pub(crate) async fn write(
                 // The caller may change the record but not a field the
                 // request changes: the whole write is refused (area 9).
                 if found && let Some(fields) = fields {
-                    let params = params_of(ctx, &fields.params, inputs, site, now)?;
+                    let params = params_of(ctx, &fields.params, json, inputs, site, now)?;
                     let granted = match ctx.transaction(&plan.store).await {
                         Ok(transaction) => transaction.query(&fields.sql, &params).await,
                         Err(error) => Err(error),
@@ -175,7 +176,7 @@ pub(crate) async fn write(
                 }),
                 true,
             ) if plan.kept_in_tenant => {
-                let params = params_of(ctx, asked, inputs, site, now)?;
+                let params = params_of(ctx, asked, json, inputs, site, now)?;
                 let found = match ctx.transaction(&plan.store).await {
                     Ok(transaction) => transaction.query(sql, &params).await,
                     Err(error) => Err(error),
@@ -213,7 +214,7 @@ pub(crate) async fn write(
         let Field::Column(at) = field else {
             return Err(defect(ctx, "a written record with an include", site));
         };
-        match field_value(row, &returns.columns, *at) {
+        match field_value(row, &returns.columns, *at, json) {
             Ok(value) => fields.push((std::rc::Rc::from(name.as_str()), value)),
             Err(what) => return Err(defect(ctx, &what, site)),
         }
@@ -225,6 +226,7 @@ pub(crate) async fn write(
 fn params_of(
     ctx: &mut Ctx<'_>,
     written: &[WriteParam],
+    json: JsonCodecs<'_>,
     inputs: &[Value],
     site: u32,
     now: i64,
@@ -233,6 +235,16 @@ fn params_of(
     for param in written {
         if let WriteSource::Caller(part) = &param.source {
             params.push(ctx.caller_param(*part));
+            continue;
+        }
+        // A JSON-held value, written as its contract's JSON (chunk
+        // 5.5w2b).
+        if let WriteSource::Json { of, codec } = &param.source {
+            let value = source_value(ctx, of, inputs, site, now)?;
+            match json.write(*codec, &value) {
+                Ok(sql) => params.push(sql),
+                Err(what) => return Err(defect(ctx, &what, site)),
+            }
             continue;
         }
         let value = source_value(ctx, &param.source, inputs, site, now)?;
@@ -285,6 +297,10 @@ fn source_value(
         // Answered above, as the caller's own parameter.
         WriteSource::Caller(_) => {
             return Err(defect(ctx, "a caller's part read as a value", site));
+        }
+        // Answered above, as its JSON.
+        WriteSource::Json { .. } => {
+            return Err(defect(ctx, "a JSON-held value read as a part", site));
         }
         // One of the columns a compound standard type is stored in (area
         // 19).

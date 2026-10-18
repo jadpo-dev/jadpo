@@ -28,7 +28,9 @@ use jadpo_check::data::queries::{
 use jadpo_check::data::{DataModel, EntityModel, FieldModel};
 use jadpo_check::lookups::Lookup;
 use jadpo_check::types::{Def, Prim, Ty, TypeView};
-use jadpo_graph::{Key, Kind};
+use std::cell::RefCell;
+
+use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_sql::Bind;
 use jadpo_sql::statement::{self as text, After, Order};
 use jadpo_std::read::{
@@ -86,6 +88,9 @@ pub(crate) struct Planner<'a> {
     /// The action whose writes are being planned, whose line under root
     /// `policy { actions: }` replaces its entities' grants on them.
     pub action: Option<String>,
+    /// The types the plan's JSON table numbers, `json.read`'s and
+    /// `json.write`'s with each JSON-held field's (chunk 5.5w2b).
+    pub json: &'a RefCell<Vec<TypeRef>>,
 }
 
 /// One statement being written: its parameters, deduplicated, so a value
@@ -544,8 +549,34 @@ impl Planner<'_> {
         self.column(entity, field) == Some(Column::Text)
     }
 
+    /// The number of a JSON-held field's codec in the plan's JSON table
+    /// (chunk 5.5w2b): its field's type, numbered once as `json.read`'s
+    /// sites number theirs; `None` for any other field.
+    pub(crate) fn json_codec(&self, entity: &EntityModel, field: &FieldModel) -> Option<u32> {
+        field.json?;
+        let id = self
+            .types
+            .graph()
+            .named(Kind::Field, &format!("{}.{}", entity.name, field.name))?;
+        let ty = TypeRef::Field(self.types.graph().node(id).key.clone());
+        let mut json = self.json.borrow_mut();
+        let at = match json.iter().position(|known| *known == ty) {
+            Some(at) => at,
+            None => {
+                json.push(ty);
+                json.len() - 1
+            }
+        };
+        u32::try_from(at).ok()
+    }
+
     /// What a field's column becomes.
     pub(crate) fn column(&self, entity: &EntityModel, field: &FieldModel) -> Option<Column> {
+        // A JSON-held standard value, read by the route codec (chunk
+        // 5.5w2b).
+        if field.json.is_some() {
+            return self.json_codec(entity, field).map(Column::Json);
+        }
         // A compound standard type, read from its several columns (area
         // 19): `Money`, a standard object (chunk 5.5l) or choice, and a type
         // stored natively in one column (chunk 5.5w).
@@ -802,6 +833,7 @@ pub(crate) fn plans(
     db: &dyn jadpo_db::Db,
     project: jadpo_db::Project,
     types: &mut Types,
+    json: &RefCell<Vec<TypeRef>>,
 ) -> (
     Vec<QueryPlan>,
     Vec<EntityPlan>,
@@ -817,6 +849,7 @@ pub(crate) fn plans(
         types,
         access,
         action: None,
+        json,
     };
     let mut query_plans: Vec<QueryPlan> = queries
         .queries

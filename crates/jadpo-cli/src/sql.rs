@@ -425,6 +425,10 @@ fn input_name(source: &WriteSource, write: &WriteSitePlan, body: &Body, text: &s
                 input_name(of, write, body, text)
             )
         }
+        // A JSON-held value, sent as its JSON (chunk 5.5w2b).
+        WriteSource::Json { of, .. } => {
+            format!("{} as JSON", input_name(of, write, body, text))
+        }
     }
 }
 
