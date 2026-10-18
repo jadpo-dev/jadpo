@@ -162,31 +162,48 @@ fn recurrence_instant(at: LocalAt, zone: u32, first: bool) -> Result<Option<Zone
         .then_some(Zoned { millis, zone }))
 }
 
-/// `temporal.occurrences`: the next `count` occurrences of the recurrence
-/// `rule` holds at or after `from`, in its zone, fewer when it ends first.
-/// `COUNT` counts from the start, every occurrence the zone's clocks show;
-/// `UNTIL` is an instant, included.
-pub fn occurrences(rule: &str, from: i64, count: i64) -> Result<Vec<Zoned>, Fault> {
-    let rule = Rule::read(rule).ok_or(Fault::Shape)?;
-    let wanted = usize::try_from(count)
+/// How many occurrences a `count` asks for: 1 to 1000, as the checker
+/// proves.
+fn wanted(count: i64) -> Result<usize, Fault> {
+    usize::try_from(count)
         .ok()
         .filter(|count| (1..=1000).contains(count))
-        .ok_or(Fault::Shape)?;
-    // With no `COUNT` to count from the start, an expansion starts a
-    // period before the one holding `from`'s day, which no zone's offset
-    // reaches past.
-    let first = match rule.end {
+        .ok_or(Fault::Shape)
+}
+
+/// The period an expansion starts in to find occurrences from `day` on:
+/// with no `COUNT` to count from the start, the period before the one
+/// holding the day before, which no zone's offset reaches past.
+fn first_period(rule: &Rule, day: i64) -> Result<i64, Fault> {
+    Ok(match rule.end {
         End::Count(_) => 0,
-        _ => {
-            let day = from.div_euclid(DAY) - 1;
-            rule.period_holding(i32::try_from(day).map_err(|_| Fault::TimeRange)?) - 1
-        }
-    };
+        _ => rule.period_holding(i32::try_from(day - 1).map_err(|_| Fault::TimeRange)?) - 1,
+    })
+}
+
+/// `temporal.occurrences` from an instant: the next `count` occurrences of
+/// the recurrence `rule` holds at or after `from`, in its zone, fewer when
+/// it ends first. `COUNT` counts from the start, every occurrence the
+/// zone's clocks show; `UNTIL` is an instant, included. A rule on dates
+/// has no instants, [`Fault::DateOnlyRule`].
+pub fn occurrences(rule: &str, from: i64, count: i64) -> Result<Vec<Zoned>, Fault> {
+    let rule = Rule::read(rule).ok_or(Fault::Shape)?;
+    let zone = rule.zone.ok_or(Fault::DateOnlyRule)?;
+    zoned_occurrences(&rule, zone, from, wanted(count)?)
+}
+
+fn zoned_occurrences(
+    rule: &Rule,
+    zone: u32,
+    from: i64,
+    wanted: usize,
+) -> Result<Vec<Zoned>, Fault> {
+    let first = first_period(rule, from.div_euclid(DAY))?;
     let mut found = Vec::new();
     let mut counted: u64 = 0;
     let mut last = None;
     for at in rule.local_occurrences(first) {
-        let Some(zoned) = recurrence_instant(at, rule.zone, at == rule.start)? else {
+        let Some(zoned) = recurrence_instant(at, zone, at == rule.start)? else {
             continue;
         };
         // A start moved past a gap can meet the rule's next local time.
@@ -202,6 +219,40 @@ pub fn occurrences(rule: &str, from: i64, count: i64) -> Result<Vec<Zoned>, Faul
         counted += 1;
         if zoned.millis >= from {
             found.push(zoned);
+            if found.len() == wanted {
+                break;
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// `temporal.occurrences` from a date (chunk 5.5k4): the days of the next
+/// `count` occurrences on or after `from`. A rule on dates gives its days,
+/// a day a month doesn't have skipped and not counted (RFC 5545), and
+/// `UNTIL` a day, included; a timed rule gives the local date of each of
+/// its occurrences in its zone, one for each, from the first instant of
+/// `from` there.
+pub fn occurrence_days(rule: &str, from: i32, count: i64) -> Result<Vec<i32>, Fault> {
+    let rule = Rule::read(rule).ok_or(Fault::Shape)?;
+    let wanted = wanted(count)?;
+    if let Some(zone) = rule.zone {
+        let start = start_of(from, &zone_at(zone)?)?;
+        return zoned_occurrences(&rule, zone, start, wanted)?
+            .into_iter()
+            .map(|zoned| local(zoned).map(|(at, _)| at.date).ok_or(Fault::TimeRange))
+            .collect();
+    }
+    let mut found = Vec::new();
+    let occurrences = rule.local_occurrences(first_period(&rule, i64::from(from))?);
+    for (counted, at) in (0_u64..).zip(occurrences) {
+        match rule.end {
+            End::UntilDay(until) if at.date > until => break,
+            End::Count(most) if counted >= u64::from(most) => break,
+            _ => {}
+        }
+        if at.date >= from {
+            found.push(at.date);
             if found.len() == wanted {
                 break;
             }

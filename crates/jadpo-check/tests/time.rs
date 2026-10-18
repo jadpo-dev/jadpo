@@ -125,7 +125,7 @@ fn a_date_moves_by_months_with_a_day_the_month_has() {
 fn a_clock_time_is_written_out() {
     for at in ["\"9:30\"", "\"24:00\"", "\"09:30:15.1234\"", "time"] {
         let source = format!(
-            "function f(day: ShopDay, time: Text) -> Opening {{\n    return Opening(temporal.resolve(day, at: {at}, zone: Zone.utc, dst: Dst.later))\n}}\n"
+            "type Plain = Text {{}}\n\nfunction f(day: ShopDay, time: Plain) -> Opening {{\n    return Opening(temporal.resolve(day, at: {at}, zone: Zone.utc, dst: Dst.later))\n}}\n"
         );
         let found = check(&source);
         assert!(
@@ -133,6 +133,85 @@ fn a_clock_time_is_written_out() {
             "{at}: {found:?}"
         );
     }
+}
+
+#[test]
+fn a_local_date_and_time_resolves_in_a_zone() {
+    // A `LocalDateTime` carries its own clock time (chunk 5.5k4), and a
+    // `LocalTime` gives a date's: each resolves under `dst:` as a clock
+    // time written out does.
+    let types = "type ShiftStart = LocalDateTime {}\n\ntype Doors = LocalTime {}\n\ntype Plain = Text {}\n\n";
+    let resolve = |call: &str| {
+        check(&format!(
+            "{types}function f(start: ShiftStart, day: ShopDay, doors: Doors, zone: Zone, plain: Plain) -> Opening {{\n    return Opening({call})\n}}\n"
+        ))
+    };
+    for call in [
+        "temporal.resolve(start, zone: zone, dst: Dst.compatible)",
+        "temporal.resolve(start, zone: Zone.europe_london, dst: Dst.earlier)",
+        "temporal.resolve(day, at: doors, zone: zone, dst: Dst.later)",
+        "temporal.resolve(day, at: \"09:30\", zone: zone, dst: Dst.later)",
+    ] {
+        assert_eq!(resolve(call), Vec::<String>::new(), "{call}");
+    }
+    // Without `dst:` it can fail, and needs an `attempt`.
+    assert_eq!(
+        resolve("temporal.resolve(start, zone: zone)"),
+        ["failure.attempt_required"]
+    );
+    // A date needs its clock time, and a `LocalDateTime` has one.
+    assert_eq!(
+        resolve("temporal.resolve(day, zone: zone, dst: Dst.later)"),
+        ["type.argument_count"]
+    );
+    assert_eq!(
+        resolve("temporal.resolve(start, at: \"09:30\", zone: zone, dst: Dst.later)"),
+        ["type.temporal_option_unused"]
+    );
+    // Neither a date nor a local date and time, and a clock time that
+    // isn't one.
+    assert_eq!(
+        resolve("temporal.resolve(plain, at: doors, zone: zone, dst: Dst.later)"),
+        ["type.mismatch"]
+    );
+    assert_eq!(
+        resolve("temporal.resolve(day, at: plain, zone: zone, dst: Dst.later)"),
+        ["type.temporal_clock_invalid"]
+    );
+}
+
+#[test]
+fn occurrences_from_a_date_are_days() {
+    // From an `Instant`, a rule's zoned times; from a date, the days they
+    // fall on, which a rule on dates gives (chunk 5.5k4).
+    let types = "type Birthdays = RecurrenceRule {}\n\n";
+    let source = |item: &str, from: &str| {
+        check(&format!(
+            "{types}function f(rule: Birthdays, day: ShopDay, at: DueAt) -> List<{item}> {{\n    return list.map(temporal.occurrences(rule, from: {from}, count: 3), found -> {item}(found))\n}}\n"
+        ))
+    };
+    assert_eq!(source("ShopDay", "day"), Vec::<String>::new());
+    assert_eq!(source("ShopDay", "\"2024-02-29\""), Vec::<String>::new());
+    assert_eq!(source("Opening", "at"), Vec::<String>::new());
+    assert_eq!(
+        source("Opening", "\"2024-02-29T00:00:00Z\""),
+        Vec::<String>::new()
+    );
+    assert_eq!(source("Opening", "day"), ["type.constructor_input"]);
+    assert_eq!(source("ShopDay", "at"), ["type.constructor_input"]);
+    // A rule on dates is written out as RFC 5545 writes one.
+    assert_eq!(
+        check(
+            "function f(day: ShopDay) -> List<ShopDay> {\n    return list.map(temporal.occurrences(\"DTSTART;VALUE=DATE:20240229\\nRRULE:FREQ=YEARLY\", from: day, count: 3), found -> ShopDay(found))\n}\n"
+        ),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        check(
+            "function f(day: ShopDay) -> List<ShopDay> {\n    return list.map(temporal.occurrences(\"DTSTART;VALUE=DATE:20240229\\nRRULE:FREQ=YEARLY;BYHOUR=9\", from: day, count: 3), found -> ShopDay(found))\n}\n"
+        ),
+        ["type.invalid_literal"]
+    );
 }
 
 #[test]

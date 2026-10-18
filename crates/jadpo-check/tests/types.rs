@@ -368,7 +368,9 @@ fn loops_and_failures_read_their_types() {
 /// built-in types is a type variable, and a clock time is text.
 fn stub_kind(kind: jadpo_std::Kind) -> jadpo_std::Kind {
     match kind {
-        jadpo_std::Kind::OneOf(_) | jadpo_std::Kind::Contract => jadpo_std::Kind::Any,
+        jadpo_std::Kind::OneOf(_) | jadpo_std::Kind::Contract | jadpo_std::Kind::Local => {
+            jadpo_std::Kind::Any
+        }
         jadpo_std::Kind::Clock => jadpo_std::Kind::Builtin(jadpo_std::Builtin::Text),
         other => other,
     }

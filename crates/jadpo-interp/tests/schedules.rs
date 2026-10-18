@@ -8,7 +8,7 @@
 use crate::support;
 
 use jadpo_interp::Value;
-use support::{int, main, text, value};
+use support::{failure, int, main, text, value};
 
 const SOURCE: &str = "type ClassSchedule = RecurrenceRule {}
 
@@ -245,5 +245,198 @@ fn a_night_past_midnight_is_open_by_the_clock_on_the_wall() {
             vec![text(new_york), instant("2026-11-02T22:00:00Z")]
         ),
         Value::Bool(true)
+    );
+}
+
+/// A timed event's start resolved in its zone, and an all-day event's
+/// days (chunk 5.5k4).
+const LOCAL: &str = "type ShiftStart = LocalDateTime {}
+
+type Doors = LocalTime {}
+
+type ShopDay = CalendarDate {}
+
+type Opening = ZonedTime {}
+
+type Birthdays = RecurrenceRule {}
+
+type DayCount = Int {
+    min: 1
+    max: 20
+}
+
+type Unclear = Failure {
+    kind: FailureKind.invalid_value
+}
+
+function start_earlier(start: ShiftStart, zone: Zone) -> Opening {
+    return Opening(temporal.resolve(start, zone: zone, dst: Dst.earlier))
+}
+
+function start_later(start: ShiftStart, zone: Zone) -> Opening {
+    return Opening(temporal.resolve(start, zone: zone, dst: Dst.later))
+}
+
+function start_compatible(start: ShiftStart, zone: Zone) -> Opening {
+    return Opening(temporal.resolve(start, zone: zone, dst: Dst.compatible))
+}
+
+function start_strict(start: ShiftStart, zone: Zone) fails Unclear -> Opening {
+    var at: ZonedTime = attempt temporal.resolve(start, zone: zone) {
+        dst: Unclear
+    }
+    return Opening(at)
+}
+
+function doors_open(day: ShopDay, doors: Doors, zone: Zone) -> Opening {
+    return Opening(temporal.resolve(day, at: doors, zone: zone, dst: Dst.later))
+}
+
+function next_birthdays(rule: Birthdays, from: ShopDay, count: DayCount) -> List<ShopDay> {
+    return list.map(temporal.occurrences(rule, from: from, count: count), day -> ShopDay(day))
+}
+";
+
+fn date(text: &str) -> Value {
+    Value::Date(jadpo_std::date_number(text).unwrap_or_else(|| panic!("{text} is a date")))
+}
+
+fn clock(hour: i64, minute: i64) -> Value {
+    Value::record(
+        "LocalTime",
+        vec![
+            ("hour".into(), int(hour)),
+            ("minute".into(), int(minute)),
+            ("second".into(), int(0)),
+        ],
+    )
+}
+
+fn local(day: &str, hour: i64, minute: i64) -> Value {
+    Value::record(
+        "LocalDateTime",
+        vec![
+            ("date".into(), date(day)),
+            ("time".into(), clock(hour, minute)),
+        ],
+    )
+}
+
+fn zone(name: &str) -> Value {
+    let ordinal = jadpo_std::variant_ordinal(jadpo_std::ZONE, name).unwrap();
+    Value::variant(jadpo_std::ZONE, ordinal, name, Vec::new())
+}
+
+fn instant_of(found: &Value) -> String {
+    match found {
+        Value::Zoned(zoned) => jadpo_std::format_instant(zoned.millis),
+        other => panic!("a zoned time: {other:?}"),
+    }
+}
+
+#[test]
+fn an_event_s_start_resolves_across_both_clock_changes() {
+    let program = main(LOCAL).with_proof_checks();
+    // (local time, zone, earlier, later, an overlap rather than a gap)
+    let cases = [
+        (
+            "2026-03-29",
+            1,
+            "europe_london",
+            "2026-03-29T00:30:00Z",
+            "2026-03-29T01:30:00Z",
+            false,
+        ),
+        (
+            "2026-10-25",
+            1,
+            "europe_london",
+            "2026-10-25T00:30:00Z",
+            "2026-10-25T01:30:00Z",
+            true,
+        ),
+        (
+            "2026-03-08",
+            2,
+            "america_new_york",
+            "2026-03-08T06:30:00Z",
+            "2026-03-08T07:30:00Z",
+            false,
+        ),
+        (
+            "2026-11-01",
+            1,
+            "america_new_york",
+            "2026-11-01T05:30:00Z",
+            "2026-11-01T06:30:00Z",
+            true,
+        ),
+    ];
+    for (day, hour, name, earlier, later, overlap) in cases {
+        let args = || vec![local(day, hour, 30), zone(name)];
+        assert_eq!(
+            instant_of(&value(&program, "start_earlier", args())),
+            earlier
+        );
+        assert_eq!(instant_of(&value(&program, "start_later", args())), later);
+        let compatible = if overlap { earlier } else { later };
+        assert_eq!(
+            instant_of(&value(&program, "start_compatible", args())),
+            compatible
+        );
+        assert_eq!(failure(&program, "start_strict", args()).name, "Unclear");
+    }
+    assert_eq!(
+        instant_of(&value(
+            &program,
+            "start_strict",
+            vec![local("2026-10-24", 22, 0), zone("europe_london")]
+        )),
+        "2026-10-24T21:00:00Z"
+    );
+    assert_eq!(
+        instant_of(&value(
+            &program,
+            "doors_open",
+            vec![date("2026-03-29"), clock(1, 30), zone("europe_london")]
+        )),
+        "2026-03-29T01:30:00Z"
+    );
+}
+
+#[test]
+fn a_birthday_on_29_february_skips_the_years_without_one() {
+    let program = main(LOCAL).with_proof_checks();
+    let days = |rule: &str, from: &str, count: i64| -> Vec<String> {
+        let Value::List(items) = value(
+            &program,
+            "next_birthdays",
+            vec![text(rule), date(from), int(count)],
+        ) else {
+            panic!("a list");
+        };
+        items
+            .iter()
+            .map(|item| match item {
+                Value::Date(day) => jadpo_std::format_date(*day),
+                other => panic!("a date: {other:?}"),
+            })
+            .collect()
+    };
+    assert_eq!(
+        days(
+            "DTSTART;VALUE=DATE:20240229\nRRULE:FREQ=YEARLY",
+            "2024-01-01",
+            3
+        ),
+        ["2024-02-29", "2028-02-29", "2032-02-29"]
+    );
+    assert_eq!(
+        days(
+            "DTSTART;VALUE=DATE:20240229\nRRULE:FREQ=YEARLY;COUNT=2",
+            "2025-01-01",
+            5
+        ),
+        ["2028-02-29"]
     );
 }

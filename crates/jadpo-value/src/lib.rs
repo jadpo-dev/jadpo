@@ -700,15 +700,19 @@ fn run_temporal(op: Op, args: &[Value]) -> Result<Value, Fault> {
         }
         (Op::TemporalInstant, [value]) => zoned(value).map(|zoned| Value::Instant(zoned.millis)),
         (Op::TemporalZone, [value]) => zoned(value).map(|zoned| temporal::zone_value(zoned.zone)),
-        (Op::TemporalResolve, [Value::Date(day), Value::Text(at), zone, dst]) => {
-            let clock = jadpo_std::clock_millis(at).ok_or(Fault::Shape)?;
-            temporal::resolve(
-                *day,
-                clock,
-                temporal::zone_of(zone)?,
-                temporal::dst_of(dst)?,
-            )
-            .map(Value::Zoned)
+        // A date and a clock time, written out or a `LocalTime`, or a
+        // `LocalDateTime` with no `at:` (chunk 5.5k4).
+        (Op::TemporalResolve, [local, at, zone, dst]) => {
+            let (day, clock) = match (local, at) {
+                (Value::Date(day), Value::Text(at)) => {
+                    (*day, jadpo_std::clock_millis(at).ok_or(Fault::Shape)?)
+                }
+                (Value::Date(day), Value::Record(_)) => (*day, calendar::clock_of(at)?),
+                (Value::Record(_), Value::None) => calendar::local_date_time(local)?,
+                _ => return Err(Fault::Shape),
+            };
+            temporal::resolve(day, clock, temporal::zone_of(zone)?, temporal::dst_of(dst)?)
+                .map(Value::Zoned)
         }
         (Op::TemporalDayBounds, [date, zone]) => bounds(date, zone, Period::Day),
         (Op::TemporalWeekBounds, [date, zone, starts_on]) => {
@@ -722,6 +726,10 @@ fn run_temporal(op: Op, args: &[Value]) -> Result<Value, Fault> {
         (Op::TemporalOccurrences, [Value::Text(rule), Value::Instant(from), Value::Int(count)]) => {
             temporal::occurrences(rule, *from, *count)
                 .map(|found| Value::list(found.into_iter().map(Value::Zoned).collect()))
+        }
+        (Op::TemporalOccurrences, [Value::Text(rule), Value::Date(from), Value::Int(count)]) => {
+            temporal::occurrence_days(rule, *from, *count)
+                .map(|found| Value::list(found.into_iter().map(Value::Date).collect()))
         }
         (Op::TemporalOpenAt, [Value::Text(hours), Value::Instant(at)]) => {
             temporal::open_at(hours, *at).map(Value::Bool)

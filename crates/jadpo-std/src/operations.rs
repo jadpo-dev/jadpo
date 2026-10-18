@@ -40,10 +40,14 @@ pub enum Kind {
     /// whose ends are a `T`, `InstantRange`'s instants. A result of this
     /// kind is the range type its arguments are.
     Range,
-    /// A clock time written as text, `"09:30"`, checked while compiling
-    /// (area 10, "Zones and local times"): only a literal gives one, not a
-    /// value, a `LocalTime` included.
+    /// A clock time (area 10, "Zones and local times"): written as text,
+    /// `"09:30"`, checked while compiling, or a `LocalTime` (chunk 5.5k4),
+    /// which the operation is given as the record it is.
     Clock,
+    /// What `temporal.resolve` places in a zone (chunk 5.5k4): a value
+    /// built on `CalendarDate`, given a clock time beside it, or a
+    /// `LocalDateTime`, which carries its own. Its stub writes it `T`.
+    Local,
     /// A time format written out (area 10, "Showing dates and times to
     /// people"): `TimeFormat.date_long` or a declared format's name, which
     /// the checker reads into a [`crate::TimeFormatSpec`] and the operation
@@ -2152,7 +2156,12 @@ pub const OPERATIONS: &[Operation] = &[
         "occurrences",
         &[
             param("rule", Kind::Std(crate::standard::RECURRENCE_RULE)),
-            param("from", INSTANT),
+            // An instant gives zoned times; a date gives days, which a
+            // rule on dates has (chunk 5.5k4).
+            param(
+                "from",
+                Kind::OneOf(&[Builtin::Instant, Builtin::CalendarDate]),
+            ),
             Param {
                 within: Some((1, 1000)),
                 ..param("count", INT)
@@ -2186,8 +2195,9 @@ pub const OPERATIONS: &[Operation] = &[
             Op::TemporalResolve,
             "resolve",
             &[
-                param("date", DATE),
-                param("at", Kind::Clock),
+                param("date", Kind::Local),
+                // A date's clock time; a `LocalDateTime` has its own.
+                option_needed_for("at", Kind::Clock, Builtin::CalendarDate),
                 param("zone", ZONE),
                 option("dst", Kind::Enum(Dst::NAME)),
             ],

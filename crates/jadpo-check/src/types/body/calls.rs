@@ -921,8 +921,13 @@ impl Body<'_> {
                 self.built_on_argument(&value, ty, accepts, written, &name);
                 continue;
             }
+            if kind == Some(jadpo_std::Kind::Local) {
+                let name = params[*slot].0.clone();
+                self.local_argument(&value, ty, written, &name);
+                continue;
+            }
             if kind == Some(jadpo_std::Kind::Clock) {
-                self.clock_argument(&value, written);
+                self.clock_argument(&value, ty, written);
                 continue;
             }
             if kind == Some(jadpo_std::Kind::Format) {
@@ -1205,6 +1210,13 @@ impl Body<'_> {
         // named type is built back from it by construction.
         if result == Ty::Number {
             return summed.map_or(Ty::Error, Ty::Prim);
+        }
+        // Occurrences from a date are days (chunk 5.5k4).
+        if let Some(table) = table
+            && table.op == jadpo_std::Op::TemporalOccurrences
+            && self.given_a_date(table, &args, &slots)
+        {
+            return Ty::List(Box::new(Ty::Prim(Prim::CalendarDate)));
         }
         // A range is the range type the call's ranges are (area 19).
         if table.is_some_and(|table| table.result == jadpo_std::Kind::Range) {
@@ -1629,6 +1641,16 @@ impl Body<'_> {
                     Const::Number { decimal: true, .. } => Some(Prim::Decimal),
                     _ => None,
                 };
+                // Text written as one of the times accepted takes it:
+                // `occurrences`' `from:` is an instant or a date.
+                let literal = literal.or_else(|| match Const::from_expr(value) {
+                    Const::Str(text) => accepts.iter().copied().find(|prim| match prim {
+                        Prim::Instant => jadpo_std::instant_millis(&text).is_some(),
+                        Prim::CalendarDate => jadpo_std::date_number(&text).is_some(),
+                        _ => false,
+                    }),
+                    _ => None,
+                });
                 match literal {
                     Some(prim) if accepts.contains(&prim) => {
                         self.check(value, &Ty::Prim(prim));

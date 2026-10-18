@@ -18,9 +18,14 @@ use crate::case::starts_upper;
 use crate::tree::{self, dotted};
 
 /// Why an option means nothing for the value a call is given.
-fn unused_reason(option: &str, written: &str, shown: &str, built_on: Prim) -> (String, String) {
+fn unused_reason(
+    option: &str,
+    written: &str,
+    shown: &str,
+    built_on: Option<Prim>,
+) -> (String, String) {
     match option {
-        "zone" if built_on == Prim::ZonedTime => (
+        "zone" if built_on == Some(Prim::ZonedTime) => (
             format!("`{shown}` is seen in its own zone"),
             format!(
                 "`zone:` says which zone an `Instant` is shown in; `{shown}` is a `ZonedTime`, which carries the zone it is seen in, so `{written}` shows it there."
@@ -30,6 +35,12 @@ fn unused_reason(option: &str, written: &str, shown: &str, built_on: Prim) -> (S
             format!("`{shown}` has no clock time"),
             format!(
                 "`zone:` says which zone an `Instant` is shown in; `{shown}` is a date, with no clock time, so it reads the same in every zone."
+            ),
+        ),
+        "at" => (
+            format!("`{shown}` has its own clock time"),
+            format!(
+                "`at:` is the clock time on a date; `{shown}` is a `LocalDateTime`, which carries its own, so `{written}` places that in the zone."
             ),
         ),
         _ => (
@@ -137,9 +148,89 @@ impl Body<'_> {
         );
     }
 
-    /// `at:`: a clock time written as text, `"09:30"`, checked here, since
-    /// no value holds a time of day on its own (area 10, "Time types").
-    pub(super) fn clock_argument(&mut self, value: &Expr, written: &str) {
+    /// The standard type a value is when it is one of the local times
+    /// (`LocalTime`, `LocalDateTime`) and can't be `none`, read through a
+    /// type built on it.
+    fn local_kind(&self, ty: &Ty) -> Option<String> {
+        if ty.has_error() || self.table.is_nullable(ty) {
+            return None;
+        }
+        match self.table.structure(ty) {
+            Ty::Opaque(name, args)
+                if args.is_empty() && matches!(name.as_str(), "LocalTime" | "LocalDateTime") =>
+            {
+                Some(name)
+            }
+            _ => None,
+        }
+    }
+
+    /// `temporal.resolve`'s first argument (chunk 5.5k4): a date, given a
+    /// clock time beside it, or a `LocalDateTime`, which has its own. Text
+    /// written out is a date.
+    pub(super) fn local_argument(
+        &mut self,
+        value: &Expr,
+        ty: Option<Ty>,
+        written: &str,
+        param: &str,
+    ) {
+        let Some(ty) = ty else {
+            self.check(value, &Ty::Prim(Prim::CalendarDate));
+            return;
+        };
+        if ty.has_error()
+            || self.local_kind(&ty).as_deref() == Some("LocalDateTime")
+            || !self.table.is_nullable(&ty)
+                && self.table.representation(&ty) == Some(Prim::CalendarDate)
+        {
+            return;
+        }
+        let span = self.span(value);
+        let reason = if self.table.is_nullable(&ty) {
+            format!("`{written}`'s `{param}` is never `none`, and `{ty}` may be `none`.")
+        } else {
+            format!(
+                "`{written}`'s `{param}` is a date, given a clock time with `at:`, or a `LocalDateTime`, which carries its own; `{ty}` is {}.",
+                super::super::literal::what(self.table, &ty)
+            )
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_MISMATCH,
+                format!("`{ty}` can't be used where a date or a `LocalDateTime` is required"),
+            )
+            .at(span, format!("this is `{ty}`"))
+            .reason(reason)
+            .next("Pass a value built on `CalendarDate`, or a `LocalDateTime`, here"),
+        );
+    }
+
+    /// Whether `temporal.occurrences` is given a date as `from:`, which
+    /// gives days (chunk 5.5k4).
+    pub(super) fn given_a_date(
+        &self,
+        table: &Operation,
+        args: &[ast::Arg],
+        slots: &[Option<usize>],
+    ) -> bool {
+        let Some(slot) = table.params.iter().position(|param| param.name == "from") else {
+            return false;
+        };
+        args.iter()
+            .zip(slots)
+            .find(|(_, at)| **at == Some(slot))
+            .and_then(|(arg, _)| arg.expr())
+            .and_then(|value| self.facts.types.get(&node_key(value.syntax())))
+            .is_some_and(|ty| {
+                !ty.has_error() && self.table.representation(ty) == Some(Prim::CalendarDate)
+            })
+    }
+
+    /// `at:`: a clock time written as text, `"09:30"`, checked here, or a
+    /// `LocalTime` (chunk 5.5k4), the only value that holds a time of day
+    /// on its own.
+    pub(super) fn clock_argument(&mut self, value: &Expr, ty: Option<Ty>, written: &str) {
         let span = self.span(value);
         let shown = tree::written(value.syntax());
         if is_literal(value) {
@@ -162,17 +253,23 @@ impl Body<'_> {
             );
             return;
         }
-        self.infer(value);
+        let ty = match ty {
+            Some(ty) => ty,
+            None => self.infer(value),
+        };
+        if ty.has_error() || self.local_kind(&ty).as_deref() == Some("LocalTime") {
+            return;
+        }
         self.out.push(
             Diagnostic::new(
                 &rule::TYPE_TEMPORAL_CLOCK_INVALID,
-                format!("`{written}`'s `at:` is written out, not passed as a value"),
+                format!("`{written}`'s `at:` is a clock time, and `{ty}` isn't one"),
             )
-            .at(span, "a value")
+            .at(span, format!("this is `{ty}`"))
             .reason(
-                "There is no time-of-day type, so no value holds a clock time on its own: `at:` is the clock time written as text, `\"09:30\"`, which is checked while compiling.",
+                "`at:` is a clock time written as text, `\"09:30\"`, which is checked while compiling, or a `LocalTime`, the one value that holds a clock time on its own.",
             )
-            .next("Write the clock time itself, such as `\"09:30\"`"),
+            .next("Write the clock time itself, such as `\"09:30\"`, or pass a `LocalTime`"),
         );
     }
 
@@ -401,12 +498,25 @@ impl Body<'_> {
                 .find(|(_, at)| **at == Some(slot))
                 .map(|(arg, _)| arg)
         };
+        // A `LocalDateTime` has a clock time of its own (chunk 5.5k4), so
+        // an option for a date's means nothing for it.
+        let local = first
+            .as_ref()
+            .is_some_and(|ty| self.local_kind(ty).as_deref() == Some("LocalDateTime"));
+        // A first argument the call doesn't take is reported as that, not
+        // as options meaning nothing for it.
+        let fits = match table.params.first().map(|param| param.kind) {
+            Some(jadpo_std::Kind::OneOf(accepts)) => {
+                built_on.is_some_and(|built_on| accepts.contains(&built_on))
+            }
+            Some(jadpo_std::Kind::Local) => local || built_on == Some(Prim::CalendarDate),
+            _ => true,
+        };
         for (slot, param) in table.params.iter().enumerate() {
-            let (Some(needs), Some(arg), Some(built_on)) = (param.only_for, given(slot), built_on)
-            else {
+            let (true, Some(needs), Some(arg)) = (fits, param.only_for, given(slot)) else {
                 continue;
             };
-            if built_on == needs {
+            if built_on.is_none_or(|built_on| built_on == needs) && !local {
                 continue;
             }
             let name = param.name;
@@ -441,6 +551,22 @@ impl Body<'_> {
             let span = call
                 .expr()
                 .map_or_else(|| self.span(call), |callee| self.span(&callee));
+            // A date's clock time, which `temporal.resolve` places in the
+            // zone (chunk 5.5k4).
+            if param.name == "at" {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_ARGUMENT_COUNT,
+                        format!("`{written}` needs the clock time on `{shown}`"),
+                    )
+                    .at(span, "no `at:`")
+                    .reason(format!(
+                        "`{shown}` is a date, with no clock time, so `{written}` takes one with `at:`, written out or a `LocalTime`; a `LocalDateTime` carries its own."
+                    ))
+                    .next("Add `at: ...` with the clock time, such as `at: \"09:30\"`"),
+                );
+                continue;
+            }
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_TEMPORAL_ZONE_REQUIRED,
