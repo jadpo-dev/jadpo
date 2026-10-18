@@ -382,7 +382,11 @@ impl<'t> Codecs<'t> {
                     .into_iter()
                     .map(|key| self.codec(&TypeRef::Field(Key::from_text(key))))
                     .collect();
-                Codec::Object { shape, fields }
+                Codec::Object {
+                    shape,
+                    fields,
+                    validator: None,
+                }
             }
             Made::Enum(key) => {
                 let ty_name = self.types.name(&key).to_string();
@@ -503,7 +507,11 @@ impl<'t> Codecs<'t> {
                     .iter()
                     .map(|(_, builtin)| self.codec(&TypeRef::Builtin(*builtin)))
                     .collect();
-                Codec::Object { shape, fields }
+                Codec::Object {
+                    shape,
+                    fields,
+                    validator: None,
+                }
             }
             Made::StdObject(entry) => {
                 let jadpo_std::standard::Holds::Object(fields) = entry.holds else {
@@ -527,7 +535,21 @@ impl<'t> Codecs<'t> {
                         self.codec(&crate::types::part_type(entry.name, field, *part))
                     })
                     .collect();
-                Codec::Object { shape, fields }
+                // A type built on it with rules of its own, a rate type's
+                // currencies, checks the whole value once read (chunk
+                // 5.5h4).
+                let validator = (!self
+                    .types
+                    .validator_plan(ty)
+                    .rules
+                    .iter()
+                    .all(jadpo_std::Rules::is_empty))
+                .then(|| self.types.validator_id(ty));
+                Codec::Object {
+                    shape,
+                    fields,
+                    validator,
+                }
             }
             Made::Range(item) => {
                 let shape = self.types.range_shape();
@@ -535,6 +557,7 @@ impl<'t> Codecs<'t> {
                 Codec::Object {
                     shape,
                     fields: vec![end, end],
+                    validator: None,
                 }
             }
             Made::Unknown => self.made_unknown(),

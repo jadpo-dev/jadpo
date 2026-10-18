@@ -2241,6 +2241,27 @@ impl Body<'_> {
             );
             return (target, Fallible::Unknown);
         }
+        // A type built on an object is built from a value of that object,
+        // its representation, re-checking the rules it adds: a rate type's
+        // currencies (area 19, chunk 5.5h4).
+        let object = self.table.structure(&target);
+        let is_object = match &object {
+            Ty::Named(name) => matches!(
+                self.table.def(name),
+                Some(Def::Fields {
+                    base: FieldsBase::Object,
+                    ..
+                })
+            ),
+            Ty::Opaque(name, args) => {
+                args.is_empty() && super::super::standard_fields(name).is_some()
+            }
+            _ => false,
+        };
+        if is_object && self.table.structure(&actual) == object {
+            let fallible = self.proved(value, &actual, &target, call);
+            return (target, fallible);
+        }
         let from = self.table.representation(&actual);
         let to = self.table.representation(&target);
         // A number where a quantity goes needs its unit (area 19).

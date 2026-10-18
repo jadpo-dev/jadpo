@@ -969,6 +969,7 @@ impl Decls<'_> {
                             format!("{an} `{}` type", prim.name())
                         }
                         Subject::Collection => "a collection".to_string(),
+                        Subject::ExchangeRate => "an `ExchangeRate` type".to_string(),
                         Subject::Other => "this type".to_string(),
                     };
                     self.out.push(

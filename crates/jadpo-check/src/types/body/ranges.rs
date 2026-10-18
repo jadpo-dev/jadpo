@@ -334,6 +334,9 @@ struct Combined {
     checked: Option<Prim>,
     /// A `Money` type's one currency (area 19).
     currency: Option<u32>,
+    /// A rate type's `from` and `to` currencies (chunk 5.5h4).
+    rate_from: Option<u32>,
+    rate_to: Option<u32>,
     /// The standard type held as text whose own check the chain makes
     /// (area 19, chunk 5.5i), which counts as `format`.
     standard: Option<&'static str>,
@@ -384,6 +387,8 @@ fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
             out.version = rules.version;
         }
         out.currency = out.currency.or(rules.currency);
+        out.rate_from = out.rate_from.or(rules.rate_from);
+        out.rate_to = out.rate_to.or(rules.rate_to);
         out.standard = out.standard.or(rules.standard);
     }
     out
@@ -442,6 +447,18 @@ impl Combined {
                     jadpo_std::money::variant(currency).unwrap_or("?")
                 ),
             ));
+        }
+        for (key, fixed) in [("from", self.rate_from), ("to", self.rate_to)] {
+            if let Some(code) = fixed {
+                out.push((
+                    key,
+                    format!(
+                        "{key}: {}.{}",
+                        jadpo_std::CURRENCY,
+                        jadpo_std::money::variant(code).unwrap_or("?")
+                    ),
+                ));
+            }
         }
         out
     }
@@ -780,6 +797,15 @@ impl Body<'_> {
             && !self.in_currency(value, code)
         {
             out.push("currency".to_string());
+        }
+        // A rate type's currencies: the rate's own type fixing the same
+        // ones, a rate written out, or a condition around it (chunk 5.5h4).
+        for (key, fixed) in [("from", needs.rate_from), ("to", needs.rate_to)] {
+            if let Some(code) = fixed
+                && !self.rate_in_currency(value, key, code)
+            {
+                out.push(key.to_string());
+            }
         }
         verdict
     }

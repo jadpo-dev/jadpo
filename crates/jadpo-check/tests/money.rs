@@ -8,13 +8,16 @@
 //! `money` operations; and `text.format`'s money options. Chunk 5.5h2:
 //! `money.convert` with an `ExchangeRate`, an inverted rate a compile error
 //! where both currencies are known and `currency_mismatch` otherwise.
+//! Chunk 5.5h4: a type built on `ExchangeRate` fixes its currencies with
+//! `from:` and `to:`, so an inverted rate is a compile error across
+//! function boundaries and the right one needs no `attempt`.
 
 use crate::support;
 
 use jadpo_db::{Database, Layout};
 use jadpo_diag::Diagnostic;
 
-const NAMES: &str = "type CakePrice = Money {\n    currency: Currency.gbp\n    min: 0\n    rounding: Rounding.half_up\n}\n\ntype EuroPrice = Money {\n    currency: Currency.eur\n    min: 0\n}\n\ntype Charge = Money {\n    min: 0\n}\n\ntype Fee = Money {\n    currency: Currency.gbp\n    min: 1\n}\n\ntype Guests = Int {\n    min: 1\n    max: 20\n}\n\ntype Share = Int {\n    min: 0\n}\n\ntype Rate = Decimal {\n    scale: 2\n    min: 0.01\n}\n\ntype Pounds = Decimal {\n    scale: 2\n}\n\ntype Answer = Bool {}\n\ntype Factor = Decimal {\n    scale: 4\n}\n\ntype Amount = Money {}\n\ntype Euros = Money {\n    currency: Currency.eur\n}\n\ntype Pence = Int {}\n\ntype Mismatch = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype WrongCurrency = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype TooPrecise = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
+const NAMES: &str = "type CakePrice = Money {\n    currency: Currency.gbp\n    min: 0\n    rounding: Rounding.half_up\n}\n\ntype EuroPrice = Money {\n    currency: Currency.eur\n    min: 0\n}\n\ntype Charge = Money {\n    min: 0\n}\n\ntype Fee = Money {\n    currency: Currency.gbp\n    min: 1\n}\n\ntype Guests = Int {\n    min: 1\n    max: 20\n}\n\ntype Share = Int {\n    min: 0\n}\n\ntype Rate = Decimal {\n    scale: 2\n    min: 0.01\n}\n\ntype Pounds = Decimal {\n    scale: 2\n}\n\ntype Answer = Bool {}\n\ntype Factor = Decimal {\n    scale: 4\n}\n\ntype Amount = Money {}\n\ntype Euros = Money {\n    currency: Currency.eur\n}\n\ntype Pence = Int {}\n\ntype Mismatch = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype WrongCurrency = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype TooPrecise = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype Dollars = Money {\n    currency: Currency.usd\n}\n\ntype PoundsToEuros = ExchangeRate {\n    from: Currency.gbp\n    to: Currency.eur\n}\n\ntype EurosToPounds = ExchangeRate {\n    from: Currency.eur\n    to: Currency.gbp\n}\n\ntype FromPounds = ExchangeRate {\n    from: Currency.gbp\n}\n\ntype WrongRate = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
 
 fn diagnostics(source: &str) -> Vec<Diagnostic> {
     let db = Database::default();
@@ -401,6 +404,131 @@ fn an_exchange_rate_is_an_object_of_its_fields() {
         rules("function f(rate: ExchangeRate) -> Factor {\n    return Factor(rate.rate)\n}\n"),
         NONE,
         "its fields are read as an object's"
+    );
+}
+
+#[test]
+fn a_rate_type_fixes_its_currencies() {
+    assert_eq!(rules(""), NONE);
+    assert_eq!(
+        rules("type Odd = Money {\n    from: Currency.gbp\n}\n"),
+        ["type.constraint_base"],
+        "only a rate has a `from`"
+    );
+    assert_eq!(
+        rules("type Odd = ExchangeRate {\n    currency: Currency.gbp\n}\n"),
+        ["type.constraint_base"],
+        "a rate has two currencies, not one"
+    );
+    assert_eq!(
+        rules("type Odd = ExchangeRate {\n    to: gbp\n}\n"),
+        ["type.setting_value"]
+    );
+}
+
+#[test]
+fn a_typed_rate_converts_with_no_attempt() {
+    assert_eq!(
+        rules(
+            "function f(cake: CakePrice, rate: PoundsToEuros) -> Euros {\n    return Euros(money.convert(cake, rate))\n}\n"
+        ),
+        NONE,
+        "the amount is in the rate's `from`, and the result in its `to`"
+    );
+    assert_eq!(
+        rules(
+            "function f(cake: CakePrice, rate: FromPounds) -> Amount {\n    return Amount(money.convert(cake, rate))\n}\n"
+        ),
+        NONE
+    );
+    assert_eq!(
+        rules(
+            "function f(cake: CakePrice, rate: FromPounds) -> Euros {\n    return Euros(money.convert(cake, rate))\n}\n"
+        ),
+        ["failure.attempt_required"],
+        "a `to` it doesn't fix may be another currency"
+    );
+    assert_eq!(
+        rules(
+            "function f(price: Charge, rate: PoundsToEuros) -> Amount {\n    return Amount(money.convert(price, rate))\n}\n"
+        ),
+        ["failure.attempt_required"],
+        "an amount in any currency may be in another"
+    );
+}
+
+#[test]
+fn an_inverted_typed_rate_fails_across_a_function_boundary() {
+    let found = diagnostics(
+        "function f(cake: CakePrice, rate: EurosToPounds) -> Amount {\n    return Amount(money.convert(cake, rate))\n}\n",
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].rule.id, "type.mismatch");
+    assert_eq!(
+        found[0].message,
+        "`rate` converts from EUR, and `cake` is in GBP"
+    );
+    assert_eq!(
+        found[0].primary.as_ref().map(|label| label.text.as_str()),
+        Some("a rate from EUR to GBP")
+    );
+    let found = diagnostics(
+        "function f(price: Dollars, rate: PoundsToEuros) -> Amount {\n    return Amount(money.convert(price, rate))\n}\n",
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        found[0].message, "`rate` converts from GBP, and `price` is in USD",
+        "a rate for a third currency"
+    );
+    assert_eq!(
+        rules(
+            "function f(cake: CakePrice, rate: PoundsToEuros) -> Euros {\n    return Euros(money.convert(cake, rate))\n}\n\nfunction g(cake: CakePrice, rate: EurosToPounds) -> Euros {\n    return f(cake, rate)\n}\n"
+        ),
+        ["type.mismatch"],
+        "one rate type never stands in for the other"
+    );
+}
+
+#[test]
+fn building_a_rate_type_checks_its_currencies() {
+    assert_eq!(
+        rules(
+            "function f(rate: ExchangeRate) -> PoundsToEuros {\n    return PoundsToEuros(rate)\n}\n"
+        ),
+        ["failure.attempt_required"],
+        "a rate the app was given may be for any currencies"
+    );
+    assert_eq!(
+        rules(
+            "function f(rate: ExchangeRate) fails WrongRate -> PoundsToEuros {\n    var typed: PoundsToEuros = attempt PoundsToEuros(rate) {\n        from: WrongRate\n        to: WrongRate\n    }\n    return typed\n}\n"
+        ),
+        NONE
+    );
+    assert_eq!(
+        rules(
+            "function f(rate: ExchangeRate) -> PoundsToEuros? {\n    if (rate.from == Currency.gbp and rate.to == Currency.eur) {\n        return PoundsToEuros(rate)\n    }\n    return none\n}\n"
+        ),
+        NONE,
+        "a condition proves both"
+    );
+    assert_eq!(
+        rules(
+            "function f() -> PoundsToEuros {\n    return PoundsToEuros(ExchangeRate {\n        from: Currency.gbp\n        to: Currency.eur\n        rate: 1.17\n        at: \"2026-10-18T09:00:00Z\"\n    })\n}\n"
+        ),
+        NONE,
+        "a rate written out fixes both"
+    );
+    assert_eq!(
+        rules("function f(rate: PoundsToEuros) -> FromPounds {\n    return FromPounds(rate)\n}\n"),
+        NONE,
+        "its own type fixes them"
+    );
+    assert_eq!(
+        rules(
+            "function f(rate: ExchangeRate) fails WrongRate -> FromPounds {\n    var typed: FromPounds = attempt FromPounds(rate) {\n        from: WrongRate\n        to: WrongRate\n    }\n    return typed\n}\n"
+        ),
+        ["failure.unknown_mapping"],
+        "a currency the type leaves open is never broken"
     );
 }
 

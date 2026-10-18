@@ -1084,6 +1084,13 @@ pub trait TypeView {
                     Some(Def::Scalar { parent, .. }) => current = parent.strip_nullable().clone(),
                     _ => return Subject::Other,
                 },
+                // The standard `ExchangeRate`, whose currencies `from:` and
+                // `to:` fix (chunk 5.5h4).
+                Ty::Opaque(name, args)
+                    if args.is_empty() && name == jadpo_std::standard::EXCHANGE_RATE =>
+                {
+                    return Subject::ExchangeRate;
+                }
                 _ => return Subject::Other,
             }
         }
