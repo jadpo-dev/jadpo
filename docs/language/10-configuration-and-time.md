@@ -1904,19 +1904,19 @@ use orders/types { DiscountRate }
 
 /// The discount on an order, on its confirmation page.
 type OrderDiscount = Message {
-    off: DiscountRate
+    reduction: DiscountRate
 }
 ```
 
 ```jadpo check project=translation-percent file=domains/orders/translations/en_gb.jadpo
 translations {
-    order_discount: "You saved {off, number, percent}."
+    order_discount: "You saved {reduction, number, percent}."
 }
 ```
 
 ```jadpo check project=translation-percent file=domains/orders/translations/es_mx.jadpo
 translations {
-    order_discount: "Ahorraste {off, number, percent}."
+    order_discount: "Ahorraste {reduction, number, percent}."
 }
 ```
 
@@ -1924,8 +1924,8 @@ translations {
 use orders/types { DiscountRate }
 
 /// The order's discount, in the customer's language.
-action confirm_discount(off: DiscountRate, reader_locale: Locale) -> PresentationText {
-    return translations.orders.order_discount(off: off, locale: reader_locale)
+action confirm_discount(reduction: DiscountRate, reader_locale: Locale) -> PresentationText {
+    return translations.orders.order_discount(reduction: reduction, locale: reader_locale)
 }
 ```
 

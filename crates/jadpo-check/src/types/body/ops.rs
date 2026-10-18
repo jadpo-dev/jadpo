@@ -1010,7 +1010,7 @@ impl Body<'_> {
                         self,
                         "a number and a percentage",
                         format!(
-                            "A percentage adds only a percentage; {} is a number. A number is scaled by a percentage with `*`.",
+                            "A percentage adds only a percentage; {} is a number. A number is multiplied by a percentage with `*`.",
                             bare.shown()
                         ),
                         "Multiply the number by the percentage, or add two percentages".to_string(),
@@ -1104,9 +1104,9 @@ impl Body<'_> {
             // Adding a percentage to money could mean two things (area
             // 19): the fix writes each.
             ("+" | "-", true, false) if rb == Some(Prim::Percentage) => {
-                let price = tree::written(lhs.syntax());
-                let rate = tree::written(rhs.syntax());
-                let scaled = match b {
+                let amount_text = tree::written(lhs.syntax());
+                let rate_text = tree::written(rhs.syntax());
+                let as_whole = match b {
                     Operand::Literal(value) => value.percentage().and_then(|fraction| {
                         let whole = jadpo_std::Num {
                             mantissa: 10i128.checked_pow(fraction.scale)?,
@@ -1121,7 +1121,7 @@ impl Body<'_> {
                     }),
                     Operand::Value(_) => None,
                 }
-                .unwrap_or_else(|| format!("(100% {op} {rate})"));
+                .unwrap_or_else(|| format!("(100% {op} {rate_text})"));
                 let span = span.clone();
                 self.out.push(
                     Diagnostic::new(
@@ -1135,10 +1135,10 @@ impl Body<'_> {
                     )
                     .at(span, "an amount and a percentage")
                     .reason(format!(
-                        "`{price} {op} {rate}` could mean {} by {rate} of itself, or {rate} of some other amount; the standard operator table refuses it rather than guess. A percentage scales money by `*`."
+                        "`{amount_text} {op} {rate_text}` could mean {} by {rate_text} of itself, or {rate_text} of some other amount; the standard operator table refuses it rather than guess. A percentage scales money by `*`."
                     , if op == "+" { "the amount raised" } else { "the amount lowered" }))
                     .next(format!(
-                        "Write `{price} * {scaled}`, or `{price} {op} {price} * {rate}`, whichever is meant"
+                        "Write `{amount_text} * {as_whole}`, or `{amount_text} {op} {amount_text} * {rate_text}`, whichever is meant"
                     )),
                 );
                 Ty::Error

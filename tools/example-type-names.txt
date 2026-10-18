@@ -61,6 +61,7 @@ Score
 Service
 Session
 Settings
+Share
 Size
 Slot
 Tag

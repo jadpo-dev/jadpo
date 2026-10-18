@@ -641,7 +641,7 @@ mod tests {
         assert_eq!(
             constraint(Subject::Prim(Prim::Text), "min", &number("1"), &mut rules),
             Err(Problem::Base(
-                "`Int`, `Decimal`, `Duration`, `Money` and quantity types"
+                "`Int`, `Decimal`, `Duration`, `Money`, `Percentage` and quantity types"
             ))
         );
         assert!(

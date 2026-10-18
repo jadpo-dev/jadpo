@@ -631,23 +631,23 @@ function offcut() -> Offcut {
     return Offcut(trim)
 }
 
-/// The offcut for the reader, in centimetres.
-function offcut_label(reader: Locale) -> PresentationText {
-    return text.format(offcut(), locale: reader, unit: LengthUnit.centimetre)
+/// The offcut for the customer, in centimetres.
+function offcut_label(customer: Locale) -> PresentationText {
+    return text.format(offcut(), locale: customer, unit: LengthUnit.centimetre)
 }
 
 /// How much of a batch passed, from the share that did.
-function pass_rate(passed: Share) -> PassRate {
-    return PassRate(passed)
+function pass_rate(good_share: Share) -> PassRate {
+    return PassRate(good_share)
 }
 
-/// A rate for the reader, as their locale writes a percentage.
-function rate_label(rate: PassRate, reader: Locale) -> PresentationText {
-    return text.format(rate, locale: reader)
+/// A rate for the customer, as their locale writes a percentage.
+function rate_label(rate: PassRate, customer: Locale) -> PresentationText {
+    return text.format(rate, locale: customer)
 }
 
 /// Each of four people's share of a cake.
-function quarter() -> Fraction {
+function cake_share() -> Fraction {
     return Fraction {
         numerator: 1
         denominator: 4
@@ -676,8 +676,8 @@ test "a ratio becomes a percentage, and fractions are written as people write th
     assert pass_rate(0.25) == 25%
     assert rate_label(pass_rate(0.175), Locale.en_gb) == "17.5%"
     assert text.from(pass_rate(0.175)) == "17.5%"
-    assert text.from(quarter()) == "1/4"
-    assert quarter().denominator == 4
+    assert text.from(cake_share()) == "1/4"
+    assert cake_share().denominator == 4
 }
 ```
 
@@ -702,7 +702,7 @@ use bakery/types { DiscountRate }
 /// A voucher a customer brings to the counter.
 entity Voucher {
     id: Uuid
-    off: DiscountRate  // one `numeric` column: 0.15 for 15%
+    reduction: DiscountRate  // one `numeric` column: 0.15 for 15%
 }
 ```
 
@@ -710,11 +710,11 @@ entity Voucher {
 use bakery/entities { Voucher }
 use bakery/types { DiscountRate }
 
-/// Issues a voucher for `off` a cake's price.
-action issue_voucher(off: DiscountRate) -> Voucher {
+/// Issues a voucher taking `reduction` off a cake's price.
+action issue_voucher(reduction: DiscountRate) -> Voucher {
     return Voucher.create {
         set: {
-            off: off
+            reduction: reduction
         }
     }
 }
@@ -724,10 +724,10 @@ action issue_voucher(off: DiscountRate) -> Voucher {
 use bakery/entities { Voucher }
 
 test "a voucher keeps its discount as it was issued" {
-    var issued: Voucher = issue_voucher(15%)
-    var voucher_on_file: Voucher = attempt Voucher.get(issued.id)
-    assert voucher_on_file.off == 15%
-    assert text.from(voucher_on_file.off) == "15%"
+    var voucher_made: Voucher = issue_voucher(15%)
+    var voucher_on_file: Voucher = attempt Voucher.get(voucher_made.id)
+    assert voucher_on_file.reduction == 15%
+    assert text.from(voucher_on_file.reduction) == "15%"
 }
 ```
 
@@ -4960,7 +4960,8 @@ under "Errors").
   it may be negative (`-5%`), as a quantity literal may. A number, `%`
   and a name or number all touching (`20%3`, `20%rate`) is
   `syntax.percent_ambiguous`, a new rule, with no edit since either
-  reading could be meant; the rest of the file is read as the remainder.
+  reading could be meant; the text is read as the remainder so the file
+  still parses.
 - **A bare number where a percentage goes is refused**, as an argument,
   in a comparison, beside `+` or as a bound, since 0.2 and 20 are the
   confusion the type exists to end: `type.mismatch` (or

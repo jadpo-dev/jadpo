@@ -37,7 +37,7 @@ fn plain_number(text: &str) -> bool {
 
 /// A fraction as a percentage, the number with no trailing zeros: the
 /// mantissa and places of `fraction × 100`, so 0.125 is (125, 1).
-pub fn percent_of(mantissa: i128, scale: u32) -> (i128, u32) {
+pub fn as_percent(mantissa: i128, scale: u32) -> (i128, u32) {
     let (mut mantissa, mut places) = if scale >= 2 {
         (mantissa, scale - 2)
     } else {
@@ -52,7 +52,7 @@ pub fn percent_of(mantissa: i128, scale: u32) -> (i128, u32) {
 
 /// A percentage's canonical text: `20%`, `12.5%`, `-5%`.
 pub fn canonical(mantissa: i128, scale: u32) -> String {
-    let (mantissa, places) = percent_of(mantissa, scale);
+    let (mantissa, places) = as_percent(mantissa, scale);
     format!(
         "{}%",
         Num {

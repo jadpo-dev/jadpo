@@ -379,3 +379,5 @@ grams
 kilograms
 product
 products
+# a standard operation's name, `text.trim` (area 19); the showcase's variable too
+trim

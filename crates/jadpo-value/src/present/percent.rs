@@ -16,7 +16,7 @@ use crate::{Decimal, Fault};
 /// value keeps as a percentage, and the `%` where the locale puts it.
 pub fn percent(fraction: &Decimal, tag: &str) -> Result<String, Fault> {
     let locale = locale_of(tag)?;
-    let (mantissa, places) = jadpo_std::percentage::percent_of(fraction.mantissa, fraction.scale);
+    let (mantissa, places) = jadpo_std::percentage::as_percent(fraction.mantissa, fraction.scale);
     let fixed: Fixed = Decimal::new(mantissa, places)
         .to_string()
         .parse()
