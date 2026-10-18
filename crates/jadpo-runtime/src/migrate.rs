@@ -23,10 +23,17 @@
 //! the rows as they are when it runs and the last step, which locks the
 //! table against writes before it fills what servers still on the old
 //! build wrote meanwhile, sees every row they committed.
+//!
+//! A backfill with an operation that has no SQL form (chunk 5.6b2) runs in
+//! the same steps, but each batch reads its rows, locked as an `UPDATE`
+//! would lock them, has [`Backfills`] work their values out in Jadpo, and
+//! writes them back in one statement; its last step does the same for the
+//! rows written meanwhile, with the table locked against writes.
 
 use std::ops::ControlFlow;
 
-use jadpo_std::{Isolation, Step};
+use jadpo_std::migration::Part;
+use jadpo_std::{Isolation, SqlType, Step};
 
 use crate::{Database, SqlValue, StoreError, Transaction};
 
@@ -45,6 +52,46 @@ pub const STEPS_TABLE: &str = "jadpo_migration_steps";
 
 const CREATE_STEPS: &str = "CREATE TABLE IF NOT EXISTS jadpo_migration_steps (\n    name text PRIMARY KEY,\n    digest text NOT NULL,\n    step integer NOT NULL,\n    after uuid\n)";
 
+/// Works out in Jadpo the values of a backfill with an operation that has
+/// no SQL form (area 5, "Computed backfills"; chunk 5.6b2): what `jadpo
+/// migrate apply` hands the runtime, from the project's interpreter.
+pub trait Backfills {
+    /// The value of `field`'s backfill in `migration` for each of `rows`,
+    /// in order, bound for its column through the storage codec: each row
+    /// the columns the backfill reads, as its SQL selects them.
+    fn work_out(
+        &self,
+        migration: &str,
+        field: &str,
+        rows: &[&[SqlValue]],
+    ) -> Result<Vec<SqlValue>, Unworked>;
+}
+
+/// Why [`Backfills`] gave no values.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Unworked {
+    /// Nothing here can work it out: no program, or one that doesn't hold
+    /// this backfill, since only the latest migration's are checked
+    /// against the project's code.
+    Unavailable,
+    /// Working out row `at` stopped: why, never the row's values.
+    Stopped { at: usize, reason: String },
+}
+
+/// No program: a backfill worked out in Jadpo stops at its first row.
+struct NoProgram;
+
+impl Backfills for NoProgram {
+    fn work_out(
+        &self,
+        _migration: &str,
+        _field: &str,
+        _rows: &[&[SqlValue]],
+    ) -> Result<Vec<SqlValue>, Unworked> {
+        Err(Unworked::Unavailable)
+    }
+}
+
 /// What applying migrations reports as it goes (chunk 5.6b).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Progress<'a> {
@@ -52,7 +99,7 @@ pub enum Progress<'a> {
     Filling {
         migration: &'a str,
         field: &'a str,
-        /// How each batch is worked out: `by UPDATE`.
+        /// How each batch is worked out: `by UPDATE`, or `in Jadpo`.
         how: &'a str,
         /// The rows left to fill.
         left: u64,
@@ -119,6 +166,21 @@ pub enum MigrateError {
     Stopped {
         name: String,
     },
+    /// `name`'s backfill of `field` is worked out in Jadpo and rows need it,
+    /// but nothing given can work it out (chunk 5.6b2).
+    Unworked {
+        name: String,
+        field: String,
+    },
+    /// Working out `name`'s backfill of `field` in Jadpo stopped at the
+    /// row whose key is `record`, for `reason` (chunk 5.6b2): its batch
+    /// rolled back.
+    BackfillStopped {
+        name: String,
+        field: String,
+        record: String,
+        reason: String,
+    },
     /// A migration needs `extension` at version `least` or later, and the
     /// database server offers `found`: pgvector 0.8.0 for an HNSW index,
     /// whose `nearest` queries run with its iterative scans (area 21,
@@ -164,6 +226,19 @@ pub async fn migrate_reporting(
     migrations: &[Migration],
     report: &mut dyn FnMut(&Progress<'_>) -> ControlFlow<()>,
 ) -> Result<Vec<String>, MigrateError> {
+    migrate_with(database, migrations, &NoProgram, report).await
+}
+
+/// [`migrate_reporting`], with `backfills` working out in Jadpo the
+/// backfills that have no SQL form (chunk 5.6b2). Without it, such a
+/// backfill stops at the first row it has to fill, with
+/// [`MigrateError::Unworked`]; on an empty table it has none.
+pub async fn migrate_with(
+    database: &dyn Database,
+    migrations: &[Migration],
+    backfills: &dyn Backfills,
+    report: &mut dyn FnMut(&Progress<'_>) -> ControlFlow<()>,
+) -> Result<Vec<String>, MigrateError> {
     // Every extension a pending migration creates is one the database
     // offers, checked before anything runs (area 21, "Without pgvector").
     let mut transaction = database.begin().await?;
@@ -196,7 +271,16 @@ pub async fn migrate_reporting(
         };
         if migration.has_batches() {
             transaction.rollback().await?;
-            match in_steps(database, migration, migrations, &mut counted, report).await? {
+            match in_steps(
+                database,
+                migration,
+                migrations,
+                backfills,
+                &mut counted,
+                report,
+            )
+            .await?
+            {
                 Stepped::Applied => {
                     ran.push(migration.name.clone());
                     if report(&Progress::Applied {
@@ -274,6 +358,7 @@ async fn in_steps(
     database: &dyn Database,
     migration: &Migration,
     migrations: &[Migration],
+    backfills: &dyn Backfills,
     counted: &mut Vec<(String, usize)>,
     report: &mut dyn FnMut(&Progress<'_>) -> ControlFlow<()>,
 ) -> Result<Stepped, MigrateError> {
@@ -287,6 +372,7 @@ async fn in_steps(
             migration,
             migrations,
             &steps,
+            backfills,
             counted,
             report,
         )
@@ -344,6 +430,7 @@ async fn one_step<'s>(
     migration: &Migration,
     migrations: &[Migration],
     steps: &'s [Step],
+    backfills: &dyn Backfills,
     counted: &mut Vec<(String, usize)>,
     report: &mut dyn FnMut(&Progress<'_>) -> ControlFlow<()>,
 ) -> Result<Option<OneStep<'s>>, MigrateError> {
@@ -391,8 +478,31 @@ async fn one_step<'s>(
     };
     let last = at + 1 == steps.len();
     match step {
-        Step::Once(sql) => {
-            transaction.batch(sql).await?;
+        Step::Once(_) | Step::Mixed(_) => {
+            let parts = match step {
+                Step::Mixed(parts) => parts.clone(),
+                Step::Once(sql) => vec![Part::Sql(sql.clone())],
+                Step::Batches(_) => Vec::new(),
+            };
+            for part in &parts {
+                match part {
+                    Part::Sql(sql) => transaction.batch(sql).await?,
+                    // The rows written meanwhile, worked out in Jadpo
+                    // with the table locked against writes (chunk 5.6b2).
+                    Part::Fill(fill) => {
+                        let rows = transaction.query(&fill.read, &[]).await?;
+                        in_jadpo(
+                            transaction,
+                            backfills,
+                            &migration.name,
+                            &fill.field,
+                            &rows,
+                            &fill.write,
+                        )
+                        .await?;
+                    }
+                }
+            }
             if last {
                 finish(transaction, migration).await?;
             } else {
@@ -430,6 +540,27 @@ async fn one_step<'s>(
             let rows = transaction
                 .query(&batches.batch, &[SqlValue::Uuid(after.unwrap_or([0; 16]))])
                 .await?;
+            // In Jadpo (chunk 5.6b2): the batch's rows read, their values
+            // worked out and written back.
+            let rows = match &batches.write {
+                None => rows,
+                Some(write) => {
+                    let ended = match rows.last().and_then(|row| row.first()) {
+                        Some(SqlValue::Uuid(key)) => SqlValue::Uuid(*key),
+                        _ => SqlValue::Null(SqlType::Uuid),
+                    };
+                    let filled = in_jadpo(
+                        transaction,
+                        backfills,
+                        &migration.name,
+                        &batches.field,
+                        &rows,
+                        write,
+                    )
+                    .await?;
+                    vec![vec![ended, SqlValue::Int8(filled as i64)]]
+                }
+            };
             let (ended, filled) = match rows.first().map(Vec::as_slice) {
                 Some([ended, SqlValue::Int8(filled)]) => (
                     match ended {
@@ -470,6 +601,79 @@ async fn one_step<'s>(
             }
         }
     }
+}
+
+/// Works out in Jadpo the values of `migration`'s backfill of `field` for
+/// `rows`, each its key and then the columns the backfill reads, and
+/// writes them back with `write`: how many rows it filled.
+async fn in_jadpo(
+    transaction: &mut dyn Transaction,
+    backfills: &dyn Backfills,
+    migration: &str,
+    field: &str,
+    rows: &[crate::Row],
+    write: &str,
+) -> Result<u64, MigrateError> {
+    if rows.is_empty() {
+        return Ok(0);
+    }
+    let fault = |what: String| MigrateError::Store(StoreError::Fault(what));
+    let mut keys = Vec::with_capacity(rows.len());
+    let mut reads: Vec<&[SqlValue]> = Vec::with_capacity(rows.len());
+    for row in rows {
+        match row.split_first() {
+            Some((SqlValue::Uuid(key), rest)) => {
+                keys.push(SqlValue::Uuid(*key));
+                reads.push(rest);
+            }
+            _ => {
+                return Err(fault(format!(
+                    "a batch of `{field}` gave a row that doesn't start with its key"
+                )));
+            }
+        }
+    }
+    let values =
+        backfills
+            .work_out(migration, field, &reads)
+            .map_err(|unworked| match unworked {
+                Unworked::Unavailable => MigrateError::Unworked {
+                    name: migration.to_string(),
+                    field: field.to_string(),
+                },
+                Unworked::Stopped { at, reason } => MigrateError::BackfillStopped {
+                    name: migration.to_string(),
+                    field: field.to_string(),
+                    record: match keys.get(at) {
+                        Some(SqlValue::Uuid(key)) => crate::read::uuid_text(key),
+                        _ => String::new(),
+                    },
+                    reason,
+                },
+            })?;
+    if values.len() != keys.len() {
+        return Err(fault(format!(
+            "`{field}`'s backfill gave {} values for {} rows",
+            values.len(),
+            keys.len()
+        )));
+    }
+    let ty = match values.first() {
+        Some(SqlValue::Null(_)) | None => {
+            return Err(fault(format!("`{field}`'s backfill gave no value")));
+        }
+        Some(value) => value.ty(),
+    };
+    let filled = transaction
+        .execute(
+            write,
+            &[
+                SqlValue::Array(SqlType::Uuid, keys),
+                SqlValue::Array(ty, values),
+            ],
+        )
+        .await?;
+    Ok(filled)
 }
 
 /// Records `migration`, filled in batches, as applied, and forgets how

@@ -677,7 +677,7 @@ migration {
 - **Backfills can be worked out** from each row's own fields (Richard,
   2026-10-15), for a new field that reshapes data the entity already holds.
   See "Computed backfills" below; built in chunk 5.6b where every
-  operation has a SQL form, and in Jadpo from chunk 5.6b2.
+  operation has a SQL form, and in Jadpo in chunk 5.6b2.
 - **Forgetting is caught at once**: `jadpo check` fails while the entities
   and the latest snapshot disagree, naming what changed and the command to
   run, so the editor, the build and CI all stop. Loose files, with no
@@ -787,8 +787,20 @@ column required. `jadpo migrate apply` runs each batch in its own
 transaction and says how many rows each backfill filled; a run stopped
 anywhere leaves the column consistent and the next carries on from the
 last batch that committed. What the page left open is "Chosen in chunk
-5.6b", under "Review". A backfill with an operation that has no SQL form
-is refused as not built yet until chunk 5.6b2 works it out in Jadpo.
+5.6b", under "Review".
+
+Built in chunk 5.6b2: a backfill with an operation that has no SQL form
+(`text.upper`, a `var mut`) is worked out in Jadpo. Its line in the
+migration's SQL says so (`-- backfill Todo.priority: in Jadpo, 1000 rows
+a batch, …`) and names the digest of the code it runs; each batch reads
+its rows still without a value, locked as an `UPDATE` would lock them,
+and `jadpo migrate apply` works their values out in the interpreter and
+writes them back through the storage codec in one statement, in 5.6b's
+batches, transactions and resume marker. The last step reads and fills
+the rows written meanwhile the same way, with the table locked against
+writes. `jadpo migrate apply` says the backfill ran in Jadpo and is
+slower (`2500 rows filled in 3 batches in Jadpo (slower than SQL)`).
+What the page left open is "Chosen in chunk 5.6b2", under "Review".
 
 The SQL forms a batch's `UPDATE` uses are built (chunk 5.6): each
 standard operation's, tested against the runtime on live PostgreSQL, and
@@ -2181,9 +2193,12 @@ SQL form, checked as a body of their own and written as batches of one
 the column consistent and the next carries on, tested against live
 PostgreSQL (`crates/jadpo-cli/tests/backfills.rs`), with the operators'
 and conditionals' forms tested against the runtime beside the standard
-operations' (`crates/jadpo-cli/tests/sql_forms.rs`). A backfill with an
-operation that has no SQL form, and one for a field that allows less,
-are refused as not built yet; chunk 5.6b2 works the first out in Jadpo.
+operations' (`crates/jadpo-cli/tests/sql_forms.rs`). A backfill for a
+field that allows less is refused as not built yet. Built in chunk
+5.6b2: a backfill with an operation that has no SQL form is worked out in
+Jadpo by `jadpo migrate apply`, in the same batches, transactions and
+resume marker, with values identical to the runtime's, tested against
+live PostgreSQL in the same file.
 
 Not built yet, and said so where it is used (`toolchain.not_built_yet`):
 
@@ -2301,6 +2316,47 @@ conservative reading:
   variant, `true` and `false`, a literal, `none` or `some`, become `CASE`,
   the last arm its `else`. A `var mut`, a loop or a statement that only
   runs for its effect has no form.
+
+### Chosen in chunk 5.6b2
+
+What the page left open about backfills worked out in Jadpo, each the
+most conservative reading:
+
+- **Which backfills.** Only the latest migration's, since only its
+  decisions are checked against the project's code. An earlier
+  migration's backfill in Jadpo that has rows to fill stops `jadpo
+  migrate apply` (`Filling Todo.priority for <migration> needs the build
+  it was written in`), keeping every step that committed, so it is
+  applied with the build that wrote it and then this one. On an empty
+  table nothing needs working out, so a new database takes every
+  migration at once.
+- **The code it runs** is the project's as `jadpo migrate apply` finds
+  it, which must check without errors once a row needs it. The SQL's
+  marker names a digest of the backfill's body, every function it
+  reaches (where each is written left out) and the constants they read,
+  so a change to that code makes `jadpo check` ask for the migration to
+  be written again, as a change to a backfill by `UPDATE` does, and a
+  database that ran the old code refuses the new one as changed.
+- **A batch** reads up to 1000 rows still without a value past where the
+  last ended, in key order, `FOR NO KEY UPDATE`, so a request on the old
+  build can't change a field the value was worked out from before the
+  batch commits; it writes the values back in one `UPDATE … FROM
+  unnest($1, $2)` filling only rows still without one. The last step
+  reads every row still without a value after locking the table against
+  writes, in the transaction that makes the column required.
+- **What it reads and writes:** fields held in one column (the built-in
+  types, and an enum without data). A backfill in Jadpo that reads or
+  fills a value held in several columns or as JSON is refused as not
+  built yet.
+- **A defect** (an overflow, say) stops the batch: it rolls back, and
+  `jadpo migrate apply` names the record's key and the fault, never the
+  row's values.
+- **Output.** The live line says `Filling Todo.priority in Jadpo  2000 of
+  5000 rows`; the result says `2500 rows filled in 3 batches in Jadpo
+  (slower than SQL)`, and `--json` gives `"how": "in Jadpo"`. `jadpo
+  migrate new` lists "fill existing rows in batches in Jadpo".
+- **`jadpo dev`** applies migrations with the same interpreter; `jadpo
+  test` builds its database on empty tables, so nothing needs it.
 
 ### Carried to later areas
 
@@ -2459,5 +2515,5 @@ Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says ot
 | Deleting a record with a lifecycle | Chosen in chunk 3.4: `delete` runs the `delete` transition; with none, code can't delete the record, nor remove one whose delete would cascade to an entity with a lifecycle; only purge removes them | 2026-10-15 |
 | Purge's period and batches | Chosen in chunk 3.4: `after:` takes a duration in place, or a `Duration` setting (chunk 5.1; `jadpo_runtime::purge_after` is given its value); a batch deletes at most 500 hidden records, oldest `since:` first, each batch its own transaction; a record a `restricted` reference holds stays without stopping the rest; the runtime's entry point runs it, area 12's hourly schedule calls it (chunk 6.2) | 2026-10-15 |
 | Partial indexes | Chosen in chunk 3.4: the indexes an entity's queries need hold only the records `visible:` lets through, unless it reads `clock.now`; a reference's own index stays beside a partial one | 2026-10-15 |
-| Computed backfills | `backfill:` may be an expression over each row's own stored fields (`Todo.legacy_flag`), constants and pure functions, including a field this migration retires; filled in batches, one `UPDATE` each where the expression has a SQL form and by `jadpo migrate apply` otherwise, then made required; no freeform SQL (Richard, from an outside review). Built in chunk 5.6b where every operation has a SQL form; batches, locking, the resume marker, failing rows and progress are "Chosen in chunk 5.6b" | 2026-10-15 |
+| Computed backfills | `backfill:` may be an expression over each row's own stored fields (`Todo.legacy_flag`), constants and pure functions, including a field this migration retires; filled in batches, one `UPDATE` each where the expression has a SQL form and by `jadpo migrate apply` otherwise, then made required; no freeform SQL (Richard, from an outside review). Built in chunk 5.6b where every operation has a SQL form, and in Jadpo in chunk 5.6b2; batches, locking, the resume marker, failing rows and progress are "Chosen in chunk 5.6b", and what working one out in Jadpo left open is "Chosen in chunk 5.6b2" | 2026-10-15 |
 | Redis entity updates | Updates by `id` include counters, done as one Redis `increment`; no lifecycles on a Redis entity, expiry taking their place (decided for Richard) | 2026-10-16 |
