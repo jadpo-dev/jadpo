@@ -8,7 +8,7 @@
 //! types' text, JSON and columns are the one harness's (`standard_types`).
 
 use jadpo_std::{Op, QuantityKind};
-use jadpo_value::{Decimal, Fault, Quantity, Value, run, standard};
+use jadpo_value::{Decimal, Fault, Quantity, Value, run};
 
 fn call(op: Op, args: &[Value]) -> Result<Value, Fault> {
     run(op, args, None, &mut |_| None)
@@ -177,6 +177,12 @@ fn rules_across_parts_hold_where_json_is_read() {
     };
     // 120/80 mmHg in thousandths of a pascal.
     assert_eq!(broken(&pressure(15_998_686, 10_665_791)), None);
-    assert_eq!(broken(&pressure(10_665_791, 15_998_686)), Some("diastolic_below_systolic"));
-    assert_eq!(broken(&pressure(12_000_000, 12_000_000)), Some("diastolic_below_systolic"));
+    assert_eq!(
+        broken(&pressure(10_665_791, 15_998_686)),
+        Some("diastolic_below_systolic")
+    );
+    assert_eq!(
+        broken(&pressure(12_000_000, 12_000_000)),
+        Some("diastolic_below_systolic")
+    );
 }

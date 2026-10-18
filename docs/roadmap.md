@@ -1103,7 +1103,7 @@ reference only).
   and `pick` don't copy rules. A rule on an entity is refused, left for
   Richard to decide. What the chunk chose is area 2's "Chosen in chunk
   5.5t".
-- [ ] **5.5t2 Cross-field rules: the standard types** `opus · high` (area
+- [x] **5.5t2 Cross-field rules: the standard types** `opus · high` (area
   19; split from 5.5t), after 5.5t and 5.5r3: the cross-part rules the
   standard object types check only for literals and decoded JSON become
   named rules, so a value built in code is proved or attempted like a
@@ -1115,7 +1115,13 @@ reference only).
   `MapTile` (5.5s), `TokenUsage`'s `cached` within `input` (5.5s2) and
   `PasswordPolicy`'s lengths (5.5r3). Each rule's name is decided on area
   19 and listed in the type's OpenAPI description. Done when each type's
-  literal, code-built value and JSON reading break the same named rule.
+  literal, code-built value and JSON reading break the same named rule. Built:
+  each check is one named rule in `jadpo_std::standard::across`, run
+  through the plan's validator as an application's rule is, with the
+  orderings proved as a condition comparing two fields; `DateRange`,
+  `ContentRating`, the tax and document numbers and `BoundingBox` came
+  along, and `text.parse` breaks the rules by name too. The names and what
+  the chunk chose are area 19's "Chosen in chunk 5.5t2".
 - [ ] **5.5u Geospatial: the plan** `opus · high` (area 19, question 12):
   write the geospatial area page from area 19's scope (the types in
   WGS84, GeoJSON on the wire, `geo.` construction and operations, PostGIS

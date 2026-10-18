@@ -27,6 +27,7 @@ adults
 after_fifth
 after_five
 afternoon
+afternoon_slot
 afterwards
 agreed_term
 alg_none_token
@@ -302,6 +303,8 @@ coffee
 collect_at
 collect_on
 collection_day
+combined_slot
+combined_slot_checked
 combo
 comment_body
 common_time
@@ -858,6 +861,7 @@ monitor_text
 monitored_pulse
 morning
 morning_rate
+morning_slot
 moved_in
 munich_plate
 my_bakeries
@@ -1449,6 +1453,7 @@ size_price
 slice_count
 slices
 slices_in
+slot_backwards
 slot_request
 slot_taken
 slot_time
@@ -1711,6 +1716,7 @@ when_needed
 white
 whoami
 whole_batch
+whole_day
 whole_team
 wholemeal
 wide_still

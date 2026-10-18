@@ -75,7 +75,10 @@ pub enum Given<'a> {
     Text(&'a str),
     /// A standard enum's variant: its place among the variants, and its
     /// code (empty for an enum with none).
-    Variant { ordinal: u32, code: &'a str },
+    Variant {
+        ordinal: u32,
+        code: &'a str,
+    },
     Bool(bool),
     /// A `LocalDateTime`.
     Local(LocalAt),
@@ -242,14 +245,12 @@ impl Order {
     fn verdict(&self, parts: &dyn Parts, at: &'static str) -> Verdict {
         match (parts.part(self.lower), parts.part(self.upper)) {
             (Known::Absent, _) | (_, Known::Absent) => Verdict::Holds,
-            (Known::Given(Some(lower)), Known::Given(Some(upper))) => {
-                match lower.compare(&upper) {
-                    Some(Ordering::Less) => Verdict::Holds,
-                    Some(Ordering::Equal) if !self.strict => Verdict::Holds,
-                    Some(_) => Verdict::Breaks(at),
-                    None => Verdict::Unknown,
-                }
-            }
+            (Known::Given(Some(lower)), Known::Given(Some(upper))) => match lower.compare(&upper) {
+                Some(Ordering::Less) => Verdict::Holds,
+                Some(Ordering::Equal) if !self.strict => Verdict::Holds,
+                Some(_) => Verdict::Breaks(at),
+                None => Verdict::Unknown,
+            },
             _ => Verdict::Unknown,
         }
     }
@@ -288,9 +289,9 @@ impl StandardRule {
     /// What it comes to for what is known of the parts.
     pub fn verdict(&self, parts: &dyn Parts) -> Verdict {
         match self.check {
-            Check::InOrder { orders, at } => orders
-                .iter()
-                .fold(Verdict::Holds, |sum, order| sum.and(order.verdict(parts, at))),
+            Check::InOrder { orders, at } => orders.iter().fold(Verdict::Holds, |sum, order| {
+                sum.and(order.verdict(parts, at))
+            }),
             Check::By(check) => check(parts),
         }
     }
@@ -361,7 +362,13 @@ pub fn part_standard(ty: &str, part: &str) -> Option<&'static str> {
     let super::Holds::Object(fields) = super::standard_type(ty)?.holds else {
         return None;
     };
-    match fields.iter().find(|(name, _)| *name == part)?.1.required().0 {
+    match fields
+        .iter()
+        .find(|(name, _)| *name == part)?
+        .1
+        .required()
+        .0
+    {
         super::Part::Standard(other) => Some(other),
         _ => None,
     }
@@ -489,7 +496,12 @@ mod tests {
                     entry.name,
                     rule.name
                 );
-                assert!(!names.contains(&rule.name), "{}: `{}` is a part", entry.name, rule.name);
+                assert!(
+                    !names.contains(&rule.name),
+                    "{}: `{}` is a part",
+                    entry.name,
+                    rule.name
+                );
                 assert_ne!(rule.name, "invalid");
                 assert!(
                     rules[..at].iter().all(|earlier| earlier.name != rule.name),

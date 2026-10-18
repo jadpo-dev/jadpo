@@ -190,7 +190,11 @@ impl Body<'_> {
 
     /// The parts of `host` and the built-in type, or the standard type,
     /// each is built on, in declared order; a range's ends are `item`.
-    fn standard_parts(&self, host: &str, item: Option<&Ty>) -> Vec<(&'static str, Option<Prim>, Option<&'static str>)> {
+    fn standard_parts(
+        &self,
+        host: &str,
+        item: Option<&Ty>,
+    ) -> Vec<(&'static str, Option<Prim>, Option<&'static str>)> {
         match jadpo_std::standard_type(host).map(|entry| entry.holds) {
             Some(jadpo_std::standard::Holds::Object(fields)) => fields
                 .iter()
@@ -218,7 +222,12 @@ impl Body<'_> {
     /// can fail: each of its rules across its parts held by what the
     /// literal shows, broken by it (`type.invalid_literal`), proved, or left
     /// to the running program, which an `attempt` maps.
-    pub(super) fn standard_rules(&mut self, record: &ast::RecordExpr, host: &str, item: Option<&Ty>) {
+    pub(super) fn standard_rules(
+        &mut self,
+        record: &ast::RecordExpr,
+        host: &str,
+        item: Option<&Ty>,
+    ) {
         let key = node_key(record.syntax());
         let rules = jadpo_std::standard::across::rules(host);
         if rules.is_empty() {
@@ -229,7 +238,10 @@ impl Body<'_> {
             .standard_parts(host, item)
             .into_iter()
             .map(|(name, prim, standard)| {
-                (name, self.shown(value_of(record, name).as_ref(), prim, standard))
+                (
+                    name,
+                    self.shown(value_of(record, name).as_ref(), prim, standard),
+                )
             })
             .collect();
         let parts = Listed {
@@ -341,7 +353,7 @@ impl Body<'_> {
             )
             .at(span, rule.label)
             .reason(format!(
-                "{} Every part the rule reads is written out, so it is worked out while compiling.",
+                "{} A literal is checked while compiling.",
                 rule.reason
             ))
             .next(rule.next),

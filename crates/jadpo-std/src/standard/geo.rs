@@ -11,8 +11,8 @@
 
 use super::across::{Check, Order, StandardRule, Verdict, in_order};
 use super::{
-    Examples, FIRST_RELEASE, FieldMatch, Format, FormatKey, Holds, Json, NO_OPTIONS,
-    Part, StandardType, Storage, TextForm, Validator,
+    Examples, FIRST_RELEASE, FieldMatch, Format, FormatKey, Holds, Json, NO_OPTIONS, Part,
+    StandardType, Storage, TextForm, Validator,
 };
 use crate::read::SqlType;
 use crate::{Builtin, Num, QuantityKind};
@@ -780,7 +780,7 @@ pub const MAP_TILE_RULES: &[StandardRule] = &[StandardRule {
     name: "within_zoom",
     written: "x and y are each below 2 to the zoom",
     label: "past its zoom's tiles",
-    reason: "A `MapTile` at zoom `z` is one of 2 to the `z` columns and as many rows, so its `x` and `y` are each below 2 to the `z` (OpenStreetMap's XYZ scheme).",
+    reason: "A `MapTile` at zoom `z` is one of 2 to the `z` columns and as many rows, so its `x` and `y` are each below 2 to the `z` (the XYZ tile scheme).",
     next: "Write a column and a row below 2 to the zoom, or a deeper zoom",
     check: Check::By(|parts| {
         let whole = |name: &str| parts.part(name).value().and_then(|n| n.whole());
@@ -793,7 +793,9 @@ pub const MAP_TILE_RULES: &[StandardRule] = &[StandardRule {
         let mut verdict = Verdict::Holds;
         for name in ["x", "y"] {
             match whole(name) {
-                Some(n) if n >= tiles => return Verdict::Breaks(if name == "x" { "x" } else { "y" }),
+                Some(n) if n >= tiles => {
+                    return Verdict::Breaks(if name == "x" { "x" } else { "y" });
+                }
                 Some(_) => {}
                 None => verdict = Verdict::Unknown,
             }
@@ -889,7 +891,6 @@ pub const CIRCLE_ENTRY: StandardType = StandardType {
     ),
     release: FIRST_RELEASE,
 };
-
 
 /// The GeoJSON geometry `type` a standard type is sent as, for the five
 /// that are one; `Geometry` is sent as its variant's.

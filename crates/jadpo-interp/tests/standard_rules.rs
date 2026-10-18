@@ -174,7 +174,10 @@ fn instant(text: &str) -> Value {
 fn window(start: &str, end: &str) -> Value {
     Value::record(
         "InstantRange",
-        vec![("start".into(), instant(start)), ("end".into(), instant(end))],
+        vec![
+            ("start".into(), instant(start)),
+            ("end".into(), instant(end)),
+        ],
     )
 }
 
@@ -210,7 +213,10 @@ fn a_value_built_in_code_fails_by_the_rule_s_name() {
     ));
     let found = failure(&program, "tile", vec![int(2)]);
     assert_eq!(found.broken.as_deref(), Some("`within_zoom`"));
-    assert!(matches!(value(&program, "tile", vec![int(1)]), Value::Record(_)));
+    assert!(matches!(
+        value(&program, "tile", vec![int(1)]),
+        Value::Record(_)
+    ));
     let found = failure(&program, "usage", vec![int(10), int(11)]);
     assert_eq!(found.broken.as_deref(), Some("`cached_within_input`"));
     let found = failure(&program, "office", vec![text("75004")]);
@@ -225,7 +231,9 @@ fn a_value_built_in_code_fails_by_the_rule_s_name() {
 fn text_that_breaks_a_rule_names_it() {
     let program = main(SOURCE).with_proof_checks();
     assert_eq!(
-        failure(&program, "read_week", vec![text("2027-W53")]).broken.as_deref(),
+        failure(&program, "read_week", vec![text("2027-W53")])
+            .broken
+            .as_deref(),
         Some("`week_in_year`")
     );
     assert_eq!(
@@ -269,7 +277,11 @@ fn json_that_breaks_a_rule_names_it_at_the_object_s_path() {
             "slot",
             "start_not_after_end",
         ),
-        (delivery(&forwards, "2027-W53", "SW1A 1AA"), "week", "week_in_year"),
+        (
+            delivery(&forwards, "2027-W53", "SW1A 1AA"),
+            "week",
+            "week_in_year",
+        ),
         (
             delivery(&forwards, "2026-W53", "75004"),
             "address",

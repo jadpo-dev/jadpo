@@ -276,10 +276,7 @@ pub fn document_fits(number: &str, kind: &str, country: &str) -> bool {
 /// A document type's rule that its `number` is in its country's form,
 /// named `number_of_country` (chunk 5.5t2), for a document whose forms
 /// `fit` says.
-const fn number_of_country(
-    reason: &'static str,
-    check: fn(&dyn Parts) -> Verdict,
-) -> StandardRule {
+const fn number_of_country(reason: &'static str, check: fn(&dyn Parts) -> Verdict) -> StandardRule {
     StandardRule {
         name: "number_of_country",
         written: "number is in the form of its country's numbers",
@@ -305,9 +302,8 @@ pub fn rules(ty: &str) -> &'static [StandardRule] {
         "A `TaxId`'s `number` is in the form its `country`'s tax authority writes, with its check digits where it has them.",
         |parts| {
             fits(parts, "number", &["country"], |number, by| {
-                by.first().is_some_and(|country| {
-                    fits_forms(TAX_ID_FORMS, NUMBER_BOUNDS, number, country)
-                })
+                by.first()
+                    .is_some_and(|country| fits_forms(TAX_ID_FORMS, NUMBER_BOUNDS, number, country))
             })
         },
     )];
@@ -338,10 +334,15 @@ pub fn rules(ty: &str) -> &'static [StandardRule] {
         reason: "An `IdentityDocument`'s `number` is in the form its `country` issues its `kind` of document in, with its check digit where it has one.",
         next: "Write a number in the form of that kind of document from that country, or change `kind` or `country`",
         check: Check::By(|parts| {
-            fits(parts, "number", &["kind", "country"], |number, by| match by {
-                [kind, country] => document_fits(number, kind, country),
-                _ => false,
-            })
+            fits(
+                parts,
+                "number",
+                &["kind", "country"],
+                |number, by| match by {
+                    [kind, country] => document_fits(number, kind, country),
+                    _ => false,
+                },
+            )
         }),
     }];
     match ty {

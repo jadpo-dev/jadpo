@@ -838,11 +838,13 @@ pub const SUBTITLE_CUE_RULES: &[StandardRule] = &[
         label: "before the media starts",
         reason: "A `SubtitleCue`'s times are from the start of the media, so it starts at 0 or after (WebVTT).",
         next: "Write a start of 0 or more",
-        check: Check::By(|parts| match parts.part("start").value().and_then(|s| s.millis()) {
-            Some(start) if start >= 0 => Verdict::Holds,
-            Some(_) => Verdict::Breaks("start"),
-            None => Verdict::Unknown,
-        }),
+        check: Check::By(
+            |parts| match parts.part("start").value().and_then(|s| s.millis()) {
+                Some(start) if start >= 0 => Verdict::Holds,
+                Some(_) => Verdict::Breaks("start"),
+                None => Verdict::Unknown,
+            },
+        ),
     },
     StandardRule {
         name: "end_after_start",
@@ -1082,7 +1084,9 @@ mod tests {
                 ("frames", whole(frames)),
                 (
                     "rate",
-                    rate.map_or(Known::Unknown, |(n, d)| Known::Given(Some(Given::Rate(n, d)))),
+                    rate.map_or(Known::Unknown, |(n, d)| {
+                        Known::Given(Some(Given::Rate(n, d)))
+                    }),
                 ),
                 (
                     "drop_frame",
@@ -1090,10 +1094,12 @@ mod tests {
                 ),
             ],
         };
-        TIMECODE_RULES.iter().find_map(|rule| match rule.verdict(&parts) {
-            Verdict::Holds | Verdict::Unknown => None,
-            broken => Some((rule.name, broken)),
-        })
+        TIMECODE_RULES
+            .iter()
+            .find_map(|rule| match rule.verdict(&parts) {
+                Verdict::Holds | Verdict::Unknown => None,
+                broken => Some((rule.name, broken)),
+            })
     }
 
     #[test]

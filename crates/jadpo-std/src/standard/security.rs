@@ -37,8 +37,8 @@
 
 use super::across::{Order, StandardRule, in_order};
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part,
-    StandardType, Storage, TextForm, Validator,
+    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part, StandardType,
+    Storage, TextForm, Validator,
 };
 use crate::Builtin;
 use crate::read::SqlType;

@@ -821,8 +821,10 @@ fn postal_codes_follow_each_country_s_rules() {
             // Refused at `postal_code` by its own check, or by the rule
             // across the address's parts (chunk 5.5t2).
             assert!(
-                problems.iter().any(|problem| problem.field.ends_with("postal_code")
-                    || problem.rule == "postal_code_of_country"),
+                problems
+                    .iter()
+                    .any(|problem| problem.field.ends_with("postal_code")
+                        || problem.rule == "postal_code_of_country"),
                 "{problems:?}"
             );
         }
@@ -974,13 +976,19 @@ fn an_event_s_parts_are_checked_together_as_json_is_read() {
             "{changes}: {problems:?}"
         );
     };
-    broken(serde_json::json!({ "first_day": "2026-10-24" }), "days_or_times");
+    broken(
+        serde_json::json!({ "first_day": "2026-10-24" }),
+        "days_or_times",
+    );
     broken(
         serde_json::json!({ "first_day": "2026-10-24", "last_day": "2026-10-26" }),
         "days_or_times",
     );
     broken(serde_json::json!({ "zone": null }), "days_or_times");
-    broken(serde_json::json!({ "end": "2026-10-24T21:00:00" }), "end_after_start");
+    broken(
+        serde_json::json!({ "end": "2026-10-24T21:00:00" }),
+        "end_after_start",
+    );
     broken(
         serde_json::json!({ "recurrence": "DTSTART;TZID=Europe/Paris:20261024T220000\nRRULE:FREQ=WEEKLY" }),
         "recurrence_from_start",

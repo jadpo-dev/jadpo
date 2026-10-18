@@ -590,7 +590,6 @@ pub fn shown(value: &Value, tag: &str) -> Result<String, Fault> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

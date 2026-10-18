@@ -12,8 +12,8 @@
 
 use super::across::{Order, StandardRule, in_order};
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, FormatOption, Holds, Json, NO_OPTIONS,
-    Part, QUANTITY_FIELDS, ShownIn, StandardType, Storage, TextForm,
+    Examples, FIRST_RELEASE, Format, FormatKey, FormatOption, Holds, Json, NO_OPTIONS, Part,
+    QUANTITY_FIELDS, ShownIn, StandardType, Storage, TextForm,
 };
 use crate::read::SqlType;
 use crate::{Builtin, Num, QuantityKind};
@@ -480,4 +480,3 @@ pub const BLOOD_GLUCOSE_ENTRY: StandardType = StandardType {
     ),
     release: FIRST_RELEASE,
 };
-

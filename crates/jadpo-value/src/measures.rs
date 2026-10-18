@@ -193,4 +193,3 @@ pub fn dosage(record: &Record, tag: &str) -> Result<String, Fault> {
     }
     Ok(text)
 }
-

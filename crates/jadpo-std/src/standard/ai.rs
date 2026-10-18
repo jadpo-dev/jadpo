@@ -8,8 +8,8 @@
 
 use super::across::{Order, StandardRule, in_order};
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part,
-    StandardType, Storage, TextForm,
+    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part, StandardType,
+    Storage, TextForm,
 };
 use crate::Builtin;
 use crate::read::SqlType;
@@ -374,7 +374,6 @@ pub fn float(text: &str) -> Option<String> {
     }
     Some(written)
 }
-
 
 #[cfg(test)]
 mod tests {

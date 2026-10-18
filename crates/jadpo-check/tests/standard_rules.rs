@@ -55,7 +55,8 @@ fn broken_literal(source: &str, ty: &str, rule: &str) {
 fn attempted(signature: &str, ty: &str, parts: &str, named: &[&str]) {
     // A range is written `Range { ... }` whatever it holds.
     let head = ty.split('<').next().unwrap_or(ty);
-    let bare = format!("function make({signature}) -> {ty} {{\n    return {head} {{\n{parts}    }}\n}}\n");
+    let bare =
+        format!("function make({signature}) -> {ty} {{\n    return {head} {{\n{parts}    }}\n}}\n");
     assert_eq!(rules(&bare), ["failure.attempt_required"], "{bare}");
     let arms: String = named
         .iter()
@@ -192,7 +193,8 @@ fn an_iso_week_53_is_only_in_a_year_with_one() {
     );
 }
 
-const EVENT_TAIL: &str = "        location: none\n        description: none\n        recurrence: none\n";
+const EVENT_TAIL: &str =
+    "        location: none\n        description: none\n        recurrence: none\n";
 
 #[test]
 fn a_calendar_event_s_parts_go_together() {
@@ -307,9 +309,21 @@ fn a_timecode_and_a_cue_keep_their_rules() {
             "function frame() -> Timecode {{\n    return Timecode {{\n        hours: 0\n        minutes: 1\n        seconds: 0\n        frames: {frames}\n        rate: \"{rate}\"\n        drop_frame: {drop}\n    }}\n}}\n"
         )
     };
-    broken_literal(&timecode("25", "25/1", "false"), "Timecode", "frames_within_rate");
-    broken_literal(&timecode("0", "25/1", "true"), "Timecode", "drop_frame_rate");
-    broken_literal(&timecode("1", "30000/1001", "true"), "Timecode", "frame_not_dropped");
+    broken_literal(
+        &timecode("25", "25/1", "false"),
+        "Timecode",
+        "frames_within_rate",
+    );
+    broken_literal(
+        &timecode("0", "25/1", "true"),
+        "Timecode",
+        "drop_frame_rate",
+    );
+    broken_literal(
+        &timecode("1", "30000/1001", "true"),
+        "Timecode",
+        "frame_not_dropped",
+    );
     assert_eq!(rules(&timecode("2", "30000/1001", "true")), NONE);
     attempted(
         "other: Timecode",
@@ -322,9 +336,17 @@ fn a_timecode_and_a_cue_keep_their_rules() {
             "function caption() -> SubtitleCue {{\n    return SubtitleCue {{\n        start: {start}\n        end: {end}\n        text: \"{text}\"\n    }}\n}}\n"
         )
     };
-    broken_literal(&cue("-1s", "4s", "Hello"), "SubtitleCue", "start_not_negative");
+    broken_literal(
+        &cue("-1s", "4s", "Hello"),
+        "SubtitleCue",
+        "start_not_negative",
+    );
     broken_literal(&cue("4s", "1s", "Hello"), "SubtitleCue", "end_after_start");
-    broken_literal(&cue("1s", "4s", "a --> b"), "SubtitleCue", "text_without_arrow");
+    broken_literal(
+        &cue("1s", "4s", "a --> b"),
+        "SubtitleCue",
+        "text_without_arrow",
+    );
     attempted(
         "other: SubtitleCue",
         "SubtitleCue",

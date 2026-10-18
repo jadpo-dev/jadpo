@@ -357,12 +357,7 @@ impl Body<'_> {
 
     // --- proof ---------------------------------------------------------------
 
-    pub(super) fn truth(
-        &self,
-        cond: &Cond,
-        given: &BTreeMap<String, Expr>,
-        host: &str,
-    ) -> Truth {
+    pub(super) fn truth(&self, cond: &Cond, given: &BTreeMap<String, Expr>, host: &str) -> Truth {
         match cond {
             Cond::Bool(true) => Truth::Holds(BTreeSet::new()),
             Cond::Bool(false) => Truth::Breaks,

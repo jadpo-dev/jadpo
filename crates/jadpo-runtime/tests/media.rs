@@ -87,8 +87,14 @@ fn broken(value: &Value) -> Option<&'static str> {
 fn drop_frame_counts_as_smpte_st_12_1_has_it() {
     let ntsc = (30_000, 1001);
     // Frames 0 and 1 are skipped at each minute but every tenth.
-    assert_eq!(broken(&timecode(1, 0, 0, ntsc, true)), Some("frame_not_dropped"));
-    assert_eq!(broken(&timecode(1, 0, 1, ntsc, true)), Some("frame_not_dropped"));
+    assert_eq!(
+        broken(&timecode(1, 0, 0, ntsc, true)),
+        Some("frame_not_dropped")
+    );
+    assert_eq!(
+        broken(&timecode(1, 0, 1, ntsc, true)),
+        Some("frame_not_dropped")
+    );
     assert_eq!(broken(&timecode(1, 0, 2, ntsc, true)), None);
     assert_eq!(broken(&timecode(10, 0, 0, ntsc, true)), None);
     assert_eq!(broken(&timecode(1, 0, 0, ntsc, false)), None);
@@ -126,10 +132,7 @@ fn a_cue_ends_after_it_starts_and_holds_no_arrow() {
     assert_eq!(broken(&cue(1000, 4000, "Hello")), None);
     assert_eq!(broken(&cue(4000, 1000, "Hello")), Some("end_after_start"));
     assert_eq!(broken(&cue(1000, 1000, "Hello")), Some("end_after_start"));
-    assert_eq!(
-        broken(&cue(-1, 1000, "Hello")),
-        Some("start_not_negative")
-    );
+    assert_eq!(broken(&cue(-1, 1000, "Hello")), Some("start_not_negative"));
     assert_eq!(
         broken(&cue(1000, 4000, "a --> b")),
         Some("text_without_arrow")
@@ -155,8 +158,8 @@ fn a_rating_is_one_of_its_body_s_categories() {
     for refused in ["BBFC PG-13", "MPA 12A", "PEGI 15", "ESRB 18", "BBFC 12a"] {
         assert!(
             read(refused).is_err()
-                || read(refused)
-                    .is_ok_and(|rating| jadpo_value::across::broken_standard(&rating) == Some("rating_of_scheme")),
+                || read(refused).is_ok_and(|rating| jadpo_value::across::broken_standard(&rating)
+                    == Some("rating_of_scheme")),
             "{refused}"
         );
     }

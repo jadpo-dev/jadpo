@@ -1203,7 +1203,10 @@ read; `map.has` says whether it is there without reading it.
 which may be `none` for an open end; `DateRange` includes its end date and
 `InstantRange` excludes its end instant, each saying so once in its type.
 Stored as PostgreSQL's range types (`daterange`, `tstzrange`,
-`numrange`), so the SQL forms are the range operators.
+`numrange`), so the SQL forms are the range operators. A range's start is
+never after its end, its rule `start_not_after_end`, so one built from
+values is proved by a condition or attempted, as an object's rule across
+its fields is (chunk 5.5t2, under "Review").
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -3107,6 +3110,7 @@ type ShiftCount = Int {
 function diary_entry_from_text(calendar_text: DiaryText) fails DiaryUnreadable -> CalendarEvent {
     return attempt text.parse(calendar_text, as: CalendarEvent) {
         malformed: DiaryUnreadable
+        invalid: DiaryUnreadable
     }
 }
 
@@ -3126,13 +3130,7 @@ function covers_reader_day(event: CalendarEvent, at: SeenAt, zone: Zone) -> Cove
     return match event.first_day {
         some(first) -> match event.last_day {
             some(last) -> CoversReaderDay(
-                range.contains(
-                    DateRange {
-                        start: first
-                        end: last
-                    },
-                    reader_local_day
-                )
+                ReaderDay(first) <= reader_local_day and reader_local_day <= ReaderDay(last)
             )
             none -> CoversReaderDay(false)
         }
@@ -5342,6 +5340,7 @@ function thumbnail(video_still: ImageDimensions) -> ImageDimensions {
 function film_rating(raw: FormText) fails NotARating -> ContentRating {
     var typed_rating: ContentRating = attempt text.parse(raw, as: ContentRating) {
         malformed: NotARating
+        rating_of_scheme: NotARating
     }
     return typed_rating
 }
@@ -5749,6 +5748,7 @@ function card_on_file(card: PaymentCardNumber) -> MaskedCardNumber {
 function supplier_vat(raw: FormText) fails NotAVatNumber -> VatNumber {
     var number: VatNumber = attempt text.parse(raw, as: VatNumber) {
         malformed: NotAVatNumber
+        number_of_country: NotAVatNumber
     }
     return number
 }
@@ -5816,13 +5816,13 @@ function shown_at_desk() -> PassportNumber {
 ```
 
 ```text output
-error: `"123456789"` isn't a passport number of its country
+error: This `PassportNumber` breaks its rule `number_of_country`
  --> main.jadpo:5:17
   |
 5 |         number: "123456789"
-  |                 ^^^^^^^^^^^ not a passport number of `Country.fr`
-  reason: A `PassportNumber`'s `number` is in the form the passport office of its `country` writes, and a literal is checked while compiling.
-  next: Write a passport number of `Country.fr` in its canonical text, or change `country` (agent)
+  |                 ^^^^^^^^^^^ not a number of the document's country
+  reason: A `PassportNumber`'s `number` is in the form its `country`'s passport office writes. A literal is checked while compiling.
+  next: Write a number in the country's form, or change `country` (agent)
   rule: type.invalid_literal
   help: docs/language/02-values-and-types.html#type-invalid-literal
 
@@ -6415,12 +6415,12 @@ function typed_reading() -> BloodPressure {
 ```
 
 ```text output
-error: This `BloodPressure`'s `diastolic` breaks a rule across its parts
+error: This `BloodPressure` breaks its rule `diastolic_below_systolic`
  --> main.jadpo:5:20
   |
 5 |         diastolic: 120mmHg
   |                    ^^^^^^^ not below the systolic
-  reason: A `BloodPressure`'s `diastolic`, the pressure between beats, is below its `systolic`, the pressure as the heart beats (LOINC 85354-9).
+  reason: A `BloodPressure`'s `diastolic`, the pressure between beats, is below its `systolic`, the pressure as the heart beats (LOINC 85354-9). A literal is checked while compiling.
   next: Write a `diastolic` below the `systolic`, or swap the two (agent)
   rule: type.invalid_literal
   help: docs/language/02-values-and-types.html#type-invalid-literal
@@ -7665,8 +7665,8 @@ under "Errors").
   given, `none` for an open one. Where a `Range<T>` is expected its ends
   are checked as `T?`; elsewhere its first end that isn't `none` gives
   `T`. Its ends are read as `range.start` and `range.end`, each a `T?`.
-  Nothing checks that the start isn't after the end, as for an
-  `InstantRange`, until the standard types' rules across fields (5.5t2).
+  Its start not after its end is its rule `start_not_after_end`, as an
+  `InstantRange`'s and a `DateRange`'s is, since chunk 5.5t2.
 - **A `range` call's ranges are all one range type,** since each keeps its
   own end rule: an `InstantRange` and a `Range<Instant>` don't mix
   (`type.mismatch`). A range it gives is that range type, so
@@ -7674,7 +7674,8 @@ under "Errors").
   `range.contains`' value is built on the range's item type.
 - **The contract.** Its canonical text is each end's canonical text joined
   by `/`, an open end written `..` as ISO 8601-2 writes one
-  (`2026-10-01/..`); a start after its end is `malformed`. JSON is an
+  (`2026-10-01/..`); a start after its end breaks `start_not_after_end`
+  (`malformed` until chunk 5.5t2). JSON is an
   object of `start` and `end`, `null` for an open end. Storage is its JSON,
   as `InstantRange`'s is. `text.format` shows each end as its item type is
   shown, with the item type's options, joined by ` – `, and an open end as
@@ -8290,9 +8291,8 @@ under "Errors").
   each range as an object's field rules are proved (area 2):
   `type.invalid_literal` for a literal, `type.field_unproved` for a
   value, and `LocalTime.hour(raw)` builds one with its `min` and `max`.
-  A rule across fields, an `IsoWeek`'s week 53 in a year with 52, waits
-  for 5.5t2, as `InstantRange`'s start after its end does; its text is
-  refused. `Year` is a record of one `year`, since a standard type
+  A rule across fields, an `IsoWeek`'s week 53 in a year with 52, is its
+  rule `week_in_year` since chunk 5.5t2, text included. `Year` is a record of one `year`, since a standard type
   built on `Int` with rules of its own would need declarations the
   project doesn't have.
 - **Canonical text** is ISO 8601's, to the second and with nothing
@@ -8468,10 +8468,11 @@ under "Errors").
   postal code is (chunk 5.5l2): a part written `none` is known to be
   absent and one written out (text, a variant, an object) known to be
   given, so a literal that breaks one is `type.invalid_literal`, no new
-  rule. A part built from a value that may be `none` waits on cross-field
-  rules (chunk 5.5t2). A value read from text or JSON is checked as it is
-  read: text that breaks one is `malformed`, and JSON breaks `format` at
-  the part.
+  rule. Since chunk 5.5t2 they are its named rules, `days_or_times`,
+  `last_day_not_before_first`, `end_after_start` and
+  `recurrence_from_start`: a part built from a value is proved or
+  attempted by them, and text or JSON that breaks one breaks it by name,
+  where this chunk made text `malformed` and JSON `format` at the part.
 - **Its text** is the `VEVENT`'s lines joined by line feeds, as a
   `RecurrenceRule`'s are, in one order: `BEGIN:VEVENT`, `DTSTART`, `DTEND`,
   `SUMMARY`, then `LOCATION`, `DESCRIPTION` and `RRULE` where it has them,
@@ -8547,7 +8548,8 @@ under "Errors").
   on dates whose start is its `first_day`, and a timed event's a zoned
   rule from its `start` in its `zone`, as before. A rule of the other form
   is refused by the same rules across parts: `type.invalid_literal` where
-  a literal shows it, `malformed` in text, `format` in JSON. An all-day
+  a literal shows it, and `recurrence_from_start` by name since chunk
+  5.5t2. An all-day
   `VEVENT`'s `RRULE` is read with its `DTSTART;VALUE=DATE:` line as the
   rule's start, and written back the same way.
 
@@ -8781,9 +8783,9 @@ under "Errors").
   country.** An object literal never fails (area 2), so the rule is proved
   where a literal writes both the postal code and the country
   (`type.invalid_literal`), and checked when an address is read from JSON,
-  in a request or `json.read`, breaking `format` at `postal_code`. One
-  built in code from values isn't checked until cross-field rules (chunk
-  5.5t2) make it a named rule, proved or attempted. Stored addresses are
+  in a request or `json.read`. Since chunk 5.5t2 it is the named rule
+  `postal_code_of_country`: one built in code from values is attempted,
+  and JSON breaks it by name at the address's path. Stored addresses are
   read as written.
 - **`UnLocode`** is its five characters with no space, `GBLON`, its
   country a current ISO 3166-1 code, and printed with the space, `GB LON`.
@@ -8833,10 +8835,10 @@ under "Errors").
   given day is an operation no page decides, so none is built.
 - **A number is upper case with no spaces or punctuation,** as the
   payment numbers are (chunk 5.5i), and fits its country's published
-  form, `PartRule` now reading any number of parts (a document's kind and
-  country), proved where a literal writes them all and checked as JSON is
-  read, breaking `format` at `number`; one built in code from values waits
-  on cross-field rules (chunk 5.5t2). A country that publishes no form
+  form, proved where a literal writes its kind and country and checked as
+  JSON is read. Since chunk 5.5t2 it is the named rule `number_of_country`
+  (`number_of_kind_and_country` for an `IdentityDocument`), attempted
+  where it is built from values and broken by name in text and JSON. A country that publishes no form
   takes any number within the type's bounds, 1 to 25 capitals and digits
   (the longest a US state's licence number may be, by AAMVA's 2020 card
   standard), and 2 to 15 for a VAT number, so a number is never refused
@@ -9600,9 +9602,10 @@ under "Errors").
   skips (frames 0 and 1, or 0 to 3, at each minute but every tenth). Its
   notation, `01:00:00;00`, doesn't say its rate, so it has no single text
   form: it is sent as its parts, stored as `jsonb`, and shown in that
-  notation. A literal is checked while compiling, a value read from JSON
-  as it is read, and one built in code from values waits on cross-field
-  rules (chunk 5.5t2).
+  notation. A literal is checked while compiling and a value read from
+  JSON as it is read; since chunk 5.5t2 these are its named rules
+  `frames_within_rate`, `drop_frame_rate` and `frame_not_dropped`, and one
+  built in code from values is attempted by them.
 - **`SubtitleCue`** is WebVTT's: a `start` and an `end`, `Duration`s from
   the start of the media to the millisecond, the start at 0 or after and
   the end after it, and its `text`, lines with no control character, no
@@ -9695,8 +9698,9 @@ under "Errors").
   of 10 differ) and shown `4.5/5`.
 - **Rules across parts,** a rating's and a blood pressure's, are proved for
   a literal that writes both parts as numbers or as quantities of one kind,
-  and checked as JSON is read; one built in code from values waits on
-  cross-field rules (chunk 5.5t2).
+  and checked as JSON is read; since chunk 5.5t2 they are the named rules
+  `best_above_worst`, `value_on_scale` and `diastolic_below_systolic`, so
+  one built in code from values is proved or attempted.
 - **`Dimensions`** is a `length`, `width` and `height`, none below 0, sent
   as named fields, stored as `jsonb` and shown in centimetres, or the unit
   `unit:` names, written once, `30 × 20 × 10 cm`. A parcel's weight, which
@@ -9939,8 +9943,8 @@ conservative reading:
 - **`MapTile`** is OpenStreetMap's XYZ scheme, its row counted from the
   north, not TMS's: a `zoom` from 0 to 30, which keeps `x` and `y` within a
   32-bit integer as PostGIS's `ST_TileEnvelope` takes them, and each below
-  2 to the zoom, checked as JSON is read; one built in code from values
-  waits on cross-field rules (chunk 5.5t2). It is shown as a tile's URL
+  2 to the zoom, checked as JSON is read: its rule `within_zoom` since
+  chunk 5.5t2, attempted where it is built from values. It is shown as a tile's URL
   writes it, `10/511/340`.
 - **`EastingNorthing`** is an `easting` and a `northing`, `Decimal`s held
   as written, and its `Crs`, shown by name, `easting 530,000, northing
@@ -10290,6 +10294,147 @@ most conservative reading:
   (`Part::Bounded` on `Bytes`). It is sent with its parts' names, the
   bytes as Base64 and the count as area 2 sends an `Int`, stored as that
   JSON, and shown by its name.
+
+### Chosen in chunk 5.5t2
+
+The cross-part checks the standard object types ran only on literals and
+decoded JSON became named rules across their parts, as an application's
+object type names its own (area 2, "Rules across fields"), so a value built
+in code is proved or attempted like a declared type's. Each type's rules,
+in the order they are checked, and as OpenAPI's description lists them:
+
+| Type | Rule | What it holds |
+|---|---|---|
+| `InstantRange`, `DateRange`, `Range<T>` | `start_not_after_end` | `start <= end`; an open end of a `Range<T>` keeps it |
+| `IsoWeek` | `week_in_year` | week 53 only in a year with 53 ISO weeks |
+| `CalendarEvent` | `days_or_times` | both days and no start, end or zone, or all three and no days |
+| | `last_day_not_before_first` | `last_day >= first_day` |
+| | `end_after_start` | `end > start` |
+| | `recurrence_from_start` | the recurrence starts on `first_day`, or at `start` in `zone` |
+| `PostalAddress` | `postal_code_of_country` | `postal_code`, where it has one, in its `country`'s form |
+| `IdentityDocument` | `number_of_kind_and_country` | `number` in the form of its `kind` from its `country` |
+| `PassportNumber`, `DrivingLicenceNumber`, `TaxId`, `VatNumber` | `number_of_country` | `number` in its `country`'s form |
+| `ContentRating` | `rating_of_scheme` | `rating` one of its `scheme`'s categories |
+| `Timecode` | `frames_within_rate` | `frames` below the rate's whole frames a second |
+| | `drop_frame_rate` | drop-frame only at 30000/1001 and 60000/1001 |
+| | `frame_not_dropped` | never a label drop-frame counting skips |
+| `SubtitleCue` | `start_not_negative` | `start >= 0ms` |
+| | `end_after_start` | `end > start` |
+| | `text_without_arrow` | `text` holds no `-->` |
+| `Rating` | `best_above_worst` | `best > worst` |
+| | `value_on_scale` | `worst <= value and value <= best` |
+| `BloodPressure` | `diastolic_below_systolic` | `diastolic < systolic` |
+| `MapTile` | `within_zoom` | `x` and `y` each below 2 to the `zoom` |
+| `TokenUsage` | `cached_within_input` | `cached <= input`, where it is given |
+| `PasswordPolicy` | `min_not_above_max` | `min_length <= max_length` |
+| `BoundingBox` | `south_not_above_north` | `south <= north` |
+
+A slot built from two instants a form sent is attempted by its rule, and
+one a condition orders needs no `attempt`:
+
+```jadpo check project=standard-rules
+type SlotBackwards = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A slot from one booking's start to another's end.
+function combined_slot(
+    earlier_booking: InstantRange,
+    later_booking: InstantRange
+) fails SlotBackwards -> InstantRange {
+    return attempt InstantRange {
+        start: earlier_booking.start
+        end: later_booking.end
+    } {
+        start_not_after_end: SlotBackwards
+    }
+}
+
+/// The same, refused before it is built.
+function combined_slot_checked(
+    earlier_booking: InstantRange,
+    later_booking: InstantRange
+) fails SlotBackwards -> InstantRange {
+    if (later_booking.end < earlier_booking.start) {
+        reject SlotBackwards
+    }
+    return InstantRange {  // the condition proves `start_not_after_end`
+        start: earlier_booking.start
+        end: later_booking.end
+    }
+}
+```
+
+```jadpo check project=standard-rules file=main.test.jadpo
+test "a slot never ends before it starts" {
+    var morning_slot: InstantRange = InstantRange {
+        start: "2026-10-26T09:00:00Z"
+        end: "2026-10-26T12:00:00Z"
+    }
+    var afternoon_slot: InstantRange = InstantRange {
+        start: "2026-10-26T13:00:00Z"
+        end: "2026-10-26T17:00:00Z"
+    }
+    var whole_day: InstantRange = attempt combined_slot(morning_slot, afternoon_slot)
+    assert whole_day.end == afternoon_slot.end
+    assert combined_slot(afternoon_slot, morning_slot) fails SlotBackwards
+    assert combined_slot_checked(afternoon_slot, morning_slot) fails SlotBackwards
+}
+```
+
+What the pages left open, each the most conservative reading:
+
+- **Every rule is a check of its own in `jadpo-std`**
+  (`standard::across`), not a condition written in Jadpo. A postal code by
+  its country and a document's number by its kind and country read tables
+  no operator can, and making them standard operations a rule may call
+  would add names to the language, so each stays a check, named, proved,
+  attempted and reported exactly as a condition is; the simple orderings
+  are checks too, so there is one way. Each rule has one implementation,
+  which the checker reads a literal by and the runtime runs on every value
+  made: an object literal, `text.parse`, a request's JSON and
+  `json.read`, compiled code included.
+- **Proof.** A literal is read by what it shows of each part: a part
+  written out is known, one written `none` absent, and one built from a
+  value of a type that can't be `none` given. A rule its parts decide
+  holds, or is `type.invalid_literal` naming it. A rule ordering two
+  parts (a range's, a rating's, a policy's lengths) is otherwise proved as
+  a condition comparing two fields is: by a comparison known around the
+  construction, or by the declared ranges (a policy's 8 is never above
+  its most, at least 64). Any other rule built from values is attempted.
+- **Every cross-part check, not only those the roadmap named:**
+  `DateRange`, whose text already refused a start after its end, keeps
+  `InstantRange`'s rule; `ContentRating`, the tax and document numbers
+  and `BoundingBox` had the same kind of check, so they became rules too,
+  leaving no second mechanism.
+- **A rule may read one part.** A cue's start at 0 or after and its text
+  without `-->` were checked with its order, so they stay named rules
+  rather than becoming part bounds a value would be built for alone.
+- **One rule where one statement holds:** a rating's value from its worst
+  to its best is `value_on_scale`, and a tile's column and row below 2 to
+  its zoom `within_zoom`.
+- **Text and JSON break them by name.** Text that is the type's form but
+  breaks a rule (week 53 of 2027, a cue ending before it starts, `PEGI
+  12A`) is read and then breaks the rule, no longer `malformed`; text that
+  isn't the type at all still is. So `attempt text.parse(raw, as: T)` maps
+  `T`'s rules, or `invalid:`. JSON reports the rule at the object's path,
+  or at the field's for a type sent as its text, where it was `format` at
+  the part.
+- **Stored values are read as written,** as before. A rule the running
+  program can't decide (a part of the wrong kind) counts as broken.
+- **OpenAPI** describes a standard object's schema with "Rules across its
+  parts:" and each rule. `Range<T>` has no schema of its own yet, so its
+  rule is listed here only.
+- **What changed for existing code:** a standard object literal built from
+  values that may break a rule now needs an `attempt` or a condition, and
+  a `text.parse` into one maps its rules. The calendar events example
+  compares its days directly instead of building a `DateRange` from them,
+  and the media and cards examples' `text.parse` calls map
+  `rating_of_scheme` and `number_of_country`; the passport and pressure
+  errors name their rules. Tests updated: the checker's calendar events,
+  cards and documents, people and places, sets and maps, standard types
+  and fixes (its swapped slot is built from literals); the interpreter's
+  media; the runtime's media, records and measures and standard types.
 
 ### Decisions
 

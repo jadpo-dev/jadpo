@@ -65,7 +65,10 @@ pub enum RuleExpr {
     /// 5.5t2), by the type's name and the rule's: its one check is
     /// `standard::across`'s, run over the object's fields, which are its
     /// parts in their declared order.
-    Standard { ty: String, rule: String },
+    Standard {
+        ty: String,
+        rule: String,
+    },
 }
 
 /// One arm of a `match` in a condition.

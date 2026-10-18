@@ -12,8 +12,8 @@
 
 use super::across::{Order, StandardRule, in_order};
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, FormatOption, Holds, Json, NO_OPTIONS,
-    Part, ShownIn, StandardType, Storage, TextForm,
+    Examples, FIRST_RELEASE, Format, FormatKey, FormatOption, Holds, Json, NO_OPTIONS, Part,
+    ShownIn, StandardType, Storage, TextForm,
 };
 use crate::read::SqlType;
 use crate::{Builtin, Num, QuantityKind};
@@ -275,7 +275,10 @@ pub const RATING_RULES: &[StandardRule] = &[
         reason: "A `Rating`'s `value` is on its scale, from its `worst` to its `best` (schema.org's `Rating`).",
         next: "Write a value from the `worst` to the `best`",
         check: in_order(
-            &[Order::at_most("worst", "value"), Order::at_most("value", "best")],
+            &[
+                Order::at_most("worst", "value"),
+                Order::at_most("value", "best"),
+            ],
             "value",
         ),
     },
@@ -734,4 +737,3 @@ pub const MODEL_ID_ENTRY: StandardType = StandardType {
     ),
     release: FIRST_RELEASE,
 };
-

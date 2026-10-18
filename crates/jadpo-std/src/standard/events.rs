@@ -189,7 +189,10 @@ fn recurrence_from_start(parts: &dyn Parts) -> Verdict {
             let Some(first) = first.date() else {
                 return Verdict::Unknown;
             };
-            refused(Rule::read(text).is_some_and(|rule| rule.zone.is_none() && rule.start.date == first))
+            refused(
+                Rule::read(text)
+                    .is_some_and(|rule| rule.zone.is_none() && rule.start.date == first),
+            )
         }
         (Known::Absent, Known::Given(Some(start))) => {
             let (Some(start), Some(zone)) = (
@@ -198,7 +201,9 @@ fn recurrence_from_start(parts: &dyn Parts) -> Verdict {
             ) else {
                 return Verdict::Unknown;
             };
-            refused(Rule::read(text).is_some_and(|rule| rule.start == start && rule.zone == Some(zone)))
+            refused(
+                Rule::read(text).is_some_and(|rule| rule.start == start && rule.zone == Some(zone)),
+            )
         }
         // Neither days nor a start: `days_or_times` refuses it.
         (Known::Absent, Known::Absent) => Verdict::Holds,
@@ -633,7 +638,8 @@ mod tests {
         // rules, which it is checked by once it is read.
         for text in MALFORMED {
             assert!(
-                Event::read(text).is_none_or(|event| RULES.iter().any(|rule| !rule.holds(&event.parts()))),
+                Event::read(text)
+                    .is_none_or(|event| RULES.iter().any(|rule| !rule.holds(&event.parts()))),
                 "`{text}`"
             );
         }
@@ -666,7 +672,9 @@ mod tests {
     }
 
     /// The first rule `parts` break, by name, with the part pointed at.
-    fn broken(parts: &[(&'static str, Known<Given<'static>>)]) -> Option<(&'static str, &'static str)> {
+    fn broken(
+        parts: &[(&'static str, Known<Given<'static>>)],
+    ) -> Option<(&'static str, &'static str)> {
         let listed = super::super::across::Listed {
             parts: parts.to_vec(),
         };
@@ -679,10 +687,17 @@ mod tests {
     #[test]
     fn rules_across_parts_refuse_only_what_is_known() {
         let all = |known: Known<Given<'static>>| -> Vec<(&'static str, Known<Given<'static>>)> {
-            ["first_day", "last_day", "start", "end", "zone", "recurrence"]
-                .into_iter()
-                .map(|name| (name, known))
-                .collect()
+            [
+                "first_day",
+                "last_day",
+                "start",
+                "end",
+                "zone",
+                "recurrence",
+            ]
+            .into_iter()
+            .map(|name| (name, known))
+            .collect()
         };
         let with = |base: &[(&'static str, Known<Given<'static>>)],
                     changes: &[(&'static str, Known<Given<'static>>)]| {
@@ -721,7 +736,10 @@ mod tests {
         let date = |text| Known::Given(Some(Given::Date(day(text))));
         let backwards = with(
             &nothing,
-            &[("first_day", date("2026-12-26")), ("last_day", date("2026-12-25"))],
+            &[
+                ("first_day", date("2026-12-26")),
+                ("last_day", date("2026-12-25")),
+            ],
         );
         assert_eq!(
             broken(&backwards),
@@ -731,7 +749,10 @@ mod tests {
         // never at a time; a timed one at its start, never on days.
         let christmas = with(
             &nothing,
-            &[("first_day", date("2026-12-25")), ("last_day", date("2026-12-25"))],
+            &[
+                ("first_day", date("2026-12-25")),
+                ("last_day", date("2026-12-25")),
+            ],
         );
         let yearly = |text: &'static str| {
             with(
@@ -764,7 +785,13 @@ mod tests {
                     }))),
                 ),
                 ("end", Known::Unknown),
-                ("zone", Known::Given(Some(Given::Variant { ordinal: 0, code: "" }))),
+                (
+                    "zone",
+                    Known::Given(Some(Given::Variant {
+                        ordinal: 0,
+                        code: "",
+                    })),
+                ),
                 (
                     "recurrence",
                     Known::Given(Some(Given::Text(
