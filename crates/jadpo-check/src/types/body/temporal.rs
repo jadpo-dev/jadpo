@@ -463,6 +463,19 @@ impl Body<'_> {
         }
         let mut open: Vec<String> = Vec::new();
         for condition in table.conditions {
+            // A token's issuer is checked only against an `issuer:` the
+            // call names, so `wrong_issuer` needs an arm only then (area
+            // 19, chunk 5.5r).
+            if condition.key == jadpo_std::RuleKey::WrongIssuer
+                && table
+                    .params
+                    .iter()
+                    .position(|param| param.name == "issuer")
+                    .and_then(given)
+                    .is_none()
+            {
+                continue;
+            }
             // One only a proof settles: `decimal.ln`'s value proved above
             // 0 (area 19, "Numbers").
             let Some(option) = condition.option else {

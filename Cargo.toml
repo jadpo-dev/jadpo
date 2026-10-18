@@ -62,6 +62,10 @@ jadpo-host-native = { path = "crates/jadpo-host-native" }
 rowan = "=0.16.1"
 ungrammar = "=1.16.1"
 serde_json = "1"
+# serde's traits, for reading a JSON object while refusing a member named
+# twice (`crypto.verify_jwt`'s header and claims, area 19, chunk 5.5r;
+# jadpo-value only): already in the lock under serde_json.
+serde = { version = "=1.0.229", default-features = false, features = ["std"] }
 # Linear-time regular expressions: `pattern:` settings are checked while
 # compiling (area 2, question 9), and the runtime will use the same crate.
 regex = "=1.11.1"

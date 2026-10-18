@@ -76,7 +76,9 @@ fn options_named(keys: &[String]) -> String {
 /// or, for one only a proof settles, as `decimal.ln`'s `out_of_range`
 /// (area 19, "Numbers"), what proves it.
 fn condition_clause(keys: &[String]) -> String {
-    if keys.iter().any(|key| key == "mismatch") {
+    if keys.iter().any(|key| key == "invalid_signature") {
+        "What a token says is only known when the program runs: one not signed by a key it is given fails `invalid_signature`, one past its time `expired` or `not_yet_valid`, one for another app `wrong_audience` or `wrong_issuer`, and one that isn't a token `malformed`".to_string()
+    } else if keys.iter().any(|key| key == "mismatch") {
         "What a document holds is only known when the program runs: text that isn't one JSON document fails `malformed`, and a document that isn't the type `as:` names fails `mismatch`".to_string()
     } else if keys.iter().any(|key| key == "malformed") {
         "What the text or bytes hold is only known when the program runs, and they may not be the encoding at all, which fails `malformed`".to_string()
@@ -97,7 +99,7 @@ fn condition_clause(keys: &[String]) -> String {
 fn settle_by(keys: &[String]) -> String {
     if keys
         .iter()
-        .any(|key| key == "malformed" || key == "mismatch")
+        .any(|key| key == "malformed" || key == "mismatch" || key == "invalid_signature")
     {
         String::new()
     } else if keys.iter().any(|key| key == "out_of_range") {

@@ -551,6 +551,38 @@ public type IsoWeek = Object {
 /// `~0` for `~` and `~1` for `/`, and empty for the whole document.
 public type JsonPointer = Text {}
 
+/// A public key a token is checked against (area 19, RFC 7517 and RFC
+/// 8037): an Ed25519 key, `kty` `OKP`, `crv` `Ed25519` and `x` its 32
+/// bytes as unpadded Base64url, with an optional key id; `use_` is sent
+/// as `use`. Never a private key or a shared secret.
+public type Jwk = Object {
+    kty: Text
+    crv: Text
+    x: Text
+    kid: Text?
+    alg: Text?
+    use_: Text?
+}
+
+/// A signed token (area 19, RFC 7519) in JWS compact form, three parts of
+/// unpadded Base64url joined by `.`, at most 8,192 characters; an
+/// unsecured token, with no signature, is never one. `crypto.verify_jwt`
+/// checks it. Shown to people as its last four only.
+public type Jwt = Text {}
+
+/// A token's registered claims (area 19, RFC 7519 §4.1), once
+/// `crypto.verify_jwt` has checked its signature, times, issuer and
+/// audience: `aud` is a list, and `exp` always there.
+public type JwtClaims = Object {
+    iss: Text?
+    sub: Text?
+    aud: List<Text>
+    exp: Instant
+    nbf: Instant?
+    iat: Instant?
+    jti: Text?
+}
+
 /// A language (area 19, ISO 639-1), written as its code, `en`; `form:
 /// CodeForm.alpha3` writes ISO 639-2's `eng`. `Language.or_` is Odia.
 public type Language = Enum {}
@@ -648,6 +680,26 @@ public type NetworkPort = Int {}
 /// An NHS number (area 19), ten digits with a mod-11 check digit:
 /// `9434765919`, shown to people as `943 476 5919`. Personal data.
 public type NhsNumber = Text {}
+
+/// An OAuth scope (area 19, RFC 6749 §3.3): one scope-token of printable
+/// ASCII but the space, `"` and `\`, `todos:read`.
+public type OAuthScope = Text {}
+
+/// Who an identity provider says signed in (area 19, OpenID Connect Core
+/// 1.0 §5.1): the subject and the standard claims a sign-in reads, each
+/// by its own name. Personal data.
+public type OidcClaims = Object {
+    sub: Text
+    name: Text?
+    given_name: GivenName?
+    family_name: FamilyName?
+    preferred_username: Text?
+    email: Email?
+    email_verified: Bool?
+    phone_number: PhoneNumber?
+    phone_number_verified: Bool?
+    picture: Url?
+}
 
 /// When a place is open each week and the days that differ, read by the
 /// clock in its zone (area 19, OpenStreetMap's `opening_hours`): `Mo-Fr

@@ -975,14 +975,48 @@ reference only).
   OWASP's parameters as a PHC string; code never makes or reads a key,
   which an executor hands the operation from its setting. What the pages
   left open is area 19's "Chosen in chunk 5.5q2".
-- [ ] **5.5r Security types** `opus · high` (area 19, "The standard
-  types"): the other 17 security types (`Password`, `Jwt`, `Jwk`,
-  `Certificate`, `ApiKey` ...) and `crypto.verify_jwt`; `verify_totp`
-  follows keys held as data. Done when every type passes the harness and
-  `verify_jwt` refuses `none`, a token-chosen algorithm and an expired
-  token.
+- [x] **5.5r Tokens and `verify_jwt`** `opus · high` (area 19, "The
+  standard types" and "Hashing and cryptography"): `Jwt`, `JwtClaims`,
+  `Jwk`, `OAuthScope` and `OidcClaims`, and `crypto.verify_jwt`. Done when
+  every type passes the harness and `verify_jwt` refuses `none`, a
+  token-chosen algorithm, an expired token, a wrong audience and a
+  tampered payload. Split on 2026-10-18; the secret values are 5.5r2 and
+  the security records 5.5r3. Built, on 5.5q2's strict Ed25519 with no
+  new crate: a `Jwk` is an Ed25519 public key and never a secret, so a
+  token is checked with `EdDSA` alone and any other `alg` is
+  `invalid_signature`; `issuer:` and `audience:` are optional, the
+  audience always checked (`wrong_audience`, and `wrong_issuer` when an
+  issuer is named); `exp` is required, with 30 seconds' leeway; it reads
+  the clock, so actions call it. RS256 and ES256 aren't built. What the
+  pages left open is area 19's "Chosen in chunk 5.5r".
+- [ ] **5.5r2 Secret values** `opus · high` (area 19, "The standard
+  types"; split from 5.5r), after 5.5r: `Password`, `ApiKey`,
+  `BearerToken`, `TotpSecret`, `SecretText` and `Jwt` (a credential,
+  decided by the lead session, 2026-10-18), never printed, logged or
+  sent: refused in an `Output`, a failure's fields and `json.write` as a
+  `PasswordHash` is, compared in constant time and redacted in reports.
+  Done when every type passes the harness and each refusal has a checked
+  example.
+- [ ] **5.5r4 JWTs from identity providers** `opus · high` (area 19,
+  "Hashing and cryptography"; decided by the lead session, 2026-10-18),
+  after 5.5r: RS256 and ES256 verification on RustCrypto's `rsa` and
+  `p256` (verification only, pinned, built for wasm32, with the RFCs'
+  test vectors and 5.5r's attack suite), so Google's, Microsoft's and
+  Auth0's tokens verify; and typed custom claims, `verify_jwt(token,
+  keys:, as: MyClaims)` decoding the claims beyond the registered seven
+  into an application's `Object` through `json.read(as:)`'s decoding and
+  typed failures, `JwtClaims` still giving the registered ones. HS256
+  still waits for keys held as data. Done when an RS256 and an ES256
+  token verify against the RFCs' vectors, the attack suite refuses each
+  attack under both, and a token's custom claims decode as a declared
+  type or fail `mismatch`.
+- [ ] **5.5r3 Security records** `opus · high` (area 19, "The standard
+  types"; split from 5.5r), after 5.5r2: `Hash`, `Hmac`, `Certificate`,
+  `OneTimeCode`, `PasswordPolicy`, `WebAuthnCredential` (shaped to what
+  `webauthn-rs` stores, for 5.5z) and `EncryptedValue`; `verify_totp`
+  follows keys held as data. Done when every type passes the harness.
 - [ ] **5.5z Passkeys** `opus · high` (area 8, "Passkeys"; decided by
-  Richard, 2026-10-18), after 5.5q2 and 5.5r: passkeys (WebAuthn, FIDO2)
+  Richard, 2026-10-18), after 5.5q2 and 5.5r3: passkeys (WebAuthn, FIDO2)
   as the third built-in way to check a person. First finish area 8's
   section (the `sign_in:` option, routes, events, errors, test helpers,
   following magic links), then build registration and sign-in on

@@ -180,6 +180,7 @@ pub enum Op {
     CryptoPublicKey,
     CryptoSign,
     CryptoVerifyHmac,
+    CryptoVerifyJwt,
     CryptoVerifyPassword,
     CryptoVerifySignature,
     DecimalAbs,
@@ -695,6 +696,37 @@ const ON_UNREADABLE: Condition = Condition {
     option: None,
 };
 
+/// Why `crypto.verify_jwt` refuses a token (area 19, chunk 5.5r): each
+/// known only when the program runs, so only an `attempt` settles it.
+/// `wrong_issuer` can happen only when the call names an `issuer:`, so the
+/// checker asks for its arm only then.
+const ON_JWT: &[Condition] = &[
+    Condition {
+        key: RuleKey::InvalidSignature,
+        option: None,
+    },
+    Condition {
+        key: RuleKey::Expired,
+        option: None,
+    },
+    Condition {
+        key: RuleKey::NotYetValid,
+        option: None,
+    },
+    Condition {
+        key: RuleKey::Malformed,
+        option: None,
+    },
+    Condition {
+        key: RuleKey::WrongAudience,
+        option: None,
+    },
+    Condition {
+        key: RuleKey::WrongIssuer,
+        option: None,
+    },
+];
+
 const SET: Param = param("items", Kind::Set);
 
 /// A `set` operation that never fails (area 19, "Sets"), by its
@@ -1087,6 +1119,22 @@ pub const OPERATIONS: &[Operation] = &[
         BOOL,
         &[],
         "crypto::verify_hmac",
+    ),
+    // A token's claims once its signature, times, issuer and audience
+    // hold (chunk 5.5r), checked against the clock, so only actions and
+    // tests call it ([`Op::reads_clock`]).
+    crypto(
+        Op::CryptoVerifyJwt,
+        "verify_jwt",
+        &[
+            param("token", Kind::Std(crate::standard::security::JWT)),
+            param("keys", Kind::List),
+            option("issuer", TEXT),
+            option("audience", TEXT),
+        ],
+        Kind::Std(crate::standard::security::JWT_CLAIMS),
+        ON_JWT,
+        "crypto::verify_jwt",
     ),
     crypto(
         Op::CryptoVerifyPassword,
@@ -2502,6 +2550,14 @@ impl Op {
             .unwrap_or(&DIVIDE)
     }
 
+    /// Whether it reads the clock, as `clock.now` does (area 10): called
+    /// only in actions and tests, and given the invocation's time, a
+    /// test's fixed clock in a test. `crypto.verify_jwt` checks a token's
+    /// times against it (area 19, chunk 5.5r).
+    pub fn reads_clock(self) -> bool {
+        matches!(self, Op::CryptoVerifyJwt)
+    }
+
     /// Whether it reads the generator, the one exception to every
     /// operation being pure (area 19, "What every operation follows"):
     /// called only in actions, as `clock.now` is, and given the
@@ -2606,13 +2662,7 @@ mod tests {
                         .any(|param| param.name == option && param.optional),
                     // What text or bytes decode to is known only when the
                     // program runs, so only an `attempt` settles it.
-                    None if matches!(
-                        condition.key,
-                        RuleKey::Malformed | RuleKey::Mismatch | RuleKey::Unreadable
-                    ) =>
-                    {
-                        true
-                    }
+                    None if condition.key.only_when_run() => true,
                     // A discount's amount off is in a currency only the
                     // running program knows, as is the price's (chunk
                     // 5.5i3).

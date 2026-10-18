@@ -2199,9 +2199,16 @@ impl<'p> Machine<'p> {
             }
             Some(_) => return Err(self.defect(ctx, "a key that isn't read from its setting", at)),
         };
-        let made = jadpo_value::crypto::run(op, values, keys, &mut |bytes: &mut [u8]| {
-            ctx.random_bytes(bytes)
-        });
+        // `verify_jwt` checks a token's times against the invocation's
+        // clock, as `clock.now` reads it (area 19, chunk 5.5r).
+        let now = if op.reads_clock() { ctx.now() } else { 0 };
+        let made = jadpo_value::crypto::run(
+            op,
+            values,
+            keys,
+            &mut |bytes: &mut [u8]| ctx.random_bytes(bytes),
+            now,
+        );
         match made {
             Ok(value) => Ok(value),
             Err(jadpo_value::Fault::Broke(rule)) => Err(Stop::Invalid {

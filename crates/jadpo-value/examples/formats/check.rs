@@ -3,7 +3,8 @@
 //! against RFC 4648's test vectors, and `json.write` against the exact
 //! text one document gives; and `crypto` (chunk 5.5q2) against its
 //! standards' known answers: XChaCha20-Poly1305's draft, RFC 4231's
-//! HMAC-SHA-256, RFC 8032's Ed25519 and OpenSSL's Argon2id. Shared by this example, which the gate runs
+//! HMAC-SHA-256, RFC 8032's Ed25519 and OpenSSL's Argon2id, and a JWT
+//! `verify_jwt` checks (chunk 5.5r). Shared by this example, which the gate runs
 //! under WebAssembly, and the native test
 //! (crates/jadpo-runtime/tests/formats.rs), so both targets are held to
 //! the same bytes, each call made as both executors make it: through
@@ -540,4 +541,54 @@ fn crypto_checks(expect: &mut impl FnMut(String, String, &str)) {
             &format!("{:?}", PasswordCheck::Correct),
         );
     }
+    // `verify_jwt` (chunk 5.5r): a token signed with RFC 8032's first test
+    // key gives its subject at 2026-10-18T09:00:00Z, and the same claims
+    // under `alg: none` are refused.
+    let key = Value::record(
+        "Jwk",
+        vec![
+            (Rc::from("kty"), Value::text("OKP")),
+            (Rc::from("crv"), Value::text("Ed25519")),
+            (
+                Rc::from("x"),
+                Value::text("11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"),
+            ),
+            (Rc::from("kid"), Value::text("2026-10")),
+            (Rc::from("alg"), Value::None),
+            (Rc::from("use_"), Value::None),
+        ],
+    );
+    let now = 1_792_314_000_000;
+    let subject = jadpo_value::jwt::verify_jwt(
+        JWT_GOOD,
+        std::slice::from_ref(&key),
+        None,
+        Some("clinic"),
+        now,
+    )
+    .map(|claims| match claims {
+        Value::Record(record) => format!("{:?}", record.get("sub")),
+        other => format!("{other:?}"),
+    });
+    expect(
+        "an Ed25519 token's subject".to_string(),
+        subject.unwrap_or_else(|fault| format!("{fault:?}")),
+        &format!("{:?}", Some(&Value::text("member-42"))),
+    );
+    expect(
+        "a token under `alg: none` is refused".to_string(),
+        format!(
+            "{:?}",
+            jadpo_value::jwt::verify_jwt(JWT_NONE, &[key], None, Some("clinic"), now)
+        ),
+        &format!(
+            "{:?}",
+            Err::<Value, _>(Fault::Broke(RuleKey::InvalidSignature))
+        ),
+    );
 }
+
+/// A token signed with RFC 8032's first test key, and the same claims
+/// under `alg: none` with that signature (chunk 5.5r).
+const JWT_GOOD: &str = "eyJhbGciOiJFZERTQSIsImtpZCI6IjIwMjYtMTAiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwic3ViIjoibWVtYmVyLTQyIiwiYXVkIjoiY2xpbmljIiwiZXhwIjoxNzkyMzE3NjAwLCJuYmYiOjE3OTIzMTM5NDAsImlhdCI6MTc5MjMxMzk0MCwianRpIjoiYTFiMmMzIn0.nOqN7320O3T8e_AyF7XNt32jmgjE8VCU7GVHL89ZUeiRcU3gGM3EgiNxVp3_y422De1PZWd2tZ0LuSqdfm6QCg";
+const JWT_NONE: &str = "eyJhbGciOiJub25lIiwia2lkIjoiMjAyNi0xMCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwic3ViIjoibWVtYmVyLTQyIiwiYXVkIjoiY2xpbmljIiwiZXhwIjoxNzkyMzE3NjAwLCJuYmYiOjE3OTIzMTM5NDAsImlhdCI6MTc5MjMxMzk0MCwianRpIjoiYTFiMmMzIn0.bUBJ-HYfcv-x-XVebqotpXUryxrUsu15W2sejqXFebmY2OB3-XXAQIWG71XLjOBQDrJnDyfN4RTsPW20OqqBDA";
