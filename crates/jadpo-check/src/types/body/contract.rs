@@ -478,7 +478,7 @@ impl Body<'_> {
             )
             .at(span, "not read by country")
             .reason(format!(
-                "`country:` reads a `PhoneNumber` or a `PostalCode` as people write it in that country; `{shown}` is read from its canonical text alone."
+                "`country:` reads a `PhoneNumber` or a `PostalCode` as it is written in that country; `{shown}` is read from its canonical text alone."
             ))
             .next("Remove `country: ...`")
             .edit(removal, ""),

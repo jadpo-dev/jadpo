@@ -197,7 +197,7 @@ pub fn from_written(raw: &str, country: &str) -> Option<String> {
         }
     }
     if plus {
-        return abroad(&digits);
+        return international_written(&digits);
     }
     // Dialled abroad from the region: the rest begins with a calling code.
     if let Some(found) = pattern(region.idd, false).and_then(|re| re.find(&digits))
@@ -205,7 +205,7 @@ pub fn from_written(raw: &str, country: &str) -> Option<String> {
         && let Some(after) = digits.get(found.end()..)
         && !after.starts_with('0')
     {
-        return abroad(after);
+        return international_written(after);
     }
     in_region(region, &digits)
 }
@@ -213,7 +213,7 @@ pub fn from_written(raw: &str, country: &str) -> Option<String> {
 /// The E.164 text of a calling code and national number written as
 /// `digits`, a national prefix written after the code (`+44 (0)7400 ...`)
 /// left out as its main region reads one.
-fn abroad(digits: &str) -> Option<String> {
+fn international_written(digits: &str) -> Option<String> {
     let (calling, national) =
         split(&format!("+{digits}")).map(|(calling, national)| (calling, national.to_string()))?;
     in_region(regions_of(calling).next()?, &national)
