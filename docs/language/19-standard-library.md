@@ -3657,22 +3657,22 @@ type CallerAddress = IpAddress {}
 
 type FormText = Text {}
 
-type IsTrue = Bool {}
+type YesNo = Bool {}
 
 type NotADomain = Failure {
     kind: FailureKind.invalid_value
 }
 
 /// A search page's link for a term, on its first page.
-function search_link(site: ShopLink, term: SearchTerm) -> ShopLink {
+function search_link(catalogue_page: ShopLink, tea_term: SearchTerm) -> ShopLink {
     var none_yet: Map<Text, Text> = []
-    var wanted: Map<Text, Text> = map.with(map.with(none_yet, "q", term), "page", "1")
-    return ShopLink(web.with_query(site, wanted))
+    var tea_query: Map<Text, Text> = map.with(map.with(none_yet, "q", tea_term), "page", "1")
+    return ShopLink(web.with_query(catalogue_page, tea_query))
 }
 
 /// Where a link on `page` leads.
-function followed(page: ShopLink, link: RelativeUrl) -> ShopLink {
-    return ShopLink(web.resolve(page, link))
+function link_target(page: ShopLink, page_link: RelativeUrl) -> ShopLink {
+    return ShopLink(web.resolve(page, page_link))
 }
 
 /// The basket's address from any page: a path is a relative URL too.
@@ -3681,22 +3681,22 @@ function basket_from(page: ShopLink, basket: UrlPath) -> ShopLink {
 }
 
 /// Whether a caller is on the office's network.
-function from_office(office: Cidr, caller: CallerAddress) -> IsTrue {
-    return IsTrue(web.cidr_contains(office, caller))
+function from_office(office: Cidr, caller: CallerAddress) -> YesNo {
+    return YesNo(web.cidr_contains(office, caller))
 }
 
 /// The domain a seller typed for their shop.
 function shop_domain(raw: FormText) fails NotADomain -> DomainName {
-    var domain: DomainName = attempt text.parse(raw, as: DomainName) {
+    var typed_domain: DomainName = attempt text.parse(raw, as: DomainName) {
         malformed: NotADomain
     }
-    return domain
+    return typed_domain
 }
 
 /// Whether a failed call is worth trying again: the server's fault, not
 /// the request's.
-function worth_retrying(status: HttpStatus) -> IsTrue {
-    return IsTrue(status >= 500)
+function worth_retrying(status: HttpStatus) -> YesNo {
+    return YesNo(status >= 500)
 }
 
 /// The problem a sold-out item is reported with.
@@ -3711,8 +3711,8 @@ function sold_out(item_page: ShopLink) -> ProblemDetails {
 }
 
 /// A problem as a person reads it.
-function problem_shown(problem: ProblemDetails, reader: Locale) -> PresentationText {
-    return text.format(problem, locale: reader)
+function problem_shown(problem: ProblemDetails, customer_locale: Locale) -> PresentationText {
+    return text.format(problem, locale: customer_locale)
 }
 
 /// A problem as it is sent.
@@ -3723,12 +3723,12 @@ function problem_sent(problem: ProblemDetails) -> FormText {
 
 ```jadpo check project=web-and-network file=main.test.jadpo
 test "links follow RFC 3986" {
-    var search: ShopLink = "https://tea.example/search"
+    var search_page: ShopLink = "https://tea.example/search"
     var searched: ShopLink = "https://tea.example/search?page=1&q=tea%20%26%20cake"
-    assert search_link(search, "tea & cake") == searched
+    assert search_link(search_page, "tea & cake") == searched
     var sencha: ShopLink = "https://tea.example/teas/green/sencha"
-    assert followed(sencha, "../black/assam") == "https://tea.example/teas/black/assam"
-    assert followed(sencha, "#reviews") == "https://tea.example/teas/green/sencha#reviews"
+    assert link_target(sencha, "../black/assam") == "https://tea.example/teas/black/assam"
+    assert link_target(sencha, "#reviews") == "https://tea.example/teas/green/sencha#reviews"
     assert basket_from(sencha, "/basket") == "https://tea.example/basket"
 }
 
@@ -3740,8 +3740,8 @@ test "an address is inside a range of its own family only" {
 }
 
 test "a domain name is read in its ASCII form only" {
-    var domain: DomainName = attempt shop_domain("xn--mnchen-3ya.de")
-    assert domain == "xn--mnchen-3ya.de"
+    var typed_domain: DomainName = attempt shop_domain("xn--mnchen-3ya.de")
+    assert typed_domain == "xn--mnchen-3ya.de"
     assert shop_domain("München.de") fails NotADomain
     assert shop_domain("example.com.") fails NotADomain
 }
@@ -6286,7 +6286,7 @@ under "Errors").
   each a line, and `term` and `content`, which may be `none`, as Google
   Analytics' campaign builder has them (GA4's `utm_id` and the rest aren't
   parts). Its canonical text is the query that carries them,
-  `utm_source=newsletter&utm_medium=email&utm_campaign=autumn_sale`, in
+  `utm_source=mailing&utm_medium=email&utm_campaign=autumn_sale`, in
   that order, each value percent-encoded as `encoding.to_url_component`
   encodes it; its JSON is its parts, and it is stored a column per part.
 - **`Cidr`** writes its address as `IpAddress` canonically would (RFC

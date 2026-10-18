@@ -20,22 +20,22 @@ type CallerAddress = IpAddress {}
 
 type FormText = Text {}
 
-type IsTrue = Bool {}
+type YesNo = Bool {}
 
 type NotADomain = Failure {
     kind: FailureKind.invalid_value
 }
 
 /// A search page's link for a term, on its first page.
-function search_link(site: ShopLink, term: SearchTerm) -> ShopLink {
+function search_link(catalogue_page: ShopLink, tea_term: SearchTerm) -> ShopLink {
     var none_yet: Map<Text, Text> = []
-    var wanted: Map<Text, Text> = map.with(map.with(none_yet, \"q\", term), \"page\", \"1\")
-    return ShopLink(web.with_query(site, wanted))
+    var tea_query: Map<Text, Text> = map.with(map.with(none_yet, \"q\", tea_term), \"page\", \"1\")
+    return ShopLink(web.with_query(catalogue_page, tea_query))
 }
 
 /// Where a link on `page` leads.
-function followed(page: ShopLink, link: RelativeUrl) -> ShopLink {
-    return ShopLink(web.resolve(page, link))
+function link_target(page: ShopLink, page_link: RelativeUrl) -> ShopLink {
+    return ShopLink(web.resolve(page, page_link))
 }
 
 /// The basket's address from any page: a path is a relative URL too.
@@ -44,22 +44,22 @@ function basket_from(page: ShopLink, basket: UrlPath) -> ShopLink {
 }
 
 /// Whether a caller is on the office's network.
-function from_office(office: Cidr, caller: CallerAddress) -> IsTrue {
-    return IsTrue(web.cidr_contains(office, caller))
+function from_office(office: Cidr, caller: CallerAddress) -> YesNo {
+    return YesNo(web.cidr_contains(office, caller))
 }
 
 /// The domain a seller typed for their shop.
 function shop_domain(raw: FormText) fails NotADomain -> DomainName {
-    var domain: DomainName = attempt text.parse(raw, as: DomainName) {
+    var typed_domain: DomainName = attempt text.parse(raw, as: DomainName) {
         malformed: NotADomain
     }
-    return domain
+    return typed_domain
 }
 
 /// Whether a failed call is worth trying again: the server's fault, not
 /// the request's.
-function worth_retrying(status: HttpStatus) -> IsTrue {
-    return IsTrue(status >= 500)
+function worth_retrying(status: HttpStatus) -> YesNo {
+    return YesNo(status >= 500)
 }
 
 /// The problem a sold-out item is reported with.
@@ -74,8 +74,8 @@ function sold_out(item_page: ShopLink) -> ProblemDetails {
 }
 
 /// A problem as a person reads it.
-function problem_shown(problem: ProblemDetails, reader: Locale) -> PresentationText {
-    return text.format(problem, locale: reader)
+function problem_shown(problem: ProblemDetails, customer_locale: Locale) -> PresentationText {
+    return text.format(problem, locale: customer_locale)
 }
 
 /// A problem as it is sent.
@@ -104,7 +104,7 @@ fn links_follow_rfc_3986() {
     assert_eq!(
         value(
             &program,
-            "followed",
+            "link_target",
             vec![
                 text("https://tea.example/teas/green/sencha"),
                 text("../black/assam")
@@ -115,7 +115,7 @@ fn links_follow_rfc_3986() {
     assert_eq!(
         value(
             &program,
-            "followed",
+            "link_target",
             vec![text("https://tea.example/teas?page=2"), text("#reviews")]
         ),
         text("https://tea.example/teas?page=2#reviews")

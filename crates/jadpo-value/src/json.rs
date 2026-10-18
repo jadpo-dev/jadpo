@@ -337,9 +337,9 @@ impl Codecs<'_> {
         }
         for name in entries.keys() {
             if !(0..shape.len()).any(|slot| {
-                shape.field(slot).is_some_and(|(n, _)| {
-                    jadpo_std::standard::wire_name(shape.ty(), n) == name
-                })
+                shape
+                    .field(slot)
+                    .is_some_and(|(n, _)| jadpo_std::standard::wire_name(shape.ty(), n) == name)
             }) {
                 Self::problem(problems, &path.with(name.clone()), "unknown_field");
             }

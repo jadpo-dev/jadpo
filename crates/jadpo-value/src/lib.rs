@@ -270,7 +270,7 @@ pub fn run(
         // The `web` operations (area 19, "Web and software").
         (Op::WebCidrContains, [range, address]) => web::cidr_contains(range, address),
         (Op::WebResolve, [base, relative]) => web::resolve(base, relative),
-        (Op::WebWithQuery, [url, query]) => web::with_query(url, query),
+        (Op::WebWithQuery, [url, entries]) => web::with_query(url, entries),
         (Op::WebCidrContains | Op::WebResolve | Op::WebWithQuery, _) => Err(Fault::Shape),
         (Op::RangeContains, [span, value]) => range::contains(span, value).map(Value::Bool),
         (Op::RangeOverlaps, [a, b]) => range::overlaps(a, b).map(Value::Bool),
@@ -753,14 +753,13 @@ mod tests {
                 Op::WebCidrContains => {
                     vec![Value::text("192.0.2.0/24"), Value::text("192.0.2.7")]
                 }
-                Op::WebResolve => vec![
-                    Value::text("https://example.com/a/b"),
-                    Value::text("../c"),
-                ],
+                Op::WebResolve => vec![Value::text("https://example.com/a/b"), Value::text("../c")],
                 Op::WebWithQuery => vec![
                     Value::text("https://example.com/"),
                     Value::Map(std::rc::Rc::new(
-                        [(Value::text("q"), Value::text("tea"))].into_iter().collect(),
+                        [(Value::text("q"), Value::text("tea"))]
+                            .into_iter()
+                            .collect(),
                     )),
                 ],
                 Op::MoneyFromMinor => vec![Value::Int(1050), pounds.clone()],

@@ -2006,7 +2006,10 @@ pub const OPERATIONS: &[Operation] = &[
     web(
         Op::WebResolve,
         "resolve",
-        &[param("base", URL), param("relative", Kind::Std("RelativeUrl"))],
+        &[
+            param("base", URL),
+            param("relative", Kind::Std("RelativeUrl")),
+        ],
         URL,
         "web::resolve",
     ),

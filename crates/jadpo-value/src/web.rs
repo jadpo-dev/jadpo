@@ -20,15 +20,17 @@ pub fn cidr_contains(range: &Value, address: &Value) -> Result<Value, Fault> {
 /// `web.resolve(base, relative)`.
 pub fn resolve(base: &Value, relative: &Value) -> Result<Value, Fault> {
     match (base, relative) {
-        (Value::Text(base), Value::Text(relative)) => Ok(Value::text(&web::resolve(base, relative))),
+        (Value::Text(base), Value::Text(relative)) => {
+            Ok(Value::text(&web::resolve(base, relative)))
+        }
         _ => Err(Fault::Shape),
     }
 }
 
-/// `web.with_query(url, query)`: the entries in key order, by code point,
+/// `web.with_query(url, entries)`: the entries in key order, by code point,
 /// whatever order the map holds them in.
-pub fn with_query(url: &Value, query: &Value) -> Result<Value, Fault> {
-    let (Value::Text(url), Value::Map(map)) = (url, query) else {
+pub fn with_query(url: &Value, entries: &Value) -> Result<Value, Fault> {
+    let (Value::Text(url), Value::Map(map)) = (url, entries) else {
         return Err(Fault::Shape);
     };
     let mut entries = map

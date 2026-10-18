@@ -103,7 +103,9 @@ fn path_noscheme(path: &str) -> bool {
     let mut segments = path.split('/');
     let first = segments.next().unwrap_or_default();
     !first.is_empty()
-        && encoded_of(first, |byte| unreserved(byte) || sub_delim(byte) || byte == b'@')
+        && encoded_of(first, |byte| {
+            unreserved(byte) || sub_delim(byte) || byte == b'@'
+        })
         && segments.all(segment)
 }
 
@@ -119,9 +121,7 @@ pub fn whole_in(text: &str, min: i64, max: i64) -> bool {
     !text.is_empty()
         && text.bytes().all(|b| b.is_ascii_digit())
         && (text == "0" || !text.starts_with('0'))
-        && text
-            .parse::<i64>()
-            .is_ok_and(|n| (min..=max).contains(&n))
+        && text.parse::<i64>().is_ok_and(|n| (min..=max).contains(&n))
 }
 
 /// An IP address in its canonical text: IPv4 in dotted decimal with no
@@ -143,9 +143,7 @@ fn uri_host(text: &str) -> bool {
             .strip_suffix(']')
             .and_then(canonical_ip)
             .is_some_and(|address| address.is_ipv6()),
-        None => {
-            canonical_ip(text).is_some_and(|address| address.is_ipv4()) || is_domain_name(text)
-        }
+        None => canonical_ip(text).is_some_and(|address| address.is_ipv4()) || is_domain_name(text),
     }
 }
 
@@ -239,9 +237,9 @@ pub fn is_web_origin(text: &str) -> bool {
 /// An HTTP token (RFC 9110 §5.6.2).
 fn token(text: &str) -> bool {
     !text.is_empty()
-        && text.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte)
-        })
+        && text
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte))
 }
 
 /// A comment in a `User-Agent` (RFC 9110 §5.6.5): text in parentheses,
@@ -321,9 +319,9 @@ fn cookie_value(text: &str) -> bool {
         .strip_prefix('"')
         .and_then(|rest| rest.strip_suffix('"'))
         .unwrap_or(text);
-    inner.bytes().all(|byte| {
-        matches!(byte, 0x21 | 0x23..=0x2b | 0x2d..=0x3a | 0x3c..=0x5b | 0x5d..=0x7e)
-    })
+    inner
+        .bytes()
+        .all(|byte| matches!(byte, 0x21 | 0x23..=0x2b | 0x2d..=0x3a | 0x3c..=0x5b | 0x5d..=0x7e))
 }
 
 /// RFC 1123's date, as `Expires` writes it (RFC 6265 §4.1.1, `sane-cookie-date`):
@@ -337,9 +335,8 @@ fn cookie_date(text: &str) -> bool {
     let [weekday, day, month, year, clock, "GMT"] = parts.as_slice() else {
         return false;
     };
-    let digits = |part: &str, count: usize| {
-        part.len() == count && part.bytes().all(|b| b.is_ascii_digit())
-    };
+    let digits =
+        |part: &str, count: usize| part.len() == count && part.bytes().all(|b| b.is_ascii_digit());
     let Some(weekday) = weekday
         .strip_suffix(',')
         .and_then(|name| DAYS.iter().position(|day| *day == name))
@@ -353,8 +350,14 @@ fn cookie_date(text: &str) -> bool {
     let [hour, minute, second] = clock.as_slice() else {
         return false;
     };
-    let in_range = |part: &str, max: u32| digits(part, 2) && part.parse::<u32>().is_ok_and(|n| n <= max);
-    if !digits(day, 2) || !digits(year, 4) || !in_range(hour, 23) || !in_range(minute, 59) || !in_range(second, 59) {
+    let in_range =
+        |part: &str, max: u32| digits(part, 2) && part.parse::<u32>().is_ok_and(|n| n <= max);
+    if !digits(day, 2)
+        || !digits(year, 4)
+        || !in_range(hour, 23)
+        || !in_range(minute, 59)
+        || !in_range(second, 59)
+    {
         return false;
     }
     crate::date_number(&format!("{year}-{:02}-{day}", month + 1)).is_some_and(|epoch_day| {
@@ -420,7 +423,9 @@ pub fn is_cookie(text: &str) -> bool {
         if !valid {
             return false;
         }
-        seen[at] = Some(value.unwrap_or_default());
+        if let Some(slot) = seen.get_mut(at) {
+            *slot = Some(value.unwrap_or_default());
+        }
     }
     let secure = seen[4].is_some();
     let lower = name.to_ascii_lowercase();
@@ -627,7 +632,9 @@ fn remove_dot_segments(path: &str) -> String {
             input.clear();
         } else {
             let start = usize::from(input.starts_with('/'));
-            let end = input[start..].find('/').map_or(input.len(), |at| at + start);
+            let end = input[start..]
+                .find('/')
+                .map_or(input.len(), |at| at + start);
             output.push_str(&input[..end]);
             input = input[end..].to_string();
         }
@@ -654,7 +661,12 @@ pub fn resolve(base: &str, reference: &str) -> String {
     let (scheme, authority, path, query) = if r.scheme.is_some() {
         (r.scheme, r.authority, remove_dot_segments(r.path), r.query)
     } else if r.authority.is_some() {
-        (base.scheme, r.authority, remove_dot_segments(r.path), r.query)
+        (
+            base.scheme,
+            r.authority,
+            remove_dot_segments(r.path),
+            r.query,
+        )
     } else if r.path.is_empty() {
         (
             base.scheme,
@@ -663,7 +675,12 @@ pub fn resolve(base: &str, reference: &str) -> String {
             r.query.or(base.query),
         )
     } else if r.path.starts_with('/') {
-        (base.scheme, base.authority, remove_dot_segments(r.path), r.query)
+        (
+            base.scheme,
+            base.authority,
+            remove_dot_segments(r.path),
+            r.query,
+        )
     } else {
         (
             base.scheme,
@@ -736,7 +753,9 @@ pub fn read_utm(raw: &str) -> Option<Vec<Option<String>>> {
         next = at + 1;
         let value = decode_component(value)?;
         Part::Line.rules().check_text(&value).ok()?;
-        parts[at] = Some(value);
+        if let Some(slot) = parts.get_mut(at) {
+            *slot = Some(value);
+        }
     }
     let required = UTM_FIELDS
         .iter()
@@ -1118,7 +1137,12 @@ pub const NETWORK_PORT: StandardType = whole_type(
     "NetworkPort",
     1,
     65_535,
-    &[("22", "22"), ("443", "443"), ("8080", "8080"), ("65535", "65535")],
+    &[
+        ("22", "22"),
+        ("443", "443"),
+        ("8080", "8080"),
+        ("65535", "65535"),
+    ],
     &["0", "65536", "080", "-1", "http", ""],
 );
 
@@ -1146,8 +1170,8 @@ pub const PROBLEM_DETAILS_ENTRY: StandardType = StandardType {
     examples: Examples {
         valid: &[
             (
-                r#"{"type":"https://example.com/probs/out-of-credit","status":403,"title":"You do not have enough credit.","detail":"Your current balance is 30, but that costs 50.","instance":"https://example.net/account/12345/msgs/abc"}"#,
-                "You do not have enough credit.\nYour current balance is 30, but that costs 50.",
+                r#"{"type":"https://example.com/probs/out-of-credit","status":403,"title":"You do not have enough credit.","detail":"You have 30 credits, but that costs 50.","instance":"https://example.net/account/12345/msgs/abc"}"#,
+                "You do not have enough credit.\nYou have 30 credits, but that costs 50.",
             ),
             (r#"{"status":404,"title":"Not Found"}"#, "Not Found"),
             (r#"{"status":503}"#, "503"),
@@ -1160,7 +1184,7 @@ pub const PROBLEM_DETAILS_ENTRY: StandardType = StandardType {
             r#"{"type":"/probs/out-of-credit"}"#,
             r#"{"status":600}"#,
             r#"{"title":""}"#,
-            r#"{"title":"Not Found","balance":30}"#,
+            r#"{"title":"Not Found","remaining":30}"#,
             r#""Not Found""#,
         ],
         of: None,
@@ -1229,11 +1253,18 @@ pub const SLUG: StandardType = text_type(
     None,
     None,
     &[
-        ("hello-world", "hello-world"),
+        ("spring-collection", "spring-collection"),
         ("2026-autumn-sale", "2026-autumn-sale"),
         ("a", "a"),
     ],
-    &["Hello-World", "hello--world", "-hello", "hello-", "hello_world", ""],
+    &[
+        "Spring-Collection",
+        "spring--collection",
+        "-spring",
+        "spring-",
+        "spring_collection",
+        "",
+    ],
 );
 
 /// A URL's path (RFC 3986 `path-absolute`): `/` and segments, with no
@@ -1272,7 +1303,10 @@ pub const USER_AGENT: StandardType = text_type(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
         ),
-        ("ExampleBot/1.0 (+https://example.com/bot)", "ExampleBot/1.0 (+https://example.com/bot)"),
+        (
+            "ExampleBot/1.0 (+https://example.com/bot)",
+            "ExampleBot/1.0 (+https://example.com/bot)",
+        ),
     ],
     &[
         "(compatible)",
@@ -1311,8 +1345,8 @@ pub const UTM_PARAMETERS_ENTRY: StandardType = StandardType {
     examples: Examples {
         valid: &[
             (
-                "utm_source=newsletter&utm_medium=email&utm_campaign=autumn_sale",
-                "utm_source=newsletter&utm_medium=email&utm_campaign=autumn_sale",
+                "utm_source=mailing&utm_medium=email&utm_campaign=autumn_sale",
+                "utm_source=mailing&utm_medium=email&utm_campaign=autumn_sale",
             ),
             (
                 "utm_source=search&utm_medium=cpc&utm_campaign=spring&utm_term=running%20shoes&utm_content=banner",
@@ -1322,12 +1356,12 @@ pub const UTM_PARAMETERS_ENTRY: StandardType = StandardType {
         format: None,
         malformed: &[
             // Out of order, a part missing, empty, or not encoded.
-            "utm_medium=email&utm_source=newsletter&utm_campaign=autumn_sale",
-            "utm_source=newsletter",
+            "utm_medium=email&utm_source=mailing&utm_campaign=autumn_sale",
+            "utm_source=mailing",
             "utm_source=&utm_medium=email&utm_campaign=autumn_sale",
             "utm_source=news letter&utm_medium=email&utm_campaign=autumn_sale",
-            "utm_source=newsletter&utm_medium=email&utm_campaign=autumn%5fsale",
-            "source=newsletter&medium=email&campaign=autumn_sale",
+            "utm_source=mailing&utm_medium=email&utm_campaign=autumn%5fsale",
+            "source=mailing&medium=email&campaign=autumn_sale",
             "",
         ],
         of: None,
@@ -1432,15 +1466,24 @@ mod tests {
     #[test]
     fn a_query_goes_before_the_fragment() {
         assert_eq!(
-            with_query("https://example.com/search", &[("q", "café au lait"), ("page", "2")]),
+            with_query(
+                "https://example.com/search",
+                &[("q", "café au lait"), ("page", "2")]
+            ),
             "https://example.com/search?q=caf%C3%A9%20au%20lait&page=2"
         );
         assert_eq!(
             with_query("https://example.com/a?x=1#top", &[("y", "2")]),
             "https://example.com/a?x=1&y=2#top"
         );
-        assert_eq!(with_query("https://example.com/?", &[("y", "&")]), "https://example.com/?y=%26");
-        assert_eq!(with_query("https://example.com/", &[]), "https://example.com/");
+        assert_eq!(
+            with_query("https://example.com/?", &[("y", "&")]),
+            "https://example.com/?y=%26"
+        );
+        assert_eq!(
+            with_query("https://example.com/", &[]),
+            "https://example.com/"
+        );
     }
 
     #[test]
@@ -1448,7 +1491,10 @@ mod tests {
         assert_eq!(cidr_contains("192.0.2.0/24", "192.0.2.255"), Some(true));
         assert_eq!(cidr_contains("192.0.2.0/24", "192.0.3.0"), Some(false));
         assert_eq!(cidr_contains("0.0.0.0/0", "203.0.113.9"), Some(true));
-        assert_eq!(cidr_contains("2001:db8::/32", "2001:db8:ffff::1"), Some(true));
+        assert_eq!(
+            cidr_contains("2001:db8::/32", "2001:db8:ffff::1"),
+            Some(true)
+        );
         assert_eq!(cidr_contains("2001:db8::/32", "2001:db9::1"), Some(false));
         assert_eq!(cidr_contains("::/0", "192.0.2.1"), Some(false));
         assert_eq!(cidr_contains("198.51.100.7/32", "198.51.100.7"), Some(true));

@@ -40,7 +40,11 @@ fn references_resolve_by_rfc_3986() {
         ("g/../h", "http://a/b/c/h"),
         ("g?y/../x", "http://a/b/c/g?y/../x"),
     ] {
-        assert_eq!(resolved(base, relative), Value::text(expected), "{relative}");
+        assert_eq!(
+            resolved(base, relative),
+            Value::text(expected),
+            "{relative}"
+        );
     }
     assert_eq!(
         resolved("https://tea.example/teas/green/sencha", "../black/assam"),

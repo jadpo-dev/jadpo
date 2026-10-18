@@ -96,7 +96,10 @@ fn literals_are_checked_by_their_standards_while_compiling() {
         "a scheme makes it a URL (RFC 3986 §4.2)"
     );
     assert_eq!(literal("UrlPath", "/products/42"), NONE);
-    assert_eq!(literal("UrlPath", "/search?q=tea"), ["type.invalid_literal"]);
+    assert_eq!(
+        literal("UrlPath", "/search?q=tea"),
+        ["type.invalid_literal"]
+    );
     assert_eq!(literal("DomainName", "xn--mnchen-3ya.de"), NONE);
     assert_eq!(
         literal("DomainName", "München.de"),
@@ -104,11 +107,17 @@ fn literals_are_checked_by_their_standards_while_compiling() {
         "only UTS 46's A-labels in lower case are read"
     );
     assert_eq!(literal("HttpHeaderName", "content-type"), NONE);
-    assert_eq!(literal("HttpHeaderName", "Content-Type"), ["type.invalid_literal"]);
+    assert_eq!(
+        literal("HttpHeaderName", "Content-Type"),
+        ["type.invalid_literal"]
+    );
     assert_eq!(literal("Cidr", "192.0.2.0/24"), NONE);
     assert_eq!(literal("Cidr", "192.0.2.1/24"), ["type.invalid_literal"]);
     assert_eq!(literal("WebOrigin", "https://example.com"), NONE);
-    assert_eq!(literal("WebOrigin", "https://example.com:443"), ["type.invalid_literal"]);
+    assert_eq!(
+        literal("WebOrigin", "https://example.com:443"),
+        ["type.invalid_literal"]
+    );
     assert_eq!(literal("Emoji", "\u{2764}\u{FE0F}"), NONE);
     assert_eq!(literal("Emoji", "\u{2764}"), ["type.invalid_literal"]);
     assert_eq!(literal("MacAddress", "AC-DE-48-00-00-80"), NONE);
@@ -118,7 +127,9 @@ fn literals_are_checked_by_their_standards_while_compiling() {
 #[test]
 fn a_status_and_a_port_are_whole_numbers_in_their_ranges() {
     assert_eq!(
-        rules("function failed(status: HttpStatus) -> Answer {\n    return Answer(status >= 500)\n}\n"),
+        rules(
+            "function failed(status: HttpStatus) -> Answer {\n    return Answer(status >= 500)\n}\n"
+        ),
         NONE,
         "a status is ordered, so a class is a comparison"
     );
@@ -173,7 +184,10 @@ fn a_problem_s_type_is_written_type_() {
         "a status is from 100 to 599"
     );
     assert_eq!(
-        problem(&all.replace("\"https://example.com/probs/out-of-credit\"", "\"/probs/out-of-credit\"")),
+        problem(&all.replace(
+            "\"https://example.com/probs/out-of-credit\"",
+            "\"/probs/out-of-credit\""
+        )),
         ["type.invalid_literal"],
         "a problem's type is a URL"
     );

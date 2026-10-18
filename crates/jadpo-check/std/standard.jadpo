@@ -511,7 +511,7 @@ public type UtcOffset = Object {
 
 /// Where a visit came from (area 19, Google Analytics' UTM parameters):
 /// written as the query that carries them,
-/// `utm_source=newsletter&utm_medium=email&utm_campaign=autumn_sale`; the
+/// `utm_source=mailing&utm_medium=email&utm_campaign=autumn_sale`; the
 /// term and the content only where a campaign uses them.
 public type UtmParameters = Object {
     source: Text

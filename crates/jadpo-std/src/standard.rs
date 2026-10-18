@@ -240,7 +240,7 @@ pub enum TextForm {
     /// its type's range: `404` (chunk 5.5n).
     Whole,
     /// The query that carries a visit's UTM parameters (chunk 5.5n,
-    /// [`web::utm_text`]): `utm_source=newsletter&utm_medium=email&...`,
+    /// [`web::utm_text`]): `utm_source=mailing&utm_medium=email&...`,
     /// each part it has in its parts' order, percent-encoded.
     UtmQuery,
 }
@@ -826,7 +826,8 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// `schedules`), 15 of people and places (chunk 5.5l, in `places` and
 /// `contact`), and `PhoneNumber`, `CallingCode`, `PostalCode` and
 /// `UnLocode`, held as text (chunk 5.5l2, in `phones`, `postal` and
-/// `places`), and `CalendarEvent` (chunk 5.5k3, in `events`).
+/// `places`), `CalendarEvent` (chunk 5.5k3, in `events`), and the 20 web
+/// and network types (chunk 5.5n, in `web`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     quantity(
@@ -2308,7 +2309,12 @@ mod tests {
             if let Some(wide) = within(entry.name) {
                 let wide = standard_type(wide).expect("a standard type");
                 for (text, _) in entry.examples.valid {
-                    assert!(wide.accepts(text), "{}: `{text}` is a {}", entry.name, wide.name);
+                    assert!(
+                        wide.accepts(text),
+                        "{}: `{text}` is a {}",
+                        entry.name,
+                        wide.name
+                    );
                 }
             }
             // A range takes its item type's options.
