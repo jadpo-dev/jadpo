@@ -946,9 +946,14 @@ reference only).
   unit or precision on the way out. Compound types store as named columns
   (`Money` as amount and currency, the currency kept and checked even when
   the type fixes it), quantities as one SI-unit column with the unit in
-  the column's comment, ranges as native range types. Done when a test per
-  boundary round-trips one value of every standard type, and any boundary
-  with its own encoder is gone. A read-only audit (2026-10-17) found what
+  the column's comment, ranges as native range types. Every standard
+  object and choice type (`Price`, `Discount`, `UnitPrice`,
+  `InterestRate`, `ExchangeRate` and the rest, which storing now fails
+  with `toolchain.not_built_yet`) is made storable through the named-column
+  mechanism or its decided storage shape. Done when a test per
+  boundary round-trips one value of every standard type, an entity stores
+  and reads back one of each standard object and choice type, and any
+  boundary with its own encoder is gone. A read-only audit (2026-10-17) found what
   to fix, beyond what 5.5h fixes for Money (OpenAPI for standard object
   types, enum spellings from `entry.codes()`, storage as named columns):
   `json.write`'s map keys use debug text and don't read back
