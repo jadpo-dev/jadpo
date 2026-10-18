@@ -444,6 +444,8 @@ pub fn run(
         (Op::GeoWithin, [a, b]) => geo::within(a, b, &Value::None),
         (Op::GeoCentroid, [shape]) => geo::centroid(shape),
         (Op::GeoBoundingBox, [shape]) => geo::bounding_box(shape),
+        (Op::GeoFromWkt, [text]) => geo::from_wkt(text),
+        (Op::GeoToWkt, [shape]) => geo::to_wkt(shape),
         (
             Op::GeoDistance
             | Op::GeoBearing
@@ -453,7 +455,9 @@ pub fn run(
             | Op::GeoContains
             | Op::GeoWithin
             | Op::GeoCentroid
-            | Op::GeoBoundingBox,
+            | Op::GeoBoundingBox
+            | Op::GeoFromWkt
+            | Op::GeoToWkt,
             _,
         ) => Err(Fault::Shape),
         (Op::HashSha256, [Value::Bytes(bytes)]) => Ok(bytes_value(&hash::sha256(bytes))),
@@ -948,7 +952,8 @@ mod tests {
                     geo::point(Decimal::new(1, 0), Decimal::new(2, 0), Value::None),
                     Value::None,
                 ],
-                Op::GeoCentroid | Op::GeoBoundingBox => vec![geo::point(
+                Op::GeoFromWkt => vec![Value::text("POINT(2 1)")],
+                Op::GeoCentroid | Op::GeoBoundingBox | Op::GeoToWkt => vec![geo::point(
                     Decimal::new(1, 0),
                     Decimal::new(2, 0),
                     Value::None,

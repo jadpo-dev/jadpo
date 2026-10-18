@@ -108,6 +108,7 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
                         | jadpo_std::standard::Holds::List(_)
                         | jadpo_std::standard::Holds::Map(..)
                         | jadpo_std::standard::Holds::Bounded { .. }
+                        | jadpo_std::standard::Holds::Choice(_)
                 )
             }) =>
         {

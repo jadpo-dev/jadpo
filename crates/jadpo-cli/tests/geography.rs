@@ -444,3 +444,48 @@ fn a_role_that_can_t_create_postgis_is_refused_before_anything_runs() {
         .admin(&format!("DROP ROLE \"{role}\""))
         .expect("dropped");
 }
+
+/// WKT through PostGIS (area 20, "Interop"; chunk 5.5u6): each geometry,
+/// a patch with a hole among them, written by `geo.to_wkt`'s writer, is
+/// read by `ST_GeogFromText`, as WKT and as EWKT, and written back by
+/// `ST_AsText` exactly as Jadpo wrote it, and Jadpo's reader gives back the
+/// value it started from: longitude first both ways, rings in the order
+/// given, every coordinate the double it was.
+#[test]
+fn a_wkt_polygon_round_trips_through_postgis_unchanged() {
+    if skipped() {
+        return;
+    }
+    let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
+    let url = server.create_database("geography_wkt").expect("database");
+    rows(&url, "CREATE EXTENSION IF NOT EXISTS postgis", &[]).expect("PostGIS");
+    let patch = "POLYGON((-0.2 51.49,-0.05 51.49,-0.05 51.54,-0.2 51.54,-0.2 51.49),(-0.15 51.5,-0.15 51.52,-0.1 51.52,-0.1 51.5,-0.15 51.5))";
+    for wkt in [
+        patch,
+        // The same patch wound the other way, kept as it was given.
+        "POLYGON((-0.2 51.49,-0.2 51.54,-0.05 51.54,-0.05 51.49,-0.2 51.49))",
+        "POLYGON Z ((-0.2 51.49 35.5,-0.05 51.49 35.5,-0.05 51.54 35.5,-0.2 51.54 35.5,-0.2 51.49 35.5))",
+        "POINT(-0.1276 51.50720000001235)",
+        "POINT Z (151.2093 -33.8688 -12.000001)",
+        "LINESTRING(-0.1276 51.5072,2.3522 48.8566,151.2093 -33.8688)",
+        "MULTIPOINT((0 0),(-180 -90))",
+        "MULTILINESTRING((0 0,1 1),(2 2,3 3))",
+        "MULTIPOLYGON(((0 0,1 0,1 1,0 0)),((2 2,3 2,3 3,2 2)))",
+    ] {
+        let value = jadpo_value::geo::wkt::read(wkt).unwrap_or_else(|e| panic!("{wkt}: {e:?}"));
+        let written = jadpo_value::geo::wkt::write(&value).expect("WKT");
+        assert_eq!(written, wkt);
+        for sql in [
+            "SELECT ST_AsText(ST_GeogFromText($1))",
+            "SELECT ST_AsText(ST_GeogFromText('SRID=4326;' || $1))",
+        ] {
+            let back = rows(&url, sql, &[SqlValue::Text(written.clone())])
+                .unwrap_or_else(|e| panic!("{wkt}: {e}"));
+            let Some(Some(SqlValue::Text(back))) = back.first().map(|row| row.first()) else {
+                panic!("{wkt}: {back:?}");
+            };
+            assert_eq!(back, &written, "{sql}");
+            assert_eq!(jadpo_value::geo::wkt::read(back).as_ref(), Ok(&value));
+        }
+    }
+}

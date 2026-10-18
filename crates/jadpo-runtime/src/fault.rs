@@ -86,6 +86,10 @@ impl From<jadpo_value::Fault> for FaultKind {
             jadpo_value::Fault::ZeroVector => FaultKind::Defect(
                 "a cosine distance from a vector of zeros, which has no direction".into(),
             ),
+            jadpo_value::Fault::MixedAltitudes => FaultKind::Defect(
+                "`geo.to_wkt` of a geometry whose points mix with and without an altitude, which WKT can't write"
+                    .into(),
+            ),
             jadpo_value::Fault::Shape | jadpo_value::Fault::Stopped => {
                 FaultKind::Defect("a value of a kind the checker would have refused".into())
             }

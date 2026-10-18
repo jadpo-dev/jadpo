@@ -145,3 +145,38 @@ fn coordinates_and_bearings_are_shown_with_their_hemispheres_and_degrees() {
     let depot = jadpo_value::geo::point(decimal("51.5072"), decimal("-0.1276"), Value::None);
     assert_eq!(shown(depot, "Point"), Value::text("51.5072° N, 0.1276° W"));
 }
+
+/// `geo.from_wkt` and `geo.to_wkt` as compiled code calls them (area 20,
+/// "Interop"; chunk 5.5u6): the same values and conditions the
+/// interpreter's `geo_interop` tests assert.
+#[test]
+fn a_patch_round_trips_through_wkt_as_compiled_code_runs_it() {
+    let patch = "POLYGON((-0.2 51.49,-0.05 51.49,-0.05 51.54,-0.2 51.54,-0.2 51.49),(-0.15 51.5,-0.15 51.52,-0.1 51.52,-0.1 51.5,-0.15 51.5))";
+    let read = run(Op::GeoFromWkt, &[Value::text(patch)], None, &mut |_| None).expect("a patch");
+    let Value::Variant(variant) = &read else {
+        panic!("a geometry");
+    };
+    assert_eq!(&*variant.name, "polygon");
+    assert_eq!(
+        run(Op::GeoToWkt, &[read.clone()], None, &mut |_| None),
+        Ok(Value::text(patch))
+    );
+    assert_eq!(
+        run(
+            Op::GeoFromWkt,
+            &[Value::text("SRID=4258;POINT(1 2)")],
+            None,
+            &mut |_| None
+        ),
+        Err(jadpo_value::Fault::Broke(jadpo_std::RuleKey::OutOfRange))
+    );
+    assert_eq!(
+        run(
+            Op::GeoFromWkt,
+            &[Value::text("POINT EMPTY")],
+            None,
+            &mut |_| None
+        ),
+        Err(jadpo_value::Fault::Broke(jadpo_std::RuleKey::Malformed))
+    );
+}
