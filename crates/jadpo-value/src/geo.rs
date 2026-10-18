@@ -700,11 +700,12 @@ pub fn from_shape(ty: &str, shape: &Shape) -> Result<Value, String> {
     };
     let kind = shape.standard_type();
     if ty == GEOMETRY {
-        let ordinal = GEOJSON_TYPES
+        let (ordinal, (variant, _)) = GEOJSON_TYPES
             .iter()
-            .position(|(_, name)| *name == kind)
+            .enumerate()
+            .find(|(_, (_, name))| *name == kind)
             .ok_or("a stored geometry of no known kind")?;
-        let (variant, _) = GEOJSON_TYPES[ordinal];
+        let variant = *variant;
         return Ok(Value::variant(
             GEOMETRY,
             ordinal as u32,
@@ -1079,7 +1080,7 @@ mod tests {
         // A coordinate with more digits than a double holds is the double's.
         let far = Shape::Point(Coordinates::new(
             -0.1276,
-            51.50720000001234567,
+            "51.50720000001234567".parse().expect("a double"),
             Some(0.1 + 0.2),
         ));
         let Ok(Value::Record(record)) = from_shape(POINT, &far) else {

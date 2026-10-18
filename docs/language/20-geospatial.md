@@ -1098,6 +1098,10 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
   test holds every geometry, with and without altitude, to come back from
   its GeoJSON unchanged; a polygon wound clockwise comes back wound by
   the right-hand rule, which PostGIS storage doesn't do.
+- **`==` on a geometry field in a query** compares exactly, as PostGIS's
+  `=` on `geography` does: an altitude, a ring's winding and a line's
+  direction all count (verified), as they do for Jadpo's own `==`. Order
+  by a geometry stays `query.order_field`.
 - **`BoundingBox` and `Circle`** are named columns as question 7 decided:
   a box's sides `numeric`, unchecked in the database like every compound
   type's rules, and a circle's radius `numeric(38, 6)`, commented as a

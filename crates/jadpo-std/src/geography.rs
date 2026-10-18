@@ -96,14 +96,27 @@ impl Shape {
         }
     }
 
+    /// Its row of [`GEOMETRY_TYPES`].
+    fn names(&self) -> (&'static str, &'static str) {
+        let [point, line, polygon, points, lines, polygons] = GEOMETRY_TYPES;
+        match self {
+            Shape::Point(_) => point,
+            Shape::LineString(_) => line,
+            Shape::Polygon(_) => polygon,
+            Shape::MultiPoint(_) => points,
+            Shape::MultiLineString(_) => lines,
+            Shape::MultiPolygon(_) => polygons,
+        }
+    }
+
     /// As `GeometryType` names it: `POINT`.
     pub fn geometry_type(&self) -> &'static str {
-        GEOMETRY_TYPES[self.code() as usize - 1].0
+        self.names().0
     }
 
     /// The standard type it is: `Point`.
     pub fn standard_type(&self) -> &'static str {
-        GEOMETRY_TYPES[self.code() as usize - 1].1
+        self.names().1
     }
 
     /// Every position, in order.

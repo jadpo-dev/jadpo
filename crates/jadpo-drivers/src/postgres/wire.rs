@@ -437,7 +437,7 @@ impl Ewkb<'_> {
                 let n = self.count(little, 4)?;
                 Shape::Polygon((0..n).map(|_| points(self)).collect::<Result<_, _>>()?)
             }
-            4 | 5 | 6 => {
+            4..=6 => {
                 let n = self.count(little, 9)?;
                 let members = (0..n)
                     .map(|_| self.shape(Some(code - 3)))

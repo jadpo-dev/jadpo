@@ -571,17 +571,11 @@ impl Value {
                     .collect::<Option<Vec<_>>>()?,
             ),
             // A geometry, as PostGIS's `geography` holds it (area 20,
-            // chunk 5.5u4).
-            Value::Record(_) | Value::Variant(_) if crate::geo::shape(self).is_some() => {
-                Stored::Shape(crate::geo::shape(self)?)
+            // chunk 5.5u4); no other object or choice.
+            Value::Record(_) | Value::Variant(_) => Stored::Shape(crate::geo::shape(self)?),
+            Value::Unit | Value::Zoned(_) | Value::Money(_) | Value::Map(_) | Value::Secret(_) => {
+                return None;
             }
-            Value::Unit
-            | Value::Zoned(_)
-            | Value::Money(_)
-            | Value::Map(_)
-            | Value::Record(_)
-            | Value::Variant(_)
-            | Value::Secret(_) => return None,
         })
     }
 
