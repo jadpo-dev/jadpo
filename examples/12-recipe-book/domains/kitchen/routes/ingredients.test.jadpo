@@ -1,5 +1,5 @@
 use kitchen/entities { Baker, PlatformStaff }
-use kitchen/types { Allergen, IngredientName, KitchenStaff, PlatformRole }
+use kitchen/types { Hazard, IngredientName, KitchenStaff, PlatformRole }
 use kitchen/actions { ListIngredient, appoint_editor, register }
 use kitchen/fixtures { northwind }
 
@@ -14,7 +14,7 @@ test "editors list ingredients, and everyone signed in reads them" {
         as: Principal.user(crew.baker)
         input: ListIngredient {
             name: "Rye flour"
-            allergen: Allergen.gluten
+            allergen: Hazard.gluten
         }
     }
     assert by_baker.status == 403
@@ -24,7 +24,7 @@ test "editors list ingredients, and everyone signed in reads them" {
         as: Principal.user(eve)
         input: ListIngredient {
             name: "Rye flour"
-            allergen: Allergen.gluten
+            allergen: Hazard.gluten
         }
     }
     assert by_editor.status == 201

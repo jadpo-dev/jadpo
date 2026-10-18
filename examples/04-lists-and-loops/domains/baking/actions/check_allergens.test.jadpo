@@ -1,18 +1,18 @@
-use baking/types { Allergen, Recipe }
+use baking/types { Hazard, Recipe }
 
 test "a recipe with milk isn't safe for someone avoiding milk" {
     var scone: Recipe = Recipe {
         ingredients: []
-        allergens: [Allergen.gluten, Allergen.milk]
+        allergens: [Hazard.gluten, Hazard.milk]
     }
-    assert not check_allergens(scone, [Allergen.milk]).avoids_all
-    assert check_allergens(scone, [Allergen.nuts, Allergen.egg]).avoids_all
+    assert not check_allergens(scone, [Hazard.milk]).avoids_all
+    assert check_allergens(scone, [Hazard.nuts, Hazard.egg]).avoids_all
 }
 
 test "a set compares without order" {
     var flapjack: Recipe = Recipe {
         ingredients: []
-        allergens: [Allergen.gluten]
+        allergens: [Hazard.gluten]
     }
     // The badges come back in one order and are compared in another.
     assert check_allergens(flapjack, []).badges == [Badge.nut_free, Badge.vegan, Badge.vegetarian]

@@ -3,11 +3,11 @@
 // collection keeps its element type: a `List<IngredientName>` is not a
 // `List<Text>`.
 
-use baking/types { Allergen, Ingredient }
+use baking/types { Hazard, Ingredient }
 
 /// A recipe: its ingredients in the order they go in, and the allergens
 /// it contains.
 type Recipe = Object {
     ingredients: List<Ingredient>
-    allergens: List<Allergen>
+    allergens: List<Hazard>
 }

@@ -787,7 +787,7 @@ reference only).
   `VatNumber`, `TaxId`, `PassportNumber`, `DrivingLicenceNumber` and
   `IdentityDocument`, on `Country` (5.5l). Done when every type passes the
   harness.
-- [ ] **5.5m Commerce, health, travel and the rest: codes and lists**
+- [x] **5.5m Commerce, health, travel and the rest: codes and lists**
   `opus · high` (area 19, "Groups with the baseline only"): the 29 of the
   45 that are codes or closed lists. Held as text with a pattern and,
   where the page names one, a check digit: `Sku`, `Ean13`, `UpcA`,
@@ -798,7 +798,13 @@ reference only).
   `Allergen`, `CabinClass`, `CefrLevel`, `EpcRating`, `Tenure` and
   `LawfulBasis` as built-in enums. Done when every type passes the
   harness with valid and invalid examples per rule. Split on 2026-10-18;
-  the records and measures are 5.5m2.
+  the records and measures are 5.5m2. Built, the check digits GS1's,
+  ISO 6346's, ISO 7064's, Verhoeff's, an MPAN's and, for North American
+  manufacturers, a VIN's; IATA's and ICAO's codes and ICD-10 are checked
+  by pattern only, since their lists can't be shipped, and a list CLDR
+  doesn't name is shown by its authority's English wording. The ISBN-10
+  conversion waits on an operation name. What the pages left open is area
+  19's "Chosen in chunk 5.5m".
 - [ ] **5.5m2 Commerce, health, travel and the rest: records and
   measures** `opus · high` (area 19, "Groups with the baseline only",
   split from 5.5m): the other 16, each a record of other types or a

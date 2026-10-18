@@ -1,6 +1,6 @@
 // Searching a list, and a `Set`.
 
-use baking/types { Allergen, Recipe }
+use baking/types { Hazard, Recipe }
 
 /// Whether a recipe is safe for someone.
 type SafeToEat = Bool {}
@@ -19,7 +19,7 @@ type AllergenCheck = Output {
 }
 
 /// Whether `recipe` avoids every allergen in `avoid`.
-function safe_for(recipe: Recipe, avoid: List<Allergen>) -> SafeToEat {
+function safe_for(recipe: Recipe, avoid: List<Hazard>) -> SafeToEat {
     for allergen in avoid {
         // `list.contains` asks whether a list holds a value equal to
         // the one given.
@@ -47,9 +47,9 @@ function safe_for(recipe: Recipe, avoid: List<Allergen>) -> SafeToEat {
 function badges(recipe: Recipe) -> Set<Badge> {
     var animal_free: Bool = not list.contains(
         recipe.allergens,
-        Allergen.milk
-    ) and not list.contains(recipe.allergens, Allergen.egg)
-    var nut_free: Bool = not list.contains(recipe.allergens, Allergen.nuts)
+        Hazard.milk
+    ) and not list.contains(recipe.allergens, Hazard.egg)
+    var nut_free: Bool = not list.contains(recipe.allergens, Hazard.nuts)
     if (animal_free and nut_free) {
         return [Badge.vegan, Badge.vegetarian, Badge.nut_free]
     } else if (animal_free) {
@@ -62,7 +62,7 @@ function badges(recipe: Recipe) -> Set<Badge> {
 
 /// What the menu shows beside `recipe` for someone avoiding the allergens
 /// in `avoid`: whether it's safe for them, and the badges it earns.
-action check_allergens(recipe: Recipe, avoid: List<Allergen>) -> AllergenCheck {
+action check_allergens(recipe: Recipe, avoid: List<Hazard>) -> AllergenCheck {
     return AllergenCheck {
         avoids_all: safe_for(recipe, avoid)
         badges: badges(recipe)

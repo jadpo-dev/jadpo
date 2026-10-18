@@ -490,7 +490,7 @@ fn each_mistake_gives_its_rule() {
 }
 
 /// Types with more than one rule that can break, for mapping by rule.
-const RULES: &str = "type Count = Int {}\n\ntype Amount = Decimal {\n    scale: 4\n}\n\ntype Small = Quantity {\n    max: 10\n}\n\ntype Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype Sku = Text {\n    max_length: 8\n    pattern: \"[A-Z]{3}-[0-9]{4}\"\n}\n\ntype Written = Text {\n    max_length: 8\n}\n\ntype QuantityTooSmall = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype SkuRejected = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
+const RULES: &str = "type Count = Int {}\n\ntype Amount = Decimal {\n    scale: 4\n}\n\ntype Small = Quantity {\n    max: 10\n}\n\ntype Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype StockCode = Text {\n    max_length: 8\n    pattern: \"[A-Z]{3}-[0-9]{4}\"\n}\n\ntype Written = Text {\n    max_length: 8\n}\n\ntype QuantityTooSmall = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype SkuRejected = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
 
 fn with_rules(source: &str) -> Vec<String> {
     with_quantity(&format!("{RULES}{source}"))
@@ -516,7 +516,7 @@ fn construction_failures_are_mapped_by_rule() {
         "function small(quantity: Quantity) fails QuantityTooLarge -> Small {\n    var result: Small = attempt Small(quantity) {\n        max: QuantityTooLarge\n    }\n    return result\n}\n",
         // The compiler can't reason about a pattern, so it can always break;
         // the length is proved.
-        "function parse(written: Written) fails SkuRejected -> Sku {\n    var sku: Sku = attempt Sku(written) {\n        pattern: SkuRejected\n    }\n    return sku\n}\n",
+        "function parse(written: Written) fails SkuRejected -> StockCode {\n    var sku: StockCode = attempt StockCode(written) {\n        pattern: SkuRejected\n    }\n    return sku\n}\n",
         // `scale` rounds the value as it is kept, so it never breaks.
         "function price(amount: Amount) fails QuantityTooSmall -> Price {\n    var result: Price = attempt Price(amount) {\n        min: QuantityTooSmall\n    }\n    return result\n}\n",
     ];

@@ -38,7 +38,7 @@ type CakePhoto = Bytes {
 type CollectAt = ZonedTime {}
 
 /// An allergy a customer tells the bakery about.
-type Allergen = Text {
+type Allergy = Text {
     max_length: 30
 }
 
@@ -77,7 +77,7 @@ type CakeRequest = Input {
     // is no map literal yet, and `for` and the `collection` operations take
     // only lists so far (example 04), so a map can be received, passed on,
     // compared with `==` and sent back, but not yet walked or searched.
-    allergies: Map<Allergen, Reaction> {
+    allergies: Map<Allergy, Reaction> {
         optional: true
     }
 }
@@ -94,7 +94,7 @@ type CakeQuote = Output {
     icing: Icing?
     candles: CandleCount
     collect_at: CollectAt?
-    allergies: Map<Allergen, Reaction>?
+    allergies: Map<Allergy, Reaction>?
 }
 
 // Every field is a type of its own, written `Owner.field`: here

@@ -1,11 +1,11 @@
 use kitchen/entities { Ingredient }
-use kitchen/types { Allergen, IngredientName, IngredientView }
+use kitchen/types { Hazard, IngredientName, IngredientView }
 use kitchen/failures { IngredientListed }
 
 /// What listing an ingredient takes.
 type ListIngredient = Input {
     name: IngredientName
-    allergen: Allergen {
+    allergen: Hazard {
         optional: true
     }
 }

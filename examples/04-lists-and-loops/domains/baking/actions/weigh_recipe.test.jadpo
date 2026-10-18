@@ -1,7 +1,7 @@
 // A list literal is written in square brackets, and its items take the
 // list's element type, so `"Flour"` here is an `IngredientName`.
 
-use baking/types { Allergen, Ingredient, Recipe }
+use baking/types { Hazard, Ingredient, Recipe }
 
 test "a recipe weighs as much as its ingredients" {
     var bread: Recipe = Recipe {
@@ -19,7 +19,7 @@ test "a recipe weighs as much as its ingredients" {
                 weight: 10
             }
         ]
-        allergens: [Allergen.gluten]
+        allergens: [Hazard.gluten]
     }
     var label: RecipeLabel = weigh_recipe(bread)
     assert label.total == 860
@@ -39,7 +39,7 @@ test "the first ingredient with a name gives its weight" {
                 weight: 350
             }
         ]
-        allergens: [Allergen.gluten]
+        allergens: [Hazard.gluten]
     }
     assert weight_of(bread, "Water") == 350
     assert weight_of(bread, "Yeast") == none

@@ -2,7 +2,7 @@
 // tenant. Anyone signed in may read it; only the recipe book's editors,
 // a role held across the whole application, change it.
 
-use kitchen/types { Allergen, IngredientName, PlatformRole }
+use kitchen/types { Hazard, IngredientName, PlatformRole }
 
 /// An ingredient, with the allergen its label names.
 entity Ingredient {
@@ -10,7 +10,7 @@ entity Ingredient {
     name: IngredientName {
         unique: true
     }
-    allergen: Allergen?
+    allergen: Hazard?
 
     policy: {
         create: [PlatformRole.editor]

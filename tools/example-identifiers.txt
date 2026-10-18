@@ -27,10 +27,10 @@ afterwards
 alice
 alice_with_todos
 all_memos
-allergen
 allergen_check
 allergens
 allergies
+allergy
 already_archived
 amendment
 amount_off
@@ -129,13 +129,13 @@ book_has_loans
 book_id
 book_ids
 book_not_found
+book_number
 book_request
 book_title
 book_titled
 book_view
 booked
 booked_at
-booking
 booking_time
 bookings
 books
@@ -275,7 +275,6 @@ completed_at
 confirm_discount
 confirm_sign_in
 confirm_total
-consent
 consent_id
 consignment
 contact_address
@@ -411,7 +410,6 @@ edited_at
 editor_id
 effort
 egg
-eggs
 email_on_completion
 email_on_done
 email_taken
@@ -485,7 +483,6 @@ from_count
 from_flag
 gap_days
 give_note
-gluten
 goals
 golden
 good_share
@@ -576,7 +573,6 @@ invoice_document
 invoice_transfer
 is_open
 is_overdue
-isbn
 issue_card
 issue_outlet_key
 issue_voucher
@@ -737,7 +733,6 @@ menu_item
 meringue
 middle
 mild
-milk
 missing_failure
 missing_success
 misuse_test_boundary
@@ -804,7 +799,6 @@ note_with_citation
 nothing_to_bake
 notify_owner
 nut_free
-nuts
 oat
 off_menu_cake
 offcut
@@ -1163,7 +1157,6 @@ sent_order
 sent_photo
 sent_text
 service_fake_identity
-sesame
 set_oven
 severe
 share_code
@@ -1219,7 +1212,6 @@ signed_up
 signup_ip
 size_of
 size_price
-sku
 slice_count
 slices
 slices_in
@@ -1268,6 +1260,7 @@ still_to_bake
 stock
 stock_badge
 stock_badges
+stock_code
 story
 street
 street_address
@@ -1283,6 +1276,7 @@ sum_if_shared
 summarise_line
 summary_view
 supplier
+supplier_code
 supplier_contact
 supplier_country
 supplier_desk

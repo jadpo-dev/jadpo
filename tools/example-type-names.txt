@@ -4,6 +4,7 @@ ApiKey
 Batch
 Batches
 Blank
+Booking
 Broken
 BrowserSession
 Card

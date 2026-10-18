@@ -1,6 +1,6 @@
 // Written by `jadpo api update` from the routes; never edit it by hand.
 // `jadpo check` fails while it disagrees with them.
-version: 2
+version: 3
 
 authentication: browser_session
 
@@ -73,12 +73,6 @@ DELETE /staff/{staff_id: Uuid}
     status: 204
     fails: staff_member_not_found 404
 
-enum Allergen
-    gluten
-    milk
-    eggs
-    nuts
-
 output BakeryView
     id: Uuid
     name: Text { min_length: 1, max_length: 80 }
@@ -89,14 +83,20 @@ input CostRecipe
 input HandOver
     to: Uuid
 
+enum Hazard
+    gluten
+    milk
+    eggs
+    nuts
+
 output IngredientView
     id: Uuid
     name: Text { min_length: 1, max_length: 60 }
-    allergen: Allergen?
+    allergen: Hazard?
 
 input ListIngredient
     name: Text { min_length: 1, max_length: 60 }
-    allergen: Allergen optional
+    allergen: Hazard optional
 
 input NewBakery
     name: Text { min_length: 1, max_length: 80 }

@@ -123,11 +123,11 @@ type ImportRequest = Input {
     ),
     (
         "domains/supply/types/imported_order.jadpo",
-        r#"use supply/types { Sku }
+        r#"use supply/types { StockCode }
 
 /// An order once imported.
 type ImportedOrder = Output {
-    reference: Sku
+    reference: StockCode
 }
 "#,
     ),
@@ -143,18 +143,18 @@ type LineQuantity = Int {
     (
         "domains/supply/types/sku.jadpo",
         r#"/// A product code.
-type Sku = Text {
+type StockCode = Text {
     max_length: 20
 }
 "#,
     ),
     (
         "domains/supply/types/supplier_line.jadpo",
-        r#"use supply/types { LineQuantity, Sku }
+        r#"use supply/types { LineQuantity, StockCode }
 
 /// One line of a supplier's order.
 type SupplierLine = Input {
-    sku: Sku
+    sku: StockCode
     quantity: LineQuantity
 }
 "#,
@@ -169,11 +169,11 @@ type SupplierMessage = Text {
     ),
     (
         "domains/supply/types/supplier_order.jadpo",
-        r#"use supply/types { Sku, SupplierLine }
+        r#"use supply/types { StockCode, SupplierLine }
 
 /// An order as a supplier's system sends it.
 type SupplierOrder = Input {
-    reference: Sku
+    reference: StockCode
     lines: List<SupplierLine>
 }
 "#,
@@ -195,7 +195,7 @@ policy {
 /// The third line's quantity is over its `max`.
 const OVER: &str = r#"{"reference": "A-12", "lines": [{"sku": "rye", "quantity": 2}, {"sku": "spelt", "quantity": 1}, {"sku": "oat", "quantity": 1001}]}"#;
 
-/// A secret-looking value too long for a `Sku`.
+/// A secret-looking value too long for a `StockCode`.
 const SECRET: &str = "sk_live_51HxQ9eSECRETv4lue";
 
 fn project() -> (tempdir::Dir, std::path::PathBuf) {

@@ -769,6 +769,12 @@ pub fn shown(
                 None => canonical(entry, value)?,
             }
         }
+        // A closed list CLDR names none of, by its authority's English
+        // wording in every locale (chunk 5.5m).
+        (FormatKey::Named(names), Value::Variant(variant)) => names
+            .get(variant.ordinal as usize)
+            .map(|name| (*name).to_string())
+            .ok_or(Fault::Shape)?,
         (FormatKey::PersonName, value) => present::contact::person_name(value, tag)?,
         (FormatKey::PostalAddress, value) => present::contact::postal_address(value, tag)?,
         // National for a reader whose region shares the number's calling

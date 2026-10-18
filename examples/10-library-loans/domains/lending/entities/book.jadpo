@@ -1,9 +1,9 @@
-use lending/types { BookTitle, Isbn, LendCount, UseCount, Wear }
+use lending/types { BookTitle, BookNumber, LendCount, UseCount, Wear }
 
 /// One copy of a book on the shelves.
 entity Book {
     id: Uuid
-    isbn: Isbn
+    isbn: BookNumber
     title: BookTitle
     // Added after the first migration: `jadpo migrate new add_wear`
     // asked what the copies already stored get (see the migration's

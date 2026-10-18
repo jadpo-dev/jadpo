@@ -103,7 +103,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 87 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: twelve are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 116 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: twenty are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, eight in 5.5m), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -122,18 +122,18 @@ exception to the rule.
 | Geospatial (17) | `Point` (optional altitude), `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` | `geo` (future area) |
 | Money, payments, banking (24) | **`Money`**, **`Currency`** (enum), **`ExchangeRate`**, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, **`PaymentCardNumber`**, `MaskedCardNumber`, `CardBrand` (enum), **`CardBin`**, `CardExpiry`, **`PaymentReference`**, **`InvoiceNumber`**, **`Iban`**, **`Bic`**, **`UkSortCode`**, **`UkAccountNumber`**, `BankAccount`, **`AbaRoutingNumber`**, **`Lei`**, **`Isin`** | `money` |
 | Tax and identity numbers (11) | `VatNumber`, `TaxId`, **`UkUtr`**, **`UkCompanyNumber`**, **`UkNationalInsuranceNumber`**, **`UsSsn`**, **`UsEin`**, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, **`NhsNumber`** | |
-| Commerce and logistics (20) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, `HsCode`, `Incoterm` (enum), `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` | `units`, `media` |
+| Commerce and logistics (20) | **`Sku`**, **`Ean13`**, **`UpcA`**, **`Isbn`**, **`Sscc`**, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, **`HsCode`**, **`Incoterm`** (enum), `TrackingNumber`, **`Carrier`**, **`ContainerNumber`**, **`LotNumber`**, **`SerialNumber`**, **`Vin`**, `VehicleRegistration` | `units`, `media` |
 | Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), **`LocalTime`**, **`LocalDateTime`**, **`Month`** (enum), **`YearMonth`**, **`Year`**, **`Quarter`**, **`IsoWeek`**, **`UtcOffset`**, **`DateRange`**, **`InstantRange`**, **`CalendarPeriod`**, **`RecurrenceRule`**, **`OpeningHours`**, `CalendarEvent` | `temporal`, `range` |
 | Physical quantities (17) | **`Length`**, **`Area`**, **`Volume`**, **`Angle`**, **`Mass`**, **`Pressure`**, **`Energy`**, **`Power`**, **`Temperature`**, **`TemperatureDifference`**, **`Speed`**, **`Frequency`**, **`Voltage`**, **`Current`**, **`Illuminance`**, **`SoundLevel`**, **`Concentration`** | `units` |
 | Maths and data (8) | **`Percentage`**, **`Ratio`**, **`Fraction`**, **`Range<T>`**, **`DataSize`**, **`Bitrate`**, `Vector`, `Embedding` | `range`, `units`; AI area |
-| Health (9) | `BloodType` (enum), `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` (enum) | |
+| Health (9) | **`BloodType`** (enum), **`Icd10Code`**, **`SnomedConcept`**, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, **`Allergen`** (enum) | |
 | Media and visual (15) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize` (enum), `ExifOrientation` (enum), `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating` | `colour`, `media` |
 | Web and network (23) | **`Url`**, `UrlPath`, `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `WebOrigin`, `HttpMethod` (enum), `HttpStatus`, `HttpHeaderName`, **`FileType`**, `UserAgent`, `ProblemDetails`, `JsonPointer`, `Cookie`, `UtmParameters`, **`IpAddress`**, `Cidr`, `NetworkPort`, `MacAddress`, `Imei`, `Emoji`, `PushToken` | `web` |
 | Software (19) | `SemanticVersion`, `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`, `SpanId`, `TraceParent`, `LogLevel` (enum), `FilePath`, `FileName`, `RegularExpression`, `ContainerImage`, `Digest`, **`Uuid`**, `Ulid`, `IdempotencyKey`, `Doi` | `semver` |
 | Text formats (4) | `Markdown`, `Html`, `RichText`, `LocalisedText` | `markup`, `text` |
 | Security (20) | `Password`, `PasswordHash`, `PasswordPolicy`, `Hash`, `Hmac`, `Jwt`, `JwtClaims`, `Jwk`, `PublicKey`, `PrivateKey`, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `SecretText`, `BearerToken`, `OAuthScope`, `OidcClaims`, `WebAuthnCredential`, `EncryptedValue` | `crypto` |
-| Travel (6) | `IataAirport`, `IcaoAirport`, `IataAirline`, `FlightNumber`, `CabinClass` (enum), `BookingReference` | |
-| Other with a published standard (10) | `UnNumber`, `Orcid`, `CefrLevel` (enum), `Mpan`, `Mprn`, `EpcRating` (enum), `Tenure` (enum), `LawfulBasis` (enum), `Jurisdiction`, `ModelId` | |
+| Travel (6) | **`IataAirport`**, **`IcaoAirport`**, **`IataAirline`**, `FlightNumber`, **`CabinClass`** (enum), **`BookingReference`** | |
+| Other with a published standard (10) | **`UnNumber`**, **`Orcid`**, **`CefrLevel`** (enum), **`Mpan`**, **`Mprn`**, **`EpcRating`** (enum), **`Tenure`** (enum), **`LawfulBasis`** (enum), `Jurisdiction`, `ModelId` | |
 | AI (3) | `TokenCount`, `TokenUsage`, `ChatMessage` | AI area |
 
 **Its three rules**, decided with it:
@@ -389,7 +389,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Angle`, `Area`, `Bic`, `Bitrate`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `Concentration`, `Continent`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `DataSize`, `DateRange`, `Duration`, `Email`, `EmailWithName`, `Energy`, `ExchangeRate`, `FamilyName`, `FileType`, `Fraction`, `Frequency`, `GivenName`, `Iban`, `Illuminance`, `Instant`, `InstantRange`, `InvoiceNumber`, `IpAddress`, `Isin`, `IsoWeek`, `Language`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `Mass`, `Money`, `Month`, `Nationality`, `NhsNumber`, `OpeningHours`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Quarter`, `Range`, `Ratio`, `RecurrenceRule`, `SoundLevel`, `Speed`, `Temperature`, `TemperatureDifference`, `TextDirection`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `UnLocode`, `Uprn`, `Url`, `UsEin`, `UsSsn`, `Username`, `UtcOffset`, `Uuid`, `Voltage`, `Volume`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `Angle`, `Area`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `Carrier`, `CefrLevel`, `Concentration`, `ContainerNumber`, `Continent`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `DataSize`, `DateRange`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Energy`, `EpcRating`, `ExchangeRate`, `FamilyName`, `FileType`, `Fraction`, `Frequency`, `GivenName`, `HsCode`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `Illuminance`, `Incoterm`, `Instant`, `InstantRange`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LotNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NhsNumber`, `OpeningHours`, `Orcid`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Quarter`, `Range`, `Ratio`, `RecurrenceRule`, `SerialNumber`, `Sku`, `SnomedConcept`, `SoundLevel`, `Speed`, `Sscc`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `UnLocode`, `UnNumber`, `UpcA`, `Uprn`, `Url`, `UsEin`, `UsSsn`, `Username`, `UtcOffset`, `Uuid`, `Vin`, `Voltage`, `Volume`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -456,7 +456,7 @@ text.trim(input.title)                                   // "  Rye loaf " gives 
 text.split("flour,sugar,,eggs", ",")                     // ["flour", "sugar", "", "eggs"]
 text.pad_start(text.from(order.number), 6, fill: "0")    // 42 gives "000042"
 list.sum(list.map(basket.lines, line -> line.price * line.count))
-set.contains(recipe.allergens, Allergen.nuts)
+set.contains(recipe.allergens, Allergen.tree_nuts)
 encoding.to_hex(hash.sha256(upload.body))                // 64 lowercase hexadecimal digits
 attempt encoding.from_base64(input.attachment) {
     malformed: AttachmentUnreadable
@@ -3370,7 +3370,7 @@ written back (chunk 5.5g). Reading checks every rule of the type, fills
 declared order, with no white space:
 
 ```jadpo check project=json-in-memory
-type Sku = Text {
+type SupplierCode = Text {
     max_length: 20
 }
 
@@ -3385,18 +3385,18 @@ type LinePrice = Decimal {
 }
 
 type ImportedLine = Input {
-    sku: Sku
+    sku: SupplierCode
     count: LineCount
     price: LinePrice
 }
 
 type SupplierOrder = Input {
-    reference: Sku
+    reference: SupplierCode
     lines: List<ImportedLine>
     rush: Bool {
         default: false
     }
-    note: Sku {
+    note: SupplierCode {
         optional: true
     }
 }
@@ -3969,6 +3969,82 @@ test "a postcode is in its country's form" {
 > proved in a literal and checked as JSON is read. The UN/LOCODE list
 > itself isn't shipped: its terms are unclear. What the page left open is
 > "Chosen in chunk 5.5l2", under "Review".
+
+A till scans a product's barcode, a supplier's order names its delivery
+term in whatever case its system writes, and a dock prints each
+container's number as its side is painted:
+
+```jadpo check project=codes-and-lists
+type ScannedText = Text {}
+
+type NotAProductCode = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type UnknownTradeTerm = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// The product a till's scanner read: 13 digits, the last GS1's check
+/// digit.
+function scanned_product(raw: ScannedText) fails NotAProductCode -> Ean13 {
+    var till_scan: Ean13 = attempt Ean13(raw) {
+        format: NotAProductCode
+    }
+    return till_scan
+}
+
+/// The delivery term a supplier's order names, by its Incoterms code.
+function agreed_term(raw: ScannedText) fails UnknownTradeTerm -> Incoterm {
+    var trade_term: Incoterm = attempt text.parse(raw, as: Incoterm) {
+        malformed: UnknownTradeTerm
+    }
+    return trade_term
+}
+
+/// A container on the dock's manifest, as its side is painted.
+function container_label(shipped_in: ContainerNumber, viewer: Locale) -> PresentationText {
+    return text.format(shipped_in, locale: viewer)
+}
+```
+
+```jadpo check project=codes-and-lists file=main.test.jadpo
+test "a code is checked by its check digit as it is built" {
+    var till_scan: Ean13 = attempt scanned_product("4006381333931")
+    assert till_scan == Ean13("4006381333931")
+    assert scanned_product("4006381333932") fails NotAProductCode
+    assert scanned_product("400638133393") fails NotAProductCode
+    assert container_label(ContainerNumber("CSQU3054383"), Locale.en_gb) == "CSQU 305438 3"
+    assert text.format(UnNumber("UN1203"), locale: Locale.en_gb) == "UN 1203"
+}
+
+test "a closed list reads its codes in either case" {
+    var trade_term: Incoterm = attempt agreed_term("fob")
+    assert trade_term == Incoterm.fob
+    assert agreed_term("Free On Board") fails UnknownTradeTerm
+    assert text.from(BloodType.o_negative) == "O-"
+    assert text.format(CabinClass.premium_economy, locale: Locale.fr_fr) == "Premium economy"
+    assert list.count(Incoterm.all) == 11
+    assert list.count(Allergen.all) == 14
+}
+```
+
+> Built in chunk 5.5m for the 29 codes and closed lists of commerce and
+> logistics, health, travel and the other published standards. Held as
+> text, each a pattern and, where the table above names one, a check
+> digit: `Sku`, `Ean13`, `UpcA`, `Isbn` and `Sscc` (GS1's mod 10),
+> `HsCode`, `Carrier`, `ContainerNumber` (ISO 6346), `LotNumber`,
+> `SerialNumber`, `Vin` (49 CFR 565's check digit, for North American
+> manufacturers), `Icd10Code`, `SnomedConcept` (Verhoeff), `IataAirport`,
+> `IcaoAirport`, `IataAirline`, `BookingReference`, `UnNumber`, `Orcid`
+> (ISO 7064), `Mpan` (its check digit) and `Mprn`; and the closed lists
+> `Incoterm`, `BloodType`, `Allergen`, `CabinClass`, `CefrLevel`,
+> `EpcRating`, `Tenure` and `LawfulBasis` as built-in enums. The lists of
+> IATA's and ICAO's codes and ICD-10's release aren't shipped, since none
+> may be redistributed freely, so those are checked by pattern only. The
+> 16 records and measures (`Barcode`, `Dimensions`, `FlightNumber` ...)
+> are chunk 5.5m2. What the page left open is "Chosen in chunk 5.5m",
+> under "Review".
 
 ## Logic and bits
 
@@ -4790,7 +4866,7 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, each other group of types in 5.5i2 to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, each other group of types in 5.5i2 to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}` |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
@@ -6057,6 +6133,91 @@ under "Errors").
   single value.
 - **Area 2's** `PostalCode` example type is `ShippingCode`.
 
+### Chosen in chunk 5.5m
+
+- **Split.** The 29 codes and closed lists are built here; the 16
+  records and measures (`Barcode`, `UnitQuantity`, `Rating`,
+  `ClothingSize`, `ShoeSize`, `Dimensions`, `TrackingNumber`,
+  `VehicleRegistration`, `Dose`, `DosageInstruction`, `HeartRate`,
+  `BloodPressure`, `BloodGlucose`, `FlightNumber`, `Jurisdiction`,
+  `ModelId`) are chunk 5.5m2, since each needs its shape chosen and several
+  hold the codes built here.
+- **Held as text,** as the payment numbers are (chunk 5.5i): each a
+  pattern and, where the page names one, a named validator, its canonical
+  text the value, upper case where the standard writes it so and never
+  read in another case; none is ordered.
+- **Check digits and where they come from:** GS1's mod 10 (General
+  Specifications 7.9) for `Ean13`, `UpcA`, `Sscc` and `Isbn`, an ISBN being
+  its 13 digits with the prefix 978 or 979 and no hyphens, since where they
+  go depends on the ISBN agency's ranges; ISO 6346's for `ContainerNumber`;
+  ISO 7064 MOD 11-2 for `Orcid`; Verhoeff's for `SnomedConcept`, with a
+  concept's partition identifier (`00`, or `10` in an extension), so a
+  description's identifier is refused; Elexon's primes for an `Mpan` core.
+  A `Vin`'s check digit is checked where 49 CFR 565 requires it, for a
+  manufacturer whose identifier starts 1 to 5 (North America): ISO 3779
+  leaves the ninth character to the manufacturer elsewhere, and European
+  VINs often don't carry one, so checking every VIN would refuse real ones.
+- **Patterns only:** a `Sku` is 1 to 64 characters with no space or
+  control character, kept as written; a `LotNumber` and a `SerialNumber`
+  1 to 20 of GS1's character set 82 (Application Identifiers 10 and 21);
+  an `HsCode` six to ten digits from chapter 01, as a tariff writes it
+  without dots; a `Carrier` its Standard Carrier Alpha Code, two to four
+  capitals; an `Icd10Code` its letter, two digits and, after the dot, up to
+  four more, which covers ICD-10-CM; an `IataAirline` two letters or a
+  letter and a digit; a `BookingReference` six capitals and digits; a
+  `UnNumber` `UN` and four digits; an `Mprn` 6 to 10 digits.
+- **Lists not shipped.** IATA's airport and airline codes and ICAO's
+  location indicators are sold under licence, and WHO's ICD-10 may be
+  used but not redistributed in software without its permission, so
+  `IataAirport`, `IcaoAirport`, `IataAirline` and `Icd10Code` are checked
+  by pattern only, as `UnLocode` is (chunk 5.5l2); an application that
+  holds a licence checks against its own copy. A SNOMED CT concept's term
+  is its release's, under SNOMED International's licence, so
+  `SnomedConcept` is its identifier alone, not the catalogue's sketch of an
+  identifier and a term.
+- **Shown to people:** a container number as its side is painted, `CSQU
+  305438 3`, and a UN number as a transport document writes it, `UN
+  1203`; the rest as their canonical text.
+- **The closed lists,** each a built-in enum sorted by its code, its code
+  read ignoring case and stored as written (`O-`, `FOB`): `Incoterm`,
+  Incoterms 2020's eleven rules, with `DAT`, `DAF`, `DES`, `DEQ` and `DDU`
+  from earlier editions retired; `BloodType`, ABO and RhD, `A+` to `O-`,
+  whose variants spell the sign out (`BloodType.o_negative`); `Allergen`,
+  the 14 the UK's Food Information Regulations 2014 and the EU's
+  Regulation 1169/2011 name, without regional additions;
+  `CabinClass`, economy, premium economy, business and first; `CefrLevel`,
+  `A1` to `C2`; `EpcRating`, bands `A` to `G`, without the score the
+  catalogue sketched; `Tenure`, freehold, leasehold and commonhold, as HM
+  Land Registry registers land in England and Wales, a share of a
+  freehold being a leasehold with a share; `LawfulBasis`, GDPR Article
+  6(1)'s six. Codes that are words (`premium_economy`) are each variant's
+  own name, as `Continent`'s are.
+- **Shown by code or by the authority's wording.** CLDR names none of
+  these, so a list whose codes are written the same in every language
+  (`FOB`, `B2`, `O-`, `C`) is shown by its code, and one whose codes are
+  words by its authority's English wording in every locale
+  (`FormatKey::Named`), as a subdivision is shown by its English name
+  (chunk 5.5l): "Premium economy", "Cereals containing gluten",
+  "Legitimate interests". An application that shows them in another
+  language words them in its own messages.
+- **None is ordered,** not even `CefrLevel` and `EpcRating`, whose order a
+  `match` can say: the contract orders only what it lists.
+- **Personal data:** an `Icd10Code`, a `SnomedConcept` and a `BloodType`
+  are `health`; an `Orcid` `identifying`, as a username is; an `Mpan` and
+  an `Mprn` `contact`, as a `Uprn` is, each naming a home's supply. An
+  `Allergen` isn't: a menu's allergens describe food, and a person's
+  allergy is an application's own field, which it marks.
+- **Not built:** the contract's conversion of an ISBN-10 to an `Isbn`
+  needs an operation the page doesn't name, so it waits, and `text.parse`
+  reads the 13 digits only.
+- **Test values are published ones** where a standard publishes them
+  (GS1's, the ISBN Users' Manual's, NHTSA's, ISO 6346's, ORCID's, SNOMED
+  CT's), and made up to the rules where it doesn't; each entry says which.
+- **Areas 2 and 19 and the examples:** area 2's `Sku` example type is
+  `StockCode` and area 19's JSON example's `SupplierCode`; example 10's
+  `Isbn` is `BookNumber`, example 03's `Allergen` `Allergy`, and examples
+  04's and 12's `Allergen` enums `Hazard`, as question 3 listed.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -6540,7 +6701,11 @@ first; each group of types then arrives with its baseline and its extras.
   the UN/LOCODE list waits on its terms.
 - **5.5m Commerce, health, travel and the rest** `opus · high`: 45 types,
   mostly codes with a pattern or check digit (`Ean13`, `Isbn`, `Vin`,
-  `IataAirport`).
+  `IataAirport`). The 29 codes and closed lists built; split on
+  2026-10-18, the 16 records and measures are 5.5m2.
+- **5.5m2 Records and measures** `opus · high`: `Barcode`,
+  `UnitQuantity`, `Dimensions`, `TrackingNumber`, `FlightNumber`, the
+  health measures and the rest of the 45.
 - **5.5n Web and software** `opus · high`: 38 types, `web`'s 3 operations
   and `semver.satisfies`.
 - **5.5o Text formats** `opus · high`: `Markdown`, `Html` (whose
