@@ -543,8 +543,10 @@ pub fn migration_sql(
 }
 
 /// The PostgreSQL extensions `store`'s columns need in `schema`: pgvector's
-/// `vector` for a vector column (area 21, chunk 5.5v1). An application
-/// with none needs none, so its migrations never create one.
+/// `vector` for a vector column (area 21, chunk 5.5v1), PostGIS's
+/// `postgis` for a `geography` column, which every geometry index is on
+/// (area 20, chunk 5.5u4). An application with none needs none, so its
+/// migrations never create one.
 pub fn extensions(schema: &Schema, store: &str) -> BTreeSet<&'static str> {
     let mut out = BTreeSet::new();
     let Some(store) = schema.stores.get(store) else {
@@ -552,8 +554,14 @@ pub fn extensions(schema: &Schema, store: &str) -> BTreeSet<&'static str> {
     };
     for table in store.tables.values() {
         for column in table.columns.values() {
-            if column.sql_type.split('(').next() == Some("vector") {
-                out.insert("vector");
+            match column.sql_type.split('(').next() {
+                Some("vector") => {
+                    out.insert("vector");
+                }
+                Some("geography") => {
+                    out.insert("postgis");
+                }
+                _ => {}
             }
         }
     }
@@ -673,6 +681,9 @@ fn add_unique(table: &str, name: &str, def: &Table) -> Statement {
 
 fn add_check(table: &str, name: &str, def: &Table) -> Statement {
     let sql = match def.checks.get(name) {
+        Some(check) if check.geography => {
+            table::add_geography_check(table, name, &check.column, &check.values)
+        }
         Some(check) => table::add_check(table, name, &check.column, &check.values),
         None => table::add_check(table, name, "", &[]),
     };

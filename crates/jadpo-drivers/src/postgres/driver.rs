@@ -546,9 +546,10 @@ fn bind(params: &[SqlValue]) -> Result<Vec<Param<'_>>, StoreError> {
         .iter()
         .map(|value| {
             let oid = wire::param_oid(value.ty());
-            // A vector's type is the extension's, whose number differs in
-            // each database: sent with none, PostgreSQL infers it from the
-            // column it meets (chunk 5.5v1).
+            // A vector's and a geography's types are their extensions',
+            // whose numbers differ in each database: sent with none,
+            // PostgreSQL infers each from the column it meets (chunks 5.5v1
+            // and 5.5u4).
             if oid == wire::oid::UNSPECIFIED {
                 let ty = Type::new("unknown".into(), oid, Kind::Pseudo, "pg_catalog".into());
                 return Ok(Param { value, ty });
@@ -602,6 +603,9 @@ impl<'a> FromSql<'a> for Cell {
         if is_vector(ty) {
             return Ok(Cell(wire::vector_from_wire(raw)?));
         }
+        if is_geography(ty) {
+            return Ok(Cell(wire::geography_from_wire(raw)?));
+        }
         Ok(Cell(wire::decode(ty.oid(), raw)?))
     }
 
@@ -618,12 +622,22 @@ impl<'a> FromSql<'a> for Cell {
 }
 
 /// The runtime's type for a column of type `ty`: a built-in one by its
-/// number, pgvector's by its name (chunk 5.5v1).
+/// number, pgvector's and PostGIS's by their names (chunks 5.5v1 and
+/// 5.5u4).
 fn column_type(ty: &Type) -> Option<jadpo_runtime::SqlType> {
     if is_vector(ty) {
         return Some(jadpo_runtime::SqlType::Vector);
     }
+    if is_geography(ty) {
+        return Some(jadpo_runtime::SqlType::Geography);
+    }
     wire::column_type(ty.oid())
+}
+
+/// Whether `ty` is PostGIS's `geography`, which an extension adds, so it
+/// has no built-in number (area 20, chunk 5.5u4).
+fn is_geography(ty: &Type) -> bool {
+    wire::column_type(ty.oid()).is_none() && ty.name() == wire::GEOGRAPHY
 }
 
 /// Whether `ty` is pgvector's `vector`, which an extension adds, so it has

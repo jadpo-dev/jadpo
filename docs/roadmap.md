@@ -1198,21 +1198,33 @@ reference only).
   validity case tested; rings may not touch at all; a 10,000-point
   outline checks in 70 ms. What the chunk chose is area 20's "Chosen in
   chunk 5.5u3".
-- [ ] **5.5u4 Geospatial storage and indexes** `opus · high` (area 20,
+- [x] **5.5u4 Geospatial storage and indexes** `opus · high` (area 20,
   "Storage"): `geography` columns
   with their checks, `BoundingBox` and `Circle` as named columns, `CREATE
   EXTENSION` in migrations and `migration.extension_missing`, GiST indexes
-  derived and declared with `kind: IndexKind.geographic`, geometries in
+  declared with `kind: IndexKind.geographic`, geometries in
   Redis as GeoJSON, and CI's image with PostGIS (`tools/postgres`, chunk
   5.5v1). Done when an
   entity stores and reads back every geometry, with and without altitude,
-  unchanged.
+  unchanged. Built: every geometry, with and without altitude, a
+  `Geometry` of each kind, a box and a circle stored and read back equal
+  on PostGIS (CI's 3.6.4 and Postgres.app's 3.4.2), sent as EWKB with
+  rings kept as given; each column's check refusing a line in a point's
+  column and a point in ETRS89; PostGIS created by the first migration
+  with a `geography` column, and `jadpo migrate apply` refusing a server
+  without it or a role that can't create it (tried in a savepoint) before
+  anything runs; the declared GiST index, which `ST_DWithin` uses. Derived
+  GiST indexes moved to 5.5u5 with the conditions that need them; Redis
+  entities aren't built, so only the GeoJSON round trip is tested; a
+  geometry mixing altitudes can't be stored (a fault), open for Richard.
+  What the chunk chose is area 20's "Chosen in chunk 5.5u4".
 - [ ] **5.5u5 Geospatial query conditions** `opus · high` (area 20,
   "Queries"; area 6), after 5.5u3
   and 5.5u4: the `geo.` conditions, the box and circle filters and order
   by distance within a radius, with area 6 amended and golden SQL for
-  each. Done when each of the page's queries runs on PostGIS through its
-  index and agrees with the code's answer on the page's examples.
+  each, and the GiST indexes they need derived (moved from 5.5u4). Done
+  when each of the page's queries runs on PostGIS through its index and
+  agrees with the code's answer on the page's examples.
 - [ ] **5.5u6 Geospatial interop** `opus · high` (area 20, "Interop"),
   after 5.5u4: `Feature` and
   `FeatureCollection`, `geo.from_wkt` and `geo.to_wkt`, and

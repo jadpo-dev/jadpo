@@ -527,7 +527,8 @@ impl Value {
 
     /// As the storage codec takes it (`jadpo_std::standard::storage`,
     /// chunk 5.5w3b); `None` for a value no column holds as itself (an
-    /// amount of money, a `ZonedTime`, an object, a map, a secret value),
+    /// amount of money, a `ZonedTime`, an object other than a geometry, a
+    /// map, a secret value),
     /// which `standard::to_parts` turns into its columns first.
     pub fn stored(&self) -> Option<jadpo_std::standard::storage::Stored<'_>> {
         use jadpo_std::standard::storage::Stored;
@@ -569,13 +570,12 @@ impl Value {
                     .map(Value::stored)
                     .collect::<Option<Vec<_>>>()?,
             ),
-            Value::Unit
-            | Value::Zoned(_)
-            | Value::Money(_)
-            | Value::Map(_)
-            | Value::Record(_)
-            | Value::Variant(_)
-            | Value::Secret(_) => return None,
+            // A geometry, as PostGIS's `geography` holds it (area 20,
+            // chunk 5.5u4); no other object or choice.
+            Value::Record(_) | Value::Variant(_) => Stored::Shape(crate::geo::shape(self)?),
+            Value::Unit | Value::Zoned(_) | Value::Money(_) | Value::Map(_) | Value::Secret(_) => {
+                return None;
+            }
         })
     }
 

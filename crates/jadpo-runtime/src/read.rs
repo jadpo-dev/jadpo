@@ -563,6 +563,11 @@ pub fn from_sql(sql: &SqlValue, column: &Column) -> Result<Value, String> {
         }
         // Each item the decimal its float is (area 21, chunk 5.5v1).
         (SqlValue::Vector(bits), Column::Vector) => vector_value(bits)?,
+        // The geometry its type holds, its rings as they were stored (area
+        // 20, chunk 5.5u4).
+        (SqlValue::Geography(shape), Column::Geography(ty)) => {
+            jadpo_value::geo::from_shape(ty, shape)?
+        }
         // As `ai.distance` gives it (area 21, chunk 5.5v1b).
         (SqlValue::Float8(bits), Column::Distance) => distance_value(f64::from_bits(*bits))?,
         (sql, column) => {
@@ -651,6 +656,10 @@ pub fn field_value(
                 .map(Value::list),
             // An embedding's vector (chunk 5.5v1).
             SqlValue::Vector(bits) => vector_value(bits),
+            // A circle's centre, the point it holds (area 20, chunk 5.5u4).
+            SqlValue::Geography(shape) => {
+                jadpo_value::geo::from_shape(shape.standard_type(), shape)
+            }
             other => Err(format!("a `{:?}` column of a `{ty}`", other.ty())),
         }
     }

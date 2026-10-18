@@ -920,8 +920,7 @@ ranges, lengths, closure and members, rewinds rings to the right-hand rule
 on the way in and out, and reports a refusal at its place in
 `coordinates`. `Geometry` is a choice the plan sends the same way, never
 tagged. A geometry's storage is `Storage::Geography`, whose column type is
-`geography`, and the data model reports a field of one as
-`toolchain.not_built_yet` until the geospatial area. A type built on
+`geography` (chunk 5.5u4, below). A type built on
 `Decimal` with bounds (`Latitude`) has `TextForm::Decimal` and is named to
 `text.format` by the checker, so `FormatKey::Coordinate` can show its
 hemisphere; a compound type's column may now be `numeric`
@@ -959,6 +958,28 @@ the first migration with a vector column (`migration::extensions`);
 extension a pending migration creates before running anything
 (`MigrateError::ExtensionMissing`, `migration.extension_missing`), and
 `has_extensions` is the start-up check, which `jadpo dev` runs.
+Since chunk 5.5u4 a geometry field is stored: the data model gives a
+field holding one of the six geometries or a `Geometry` one untyped
+`geography` column (`FieldModel::geometry` names which), with a check
+constraint (`schema::Check { geography: true }`) holding it to SRID 4326
+and its `GeometryType`s; a `BoundingBox` and a `Circle` are named columns
+(`Storage::Columns`), a circle's centre a point's `geography` with the
+same check (`storage::geometry_at`). The column is `SqlType::Geography`
+and `Column::Geography`; the runtime holds it as `SqlValue::Geography`, a
+`jadpo_std::geography::Shape` of `Coordinates`, each a double by its bits,
+which `jadpo_value::geo::shape` and `from_shape` make from a value and
+back without rewinding a ring; the storage codec binds one
+(`Stored::Shape`) and refuses one whose positions mix with and without
+altitude. The PostgreSQL driver sends and reads it as EWKB, with no type
+number, and knows the column by its type's name; the compiler writes it
+as EWKT (`jadpo_sql::literal`). `migration::extensions` adds `postgis`
+for a `geography` column, and `jadpo_runtime::migrate` also creates each
+extension a pending migration needs in a savepoint and undoes it, so a
+role that can't create PostGIS is refused before anything runs
+(`MigrateError::ExtensionNotCreatable`, `migration.extension_missing`).
+An `indexes:` entry's block takes `fields:` and `kind:`
+(`ListRule::kind`, `IndexKind`); `IndexKind.geographic` is a GiST index
+(`IndexMethod` `gist`, no operator class) on one geometry field.
 Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
 text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
 `jadpo_std::standard::events`, which also holds the rules across its parts
@@ -2630,7 +2651,8 @@ start their own container from `tools/postgres/Dockerfile`, PostgreSQL 16
 with pgvector and PostGIS at pinned versions (chunk 5.5v1; area 21,
 "Chosen in chunk 5.5v1"), while the toolchain installs. A local run's
 disposable server comes from the machine's own PostgreSQL tools, which
-need pgvector for the vector tests (Postgres.app ships it). The
+need pgvector for the vector tests and PostGIS for the geography tests
+(Postgres.app ships both). The
 `supported-language` job needs all four and passes only when each did; it
 is the check branch protection requires. Benchmarks (Phase 9) are a
 separate command, not the gate.

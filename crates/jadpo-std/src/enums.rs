@@ -223,6 +223,16 @@ std_enum! {
 }
 
 std_enum! {
+    /// A special kind of index an entity's `indexes:` entry asks for with
+    /// `kind:` (area 5, "Indexes"), where the store builds it.
+    IndexKind: "IndexKind" {
+        /// A GiST index on one geometry field, which `geo.` conditions
+        /// search (area 20, "Indexes"; chunk 5.5u4).
+        Geographic: "geographic",
+    }
+}
+
+std_enum! {
     /// A migration's decision about a field that is gone from its entity
     /// (area 5, "Migrations").
     FieldChange: "FieldChange" {
@@ -541,6 +551,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (ComponentStyle::NAME, ComponentStyle::NAMES.to_vec()),
         (Generated::NAME, Generated::NAMES.to_vec()),
         (OnDelete::NAME, OnDelete::NAMES.to_vec()),
+        (IndexKind::NAME, IndexKind::NAMES.to_vec()),
         (FieldChange::NAME, FieldChange::NAMES.to_vec()),
         (Driver::NAME, Driver::NAMES.to_vec()),
         (SuccessStatus::NAME, SuccessStatus::NAMES.to_vec()),
@@ -613,6 +624,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         ComponentStyle::NAME => position(ComponentStyle::NAMES),
         Generated::NAME => position(Generated::NAMES),
         OnDelete::NAME => position(OnDelete::NAMES),
+        IndexKind::NAME => position(IndexKind::NAMES),
         FieldChange::NAME => position(FieldChange::NAMES),
         Driver::NAME => position(Driver::NAMES),
         SuccessStatus::NAME => position(SuccessStatus::NAMES),
