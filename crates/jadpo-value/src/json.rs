@@ -127,9 +127,7 @@ impl Codecs<'_> {
                         money_from_json(entries, path, problems)?
                     }
                     serde_json::Value::Object(entries) => match builtin {
-                        Builtin::Quantity(kind) => {
-                            quantity_from_json(*kind, entries, path, problems)?
-                        }
+                        Builtin::Quantity(kind) => json_quantity(*kind, entries, path, problems)?,
                         _ => Err("type"),
                     },
                     serde_json::Value::String(text) => scalar_from_text(*builtin, text),
@@ -724,7 +722,7 @@ fn money_from_json(
 /// `Decimal`, and the code of one of the kind's units, exactly as written;
 /// each problem reported at its own field: `type` for a number that isn't a
 /// decimal string, `unknown_unit` for a unit of another kind.
-fn quantity_from_json(
+fn json_quantity(
     kind: jadpo_std::QuantityKind,
     entries: &serde_json::Map<String, serde_json::Value>,
     path: &Path,

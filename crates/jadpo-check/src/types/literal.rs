@@ -275,12 +275,13 @@ pub fn unit_required(
     let made = format!("units.of({written}, {}.{})", kind.unit_enum(), base.name);
     let next = if literal && base.suffix {
         format!(
-            "Write its unit: `{written}{}`, or `{made}` for another unit",
-            base.code
+            "Write its unit after the number, such as `{written}{}`, or make it with `{made}` in any of `{}`'s units",
+            base.code,
+            kind.unit_enum()
         )
     } else {
         format!(
-            "Make it with its unit: `{made}`, or another of `{}`'s",
+            "Make it with its unit, `{made}`, in any of `{}`'s units",
             kind.unit_enum()
         )
     };

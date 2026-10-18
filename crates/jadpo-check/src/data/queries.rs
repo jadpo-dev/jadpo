@@ -984,7 +984,7 @@ impl<'a> Reader<'a> {
                             self.unsupported(
                                 scope,
                                 &expr,
-                                format!("`{token}` orders numbers, times, dates and durations, as it does in a body, and `{written}` is `{}`.", field.ty.strip_nullable()),
+                                format!("`{token}` orders numbers, times, dates, durations and quantities, as it does in a body, and `{written}` is `{}`.", field.ty.strip_nullable()),
                                 format!("Compare `{written}` with `==`, `!=` or `in`"),
                             );
                             return None;
@@ -1214,7 +1214,7 @@ impl<'a> Reader<'a> {
     }
 
     /// Whether `<` and the rest order values of `ty`, as they do in a body
-    /// (area 3): numbers, times, dates and durations.
+    /// (area 3): numbers, times, dates, durations and quantities.
     fn ordered(&self, ty: &Ty) -> bool {
         ordered(self.lookup, ty)
     }
@@ -1780,6 +1780,7 @@ impl<'a> Reader<'a> {
                             | Prim::Duration
                             | Prim::Text
                             | Prim::Uuid
+                            | Prim::Quantity(_)
                     )
                 );
             if !sortable {
@@ -1790,7 +1791,7 @@ impl<'a> Reader<'a> {
                     )
                     .at(item_span.clone(), format!("`{}`", field_type_name(&field.ty)))
                     .reason(format!(
-                        "A query sorts by numbers, times, dates, durations, text and identities, which the database and Jadpo order the same way; `{written}` is `{}`.",
+                        "A query sorts by numbers, times, dates, durations, quantities, text and identities, which the database and Jadpo order the same way; `{written}` is `{}`.",
                         field.ty
                     ))
                     .next("Sort by another field"),
@@ -2945,7 +2946,14 @@ fn range_field(ty: &Ty, field: &str) -> Option<Ty> {
 pub(crate) fn ordered(lookup: &dyn TypeView, ty: &Ty) -> bool {
     matches!(
         lookup.representation(ty),
-        Some(Prim::Int | Prim::Decimal | Prim::Instant | Prim::CalendarDate | Prim::Duration)
+        Some(
+            Prim::Int
+                | Prim::Decimal
+                | Prim::Instant
+                | Prim::CalendarDate
+                | Prim::Duration
+                | Prim::Quantity(_)
+        )
     )
 }
 

@@ -6,6 +6,8 @@ Batches
 Blank
 Broken
 BrowserSession
+Celsius
+Centimetres
 Choice
 Code
 Comment
@@ -19,13 +21,17 @@ Done
 Doubled
 Draft
 Flag
+Grams
 Handle
 Health
 Item
+Kilograms
 Label
 Listing
 Lookup
 Member
+Metres
+Miles
 Minutes
 Missing
 Name
@@ -38,6 +44,8 @@ Pence
 Percent
 Phrase
 Placed
+Pounds
+Product
 Profile
 Project
 Rank

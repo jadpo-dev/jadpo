@@ -1776,7 +1776,7 @@ error: `Book.title > title` isn't a condition a query can use
    |
 14 |     where: Book.title > title
    |            ^^^^^^^^^^^^^^^^^^ not an indexable condition
-  reason: `>` orders numbers, times, dates and durations, as it does in a body, and `Book.title` is `Title`.
+  reason: `>` orders numbers, times, dates, durations and quantities, as it does in a body, and `Book.title` is `Title`.
   next: Compare `Book.title` with `==`, `!=` or `in` (agent)
   rule: query.condition_unsupported
   help: docs/language/06-reads-and-writes.html#query-condition-unsupported
@@ -1996,7 +1996,7 @@ error: Records can't be sorted by `Book.available`
    |
 14 |     order: [Book.available desc]
    |             ^^^^^^^^^^^^^^^^^^^ `Bool`
-  reason: A query sorts by numbers, times, dates, durations, text and identities, which the database and Jadpo order the same way; `Book.available` is `Bool`.
+  reason: A query sorts by numbers, times, dates, durations, quantities, text and identities, which the database and Jadpo order the same way; `Book.available` is `Bool`.
   next: Sort by another field (agent)
   rule: query.order_field
   help: docs/language/06-reads-and-writes.html#query-order-field

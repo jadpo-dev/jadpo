@@ -149,8 +149,14 @@ mod tests {
         assert_eq!(shown(K::Mass, "250g", "gram", "de-DE"), "250 g");
         assert_eq!(shown(K::Mass, "1lb", "pound", "en-US"), "1 lb");
         assert_eq!(shown(K::Temperature, "21degC", "celsius", "en-GB"), "21 °C");
-        assert_eq!(shown(K::Temperature, "70degF", "fahrenheit", "en-US"), "70 °F");
-        assert_eq!(shown(K::Pressure, "1013.25hPa", "pascal", "de-DE"), "101.325 Pa");
+        assert_eq!(
+            shown(K::Temperature, "70degF", "fahrenheit", "en-US"),
+            "70 °F"
+        );
+        assert_eq!(
+            shown(K::Pressure, "1013.25hPa", "pascal", "de-DE"),
+            "101.325 Pa"
+        );
         assert_eq!(shown(K::Angle, "90deg", "degree", "en-GB"), "90°");
     }
 }

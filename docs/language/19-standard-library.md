@@ -98,7 +98,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 26 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, ten time types in 5.5k); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: five are built (`Currency` in chunk 5.5h, `Month` in 5.5k), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 45 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, ten time types in 5.5k); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: five are built (`Currency` in chunk 5.5h, `Month` in 5.5k), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -119,8 +119,8 @@ exception to the rule.
 | Tax and identity numbers (11) | `VatNumber`, `TaxId`, `UkUtr`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin`, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, `NhsNumber` | |
 | Commerce and logistics (20) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, `HsCode`, `Incoterm` (enum), `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` | `units`, `media` |
 | Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), **`LocalTime`**, **`LocalDateTime`**, **`Month`** (enum), **`YearMonth`**, **`Year`**, **`Quarter`**, **`IsoWeek`**, **`UtcOffset`**, **`DateRange`**, **`InstantRange`**, **`CalendarPeriod`**, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` | `temporal`, `range` |
-| Physical quantities (17) | `Length`, `Area`, `Volume`, `Angle`, `Mass`, `Pressure`, `Energy`, `Power`, `Temperature`, `TemperatureDifference`, `Speed`, `Frequency`, `Voltage`, `Current`, `Illuminance`, `SoundLevel`, `Concentration` | `units` |
-| Maths and data (8) | `Percentage`, `Ratio`, `Fraction`, **`Range<T>`**, `DataSize`, `Bitrate`, `Vector`, `Embedding` | `range`, `units`; AI area |
+| Physical quantities (17) | **`Length`**, **`Area`**, **`Volume`**, **`Angle`**, **`Mass`**, **`Pressure`**, **`Energy`**, **`Power`**, **`Temperature`**, **`TemperatureDifference`**, **`Speed`**, **`Frequency`**, **`Voltage`**, **`Current`**, **`Illuminance`**, **`SoundLevel`**, **`Concentration`** | `units` |
+| Maths and data (8) | `Percentage`, `Ratio`, `Fraction`, **`Range<T>`**, **`DataSize`**, **`Bitrate`**, `Vector`, `Embedding` | `range`, `units`; AI area |
 | Health (9) | `BloodType` (enum), `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` (enum) | |
 | Media and visual (15) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize` (enum), `ExifOrientation` (enum), `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating` | `colour`, `media` |
 | Web and network (23) | **`Url`**, `UrlPath`, `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `WebOrigin`, `HttpMethod` (enum), `HttpStatus`, `HttpHeaderName`, **`FileType`**, `UserAgent`, `ProblemDetails`, `JsonPointer`, `Cookie`, `UtmParameters`, **`IpAddress`**, `Cidr`, `NetworkPort`, `MacAddress`, `Imei`, `Emoji`, `PushToken` | `web` |
@@ -1860,7 +1860,7 @@ test "an order keeps its amounts as they were written" {
 > Built in chunk 5.5h2: `ExchangeRate` on the contract, `money.convert`
 > with its inverted-rate type error, and `{price, number, currency}` in
 > translation messages (area 10); what the pages left open is "Chosen in
-> chunk 5.5h2". `Money * Percentage` with `Percentage` comes in 5.5j;
+> chunk 5.5h2". `Money * Percentage` with `Percentage` comes in 5.5j2;
 > until then `price * 0.2` scales by a `Decimal`.
 
 ## Physical quantities
@@ -1909,7 +1909,127 @@ exist only at construction and display.
 **A bare number where a quantity is expected is a compile error,**
 `type.unit_required`, whose fix asks for the unit (`5km`, or
 `units.of(5, LengthUnit.kilometre)`). It is never declinable: a number
-without its unit is the mistake the type exists to prevent.
+without its unit is the mistake the type exists to prevent. A suffix that
+names no unit, or misses one only by case (`5mw`, between `mW` and `MW`),
+is `type.unit_unknown`, naming each unit it was near.
+
+**Each kind's units** are an enum named for it, `LengthUnit`, whose
+variants are the units' names: `millimetre`, `centimetre`, `metre`,
+`kilometre`, `inch`, `foot`, `yard`, `mile`, `nautical_mile` for a
+`Length`, and so on for each kind, one variant for each suffix in question
+17's table, the cubic metre (`VolumeUnit.cubic_metre`) and a
+`TemperatureDifference`'s `celsius`, `fahrenheit` and `kelvin`, which have
+no suffix. `text.format(value, locale:, unit:)` shows a quantity in one of
+them, its kind's base unit when `unit:` is left out (chunk 5.5j).
+
+A joinery cuts shelves to a customer's length, in whatever unit they give
+it, and works out floors and paces from lengths:
+
+```jadpo check project=quantities
+type ShelfLength = Length {
+    min: 10cm  // a bound written with its unit, held in metres
+    max: 3metre
+}
+
+type Plank = Length {}
+
+type RoomFloor = Area {}
+
+type WalkingPace = Speed {}
+
+type WalkTime = Duration {
+    min: 1s
+}
+
+type Miles = Decimal {
+    scale: 2
+}
+
+type FormText = Text {}
+
+type ShelfUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type ShelfUnitWrong = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type ShelfOutOfRange = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A shelf with a bracket at each end: lengths add, whatever unit made
+/// them.
+function with_brackets(shelf: ShelfLength, end_block: Plank) -> Plank {
+    return Plank(shelf + end_block * 2)
+}
+
+/// A shelf length a customer typed, with its unit: `90 cm`, `3 ft`.
+function typed_shelf(
+    raw: FormText
+) fails ShelfUnreadable, ShelfUnitWrong, ShelfOutOfRange -> ShelfLength {
+    var shelf: ShelfLength = attempt text.parse(raw, as: ShelfLength) {
+        malformed: ShelfUnreadable  // no number, or no unit
+        unknown_unit: ShelfUnitWrong  // `90 kg`
+        min: ShelfOutOfRange
+        max: ShelfOutOfRange
+    }
+    return shelf
+}
+
+/// A room's floor: a length times a length is an area.
+function floor_of(width: Plank, room_depth: Plank) -> RoomFloor {
+    return RoomFloor(width * room_depth)
+}
+
+/// How fast a walk went: a length over a duration is a speed.
+function pace_of(stroll: Plank, stroll_time: WalkTime) -> WalkingPace {
+    return WalkingPace(stroll / stroll_time)
+}
+
+/// A distance in miles, to two places.
+function in_miles(stroll: Plank) -> Miles {
+    return Miles(units.in(stroll, LengthUnit.mile, scale: 2, rounding: Rounding.half_even))
+}
+
+/// A plank's length for the reader, in centimetres.
+function plank_label(plank: Plank, customer: Locale) -> PresentationText {
+    return text.format(plank, locale: customer, unit: LengthUnit.centimetre)
+}
+```
+
+```jadpo check project=quantities file=main.test.jadpo
+test "lengths add across units and are shown in any" {
+    var fitted: Length = 2metre + 45cm + 3inch
+    assert fitted == 2.5262metre
+    assert 1km == 1000metre
+    assert units.of(5, LengthUnit.kilometre) == 5km
+    assert plank_label(Plank(fitted), Locale.en_gb) == "252.62 cm"
+    assert plank_label(Plank(fitted), Locale.de_de) == "252,62 cm"
+    assert text.format(fitted, locale: Locale.en_gb) == "2.5262 m"
+    assert text.from(2.5kg) == "2.5 kg"
+    assert in_miles(5km) == 3.11
+}
+
+test "kinds multiply and divide as the table says" {
+    assert with_brackets(90cm, 2cm) == 94cm
+    assert floor_of(3metre, 2metre) == 6sqm
+    assert pace_of(100metre, 8s) == 12.5mps
+    assert 25degC - 20degC == units.of(5, TemperatureDifferenceUnit.kelvin)
+    assert units.sum([1km, 500metre]) == 1.5km
+}
+
+test "text is read with its kind's units" {
+    var shelf: ShelfLength = attempt typed_shelf("90 cm")
+    assert shelf == 0.9metre
+    var in_feet: ShelfLength = attempt typed_shelf("3 ft")
+    assert in_feet == 0.9144metre
+    assert typed_shelf("90") fails ShelfUnreadable
+    assert typed_shelf("90 kg") fails ShelfUnitWrong
+    assert typed_shelf("5 metre") fails ShelfOutOfRange
+}
+```
 
 **Arithmetic.** `+` and `-` within one kind; `*` and `/` by a plain number
 keep the kind; one kind divided by the same kind gives a plain `Decimal`,
@@ -1947,16 +2067,92 @@ defined; any other mix is a compile error naming the two kinds:
   it compares but has no `+` or `-`.
 - **`Duration`** stays area 10's type; it takes part in the table above
   without becoming a quantity.
-- **Storage and wire.** One `numeric` column in the base unit (the list's
-  rule). On the wire, `{ "value": 2.5, "unit": "kg" }`, the unit named,
-  rather than a bare number in the base unit (question 17); `json.read`
-  and `json.write` use it too.
+- **Storage and wire.** One `numeric` column in the base unit at the
+  kind's scale, `numeric(38, 6)` for a `Length` (the list's rule). On the
+  wire, `{ "value": "2.5", "unit": "kg" }`, the unit named, rather than a
+  bare number in the base unit (question 17), and the number a string, as
+  area 2 sends every `Decimal` (chunk 5.5j); written in the base unit and
+  read in any of the kind's units. `json.read` and `json.write` use it too.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
 | `units.of(value, unit)` | The quantity of `unit`'s kind: `value`, an `Int` or `Decimal`, converted exactly to the base unit and rounded half to even to the kind's scale | overflow is a defect | none |
 | `units.in(value, unit, scale:, rounding:)` | `Decimal`, the quantity in `unit`, rounded | | none |
 | `units.sum(items)` | The total of one kind; zero for none | overflow is a defect | none |
+
+A shelf on file keeps its length in metres, one column, however it was
+cut:
+
+```jadpo check project=quantity-shelves file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.de_de]
+}
+```
+
+```jadpo check project=quantity-shelves file=domains/joinery/types/cut_length.jadpo hidden
+/// How long a shelf is cut, held in metres whatever unit it was given in.
+type CutLength = Length {
+    min: 10cm
+    max: 3metre
+}
+```
+
+```jadpo check project=quantity-shelves file=domains/joinery/entities/cut_shelf.jadpo migrate=initial
+use joinery/types { CutLength }
+
+/// A shelf cut to order.
+entity CutShelf {
+    id: Uuid
+    cut_to: CutLength  // one `numeric(38, 6)` column, in metres
+}
+```
+
+```jadpo check project=quantity-shelves file=domains/joinery/actions/cut_to_order.jadpo hidden
+use joinery/entities { CutShelf }
+use joinery/types { CutLength }
+
+/// Records a shelf cut to `cut_to`.
+action cut_to_order(cut_to: CutLength) -> CutShelf {
+    return CutShelf.create {
+        set: {
+            cut_to: cut_to
+        }
+    }
+}
+```
+
+```jadpo check project=quantity-shelves file=domains/joinery/actions/cut_to_order.test.jadpo
+use joinery/entities { CutShelf }
+use joinery/types { CutLength }
+
+test "a shelf keeps its length as it was cut" {
+    var shelf_made: CutShelf = cut_to_order(CutLength(2.5262metre))
+    var shelf_on_file: CutShelf = attempt CutShelf.get(shelf_made.id)
+    assert shelf_on_file.cut_to == 2metre + 45cm + 3inch
+    assert text.format(
+        shelf_on_file.cut_to,
+        locale: Locale.en_gb,
+        unit: LengthUnit.centimetre
+    ) == "252.62 cm"
+    assert text.format(
+        shelf_on_file.cut_to,
+        locale: Locale.de_de,
+        unit: LengthUnit.centimetre
+    ) == "252,62 cm"
+}
+```
+
+> Built in chunk 5.5j: the 17 quantities with `DataSize` and `Bitrate` on
+> the contract, each with its unit enum; suffixed literals with
+> `type.unit_required` and `type.unit_unknown`; the product and quotient
+> table and `==` and `<` across units; the 3 `units` operations and
+> `text.format`'s `unit:`; one `numeric` column, compared and ordered in
+> queries; and the wire's `{ "value": ..., "unit": ... }`. What the pages
+> left open is "Chosen in chunk 5.5j", under "Review". `Percentage`,
+> `Ratio`, `Fraction` and the `%` literal are chunk 5.5j2.
 
 ## Time and calendar additions
 
@@ -3528,6 +3724,99 @@ error: `CakePrice` and `EuroPrice` can't be added: they're in different currenci
 check failed: 1 error, 1 file
 ```
 
+### `type.unit_required`
+
+A bare number where a physical quantity goes: a quantity is always made
+with its unit, a suffixed literal (`90cm`), `units.of(90,
+LengthUnit.centimetre)`, `text.parse` of text that names one, or another
+quantity of its kind. A number alone could be any length, which is the
+mistake the type exists to prevent, so this is never declinable. A plain
+number still scales a quantity, by `*` and `/`.
+
+```jadpo check project=e-unit-required expect=type.unit_required
+type ShelfLength = Length {
+    max: 3metre
+}
+
+/// The shelf a kitchen gets unless the customer asks for another.
+function standard_shelf() -> ShelfLength {
+    return ShelfLength(90)
+}
+```
+
+```text output
+error: `ShelfLength` needs a unit, and `90` is a bare number
+ --> main.jadpo:7:24
+  |
+7 |     return ShelfLength(90)
+  |                        ^^ no unit
+  reason: A `Length` is always made with its unit, so a number alone could be any length: a number without its unit is the mistake the type exists to prevent.
+  next: Write its unit after the number, such as `90metre`, or make it with `units.of(90, LengthUnit.metre)` in any of `LengthUnit`'s units (agent)
+  rule: type.unit_required
+  help: docs/language/19-standard-library.html#type-unit-required
+
+check failed: 1 error, 1 file
+```
+
+Two kinds that the table doesn't combine don't compile either, by area
+3's `type.arithmetic_operand`, which names the two kinds:
+
+```jadpo check project=e-quantity-kinds expect=type.arithmetic_operand
+type ShelfLength = Length {}
+
+type ShelfLoad = Mass {}
+
+/// What a shelf is rated for, with its length added by mistake.
+function rated(shelf_span: ShelfLength, load: ShelfLoad) -> ShelfLoad {
+    return ShelfLoad(load + shelf_span)
+}
+```
+
+```text output
+error: `ShelfLoad` and `ShelfLength` can't be added: a `Mass` and a `Length` are different kinds
+ --> main.jadpo:7:22
+  |
+7 |     return ShelfLoad(load + shelf_span)
+  |                      ^^^^^^^^^^^^^^^^^ different kinds
+  reason: `+` works within one kind of quantity, in any of its units; a `Mass` and a `Length` are different kinds, so the sum means nothing.
+  next: Use values of one kind, or a product or quotient the table defines (agent)
+  rule: type.arithmetic_operand
+  help: docs/language/03-logic.html#type-arithmetic-operand
+
+check failed: 1 error, 1 file
+```
+
+### `type.unit_unknown`
+
+A number written with a suffix that is no unit: neither a duration's
+(`ms`, `s`, `m`, `h`, `d`) nor a quantity's in question 17's table. Units
+are written as SI writes them, and case matters, so a suffix that misses
+one only by case names each it was near: `mw` is between milliwatts and
+megawatts, and the program can't guess which.
+
+```jadpo check project=e-unit-unknown expect=type.unit_unknown
+type HeaterPower = Power {}
+
+/// The fan heater the workshop runs in winter.
+function workshop_heater() -> HeaterPower {
+    return HeaterPower(2mw)
+}
+```
+
+```text output
+error: `2mw` has no unit `mw`: did you mean `2mW` (milliwatts) or `2MW` (megawatts)?
+ --> main.jadpo:5:24
+  |
+5 |     return HeaterPower(2mw)
+  |                        ^^^ unit in the wrong case
+  reason: Units are written as SI writes them, and case matters: `mW` is milliwatts and `MW` is megawatts.
+  next: Write `2mW` (milliwatts) or `2MW` (megawatts), whichever is meant (agent)
+  rule: type.unit_unknown
+  help: docs/language/19-standard-library.html#type-unit-unknown
+
+check failed: 1 error, 1 file
+```
+
 ### `type.temporal_format_part_missing`
 
 A `LocalTime` is a clock time with no date or zone, and a
@@ -3571,8 +3860,8 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, the other two in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, ten time types in 5.5k, each other group of types in 5.5i to 5.5s |
-| `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, ten time types in 5.5k, each other group of types in 5.5i to 5.5s |
+| `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
 | A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2: `type.standard_clash`, `jadpo fix`'s swap and rename, the editor's swap |
@@ -3858,7 +4147,7 @@ under "Errors").
   `0.25` giving `25%`, as every value becomes a named type (question 15):
   the page named no conversion, so this is the conservative reading, with
   no `units` operation for it. It is built with `Percentage` in chunk
-  5.5j.
+  5.5j2.
 
 ### Chosen in chunk 5.5e
 
@@ -4213,11 +4502,78 @@ under "Errors").
   email's subject: `{price}` for an amount, or the style on any other
   field, is `translation.placeholder_style`, whose edit writes the right
   one; any other style (`{price,number,currency}`, `{n, number,
-  percent}` until `Percentage` in 5.5j) is still
+  percent}` until `Percentage` in 5.5j2) is still
   `translation.wording_invalid`. It shows the amount as `text.format`
   does with its default options, in the locale the message is written in.
   A failure's `client:` fields still can't be money: the client app
   formats those, and the export has no money format yet.
+
+### Chosen in chunk 5.5j
+
+- **Split.** `Percentage`, `Ratio`, `Fraction`, the `%` literal and the
+  operator table's `Percentage` rows are chunk 5.5j2, with the showcase
+  `total * 15%`.
+- **A quantity is a type built into the language**
+  (`Builtin::Quantity(kind)`), as `Money` is: `type ShelfLength = Length {
+  ... }` takes `min:` and `max:`, and like `Int` it is a representation,
+  so a signature names a type built on it while a `var` may be a plain
+  `Length`. Every kind is ordered, `Temperature` and `SoundLevel`
+  included.
+- **Each kind's unit enum** is `<Kind>Unit`, its variants the units' names
+  in full (`LengthUnit.nautical_mile`, `VolumeUnit.us_gallon`,
+  `TemperatureUnit.celsius`), one for each suffix in question 17's table,
+  plus the cubic metre and a `TemperatureDifference`'s `celsius`,
+  `fahrenheit` and `kelvin`, which have no suffix. A unit's code is its
+  suffix, which text and the wire name too; the cubic metre's is
+  `cubic_metre`.
+- **What the table left open about units:** `floz` is the US fluid ounce
+  (29.5735295625 ml), since UK labels give millilitres; a degree of angle
+  is π / 180 radians to 30 digits; `psi` is a pound-force on a square inch,
+  `kcal` the thermochemical 4,184 J, `t` the tonne and `knot` 1,852 m an
+  hour. A value is converted exactly where the unit is defined exactly and
+  rounded half to even to its kind's scale, so `1mcg` is held as nothing:
+  a `Mass` keeps milligrams.
+- **A literal's suffix decides its kind:** a duration's suffix (`ms`, `s`,
+  `m`, `h`, `d`) makes a `Duration`, any other a quantity, matched exactly;
+  a quantity literal may be negative (`-40degC`), as a duration may not.
+  `-` on a quantity value is refused, as for any value but a number (area
+  3), and the quantity is written first: `bracket * 2`, never `2 *
+  bracket`, as for money.
+- **Area 3's named-type rule holds within a kind:** `+`, `-` and `/` take
+  one named type, or a plain quantity an operator or a `units` operation
+  made; one kind over itself gives `/`'s `Decimal`; and a divisor's type
+  excludes zero, a duration type's `min:` included.
+- **Text.** The canonical text is the number in the base unit with no
+  trailing zeros, a space and the base unit's code, `2.5 kg`, `1000
+  metre`; `text.parse` reads a number, an optional space and any of the
+  kind's units by its code, case and all, failing `malformed` for no
+  number or no unit and `unknown_unit`, a new condition, for another
+  kind's unit or none at all.
+- **The wire's number is a string,** `{ "value": "2.5", "unit": "kg" }`, as
+  area 2 sends every `Decimal`, where the page showed a JSON number; it is
+  written in the base unit and read in any of the kind's units, a JSON
+  number being `type` and another kind's unit `unknown_unit`. OpenAPI
+  lists the kind's units as the unit's `enum`.
+- **`text.format`'s `unit:`** is a unit of the value's kind, the base unit
+  when left out. The number is the value in that unit, exact where the
+  conversion ends within the places the kind's scale gives in that unit,
+  otherwise rounded half to even to one place fewer (`1lb`, held as
+  0.453592 kg, is shown as `1 lb`), in the locale's digits and separators.
+  Where ICU4X compiles CLDR's unit names, for lengths, areas, volumes and
+  masses, the locale's short pattern places it (`252,62 cm`); for the
+  other kinds, the number, a space and the unit's SI symbol (`21 °C`, but
+  `90°`), until ICU4X has their names.
+- **Storage** is `numeric(38, <scale>)` in the base unit, and a query
+  compares (`<`, `==`) and orders by a quantity field as by a number. The
+  column's comment naming the unit comes with chunk 5.5w, whose audit the
+  roadmap gives it.
+- **`units.in`'s `scale:` and `rounding:`** are both given, as
+  `decimal.round`'s are. `units.sum` refuses a list of temperatures or
+  sound levels (`type.arithmetic_operand`), which don't add, and a list
+  written out takes its first item's kind.
+- **`Display`** writes a quantity as code makes one, in its base unit,
+  `2.5262metre`, or `units.of(0.001, VolumeUnit.cubic_metre)` for a kind
+  whose base unit has no suffix.
 
 ### Chosen in chunk 5.5k
 
@@ -4752,10 +5108,13 @@ first; each group of types then arrives with its baseline and its extras.
   other 21 types and the 11 tax and identity numbers, each a pattern or
   check digit (mod-97, Luhn, mod-11) on the contract.
 - **5.5j Quantities** `opus · high`: the 17 physical quantities with
-  `DataSize`, `Bitrate`, `Percentage`, `Ratio` and `Fraction`, their units
-  SI storage at each kind's scale, the `%` literal and the operator
-  table's `Percentage` rows, suffixed literals, the product and
-  quotient table, `type.unit_required`, and the 3 `units` operations.
+  `DataSize` and `Bitrate`, their units, SI storage at each kind's
+  scale, suffixed literals, the product and quotient table,
+  `type.unit_required`, and the 3 `units` operations. Built; split on
+  2026-10-18, the rest is 5.5j2.
+- **5.5j2 Percentages, ratios and fractions** `opus · high`:
+  `Percentage`, `Ratio` and `Fraction`, the `%` literal and the operator
+  table's `Percentage` rows.
 - **5.5k Time and calendar** `opus · high`: ten of the 13 new time
   types, `CalendarPeriod`'s operator rows and `temporal.period_between`.
   Built; split on 2026-10-17, the rest is 5.5k2.

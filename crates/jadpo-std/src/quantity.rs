@@ -1050,11 +1050,11 @@ pub fn to_base(mantissa: i128, scale: u32, unit: &Unit) -> Option<i128> {
     let num = i128::try_from(unit.num).ok()?;
     let den = i128::try_from(unit.den).ok()?;
     let od = i128::try_from(od).ok()?;
-    let scaled = mantissa.checked_mul(num)?.checked_mul(od)?;
+    let multiplied = mantissa.checked_mul(num)?.checked_mul(od)?;
     let shifted = on
         .checked_mul(den)?
         .checked_mul(10i128.checked_pow(scale)?)?;
-    let sum = scaled.checked_add(shifted)?;
+    let sum = multiplied.checked_add(shifted)?;
     ratio(
         sum,
         &[1],
@@ -1096,10 +1096,8 @@ pub fn from_base(amount: i128, unit: &Unit, places: u32, rounding: Rounding) -> 
 /// mantissa and its places, with no trailing zeros.
 pub fn shown_in(amount: i128, unit: &Unit) -> Option<(i128, u32)> {
     let scale = unit.kind.scale();
-    let places = u32::try_from(
-        (i64::from(scale) + i64::from(magnitude(unit.num, unit.den))).max(0),
-    )
-    .ok()?;
+    let places =
+        u32::try_from((i64::from(scale) + i64::from(magnitude(unit.num, unit.den))).max(0)).ok()?;
     let exact = (0..=places).find_map(|places| {
         let down = from_base(amount, unit, places, Rounding::Down)?;
         let up = from_base(amount, unit, places, Rounding::Up)?;
