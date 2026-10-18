@@ -12,11 +12,11 @@ use jadpo_term::Environment;
 /// Every kind of thing a test can meet: plain values, a record, a boolean
 /// type, an action with two failures (one with an internal field), and
 /// arithmetic that can overflow.
-const SIZES: &str = "type Count = Int {\n    min: 0\n}\n\ntype Pence = Int {\n    min: 0\n}\n\ntype Point = Object {\n    x: Count\n    y: Count\n}\n\ntype Ready = Bool {}\n\ntype TooBig = Failure {\n    kind: FailureKind.rejected\n}\n\ntype TooSmall = Failure {\n    kind: FailureKind.rejected\n    internal: {\n        given: Count\n    }\n}\n\nfunction add(a: Count, b: Count) -> Count {\n    return Count(a + b)\n}\n\nfunction moved(point: Point) -> Point {\n    return Point {\n        x: Count(point.x + 1)\n        y: point.y\n    }\n}\n\nfunction ready(size: Count, limit: Count) -> Ready {\n    return Ready(size > limit)\n}\n\nfunction line_total(price: Pence, quantity: Count) -> Pence {\n    return Pence(price * quantity)\n}\n\naction check_size(n: Count) fails TooBig, TooSmall -> Count {\n    if (n > 10) {\n        reject TooBig\n    }\n    if (n < 2) {\n        reject TooSmall {\n            given: n\n        }\n    }\n    return n\n}\n";
+const SIZES: &str = "type Count = Int {\n    min: 0\n}\n\ntype Pence = Int {\n    min: 0\n}\n\ntype GridCell = Object {\n    x: Count\n    y: Count\n}\n\ntype Ready = Bool {}\n\ntype TooBig = Failure {\n    kind: FailureKind.rejected\n}\n\ntype TooSmall = Failure {\n    kind: FailureKind.rejected\n    internal: {\n        given: Count\n    }\n}\n\nfunction add(a: Count, b: Count) -> Count {\n    return Count(a + b)\n}\n\nfunction moved(point: GridCell) -> GridCell {\n    return GridCell {\n        x: Count(point.x + 1)\n        y: point.y\n    }\n}\n\nfunction ready(size: Count, limit: Count) -> Ready {\n    return Ready(size > limit)\n}\n\nfunction line_total(price: Pence, quantity: Count) -> Pence {\n    return Pence(price * quantity)\n}\n\naction check_size(n: Count) fails TooBig, TooSmall -> Count {\n    if (n > 10) {\n        reject TooBig\n    }\n    if (n < 2) {\n        reject TooSmall {\n            given: n\n        }\n    }\n    return n\n}\n";
 
 const ADDS: &str = "test \"adds\" {\n    assert add(2, 3) == 5\n}\n";
 const ADDS_WRONGLY: &str = "test \"adds wrongly\" {\n    assert add(2, 3) == add(1, 1) + 1\n}\n";
-const MOVES: &str = "test \"the point moves right\" {\n    var start: Point = Point {\n        x: 1\n        y: 2\n    }\n    assert moved(start) == Point {\n        x: 3\n        y: 2\n    }\n}\n";
+const MOVES: &str = "test \"the point moves right\" {\n    var start: GridCell = GridCell {\n        x: 1\n        y: 2\n    }\n    assert moved(start) == GridCell {\n        x: 3\n        y: 2\n    }\n}\n";
 const READY: &str = "test \"a big size is ready\" {\n    var size: Count = 4\n    var limit: Count = 10\n    assert ready(size, limit)\n}\n";
 const RETURNED: &str = "test \"a mid size is too big\" {\n    var size: Count = 3\n    assert check_size(size) fails TooBig\n}\n";
 const INSTEAD: &str = "test \"one is too big\" {\n    assert check_size(1) fails TooBig\n}\n";
@@ -166,14 +166,14 @@ fn a_record_comparison_lists_the_fields_that_differ() {
 FAIL  the point moves right
  --> sizes.test.jadpo:6
 
-  assert moved(start) == Point { ...
+  assert moved(start) == GridCell { ...
          |     |         |
-         |     |         Point { x: 3, y: 2 }
-         |     Point { x: 1, y: 2 }
-         Point { x: 2, y: 2 }
+         |     |         GridCell { x: 3, y: 2 }
+         |     GridCell { x: 1, y: 2 }
+         GridCell { x: 2, y: 2 }
 
-  expected: Point { x: 3, y: 2 }
-  actual: Point { x: 2, y: 2 }
+  expected: GridCell { x: 3, y: 2 }
+  actual: GridCell { x: 2, y: 2 }
   diff: ~ x: expected 3, actual 2
 
   rule: test.assertion_failed
@@ -504,14 +504,14 @@ fn a_type_used_as_a_value_is_refused_before_anything_runs() {
     // It once checked clean and failed when the interpreter reached it.
     let root = loose(
         "type-as-value",
-        &["test \"adds\" {\n    assert add(2, 3) == Point\n}\n"],
+        &["test \"adds\" {\n    assert add(2, 3) == GridCell\n}\n"],
     );
     let output = jadpo(&root, &["test", "."]);
     assert_eq!(output.code, 1);
     assert!(
         output
             .stdout
-            .starts_with("error: `Point` is a type, not a value\n --> sizes.test.jadpo:2:25\n"),
+            .starts_with("error: `GridCell` is a type, not a value\n --> sizes.test.jadpo:2:25\n"),
         "{}",
         output.stdout
     );
@@ -705,14 +705,14 @@ fn json_is_one_versioned_document_with_every_failure_as_data() {
     assert_eq!(failure["rerun"], "jadpo test sizes.test.jadpo:10 --seed 7");
     let assertion = &failure["assertion"];
     assert_eq!(assertion["operator"], "==");
-    assert_eq!(assertion["expected"], "Point { x: 3, y: 2 }");
-    assert_eq!(assertion["actual"], "Point { x: 2, y: 2 }");
+    assert_eq!(assertion["expected"], "GridCell { x: 3, y: 2 }");
+    assert_eq!(assertion["actual"], "GridCell { x: 2, y: 2 }");
     assert_eq!(
         assertion["diff"],
         serde_json::json!([{ "change": "changed", "path": "x", "expected": "3", "actual": "2" }])
     );
     assert_eq!(assertion["parts"][0]["source"], "moved(start)");
-    assert_eq!(assertion["parts"][0]["value"], "Point { x: 2, y: 2 }");
+    assert_eq!(assertion["parts"][0]["value"], "GridCell { x: 2, y: 2 }");
     assert!(
         assertion["source"]
             .as_str()

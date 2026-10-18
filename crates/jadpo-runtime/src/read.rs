@@ -534,6 +534,9 @@ pub fn field_value(row: &[SqlValue], columns: &[Column], at: u32) -> Result<Valu
             SqlValue::Int4(n) => Ok(Value::Int(i64::from(*n))),
             SqlValue::Int8(n) => Ok(Value::Int(*n)),
             SqlValue::Text(text) => Ok(Value::text(text)),
+            // Projected coordinates' easting and northing (chunk 5.5s).
+            SqlValue::Numeric(text) => Value::decimal(text)
+                .ok_or_else(|| format!("a part of a `{ty}` that isn't a decimal")),
             // An identity document's expiry (chunk 5.5i2) and an event's
             // days (chunk 5.5k3).
             SqlValue::Date(day) => Ok(Value::Date(*day)),

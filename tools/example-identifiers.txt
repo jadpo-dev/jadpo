@@ -436,7 +436,6 @@ due_window
 dune
 duplicate_failure
 duplicate_success
-easting
 easting_after
 echo_note
 edit_note
@@ -860,7 +859,6 @@ no_stock
 no_subtitle
 none_yet
 normal
-northing
 northing_after
 northwind
 not_a_book
@@ -1145,7 +1143,6 @@ quantity_unreadable
 queue_overdue_reminders
 quiz_rounds
 quote_cake
-radius
 raise_priority
 rate_label
 rate_on
@@ -1498,7 +1495,6 @@ tier_count
 tier_name
 tier_scale
 tiers_above
-tile
 till_scan
 till_total
 time_lived
@@ -1588,6 +1584,7 @@ user_view
 usual_contacts
 usual_order
 valid_from
+van_position
 vat_band
 vat_bands
 vat_date
