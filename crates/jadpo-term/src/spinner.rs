@@ -8,6 +8,7 @@
 
 use std::io::Write;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -30,21 +31,26 @@ const ERASE: &str = "\r\x1b[2K";
 pub struct Spinner {
     stop: Option<Sender<()>>,
     thread: Option<JoinHandle<()>>,
+    /// What the live line says, which [`Spinner::say`] changes as the step
+    /// goes on (`Filling Todo.priority  2000 of 5000 rows`).
+    words: Arc<Mutex<String>>,
 }
 
 impl Spinner {
     /// Starts the live line for `words` ("Running tests") on stderr, or
     /// nothing when `style` doesn't animate.
     pub fn start(style: &Style, words: &str) -> Spinner {
+        let shared = Arc::new(Mutex::new(words.to_string()));
         if !style.animate {
             return Spinner {
                 stop: None,
                 thread: None,
+                words: shared,
             };
         }
         let (stop, stopped) = mpsc::channel::<()>();
         let style = *style;
-        let words = words.to_string();
+        let words = Arc::clone(&shared);
         let thread = std::thread::spawn(move || {
             let started = Instant::now();
             if !matches!(
@@ -59,7 +65,8 @@ impl Spinner {
             };
             let mut stderr = std::io::stderr();
             for i in 0.. {
-                let line = frame(&style, frames[i % frames.len()], &words, started.elapsed());
+                let now = words.lock().map(|w| w.clone()).unwrap_or_default();
+                let line = frame(&style, frames[i % frames.len()], &now, started.elapsed());
                 let _ = stderr.write_all(format!("{ERASE}{line}").as_bytes());
                 let _ = stderr.flush();
                 if !matches!(stopped.recv_timeout(every), Err(RecvTimeoutError::Timeout)) {
@@ -72,6 +79,20 @@ impl Spinner {
         Spinner {
             stop: Some(stop),
             thread: Some(thread),
+            words: shared,
+        }
+    }
+
+    /// What the live line says, shared, for code that can't hold the
+    /// spinner to change it.
+    pub fn words(&self) -> Arc<Mutex<String>> {
+        Arc::clone(&self.words)
+    }
+
+    /// Changes what the live line says, from its next frame.
+    pub fn say(&self, words: &str) {
+        if let Ok(mut now) = self.words.lock() {
+            *now = words.to_string();
         }
     }
 

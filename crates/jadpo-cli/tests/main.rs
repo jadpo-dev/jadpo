@@ -8,6 +8,7 @@ mod accept_language;
 mod across;
 mod aggregates;
 mod ai;
+mod backfills;
 mod binary;
 mod check;
 mod cli;

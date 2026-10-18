@@ -843,6 +843,27 @@ one-step update's `set:` still works a stored field out only with `+` and
 > added `temporal.year`, `temporal.month` and `temporal.day` of a date,
 > tested the same way, for aggregate queries' time buckets (area 6).
 
+A backfill's operators and conditionals have SQL forms too (chunk 5.6b),
+tested against the runtime the same way, `a` and `b` their operands:
+
+| Operator | Operands | SQL form |
+|---|---|---|
+| `and`, `or` | `Bool` | `CASE WHEN a THEN b ELSE FALSE END`, `CASE WHEN a THEN TRUE ELSE b END`, so they stop early as the runtime does |
+| `not` | `Bool` | `NOT a` |
+| `==`, `!=` | two of one kind: whole numbers and decimals, text and enums, `Bool`, `Uuid`, `Bytes`, dates, instants, durations | `a = b`, `a <> b`, text `COLLATE "C"`, whole numbers as `bigint` |
+| `<`, `<=`, `>`, `>=` | numbers, dates, instants, durations | `a < b` |
+| `+`, `-`, `*`, `/`, `%`, unary `-` | whole numbers | each as `bigint`, so it overflows where an `Int` does; `/` and `%` drop the remainder toward zero |
+| `+`, `-` | decimals, or a decimal and a whole number | the sum at the larger scale, stopping where the runtime's 128-bit mantissas or 38 digits would |
+| unary `-` | decimals | `-a` |
+| `+`, `-` | durations | as `bigint` milliseconds |
+| `+` | text | `a \|\| b` |
+| `x == none`, `x != none` | a value that may be `none` | `x IS NULL`, `x IS NOT NULL` |
+| `if` chains, `match` | a function's `if`s whose branches return; a `match` on a plain variant, `true`, `false`, a literal, `none` or `some` | `CASE`, which works out only the branch it takes |
+
+A decimal's `*` and `/`, `in`, `matches`, and the operators on money,
+quantities, percentages, periods and times moved by a duration have no
+form yet.
+
 In the tables below, `x` is the first argument and `a`, `b` the others.
 
 ## Lists
@@ -7666,7 +7687,7 @@ check failed: 1 error, 1 file
 | `hash.sha256`, the 9 `encoding` operations | Decided 2026-10-17 (question 24); built in 5.5g |
 | `random` | Decided 2026-10-17 (question 19); built in 5.5q, actions only, seeded per test, replayed from a recording; `crypto`'s 8 operations that need no keys held as data built in 5.5q2, with `key:` as a place the compiler owns |
 | The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
-| SQL forms | Decided; built in 5.6, used by computed backfills in 5.6b and by aggregate queries in 5.6c |
+| SQL forms | Decided; built in 5.6, used by computed backfills in 5.6b, with the operators' and conditionals' forms, and by aggregate queries in 5.6c |
 | Geospatial, AI | Decided as future areas, planned in 5.5u ([area 20](20-geospatial.md)) and 5.5v; the geospatial types' baseline built in 5.5s, area 20's measures in 5.5u2, the AI types' in 5.5s2 |
 
 ### Consistency with the rest of the language

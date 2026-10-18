@@ -1589,6 +1589,7 @@ stamped_once
 stamps_to_go
 standard_shelf
 standard_vat
+starred
 stars
 start_project
 start_subscription

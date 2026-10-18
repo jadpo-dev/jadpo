@@ -1952,7 +1952,18 @@ column also records what its field allows beyond the column type
 patterns), so allowing less is a migration whose `backfill:` decision
 replaces the stored values no longer allowed (`NeededKind::Refit`), and
 an index keeps the text columns a query sorts by in code-point order
-(`Index::collate`).
+(`Index::collate`). Since chunk 5.6b a computed backfill (area 5) is
+checked as a body of its own (`types::backfill_callables`, the latest
+migration's `changes.jadpo` only), written as SQL from its typed body by
+`data::backfill`, through `jadpo_sql::form`'s operation, operator and
+`case` forms, and decided as `Decided::Computed`: `migration_sql` writes a
+`-- backfill <field>: by UPDATE` line, a count and one batch, then the
+last step's lock, fill and `SET NOT NULL`. `jadpo_std::Migration::steps`
+splits a section there, and `jadpo_runtime::migrate_reporting` runs each
+step in its own read-committed transaction under `jadpo_migrations`'
+lock, recording how far it got in `jadpo_migration_steps` in the same
+transaction, so a stopped run carries on; `Progress` tells `jadpo migrate
+apply` each batch.
 
 Built in chunk 3.4: `jadpo-plan`'s `Planner::access` adds an entity's
 `visible:` to every query, `get`, child include, update, delete and

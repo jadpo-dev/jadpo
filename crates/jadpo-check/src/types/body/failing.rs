@@ -250,6 +250,10 @@ impl Body<'_> {
         if self.handled.contains(&node_key(call.syntax())) {
             return;
         }
+        // A backfill has nowhere to pass a failure (area 5, chunk 5.6b).
+        if self.backfill_unhandled(call) {
+            return;
+        }
         // A construction over a stored field in an update by `id` is the
         // database's to work out, so nothing could handle it: the write
         // reports it (area 6, "Counters").

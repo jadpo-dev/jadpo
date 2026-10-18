@@ -12,8 +12,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use jadpo_check::data::migrations::{
-    self as records, Decision, Migration, Migrations, decided, decision_misfit, example_backfill,
-    field_type, read_decisions, store_steps,
+    self as records, Decide, Decision, Migration, Migrations, example_backfill, field_type,
+    read_decisions, store_steps,
 };
 use jadpo_check::data::{DataModel, data_model, schema};
 use jadpo_db::Loaded;
@@ -140,15 +140,25 @@ fn new(call: &Call) -> Reply {
     // The latest migration is finished once every decision it needs is
     // written and its SQL holds them; until then this finishes it.
     let latest = set.list.last();
-    let (decisions, unfinished) = match latest {
+    let (decisions, unfinished, changes) = match latest {
         Some(migration) if migration.changes => {
             let decisions = written_decisions(&loaded, migration);
             let before = set.before_latest();
             let after = set.latest_schema();
-            let finished = finished(&lookup, model, &decisions, &before, &after, migration);
-            (decisions, !finished)
+            let changes = loaded.file(&migration.changes_path());
+            let decide = Decide {
+                db,
+                project,
+                lookup: &lookup,
+                model,
+                decisions: &decisions,
+                file: changes,
+                before: &before,
+            };
+            let finished = finished(&decide, &before, &after, migration);
+            (decisions, !finished, changes)
         }
-        _ => (Vec::new(), false),
+        _ => (Vec::new(), false, None),
     };
     let (before, base, name) = if unfinished {
         let Some(migration) = latest else {
@@ -196,7 +206,16 @@ fn new(call: &Call) -> Reply {
     };
     let after = next_snapshot(&base, source);
     let needed = decisions_needed(&before, &after);
-    let decide = |need: &Needed| decided(&lookup, model, &decisions, need);
+    let decisions_of = Decide {
+        db,
+        project,
+        lookup: &lookup,
+        model,
+        decisions: &decisions,
+        file: changes,
+        before: &before,
+    };
+    let decide = |need: &Needed| decisions_of.decided(need);
     let sql = match migration_sql(&before, &after, &decide) {
         Ok(sql) => sql,
         Err(refusals) => return refused(&refusals),
@@ -209,9 +228,7 @@ fn new(call: &Call) -> Reply {
         .collect();
     let misfits: BTreeMap<String, String> = pending
         .iter()
-        .filter_map(|need| {
-            decision_misfit(&lookup, model, &decisions, need).map(|why| (need.key(), why))
-        })
+        .filter_map(|need| decisions_of.misfit(need).map(|why| (need.key(), why)))
         .collect();
     let written = match write(
         &folder,
@@ -258,22 +275,12 @@ fn written_decisions(loaded: &Loaded, migration: &Migration) -> Vec<Decision> {
 use jadpo_syntax::ast::AstNode as _;
 
 /// Whether every decision a migration needs is made and its SQL holds them.
-fn finished(
-    lookup: &dyn jadpo_check::types::TypeView,
-    model: &DataModel,
-    decisions: &[Decision],
-    before: &Schema,
-    after: &Schema,
-    migration: &Migration,
-) -> bool {
+fn finished(decide: &Decide<'_>, before: &Schema, after: &Schema, migration: &Migration) -> bool {
     let needed = decisions_needed(before, after);
-    if needed
-        .iter()
-        .any(|need| decided(lookup, model, decisions, need).is_none())
-    {
+    if needed.iter().any(|need| decide.decided(need).is_none()) {
         return false;
     }
-    let decide = |need: &Needed| decided(lookup, model, decisions, need);
+    let decide = |need: &Needed| decide.decided(need);
     match migration_sql(before, after, &decide) {
         Ok(sql) => {
             migration
@@ -975,46 +982,149 @@ fn apply(call: &Call) -> Reply {
     let list = steps.get(&store).map(Vec::as_slice).unwrap_or_default();
     let migrations = list.to_vec();
     let ran = run(&url, |database| {
-        Box::pin(async move { jadpo_runtime::migrate(database, &migrations).await })
+        Box::pin(async move {
+            let mut filled: Vec<Filled> = Vec::new();
+            let ran = jadpo_runtime::migrate_reporting(database, &migrations, &mut |progress| {
+                track(&mut filled, progress);
+                std::ops::ControlFlow::Continue(())
+            })
+            .await;
+            ran.map(|ran| (ran, filled))
+        })
     });
     match ran {
-        Ok(Ok(ran)) => {
-            let text = if ran.is_empty() {
-                format!("`{store}` is up to date")
-            } else {
-                format!(
-                    "Applied {} {} to `{store}`",
-                    ran.len(),
-                    if ran.len() == 1 {
-                        "migration"
-                    } else {
-                        "migrations"
-                    }
-                )
-            };
-            let rows = ran
-                .iter()
-                .map(|name| (name.clone(), "applied".to_string()))
-                .collect();
-            let screen = Screen::new().with(Block::Status {
-                outcome: Outcome::Success,
-                text,
-                rows,
-            });
-            Reply::screen(
-                screen,
-                Json::object([
-                    ("store", store.as_str().into()),
-                    ("applied", Json::array(ran.iter().map(String::as_str))),
-                ]),
-            )
-        }
+        Ok(Ok((ran, filled))) => applied(&store, &ran, &filled),
         Ok(Err(error)) => Reply::failed(migrate_failed(&store, error)),
         Err(error) => Reply::failed(migrate_failed(
             &store,
             jadpo_runtime::MigrateError::Store(error),
         )),
     }
+}
+
+/// A backfill `apply` filled in batches (chunk 5.6b), as it reports it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Filled {
+    migration: String,
+    field: String,
+    how: String,
+    /// The rows left when this run began it.
+    left: u64,
+    rows: u64,
+    batches: u64,
+    resumed: bool,
+}
+
+/// Follows a backfill's batches, and says how far they have got on the
+/// live line: `Filling Todo.priority  2000 of 5000 rows`.
+fn track(filled: &mut Vec<Filled>, progress: &jadpo_runtime::Progress<'_>) {
+    use jadpo_runtime::Progress;
+    match progress {
+        Progress::Filling {
+            migration,
+            field,
+            how,
+            left,
+            resumed,
+        } => {
+            filled.push(Filled {
+                migration: migration.to_string(),
+                field: field.to_string(),
+                how: how.to_string(),
+                left: *left,
+                rows: 0,
+                batches: 0,
+                resumed: *resumed,
+            });
+            crate::run::say(&format!("Filling {field}  0 of {}", rows(*left)));
+        }
+        Progress::Filled {
+            migration,
+            field,
+            rows: batch,
+        } => {
+            if let Some(found) = filled
+                .iter_mut()
+                .rev()
+                .find(|f| f.migration == *migration && f.field == *field)
+            {
+                found.rows += batch;
+                found.batches += 1;
+                crate::run::say(&format!(
+                    "Filling {field}  {} of {}",
+                    found.rows,
+                    rows(found.left.max(found.rows))
+                ));
+            }
+        }
+        Progress::Applied { .. } => crate::run::say("Applying migrations"),
+    }
+}
+
+/// `1 row`, `2500 rows`.
+fn rows(n: u64) -> String {
+    if n == 1 {
+        "1 row".to_string()
+    } else {
+        format!("{n} rows")
+    }
+}
+
+/// The screen for migrations applied: each by name, and under it each
+/// backfill it filled in batches.
+fn applied(store: &str, ran: &[String], filled: &[Filled]) -> Reply {
+    let text = if ran.is_empty() {
+        format!("`{store}` is up to date")
+    } else {
+        format!(
+            "Applied {} {} to `{store}`",
+            ran.len(),
+            if ran.len() == 1 {
+                "migration"
+            } else {
+                "migrations"
+            }
+        )
+    };
+    let mut lines = Vec::new();
+    for name in ran {
+        lines.push((name.clone(), "applied".to_string()));
+        for fill in filled.iter().filter(|f| &f.migration == name) {
+            let batches = if fill.batches == 1 {
+                "1 batch".to_string()
+            } else {
+                format!("{} batches", fill.batches)
+            };
+            let mut said = format!("{} filled in {batches} {}", rows(fill.rows), fill.how);
+            if fill.resumed {
+                said.push_str(", carrying on from an earlier run");
+            }
+            lines.push((format!("  {}", fill.field), said));
+        }
+    }
+    let screen = Screen::new().with(Block::Status {
+        outcome: Outcome::Success,
+        text,
+        rows: lines,
+    });
+    let backfills = filled.iter().map(|fill| {
+        Json::object([
+            ("migration", fill.migration.as_str().into()),
+            ("field", fill.field.as_str().into()),
+            ("how", fill.how.as_str().into()),
+            ("rows", Json::from(fill.rows as i64)),
+            ("batches", Json::from(fill.batches as i64)),
+            ("resumed", fill.resumed.into()),
+        ])
+    });
+    Reply::screen(
+        screen,
+        Json::object([
+            ("store", store.into()),
+            ("applied", Json::array(ran.iter().map(String::as_str))),
+            ("backfills", Json::array(backfills)),
+        ]),
+    )
 }
 
 /// Runs `work` against the database at `url`, on a runtime of its own.
@@ -1069,6 +1179,12 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
             },
             Decider::Human,
         ),
+        MigrateError::Stopped { name } => Diagnostic::new(
+            &rule::MIGRATION_APPLY_FAILED,
+            format!("Migrating `{store}` stopped during `{name}`"),
+        )
+        .reason("It stopped between two of its steps: every batch of its backfill that committed stays, the column stays optional until its last step, and the database records how far it got.")
+        .next_for("Run `jadpo migrate apply` again, which carries on where it stopped", Decider::Human),
         // pgvector 0.8.0 for an HNSW index's queries (area 21, chunk
         // 5.5v1b).
         MigrateError::ExtensionOutdated {
@@ -1117,7 +1233,7 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
                 &rule::MIGRATION_APPLY_FAILED,
                 format!("Migrating `{store}` failed"),
             )
-            .reason(format!("{why}. The migration that failed was rolled back; the ones before it stay applied."))
+            .reason(format!("{why}. The step that failed was rolled back; the migrations before it stay applied, as does every batch of a backfill that committed, and the next run carries on from there."))
             .next_for("Fix what stopped it, then run `jadpo migrate apply` again", Decider::Human)
         }
     }

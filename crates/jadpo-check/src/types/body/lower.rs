@@ -96,6 +96,20 @@ pub(super) fn lower(
             );
             body.block = vec![SiteId(id as u32)];
         }
+    } else if let Some(value) = ast::Expr::cast(syntax.clone()) {
+        // A computed backfill's body gives its value, as a `return` would
+        // (area 5, chunk 5.6b).
+        let id = lower.alloc();
+        let lowered = lower.expr(&value);
+        lower.fill(
+            id,
+            value.syntax(),
+            TypeRef::Builtin(Prim::Unit),
+            typed::Node::Stmt(TypedStmt::Return {
+                value: Some(lowered),
+            }),
+        );
+        body.block = vec![SiteId(id as u32)];
     } else {
         let (params, result, fails, block) = parts(syntax);
         for param in params.iter().flat_map(ast::ParamList::params) {

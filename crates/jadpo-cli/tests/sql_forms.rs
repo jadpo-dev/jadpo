@@ -31,7 +31,7 @@
 use std::collections::BTreeMap;
 
 use jadpo_runtime::{Database as _, SqlType, SqlValue};
-use jadpo_sql::form::{self, Arg, Held};
+use jadpo_sql::form::{self, Arg, Held, Operator};
 use jadpo_std::read::Column;
 use jadpo_std::{Builtin, Op, Rounding};
 use jadpo_value::Value;
@@ -497,6 +497,8 @@ struct Forms {
     store: jadpo_host_native::Postgres,
     tables: usize,
     checked: BTreeMap<Op, usize>,
+    /// How many inputs each operator was checked on (chunk 5.6b).
+    operators: BTreeMap<Operator, usize>,
     /// How many inputs the runtime stopped on, and the form with it.
     stopped: usize,
 }
@@ -510,6 +512,7 @@ impl Forms {
             store: jadpo_host_native::postgres(&url).expect("a store"),
             tables: 0,
             checked: BTreeMap::new(),
+            operators: BTreeMap::new(),
             stopped: 0,
         }
     }
@@ -518,6 +521,48 @@ impl Forms {
     /// with every case on which they disagree.
     fn check(&mut self, op: Op, out: Out, cases: Vec<Vec<In>>) {
         assert!(form::has_form(op), "{op:?} has no form");
+        let count = cases.len();
+        self.agree(
+            &format!("{op:?}"),
+            &|args| form::operation(op, args),
+            &|values| jadpo_value::run(op, values, None, &mut |_| None),
+            out,
+            cases,
+        );
+        *self.checked.entry(op).or_default() += count;
+    }
+
+    /// Runs operator `op` on each case in the runtime and as its form
+    /// (chunk 5.6b).
+    fn check_operator(
+        &mut self,
+        op: Operator,
+        run: &dyn Fn(&[Value]) -> Result<Value, jadpo_value::Fault>,
+        out: Out,
+        cases: Vec<Vec<In>>,
+    ) {
+        let count = cases.len();
+        self.agree(
+            &format!("{op:?}"),
+            &|args| form::operator(op, args).map(form::Form::Value),
+            run,
+            out,
+            cases,
+        );
+        *self.operators.entry(op).or_default() += count;
+    }
+
+    /// Runs `render`, a form written from its arguments, and `run`, what
+    /// the runtime does, on each case, and fails with every case on which
+    /// they disagree.
+    fn agree(
+        &mut self,
+        label: &str,
+        render: &dyn Fn(&[Arg<'_>]) -> Option<form::Form>,
+        run: &dyn Fn(&[Value]) -> Result<Value, jadpo_value::Fault>,
+        out: Out,
+        cases: Vec<Vec<In>>,
+    ) {
         let mut groups: BTreeMap<String, Vec<Vec<In>>> = BTreeMap::new();
         for case in cases {
             let key: Vec<String> = case.iter().map(In::key).collect();
@@ -525,11 +570,11 @@ impl Forms {
         }
         let mut wrong = Vec::new();
         for (_, cases) in groups {
-            wrong.extend(self.check_group(op, &out, &cases));
+            wrong.extend(self.check_group(label, render, run, &out, &cases));
         }
         assert!(
             wrong.is_empty(),
-            "{op:?}: the form and the runtime disagree on {} cases:\n{}",
+            "{label}: the form and the runtime disagree on {} cases:\n{}",
             wrong.len(),
             wrong
                 .iter()
@@ -540,7 +585,14 @@ impl Forms {
         );
     }
 
-    fn check_group(&mut self, op: Op, out: &Out, cases: &[Vec<In>]) -> Vec<String> {
+    fn check_group(
+        &mut self,
+        op: &str,
+        render: &dyn Fn(&[Arg<'_>]) -> Option<form::Form>,
+        run: &dyn Fn(&[Value]) -> Result<Value, jadpo_value::Fault>,
+        out: &Out,
+        cases: &[Vec<In>],
+    ) -> Vec<String> {
         self.tables += 1;
         let table = format!("f{}", self.tables);
         // The columns, and each argument as its form takes it.
@@ -574,8 +626,7 @@ impl Forms {
                 In::Absent => Arg::Absent,
             })
             .collect();
-        let written =
-            form::operation(op, &args).unwrap_or_else(|| panic!("{op:?} has no form for {args:?}"));
+        let written = render(&args).unwrap_or_else(|| panic!("{op} has no form for {args:?}"));
         let selected = match &written {
             form::Form::Value(sql) => sql.clone(),
             form::Form::Parts(parts) => parts.join(", "),
@@ -585,7 +636,7 @@ impl Forms {
             .iter()
             .map(|case| {
                 let values: Vec<Value> = case.iter().map(In::runtime).collect();
-                jadpo_value::run(op, &values, None, &mut |_| None)
+                run(&values)
             })
             .collect();
         // The cases the runtime gives a value for go in one table, read
@@ -635,7 +686,7 @@ impl Forms {
                             chunk.join(", ")
                         ))
                         .await
-                        .unwrap_or_else(|error| panic!("{op:?}: inserting ({error:?})"));
+                        .unwrap_or_else(|error| panic!("{op}: inserting ({error:?})"));
                 }
             }
             transaction.commit().await.expect("commits");
@@ -648,7 +699,7 @@ impl Forms {
                 let found = match found {
                     Ok(found) => found,
                     Err(error) => {
-                        wrong.push(format!("{op:?}: the form failed ({error:?}):\n{sql}"));
+                        wrong.push(format!("{op}: the form failed ({error:?}):\n{sql}"));
                         return;
                     }
                 };
@@ -688,7 +739,6 @@ impl Forms {
                 }
             }
         });
-        *self.checked.entry(op).or_default() += cases.len();
         self.stopped += stops.len();
         wrong
     }
@@ -1372,6 +1422,435 @@ fn addresses(forms: &mut Forms) {
     forms.check(Op::WebCidrContains, Out::Bound(SqlType::Bool), cases);
 }
 
+// --- operators and conditionals (chunk 5.6b) ------------------------------------
+
+fn boolean(value: bool) -> In {
+    In::Val(Value::Bool(value), BOOLEAN, Held::Builtin(Builtin::Bool))
+}
+
+fn instant(ms: i64) -> In {
+    In::Val(Value::Instant(ms), INSTANT, Held::Builtin(Builtin::Instant))
+}
+
+fn duration(ms: i64) -> In {
+    In::Val(
+        Value::Duration(ms),
+        BIGINT,
+        Held::Builtin(Builtin::Duration),
+    )
+}
+
+fn uuid(text: &str) -> In {
+    In::Val(Value::uuid(text), UUID, Held::Builtin(Builtin::Uuid))
+}
+
+/// An operator on two values, as the runtime runs it.
+type Binary = fn(&Value, &Value) -> Result<Value, jadpo_value::Fault>;
+
+fn truth(value: &Value) -> bool {
+    matches!(value, Value::Bool(true))
+}
+
+fn ordering(
+    wanted: fn(std::cmp::Ordering) -> bool,
+) -> impl Fn(&[Value]) -> Result<Value, jadpo_value::Fault> {
+    move |v: &[Value]| jadpo_value::ops::order(&v[0], &v[1]).map(|o| Value::Bool(wanted(o)))
+}
+
+/// Every operator with a form, on the operands each takes, and the
+/// conditionals, which must work out only the branch they take: a
+/// division by zero or an overflow in a branch not taken stops neither.
+fn operators(forms: &mut Forms) {
+    use jadpo_value::ops;
+    let whole = wholes(40);
+    let whole_pairs: Vec<Vec<In>> = pairs(&whole)
+        .into_iter()
+        .map(|(a, b)| vec![int(a), int(b)])
+        .collect();
+    let narrower: Vec<i64> = vec![
+        i64::from(i16::MIN),
+        i64::from(i16::MAX),
+        -1,
+        0,
+        1,
+        2,
+        -7,
+        i64::from(i32::MIN),
+        i64::from(i32::MAX),
+    ];
+    let mut wide_pairs = whole_pairs.clone();
+    wide_pairs.extend(
+        pairs(&narrower)
+            .into_iter()
+            .map(|(a, b)| vec![narrow(a), narrow(b)]),
+    );
+    let arithmetic: [(Operator, Binary); 5] = [
+        (Operator::Add, ops::add),
+        (Operator::Subtract, ops::subtract),
+        (Operator::Multiply, ops::multiply),
+        (Operator::Divide, ops::divide),
+        (Operator::Remainder, ops::remainder),
+    ];
+    for (op, run) in arithmetic {
+        forms.check_operator(
+            op,
+            &|v| run(&v[0], &v[1]),
+            Out::Bound(SqlType::Int8),
+            wide_pairs.clone(),
+        );
+    }
+    let mut ones: Vec<Vec<In>> = whole.iter().map(|n| vec![int(*n)]).collect();
+    ones.extend(narrower.iter().map(|n| vec![narrow(*n)]));
+    forms.check_operator(
+        Operator::Negate,
+        &|v| ops::negate(&v[0]),
+        Out::Bound(SqlType::Int8),
+        ones,
+    );
+    // Decimals: added and taken away at the larger scale, held to 38
+    // digits and to the runtime's 128 bits; compared by value.
+    let mut decimal = decimals(60);
+    decimal.extend(
+        [
+            "17014118346046923173168730371588410573",
+            "-17014118346046923173168730371588410573",
+            "-9999999999999999999999999999999999999.9",
+            "9999999999999999999999999999999999999.9",
+            "0.00000000000000000000000000000000000001",
+            "1.0000000000000000000000000000000000000",
+        ]
+        .iter()
+        .map(|d| d.to_string()),
+    );
+    let decimal_pairs: Vec<Vec<In>> = pairs(&decimal)
+        .into_iter()
+        .map(|(a, b)| vec![dec(&a), dec(&b)])
+        .collect();
+    let mut mixed: Vec<Vec<In>> = Vec::new();
+    for d in &decimal[..50] {
+        for n in &whole[..30] {
+            mixed.push(vec![dec(d), int(*n)]);
+            mixed.push(vec![int(*n), dec(d)]);
+        }
+    }
+    for (op, run) in [
+        (Operator::Add, ops::add as Binary),
+        (Operator::Subtract, ops::subtract),
+    ] {
+        let mut cases = decimal_pairs.clone();
+        cases.extend(mixed.clone());
+        forms.check_operator(
+            op,
+            &|v| run(&v[0], &v[1]),
+            Out::Bound(SqlType::Numeric),
+            cases,
+        );
+    }
+    forms.check_operator(
+        Operator::Negate,
+        &|v| ops::negate(&v[0]),
+        Out::Bound(SqlType::Numeric),
+        decimal.iter().map(|d| vec![dec(d)]).collect(),
+    );
+    // Comparisons, on every kind that is compared or ordered.
+    let mut compared = wide_pairs.clone();
+    compared.extend(decimal_pairs.iter().take(900).cloned());
+    compared.extend(mixed.clone());
+    let days = [
+        "0000-01-01",
+        "1969-12-31",
+        "1970-01-01",
+        "2024-02-29",
+        "2026-10-18",
+        "9999-12-31",
+    ];
+    compared.extend(
+        pairs(&days)
+            .into_iter()
+            .map(|(a, b)| vec![date(a), date(b)]),
+    );
+    let instants = [
+        -62_167_219_200_000,
+        -1,
+        0,
+        1,
+        999,
+        1_792_504_800_000,
+        253_402_300_799_999,
+    ];
+    compared.extend(
+        pairs(&instants)
+            .into_iter()
+            .map(|(a, b)| vec![instant(a), instant(b)]),
+    );
+    let durations = [i64::MIN, -1, 0, 1, 60_000, i64::MAX];
+    compared.extend(
+        pairs(&durations)
+            .into_iter()
+            .map(|(a, b)| vec![duration(a), duration(b)]),
+    );
+    for (op, wanted) in [
+        (
+            Operator::Less,
+            std::cmp::Ordering::is_lt as fn(std::cmp::Ordering) -> bool,
+        ),
+        (Operator::LessEqual, std::cmp::Ordering::is_le),
+        (Operator::Greater, std::cmp::Ordering::is_gt),
+        (Operator::GreaterEqual, std::cmp::Ordering::is_ge),
+    ] {
+        forms.check_operator(
+            op,
+            &ordering(wanted),
+            Out::Bound(SqlType::Bool),
+            compared.clone(),
+        );
+    }
+    let mut equal = compared.clone();
+    let text = texts();
+    equal.extend(
+        pairs(&text[..20])
+            .into_iter()
+            .map(|(a, b)| vec![self::text(&a), self::text(&b)]),
+    );
+    // Text that is canonically equivalent but not the same code points
+    // is not equal, whatever the database's collation.
+    equal.push(vec![self::text("café"), self::text("cafe\u{301}")]);
+    equal.push(vec![self::text("a"), self::text("A")]);
+    let ids = [
+        "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e",
+        "00000000-0000-0000-0000-000000000000",
+        "ffffffff-ffff-ffff-ffff-ffffffffffff",
+    ];
+    equal.extend(pairs(&ids).into_iter().map(|(a, b)| vec![uuid(a), uuid(b)]));
+    equal.extend(
+        pairs(&[true, false])
+            .into_iter()
+            .map(|(a, b)| vec![boolean(a), boolean(b)]),
+    );
+    forms.check_operator(
+        Operator::Equal,
+        &|v| Ok(Value::Bool(ops::equal(&v[0], &v[1]))),
+        Out::Bound(SqlType::Bool),
+        equal.clone(),
+    );
+    forms.check_operator(
+        Operator::NotEqual,
+        &|v| Ok(Value::Bool(!ops::equal(&v[0], &v[1]))),
+        Out::Bound(SqlType::Bool),
+        equal,
+    );
+    // Durations added and taken away, overflowing where an `Int` does.
+    let duration_pairs: Vec<Vec<In>> = pairs(&durations)
+        .into_iter()
+        .map(|(a, b)| vec![duration(a), duration(b)])
+        .collect();
+    for (op, run) in [
+        (Operator::Add, ops::add as Binary),
+        (Operator::Subtract, ops::subtract),
+    ] {
+        forms.check_operator(
+            op,
+            &|v| run(&v[0], &v[1]),
+            Out::Bound(SqlType::Int8),
+            duration_pairs.clone(),
+        );
+    }
+    // Text joined.
+    forms.check_operator(
+        Operator::Add,
+        &|v| ops::add(&v[0], &v[1]),
+        Out::Bound(SqlType::Text),
+        pairs(&text)
+            .into_iter()
+            .map(|(a, b)| vec![self::text(&a), self::text(&b)])
+            .collect(),
+    );
+    // Logic.
+    let truths: Vec<Vec<In>> = pairs(&[true, false])
+        .into_iter()
+        .map(|(a, b)| vec![boolean(a), boolean(b)])
+        .collect();
+    forms.check_operator(
+        Operator::And,
+        &|v| Ok(Value::Bool(truth(&v[0]) && truth(&v[1]))),
+        Out::Bound(SqlType::Bool),
+        truths.clone(),
+    );
+    forms.check_operator(
+        Operator::Or,
+        &|v| Ok(Value::Bool(truth(&v[0]) || truth(&v[1]))),
+        Out::Bound(SqlType::Bool),
+        truths,
+    );
+    forms.check_operator(
+        Operator::Not,
+        &|v| Ok(Value::Bool(!truth(&v[0]))),
+        Out::Bound(SqlType::Bool),
+        vec![vec![boolean(true)], vec![boolean(false)]],
+    );
+    conditionals(forms, &whole);
+}
+
+/// `and`, `or`, an `if` chain and a `match` work out only what the
+/// runtime works out: `y != 0 and x / y > 1`, `y == 0 or x / y > 1`,
+/// `if (y != 0) { return x / y } return 0`, and a `match` whose arms
+/// divide only where their pattern holds.
+fn conditionals(forms: &mut Forms, whole: &[i64]) {
+    use jadpo_value::ops;
+    let int = Held::Builtin(Builtin::Int);
+    let bool_held = Held::Builtin(Builtin::Bool);
+    let mut cases: Vec<Vec<In>> = Vec::new();
+    for (x, y) in pairs(&whole[..30]) {
+        cases.push(vec![self::int(x), self::int(y)]);
+    }
+    for y in [0, -1, 1] {
+        cases.push(vec![self::int(i64::MIN), self::int(y)]);
+    }
+    let divide = |args: &[Arg<'_>]| -> Option<String> {
+        form::operator(Operator::Divide, &[args[0], args[1]])
+    };
+    let nonzero = |args: &[Arg<'_>]| -> Option<String> {
+        let Arg::Value(y, _) = args[1] else {
+            return None;
+        };
+        form::operator(
+            Operator::NotEqual,
+            &[Arg::Value(y, int), Arg::Value("0", int)],
+        )
+    };
+    let quotient_over_one = |args: &[Arg<'_>]| -> Option<String> {
+        let q = divide(args)?;
+        form::operator(
+            Operator::Greater,
+            &[Arg::Value(&q, int), Arg::Value("1", int)],
+        )
+    };
+    let run_quotient = |v: &[Value]| ops::divide(&v[0], &v[1]);
+    let over_one = |v: &[Value]| -> Result<bool, jadpo_value::Fault> {
+        Ok(matches!(run_quotient(v)?, Value::Int(q) if q > 1))
+    };
+    forms.agree(
+        "and stops early",
+        &|args| {
+            let (p, q) = (nonzero(args)?, quotient_over_one(args)?);
+            form::operator(
+                Operator::And,
+                &[Arg::Value(&p, bool_held), Arg::Value(&q, bool_held)],
+            )
+            .map(form::Form::Value)
+        },
+        &|v| {
+            if matches!(v[1], Value::Int(0)) {
+                return Ok(Value::Bool(false));
+            }
+            over_one(v).map(Value::Bool)
+        },
+        Out::Bound(SqlType::Bool),
+        cases.clone(),
+    );
+    forms.agree(
+        "or stops early",
+        &|args| {
+            let Arg::Value(y, _) = args[1] else {
+                return None;
+            };
+            let p = form::operator(Operator::Equal, &[Arg::Value(y, int), Arg::Value("0", int)])?;
+            let q = quotient_over_one(args)?;
+            form::operator(
+                Operator::Or,
+                &[Arg::Value(&p, bool_held), Arg::Value(&q, bool_held)],
+            )
+            .map(form::Form::Value)
+        },
+        &|v| {
+            if matches!(v[1], Value::Int(0)) {
+                return Ok(Value::Bool(true));
+            }
+            over_one(v).map(Value::Bool)
+        },
+        Out::Bound(SqlType::Bool),
+        cases.clone(),
+    );
+    forms.agree(
+        "an if chain takes one branch",
+        &|args| {
+            Some(form::Form::Value(form::case(
+                &[(nonzero(args)?, divide(args)?)],
+                "0::bigint",
+            )))
+        },
+        &|v| {
+            if matches!(v[1], Value::Int(0)) {
+                return Ok(Value::Int(0));
+            }
+            run_quotient(v)
+        },
+        Out::Bound(SqlType::Int8),
+        cases.clone(),
+    );
+    // A match on a variant held as text: `Size.small` divides by the
+    // whole number, `Size.large` multiplies, anything else is 0.
+    let sizes = ["small", "large", "medium"];
+    let text_held = Held::Builtin(Builtin::Text);
+    let mut matched: Vec<Vec<In>> = Vec::new();
+    for size in sizes {
+        for (x, y) in pairs(&whole[..12]) {
+            matched.push(vec![self::text(size), self::int(x), self::int(y)]);
+        }
+        matched.push(vec![self::text(size), self::int(i64::MIN), self::int(-1)]);
+        matched.push(vec![self::text(size), self::int(i64::MAX), self::int(2)]);
+    }
+    forms.agree(
+        "a match takes one arm",
+        &|args| {
+            let Arg::Value(size, _) = args[0] else {
+                return None;
+            };
+            let is = |variant: &str| {
+                form::operator(
+                    Operator::Equal,
+                    &[
+                        Arg::Value(size, text_held),
+                        Arg::Value(&jadpo_sql::text_literal(variant), text_held),
+                    ],
+                )
+            };
+            let small = is("small")?;
+            let large = is("large")?;
+            let divided = form::operator(Operator::Divide, &[args[1], args[2]])?;
+            let multiplied = form::operator(Operator::Multiply, &[args[1], args[2]])?;
+            Some(form::Form::Value(form::case(
+                &[(small, divided), (large, multiplied)],
+                "0::bigint",
+            )))
+        },
+        &|v| match &v[0] {
+            Value::Text(size) if &**size == "small" => ops::divide(&v[1], &v[2]),
+            Value::Text(size) if &**size == "large" => ops::multiply(&v[1], &v[2]),
+            _ => Ok(Value::Int(0)),
+        },
+        Out::Bound(SqlType::Int8),
+        matched,
+    );
+    // `x == none` and `x != none` on a value that may be `none`.
+    let mut maybe: Vec<Vec<In>> = whole[..10].iter().map(|n| vec![self::int(*n)]).collect();
+    maybe.push(vec![In::Val(Value::None, BIGINT, int)]);
+    for negated in [false, true] {
+        forms.agree(
+            if negated { "!= none" } else { "== none" },
+            &|args| {
+                let Arg::Value(x, _) = args[0] else {
+                    return None;
+                };
+                Some(form::Form::Value(form::none_check(x, negated)))
+            },
+            &|v| Ok(Value::Bool(ops::equal(&v[0], &Value::None) != negated)),
+            Out::Bound(SqlType::Bool),
+            maybe.clone(),
+        );
+    }
+}
+
 #[test]
 fn every_sql_form_gives_what_the_runtime_gives() {
     if skipped() {
@@ -1386,6 +1865,7 @@ fn every_sql_form_gives_what_the_runtime_gives() {
     periods(&mut forms);
     calendar_parts(&mut forms);
     addresses(&mut forms);
+    operators(&mut forms);
     // Every operation with a form was checked.
     let missing: Vec<Op> = jadpo_std::OPERATIONS
         .iter()
@@ -1397,10 +1877,34 @@ fn every_sql_form_gives_what_the_runtime_gives() {
         Vec::<Op>::new(),
         "operations with a form not checked"
     );
-    let total: usize = forms.checked.values().sum();
+    // Every operator with a form was checked (chunk 5.6b).
+    let unchecked: Vec<Operator> = [
+        Operator::And,
+        Operator::Or,
+        Operator::Not,
+        Operator::Negate,
+        Operator::Equal,
+        Operator::NotEqual,
+        Operator::Less,
+        Operator::LessEqual,
+        Operator::Greater,
+        Operator::GreaterEqual,
+        Operator::Add,
+        Operator::Subtract,
+        Operator::Multiply,
+        Operator::Divide,
+        Operator::Remainder,
+    ]
+    .into_iter()
+    .filter(|op| !forms.operators.contains_key(op))
+    .collect();
+    assert_eq!(unchecked, Vec::<Operator>::new(), "operators not checked");
+    let total: usize =
+        forms.checked.values().sum::<usize>() + forms.operators.values().sum::<usize>();
     println!(
-        "{} operations' SQL forms agree with the runtime on {total} inputs, {} of which stop both",
+        "{} operations' and {} operators' SQL forms agree with the runtime on {total} inputs, {} of which stop both",
         forms.checked.len(),
+        forms.operators.len(),
         forms.stopped
     );
     assert!(

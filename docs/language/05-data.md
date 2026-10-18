@@ -668,7 +668,8 @@ migration {
   new` says so.
 - **Backfills can be worked out** from each row's own fields (Richard,
   2026-10-15), for a new field that reshapes data the entity already holds.
-  See "Computed backfills" below; not built yet.
+  See "Computed backfills" below; built in chunk 5.6b where every
+  operation has a SQL form, and in Jadpo from chunk 5.6b2.
 - **Forgetting is caught at once**: `jadpo check` fails while the entities
   and the latest snapshot disagree, naming what changed and the command to
   run, so the editor, the build and CI all stop. Loose files, with no
@@ -688,22 +689,58 @@ A backfill can be an expression over each row's own stored fields, so a
 migration can reshape data rather than only fill it with one value
 (Richard, 2026-10-15):
 
-```jadpo fragment
+```jadpo check project=computed-backfill file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=computed-backfill file=domains/planning/entities/todo.jadpo hidden migrate=initial
+entity Todo {
+    id: Uuid
+    legacy_flag: Bool
+}
+```
+
+```jadpo check project=computed-backfill file=domains/planning/types/priority.jadpo hidden
+type Priority = Enum {
+    low
+    normal
+    high
+}
+```
+
+```jadpo check project=computed-backfill file=domains/planning/entities/todo.jadpo hidden migrate=priority_from_flag
+use planning/types { Priority }
+
+entity Todo {
+    id: Uuid
+    priority: Priority
+}
+```
+
+```jadpo check project=computed-backfill file=domains/planning/types/legacy_flag.jadpo hidden
+type LegacyFlag = Bool {}
+```
+
+```jadpo check project=computed-backfill file=domains/planning/libraries/priorities.jadpo
 // domains/planning/libraries/priorities.jadpo
+use planning/types { LegacyFlag, Priority }
+
 library priorities {
-    function from_flag(legacy_flag: Bool) -> Priority {
+    function from_flag(legacy_flag: LegacyFlag) -> Priority {
         if (legacy_flag) {
             return Priority.high
         }
         return Priority.normal
     }
 }
+```
 
-// database/migrations/20261101T0900_priority_from_flag/changes.jadpo
+```jadpo check project=computed-backfill file=database/migrations/20261020T1401_priority_from_flag/changes.jadpo migrate=finish
+// changes.jadpo
 /// Replaces the legacy flag with a priority worked out from it.
 migration {
     Todo.priority: {
-        backfill: priorities.from_flag(Todo.legacy_flag)
+        backfill: priorities.from_flag(LegacyFlag(Todo.legacy_flag))
     }
     Todo.legacy_flag: FieldChange.retired
 }
@@ -716,7 +753,10 @@ migration {
   query, another entity or `clock.now`. A constant is a `constant`
   declaration (area 3, decided 2026-10-16, built in chunk 5.3e),
   read through its library (`priorities.default_priority`). It is typed against the field it
-  fills, like any value.
+  fills, like any value. A field this migration retires is read as the
+  built-in type its column holds, since its declared type goes with it, so
+  `LegacyFlag(Todo.legacy_flag)` gives the function the named type it
+  takes (chosen in chunk 5.6b).
 - The migration adds the column as optional and fills existing rows in
   batches, each in its own transaction, so a large table is never locked
   for the whole backfill. A last short transaction fills rows that servers
@@ -728,11 +768,26 @@ migration {
 - Freeform SQL in migrations stays out: a backfill is checked Jadpo, so a
   migration can't write a value its field's rules forbid.
 
+Built in chunk 5.6b: the migration's SQL adds `priority` as optional,
+then a line saying how the backfill runs (`-- backfill Todo.priority: by
+UPDATE, 1000 rows a batch, each batch its own transaction`), a statement
+counting the rows left and one batch, whose `UPDATE` sets `"priority" =
+(CASE WHEN "todo"."legacy_flag" THEN 'high' ELSE 'normal' END)`: the
+function written in place, its `if` as `CASE`. Its last step locks the
+table against writes, fills the rows still without a value and makes the
+column required. `jadpo migrate apply` runs each batch in its own
+transaction and says how many rows each backfill filled; a run stopped
+anywhere leaves the column consistent and the next carries on from the
+last batch that committed. What the page left open is "Chosen in chunk
+5.6b", under "Review". A backfill with an operation that has no SQL form
+is refused as not built yet until chunk 5.6b2 works it out in Jadpo.
+
 The SQL forms a batch's `UPDATE` uses are built (chunk 5.6): each
 standard operation's, tested against the runtime on live PostgreSQL, and
 what that chunk chose for them (a whole number always `bigint`, a
 decimal's places kept, a defect failing the statement) is area 19's
-"Chosen in chunk 5.6". The backfills themselves come with chunk 5.6b.
+"Chosen in chunk 5.6". The operators' and conditionals' forms are chunk
+5.6b's, tested the same way.
 
 A migration's `postgres.sql` holds a section per store, each opened by a
 `-- store: <name>` line, and names every table, column, constraint and index
@@ -1967,6 +2022,115 @@ error: Migration `20261020T1401_add_stars` doesn't hold its decisions yet
 check failed: 1 error, 4 files
 ```
 
+### `migration.backfill_can_fail`
+
+A title can be empty or longer than five characters, so its length can
+break `Rank`'s `min` or `max`, and nothing says what such a record's rank
+would be:
+
+```jadpo check project=e-backfill-can-fail file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-backfill-can-fail file=domains/planning/entities/todo.jadpo hidden migrate=initial
+entity Todo {
+    id: Uuid
+    title: Text
+}
+```
+
+```jadpo check project=e-backfill-can-fail file=domains/planning/types/rank.jadpo hidden
+type Rank = Int {
+    min: 1
+    max: 5
+}
+```
+
+```jadpo check project=e-backfill-can-fail file=domains/planning/entities/todo.jadpo hidden migrate=add_rank
+use planning/types { Rank }
+
+entity Todo {
+    id: Uuid
+    title: Text
+    rank: Rank
+}
+```
+
+```jadpo check project=e-backfill-can-fail file=database/migrations/20261020T1401_add_rank/changes.jadpo expect=migration.backfill_can_fail
+migration {
+    Todo.rank: {
+        backfill: Rank(text.length(Todo.title))
+    }
+}
+```
+
+```text output
+error: The backfill for `Todo.rank` can fail
+ --> database/migrations/20261020T1401_add_rank/changes.jadpo:3:19
+  |
+3 |         backfill: Rank(text.length(Todo.title))
+  |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ can break `Rank`'s `min` and `max`
+  reason: A backfill gives every `Todo` record already stored a value, and a record whose value failed would have none, so nothing in a backfill may fail.
+  next: Work the value out with operations that can't fail, such as `integer.min` and `integer.max` to keep a number in its range (agent)
+  rule: migration.backfill_can_fail
+  help: docs/language/05-data.html#migration-backfill-can-fail
+
+check failed: 1 error, 4 files
+```
+
+Kept in its range with `integer.min` and `integer.max`, the construction
+can't fail, and the backfill runs.
+
+### `migration.backfill_outside_row`
+
+A backfill reads only the record it fills:
+
+```jadpo check project=e-backfill-outside-row file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-backfill-outside-row file=domains/notes/entities/note.jadpo hidden
+entity Note {
+    id: Uuid
+    starred: Bool
+}
+```
+
+```jadpo check project=e-backfill-outside-row file=domains/notes/entities/draft.jadpo hidden migrate=initial
+entity Draft {
+    id: Uuid
+}
+```
+
+```jadpo check project=e-backfill-outside-row file=domains/notes/entities/draft.jadpo hidden migrate=add_starred
+entity Draft {
+    id: Uuid
+    starred: Bool
+}
+```
+
+```jadpo check project=e-backfill-outside-row file=database/migrations/20261020T1401_add_starred/changes.jadpo expect=migration.backfill_outside_row
+migration {
+    Draft.starred: {
+        backfill: Note.starred
+    }
+}
+```
+
+```text output
+error: The backfill for `Draft.starred` can't read `Note.starred`
+ --> database/migrations/20261020T1401_add_starred/changes.jadpo:3:19
+  |
+3 |         backfill: Note.starred
+  |                   ^^^^^^^^^^^^ another entity's field
+  reason: A backfill works each `Draft` record's value out from that record's own fields, constants and pure functions, so it gives the same value whenever and wherever the migration runs.
+  next: Work the value out from `Draft`'s own fields, or a constant (agent)
+  rule: migration.backfill_outside_row
+  help: docs/language/05-data.html#migration-backfill-outside-row
+
+check failed: 1 error, 4 files
+```
+
 ## Review
 
 ### Status
@@ -2002,6 +2166,16 @@ delete and transition at one place in the plan; queries' indexes are
 partial; and purge is one statement per batch, run by the runtime's purge
 entry point, tested against live PostgreSQL with cascades, restricted
 references and batches (`crates/jadpo-cli/tests/lifecycle.rs`).
+
+Built in chunk 5.6b: **computed backfills** whose every operation has a
+SQL form, checked as a body of their own and written as batches of one
+`UPDATE` each, then made required; a run stopped between batches leaves
+the column consistent and the next carries on, tested against live
+PostgreSQL (`crates/jadpo-cli/tests/backfills.rs`), with the operators'
+and conditionals' forms tested against the runtime beside the standard
+operations' (`crates/jadpo-cli/tests/sql_forms.rs`). A backfill with an
+operation that has no SQL form, and one for a field that allows less,
+are refused as not built yet; chunk 5.6b2 works the first out in Jadpo.
 
 Not built yet, and said so where it is used (`toolchain.not_built_yet`):
 
@@ -2053,6 +2227,72 @@ error: Storing a `List<Tag>` field isn't built yet
 
 check failed: 1 error, 1 file
 ```
+
+### Chosen in chunk 5.6b
+
+What the page left open about computed backfills, each the most
+conservative reading:
+
+- **Split.** Backfills whose every operation has a SQL form are this
+  chunk; those worked out in Jadpo by `jadpo migrate apply` are 5.6b2.
+- **What is computed.** A `backfill:` that is a literal or an enum's
+  variant (`Priority.normal`) keeps chunk 3.1's one statement in the
+  migration's transaction; any other value is computed.
+- **Batches of 1000 rows**, each its own transaction at read committed,
+  in key order from where the last ended (`"id" > $1 ORDER BY "id" LIMIT
+  1000`), filling only the rows still without a value, so a batch run
+  twice fills nothing twice.
+- **Locking.** Every step of such a migration takes `jadpo_migrations`'
+  lock first, as every migration does; a batch takes only its rows'
+  locks; only the last step locks the table, against writes and never
+  reads (`SHARE ROW EXCLUSIVE`), to fill the rows servers still on the
+  old build wrote meanwhile and make the column required. A batch that
+  meets a concurrent change (a deadlock with a request writing the same
+  rows) is tried again, up to three times, then the run stops.
+- **The resume marker** is a row in `jadpo_migration_steps` (the
+  migration's name and digest, its next step and the key the last batch
+  ended at), written in the transaction of the step it records, so a run
+  stopped anywhere, killed included, carries on from the step after the
+  last one committed. The table is the runtime's own, made the first time
+  such a migration runs; a migration's row goes in the transaction that
+  records it as applied; one whose digest changed since is refused as
+  changed.
+- **Failing rows.** The page doesn't say what a row whose value fails
+  gets, so a backfill that can fail is refused
+  (`migration.backfill_can_fail`): a call or construction nothing handles,
+  or an `attempt` passing a failure on. A defect still stops the
+  statement, as chunk 5.6 chose: the batch rolls back, the column stays
+  consistent, and the run stops at that row.
+- **Progress.** On a terminal, the live line says how far each backfill
+  has got (`Filling Todo.priority  2000 of 5000 rows`); in plain output
+  and CI nothing is printed while it runs, rather than a line per batch.
+  The result lists each backfill under its migration with the rows it
+  filled, its batches and how (`2500 rows filled in 3 batches by
+  UPDATE`), and whether it carried on from an earlier run; `--json` gives
+  them as `backfills`.
+- **What it may read.** Its row's stored fields, constants and pure
+  functions; another entity's field and a setting are
+  `migration.backfill_outside_row`, and the clock, the random generator,
+  queries and actions are refused as in any function. A field this
+  migration retires is read as the built-in type its column holds
+  (`boolean`, `text`, `uuid`, a whole number, `numeric`, `timestamptz`,
+  `date`), since its declared type goes with it; a retired enum or
+  structured field isn't offered.
+- **Its type** is the field's declared type, as a value set on the field
+  is (area 6); a field with rules of its own takes a construction, which
+  is refused unless it is proven safe. A decimal is stored at its field's
+  places, rounded half to even, as the runtime stores one.
+- **A field that allows less** is still refitted only with a value
+  written out; a computed one is not built yet.
+- **Only the latest migration's backfills are checked,** since `jadpo
+  check` reads only its decisions; what an earlier one calls ran with
+  the code it was written against.
+- **Functions are written in place,** up to 16 calls deep, their
+  parameters replaced by their arguments' SQL and their `var`s by their
+  values; an `if` chain whose branches return, and a `match` on a plain
+  variant, `true` and `false`, a literal, `none` or `some`, become `CASE`,
+  the last arm its `else`. A `var mut`, a loop or a statement that only
+  runs for its effect has no form.
 
 ### Carried to later areas
 
@@ -2211,5 +2451,5 @@ Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says ot
 | Deleting a record with a lifecycle | Chosen in chunk 3.4: `delete` runs the `delete` transition; with none, code can't delete the record, nor remove one whose delete would cascade to an entity with a lifecycle; only purge removes them | 2026-10-15 |
 | Purge's period and batches | Chosen in chunk 3.4: `after:` takes a duration in place, or a `Duration` setting (chunk 5.1; `jadpo_runtime::purge_after` is given its value); a batch deletes at most 500 hidden records, oldest `since:` first, each batch its own transaction; a record a `restricted` reference holds stays without stopping the rest; the runtime's entry point runs it, area 12's hourly schedule calls it (chunk 6.2) | 2026-10-15 |
 | Partial indexes | Chosen in chunk 3.4: the indexes an entity's queries need hold only the records `visible:` lets through, unless it reads `clock.now`; a reference's own index stays beside a partial one | 2026-10-15 |
-| Computed backfills | `backfill:` may be an expression over each row's own stored fields (`Todo.legacy_flag`), constants and pure functions, including a field this migration retires; filled in batches, one `UPDATE` each where the expression has a SQL form and by `jadpo migrate apply` otherwise, then made required; no freeform SQL (Richard, from an outside review) | 2026-10-15 |
+| Computed backfills | `backfill:` may be an expression over each row's own stored fields (`Todo.legacy_flag`), constants and pure functions, including a field this migration retires; filled in batches, one `UPDATE` each where the expression has a SQL form and by `jadpo migrate apply` otherwise, then made required; no freeform SQL (Richard, from an outside review). Built in chunk 5.6b where every operation has a SQL form; batches, locking, the resume marker, failing rows and progress are "Chosen in chunk 5.6b" | 2026-10-15 |
 | Redis entity updates | Updates by `id` include counters, done as one Redis `increment`; no lifecycles on a Redis entity, expiry taking their place (decided for Richard) | 2026-10-16 |
