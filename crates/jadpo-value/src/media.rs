@@ -117,40 +117,73 @@ pub fn read_numbers(entry: &StandardType, raw: &str, separator: &str) -> Option<
 /// An object of an enum and a text part as its canonical text writes it:
 /// the enum's code, a space, the text (`TextForm::CodeThenText`).
 pub fn code_then_text(entry: &StandardType, record: &Record) -> Result<String, Fault> {
-    let [(enum_part, _), (text_part, _)] = fields(entry)? else {
+    joined_text(entry, record, " ")
+}
+
+/// An object of two parts as its canonical text writes them, joined by
+/// `separator` (`TextForm::Joined`, chunk 5.5m2): the first an enum's code
+/// or its text, the second its text.
+pub fn joined_text(
+    entry: &StandardType,
+    record: &Record,
+    separator: &str,
+) -> Result<String, Fault> {
+    let [(first, _), (second, _)] = fields(entry)? else {
         return Err(Fault::Shape);
     };
-    let (Some(Value::Variant(variant)), Some(Value::Text(text))) =
-        (record.get(enum_part), record.get(text_part))
-    else {
+    let head = match record.get(first) {
+        Some(Value::Variant(variant)) => standard_type(&variant.ty)
+            .and_then(StandardType::codes)
+            .and_then(|codes| codes.get(variant.ordinal as usize))
+            .map(|(_, code)| (*code).to_string())
+            .ok_or(Fault::Shape)?,
+        Some(Value::Text(text)) => text.to_string(),
+        _ => return Err(Fault::Shape),
+    };
+    let Some(Value::Text(tail)) = record.get(second) else {
         return Err(Fault::Shape);
     };
-    let code = standard_type(&variant.ty)
-        .and_then(StandardType::codes)
-        .and_then(|codes| codes.get(variant.ordinal as usize))
-        .map(|(_, code)| *code)
-        .ok_or(Fault::Shape)?;
-    Ok(format!("{code} {text}"))
+    Ok(format!("{head}{separator}{tail}"))
 }
 
 /// An object of an enum and a text part read from its canonical text: the
 /// enum's code, ignoring case, one space, and text its part's pattern and
 /// the rules across the parts take.
 pub fn read_code_then_text(entry: &StandardType, raw: &str) -> Option<Value> {
-    let [(enum_part, Part::Standard(list)), (text_part, text)] = fields(entry).ok()? else {
+    read_joined(entry, raw, " ")
+}
+
+/// An object of two parts read from its canonical text, split at the
+/// first `separator` (`TextForm::Joined`, chunk 5.5m2): the first an
+/// enum's code, ignoring case, text a standard type held as text accepts,
+/// or text its part's pattern takes; the second text its part's pattern
+/// takes; the rules across the parts held.
+pub fn read_joined(entry: &StandardType, raw: &str, separator: &str) -> Option<Value> {
+    let [(first, head_part), (second, tail_part)] = fields(entry).ok()? else {
         return None;
     };
-    let (code, rest) = raw.split_once(' ')?;
-    let list = standard_type(list)?;
-    let variant = crate::standard::variant_of(list, code)?;
-    if text.rules().check_text(rest).is_err() {
+    let (head, tail) = raw.split_once(separator)?;
+    let head = match head_part {
+        Part::Standard(other) => {
+            let other = standard_type(other)?;
+            match other.codes() {
+                Some(_) => crate::standard::variant_of(other, head)?,
+                None => crate::standard::read(other, head).ok()?,
+            }
+        }
+        part => {
+            part.rules().check_text(head).ok()?;
+            Value::text(head)
+        }
+    };
+    if tail_part.rules().check_text(tail).is_err() {
         return None;
     }
     let record = Value::record(
         entry.name,
         vec![
-            ((*enum_part).into(), variant),
-            ((*text_part).into(), Value::text(rest)),
+            ((*first).into(), head),
+            ((*second).into(), Value::text(tail)),
         ],
     );
     match &record {

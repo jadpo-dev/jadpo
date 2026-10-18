@@ -29,22 +29,67 @@ use crate::Fault;
 /// `amount`, held in `unit`'s kind's base unit, in `unit`, for people in
 /// the locale tagged `tag`.
 pub fn format(amount: i128, unit: &Unit, tag: &str) -> Result<String, Fault> {
+    format_at(amount, unit, None, tag)
+}
+
+/// The same, rounded half to even to `places` places where given, with no
+/// trailing zeros (chunk 5.5m2): a heart rate in whole beats a minute.
+pub fn format_at(
+    amount: i128,
+    unit: &Unit,
+    places: Option<u32>,
+    tag: &str,
+) -> Result<String, Fault> {
+    let (number, fixed) = number_in(amount, unit, places, tag)?;
+    with_unit(&number, &fixed, unit, tag)
+}
+
+/// `amount`'s number in `unit`, as the locale writes numbers, with the
+/// decimal it is: exact as [`shown_in`] gives it, or rounded half to even
+/// to `places` places where given, with no trailing zeros.
+pub fn number_in(
+    amount: i128,
+    unit: &Unit,
+    places: Option<u32>,
+    tag: &str,
+) -> Result<(String, fixed_decimal::Decimal), Fault> {
     let locale = locale_of(tag)?;
-    let (mantissa, places) = shown_in(amount, unit).ok_or(Fault::DecimalOverflow)?;
-    let written = jadpo_std::Num {
-        mantissa,
-        scale: places,
+    let (mut mantissa, mut scale) = match places {
+        None => shown_in(amount, unit).ok_or(Fault::DecimalOverflow)?,
+        Some(places) => (
+            jadpo_std::quantity::from_base(amount, unit, places, jadpo_std::Rounding::HalfEven)
+                .ok_or(Fault::DecimalOverflow)?,
+            places,
+        ),
+    };
+    while scale > 0 && mantissa % 10 == 0 {
+        mantissa /= 10;
+        scale -= 1;
     }
-    .to_string();
+    let written = jadpo_std::Num { mantissa, scale }.to_string();
     let fixed: fixed_decimal::Decimal = written.parse().map_err(|_| Fault::Shape)?;
     let numbers = DecimalFormatter::try_new((&locale).into(), Default::default())
         .map_err(|_| Fault::Shape)?;
     let number = numbers.format(&fixed).write_to_string().into_owned();
+    Ok((number, fixed))
+}
+
+/// `number`, the locale's text of the decimal `fixed` or of several joined,
+/// with `unit` placed as the locale places it: CLDR's short pattern where
+/// ICU4X has one, chosen by `fixed`'s plural, else a space and the unit's
+/// symbol.
+pub fn with_unit(
+    number: &str,
+    fixed: &fixed_decimal::Decimal,
+    unit: &Unit,
+    tag: &str,
+) -> Result<String, Fault> {
+    let locale = locale_of(tag)?;
     if let (Some(category), Some(id)) = (unit.kind.cldr_category(), unit.cldr)
         && let Some(names) = names(category, id, &locale)?
     {
         let rules = PluralRules::try_new_cardinal((&locale).into()).map_err(|_| Fault::Shape)?;
-        let pattern = names.get().get((&fixed).into(), &rules);
+        let pattern = names.get().get(fixed.into(), &rules);
         return Ok(pattern
             .interpolate((number,))
             .write_to_string()

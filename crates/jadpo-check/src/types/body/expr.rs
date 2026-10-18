@@ -1084,6 +1084,7 @@ impl Body<'_> {
                 self.part_rules_hold(&name, record);
                 self.event_rules_hold(&name, record);
                 self.media_rules_hold(&name, record);
+                self.order_rules_hold(&name, record);
                 self.object_built(record);
                 Ty::Opaque(name, Vec::new())
             }

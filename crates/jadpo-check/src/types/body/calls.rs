@@ -922,14 +922,19 @@ impl Body<'_> {
                     // `text.format` is told which standard type held as
                     // text its value is, or which named collection (chunk
                     // 5.5o2), which the runtime can't see.
+                    // So is a type built on a quantity shown in units of
+                    // its own (a heart rate, chunk 5.5m2).
                     if let Some(entry) = entry
-                        && matches!(
+                        && (matches!(
                             entry.holds,
                             jadpo_std::standard::Holds::Text { .. }
                                 | jadpo_std::standard::Holds::Whole { .. }
                                 | jadpo_std::standard::Holds::List(_)
                                 | jadpo_std::standard::Holds::Map(..)
-                        )
+                        ) || matches!(
+                            entry.format.key,
+                            jadpo_std::standard::FormatKey::UnitsIn(_)
+                        ))
                     {
                         self.facts.shown.insert(node_key(call.syntax()), entry.name);
                     }
@@ -1109,9 +1114,10 @@ impl Body<'_> {
             self.form_option(table, &args, &slots, entry, target);
             self.country_option(table, &args, &slots, entry, target);
         }
-        // `text.format`'s `unit:` is a unit of its value's kind (area 19).
+        // `text.format`'s `unit:` is a unit of its value's kind (area 19),
+        // or of the kind its measures are shown in (chunk 5.5m2).
         if let Some((_, Some(entry))) = &contract
-            && let jadpo_std::standard::Holds::Builtin(Prim::Quantity(kind)) = entry.holds
+            && let Some(kind) = entry.unit_kind()
         {
             quantity = Some(kind);
         }

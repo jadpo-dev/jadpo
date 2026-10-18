@@ -856,10 +856,10 @@ reference only).
   ISO 6346's, ISO 7064's, Verhoeff's, an MPAN's and, for North American
   manufacturers, a VIN's; IATA's and ICAO's codes and ICD-10 are checked
   by pattern only, since their lists can't be shipped, and a list CLDR
-  doesn't name is shown by its authority's English wording. The ISBN-10
-  conversion is 5.5m2's. What the pages left open is area 19's "Chosen in
-  chunk 5.5m".
-- [ ] **5.5m2 Commerce, health, travel and the rest: records and
+  doesn't name is shown by its authority's English wording; the ISBN-10
+  conversion came with 5.5m2. What the pages left open is area 19's
+  "Chosen in chunk 5.5m".
+- [x] **5.5m2 Commerce, health, travel and the rest: records and
   measures** `opus · high` (area 19, "Groups with the baseline only",
   split from 5.5m): the other 16, each a record of other types or a
   measure: `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`,
@@ -870,7 +870,16 @@ reference only).
   conversion, `text.parse(raw, as: Isbn, form: CodeForm.isbn10)`, reading
   only, consistent with `Country`'s `form:` (decided by the lead session,
   2026-10-18). Done when every type passes the harness and an ISBN-10
-  reads as its `Isbn`, a bad check digit `malformed`.
+  reads as its `Isbn`, a bad check digit `malformed`. Built, with the
+  measures on `Frequency`, `Pressure` and `Concentration` and shown in
+  the clinician's units, from four new units with no literal suffix
+  (millimetres of mercury, beats a minute, milligrams a decilitre and
+  millimoles of glucose a litre, by CLDR's conversions); `Dose` by mass or
+  volume, `DosageInstruction` as FHIR `Dosage`'s commonest form, the size
+  systems the UK's, Europe's and the US's, and `ClothingSizeSystem`,
+  `ShoeSizeSystem` and `RouteOfAdministration` beside the 16, for the lead
+  session to accept. What the pages left open is area 19's "Chosen in
+  chunk 5.5m2".
 - [x] **5.5n Web and network** `opus · high` (area 19, "Web and
   software"): the 20 new web and network types (`UrlPath`, `RelativeUrl`,
   `Slug`, `DomainName`, `Hostname`, `WebOrigin`, `HttpMethod`,

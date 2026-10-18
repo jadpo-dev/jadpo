@@ -570,6 +570,13 @@ impl Body<'_> {
         if entry.and_then(|entry| entry.form_codes(form)).is_some() {
             return;
         }
+        // A form read but never written: an `Isbn` from an ISBN-10 (chunk
+        // 5.5m2).
+        let read_only =
+            entry.is_some_and(|entry| jadpo_std::standard::reads_form(entry.name, form));
+        if read_only && table.op == Op::TextParse {
+            return;
+        }
         let span = arg
             .name()
             .map_or_else(|| self.span(arg), |name| self.span(&name));
@@ -583,7 +590,12 @@ impl Body<'_> {
                     .collect()
             })
             .unwrap_or_default();
-        let others = if has.is_empty() {
+        let others = if read_only {
+            format!(
+                "`text.parse` reads one from `{}`, but its canonical text is the only one written",
+                form.name()
+            )
+        } else if has.is_empty() {
             "it is written in its own code alone".to_string()
         } else {
             format!("it has {}", crate::and_list(&has))
