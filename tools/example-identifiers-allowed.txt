@@ -376,6 +376,13 @@ issued_key
 # API record writes as an `output` section of its own.
 exchanged_token
 
+# What the generated passkey routes answer with (area 8, "Passkeys"), which
+# the API record writes as an `output` section of its own.
+passkey_view
+# WebAuthn's signature counter, as `webauthn-rs` names it in its stored
+# `Credential` (area 8, chunk 5.5z): a field of another crate's type.
+counter
+
 # Words the language defines for time (area 10): `temporal.add_days`'s
 # `days`, `Dst.later`, the `Weekday` variants, and an `InstantRange`, which
 # is also ordinary programming vocabulary (rowan's `text_range`).

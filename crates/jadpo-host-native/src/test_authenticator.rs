@@ -29,7 +29,7 @@ struct Held {
     rp_id: String,
     user_handle: Vec<u8>,
     key: EcKey<Private>,
-    counter: u32,
+    sign_count: u32,
 }
 
 /// A device holding passkeys, in a browser at `origin`.
@@ -65,9 +65,9 @@ impl TestAuthenticator {
     }
 
     /// Sets every passkey's counter, as a copied key's would be.
-    pub fn set_counter(&mut self, counter: u32) {
+    pub fn set_sign_count(&mut self, count: u32) {
         for held in &mut self.held {
-            held.counter = counter;
+            held.sign_count = count;
         }
     }
 
@@ -89,22 +89,22 @@ impl TestAuthenticator {
     /// options route's answer: the new credential as `toJSON()` writes it.
     pub fn create(&mut self, options: &str) -> Result<String, String> {
         let options: Value = serde_json::from_str(options).map_err(|e| e.to_string())?;
-        let key = &options["publicKey"];
+        let key = at(&options, "/publicKey");
         let challenge = text(key, "challenge")?;
-        let rp_id = key["rp"]["id"].as_str().ok_or("no rp.id")?.to_string();
-        let user_handle = from_b64url(key["user"]["id"].as_str().ok_or("no user.id")?)
+        let rp_id = at(key, "/rp/id").as_str().ok_or("no rp.id")?.to_string();
+        let user_handle = from_b64url(at(key, "/user/id").as_str().ok_or("no user.id")?)
             .ok_or("user.id isn't base64url")?;
-        let es256 = key["pubKeyCredParams"]
+        let es256 = at(key, "/pubKeyCredParams")
             .as_array()
-            .is_some_and(|params| params.iter().any(|param| param["alg"] == -7));
+            .is_some_and(|params| params.iter().any(|param| at(param, "/alg") == -7));
         if !es256 {
             return Err("ES256 isn't offered".into());
         }
-        let excluded: Vec<Vec<u8>> = key["excludeCredentials"]
+        let excluded: Vec<Vec<u8>> = at(key, "/excludeCredentials")
             .as_array()
             .into_iter()
             .flatten()
-            .filter_map(|credential| credential["id"].as_str().and_then(from_b64url))
+            .filter_map(|credential| at(credential, "/id").as_str().and_then(from_b64url))
             .collect();
         if self
             .held
@@ -163,7 +163,7 @@ impl TestAuthenticator {
             rp_id,
             user_handle,
             key: secret,
-            counter: 0,
+            sign_count: 0,
         });
         let id = to_b64url(&credential_id);
         Ok(json!({
@@ -185,9 +185,9 @@ impl TestAuthenticator {
     /// the relying party, as `toJSON()` writes it.
     pub fn get(&mut self, options: &str) -> Result<String, String> {
         let options: Value = serde_json::from_str(options).map_err(|e| e.to_string())?;
-        let key = &options["publicKey"];
+        let key = at(&options, "/publicKey");
         let challenge = text(key, "challenge")?;
-        let rp_id = key["rpId"].as_str().ok_or("no rpId")?.to_string();
+        let rp_id = at(key, "/rpId").as_str().ok_or("no rpId")?.to_string();
         let counts = self.counts;
         let client_data = self.client_data("webauthn.get", &challenge);
         let held = self
@@ -197,11 +197,11 @@ impl TestAuthenticator {
             .find(|held| held.rp_id == rp_id)
             .ok_or("NotAllowedError: no passkey for this site")?;
         if counts {
-            held.counter = held.counter.saturating_add(1);
+            held.sign_count = held.sign_count.saturating_add(1);
         }
         let mut auth_data = sha256(rp_id.as_bytes()).to_vec();
         auth_data.push(0x01 | 0x04);
-        auth_data.extend(held.counter.to_be_bytes());
+        auth_data.extend(held.sign_count.to_be_bytes());
         let mut signed = auth_data.clone();
         signed.extend(sha256(client_data.as_bytes()));
         let signature = EcdsaSig::sign(&sha256(&signed), &held.key)
@@ -234,8 +234,13 @@ impl TestAuthenticator {
     }
 }
 
+/// The value at `pointer`, or `null`.
+fn at<'v>(value: &'v Value, pointer: &str) -> &'v Value {
+    value.pointer(pointer).unwrap_or(&Value::Null)
+}
+
 fn text(value: &Value, key: &str) -> Result<String, String> {
-    value[key]
+    at(value, &format!("/{key}"))
         .as_str()
         .map(str::to_string)
         .ok_or_else(|| format!("no {key}"))

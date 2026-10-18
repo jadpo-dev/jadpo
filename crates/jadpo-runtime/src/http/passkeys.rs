@@ -574,6 +574,10 @@ impl Site<'_> {
     ) -> Result<Response, Stop> {
         self.no_body(request)?;
         let (user, session, name) = self.holder(caller)?;
+        // A passkey is added from a session, whose challenge is bound to it.
+        let Some(session) = session else {
+            return Err(self.fail(CHALLENGE_EXPIRED));
+        };
         let existing = self.passkeys_of(ctx, user).await?;
         let exclude: Vec<Vec<u8>> = existing
             .iter()
@@ -608,6 +612,9 @@ impl Site<'_> {
     ) -> Result<Response, Stop> {
         let body = self.body(request, &["name", "credential"])?;
         let (user, session, _) = self.holder(caller)?;
+        let Some(session) = session else {
+            return Err(self.fail(CHALLENGE_EXPIRED));
+        };
         let name = body
             .get("name")
             .and_then(serde_json::Value::as_str)
@@ -621,10 +628,10 @@ impl Site<'_> {
         let taken = self
             .take(ctx, &credential, REGISTER, Some(&binding))
             .await?;
-        let (Some(owner), Some(handle)) = (taken.user, taken.handle) else {
+        let (Some(holder), Some(handle)) = (taken.user, taken.handle) else {
             return Err(self.fail(CHALLENGE_EXPIRED));
         };
-        if owner != user {
+        if holder != user {
             return Err(self.fail(CHALLENGE_EXPIRED));
         }
         let parts = self
@@ -761,9 +768,9 @@ impl Site<'_> {
         })
     }
 
-    /// The signed-in person: their `id`, the session they came with, and
-    /// what their device lists the passkey under.
-    fn holder(&self, caller: Option<&Caller>) -> Result<([u8; 16], [u8; 16], String), Stop> {
+    /// The signed-in person: their `id`, the session they came with, if
+    /// any, and what their device lists the passkey under.
+    fn holder(&self, caller: Option<&Caller>) -> Result<Holder, Stop> {
         let Some(caller) = caller else {
             return Err(self.fail(AUTHENTICATION_MISCONFIGURED));
         };
@@ -776,11 +783,7 @@ impl Site<'_> {
         let Some(SqlValue::Uuid(user)) = user else {
             return Err(self.fail(AUTHENTICATION_MISCONFIGURED));
         };
-        // A passkey is added from a session: a signed part alone names
-        // none to bind its challenge to.
-        let Some(session) = caller.session else {
-            return Err(self.fail(CHALLENGE_EXPIRED));
-        };
+        let session = caller.session;
         let name = match record.get("subject") {
             Some(jadpo_value::Value::Text(text)) => text.to_string(),
             Some(jadpo_value::Value::Uuid(text)) => text.to_string(),
@@ -814,6 +817,10 @@ impl Site<'_> {
             .collect())
     }
 }
+
+/// The signed-in person: their `id`, the session they came with, if any,
+/// and what their device lists the passkey under.
+type Holder = ([u8; 16], Option<[u8; 16]>, String);
 
 /// A challenge taken for an answer.
 struct Taken {

@@ -260,7 +260,7 @@ pub trait Passkeys {
         origin: &str,
         timeout_ms: u32,
         user_handle: [u8; 16],
-        user_name: &str,
+        account: &str,
         exclude: &[Vec<u8>],
     ) -> Result<(String, String), PasskeyError>;
 

@@ -507,7 +507,10 @@ fn passkey_operation(
         schema.set("properties", properties);
         schema.set(
             "required",
-            fields.iter().map(|field| Value::from(*field)).collect::<Vec<_>>(),
+            fields
+                .iter()
+                .map(|field| Value::from(*field))
+                .collect::<Vec<_>>(),
         );
         schema.set("additionalProperties", false);
         let mut json = Value::object();
@@ -524,11 +527,15 @@ fn passkey_operation(
     let success = match step {
         S::SignInOptions => response(
             "WebAuthn's request options under `publicKey`, with `mediation`.",
-            Some(object("`{ publicKey, mediation }`, as `PublicKeyCredential.parseRequestOptionsFromJSON()` reads `publicKey`.")),
+            Some(object(
+                "`{ publicKey, mediation }`, as `PublicKeyCredential.parseRequestOptionsFromJSON()` reads `publicKey`.",
+            )),
         ),
         S::RegisterOptions => response(
             "WebAuthn's creation options under `publicKey`.",
-            Some(object("`{ publicKey }`, as `PublicKeyCredential.parseCreationOptionsFromJSON()` reads `publicKey`.")),
+            Some(object(
+                "`{ publicKey }`, as `PublicKeyCredential.parseCreationOptionsFromJSON()` reads `publicKey`.",
+            )),
         ),
         S::Register | S::Rename => response(
             "The passkey, as its holder sees it.",
@@ -548,20 +555,60 @@ fn passkey_operation(
     match step {
         S::SignInOptions => {}
         S::SignIn => {
-            failures.push(("401", "PasskeyChallengeExpired", "passkey_challenge_expired", "The challenge expired, was used, was replaced, or was given to another browser."));
-            failures.push(("401", "PasskeyRejected", "passkey_rejected", "The answer doesn't check, or its passkey isn't registered."));
-            failures.push(("403", "AccountDisabled", "user_disabled", "The signed-in user's record isn't active."));
+            failures.push((
+                "401",
+                "PasskeyChallengeExpired",
+                "passkey_challenge_expired",
+                "The challenge expired, was used, was replaced, or was given to another browser.",
+            ));
+            failures.push((
+                "401",
+                "PasskeyRejected",
+                "passkey_rejected",
+                "The answer doesn't check, or its passkey isn't registered.",
+            ));
+            failures.push((
+                "403",
+                "AccountDisabled",
+                "user_disabled",
+                "The signed-in user's record isn't active.",
+            ));
         }
         S::RegisterOptions => {}
         S::Register => {
-            failures.push(("401", "PasskeyChallengeExpired", "passkey_challenge_expired", "The challenge expired, was used, was replaced, or was given to another session."));
-            failures.push(("401", "PasskeyRejected", "passkey_rejected", "The answer doesn't check, or its passkey isn't registered."));
-            failures.push(("409", "PasskeyAlreadyRegistered", "passkey_already_registered", "The passkey is registered already."));
-            failures.push(("409", "PasskeyLimitReached", "passkey_limit_reached", "The person has 20 passkeys already."));
+            failures.push((
+                "401",
+                "PasskeyChallengeExpired",
+                "passkey_challenge_expired",
+                "The challenge expired, was used, was replaced, or was given to another session.",
+            ));
+            failures.push((
+                "401",
+                "PasskeyRejected",
+                "passkey_rejected",
+                "The answer doesn't check, or its passkey isn't registered.",
+            ));
+            failures.push((
+                "409",
+                "PasskeyAlreadyRegistered",
+                "passkey_already_registered",
+                "The passkey is registered already.",
+            ));
+            failures.push((
+                "409",
+                "PasskeyLimitReached",
+                "passkey_limit_reached",
+                "The person has 20 passkeys already.",
+            ));
         }
         S::List => {}
         S::Rename | S::Remove => {
-            failures.push(("404", "PasskeyNotFound", "passkey_not_found", "No passkey of the signed-in person has this `id`."));
+            failures.push((
+                "404",
+                "PasskeyNotFound",
+                "passkey_not_found",
+                "No passkey of the signed-in person has this `id`.",
+            ));
         }
     }
     if !step.authentication().needs_caller() {
@@ -605,7 +652,10 @@ fn passkey_operation(
         };
         responses.set(
             status,
-            response(&format!("Fails with {}.", crate::and_list(&codes)), Some(schema)),
+            response(
+                &format!("Fails with {}.", crate::and_list(&codes)),
+                Some(schema),
+            ),
         );
     }
     responses.set("400", shared_response("InvalidRequest"));
@@ -637,7 +687,10 @@ fn passkey_view_schema() -> Value {
     };
     properties.set("id", field(Value::from("string"), Some("uuid")));
     properties.set("name", field(Value::from("string"), None));
-    properties.set("registered_at", field(Value::from("string"), Some("date-time")));
+    properties.set(
+        "registered_at",
+        field(Value::from("string"), Some("date-time")),
+    );
     properties.set(
         "last_used_at",
         field(

@@ -66,7 +66,7 @@ impl Passkeys for WebauthnPasskeys {
         origin: &str,
         timeout_ms: u32,
         user_handle: [u8; 16],
-        user_name: &str,
+        account: &str,
         exclude: &[Vec<u8>],
     ) -> Result<(String, String), PasskeyError> {
         let site = Self::site(origin, timeout_ms)?;
@@ -74,8 +74,8 @@ impl Passkeys for WebauthnPasskeys {
         let (options, state) = site
             .start_passkey_registration(
                 Uuid::from_bytes(user_handle),
-                user_name,
-                user_name,
+                account,
+                account,
                 Some(exclude),
             )
             .map_err(|_| PasskeyError::Misconfigured)?;

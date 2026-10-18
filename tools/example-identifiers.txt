@@ -333,7 +333,6 @@ count_refused
 count_tiers
 count_todos
 counted_or_missing
-counter
 counter_id
 countess
 course

@@ -662,7 +662,7 @@ fn a_counter_that_goes_backwards_is_refused() {
     assert_eq!(live.sign_in(&mut key).1.status, 204);
     assert_eq!(live.sign_in(&mut key).1.status, 204);
     // A copy of the key, two uses behind.
-    key.set_counter(0);
+    key.set_sign_count(0);
     refused(&live.sign_in(&mut key).1, 401, "passkey_rejected");
     let count = live.rows("SELECT \"credential\" ->> 'sign_count' FROM \"jadpo_passkeys\"");
     assert_eq!(count[0][0], jadpo_runtime::SqlValue::Text("2".to_string()));
