@@ -119,6 +119,30 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
             }
         }
         (TextForm::Mailbox, Value::Record(record)) => crate::mailbox::mailbox_text(record)?,
+        (TextForm::CardExpiry, Value::Record(record)) => {
+            match (record.get("year"), record.get("month")) {
+                (Some(Value::Int(year)), Some(Value::Int(month))) => {
+                    format!("{year:04}-{month:02}")
+                }
+                _ => return Err(Fault::Shape),
+            }
+        }
+        (TextForm::VatNumber, Value::Record(record)) => {
+            match (record.get("country"), record.get("number")) {
+                (Some(Value::Variant(country)), Some(Value::Text(number))) => {
+                    let code = standard_type(&country.ty)
+                        .and_then(StandardType::codes)
+                        .and_then(|codes| codes.get(country.ordinal as usize))
+                        .map(|(_, code)| *code)
+                        .ok_or(Fault::Shape)?;
+                    format!(
+                        "{}{number}",
+                        jadpo_std::standard::documents::vat_prefix(code)
+                    )
+                }
+                _ => return Err(Fault::Shape),
+            }
+        }
         (TextForm::Event, Value::Record(record)) => crate::event::event_text(record)?,
         (TextForm::Code, Value::Variant(variant)) => entry
             .codes()
@@ -321,8 +345,9 @@ fn written_in(raw: &str, ty: &str, country: &crate::Variant) -> Result<Value, Fa
 }
 
 /// The part of a standard object a rule across its parts refuses (an
-/// address's postal code that doesn't fit its country, an event with both
-/// days and times), if any.
+/// address's postal code that doesn't fit its country, a passport number
+/// that isn't one of its country's, an event with both days and times), if
+/// any.
 pub fn broken_part(record: &crate::Record) -> Option<&'static str> {
     if &*record.ty == jadpo_std::standard::events::CALENDAR_EVENT {
         return crate::event::broken_part(record).map(|broken| broken.part);
@@ -330,16 +355,21 @@ pub fn broken_part(record: &crate::Record) -> Option<&'static str> {
     jadpo_std::standard::part_rules(&record.ty)
         .iter()
         .find(|rule| {
-            let (Some(Value::Text(text)), Some(Value::Variant(by))) =
-                (record.get(rule.part), record.get(rule.by))
-            else {
+            let Some(Value::Text(text)) = record.get(rule.part) else {
                 return false;
             };
-            let code = standard_type(&by.ty)
-                .and_then(StandardType::codes)
-                .and_then(|codes| codes.get(by.ordinal as usize))
-                .map(|(_, code)| *code);
-            code.is_some_and(|code| !(rule.fits)(text, code))
+            let codes: Option<Vec<&str>> = rule
+                .by
+                .iter()
+                .map(|by| match record.get(by) {
+                    Some(Value::Variant(by)) => standard_type(&by.ty)
+                        .and_then(StandardType::codes)
+                        .and_then(|codes| codes.get(by.ordinal as usize))
+                        .map(|(_, code)| *code),
+                    _ => None,
+                })
+                .collect();
+            codes.is_some_and(|codes| !(rule.fits)(text, &codes))
         })
         .map(|rule| rule.part)
 }
@@ -451,6 +481,8 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
             )
         }),
         TextForm::Mailbox => crate::mailbox::read_mailbox(entry, raw),
+        TextForm::CardExpiry => read_card_expiry(entry, raw),
+        TextForm::VatNumber => read_vat_number(entry, raw),
         TextForm::Event => crate::event::read_event(raw),
         // Its ends' type is the range type's argument, which `parse` reads.
         TextForm::Range => return Err(Fault::Shape),
@@ -539,6 +571,46 @@ fn read_exchange_rate(raw: &str) -> Option<Value> {
             ("at".into(), Value::Instant(at)),
         ],
     ))
+}
+
+/// A card's expiry from ISO 8601's calendar month, `2028-12`, its year
+/// from 2000 to 2099 (chosen in chunk 5.5i2).
+fn read_card_expiry(entry: &StandardType, raw: &str) -> Option<Value> {
+    let (year, month) = raw.split_once('-')?;
+    let digits = |text: &str, size: usize| {
+        (text.len() == size && text.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| text.parse::<i64>().ok())
+            .flatten()
+    };
+    let (year, month) = (digits(year, 4)?, digits(month, 2)?);
+    ((2000..=2099).contains(&year) && (1..=12).contains(&month)).then(|| {
+        Value::record(
+            entry.name,
+            vec![
+                ("year".into(), Value::Int(year)),
+                ("month".into(), Value::Int(month)),
+            ],
+        )
+    })
+}
+
+/// A VAT number from VIES's form: its country's code (`EL` for Greece),
+/// read ignoring case as every code is, then the number in its country's
+/// form (chosen in chunk 5.5i2).
+fn read_vat_number(entry: &StandardType, raw: &str) -> Option<Value> {
+    let (prefix, number) = (raw.get(..2)?, raw.get(2..)?);
+    let country_code = jadpo_std::standard::documents::vat_country(prefix)?;
+    let countries = standard_type(jadpo_std::standard::places::COUNTRY)?;
+    let country = code(countries, country_code)?;
+    jadpo_std::standard::documents::vat_fits(number, country_code).then(|| {
+        Value::record(
+            entry.name,
+            vec![
+                ("country".into(), country),
+                ("number".into(), Value::text(number)),
+            ],
+        )
+    })
 }
 
 /// An enum's variant by its code, ignoring case (question 22).
@@ -769,12 +841,6 @@ pub fn shown(
                 None => canonical(entry, value)?,
             }
         }
-        // A closed list CLDR names none of, by its authority's English
-        // wording in every locale (chunk 5.5m).
-        (FormatKey::Named(names), Value::Variant(variant)) => names
-            .get(variant.ordinal as usize)
-            .map(|name| (*name).to_string())
-            .ok_or(Fault::Shape)?,
         (FormatKey::PersonName, value) => present::contact::person_name(value, tag)?,
         (FormatKey::PostalAddress, value) => present::contact::postal_address(value, tag)?,
         // National for a reader whose region shares the number's calling
@@ -787,11 +853,43 @@ pub fn shown(
         // A payment or identity number's printed form (area 19, chunk
         // 5.5i): grouped, or its last four after a mask.
         (FormatKey::Grouped(grouping), value) => grouping.apply(&canonical(entry, value)?),
-        (FormatKey::LastFour { mask }, value) => {
-            let text = canonical(entry, value)?;
-            let skip = text.chars().count().saturating_sub(4);
-            format!("{mask}{}", text.chars().skip(skip).collect::<String>())
+        (FormatKey::LastFour { mask }, value) => last_four(mask, &canonical(entry, value)?),
+        // A card brand by the scheme's own name (chunk 5.5i2); a closed
+        // list CLDR names none of by its authority's English wording
+        // (chunk 5.5m).
+        (FormatKey::Names(names), Value::Variant(variant)) => names
+            .get(variant.ordinal as usize)
+            .map(|name| (*name).to_string())
+            .ok_or(Fault::Shape)?,
+        // A masked card as a receipt prints it, its brand's name first
+        // where it is known.
+        (FormatKey::MaskedCard, Value::Record(record)) => {
+            let Some(Value::Text(digits)) = record.get("last_four") else {
+                return Err(Fault::Shape);
+            };
+            let masked = last_four("•••• ", digits);
+            match record.get("brand") {
+                Some(brand @ Value::Variant(_)) => {
+                    let brands = entry_of(brand).ok_or(Fault::Shape)?;
+                    format!("{} {masked}", shown(brands, brand, tag, zone, format_spec)?)
+                }
+                _ => masked,
+            }
         }
+        // As the card prints it, `12/28`.
+        (FormatKey::CardExpiry, Value::Record(record)) => {
+            match (record.get("year"), record.get("month")) {
+                (Some(Value::Int(year)), Some(Value::Int(month))) => {
+                    format!("{month:02}/{:02}", year % 100)
+                }
+                _ => return Err(Fault::Shape),
+            }
+        }
+        // A tax or identity document's number, masked (chunk 5.5i2).
+        (FormatKey::PartLastFour { part, mask }, Value::Record(record)) => match record.get(part) {
+            Some(Value::Text(text)) => last_four(mask, text),
+            _ => return Err(Fault::Shape),
+        },
         (FormatKey::Range, Value::Record(record)) => {
             let (start, end) = range_ends(record)?;
             let end_shown = |end: Option<&Value>| match end {
@@ -806,6 +904,13 @@ pub fn shown(
         }
         _ => return Err(Fault::Shape),
     })
+}
+
+/// `text`'s last four characters after `mask`, as PCI DSS lets a card
+/// number be shown: `•••• 4242`.
+fn last_four(mask: &str, text: &str) -> String {
+    let skip = text.chars().count().saturating_sub(4);
+    format!("{mask}{}", text.chars().skip(skip).collect::<String>())
 }
 
 /// A withdrawn code's English name from its list, which CLDR doesn't

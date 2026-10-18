@@ -666,6 +666,15 @@ across a standard object's parts (`standard::part_rules`, a postal code
 fitting its address's country) is proved for a literal in
 `types/body/expr.rs` and checked by the JSON codec as an object is read
 (`jadpo_value::standard::broken_part`).
+Since chunk 5.5i2 the cards (`jadpo_std::standard::card_types`) and the
+identity documents (`standard::documents`) are entries like the rest: a
+`PartRule` reads any number of parts (`by`, a document's kind and
+country), its wording from the rule, and each country's forms are tables
+of a pattern and an optional check digit (`CountryForm`), with bounds for
+a country that has none. `Part::Matching` is a part of text matching a
+pattern (a masked card's last four). `money.mask` (`Op::MoneyMask`) makes
+a `MaskedCardNumber` from a `PaymentCardNumber` by its issuer range
+(`card_types::brand_of`).
 Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
 text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
 `jadpo_std::standard::events`, which also holds the rules across its parts
@@ -683,8 +692,8 @@ their check digits as named validators (GS1's mod 10, ISO 6346, ISO 7064
 MOD 11-2, Verhoeff, a VIN's and an MPAN's), and their closed lists are
 standard enums in `standard::lists`, whose `ClosedList`s `closed_list`
 reads beside the places'. A list CLDR names none of is shown by its
-authority's English wording (`FormatKey::Named`, its names in the
-variants' order); no other code was needed.
+authority's English wording through chunk 5.5i2's `FormatKey::Names`;
+no other code was needed.
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from

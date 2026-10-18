@@ -268,7 +268,7 @@ pub const BLOOD_TYPE_ENTRY: StandardType = closed(
 pub const ALLERGEN_ENTRY: StandardType = closed(
     ALLERGEN,
     ALLERGEN_CODES,
-    FormatKey::Named(ALLERGEN_NAMES),
+    FormatKey::Names(ALLERGEN_NAMES),
     &[
         ("cereals_containing_gluten", "Cereals containing gluten"),
         ("milk", "Milk"),
@@ -281,7 +281,7 @@ pub const ALLERGEN_ENTRY: StandardType = closed(
 pub const CABIN_CLASS_ENTRY: StandardType = closed(
     CABIN_CLASS,
     CABIN_CLASSES,
-    FormatKey::Named(CABIN_CLASS_NAMES),
+    FormatKey::Names(CABIN_CLASS_NAMES),
     &[
         ("economy", "Economy"),
         ("premium_economy", "Premium economy"),
@@ -311,7 +311,7 @@ pub const EPC_RATING_ENTRY: StandardType = closed(
 pub const TENURE_ENTRY: StandardType = closed(
     TENURE,
     TENURES,
-    FormatKey::Named(TENURE_NAMES),
+    FormatKey::Names(TENURE_NAMES),
     &[("freehold", "Freehold"), ("leasehold", "Leasehold")],
     &["share_of_freehold", "F", "Freehold estate", ""],
 );
@@ -321,7 +321,7 @@ pub const TENURE_ENTRY: StandardType = closed(
 pub const LAWFUL_BASIS_ENTRY: StandardType = closed(
     LAWFUL_BASIS,
     LAWFUL_BASES,
-    FormatKey::Named(LAWFUL_BASIS_NAMES),
+    FormatKey::Names(LAWFUL_BASIS_NAMES),
     &[
         ("consent", "Consent"),
         ("legitimate_interests", "Legitimate interests"),

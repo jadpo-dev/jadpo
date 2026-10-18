@@ -749,6 +749,15 @@ reference only).
   as text and JSON are read, and stored a column per part (checked in
   PostgreSQL); what the pages left open is area 19's "Chosen in chunk
   5.5k3".
+- [ ] **5.5k4 Local times to instants, and all-day recurrence** `opus ·
+  high` (areas 10 and 19; decided by the lead session, 2026-10-18, from
+  5.5k3's findings): `temporal.resolve` taking a `LocalDateTime` (and a
+  `CalendarDate` with a `LocalTime`) with a zone, under area 10's existing
+  `dst:` choice, so a timed `CalendarEvent`'s start becomes an `Instant`;
+  and `RecurrenceRule` accepting a date-only start, so an all-day event
+  recurs (birthdays, anniversaries) without a zone. Done when an event's
+  start resolves across both clock changes with each `dst:` choice, and a
+  yearly all-day event on 29 February follows RFC 5545's skipping rule.
 - [x] **5.5l People and places** `opus · high` (area 19, question 22): 15
   of the 19 new types: the closed lists (`Country`, `CountrySubdivision`,
   `Continent`, `Language`, `WritingScript`, `TextDirection`,
@@ -777,16 +786,39 @@ reference only).
   UN/LOCODE list's terms are unclear and **needs Richard** to say whether
   it ships. What the pages left open is area 19's "Chosen in chunk
   5.5l2".
-- [ ] **5.5i2 Payment records and identity documents** `opus · high` (area
-  19, "The standard types", split from 5.5i), after 5.5j and 5.5l: the 15
-  that are records or choices of other types. `Price`, `UnitPrice`,
-  `TaxRate`, `Discount`, `BasisPoints` and `InterestRate`, on `Percentage`
-  and the quantities (5.5j); `CardBrand`, `MaskedCardNumber` with its
-  conversion from a `PaymentCardNumber`, and `CardExpiry`; `BankAccount`,
-  with the UK modulus check across a sort code and an account number; and
-  `VatNumber`, `TaxId`, `PassportNumber`, `DrivingLicenceNumber` and
-  `IdentityDocument`, on `Country` (5.5l). Done when every type passes the
-  harness.
+- [ ] **5.5h4 Exchange rate types that fix their currencies** `opus ·
+  high` (area 19, "Money and payments"; decided by the lead session,
+  2026-10-18, following decision 16), after 5.5h2: a type built on
+  `ExchangeRate` may fix its currencies, `type PoundsToEuros =
+  ExchangeRate { from: Currency.gbp, to: Currency.eur }`, as a `Money`
+  type fixes its currency, so `money.convert` with an inverted or wrong
+  rate is a compile error across function boundaries, not only after a
+  condition; a rate read at the boundary is checked against them. Purely
+  additive. Done when an inverted typed rate passed through a function
+  fails to compile with a checked example, and a fixed-currency rate needs
+  no `attempt`.
+- [x] **5.5i2 Cards and identity documents** `opus · high` (area 19,
+  "The standard types", split from 5.5i), after 5.5l: `CardBrand`,
+  `MaskedCardNumber` with its conversion from a `PaymentCardNumber`, and
+  `CardExpiry`; `VatNumber`, `TaxId`, `PassportNumber`,
+  `DrivingLicenceNumber` and `IdentityDocument`, on `Country` (5.5l), each
+  checked by its country's published format (at least GB, DE, FR, IE, US
+  and one country outside Europe), by length where none is published.
+  Done when every type passes the harness with valid and invalid
+  examples per rule. Split on 2026-10-18; the rest is 5.5i3. Built, with
+  `money.mask` for the conversion and `IdentityDocumentKind` as the
+  document's kind; forms from VIES, HMRC, the OECD's and the EU's TIN
+  pages and each issuer's own, by length where a country publishes none.
+  What the pages left open is area 19's "Chosen in chunk 5.5i2".
+- [ ] **5.5i3 Prices, discounts and bank accounts** `opus · high` (area
+  19, "The standard types", split from 5.5i2), after 5.5j2: `Price`,
+  `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints` and `InterestRate`,
+  on `Money`, `Percentage` and the quantities; `BankAccount`, with the UK
+  modulus check across a sort code and an account number by Vocalink's
+  published specification and test cases. `Discount` and `BankAccount`
+  are the first standard types that are a choice of other types. Done
+  when every type passes the harness with valid and invalid examples per
+  rule.
 - [x] **5.5m Commerce, health, travel and the rest: codes and lists**
   `opus · high` (area 19, "Groups with the baseline only"): the 29 of the
   45 that are codes or closed lists. Held as text with a pattern and,
@@ -803,8 +835,8 @@ reference only).
   manufacturers, a VIN's; IATA's and ICAO's codes and ICD-10 are checked
   by pattern only, since their lists can't be shipped, and a list CLDR
   doesn't name is shown by its authority's English wording. The ISBN-10
-  conversion waits on an operation name. What the pages left open is area
-  19's "Chosen in chunk 5.5m".
+  conversion is 5.5m2's. What the pages left open is area 19's "Chosen in
+  chunk 5.5m".
 - [ ] **5.5m2 Commerce, health, travel and the rest: records and
   measures** `opus · high` (area 19, "Groups with the baseline only",
   split from 5.5m): the other 16, each a record of other types or a
@@ -812,8 +844,11 @@ reference only).
   `ShoeSize`, `Dimensions`, `TrackingNumber` (on 5.5m's `Carrier`),
   `VehicleRegistration`, `Dose`, `DosageInstruction`, `HeartRate`,
   `BloodPressure`, `BloodGlucose`, `FlightNumber` (on 5.5m's
-  `IataAirline`), `Jurisdiction` and `ModelId`. Done when every type
-  passes the harness.
+  `IataAirline`), `Jurisdiction` and `ModelId`; and the contract's ISBN-10
+  conversion, `text.parse(raw, as: Isbn, form: CodeForm.isbn10)`, reading
+  only, consistent with `Country`'s `form:` (decided by the lead session,
+  2026-10-18). Done when every type passes the harness and an ISBN-10
+  reads as its `Isbn`, a bad check digit `malformed`.
 - [ ] **5.5n Web and software** `opus · high` (area 19, "Web and
   software"): 38 types, `web`'s 3 operations and `semver.satisfies`. Done
   when every type passes the harness and the four operations' examples
