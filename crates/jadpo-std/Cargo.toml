@@ -11,11 +11,14 @@ license.workspace = true
 # workspace crate, so compiler and runtime crates may both depend on it, and
 # it builds for wasm32-unknown-unknown.
 # idna checks a domain name by UTS 46, and spdx holds the SPDX licence list
-# (area 19, "Web and software").
+# (area 19, "Web and software"); ammonia is the HTML sanitiser `Html` is
+# built with, over html5ever (area 19, "Text formats").
 [dependencies]
 regex.workspace = true
 idna.workspace = true
 spdx.workspace = true
+ammonia.workspace = true
+html5ever.workspace = true
 
 [lints]
 workspace = true

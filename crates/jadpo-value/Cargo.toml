@@ -18,7 +18,8 @@ license.workspace = true
 # mapping, collation and normalisation `text` uses (area 19), and the
 # names of places, languages and scripts and CLDR's person-name patterns
 # the scripts names are written in, for the order `text.format` writes a
-# person's name in (area 19, "People and contact").
+# person's name in (area 19, "People and contact"). pulldown-cmark renders
+# CommonMark for `markup.to_html` (area 19, "Text formats").
 [dependencies]
 jadpo-std.workspace = true
 jiff.workspace = true
@@ -39,6 +40,7 @@ icu_provider.workspace = true
 writeable.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+pulldown-cmark.workspace = true
 
 [lints]
 workspace = true

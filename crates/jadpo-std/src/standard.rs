@@ -25,6 +25,7 @@ pub mod emoji_data;
 pub mod events;
 mod identifiers;
 pub mod lists;
+pub mod markup;
 pub mod opening_hours;
 pub mod person_names_data;
 pub mod phones;
