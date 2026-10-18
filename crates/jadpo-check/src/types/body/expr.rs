@@ -1079,6 +1079,13 @@ impl Body<'_> {
             // `Range { start: ..., end: ... }` (area 19), its ends' type
             // from its first end that isn't `none`.
             ([], None) if name == jadpo_std::RANGE => self.range_literal(record, None),
+            // A certificate's parts are read from the DER its issuer
+            // signed, so code never sets them (area 19, chunk 5.5r5).
+            ([], None) if jadpo_std::standard::certificates::read_only(&name) => {
+                self.walk(|walk| walk.member_values(record.member_list()));
+                self.read_only_literal(&name, head_span);
+                Ty::Opaque(name, Vec::new())
+            }
             // A standard object type (`InstantRange`, area 19): its fields
             // are its data entry's, each built on a built-in type.
             ([], None) if let Some(fields) = standard_object_fields(&name) => {
@@ -1211,6 +1218,24 @@ impl Body<'_> {
                 Ty::Error
             }
         }
+    }
+
+    /// `Certificate { ... }`: a standard type read only from what it
+    /// parses, whose parts code never sets (area 19, chunk 5.5r5).
+    fn read_only_literal(&mut self, written: &str, span: Span) {
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_CONSTRUCTOR_INPUT,
+                format!("`{written}` isn't built from its parts"),
+            )
+            .at(span, "parts set in code")
+            .reason(format!(
+                "A `{written}`'s subject, issuer, serial number, validity and fingerprint are read from the DER its issuer signed, so code reads them and never sets them."
+            ))
+            .next(format!(
+                "Read the `{written}` from its PEM with `text.parse(..., as: {written})`, or from JSON with `json.read`"
+            )),
+        );
     }
 
     pub(super) fn not_record(&mut self, record: &ast::RecordExpr, written: &str, kind: &str) {

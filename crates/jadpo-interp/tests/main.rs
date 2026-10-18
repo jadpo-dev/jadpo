@@ -13,6 +13,7 @@ mod ai;
 mod assertions;
 mod boundary;
 mod calendar;
+mod certificates;
 mod colour;
 mod conditions;
 mod constants;

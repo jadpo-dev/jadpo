@@ -14,6 +14,7 @@ mod bodies;
 mod calendar;
 mod calendar_events;
 mod cards_documents;
+mod certificates;
 mod client_address;
 mod colour_media;
 mod conditions;
