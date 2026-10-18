@@ -693,6 +693,17 @@ named with a reserved word's trailing `_` is sent without it
 `idna` crate, the only dependency `jadpo-std` gained besides `regex`;
 RFC 3986's grammar and resolution; RFC 6265's cookies; Emoji 18.0's list
 in `emoji_data`), and `jadpo_value::web` runs `web`'s operations over it.
+Since chunk 5.5n2 `jadpo_std::standard::software` holds the software
+types' validators and SemVer 2.0.0's grammar and precedence, with
+node-semver's ranges desugared to comparators there; `SpdxLicence` reads
+the SPDX licence list from the `spdx` crate (0.13.6, Apache-2.0, the list
+3.29.0 under CC0), `jadpo-std`'s third dependency, and its expression
+grammar is jadpo-std's own. `SemanticVersion` is a standard object whose
+canonical text is SemVer's (`TextForm::SemanticVersion`), stored a column
+per part; `<` on it is its precedence (`jadpo_value::ops::compare`, build
+metadata ignored), and the one order (`jadpo_value::order`) sorts it by
+precedence then build metadata, so `sort_by` agrees with `<`.
+`jadpo_value::semver` runs `semver.satisfies` (`Op::SemverSatisfies`).
 Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
 text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
 `jadpo_std::standard::events`, which also holds the rules across its parts

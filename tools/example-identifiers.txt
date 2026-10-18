@@ -114,6 +114,7 @@ before_vat
 bench
 bench_name
 best_before
+beta_release
 bill
 bill_shares
 bill_total
@@ -466,6 +467,7 @@ first_page
 first_placed
 first_quantity
 first_use
+fits_shop
 fitted
 flapjack
 flavour
@@ -492,6 +494,7 @@ from_count
 from_flag
 from_office
 gap_days
+generally_available
 give_note
 goals
 golden
@@ -574,6 +577,7 @@ ingredient_names
 ingredient_view
 ingredients
 inside_range
+installed_release
 invalid_configuration
 invalid_success
 invitation
@@ -692,7 +696,6 @@ local_due
 locale_for_reader
 locker
 locker_code
-log_level
 log_text
 login_attempts
 london_autumn
@@ -772,6 +775,7 @@ new_staff
 new_todo
 new_york_autumn
 new_york_spring
+newer_than
 newsletter
 next_classes
 next_day
@@ -782,6 +786,7 @@ nickname
 night_opening
 night_opening_anyway
 night_shift
+nine
 no_guests
 no_stock
 no_subtitle
@@ -794,6 +799,7 @@ not_a_call
 not_a_domain
 not_a_product_code
 not_a_vat_number
+not_a_version
 not_an_address
 not_an_iban
 not_an_nhs_number
@@ -821,6 +827,7 @@ oat
 off_menu_cake
 offcut
 offcut_label
+offered_release
 office_network
 oland
 old_reference
@@ -933,6 +940,7 @@ party_title
 pass_rate
 passed_on
 pastry
+patch_release
 patch_todo
 patient
 patient_number
@@ -970,6 +978,8 @@ plank_label
 planned_shift
 platform_role
 platform_staff
+plugin_release
+plugin_version
 pong
 portion_count
 portions
@@ -1076,6 +1086,8 @@ reduction
 register_and_record
 register_both
 registration_closed
+release_candidate
+release_tag
 remind_at
 remind_if_overdue
 reminder
@@ -1225,6 +1237,7 @@ shop_day
 shop_domain
 shop_link
 shop_time
+shop_wants
 shopper
 shopping_list
 short_date
@@ -1340,6 +1353,7 @@ tea_term
 team
 team_id
 temperature_for
+ten
 tenth
 territory
 territory_id
@@ -1418,6 +1432,7 @@ typed_phone
 typed_postcode
 typed_shelf
 typed_text
+typed_version
 uk_bands
 uk_rate
 unknown_country
@@ -1451,6 +1466,7 @@ vat_rate_on
 vegan
 vegetarian
 verbose
+verbosity
 video
 video_id
 view_count

@@ -863,7 +863,7 @@ reference only).
   (`type_` in code); `HttpMethod` keeps the five route methods (decided
   by the lead session, 2026-10-18). What the pages left open is area
   19's "Chosen in chunk 5.5n".
-- [ ] **5.5n2 Software** `opus · high` (area 19, "Web and software",
+- [x] **5.5n2 Software** `opus · high` (area 19, "Web and software",
   split from 5.5n): the 18 software types (`SemanticVersion`,
   `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`,
   `SpanId`, `TraceParent`, `LogLevel`, `FilePath`, `FileName`,
@@ -871,7 +871,12 @@ reference only).
   `Digest`, `Ulid`, `IdempotencyKey`, `Doi`) and `semver.satisfies`. Done
   when every type passes the harness and `satisfies`' examples pass,
   SemVer 2.0.0's pre-release rules included, interpreted and in the
-  runtime.
+  runtime. Built, with `SemanticVersion` an object ordered
+  by SemVer's precedence, `VersionRange` npm's range grammar in one
+  spelling with node-semver's pre-release rule, and the SPDX License List
+  3.29.0 from Embark's `spdx` crate 0.13.6; `LogLevel` is OpenTelemetry's
+  six severities, and area 10's own `LogLevel` example is `Verbosity`.
+  What the pages left open is area 19's "Chosen in chunk 5.5n2".
 - [ ] **5.5o Text formats** `opus · high` (area 19, "Text formats"):
   `Markdown`, `Html` (whose construction is the sanitiser, a security
   boundary), `RichText` and `LocalisedText`, `markup`'s 3 operations and

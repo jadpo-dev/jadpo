@@ -473,7 +473,7 @@ fn default_literal(written: Option<&Expr>, value: &crate::constants::Value) -> S
     if let Some(expr) = written {
         let literal = match Const::from_expr(expr) {
             Const::Number { .. } | Const::Str(_) | Const::Bool(_) | Const::Duration(_) => true,
-            // An enum's variant, `LogLevel.normal`.
+            // An enum's variant, `Verbosity.normal`.
             Const::Path(names) => {
                 names.len() == 2 && names[0].chars().next().is_some_and(char::is_uppercase)
             }

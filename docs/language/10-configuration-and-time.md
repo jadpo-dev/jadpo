@@ -177,7 +177,7 @@ and data-carrying enums are rejected (`configuration.type_unsupported`):
 split them into fields.
 
 ```jadpo check project=settings-enums
-type LogLevel = Enum {
+type Verbosity = Enum {
     verbose
     normal
     terse
@@ -187,8 +187,8 @@ config {
     business_zone: Zone {
         default: Zone.europe_london
     }
-    log_level: LogLevel {
-        default: LogLevel.normal
+    log_level: Verbosity {
+        default: Verbosity.normal
     }
 }
 ```
@@ -202,7 +202,7 @@ BCP 47 tag (`en-GB`). A `Duration` is written as it is in source (`30s`, `5m`,
 ### Defaults and test values
 
 A default is a literal of the field's type, checked while compiling
-(`default: 25`, `default: 5s`, `default: LogLevel.normal`), against every rule of
+(`default: 25`, `default: 5s`, `default: Verbosity.normal`), against every rule of
 the type and the types it is built on. The same is true of `test:`, the value
 every test reads (below); a field that has none of its own default and is read
 by a test needs one. Neither names a constant (area 3,
@@ -430,7 +430,7 @@ most conservative reading:
 | Choice | Chosen |
 |---|---|
 | Naming the constant | As code reads it, `security.max_login_attempts` or `free_delivery_from`, or after its domain (`accounts.security.max_login_attempts`) when private constants of two domains share the name; one name for two is refused, listing each |
-| The `default:` | The constant's value as written when it is a literal (`5`, `30d`, `0.2000`, `LogLevel.normal`); otherwise the value the compiler worked out |
+| The `default:` | The constant's value as written when it is a literal (`5`, `30d`, `0.2000`, `Verbosity.normal`); otherwise the value the compiler worked out |
 | Where the field goes | Into the one `config { }`, before the first field whose name comes after it; a new `config.jadpo` when there is none. The `///` lines move with it; imports are fixed in every file touched |
 | A library or file left empty | Removed: a library whose only member was the constant goes, and a file holding nothing else is deleted (with its folder, if that is left empty) |
 | A `default:` naming the constant | When exactly one setting's `default:` names the constant (`configuration.default_literal_required`), that setting is the one the constant becomes: its `default:` becomes the constant's value and every read becomes `config.<that setting>`; that error alone doesn't stop the move |

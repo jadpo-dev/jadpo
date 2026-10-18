@@ -229,9 +229,9 @@ impl Bound {
         }
     }
 
-    /// The lowest version of `major.minor.patch`, its `-0` pre-release,
+    /// The first_of version of `major.minor.patch`, its `-0` pre-release,
     /// which node-semver writes for an excluded upper end.
-    fn lowest(major: i64, minor: i64, patch: i64) -> Bound {
+    fn first_of(major: i64, minor: i64, patch: i64) -> Bound {
         Bound::new(major, minor, patch, Some("0"))
     }
 
@@ -333,15 +333,15 @@ fn simple(text: &str) -> Option<Vec<Comparator>> {
         return Some(match (p.minor, p.patch) {
             (Some(minor), Some(patch)) => vec![
                 at_least(Bound::new(major, minor, patch, p.pre_release)),
-                less(Bound::lowest(major, next(minor)?, 0)),
+                less(Bound::first_of(major, next(minor)?, 0)),
             ],
             (Some(minor), None) => vec![
                 at_least(Bound::new(major, minor, 0, None)),
-                less(Bound::lowest(major, next(minor)?, 0)),
+                less(Bound::first_of(major, next(minor)?, 0)),
             ],
             _ => vec![
                 at_least(Bound::new(major, 0, 0, None)),
-                less(Bound::lowest(next(major)?, 0, 0)),
+                less(Bound::first_of(next(major)?, 0, 0)),
             ],
         });
     }
@@ -351,11 +351,11 @@ fn simple(text: &str) -> Option<Vec<Comparator>> {
         // The first number that isn't zero may not grow (node-semver's
         // `replaceCaret`).
         let upper = match (p.minor, p.patch) {
-            (None, _) => Bound::lowest(next(major)?, 0, 0),
-            (Some(minor), None) if major == 0 => Bound::lowest(0, next(minor)?, 0),
-            (Some(0), Some(patch)) if major == 0 => Bound::lowest(0, 0, next(patch)?),
-            (Some(minor), Some(_)) if major == 0 => Bound::lowest(0, next(minor)?, 0),
-            _ => Bound::lowest(next(major)?, 0, 0),
+            (None, _) => Bound::first_of(next(major)?, 0, 0),
+            (Some(minor), None) if major == 0 => Bound::first_of(0, next(minor)?, 0),
+            (Some(0), Some(patch)) if major == 0 => Bound::first_of(0, 0, next(patch)?),
+            (Some(minor), Some(_)) if major == 0 => Bound::first_of(0, next(minor)?, 0),
+            _ => Bound::first_of(next(major)?, 0, 0),
         };
         let lower = Bound::new(
             major,
@@ -382,17 +382,17 @@ fn simple(text: &str) -> Option<Vec<Comparator>> {
     let (low, high) = match p.minor {
         Some(minor) => (
             Bound::new(major, minor, 0, None),
-            Bound::lowest(major, next(minor)?, 0),
+            Bound::first_of(major, next(minor)?, 0),
         ),
         None => (
             Bound::new(major, 0, 0, None),
-            Bound::lowest(next(major)?, 0, 0),
+            Bound::first_of(next(major)?, 0, 0),
         ),
     };
     Some(match op {
         None => vec![at_least(low), less(high)],
         Some(AtLeast) => vec![at_least(low)],
-        Some(Less) => vec![less(Bound::lowest(low.major, low.minor, low.patch))],
+        Some(Less) => vec![less(Bound::first_of(low.major, low.minor, low.patch))],
         // `>1.2` is `>=1.3.0`, as node-semver has it.
         Some(Greater) => vec![at_least(Bound::new(
             high.major, high.minor, high.patch, None,
@@ -402,7 +402,7 @@ fn simple(text: &str) -> Option<Vec<Comparator>> {
 }
 
 /// A hyphen range's comparators (node-semver's `hyphen`): from the first
-/// partial's lowest version to the second's highest, both included.
+/// partial's first_of version to the second's highest, both included.
 fn hyphen(low: &str, high: &str) -> Option<Vec<Comparator>> {
     let (low, high) = (partial(low)?, partial(high)?);
     let lower = Bound::new(
@@ -419,11 +419,11 @@ fn hyphen(low: &str, high: &str) -> Option<Vec<Comparator>> {
         },
         (Some(minor), None) => Comparator {
             op: Op::Less,
-            bound: Bound::lowest(major, next(minor)?, 0),
+            bound: Bound::first_of(major, next(minor)?, 0),
         },
         _ => Comparator {
             op: Op::Less,
-            bound: Bound::lowest(next(major)?, 0, 0),
+            bound: Bound::first_of(next(major)?, 0, 0),
         },
     };
     Some(vec![
@@ -943,27 +943,15 @@ const IMAGE_NAME_MAX: usize = 255;
 /// A path component (`path-component`): lower-case letters and digits in
 /// runs joined by `.`, `_`, `__` or hyphens.
 fn path_component(text: &str) -> bool {
-    let bytes = text.as_bytes();
     let alnum = |b: &u8| b.is_ascii_lowercase() || b.is_ascii_digit();
+    let bytes = text.as_bytes();
     if !bytes.first().is_some_and(alnum) || !bytes.last().is_some_and(alnum) {
         return false;
     }
-    let mut at = 0;
-    while at < bytes.len() {
-        if alnum(&bytes[at]) {
-            at += 1;
-            continue;
-        }
-        let start = at;
-        while at < bytes.len() && !alnum(&bytes[at]) {
-            at += 1;
-        }
-        let run = &text[start..at];
-        if !(run == "." || run == "_" || run == "__" || run.bytes().all(|b| b == b'-')) {
-            return false;
-        }
-    }
-    true
+    // The runs between the letters and digits are its separators.
+    text.split(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
+        .filter(|run| !run.is_empty())
+        .all(|run| run == "." || run == "_" || run == "__" || run.bytes().all(|b| b == b'-'))
 }
 
 /// A registry host (`domain`): a domain name in lower case, an IPv4
@@ -1098,8 +1086,8 @@ pub const CONTAINER_IMAGE: StandardType = text_type(
             "ghcr.io/acme/shop-api@sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b",
         ),
         (
-            "localhost:5000/team/web_app:v2.1.0-rc.1",
-            "localhost:5000/team/web_app:v2.1.0-rc.1",
+            "localhost:5000/infra/web_app:v2.1.0-rc.1",
+            "localhost:5000/infra/web_app:v2.1.0-rc.1",
         ),
         (
             "registry.example.com:8443/a/b/c:latest@sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b",
@@ -1267,8 +1255,8 @@ pub const FILE_PATH: StandardType = text_type(
         "reports//october.csv",
         "reports/",
         // Windows' separators and drive, and a reserved name.
-        "C:\\Users\\ada",
-        "C:/Users/ada",
+        "C:\\Users\\me",
+        "C:/Users/me",
         "logs/aux/today.txt",
         "",
     ],
@@ -1281,7 +1269,7 @@ pub const GIT_REF: StandardType = text_type(
     Some(Validator::GitRef),
     &[
         ("main", "main"),
-        ("refs/heads/feature/checkout", "refs/heads/feature/checkout"),
+        ("refs/heads/feature/x-1", "refs/heads/feature/x-1"),
         ("v1.2.0", "v1.2.0"),
         (
             "8d3f2a1c9b7e6d5f4a3b2c1d0e9f8a7b6c5d4e3f",
@@ -1434,7 +1422,7 @@ pub const REGULAR_EXPRESSION: StandardType = text_type(
     Some(Validator::RegularExpression),
     &[
         ("[A-Z]{2}[0-9]{2}", "[A-Z]{2}[0-9]{2}"),
-        ("(?i)tea|coffee", "(?i)tea|coffee"),
+        ("(?i)grey|gray", "(?i)grey|gray"),
         (r"\p{Lu}\w*", r"\p{Lu}\w*"),
     ],
     &[

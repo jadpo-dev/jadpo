@@ -52,6 +52,7 @@ mod schedules;
 mod sets_maps;
 mod setting_move;
 mod signed;
+mod software;
 mod soundness;
 mod standard_types;
 mod stores;
