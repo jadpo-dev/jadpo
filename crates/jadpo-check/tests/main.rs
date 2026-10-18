@@ -47,6 +47,7 @@ mod percentages;
 mod policy;
 mod project;
 mod quantities;
+mod records_measures;
 mod review;
 mod scale;
 mod schedules;

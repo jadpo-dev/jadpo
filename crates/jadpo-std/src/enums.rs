@@ -449,6 +449,10 @@ std_enum! {
         /// Digits: ISO 3166-1 numeric for a country (`826`), UN M49 for a
         /// continent (`150`), ISO 15924's number for a script (`215`).
         Numeric: "numeric",
+        /// An ISBN-10 (ISO 2108 before 2007), nine digits and a mod-11 check
+        /// character, `0306406152`: read as its `Isbn`, never written
+        /// (chunk 5.5m2).
+        Isbn10: "isbn10",
     }
 }
 

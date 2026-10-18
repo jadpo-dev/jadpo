@@ -253,8 +253,10 @@ pub struct Unit {
     /// and the unit `text.parse`, `text.from` and the wire name. Case
     /// matters, as SI writes units.
     pub code: &'static str,
-    /// Whether `code` is a literal's suffix in source. Only the cubic
-    /// metre and a `TemperatureDifference`'s units have none.
+    /// Whether `code` is a literal's suffix in source. The cubic metre, a
+    /// `TemperatureDifference`'s units and the clinical units chunk 5.5m2
+    /// added (a millimetre of mercury, a beat a minute, a milligram a
+    /// decilitre and a millimole of glucose a litre) have none.
     pub suffix: bool,
     /// Its size in the base unit, `num / den`, exact where the unit is
     /// defined exactly (an inch is 0.0254 m) and to 30 digits for a
@@ -617,6 +619,19 @@ pub const UNITS: &[Unit] = &[
         None,
         "pounds per square inch",
     ),
+    // A millimetre of mercury, as a blood pressure is measured: 133.322387415
+    // Pa exactly, as CLDR converts it (chunk 5.5m2). No literal suffix
+    // (question 17's table), so it is written `units.of(120,
+    // PressureUnit.millimetre_of_mercury)` and read by its code, `mmHg`.
+    unsuffixed(unit(
+        K::Pressure,
+        "millimetre_of_mercury",
+        "mmHg",
+        (133_322_387_415, 1_000_000_000),
+        "mmHg",
+        None,
+        "millimetres of mercury",
+    )),
     unit(K::Energy, "joule", "J", (1, 1), "J", None, "joules"),
     unit(
         K::Energy,
@@ -798,6 +813,17 @@ pub const UNITS: &[Unit] = &[
         None,
         "gigahertz",
     ),
+    // A beat a minute, as a heart rate is counted: 1/60 Hz (chunk 5.5m2),
+    // read by its code, `bpm`, with no literal suffix.
+    unsuffixed(unit(
+        K::Frequency,
+        "beat_per_minute",
+        "bpm",
+        (1, 60),
+        "bpm",
+        None,
+        "beats per minute",
+    )),
     unit(
         K::Voltage,
         "millivolt",
@@ -855,6 +881,30 @@ pub const UNITS: &[Unit] = &[
         None,
         "grams per litre",
     ),
+    // A milligram a decilitre, as a US laboratory reports glucose: 0.01 g/L
+    // (chunk 5.5m2), read by its code, `mgdL`, with no literal suffix.
+    unsuffixed(unit(
+        K::Concentration,
+        "milligram_per_decilitre",
+        "mgdL",
+        (1, 100),
+        "mg/dL",
+        None,
+        "milligrams per decilitre",
+    )),
+    // A millimole of glucose a litre, as a UK or European meter reports
+    // blood glucose: glucose's molar mass, 180.1557 g/mol as CLDR converts
+    // its `milligram-ofglucose-per-deciliter`, makes it 0.1801557 g/L
+    // (chunk 5.5m2). It is glucose's alone, so its code is its name.
+    unsuffixed(unit(
+        K::Concentration,
+        "millimole_of_glucose_per_litre",
+        "millimole_of_glucose_per_litre",
+        (1_801_557, 10_000_000),
+        "mmol/L",
+        None,
+        "millimoles of glucose per litre",
+    )),
     unit(K::DataSize, "byte", "B", (1, 1), "B", None, "bytes"),
     unit(
         K::DataSize,
@@ -1590,6 +1640,53 @@ mod tests {
             parse_literal("5zz"),
             Err(LiteralProblem::Unknown(_))
         ));
+    }
+
+    #[test]
+    fn clinical_units_read_back_as_written() {
+        let unit = |kind: QuantityKind, name: &str| kind.unit_named(name).unwrap();
+        let held = |kind: QuantityKind, name: &str, n: i128, scale: u32| {
+            to_base(n, scale, unit(kind, name)).unwrap()
+        };
+        // 120 mmHg is 15,998.686 Pa to the kind's 3 places, shown as 120.
+        let mmhg = unit(QuantityKind::Pressure, "millimetre_of_mercury");
+        let systolic = held(QuantityKind::Pressure, "millimetre_of_mercury", 120, 0);
+        assert_eq!(systolic, 15_998_686);
+        assert_eq!(shown_in(systolic, mmhg), Some((120, 0)));
+        // 72 bpm is 1.2 Hz exactly; 73 bpm is 1.217 Hz, still shown as 73.
+        let bpm = unit(QuantityKind::Frequency, "beat_per_minute");
+        assert_eq!(
+            held(QuantityKind::Frequency, "beat_per_minute", 72, 0),
+            1200
+        );
+        let pulse = held(QuantityKind::Frequency, "beat_per_minute", 73, 0);
+        assert_eq!(pulse, 1217);
+        assert_eq!(shown_in(pulse, bpm), Some((73, 0)));
+        // 5.5 mmol/L of glucose is 0.99085635 g/L exactly, and 99 mg/dL
+        // 0.99 g/L; each reads back in its own unit.
+        let glucose = unit(
+            QuantityKind::Concentration,
+            "millimole_of_glucose_per_litre",
+        );
+        let mgdl = unit(QuantityKind::Concentration, "milligram_per_decilitre");
+        let fasting = held(
+            QuantityKind::Concentration,
+            "millimole_of_glucose_per_litre",
+            55,
+            1,
+        );
+        assert_eq!(fasting, 990_856_350);
+        assert_eq!(shown_in(fasting, glucose), Some((55, 1)));
+        let us = held(
+            QuantityKind::Concentration,
+            "milligram_per_decilitre",
+            99,
+            0,
+        );
+        assert_eq!(us, 990_000_000);
+        assert_eq!(shown_in(us, mgdl), Some((99, 0)));
+        assert_eq!(parse_text(QuantityKind::Pressure, "120 mmHg"), Ok(systolic));
+        assert!(unit_of_suffix("mmHg").is_none(), "no literal suffix");
     }
 
     #[test]

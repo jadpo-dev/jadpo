@@ -135,9 +135,9 @@ fn unclosed_block() {
 
 #[test]
 fn type_parent_required() {
-    let (error, covered) = one_error("type Dimensions = {\n    width: Size\n}\n");
+    let (error, covered) = one_error("type BoxSize = {\n    width: Size\n}\n");
     assert_eq!(error.rule.id, "syntax.type_parent_required");
-    assert_eq!(error.message, "`Dimensions` needs a base type");
+    assert_eq!(error.message, "`BoxSize` needs a base type");
     assert_eq!(covered, "{");
 }
 

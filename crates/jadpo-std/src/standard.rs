@@ -25,6 +25,7 @@ mod contact;
 pub mod documents;
 pub mod emoji_data;
 pub mod events;
+pub mod health;
 mod identifiers;
 pub mod lists;
 pub mod markup;
@@ -39,12 +40,14 @@ mod places_data;
 pub mod postal;
 mod postal_codes_data;
 pub mod prices;
+pub mod records;
 pub mod recurrence;
 pub mod rich_text;
 mod schedules;
 pub mod software;
 pub mod web;
 
+pub use codes::isbn_from_isbn10;
 pub use contact::{LINE_MAX, LINE_PATTERN};
 pub use places::{ClosedList, closed_list, retired, subdivision_name};
 
@@ -144,7 +147,8 @@ pub enum Part {
     /// included where given (chunk 5.5i3): a price's amount never below 0,
     /// a discount's percentage from 0% to 100%. `min:` and `max:` read as
     /// they do on a type built on `of` (area 2): minor units for `Money`,
-    /// the fraction for a `Percentage`.
+    /// the fraction for a `Percentage`, the base unit for a quantity, and
+    /// milliseconds for a `Duration` (chunk 5.5m2).
     Bounded {
         of: Builtin,
         min: Option<crate::Num>,
@@ -180,6 +184,16 @@ impl Part {
             Part::Whole(min, max) => crate::Rules {
                 min: Some(whole(min)),
                 max: Some(whole(max)),
+                ..crate::Rules::default()
+            },
+            // A duration's bounds are in milliseconds (chunk 5.5m2).
+            Part::Bounded {
+                of: Builtin::Duration,
+                min,
+                max,
+            } => crate::Rules {
+                min_duration: min.map(|n| crate::Dur { millis: n.mantissa }),
+                max_duration: max.map(|n| crate::Dur { millis: n.mantissa }),
                 ..crate::Rules::default()
             },
             Part::Bounded { min, max, .. } => crate::Rules {
@@ -340,6 +354,16 @@ pub enum TextForm {
     /// A WebVTT cue's timings line and its text (chunk 5.5p,
     /// [`media::read_cue`]).
     Cue,
+    /// An object of two parts joined by the separator (chunk 5.5m2): the
+    /// first an enum's code, a standard type's text or text its part's
+    /// pattern takes, the second text its part's pattern takes; read by
+    /// splitting at the separator's first place, the rules across the
+    /// parts held: `UPSN 1Z999AA10123456784`, `openai/gpt-4o`.
+    Joined(&'static str),
+    /// A flight's designator as IATA's SSIM writes it (chunk 5.5m2,
+    /// [`records`]): the airline's two characters, the number with no
+    /// leading zero and the suffix, if it has one: `BA123`, `BA5A`.
+    FlightNumber,
     /// HTML as the sanitiser keeps it (chunk 5.5o, [`markup::sanitise`]):
     /// written as it is held, and read from any text, made safe rather than
     /// refused, so reading it never fails.
@@ -516,6 +540,91 @@ pub enum FormatKey {
     /// The entry `text.pick` gives for the locale it is shown in: a
     /// `LocalisedText`'s (chunk 5.5o2).
     Picked,
+    /// A quantity in the first unit listed, at its places where it names
+    /// them, or in the unit `unit:` names, at that unit's places where it is
+    /// listed and exactly otherwise (chunk 5.5m2): a heart rate in whole
+    /// beats a minute, `72 bpm`.
+    UnitsIn(&'static [ShownIn]),
+    /// The parts named that the value has, each a quantity shown in the
+    /// listed unit of its kind (or the unit `unit:` names, for its kind),
+    /// joined by `separator`; with `unit_once`, their numbers joined and
+    /// the unit written once after them (chunk 5.5m2): `120/80 mmHg`, `30 ×
+    /// 20 × 10 cm`, a dose's `500 mg`.
+    Measures {
+        parts: &'static [&'static str],
+        separator: &'static str,
+        units: &'static [ShownIn],
+        unit_once: bool,
+    },
+    /// A dosage instruction in English, as its route's name is (chunk
+    /// 5.5m2): its dose, its route, how many times in what period, and
+    /// `when needed` when it is taken only then: `500 mg, Oral use, 2 times
+    /// per 1 day`.
+    Dosage,
+}
+
+/// A unit a measure is shown in (chunk 5.5m2): its kind, its name in the
+/// kind's unit enum, and the places it is shown to, rounded half to even,
+/// where it is rounded at all.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShownIn {
+    pub kind: crate::QuantityKind,
+    pub unit: &'static str,
+    pub places: Option<u32>,
+}
+
+impl ShownIn {
+    /// The unit itself.
+    pub fn unit(&self) -> Option<&'static crate::QuantityUnit> {
+        self.kind.unit_named(self.unit)
+    }
+}
+
+/// A rule that one part of a standard object is below another (chunk
+/// 5.5m2): a rating's worst below its best, a blood pressure's diastolic
+/// below its systolic. Proved for a literal that writes both parts as
+/// numbers or quantities, and checked as JSON is read, breaking `format`
+/// at `at`; one built in code from values waits on cross-field rules
+/// (chunk 5.5t), as a postal code's fit to its country does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OrderRule {
+    pub lower: &'static str,
+    pub upper: &'static str,
+    /// Whether the two may not be equal.
+    pub strict: bool,
+    /// The part a refusal points at.
+    pub at: &'static str,
+    pub label: &'static str,
+    pub reason: &'static str,
+    pub next: &'static str,
+}
+
+impl OrderRule {
+    /// Whether `lower` and `upper`, in that order, keep the rule.
+    pub fn holds(&self, order: std::cmp::Ordering) -> bool {
+        match order {
+            std::cmp::Ordering::Less => true,
+            std::cmp::Ordering::Equal => !self.strict,
+            std::cmp::Ordering::Greater => false,
+        }
+    }
+}
+
+/// The rules ordering the parts of standard object type `ty` (chunk
+/// 5.5m2).
+pub fn order_rules(ty: &str) -> &'static [OrderRule] {
+    match ty {
+        records::RATING => records::order_rules(ty),
+        _ => health::order_rules(ty),
+    }
+}
+
+/// Whether `text.parse` reads standard type `name` in code system `form`,
+/// a form it reads but never writes (chunk 5.5m2): an `Isbn` from an
+/// ISBN-10, which `text.from` never gives, as the contract's conversion
+/// "`Isbn` 10 to 13" says.
+pub fn reads_form(name: &str, form: crate::CodeForm) -> bool {
+    name == "Isbn" && form == crate::CodeForm::Isbn10
 }
 
 /// How a printed form groups its canonical text: groups of `sizes` in
@@ -1046,8 +1155,11 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// (chunk 5.5i3, in `prices`), the 18 software types (chunk 5.5n2, in
 /// `software`), `Html` and `Markdown` (chunk 5.5o, in `markup`), the 15
 /// media and visual types with `ContentRatingScheme` (chunk 5.5p, in
-/// `colour` and `media`), and `RichText` with its blocks, spans and marks,
-/// and `LocalisedText` (chunk 5.5o2, in `rich_text`).
+/// `colour` and `media`), `RichText` with its blocks, spans and marks,
+/// and `LocalisedText` (chunk 5.5o2, in `rich_text`), and the 16 records
+/// and measures of commerce, health, travel and the rest with the size
+/// systems and `RouteOfAdministration` (chunk 5.5m2, in `records` and
+/// `health`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     lists::ALLERGEN_ENTRY,
@@ -1071,6 +1183,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     media::ASPECT_RATIO_ENTRY,
     media::AUDIO_CODEC_ENTRY,
     banks::BANK_ACCOUNT_ENTRY,
+    records::BARCODE_ENTRY,
     prices::BASIS_POINTS_ENTRY,
     identifiers::BIC,
     quantity(
@@ -1081,6 +1194,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("100000000 bps", "100,000,000 bit/s"),
         ],
     ),
+    health::BLOOD_GLUCOSE_ENTRY,
+    health::BLOOD_PRESSURE_ENTRY,
     lists::BLOOD_TYPE_ENTRY,
     codes::BOOKING_REFERENCE,
     lists::CABIN_CLASS_ENTRY,
@@ -1136,6 +1251,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     codes::CARRIER,
     lists::CEFR_LEVEL_ENTRY,
     web::CIDR,
+    records::CLOTHING_SIZE_ENTRY,
+    records::CLOTHING_SIZE_SYSTEM_ENTRY,
     colour::COLOUR_ENTRY,
     quantity(
         crate::QuantityKind::Concentration,
@@ -1242,9 +1359,12 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         release: FIRST_RELEASE,
     },
     software::DIGEST,
+    records::DIMENSIONS_ENTRY,
     prices::DISCOUNT_ENTRY,
     software::DOI,
     web::DOMAIN_NAME,
+    health::DOSAGE_INSTRUCTION_ENTRY,
+    health::DOSE_ENTRY,
     documents::DRIVING_LICENCE_NUMBER_TYPE,
     StandardType {
         name: "Duration",
@@ -1391,6 +1511,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    records::FLIGHT_NUMBER_ENTRY,
     // An exact rational number as written (chunk 5.5j2): `1/2` and `2/4`
     // are two values, as any object's fields are, and unordered. Sent as
     // its canonical text and stored as that JSON, as the time objects are.
@@ -1443,6 +1564,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     software::GIT_REF,
     contact::GIVEN_NAME,
+    health::HEART_RATE_ENTRY,
     web::HOSTNAME,
     codes::HS_CODE,
     markup::HTML_ENTRY,
@@ -1572,6 +1694,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
     ),
     web::JSON_POINTER,
+    records::JURISDICTION_ENTRY,
     places::LANGUAGE_ENTRY,
     lists::LAWFUL_BASIS_ENTRY,
     identifiers::LEI,
@@ -1666,6 +1789,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("1000 kg", "1,000 kg"),
         ],
     ),
+    records::MODEL_ID_ENTRY,
     // An amount in a currency's minor units (area 19, "Money and
     // payments", question 16): its JSON is the amount and the code, as
     // Stripe sends it, and it is stored in two columns, a `bigint` of minor
@@ -1877,6 +2001,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    records::RATING_ENTRY,
     // One number to another as written (chunk 5.5j2): `16:9` and `32:18`
     // are two values, unordered. Sent as its canonical text and stored as
     // that JSON, as the time objects are.
@@ -1926,8 +2051,11 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     rich_text::RICH_TEXT_BLOCK_ENTRY,
     rich_text::RICH_TEXT_MARK_ENTRY,
     rich_text::RICH_TEXT_SPAN_ENTRY,
+    health::ROUTE_OF_ADMINISTRATION_ENTRY,
     software::SEMANTIC_VERSION_ENTRY,
     codes::SERIAL_NUMBER,
+    records::SHOE_SIZE_ENTRY,
+    records::SHOE_SIZE_SYSTEM_ENTRY,
     codes::SKU,
     web::SLUG,
     codes::SNOMED_CONCEPT,
@@ -1974,6 +2102,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     media::TIMECODE_ENTRY,
     software::TRACE_ID,
     software::TRACE_PARENT,
+    records::TRACKING_NUMBER_ENTRY,
     identifiers::UK_ACCOUNT_NUMBER,
     identifiers::UK_COMPANY_NUMBER,
     identifiers::UK_NATIONAL_INSURANCE_NUMBER,
@@ -1983,6 +2112,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     places::UN_LOCODE,
     codes::UN_NUMBER,
     prices::UNIT_PRICE_ENTRY,
+    records::UNIT_QUANTITY_ENTRY,
     codes::UPC_A,
     contact::UPRN,
     checked(
@@ -2045,6 +2175,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         release: FIRST_RELEASE,
     },
     documents::VAT_NUMBER_TYPE,
+    records::VEHICLE_REGISTRATION_ENTRY,
     software::VERSION_RANGE,
     media::VIDEO_CODEC_ENTRY,
     media::VIDEO_RESOLUTION_ENTRY,
@@ -2486,9 +2617,34 @@ impl StandardType {
                 .chain(banks::PERSONAL)
                 .chain(card_types::PERSONAL)
                 .chain(documents::PERSONAL)
+                .chain(health::PERSONAL)
                 .chain(lists::PERSONAL)
                 .find(|(name, _)| *name == self.name)
                 .map(|(_, category)| *category),
+        }
+    }
+
+    /// The kind of quantity `text.format`'s `unit:` names a unit of for
+    /// it: a quantity's own, or a type built on one's (chunk 5.5m2), or
+    /// the kind its measures are shown in, for an object whose parts are
+    /// all one kind (`Dimensions`' lengths); `None` for a type that takes
+    /// no unit.
+    pub fn unit_kind(&self) -> Option<crate::QuantityKind> {
+        self.format_option("unit")?;
+        match (self.holds, self.format.key) {
+            (
+                Holds::Builtin(Builtin::Quantity(kind))
+                | Holds::Bounded {
+                    of: Builtin::Quantity(kind),
+                    ..
+                },
+                _,
+            ) => Some(kind),
+            (_, FormatKey::Measures { units, .. }) => match units {
+                [only] => Some(only.kind),
+                _ => None,
+            },
+            _ => None,
         }
     }
 
@@ -2544,7 +2700,14 @@ impl StandardType {
             (SqlType::Date, _) => Column::Date,
             (SqlType::Int8, Holds::Builtin(Builtin::Duration)) => Column::Duration,
             (SqlType::Int4 | SqlType::Int8, Holds::Whole { .. }) => Column::Int,
-            (SqlType::Numeric, Holds::Builtin(Builtin::Quantity(kind))) => Column::Quantity(kind),
+            (SqlType::Numeric, Holds::Builtin(Builtin::Quantity(kind)))
+            | (
+                SqlType::Numeric,
+                Holds::Bounded {
+                    of: Builtin::Quantity(kind),
+                    ..
+                },
+            ) => Column::Quantity(kind),
             (SqlType::Numeric, Holds::Builtin(Builtin::Percentage))
             | (
                 SqlType::Numeric,
@@ -2560,7 +2723,12 @@ impl StandardType {
     /// The PostgreSQL column type its storage is: the first named column's,
     /// for a type stored in more than one.
     pub fn column_type(&self) -> &'static str {
-        if let Holds::Builtin(Builtin::Quantity(kind)) = self.holds {
+        if let Holds::Builtin(Builtin::Quantity(kind))
+        | Holds::Bounded {
+            of: Builtin::Quantity(kind),
+            ..
+        } = self.holds
+        {
             return kind.column_type();
         }
         let storage = match self.storage {
@@ -2614,7 +2782,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 195, "the 195 standard types built so far");
+        assert_eq!(names.len(), 214, "the 214 standard types built so far");
     }
 
     #[test]
