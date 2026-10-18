@@ -889,7 +889,16 @@ impl<'d> TestHost<'d> {
     }
 }
 
+/// The passkey ceremonies a test's requests run, as a native host's do.
+static PASSKEYS: jadpo_host_native::passkeys::WebauthnPasskeys =
+    jadpo_host_native::passkeys::WebauthnPasskeys;
+
 impl jadpo_runtime::Host for TestHost<'_> {
+    /// `webauthn-rs`, as natively (area 8, "Passkeys").
+    fn passkeys(&self) -> Option<&dyn jadpo_runtime::Passkeys> {
+        Some(&PASSKEYS)
+    }
+
     fn database(&self, store: &str) -> Option<&dyn jadpo_runtime::Database> {
         match self.held() {
             Held::Holding { stores, .. } => stores

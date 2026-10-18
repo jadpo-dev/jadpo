@@ -82,8 +82,9 @@ pub use executor::{Executor, Stalled, YieldNow, block_on, yield_now};
 pub use failure::Failure;
 pub use fault::{Fault, FaultKind};
 pub use host::{
-    Database, Event, Host, LocalFuture, MemoryHost, NoStore, RELEASE_SAVEPOINT,
-    ROLLBACK_TO_SAVEPOINT, Row, SAVEPOINT, SqlType, SqlValue, StoreError, Transaction,
+    Database, Event, Host, LocalFuture, MemoryHost, NoStore, PasskeyAnswer, PasskeyError,
+    PasskeyParts, Passkeys, RELEASE_SAVEPOINT, ROLLBACK_TO_SAVEPOINT, Row, SAVEPOINT, SqlType,
+    SqlValue, StoreError, Transaction,
 };
 pub use jadpo_std::Isolation;
 pub use limits::MAX_DEPTH;

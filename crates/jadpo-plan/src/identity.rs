@@ -9,7 +9,7 @@
 use jadpo_check::policy::Effect;
 use jadpo_db::{Db, Project};
 use jadpo_sql::{Bind, Value, ident};
-use jadpo_std::http::{GatedStatements, IdentityPlan, PrincipalKind, PrincipalPlan};
+use jadpo_std::http::{GatedStatements, IdentityPlan, PasskeyPlan, PrincipalKind, PrincipalPlan};
 use jadpo_std::read::SqlType;
 
 use crate::queries::{Planner, Reach};
@@ -85,7 +85,42 @@ impl Planner<'_> {
             origin: identity
                 .method(jadpo_std::AuthenticationMethod::BrowserSession)
                 .and_then(|method| method.origin.clone()),
+            passkeys: identity.passkeys().and_then(|passkey| {
+                Some(PasskeyPlan {
+                    path: passkey.path.clone(),
+                    expires_after_ms: passkey.expires_after_ms,
+                    lookup: self.passkey_lookup(user?)?,
+                })
+            }),
         })
+    }
+
+    /// How a passkey is found by its credential ID with its user's record
+    /// (area 8, "Passkeys"): `$1` the credential ID, `$2` the time now.
+    fn passkey_lookup(&self, variant: &jadpo_check::identity::Variant) -> Option<String> {
+        let entity = self.model.entity(&variant.entity)?;
+        let mut bind = Lookup;
+        let active = match &variant.active {
+            Some(condition) => format!(
+                "({}) IS TRUE",
+                jadpo_sql::condition(&mut bind, entity, condition, false)?
+            ),
+            None => "TRUE".to_string(),
+        };
+        let mut wheres = vec![format!("{} = s.{}", ident("id"), ident("principal_id"))];
+        wheres.extend(self.access(&mut bind, entity, Reach::Read)?);
+        Some(format!(
+            "SELECT s.{id}, s.{credential}, s.{handle}, u.{id}, u.{active} FROM {table} AS s CROSS JOIN LATERAL (SELECT {id}, {active_sql} AS {active} FROM {entity_table} WHERE {wheres}) AS u WHERE s.{credential_id} = $1 AND $2::timestamptz IS NOT NULL",
+            id = ident("id"),
+            credential = ident("credential"),
+            handle = ident("user_handle"),
+            active = ident("active"),
+            table = ident(jadpo_check::data::PASSKEYS),
+            active_sql = active,
+            entity_table = ident(&entity.table),
+            wheres = wheres.join(" AND "),
+            credential_id = ident("credential_id"),
+        ))
     }
 
     /// How one kind of caller is made and, when `looked_up` says something

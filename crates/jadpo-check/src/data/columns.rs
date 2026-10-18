@@ -327,6 +327,71 @@ pub fn system_table(name: &str) -> Table {
                 },
             );
         }
+        "passkeys" => {
+            // Passkeys (area 8, "Passkeys"): each found by its credential
+            // ID, kept as the `WebAuthnCredential` it is, with its user
+            // and the user handle its device keeps. Nothing in it signs
+            // anyone in.
+            add("id", "uuid", false);
+            add("principal_id", "uuid", false);
+            add("credential_id", "bytea", false);
+            add("user_handle", "bytea", false);
+            add("credential", "jsonb", false);
+            add("registered_at", "timestamptz(3)", false);
+            unique.insert(
+                object_name(&[&table, "credential_id"], "key"),
+                jadpo_graph::schema::Unique {
+                    columns: vec!["credential_id".into()],
+                    rule: "system passkeys".into(),
+                },
+            );
+            indexes.insert(
+                object_name(&[&table, "principal_id"], "idx"),
+                jadpo_graph::schema::Index {
+                    columns: vec!["principal_id".into()],
+                    reason: "system passkeys".into(),
+                    predicate: None,
+                    collate: Vec::new(),
+                },
+            );
+        }
+        "passkey_challenges" => {
+            // Passkey ceremonies under way (area 8, "Passkeys"): each
+            // found by its challenge's verifier and used once, bound to
+            // the browser or session that asked, with the state
+            // `webauthn-rs` checks the answer against.
+            add("id", "uuid", false);
+            add("challenge", "text", false);
+            add("purpose", "text", false);
+            add("binding", "text", false);
+            add("principal_id", "uuid", true);
+            add("user_handle", "bytea", true);
+            add("state", "text", false);
+            add("expires_at", "timestamptz(3)", false);
+            unique.insert(
+                object_name(&[&table, "challenge"], "key"),
+                jadpo_graph::schema::Unique {
+                    columns: vec!["challenge".into()],
+                    rule: "system passkey challenges".into(),
+                },
+            );
+            unique.insert(
+                object_name(&[&table, "purpose", "binding"], "key"),
+                jadpo_graph::schema::Unique {
+                    columns: vec!["purpose".into(), "binding".into()],
+                    rule: "system passkey challenges".into(),
+                },
+            );
+            indexes.insert(
+                object_name(&[&table, "expires_at"], "idx"),
+                jadpo_graph::schema::Index {
+                    columns: vec!["expires_at".into()],
+                    reason: "system passkey challenges".into(),
+                    predicate: None,
+                    collate: Vec::new(),
+                },
+            );
+        }
         _ => {
             // Idempotency keys: one stored response per key and caller.
             add("scope", "text", false);

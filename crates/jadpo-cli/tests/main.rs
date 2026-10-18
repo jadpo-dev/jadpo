@@ -22,6 +22,7 @@ mod locales;
 mod lsp;
 mod manifest;
 mod migrate;
+mod passkeys;
 mod policy;
 mod queries;
 mod round_trips;

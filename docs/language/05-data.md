@@ -740,7 +740,11 @@ store the principal's user entity lives in, and service keys
 (`jadpo_service_keys`: each key's service, its verifier, and when it was
 issued and expires; chunk 4.3b) only in the store its service entity lives
 in, since authentication reads a credential with its caller's record in
-one statement.
+one statement. Passkeys (`jadpo_passkeys`: each one's user, its
+credential ID, the user handle its device keeps and the
+`WebAuthnCredential` it is; and `jadpo_passkey_challenges`: each ceremony
+under way, by its challenge's verifier, with what it is bound to and when
+it expires; area 8, chunk 5.5z) go beside the sessions they start.
 Schedule state and the stores system features name explicitly
 (`schedules: { store: main }`) join them with their chunks. The runtime
 state decided on 2026-10-16 (multi-step call records and batch runs beside

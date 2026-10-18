@@ -42,6 +42,7 @@ mod guarantees;
 mod health;
 pub mod idempotency;
 pub mod identity;
+mod passkeys;
 pub mod signed;
 
 use std::cell::Cell;
@@ -577,10 +578,28 @@ async fn run_route(
         || idempotency::ANONYMOUS.to_string(),
         |caller| caller.key.clone(),
     );
-    let mut response = match exchanged {
+    let mut response = match (exchanged, &route.run) {
         // The exchange runs nothing: the key's read signed its token.
-        Some(exchanged) => exchange(request, request_id, exchanged),
-        None => {
+        (Some(exchanged), _) => exchange(request, request_id, exchanged),
+        // The runtime answers the passkey routes itself (area 8,
+        // "Passkeys"), with no idempotency key: a replayed answer is never
+        // answered from a stored response.
+        (None, Run::Passkey(step)) => {
+            let answered = passkeys::answer(
+                app,
+                ctx,
+                request,
+                request_id,
+                *step,
+                segments,
+                caller.as_ref(),
+            );
+            match race(answered, &mut deadline).await {
+                First::Left(response) => response,
+                First::Right(()) => runtime_failure(DEADLINE_EXCEEDED, request_id, None),
+            }
+        }
+        (None, _) => {
             run_with_caller(
                 app, executor, ctx, request, request_id, route, segments, deadline, caller, scope,
                 reissued,
@@ -824,7 +843,7 @@ async fn run_with_caller(
                     }
                 }
                 // Answered once signed in, without running anything.
-                Run::Exchange => Outcome::Fault(ctx.fault(
+                Run::Exchange | Run::Passkey(_) => Outcome::Fault(ctx.fault(
                     crate::FaultKind::Defect("an exchange with no key to trade".into()),
                     Frame::ENTRY,
                 )),
