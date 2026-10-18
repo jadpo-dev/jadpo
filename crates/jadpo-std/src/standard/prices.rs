@@ -4,7 +4,7 @@
 //! `InterestRateBasis`, an interest rate's basis. `Discount` and
 //! `UnitPrice` are choices of other types ([`Holds::Choice`]), the first
 //! standard types that are, and `TaxRate` and `BasisPoints` are built on a
-//! built-in type with bounds of their own ([`Holds::Within`]); each is an
+//! built-in type with bounds of their own ([`Holds::Bounded`]); each is an
 //! entry like the rest, with no code of its own.
 
 use super::{
@@ -29,6 +29,11 @@ pub const INTEREST_RATE: &str = "InterestRate";
 /// `InterestRateBasis`.
 pub const INTEREST_RATE_BASIS: &str = "InterestRateBasis";
 
+/// The most basis points either side of zero: JavaScript's largest safe
+/// integer, so a count is always sent as a JSON number a client reads
+/// exactly, as an amount of money is.
+const MOST_BASIS_POINTS: i64 = crate::http::SAFE_INTEGER as i64;
+
 const ZERO: Num = Num {
     mantissa: 0,
     scale: 0,
@@ -41,7 +46,7 @@ const WHOLE: Num = Num {
 };
 
 /// An amount never below 0: a price, an amount off.
-const AMOUNT: Part = Part::Within {
+const AMOUNT: Part = Part::Bounded {
     of: Builtin::Money,
     min: Some(ZERO),
     max: None,
@@ -49,7 +54,7 @@ const AMOUNT: Part = Part::Within {
 
 /// A quantity of `kind` never below 0: what a unit price is per.
 const fn per(kind: QuantityKind) -> Part {
-    Part::Within {
+    Part::Bounded {
         of: Builtin::Quantity(kind),
         min: Some(ZERO),
         max: None,
@@ -71,7 +76,7 @@ pub const DISCOUNT_VARIANTS: &[(&str, &[(&str, Part)])] = &[
         "percentage_off",
         &[(
             "percentage",
-            Part::Within {
+            Part::Bounded {
                 of: Builtin::Percentage,
                 min: Some(ZERO),
                 max: Some(WHOLE),
@@ -132,17 +137,16 @@ const fn examples(
     }
 }
 
-/// A count of hundredths of a percent, a whole number of any sign, shown
-/// with `bp`.
+/// A count of hundredths of a percent, a whole number of any sign within
+/// JavaScript's safe integers, sent as a JSON number and shown with `bp`.
 pub const BASIS_POINTS_ENTRY: StandardType = StandardType {
     name: BASIS_POINTS,
-    holds: Holds::Within {
-        of: Builtin::Int,
-        min: None,
-        max: None,
+    holds: Holds::Whole {
+        min: -MOST_BASIS_POINTS,
+        max: MOST_BASIS_POINTS,
     },
     text: Some(TextForm::Whole),
-    json: Json::Text,
+    json: Json::Number,
     storage: Storage::Column(SqlType::Int8),
     format: Format {
         key: FormatKey::Suffixed(" bp"),
@@ -158,7 +162,7 @@ pub const BASIS_POINTS_ENTRY: StandardType = StandardType {
             ("25", "25 bp"),
             ("1500", "1,500 bp"),
         ],
-        &["25bp", "25 bp", "0.25%", "2.5", "+25", ""],
+        &["25bp", "25 bp", "0.25%", "2.5", "+25", "-0", "025", ""],
     ),
     release: FIRST_RELEASE,
 };
@@ -312,7 +316,7 @@ pub const PRICE_ENTRY: StandardType = StandardType {
 /// format are a `Percentage`'s.
 pub const TAX_RATE_ENTRY: StandardType = StandardType {
     name: TAX_RATE,
-    holds: Holds::Within {
+    holds: Holds::Bounded {
         of: Builtin::Percentage,
         min: Some(ZERO),
         max: None,

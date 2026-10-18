@@ -364,20 +364,19 @@ check failed: 1 error, 1 file
 ### `naming.round_trip`
 
 ```jadpo check project=e-round-trip expect=naming.round_trip
-type HTTPStatus = Int {
-    min: 100
-    max: 599
+type HTMLSnippet = Text {
+    max_length: 2000
 }
 ```
 
 ```text output
-error: `HTTPStatus` has consecutive capitals
+error: `HTMLSnippet` has consecutive capitals
  --> main.jadpo:1:6
   |
-1 | type HTTPStatus = Int {
-  |      ^^^^^^^^^^ reads back as `HttpStatus`
-  reason: A name must convert to its file name and back unchanged: `HTTPStatus` becomes `http_status.jadpo`, which reads back as `HttpStatus`.
-  next: Rename it `HttpStatus` (agent)
+1 | type HTMLSnippet = Text {
+  |      ^^^^^^^^^^^ reads back as `HtmlSnippet`
+  reason: A name must convert to its file name and back unchanged: `HTMLSnippet` becomes `html_snippet.jadpo`, which reads back as `HtmlSnippet`.
+  next: Rename it `HtmlSnippet` (agent)
   rule: naming.round_trip
   help: docs/language/01-project-layout-and-modules.html#naming-round-trip
 

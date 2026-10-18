@@ -148,23 +148,17 @@ impl<'g> Wire<'g> {
                 TypeRef::Set(inner) => return Shape::Set(*inner, merge(&rules)),
                 TypeRef::Map(key, value) => return Shape::Map(*key, *value, merge(&rules)),
                 // A standard type held as text (area 19, chunk 5.5i): text
-                // with its own check, whose pattern OpenAPI shows.
+                // with its own check, whose pattern OpenAPI shows; or held
+                // as a whole number, with its range (chunk 5.5n); or on a
+                // built-in type with bounds of its own (chunk 5.5i3).
                 TypeRef::Std(name, args)
-                    if args.is_empty() && jadpo_std::standard::text_rules(&name).is_some() =>
+                    if args.is_empty() && jadpo_std::standard::declared(&name).is_some() =>
                 {
-                    rules.extend(jadpo_std::standard::text_rules(&name));
-                    current = TypeRef::Builtin(Builtin::Text);
-                }
-                // A standard type built on a built-in type with bounds of its
-                // own (chunk 5.5i3): that type, with the bounds as rules.
-                TypeRef::Std(name, args)
-                    if args.is_empty() && jadpo_std::standard::within_rules(&name).is_some() =>
-                {
-                    let Some((of, own)) = jadpo_std::standard::within_rules(&name) else {
-                        return Shape::Other(name);
+                    let Some((builtin, own)) = jadpo_std::standard::declared(&name) else {
+                        unreachable!("declared just above");
                     };
                     rules.push(own);
-                    current = TypeRef::Builtin(of);
+                    current = TypeRef::Builtin(builtin);
                 }
                 TypeRef::Std(name, args) if name == "Page" && args.len() == 1 => {
                     return Shape::Page(args.into_iter().next().unwrap_or(TypeRef::None));
@@ -466,9 +460,10 @@ fn whole(n: Num) -> Option<i64> {
 }
 
 /// A standard object type's schema, from its data entry (area 19): an
-/// object of its fields, each its part's, all required, a part that may be
-/// `none` also `null`; a type sent as its canonical text (`LocalTime`,
-/// chunk 5.5k) is a string.
+/// object of its fields by their wire names, each its part's, all required,
+/// a part that may be `none` also `null`, or, for one sent as RFC 9457
+/// sends a problem (`Json::Members`), left out; a type sent as its
+/// canonical text (`LocalTime`, chunk 5.5k) is a string.
 pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
     let mut out = Value::object();
     if entry.json == jadpo_std::standard::Json::Text {
@@ -505,10 +500,14 @@ pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
     out.set("type", "object");
     let mut properties = Value::object();
     let mut required = Vec::new();
+    let members = matches!(entry.json, jadpo_std::standard::Json::Members(_));
     if let jadpo_std::standard::Holds::Object(fields) = entry.holds {
         for (name, part) in fields {
+            let name = jadpo_std::standard::wire_name(entry.name, name);
             properties.set(name, part_schema(*part));
-            required.push(*name);
+            if !(members && part.required().1) {
+                required.push(name);
+            }
         }
     }
     out.set("properties", properties);
@@ -551,8 +550,8 @@ fn part_schema(part: jadpo_std::Part) -> Value {
                 );
                 out
             }
-            Some(entry) => match jadpo_std::standard::text_rules(entry.name) {
-                Some(rules) => scalar_schema(Builtin::Text, &rules),
+            Some(entry) => match jadpo_std::standard::declared(entry.name) {
+                Some((builtin, rules)) => scalar_schema(builtin, &rules),
                 None => standard_object_schema(entry),
             },
             None => Value::object(),

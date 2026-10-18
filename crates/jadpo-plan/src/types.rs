@@ -174,11 +174,24 @@ impl Types {
         name: &str,
         fields: &[(&str, jadpo_std::Part)],
     ) -> ShapeId {
-        let fields: Vec<(&str, TypeRef)> = fields
+        let typed: Vec<(&str, TypeRef)> = fields
             .iter()
             .map(|(field, part)| (*field, part_type(name, field, *part)))
             .collect();
-        self.typed_shape(name, &fields)
+        let id = self.typed_shape(name, &typed);
+        // Sent as RFC 9457 sends a problem (chunk 5.5n): a part that may
+        // be `none` may be left out, and reads as `none` when it is.
+        if jadpo_std::standard_type(name)
+            .is_some_and(|entry| matches!(entry.json, jadpo_std::standard::Json::Members(_)))
+            && let Some(shape) = self.shapes.get_mut(id.0 as usize)
+        {
+            for (plan, (_, part)) in shape.fields.iter_mut().zip(fields) {
+                if part.required().1 {
+                    plan.absent = Some(Constant::None);
+                }
+            }
+        }
+        id
     }
 
     fn typed_shape(&mut self, name: &str, fields: &[(&str, TypeRef)]) -> ShapeId {
@@ -330,19 +343,13 @@ impl Types {
                     _ => return None,
                 },
                 // A standard type held as text (area 19, chunk 5.5i) has no
-                // node: it is text with its own check.
-                // One built on a built-in type with bounds of its own (chunk
-                // 5.5i3): that type, with the bounds as its rules.
-                TypeRef::Std(name, args)
-                    if args.is_empty() && jadpo_std::standard::within_rules(&name).is_some() =>
-                {
-                    let (of, own) = jadpo_std::standard::within_rules(&name)?;
-                    rules.push(own);
-                    current = TypeRef::Builtin(of);
-                }
+                // node: it is text with its own check, or, held as a whole
+                // number, an `Int` with its range (chunk 5.5n), or its
+                // built-in type with its bounds (chunk 5.5i3).
                 TypeRef::Std(name, args) if args.is_empty() => {
-                    rules.push(jadpo_std::standard::text_rules(&name)?);
-                    current = TypeRef::Builtin(Builtin::Text);
+                    let (builtin, own) = jadpo_std::standard::declared(&name)?;
+                    rules.push(own);
+                    current = TypeRef::Builtin(builtin);
                 }
                 // A standard object type's field (area 19) has no node: its
                 // data entry's part says what it is built on and the range
@@ -629,7 +636,7 @@ pub(crate) fn part_type(host: &str, field: &str, part: jadpo_std::Part) -> TypeR
     match part {
         jadpo_std::Part::Of(builtin) => TypeRef::Builtin(builtin),
         jadpo_std::Part::Whole(..)
-        | jadpo_std::Part::Within { .. }
+        | jadpo_std::Part::Bounded { .. }
         | jadpo_std::Part::Line
         | jadpo_std::Part::Matching(_)
         | jadpo_std::Part::Paragraph => {

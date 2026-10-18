@@ -123,7 +123,7 @@ fn every_stub_agrees_with_its_data_entry() {
             }
             // A type built on a built-in type, its bounds in its entry
             // (chunk 5.5i3).
-            Holds::Within { of, .. } => {
+            Holds::Bounded { of, .. } => {
                 assert_eq!(base, of.name(), "{} is built on {}", entry.name, of.name());
                 assert!(
                     members.is_empty(),
@@ -168,10 +168,17 @@ fn every_stub_agrees_with_its_data_entry() {
                 assert_eq!(declared, expected, "{}'s variants' fields", entry.name);
             }
             // A type built on `Text` the standard library declares, its
-            // check in its entry (area 19, chunk 5.5i).
+            // check in its entry (area 19, chunk 5.5i), or on the standard
+            // type it is a narrower form of (chunk 5.5n).
             Holds::Text { .. } => {
-                assert_eq!(base, "Text", "{} is text", entry.name);
+                let wide = jadpo_std::standard::within(entry.name).unwrap_or("Text");
+                assert_eq!(base, wide, "{} is text", entry.name);
                 assert!(members.is_empty(), "{}'s check is its entry's", entry.name);
+            }
+            // A type built on `Int`, its range in its entry (chunk 5.5n).
+            Holds::Whole { .. } => {
+                assert_eq!(base, "Int", "{} is a whole number", entry.name);
+                assert!(members.is_empty(), "{}'s range is its entry's", entry.name);
             }
             Holds::Range => {
                 assert_eq!(base, "Object", "{}", entry.name);
@@ -249,8 +256,7 @@ fn every_standard_type_meets_the_contract_in_the_checker() {
         // its examples' settings give it.
         // A type with rules of its own breaks them by name: a `Money`
         // type's currency, a `TaxRate`'s bounds (chunk 5.5i3).
-        let bounded = jadpo_std::standard::within_rules(name)
-            .is_some_and(|(_, rules)| rules.min.is_some() || rules.max.is_some());
+        let bounded = matches!(entry.holds, Holds::Bounded { min, max, .. } if min.is_some() || max.is_some());
         let mut others = if entry.examples.settings.is_empty() && !bounded {
             String::new()
         } else {
@@ -393,10 +399,14 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
                 );
                 schema
             }
+            Holds::Whole { .. } => {
+                let (builtin, rules) = jadpo_std::standard::declared(name).expect("a range");
+                scalar_schema(builtin, &rules)
+            }
             Holds::Object(_) => standard_object_schema(entry),
             // Its built-in type's, with its bounds (chunk 5.5i3).
-            Holds::Within { of, .. } => {
-                let (_, rules) = jadpo_std::standard::within_rules(name).expect("its bounds");
+            Holds::Bounded { of, .. } => {
+                let (_, rules) = jadpo_std::standard::declared(name).expect("its bounds");
                 scalar_schema(of, &rules)
             }
             // One of its variants, each an object of `tag` and its fields
@@ -442,7 +452,8 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
         match entry.json {
             Json::Text => assert_eq!(kind.as_deref(), Some("string"), "{name}"),
             Json::Tagged => unreachable!("{name}: only a choice is sent tagged"),
-            Json::Fields(fields) => {
+            Json::Number => assert_eq!(kind.as_deref(), Some("integer"), "{name}"),
+            Json::Fields(fields) | Json::Members(fields) => {
                 assert_eq!(kind.as_deref(), Some("object"), "{name}");
                 let properties = schema.get("properties").expect("properties");
                 for field in fields {
@@ -451,6 +462,7 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
                 // A part that may be `none` is `null` too (chunk 5.5l).
                 if let Holds::Object(parts) = entry.holds {
                     for (field, part) in parts {
+                        let field = jadpo_std::standard::wire_name(name, field);
                         let schema = properties.get(field).expect("a property");
                         assert_eq!(
                             schema.get("anyOf").is_some(),

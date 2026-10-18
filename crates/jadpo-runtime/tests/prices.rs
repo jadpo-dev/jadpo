@@ -90,7 +90,7 @@ fn a_discount_comes_off_a_price_either_way() {
 
 #[test]
 fn bounds_refuse_what_they_don_t_hold() {
-    let (of, rules) = jadpo_std::standard::within_rules("TaxRate").expect("its bounds");
+    let (of, rules) = jadpo_std::standard::declared("TaxRate").expect("its bounds");
     assert_eq!(of, Builtin::Percentage);
     let tax_rate = Validator::new(Some(of), vec![rules]);
     assert!(
@@ -109,14 +109,13 @@ fn bounds_refuse_what_they_don_t_hold() {
             .is_err(),
         "a tax rate below 0%"
     );
-    // A basis point count has no bounds.
-    let (of, rules) = jadpo_std::standard::within_rules("BasisPoints").expect("its bounds");
+    // A basis point count of either sign, within JavaScript's safe
+    // integers.
+    let (of, rules) = jadpo_std::standard::declared("BasisPoints").expect("its bounds");
     assert_eq!(of, Builtin::Int);
-    assert!(
-        Validator::new(Some(of), vec![rules])
-            .check(&Value::Int(-25))
-            .is_ok()
-    );
+    let basis_points = Validator::new(Some(of), vec![rules]);
+    assert!(basis_points.check(&Value::Int(-25)).is_ok());
+    assert!(basis_points.check(&Value::Int(1 << 53)).is_err());
     // A percentage off from 0% to 100%, an amount off never below 0.
     let fields = jadpo_std::standard::choice_variant(DISCOUNT, "percentage_off").unwrap();
     let percentage = Validator::new(Some(Builtin::Percentage), vec![fields[0].1.rules()]);

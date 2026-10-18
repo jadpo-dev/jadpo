@@ -64,13 +64,29 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
             )],
             Vec::new(),
         ),
+        // A whole number with its range (chunk 5.5n), a JSON number.
+        Holds::Whole { .. } => (
+            vec![Codec::Scalar {
+                builtin: Builtin::Int,
+                validator: ValidatorId(0),
+                int_as_number: true,
+            }],
+            vec![Validator::new(
+                Some(Builtin::Int),
+                jadpo_std::standard::declared(entry.name)
+                    .map(|(_, rules)| rules)
+                    .into_iter()
+                    .collect(),
+            )],
+            Vec::new(),
+        ),
         Holds::Enum(codes) => (vec![enum_codec(entry, codes)], Vec::new(), Vec::new()),
         // Its built-in type with its bounds as rules (chunk 5.5i3).
-        Holds::Within { of, .. } => (
+        Holds::Bounded { of, .. } => (
             vec![scalar(of, 0)],
             vec![Validator::new(
                 Some(of),
-                jadpo_std::standard::within_rules(entry.name)
+                jadpo_std::standard::declared(entry.name)
                     .map(|(_, rules)| rules)
                     .into_iter()
                     .collect(),
@@ -141,6 +157,9 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
             let mut validators = Vec::new();
             let mut plans = Vec::new();
             let mut tops = Vec::new();
+            // Sent as RFC 9457 sends a problem: a part that may be `none`
+            // may be left out (chunk 5.5n).
+            let members = matches!(entry.json, Json::Members(_));
             for (name, part) in fields {
                 let validator = ValidatorId(validators.len() as u32);
                 tops.push(part_codec(*part, &mut codecs, &mut validators));
@@ -149,7 +168,7 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
                     name: (*name).to_string(),
                     validator,
                     omittable: false,
-                    absent: None,
+                    absent: (members && part.required().1).then_some(jadpo_std::Constant::None),
                     none_left_out: false,
                     section: None,
                 });
@@ -236,18 +255,15 @@ fn part_codec(
             let other = jadpo_std::standard_type(other).expect("a standard type");
             match (other.codes(), other.holds) {
                 (Some(codes), _) => enum_codec(other, codes),
-                (None, Holds::Text { .. }) => {
+                (None, Holds::Text { .. } | Holds::Whole { .. }) => {
+                    let (builtin, rules) =
+                        jadpo_std::standard::declared(other.name).expect("its rules");
                     let validator = ValidatorId(validators.len() as u32);
-                    validators.push(Validator::new(
-                        Some(Builtin::Text),
-                        jadpo_std::standard::text_rules(other.name)
-                            .into_iter()
-                            .collect(),
-                    ));
+                    validators.push(Validator::new(Some(builtin), vec![rules]));
                     Codec::Scalar {
-                        builtin: Builtin::Text,
+                        builtin,
                         validator,
-                        int_as_number: false,
+                        int_as_number: builtin == Builtin::Int,
                     }
                 }
                 // Another standard object sent as its canonical text: an
@@ -378,6 +394,11 @@ fn every_standard_type_meets_the_contract() {
                     serde_json::Value::String((*text).to_string()),
                     "{name}: JSON is the canonical text"
                 ),
+                Json::Number => assert_eq!(
+                    parsed,
+                    serde_json::from_str::<serde_json::Value>(text).unwrap(),
+                    "{name}: JSON is the number"
+                ),
                 Json::Fields(fields) => {
                     // Written in the fields' order.
                     let written: Vec<usize> = fields
@@ -412,6 +433,12 @@ fn every_standard_type_meets_the_contract() {
                         "{name}: {json} is its tag and its variant's fields"
                     );
                 }
+                // The members it has, in order, and none of those that are
+                // `none`: as its example writes it.
+                Json::Members(_) => assert_eq!(
+                    json, *text,
+                    "{name}: {json} leaves out the members that are `none`"
+                ),
             }
             let mut problems = Vec::new();
             let back = table.read(CodecId(0), &parsed, &Path::default(), &mut problems);

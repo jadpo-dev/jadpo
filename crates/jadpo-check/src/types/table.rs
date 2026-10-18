@@ -488,13 +488,21 @@ impl TypeTable {
         let mut table = TypeTable::default();
         // The standard types held as text (area 19, "Groups with the
         // baseline only"): each a type built on `Text` the standard
-        // library declares, with its own check as its rule.
+        // library declares, with its own check as its rule, or on the
+        // standard type it is a narrower form of (a `UrlPath` is a
+        // `RelativeUrl`); those held as a whole number, each built on
+        // `Int` with its range (chunk 5.5n); and those built on a built-in
+        // type with bounds of their own, a `TaxRate` (chunk 5.5i3).
         for entry in jadpo_std::STANDARD_TYPES {
-            if let Some(rules) = jadpo_std::standard::text_rules(entry.name) {
+            if let Some((builtin, rules)) = jadpo_std::standard::declared(entry.name) {
+                let parent = match jadpo_std::standard::within(entry.name) {
+                    Some(wide) => Ty::Named(wide.to_string()),
+                    None => Ty::Prim(builtin),
+                };
                 table.defs.insert(
                     entry.name.to_string(),
                     Def::Scalar {
-                        parent: Ty::Prim(Prim::Text),
+                        parent,
                         rules: Box::new(rules),
                     },
                 );
@@ -514,24 +522,11 @@ impl TypeTable {
                 },
             );
         }
-        // The standard types built on a built-in type with bounds of their
-        // own, each a refinement with those bounds as its rules; and the
-        // choices, each an enum whose variants carry their entry's parts
-        // as fields, as an application's enum with data does (chunk
+        // The choices, each an enum whose variants carry their entry's
+        // parts as fields, as an application's enum with data does (chunk
         // 5.5i3).
         for entry in jadpo_std::STANDARD_TYPES {
             match entry.holds {
-                jadpo_std::standard::Holds::Within { .. } => {
-                    if let Some((of, rules)) = jadpo_std::standard::within_rules(entry.name) {
-                        table.defs.insert(
-                            entry.name.to_string(),
-                            Def::Scalar {
-                                parent: Ty::Prim(of),
-                                rules: Box::new(rules),
-                            },
-                        );
-                    }
-                }
                 jadpo_std::standard::Holds::Choice(variants) => {
                     table.defs.insert(
                         entry.name.to_string(),
@@ -1028,7 +1023,7 @@ pub trait TypeView {
                 // (chunk 5.5i3) is its own standard type too.
                 Ty::Named(name)
                     if jadpo_std::standard_type(name).is_some_and(|entry| {
-                        matches!(entry.holds, jadpo_std::standard::Holds::Within { .. })
+                        matches!(entry.holds, jadpo_std::standard::Holds::Bounded { .. })
                     }) =>
                 {
                     return jadpo_std::standard_type(name);
@@ -1213,14 +1208,13 @@ fn part_ty(part: jadpo_std::Part) -> Ty {
     match part {
         jadpo_std::Part::Of(builtin) => Ty::Prim(builtin),
         jadpo_std::Part::Whole(..) => Ty::Prim(Prim::Int),
-        jadpo_std::Part::Within { of, .. } => Ty::Prim(of),
+        jadpo_std::Part::Bounded { of, .. } => Ty::Prim(of),
         jadpo_std::Part::Line | jadpo_std::Part::Matching(_) | jadpo_std::Part::Paragraph => {
             Ty::Prim(Prim::Text)
         }
         jadpo_std::Part::Standard(other)
             if jadpo_std::standard_type(other).is_some_and(|entry| {
-                entry.codes().is_some()
-                    || matches!(entry.holds, jadpo_std::standard::Holds::Text { .. })
+                entry.codes().is_some() || jadpo_std::standard::declared(entry.name).is_some()
             }) =>
         {
             Ty::Named(other.to_string())

@@ -675,6 +675,24 @@ a country that has none. `Part::Matching` is a part of text matching a
 pattern (a masked card's last four). `money.mask` (`Op::MoneyMask`) makes
 a `MaskedCardNumber` from a `PaymentCardNumber` by its issuer range
 (`card_types::brand_of`).
+Since chunk 5.5n a standard type may be held as a whole number
+(`Holds::Whole`, `HttpStatus` and `NetworkPort`): the checker's type table
+declares it as a type built on `Int` with its range as its rules, which
+name it as their `standard`, as a type held as text's do
+(`jadpo_std::standard::declared` gives either), so the plan's chain, the
+wire and OpenAPI read it as an `Int` with that range, sent as a JSON number
+(`Json::Number`) and stored in an `integer` column; `text.format` is told
+its name as a type held as text's is. A type held as text may be a
+narrower form of another (`standard::WITHIN`: a `UrlPath` is a
+`RelativeUrl`), built on it in the type table. A standard object's part
+named with a reserved word's trailing `_` is sent without it
+(`standard::wire_name`, `ProblemDetails`' `type_`), and one sent as RFC
+9457 sends a problem (`Json::Members`) leaves out its parts that are
+`none`, which read as `none` when left out, through the plan's `absent`.
+`jadpo_std::standard::web` holds the web types' validators (UTS 46 by the
+`idna` crate, the only dependency `jadpo-std` gained besides `regex`;
+RFC 3986's grammar and resolution; RFC 6265's cookies; Emoji 18.0's list
+in `emoji_data`), and `jadpo_value::web` runs `web`'s operations over it.
 Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
 text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
 `jadpo_std::standard::events`, which also holds the rules across its parts
@@ -709,14 +727,15 @@ chain `standard_part` reads), so the interpreter builds and reads a
 (`Json::Tagged`, `Codec::Enum` with payload variants). OpenAPI describes
 it as `oneOf` its tagged variants. A later choice (`BankAccount`) is a
 stub and an entry. A standard type may also be built on a built-in type
-with bounds of its own (`Holds::Within`, `TaxRate` and `BasisPoints`):
-the table declares it as a refinement whose rules are its bounds
-(`standard::within_rules`), the plan's chain and the wire read a
-`TypeRef::Std` of it as that built-in type with those rules, and
-`text.format` is given its name, as for a type held as text, so its own
-format applies. A part may keep bounds too (`Part::Within`). Two
-`FormatKey`s came with them: `Parts` (named parts each shown as their own
-type is, joined) and `Suffixed` (a number and a fixed unit, `25 bp`).
+with bounds of its own (`Holds::Bounded`, `TaxRate`): `standard::declared`
+gives its built-in type and its bounds, as it gives a type held as text
+or as a whole number its rules, so the table, the plan's chain and the
+wire read it as that refinement; its bounds name no `standard`, so a
+plain `Percentage` builds one by its bounds alone. A part may keep bounds
+too (`Part::Bounded`). `BasisPoints` is a whole number (`Holds::Whole`),
+whose text now takes a `-`. Two `FormatKey`s came with them: `Parts`
+(named parts each shown as their own type is, joined) and `Suffixed` (a
+number and a fixed unit, `25 bp`).
 `money.apply_discount` (`Op::MoneyApplyDiscount`) takes a `Discount` off
 a `Price` in `jadpo_value::money`.
 
