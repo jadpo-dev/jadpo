@@ -402,6 +402,7 @@ pub fn rules(ty: &str) -> &'static [StandardRule] {
         super::geo::BOUNDING_BOX => super::geo::BOUNDING_BOX_RULES,
         super::ai::TOKEN_USAGE => super::ai::TOKEN_USAGE_RULES,
         super::security::PASSWORD_POLICY => super::security::PASSWORD_POLICY_RULES,
+        super::security::JWK => super::jwk::RULES,
         _ => super::documents::rules(ty),
     }
 }

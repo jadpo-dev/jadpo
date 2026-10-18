@@ -994,7 +994,7 @@ reference only).
   `invalid_signature`; `issuer:` and `audience:` are optional, the
   audience always checked (`wrong_audience`, and `wrong_issuer` when an
   issuer is named); `exp` is required, with 30 seconds' leeway; it reads
-  the clock, so actions call it. RS256 and ES256 aren't built. What the
+  the clock, so actions call it. RS256 and ES256 are 5.5r4's. What the
   pages left open is area 19's "Chosen in chunk 5.5r".
 - [x] **5.5r2 Secret values** `opus · high` (area 19, "The standard
   types"; split from 5.5r), after 5.5r: `Password`, `ApiKey`,
@@ -1013,7 +1013,7 @@ reference only).
   as data; the bytes of credentials the runtime makes never go on a replay
   recording. What the pages left open is area 19's "Chosen in chunk
   5.5r2".
-- [ ] **5.5r4 JWTs from identity providers** `opus · high` (area 19,
+- [x] **5.5r4 JWTs from identity providers** `opus · high` (area 19,
   "Hashing and cryptography"; decided by the lead session, 2026-10-18),
   after 5.5r: RS256 and ES256 verification on RustCrypto's `rsa` and
   `p256` (verification only, pinned, built for wasm32, with the RFCs'
@@ -1028,7 +1028,19 @@ reference only).
   data. Done when an RS256 and an ES256
   token verify against the RFCs' vectors, the attack suite refuses each
   attack under both, and a token's custom claims decode as a declared
-  type or fail `mismatch`.
+  type or fail `mismatch`. Built, on `rsa` 0.9.10 and `p256` 0.14.0,
+  verification only: a `Jwk` holds an Ed25519, an RSA (2,048 to 4,096
+  bits) or a P-256 key (a point on the curve), each used with its one
+  algorithm and held to its parts by three rules; a key set's members a
+  `Jwk` doesn't hold are ignored, as RFC 7517 requires, but a private
+  key's; a key with an `x5c` is tried only when its first certificate
+  holds the same key. RFC 7515's and RFC 7520's examples verify and the
+  attack suite is refused under both algorithms. `as:` takes an
+  application's `Object`, reads the claims it names and ignores the
+  others; a registered claim it names is the checked value as `JwtClaims`
+  holds it, so one call gives `sub` and `email` (decided by the lead
+  session), and one declared as another type is `type.mismatch`. What the pages left open is area 19's "Chosen in chunk
+  5.5r4".
 - [x] **5.5r3 Security records** `opus · high` (area 19, "The standard
   types"; split from 5.5r), after 5.5r2: `Hash`, `Hmac`, `Certificate`,
   `OneTimeCode`, `PasswordPolicy`, `WebAuthnCredential` (shaped to what
@@ -1057,7 +1069,7 @@ reference only).
   in RFC 4514's text, its serial in hexadecimal, its validity as two
   instants, its fingerprint a `Hash` and its DER; sent and stored as the
   PEM, and an object literal of one refused. Reading DER bytes is 5.5r4's
-  `crypto.read_certificate(der)`. What the page left open is area 19's
+  `crypto.read_certificate(der)`, built. What the page left open is area 19's
   "Chosen in chunk 5.5r5".
 - [x] **5.5z Passkeys** `opus · high` (area 8, "Passkeys"; decided by
   Richard, 2026-10-18), after 5.5q2 and 5.5r3: passkeys (WebAuthn, FIDO2)
@@ -1300,16 +1312,36 @@ reference only).
   comparing one is `toolchain.not_built_yet`, and an application's own
   structured fields stay refused. What it chose is area 19's "Chosen in
   chunk 5.5w2b".
-- [ ] **5.5w3 Every boundary through the contract: one encoder**
+- [x] **5.5w3 Every boundary through the contract: one encoder**
   `opus · high` (area 19; split from 5.5w), after 5.5w2: the JSON reader
   and writer (`scalar_from_text`, `write_scalar`, the `ZonedTime`, `Money`
   and quantity arms) and OpenAPI's `scalar_schema` read each type's entry
-  rather than matching on built-in types; the compile-time SQL literals
-  (`jadpo-sql`'s conditions, backfills in `jadpo-check`'s migrations)
-  share the runtime's storage codec; the per-type harness builds its
-  codecs with the plan's builder rather than a copy of it. Done when no
-  boundary has an encoder of its own: each calls the contract's JSON,
-  storage or text for a standard type.
+  rather than matching on built-in types; the per-type harness builds its
+  codecs with the plan's builder rather than a copy of it; OpenAPI's
+  schema of a part that is a built-in type held as a standard type
+  (`OidcClaims`' `email`) is that type's. Done when neither the JSON
+  boundary nor OpenAPI has an encoder of its own: each calls the
+  contract's JSON or text for a standard type, and a test fails if one
+  names a standard type held by a built-in type. Split on 2026-10-18: the
+  SQL literals are 5.5w3b.
+  Built: `Money`, `ZonedTime` and the quantities are sent as their
+  entry's members (`Json::Parts`), which one contract module reads and
+  writes (`jadpo_value::standard::json`) and OpenAPI describes
+  (`routes::wire::standard_schema`); standard types are looked up in
+  tables rather than by scanning every entry; the harness, moved to
+  `jadpo-interp`, builds its codecs with `jadpo_plan::standard_codecs`;
+  `no_boundary_has_an_encoder_of_its_own` in
+  `jadpo-cli/tests/standard_boundaries.rs` holds the JSON boundary and
+  OpenAPI to it. What clients see change is area 19's "Chosen in chunk
+  5.5w3".
+- [ ] **5.5w3b Every boundary through the contract: SQL literals**
+  `opus · high` (area 19; split from 5.5w3), after 5.5w3: the
+  compile-time SQL literals (`jadpo-sql`'s conditions, backfills in
+  `jadpo-check`'s migrations) share the runtime's storage codec, so a
+  literal is written into a statement as the runtime would bind it. Done
+  when no boundary has an encoder of its own: each calls the contract's
+  JSON, storage or text for a standard type, and 5.5w3's test covers the
+  SQL literals too.
 - [x] **5.5x `jadpo suggest`** `opus · high` (area 14; decided by Richard,
   2026-10-17): first write the command's section on area 14 from this
   design, then build it. A command that hints, never edits, where code

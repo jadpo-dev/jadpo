@@ -39,6 +39,38 @@ pub(crate) fn json_table(
     }
 }
 
+/// The codecs a route table holds for each of `types`, with the
+/// validators and shapes they use, made by the plan's one builder over a
+/// graph with no declarations (chunk 5.5w3), so the standard library's
+/// types and the built-in ones are the only ones known: what the per-type
+/// harness sends every standard type through, so it is held to the codecs
+/// a program gets rather than a copy of them.
+pub fn standard_codecs(types: &[TypeRef]) -> StandardCodecs {
+    let mut plans = Types::new(
+        std::sync::Arc::new(jadpo_graph::Graph::default()),
+        HashMap::new(),
+    );
+    let mut codecs = Codecs::new(&mut plans);
+    let ids = types.iter().map(|ty| codecs.codec(ty)).collect();
+    let codecs = codecs.into_codecs();
+    StandardCodecs {
+        codecs,
+        validators: plans.validators().to_vec(),
+        shapes: plans.shapes().to_vec(),
+        ids,
+    }
+}
+
+/// What [`standard_codecs`] makes: the codecs, numbered, the validators
+/// and shapes they name, and each type's codec in the order asked.
+#[derive(Clone, Debug)]
+pub struct StandardCodecs {
+    pub codecs: Vec<Codec>,
+    pub validators: Vec<jadpo_std::types::ValidatorPlan>,
+    pub shapes: Vec<jadpo_std::types::ShapePlan>,
+    pub ids: Vec<CodecId>,
+}
+
 /// The route table of a project whose routes checked cleanly.
 pub(crate) fn table(
     db: &dyn Db,

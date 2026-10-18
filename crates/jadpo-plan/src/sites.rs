@@ -244,6 +244,13 @@ impl Decoder<'_> {
                 // JSON in memory (area 19): the type read, which is the
                 // call's, or the type of the value written.
                 Callee::Std(jadpo_std::Op::JsonRead) => self.json_type(site.ty.clone()),
+                // A token's own claims, read as the type `as:` names, the
+                // call's (chunk 5.5r4).
+                Callee::Std(jadpo_std::Op::CryptoVerifyJwt)
+                    if args.get(4).copied().flatten().is_some() =>
+                {
+                    self.json_type(site.ty.clone())
+                }
                 Callee::Std(jadpo_std::Op::JsonWrite) => {
                     let written = args
                         .first()

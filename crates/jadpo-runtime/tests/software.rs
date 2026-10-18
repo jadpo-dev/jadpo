@@ -4,7 +4,7 @@
 //! (`jadpo_value::run`), with node-semver's README examples and SemVer
 //! 2.0.0's pre-release rules; and a version's order as `<` and sorting
 //! see it. Its text, JSON and columns are the one harness's
-//! (`standard_types`).
+//! (`jadpo-interp`'s `standard_types`).
 
 use jadpo_std::Op;
 use jadpo_value::{Value, ops, order, run, semver, standard};

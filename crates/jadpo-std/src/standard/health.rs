@@ -13,7 +13,7 @@
 use super::across::{Order, StandardRule, in_order};
 use super::{
     Examples, FIRST_RELEASE, Format, FormatKey, FormatOption, Holds, Json, NO_OPTIONS, Part,
-    QUANTITY_FIELDS, ShownIn, StandardType, Storage, TextForm,
+    QUANTITY_PARTS, ShownIn, StandardType, Storage, TextForm,
 };
 use crate::read::SqlType;
 use crate::{Builtin, Num, QuantityKind};
@@ -334,7 +334,7 @@ pub const HEART_RATE_ENTRY: StandardType = StandardType {
         max: Some(MOST_BEATS),
     },
     text: Some(TextForm::Quantity),
-    json: Json::Fields(&QUANTITY_FIELDS),
+    json: Json::Parts(&QUANTITY_PARTS),
     storage: Storage::Column(SqlType::Numeric),
     format: Format {
         key: FormatKey::UnitsIn(BEATS),
@@ -484,7 +484,7 @@ pub const BLOOD_GLUCOSE_ENTRY: StandardType = StandardType {
         max: None,
     },
     text: Some(TextForm::Quantity),
-    json: Json::Fields(&QUANTITY_FIELDS),
+    json: Json::Parts(&QUANTITY_PARTS),
     storage: Storage::Column(SqlType::Numeric),
     format: Format {
         key: FormatKey::UnitsIn(GLUCOSE_UNITS),
