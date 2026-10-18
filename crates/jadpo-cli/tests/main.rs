@@ -30,6 +30,7 @@ mod signed;
 mod sql;
 mod standard_storage;
 mod suggest;
+mod suggest_share;
 #[path = "test.rs"]
 mod test_command;
 mod translation_exchange;

@@ -78,8 +78,8 @@ These words mean something only where the language expects them, and stay
 usable as names everywhere else: `asc` and `desc` (a query's order), `end`
 (templates), `matches` (the pattern operator), `input` and `value`, and the
 words that open a declaration with no name, `acceptance`, `application`,
-`authentication`, `config`, `flags`, `locales`, `migration`, `policy` and
-`principal`. `include`, `pick`, `omit` and `optional` build a type's fields,
+`authentication`, `config`, `flags`, `locales`, `migration`, `policy`,
+`principal` and `suggestions` (area 14, chunk 5.5y). `include`, `pick`, `omit` and `optional` build a type's fields,
 so they name anything but a field (area 2), and the standard-library and
 generated namespaces (`collection`, `clock`, `config` ...) name no domain
 or library.
@@ -1951,11 +1951,13 @@ build/
 
 - Only these entries: `app.jadpo`, `config.jadpo`, `authentication.jadpo`,
   `policy.jadpo`, `flags.jadpo`, `jadpo.lock`,
-  `ignored_suggestions.jadpo_record`, `domains/`, `shared/`, `packages/`,
-  `database/`, `api/`, `acceptances/`, `translations/`, `tests/` and
-  `build/` (`packages/` replaced the root `providers/` on 2026-10-16, area
-  11; the suggestions a team ignores, written by `jadpo suggest ignore`,
-  joined on 2026-10-17, area 14, "Suggestions"). The hidden `.jadpo/`
+  `ignored_suggestions.jadpo_record`, `taught_suggestions.jadpo_record`,
+  `domains/`, `shared/`, `packages/`, `database/`, `api/`,
+  `acceptances/`, `translations/`, `tests/` and `build/` (`packages/`
+  replaced the root `providers/` on 2026-10-16, area 11; the suggestions a
+  team ignores, written by `jadpo suggest ignore`, joined on 2026-10-17,
+  and the patterns it taught, written by `jadpo suggest found`, on
+  2026-10-18, area 14, "Suggestions"). The hidden `.jadpo/`
   folder holds local, untracked state and is never read as source.
 - `packages/` holds only installed packages, each in
   `packages/<name>/<version>/`, committed, read-only and checked against its

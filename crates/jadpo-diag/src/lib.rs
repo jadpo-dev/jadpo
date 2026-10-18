@@ -608,6 +608,8 @@ rules! {
         "10-configuration-and-time.html#semantic-multiple-locale-declarations", "Locales are declared more than once";
     SEMANTIC_MULTIPLE_PRINCIPALS: "semantic.multiple_principals", area 8, Error, Agent,
         "08-identity.html#semantic-multiple-principals", "Project declares more than one principal";
+    SEMANTIC_MULTIPLE_SUGGESTIONS: "semantic.multiple_suggestions", area 14, Error, Agent,
+        "14-tooling.html#semantic-multiple-suggestions", "Suggestions settings are declared more than once";
     SEMANTIC_NAME_CASE: "semantic.name_case", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-name-case", "Name has the wrong case for its kind";
     SEMANTIC_NOT_CALLABLE: "semantic.not_callable", area 1, Error, Agent,
@@ -649,7 +651,9 @@ rules! {
     STORE_ACTION_SPANS_STORES: "store.action_spans_stores", area 6, Error, Human,
         "06-reads-and-writes.html#store-action-spans-stores", "Action writes more than one store";
     SUGGEST_RECORD_INVALID: "suggest.record_invalid", area 14, Error, Agent,
-        "14-tooling.html#command-errors", "Ignored suggestions record can't be read";
+        "14-tooling.html#command-errors", "Suggestions record can't be read";
+    SUGGEST_SHARE_FAILED: "suggest.share_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Jadpo HQ couldn't be reached or refused what was shared";
     SYNTAX_ASSERTION_FORM: "syntax.assertion_form", area 13, Error, Agent,
         "13-testing.html#syntax-assertion-form", "Assertion written in another language's form";
     SYNTAX_ASYNC_AWAIT: "syntax.async_await", area 3, Error, Agent,
@@ -734,6 +738,10 @@ rules! {
         "03-logic.html#syntax-semicolon", "Statement or member ends with `;`";
     SYNTAX_STRING_QUOTES: "syntax.string_quotes", area 2, Error, Agent,
         "02-values-and-types.html#syntax-string-quotes", "String in single quotes or backticks";
+    SYNTAX_SUGGESTIONS_DUPLICATE_OPTION: "syntax.suggestions_duplicate_option", area 14, Error, Agent,
+        "14-tooling.html#syntax-suggestions-duplicate-option", "Suggestions setting is given twice";
+    SYNTAX_SUGGESTIONS_UNKNOWN_OPTION: "syntax.suggestions_unknown_option", area 14, Error, Agent,
+        "14-tooling.html#syntax-suggestions-unknown-option", "Suggestions settings have no such option";
     SYNTAX_SWITCH_STATEMENT: "syntax.switch_statement", area 3, Error, Agent,
         "03-logic.html#syntax-switch-statement", "Choice written with `switch` or `when`";
     SYNTAX_TERNARY_OPERATOR: "syntax.ternary_operator", area 3, Error, Agent,
@@ -1012,6 +1020,8 @@ rules! {
         "19-standard-library.html#type-standard-clash", "Declaration has a standard type's name";
     TYPE_STANDARD_EXISTS: "type.standard_exists", area 19, Declinable, Agent,
         "19-standard-library.html#type-standard-exists", "Type has a standard type's shape under another name";
+    TYPE_SUGGESTIONS_VALUE_INVALID: "type.suggestions_value_invalid", area 14, Error, Agent,
+        "14-tooling.html#type-suggestions-value-invalid", "Suggestions setting has a value it can't take";
     TYPE_TEMPORAL_CLOCK_INVALID: "type.temporal_clock_invalid", area 10, Error, Agent,
         "10-configuration-and-time.html#type-temporal-clock-invalid", "Clock time is not written `HH:MM`";
     TYPE_TEMPORAL_FORMAT_COMPONENT_DUPLICATE: "type.temporal_format_component_duplicate", area 10, Error, Agent,

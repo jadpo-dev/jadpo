@@ -42,7 +42,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use jadpo_check::suggest::{self, Finding, Signal, Snippet, Taught, record};
+use jadpo_check::suggest::{self, Finding, Signal, Snippet, Taught, record, taught};
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_term::{Block, Fact, Json, Outcome, Screen, shown_path};
 use serde_json::Value;
@@ -95,11 +95,21 @@ pub fn suggest(call: &Call) -> Reply {
     let Some(root) = jadpo_db::find_root(&cwd) else {
         return project_needed("suggest");
     };
-    match call.arguments.first().map(String::as_str) {
+    let action = call.arguments.first().map(String::as_str);
+    if action != Some("share")
+        && let Some(flag) = crate::share::FLAGS.iter().find(|flag| call.flag(flag))
+    {
+        return arguments(
+            format!("`{flag}` goes with `jadpo suggest share`"),
+            "Only sharing sends, approves, declines or replaces the token.",
+            format!("Run `jadpo suggest share {flag}`"),
+        );
+    }
+    match action {
         None => scan(call, &cwd, &root),
         Some("ignore") => ignore(call, &root),
         Some("found") => found(call, &cwd, &root),
-        Some("share") => share(),
+        Some("share") => crate::share::share(call, &cwd, &root),
         Some(other) => {
             let names: Vec<&str> = ACTIONS.iter().map(|action| action.name).collect();
             let diagnostic = Diagnostic::new(
@@ -124,7 +134,7 @@ pub fn suggest(call: &Call) -> Reply {
     }
 }
 
-fn arguments(
+pub(crate) fn arguments(
     message: impl Into<String>,
     reason: impl Into<String>,
     next: impl Into<String>,
@@ -136,7 +146,7 @@ fn arguments(
     )
 }
 
-fn count(n: usize, one: &str, many: &str) -> String {
+pub(crate) fn count(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
@@ -144,7 +154,7 @@ fn count(n: usize, one: &str, many: &str) -> String {
 
 /// The JSON objects of a JSON-lines file; nothing when it is missing, and
 /// a line that isn't one is skipped, since the file is local state.
-fn read_lines(root: &Path, file: &str) -> Vec<serde_json::Map<String, Value>> {
+pub(crate) fn read_lines(root: &Path, file: &str) -> Vec<serde_json::Map<String, Value>> {
     let Ok(text) = std::fs::read_to_string(root.join(file)) else {
         return Vec::new();
     };
@@ -157,7 +167,7 @@ fn read_lines(root: &Path, file: &str) -> Vec<serde_json::Map<String, Value>> {
 }
 
 /// Makes `.jadpo/` and keeps it out of git.
-fn local_folder(root: &Path) -> std::io::Result<()> {
+pub(crate) fn local_folder(root: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(root.join(LOCAL))?;
     let path = root.join(".gitignore");
     let text = std::fs::read_to_string(&path).unwrap_or_default();
@@ -198,7 +208,7 @@ fn append_lines(root: &Path, file: &str, lines: &[Value]) -> Result<(), Box<Diag
     write_lines(root, file, &kept)
 }
 
-fn write_failed(file: &str, error: &std::io::Error) -> Box<Diagnostic> {
+pub(crate) fn write_failed(file: &str, error: &std::io::Error) -> Box<Diagnostic> {
     Box::new(
         Diagnostic::new(
             &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
@@ -209,7 +219,7 @@ fn write_failed(file: &str, error: &std::io::Error) -> Box<Diagnostic> {
     )
 }
 
-fn text(object: &serde_json::Map<String, Value>, key: &str) -> String {
+pub(crate) fn text(object: &serde_json::Map<String, Value>, key: &str) -> String {
     object
         .get(key)
         .and_then(Value::as_str)
@@ -279,16 +289,86 @@ fn snippet_of(object: &serde_json::Map<String, Value>) -> Snippet {
     }
 }
 
-fn taught(root: &Path) -> Vec<Taught> {
-    read_lines(root, SIGNALS)
+/// The taught patterns: the committed record, with any pattern taught
+/// into the local cache before the record existed moved into it. The cache
+/// is rewritten from the record.
+fn taught(root: &Path) -> Result<Vec<Taught>, Box<Diagnostic>> {
+    let mut entries = match std::fs::read_to_string(root.join(taught::FILE)) {
+        Ok(text) => taught::parse(&text).map_err(|(line, why)| {
+            record_invalid(
+                taught::FILE,
+                line,
+                &why,
+                "`jadpo suggest found`",
+                "record the misses again with `jadpo suggest found`",
+            )
+        })?,
+        Err(_) => Vec::new(),
+    };
+    let before = entries.len();
+    for object in read_lines(root, SIGNALS) {
+        let cached = Taught {
+            hash: text(&object, "hash"),
+            canonical: text(&object, "canonical"),
+            suggestion: text(&object, "suggestion"),
+            reason: text(&object, "reason"),
+        };
+        if cached.hash.is_empty()
+            || cached.canonical.is_empty()
+            || suggest::hash(&cached.canonical) != cached.hash
+        {
+            continue;
+        }
+        if !entries
+            .iter()
+            .any(|t| t.hash == cached.hash && t.suggestion == cached.suggestion)
+        {
+            entries.push(cached);
+        }
+    }
+    if entries.len() > before {
+        write_taught(root, &entries)?;
+    }
+    Ok(entries)
+}
+
+/// Writes the taught record and its local cache.
+fn write_taught(root: &Path, entries: &[Taught]) -> Result<(), Box<Diagnostic>> {
+    std::fs::write(root.join(taught::FILE), taught::render(entries))
+        .map_err(|error| write_failed(taught::FILE, &error))?;
+    let cache: Vec<Value> = entries
         .iter()
-        .map(|object| Taught {
-            hash: text(object, "hash"),
-            canonical: text(object, "canonical"),
-            suggestion: text(object, "suggestion"),
-            reason: text(object, "reason"),
+        .map(|t| {
+            serde_json::json!({
+                "hash": t.hash,
+                "canonical": t.canonical,
+                "suggestion": t.suggestion,
+                "reason": t.reason,
+            })
         })
-        .collect()
+        .collect();
+    write_lines(root, SIGNALS, &cache)
+}
+
+/// A committed record that can't be read.
+fn record_invalid(
+    file: &str,
+    line: usize,
+    why: &str,
+    writer: &str,
+    again: &str,
+) -> Box<Diagnostic> {
+    Box::new(
+        Diagnostic::new(
+            &rule::SUGGEST_RECORD_INVALID,
+            format!("`{file}` can't be read"),
+        )
+        .reason(format!(
+            "Line {}: {why}. The record is written by {writer}, never by hand.",
+            line + 1
+        ))
+        .next(format!("Restore `{file}` from git, then {again}")),
+    )
 }
 
 /// The ignored suggestions, or why the record can't be read.
@@ -300,20 +380,13 @@ fn ignores(root: &Path) -> Result<(Vec<record::Ignore>, bool), Box<Diagnostic>> 
     record::parse(&text)
         .map(|entries| (entries, true))
         .map_err(|(line, why)| {
-            Box::new(
-            Diagnostic::new(
-                &rule::SUGGEST_RECORD_INVALID,
-                format!("`{}` can't be read", record::FILE),
+            record_invalid(
+                record::FILE,
+                line,
+                &why,
+                "`jadpo suggest ignore`",
+                "ignore suggestions again with `jadpo suggest ignore`",
             )
-            .reason(format!(
-                "Line {}: {why}. The record is written by `jadpo suggest ignore`, never by hand.",
-                line + 1
-            ))
-            .next(format!(
-                "Restore `{}` from git, then ignore suggestions again with `jadpo suggest ignore`",
-                record::FILE
-            )),
-        )
         })
 }
 
@@ -325,7 +398,7 @@ fn write_record(root: &Path, entries: &[record::Ignore]) -> Result<(), Box<Diagn
 // --- the scan -----------------------------------------------------------
 
 /// The routine the scan ends with: the agent's instruction.
-fn routine(any: bool) -> Vec<String> {
+fn routine(any: bool, sharing: bool) -> Vec<String> {
     let mut lines = vec![
         "Review the rest of the code against `jadpo suggest --catalogue`.".to_string(),
         "Before changing code for something it missed, run".to_string(),
@@ -334,7 +407,9 @@ fn routine(any: bool) -> Vec<String> {
     if any {
         lines.push("To keep one quiet, run `jadpo suggest ignore <number> \"<why>\"`.".to_string());
     }
-    lines.push("When done, run `jadpo suggest share`.".to_string());
+    if sharing {
+        lines.push("When done, run `jadpo suggest share`.".to_string());
+    }
     lines
 }
 
@@ -369,7 +444,11 @@ fn scan(call: &Call, cwd: &Path, root: &Path) -> Reply {
         Ok(read) => read,
         Err(problem) => return Reply::failed(*problem),
     };
-    let all = suggest::scan(&loaded.db, loaded.project, &taught(root));
+    let taught = match taught(root) {
+        Ok(taught) => taught,
+        Err(problem) => return Reply::failed(*problem),
+    };
+    let all = suggest::scan(&loaded.db, loaded.project, &taught);
     // An ignore no finding has any more is stale: its code changed or went.
     let before = ignored.len();
     ignored.retain(|ignore| {
@@ -494,7 +573,12 @@ fn scan(call: &Call, cwd: &Path, root: &Path) -> Reply {
             "stale ignores dropped",
         )));
     }
-    let instruction = routine(!findings.is_empty());
+    // Sharing turned off, or no HQ to share with yet, drops the
+    // instruction to share.
+    let settings = jadpo_check::suggest::settings::settings(&loaded.db, loaded.project);
+    let sharing = crate::share::turned_off(call, settings, root, None).is_none()
+        && crate::hq::configured(&call.environment).is_some();
+    let instruction = routine(!findings.is_empty(), sharing);
     let mut screen = Screen::new();
     if !findings.is_empty() {
         screen.push(Block::Section {
@@ -727,21 +811,17 @@ fn found(call: &Call, cwd: &Path, root: &Path) -> Reply {
             usage,
         );
     };
-    let mut signals: Vec<Value> = read_lines(root, SIGNALS)
-        .into_iter()
-        .filter(|object| {
-            !(text(object, "hash") == snippet.hash && text(object, "suggestion") == *suggestion)
-        })
-        .map(Value::Object)
-        .collect();
-    signals.push(serde_json::json!({
-        "hash": snippet.hash,
-        "canonical": snippet.canonical,
-        "suggestion": suggestion,
-        "reason": reason,
-        "text": snippet.text,
-    }));
-    if let Err(problem) = write_lines(root, SIGNALS, &signals) {
+    let mut entries = match taught(root) {
+        Ok(entries) => entries,
+        Err(problem) => return Reply::failed(*problem),
+    };
+    entries.push(Taught {
+        hash: snippet.hash.clone(),
+        canonical: snippet.canonical.clone(),
+        suggestion: suggestion.clone(),
+        reason: reason.clone(),
+    });
+    if let Err(problem) = write_taught(root, &entries) {
         return Reply::failed(*problem);
     }
     let entry = pending(
@@ -794,20 +874,7 @@ fn project_path(cwd: &Path, root: &Path, file: &str) -> Option<String> {
     (shown.ends_with(".jadpo") && full.is_file()).then_some(shown)
 }
 
-// --- share and the catalogue ---------------------------------------------
-
-fn share() -> Reply {
-    Reply::failed(
-        Diagnostic::new(
-            &rule::TOOLCHAIN_NOT_BUILT_YET,
-            "`jadpo suggest share` isn't built yet",
-        )
-        .reason(format!(
-            "Sending what `jadpo suggest` learned to Jadpo HQ is roadmap chunk 5.5y. Nothing was sent, and `{PENDING}` keeps every entry until then."
-        ))
-        .next("Carry on: the entries wait for sharing to be built"),
-    )
-}
+// --- the catalogue -------------------------------------------------------
 
 /// `text` wrapped to `width` columns.
 fn wrap(text: &str, width: usize) -> Vec<String> {

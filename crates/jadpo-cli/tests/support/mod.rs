@@ -1,5 +1,7 @@
 //! Shared by the CLI's snapshot tests.
 
+pub mod fake_hq;
+
 /// A slow machine adds the run's duration to the footer (` in 0.1 s`);
 /// snapshots compare the output without it. Rich output ends the footer
 /// with a colour reset, so escape sequences after the time are kept and
