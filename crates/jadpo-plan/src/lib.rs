@@ -48,7 +48,7 @@ use std::sync::Arc;
 use jadpo_check::types::{callables_of, typed_body};
 use jadpo_db::{Db, Project};
 use jadpo_graph::body::Body;
-use jadpo_graph::{Key, Kind};
+use jadpo_graph::{Key, Kind, TypeRef};
 pub use jadpo_std::Isolation;
 pub use jadpo_std::http::RouteTable;
 
@@ -177,6 +177,9 @@ pub struct Plan {
     /// The codecs `json.read` and `json.write` run with (area 19, chunk
     /// 5.5g): the wire's, for each type a call reads or writes.
     json: jadpo_std::http::JsonTable,
+    /// Every prompt that checks, which `prompts.render` fills (area 21,
+    /// chunk 5.5v2).
+    prompts: jadpo_std::prompt::PromptPlan,
 }
 
 impl Plan {
@@ -282,6 +285,38 @@ impl Plan {
             .collect();
         let mut constants = Vec::new();
         let mut json_types = json_types.into_inner();
+        // Each prompt's entry, and the type of each field its text writes,
+        // read from its type's field nodes (area 21).
+        let prompts = jadpo_check::prompts::plan(db, project);
+        let prompt_fields: HashMap<String, (u32, Vec<TypeRef>)> = prompts
+            .entries
+            .iter()
+            .enumerate()
+            .filter_map(|(at, entry)| {
+                let node = graph.get(&jadpo_check::graph::registry(db, project).key(
+                    Kind::Prompt,
+                    &entry.key,
+                    None,
+                ))?;
+                let parent = node.parent.clone()?;
+                let fields = entry
+                    .fields
+                    .iter()
+                    .map(|field| {
+                        graph
+                            .nodes()
+                            .iter()
+                            .find(|child| {
+                                child.kind == Kind::Field
+                                    && child.parent.as_ref() == Some(&parent)
+                                    && child.name.rsplit('.').next() == Some(field.name.as_str())
+                            })
+                            .map_or(TypeRef::None, |child| TypeRef::Field(child.key.clone()))
+                    })
+                    .collect();
+                Some((entry.key.clone(), (at as u32, fields)))
+            })
+            .collect();
         let mut callables = Vec::with_capacity(found.len());
         for (key, kind, file, body) in found {
             let node = graph.get(&key);
@@ -308,6 +343,7 @@ impl Plan {
                 write: &write,
                 setting: &|key: &Key| setting_ids.get(key).copied(),
                 json: &mut json_types,
+                prompt: &|key: &str| prompt_fields.get(key).cloned(),
             }
             .body(&body, text);
             let gate = (kind == Kind::Action)
@@ -377,6 +413,7 @@ impl Plan {
             translations: jadpo_check::translations::plan(db, project),
             locales: jadpo_check::locales::locales(db, project).plan.clone(),
             json,
+            prompts,
         }
     }
 
@@ -501,6 +538,11 @@ impl Plan {
     /// The translation keys and their messages (area 10).
     pub fn translations(&self) -> &jadpo_std::translation::TranslationPlan {
         &self.translations
+    }
+
+    /// Every prompt that checks, by its place (area 21).
+    pub fn prompts(&self) -> &jadpo_std::prompt::PromptPlan {
+        &self.prompts
     }
 
     /// The locales the application supports, when it declares them.

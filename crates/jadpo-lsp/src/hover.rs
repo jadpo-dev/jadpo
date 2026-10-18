@@ -210,6 +210,7 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
         Detail::ActionException { who } => {
             format!("{}: [{}]  // under `actions:`", node.name, who.join(", "))
         }
+        Detail::Prompt { version } => format!("prompt {version}"),
         Detail::Transition { when, sets, .. } => {
             let when = when
                 .as_ref()

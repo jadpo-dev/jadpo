@@ -105,6 +105,11 @@ pub enum Decoded {
     /// of the type it reads or writes in the plan's JSON table
     /// ([`crate::Plan::json`]), whose codec is the wire's for that type.
     Json(u32),
+    /// `prompts.render` (area 21): the prompt's place in the plan's
+    /// prompts, and for each field its text writes, in the entry's order,
+    /// the number of its type in the JSON table, whose codec writes a
+    /// value's text.
+    Prompt { entry: u32, fields: Vec<u32> },
     /// Something a later area builds, as written up to its arguments or
     /// block: `clock.now`, `query open_todos`, `Todo.update`.
     Written(String),
@@ -160,6 +165,9 @@ pub(crate) struct Decoder<'a> {
     /// The types `json.read` reads and `json.write` writes, numbered as
     /// they are met (area 19, "Data formats").
     pub json: &'a mut Vec<TypeRef>,
+    /// Each prompt's place in the plan's prompts, by its name, and the type
+    /// of each field its text writes (area 21).
+    pub prompt: &'a dyn Fn(&str) -> Option<(u32, Vec<TypeRef>)>,
 }
 
 impl Decoder<'_> {
@@ -245,6 +253,19 @@ impl Decoder<'_> {
                         .map_or(TypeRef::None, |arg| arg.ty.clone());
                     self.json_type(written)
                 }
+                Callee::Prompt(key) => match (self.prompt)(key) {
+                    Some((entry, fields)) => Decoded::Prompt {
+                        entry,
+                        fields: fields
+                            .into_iter()
+                            .map(|ty| match self.json_type(ty) {
+                                Decoded::Json(number) => number,
+                                _ => 0,
+                            })
+                            .collect(),
+                    },
+                    None => Decoded::Nothing,
+                },
                 Callee::Query(key) => Decoded::Query((self.query)(key)),
                 Callee::Entity { entity, operation } if operation == "get" => {
                     Decoded::Get((self.entity)(entity))
