@@ -15,6 +15,15 @@ const DECIMAL_DIGITS: u32 = 38;
 /// The PostgreSQL column type for a field of type `ty` (its `?` left
 /// aside), or the type's name when it has none in this compiler.
 pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
+    // A vector, whose structure is a list of decimals, is stored in a
+    // pgvector `vector` (area 21, chunk 5.5v1).
+    if table
+        .rule_chain(ty)
+        .iter()
+        .any(|(_, rules)| rules.standard == Some(jadpo_std::standard::ai::VECTOR))
+    {
+        return Ok("vector".into());
+    }
     let structure = table.structure(ty);
     Ok(match &structure {
         // A token or a key is kept only as its verifier, by the runtime

@@ -877,6 +877,7 @@ impl Lower<'_> {
                     if param.implicit {
                         *place = Some(match op {
                             jadpo_std::Op::TextFormat => self.shown_standard(call),
+                            jadpo_std::Op::AiDistance => self.metric(call),
                             _ => self.zero(call),
                         });
                     }
@@ -934,6 +935,27 @@ impl Lower<'_> {
             call.syntax(),
             ty,
             typed::Node::Expr(typed::Expr::Literal(literal)),
+        );
+        SiteId(id as u32)
+    }
+
+    /// `ai.distance`'s `metric`, which the checker fills: how its vectors'
+    /// type compares them, as `VectorDistance`'s variant name (area 21,
+    /// chunk 5.5v1).
+    fn metric(&mut self, call: &ast::CallExpr) -> SiteId {
+        let name = self
+            .facts
+            .metric
+            .get(&node_key(call.syntax()))
+            .copied()
+            .unwrap_or("cosine");
+        let id = self.alloc();
+        let ty = self.ty(&Ty::Prim(Prim::Text));
+        self.fill(
+            id,
+            call.syntax(),
+            ty,
+            typed::Node::Expr(typed::Expr::Literal(Literal::Text(name.to_string()))),
         );
         SiteId(id as u32)
     }

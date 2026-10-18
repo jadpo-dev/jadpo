@@ -42,6 +42,9 @@ pub enum Fault {
     /// dates, which has days and no zone (chunk 5.5k4): its days are asked
     /// for from a date.
     DateOnlyRule,
+    /// `ai.distance` by cosine from a vector of zeros, which has no
+    /// direction, so no angle to another (area 21, chunk 5.5v1).
+    ZeroVector,
 }
 
 pub fn int_add(a: i64, b: i64) -> Result<i64, Fault> {

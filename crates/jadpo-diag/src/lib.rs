@@ -316,6 +316,8 @@ rules! {
         "05-data.html#data-unknown-section", "Entity has a section Jadpo does not know";
     DATA_UPDATE_BY_ID_VALUE: "data.update_by_id_value", area 6, Error, Agent,
         "06-reads-and-writes.html#data-update-by-id-value", "Update by `id` sets a value from something it can't use";
+    DATA_VECTOR_STORE_UNSUPPORTED: "data.vector_store_unsupported", area 21, Error, Agent,
+        "21-ai.html#data-vector-store-unsupported", "Vector field on a store that isn't PostgreSQL";
     DATA_WRITE_NOT_ENTITY: "data.write_not_entity", area 6, Error, Agent,
         "06-reads-and-writes.html#data-write-not-entity", "Write names a type that isn't an entity";
     DATA_WRITE_SECTION_REQUIRED: "data.write_section_required", area 6, Error, Agent,
@@ -440,6 +442,8 @@ rules! {
         "05-data.html#migration-decision-required", "Migration needs a decision";
     MIGRATION_DECISION_UNKNOWN: "migration.decision_unknown", area 5, Error, Agent,
         "05-data.html#migration-decision-unknown", "Migration decides about something that is not changing";
+    MIGRATION_EXTENSION_MISSING: "migration.extension_missing", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Database lacks a PostgreSQL extension the project's migrations need";
     MIGRATION_OUT_OF_DATE: "migration.out_of_date", area 5, Error, Agent,
         "05-data.html#migration-out-of-date", "Entities and the latest migration disagree";
     MIGRATION_RECORD_INVALID: "migration.record_invalid", area 5, Error, Human,

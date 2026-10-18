@@ -1287,6 +1287,18 @@ impl Decls<'_> {
                     format!("dimensions: {}", rules.dimensions.unwrap_or_default()),
                     "below",
                 ),
+                // How its vectors are compared, which a type built on it
+                // keeps (area 21, chunk 5.5v1).
+                (
+                    "distance",
+                    own.distance.zip(rules.distance).map(|(a, b)| a != b),
+                    format!(
+                        "distance: {}.{}",
+                        jadpo_std::VectorDistance::NAME,
+                        rules.distance.map_or("cosine", |d| d.name())
+                    ),
+                    "different from",
+                ),
             ];
             if let Some((key, _, theirs, word)) = dimensions
                 .into_iter()
@@ -1306,9 +1318,15 @@ impl Decls<'_> {
         let written = match value {
             Const::Number { value, .. } => rules::show(*value),
             Const::Duration(text) => text.clone(),
+            Const::Path(path) => path.join("."),
             _ => String::new(),
         };
-        let reason = if key == "scale" {
+        let reason = if key == "distance" {
+            format!(
+                "`{host}` compares its vectors by `{}`: how vectors are compared belongs to the model that made them, so a type built on it keeps it, and its queries and index follow it.",
+                theirs.trim_start_matches("distance: ")
+            )
+        } else if key == "scale" {
             format!(
                 "`{host}` fixes the scale at {}: a `Decimal`'s scale decides how it is stored and sent, so a refinement keeps it.",
                 theirs.trim_start_matches("scale: ")
@@ -1327,6 +1345,8 @@ impl Decls<'_> {
             .reason(reason)
             .next(if key == "scale" {
                 format!("Remove `scale:`, or build on `Decimal` instead of `{host}`")
+            } else if key == "distance" {
+                format!("Remove `distance:`, or build on `Vector` instead of `{host}`")
             } else {
                 format!("Correct `{key}`, or build on a type whose rules it fits")
             }),

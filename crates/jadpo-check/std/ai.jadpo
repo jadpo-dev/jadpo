@@ -1,0 +1,13 @@
+// The `ai` namespace's standard operation (area 21, "The nearest-neighbour
+// query"). It is listed, typed, in `jadpo-std`'s operation table, which
+// names the Rust function in `jadpo-value` that runs it; a test holds this
+// stub to that table. The `ai` capability's calls (`ai.generate`,
+// `ai.embed`) are outside calls, built with the capability (area 11).
+
+public library ai {
+    /// How far apart `a` and `b` are, two vectors of one type, as that
+    /// type's `distance:` compares them and pgvector works it out: smaller
+    /// is nearer. Cosine, the default, is from 0 to 2; euclidean from 0;
+    /// inner product is the negative inner product.
+    function distance(a: Vector, b: Vector) -> Decimal {}
+}

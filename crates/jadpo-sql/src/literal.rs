@@ -91,6 +91,18 @@ pub fn sql(value: &SqlValue) -> Option<String> {
                 if *upper_held { "]" } else { ")" }
             )
         }
+        // pgvector's text, each item the shortest decimal that is its float
+        // (area 21, chunk 5.5v1); one that isn't finite isn't a vector.
+        SqlValue::Vector(bits) => {
+            let mut items = Vec::with_capacity(bits.len());
+            for item in bits.iter().copied().map(f32::from_bits) {
+                if !item.is_finite() {
+                    return None;
+                }
+                items.push(format!("{item}"));
+            }
+            format!("'[{}]'::vector", items.join(","))
+        }
     })
 }
 
@@ -150,6 +162,7 @@ fn type_name(ty: SqlType) -> Option<String> {
         SqlType::Time => "time".into(),
         SqlType::LocalTimestamp => "timestamp".into(),
         SqlType::Json => "jsonb".into(),
+        SqlType::Vector => "vector".into(),
         SqlType::Array(inner) => format!("{}[]", type_name(*inner)?),
         SqlType::Range(element) => range_name(*element)?.into(),
     })
@@ -219,6 +232,21 @@ fn timestamp(micros: i64, offset: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vector_is_pgvector_s_text_of_its_floats() {
+        let items = [0.5f32, -0.25, 0.123_456_79, 1e-7];
+        let vector = SqlValue::Vector(items.iter().map(|item| item.to_bits()).collect());
+        assert_eq!(
+            sql(&vector).as_deref(),
+            Some("'[0.5,-0.25,0.12345679,0.0000001]'::vector")
+        );
+        assert_eq!(sql(&SqlValue::Vector(vec![f32::NAN.to_bits()])), None);
+        assert_eq!(
+            sql(&SqlValue::Null(SqlType::Vector)).as_deref(),
+            Some("NULL::vector")
+        );
+    }
 
     #[test]
     fn text_is_quoted_so_nothing_in_it_ends_the_literal() {

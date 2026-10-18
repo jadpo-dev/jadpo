@@ -938,9 +938,27 @@ in the checker's constraints, `Rules::dimensions`, `RuleKey::Dimensions`),
 checked by `Rules::check_length` before the lengths it decides, proved by
 `verdict` from a list's counted items, and shown in the API record and as
 OpenAPI's `minItems` and `maxItems`. A vector's storage is
-`Storage::Vector`, a pgvector `vector` column the data model reports as
-`toolchain.not_built_yet` until the AI area. `FormatKey::Vector` and
+`Storage::Vector`, a pgvector `vector` column. `FormatKey::Vector` and
 `FormatKey::ByLabel` show vectors and labelled parts.
+Since chunk 5.5v1 a vector field is stored: the data model gives any
+type whose rule chain is `Vector`'s a `vector(n)` column, `n` its
+`dimensions:` (`vector` without), with no length checked beside it, and an
+`Embedding` three columns (its `ModelId`'s two and a `vector`). The
+column is `SqlType::Vector` and `Column::Vector`; the runtime holds it as
+`SqlValue::Vector`, each item's float by its bits, and the PostgreSQL
+driver sends it in pgvector's binary format with no type number (the
+server infers it from the column) and knows a column of it by its type's
+name, since the extension's number differs in each database. `distance:`
+(`Rules::distance`, a `VectorDistance`) says how a type's vectors are
+compared; `ai.distance` (`Op::AiDistance`, `jadpo_value::vector`) is
+given its metric by the checker, as `text.format` its standard type, and
+works it out as pgvector does (`jadpo_std::standard::ai::distance`). The
+migration diff writes `CREATE EXTENSION IF NOT EXISTS "vector"` first in
+the first migration with a vector column (`migration::extensions`);
+`jadpo_runtime::migrate` refuses a database that doesn't offer an
+extension a pending migration creates before running anything
+(`MigrateError::ExtensionMissing`, `migration.extension_missing`), and
+`has_extensions` is the start-up check, which `jadpo dev` runs.
 Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
 text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
 `jadpo_std::standard::events`, which also holds the rules across its parts
@@ -2595,9 +2613,13 @@ feature no example uses (above).
 jobs, each with the pinned toolchain and its own cargo cache: `lint`
 (formatting, clippy, the name ban, the editor grammar), `docs` (the pages
 and the teaching examples), `tests` (every test, with the live PostgreSQL
-steps running at once on a `postgres:16` container named by
-`JADPO_TEST_DATABASE_URL`) and `wasm32`; `docs` and `tests` each start
-their own container. The
+steps running at once on one PostgreSQL container named by
+`JADPO_TEST_DATABASE_URL`) and `wasm32`; `docs` and `tests` each build and
+start their own container from `tools/postgres/Dockerfile`, PostgreSQL 16
+with pgvector and PostGIS at pinned versions (chunk 5.5v1; area 21,
+"Chosen in chunk 5.5v1"), while the toolchain installs. A local run's
+disposable server comes from the machine's own PostgreSQL tools, which
+need pgvector for the vector tests (Postgres.app ships it). The
 `supported-language` job needs all four and passes only when each did; it
 is the check branch protection requires. Benchmarks (Phase 9) are a
 separate command, not the gate.

@@ -88,7 +88,9 @@ pub use host::{
 };
 pub use jadpo_std::Isolation;
 pub use limits::MAX_DEPTH;
-pub use migrate::{MIGRATIONS_TABLE, MigrateError, Migration, Standing, migrate, standing};
+pub use migrate::{
+    MIGRATIONS_TABLE, MigrateError, Migration, Standing, has_extensions, migrate, standing,
+};
 pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};
 pub use policy::{admit, call_as};
