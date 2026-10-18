@@ -155,12 +155,29 @@ impl<'g> Wire<'g> {
                     rules.extend(jadpo_std::standard::text_rules(&name));
                     current = TypeRef::Builtin(Builtin::Text);
                 }
+                // A standard type built on a built-in type with bounds of its
+                // own (chunk 5.5i3): that type, with the bounds as rules.
+                TypeRef::Std(name, args)
+                    if args.is_empty() && jadpo_std::standard::within_rules(&name).is_some() =>
+                {
+                    let Some((of, own)) = jadpo_std::standard::within_rules(&name) else {
+                        return Shape::Other(name);
+                    };
+                    rules.push(own);
+                    current = TypeRef::Builtin(of);
+                }
                 TypeRef::Std(name, args) if name == "Page" && args.len() == 1 => {
                     return Shape::Page(args.into_iter().next().unwrap_or(TypeRef::None));
                 }
                 TypeRef::Std(name, args) if args.is_empty() => {
+                    // A standard object, or a choice, sent tagged (chunk
+                    // 5.5i3), each described from its entry.
                     if let Some(entry) = jadpo_std::standard_type(&name)
-                        && matches!(entry.holds, jadpo_std::standard::Holds::Object(_))
+                        && matches!(
+                            entry.holds,
+                            jadpo_std::standard::Holds::Object(_)
+                                | jadpo_std::standard::Holds::Choice(_)
+                        )
                     {
                         return Shape::StdObject(entry);
                     }
@@ -456,6 +473,33 @@ pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
     let mut out = Value::object();
     if entry.json == jadpo_std::standard::Json::Text {
         out.set("type", "string");
+        return out;
+    }
+    // A choice (chunk 5.5i3): one of its variants, each an object of
+    // `tag`, the variant's name, and its fields, as area 2 sends an enum's
+    // variant with data.
+    if let jadpo_std::standard::Holds::Choice(variants) = entry.holds {
+        let one_of: Vec<Value> = variants
+            .iter()
+            .map(|(variant, fields)| {
+                let mut tag = Value::object();
+                tag.set("const", *variant);
+                let mut properties = Value::object();
+                properties.set("tag", tag);
+                let mut required = vec!["tag"];
+                for (name, part) in *fields {
+                    properties.set(name, part_schema(*part));
+                    required.push(name);
+                }
+                let mut schema = Value::object();
+                schema.set("type", "object");
+                schema.set("properties", properties);
+                schema.set("required", required);
+                schema.set("additionalProperties", false);
+                schema
+            })
+            .collect();
+        out.set("oneOf", one_of);
         return out;
     }
     out.set("type", "object");

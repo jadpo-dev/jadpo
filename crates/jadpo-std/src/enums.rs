@@ -532,11 +532,13 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (crate::CURRENCY, names(crate::CURRENCIES)),
         (CodeForm::NAME, CodeForm::NAMES.to_vec()),
     ];
+    // The standard enums, and the choices, whose variants carry data
+    // (chunk 5.5i3).
     for entry in crate::STANDARD_TYPES {
-        if let Some(codes) = entry.codes()
+        if let Some(variants) = entry.variants()
             && !all.iter().any(|(name, _)| *name == entry.name)
         {
-            all.push((entry.name, names(codes)));
+            all.push((entry.name, variants));
         }
     }
     // Each quantity's units (area 19, "Physical quantities"): `LengthUnit`.
@@ -594,8 +596,8 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
             .and_then(|kind| kind.units().iter().position(|unit| unit.name == variant))
             .or_else(|| {
                 crate::standard_type(other)
-                    .and_then(crate::StandardType::codes)
-                    .and_then(|codes| codes.iter().position(|(v, _)| *v == variant))
+                    .and_then(crate::StandardType::variants)
+                    .and_then(|variants| variants.iter().position(|v| *v == variant))
             }),
     };
     found.and_then(|at| u32::try_from(at).ok())

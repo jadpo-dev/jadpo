@@ -32,6 +32,7 @@ pub mod places;
 mod places_data;
 pub mod postal;
 mod postal_codes_data;
+pub mod prices;
 pub mod recurrence;
 mod schedules;
 
@@ -66,6 +67,25 @@ pub enum Holds {
         pattern: &'static str,
         personal: Option<&'static str>,
     },
+    /// A type built on the built-in type `of` with the bounds the standard
+    /// library gives it, both included where given (chunk 5.5i3): a
+    /// `TaxRate` is a `Percentage` never below 0%. A program holds it as a
+    /// type built on `of` whose rules are those bounds ([`within_rules`]),
+    /// as a declared refinement is, so its construction, text, JSON,
+    /// storage and format are `of`'s, its bounds broken as `min` and `max`.
+    Within {
+        of: Builtin,
+        min: Option<crate::Num>,
+        max: Option<crate::Num>,
+    },
+    /// A choice of other types (chunk 5.5i3): an enum whose variants each
+    /// carry fields, area 2's tagged union, each variant with its fields in
+    /// declared order, each field a [`Part`]. A `Discount` is an amount off
+    /// or a percentage off. A program builds and matches one as it does its
+    /// own enum with data (`Discount.amount_off { amount: ... }`); it is
+    /// sent in area 2's tagged form ([`Json::Tagged`]) and stored as that
+    /// JSON.
+    Choice(&'static [(&'static str, &'static [(&'static str, Part)])]),
 }
 
 /// What one field of a standard object type holds (area 19, chunk 5.5k).
@@ -91,6 +111,16 @@ pub enum Part {
     /// character but a tab or a line feed ([`events::PARAGRAPH_PATTERN`]):
     /// an event's description (chunk 5.5k3).
     Paragraph,
+    /// A value built on the built-in type `of`, from `min` to `max`, both
+    /// included where given (chunk 5.5i3): a price's amount never below 0,
+    /// a discount's percentage from 0% to 100%. `min:` and `max:` read as
+    /// they do on a type built on `of` (area 2): minor units for `Money`,
+    /// the fraction for a `Percentage`.
+    Within {
+        of: Builtin,
+        min: Option<crate::Num>,
+        max: Option<crate::Num>,
+    },
     /// The part, or `none`: a person's family name.
     Optional(&'static Part),
     /// A list of the part: an address's lines.
@@ -104,6 +134,7 @@ impl Part {
         match self {
             Part::Of(builtin) => Some(builtin),
             Part::Whole(..) => Some(Builtin::Int),
+            Part::Within { of, .. } => Some(of),
             Part::Line | Part::Matching(_) | Part::Paragraph => Some(Builtin::Text),
             Part::Standard(_) | Part::Optional(_) | Part::List(_) => None,
         }
@@ -120,6 +151,11 @@ impl Part {
             Part::Whole(min, max) => crate::Rules {
                 min: Some(whole(min)),
                 max: Some(whole(max)),
+                ..crate::Rules::default()
+            },
+            Part::Within { min, max, .. } => crate::Rules {
+                min,
+                max,
                 ..crate::Rules::default()
             },
             Part::Line => crate::Rules {
@@ -152,6 +188,9 @@ impl Part {
 /// `text.parse` reads back (the contract's "canonical text").
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextForm {
+    /// A whole number's digits, with `-` before a negative one: `25`, as
+    /// JSON carries an `Int` as text (chunk 5.5i3).
+    Whole,
     /// The text itself, accepted when the type's named validator accepts
     /// it: an email address, a URL, an IP address; for a type held as
     /// text, when its pattern matches too ([`StandardType::accepts`]).
@@ -256,6 +295,11 @@ pub enum Json {
     /// `ZonedTime`'s `instant` and `zone` (area 10), `InstantRange`'s
     /// `start` and `end`.
     Fields(&'static [&'static str]),
+    /// Area 2's form of an enum's variant with data: an object of `tag`,
+    /// the variant's name, and the variant's fields, each in its own JSON
+    /// shape, `{"tag": "percentage_off", "percentage": "20%"}` (a
+    /// [`Holds::Choice`], chunk 5.5i3).
+    Tagged,
 }
 
 /// The locale data a standard type is formatted for people with: what
@@ -351,6 +395,17 @@ pub enum FormatKey {
     MaskedCard,
     /// A card's expiry as the card prints it, `12/28` (chunk 5.5i2).
     CardExpiry,
+    /// The parts named, in order, each shown as its own type is with no
+    /// options, joined by `separator`: a price's amount, `£10.50`; an
+    /// interest rate's rate and basis, `5.5% APR`. A choice's variant shows
+    /// the parts it has (chunk 5.5i3).
+    Parts {
+        parts: &'static [&'static str],
+        separator: &'static str,
+    },
+    /// A number in the locale's digits and separators, then `suffix`,
+    /// which no locale changes: basis points, `25 bp` (chunk 5.5i3).
+    Suffixed(&'static str),
     /// The text in the object's part `part`, shown as its last four after
     /// `mask`: a tax or identity document's number, `•••• 6789` (chunk
     /// 5.5i2).
@@ -816,7 +871,8 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// `schedules`), 15 of people and places (chunk 5.5l, in `places` and
 /// `contact`), and `PhoneNumber`, `CallingCode`, `PostalCode` and
 /// `UnLocode`, held as text (chunk 5.5l2, in `phones`, `postal` and
-/// `places`), and `CalendarEvent` (chunk 5.5k3, in `events`).
+/// `places`), `CalendarEvent` (chunk 5.5k3, in `events`), and the money
+/// group's records (chunk 5.5i3, in `prices`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     lists::ALLERGEN_ENTRY,
@@ -836,6 +892,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("10000 sqm", "10,000 m²"),
         ],
     ),
+    prices::BASIS_POINTS_ENTRY,
     identifiers::BIC,
     quantity(
         crate::QuantityKind::Bitrate,
@@ -996,6 +1053,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    prices::DISCOUNT_ENTRY,
     documents::DRIVING_LICENCE_NUMBER_TYPE,
     StandardType {
         name: "Duration",
@@ -1266,6 +1324,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    prices::INTEREST_RATE_ENTRY,
+    prices::INTEREST_RATE_BASIS_ENTRY,
     identifiers::INVOICE_NUMBER,
     checked(
         "IpAddress",
@@ -1537,6 +1597,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         ],
     ),
     // A quarter of a calendar year, ordered by year and quarter.
+    prices::PRICE_ENTRY,
     time_object(
         "Quarter",
         &[("year", YEARS), ("quarter", Part::Whole(1, 4))],
@@ -1651,6 +1712,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     codes::SSCC,
     documents::TAX_ID_TYPE,
+    prices::TAX_RATE_ENTRY,
     quantity(
         crate::QuantityKind::Temperature,
         &[
@@ -1676,6 +1738,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::UK_UTR,
     places::UN_LOCODE,
     codes::UN_NUMBER,
+    prices::UNIT_PRICE_ENTRY,
     codes::UPC_A,
     contact::UPRN,
     checked(
@@ -1988,6 +2051,36 @@ pub fn text_rules(name: &str) -> Option<crate::Rules> {
     })
 }
 
+/// What a standard type built on a built-in type with bounds of its own is
+/// built on, and the rules those bounds are (chunk 5.5i3): a `TaxRate` is a
+/// `Percentage` whose `min` is 0%. `None` for any other type.
+pub fn within_rules(name: &str) -> Option<(Builtin, crate::Rules)> {
+    let entry = standard_type(name)?;
+    let Holds::Within { of, min, max } = entry.holds else {
+        return None;
+    };
+    Some((
+        of,
+        crate::Rules {
+            min,
+            max,
+            ..crate::Rules::default()
+        },
+    ))
+}
+
+/// The variant `variant` of the standard choice `name`, with its fields
+/// (chunk 5.5i3); `None` when `name` isn't a choice or has no such variant.
+pub fn choice_variant(name: &str, variant: &str) -> Option<&'static [(&'static str, Part)]> {
+    let Holds::Choice(variants) = standard_type(name)?.holds else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|(listed, _)| *listed == variant)
+        .map(|(_, fields)| *fields)
+}
+
 /// Whether `text.parse` reads standard type `name` as people write it in
 /// a country, given `country:` (chunk 5.5l2).
 pub fn reads_by_country(name: &str) -> bool {
@@ -2056,6 +2149,15 @@ impl StandardType {
     pub fn codes(&self) -> Option<&'static [(&'static str, &'static str)]> {
         match self.holds {
             Holds::Enum(codes) => Some(codes),
+            _ => None,
+        }
+    }
+
+    /// The names of its variants, for an enum or a choice (chunk 5.5i3).
+    pub fn variants(&self) -> Option<Vec<&'static str>> {
+        match self.holds {
+            Holds::Enum(codes) => Some(codes.iter().map(|(name, _)| *name).collect()),
+            Holds::Choice(variants) => Some(variants.iter().map(|(name, _)| *name).collect()),
             _ => None,
         }
     }
@@ -2143,7 +2245,20 @@ impl StandardType {
             (SqlType::Date, _) => Column::Date,
             (SqlType::Int8, Holds::Builtin(Builtin::Duration)) => Column::Duration,
             (SqlType::Numeric, Holds::Builtin(Builtin::Quantity(kind))) => Column::Quantity(kind),
-            (SqlType::Numeric, Holds::Builtin(Builtin::Percentage)) => Column::Percentage,
+            (SqlType::Numeric, Holds::Builtin(Builtin::Percentage))
+            | (
+                SqlType::Numeric,
+                Holds::Within {
+                    of: Builtin::Percentage,
+                    ..
+                },
+            ) => Column::Percentage,
+            (
+                SqlType::Int8,
+                Holds::Within {
+                    of: Builtin::Int, ..
+                },
+            ) => Column::Int,
             _ => return None,
         })
     }
@@ -2205,7 +2320,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 126, "the 126 standard types built so far");
+        assert_eq!(names.len(), 133, "the 133 standard types built so far");
     }
 
     #[test]
@@ -2265,6 +2380,18 @@ mod tests {
             if let (Holds::Object(fields), Json::Fields(names)) = (entry.holds, entry.json) {
                 let declared: Vec<&str> = fields.iter().map(|(name, _)| *name).collect();
                 assert_eq!(declared, names, "{}'s JSON is its fields", entry.name);
+            }
+            // A choice is sent in area 2's tagged form, and has no single
+            // text form (chunk 5.5i3).
+            assert_eq!(
+                matches!(entry.holds, Holds::Choice(_)),
+                entry.json == Json::Tagged,
+                "{} is sent tagged exactly when it is a choice",
+                entry.name
+            );
+            if let Holds::Choice(variants) = entry.holds {
+                assert!(entry.text.is_none(), "{}", entry.name);
+                assert!(variants.iter().all(|(_, fields)| !fields.is_empty()));
             }
             // A range takes its item type's options.
             let formatted = match entry.examples.of {

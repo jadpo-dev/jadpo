@@ -89,6 +89,7 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
     }
     Ok(match (form, value) {
         (TextForm::Checked, Value::Text(text)) => text.to_string(),
+        (TextForm::Whole, Value::Int(n)) => n.to_string(),
         (TextForm::Uuid, Value::Uuid(text)) => text.to_ascii_lowercase(),
         (TextForm::Instant, Value::Instant(millis)) => jadpo_std::format_instant(*millis),
         (TextForm::Date, Value::Date(day)) => jadpo_std::format_date(*day),
@@ -427,6 +428,7 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
     }
     let read = match form {
         TextForm::Checked => entry.accepts(raw).then(|| Value::text(raw)),
+        TextForm::Whole => int(raw).map(Value::Int),
         TextForm::Uuid => entry
             .validator
             .is_some_and(|validator| validator.accepts(raw))
@@ -722,9 +724,14 @@ pub fn format_as(
     options: &MoneyOptions,
     unit: &Value,
 ) -> Result<Value, Fault> {
-    if let (Value::Text(name), Value::Text(_)) = (standard, value)
+    // A type built on a built-in type with bounds of its own is shown as
+    // its entry says too: basis points with `bp` (chunk 5.5i3).
+    if let Value::Text(name) = standard
         && let Some(entry) = standard_type(name)
-        && matches!(entry.holds, Holds::Text { .. })
+        && matches!(
+            (entry.holds, value),
+            (Holds::Text { .. }, Value::Text(_)) | (Holds::Within { .. }, _)
+        )
     {
         let tag = present::tag_of(locale)?;
         return Ok(Value::text(&shown(entry, value, tag, zone, format_spec)?));
@@ -890,6 +897,37 @@ pub fn shown(
             Some(Value::Text(text)) => last_four(mask, text),
             _ => return Err(Fault::Shape),
         },
+        // The parts named, each as its own type is shown, joined: a
+        // price's amount, an interest rate's rate and basis, a choice's
+        // parts its variant has (chunk 5.5i3).
+        (FormatKey::Parts { parts, separator }, value) => {
+            let part = |name: &str| match value {
+                Value::Record(record) => record.get(name),
+                Value::Variant(variant) => variant
+                    .fields
+                    .iter()
+                    .find(|(field, _)| &**field == name)
+                    .map(|(_, value)| value),
+                _ => None,
+            };
+            let mut out = Vec::new();
+            for value in parts.iter().filter_map(|name| part(name)) {
+                out.push(match value {
+                    Value::Int(_) | Value::Decimal(_) => present::number(value, tag)?,
+                    value => {
+                        let entry = entry_of(value).ok_or(Fault::Shape)?;
+                        shown(entry, value, tag, zone, format_spec)?
+                    }
+                });
+            }
+            if out.is_empty() {
+                return Err(Fault::Shape);
+            }
+            out.join(separator)
+        }
+        (FormatKey::Suffixed(suffix), value @ (Value::Int(_) | Value::Decimal(_))) => {
+            format!("{}{suffix}", present::number(value, tag)?)
+        }
         (FormatKey::Range, Value::Record(record)) => {
             let (start, end) = range_ends(record)?;
             let end_shown = |end: Option<&Value>| match end {
