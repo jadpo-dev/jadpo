@@ -19,7 +19,7 @@ use jadpo_std::types::FailurePlan;
 use jadpo_std::write::{Raises, WritePlan};
 use jadpo_value::Value;
 
-use crate::read::{Found, Interrupt, read};
+use crate::read::{Found, Interrupt, JsonCodecs, read};
 use crate::write::{Written, write};
 use crate::{ActionBody, Ctx, Failure, Fault, FaultKind, Isolation, LocalFuture, Outcome, action};
 
@@ -55,20 +55,23 @@ pub enum Stored {
 /// arguments, a write's inputs in the order its plan lists them), called
 /// from site `site` of the frame on top of `ctx`. `failures` are the
 /// program's failure plans, by number, which a missing record's failure is
-/// raised from.
+/// raised from; `json` the codecs a JSON-held column is written and read
+/// with, as `json.read` is given them (chunk 5.5w2b).
 pub async fn store(
     ctx: &mut Ctx<'_>,
     op: StoreOp<'_>,
     failures: &[FailurePlan],
+    json: JsonCodecs<'_>,
     args: &[Value],
     site: u32,
 ) -> Stored {
     if ctx.in_action() {
-        return run(ctx, op, failures, args, site).await;
+        return run(ctx, op, failures, json, args, site).await;
     }
     let mut alone = Alone {
         op,
         failures,
+        json,
         args,
         site,
         conflict: None,
@@ -93,6 +96,7 @@ pub async fn store(
 struct Alone<'o> {
     op: StoreOp<'o>,
     failures: &'o [FailurePlan],
+    json: JsonCodecs<'o>,
     args: &'o [Value],
     site: u32,
     /// A refusal its site maps, kept while the boundary rolls back.
@@ -107,7 +111,7 @@ impl<'p> ActionBody<'p> for Alone<'_> {
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
         Box::pin(async move {
             self.conflict = None;
-            match run(ctx, self.op, self.failures, self.args, self.site).await {
+            match run(ctx, self.op, self.failures, self.json, self.args, self.site).await {
                 Stored::Value(value) => Outcome::Value(value),
                 Stored::Failed(failure) => Outcome::Failed(failure),
                 // Failed, so the boundary rolls the refused statement back.
@@ -126,6 +130,7 @@ async fn run(
     ctx: &mut Ctx<'_>,
     op: StoreOp<'_>,
     failures: &[FailurePlan],
+    json: JsonCodecs<'_>,
     args: &[Value],
     site: u32,
 ) -> Stored {
@@ -133,7 +138,7 @@ async fn run(
         Stored::Fault(ctx.fault(FaultKind::Defect(what.into()), site))
     };
     match op {
-        StoreOp::Read(plan) => match read(ctx, plan, args, site).await {
+        StoreOp::Read(plan) => match read(ctx, plan, json, args, site).await {
             Ok(Found::Value(value)) => Stored::Value(value),
             // A read for exactly one record found none: the failure its
             // plan names, its fields from the read's arguments.
@@ -145,7 +150,7 @@ async fn run(
             }
             Err(stop) => interrupted(stop),
         },
-        StoreOp::Write(plan) => match write(ctx, plan, args, site).await {
+        StoreOp::Write(plan) => match write(ctx, plan, json, args, site).await {
             Ok(Written::Value(value)) => Stored::Value(value),
             // By `id`, no record has it: the entity's not-found failure.
             Ok(Written::Missing(concealed)) => {

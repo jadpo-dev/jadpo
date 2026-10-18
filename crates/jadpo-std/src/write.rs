@@ -57,6 +57,10 @@ pub enum WriteSource {
     /// is stored in (`Money`'s amount, then its currency, area 19); `NULL`
     /// for no value.
     Part { of: Box<WriteSource>, index: u32 },
+    /// The value from `of` written as its contract's JSON, by the codec
+    /// `codec` names in the plan's JSON table, for a JSON-held standard
+    /// value's `jsonb` column (chunk 5.5w2b); `NULL` for no value.
+    Json { of: Box<WriteSource>, codec: u32 },
 }
 
 /// One parameter: `$1` is the first.

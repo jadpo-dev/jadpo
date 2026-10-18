@@ -46,6 +46,8 @@ animal_free
 ann
 ann_on_bob
 anns
+answer_customer
+answer_question
 app_orders
 app_version
 apples
@@ -63,8 +65,10 @@ archived_at
 arrivals
 arrived_at
 article
+article_excerpt
 article_id
 article_meaning
+article_slug
 article_title
 article_vector
 article_view
@@ -147,6 +151,7 @@ black
 board
 board_not_found
 bobs
+body_meaning
 body_text_passes
 book
 book_already_lent
@@ -289,6 +294,7 @@ chosen_password
 citation
 citation_id
 citation_view
+cited_slugs
 citizen_of
 class_count
 class_schedule
@@ -302,6 +308,7 @@ clock_reading
 close_enough
 close_outlet
 close_project
+closest_articles
 club_hours
 code_bytes
 code_digest
@@ -415,6 +422,7 @@ delivery_view
 delivery_window
 deposit
 describe_order
+describe_photo
 describe_status
 destination_company_id
 devices
@@ -478,6 +486,7 @@ eiffel_tower
 email_on_completion
 email_on_done
 email_taken
+embed_article
 embedding_unreadable
 emma
 emptied
@@ -501,6 +510,7 @@ eve
 evening
 event_start
 every_name
+excerpt
 expected_delivery
 export_my_data
 export_products
@@ -553,6 +563,7 @@ found_company
 founder
 fragile
 free_delivery_from
+fresh_meaning
 from_abroad
 from_address
 from_count
@@ -608,6 +619,7 @@ heavy
 heavy_ingredients
 held_document
 hello
+help_article
 hide_todo
 higher
 hit
@@ -885,6 +897,7 @@ my_bakeries
 my_orders
 name_blank
 nand
+nearest_excerpts
 nearly
 needs_cooling
 never_rose
@@ -1117,6 +1130,7 @@ patch_todo
 patches
 patches_for
 patient
+patient_nhs_number
 patient_number
 pay_deposit
 payee_account
@@ -1234,6 +1248,7 @@ quantity_too_large
 quantity_too_small
 quantity_unavailable
 quantity_unreadable
+question_meaning
 queue_overdue_reminders
 quiz_rounds
 quote_cake
@@ -1283,6 +1298,7 @@ referral_id
 referral_letter
 referral_text
 referral_unreadable
+refresh_meaning
 register_and_record
 register_both
 registration_closed
@@ -1332,6 +1348,7 @@ reserve_for_cart
 reserve_for_order
 reserve_item
 reserve_stock
+resolved_by_articles
 rested
 restock
 restocked
@@ -1469,6 +1486,7 @@ show_on_menu
 show_placed
 show_sent
 shown_at_desk
+shown_publicly
 sign_in_check
 sign_in_email
 sign_locale
@@ -1564,6 +1582,7 @@ supplier_message
 supplier_order
 supplier_site
 supplier_vat
+support_answer
 surface
 suspend
 suspend_customer

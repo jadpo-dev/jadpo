@@ -48,7 +48,7 @@ use std::sync::Arc;
 use jadpo_check::types::{callables_of, typed_body};
 use jadpo_db::{Db, Project};
 use jadpo_graph::body::Body;
-use jadpo_graph::{Key, Kind};
+use jadpo_graph::{Key, Kind, TypeRef};
 pub use jadpo_std::Isolation;
 pub use jadpo_std::http::RouteTable;
 
@@ -56,6 +56,7 @@ pub use constant::Constant;
 pub use jadpo_std::read::{MissingPlan, MissingValue};
 pub use jadpo_std::write::{PurgePlan, Raises, Refusal};
 pub use queries::{EntityPlan, QueryPlan};
+pub use routes::{StandardCodecs, standard_codecs};
 pub use sites::{ArmPattern, ConstId, Decoded, Given, Raise, SitePlan};
 pub use types::{
     FailureId, FailurePlan, FieldPlan, ShapeId, ShapePlan, Types, ValidatorId, ValidatorPlan,
@@ -177,6 +178,9 @@ pub struct Plan {
     /// The codecs `json.read` and `json.write` run with (area 19, chunk
     /// 5.5g): the wire's, for each type a call reads or writes.
     json: jadpo_std::http::JsonTable,
+    /// Every prompt that checks, which `prompts.render` fills (area 21,
+    /// chunk 5.5v2).
+    prompts: jadpo_std::prompt::PromptPlan,
 }
 
 impl Plan {
@@ -233,7 +237,11 @@ impl Plan {
             }
         }
         let mut types = Types::new(Arc::clone(&graph), rule_bodies);
-        let (queries, entities, identity) = queries::plans(db, project, &mut types);
+        // The types the JSON table numbers: each JSON-held field's, which
+        // its column reads and its writes write (chunk 5.5w2b), then each
+        // `json.read` and `json.write` call's.
+        let json_types = std::cell::RefCell::new(Vec::new());
+        let (queries, entities, identity) = queries::plans(db, project, &mut types, &json_types);
         let query_ids: HashMap<Key, u32> = queries
             .iter()
             .enumerate()
@@ -260,8 +268,8 @@ impl Plan {
                 )
             })
             .collect();
-        let (writes, write_ids) = writes::plans(db, project, &mut types, &bodies);
-        let gates = policy::gates(db, project, &mut types);
+        let (writes, write_ids) = writes::plans(db, project, &mut types, &bodies, &json_types);
+        let gates = policy::gates(db, project, &mut types, &json_types);
         let model = jadpo_check::data::data_model(db, project);
         let purges: Vec<PurgePlan> = model
             .entities
@@ -277,7 +285,39 @@ impl Plan {
             })
             .collect();
         let mut constants = Vec::new();
-        let mut json_types = Vec::new();
+        let mut json_types = json_types.into_inner();
+        // Each prompt's entry, and the type of each field its text writes,
+        // read from its type's field nodes (area 21).
+        let prompts = jadpo_check::prompts::plan(db, project);
+        let prompt_fields: HashMap<String, (u32, Vec<TypeRef>)> = prompts
+            .entries
+            .iter()
+            .enumerate()
+            .filter_map(|(at, entry)| {
+                let node = graph.get(&jadpo_check::graph::registry(db, project).key(
+                    Kind::Prompt,
+                    &entry.key,
+                    None,
+                ))?;
+                let parent = node.parent.clone()?;
+                let fields = entry
+                    .fields
+                    .iter()
+                    .map(|field| {
+                        graph
+                            .nodes()
+                            .iter()
+                            .find(|child| {
+                                child.kind == Kind::Field
+                                    && child.parent.as_ref() == Some(&parent)
+                                    && child.name.rsplit('.').next() == Some(field.name.as_str())
+                            })
+                            .map_or(TypeRef::None, |child| TypeRef::Field(child.key.clone()))
+                    })
+                    .collect();
+                Some((entry.key.clone(), (at as u32, fields)))
+            })
+            .collect();
         let mut callables = Vec::with_capacity(found.len());
         for (key, kind, file, body) in found {
             let node = graph.get(&key);
@@ -304,6 +344,7 @@ impl Plan {
                 write: &write,
                 setting: &|key: &Key| setting_ids.get(key).copied(),
                 json: &mut json_types,
+                prompt: &|key: &str| prompt_fields.get(key).cloned(),
             }
             .body(&body, text);
             let gate = (kind == Kind::Action)
@@ -373,6 +414,7 @@ impl Plan {
             translations: jadpo_check::translations::plan(db, project),
             locales: jadpo_check::locales::locales(db, project).plan.clone(),
             json,
+            prompts,
         }
     }
 
@@ -497,6 +539,11 @@ impl Plan {
     /// The translation keys and their messages (area 10).
     pub fn translations(&self) -> &jadpo_std::translation::TranslationPlan {
         &self.translations
+    }
+
+    /// Every prompt that checks, by its place (area 21).
+    pub fn prompts(&self) -> &jadpo_std::prompt::PromptPlan {
+        &self.prompts
     }
 
     /// The locales the application supports, when it declares them.

@@ -314,6 +314,20 @@ route table's kind of codec for each type a call reads or writes, built by
 the same code, numbered per call through the site's `Decoded::Json`, so a
 document in memory is read and written exactly as a request and a
 response are (area 19, "Data formats").
+Since chunk 5.5w2b the table also numbers the type of each field holding
+a JSON-held standard value (`RichText`, `RichTextBlock`, `LocalisedText`,
+`FieldModel::json`): its column is `Column::Json(n)` and its write's
+parameter `WriteSource::Json`, and the runtime's `store` is given the
+table with the program's validators and shapes (`JsonCodecs`, as
+`json.read` is given them), so its `jsonb` holds what `json.write` writes
+and reads back as `json.read` reads.
+Since chunk 5.5w3 a codec of a standard type a built-in type holds reads
+and writes it through the contract's JSON (`jadpo_value::standard::json`),
+by its entry's `Json`: its canonical text, or an object of the members
+`Json::Parts` lists (`Money`, `ZonedTime`, the quantities), which
+OpenAPI's schema reads too (`routes::wire::scalar_schema`), so neither
+names a built-in type; `jadpo_plan::standard_codecs` makes any standard
+type's codecs over an empty graph, for the per-type harness.
 Since chunk 5.5q the table marks the operations that read the generator
 (`Op::reads_generator`, `random`'s five): the one exception to every
 operation being pure. The checker refuses them outside actions and tests
@@ -332,9 +346,13 @@ Since chunk 5.5r `crypto.verify_jwt` runs there too, given the
 invocation's clock as well (`Op::reads_clock`, its one operation, which the
 checker refuses outside actions and tests as `type.clock_context`), in
 `jadpo_value::jwt`: the token types are entries in
-`jadpo_std::standard::security`, whose `decode_base64url` and
-`JWT_ALGORITHM` both sides read, and its conditions are `RuleKey`s that
-only an `attempt` settles (`RuleKey::only_when_run`). A new `FormatKey`,
+`jadpo_std::standard::security`, whose `decode_base64url` both sides
+read, and the kinds of key a `Jwk` holds, their algorithms and the
+rules across its parts are `jadpo_std::standard::jwk`'s (chunk 5.5r4),
+and its conditions are `RuleKey`s that only an `attempt` settles
+(`RuleKey::only_when_run`). With `as:` (chunk 5.5r4) the plan gives the
+call the codec of the type `as:` names, as it gives `json.read`'s, and
+`jwt::verify_jwt_as` reads the token's own claims through it. A new `FormatKey`,
 `FirstPart`, shows an object by the first of its named parts it has.
 Since chunk 5.5r2 the secret values (`Password`, `ApiKey`, `BearerToken`,
 `TotpSecret`, `SecretText`, and `Jwt`) are entries held as text whose
@@ -617,6 +635,26 @@ against by the same `Ctx` as a folder's, a feature being on when a route
 `Locale.en_xa` is a `Locale` variant that `fallback_chain` sends straight to
 the default locale, and `present::pseudo` accents and lengthens the text of
 the wording while the values it writes stay as they are.
+
+Prompts (area 21, "Prompts as files", chunk 5.5v2) are read in
+`jadpo-check`'s `prompts` module: a `type X = Prompt` (`Base::Prompt`,
+`FieldsBase::Prompt`, `Folder::Prompts` in a domain or `shared/`) and its
+text, `<name>.prompt` beside it, which `jadpo-db` reads as a record
+(`is_prompt_text`; in loose files any `.prompt`) and `source_texts` hands
+to the renderer so its errors quote it. `jadpo-std`'s `prompt` module
+parses the two sections into `Piece`s, fills them (`fill`) and escapes a
+data block's closing tags (`escape`), for text and for JSON; `analysis`
+decides how each field is sent (`Form::Closed`, `Text` or `Json`, or the
+conversation's turns), reports the `prompt.` rules and gives each checked
+prompt a `PromptEntry` with its digest, a SHA-256 over its two files. The
+graph gets a `prompt` node per prompt (`Detail::Prompt { version }`) and a
+`uses` edge from each callable that renders it. `prompts.render(value)`,
+a member of the generated `prompts` namespace, is checked from the value's
+type alone and lowered to `Callee::Prompt(name)`; `jadpo-plan` numbers a
+JSON codec for each field the text writes (`Decoded::Prompt`) and carries
+the `PromptPlan`, and `jadpo_value::prompt::render` builds the
+`List<ChatMessage>` for both executors. `jadpo ai show` (`jadpo-cli`'s
+`ai`) prints a prompt's messages from `outline`, unfilled.
 Enums that Rust code interprets (`Rounding`, `TextFormat`,
 `UuidVersion`, `Weekday`, `Dst`, `InvalidDay`, `ComponentStyle`, `TextDirection`, `TranslationReview`, and `Zone` and `Locale` from their tables) are
 declared once, in `jadpo-std`. The namespaces the compiler fills from the
@@ -656,8 +694,10 @@ builds that type once the text is read). `jadpo_check::types::decl`
 matches `type.standard_exists`. Two tests hold everything to the entries:
 `crates/jadpo-check/tests/standard_types.rs` (the stub against the entry,
 and what each call and `<` accept) and
-`crates/jadpo-runtime/tests/standard_types.rs` (text both ways, the
-format for people, JSON, storage, `==` and order, per example). A new
+`crates/jadpo-interp/tests/standard_types.rs` (text both ways, the
+format for people, JSON, storage, `==` and order, per example, through
+the codecs the plan's builder makes, `jadpo_plan::standard_codecs`, since
+chunk 5.5w3). A new
 `TextForm` or `FormatKey` variant is the only code a group may need, once,
 for every type that shares it. Operations that move are listed in
 `jadpo_std::MOVED` and reported as `semantic.standard_operation_moved`.

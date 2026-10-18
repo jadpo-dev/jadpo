@@ -354,6 +354,9 @@ impl Body<'_> {
             if head == "clock" && member == "advance" {
                 return self.advance_clock(call, callee, &written);
             }
+            if head == crate::prompts::PROMPTS && member == "render" {
+                return self.prompt_render(call, &written);
+            }
             // Nothing else a generated namespace holds is called: `clock.now`
             // is a value, and the rest wait for their areas.
             let span = self.span(callee);
@@ -823,6 +826,9 @@ impl Body<'_> {
         let mut parsed: Option<(Ty, Option<Expr>)> = None;
         // The type `json.read`'s `as:` names (area 19, "Data formats").
         let mut read_as: Option<Ty> = None;
+        // `crypto.verify_jwt`'s `as:`, when given: the type, or `None` once
+        // what is wrong with it is reported (chunk 5.5r4).
+        let mut claims_as: Option<Option<Ty>> = None;
         // What `list.sum`'s items are built on, which its result is.
         let mut summed: Option<Prim> = None;
         // The range type a `range` call's ranges are, which its result is.
@@ -1001,6 +1007,12 @@ impl Body<'_> {
                     }
                     contract = Some((given, entry));
                 }
+                continue;
+            }
+            if kind == Some(jadpo_std::Kind::Type)
+                && table.is_some_and(|table| table.op == jadpo_std::Op::CryptoVerifyJwt)
+            {
+                claims_as = Some(self.claims_type_argument(&value, written));
                 continue;
             }
             if kind == Some(jadpo_std::Kind::Type)
@@ -1210,6 +1222,11 @@ impl Body<'_> {
         }
         if table.is_some_and(|table| table.op == jadpo_std::Op::JsonRead) {
             return self.json_read_result(call, read_as);
+        }
+        if table.is_some_and(|table| table.op == jadpo_std::Op::CryptoVerifyJwt)
+            && let Some(claims) = claims_as
+        {
+            return self.claims_result(call, claims);
         }
         if table.is_some_and(|table| table.op == jadpo_std::Op::TextParse) {
             // `as:` was missing or isn't a type, which is reported; what

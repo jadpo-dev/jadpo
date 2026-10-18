@@ -602,6 +602,19 @@ impl Body<'_> {
             {
                 continue;
             }
+            // A token's claims are read as a type only when `as:` names
+            // one, so `mismatch` needs an arm only then (chunk 5.5r4).
+            if condition.key == jadpo_std::RuleKey::Mismatch
+                && table.op == jadpo_std::Op::CryptoVerifyJwt
+                && table
+                    .params
+                    .iter()
+                    .position(|param| param.name == "as")
+                    .and_then(given)
+                    .is_none()
+            {
+                continue;
+            }
             // One only a proof settles: `decimal.ln`'s value proved above
             // 0 (area 19, "Numbers").
             let Some(option) = condition.option else {

@@ -473,6 +473,9 @@ impl Part<'_> {
             jadpo_graph::body::Callee::Translation(name) => {
                 Some(registry.key(Kind::TranslationKey, name, None))
             }
+            // The prompts it renders (area 21): a change to one's text
+            // reaches it.
+            jadpo_graph::body::Callee::Prompt(name) => Some(registry.key(Kind::Prompt, name, None)),
             _ => None,
         }));
         self.edges(key, EdgeKind::Uses, uses);
@@ -540,6 +543,7 @@ impl Part<'_> {
                 "Event" => Base::Event,
                 "EmailMessage" => Base::EmailMessage,
                 "Message" => Base::Message,
+                "Prompt" => Base::Prompt,
                 _ => Base::Refines(TypeRef::Written(written_base.clone())),
             },
         };
@@ -1148,6 +1152,7 @@ fn fields_base(base: FieldsBase) -> Base {
         FieldsBase::Event => Base::Event,
         FieldsBase::EmailMessage => Base::EmailMessage,
         FieldsBase::Message => Base::Message,
+        FieldsBase::Prompt => Base::Prompt,
         FieldsBase::Failure => Base::Failure,
     }
 }

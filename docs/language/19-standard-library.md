@@ -313,10 +313,13 @@ that instruction, each the most conservative reading:
 > boundaries to the contract (requests and responses, OpenAPI, `json.read`
 > and `json.write`, settings, query strings, `text.parse` and
 > `text.from`), each with a test made from every standard type's entry
-> ("Chosen in chunk 5.5w2"); the JSON-held values' storage (`RichText`,
-> `RichTextBlock`, `LocalisedText`) is 5.5w2b, the single encoders 5.5w3;
-> the boundaries not built yet take these encodings in the chunks that
-> build them.
+> ("Chosen in chunk 5.5w2"); chunk 5.5w2b stored the JSON-held values
+> (`RichText`, `RichTextBlock`, `LocalisedText`) as their contract's JSON
+> ("Chosen in chunk 5.5w2b"); chunk 5.5w3 gave the JSON boundary and
+> OpenAPI one encoder for every standard type, read from its entry
+> ("Chosen in chunk 5.5w3"), and the SQL literals' is 5.5w3b; the
+> boundaries not built yet take these encodings in the chunks that build
+> them.
 
 ### Packages use the standard types
 
@@ -3995,7 +3998,8 @@ on its own line, and a `LocalisedText` as `text.pick` gives it.
 | `crypto.sign(value, key:)` | `Bytes`, an Ed25519 signature; `key:` a `PrivateKey` setting | | none |
 | `crypto.public_key(key:)` | `PublicKey`, the Ed25519 public half of a `PrivateKey` setting, which the app may publish so others can check what it signs (decided by the lead session for chunk 5.5q2) | | none |
 | `crypto.verify_signature(value, signature, key)` | `Bool`; `key` a `PublicKey`, which is not secret and may be read | | none |
-| `crypto.verify_jwt(token, keys:, issuer:, audience:)` | `JwtClaims`, checked against a set of `Jwk`s, each key's own algorithm only (never `none`, never chosen by the token), with expiry, not-before and issued-at against `clock.now`, and the issuer and audience the call names, each optional (chunk 5.5r); it reads the clock, so actions call it | `invalid_signature`, `expired`, `not_yet_valid`, `malformed`, `wrong_audience`, and `wrong_issuer` when `issuer:` is given | none |
+| `crypto.verify_jwt(token, keys:, issuer:, audience:, as:)` | `JwtClaims`, checked against a set of `Jwk`s, each key's own algorithm only (never `none`, never chosen by the token): Ed25519, RS256 for an RSA key and ES256 for a P-256 key (chunk 5.5r4), with expiry, not-before and issued-at against `clock.now`, and the issuer and audience the call names, each optional (chunk 5.5r); with `as:`, an `Object` of the application's, the claims it names instead, read as `json.read` reads them, a registered one as `JwtClaims` holds it (chunk 5.5r4); it reads the clock, so actions call it | `invalid_signature`, `expired`, `not_yet_valid`, `malformed`, `wrong_audience`, `wrong_issuer` when `issuer:` is given, and `mismatch` when `as:` is | none |
+| `crypto.read_certificate(der)` | `Certificate`, read from its DER `Bytes` as its PEM's DER is (chunk 5.5r4): a key set's `x5c` after `encoding.from_base64`, or a file's bytes | `malformed` | none |
 | `crypto.verify_totp(code, secret)` | `Bool` for a `OneTimeCode` against a `TotpSecret`, RFC 6238 with one step either side. Waits for keys held as data | | none |
 
 - **No algorithm choices.** Each job has one construction, chosen for
@@ -4324,6 +4328,16 @@ test "a partner's token signs in only while it holds" {
 > 8725's best practices and are tested against RFC 7519's and RFC 8037's
 > examples and the classic attacks. What the page left open is under
 > "Chosen in chunk 5.5r".
+>
+> Built in chunk 5.5r4: RS256 and ES256 on RustCrypto's `rsa` 0.9.10 and
+> `p256` 0.14.0, verification only, so a `Jwk` holds an Ed25519, an RSA
+> or a P-256 key and Google's, Microsoft's and Auth0's key sets read and
+> check their tokens; a token's own claims read as an application's
+> `Object` with `as:`, its registered ones as `JwtClaims` holds them;
+> and `crypto.read_certificate`. They are tested
+> against RFC 7515's and RFC 7520's examples and the classic attacks
+> under both algorithms. What the page left open is under "Chosen in
+> chunk 5.5r4".
 
 ### Secret values
 
@@ -10266,8 +10280,9 @@ built, each the most conservative reading:
   most identity providers sign with, aren't built: the page names no
   algorithm, and each needs a crate of its own (RustCrypto's `rsa` or
   `p256`); they are chunk 5.5r4, with typed custom claims (decided by
-  the lead session, "Decisions"). HS256 needs a shared secret held as
-  data, which waits for keys held as data ("Language gaps").
+  the lead session, "Decisions"), and built there ("Chosen in chunk
+  5.5r4"). HS256 needs a shared secret held as data, which waits for
+  keys held as data ("Language gaps").
 - **A `Jwk` holds no secret.** It has no private key (`d`) and no shared
   secret (an `oct` key's `k`): JSON naming either isn't a `Jwk`, so a key
   set read from outside can't put a secret in a program. Its parts are
@@ -10317,7 +10332,7 @@ built, each the most conservative reading:
   its subject, else its issuer, else its id, else its expiry
   (`FormatKey::FirstPart`). A token's other claims (`scope`, `email`)
   aren't read here: `verify_jwt(..., as:)` reads them as an application's
-  type in chunk 5.5r4.
+  type, built in chunk 5.5r4.
 - **`OAuthScope`** is one RFC 6749 scope-token of 1 to 256 characters.
   Area 9 (question 6) plans an `OAuthScope` enum generated from the scopes
   `authentication.jadpo` declares, after the first build; it narrows this
@@ -10661,7 +10676,7 @@ conservative reading:
   JSON is that text, as every type with a canonical text is sent, not its
   DER in Base64; it is stored as that JSON (`jsonb`) and read back through
   the same reader, so a stored part is never trusted.
-- **Reading DER bytes is chunk 5.5r4's.** The DER inside a PEM is read
+- **Reading DER bytes is chunk 5.5r4's,** and built there. The DER inside a PEM is read
   here; a certificate from bytes (a file's contents, a key set's `x5c`) is
   read by `crypto.read_certificate(der)`, giving a `Certificate` and
   failing `malformed`, on this chunk's reader, built with 5.5r4's JWTs
@@ -10699,6 +10714,89 @@ conservative reading:
   a certificate whose names are all in its extensions have an empty
   subject; `FormatKey::FirstPart` now passes over empty text. It is not
   ordered, and `==` compares every part, the bytes in constant time.
+
+### Chosen in chunk 5.5r4
+
+Choices the page left open when RS256, ES256, typed claims and
+`crypto.read_certificate` were built, each the most conservative reading.
+They supersede 5.5r's "One algorithm, Ed25519":
+
+- **Three kinds of key, one algorithm each.** A `Jwk`'s `kty` is `OKP`
+  (an Ed25519 key, `crv` and `x`, used with `EdDSA`), `RSA` (`n` and `e`,
+  used with `RS256`) or `EC` (a P-256 key, `crv`, `x` and `y`, used with
+  `ES256`). Its parts are `kty`, `crv`, `x`, `y`, `n`, `e`, `kid`, `alg`,
+  `use_` and `x5c`, each but `kty` optional, and three rules across them
+  hold a key to its kind: `parts_of_its_kty` (its kind's parts and no
+  other's), `algorithm_of_its_kty` (an `alg`, where given, is its kind's)
+  and `a_usable_key`. A token is tried only against keys used with the
+  algorithm its header names, and each with that key's own algorithm, so
+  `none`, `HS256`, an RS256 token named for an EC key's id and the
+  reverse all fail `invalid_signature`. RS384, RS512, PS256, ES384 and
+  the rest aren't built: no identity provider the chunk names needs one,
+  and a key set naming one doesn't read.
+- **A key that can be used.** An RSA modulus is 2,048 to 4,096 bits, odd
+  and in its fewest octets: under 2,048 bits can be factored (RFC 7518
+  §3.3 requires 2,048), and 4,096 is the most `rsa` checks by default,
+  so a key set can't make checking a token cost without bound. The
+  exponent is odd, from 3 to 2^32 - 1, in its fewest octets. A P-256
+  point is checked to be on the curve, both in the type's rule and by
+  `p256` again before it is used; each coordinate is 32 octets in full
+  (RFC 7518 §6.2.1.2).
+- **Members a `Jwk` doesn't hold are ignored,** as RFC 7517 §4 requires
+  (Microsoft's key set sends `issuer` and `cloud_instance_name`, and
+  Microsoft's and Auth0's `x5t`), the one standard object that ignores
+  them; but a private key's or a shared secret's members (`d`, `p`, `q`,
+  `dp`, `dq`, `qi`, `oth`, `k`) and `key_ops`, which limits a key in a way
+  a `Jwk` doesn't hold, make JSON not a `Jwk`, so a key set read from
+  outside can't put a secret in a program. A key set whose keys don't all
+  read is `mismatch` as a whole, as any list is.
+- **`x5c` is carried, and held to the key.** It is the certificates' DER
+  in standard Base64 as RFC 7517 §4.7 sends them, read with
+  `encoding.from_base64` and `crypto.read_certificate`. A key with
+  certificates is tried only when its first certificate reads strictly
+  and holds the same public key (RFC 7517 §4.7's MUST); nothing checks
+  the chain, which `x5c` alone doesn't make trusted. `x5u`, `x5t` and a
+  header's `x5c` are never read.
+- **RS256 is RSASSA-PKCS1-v1_5 with SHA-256 by encoding and comparing**
+  the whole padded digest (RFC 8017 §8.2.2), never by parsing it, with a
+  signature exactly as long as the modulus. The digest is `sha2`'s, so
+  `rsa`'s own `digest` isn't used. RUSTSEC-2023-0071 (Marvin), open
+  against every `rsa` release, leaks a private key through the timing of
+  decryption and signing; verifying holds no private key, so it is not
+  reached, and nothing here decrypts or signs with RSA.
+- **ES256's signature is R and S,** 64 octets (RFC 7518 §3.4), each from
+  1 to below the group's order. A high S is accepted: RFC 7518 doesn't
+  refuse one, `p256` doesn't, and RFC 7515 §A.3's own example has one.
+  Another signature of the same claims is then possible, which matters
+  only to something keyed on a token's text, and Jadpo keeps no token.
+- **The crates,** pinned exactly: `rsa` 0.9.10, the latest stable
+  release (0.10 is a release candidate), and `p256` 0.14.0 with its
+  `ecdsa` feature, both without `std`, so neither reads randomness and
+  both build for wasm32. Verification only: neither signs.
+- **`as:` reads a token's claims** into an `Object` the application
+  declares. Its fields are read as `json.read` reads an object's, so a
+  claim missing, of the wrong kind or breaking a rule is `mismatch`, whose
+  first problem fills a `problem: DecodeProblem` field as `json.read`'s
+  does; claims it doesn't name are ignored, as RFC 7519 §4 requires of
+  claims not understood, though a nested object it names is read
+  strictly. Anything but an application's `Object` (`Text`, `JwtClaims`,
+  a list) is `type.mismatch`. Nothing is read as the type until the
+  signature, the times, the issuer and the audience hold, and `mismatch`
+  needs its arm only when `as:` is given.
+- **The registered claims through `as:`.** A field the type has for one
+  of the seven (`iss`, `sub`, `aud`, `exp`, `nbf`, `iat`, `jti`) is
+  filled with the value the call checked, exactly as `JwtClaims` holds
+  it, so one call gives a token's subject and its own claims: `iss`,
+  `sub` and `jti` as text, `aud` as a list of text, and `exp`, `nbf` and
+  `iat` as an `Instant`. A field declared as another type (`sub: Int`,
+  `exp: Text`) is `type.mismatch`; one built on its type (`sub:
+  MemberId`) keeps its own rules, and one without `?` that the token
+  leaves out is `mismatch` (`required`). Decided by the lead session
+  (2026-10-18).
+- **`crypto.read_certificate(der)`** reads `Bytes` with 5.5r5's strict
+  reader, the DER inside a PEM read the same way, and fails `malformed`
+  for anything else. It reads nothing else and needs no key, so a function
+  calls it.
 
 ### Chosen in chunk 5.5w
 
@@ -10831,6 +10929,55 @@ What the pages left open, each the most conservative reading:
   form no longer compiles. Nothing is deployed, so nothing needs
   migrating.
 
+### Chosen in chunk 5.5w2b
+
+What the pages left open, each the most conservative reading (lead
+session, 2026-10-18):
+
+- **One codec, the route's.** A `RichText`, `RichTextBlock` or
+  `LocalisedText` field's `jsonb` column holds exactly what `json.write`
+  writes for it, and is read back as `json.read` reads it, with an
+  `Input`'s rules: the plan numbers each such field's type in the JSON
+  table beside `json.read`'s, a column reads it and a write's parameter
+  writes it. PostgreSQL keeps `jsonb` in its own key order and spacing,
+  so the stored text isn't byte for byte what was written, but it reads
+  back `==`.
+- **What doesn't read back is a fault,** as any other column that doesn't
+  make its type is, named by its field's path and the rule it broke,
+  never the value, as chunk 5.5w2's faults are.
+- **A query doesn't compare one yet.** A condition on a JSON-held field is
+  `toolchain.not_built_yet`, as one on a compound type is, and ordering by
+  one was already refused; an application's own structured fields stay
+  refused where they are declared, since their codec isn't built.
+
+### Chosen in chunk 5.5w3
+
+What the pages left open, each the most conservative reading:
+
+- **One encoder, the entry's.** `Money`, `ZonedTime` and every quantity
+  are sent as an object of the members their entry lists, each a kind of
+  member (a whole number of minor units, a standard enum's code, an
+  instant, a decimal written as text, one of the kind's units); one
+  implementation reads and writes every standard type's JSON from its
+  entry, and OpenAPI describes it from the same list. The JSON reader and
+  writer and OpenAPI name no standard type a built-in type holds, which a
+  test made from the entries holds them to. The per-type harness reads
+  every type through the codecs the plan's own builder makes.
+- **A part is described as its type.** In OpenAPI, a standard object's
+  part that is a standard type a built-in type holds is that type's
+  schema: `OidcClaims`' `email` is a string of `format: email` and its
+  `picture` one of `format: uri`, where both were any string.
+- **What clients see change,** each a reader, a writer or a schema that
+  disagreed with the contract:
+  - a `ZonedTime`'s `zone` is read ignoring case, as a `Zone` is
+    (question 22): `"europe/london"` was refused as `variant`;
+  - OpenAPI lists a `ZonedTime`'s zones by name, as it does a `Zone`'s,
+    where its `zone` was any string;
+  - a `WebAuthnCredential`'s `sign_count` is a JSON number, as the route
+    codec always wrote it and OpenAPI described it; its examples and the
+    passkeys the runtime keeps wrote it as text. Nothing is deployed, so
+    nothing needs migrating.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -10882,11 +11029,12 @@ What the pages left open, each the most conservative reading:
 | The clinical units | `PressureUnit.millimetre_of_mercury`, `FrequencyUnit.beat_per_minute`, `ConcentrationUnit.milligram_per_decilitre` and the glucose-only `ConcentrationUnit.millimole_of_glucose_per_litre` (glucose's molar mass fixed at CLDR's 180.1557 g/mol), as UK meters report glucose, added in chunk 5.5m2. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `mmHg` and `bpm` suffixes | Question 17's table gains `mmHg` for a `Pressure` and `bpm` for a `Frequency`, purely additive and clashing with no suffix or keyword; a milligram a decilitre keeps no suffix, since a suffix can't hold `/`. Decided by the lead session, not a question for Richard | 2026-10-18 |
 | `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens; `HEAD`, `OPTIONS`, `CONNECT` and `TRACE` aren't variants, since the runtime answers `HEAD` and `OPTIONS` itself and adding them later breaks nothing (decided by the lead session, as chunk 5.5n recommended) | 2026-10-18 |
-| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes (Richard); the encodings the pages left open, event, job and batch payloads, CSV cells, a personal value's log hash, developer reports and integration fields without `wire:`, decided under "Every boundary through the contract" by the lead session, as was storing every object and choice in named columns ("Chosen in chunk 5.5w"); built for the boundaries that are built, with fault text that never carries a value, one reader per text form and map keys as canonical text ("Chosen in chunk 5.5w2") | 2026-10-18 |
+| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes (Richard); the encodings the pages left open, event, job and batch payloads, CSV cells, a personal value's log hash, developer reports and integration fields without `wire:`, decided under "Every boundary through the contract" by the lead session, as was storing every object and choice in named columns ("Chosen in chunk 5.5w"); built for the boundaries that are built, with fault text that never carries a value, one reader per text form and map keys as canonical text ("Chosen in chunk 5.5w2"), and the JSON-held values stored as their contract's JSON ("Chosen in chunk 5.5w2b"); one JSON encoder and one OpenAPI schema for every standard type, read from its entry ("Chosen in chunk 5.5w3") | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 | A `PasswordHash` never leaves the server | It is stored as its PHC string, but refused in an `Output` (so a response), a request's `Input`, a failure's fields and `json.write` and `json.read`, as `type.password_hash_exposed` or `type.mismatch`; no page needs one read for imports, so `Input` refuses it too (lead session, chunk 5.5q2) | 2026-10-18 |
 | `crypto.public_key` | `crypto.public_key(key: config.<name>)` gives the `PublicKey` of a `PrivateKey` setting, Ed25519's public half, so an app can publish its key and a test can sign and verify; the key is still read only through `key:` (lead session, chunk 5.5q2) | 2026-10-18 |
 | JWTs from identity providers | Chunk 5.5r4, after 5.5r: RS256 and ES256 verification on RustCrypto's `rsa` and `p256`, verification only, pinned and built for wasm32, with the RFCs' test vectors and 5.5r's attack suite, so Google's, Microsoft's and Auth0's tokens verify; and typed custom claims, `verify_jwt(token, keys:, as: MyClaims)` decoding the claims beyond the registered seven into an application's `Object` through `json.read(as:)`'s decoding and typed failures, `JwtClaims` still giving the registered ones. HS256 still waits for keys held as data (lead session, chunk 5.5r) | 2026-10-18 |
+| Registered claims through `as:` | `crypto.verify_jwt(..., as: T)` fills a field of `T` named for a registered claim with the value it checked, as `JwtClaims` holds it, so one call gives a token's `sub` and its own claims; a registered claim declared as another type is `type.mismatch` (lead session, chunk 5.5r4) | 2026-10-18 |
 | A `Jwt` is a secret value | A token is a credential: `Jwt` joins chunk 5.5r2's secret values, so it is never in a response or a log, is compared in constant time and is redacted in reports (lead session, chunk 5.5r) | 2026-10-18 |
 | Generated scopes narrow `OAuthScope` | Area 9's enum of an application's declared scopes (its question 6) narrows the standard `OAuthScope` to them, a closed subset, rather than reusing the name; noted in area 9's plan, not built (lead session, chunk 5.5r) | 2026-10-18 |
 | `ChatRole` | Accepted as a standard type: a `ChatMessage`'s role, `system`, `user`, `assistant` or `tool`, added in chunk 5.5s2 as `IdentityDocumentKind` was (lead session, chunk 5.5s2) | 2026-10-18 |
@@ -11385,7 +11533,7 @@ first; each group of types then arrives with its baseline and its extras.
 - **5.5r5 Certificates** `opus · high`: `Certificate`, X.509 from PEM or
   DER on an audited crate, its subject, issuer, validity and fingerprint
   read-only. Built, read from its PEM; reading DER bytes is 5.5r4's
-  `crypto.read_certificate(der)`.
+  `crypto.read_certificate(der)`, built.
 - **5.5s Geospatial types' baselines** `opus · high`: the 17
   geospatial types, with construction, text and JSON from the contract;
   their storage and operations come with the geospatial area. Split on

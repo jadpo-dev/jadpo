@@ -222,6 +222,11 @@ pub struct FieldModel {
     /// it holds (area 19, chunk 5.5w). A compound type's columns take
     /// theirs from its layout.
     pub comment: Option<String>,
+    /// A JSON-held standard type, by name (area 19, chunk 5.5w2b):
+    /// `RichText`, `RichTextBlock` or `LocalisedText`, stored as its
+    /// contract's JSON in the one `jsonb` column `sql_type` is, written and
+    /// read by the route codec.
+    pub json: Option<&'static str>,
 }
 
 impl FieldModel {
@@ -805,6 +810,7 @@ impl Reader<'_> {
             range_item: None,
             fixed: Vec::new(),
             comment: None,
+            json: None,
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -951,8 +957,14 @@ impl Reader<'_> {
                 );
                 field.sql_type = Some(sql);
             }
-            // A structured field is stored as `jsonb` in the API's JSON
-            // (area 5), whose codec comes with area 7.
+            // A JSON-held standard type is stored as its contract's JSON,
+            // written and read by the route codec (area 19, chunk 5.5w2b).
+            Ok(sql) if sql == "jsonb" && json_held(self.lookup, &ty).is_some() => {
+                field.json = json_held(self.lookup, &ty);
+                field.sql_type = Some(sql);
+            }
+            // Any other structured field is stored as `jsonb` in the API's
+            // JSON (area 5), whose codec structured fields don't have yet.
             Ok(sql) if sql == "jsonb" => {
                 let shown = ty.strip_nullable().to_string();
                 self.out.push(
@@ -1699,6 +1711,24 @@ fn holds_presentation(lookup: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) ->
         }
         _ => None,
     }
+}
+
+/// The JSON-held standard type a value of `ty` is, by name: one stored as
+/// its contract's JSON in a `jsonb` column (`RichText`, `RichTextBlock`,
+/// `LocalisedText`; area 19, chunk 5.5w2b).
+pub fn json_held(lookup: &dyn TypeView, ty: &Ty) -> Option<&'static str> {
+    // A named collection is its own standard type, which its structure,
+    // a list or a map, no longer names (chunk 5.5o2).
+    lookup
+        .standard_text(ty)
+        .or_else(|| match lookup.structure(ty) {
+            Ty::Named(name) | Ty::Opaque(name, _) => jadpo_std::standard_type(&name),
+            _ => None,
+        })
+        .filter(|entry| {
+            entry.storage == jadpo_std::standard::Storage::Column(jadpo_std::read::SqlType::Json)
+        })
+        .map(|entry| entry.name)
 }
 
 fn holds_entity(lookup: &dyn TypeView, ty: &Ty) -> Option<String> {

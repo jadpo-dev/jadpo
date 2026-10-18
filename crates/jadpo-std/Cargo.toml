@@ -20,5 +20,8 @@ spdx.workspace = true
 ammonia.workspace = true
 html5ever.workspace = true
 
+[dev-dependencies]
+serde_json.workspace = true
+
 [lints]
 workspace = true

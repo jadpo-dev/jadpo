@@ -131,6 +131,9 @@ pub struct App<'a> {
     pub table: &'a RouteTable,
     pub codecs: Codecs<'a>,
     pub failures: &'a [FailurePlan],
+    /// The codecs a JSON-held column a route's query reads is read with
+    /// (chunk 5.5w2b): the plan's JSON table's.
+    pub json: crate::JsonCodecs<'a>,
     /// What signing in reads from the settings the application started
     /// with: each method's signing key and the browser session's origin
     /// (area 8; area 10, "Signing keys").
@@ -633,7 +636,12 @@ fn exchange(request: &Request, request_id: &str, (token, expires): (String, i64)
     let mut body = String::from("{\"token\":");
     write_string(&token, &mut body);
     body.push_str(",\"expires_at\":");
-    write_string(&jadpo_std::format_instant(expires), &mut body);
+    // An instant, as the contract sends one (chunk 5.5w3).
+    let expires = jadpo_value::Value::Instant(expires);
+    match jadpo_value::standard::entry_of(&expires) {
+        Some(entry) => jadpo_value::standard::json::write(entry, &expires, &mut body),
+        None => body.push_str("null"),
+    }
     body.push('}');
     Response {
         status: 200,
@@ -848,8 +856,15 @@ async fn run_with_caller(
                     Frame::ENTRY,
                 )),
                 Run::Query(plan) => {
-                    match crate::store(ctx, StoreOp::Read(plan), app.failures, &args, Frame::ENTRY)
-                        .await
+                    match crate::store(
+                        ctx,
+                        StoreOp::Read(plan),
+                        app.failures,
+                        app.json,
+                        &args,
+                        Frame::ENTRY,
+                    )
+                    .await
                     {
                         Stored::Value(value) => Outcome::Value(value),
                         Stored::Failed(failure) => Outcome::Failed(failure),

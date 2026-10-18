@@ -1085,6 +1085,23 @@ impl<'a> Reader<'a> {
                 );
                 return None;
             }
+            // A JSON-held value is stored whole as its JSON, which a
+            // query's condition doesn't compare yet (chunk 5.5w2b).
+            if let Some(held) = field.json {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TOOLCHAIN_NOT_BUILT_YET,
+                        format!("Comparing `{}.{}` in a query isn't built yet", entity.name, field.name),
+                    )
+                    .at(Self::span(scope.path, whole), format!("a `{held}`"))
+                    .reason(format!(
+                        "`{}.{}` is a `{held}`, stored whole as its JSON in one `jsonb` column (area 19), and this compiler's queries don't compare such a column yet.",
+                        entity.name, field.name
+                    ))
+                    .next("Filter the records after the query for now"),
+                );
+                return None;
+            }
             return Some(field);
         }
         let reason = match self.field_in(scope, entity, whole) {
@@ -2617,10 +2634,9 @@ impl<'a> Reader<'a> {
     ) {
         let structured: Vec<String> = columns
             .filter(|c| {
-                entity
-                    .fields
-                    .iter()
-                    .any(|f| f.name == *c && f.sql_type.as_deref() == Some("jsonb"))
+                entity.fields.iter().any(|f| {
+                    f.name == *c && f.sql_type.as_deref() == Some("jsonb") && f.json.is_none()
+                })
             })
             .map(|c| format!("`{}.{c}`", entity.name))
             .collect();

@@ -11,7 +11,8 @@
 // Rust function in `jadpo-value` that runs it; a test holds these stubs to
 // that table. `T` is a value built on `Bytes`, or a `Text`, whose UTF-8 is
 // used. A password is a `Password` and a token a `Jwt`, secret values that
-// these operations alone read (chunk 5.5r2).
+// these operations alone read (chunk 5.5r2). `read_certificate` reads
+// bytes and needs no key (chunk 5.5r4).
 
 public library crypto {
     /// `sealed` opened with the current key or, after a rotation, the
@@ -44,16 +45,25 @@ public library crypto {
     function verify_hmac(value: T, mac: Bytes, key: SigningKey) -> Bool {}
 
     /// The registered claims of `token` once it holds: signed by one of
-    /// `keys` with that key's own algorithm (Ed25519), never the one the
-    /// token names, so `none` and every other algorithm fail
-    /// `invalid_signature`; not expired, not used before its `nbf` and not
-    /// issued later than now, against the clock with 30 seconds' leeway
-    /// (`expired`, `not_yet_valid`); issued by `issuer` when one is given
-    /// (`wrong_issuer`); and for `audience`, or for no audience when none
-    /// is given (`wrong_audience`). A token that isn't one, or has no
-    /// `exp`, is `malformed`. It reads the clock, so it is called only in
-    /// actions.
-    function verify_jwt(token: Jwt, keys: List<Jwk>, issuer: Text?, audience: Text?) -> JwtClaims {}
+    /// `keys` with that key's own algorithm (Ed25519, RS256 for an RSA key,
+    /// ES256 for a P-256 key), never the one the token names, so `none`
+    /// and every other algorithm fail `invalid_signature`; not expired, not
+    /// used before its `nbf` and not issued later than now, against the
+    /// clock with 30 seconds' leeway (`expired`, `not_yet_valid`); issued
+    /// by `issuer` when one is given (`wrong_issuer`); and for `audience`,
+    /// or for no audience when none is given (`wrong_audience`). A token
+    /// that isn't one, or has no `exp`, is `malformed`. With `as:`, an
+    /// object type of the application's, it gives instead the token's
+    /// claims the type names, read as `json.read` reads it, a registered
+    /// one as `JwtClaims` holds it, and fails `mismatch` when they aren't
+    /// the type. It reads the clock, so it is called only in actions.
+    function verify_jwt(token: Jwt, keys: List<Jwk>, issuer: Text?, audience: Text?, as: Type?) -> JwtClaims {}
+
+    /// The certificate `der` holds, read strictly as X.509 DER (a key
+    /// set's `x5c`, after `encoding.from_base64`, or a file's bytes);
+    /// fails `malformed` for bytes that aren't one. Nothing checks its
+    /// signature or its chain.
+    function read_certificate(der: Bytes) -> Certificate {}
 
     /// `correct`, `wrong`, or `correct_outdated` when the hash was made
     /// with older parameters and a fresh one should be stored; compared in

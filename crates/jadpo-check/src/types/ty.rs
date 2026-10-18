@@ -13,10 +13,11 @@ use crate::tree::{self, dotted};
 /// shares: no Jadpo declaration can say what they are made of.
 pub use jadpo_std::Builtin as Prim;
 
-/// The bases used only after `=` in a `type` declaration (area 2), and
+/// The bases used only after `=` in a `type` declaration (area 2), with
+/// `Message` (area 10) and `Prompt` (area 21), and
 /// `TimeFormat`, which declares a format for showing dates and times
 /// (area 10).
-pub const BASES: [&str; 9] = [
+pub const BASES: [&str; 10] = [
     "Object",
     "Enum",
     "Input",
@@ -25,6 +26,7 @@ pub const BASES: [&str; 9] = [
     "Event",
     "EmailMessage",
     "Message",
+    "Prompt",
     TIME_FORMAT,
 ];
 

@@ -452,6 +452,7 @@ impl Program {
                 shapes: &self.shapes,
             },
             failures: self.plan().types().failures(),
+            json: self.stored_json(),
             auth: &self.auth,
             client: &self.client,
         }
@@ -464,6 +465,15 @@ impl Program {
             codecs: &self.plan().json().codecs,
             validators: &self.prepared.validators,
             shapes: &self.shapes,
+        }
+    }
+
+    /// The codecs a JSON-held column is written and read with (chunk
+    /// 5.5w2b): `json.read`'s, numbered by the plan's JSON table.
+    pub(crate) fn stored_json(&self) -> jadpo_runtime::JsonCodecs<'_> {
+        jadpo_runtime::JsonCodecs {
+            codecs: self.json_codecs(),
+            types: &self.plan().json().types,
         }
     }
 

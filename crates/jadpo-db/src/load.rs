@@ -100,7 +100,9 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
     let mut records = Vec::new();
     for path in sources {
         let shown = display(&root, &path);
-        if layout == Layout::Project && is_record(&shown) {
+        // Loose files keep a prompt's text beside its type (area 21).
+        let loose_prompt = layout == Layout::Loose && shown.ends_with(crate::PROMPT_EXTENSION);
+        if (layout == Layout::Project && is_record(&shown)) || loose_prompt {
             records.push(read_record(&root, &shown));
             continue;
         }

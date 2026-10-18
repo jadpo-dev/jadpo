@@ -453,13 +453,13 @@ fn an_instant_range_field_has_its_start_and_end() {
 /// names.
 #[test]
 fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
-    use jadpo_check::routes::wire::{scalar_schema, standard_object_schema};
+    use jadpo_check::routes::wire::{scalar_schema, standard_object_schema, standard_schema};
     use jadpo_std::config::Spelling;
     use jadpo_std::standard::Json;
     for entry in STANDARD_TYPES {
         let name = entry.name;
         let schema = match entry.holds {
-            Holds::Builtin(builtin) => scalar_schema(builtin, &jadpo_std::Rules::default()),
+            Holds::Builtin(_) => standard_schema(entry),
             Holds::Text { pattern, .. } => {
                 let rules = jadpo_std::standard::text_rules(name).expect("a text type");
                 let schema = scalar_schema(Builtin::Text, &rules);
@@ -576,6 +576,27 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
                 );
             }
             Json::Number => assert_eq!(kind.as_deref(), Some("integer"), "{name}"),
+            // An object of its members, each as its member says (chunk
+            // 5.5w3).
+            Json::Parts(members) => {
+                assert_eq!(kind.as_deref(), Some("object"), "{name}");
+                let properties = schema.get("properties").expect("properties");
+                for (member, held) in members {
+                    let one = properties.get(member).expect("a member");
+                    let kind = one.get("type").and_then(|v| v.as_str());
+                    match held {
+                        jadpo_std::standard::Member::MinorUnits => {
+                            assert_eq!(kind, Some("integer"), "{name}: `{member}`");
+                        }
+                        jadpo_std::standard::Member::Code(_)
+                        | jadpo_std::standard::Member::Unit => {
+                            assert_eq!(kind, Some("string"), "{name}: `{member}`");
+                            assert!(one.get("enum").is_some(), "{name}: `{member}`'s codes");
+                        }
+                        _ => assert_eq!(kind, Some("string"), "{name}: `{member}`"),
+                    }
+                }
+            }
             Json::Fields(fields) | Json::Members(fields) => {
                 assert_eq!(kind.as_deref(), Some("object"), "{name}");
                 let properties = schema.get("properties").expect("properties");
@@ -592,6 +613,30 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
                             part.required().1,
                             "{name}: `{field}` may be `null` exactly when it may be `none`"
                         );
+                        // A part that is another standard type is described
+                        // as that type is (chunk 5.5w3): `OidcClaims`'
+                        // `email` as an `Email`, with its format.
+                        let (held, inner) = match part {
+                            jadpo_std::Part::Optional(inner) => (
+                                schema
+                                    .get("anyOf")
+                                    .and_then(|v| v.as_array())
+                                    .and_then(|options| options.first()),
+                                **inner,
+                            ),
+                            part => (Some(schema), *part),
+                        };
+                        if let jadpo_std::Part::Standard(other) = inner {
+                            let other = jadpo_std::standard_type(other).expect("a standard type");
+                            if other.codes().is_none() {
+                                assert_eq!(
+                                    held,
+                                    Some(&standard_schema(other)),
+                                    "{name}: `{field}` is described as a `{}`",
+                                    other.name
+                                );
+                            }
+                        }
                     }
                 }
             }

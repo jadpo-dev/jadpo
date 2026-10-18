@@ -53,6 +53,7 @@ mod people_places;
 mod percentages;
 mod policy;
 mod project;
+mod prompts;
 mod quantities;
 mod randomness;
 mod records_measures;

@@ -143,7 +143,7 @@ fn store<'a, 'p: 'a>(
             ));
         };
         let failures = plan.types().failures();
-        match jadpo_runtime::store(ctx, op, failures, &args, at).await {
+        match jadpo_runtime::store(ctx, op, failures, program.stored_json(), &args, at).await {
             Stored::Value(value) => Ok(value),
             Stored::Failed(failure) => Err(Stop::Failed(failure)),
             Stored::Conflict { arm, cause } => Err(Stop::Refused { arm, cause }),

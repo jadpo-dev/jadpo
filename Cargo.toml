@@ -169,6 +169,17 @@ subtle = { version = "=2.6.1", default-features = false }
 # feature (`ring`): a certificate is read, never checked against a chain,
 # and it builds for wasm32.
 x509-parser = { version = "=0.16.0", default-features = false }
+# RS256 and ES256 for `crypto.verify_jwt` (area 19, chunk 5.5r4;
+# jadpo-value only): RustCrypto's `rsa`, its latest stable release, and
+# `p256`, verification only. Neither hashes for us: the signed input is
+# hashed once with the `sha2` above and checked as a prehash, so `rsa`'s
+# older `digest` isn't used. No default features: no `std`, so no
+# `getrandom`, and both build for wasm32. RUSTSEC-2023-0071 (Marvin), open
+# against every `rsa` release, leaks a private key through the timing of
+# decryption and signing; verifying holds no private key, so it is not
+# reached.
+rsa = { version = "=0.9.10", default-features = false }
+p256 = { version = "=0.14.0", default-features = false, features = ["ecdsa"] }
 # Pinned exactly and confined to jadpo-db and jadpo-check (docs/compiler-runtime.md §2.4).
 salsa = { version = "=0.28.5", default-features = false, features = ["macros", "inventory"] }
 # Node digests (docs/compiler-runtime.md §2.3). `pure` keeps the build free of

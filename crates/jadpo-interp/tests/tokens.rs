@@ -31,19 +31,27 @@ const NO_EXPIRY: &str = "eyJhbGciOiJFZERTQSIsImtpZCI6IjIwMjYtMTAiLCJ0eXAiOiJKV1Q
 
 /// RFC 8037 §A.2's public key, as a key set sends it.
 fn keys() -> Value {
+    let parts = [
+        ("kty", Value::text("OKP")),
+        ("crv", Value::text("Ed25519")),
+        (
+            "x",
+            Value::text("11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"),
+        ),
+        ("kid", Value::text("2026-10")),
+    ];
     Value::list(vec![Value::record(
         "Jwk",
-        vec![
-            (Rc::from("kty"), Value::text("OKP")),
-            (Rc::from("crv"), Value::text("Ed25519")),
-            (
-                Rc::from("x"),
-                Value::text("11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"),
-            ),
-            (Rc::from("kid"), Value::text("2026-10")),
-            (Rc::from("alg"), Value::None),
-            (Rc::from("use_"), Value::None),
-        ],
+        jadpo_std::standard::security::JWK_FIELDS
+            .iter()
+            .map(|(name, _)| {
+                let value = parts
+                    .iter()
+                    .find(|(given, _)| given == name)
+                    .map_or(Value::None, |(_, value)| value.clone());
+                (Rc::from(*name), value)
+            })
+            .collect(),
     )])
 }
 

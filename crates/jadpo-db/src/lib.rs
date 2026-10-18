@@ -54,8 +54,9 @@ pub struct File {
 
 /// A committed record beside the source that isn't a `.jadpo` file (area
 /// 18): a migration's `snapshot.json` and `postgres.sql`, an API's record,
-/// `api/<api>.api` (area 7), and the identity registry,
-/// `database/identities.json`, read whole.
+/// `api/<api>.api` (area 7), the identity registry,
+/// `database/identities.json`, and a prompt's text, `<name>.prompt`
+/// (area 21), read whole.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Record {
     /// Project-relative, with `/`.
@@ -66,9 +67,13 @@ pub struct Record {
 
 /// Whether a project-relative path is a record [`Record`] holds: a file in
 /// a migration's folder that isn't source, an API's record, the identity
-/// registry, or a `translations/` folder's sources (area 18).
+/// registry, a `translations/` folder's sources (area 18), or a prompt's
+/// text in a `prompts/` folder (area 21).
 pub fn is_record(path: &str) -> bool {
     if path == IDENTITIES {
+        return true;
+    }
+    if is_prompt_text(path) {
         return true;
     }
     if let ["api", name] = path.split('/').collect::<Vec<_>>().as_slice() {
@@ -85,6 +90,20 @@ pub fn is_record(path: &str) -> bool {
             | ["shared", "translations", "sources.jadpo_record"]
             | ["translations", "sources.jadpo_record"]
     )
+}
+
+/// The extension of a prompt's text (area 21).
+pub const PROMPT_EXTENSION: &str = ".prompt";
+
+/// Whether a project-relative path is a prompt's text, `<name>.prompt` in
+/// a domain's `prompts/` folder or `shared/prompts/` (area 21).
+pub fn is_prompt_text(path: &str) -> bool {
+    let parts: Vec<&str> = path.split('/').collect();
+    let file = match parts.as_slice() {
+        ["domains", _, "prompts", file] | ["shared", "prompts", file] => file,
+        _ => return false,
+    };
+    file.len() > PROMPT_EXTENSION.len() && file.ends_with(PROMPT_EXTENSION)
 }
 
 /// The project: its source files in path order, the paths of every other

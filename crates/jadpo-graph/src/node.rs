@@ -73,6 +73,8 @@ pub enum Base {
     EmailMessage,
     /// `type X = Message` (area 10).
     Message,
+    /// `type X = Prompt` (area 21).
+    Prompt,
     /// A refinement of a built-in or named type.
     Refines(TypeRef),
 }
@@ -89,6 +91,7 @@ impl Base {
             Base::Event => "Event".to_string(),
             Base::EmailMessage => "EmailMessage".to_string(),
             Base::Message => "Message".to_string(),
+            Base::Prompt => "Prompt".to_string(),
             Base::Refines(parent) => parent.render(name),
         }
     }
@@ -271,6 +274,10 @@ pub enum Detail {
     /// An action listed under root `policy { actions: }` (area 9,
     /// "Actions"): who may call it, as written.
     ActionException { who: Vec<String> },
+    /// A prompt (area 21, "Prompts as files"): its name and the first 8 hex
+    /// characters of a SHA-256 over its two files, `answer_question@3fa9c2d1`,
+    /// which every call's trace span and log line carry.
+    Prompt { version: String },
 }
 
 /// What an input field's `default:` fills in when the field is left out

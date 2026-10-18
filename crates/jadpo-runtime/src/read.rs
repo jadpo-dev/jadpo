@@ -75,12 +75,14 @@ pub const PAGE: &str = "Page";
 pub(crate) async fn read(
     ctx: &mut Ctx<'_>,
     plan: &ReadPlan,
+    json: JsonCodecs<'_>,
     args: &[Value],
     site: u32,
 ) -> Result<Found, Interrupt> {
     let now = ctx.now();
     let mut env = Env {
         args,
+        json,
         now,
         size: 0,
         cursor: Vec::new(),
@@ -219,6 +221,8 @@ pub(crate) fn defect(ctx: &mut Ctx<'_>, what: &str, site: u32) -> Interrupt {
 /// Where a read's parameters come from while it runs.
 struct Env<'a> {
     args: &'a [Value],
+    /// The codecs a JSON-held column is read with.
+    json: JsonCodecs<'a>,
     now: i64,
     size: i64,
     /// The values of the cursor a page continues after.
@@ -326,6 +330,7 @@ fn records<'a>(
                 let element = first.ty();
                 let inner = Env {
                     args: env.args,
+                    json: env.json,
                     now: env.now,
                     size: env.size,
                     cursor: Vec::new(),
@@ -349,7 +354,7 @@ fn records<'a>(
             for (name, field) in &select.record.fields {
                 let value = match field {
                     Field::Column(at) => {
-                        field_value(row, &select.columns, *at).map_err(Problem::Defect)?
+                        field_value(row, &select.columns, *at, env.json).map_err(Problem::Defect)?
                     }
                     Field::Include(at) => {
                         let (Some(include), Some(matched)) =
@@ -408,6 +413,73 @@ fn value_at(source: &Source, args: &[Value]) -> Option<Value> {
 }
 
 // --- values and columns ------------------------------------------------------------
+
+/// The codecs a JSON-held standard value is written to its `jsonb` column
+/// and read back with (area 19, chunk 5.5w2b): the plan's JSON table,
+/// numbered as `json.read`'s sites number theirs, with the program's
+/// validators and shapes, as `json.read` is given them, so a stored value
+/// is written and read exactly as a response's and a request's body are.
+#[derive(Clone, Copy, Debug)]
+pub struct JsonCodecs<'a> {
+    pub codecs: jadpo_value::json::Codecs<'a>,
+    /// Each numbered type's codec in `codecs`.
+    pub types: &'a [jadpo_std::http::CodecId],
+}
+
+impl JsonCodecs<'static> {
+    /// No codecs, for a program that holds no JSON-held value.
+    pub const NONE: JsonCodecs<'static> = JsonCodecs {
+        codecs: jadpo_value::json::Codecs {
+            codecs: &[],
+            validators: &[],
+            shapes: &[],
+        },
+        types: &[],
+    };
+}
+
+impl JsonCodecs<'_> {
+    fn codec(&self, number: u32) -> Result<jadpo_std::http::CodecId, String> {
+        self.types
+            .get(number as usize)
+            .copied()
+            .ok_or_else(|| "a JSON-held column the plan gave no codec".to_string())
+    }
+
+    /// `value` as the JSON its column keeps; `NULL` for no value.
+    pub fn write(&self, number: u32, value: &Value) -> Result<SqlValue, String> {
+        if matches!(value, Value::None) {
+            return Ok(SqlValue::Null(SqlType::Json));
+        }
+        Ok(SqlValue::Json(
+            self.codecs.write_value(self.codec(number)?, value),
+        ))
+    }
+
+    /// The value the JSON `stored` holds, read as a request's body is.
+    /// What doesn't read back is named by its field's path and the rule,
+    /// never the value (chunk 5.5w2).
+    pub fn read(&self, number: u32, stored: &str) -> Result<Value, String> {
+        let codec = self.codec(number)?;
+        self.codecs
+            .read_value(codec, &Value::text(stored))
+            .map_err(|unread| match unread {
+                jadpo_value::json::Unread::Malformed => {
+                    "a JSON-held column that isn't one JSON document".to_string()
+                }
+                jadpo_value::json::Unread::Mismatch(problem) if problem.field.is_empty() => {
+                    format!(
+                        "a JSON-held column that isn't its type (`{}`)",
+                        problem.rule
+                    )
+                }
+                jadpo_value::json::Unread::Mismatch(problem) => format!(
+                    "a JSON-held column that isn't its type (`{}` on `{}`)",
+                    problem.rule, problem.field
+                ),
+            })
+    }
+}
 
 /// A value as a parameter of type `ty`.
 pub fn to_sql(value: &Value, ty: SqlType) -> Result<SqlValue, String> {
@@ -543,13 +615,26 @@ pub fn from_sql(sql: &SqlValue, column: &Column) -> Result<Value, String> {
 }
 
 /// The value of the field whose column is at `at` of `row`: the column's
-/// own, or for a compound standard type (`Money`, area 19), its value made
-/// from that column and the parts after it.
-pub fn field_value(row: &[SqlValue], columns: &[Column], at: u32) -> Result<Value, String> {
+/// own, for a compound standard type (`Money`, area 19) its value made from
+/// that column and the parts after it, and for a JSON-held one its JSON
+/// read by `json`'s codec (chunk 5.5w2b).
+pub fn field_value(
+    row: &[SqlValue],
+    columns: &[Column],
+    at: u32,
+    json: JsonCodecs<'_>,
+) -> Result<Value, String> {
     let at = at as usize;
     let (Some(sql), Some(column)) = (row.get(at), columns.get(at)) else {
         return Err("a row without a column it needs".into());
     };
+    if let Column::Json(number) = column {
+        return match sql {
+            SqlValue::Null(_) => Ok(Value::None),
+            SqlValue::Json(stored) => json.read(*number, stored),
+            other => Err(format!("a `{:?}` column read as JSON", other.ty())),
+        };
+    }
     let Column::Compound { ty, may_be_none } = column else {
         return from_sql(sql, column);
     };
