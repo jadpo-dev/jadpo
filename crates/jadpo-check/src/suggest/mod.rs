@@ -685,6 +685,11 @@ fn declarations(
             let Some(shape) = reading.entry.shape else {
                 continue;
             };
+            // A list of points (`LineString`, `Polygon`) is only ever the
+            // whole of a type, which `type.standard_exists` reports.
+            if shape.iter().any(|wanted| wanted.list_of.is_some()) {
+                continue;
+            }
             let mut taken: Vec<&Field<'_>> = Vec::new();
             let mut missing = false;
             for wanted in shape {
@@ -1164,7 +1169,9 @@ pub fn catalogue() -> Vec<Entry> {
     for reading in readings() {
         let entry = reading.entry;
         let name = entry.name.to_string();
-        if let Some(shape) = entry.shape {
+        if let Some(shape) = entry.shape
+            && shape.iter().all(|wanted| wanted.list_of.is_none())
+        {
             let values: Vec<String> = shape.iter().map(|f| f.names[0].to_string()).collect();
             out.push(Entry {
                 suggestion: name.clone(),

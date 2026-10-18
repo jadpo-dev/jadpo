@@ -1561,7 +1561,7 @@ pub const OPERATIONS: &[Operation] = &[
             Op::GeoFromWkt,
             "from_wkt",
             &[param("text", TEXT_VALUE)],
-            Kind::Std(crate::standard::geo::GEOMETRY),
+            Kind::Enum(crate::standard::geo::GEOMETRY),
             "geo::from_wkt",
         )
     },

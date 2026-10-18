@@ -69,14 +69,3 @@ fn length_and_area_take_the_shapes_they_measure() {
         ["type.mismatch", "type.mismatch", "type.mismatch"]
     );
 }
-
-#[test]
-fn wkt_is_not_built_yet() {
-    assert_eq!(
-        check(
-            "type Wire = Text {}\n\nfunction written(patch: Polygon) -> Wire {\n    return Wire(geo.to_wkt(patch))\n}\n",
-            false
-        ),
-        ["toolchain.not_built_yet"]
-    );
-}

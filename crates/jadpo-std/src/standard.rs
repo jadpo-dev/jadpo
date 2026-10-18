@@ -988,6 +988,11 @@ pub struct FieldMatch {
     /// Whether an `Object` may leave the field out and still match, as a
     /// colour's alpha (chunk 5.5p).
     pub optional: bool,
+    /// A field that is a list instead, each item this standard type or an
+    /// `Object` of its shape: `LineString`'s and `Polygon`'s list of
+    /// points (area 19, "Packages use the standard types"; chunk 5.5u6).
+    /// `built_on` is then empty.
+    pub list_of: Option<&'static str>,
 }
 
 /// How a standard type is stored (area 5, "Storage types"; area 19).
@@ -1563,6 +1568,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 built_on: &[Builtin::CalendarDate],
                 or_enum: false,
                 optional: false,
+                list_of: None,
             },
             FieldMatch {
                 meaning: "a last day",
@@ -1570,6 +1576,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 built_on: &[Builtin::CalendarDate],
                 or_enum: false,
                 optional: false,
+                list_of: None,
             },
         ]),
         examples: Examples {
@@ -1681,6 +1688,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 built_on: &[Builtin::Text],
                 or_enum: true,
                 optional: false,
+                list_of: None,
             },
             FieldMatch {
                 meaning: "a currency it converts to",
@@ -1688,6 +1696,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 built_on: &[Builtin::Text],
                 or_enum: true,
                 optional: false,
+                list_of: None,
             },
             FieldMatch {
                 meaning: "a rate",
@@ -1695,6 +1704,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 built_on: &[Builtin::Decimal],
                 or_enum: false,
                 optional: false,
+                list_of: None,
             },
             FieldMatch {
                 meaning: "an instant it was quoted at",
@@ -1702,6 +1712,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 built_on: &[Builtin::Instant],
                 or_enum: false,
                 optional: false,
+                list_of: None,
             },
         ]),
         examples: Examples {
@@ -1781,6 +1792,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 built_on: &[Builtin::Int],
                 or_enum: false,
                 optional: false,
+                list_of: None,
             },
             FieldMatch {
                 meaning: "a denominator",
@@ -1788,6 +1800,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 built_on: &[Builtin::Int],
                 or_enum: false,
                 optional: false,
+                list_of: None,
             },
         ]),
         examples: Examples {
@@ -1906,6 +1919,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 built_on: &[Builtin::Instant],
                 or_enum: false,
                 optional: false,
+                list_of: None,
             },
             FieldMatch {
                 meaning: "an end",
@@ -1913,6 +1927,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 built_on: &[Builtin::Instant],
                 or_enum: false,
                 optional: false,
+                list_of: None,
             },
         ]),
         examples: Examples {
@@ -2116,6 +2131,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 built_on: &[Builtin::Int, Builtin::Decimal],
                 or_enum: false,
                 optional: false,
+                list_of: None,
             },
             FieldMatch {
                 meaning: "a currency",
@@ -2123,6 +2139,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 built_on: &[Builtin::Text],
                 or_enum: true,
                 optional: false,
+                list_of: None,
             },
         ]),
         examples: Examples {
@@ -2331,6 +2348,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 built_on: &[Builtin::Decimal],
                 or_enum: false,
                 optional: false,
+                list_of: None,
             },
             FieldMatch {
                 meaning: "a denominator",
@@ -2338,6 +2356,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 built_on: &[Builtin::Decimal],
                 or_enum: false,
                 optional: false,
+                list_of: None,
             },
         ]),
         examples: Examples {

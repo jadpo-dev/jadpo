@@ -476,6 +476,29 @@ impl Decls<'_> {
             .iter()
             .map(|field| format!("{} (`{}`)", field.meaning, field.written))
             .collect();
+        // A list's items, as the reason says them: `Point`s, or a type of
+        // the application's of `Point`'s shape (chunk 5.5u6).
+        let mut items: Vec<String> = Vec::new();
+        for wanted in entry.shape.unwrap_or_default() {
+            let Some(item) = wanted.list_of else { continue };
+            let declared = found
+                .fields
+                .iter()
+                .find(|field| field.standard == wanted.names[0])
+                .and_then(|field| {
+                    self.table
+                        .fields(name)?
+                        .iter()
+                        .find(|own| own.name == field.written)
+                })
+                .map(|own| self.table.structure(&own.declared));
+            items.push(match declared {
+                Some(Ty::List(of)) if !matches!(*of, Ty::Opaque(..)) => {
+                    format!("each a `{of}`, the standard `{item}` under another name")
+                }
+                _ => format!("each a `{item}`"),
+            });
+        }
         let mut built: Vec<String> = entry
             .shape
             .unwrap_or_default()
@@ -498,20 +521,43 @@ impl Decls<'_> {
             built.push("an enum".to_string());
         }
         let standard = entry.name;
+        // One shape that is more than one standard type's names them all;
+        // the swap is to the first (chunk 5.5u6).
+        let all: Vec<String> = same_shape(&found)
+            .into_iter()
+            .map(|name| format!("`{name}`"))
+            .collect();
+        let others = &all[1..];
+        let made_of = if items.is_empty() {
+            format!(", each built on {}", crate::or_list(&built))
+        } else {
+            format!(", {}", items.join(", "))
+        };
+        let next = if others.is_empty() {
+            format!(
+                "Run `jadpo fix {name} swap` to use `{standard}` where `{name}` is used, then convert at the edge where data arrives in another shape"
+            )
+        } else {
+            format!(
+                "Run `jadpo fix {name} swap` to use `{standard}` where `{name}` is used, or use {} if that is what it means, then convert at the edge where data arrives in another shape",
+                crate::or_list(others)
+            )
+        };
         self.out.push(
             Diagnostic::new(
                 &rule::TYPE_STANDARD_EXISTS,
-                format!("`{name}` is the standard `{standard}` under another name"),
+                format!(
+                    "`{name}` is the standard {} under another name",
+                    crate::or_list(&all)
+                ),
             )
             .at(self.span(written.syntax()), crate::and_list(&meanings))
             .reason(format!(
-                "`{name}` has only {}, each built on {}, which is the standard `{standard}`. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.",
+                "`{name}` has only {}{made_of}, which is the standard {}. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.",
                 crate::and_list(&named),
-                crate::or_list(&built)
+                crate::or_list(&all)
             ))
-            .next(format!(
-                "Run `jadpo fix {name} swap` to use `{standard}` where `{name}` is used, then convert at the edge where data arrives in another shape"
-            )),
+            .next(next),
         );
     }
 
@@ -1893,6 +1939,37 @@ fn is_enum(table: &dyn TypeView, ty: &Ty) -> bool {
     }
 }
 
+/// Whether `ty` is a list whose items are the standard type `item`, or an
+/// `Object` of its shape (`LineString`'s points, chunk 5.5u6).
+fn list_of(table: &dyn TypeView, ty: &Ty, item: &str) -> bool {
+    let Ty::List(of) = table.structure(ty) else {
+        return false;
+    };
+    if table.is_nullable(&of) {
+        return false;
+    }
+    match table.structure(&of) {
+        Ty::Opaque(name, args) => name == item && args.is_empty(),
+        Ty::Named(name) => standard_match(table, &name, Some(item)).is_some(),
+        _ => false,
+    }
+}
+
+/// Every standard type with `found`'s shape, `found`'s own first: a list
+/// of points is a `LineString`'s or a `Polygon`'s (chunk 5.5u6).
+pub(crate) fn same_shape(found: &StandardMatch) -> Vec<&'static str> {
+    let mut names = vec![found.standard.name];
+    for entry in jadpo_std::STANDARD_TYPES {
+        if entry.name != found.standard.name
+            && let (Some(theirs), Some(ours)) = (entry.shape, found.standard.shape)
+            && std::ptr::eq(theirs, ours)
+        {
+            names.push(entry.name);
+        }
+    }
+    names
+}
+
 /// The standard type whose shape `name`'s fields are (area 19, question
 /// 5): an `Object` whose fields are exactly a shape's, by their common
 /// names in any order and what each is built on, none of them optional,
@@ -1922,7 +1999,10 @@ pub(crate) fn standard_match(
                     && (table
                         .base_prim(&field.declared)
                         .is_some_and(|prim| wanted.built_on.contains(&prim))
-                        || (wanted.or_enum && is_enum(table, &field.declared)))
+                        || (wanted.or_enum && is_enum(table, &field.declared))
+                        || wanted
+                            .list_of
+                            .is_some_and(|item| list_of(table, &field.declared, item)))
                     && !matched.iter().any(|taken| taken.written == field.name)
             });
             match found {

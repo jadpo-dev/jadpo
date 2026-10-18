@@ -513,6 +513,7 @@ const POINT_SHAPE: &[FieldMatch] = &[
         built_on: &[Builtin::Int, Builtin::Decimal],
         or_enum: false,
         optional: false,
+        list_of: None,
     },
     FieldMatch {
         meaning: "a longitude",
@@ -520,6 +521,7 @@ const POINT_SHAPE: &[FieldMatch] = &[
         built_on: &[Builtin::Int, Builtin::Decimal],
         or_enum: false,
         optional: false,
+        list_of: None,
     },
 ];
 
@@ -579,6 +581,21 @@ pub const POINT_ENTRY: StandardType = StandardType {
     signals: crate::standard::NO_SIGNALS,
 };
 
+/// What `type.standard_exists` matches for `LineString` and `Polygon`
+/// alike: only a list of points, each a `Point` or an `Object` of its
+/// shape, by the list's common names (area 19, "Packages use the standard
+/// types"; chunk 5.5u6). A list of points is a path or an area's ring, and
+/// only the application knows which, so the error names both, and its
+/// swap is to `LineString`, whose points the list's items become.
+const POINTS_SHAPE: &[FieldMatch] = &[FieldMatch {
+    meaning: "a list of points",
+    names: &["points", "coordinates"],
+    built_on: &[],
+    or_enum: false,
+    optional: false,
+    list_of: Some(POINT),
+}];
+
 /// A path of two points or more, in order: a GeoJSON `LineString`.
 pub const LINE_STRING_ENTRY: StandardType = StandardType {
     name: LINE_STRING,
@@ -589,7 +606,7 @@ pub const LINE_STRING_ENTRY: StandardType = StandardType {
     format: GEOMETRY_FORMAT,
     ordered: false,
     validator: None,
-    shape: None,
+    shape: Some(POINTS_SHAPE),
     examples: examples(
         &[
             (
@@ -662,7 +679,7 @@ pub const POLYGON_ENTRY: StandardType = StandardType {
     format: GEOMETRY_FORMAT,
     ordered: false,
     validator: None,
-    shape: None,
+    shape: Some(POINTS_SHAPE),
     examples: examples(
         &[
             (
