@@ -57,6 +57,18 @@ pub const INCLUDE_LEVELS: usize = 2;
 /// The type a page query returns: `Page<T>`.
 const PAGE: &str = "Page";
 
+/// The type each record of a nearest-neighbour query is (area 21):
+/// `Nearest<T>`, holding `item: T` and `distance: Decimal`.
+pub const NEAREST: &str = "Nearest";
+
+/// The most records a nearest-neighbour query returns (area 21, "The
+/// nearest-neighbour query").
+pub const MOST_NEAREST: u64 = 100;
+
+/// The longest vector pgvector's HNSW index takes at full precision; a
+/// longer type's index is chunk 5.5v1c's.
+pub const MOST_INDEXED_DIMENSIONS: u64 = 2_000;
+
 // --- the model ---------------------------------------------------------------
 
 /// How many records a query returns, from its result type: the read
@@ -170,6 +182,22 @@ pub struct Missing {
     pub fields: Vec<(String, Value)>,
 }
 
+/// `order: [Entity.field nearest value]` (area 21, "The nearest-neighbour
+/// query"): records nearest the value first, by the field's vector type's
+/// distance, each with its distance.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct NearestOrder {
+    /// The vector field, of a type with `dimensions:`.
+    pub field: String,
+    /// The vector it measures from: a parameter of the field's type.
+    pub value: Value,
+    /// How the field's type measures.
+    pub metric: jadpo_std::VectorDistance,
+    /// The most records the query returns: its `limit:`, or the most its
+    /// value's type allows.
+    pub most: u64,
+}
+
 /// One query, as its SQL and codecs are made from it, without positions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QueryModel {
@@ -191,6 +219,9 @@ pub struct QueryModel {
     pub after: Option<Value>,
     pub includes: Vec<Include>,
     pub missing: Option<Missing>,
+    /// For a nearest-neighbour query, its order, in place of `order`: each
+    /// record is a `Nearest<T>` of `element`.
+    pub nearest: Option<NearestOrder>,
 }
 
 /// Every query of a project, without positions: for what reads them all,
@@ -386,7 +417,28 @@ impl<'a> Reader<'a> {
             .ret_type()
             .and_then(|ret| ret.ty())
             .map_or_else(|| span.clone(), |ty| Self::span(path, &ty));
-        let (cardinality, element_ty) = self.result(&name, &sig.result, entity, &result_span)?;
+        let (cardinality, element_ty, nearest_result) =
+            self.result(&name, &sig.result, entity, &result_span)?;
+        // A nearest-neighbour query (area 21): `nearest` in `order:`, and
+        // `List<Nearest<T>>` as its result.
+        let nearest_written = sections
+            .first
+            .get("order")
+            .and_then(|member| nearest_entry(member));
+        if (nearest_written.is_some() || nearest_result) && cardinality == Cardinality::Page {
+            self.nearest_page(&name, &result_span, &element_ty);
+            return None;
+        }
+        if let Some(problem) = self.nearest_result(
+            &name,
+            &sig.result,
+            &result_span,
+            (nearest_written.is_some(), nearest_result, cardinality),
+            &element_ty,
+        ) {
+            self.out.push(problem);
+            return None;
+        }
 
         // What each cardinality needs and refuses.
         let (needs, refuses): (&[&str], &[&str]) = match cardinality {
@@ -424,6 +476,7 @@ impl<'a> Reader<'a> {
 
         // Order, limit and page.
         let order = match sections.first.get("order") {
+            Some(_) if nearest_written.is_some() => Vec::new(),
             Some(member) if !refuses.contains(&"order") => {
                 self.order(path, entity, member, cardinality == Cardinality::Page)
             }
@@ -432,6 +485,15 @@ impl<'a> Reader<'a> {
         let limit = match (cardinality, sections.first.get("limit")) {
             (Cardinality::List, Some(member)) => {
                 self.bound(&scope, member.value(), member, "limit")
+            }
+            _ => None,
+        };
+        let mut nearest_ok = true;
+        let nearest = match (sections.first.get("order"), &nearest_written) {
+            (Some(member), Some(_)) => {
+                let found = self.nearest(&scope, entity, member, sections.first.get("limit"));
+                nearest_ok = found.is_some();
+                found
             }
             _ => None,
         };
@@ -473,7 +535,7 @@ impl<'a> Reader<'a> {
         );
 
         let element = element?;
-        if !complete {
+        if !complete || !nearest_ok {
             return None;
         }
         let key = self.lookup.registry().key(Kind::Query, &name, None);
@@ -491,6 +553,7 @@ impl<'a> Reader<'a> {
             after,
             includes,
             missing,
+            nearest,
         })
     }
 
@@ -673,7 +736,7 @@ impl<'a> Reader<'a> {
         result: &Ty,
         entity: &EntityModel,
         span: &Span,
-    ) -> Option<(Cardinality, String)> {
+    ) -> Option<(Cardinality, String, bool)> {
         if result.has_error() {
             return None;
         }
@@ -684,6 +747,11 @@ impl<'a> Reader<'a> {
             }
             Ty::Nullable(inner) => (Cardinality::Optional, inner.as_ref()),
             other => (Cardinality::One, other),
+        };
+        // Each record a `Nearest<T>` (area 21).
+        let (element, nearest) = match element {
+            Ty::Opaque(nearest, args) if nearest == NEAREST && args.len() == 1 => (&args[0], true),
+            other => (other, false),
         };
         if element.has_error() {
             return None;
@@ -700,7 +768,7 @@ impl<'a> Reader<'a> {
             _ => false,
         };
         if let (true, Ty::Named(ty)) = (fits, element) {
-            return Some((cardinality, ty.clone()));
+            return Some((cardinality, ty.clone(), nearest));
         }
         let shown = if matches!(result, Ty::Prim(Prim::Unit)) {
             "nothing".to_string()
@@ -844,6 +912,24 @@ impl<'a> Reader<'a> {
             );
             return None;
         }
+        let distance = matches!(&expr, Expr::BinExpr(binary)
+            if matches!(binary.lhs().map(|lhs| unparen(&lhs)), Some(Expr::CallExpr(call)) if is_distance(&call)));
+        if distance {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_CONDITION_UNSUPPORTED,
+                    "`where_present:` can't hold a distance".to_string(),
+                )
+                .at(Self::span(scope.path, &value), "a distance")
+                .reason("`where_present:` applies a field's comparison only when its value is there; a distance's vector and its bound are both always given, in a `where:` line.")
+                .next("Write the distance in `where:`")
+                .edit(
+                    member.member_key().map_or_else(|| Self::span(scope.path, &value), |k| Self::span(scope.path, &k)),
+                    "where",
+                ),
+            );
+            return None;
+        }
         let condition = self.condition(scope, entity, &expr, true)?;
         let (value_ref, value_expr) = match (&condition, &expr) {
             (Condition::Compare { value, .. } | Condition::In { value, .. }, Expr::BinExpr(b)) => {
@@ -955,6 +1041,13 @@ impl<'a> Reader<'a> {
                             );
                             return None;
                         };
+                        // `ai.distance(Entity.field, value) <= bound` (area 21).
+                        if let Expr::CallExpr(call) = unparen(&lhs)
+                            && is_distance(&call)
+                        {
+                            return self
+                                .distance_condition(scope, entity, &call, compare, &rhs, &expr);
+                        }
                         let field = self.condition_field(scope, entity, &lhs, &expr)?;
                         let field_ty = self.field_ty(entity, field);
                         if matches!(Const::from_expr(&rhs), Const::None)
@@ -2953,6 +3046,483 @@ impl<'a> Reader<'a> {
 }
 
 // --- helpers -------------------------------------------------------------------
+
+// --- nearest-neighbour queries (area 21, chunk 5.5v1b) --------------------------
+
+/// The `nearest` entry of an `order:` list, if it has one.
+fn nearest_entry(member: &ast::Member) -> Option<ast::OrderedExpr> {
+    let Some(Expr::ListExpr(list)) = member.value() else {
+        return None;
+    };
+    list.exprs().find_map(|item| match item {
+        Expr::OrderedExpr(ordered) if is_nearest(&ordered) => Some(ordered),
+        _ => None,
+    })
+}
+
+/// Whether a call is `ai.distance(...)` (area 21).
+fn is_distance(call: &ast::CallExpr) -> bool {
+    call.expr()
+        .and_then(|callee| dotted(&callee))
+        .is_some_and(|(head, rest)| {
+            tree::name_ref_text(&head).as_deref() == Some("ai")
+                && rest.len() == 1
+                && tree::name_ref_text(&rest[0]).as_deref() == Some("distance")
+        })
+}
+
+fn is_nearest(ordered: &ast::OrderedExpr) -> bool {
+    ordered
+        .direction()
+        .is_some_and(|direction| direction.text() == "nearest")
+}
+
+/// The vector type a value is, by its own name: the type a field or a
+/// parameter declares, or `Vector` itself; `None` for a value that isn't
+/// built on `Vector` (as `ai.distance`'s check reads it, area 21).
+pub(crate) fn vector_type(lookup: &dyn TypeView, given: &Ty) -> Option<Ty> {
+    let mut current = given.strip_nullable().clone();
+    for _ in 0..64 {
+        match &current {
+            Ty::Field(host, path) => {
+                current = lookup.field(host, path)?.declared.strip_nullable().clone();
+            }
+            Ty::Named(_) => {
+                return lookup
+                    .rule_chain(&current)
+                    .iter()
+                    .any(|(_, rules)| rules.standard == Some(jadpo_std::standard::ai::VECTOR))
+                    .then_some(current);
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// How a vector type measures: the `distance:` nearest it in its chain,
+/// cosine when none says (area 21, decision 14).
+pub(crate) fn metric(lookup: &dyn TypeView, vector: &Ty) -> jadpo_std::VectorDistance {
+    lookup
+        .rule_chain(vector)
+        .iter()
+        .find_map(|(_, rules)| rules.distance)
+        .unwrap_or(jadpo_std::VectorDistance::Cosine)
+}
+
+/// The length a vector column fixes, from its type: `vector(1536)`.
+fn fixed_length(field: &FieldModel) -> Option<u64> {
+    field
+        .sql_type
+        .as_deref()?
+        .strip_prefix("vector(")?
+        .strip_suffix(')')?
+        .parse()
+        .ok()
+}
+
+impl Reader<'_> {
+    /// A query ordered by `nearest` returning `Page<T>`.
+    fn nearest_page(&mut self, name: &str, span: &Span, element: &str) {
+        self.out.push(
+            Diagnostic::new(
+                &rule::QUERY_NEAREST_PAGE,
+                format!("`{name}` returns its nearest records a page at a time"),
+            )
+            .at(span.clone(), "a page of nearest records")
+            .reason(format!(
+                "A page continues after a cursor, and a cursor over distances isn't stable: as records are added and change, the next page could skip a record or show one again. A nearest-neighbour query returns one list, of at most {MOST_NEAREST}."
+            ))
+            .next(format!(
+                "Return `List<Nearest<{element}>>` with `limit:` in place of `page:`"
+            )),
+        );
+    }
+
+    /// The problem when a query's order and its result disagree about
+    /// being a nearest-neighbour query.
+    fn nearest_result(
+        &self,
+        name: &str,
+        result: &Ty,
+        span: &Span,
+        (written, returned, cardinality): (bool, bool, Cardinality),
+        element: &str,
+    ) -> Option<Diagnostic> {
+        if written && !(returned && cardinality == Cardinality::List) {
+            return Some(
+                Diagnostic::new(
+                    &rule::QUERY_NEAREST_TYPE,
+                    format!("`{name}` orders by `nearest` but returns `{result}`"),
+                )
+                .at(span.clone(), "not `List<Nearest<T>>`")
+                .reason("A nearest-neighbour query returns one bounded list of its records, each with the distance it measured: `List<Nearest<T>>`, whose items hold `item` and `distance`.")
+                .next(format!("Return `List<Nearest<{element}>>`")),
+            );
+        }
+        if returned && !written {
+            return Some(
+                Diagnostic::new(
+                    &rule::QUERY_NEAREST_TYPE,
+                    format!("`{name}` returns `{result}` but doesn't order by `nearest`"),
+                )
+                .at(span.clone(), "records with a distance")
+                .reason("A `Nearest<T>` holds the distance a nearest-neighbour query measured, so only a query ordered by `nearest` returns one: `order: [<Entity>.<vector field> nearest <value>]`.")
+                .next(format!(
+                    "Order by `nearest`, or return `{}`",
+                    match cardinality {
+                        Cardinality::List => format!("List<{element}>"),
+                        Cardinality::Optional => format!("{element}?"),
+                        _ => element.to_string(),
+                    }
+                )),
+            );
+        }
+        None
+    }
+
+    /// `order: [Entity.field nearest value]`, checked: the only order, on a
+    /// vector field of fixed length, from a parameter of its type, with a
+    /// `limit:` of at most 100.
+    fn nearest(
+        &mut self,
+        scope: &Scope<'_>,
+        entity: &EntityModel,
+        member: &ast::Member,
+        limit: Option<&ast::Member>,
+    ) -> Option<NearestOrder> {
+        let path = scope.path;
+        let Some(Expr::ListExpr(list)) = member.value() else {
+            return None;
+        };
+        let items: Vec<Expr> = list.exprs().collect();
+        let at = items
+            .iter()
+            .position(|item| matches!(item, Expr::OrderedExpr(o) if is_nearest(o)))?;
+        let Expr::OrderedExpr(ordered) = &items[at] else {
+            return None;
+        };
+        if let Some(other) = items
+            .iter()
+            .enumerate()
+            .find(|(i, _)| *i != at)
+            .map(|(_, e)| e)
+        {
+            let written = shown(other.syntax());
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_NEAREST_TYPE,
+                    "`nearest` is the only order a query can have".to_string(),
+                )
+                .at(Self::span(path, other), "another order beside `nearest`")
+                .reason("A nearest-neighbour query comes back nearest first, in the order its index finds the records; sorting by another field as well would read and sort every match, which no index serves.")
+                .next(format!("Remove `{written}` from `order:`, and sort the results in code if they need it")),
+            );
+            return None;
+        }
+        let field_expr = ordered.expr()?;
+        let field = self.field_ref(path, entity, &field_expr)?;
+        let written = format!("{}.{}", entity.name, field.name);
+        let field_span = Self::span(path, &field_expr);
+        if !super::holds_vector(field) {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_NEAREST_TYPE,
+                    format!("`{written}` isn't a vector, so records can't be ordered by nearness to it"),
+                )
+                .at(field_span, format!("`{}`", field_type_name(&field.ty)))
+                .reason(format!(
+                    "`nearest` orders records by how near a vector field is to a vector, by the distance its type measures; `{written}` is `{}`.",
+                    field.ty
+                ))
+                .next("Order by a vector field, or by this one with `asc` or `desc`"),
+            );
+            return None;
+        }
+        let Some(dimensions) = fixed_length(field) else {
+            let what = match field.compound {
+                Some(compound) => format!("an `{compound}`, whose vector is kept without one"),
+                None => format!("a `{}`, kept without one", field.ty.strip_nullable()),
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_NEAREST_UNINDEXED,
+                    format!("`{written}` has no fixed length, so it can't be searched by nearness"),
+                )
+                .at(
+                    field_span,
+                    match field.compound {
+                        Some(compound) => format!("an `{compound}`"),
+                        None => format!("a `{}` without `dimensions:`", field.ty.strip_nullable()),
+                    },
+                )
+                .reason(format!(
+                    "A nearest-neighbour query reads an HNSW index, which pgvector builds only on a vector column of fixed length, and `{written}` is {what}."
+                ))
+                .next(format!(
+                    "Give `{written}` a type built on `Vector` with the model's `dimensions:`"
+                )),
+            );
+            return None;
+        };
+        if dimensions > MOST_INDEXED_DIMENSIONS {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!("Searching `{written}` by nearness isn't built yet"),
+                )
+                .at(field_span, format!("{dimensions} dimensions"))
+                .reason(format!(
+                    "pgvector's HNSW index takes a `vector` of up to {MOST_INDEXED_DIMENSIONS} dimensions; a longer one is indexed through a half-precision expression, or searched exactly over 4,000 (area 21, \"The index\"), which comes in chunk 5.5v1c."
+                ))
+                .next("Ask the model for fewer dimensions with `embedding_dimensions:`, or wait for chunk 5.5v1c")
+                .help_at("21-ai.html#the-index"),
+            );
+            return None;
+        }
+        let field_ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
+        let vector = vector_type(self.lookup, &field_ty)?;
+        let metric = metric(self.lookup, &vector);
+        // The value it measures from: a parameter of the field's own type.
+        let target = ordered.target()?;
+        let Some(given) = self.value_type(scope, &target) else {
+            let shown_target = shown(target.syntax());
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_NEAREST_TYPE,
+                    format!("`nearest` measures from `{shown_target}`, which isn't a parameter"),
+                )
+                .at(Self::span(path, &target), "not a parameter")
+                .reason(format!(
+                    "`nearest` measures from a vector the call supplies, a parameter of `{vector}`, the type of `{written}`."
+                ))
+                .next(format!("Add a `{vector}` parameter and measure from it")),
+            );
+            return None;
+        };
+        if given.has_error() {
+            return None;
+        }
+        if self.lookup.is_nullable(&given) {
+            self.optional_in_where(scope, &target);
+            return None;
+        }
+        let theirs = vector_type(self.lookup, &given);
+        if theirs.as_ref() != Some(&vector) {
+            let shown_given = theirs.unwrap_or_else(|| given.clone());
+            let label = format!(
+                "a `{shown_given}`, not {}",
+                with_article(&vector.to_string())
+            );
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_NEAREST_TYPE,
+                    format!("`nearest` compares `{written}` with a `{shown_given}`"),
+                )
+                .at(Self::span(path, &target), label)
+                .reason(format!(
+                    "A vector type stands for the model that made its vectors and how they are compared, so `nearest` measures from a vector of the field's own type; a `{shown_given}` may come from another model, and its distance from {} would mean nothing.",
+                    with_article(&vector.to_string())
+                ))
+                .next(format!("Pass {}, made by the same model", with_article(&vector.to_string()))),
+            );
+            return None;
+        }
+        let (value, _) = self.value(scope, &target, &field_ty)?;
+        // The most records it returns: at most 100.
+        let limit_value = limit.and_then(ast::Member::value);
+        let most = match limit_value.as_ref().map(Const::from_expr) {
+            Some(Const::Number {
+                value: n,
+                decimal: false,
+            }) => Some(u64::try_from(n.mantissa).unwrap_or(u64::MAX)),
+            _ => limit_value
+                .as_ref()
+                .and_then(|value| self.value_type(scope, value))
+                .and_then(|ty| {
+                    self.lookup
+                        .rule_chain(&ty)
+                        .iter()
+                        .find_map(|(_, rules)| rules.max)
+                })
+                .and_then(|max| u64::try_from(max.mantissa).ok()),
+        };
+        // A missing or unbounded `limit:` is reported by the list's own
+        // checks.
+        let most = most?;
+        if most > MOST_NEAREST {
+            let value = limit_value?;
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_LIMIT_RANGE,
+                    format!("`limit:` allows {most} nearest records, more than {MOST_NEAREST}"),
+                )
+                .at(Self::span(path, &value), format!("up to {most}"))
+                .reason(format!(
+                    "A nearest-neighbour query returns at most {MOST_NEAREST} records: its index searches a few candidates beyond its limit, and the further it looks the slower and less exact the search."
+                ))
+                .next(format!("Give `limit:` at most {MOST_NEAREST}")),
+            );
+            return None;
+        }
+        Some(NearestOrder {
+            field: field.name.clone(),
+            value,
+            metric,
+            most,
+        })
+    }
+}
+
+impl Reader<'_> {
+    /// `ai.distance(Entity.field, value) <op> bound` in a `where:` line
+    /// (area 21): the field's vector type's distance from a parameter of
+    /// the same type, compared with a number by `<`, `<=`, `>` or `>=`.
+    fn distance_condition(
+        &mut self,
+        scope: &Scope<'_>,
+        entity: &EntityModel,
+        call: &ast::CallExpr,
+        compare: Compare,
+        bound: &Expr,
+        whole: &Expr,
+    ) -> Option<Condition> {
+        let path = scope.path;
+        let args: Vec<ast::Arg> = call
+            .arg_list()
+            .into_iter()
+            .flat_map(|list| list.args())
+            .collect();
+        let positional: Vec<Expr> = args
+            .iter()
+            .filter(|arg| arg.name().is_none())
+            .filter_map(ast::Arg::expr)
+            .collect();
+        let [first, second] = positional.as_slice() else {
+            self.unsupported(
+                scope,
+                whole,
+                "`ai.distance` takes two vectors: a field of the entity, then a parameter of its type.".to_string(),
+                format!("Write `ai.distance({}.<field>, <parameter>)`", entity.name),
+            );
+            return None;
+        };
+        if args.len() != 2 {
+            self.unsupported(
+                scope,
+                whole,
+                "`ai.distance` takes two vectors and no named arguments: a field of the entity, then a parameter of its type.".to_string(),
+                format!("Write `ai.distance({}.<field>, <parameter>)`", entity.name),
+            );
+            return None;
+        }
+        let Some(field) = self.field_named(entity, first) else {
+            self.unsupported(
+                scope,
+                whole,
+                format!(
+                    "A distance in a query measures from one of `{}`'s vector fields, named first, to a value the call supplies, named second.",
+                    entity.name
+                ),
+                format!("Write `ai.distance({}.<field>, <parameter>)`", entity.name),
+            );
+            return None;
+        };
+        let written = format!("{}.{}", entity.name, field.name);
+        if matches!(compare, Compare::Equal | Compare::NotEqual) {
+            self.unsupported(
+                scope,
+                whole,
+                "A distance is a float worked out by pgvector, which two computations may round a last place apart, so it is compared with a bound by `<`, `<=`, `>` or `>=`, never tested for equality.".to_string(),
+                "Compare the distance with `<=` or `>=`".to_string(),
+            );
+            return None;
+        }
+        let field_ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
+        let Some(vector) = vector_type(self.lookup, &field_ty) else {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{written}` can't be used where a vector is required"),
+                )
+                .at(Self::span(path, first), format!("a `{}`", field.ty.strip_nullable()))
+                .reason(format!(
+                    "`ai.distance` measures between two vectors of one type, values of a type built on `Vector`; `{written}` is `{}`.",
+                    field.ty.strip_nullable()
+                ))
+                .next("Measure from a vector field"),
+            );
+            return None;
+        };
+        let Some(given) = self.value_type(scope, second) else {
+            let shown_second = shown(second.syntax());
+            self.unsupported(
+                scope,
+                whole,
+                format!(
+                    "A distance in a query measures to a vector the call supplies, a parameter of `{vector}`; `{shown_second}` isn't one."
+                ),
+                format!("Add a `{vector}` parameter and measure to it"),
+            );
+            return None;
+        };
+        if given.has_error() {
+            return None;
+        }
+        if self.lookup.is_nullable(&given) {
+            self.optional_in_where(scope, second);
+            return None;
+        }
+        let theirs = vector_type(self.lookup, &given);
+        if theirs.as_ref() != Some(&vector) {
+            let shown_given = theirs.unwrap_or_else(|| given.clone());
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{shown_given}` can't be used where `{vector}` is required"),
+                )
+                .at(Self::span(path, second), format!("this is `{shown_given}`"))
+                .reason(format!(
+                    "`ai.distance` measures between two vectors of one type, which fixes their dimensions and how they are compared; its first is `{vector}`, and a `{shown_given}` may come from another model or be compared another way."
+                ))
+                .next(format!("Pass a `{vector}` here")),
+            );
+            return None;
+        }
+        let (value, _) = self.value(scope, second, &field_ty)?;
+        // The bound: a number, as a literal or a parameter.
+        let (number, ty) = self.value(scope, bound, &Ty::Prim(Prim::Decimal))?;
+        if self.lookup.is_nullable(&ty) {
+            self.optional_in_where(scope, bound);
+            return None;
+        }
+        if !matches!(number, Value::Literal(_))
+            && !matches!(
+                self.lookup.representation(&ty),
+                Some(Prim::Decimal | Prim::Int)
+            )
+        {
+            self.mismatch(scope, bound, &ty, &Ty::Prim(Prim::Decimal));
+            return None;
+        }
+        Some(Condition::Distance {
+            field: field.name.clone(),
+            metric: metric(self.lookup, &vector),
+            value,
+            op: compare,
+            bound: number,
+        })
+    }
+}
+
+/// `a ArticleMeaning`: a type's name after "a" or "an".
+fn with_article(name: &str) -> String {
+    let an = name
+        .chars()
+        .next()
+        .is_some_and(|c| "AEIOUaeiou".contains(c));
+    format!("{} `{name}`", if an { "an" } else { "a" })
+}
 
 /// Field `field` of a standard object type (an `InstantRange`'s `start`
 /// or `end`), by its type.

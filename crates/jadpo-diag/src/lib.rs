@@ -444,6 +444,8 @@ rules! {
         "05-data.html#migration-decision-unknown", "Migration decides about something that is not changing";
     MIGRATION_EXTENSION_MISSING: "migration.extension_missing", area 14, Error, Human,
         "14-tooling.html#command-errors", "Database lacks a PostgreSQL extension the project's migrations need";
+    MIGRATION_EXTENSION_OUTDATED: "migration.extension_outdated", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Database's PostgreSQL extension is older than the project's queries need";
     MIGRATION_OUT_OF_DATE: "migration.out_of_date", area 5, Error, Agent,
         "05-data.html#migration-out-of-date", "Entities and the latest migration disagree";
     MIGRATION_RECORD_INVALID: "migration.record_invalid", area 5, Error, Human,
@@ -518,6 +520,12 @@ rules! {
         "06-reads-and-writes.html#query-limit-range", "Query limit or page size is below 1";
     QUERY_LIMIT_UNBOUNDED: "query.limit_unbounded", area 6, Error, Agent,
         "06-reads-and-writes.html#query-limit-unbounded", "Query limit or page size comes from a value with no maximum";
+    QUERY_NEAREST_PAGE: "query.nearest_page", area 21, Error, Agent,
+        "21-ai.html#query-nearest-page", "Nearest-neighbour query returns a page";
+    QUERY_NEAREST_TYPE: "query.nearest_type", area 21, Error, Agent,
+        "21-ai.html#query-nearest-type", "Nearest-neighbour order measures from something it can't";
+    QUERY_NEAREST_UNINDEXED: "query.nearest_unindexed", area 21, Error, Agent,
+        "21-ai.html#query-nearest-unindexed", "Nearest-neighbour order on a vector with no fixed length";
     QUERY_NOT_UNIQUE: "query.not_unique", area 6, Error, Agent,
         "06-reads-and-writes.html#query-not-unique", "Query for one record can match several";
     QUERY_OPTIONAL_VALUE: "query.optional_value", area 6, Error, Agent,

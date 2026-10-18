@@ -2982,10 +2982,13 @@ impl AstNode for OrderedExpr {
 
 impl OrderedExpr {
     pub fn expr(&self) -> Option<Expr> {
-        support::child(&self.syntax)
+        support::children(&self.syntax).nth(0)
     }
     pub fn direction(&self) -> Option<SyntaxToken> {
-        support::token_in(&self.syntax, &[ASC_KW, DESC_KW])
+        support::token_in(&self.syntax, &[ASC_KW, DESC_KW, NEAREST_KW])
+    }
+    pub fn target(&self) -> Option<Expr> {
+        support::children(&self.syntax).nth(1)
     }
 }
 

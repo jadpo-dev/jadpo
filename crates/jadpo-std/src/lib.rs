@@ -60,7 +60,7 @@ mod isolation;
 pub mod jadpo_text;
 mod literal;
 mod locale;
-mod migration;
+pub mod migration;
 pub mod money;
 mod num;
 mod operations;

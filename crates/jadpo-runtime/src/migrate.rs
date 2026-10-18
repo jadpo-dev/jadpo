@@ -57,6 +57,15 @@ pub enum MigrateError {
     ExtensionMissing {
         extension: String,
     },
+    /// A migration needs `extension` at version `least` or later, and the
+    /// database server offers `found`: pgvector 0.8.0 for an HNSW index,
+    /// whose `nearest` queries run with its iterative scans (area 21,
+    /// chunk 5.5v1b).
+    ExtensionOutdated {
+        extension: String,
+        found: String,
+        least: String,
+    },
 }
 
 impl From<StoreError> for MigrateError {
@@ -86,6 +95,10 @@ pub async fn migrate(
     // offers, checked before anything runs (area 21, "Without pgvector").
     let mut transaction = database.begin().await?;
     let offered = offers_every_extension(transaction.as_mut(), migrations).await;
+    let offered = match offered {
+        Ok(standing) => new_enough(transaction.as_mut(), migrations, &standing.pending).await,
+        Err(error) => Err(error),
+    };
     let _ = transaction.rollback().await;
     offered?;
     let mut transaction = database.begin().await?;
@@ -158,11 +171,55 @@ pub async fn has_extensions(
                 }
             }
         }
-        Ok(())
+        new_enough(transaction.as_mut(), migrations, &standing.applied).await
     }
     .await;
     let _ = transaction.rollback().await;
     found
+}
+
+/// Whether the database server offers each extension the migrations
+/// `names` need at the version they need it (pgvector 0.8.0 once one
+/// builds an HNSW index, chunk 5.5v1b): the version its server would load,
+/// `pg_available_extensions.default_version`, since the settings a query
+/// turns on come from the library the server has, whichever version the
+/// database last installed.
+async fn new_enough(
+    transaction: &mut dyn Transaction,
+    migrations: &[Migration],
+    names: &[String],
+) -> Result<(), MigrateError> {
+    let mut needed: Vec<(String, [u32; 3])> = Vec::new();
+    for name in names {
+        let Some(migration) = migrations.iter().find(|m| &m.name == name) else {
+            continue;
+        };
+        for (extension, least) in migration.least_versions() {
+            match needed.iter_mut().find(|(e, _)| *e == extension) {
+                Some((_, most)) => *most = (*most).max(least),
+                None => needed.push((extension, least)),
+            }
+        }
+    }
+    for (extension, least) in needed {
+        let rows = transaction
+            .query(
+                "SELECT default_version FROM pg_available_extensions WHERE name = $1",
+                &[SqlValue::Text(extension.clone())],
+            )
+            .await?;
+        let Some(Some(SqlValue::Text(found))) = rows.first().map(|row| row.first()) else {
+            return Err(MigrateError::ExtensionMissing { extension });
+        };
+        if jadpo_std::migration::version(found).is_none_or(|version| version < least) {
+            return Err(MigrateError::ExtensionOutdated {
+                extension,
+                found: found.clone(),
+                least: jadpo_std::migration::version_text(least),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Whether the database offers every extension a migration not yet
@@ -172,7 +229,7 @@ pub async fn has_extensions(
 async fn offers_every_extension(
     transaction: &mut dyn Transaction,
     migrations: &[Migration],
-) -> Result<(), MigrateError> {
+) -> Result<Standing, MigrateError> {
     let standing = compare(&recorded(transaction, false).await?, migrations)?;
     for name in &standing.pending {
         let Some(migration) = migrations.iter().find(|m| &m.name == name) else {
@@ -190,7 +247,7 @@ async fn offers_every_extension(
             }
         }
     }
-    Ok(())
+    Ok(standing)
 }
 
 /// The first migration still to apply, under the table's lock.

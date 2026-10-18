@@ -1069,6 +1069,42 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
             },
             Decider::Human,
         ),
+        // pgvector 0.8.0 for an HNSW index's queries (area 21, chunk
+        // 5.5v1b).
+        MigrateError::ExtensionOutdated {
+            extension,
+            found,
+            least,
+        } => {
+            let (named, reason, next) = match extension.as_str() {
+                "vector" => (
+                    "pgvector".to_string(),
+                    format!(
+                        "The project's migrations build an HNSW index for a `nearest` query, which runs with pgvector's iterative index scans so a filtered search still fills its limit; they came in pgvector {least}, and the database server offers {found}, so nothing was applied."
+                    ),
+                    format!(
+                        "Upgrade pgvector on the database server to {least} or later (the major hosted services offer it), then run the command again"
+                    ),
+                ),
+                other => (
+                    format!("`{other}`"),
+                    format!(
+                        "The project's migrations need `{other}` {least} or later, and the database server offers {found}, so nothing was applied."
+                    ),
+                    format!("Upgrade `{other}` on the database server to {least} or later, then run the command again"),
+                ),
+            };
+            let needs = match extension.as_str() {
+                "vector" => format!("its nearest-neighbour queries need {least}"),
+                _ => format!("its migrations need {least}"),
+            };
+            Diagnostic::new(
+                &rule::MIGRATION_EXTENSION_OUTDATED,
+                format!("`{store}` has {named} {found}, and {needs}"),
+            )
+            .reason(reason)
+            .next_for(next, Decider::Human)
+        }
         MigrateError::Store(store_error) => {
             let why = match store_error {
                 StoreError::Unavailable => "the database can't be reached".to_string(),

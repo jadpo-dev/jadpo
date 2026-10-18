@@ -314,7 +314,7 @@
         },
         {
           "name": "keyword.operator.word.jadpo",
-          "match": "\\b(and|or|not|matches|asc|desc)\\b"
+          "match": "\\b(and|or|not|matches|asc|desc|nearest)\\b"
         },
         {
           "name": "storage.modifier.jadpo",

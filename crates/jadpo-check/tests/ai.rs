@@ -331,3 +331,215 @@ fn a_distance_is_between_two_vectors_of_one_type() {
         "a list of numbers isn't a vector"
     );
 }
+
+// --- nearest-neighbour queries (area 21, chunk 5.5v1b) ---------------------------
+
+/// Two vector types of one length, an entity holding each kind of vector,
+/// and a result type picking its title.
+const SEARCH: &str = "/// A help article's meaning, as the configured embedding model makes it.\ntype ArticleMeaning = Vector {\n    dimensions: 8\n}\n\n/// A question's meaning, as the older model made it.\ntype QuestionMeaning = Vector {\n    dimensions: 8\n}\n\n/// A long embedding.\ntype LongMeaning = Vector {\n    dimensions: 3072\n    distance: VectorDistance.euclidean\n}\n\n/// A title.\ntype Title = Text {\n    max_length: 80\n}\n\n/// How many answers to show.\ntype AnswerCount = Int {\n    min: 1\n    max: 20\n}\n\n/// More answers than a nearest query gives.\ntype ManyAnswers = Int {\n    min: 1\n    max: 500\n}\n\nentity HelpArticle {\n    id: Uuid\n    title: Title\n    shown_publicly: Bool\n    body_meaning: ArticleMeaning?\n    long_meaning: LongMeaning?\n    loose: Vector?\n    embedding: Embedding?\n}\n\ntype ArticleExcerpt = Output {\n    pick: [HelpArticle.id, HelpArticle.title]\n}\n\n";
+
+fn searched(source: &str) -> Vec<String> {
+    checked(&format!("{SEARCH}{source}"))
+}
+
+/// A query `closest(meaning: <param>) -> <result>` with `lines` in its block.
+fn nearest_query(param: &str, result: &str, lines: &str) -> String {
+    format!("query closest(meaning: {param}) -> {result} {{\n    from: HelpArticle\n{lines}}}\n")
+}
+
+#[test]
+fn a_nearest_query_orders_by_a_vector_and_returns_its_distance() {
+    let source = nearest_query(
+        "ArticleMeaning",
+        "List<Nearest<ArticleExcerpt>>",
+        "    where: HelpArticle.shown_publicly == true\n    where: ai.distance(HelpArticle.body_meaning, meaning) <= 0.6\n    order: [HelpArticle.body_meaning nearest meaning]\n    limit: 5\n",
+    );
+    assert_eq!(searched(&source), NONE);
+    let db = Database::default();
+    let project = support::project(
+        &db,
+        Layout::Loose,
+        &[("main.jadpo", &format!("{SEARCH}{source}"))],
+    );
+    let queries = jadpo_check::data::queries::query_models(&db, project);
+    let query = queries.get("closest").expect("the query");
+    let nearest = query.nearest.as_ref().expect("a nearest order");
+    assert_eq!(nearest.field, "body_meaning");
+    assert_eq!(nearest.metric, jadpo_std::VectorDistance::Cosine);
+    assert_eq!(nearest.most, 5);
+    assert!(
+        query.order.is_empty(),
+        "no other order, not even the tie-break"
+    );
+    assert_eq!(query.element.ty, "ArticleExcerpt");
+    assert!(matches!(
+        query.filter.last(),
+        Some(jadpo_check::data::queries::Condition::Distance {
+            op: jadpo_check::data::queries::Compare::LessEqual,
+            ..
+        })
+    ));
+    // A value whose type has a `max:` of at most 100 bounds it too.
+    assert_eq!(
+        searched(&format!(
+            "query closest(meaning: ArticleMeaning, count: AnswerCount) -> List<Nearest<HelpArticle>> {{\n    from: HelpArticle\n    order: [HelpArticle.body_meaning nearest meaning]\n    limit: count\n}}\n"
+        )),
+        NONE
+    );
+    // Code reads each record and its distance.
+    assert_eq!(
+        searched(&format!(
+            "{}\n/// Whether a found article is close.\nfunction close(found: Nearest<ArticleExcerpt>) -> Close {{\n    return Close(found.distance <= 0.2)\n}}\n\n/// Whether an article is close to a question.\ntype Close = Bool {{}}\n\n/// A found article's title.\nfunction title_of(found: Nearest<ArticleExcerpt>) -> Title {{\n    return found.item.title\n}}\n",
+            nearest_query(
+                "ArticleMeaning",
+                "List<Nearest<ArticleExcerpt>>",
+                "    order: [HelpArticle.body_meaning nearest meaning]\n    limit: 5\n"
+            )
+        )),
+        NONE
+    );
+}
+
+#[test]
+fn nearest_needs_a_vector_of_fixed_length() {
+    for field in ["loose", "embedding"] {
+        assert_eq!(
+            searched(&nearest_query(
+                if field == "loose" {
+                    "Vector"
+                } else {
+                    "Embedding"
+                },
+                "List<Nearest<HelpArticle>>",
+                &format!("    order: [HelpArticle.{field} nearest meaning]\n    limit: 5\n"),
+            )),
+            ["query.nearest_unindexed"],
+            "{field}"
+        );
+    }
+    // Over 2,000 dimensions waits on chunk 5.5v1c.
+    assert_eq!(
+        searched(&nearest_query(
+            "LongMeaning",
+            "List<Nearest<HelpArticle>>",
+            "    order: [HelpArticle.long_meaning nearest meaning]\n    limit: 5\n",
+        )),
+        ["toolchain.not_built_yet"]
+    );
+}
+
+#[test]
+fn nearest_measures_only_from_a_vector_of_the_field_s_type() {
+    let one =
+        |param: &str, result: &str, lines: &str| searched(&nearest_query(param, result, lines));
+    let order = "    order: [HelpArticle.body_meaning nearest meaning]\n    limit: 5\n";
+    // Another vector type, even of the same length.
+    assert_eq!(
+        one("QuestionMeaning", "List<Nearest<HelpArticle>>", order),
+        ["query.nearest_type"]
+    );
+    // A field that isn't a vector.
+    assert_eq!(
+        one(
+            "Title",
+            "List<Nearest<HelpArticle>>",
+            "    order: [HelpArticle.title nearest meaning]\n    limit: 5\n"
+        ),
+        ["query.nearest_type"]
+    );
+    // Another order beside it.
+    assert_eq!(
+        one(
+            "ArticleMeaning",
+            "List<Nearest<HelpArticle>>",
+            "    order: [HelpArticle.body_meaning nearest meaning, HelpArticle.title asc]\n    limit: 5\n"
+        ),
+        ["query.nearest_type"]
+    );
+    // A result that isn't `List<Nearest<T>>`, and `Nearest<T>` without it.
+    assert_eq!(
+        one("ArticleMeaning", "List<HelpArticle>", order),
+        ["query.nearest_type"]
+    );
+    assert_eq!(
+        one(
+            "ArticleMeaning",
+            "List<Nearest<HelpArticle>>",
+            "    order: [HelpArticle.title asc]\n    limit: 5\n"
+        ),
+        ["query.nearest_type"]
+    );
+    // A value that may be absent.
+    assert_eq!(
+        one("ArticleMeaning?", "List<Nearest<HelpArticle>>", order),
+        ["query.optional_value"]
+    );
+}
+
+#[test]
+fn nearest_records_come_in_one_list_of_at_most_100() {
+    assert_eq!(
+        searched(
+            "query closest(meaning: ArticleMeaning, after: PageCursor?) -> Page<Nearest<HelpArticle>> {\n    from: HelpArticle\n    order: [HelpArticle.body_meaning nearest meaning]\n    page: {\n        size: 20\n        after: after\n    }\n}\n"
+        ),
+        ["query.nearest_page"]
+    );
+    assert_eq!(
+        searched(&nearest_query(
+            "ArticleMeaning",
+            "List<Nearest<HelpArticle>>",
+            "    order: [HelpArticle.body_meaning nearest meaning]\n    limit: 101\n",
+        )),
+        ["query.limit_range"]
+    );
+    assert_eq!(
+        searched(
+            "query closest(meaning: ArticleMeaning, count: ManyAnswers) -> List<Nearest<HelpArticle>> {\n    from: HelpArticle\n    order: [HelpArticle.body_meaning nearest meaning]\n    limit: count\n}\n"
+        ),
+        ["query.limit_range"]
+    );
+}
+
+#[test]
+fn a_distance_in_a_query_is_compared_with_a_bound() {
+    let line = |condition: &str| {
+        searched(&nearest_query(
+            "ArticleMeaning",
+            "List<HelpArticle>",
+            &format!("    where: {condition}\n    order: [HelpArticle.title asc]\n    limit: 5\n"),
+        ))
+    };
+    assert_eq!(
+        line("ai.distance(HelpArticle.body_meaning, meaning) > 0.25"),
+        NONE
+    );
+    assert_eq!(
+        line("not (ai.distance(HelpArticle.body_meaning, meaning) <= 0.25)"),
+        NONE
+    );
+    // Never for equality, field first, and of one type.
+    assert_eq!(
+        line("ai.distance(HelpArticle.body_meaning, meaning) == 0.25"),
+        ["query.condition_unsupported"]
+    );
+    assert_eq!(
+        line("ai.distance(meaning, HelpArticle.body_meaning) <= 0.25"),
+        ["query.condition_unsupported"]
+    );
+    assert_eq!(
+        searched(&nearest_query(
+            "QuestionMeaning",
+            "List<HelpArticle>",
+            "    where: ai.distance(HelpArticle.body_meaning, meaning) <= 0.25\n    order: [HelpArticle.title asc]\n    limit: 5\n",
+        )),
+        ["type.mismatch"]
+    );
+    assert_eq!(
+        searched(&nearest_query(
+            "ArticleMeaning?",
+            "List<HelpArticle>",
+            "    where_present: ai.distance(HelpArticle.body_meaning, meaning) <= 0.25\n    order: [HelpArticle.title asc]\n    limit: 5\n",
+        )),
+        ["query.condition_unsupported"]
+    );
+}
