@@ -583,10 +583,17 @@ impl Body<'_> {
             return;
         }
         let caller = self.context.with_a();
+        // An operation that reads the clock is called, as
+        // `crypto.verify_jwt` is (area 19, chunk 5.5r); `clock.now` is read.
+        let verb = if written.starts_with("clock.") {
+            "read"
+        } else {
+            "call"
+        };
         self.out.push(
             Diagnostic::new(
                 &rule::TYPE_CLOCK_CONTEXT,
-                format!("{} can't read `{written}`", super::capital(caller)),
+                format!("{} can't {verb} `{written}`", super::capital(caller)),
             )
             .at(span, "reads the clock")
             .reason(format!(

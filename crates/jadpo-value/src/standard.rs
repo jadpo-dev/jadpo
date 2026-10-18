@@ -969,6 +969,16 @@ pub fn shown(
             crate::measures::measures(entry, value, &Value::None, tag)?
         }
         (FormatKey::Dosage, Value::Record(record)) => crate::measures::dosage(record, tag)?,
+        // The first part named that the value has (chunk 5.5r): text as
+        // written, an instant as its canonical text.
+        (FormatKey::FirstPart(parts), Value::Record(record)) => {
+            let shown = parts.iter().find_map(|name| match record.get(name) {
+                Some(Value::Text(text)) => Some(text.to_string()),
+                Some(Value::Instant(at)) => Some(jadpo_std::format_instant(*at)),
+                _ => None,
+            });
+            shown.ok_or(Fault::Shape)?
+        }
         (FormatKey::PostalAddress, value) => present::contact::postal_address(value, tag)?,
         // National for a reader whose region shares the number's calling
         // code, international otherwise (chunk 5.5l2).

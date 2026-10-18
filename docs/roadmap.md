@@ -975,13 +975,20 @@ reference only).
   OWASP's parameters as a PHC string; code never makes or reads a key,
   which an executor hands the operation from its setting. What the pages
   left open is area 19's "Chosen in chunk 5.5q2".
-- [ ] **5.5r Tokens and `verify_jwt`** `opus · high` (area 19, "The
+- [x] **5.5r Tokens and `verify_jwt`** `opus · high` (area 19, "The
   standard types" and "Hashing and cryptography"): `Jwt`, `JwtClaims`,
   `Jwk`, `OAuthScope` and `OidcClaims`, and `crypto.verify_jwt`. Done when
   every type passes the harness and `verify_jwt` refuses `none`, a
   token-chosen algorithm, an expired token, a wrong audience and a
   tampered payload. Split on 2026-10-18; the secret values are 5.5r2 and
-  the security records 5.5r3.
+  the security records 5.5r3. Built, on 5.5q2's strict Ed25519 with no
+  new crate: a `Jwk` is an Ed25519 public key and never a secret, so a
+  token is checked with `EdDSA` alone and any other `alg` is
+  `invalid_signature`; `issuer:` and `audience:` are optional, the
+  audience always checked (`wrong_audience`, and `wrong_issuer` when an
+  issuer is named); `exp` is required, with 30 seconds' leeway; it reads
+  the clock, so actions call it. RS256 and ES256 aren't built. What the
+  pages left open is area 19's "Chosen in chunk 5.5r".
 - [ ] **5.5r2 Secret values** `opus · high` (area 19, "The standard
   types"; split from 5.5r), after 5.5r: `Password`, `ApiKey`,
   `BearerToken`, `TotpSecret` and `SecretText`, never printed, logged or

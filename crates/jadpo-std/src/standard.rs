@@ -562,6 +562,12 @@ pub enum FormatKey {
     /// `when needed` when it is taken only then: `500 mg, Oral use, 2 times
     /// per 1 day`.
     Dosage,
+    /// The first of the parts named that the value has, text as it is
+    /// written and an instant as its canonical text, the same in every
+    /// locale (chunk 5.5r): a token's claims by their subject, else their
+    /// issuer; a key by its id, else the key itself. The last part named is
+    /// one the value always has, so there is always something to show.
+    FirstPart(&'static [&'static str]),
 }
 
 /// A unit a measure is shown in (chunk 5.5m2): its kind, its name in the
@@ -763,6 +769,8 @@ pub enum Validator {
     PasswordHash,
     /// An Ed25519 public key as unpadded Base64url ([`security`]).
     PublicKey,
+    /// A JWS in compact form, its parts unpadded Base64url ([`security`]).
+    Jwt,
     /// HTML already as the sanitiser keeps it ([`markup::is_safe`]): what
     /// an `Html` literal must be, since its construction from any other
     /// text makes it safe first (chunk 5.5o).
@@ -819,6 +827,7 @@ impl Validator {
             Validator::Html => markup::is_safe(text),
             Validator::PasswordHash => security::is_password_hash(text),
             Validator::PublicKey => security::is_public_key(text),
+            Validator::Jwt => security::is_jwt(text),
         }
     }
 }
@@ -1166,8 +1175,9 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// and `LocalisedText` (chunk 5.5o2, in `rich_text`), the 16 records
 /// and measures of commerce, health, travel and the rest with the size
 /// systems and `RouteOfAdministration` (chunk 5.5m2, in `records` and
-/// `health`), and `PasswordHash`, `PasswordCheck` and `PublicKey` (chunk
-/// 5.5q2, in `security`).
+/// `health`), `PasswordHash`, `PasswordCheck` and `PublicKey` (chunk
+/// 5.5q2, in `security`), and `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and
+/// `OidcClaims` (chunk 5.5r, in `security`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     lists::ALLERGEN_ENTRY,
@@ -1703,6 +1713,9 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     web::JSON_POINTER,
     records::JURISDICTION_ENTRY,
+    security::JWK_ENTRY,
+    security::JWT_ENTRY,
+    security::JWT_CLAIMS_ENTRY,
     places::LANGUAGE_ENTRY,
     lists::LAWFUL_BASIS_ENTRY,
     identifiers::LEI,
@@ -1896,6 +1909,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     places::NATIONALITY_ENTRY,
     web::NETWORK_PORT,
     identifiers::NHS_NUMBER,
+    security::OAUTH_SCOPE_ENTRY,
+    security::OIDC_CLAIMS_ENTRY,
     schedules::OPENING_HOURS,
     codes::ORCID,
     software::PACKAGE_URL,
@@ -2790,7 +2805,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 217, "the 217 standard types built so far");
+        assert_eq!(names.len(), 222, "the 222 standard types built so far");
     }
 
     #[test]

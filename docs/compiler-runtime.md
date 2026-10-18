@@ -328,6 +328,14 @@ executor passes the setting's number in the key's place, and the
 operation is handed the setting's `KeyRing` (current and previous), which
 `jadpo_runtime::config::key_ring` makes from the checked settings for
 either executor.
+Since chunk 5.5r `crypto.verify_jwt` runs there too, given the
+invocation's clock as well (`Op::reads_clock`, its one operation, which the
+checker refuses outside actions and tests as `type.clock_context`), in
+`jadpo_value::jwt`: the token types are entries in
+`jadpo_std::standard::security`, whose `decode_base64url` and
+`JWT_ALGORITHM` both sides read, and its conditions are `RuleKey`s that
+only an `attempt` settles (`RuleKey::only_when_run`). A new `FormatKey`,
+`FirstPart`, shows an object by the first of its named parts it has.
 Since chunk 5.5g2 an `attempt` arm that maps `json.read`'s `mismatch` to
 a failure declaring `problem: DecodeProblem` carries that field's place
 (`RuleArm::problem` in the graph, `Raise::problem` in the plan), and the

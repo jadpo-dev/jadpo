@@ -21,7 +21,9 @@ license.workspace = true
 # names of places, languages and scripts and CLDR's person-name patterns
 # the scripts names are written in, for the order `text.format` writes a
 # person's name in (area 19, "People and contact"). pulldown-cmark renders
-# CommonMark for `markup.to_html` (area 19, "Text formats").
+# CommonMark for `markup.to_html` (area 19, "Text formats"). serde's
+# traits read a token's JSON refusing a member named twice
+# (`crypto.verify_jwt`, area 19, chunk 5.5r).
 [dependencies]
 jadpo-std.workspace = true
 jiff.workspace = true
@@ -41,6 +43,7 @@ fixed_decimal.workspace = true
 icu_provider.workspace = true
 writeable.workspace = true
 serde_json.workspace = true
+serde.workspace = true
 sha2.workspace = true
 chacha20poly1305.workspace = true
 argon2.workspace = true

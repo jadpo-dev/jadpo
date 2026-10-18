@@ -28,6 +28,7 @@ after_five
 afternoon
 afterwards
 agreed_term
+alg_none_token
 alice
 alice_with_todos
 all_memos
@@ -36,6 +37,7 @@ allergens
 allergies
 allergy
 already_archived
+altered
 amendment
 amount_too_precise
 animal_free
@@ -514,6 +516,7 @@ flour_needed
 flour_short
 fold_days
 follow_up
+for_the_pharmacy
 forget_memos
 form_text
 formal
@@ -665,6 +668,8 @@ key_bytes
 key_expires_at
 key_fingerprint
 key_in_order
+key_set_text
+key_set_unreadable
 keyed_count
 keyed_in
 keypad_entry
@@ -1012,12 +1017,19 @@ parcel_to
 parcels
 partner
 partner_added
+partner_claims
 partner_id
+partner_key_set
+partner_keys
 partner_name
 partner_name_taken
 partner_not_found
 partner_ref
+partner_sign_in
+partner_signing_keys
 partner_status
+partner_token_expired
+partner_token_refused
 partner_view
 partners
 party_id
@@ -1025,6 +1037,7 @@ party_label
 party_title
 pass_rate
 passed_on
+past_expiry
 pasted_about
 pastry
 patch_release
@@ -1131,6 +1144,7 @@ proxy_hops
 pub_hours
 publish_appraisal
 published_at
+published_key_set
 publisher
 publisher_id
 publisher_view
@@ -1314,6 +1328,7 @@ settings_colour
 severe
 share_code
 share_off
+shared_secret_forgery
 shelf
 shelf_card
 shelf_empty
