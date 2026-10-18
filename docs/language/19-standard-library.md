@@ -9044,8 +9044,9 @@ built, each the most conservative reading:
   key whose own `alg` is another's is never tried. RS256 and ES256, which
   most identity providers sign with, aren't built: the page names no
   algorithm, and each needs a crate of its own (RustCrypto's `rsa` or
-  `p256`). HS256 needs a shared secret held as data, which waits for keys
-  held as data ("Language gaps").
+  `p256`); they are chunk 5.5r4, with typed custom claims (decided by
+  the lead session, "Decisions"). HS256 needs a shared secret held as
+  data, which waits for keys held as data ("Language gaps").
 - **A `Jwk` holds no secret.** It has no private key (`d`) and no shared
   secret (an `oct` key's `k`): JSON naming either isn't a `Jwk`, so a key
   set read from outside can't put a secret in a program. Its parts are
@@ -9084,8 +9085,9 @@ built, each the most conservative reading:
 - **`Jwt`** is a JWS in compact form: three parts of unpadded Base64url in
   one spelling, none empty, so an unsecured token (RFC 7519 §6) is never
   one, and at most 8,192 characters. A token is a credential, so it is
-  shown to people as its last four only. Whether it is also kept out of
-  responses and reports, as a secret value is, is 5.5r2's to decide.
+  shown to people as its last four only; it is also a secret value, kept
+  out of responses and reports, in 5.5r2 (decided by the lead session,
+  "Decisions").
 - **`JwtClaims`** holds RFC 7519's seven registered claims by their own
   names: `aud` a list (one audience is read as a list of one), `exp`
   always there, and each text claim one line of 1 to 1,024 characters. It
@@ -9093,11 +9095,13 @@ built, each the most conservative reading:
   the claims it doesn't have left out, stored as that JSON, and shown by
   its subject, else its issuer, else its id, else its expiry
   (`FormatKey::FirstPart`). A token's other claims (`scope`, `email`)
-  aren't read: reading them as another type waits for a page to decide it.
+  aren't read here: `verify_jwt(..., as:)` reads them as an application's
+  type in chunk 5.5r4.
 - **`OAuthScope`** is one RFC 6749 scope-token of 1 to 256 characters.
   Area 9 (question 6) plans an `OAuthScope` enum generated from the scopes
-  `authentication.jadpo` declares, after the first build; when it is built
-  it must narrow this type to those scopes or take another name.
+  `authentication.jadpo` declares, after the first build; it narrows this
+  type to those scopes, a closed subset (decided by the lead session,
+  "Decisions").
 - **`OidcClaims`** holds OpenID Connect Core's subject (1 to 255 printable
   ASCII characters) and the claims a sign-in reads: `name` and
   `preferred_username` as lines, `given_name` and `family_name` as the
@@ -9164,6 +9168,9 @@ built, each the most conservative reading:
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 | A `PasswordHash` never leaves the server | It is stored as its PHC string, but refused in an `Output` (so a response), a request's `Input`, a failure's fields and `json.write` and `json.read`, as `type.password_hash_exposed` or `type.mismatch`; no page needs one read for imports, so `Input` refuses it too (lead session, chunk 5.5q2) | 2026-10-18 |
 | `crypto.public_key` | `crypto.public_key(key: config.<name>)` gives the `PublicKey` of a `PrivateKey` setting, Ed25519's public half, so an app can publish its key and a test can sign and verify; the key is still read only through `key:` (lead session, chunk 5.5q2) | 2026-10-18 |
+| JWTs from identity providers | Chunk 5.5r4, after 5.5r: RS256 and ES256 verification on RustCrypto's `rsa` and `p256`, verification only, pinned and built for wasm32, with the RFCs' test vectors and 5.5r's attack suite, so Google's, Microsoft's and Auth0's tokens verify; and typed custom claims, `verify_jwt(token, keys:, as: MyClaims)` decoding the claims beyond the registered seven into an application's `Object` through `json.read(as:)`'s decoding and typed failures, `JwtClaims` still giving the registered ones. HS256 still waits for keys held as data (lead session, chunk 5.5r) | 2026-10-18 |
+| A `Jwt` is a secret value | A token is a credential: `Jwt` joins chunk 5.5r2's secret values, so it is never in a response or a log, is compared in constant time and is redacted in reports (lead session, chunk 5.5r) | 2026-10-18 |
+| Generated scopes narrow `OAuthScope` | Area 9's enum of an application's declared scopes (its question 6) narrows the standard `OAuthScope` to them, a closed subset, rather than reusing the name; noted in area 9's plan, not built (lead session, chunk 5.5r) | 2026-10-18 |
 
 ### Open questions
 
