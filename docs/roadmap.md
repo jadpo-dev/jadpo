@@ -8,7 +8,7 @@ and the [language pages](language/README.md), not here.
 ## The direction (decided 2026-10-13)
 
 - **The language is specified** in [docs/language](language/README.md):
-  twenty areas, decided. Those pages are the specification and their
+  twenty-one areas, all decided. Those pages are the specification and their
   examples become the tests.
 - **A new compiler, built around one graph**
   ([compiler-runtime §1.1–1.2](compiler-runtime.md#11-graph-centred-compiler-decided-2026-10-13)).
@@ -1196,11 +1196,36 @@ reference only).
   `type.standard_exists`' shapes for `LineString` and `Polygon`. Done when
   a feature collection round-trips through JSON and a WKT polygon through
   PostGIS unchanged.
-- [ ] **5.5v AI: the plan** `opus · high` (area 19, question 20): write the
+- [x] **5.5v AI: the plan** `opus · high` (area 19, question 20): write the
   AI area page from area 19's scope (the `ai` capability, typed
   `ai.generate`, streaming, embeddings with pgvector, checked prompt
   files, a fake for tests, limits, area 15's report), and place its build
-  on this roadmap. **Needs Richard** to decide the page.
+  on this roadmap. Written as area 21 and decided by Richard on
+  2026-10-18, all fifteen questions as recommended; built in 5.5v1 to
+  5.5v7.
+- [ ] **5.5v1 Vectors in PostgreSQL** `opus · high` (area 21,
+  "Embeddings and search"): a vector type with `dimensions:` stored in a
+  pgvector `vector(n)` column (the 5.5s2 `toolchain.not_built_yet`
+  lifted), `distance:` on the type, `order: [F nearest v]` returning
+  `Nearest<T>`, `ai.distance` in code and as a SQL form in `where:`, a
+  derived HNSW index with the type's operator class (half-precision
+  expression index from 2,001 to 4,000 dimensions), `hnsw.ef_search` and
+  strict iterative scans per query, `CREATE EXTENSION` in the migration
+  with `jadpo migrate apply` and the start-up check refusing a store
+  without pgvector, and CI's and `jadpo dev`'s PostgreSQL on an image
+  with both pgvector and PostGIS (5.5u4 moves it to PostGIS's). Design the errors on area 21 first. Done
+  when a filtered nearest query of five returns the same five records
+  interpreted and on PostgreSQL, its plan uses the index, and each new
+  error has a checked example.
+- [ ] **5.5v2 Prompt files** `opus · high` (area 21, "Prompts as
+  files"): the `Prompt` type base, `prompts/` in a domain,
+  `<name>.prompt` with `# Instructions` and `# Request`, placeholders
+  checked as translations' are, free text only as tagged data blocks
+  with their closing tag escaped, a `List<ChatMessage>` field as the
+  turns, `prompts.render` and `jadpo ai show`, and each prompt's digest
+  in the manifest. Done when a rendered prompt matches the page's
+  example byte for byte, an injected closing tag can't end its block,
+  and each `prompt.` error has a checked example.
 - [x] **5.5w Every boundary through the contract: storage** `opus · high`
   (area 19, "Every standard type meets one contract"; Richard,
   2026-10-17), after the standard type groups. Split (2026-10-18) after a
@@ -1509,6 +1534,41 @@ The design is area 11 as revised on 2026-10-16, with its research in
   handshakes, `occurred_at`, and the `receiving` capability for queues
   (`type_at`, `id_at`, `events`), with the SQS package and, on Workers,
   the Cloudflare Queues driver.
+- [ ] **5.5v3 The `ai` capability: `generate` and its fake** `opus ·
+  xhigh` (area 21, "The `ai` capability" and "Typed output"), after
+  5.5v2 and 7.3: `ai:` in `application { }` with models as `ModelId`
+  settings, `provides/ai.jadpo`, `ai.generate(prompt, as: T)` with the
+  schema from `T`, the provider's structured mode or the schema in the
+  instructions, `json.read`'s decoding, one repair with the decode
+  problem, the five failures, answers reused on a rerun, the fake in
+  `jadpo test` and `jadpo dev` (`fakes: { ai.<prompt>: }`, `raw(...)`,
+  `.requests`), and `Driver.openai_compatible`. Done when a test drives
+  every failure and a repaired answer through the fake, and a local
+  model answers through the driver in `jadpo dev`.
+- [ ] **5.5v4 Embeddings and recordings** `opus · high` (area 21), after
+  5.5v1 and 5.5v3: `ai.embed` and `ai.embed_all`, `embedding_dimensions:`
+  and its check, the fake's seeded embeddings, `jadpo ai record` and
+  `recorded(...)`, every recording decoded on every build and a changed
+  prompt's recordings warned about. Done when the support example on area
+  21 runs end to end in a test: embed, nearest query, typed answer from a
+  recording.
+- [ ] **5.5v5 Budgets and personal data to models** `opus · high` (area
+  21, "Safety and privacy"), after 5.5v3: the per-call, per-request,
+  per-day and per-caller limits counted in the main store, the cost
+  estimate from the package's prices, `jadpo ai usage`, `personal_data: {
+  allowed: }` with the flow check from placeholders back to marked
+  fields, `to_models: false`, and the prompts in the personal-data report.
+  Done when a test exhausts each limit and is refused `over_budget`, and
+  a marked field reaching a prompt unlisted fails to compile.
+- [ ] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
+  5.5v3: server-sent events designed on area 7's page, a route returning
+  an `AiStream`, the final and error events, and the stream fake. Done
+  when a route test reads a scripted stream piece by piece and a failure
+  after the first piece arrives as an error event.
+- [ ] **5.5v7 OpenAI and Anthropic packages** `opus · high` (area 21),
+  after 5.5v4 and 5.5v6: two provider packages filling `ai`, each with its
+  context and price tables, recordings and `jadpo package conform <package>
+  ai`. **Needs Richard** for the API keys the live conformance run uses.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.
