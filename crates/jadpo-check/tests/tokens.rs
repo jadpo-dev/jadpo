@@ -5,6 +5,11 @@
 //! program runs, so each way it is refused needs an arm, `wrong_issuer`
 //! only when the call names an `issuer:`. A `Jwk` holds a public key, never
 //! a secret.
+//!
+//! Chunk 5.5r4: a `Jwk` holds an Ed25519, an RSA or a P-256 key, each held
+//! to its parts by its rules; `as:` reads a token's own claims as an
+//! application's `Object`, which `mismatch` needs an arm for only then;
+//! and `crypto.read_certificate` reads DER, failing `malformed`.
 
 use crate::support;
 
@@ -133,7 +138,7 @@ fn a_token_s_claims_are_read_by_name() {
 fn a_jwk_holds_an_ed25519_public_key_and_no_secret() {
     let key = |kty: &str, crv: &str| {
         format!(
-            "function key() -> Jwk {{\n    return Jwk {{\n        kty: \"{kty}\"\n        crv: \"{crv}\"\n        x: \"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\"\n        kid: \"2026-10\"\n        alg: none\n        use_: \"sig\"\n    }}\n}}\n"
+            "function key() -> Jwk {{\n    return Jwk {{\n        kty: \"{kty}\"\n        crv: \"{crv}\"\n        x: \"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\"\n        y: none\n        n: none\n        e: none\n        kid: \"2026-10\"\n        alg: none\n        use_: \"sig\"\n        x5c: none\n    }}\n}}\n"
         )
     };
     assert_eq!(check(&key("OKP", "Ed25519")), NONE);
@@ -161,5 +166,129 @@ fn scopes_and_identity_claims_are_standard_types() {
     assert_ne!(
         check("function scope() -> OAuthScope {\n    return \"openid email\"\n}\n"),
         NONE
+    );
+}
+
+const RSA_N: &str = "ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddxHmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMsD1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSHSXndS5z5rexMdbBYUsLA9e-KXBdQOS-UTo7WTBEMa2R2CapHg665xsmtdVMTBQY4uDZlxvb3qCo5ZwKh9kG4LT6_I5IhlJH7aGhyxXFvUK-DWNmoudF8NAco9_h9iaGNj8q2ethFkMLs91kzk2PAcDTW9gb54h4FRWyuXpoQ";
+
+/// A 1,024-bit modulus, too small to hold.
+const SMALL_N: &str = "pb1wVenLotoly3kkTJYZAgVZitibPm2YTBTdYJobj6gVv5md3RjcXfdHd_X63n5hbTwk-sggCicy68o4dl0Wrdb5lErhZhvhYy5ScBk3rOL5AKX04D9jwI_AtX6kJK42OaTEEeYNsJVKHv7P1-4_6ATy6u8nlyQUcIbsGsXtNu0";
+
+#[test]
+fn a_jwk_holds_an_rsa_or_a_p256_key_by_its_rules() {
+    let rsa = |n: &str, alg: &str| {
+        format!(
+            "function key() -> Jwk {{\n    return Jwk {{\n        kty: \"RSA\"\n        crv: none\n        x: none\n        y: none\n        n: \"{n}\"\n        e: \"AQAB\"\n        kid: \"rsa-1\"\n        alg: {alg}\n        use_: \"sig\"\n        x5c: none\n    }}\n}}\n"
+        )
+    };
+    assert_eq!(check(&rsa(RSA_N, "\"RS256\"")), NONE);
+    assert_eq!(check(&rsa(RSA_N, "none")), NONE);
+    // Another kind's algorithm, and a modulus too small to hold.
+    assert_ne!(check(&rsa(RSA_N, "\"ES256\"")), NONE);
+    assert_ne!(check(&rsa(SMALL_N, "none")), NONE);
+    let ec = |y: &str| {
+        format!(
+            "function key() -> Jwk {{\n    return Jwk {{\n        kty: \"EC\"\n        crv: \"P-256\"\n        x: \"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU\"\n        y: \"{y}\"\n        n: none\n        e: none\n        kid: none\n        alg: \"ES256\"\n        use_: none\n        x5c: none\n    }}\n}}\n"
+        )
+    };
+    assert_eq!(
+        check(&ec("x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0")),
+        NONE
+    );
+    // A point off the curve.
+    let refused = shown(&ec("x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a4"));
+    assert!(
+        refused
+            .iter()
+            .any(|problem| problem.contains("a_usable_key")),
+        "{refused:?}"
+    );
+}
+
+const SIGN_IN: &str = "type SignIn = Object {\n    email: Email\n    email_verified: Bool\n}\n\n";
+
+fn signed_in(call: &str, arms: &str) -> String {
+    format!(
+        "{SIGN_IN}type Unexpected = Failure {{\n    kind: FailureKind.invalid_value\n    internal: {{\n        problem: DecodeProblem\n    }}\n}}\n\naction signed_in(token: Jwt, keys: List<Jwk>) fails Refused, Expired, Unexpected -> SignIn {{\n    return attempt {call} {{\n{arms}    }}\n}}\n"
+    )
+}
+
+#[test]
+fn a_token_s_own_claims_are_read_as_an_object_of_the_application_s() {
+    let call = "crypto.verify_jwt(token, keys: keys, audience: \"clinic\", as: SignIn)";
+    assert_eq!(
+        check(&signed_in(
+            call,
+            &format!("{ARMS}        mismatch: Unexpected\n")
+        )),
+        NONE
+    );
+    // Claims that may not be the type need their arm.
+    assert_eq!(
+        check(&signed_in(call, ARMS)).first().map(String::as_str),
+        Some("failure.rule_unmapped")
+    );
+    // It gives the type `as:` names, not `JwtClaims`.
+    let as_claims = format!(
+        "{SIGN_IN}action claims(token: Jwt, keys: List<Jwk>) fails Refused, Expired -> JwtClaims {{\n    return attempt {call} {{\n{ARMS}        mismatch: Refused\n    }}\n}}\n"
+    );
+    assert_eq!(
+        check(&as_claims).first().map(String::as_str),
+        Some("type.mismatch")
+    );
+}
+
+#[test]
+fn as_names_an_object_whose_registered_claims_are_their_types() {
+    let reads = |declared: &str, ty: &str| {
+        format!(
+            "{declared}action claims(token: Jwt, keys: List<Jwk>) fails Refused, Expired -> {ty} {{\n    return attempt crypto.verify_jwt(token, keys: keys, audience: \"clinic\", as: {ty}) {{\n{ARMS}        mismatch: Refused\n    }}\n}}\n"
+        )
+    };
+    // Registered claims as `JwtClaims` holds them, optional or not, and
+    // built on their types.
+    let member = "type MemberId = Text {\n    max_length: 64\n}\n\ntype Member = Object {\n    sub: MemberId\n    iss: Text?\n    aud: List<Text>\n    exp: Instant\n    iat: Instant?\n    email: Email\n}\n\n";
+    assert_eq!(check(&reads(member, "Member")), NONE);
+    for (declared, ty, expected) in [
+        (
+            "",
+            "Text",
+            "is an object type of the application's, not `Text`",
+        ),
+        (
+            "",
+            "JwtClaims",
+            "is an object type of the application's, not `JwtClaims`",
+        ),
+        (
+            "type Member = Object {\n    sub: Int\n    email: Email\n}\n\n",
+            "Member",
+            "`Member.sub` is a registered claim, which is text",
+        ),
+        (
+            "type Member = Object {\n    exp: Text\n}\n\n",
+            "Member",
+            "`Member.exp` is a registered claim, which is an `Instant`",
+        ),
+    ] {
+        let found = shown(&reads(declared, ty));
+        assert!(
+            found.iter().any(|problem| problem.contains(expected)),
+            "{ty}: {found:?}"
+        );
+    }
+}
+
+#[test]
+fn a_certificate_is_read_from_its_der() {
+    let read = |arms: &str| {
+        format!(
+            "type Subject = Text {{}}\n\ntype Der = Bytes {{}}\n\nfunction subject(der: Der) fails Refused -> Subject {{\n    var certificate: Certificate = attempt crypto.read_certificate(der) {{\n{arms}    }}\n    return Subject(certificate.subject)\n}}\n"
+        )
+    };
+    assert_eq!(check(&read("        malformed: Refused\n")), NONE);
+    assert_eq!(
+        check(&read("")).first().map(String::as_str),
+        Some("failure.rule_unmapped")
     );
 }

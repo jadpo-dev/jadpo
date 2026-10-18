@@ -216,6 +216,13 @@ pub enum Column {
     /// A later column of a compound type, read by the [`Column::Compound`]
     /// before it and never on its own.
     Part,
+    /// A JSON-held standard value (`RichText`, `RichTextBlock`,
+    /// `LocalisedText`), stored as its contract's JSON in one `jsonb`
+    /// column (area 5's "Storage types"; area 19, chunk 5.5w2b): read with
+    /// the codec this number names in the plan's JSON table, as
+    /// `json.read`'s site numbers its type, so a stored value is read
+    /// exactly as a request's body is.
+    Json(u32),
 }
 
 /// Where a record's field comes from.

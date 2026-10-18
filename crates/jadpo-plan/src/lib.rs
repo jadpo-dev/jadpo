@@ -234,7 +234,11 @@ impl Plan {
             }
         }
         let mut types = Types::new(Arc::clone(&graph), rule_bodies);
-        let (queries, entities, identity) = queries::plans(db, project, &mut types);
+        // The types the JSON table numbers: each JSON-held field's, which
+        // its column reads and its writes write (chunk 5.5w2b), then each
+        // `json.read` and `json.write` call's.
+        let json_types = std::cell::RefCell::new(Vec::new());
+        let (queries, entities, identity) = queries::plans(db, project, &mut types, &json_types);
         let query_ids: HashMap<Key, u32> = queries
             .iter()
             .enumerate()
@@ -261,8 +265,8 @@ impl Plan {
                 )
             })
             .collect();
-        let (writes, write_ids) = writes::plans(db, project, &mut types, &bodies);
-        let gates = policy::gates(db, project, &mut types);
+        let (writes, write_ids) = writes::plans(db, project, &mut types, &bodies, &json_types);
+        let gates = policy::gates(db, project, &mut types, &json_types);
         let model = jadpo_check::data::data_model(db, project);
         let purges: Vec<PurgePlan> = model
             .entities
@@ -278,7 +282,7 @@ impl Plan {
             })
             .collect();
         let mut constants = Vec::new();
-        let mut json_types = Vec::new();
+        let mut json_types = json_types.into_inner();
         let mut callables = Vec::with_capacity(found.len());
         for (key, kind, file, body) in found {
             let node = graph.get(&key);

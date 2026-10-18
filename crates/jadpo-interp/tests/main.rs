@@ -24,6 +24,7 @@ mod domain_names;
 mod effects;
 mod failures;
 mod geospatial;
+mod identity_providers;
 mod lists;
 mod logic;
 mod maths;

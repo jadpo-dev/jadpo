@@ -8,7 +8,7 @@ and the [language pages](language/README.md), not here.
 ## The direction (decided 2026-10-13)
 
 - **The language is specified** in [docs/language](language/README.md):
-  twenty areas, decided. Those pages are the specification and their
+  twenty-one areas, all decided. Those pages are the specification and their
   examples become the tests.
 - **A new compiler, built around one graph**
   ([compiler-runtime §1.1–1.2](compiler-runtime.md#11-graph-centred-compiler-decided-2026-10-13)).
@@ -994,7 +994,7 @@ reference only).
   `invalid_signature`; `issuer:` and `audience:` are optional, the
   audience always checked (`wrong_audience`, and `wrong_issuer` when an
   issuer is named); `exp` is required, with 30 seconds' leeway; it reads
-  the clock, so actions call it. RS256 and ES256 aren't built. What the
+  the clock, so actions call it. RS256 and ES256 are 5.5r4's. What the
   pages left open is area 19's "Chosen in chunk 5.5r".
 - [x] **5.5r2 Secret values** `opus · high` (area 19, "The standard
   types"; split from 5.5r), after 5.5r: `Password`, `ApiKey`,
@@ -1013,7 +1013,7 @@ reference only).
   as data; the bytes of credentials the runtime makes never go on a replay
   recording. What the pages left open is area 19's "Chosen in chunk
   5.5r2".
-- [ ] **5.5r4 JWTs from identity providers** `opus · high` (area 19,
+- [x] **5.5r4 JWTs from identity providers** `opus · high` (area 19,
   "Hashing and cryptography"; decided by the lead session, 2026-10-18),
   after 5.5r: RS256 and ES256 verification on RustCrypto's `rsa` and
   `p256` (verification only, pinned, built for wasm32, with the RFCs'
@@ -1028,7 +1028,19 @@ reference only).
   data. Done when an RS256 and an ES256
   token verify against the RFCs' vectors, the attack suite refuses each
   attack under both, and a token's custom claims decode as a declared
-  type or fail `mismatch`.
+  type or fail `mismatch`. Built, on `rsa` 0.9.10 and `p256` 0.14.0,
+  verification only: a `Jwk` holds an Ed25519, an RSA (2,048 to 4,096
+  bits) or a P-256 key (a point on the curve), each used with its one
+  algorithm and held to its parts by three rules; a key set's members a
+  `Jwk` doesn't hold are ignored, as RFC 7517 requires, but a private
+  key's; a key with an `x5c` is tried only when its first certificate
+  holds the same key. RFC 7515's and RFC 7520's examples verify and the
+  attack suite is refused under both algorithms. `as:` takes an
+  application's `Object`, reads the claims it names and ignores the
+  others; a registered claim it names is the checked value as `JwtClaims`
+  holds it, so one call gives `sub` and `email` (decided by the lead
+  session), and one declared as another type is `type.mismatch`. What the pages left open is area 19's "Chosen in chunk
+  5.5r4".
 - [x] **5.5r3 Security records** `opus · high` (area 19, "The standard
   types"; split from 5.5r), after 5.5r2: `Hash`, `Hmac`, `Certificate`,
   `OneTimeCode`, `PasswordPolicy`, `WebAuthnCredential` (shaped to what
@@ -1057,7 +1069,7 @@ reference only).
   in RFC 4514's text, its serial in hexadecimal, its validity as two
   instants, its fingerprint a `Hash` and its DER; sent and stored as the
   PEM, and an object literal of one refused. Reading DER bytes is 5.5r4's
-  `crypto.read_certificate(der)`. What the page left open is area 19's
+  `crypto.read_certificate(der)`, built. What the page left open is area 19's
   "Chosen in chunk 5.5r5".
 - [x] **5.5z Passkeys** `opus · high` (area 8, "Passkeys"; decided by
   Richard, 2026-10-18), after 5.5q2 and 5.5r3: passkeys (WebAuthn, FIDO2)
@@ -1184,11 +1196,36 @@ reference only).
   `type.standard_exists`' shapes for `LineString` and `Polygon`. Done when
   a feature collection round-trips through JSON and a WKT polygon through
   PostGIS unchanged.
-- [ ] **5.5v AI: the plan** `opus · high` (area 19, question 20): write the
+- [x] **5.5v AI: the plan** `opus · high` (area 19, question 20): write the
   AI area page from area 19's scope (the `ai` capability, typed
   `ai.generate`, streaming, embeddings with pgvector, checked prompt
   files, a fake for tests, limits, area 15's report), and place its build
-  on this roadmap. **Needs Richard** to decide the page.
+  on this roadmap. Written as area 21 and decided by Richard on
+  2026-10-18, all fifteen questions as recommended; built in 5.5v1 to
+  5.5v7.
+- [ ] **5.5v1 Vectors in PostgreSQL** `opus · high` (area 21,
+  "Embeddings and search"): a vector type with `dimensions:` stored in a
+  pgvector `vector(n)` column (the 5.5s2 `toolchain.not_built_yet`
+  lifted), `distance:` on the type, `order: [F nearest v]` returning
+  `Nearest<T>`, `ai.distance` in code and as a SQL form in `where:`, a
+  derived HNSW index with the type's operator class (half-precision
+  expression index from 2,001 to 4,000 dimensions), `hnsw.ef_search` and
+  strict iterative scans per query, `CREATE EXTENSION` in the migration
+  with `jadpo migrate apply` and the start-up check refusing a store
+  without pgvector, and CI's and `jadpo dev`'s PostgreSQL on an image
+  with both pgvector and PostGIS (5.5u4 moves it to PostGIS's). Design the errors on area 21 first. Done
+  when a filtered nearest query of five returns the same five records
+  interpreted and on PostgreSQL, its plan uses the index, and each new
+  error has a checked example.
+- [ ] **5.5v2 Prompt files** `opus · high` (area 21, "Prompts as
+  files"): the `Prompt` type base, `prompts/` in a domain,
+  `<name>.prompt` with `# Instructions` and `# Request`, placeholders
+  checked as translations' are, free text only as tagged data blocks
+  with their closing tag escaped, a `List<ChatMessage>` field as the
+  turns, `prompts.render` and `jadpo ai show`, and each prompt's digest
+  in the manifest. Done when a rendered prompt matches the page's
+  example byte for byte, an injected closing tag can't end its block,
+  and each `prompt.` error has a checked example.
 - [x] **5.5w Every boundary through the contract: storage** `opus · high`
   (area 19, "Every standard type meets one contract"; Richard,
   2026-10-17), after the standard type groups. Split (2026-10-18) after a
@@ -1254,7 +1291,7 @@ reference only).
   (`jadpo-cli/tests/standard_boundaries.rs`, with settings in the
   runtime harness). What it chose, and what clients see change, is area
   19's "Chosen in chunk 5.5w2".
-- [ ] **5.5w2b Every boundary through the contract: the JSON-held values
+- [x] **5.5w2b Every boundary through the contract: the JSON-held values
   in storage** `opus · high` (area 19; split from 5.5w2), after 5.5w2:
   `RichText`, `RichTextBlock` and `LocalisedText` are stored as area 5's
   `jsonb`, written and read by the route codec, which structured fields
@@ -1262,7 +1299,12 @@ reference only).
   table, a column reads it (`Column::Json`) and a write's parameter
   writes it, the runtime's store operations given the JSON codecs as
   `json.read` is. Done when 5.5w's storage test stores and reads back
-  each of the three's examples.
+  each of the three's examples. Built: `FieldModel::json` marks the
+  three, `Column::Json` and `WriteSource::Json` number their codecs in
+  the JSON table, and `jadpo_runtime::store` takes `JsonCodecs`; a query
+  comparing one is `toolchain.not_built_yet`, and an application's own
+  structured fields stay refused. What it chose is area 19's "Chosen in
+  chunk 5.5w2b".
 - [ ] **5.5w3 Every boundary through the contract: one encoder**
   `opus · high` (area 19; split from 5.5w), after 5.5w2: the JSON reader
   and writer (`scalar_from_text`, `write_scalar`, the `ZonedTime`, `Money`
@@ -1502,6 +1544,41 @@ The design is area 11 as revised on 2026-10-16, with its research in
   handshakes, `occurred_at`, and the `receiving` capability for queues
   (`type_at`, `id_at`, `events`), with the SQS package and, on Workers,
   the Cloudflare Queues driver.
+- [ ] **5.5v3 The `ai` capability: `generate` and its fake** `opus ·
+  xhigh` (area 21, "The `ai` capability" and "Typed output"), after
+  5.5v2 and 7.3: `ai:` in `application { }` with models as `ModelId`
+  settings, `provides/ai.jadpo`, `ai.generate(prompt, as: T)` with the
+  schema from `T`, the provider's structured mode or the schema in the
+  instructions, `json.read`'s decoding, one repair with the decode
+  problem, the five failures, answers reused on a rerun, the fake in
+  `jadpo test` and `jadpo dev` (`fakes: { ai.<prompt>: }`, `raw(...)`,
+  `.requests`), and `Driver.openai_compatible`. Done when a test drives
+  every failure and a repaired answer through the fake, and a local
+  model answers through the driver in `jadpo dev`.
+- [ ] **5.5v4 Embeddings and recordings** `opus · high` (area 21), after
+  5.5v1 and 5.5v3: `ai.embed` and `ai.embed_all`, `embedding_dimensions:`
+  and its check, the fake's seeded embeddings, `jadpo ai record` and
+  `recorded(...)`, every recording decoded on every build and a changed
+  prompt's recordings warned about. Done when the support example on area
+  21 runs end to end in a test: embed, nearest query, typed answer from a
+  recording.
+- [ ] **5.5v5 Budgets and personal data to models** `opus · high` (area
+  21, "Safety and privacy"), after 5.5v3: the per-call, per-request,
+  per-day and per-caller limits counted in the main store, the cost
+  estimate from the package's prices, `jadpo ai usage`, `personal_data: {
+  allowed: }` with the flow check from placeholders back to marked
+  fields, `to_models: false`, and the prompts in the personal-data report.
+  Done when a test exhausts each limit and is refused `over_budget`, and
+  a marked field reaching a prompt unlisted fails to compile.
+- [ ] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
+  5.5v3: server-sent events designed on area 7's page, a route returning
+  an `AiStream`, the final and error events, and the stream fake. Done
+  when a route test reads a scripted stream piece by piece and a failure
+  after the first piece arrives as an error event.
+- [ ] **5.5v7 OpenAI and Anthropic packages** `opus · high` (area 21),
+  after 5.5v4 and 5.5v6: two provider packages filling `ai`, each with its
+  context and price tables, recordings and `jadpo package conform <package>
+  ai`. **Needs Richard** for the API keys the live conformance run uses.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.
