@@ -115,7 +115,11 @@ pub fn grouped(
         .iter()
         .map(|(expr, name)| format!("    {expr} AS {}", ident(name)))
         .collect();
-    let mut inner = format!("  SELECT\n{}\n  FROM {}", selected.join(",\n"), ident(table));
+    let mut inner = format!(
+        "  SELECT\n{}\n  FROM {}",
+        selected.join(",\n"),
+        ident(table)
+    );
     where_clause(&mut inner, conditions, "  ");
     if !groups.is_empty() {
         inner.push_str(&format!("\n  GROUP BY {}", groups.join(", ")));

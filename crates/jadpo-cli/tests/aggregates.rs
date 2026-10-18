@@ -129,7 +129,11 @@ fn project(name: &str) -> PathBuf {
         write(&root, &format!("domains/metering/{file}"), text);
     }
     let formatted = jadpo(&root, &["fmt"]);
-    assert_eq!(formatted.code, 0, "{}{}", formatted.stdout, formatted.stderr);
+    assert_eq!(
+        formatted.code, 0,
+        "{}{}",
+        formatted.stdout, formatted.stderr
+    );
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
     root
@@ -309,7 +313,11 @@ fn usage_per_month_and_counts_by_status_are_one_statement_each_and_what_code_giv
         let plan = program.plan().query_named(name).expect("the query's plan");
         assert!(plan.read.settings.is_empty(), "{name}");
         assert!(plan.read.select.includes.is_empty(), "{name}");
-        assert!(plan.read.select.sql.contains("GROUP BY"), "{}", plan.read.select.sql);
+        assert!(
+            plan.read.select.sql.contains("GROUP BY"),
+            "{}",
+            plan.read.select.sql
+        );
     }
     // From the middle of March 2024: the first month is a part month.
     let since = FIRST_DAY + 74;
@@ -320,7 +328,10 @@ fn usage_per_month_and_counts_by_status_are_one_statement_each_and_what_code_giv
         panic!("not a list: {by_query:?}");
     };
     assert_eq!(months.len(), 34, "March 2024 to December 2026");
-    assert_eq!(by_query, in_code, "the months the query gives are what code gives");
+    assert_eq!(
+        by_query, in_code,
+        "the months the query gives are what code gives"
+    );
     // Down to the text of each value, places and all.
     assert_eq!(format!("{by_query:?}"), format!("{in_code:?}"));
     let (by_query, sent) = call(&program, &url, "report_tallies", since);
@@ -330,6 +341,9 @@ fn usage_per_month_and_counts_by_status_are_one_statement_each_and_what_code_giv
         panic!("not a list: {by_query:?}");
     };
     assert_eq!(tallies.len(), 3);
-    assert_eq!(by_query, in_code, "the tallies the query gives are what code gives");
+    assert_eq!(
+        by_query, in_code,
+        "the tallies the query gives are what code gives"
+    );
     assert_eq!(format!("{by_query:?}"), format!("{in_code:?}"));
 }

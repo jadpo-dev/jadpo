@@ -69,8 +69,10 @@ impl Planner<'_> {
         };
         // The grouped rows' columns, then the outer statement's, each
         // entry's parts in turn, and where each entry's value starts.
-        let inner: Vec<(String, String)> =
-            selected.iter().flat_map(|s| s.inner.iter().cloned()).collect();
+        let inner: Vec<(String, String)> = selected
+            .iter()
+            .flat_map(|s| s.inner.iter().cloned())
+            .collect();
         let mut rows: Vec<(String, String)> = Vec::new();
         let mut kinds: Vec<Column> = Vec::new();
         let mut starts: Vec<u32> = Vec::new();
@@ -208,11 +210,9 @@ impl Planner<'_> {
                 let (field, column) = (field?, column?);
                 let kind = self.column(entity, field)?;
                 match &kind {
-                    Column::Int | Column::Duration => one(
-                        format!("coalesce(sum({column}), 0)::bigint"),
-                        kind,
-                        false,
-                    ),
+                    Column::Int | Column::Duration => {
+                        one(format!("coalesce(sum({column}), 0)::bigint"), kind, false)
+                    }
                     Column::Decimal => one(
                         format!(
                             "coalesce(sum({column}), {})",

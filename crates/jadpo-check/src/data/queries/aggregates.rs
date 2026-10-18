@@ -390,7 +390,10 @@ impl Reader<'_> {
             nearest: None,
             grouping: Some(Grouping {
                 grouped,
-                entries: reads.into_iter().map(|read| (read.name, read.entry)).collect(),
+                entries: reads
+                    .into_iter()
+                    .map(|read| (read.name, read.entry))
+                    .collect(),
                 order: order.unwrap_or_default(),
             }),
         })
@@ -402,10 +405,16 @@ impl Reader<'_> {
             return;
         };
         let reason = match section {
-            "include" => "An aggregate query's rows are groups and totals, not records, so there are no related records to include.",
-            "missing" => "An aggregate query always has its rows, one for each group or one over every record, so no failure is raised for finding nothing.",
+            "include" => {
+                "An aggregate query's rows are groups and totals, not records, so there are no related records to include."
+            }
+            "missing" => {
+                "An aggregate query always has its rows, one for each group or one over every record, so no failure is raised for finding nothing."
+            }
             "page" => "An aggregate query's rows come back in one list, bounded by `limit:`.",
-            _ => "Without `group:`, an aggregate query is one row over every record it finds, so there is nothing to order or limit.",
+            _ => {
+                "Without `group:`, an aggregate query is one row over every record it finds, so there is nothing to order or limit."
+            }
         };
         let removal = Self::span(path, member);
         self.out.push(
@@ -638,11 +647,12 @@ impl Reader<'_> {
             .reason(format!(
                 "{listing} A field's own value, the same for every record of a row, is a group."
             ));
-            self.out.push(if self.field_named(entity, &value).is_some() {
-                problem.next(format!("Write `sum({written})`, or move it to `group:`"))
-            } else {
-                problem.next("Write one of the aggregates")
-            });
+            self.out
+                .push(if self.field_named(entity, &value).is_some() {
+                    problem.next(format!("Write `sum({written})`, or move it to `group:`"))
+                } else {
+                    problem.next("Write one of the aggregates")
+                });
             return None;
         };
         let callee = call.expr()?;
@@ -732,9 +742,9 @@ impl Reader<'_> {
         };
         // One field, named with its entity.
         let field_expr = match positional.as_slice() {
-            [arg] => arg.expr().filter(|e| {
-                dotted(e).is_some_and(|(_, rest)| rest.len() == 1)
-            }),
+            [arg] => arg
+                .expr()
+                .filter(|e| dotted(e).is_some_and(|(_, rest)| rest.len() == 1)),
             _ => None,
         };
         let unknown_named: Vec<&String> = named
@@ -859,7 +869,9 @@ impl Reader<'_> {
                         if !field.fixed.iter().any(|(part, _)| *part == "currency") {
                             refuse(
                                 self,
-                                format!("`sum` adds up money in one currency, and `{field_written}`'s type doesn't fix one"),
+                                format!(
+                                    "`sum` adds up money in one currency, and `{field_written}`'s type doesn't fix one"
+                                ),
                                 format!(
                                     "Amounts in two currencies don't add up (`currency_mismatch`), and a sum of no records needs a currency for its zero, so the field's type fixes its currency: `{shown_ty}` doesn't."
                                 ),
@@ -909,9 +921,10 @@ impl Reader<'_> {
             AggregateKind::Average { scale, .. } => {
                 match prim {
                     Some(Prim::Int) => {}
-                    Some(Prim::Decimal) => match field.scale {
-                        Some(places) if places <= scale => {}
-                        Some(places) => {
+                    // A stored decimal always keeps a fixed number of
+                    // places (`type.decimal_scale_required`).
+                    Some(Prim::Decimal) => {
+                        if let Some(places) = field.scale.filter(|places| *places > scale) {
                             refuse(
                                 self,
                                 format!("`average` keeps {scale} places, and `{field_written}` keeps {places}"),
@@ -920,24 +933,13 @@ impl Reader<'_> {
                             );
                             return None;
                         }
-                        None => {
-                            refuse(
-                                self,
-                                format!("`average` needs to know the places `{field_written}` keeps"),
-                                format!(
-                                    "The average is the exact mean rounded once to `scale:` places, so it keeps at least the places each value has, and `{shown_ty}` sets no `scale:`."
-                                ),
-                                format!("Give `{shown_ty}` a `scale:`"),
-                            );
-                            return None;
-                        }
-                    },
+                    }
                     _ => {
                         refuse(
                             self,
                             format!("`average` can't work out a mean of `{field_written}`"),
                             format!(
-                                "`average` takes a field built on `Int`, or on `Decimal` with a `scale:`; `{field_written}` is `{shown_ty}`."
+                                "`average` takes a field built on `Int` or `Decimal`; `{field_written}` is `{shown_ty}`."
                             ),
                             "Average another field, or add it up with `sum`".to_string(),
                         );
@@ -989,7 +991,11 @@ impl Reader<'_> {
             );
             return None;
         }
-        let declared = self.lookup.fields(ty).map(<[_]>::to_vec).unwrap_or_default();
+        let declared = self
+            .lookup
+            .fields(ty)
+            .map(<[_]>::to_vec)
+            .unwrap_or_default();
         let mut ok = true;
         for read in reads {
             if !declared.iter().any(|f| f.name == read.name) {
@@ -1163,9 +1169,7 @@ impl Reader<'_> {
                 .at(inner_span.clone(), "not an entry")
                 .reason(reason);
                 self.out.push(match near {
-                    Some(near) => problem
-                        .next(format!("Use `{near}`"))
-                        .edit(inner_span, near),
+                    Some(near) => problem.next(format!("Use `{near}`")).edit(inner_span, near),
                     None => problem.next("Order by a group or an aggregate"),
                 });
                 continue;
