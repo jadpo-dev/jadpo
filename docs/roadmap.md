@@ -1267,12 +1267,22 @@ reference only).
   `opus · high` (area 19; split from 5.5w), after 5.5w2: the JSON reader
   and writer (`scalar_from_text`, `write_scalar`, the `ZonedTime`, `Money`
   and quantity arms) and OpenAPI's `scalar_schema` read each type's entry
-  rather than matching on built-in types; the compile-time SQL literals
-  (`jadpo-sql`'s conditions, backfills in `jadpo-check`'s migrations)
-  share the runtime's storage codec; the per-type harness builds its
-  codecs with the plan's builder rather than a copy of it. Done when no
-  boundary has an encoder of its own: each calls the contract's JSON,
-  storage or text for a standard type.
+  rather than matching on built-in types; the per-type harness builds its
+  codecs with the plan's builder rather than a copy of it; OpenAPI's
+  schema of a part that is a built-in type held as a standard type
+  (`OidcClaims`' `email`) is that type's. Done when neither the JSON
+  boundary nor OpenAPI has an encoder of its own: each calls the
+  contract's JSON or text for a standard type, and a test fails if one
+  names a standard type held by a built-in type. Split on 2026-10-18: the
+  SQL literals are 5.5w3b.
+- [ ] **5.5w3b Every boundary through the contract: SQL literals**
+  `opus · high` (area 19; split from 5.5w3), after 5.5w3: the
+  compile-time SQL literals (`jadpo-sql`'s conditions, backfills in
+  `jadpo-check`'s migrations) share the runtime's storage codec, so a
+  literal is written into a statement as the runtime would bind it. Done
+  when no boundary has an encoder of its own: each calls the contract's
+  JSON, storage or text for a standard type, and 5.5w3's test covers the
+  SQL literals too.
 - [x] **5.5x `jadpo suggest`** `opus · high` (area 14; decided by Richard,
   2026-10-17): first write the command's section on area 14 from this
   design, then build it. A command that hints, never edits, where code
