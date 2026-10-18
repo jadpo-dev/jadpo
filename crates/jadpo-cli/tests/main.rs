@@ -7,6 +7,7 @@ mod support;
 mod accept_language;
 mod across;
 mod ai;
+mod backfills;
 mod binary;
 mod check;
 mod cli;

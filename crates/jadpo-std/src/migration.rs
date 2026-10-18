@@ -123,7 +123,9 @@ impl Migration {
 
     /// Whether it fills a backfill in batches.
     pub fn has_batches(&self) -> bool {
-        self.sql.lines().any(|line| line.starts_with(BACKFILL_MARKER))
+        self.sql
+            .lines()
+            .any(|line| line.starts_with(BACKFILL_MARKER))
     }
 }
 
@@ -164,9 +166,7 @@ mod tests {
                     count: "SELECT count(*) FROM \"todo\"".into(),
                     batch: "WITH batch AS (\nSELECT 1\n) SELECT 2".into(),
                 }),
-                Step::Once(
-                    "ALTER TABLE \"todo\" ALTER COLUMN \"priority\" SET NOT NULL;".into()
-                ),
+                Step::Once("ALTER TABLE \"todo\" ALTER COLUMN \"priority\" SET NOT NULL;".into()),
             ]
         );
     }

@@ -389,7 +389,9 @@ pub fn migration_sql(
                     });
                 }
                 if let Some(need) = need {
-                    let key = new.map(|t| t.primary_key.columns.clone()).unwrap_or_default();
+                    let key = new
+                        .map(|t| t.primary_key.columns.clone())
+                        .unwrap_or_default();
                     plan.columns
                         .extend(backfill(table, &key, column, &[], need, decided));
                 }
@@ -449,7 +451,9 @@ pub fn migration_sql(
                     .find(|n| &n.table == table && &n.column == column);
                 match need {
                     Some(need) => {
-                        let key = new.map(|t| t.primary_key.columns.clone()).unwrap_or_default();
+                        let key = new
+                            .map(|t| t.primary_key.columns.clone())
+                            .unwrap_or_default();
                         plan.columns.extend(backfill(
                             table,
                             &key,
@@ -802,6 +806,60 @@ mod tests {
         let text = done.to_document("x");
         assert!(text.contains("UPDATE \"todo\" SET \"rank\" = 3 WHERE \"rank\" IS NULL;"));
         assert!(text.contains("SET NOT NULL;"));
+    }
+
+    #[test]
+    fn a_computed_backfill_is_filled_in_batches_then_required() {
+        let before = schema(&[
+            ("id", "uuid", false, false),
+            ("flag", "boolean", false, false),
+        ]);
+        let after = schema(&[
+            ("id", "uuid", false, false),
+            ("flag", "boolean", false, false),
+            ("rank", "bigint", false, false),
+        ]);
+        let value = "(CASE WHEN \"todo\".\"flag\" THEN 1 ELSE 2 END)";
+        let sql = migration_sql(&before, &after, &|_| Some(Decided::Computed(value.into())))
+            .expect("sql");
+        let document = sql.to_document("x");
+        let section = &sections(&document)[0];
+        let steps = jadpo_std::Migration {
+            name: "x".into(),
+            digest: section_digest(&section.sql),
+            sql: section.sql.clone(),
+        }
+        .steps();
+        assert_eq!(steps.len(), 3, "{document}");
+        assert_eq!(
+            steps[0],
+            jadpo_std::Step::Once("ALTER TABLE \"todo\" ADD COLUMN \"rank\" bigint;".into())
+        );
+        let jadpo_std::Step::Batches(batches) = &steps[1] else {
+            panic!("{document}");
+        };
+        assert_eq!(batches.field, "Todo.rank");
+        assert_eq!(batches.how, "by UPDATE");
+        assert_eq!(
+            batches.count,
+            "SELECT count(*) FROM \"todo\" WHERE \"rank\" IS NULL"
+        );
+        assert!(
+            batches
+                .batch
+                .contains(&format!("SET \"rank\" = {value} FROM \"batch\""))
+                && batches
+                    .batch
+                    .contains("WHERE \"id\" > $1 ORDER BY \"id\" LIMIT 1000"),
+            "{}",
+            batches.batch
+        );
+        assert_eq!(
+            steps[2],
+            jadpo_std::Step::Once(format!(
+                "LOCK TABLE \"todo\" IN SHARE ROW EXCLUSIVE MODE;\nUPDATE \"todo\" SET \"rank\" = {value} WHERE \"rank\" IS NULL;\nALTER TABLE \"todo\" ALTER COLUMN \"rank\" SET NOT NULL;"
+            ))
+        );
     }
 
     #[test]

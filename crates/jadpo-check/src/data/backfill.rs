@@ -13,8 +13,7 @@ use std::sync::Arc;
 
 use jadpo_db::{Db, Project};
 use jadpo_graph::body::{
-    ArmBody, BinaryOp, Body, Callee, Expr, Literal, LocalId, Node, Pattern, SiteId, Stmt,
-    UnaryOp,
+    ArmBody, BinaryOp, Body, Callee, Expr, Literal, LocalId, Node, Pattern, SiteId, Stmt, UnaryOp,
 };
 use jadpo_graph::{Base, Detail, Graph, Key, TypeRef};
 use jadpo_sql::form::{self, Arg, Held, Operator};
@@ -224,7 +223,10 @@ impl Render<'_> {
         };
         let sql = form::operator(operator, &[Arg::Value(&a, ha), Arg::Value(&b, hb)])?;
         let held = match operator {
-            Operator::Add | Operator::Subtract | Operator::Multiply | Operator::Divide
+            Operator::Add
+            | Operator::Subtract
+            | Operator::Multiply
+            | Operator::Divide
             | Operator::Remainder => {
                 // A whole number meeting a decimal is a decimal.
                 match (ha, hb) {
@@ -308,17 +310,30 @@ impl Render<'_> {
     /// What an operation takes written out rather than as a value: a
     /// rounding mode, `decimal.round`'s `scale:`, `text.pad_start`'s
     /// `fill:`.
-    fn written_out(&self, frame: &Frame<'_>, op: Op, at: usize, arg: SiteId) -> Option<Arg<'static>> {
+    fn written_out(
+        &self,
+        frame: &Frame<'_>,
+        op: Op,
+        at: usize,
+        arg: SiteId,
+    ) -> Option<Arg<'static>> {
         let Node::Expr(expr) = &frame.body.site(arg).node else {
             return None;
         };
         match (op, at, expr) {
-            (_, _, Expr::Build {
-                callee: Callee::Variant(key),
-                ..
-            }) => {
+            (
+                _,
+                _,
+                Expr::Build {
+                    callee: Callee::Variant(key),
+                    ..
+                },
+            ) => {
                 let (host, variant) = key.written().rsplit_once('.')?;
-                (host == Rounding::NAME).then(|| rounding(variant)).flatten().map(Arg::Rounding)
+                (host == Rounding::NAME)
+                    .then(|| rounding(variant))
+                    .flatten()
+                    .map(Arg::Rounding)
             }
             (Op::DecimalRound, 1, Expr::Literal(Literal::Number { value, .. })) => {
                 (value.scale == 0).then_some(())?;
@@ -351,7 +366,10 @@ impl Render<'_> {
             let condition = match &arm.pattern {
                 Pattern::Variant(key) => form::operator(
                     Operator::Equal,
-                    &[Arg::Value(&value, held), Arg::Value(&variant_text(key)?, held)],
+                    &[
+                        Arg::Value(&value, held),
+                        Arg::Value(&variant_text(key)?, held),
+                    ],
                 )?,
                 Pattern::True => value.clone(),
                 Pattern::False => form::operator(Operator::Not, &[Arg::Value(&value, held)])?,
@@ -421,7 +439,9 @@ impl Render<'_> {
         let name = key.written();
         let value = table
             .values()
-            .find(|evaluated| evaluated.name == name || name.ends_with(&format!(".{}", evaluated.name)))?
+            .find(|evaluated| {
+                evaluated.name == name || name.ends_with(&format!(".{}", evaluated.name))
+            })?
             .value
             .clone()?;
         let held = self.held(ty)?;
@@ -477,7 +497,9 @@ impl Render<'_> {
                             scale = scale.or(rules.scale);
                             ty = inner.clone();
                         }
-                        Some(Detail::Field { ty: inner, rules, .. }) => {
+                        Some(Detail::Field {
+                            ty: inner, rules, ..
+                        }) => {
                             scale = scale.or(rules.scale);
                             ty = inner.clone();
                         }

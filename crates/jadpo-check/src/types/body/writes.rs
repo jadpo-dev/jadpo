@@ -1571,7 +1571,11 @@ impl Body<'_> {
         }
         let [field] = rest else { return None };
         let field = text(field);
-        if self.table.field(head, std::slice::from_ref(&field)).is_none() {
+        if self
+            .table
+            .field(head, std::slice::from_ref(&field))
+            .is_none()
+        {
             // A field this migration retires, which its entity's backfill
             // still reads (area 5, "Computed backfills").
             if self.stored.as_deref() == Some(head)

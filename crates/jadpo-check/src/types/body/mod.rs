@@ -174,7 +174,11 @@ pub fn callables_of<'db>(db: &'db dyn Db, file: File) -> Vec<Callable<'db>> {
 /// migration's (area 5, "Computed backfills"; chunk 5.6b). An earlier
 /// migration's backfills ran with the code they were written against, so
 /// only the latest's are read.
-pub fn backfill_callables<'db>(db: &'db dyn Db, project: Project, file: File) -> Vec<Callable<'db>> {
+pub fn backfill_callables<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    file: File,
+) -> Vec<Callable<'db>> {
     let path = file.path(db);
     if !path.ends_with("/changes.jadpo") {
         return Vec::new();
@@ -198,7 +202,8 @@ pub fn backfill_callables<'db>(db: &'db dyn Db, project: Project, file: File) ->
             .member_list()
             .map_or(0, |list| list.member_items().count());
         for member in 0..count {
-            if let Some((_, _, value)) = crate::data::migrations::backfill_member(&migration, member)
+            if let Some((_, _, value)) =
+                crate::data::migrations::backfill_member(&migration, member)
                 && matches!(
                     super::rules::Const::from_expr(&value),
                     super::rules::Const::Other | super::rules::Const::Path(_)
@@ -876,7 +881,8 @@ impl Body<'_> {
                     }
                     _ => self.table.field_type(&entity, path),
                 };
-                let retired = crate::data::migrations::retired_fields(self.db, self.project, &entity);
+                let retired =
+                    crate::data::migrations::retired_fields(self.db, self.project, &entity);
                 Target {
                     syntax: value.syntax().clone(),
                     context: Context::Backfill,

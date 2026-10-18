@@ -108,7 +108,13 @@ pub const BATCH_ROWS: u32 = 1000;
 /// key order, so each starts where the last ended, through the key's
 /// index; the rows each fills are those still without a value, so a
 /// batch run twice fills nothing twice.
-pub fn backfill_in_batches(field: &str, table: &str, key: &str, column: &str, value: &str) -> String {
+pub fn backfill_in_batches(
+    field: &str,
+    table: &str,
+    key: &str,
+    column: &str,
+    value: &str,
+) -> String {
     let (t, k, c) = (ident(table), ident(key), ident(column));
     format!(
         "{marker}{field}: by UPDATE, {BATCH_ROWS} rows a batch, each batch its own transaction\n\

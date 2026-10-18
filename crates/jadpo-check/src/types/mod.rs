@@ -28,8 +28,8 @@ mod ty;
 pub(crate) use body::transition_key;
 pub(crate) use body::{BodyView, LocalKind, ViewLocal, members_of};
 pub use body::{
-    Callable, Checked, FailureSet, FailureSets, Fallible, body_problems, call_problems,
-    backfill_callables, callables_of, failure_set, failure_sets, rule_callables, typed_body,
+    Callable, Checked, FailureSet, FailureSets, Fallible, backfill_callables, body_problems,
+    call_problems, callables_of, failure_set, failure_sets, rule_callables, typed_body,
 };
 pub use decl::type_problems;
 pub use facts::{BodyFacts, Fact, Write, body_facts, fact_of, facts_at, named, resolve};

@@ -567,7 +567,9 @@ impl Decide<'_> {
                 }
                 computed.sql.map(Decided::Computed)
             }
-            (DecisionValue::Backfill(value, _), NeededKind::Refit) if self.is_computed(need, value) => {
+            (DecisionValue::Backfill(value, _), NeededKind::Refit)
+                if self.is_computed(need, value) =>
+            {
                 None
             }
             (DecisionValue::Backfill(value, _), NeededKind::Backfill | NeededKind::Refit) => {
@@ -606,12 +608,14 @@ impl Decide<'_> {
     pub fn is_computed(&self, need: &Needed, value: &Const) -> bool {
         match value {
             Const::Other => true,
-            Const::Path(path) => !(path.len() == 2
-                && path[0] != need.entity
-                && (matches!(self.lookup.def(&path[0]), Some(Def::Enum { .. }))
-                    || jadpo_std::standard_type(&path[0]).is_some_and(|entry| {
-                        matches!(entry.holds, jadpo_std::standard::Holds::Enum(_))
-                    }))),
+            Const::Path(path) => {
+                !(path.len() == 2
+                    && path[0] != need.entity
+                    && (matches!(self.lookup.def(&path[0]), Some(Def::Enum { .. }))
+                        || jadpo_std::standard_type(&path[0]).is_some_and(|entry| {
+                            matches!(entry.holds, jadpo_std::standard::Holds::Enum(_))
+                        })))
+            }
             _ => false,
         }
     }
@@ -619,7 +623,8 @@ impl Decide<'_> {
     /// A computed backfill checked as a body, and its SQL.
     pub fn computed(&self, decision: &Decision, need: &Needed) -> Option<Computed> {
         let file = self.file?;
-        let callable = crate::types::Callable::new(self.db, file, decision.decl, Some(decision.member));
+        let callable =
+            crate::types::Callable::new(self.db, file, decision.decl, Some(decision.member));
         let checked = crate::types::typed_body(self.db, self.project, callable);
         let mut problems: Vec<Diagnostic> = checked.problems.clone();
         problems.extend(checked.deferred.iter().map(|(_, problem)| problem.clone()));

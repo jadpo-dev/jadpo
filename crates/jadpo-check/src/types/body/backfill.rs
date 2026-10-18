@@ -6,7 +6,7 @@
 //! fail, since area 5 doesn't say what a row whose value failed gets.
 
 use jadpo_diag::{Diagnostic, Span, rule};
-use jadpo_syntax::ast;
+use jadpo_syntax::ast::{self, AstNode};
 
 use super::{BackfillTarget, Body, Fallible};
 
@@ -63,7 +63,14 @@ impl Body<'_> {
                 let listed: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
                 format!("can fail with {}", crate::and_list(&listed))
             }
-            Fallible::Construction(_) => "checked when it runs".to_string(),
+            Fallible::Construction(rules) => {
+                let written = call
+                    .expr()
+                    .map(|callee| crate::tree::written(callee.syntax()))
+                    .unwrap_or_default();
+                let listed: Vec<String> = rules.iter().map(|r| format!("`{r}`")).collect();
+                format!("can break `{written}`'s {}", crate::and_list(&listed))
+            }
             Fallible::Never | Fallible::Unknown => return true,
         };
         let span = self.span(call);

@@ -307,6 +307,7 @@ pub fn spinner(args: &[String], env: &Environment) -> jadpo_term::Spinner {
     let style = Style::detect(env, json, choice, Stream::Stderr);
     let mut words = args.iter().take_while(|arg| *arg != "--").peekable();
     let mut command = None;
+    let mut action = None;
     let mut quiet = json;
     while let Some(arg) = words.next() {
         match arg.as_str() {
@@ -317,18 +318,40 @@ pub fn spinner(args: &[String], env: &Environment) -> jadpo_term::Spinner {
             word if !word.starts_with('-') && command.is_none() => {
                 command = table::find(word).map(|command| command.name);
             }
+            word if !word.starts_with('-') && action.is_none() => action = Some(word.to_string()),
             _ => {}
         }
     }
-    let doing = match command {
-        Some("test") => "Running tests",
-        Some("check") => "Checking",
+    let doing = match (command, action.as_deref()) {
+        (Some("test"), _) => "Running tests",
+        (Some("check"), _) => "Checking",
+        // A backfill's batches say how far they have got (chunk 5.6b).
+        (Some("migrate"), Some("apply")) => "Applying migrations",
         _ => "",
     };
     if quiet || doing.is_empty() {
         return jadpo_term::Spinner::start(&Style::new(jadpo_term::Mode::Plain), "");
     }
-    jadpo_term::Spinner::start(&style, doing)
+    let spinner = jadpo_term::Spinner::start(&style, doing);
+    if let Ok(mut live) = LIVE.lock() {
+        *live = Some(spinner.words());
+    }
+    spinner
+}
+
+/// What the running command's live line says, when it shows one.
+static LIVE: std::sync::Mutex<Option<std::sync::Arc<std::sync::Mutex<String>>>> =
+    std::sync::Mutex::new(None);
+
+/// Changes what the live line says, when there is one: how far a slow
+/// step has got.
+pub(crate) fn say(words: &str) {
+    let live = LIVE.lock().ok().and_then(|live| live.clone());
+    if let Some(live) = live
+        && let Ok(mut now) = live.lock()
+    {
+        *now = words.to_string();
+    }
 }
 
 /// `--json` and `--color` read before anything else, so even a mistake on

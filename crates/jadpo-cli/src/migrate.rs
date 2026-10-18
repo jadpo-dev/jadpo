@@ -982,46 +982,149 @@ fn apply(call: &Call) -> Reply {
     let list = steps.get(&store).map(Vec::as_slice).unwrap_or_default();
     let migrations = list.to_vec();
     let ran = run(&url, |database| {
-        Box::pin(async move { jadpo_runtime::migrate(database, &migrations).await })
+        Box::pin(async move {
+            let mut filled: Vec<Filled> = Vec::new();
+            let ran = jadpo_runtime::migrate_reporting(database, &migrations, &mut |progress| {
+                track(&mut filled, progress);
+                std::ops::ControlFlow::Continue(())
+            })
+            .await;
+            ran.map(|ran| (ran, filled))
+        })
     });
     match ran {
-        Ok(Ok(ran)) => {
-            let text = if ran.is_empty() {
-                format!("`{store}` is up to date")
-            } else {
-                format!(
-                    "Applied {} {} to `{store}`",
-                    ran.len(),
-                    if ran.len() == 1 {
-                        "migration"
-                    } else {
-                        "migrations"
-                    }
-                )
-            };
-            let rows = ran
-                .iter()
-                .map(|name| (name.clone(), "applied".to_string()))
-                .collect();
-            let screen = Screen::new().with(Block::Status {
-                outcome: Outcome::Success,
-                text,
-                rows,
-            });
-            Reply::screen(
-                screen,
-                Json::object([
-                    ("store", store.as_str().into()),
-                    ("applied", Json::array(ran.iter().map(String::as_str))),
-                ]),
-            )
-        }
+        Ok(Ok((ran, filled))) => applied(&store, &ran, &filled),
         Ok(Err(error)) => Reply::failed(migrate_failed(&store, error)),
         Err(error) => Reply::failed(migrate_failed(
             &store,
             jadpo_runtime::MigrateError::Store(error),
         )),
     }
+}
+
+/// A backfill `apply` filled in batches (chunk 5.6b), as it reports it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Filled {
+    migration: String,
+    field: String,
+    how: String,
+    /// The rows left when this run began it.
+    left: u64,
+    rows: u64,
+    batches: u64,
+    resumed: bool,
+}
+
+/// Follows a backfill's batches, and says how far they have got on the
+/// live line: `Filling Todo.priority  2000 of 5000 rows`.
+fn track(filled: &mut Vec<Filled>, progress: &jadpo_runtime::Progress<'_>) {
+    use jadpo_runtime::Progress;
+    match progress {
+        Progress::Filling {
+            migration,
+            field,
+            how,
+            left,
+            resumed,
+        } => {
+            filled.push(Filled {
+                migration: migration.to_string(),
+                field: field.to_string(),
+                how: how.to_string(),
+                left: *left,
+                rows: 0,
+                batches: 0,
+                resumed: *resumed,
+            });
+            crate::run::say(&format!("Filling {field}  0 of {}", rows(*left)));
+        }
+        Progress::Filled {
+            migration,
+            field,
+            rows: batch,
+        } => {
+            if let Some(found) = filled
+                .iter_mut()
+                .rev()
+                .find(|f| f.migration == *migration && f.field == *field)
+            {
+                found.rows += batch;
+                found.batches += 1;
+                crate::run::say(&format!(
+                    "Filling {field}  {} of {}",
+                    found.rows,
+                    rows(found.left.max(found.rows))
+                ));
+            }
+        }
+        Progress::Applied { .. } => crate::run::say("Applying migrations"),
+    }
+}
+
+/// `1 row`, `2500 rows`.
+fn rows(n: u64) -> String {
+    if n == 1 {
+        "1 row".to_string()
+    } else {
+        format!("{n} rows")
+    }
+}
+
+/// The screen for migrations applied: each by name, and under it each
+/// backfill it filled in batches.
+fn applied(store: &str, ran: &[String], filled: &[Filled]) -> Reply {
+    let text = if ran.is_empty() {
+        format!("`{store}` is up to date")
+    } else {
+        format!(
+            "Applied {} {} to `{store}`",
+            ran.len(),
+            if ran.len() == 1 {
+                "migration"
+            } else {
+                "migrations"
+            }
+        )
+    };
+    let mut lines = Vec::new();
+    for name in ran {
+        lines.push((name.clone(), "applied".to_string()));
+        for fill in filled.iter().filter(|f| &f.migration == name) {
+            let batches = if fill.batches == 1 {
+                "1 batch".to_string()
+            } else {
+                format!("{} batches", fill.batches)
+            };
+            let mut said = format!("{} filled in {batches} {}", rows(fill.rows), fill.how);
+            if fill.resumed {
+                said.push_str(", carrying on from an earlier run");
+            }
+            lines.push((format!("  {}", fill.field), said));
+        }
+    }
+    let screen = Screen::new().with(Block::Status {
+        outcome: Outcome::Success,
+        text,
+        rows: lines,
+    });
+    let backfills = filled.iter().map(|fill| {
+        Json::object([
+            ("migration", fill.migration.as_str().into()),
+            ("field", fill.field.as_str().into()),
+            ("how", fill.how.as_str().into()),
+            ("rows", Json::from(fill.rows as i64)),
+            ("batches", Json::from(fill.batches as i64)),
+            ("resumed", fill.resumed.into()),
+        ])
+    });
+    Reply::screen(
+        screen,
+        Json::object([
+            ("store", store.into()),
+            ("applied", Json::array(ran.iter().map(String::as_str))),
+            ("backfills", Json::array(backfills)),
+        ]),
+    )
 }
 
 /// Runs `work` against the database at `url`, on a runtime of its own.

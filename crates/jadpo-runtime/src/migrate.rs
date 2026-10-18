@@ -219,7 +219,10 @@ pub async fn migrate_reporting(
 }
 
 /// Records `migration` as applied.
-async fn record(transaction: &mut dyn Transaction, migration: &Migration) -> Result<(), StoreError> {
+async fn record(
+    transaction: &mut dyn Transaction,
+    migration: &Migration,
+) -> Result<(), StoreError> {
     transaction
         .execute(
             "INSERT INTO jadpo_migrations (name, digest) VALUES ($1, $2)",
@@ -259,7 +262,15 @@ async fn in_steps(
     loop {
         attempt += 1;
         let mut transaction = database.begin_at(Isolation::ReadCommitted).await?;
-        let stepped = one_step(transaction.as_mut(), migration, migrations, &steps, counted, report).await;
+        let stepped = one_step(
+            transaction.as_mut(),
+            migration,
+            migrations,
+            &steps,
+            counted,
+            report,
+        )
+        .await;
         match stepped {
             Ok(Some(stepped)) => {
                 transaction.commit().await?;
@@ -443,7 +454,10 @@ async fn one_step<'s>(
 
 /// Records `migration`, filled in batches, as applied, and forgets how
 /// far it got.
-async fn finish(transaction: &mut dyn Transaction, migration: &Migration) -> Result<(), StoreError> {
+async fn finish(
+    transaction: &mut dyn Transaction,
+    migration: &Migration,
+) -> Result<(), StoreError> {
     record(transaction, migration).await?;
     transaction
         .execute(
