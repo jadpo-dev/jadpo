@@ -154,20 +154,20 @@ pub(crate) fn encode(value: &SqlValue, out: &mut Vec<u8>) -> Result<bool, String
         SqlValue::Timestamp(micros) => {
             let wire = micros
                 .checked_sub(EPOCH_MICROS)
-                .ok_or_else(|| format!("the timestamp {micros} is out of PostgreSQL's range"))?;
+                .ok_or("a timestamp out of PostgreSQL's range")?;
             out.extend_from_slice(&wire.to_be_bytes());
         }
         SqlValue::Date(date) => {
             let wire = date
                 .checked_sub(EPOCH_DATE)
-                .ok_or_else(|| format!("the date {date} is out of PostgreSQL's range"))?;
+                .ok_or("a date out of PostgreSQL's range")?;
             out.extend_from_slice(&wire.to_be_bytes());
         }
         SqlValue::Time(micros) => out.extend_from_slice(&micros.to_be_bytes()),
         SqlValue::LocalTimestamp(micros) => {
             let wire = micros
                 .checked_sub(EPOCH_MICROS)
-                .ok_or_else(|| format!("the timestamp {micros} is out of PostgreSQL's range"))?;
+                .ok_or("a timestamp out of PostgreSQL's range")?;
             out.extend_from_slice(&wire.to_be_bytes());
         }
         SqlValue::Range {
@@ -398,7 +398,8 @@ fn length(name: &str, raw: &[u8]) -> String {
 /// base-10000 digits, the first at a power of 10000, with the scale
 /// (places after the point) kept.
 fn numeric_to_wire(text: &str, out: &mut Vec<u8>) -> Result<(), String> {
-    let invalid = || format!("`{text}` isn't a decimal in canonical form");
+    // Never the text, which may be personal (chunk 5.5w2).
+    let invalid = || "a decimal that isn't in canonical form".to_string();
     let (negative, body) = match text.strip_prefix('-') {
         Some(rest) => (true, rest),
         None => (false, text),
@@ -526,6 +527,25 @@ mod tests {
         let mut out = Vec::new();
         numeric_to_wire(text, &mut out).unwrap();
         numeric_from_wire(&out).unwrap()
+    }
+
+    /// A value the wire can't carry is refused by what it is and the
+    /// rule, never the value itself, which may be personal or secret and
+    /// would reach a log through the fault (chunk 5.5w2).
+    #[test]
+    fn a_refused_value_never_appears_in_the_error() {
+        let secret = "4111111111111111.99s3cret";
+        let refused = encode(&SqlValue::Numeric(secret.into()), &mut Vec::new())
+            .expect_err("not a decimal");
+        assert!(!refused.contains(secret) && !refused.contains("4111"), "{refused}");
+        for value in [
+            SqlValue::Timestamp(i64::MIN + 7),
+            SqlValue::LocalTimestamp(i64::MIN + 7),
+            SqlValue::Date(i32::MIN + 7),
+        ] {
+            let refused = encode(&value, &mut Vec::new()).expect_err("out of range");
+            assert!(!refused.contains("775807") && !refused.contains("483641"), "{refused}");
+        }
     }
 
     #[test]
