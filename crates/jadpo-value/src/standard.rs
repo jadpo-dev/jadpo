@@ -586,7 +586,7 @@ fn from_native(entry: &StandardType, item: Option<&str>, part: &Value) -> Result
 fn take_part(part: jadpo_std::Part, parts: &[Value]) -> Result<(Value, &[Value]), Fault> {
     use jadpo_std::{Builtin, Part};
     let width = jadpo_std::standard::storage::width(part);
-    let (mine, rest) = (parts.get(..width).ok_or(Fault::Shape)?, &parts[width..]);
+    let (mine, rest) = parts.split_at_checked(width).ok_or(Fault::Shape)?;
     let (part, may_be_none) = part.required();
     if may_be_none && mine.iter().all(|value| matches!(value, Value::None)) {
         return Ok((Value::None, rest));
