@@ -17,6 +17,7 @@
 //! uses `Error` or an open failure set, which accept everything, so nothing
 //! here reports a knock-on of something it doesn't check.
 
+mod across;
 mod calls;
 mod contract;
 mod currency;
@@ -167,6 +168,30 @@ pub fn callables_of<'db>(db: &'db dyn Db, file: File) -> Vec<Callable<'db>> {
     out
 }
 
+/// The rules across fields `file`'s object types name, each checked as a
+/// callable is: `index` is its type's declaration and `function` its place
+/// among the type's rules (area 2, "Rules across fields").
+pub fn rule_callables<'db>(db: &'db dyn Db, file: File) -> Vec<Callable<'db>> {
+    let Some(source) = tree::source(db, file) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (index, decl) in source.decls().enumerate() {
+        let Decl::TypeDecl(decl) = decl else { continue };
+        let base = decl
+            .base()
+            .map(|base| tree::written(base.syntax()))
+            .unwrap_or_default();
+        if !super::shape::FieldsBase::from_base(&base).is_some_and(super::across::has_rules) {
+            continue;
+        }
+        for rule in 0..super::across::rule_members(decl.member_list()).len() {
+            out.push(Callable::new(db, file, index as u32, Some(rule as u32)));
+        }
+    }
+    out
+}
+
 /// Checks one callable: its diagnostics, its failure set and its typed
 /// body, from one walk. It reads its own file and, through the per-name
 /// lookups, only the declarations it names, so an edit elsewhere checks it
@@ -225,8 +250,19 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
     }
     let key = crate::graph::callable_key(&lookup, file.path(db), &decl, callable.function(db));
     let syntax = target.syntax.clone();
+    let rule = target.rule.is_some();
     checker.callable(target);
     let body = lower::lower(&checker, &lookup, file.text(db), &syntax);
+    // A rule reads only its type's fields (area 2): anything else is the
+    // one mistake in it.
+    if rule {
+        let outside = checker.outside_fields(&body, file.text(db));
+        if !outside.is_empty() {
+            checker.out = outside;
+            checker.deferred.clear();
+            checker.resolved.clear();
+        }
+    }
     let view = BodyView {
         types: std::mem::take(&mut checker.facts.types),
         expected: std::mem::take(&mut checker.facts.expected),
@@ -268,6 +304,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
 pub fn body_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     callables_of(db, file)
         .into_iter()
+        .chain(rule_callables(db, file))
         // A constant whose value is refused as not fixed has that one
         // error (area 3); what its value would have been isn't checked.
         .filter(|callable| {
@@ -377,13 +414,16 @@ enum Context {
     /// A constant's value (area 3): worked out while compiling, so pure,
     /// and what it may be built from is checked by [`crate::constants`].
     Constant,
+    /// A rule's condition across an object's fields (area 2, "Rules across
+    /// fields"): pure, and reading only those fields ([`across`]).
+    Rule,
 }
 
 impl Context {
     fn is_pure(self) -> bool {
         matches!(
             self,
-            Context::Function | Context::Inline | Context::Constant
+            Context::Function | Context::Inline | Context::Constant | Context::Rule
         )
     }
 
@@ -394,6 +434,7 @@ impl Context {
             Context::Action => "an action",
             Context::Test => "a test",
             Context::Constant => "a constant",
+            Context::Rule => "a rule",
         }
     }
 }
@@ -530,6 +571,9 @@ struct Target {
     /// A constant's type and value (area 3): its value is checked as a
     /// `return` of its type would be.
     constant: Option<(Option<ast::Type>, Option<ast::Expr>)>,
+    /// A rule across an object's fields (area 2): its type's name and its
+    /// condition, read with the type's fields in scope.
+    rule: Option<(String, Option<ast::Expr>, Option<ast::MemberList>)>,
 }
 
 fn text(name: &ast::NameRef) -> String {
@@ -644,6 +688,7 @@ impl Body<'_> {
             result,
             body,
             constant: None,
+            rule: None,
         };
         let constant = |syntax: jadpo_syntax::SyntaxNode, name, d: &ast::ConstantDecl| Target {
             syntax,
@@ -656,6 +701,7 @@ impl Body<'_> {
             result: None,
             body: None,
             constant: Some((d.ty(), d.value())),
+            rule: None,
         };
         Some(match (decl, function) {
             (Decl::FunctionDecl(d), None) => target(
@@ -714,6 +760,28 @@ impl Body<'_> {
                     result: function.ret_type(),
                     body: function.block(),
                     constant: None,
+                    rule: None,
+                }
+            }
+            // A rule across an object type's fields (area 2).
+            (Decl::TypeDecl(d), Some(index)) => {
+                let rule = super::across::rule_members(d.member_list())
+                    .into_iter()
+                    .nth(index as usize)?;
+                let host = name.clone()?;
+                let rule_name = rule.name().as_ref().and_then(tree::name_text);
+                Target {
+                    syntax: rule.syntax().clone(),
+                    context: Context::Rule,
+                    word: "rule",
+                    name: rule_name.map(|r| format!("{host}.{r}")),
+                    params: None,
+                    fails: None,
+                    contract: false,
+                    result: None,
+                    body: None,
+                    constant: None,
+                    rule: Some((host, rule.condition(), d.member_list())),
                 }
             }
             (Decl::TestDecl(d), None) => Target {
@@ -740,6 +808,7 @@ impl Body<'_> {
             result,
             body,
             constant,
+            rule,
         } = callable;
         self.context = context;
         self.test = word == "test";
@@ -752,6 +821,11 @@ impl Body<'_> {
         };
         self.arm = Arm::None;
         self.scopes.push(Vec::new());
+        if let Some((host, condition, members)) = rule {
+            self.rule(&host, condition.as_ref(), members);
+            self.pop_scope();
+            return;
+        }
         for param in params.iter().flat_map(|list| list.params()) {
             let mut ty = self.resolve(param.ty());
             // A built-in representation in a function's or action's

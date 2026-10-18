@@ -76,6 +76,7 @@ pub enum SyntaxKind {
     PACKAGE_KW,
     PROVIDE_KW,
     RESOURCE_KW,
+    RULE_KW,
     SEED_KW,
     TEST_KW,
     USE_KW,
@@ -131,6 +132,7 @@ pub enum SyntaxKind {
     BLOCK,
     PATH,
     PARAM,
+    RULE_MEMBER,
     MEMBER_KEY,
     ROUTE_PATH,
     ROUTE_SEGMENT,
@@ -190,7 +192,7 @@ pub enum SyntaxKind {
 
 use self::SyntaxKind::*;
 
-const ALL: [SyntaxKind; 180] = [
+const ALL: [SyntaxKind; 182] = [
     EOF,
     L_BRACE,
     R_BRACE,
@@ -261,6 +263,7 @@ const ALL: [SyntaxKind; 180] = [
     PACKAGE_KW,
     PROVIDE_KW,
     RESOURCE_KW,
+    RULE_KW,
     SEED_KW,
     TEST_KW,
     USE_KW,
@@ -316,6 +319,7 @@ const ALL: [SyntaxKind; 180] = [
     BLOCK,
     PATH,
     PARAM,
+    RULE_MEMBER,
     MEMBER_KEY,
     ROUTE_PATH,
     ROUTE_SEGMENT,
@@ -509,6 +513,7 @@ impl SyntaxKind {
             "package" => PACKAGE_KW,
             "provide" => PROVIDE_KW,
             "resource" => RESOURCE_KW,
+            "rule" => RULE_KW,
             "seed" => SEED_KW,
             "test" => TEST_KW,
             "use" => USE_KW,
@@ -589,6 +594,7 @@ impl SyntaxKind {
             PACKAGE_KW => "package",
             PROVIDE_KW => "provide",
             RESOURCE_KW => "resource",
+            RULE_KW => "rule",
             SEED_KW => "seed",
             TEST_KW => "test",
             USE_KW => "use",
@@ -670,6 +676,7 @@ macro_rules! T {
     [package] => { $crate::SyntaxKind::PACKAGE_KW };
     [provide] => { $crate::SyntaxKind::PROVIDE_KW };
     [resource] => { $crate::SyntaxKind::RESOURCE_KW };
+    [rule] => { $crate::SyntaxKind::RULE_KW };
     [seed] => { $crate::SyntaxKind::SEED_KW };
     [test] => { $crate::SyntaxKind::TEST_KW };
     [use] => { $crate::SyntaxKind::USE_KW };

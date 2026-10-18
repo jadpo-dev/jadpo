@@ -745,8 +745,9 @@ test "a booking that ends before it starts is refused" {
   proves itself between any two values written the same way, instants and
   dates as well as numbers ("Conditions as proof"); numbers are proved by
   their declared ranges too, and `and`, `or` and `not` combine as they do
-  in a condition. A rule that reads anything else, a standard operation or
-  a `match`, is proved only by a condition written the same way.
+  in a condition. A rule that calls a standard operation or uses `match`
+  is never proved this way, so a literal that may break it is always
+  attempted.
 - **Every failure is `invalid_value`.** The report names the rule
   (`ends_after_start`), never the values. JSON that breaks one, in a
   request or `json.read`, is a problem at the object's path, empty for the
@@ -784,9 +785,9 @@ type StaySearch = Input {
         optional: true
     }
     rule leaves_after_arrival: leaves > arrives
-    rule fits_one_room: match children {
-        some(count) -> adults + count <= 8
-        none -> adults <= 8
+    rule children_with_adults: match children {
+        some(count) -> count <= adults * 2
+        none -> true
     }
 }
 

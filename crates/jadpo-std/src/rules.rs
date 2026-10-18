@@ -126,6 +126,11 @@ pub enum RuleKey {
     /// A token `crypto.verify_jwt` checks was issued by another issuer than
     /// `issuer:` names, or by none.
     WrongIssuer,
+    /// A rule an object type names across its fields (area 2, "Rules
+    /// across fields"): its name is carried beside the key, since an
+    /// `attempt`'s arm names it by that. Never in [`RuleKey::ALL`], so no
+    /// word reads as it.
+    Named,
 }
 
 impl RuleKey {
@@ -190,6 +195,7 @@ impl RuleKey {
             RuleKey::NotYetValid => "not_yet_valid",
             RuleKey::WrongAudience => "wrong_audience",
             RuleKey::WrongIssuer => "wrong_issuer",
+            RuleKey::Named => "rule",
         }
     }
 

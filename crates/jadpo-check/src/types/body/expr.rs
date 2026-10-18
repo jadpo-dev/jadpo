@@ -1057,6 +1057,7 @@ impl Body<'_> {
                 } else {
                     Required::All
                 };
+                let before = self.out.len();
                 self.fields_given(
                     record.member_list(),
                     &name,
@@ -1066,7 +1067,13 @@ impl Body<'_> {
                     head_span,
                     &[],
                 );
-                self.object_built(record);
+                // The rules across its fields are read once every field is
+                // known to be right (area 2, "Rules across fields").
+                if self.out.len() == before {
+                    self.object_rules(record, &name);
+                } else {
+                    self.object_built(record);
+                }
                 Ty::Named(self.table.canonical(&name))
             }
             // `Range { start: ..., end: ... }` (area 19), its ends' type

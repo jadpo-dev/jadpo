@@ -186,6 +186,7 @@ MemberList =
 MemberItem =
   Member
 | BareMember
+| RuleMember
 | RouteEntry
 | Decl
 | Elision
@@ -202,6 +203,12 @@ MemberKey =
 // An enum variant with no data is just its name (area 2).
 BareMember =
   Name
+
+// `rule ends_after_start: ends > starts`: a rule across an object type's
+// fields, named and checked whenever a value is made (area 2, "Rules
+// across fields"). `rule` is a word only before a name and `:`.
+RuleMember =
+  'rule' Name ':' condition:Expr
 
 // `...` marks code left out of a documentation example.
 Elision =

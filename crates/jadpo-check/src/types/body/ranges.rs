@@ -79,7 +79,7 @@ impl End {
         }
     }
 
-    fn neg(self) -> End {
+    pub(super) fn neg(self) -> End {
         match self {
             End::Below => End::Above,
             End::Above => End::Below,
@@ -989,24 +989,29 @@ impl Body<'_> {
             .unwrap_or_default();
         let a = self.interval(&lhs, reading);
         let b = self.interval(&rhs, reading);
-        match op.as_str() {
-            "+" => Interval {
-                low: add(a.low, b.low, true),
-                high: add(a.high, b.high, false),
-            },
-            "-" => Interval {
-                low: add(a.low, b.high.neg(), true),
-                high: add(a.high, b.low.neg(), false),
-            },
-            "*" => hull(&[
-                mul(a.low, b.low),
-                mul(a.low, b.high),
-                mul(a.high, b.low),
-                mul(a.high, b.high),
-            ]),
-            "/" => divided(a, b, false),
-            "%" => divided(a, b, true),
-            _ => Interval::ANY,
-        }
+        arithmetic(&op, a, b)
+    }
+}
+
+/// The values `a op b` can take, for an arithmetic operator.
+pub(super) fn arithmetic(op: &str, a: Interval, b: Interval) -> Interval {
+    match op {
+        "+" => Interval {
+            low: add(a.low, b.low, true),
+            high: add(a.high, b.high, false),
+        },
+        "-" => Interval {
+            low: add(a.low, b.high.neg(), true),
+            high: add(a.high, b.low.neg(), false),
+        },
+        "*" => hull(&[
+            mul(a.low, b.low),
+            mul(a.low, b.high),
+            mul(a.high, b.low),
+            mul(a.high, b.high),
+        ]),
+        "/" => divided(a, b, false),
+        "%" => divided(a, b, true),
+        _ => Interval::ANY,
     }
 }

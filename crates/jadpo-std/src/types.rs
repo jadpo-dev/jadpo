@@ -39,6 +39,9 @@ pub struct ValidatorPlan {
     pub builtin: Option<Builtin>,
     /// Each declaration's rules along the chain, most specific first.
     pub rules: Vec<Rules>,
+    /// An object type's rules across its fields, in the order written
+    /// (area 2, "Rules across fields"), checked once every field is.
+    pub across: Vec<crate::across::CrossRule>,
 }
 
 impl ValidatorPlan {

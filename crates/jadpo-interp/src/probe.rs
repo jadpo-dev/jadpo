@@ -152,7 +152,7 @@ fn collections(types: &Types, ty: &TypeRef, collection: &TypeRef) -> Option<Vec<
 /// `ty`'s rules ready to run.
 fn validator(types: &Types, ty: &TypeRef) -> Validator {
     let plan = types.validator_plan(ty);
-    Validator::new(plan.builtin, plan.rules)
+    Validator::new(plan.builtin, plan.rules).with_across(plan.across)
 }
 
 /// `n` moved by one unit in its last place: the value just inside or just

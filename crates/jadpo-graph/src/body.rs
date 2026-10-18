@@ -517,6 +517,9 @@ pub enum Fallible {
     /// failure its `attempt` maps that rule to.
     Construction {
         rules: Vec<RuleKey>,
+        /// The rules across an object's fields it can break, by name (area
+        /// 2, "Rules across fields").
+        named: Vec<String>,
     },
     /// Not known yet (an entity's operations, area 6), or already reported.
     Unknown,
@@ -527,8 +530,12 @@ pub enum Fallible {
 /// its own (`invalid:`), and the failure raised when that rule breaks.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RuleArm {
-    /// The rule's key, such as `max`; `None` for `invalid:`.
+    /// The rule's key, such as `max`; `None` for `invalid:` and for a rule
+    /// across an object's fields.
     pub rule: Option<RuleKey>,
+    /// A rule across an object's fields, by name (area 2, "Rules across
+    /// fields").
+    pub named: Option<String>,
     pub failure: Key,
     /// The fields given to the failure, as `reject` gives them.
     pub fields: Vec<(Key, SiteId)>,
@@ -543,7 +550,20 @@ impl RuleArm {
     pub fn for_rule(arms: &[RuleArm], rule: RuleKey) -> Option<&RuleArm> {
         arms.iter()
             .find(|arm| arm.rule == Some(rule))
-            .or_else(|| arms.iter().find(|arm| arm.rule.is_none()))
+            .or_else(|| arms.iter().find(|arm| arm.is_invalid()))
+    }
+
+    /// The arm that maps the rule across an object's fields called `name`:
+    /// its own, or `invalid:`.
+    pub fn for_named<'a>(arms: &'a [RuleArm], name: &str) -> Option<&'a RuleArm> {
+        arms.iter()
+            .find(|arm| arm.named.as_deref() == Some(name))
+            .or_else(|| arms.iter().find(|arm| arm.is_invalid()))
+    }
+
+    /// Whether it is `invalid:`, covering every rule without an arm.
+    pub fn is_invalid(&self) -> bool {
+        self.rule.is_none() && self.named.is_none()
     }
 }
 

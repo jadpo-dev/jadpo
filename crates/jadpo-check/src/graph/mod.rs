@@ -170,6 +170,15 @@ pub fn entity_field_key(registry: &Registry, entity: &str, path: &[String]) -> K
     host_field_key(registry, entity, &born, path)
 }
 
+/// The key of rule `rule` across the fields of object type `host` (area 2,
+/// "Rules across fields").
+pub fn rule_key(symbols: &dyn NameView, host: &str, rule: &str) -> Key {
+    let (now, born) = host_identity(symbols, host);
+    symbols
+        .registry()
+        .key(Kind::Rule, &format!("{now}.{rule}"), Some((&now, &born)))
+}
+
 /// The key of variant `variant` of enum `host`.
 pub fn variant_key(symbols: &dyn NameView, host: &str, variant: &str) -> Key {
     let (now, born) = host_identity(symbols, host);
@@ -235,6 +244,14 @@ pub fn callable_key(
         (Decl::ConstantDecl(_), None) => {
             let name = tree::decl_name(decl).as_ref().and_then(tree::name_text)?;
             constant_key(symbols, None, &name)
+        }
+        (Decl::TypeDecl(ty), Some(index)) => {
+            let host = ty.name().as_ref().and_then(tree::name_text)?;
+            let rule = crate::types::across::rule_members(ty.member_list())
+                .into_iter()
+                .nth(index as usize)?;
+            let name = rule.name().as_ref().and_then(tree::name_text)?;
+            Some(rule_key(symbols, &host, &name))
         }
         (Decl::TestDecl(test), None) => {
             let name = test.string_token()?.text().trim_matches('"').to_string();
