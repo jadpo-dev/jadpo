@@ -329,7 +329,13 @@ fn walk(
 ) {
     for (_, source) in &element.fields {
         match source {
-            Source::Column(field) => {
+            // A group or an aggregate shows what the field it reads holds
+            // (area 6, "Counts, sums and groups"), as the field would.
+            Source::Entry { field: None, .. } => {}
+            Source::Column(field)
+            | Source::Entry {
+                field: Some(field), ..
+            } => {
                 if output && !prover.field_proved(entity, field, reached) {
                     out.push(Unproved::Field {
                         entity: entity.to_string(),

@@ -351,7 +351,7 @@ pub fn serve_to(
             return 1;
         }
     };
-    let mut applied = match migrate_all(&urls, &first.steps) {
+    let mut applied = match migrate_all(&urls, &first.steps, &first.prepared) {
         Ok(applied) => applied,
         Err(problem) => {
             report_failure(&mut out, *problem);
@@ -471,7 +471,7 @@ pub fn serve_to(
             }
             Ok(ready) => {
                 if ready.steps != current.steps {
-                    match migrate_all(&urls, &ready.steps) {
+                    match migrate_all(&urls, &ready.steps, &ready.prepared) {
                         Ok(ran) => applied += ran,
                         Err(problem) => {
                             rule_line(&mut out, &time, &saved, "not reloaded");
@@ -575,7 +575,9 @@ fn prepare(
     stores.extend(steps.keys().cloned());
     stores.sort();
     stores.dedup();
-    let prepared = Prepared::checked(db, project);
+    // With the latest migration's backfills worked out in Jadpo, which
+    // applying its migrations runs (chunk 5.6b2).
+    let prepared = Prepared::checked_with_backfills(db, project);
     let routes = prepared.plan().routes().routes.len();
     let (config, configured) = if run {
         let model = jadpo_check::config::config(db, project);
@@ -743,11 +745,14 @@ fn stores(
     Ok(out)
 }
 
-/// Applies each store's pending migrations; how many ran.
+/// Applies each store's pending migrations, working out in Jadpo with
+/// `prepared` a backfill that has no SQL form (chunk 5.6b2); how many ran.
 fn migrate_all(
     urls: &BTreeMap<String, String>,
     steps: &BTreeMap<String, Vec<jadpo_std::Migration>>,
+    prepared: &Arc<Prepared>,
 ) -> Result<usize, Box<Diagnostic>> {
+    let worker = crate::migrate::Worker::new(Some(Program::new(Arc::clone(prepared))));
     let runtime = Runtime::new().map_err(|error| {
         Box::new(
             Diagnostic::new(&rule::CLI_DEV_START_FAILED, "The runtime couldn't start")
@@ -771,7 +776,12 @@ fn migrate_all(
             )
         })?;
         let done = runtime
-            .block_on(jadpo_runtime::migrate(&database, migrations))
+            .block_on(jadpo_runtime::migrate_with(
+                &database,
+                migrations,
+                &worker,
+                &mut |_| std::ops::ControlFlow::Continue(()),
+            ))
             .map_err(|error| Box::new(crate::migrate::migrate_failed(store, error)))?;
         // The start-up check: the store has every extension its
         // migrations created, pgvector's among them (area 21).

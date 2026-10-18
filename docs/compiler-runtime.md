@@ -1915,7 +1915,14 @@ recording (`Ctx::record_random`), and none at all, never a weaker source,
 when there is neither a generator nor a seed. The native host reads the
 operating system's generator through `getrandom`. A store's refusal becomes what the
 runtime raises: `unavailable`, a rerun after a concurrent change, and
-otherwise the `Store` fault with the driver's reason.
+otherwise the `Store` fault with the driver's reason. Since chunk 5.6c
+an aggregate query (area 6, "Counts, sums and groups") is read into a
+`QueryModel` whose `grouping` holds its groups and aggregates, and
+`jadpo-plan` writes it as one statement (`jadpo_sql::statement::grouped`):
+a grouped subquery selecting each entry, then an outer one that orders,
+limits and works out what needs several totals (an average from its sum
+and count, through `decimal.divide`'s SQL form). Its rows are ordinary
+read-plan records, so the runtime reads them as it reads any query's.
 
 Built in chunk 3.3: the runtime runs a write plan
 (`jadpo_std::write`, one per write site, planned in `jadpo-plan`'s
@@ -1992,7 +1999,16 @@ splits a section there, and `jadpo_runtime::migrate_reporting` runs each
 step in its own read-committed transaction under `jadpo_migrations`'
 lock, recording how far it got in `jadpo_migration_steps` in the same
 transaction, so a stopped run carries on; `Progress` tells `jadpo migrate
-apply` each batch.
+apply` each batch. Since chunk 5.6b2 a computed backfill with no SQL form
+is decided as `Decided::InJadpo` (`data::backfill::InJadpo`: its body as
+a function of the stored fields it reads, `as_function`, and the digest
+of the code it runs, `fingerprint`): its marker says `in Jadpo` and is
+followed by a count, a locked read and a write, and the last step holds
+a `-- fill` read and write (`Step::Mixed`). `Plan::with_backfills`
+plans the latest migration's as callables of their own, and `jadpo
+migrate apply` hands `jadpo_runtime::migrate_with` a `Backfills` that
+runs them in the interpreter, reading and binding through the storage
+codec.
 
 Built in chunk 3.4: `jadpo-plan`'s `Planner::access` adds an entity's
 `visible:` to every query, `get`, child include, update, delete and

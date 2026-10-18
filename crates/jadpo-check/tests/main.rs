@@ -9,6 +9,7 @@ mod syntax_examples;
 mod support;
 
 mod across;
+mod aggregates;
 mod ai;
 mod bodies;
 mod calendar;
