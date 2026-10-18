@@ -6541,8 +6541,11 @@ first; each group of types then arrives with its baseline and its extras.
 - **5.5m Commerce, health, travel and the rest** `opus · high`: 45 types,
   mostly codes with a pattern or check digit (`Ean13`, `Isbn`, `Vin`,
   `IataAirport`).
-- **5.5n Web and software** `opus · high`: 38 types, `web`'s 3 operations
-  and `semver.satisfies`.
+- **5.5n Web and network** `opus · high`: the 20 web and network types
+  and `web`'s 3 operations. Split on 2026-10-18; the 18 software types and
+  `semver.satisfies` are 5.5n2.
+- **5.5n2 Software** `opus · high`: the 18 software types and
+  `semver.satisfies`.
 - **5.5o Text formats** `opus · high`: `Markdown`, `Html` (whose
   construction is the sanitiser, a security boundary per #88), `RichText`
   and `LocalisedText`, `markup`'s 3 operations and `text.pick`.
