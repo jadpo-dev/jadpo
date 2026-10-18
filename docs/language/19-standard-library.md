@@ -805,14 +805,18 @@ test "a voucher keeps its discount as it was issued" {
 ## SQL forms
 
 A **SQL form** is a PostgreSQL 16 expression that gives exactly the result
-the runtime gives, for every argument. It matters in one place today: a
+the runtime gives, for every argument. It matters in two places. A
 computed backfill whose every operation has a SQL form runs as one
 `UPDATE` per batch, and any other runs through `jadpo migrate apply`,
-reading and writing each batch ([area 5](05-data.md#computed-backfills)).
-Both are correct; the SQL form is only faster. Queries still compute
-nothing and a one-step update's `set:` still works a stored field out only
-with `+` and `-` (area 6); aggregate queries would be their second user
-(question 28, "Language gaps").
+reading and writing each batch ([area 5](05-data.md#computed-backfills));
+both are correct, and the SQL form is only faster. An aggregate query
+([area 6](06-reads-and-writes.md#counts-sums-and-groups), question 28) is
+always one statement, and writes its time buckets (`temporal.year`,
+`temporal.month` and `temporal.day` of a date) and its averages
+(`decimal.divide`) with their SQL forms; it is the one place a query works
+a value out. Otherwise a query's conditions still compute nothing, and a
+one-step update's `set:` still works a stored field out only with `+` and
+`-` (area 6).
 
 - An operation that can fail has no SQL form, since a statement can't map
   a failure to a row.
@@ -835,7 +839,9 @@ with `+` and `-` (area 6); aggregate queries would be their second user
 > `decimal.round` keeps a value with fewer places as it is,
 > `temporal.period_between` doesn't use `age`, and a whole number is
 > always `bigint`. The backfills that use them are chunk 5.6b. What the
-> page left open is "Chosen in chunk 5.6", under "Review".
+> page left open is "Chosen in chunk 5.6", under "Review". Chunk 5.6c
+> added `temporal.year`, `temporal.month` and `temporal.day` of a date,
+> tested the same way, for aggregate queries' time buckets (area 6).
 
 A backfill's operators and conditionals have SQL forms too (chunk 5.6b),
 tested against the runtime the same way, `a` and `b` their operands:
@@ -2932,10 +2938,13 @@ test "a shelf keeps its length as it was cut" {
 
 ## Time and calendar additions
 
-Area 10's 21 `temporal` operations stand. The new time types add three.
+Area 10's 21 `temporal` operations stand, three of them with SQL forms
+(chunk 5.6c, for an aggregate query's time buckets). The new time types
+add three.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
+| `temporal.year(value)`, `temporal.month(value)`, `temporal.day(value)` | `Int`, of a date or a local time's date (area 10) | | of a date: `extract`, as `bigint`, with PostgreSQL's 1 BC counted as the year 0 (chunk 5.6c); none of a local time, whose zone PostgreSQL's time zone database may not see as Jadpo's does |
 | `temporal.occurrences(rule, from:, count:)` | `List<ZonedTime>`, the next `count` occurrences of a `RecurrenceRule` (RFC 5545) at or after `from`, an `Instant`, in the rule's zone; from a `CalendarDate`, `List<CalendarDate>`, the days they fall on, which a rule on dates gives (chunk 5.5k4); `count` 1 to 1000 | | none |
 | `temporal.open_at(hours, at)` | `Bool`: an `OpeningHours` is open at the `Instant`, in its zone, across midnight and its exceptions | | none |
 | `temporal.period_between(start, end)` | `CalendarPeriod` in whole years, months and days from one `CalendarDate` to another, so adding it to `start` gives `end`; negative parts when `end` is earlier | | the months between the two months, one fewer or more by the day of the month, stepped once toward zero where adding them clamps past the end, and the days left; not `age`, which borrows days from the start's month (chunk 5.6) |
@@ -6953,7 +6962,7 @@ operations it unblocks kept on this page.
 | Text has no locale order or case | `locale:` on `list.sort_by`, `text.lower` and `text.upper`, through ICU4X's collator and case mapping (two more crates of the pinned ICU4X) | 10 | 5.5f, built | Locale sorting and case |
 | Values formatted for people only in translations | The contract's `text.format`, giving `PresentationText`, for every standard type | 10 | 5.5a | Showing numbers, money, quantities and addresses in code |
 | No parsing from text | The contract's `text.parse(raw, as: T)`, canonical forms only | 2 | 5.5a | Text from a person or a file cell |
-| Queries compute nothing | Aggregate queries: `count`, `sum`, `min`, `max`, `average`, grouped by a field or a time bucket, using operations with SQL forms; area 6 already lists counts and sums in queries as deferred | 6 | 5.6c | Reports, dashboards, usage totals |
+| Queries compute nothing | Aggregate queries: `count`, `sum`, `min`, `max`, `average`, grouped by a field or a time bucket, using operations with SQL forms; area 6 already lists counts and sums in queries as deferred | 6 | 5.6c, built | Reports, dashboards, usage totals |
 | No rule across fields | Named rules on an object type (`rule ends_after_start: ends > starts`), proved or attempted like any rule | 2 | 5.5t | Bookings, date ranges, price bands |
 | Text from outside not normalised | NFC applied as text is decoded at a boundary | 2, 7 | 5.5f, built | Equal text comparing equal |
 | `Money` is an application's own object | Built-in `Money` and `Currency` | 2 | 5.5h | `money` |
@@ -7679,7 +7688,7 @@ check failed: 1 error, 1 file
 | `hash.sha256`, the 9 `encoding` operations | Decided 2026-10-17 (question 24); built in 5.5g |
 | `random` | Decided 2026-10-17 (question 19); built in 5.5q, actions only, seeded per test, replayed from a recording; `crypto`'s 8 operations that need no keys held as data built in 5.5q2, with `key:` as a place the compiler owns |
 | The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
-| SQL forms | Decided; built in 5.6, used by computed backfills in 5.6b, with the operators' and conditionals' forms |
+| SQL forms | Decided; built in 5.6, used by computed backfills in 5.6b, with the operators' and conditionals' forms, and by aggregate queries in 5.6c |
 | Geospatial, AI | Decided as future areas, planned in 5.5u ([area 20](20-geospatial.md)) and 5.5v; the geospatial types' baseline built in 5.5s, area 20's measures in 5.5u2, the AI types' in 5.5s2 |
 
 ### Consistency with the rest of the language
