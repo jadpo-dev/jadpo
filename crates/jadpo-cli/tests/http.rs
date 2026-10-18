@@ -2749,6 +2749,14 @@ fn work_that_never_waits_leaves_its_worker_to_other_requests() {
     for (path, text) in SPIN {
         write(&root, path, text);
     }
+    // A longer deadline than SPIN's, so a loaded machine still answers the
+    // quick request well inside it.
+    let routes = SPIN
+        .iter()
+        .find(|(path, _)| path.ends_with("busywork.jadpo"))
+        .map(|(_, text)| text.replace("deadline: 1s", "deadline: 3s"))
+        .expect("the busywork routes");
+    write(&root, "domains/busy/routes/busywork.jadpo", &routes);
     for args in [
         &["migrate", "new", "initial"][..],
         &["api", "update"],
@@ -2760,27 +2768,38 @@ fn work_that_never_waits_leaves_its_worker_to_other_requests() {
     let dev = Dev::start(&root);
     let warm = dev.send("POST", "/busywork", &[], r#"{"label":"warm","depth":3}"#);
     assert_eq!(warm.status, 200, "{warm:?}");
-    // Both come from one address, so one worker thread answers both.
+    // Both come from one address, so one worker thread answers both. The
+    // proof is the order of the replies, not how long the quick one took: a
+    // worker held by the slow request could only answer the quick one after
+    // the slow one's deadline had passed.
     let port = dev.port;
+    let (sending, sent) = std::sync::mpsc::channel();
     let slow = std::thread::spawn(move || {
-        send(
+        sending.send(Instant::now()).expect("the test is waiting");
+        let reply = send(
             port,
             "POST",
             "/busywork",
             &[],
             r#"{"label":"slow","depth":30}"#,
-        )
+        );
+        (reply, Instant::now())
     });
+    let slow_sent = sent.recv().expect("the slow request starts");
     std::thread::sleep(Duration::from_millis(150));
-    let started = Instant::now();
+    let quick_sent = Instant::now();
     let quick = dev.send("POST", "/busywork", &[], r#"{"label":"quick","depth":3}"#);
-    let waited = started.elapsed();
+    let quick_answered = Instant::now();
     assert_eq!(quick.status, 200, "{quick:?}");
-    let slow = slow.join().expect("the slow request");
+    let (slow, slow_answered) = slow.join().expect("the slow request");
     assert_eq!(slow.status, 504, "{slow:?}");
+    assert!(slow_sent < quick_sent, "the slow request went first");
     assert!(
-        waited < Duration::from_millis(500),
-        "answered while the other computed, not after its 1 s deadline: {waited:?}"
+        quick_answered < slow_answered,
+        "answered while the other computed, not after its deadline: quick took {:?}, \
+         slow ended {:?} after it",
+        quick_answered - quick_sent,
+        slow_answered.saturating_duration_since(quick_answered)
     );
 }
 
