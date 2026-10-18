@@ -8,7 +8,7 @@ software written mainly by LLMs and reviewed by people.
 | Document | What it is |
 |---|---|
 | [Roadmap](roadmap.md) | The only list of outstanding work: the delivery plan, one chunk per session |
-| [Language specification](language/README.md) | Nineteen areas, all decided; the source of truth for what Jadpo means. The rendered decision log collects every decision |
+| [Language specification](language/README.md) | Twenty decided areas; the source of truth for what Jadpo means. The rendered decision log collects every decision |
 | [Compiler and runtime architecture](compiler-runtime.md) | The graph-centred build approach (§1) and, from roadmap chunk 0.4, the architecture |
 | [Decision register](decision-register.md) | Decisions that are not about the language itself |
 | [Vision](vision.md) and [product strategy](product-strategy.md) | Why Jadpo exists and who it is for |

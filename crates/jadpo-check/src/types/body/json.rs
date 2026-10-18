@@ -256,7 +256,9 @@ impl Body<'_> {
                 _ => None,
             },
             Ty::List(item) | Ty::Set(item) | Ty::Nullable(item) => self.unwritable(item, seen, reading),
-            Ty::Map(key, value) => self.unwritable(key, seen, reading)
+            Ty::Map(key, value) => self
+                .keyless(key)
+                .or_else(|| self.unwritable(key, seen, reading))
                 .or_else(|| self.unwritable(value, seen, reading)),
             Ty::Named(name) | Ty::Opaque(name, _) => {
                 if standard_type(name).is_some() {
@@ -303,6 +305,39 @@ impl Body<'_> {
             }
             other => Some((other.to_string(), "not a value".to_string())),
         }
+    }
+}
+
+impl Body<'_> {
+    /// A map's key type when it has no single text form, with what it is:
+    /// a JSON object's keys are text, so a key is written as its canonical
+    /// text (`text.from`) and read back by `text.parse`'s reader (area 19,
+    /// chunk 5.5w2), and an object, a choice, a collection, an enum with
+    /// data or a value that may be `none` has none.
+    fn keyless(&self, key: &Ty) -> Option<(String, String)> {
+        const WHY: &str = "and a map's key is sent as its canonical text, the text `text.from` writes, which it has none of";
+        if self.table.representation(key).is_some() {
+            return None;
+        }
+        let found = self.table.structure(key);
+        let what = match &found {
+            Ty::Named(name) | Ty::Opaque(name, _) => match standard_type(name) {
+                Some(entry) if entry.text.is_some() => return None,
+                Some(_) => "a standard type with no single text form",
+                None => match self.table.def(name) {
+                    Some(Def::Enum { variants }) if variants.iter().all(|v| v.fields.is_none()) => {
+                        return None;
+                    }
+                    Some(Def::Enum { .. }) => "an enum whose variants carry data",
+                    Some(Def::Fields { .. }) => "an object",
+                    _ => return None,
+                },
+            },
+            Ty::List(_) | Ty::Set(_) | Ty::Map(..) => "a collection",
+            Ty::Nullable(_) => "a value that may be `none`",
+            _ => return None,
+        };
+        Some((found.to_string(), format!("{what}, {WHY}")))
     }
 }
 

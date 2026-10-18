@@ -1436,6 +1436,7 @@ dependencies = [
  "jadpo-test",
  "jadpo-value",
  "openssl",
+ "regex",
  "serde_json",
  "tokio",
 ]

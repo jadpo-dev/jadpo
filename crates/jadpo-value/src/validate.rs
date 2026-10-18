@@ -204,6 +204,13 @@ impl Validator {
         }
     }
 
+    /// The standard type its chain names, if any: one held as text with
+    /// its own check, or held as a whole number with its range (chunk
+    /// 5.5n), whose canonical text a place that holds text reads.
+    pub fn standard(&self) -> Option<&'static str> {
+        self.rules.iter().find_map(|(rules, _)| rules.standard)
+    }
+
     /// The secret value standard type its chain is built on, if any: a
     /// `Password`, or a type built on one (chunk 5.5r2).
     pub fn secret(&self) -> Option<&'static str> {

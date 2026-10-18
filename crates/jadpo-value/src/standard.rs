@@ -9,7 +9,9 @@
 //! separators (area 19, "Numbers").
 
 use jadpo_std::RuleKey;
-use jadpo_std::standard::{FormatKey, Holds, StandardType, TextForm, standard_type};
+use jadpo_std::standard::{
+    FormatKey, Holds, STANDARD_TYPES, StandardType, TextForm, standard_type,
+};
 
 use crate::{Decimal, Fault, Value, Zoned, present, temporal};
 
@@ -791,6 +793,41 @@ fn decimal(raw: &str) -> Option<Decimal> {
     Decimal::parse(raw)
 }
 
+/// An `Instant`'s canonical text: ISO 8601 ending in `Z`, never with an
+/// offset (area 19, "Chosen in chunk 5.5a"), as every boundary reads one.
+pub(crate) fn instant(raw: &str) -> Option<i64> {
+    jadpo_std::instant_millis(raw).filter(|_| raw.ends_with('Z'))
+}
+
+/// The one reader of a built-in type's text, which `text.parse`, a JSON
+/// string, a query string, a path, a header, a setting and a map's key all
+/// read through, so none is looser than another (chunk 5.5w2): an `Int` as
+/// digits with a `-` when negative, a `Decimal` with places too, a `Bool`
+/// as `true` or `false`, `Bytes` in Base64, and a built-in standard type
+/// (`Instant`, `Money`, a quantity, `ZonedTime`...) by its entry's
+/// canonical text. Text is the caller's, which composes it first. `None`
+/// for text that isn't one, or a type with no single text form.
+pub fn builtin_text(builtin: jadpo_std::Builtin, raw: &str) -> Option<Value> {
+    use jadpo_std::Builtin;
+    match builtin.representation() {
+        Builtin::Int => int(raw).map(Value::Int),
+        Builtin::Decimal => decimal(raw).map(Value::Decimal),
+        Builtin::Bool => match raw {
+            "true" => Some(Value::Bool(true)),
+            "false" => Some(Value::Bool(false)),
+            _ => None,
+        },
+        Builtin::Bytes => {
+            crate::encoding::from_base64(raw).map(|bytes| Value::Bytes(std::rc::Rc::from(bytes)))
+        }
+        Builtin::Text | Builtin::PresentationText => Some(Value::text(raw)),
+        representation => STANDARD_TYPES
+            .iter()
+            .find(|entry| entry.holds == Holds::Builtin(representation))
+            .and_then(|entry| read(entry, raw).ok()),
+    }
+}
+
 /// A standard type's value read from its canonical text.
 pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
     let form = entry.text.ok_or(Fault::Shape)?;
@@ -818,9 +855,7 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
             .validator
             .is_some_and(|validator| validator.accepts(raw))
             .then(|| Value::uuid(raw)),
-        TextForm::Instant => jadpo_std::instant_millis(raw)
-            .filter(|_| raw.ends_with('Z'))
-            .map(Value::Instant),
+        TextForm::Instant => instant(raw).map(Value::Instant),
         TextForm::Date => jadpo_std::date_number(raw)
             .filter(|_| jadpo_std::check_calendar_date(raw).is_ok())
             .map(Value::Date),
@@ -919,9 +954,7 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
             // Each end in its own canonical text: an instant ending in `Z`,
             // or a date.
             let end_of = |text: &str| match ends.builtin() {
-                Some(jadpo_std::Builtin::Instant) => {
-                    jadpo_std::instant_millis(text).map(Value::Instant)
-                }
+                Some(jadpo_std::Builtin::Instant) => instant(text).map(Value::Instant),
                 Some(jadpo_std::Builtin::CalendarDate) => jadpo_std::date_number(text)
                     .filter(|_| jadpo_std::check_calendar_date(text).is_ok())
                     .map(Value::Date),

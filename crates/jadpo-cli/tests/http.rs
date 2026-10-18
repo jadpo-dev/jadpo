@@ -3260,11 +3260,20 @@ fn openapi_describes_values_as_they_are_sent() {
     assert_eq!(moment["required"], serde_json::json!(["instant", "zone"]));
     // What the runtime sends matches what the document says.
     let dev = Dev::start(&root);
-    let echoed = dev.send(
+    // An instant ends in `Z`, as `text.parse` reads one; an offset is
+    // refused (chunk 5.5w2).
+    let offset = dev.send(
         "POST",
         "/items/echo",
         &[],
         r#"{"moment":{"instant":"2026-10-25T09:30:00+01:00","zone":"Europe/London"},"outcome":"pending"}"#,
+    );
+    assert_eq!(offset.status, 422, "{offset:?}");
+    let echoed = dev.send(
+        "POST",
+        "/items/echo",
+        &[],
+        r#"{"moment":{"instant":"2026-10-25T08:30:00Z","zone":"Europe/London"},"outcome":"pending"}"#,
     );
     assert_eq!(echoed.status, 200, "{echoed:?}");
     assert_eq!(

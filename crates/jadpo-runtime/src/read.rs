@@ -482,9 +482,12 @@ pub fn to_sql(value: &Value, ty: SqlType) -> Result<SqlValue, String> {
                 .map(|item| to_sql(item, *inner))
                 .collect::<Result<Vec<_>, _>>()?,
         ),
+        // What the value is, never the value itself, which may be personal
+        // or secret and would reach a log through the fault (chunk 5.5w2).
         (value, ty) => {
             return Err(format!(
-                "a value ({value}) that a `{ty:?}` column can't hold"
+                "{} that a `{ty:?}` column can't hold",
+                value.described()
             ));
         }
     })
@@ -530,7 +533,7 @@ pub fn from_sql(sql: &SqlValue, column: &Column) -> Result<Value, String> {
             let ordinal = variants
                 .iter()
                 .position(|variant| variant == name)
-                .ok_or_else(|| format!("`{name}`, which isn't a variant of `{ty}`"))?;
+                .ok_or_else(|| format!("a stored code that isn't a variant of `{ty}`"))?;
             Value::variant(ty, ordinal as u32, name, Vec::new())
         }
         (sql, column) => {
@@ -834,6 +837,41 @@ mod tests {
                     .into()
             )
         );
+    }
+
+    /// A value a column can't hold, or a stored value that isn't one of
+    /// its column's, is a fault named by what it is and the rule, never
+    /// the value, which may be personal or secret and would reach a log
+    /// (chunk 5.5w2), as a `DecodeProblem` names the field and the rule.
+    #[test]
+    fn a_fault_never_carries_the_value() {
+        let secret = "hunter2-correct-horse";
+        for (value, ty) in [
+            (Value::text(secret), SqlType::Int8),
+            (Value::text(secret), SqlType::Uuid),
+            (Value::Int(9_876_543_210), SqlType::Int4),
+            (Value::Int(9_876_543_210), SqlType::Text),
+            (
+                Value::record("Card", vec![("number".into(), Value::text(secret))]),
+                SqlType::Text,
+            ),
+            (
+                Value::list(vec![Value::text(secret)]),
+                SqlType::Int8.array(),
+            ),
+        ] {
+            let why = to_sql(&value, ty).expect_err("refused");
+            assert!(
+                !why.contains(secret) && !why.contains("9876543210"),
+                "{why}"
+            );
+        }
+        let column = Column::Enum {
+            ty: "TodoStatus".into(),
+            variants: vec!["open".into(), "done".into()],
+        };
+        let why = from_sql(&SqlValue::Text(secret.into()), &column).expect_err("not a variant");
+        assert!(!why.contains(secret), "{why}");
     }
 
     #[test]

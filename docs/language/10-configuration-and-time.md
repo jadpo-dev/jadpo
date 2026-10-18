@@ -196,8 +196,9 @@ config {
 `LOG_LEVEL=verbose` and `BUSINESS_ZONE=Europe/London` are valid values: an enum
 is read as the variant's name, a `Zone` as its IANA name and a `Locale` as its
 BCP 47 tag (`en-GB`). A `Duration` is written as it is in source (`30s`, `5m`,
-`2h`, `30d`), a `Bool` as `true` or `false`, and an `Instant` and a
-`CalendarDate` in ISO 8601. A variable set to nothing counts as not set.
+`2h`, `30d`) or as its ISO 8601 text (`PT5M`, built in chunk 5.5w2), a `Bool`
+as `true` or `false`, and an `Instant` (ending in `Z`, never with an offset)
+and a `CalendarDate` in ISO 8601. A variable set to nothing counts as not set.
 
 ### Defaults and test values
 
