@@ -377,9 +377,10 @@ authentication {
 
 ## Checking the person: `sign_in:`
 
-> Decided on 2026-10-16 (Richard), revising question 11. Not built yet and
-> not yet on the roadmap; the errors below come with the chunk that builds
-> sign-in.
+> Decided on 2026-10-16 (Richard), revising question 11. `sign_in:` is
+> read from chunk 5.5z, with `passkey:` built there; `magic_link:` and
+> `providers:` are `toolchain.not_built_yet` until chunk 7.3b, and their
+> errors below come with it.
 
 Signing in has two layers. The first checks the person; the second gives
 them a session (`sessions.start` for a browser, `sessions.issue_token` for
@@ -580,7 +581,10 @@ listed in its `fails` (area 4).
 
 ### Passkeys
 
-> Decided 2026-10-18 (Richard). Built in chunk 5.5z.
+> Decided 2026-10-18 (Richard). Registering, signing in and managing
+> passkeys built in chunk 5.5z; recovery through a magic link, the check
+> that magic links are on, the route-test helpers and the events come in
+> chunk 5.5z2, once magic links (7.3b) and events (area 12) are built.
 
 A passkey (WebAuthn, FIDO2) is the third built-in way to check a person,
 beside magic links and providers. The person unlocks a key held on their
@@ -603,9 +607,273 @@ ceremonies are where hand-written sign-in goes wrong:
 - **More than one passkey per person**, each named by the person and
   removable, so a phone and a laptop each have their own.
 
-The rest (the `sign_in:` option's exact shape, its routes, events, errors
-and test helpers) is written with the build, following magic links' section
-above.
+`passkey:` goes in `sign_in:` beside `magic_link:`:
+
+```jadpo fragment
+// authentication.jadpo
+authentication {
+    browser_session: {
+        cookie: "notes_session"
+        origin: config.browser_origin
+    }
+    sign_in: {
+        magic_link: {
+            address: Member.email
+            link: "/sign-in/confirm"
+        }
+        passkey: {}
+    }
+}
+```
+
+| Setting | Default | Allowed |
+|---|---|---|
+| `expires_after:` | `5m`, how long a ceremony's challenge lasts | `1m` to `10m` |
+| `path:` | `"/auth/passkey"`, where the generated routes go | a path of fixed segments |
+
+- `passkey:` needs `browser_session:` with its `origin:`. That origin is
+  the one every answer from a device is checked against, and its host is
+  the relying-party ID a passkey is bound to: read from configuration
+  (area 10), never from the request, and never widened to a parent domain
+  or another port. A passkey made for `https://notes.example` works only
+  there.
+- `passkey:` needs `magic_link:` in the same `sign_in:`: it is how a person
+  with no passkey left gets back in.
+- Every passkey verifies the person (`userVerification: "required"`), so it
+  is two factors in one: the device, and the fingerprint, face or PIN that
+  unlocks it. Every passkey is discoverable (`residentKey: "required"`),
+  so signing in asks for no address first and tells no one which
+  addresses have an account.
+- The device lists a passkey under the person's address (the field
+  `magic_link:`'s `address:` names) and the application's host.
+- A person has at most 20 passkeys.
+
+**The routes.** The compiler generates seven routes under `path:`. Signing
+in is open to anyone; adding and managing passkeys need the person signed
+in with a browser session, and every write needs the session's CSRF token
+and an `Origin` naming the app's site, as any cookie write does:
+
+```text
+POST   /auth/passkey/sign-in/options     options for signing in
+POST   /auth/passkey/sign-in             the device's answer: starts a browser session
+POST   /auth/passkey/register/options    options for adding a passkey (signed in)
+POST   /auth/passkey/register            the new passkey and its name: keeps it (signed in)
+GET    /auth/passkey                     the person's passkeys (signed in)
+PATCH  /auth/passkey/{passkey_id}        renames one (signed in)
+DELETE /auth/passkey/{passkey_id}        removes one (signed in)
+```
+
+Signing in is two requests around the browser's own prompt. The first,
+with no body, gives the options for `navigator.credentials.get()` (which
+`PublicKeyCredential.parseRequestOptionsFromJSON` reads) and a cookie
+binding them to this browser:
+
+```text
+POST /auth/passkey/sign-in/options
+
+200 OK
+{ "publicKey": { "challenge": "Vh3q...", "rpId": "notes.example", "userVerification": "required", "timeout": 300000, ... }, "mediation": "conditional" }
+Set-Cookie: notes_session_passkey=...; HttpOnly; Secure; SameSite=Strict
+```
+
+The frontend posts what the device answers, as WebAuthn's `toJSON()`
+writes it:
+
+```text
+POST /auth/passkey/sign-in
+{ "credential": { "id": "AQID...", "rawId": "AQID...", "type": "public-key", "response": { "clientDataJSON": "...", "authenticatorData": "...", "signature": "...", "userHandle": "..." } } }
+
+204 No Content
+Set-Cookie: notes_session=...; notes_session_csrf=...
+```
+
+- Each options request makes a new challenge of 32 random bytes, kept in
+  the `jadpo_passkey_challenges` system table with what `webauthn-rs`
+  needs to check the answer: server-side, never in the cookie. The cookie,
+  `<cookie>_passkey` (`HttpOnly`, `Secure`, `SameSite=Strict`, lasting
+  `expires_after:`), holds 32 more random bytes kept only as a verifier,
+  and binds the challenge to the browser that asked; a new request
+  replaces that browser's earlier challenge.
+- `mediation: "conditional"` lets the browser offer the passkey in the
+  address field's autofill; a frontend with its own "Sign in with a
+  passkey" button drops it.
+- The sign-in `POST` needs an `Origin` naming the app's site, as a magic
+  link's confirm does. Its challenge is used up when the answer arrives,
+  whether or not the answer checks: a replayed answer, one whose challenge
+  expired, and one from another browser are `passkey_challenge_expired`.
+- `webauthn-rs` checks the answer: the challenge, the origin and the
+  relying-party ID, that the person was present and verified, the
+  signature against the stored public key, and the signature counter. Any
+  failure is `passkey_rejected`, never saying which, and so is an answer
+  from a passkey that was removed or never registered.
+- **The counter.** When the stored counter or the answer's is above zero,
+  the answer's must be higher than the stored one (WebAuthn Level 3,
+  §7.2, the signature counter's step). One that isn't means the key may have been copied: the
+  sign-in is refused (`passkey_rejected`) and the passkey left as it was,
+  so the person signs in another way. A passkey that keeps no counter,
+  which most synced ones don't, sends `0` every time and is never refused
+  for it.
+- A person whose `active:` doesn't hold is `user_disabled`, as on any
+  request.
+- On success the passkey's counter, backup state and last use are
+  updated, a browser session starts as `sessions.start` starts one, and
+  `<cookie>_passkey` is cleared. A passkey signs in a browser session
+  only; the app's own clients sign in with a magic link's code.
+
+Adding a passkey is the same two steps, signed in:
+
+```text
+POST /auth/passkey/register/options
+
+200 OK
+{ "publicKey": { "challenge": "o7Wd...", "rp": { "id": "notes.example", "name": "notes.example" }, "user": { "id": "...", "name": "ada@example.com", "displayName": "ada@example.com" }, "excludeCredentials": [...], "authenticatorSelection": { "residentKey": "required", "requireResidentKey": true, "userVerification": "required" }, "attestation": "none", ... } }
+```
+
+```text
+POST /auth/passkey/register
+{ "name": "Work phone", "credential": { "id": "AQID...", "rawId": "AQID...", "type": "public-key", "response": { "clientDataJSON": "...", "attestationObject": "..." } } }
+
+201 Created
+{ "id": "0192d3c4-...", "name": "Work phone", "registered_at": "2026-10-18T09:00:00Z", "last_used_at": null }
+```
+
+- The challenge is bound to the session that asked for it, used up when
+  the answer arrives whether or not it checks, and refused from any other
+  session (`passkey_challenge_expired`); a new options request replaces
+  that session's earlier challenge.
+- `excludeCredentials` lists the person's passkeys, so a device that holds
+  one already says so rather than making a second.
+- `name` is required: the person's own name for the device, one line. A
+  passkey registered already, to anyone, is `passkey_already_registered`;
+  a 21st is `passkey_limit_reached`.
+- The user handle the device keeps is 16 random bytes per passkey, never
+  the user's `id`, so it says nothing about the account.
+
+Listing, renaming and removing:
+
+```text
+GET /auth/passkey
+
+200 OK
+[{ "id": "0192d3c4-...", "name": "Work phone", "registered_at": "2026-10-18T09:00:00Z", "last_used_at": "2026-10-18T09:05:00Z" }]
+```
+
+```text
+PATCH /auth/passkey/0192d3c4-...
+{ "name": "Old phone" }
+
+200 OK
+{ "id": "0192d3c4-...", "name": "Old phone", "registered_at": "2026-10-18T09:00:00Z", "last_used_at": "2026-10-18T09:05:00Z" }
+```
+
+```text
+DELETE /auth/passkey/0192d3c4-...
+
+204 No Content
+```
+
+- Each reaches only the signed-in person's own passkeys: any other `id`
+  is `passkey_not_found`. Removing the last one is allowed; the person
+  signs in with a magic link and adds another. Removing a passkey ends no
+  session it started.
+- Each route's response shape is fixed (area 7, "Generated routes"). They
+  belong to the first API that accepts browser sessions and are listed in
+  its record, its OpenAPI document and `jadpo routes`, marked generated.
+- The app writes no passkey routes of its own: one at any of these paths
+  is `route.path_overlap`. Unlike magic links there is no `routes: false`,
+  since every body is WebAuthn's rather than the app's, so there is
+  nothing for the app's own route to add.
+
+**What is kept.** `jadpo_passkeys`, a system table in the store of the
+principal's user entity beside `jadpo_sessions`, holds each passkey as a
+`WebAuthnCredential` (area 19): its credential ID, its public key (a COSE
+key), its signature counter, its transports, whether it may be and is
+backed up, its name, and when it was registered and last used, with the
+user's `id` and the user handle. None of it is a secret: a copy of the
+table signs no one in. Area 15's report lists only each passkey's
+credential ID and its last use.
+
+**Recovery.** A person with no passkey left signs in with a magic link or
+its code, then adds a new passkey through the routes above. Nothing else
+recovers an account, so a lost phone never needs an operator.
+
+A whole application with passkeys: the origin setting, the user, and
+`passkey:` beside the browser session.
+
+```jadpo check project=passkeys file=config.jadpo
+config {
+    browser_origin: Url
+}
+```
+
+```jadpo check project=passkeys file=app.jadpo
+use journal/entities { Member }
+
+application {}
+
+principal {
+    user: {
+        subject: Member.email
+    }
+}
+```
+
+```jadpo check project=passkeys file=authentication.jadpo
+authentication {
+    browser_session: {
+        cookie: "notes_session"
+        origin: config.browser_origin
+    }
+    sign_in: {
+        passkey: {
+            expires_after: 2m
+        }
+    }
+}
+```
+
+```jadpo check project=passkeys file=domains/journal/entities/member.jadpo
+entity Member {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+    }
+}
+```
+
+Without an origin there is nothing to bind a passkey to:
+
+```jadpo check project=e-passkey-origin expect=semantic.auth_setting_required
+principal {
+    user: {
+        subject: Member.email
+    }
+}
+
+authentication {
+    browser_session: {
+        cookie: "session"
+    }
+    sign_in: {
+        passkey: {}
+    }
+}
+
+entity Member {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+}
+```
+
+```text output
+PLACEHOLDER
+```
 
 ### A person the app has not seen
 
@@ -649,6 +917,8 @@ action create_member(first: FirstSignIn) fails SignUpClosed -> Member.id {
 - Without `on_first_sign_in:`, only existing users sign in: an unknown
   address gets no email, and an unknown provider account or token subject
   is `sign_in_refused`.
+- A passkey never runs it: a passkey is only ever added by a person
+  already signed in, so every passkey that signs in has its user.
 
 ### Signing in from code the app writes
 
@@ -666,10 +936,14 @@ subscribers (area 12):
 | `SignedIn` | `user_id` (the user entity's `id`), `method: SignInMethod`, `first_time: Bool` | A session or API token was started by `sign_in:` or an external token's first use |
 | `SignInRefused` | `method: SignInMethod`, `reason: SignInRefusal`, `user_id` (when known) | A link, code or first sign-in was refused |
 | `SignInCodesDisabled` | `user_id` (when the address has an account), `until: Instant` | An address reached `failed_codes_per_day:` |
+| `PasskeyAdded` | `user_id`, `passkey_id: Uuid` | A person registered a passkey |
+| `PasskeyRemoved` | `user_id`, `passkey_id: Uuid` | A person removed one of their passkeys |
 
 `SignInRefusal` is a built-in enum: `link_expired`, `link_other_browser`,
-`code_invalid`, `codes_disabled`, `refused_by_app` and `user_disabled`.
-No event carries an address, a link or a code.
+`code_invalid`, `codes_disabled`, `refused_by_app`, `user_disabled`,
+`passkey_challenge_expired` and `passkey_rejected`. `SignInMethod` has
+`passkey` when `passkey:` is declared. No event carries an address, a
+link, a code, a challenge or a passkey's credential ID or key.
 
 ### In development and tests
 
@@ -680,6 +954,28 @@ posts it to `POST /auth/magic-link/confirm` itself.
 A route test asks for a link with `POST /auth/magic-link`, reads the email
 from `email.sent` and follows its link or posts its code; `as:` still
 signs a test in directly.
+
+Browsers allow passkeys on `http://localhost` without TLS, so in `jadpo dev`
+a browser's own passkeys work against a `browser_origin` of
+`http://localhost:<port>`; an agent uses the browser's virtual
+authenticator (Chrome DevTools' WebAuthn panel, or WebDriver's virtual
+authenticator commands) rather than a real device. A route test has
+`test_passkeys`, which only tests call, a software authenticator driving
+the generated routes for real:
+
+| Operation | Does |
+|---|---|
+| `test_passkeys.register(user: Principal.user, name: Text) -> TestPasskey` | Adds a passkey for `user` through `POST /auth/passkey/register/options` and `POST /auth/passkey/register`, signed in as `as:` signs in, and gives the device holding it |
+| `test_passkeys.sign_in(passkey: TestPasskey) -> Response` | Signs in with it through the two sign-in routes and gives the second's `Response` |
+
+```jadpo fragment
+test "a passkey signs Ada in" {
+    var ada: Principal.user = member_called("ada")
+    var phone: TestPasskey = test_passkeys.register(ada, "Phone")
+    var response: Response = test_passkeys.sign_in(phone)
+    assert response.status == 204
+}
+```
 
 ### What the compiler checks
 
@@ -695,6 +991,20 @@ Coming with the chunk that builds sign-in, as prose until then:
 - `on_first_sign_in:` naming anything but an action taking one
   `FirstSignIn` and returning the user entity's `id` is an error.
 - `email:` and `send:` together on one email are an error (area 16).
+
+For passkeys (chunk 5.5z, except where marked):
+
+- `passkey:` without `browser_session:`, or without its `origin:`, is
+  `semantic.auth_setting_required`.
+- `passkey:` without `magic_link:` in the same `sign_in:` is
+  `semantic.auth_setting_required` (chunk 5.5z2).
+- A setting `passkey:` doesn't take is `semantic.auth_setting_unknown`;
+  `expires_after:` outside `1m` to `10m`, or a `path:` that isn't fixed
+  segments, is `semantic.auth_setting_invalid`.
+- Anything in `sign_in:` but `magic_link:`, `passkey:` and `providers:` is
+  `semantic.auth_method_unknown`.
+- A route the application writes at a generated passkey path is
+  `route.path_overlap`.
 
 ## Who is calling: `current_principal`
 
@@ -2006,9 +2316,15 @@ Authentication failures are raised by the runtime, never declared or listed in
 | An address reached `failed_codes_per_day:` | `sign_in_codes_disabled` | `rate_limited` | 429 |
 | `on_first_sign_in` refused, or no user and no `on_first_sign_in:` for a provider or token | `sign_in_refused` | `not_permitted` | 403 |
 | Too many sends to one address | `rate_limited` | `rate_limited` | 429 |
+| A passkey ceremony's challenge expired, was used, was replaced or came from another browser or session | `passkey_challenge_expired` | `unauthenticated` | 401 |
+| A passkey's answer doesn't check (origin, relying party, presence, verification, signature or counter), or its passkey isn't registered | `passkey_rejected` | `unauthenticated` | 401 |
+| The passkey is registered already | `passkey_already_registered` | `conflict` | 409 |
+| The person has 20 passkeys already | `passkey_limit_reached` | `conflict` | 409 |
+| No passkey of the signed-in person has that `id` | `passkey_not_found` | `not_found` | 404 |
 
 `user_disabled` and `service_disabled` are built in and never declared
-(question 6), as are the `sign_in_` failures (decided 2026-10-16), whose
+(question 6), as are the `sign_in_` failures (decided 2026-10-16) and the
+`passkey_` failures (chunk 5.5z), whose
 wording for people is Jadpo's own (area 16, "Built-in emails"). With a revocation delay, a disabled caller is
 noticed within that delay. The log records the method, the credential's
 record id and the reason, never the credential.

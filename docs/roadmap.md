@@ -1057,7 +1057,9 @@ reference only).
   attestation), credentials as `WebAuthnCredential`, several per person,
   recovery by magic link. Done when a test registers and signs in with a
   virtual authenticator, a replayed or wrong-origin assertion is refused,
-  and a person with no passkey left recovers through a magic link.
+  and a removed passkey can't sign in. Split on 2026-10-18: magic links
+  are 7.3b and events area 12, both later, so recovery, the check that
+  magic links are on, the route-test helpers and the events are 5.5z2.
 - [x] **5.5s Geospatial types' baselines** `opus · high` (area 19,
   "The standard types"): the 17 geospatial types, with construction, text
   and JSON from the contract, GeoJSON (RFC 7946) on the wire and
@@ -1315,6 +1317,15 @@ The design is area 11 as revised on 2026-10-16, with its research in
   the wrong-code and send limits, `on_first_sign_in` for every way in, the
   built-in emails' five levels (area 16), the sign-in failures and events.
   Google and other providers stay after the first build.
+- [ ] **5.5z2 Passkey recovery** `opus · high` (area 8, "Passkeys"; split
+  from 5.5z), after 7.3b and the events of area 12: `passkey:` needs
+  `magic_link:` (`semantic.auth_setting_required`), and area 8's passkeys
+  example gains it; the device lists a passkey under `magic_link:`'s
+  `address:` rather than the principal's subject; `test_passkeys.register`
+  and `.sign_in` with `TestPasskey` in route tests; `SignedIn` and
+  `SignInRefused` for passkeys, `PasskeyAdded` and `PasskeyRemoved`. Done
+  when a person with no passkey left recovers through a magic link and
+  adds a new one, in a route test written with `test_passkeys`.
 - [ ] **7.4 Outside calls hold no transaction** `opus · xhigh` (areas 6 and
   11, 2026-10-15): reads before a call in a read-only snapshot closed before
   it, the transaction opened after it, a write to a record loaded before the
