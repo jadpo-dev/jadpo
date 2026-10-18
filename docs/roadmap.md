@@ -1153,7 +1153,7 @@ reference only).
   `ai.generate`, streaming, embeddings with pgvector, checked prompt
   files, a fake for tests, limits, area 15's report), and place its build
   on this roadmap. **Needs Richard** to decide the page.
-- [ ] **5.5w Every boundary through the contract: storage** `opus · high`
+- [x] **5.5w Every boundary through the contract: storage** `opus · high`
   (area 19, "Every standard type meets one contract"; Richard,
   2026-10-17), after the standard type groups. Split (2026-10-18) after a
   re-audit of the 2026-10-17 audit's findings: this chunk stores every
@@ -1177,7 +1177,15 @@ reference only).
   as its entry lays it out, and the boundaries the audit left undecided
   (event, job and batch payloads, CSV cells, a personal value's log hash,
   developer reports, integration fields without `wire:`) are decided on
-  areas 12, 15, 17, 11 and 19.
+  areas 12, 15, 17, 11 and 19. Built: each entry's columns are held to a
+  layout made from its parts (`jadpo_std::standard::storage`), and one
+  codec turns every compound value into them and back; a range that
+  holds nothing is refused, since PostgreSQL keeps it without its ends,
+  and `CalendarPeriod` is three `integer` columns rather than an
+  `interval`, which would turn `P12M` into `P1Y`; the plan reads a part
+  that is a built-in type held as a standard type (`OidcClaims`' `email`)
+  as that type. What the chunk chose is area 19's "Chosen in chunk 5.5w",
+  the encodings its "Every boundary through the contract".
 - [ ] **5.5w2 Every boundary through the contract: JSON and the built
   boundaries** `opus · high` (area 19; split from 5.5w), after 5.5w. The
   re-audit's gaps on the boundaries that are built: `json.write` writes a

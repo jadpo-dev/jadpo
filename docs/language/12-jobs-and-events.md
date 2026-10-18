@@ -396,6 +396,19 @@ compare them.
 - **No order is promised** between events (question 6). A subscriber that
   cares about order reads the current state instead of trusting the event's
   copy, which is also what makes repeats safe.
+- **A payload is the contract's JSON.** An event saved in the outbox, a
+  job's arguments and the values a batch captures are written as the JSON
+  of their types, by the route codec a request's body goes through, so a
+  standard type keeps its currency, unit and every place (area 19, "Every
+  boundary through the contract"). The version rule: a payload is read
+  with its type as it is when it is delivered, an event type's shape is
+  recorded as an API record's is, and a change to it that would break an
+  API record (a field removed, renamed or narrowed) needs area 18's
+  acceptance; a payload saved before such a change that no longer reads is
+  parked with its problem, never dropped, as a message that keeps failing
+  is ("Events from outside"). Decided by the lead session, 2026-10-18,
+  under Richard's instruction of 2026-10-17 that every boundary goes
+  through the contract; built with the outbox (roadmap 6.1).
 
 ## Several changing calls in one action
 
