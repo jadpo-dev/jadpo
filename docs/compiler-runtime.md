@@ -320,6 +320,14 @@ operation being pure. The checker refuses them outside actions and tests
 (`type.random_context`, as `clock.now`'s `type.clock_context`), and each
 executor runs them through `jadpo_value::random::run`, given the
 invocation's source of random bytes, rather than `jadpo_value::run`.
+Since chunk 5.5q2 `crypto`'s operations run the same way, through
+`jadpo_value::crypto::run`, given the invocation's random bytes (for
+`encrypt`'s nonce and `hash_password`'s salt, which read the generator)
+and the key its `key: config.<name>` names. A key is never a value: the
+executor passes the setting's number in the key's place, and the
+operation is handed the setting's `KeyRing` (current and previous), which
+`jadpo_runtime::config::key_ring` makes from the checked settings for
+either executor.
 Since chunk 5.5g2 an `attempt` arm that maps `json.read`'s `mismatch` to
 a failure declaring `problem: DecodeProblem` carries that field's place
 (`RuleArm::problem` in the graph, `Raise::problem` in the plan), and the

@@ -847,6 +847,19 @@ impl Body<'_> {
                 continue;
             }
             let kind = table.and_then(|op| op.params.get(*slot)).map(|p| p.kind);
+            // A `crypto` call's key is a setting, written `key:
+            // config.<name>` (area 19, "Hashing and cryptography"): the
+            // one place code gives a key, which the compiler owns.
+            if let Some(jadpo_std::Kind::Builtin(key)) = kind
+                && key.is_key()
+                && !is_setting_read(&value)
+            {
+                if ty.is_none() {
+                    self.infer(&value);
+                }
+                self.key_argument(&value, written, key);
+                continue;
+            }
             if kind == Some(jadpo_std::Kind::Range) {
                 let given = match ty {
                     Some(ty) => ty,
@@ -2064,6 +2077,33 @@ impl Body<'_> {
             return (target, Fallible::Unknown);
         }
         let value = &args[0].1;
+        // A key comes only from its setting, given where the compiler owns
+        // the place, as a `crypto` call's `key:` (area 19, "Hashing and
+        // cryptography"): code never makes one, from a literal or from
+        // data.
+        if let Some(key) = self.table.base_prim(&target)
+            && key.is_key()
+        {
+            self.infer(value);
+            let span = self.span(value);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_CONSTRUCTOR_INPUT,
+                    format!("`{written}` isn't built from a value"),
+                )
+                .at(span, "a key made in code")
+                .reason(format!(
+                    "{} `{}` is a secret that comes only from its setting, so it never lands in the source, a log or the database; code never holds one, and gives the setting, `config.<name>`, only where the compiler owns the place, such as a `crypto` call's `key:`.",
+                    if key.name().starts_with('E') { "An" } else { "A" },
+                    key.name()
+                ))
+                .next(format!(
+                    "Declare `<name>: {}` in `config.jadpo`, and give `config.<name>` where the key is needed, such as a `crypto` call's `key:`",
+                    key.name()
+                )),
+            );
+            return (target, Fallible::Unknown);
+        }
         let into_percentage = self.table.representation(&target) == Some(Prim::Percentage);
         // A ratio becomes a percentage by construction, `Percentage(0.25)`
         // being 25% (area 19, "Chosen in chunk 5.5d").
@@ -2212,6 +2252,27 @@ impl Body<'_> {
         }
         let fallible = self.proved(value, &actual, &target, call);
         (target, fallible)
+    }
+
+    /// A `crypto` call's `key:` given anything but a key setting.
+    fn key_argument(&mut self, value: &Expr, written: &str, key: Prim) {
+        let given = tree::written(value.syntax());
+        let span = self.span(value);
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_MISMATCH,
+                format!("`{written}`'s `key:` takes a setting, not `{given}`"),
+            )
+            .at(span, "not `config.<name>`")
+            .reason(format!(
+                "A key is opaque and comes only from its setting, so a `crypto` call's key is written `key: config.<name>`, reading a `{}` setting, the one place code gives a key; no other value holds one.",
+                key.name()
+            ))
+            .next(format!(
+                "Declare `<name>: {}` in `config.jadpo`, and write `key: config.<name>`",
+                key.name()
+            )),
+        );
     }
 
     /// `Percentage(value)` from something that isn't a ratio: a whole
@@ -2502,4 +2563,11 @@ fn substitute(param: &Ty, bound: &BTreeMap<String, Ty>) -> Ty {
         ),
         other => other.clone(),
     }
+}
+
+/// Whether `value` reads a setting as it is, `config.<name>`.
+fn is_setting_read(value: &Expr) -> bool {
+    dotted(value).is_some_and(|(first, rest)| {
+        tree::name_ref_text(&first).as_deref() == Some("config") && rest.len() == 1
+    })
 }

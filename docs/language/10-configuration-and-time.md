@@ -446,14 +446,17 @@ most conservative reading:
 > any other read stays `configuration.secret_flow`. Area 19 also adds a
 > generated `random` namespace, read only in actions as `clock.now` is
 > (question 19). `random` built in chunk 5.5q (`type.random_context`
-> beside `type.clock_context`); the `key:` place comes with 5.5q2.
+> beside `type.clock_context`); the `key:` place built in chunk 5.5q2,
+> with `PrivateKey` as a third key setting, for `crypto.sign`.
 
 `secret: true` marks a value that must never leave the server. The compiler
 accepts it only at places the compiler itself owns: a connection's `url:`, an
 integration's `credential:` (and its webhook `secret:`, area 11) and an
 authentication `signing_key:` (area 8), all written in `app.jadpo` or
-`authentication.jadpo`. Nothing in a function, action, query or test is such
-a place, so reading a secret there at all (returning it, storing it, logging
+`authentication.jadpo`, and a `crypto` call's `key:` (area 19), written `key:
+config.<name>` with an `EncryptionKey`, `SigningKey` or `PrivateKey` setting.
+Nothing else in a function, action, query or test is such a place, so
+reading a secret there at all (returning it, storing it, logging
 it, putting it in a failure, building another value from it, passing it on
 or even comparing it to something) is `configuration.secret_flow`. A value
 that is always secret needs no flag: `PostgresUrl`, `RedisUrl` and
@@ -3426,8 +3429,8 @@ error: `config.api_key` is a secret
    |
 12 |     return config.api_key
    |            ^^^^^^^^^^^^^^ a secret, read here
-  reason: A secret never leaves the server, so it is accepted only where the compiler itself owns the place: a connection's `url:`, an integration's `credential:` and an authentication `signing_key:`. Returning it, storing it, logging it, putting it in a failure, building another value from it or comparing it with something could leak it.
-  next: Give `config.api_key` to the connection, integration or authentication that needs it in `app.jadpo` or `authentication.jadpo`, or leave `secret: true` off `api_key` if its value is public (agent)
+  reason: A secret never leaves the server, so it is accepted only where the compiler itself owns the place: a connection's `url:`, an integration's `credential:`, an authentication `signing_key:` and a `crypto` call's `key:`. Returning it, storing it, logging it, putting it in a failure, building another value from it or comparing it with something could leak it.
+  next: Give `config.api_key` to the connection, integration or authentication that needs it in `app.jadpo` or `authentication.jadpo`, or as a `crypto` call's `key:`, or leave `secret: true` off `api_key` if its value is public (agent)
   rule: configuration.secret_flow
   help: docs/language/10-configuration-and-time.html#configuration-secret-flow
 

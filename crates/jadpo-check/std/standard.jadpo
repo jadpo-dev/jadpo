@@ -698,6 +698,20 @@ public type PaperSize = Enum {
 /// passing: `0000-0002-1825-0097`.
 public type Orcid = Text {}
 
+/// What checking a password against its hash says (area 19,
+/// `crypto.verify_password`): `correct_outdated` is correct against a hash
+/// made with older parameters, so store a fresh one.
+public type PasswordCheck = Enum {
+    wrong
+    correct
+    correct_outdated
+}
+
+/// A password's hash (area 19, `crypto.hash_password`): the PHC string of
+/// Argon2id, `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`, which a
+/// sign-in checks a password against.
+public type PasswordHash = Text {}
+
 /// A payment card's number (area 19, ISO/IEC 7812), 12 to 19 digits with
 /// a Luhn check digit: `4242424242424242`. Shown to people as its last
 /// four only, `•••• 4242`. Personal data.
@@ -769,6 +783,11 @@ public type ProblemDetails = Object {
     detail: Text?
     instance: Url?
 }
+
+/// An Ed25519 public key (area 19, RFC 8032), its 32 bytes as unpadded
+/// Base64url, `11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo`: not secret,
+/// so it may be read, stored and sent.
+public type PublicKey = Text {}
 
 /// A device's push notification token (area 19), from Apple's or
 /// Google's service, opaque. Personal data.

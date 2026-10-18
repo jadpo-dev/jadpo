@@ -4,7 +4,7 @@
 # file (`types.jadpo`, `standard.jadpo`, `list.jadpo`, `set.jadpo`,
 # `map.jadpo`, `range.jadpo`, `decimal.jadpo`, `integer.jadpo`, `money.jadpo`,
 # `locale.jadpo`, `temporal.jadpo`, `text.jadpo`, `encoding.jadpo`,
-# `hash.jadpo`, `json.jadpo`, `random.jadpo`); later chunks move the
+# `hash.jadpo`, `json.jadpo`, `random.jadpo`, `crypto.jadpo`); later chunks move the
 # rest there as their areas are built. Lines starting with `#` are comments.
 
 # Built-in types that later areas define (areas 3 to 19), and the setting

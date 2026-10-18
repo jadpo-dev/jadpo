@@ -173,6 +173,10 @@ enum Task<'p> {
     AdvanceClock(SiteId),
     /// `none`, for an option a standard-library call leaves out.
     PushNone,
+    /// A `crypto` call's `key: config.<name>`: the setting's number, the
+    /// handle the operation finds its key by; the key itself is never a
+    /// value (area 19).
+    PushKey(u32),
     /// `translations.<domain>.<message>(locale:, ...)` (area 10): the
     /// locale and the message's fields on the stack, in the entry's
     /// order.
@@ -704,6 +708,7 @@ impl<'p> Machine<'p> {
                 self.values.push(Value::Unit);
             }
             Task::PushNone => self.values.push(Value::None),
+            Task::PushKey(setting) => self.values.push(Value::Int(i64::from(setting))),
             Task::Translate { key, count, at } => {
                 let values = self.take(count);
                 let Some((locale, rest)) = values.split_first() else {
@@ -2037,6 +2042,23 @@ impl<'p> Machine<'p> {
                 work.push(Task::Defect("an operation without one of its values", id));
                 break;
             };
+            // A key is given by its setting, never read as a value.
+            if matches!(param.kind, ParamKind::Builtin(builtin) if builtin.is_key()) {
+                match (self.site(*arg).map(|site| &site.node), self.decoded(*arg)) {
+                    (
+                        Some(Node::Expr(Expr::Config { .. })),
+                        Some(Decoded::Config(Some(setting))),
+                    ) => {
+                        work.push(Task::PushKey(*setting));
+                        count += 1;
+                    }
+                    _ => {
+                        work.push(Task::Defect("a key that isn't read from its setting", id));
+                        break;
+                    }
+                }
+                continue;
+            }
             if param.kind == ParamKind::Function {
                 match self.site(*arg).map(|site| &site.node) {
                     Some(Node::Expr(Expr::Inline {
@@ -2084,6 +2106,11 @@ impl<'p> Machine<'p> {
         // (area 19, "Data formats").
         if matches!(op, Op::JsonRead | Op::JsonWrite) {
             return self.json(ctx, op, values, at);
+        }
+        // `crypto` runs with the key its `key:` names and the invocation's
+        // random bytes (area 19, "Hashing and cryptography").
+        if jadpo_value::crypto::is_crypto(op) {
+            return self.crypto(ctx, op, values, at);
         }
         // `random` reads the invocation's random bytes: the host's
         // generator, a test's seed or a recorded run's (area 19, question
@@ -2136,6 +2163,53 @@ impl<'p> Machine<'p> {
                 problem: None,
             }),
             (Err(fault), None) => Err(self.value_fault(ctx, fault, at)),
+        }
+    }
+
+    /// A `crypto` operation (area 19, "Hashing and cryptography"), in
+    /// `jadpo-value`'s `crypto` module as compiled code calls it: given the
+    /// key ring its `key:` names by the setting's number, never the key as
+    /// a value, and the invocation's random bytes for a nonce or a salt.
+    /// `decrypt`'s `unreadable` is for its `attempt` to map.
+    fn crypto(
+        &mut self,
+        ctx: &mut Ctx<'_>,
+        op: Op,
+        values: &[Value],
+        at: SiteId,
+    ) -> Result<Value, Stop> {
+        let key_at = op.operation().params.iter().position(
+            |param| matches!(param.kind, ParamKind::Builtin(builtin) if builtin.is_key()),
+        );
+        let keys = match key_at.map(|place| values.get(place)) {
+            None => None,
+            Some(Some(Value::Int(setting))) => {
+                let setting = u32::try_from(*setting).unwrap_or(u32::MAX);
+                match self.program.key(setting) {
+                    Some(keys) => Some(keys),
+                    None => {
+                        let name = self.program.setting_name(setting);
+                        return Err(self.defect(
+                            ctx,
+                            &format!("the key `config.{name}` has no value in this run"),
+                            at,
+                        ));
+                    }
+                }
+            }
+            Some(_) => return Err(self.defect(ctx, "a key that isn't read from its setting", at)),
+        };
+        let made = jadpo_value::crypto::run(op, values, keys, &mut |bytes: &mut [u8]| {
+            ctx.random_bytes(bytes)
+        });
+        match made {
+            Ok(value) => Ok(value),
+            Err(jadpo_value::Fault::Broke(rule)) => Err(Stop::Invalid {
+                rule,
+                written: format!("{}:", rule.word()),
+                problem: None,
+            }),
+            Err(fault) => Err(self.value_fault(ctx, fault, at)),
         }
     }
 

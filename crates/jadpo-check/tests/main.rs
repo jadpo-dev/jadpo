@@ -17,6 +17,7 @@ mod colour_media;
 mod conditions;
 mod config;
 mod constants;
+mod crypto;
 mod data_formats;
 mod declines;
 mod decode_problems;

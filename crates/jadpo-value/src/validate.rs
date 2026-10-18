@@ -112,6 +112,8 @@ impl Validator {
                         | Builtin::PostgresUrl
                         | Builtin::RedisUrl
                         | Builtin::SigningKey
+                        | Builtin::EncryptionKey
+                        | Builtin::PrivateKey
                 )
             })
     }

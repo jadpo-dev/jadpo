@@ -578,6 +578,35 @@ The `sign_in_` failures are built in and raised by the runtime, so, like
 every authentication failure, they pass through an action without being
 listed in its `fails` (area 4).
 
+### Passkeys
+
+> Decided 2026-10-18 (Richard). Built in chunk 5.5z.
+
+A passkey (WebAuthn, FIDO2) is the third built-in way to check a person,
+beside magic links and providers. The person unlocks a key held on their
+device with a fingerprint, their face or the device's PIN; the biometric
+never leaves the device, and the app stores only a public key, so there is
+no secret on the server to leak and a passkey works only on the site it
+was made for. The language owns it, as it owns magic links, because the
+ceremonies are where hand-written sign-in goes wrong:
+
+- **Registering and signing in** are built in: the one-time challenge, its
+  expiry, the origin and relying-party check, and the signature counter,
+  on the well-established `webauthn-rs` crate rather than written by hand.
+  Attestation is not requested.
+- **Stored with the user** as the standard `WebAuthnCredential` type (area
+  19), never a biometric: area 15 has nothing to report beyond the
+  credential's identifier and when it was last used.
+- **Recovery is a magic link.** A person who has lost every device with a
+  passkey signs in by email and adds a new one, so passkeys need magic
+  links on in the same application.
+- **More than one passkey per person**, each named by the person and
+  removable, so a phone and a laptop each have their own.
+
+The rest (the `sign_in:` option's exact shape, its routes, events, errors
+and test helpers) is written with the build, following magic links' section
+above.
+
 ### A person the app has not seen
 
 `on_first_sign_in:` names an action that decides, for every way in, what a
@@ -3302,3 +3331,4 @@ builds it.
 | Signed parts (chosen in chunk 5.1b) | A signed part is `<payload>.<tag>` in base64url without padding: the payload JSON of the credential's method, its row `id`, its verifier, the caller's `id` and subject, when it expires and a browser session's CSRF verifier; the tag BLAKE3 in keyed mode under a key derived (BLAKE3 `derive_key`) from the setting's text, compared in constant time, in `jadpo_runtime`, host-agnostic and built for wasm32. It is signed with the current value and opens with the current or the `_PREVIOUS` one. It is made only after a read of the record, never by `sessions.start` or `sessions.issue_token`, so a credential signs in its first time by reading the record, as it would with no delay, and a caller disabled before signing in is refused at once. It expires the delay after that read, or when the session or the key ends if that is sooner. A secret beside a part that holds another verifier, a part no key opens, one for another method or one that has expired is never refused for that: the request reads the record by its secret | 2026-10-16 |
 | Renewing (chosen in chunk 5.1b) | A browser session's cookie and an API token are the 64 hexadecimal digits they are issued as, and after renewal those digits, `.` and the signed part; either form signs in with or without a delay, so turning one on or off signs no one out. A request whose credential has no good part reads the record (one statement, area 8, question 12) and its response renews it: the session's cookie set again, `HttpOnly; Secure; SameSite=Strict`, with `Max-Age` the session's time left, or the API token in an `X-Jadpo-Token` response header, which a client keeps; a client that ignores it reads the record on every request after the delay. A response whose action started or ended the session renews nothing, and neither does a refusal or a repeat answered from an `Idempotency-Key`. A `fresh` route reads the record by the credential's verifier whatever its part says, and renews it only when its part wasn't good. A write with a good part checks the CSRF token against the verifier the part holds | 2026-10-16 |
 | The key exchange (chosen in chunk 5.1b) | The runtime answers `POST /auth/exchange` when `revocation_delay:` is set and `service_key:` is declared with the principal's `service:`; it signs in to every API that accepts service keys and is listed in each one's record (`generated: exchange`, `output: ExchangedToken`), OpenAPI (`x-jadpo-generated: true`) and `jadpo routes` (`generated exchange`). It takes a service key directly and nothing else: an exchanged token is 401 `invalid_credentials`, a user's credential 403 (`not_permitted`, or `csrf_rejected` for a cookie without its CSRF token), a query string or body 422 `invalid_input`; it reads no `Idempotency-Key` and keeps nothing, so a repeat is a new exchange. It answers 200 with `token`, `jadpo_service_token_` and a signed part, and `expires_at`, the delay from now or the key's end if sooner, with `Cache-Control: no-store`. An exchanged token signs in wherever the API accepts service keys, without a read except on a `fresh` route, which reads the key with the service's record by the key's verifier the part holds; it is never renewed. A route the application writes at `POST /auth/exchange` is `route.path_overlap` | 2026-10-16 |
+| Passkeys (Richard) | A third built-in way to check a person (WebAuthn, FIDO2): registration and sign-in ceremonies built in on `webauthn-rs`, no attestation, credentials stored as `WebAuthnCredential`, several per person, recovery by magic link. Built in 5.5z | 2026-10-18 |

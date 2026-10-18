@@ -190,6 +190,12 @@ impl ConfigValues {
         self.entries.get(at as usize)?.text.as_deref()
     }
 
+    /// The previous value of setting number `at`, a key's while a
+    /// deployment rotates it.
+    pub fn previous_at(&self, at: u32) -> Option<&str> {
+        self.entries.get(at as usize)?.previous.as_deref()
+    }
+
     pub fn is_secret(&self, name: &str) -> bool {
         self.entry(name).is_some_and(|entry| entry.secret)
     }
@@ -399,6 +405,36 @@ pub fn decode(
     }
 }
 
+/// The key setting number `at` of `plan` holds, with the one it replaced
+/// (area 19, "Hashing and cryptography"): what a `crypto` call's `key:
+/// config.<name>` gives the operation, and nothing else. An
+/// `EncryptionKey`'s and a `PrivateKey`'s text is 32 bytes as unpadded
+/// Base64url, which the check before the app starts has held it to; a
+/// `SigningKey`'s text's bytes are the HMAC key. `None` for a setting that
+/// isn't a key, or has no value in this run.
+pub fn key_ring(
+    plan: &ConfigPlan,
+    values: &ConfigValues,
+    at: u32,
+) -> Option<jadpo_value::crypto::KeyRing> {
+    let field = plan.fields.get(at as usize)?;
+    let Some(jadpo_std::http::Codec::Scalar { builtin, .. }) =
+        plan.codecs.get(field.codec.0 as usize)
+    else {
+        return None;
+    };
+    let (current, previous) = (values.text_at(at)?, values.previous_at(at));
+    match builtin {
+        jadpo_std::Builtin::EncryptionKey | jadpo_std::Builtin::PrivateKey => {
+            jadpo_value::crypto::KeyRing::from_key_text(current, previous)
+        }
+        jadpo_std::Builtin::SigningKey => Some(jadpo_value::crypto::KeyRing::from_signing_text(
+            current, previous,
+        )),
+        _ => None,
+    }
+}
+
 /// A setting that holds a duration, in milliseconds: the value the
 /// application started with for setting number `at` of `plan`.
 pub fn duration_ms(
@@ -434,6 +470,13 @@ fn generate(kind: TestSecret, random: &dyn Fn(&mut [u8]) -> bool) -> Option<Stri
         }
         TestSecret::PostgresUrl => Some(format!("postgres://test:{}@127.0.0.1:1/test", hex(32)?)),
         TestSecret::RedisUrl => Some(format!("redis://:{}@127.0.0.1:1/0", hex(32)?)),
+        TestSecret::Key => {
+            let mut bytes = [0u8; jadpo_std::KEY_SIZE];
+            if !random(&mut bytes) {
+                return None;
+            }
+            Some(jadpo_value::encoding::to_base64url(&bytes))
+        }
     }
 }
 
@@ -618,5 +661,73 @@ mod tests {
         .expect("both set");
         assert_eq!(values.text("session_key"), Some("current"));
         assert_eq!(values.previous("session_key"), Some("old"));
+    }
+
+    const KEY: &str = "gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp8";
+
+    #[test]
+    fn a_key_that_isn_t_32_bytes_of_unpadded_base64url_stops_the_start() {
+        let mut key = field("notes_key", true, None);
+        key.rotates = true;
+        let (plan, validators) = plan(vec![key], Builtin::EncryptionKey);
+        for (variable, bad) in [
+            ("NOTES_KEY", "gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp8="),
+            ("NOTES_KEY", "0123456789abcdef0123456789abcdef"),
+            (
+                "NOTES_KEY_PREVIOUS",
+                "gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp",
+            ),
+        ] {
+            // The later of two values for one variable is the one read.
+            let given = [("NOTES_KEY", KEY), (variable, bad)];
+            let problems = load(
+                &plan,
+                &validators,
+                &vars(&given),
+                Mode::Environment,
+                NO_RANDOM,
+            )
+            .expect_err("refused");
+            assert_eq!(problems.len(), 1, "{variable}");
+            assert_eq!(problems[0].variable, variable);
+            assert!(matches!(problems[0].kind, ProblemKind::Invalid { .. }));
+            assert!(!format!("{problems:?}").contains(bad));
+        }
+        // A good key and its previous one give the ring a `crypto` call's
+        // `key:` is handed.
+        let values = load(
+            &plan,
+            &validators,
+            &vars(&[("NOTES_KEY", KEY), ("NOTES_KEY_PREVIOUS", KEY)]),
+            Mode::Environment,
+            NO_RANDOM,
+        )
+        .expect("set");
+        let ring = key_ring(&plan, &values, 0).expect("a key ring");
+        assert_eq!(format!("{ring:?}"), "KeyRing { .. }");
+    }
+
+    #[test]
+    fn a_test_run_makes_a_key_of_32_random_bytes() {
+        let mut key = field("receipt_key", true, None);
+        key.generated = Some(TestSecret::Key);
+        let (plan, validators) = plan(vec![key], Builtin::PrivateKey);
+        let values = load(
+            &plan,
+            &validators,
+            &vars(&[]),
+            Mode::Test,
+            &|bytes: &mut [u8]| {
+                bytes.fill(0xab);
+                true
+            },
+        )
+        .expect("generated");
+        let text = values.text("receipt_key").expect("a key");
+        assert_eq!(jadpo_std::decode_key(text), Some([0xab; 32]));
+        assert!(key_ring(&plan, &values, 0).is_some());
+        // With no generator there is no key, never a weaker one.
+        let none = check(&plan, &validators, &vars(&[]), Mode::Test, NO_RANDOM);
+        assert_eq!(none[0].state, State::Absent);
     }
 }

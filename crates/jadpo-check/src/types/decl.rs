@@ -611,6 +611,12 @@ impl Decls<'_> {
                         self.principal_field(base, host, name, &value);
                         continue;
                     }
+                    if (self.failure || matches!(base, FieldsBase::Input | FieldsBase::Output))
+                        && holds_password_hash(self.table, &declared, &mut Vec::new())
+                    {
+                        self.password_hash_field(base, host, name, &value);
+                        continue;
+                    }
                     let field = FieldCtx {
                         input: base == FieldsBase::Input,
                         later: base.has_later_settings(),
@@ -1530,7 +1536,94 @@ fn holds_principal(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> boo
     }
 }
 
+/// Whether a type is a `PasswordHash`, or holds one, however deep (area
+/// 19): in a list, a map or an option, or in a field of an object or a
+/// variant's data. An input, output or failure holding one is reported at
+/// its own declaration, so it isn't followed again.
+fn holds_password_hash(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> bool {
+    match ty {
+        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => {
+            holds_password_hash(table, inner, seen)
+        }
+        Ty::Map(key, value) => {
+            holds_password_hash(table, key, seen) || holds_password_hash(table, value, seen)
+        }
+        Ty::Named(name) => {
+            if name == jadpo_std::standard::security::PASSWORD_HASH {
+                return true;
+            }
+            if seen.contains(name) {
+                return false;
+            }
+            seen.push(name.clone());
+            match table.def(name) {
+                Some(super::table::Def::Scalar { parent, .. }) => {
+                    holds_password_hash(table, parent, seen)
+                }
+                Some(super::table::Def::Fields { base, fields, .. })
+                    if !matches!(
+                        base,
+                        FieldsBase::Input | FieldsBase::Output | FieldsBase::Failure
+                    ) =>
+                {
+                    fields
+                        .iter()
+                        .any(|field| holds_password_hash(table, &field.declared, seen))
+                }
+                Some(super::table::Def::Enum { variants }) => variants
+                    .iter()
+                    .flat_map(|variant| variant.fields.iter().flatten())
+                    .any(|field| holds_password_hash(table, &field.declared, seen)),
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
 impl Decls<'_> {
+    /// A field holding a password's hash where none may go (area 19,
+    /// decided by the lead session for chunk 5.5q2): a hash is stored and
+    /// checked, never sent to a client, read from a request or put in a
+    /// failure, which is logged and whose client fields reach the client.
+    fn password_hash_field(&mut self, base: FieldsBase, host: &str, name: &str, value: &Expr) {
+        let span = self.span(value.syntax());
+        let (label, why, next) = if self.failure {
+            (
+                "in a failure",
+                "A failure is logged and its client fields reach the client, so a password's hash in one would leave the server.",
+                format!("Remove `{name}`; the record the hash belongs to is named by its id"),
+            )
+        } else if base == FieldsBase::Input {
+            (
+                "read from a request",
+                "A hash comes only from `crypto.hash_password`, so a request sends the password, which the action hashes; a hash a client chose would let it set any password without knowing it.",
+                format!(
+                    "Take the password in `{name}`'s place as text, and store `crypto.hash_password(...)` of it"
+                ),
+            )
+        } else {
+            (
+                "sent to a client",
+                "A client never needs a password's hash, and anyone who gets one can guess passwords against it offline, at their own pace.",
+                format!(
+                    "Remove `{name}`, and send what the client needs instead, such as whether a password is set"
+                ),
+            )
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_PASSWORD_HASH_EXPOSED,
+                format!("`{host}.{name}` holds a password's hash"),
+            )
+            .at(span, label)
+            .reason(format!(
+                "A `PasswordHash` is stored and checked with `crypto.verify_password`, and never leaves the server. {why}"
+            ))
+            .next(next),
+        );
+    }
+
     /// A field typed with a caller, where none may go (area 8): a caller
     /// never reaches a client, never comes from a request and never sits
     /// in a failure.

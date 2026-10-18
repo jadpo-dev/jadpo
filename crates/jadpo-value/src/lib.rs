@@ -33,6 +33,7 @@
 
 pub mod calendar;
 pub mod colour;
+pub mod crypto;
 pub mod decimal;
 pub mod encoding;
 mod event;
@@ -441,6 +442,21 @@ pub fn run(
             | Op::RandomToken,
             _,
         ) => Err(Fault::Shape),
+        // `crypto` takes the key its call's `key:` names and the
+        // invocation's random bytes, so each executor runs it through
+        // [`crypto::run`] (area 19, "Hashing and cryptography").
+        (
+            Op::CryptoDecrypt
+            | Op::CryptoEncrypt
+            | Op::CryptoHashPassword
+            | Op::CryptoHmac
+            | Op::CryptoPublicKey
+            | Op::CryptoSign
+            | Op::CryptoVerifyHmac
+            | Op::CryptoVerifyPassword
+            | Op::CryptoVerifySignature,
+            _,
+        ) => Err(Fault::Shape),
         (
             Op::TextContains
             | Op::TextDropFirst
@@ -788,6 +804,16 @@ mod tests {
                 | Op::RandomSample
                 | Op::RandomShuffle
                 | Op::RandomToken => continue,
+                // Run with a key and random bytes (`crypto`'s own tests).
+                Op::CryptoDecrypt
+                | Op::CryptoEncrypt
+                | Op::CryptoHashPassword
+                | Op::CryptoHmac
+                | Op::CryptoPublicKey
+                | Op::CryptoSign
+                | Op::CryptoVerifyHmac
+                | Op::CryptoVerifyPassword
+                | Op::CryptoVerifySignature => continue,
                 Op::EncodingToBase64
                 | Op::EncodingToBase64url
                 | Op::EncodingToHex
