@@ -272,6 +272,13 @@ pub fn compare(a: &Value, b: &Value) -> Option<Ordering> {
             Some(x.cmp(y))
         }
         (Value::Date(x), Value::Date(y)) => Some(x.cmp(y)),
+        // A version by its precedence (SemVer 2.0.0 §11, chunk 5.5n2),
+        // build metadata ignored.
+        (Value::Record(x), Value::Record(y))
+            if &*x.ty == jadpo_std::standard::software::SEMANTIC_VERSION && x.ty == y.ty =>
+        {
+            crate::semver::precedence(x, y)
+        }
         // A standard type its data entry orders, held as a record of its
         // parts (`LocalTime`, `YearMonth`): field by field in declared
         // order, which is the canonical order (area 19).

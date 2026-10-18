@@ -49,6 +49,7 @@ pub mod order;
 pub mod present;
 pub mod range;
 mod rounding;
+pub mod semver;
 pub mod set;
 pub mod shape;
 pub mod standard;
@@ -274,6 +275,9 @@ pub fn run(
         (Op::WebResolve, [base, relative]) => web::resolve(base, relative),
         (Op::WebWithQuery, [url, entries]) => web::with_query(url, entries),
         (Op::WebCidrContains | Op::WebResolve | Op::WebWithQuery, _) => Err(Fault::Shape),
+        // `semver`'s operation (area 19, "Web and software").
+        (Op::SemverSatisfies, [version, range]) => semver::satisfies(version, range),
+        (Op::SemverSatisfies, _) => Err(Fault::Shape),
         (Op::RangeContains, [span, value]) => range::contains(span, value).map(Value::Bool),
         (Op::RangeOverlaps, [a, b]) => range::overlaps(a, b).map(Value::Bool),
         (Op::RangeIntersection, [a, b]) => range::intersection(a, b),
@@ -756,6 +760,10 @@ mod tests {
                     vec![Value::text("192.0.2.0/24"), Value::text("192.0.2.7")]
                 }
                 Op::WebResolve => vec![Value::text("https://example.com/a/b"), Value::text("../c")],
+                Op::SemverSatisfies => vec![
+                    semver::read_version("1.2.3").expect("a version"),
+                    Value::text("^1.0.0"),
+                ],
                 Op::WebWithQuery => vec![
                     Value::text("https://example.com/"),
                     Value::Map(std::rc::Rc::new(

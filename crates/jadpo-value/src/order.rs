@@ -117,6 +117,11 @@ fn fields(a: &[(std::rc::Rc<str>, Value)], b: &[(std::rc::Rc<str>, Value)]) -> O
 }
 
 fn records(a: &Record, b: &Record) -> Ordering {
+    // A version sorts by its precedence, as `<` orders it, then by its
+    // build metadata (area 19, chunk 5.5n2).
+    if let Some(found) = crate::semver::canonical_order(a, b) {
+        return found;
+    }
     fields(&a.fields, &b.fields).then_with(|| a.ty.as_bytes().cmp(b.ty.as_bytes()))
 }
 

@@ -248,6 +248,7 @@ pub enum Op {
     RangeContains,
     RangeIntersection,
     RangeOverlaps,
+    SemverSatisfies,
     SetContains,
     SetCount,
     SetDifference,
@@ -725,6 +726,28 @@ const fn web(
 }
 
 const URL: Kind = Kind::Builtin(Builtin::Url);
+
+/// `semver`'s operation (area 19, "Web and software", chunk 5.5n2), one
+/// function in `jadpo-value`'s `semver` module over
+/// `jadpo_std::standard::software`.
+const fn semver(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace: "semver",
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: &[],
+        rust,
+    }
+}
 
 /// Two amounts, or an amount and a list's currency, in different
 /// currencies, where only the running program knows them: settled only by
@@ -1508,6 +1531,18 @@ pub const OPERATIONS: &[Operation] = &[
         &[param("a", Kind::Range), param("b", Kind::Range)],
         BOOL,
         "range::overlaps",
+    ),
+    // `semver`'s operation (area 19, "Web and software"): it never fails,
+    // since its version and range were checked when they were built.
+    semver(
+        Op::SemverSatisfies,
+        "satisfies",
+        &[
+            param("version", Kind::Std("SemanticVersion")),
+            param("range", Kind::Std("VersionRange")),
+        ],
+        BOOL,
+        "semver::satisfies",
     ),
     // The set operations (area 19, "Sets"), each one function in
     // `jadpo-value`'s `set` module. A set is held in the canonical order

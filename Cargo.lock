@@ -1092,6 +1092,7 @@ version = "0.1.0"
 dependencies = [
  "idna",
  "regex",
+ "spdx",
 ]
 
 [[package]]
@@ -1730,6 +1731,15 @@ checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
  "windows-sys",
+]
+
+[[package]]
+name = "spdx"
+version = "0.13.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "646c5a367da914e3babcb9cd8e91c37ccaac42325b8f86f036513ad103f2a716"
+dependencies = [
+ "smallvec",
 ]
 
 [[package]]

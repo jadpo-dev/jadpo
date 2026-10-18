@@ -127,7 +127,7 @@ pub fn whole_in(text: &str, min: i64, max: i64) -> bool {
 /// An IP address in its canonical text: IPv4 in dotted decimal with no
 /// leading zeros, IPv6 as RFC 5952 writes it (lower case, the longest run
 /// of zeros shortened).
-fn canonical_ip(text: &str) -> Option<IpAddr> {
+pub(super) fn canonical_ip(text: &str) -> Option<IpAddr> {
     text.parse::<IpAddr>()
         .ok()
         .filter(|address| address.to_string() == text)

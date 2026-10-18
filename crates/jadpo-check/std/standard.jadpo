@@ -781,6 +781,98 @@ public type UtmParameters = Object {
     content: Text?
 }
 
+// The software types (area 19, "Web and software", chunk 5.5n2).
+
+/// A container image reference (area 19, the OCI distribution reference),
+/// fully qualified: its registry, its repository in lower case, and a tag,
+/// a digest or both: `docker.io/library/nginx:1.27`.
+public type ContainerImage = Text {}
+
+/// A CVE record's id (area 19, the CVE programme's ID syntax):
+/// `CVE-2021-44228`.
+public type Cve = Text {}
+
+/// A content digest (area 19, the OCI image specification): its algorithm,
+/// `:` and the encoded hash, `sha256:` and 64 lower-case hexadecimal
+/// digits.
+public type Digest = Text {}
+
+/// A digital object identifier (area 19, the DOI Handbook), with no
+/// resolver before it and ASCII letters in lower case: `10.1038/nphys1170`.
+public type Doi = Text {}
+
+/// A file's name every common file system takes (area 19): no `/` or
+/// `\`, none of Windows' reserved characters or device names, at most 255
+/// bytes: `report.pdf`.
+public type FileName = Text {}
+
+/// A portable path (area 19), names joined by `/`, absolute after a
+/// leading `/`, in its shortest form: `/var/lib/acme/uploads`,
+/// `../shared/logo.png`.
+public type FilePath = Text {}
+
+/// A git ref name (area 19, `git check-ref-format --allow-onelevel`): a
+/// branch, a tag, a full ref or a commit's hash, `main`,
+/// `refs/tags/v1.2.0`.
+public type GitRef = Text {}
+
+/// A request's idempotency key (area 19, the IETF's `Idempotency-Key`):
+/// 1 to 255 printable ASCII characters, no `"` or `\`.
+public type IdempotencyKey = Text {}
+
+/// How severe a log record is (area 19, OpenTelemetry's severities),
+/// written as its short name, `INFO`.
+public type LogLevel = Enum {
+    trace
+    debug
+    info
+    warn
+    error
+    fatal
+}
+
+/// A package URL (area 19, ECMA-427) in its canonical form:
+/// `pkg:npm/%40angular/animation@12.3.1`.
+public type PackageUrl = Text {}
+
+/// A regular expression (area 2's patterns): matched whole, in linear
+/// time, with no backreferences or lookaround: `[A-Z]{2}[0-9]{2}`.
+public type RegularExpression = Text {}
+
+/// A version (area 19, SemVer 2.0.0), written `1.2.3-alpha.1+build.5`:
+/// ordered by its precedence, which ignores the build metadata.
+public type SemanticVersion = Object {
+    major: Int
+    minor: Int
+    patch: Int
+    pre_release: Text?
+    build: Text?
+}
+
+/// A span's id (area 19, W3C Trace Context): 16 lower-case hexadecimal
+/// digits, not all zero.
+public type SpanId = Text {}
+
+/// An SPDX licence expression (area 19), each identifier as the SPDX
+/// licence list spells it: `MIT OR Apache-2.0`.
+public type SpdxLicence = Text {}
+
+/// A trace's id (area 19, W3C Trace Context): 32 lower-case hexadecimal
+/// digits, not all zero.
+public type TraceId = Text {}
+
+/// A `traceparent` header's value (area 19, W3C Trace Context, version
+/// `00`): `00-<trace id>-<span id>-<flags>`.
+public type TraceParent = Text {}
+
+/// A ULID (area 19, the ULID specification): 26 characters of Crockford's
+/// base 32 in upper case, `01ARZ3NDEKTSV4RRFFQ69G5FAV`.
+public type Ulid = Text {}
+
+/// A range of versions (area 19, node-semver's grammar in one spelling):
+/// `^1.2.3`, `>=1.0.0 <2.0.0`, `1.2.x || >=2.5.0-beta.1`.
+public type VersionRange = Text {}
+
 /// A UUID (area 2), written in lowercase hexadecimal with hyphens.
 public type Uuid = Uuid {}
 
