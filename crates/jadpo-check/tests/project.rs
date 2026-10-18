@@ -12,8 +12,8 @@ use support::{APP, problems, rules};
 const SHOP: &[(&str, &str)] = &[
     APP,
     (
-        "shared/types/price.jadpo",
-        "/// An amount in pounds, to the penny.\ntype Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n",
+        "shared/types/item_price.jadpo",
+        "/// An amount in pounds, to the penny.\ntype ItemPrice = Decimal {\n    scale: 2\n    min: 0.00\n}\n",
     ),
     (
         "shared/types/quantity.jadpo",
@@ -21,7 +21,7 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "shared/libraries/rounding.jadpo",
-        "use shared/types { Price }\n\n/// Rounding rules for prices.\nlibrary rounding {\n    /// Rounds to the nearest penny, ties to the even penny.\n    function half_even(amount: Price) -> Price {\n        return nearest(amount)\n    }\n\n    function nearest(amount: Price) -> Price {\n        return amount\n    }\n}\n",
+        "use shared/types { ItemPrice }\n\n/// Rounding rules for prices.\nlibrary rounding {\n    /// Rounds to the nearest penny, ties to the even penny.\n    function half_even(amount: ItemPrice) -> ItemPrice {\n        return nearest(amount)\n    }\n\n    function nearest(amount: ItemPrice) -> ItemPrice {\n        return amount\n    }\n}\n",
     ),
     (
         "domains/inventory/entities/stock_level.jadpo",
@@ -41,11 +41,11 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "domains/ordering/actions/checkout.jadpo",
-        "use shared/types { Price, Quantity }\nuse shared/libraries { rounding }\nuse ordering/failures { CartEmpty }\nuse ordering/events { OrderPlaced }\nuse inventory\n\ntype CheckoutTotal = Output {\n    total: Price\n}\n\npublic action checkout(subtotal: Price, quantity: Quantity) fails CartEmpty -> CheckoutTotal {\n    if (subtotal == Price(0.00)) {\n        reject CartEmpty\n    }\n    inventory.reserve_stock(quantity)\n    var total: Price = rounding.half_even(subtotal)\n    emit OrderPlaced {\n        total: total\n    }\n    return CheckoutTotal {\n        total: total\n    }\n}\n",
+        "use shared/types { ItemPrice, Quantity }\nuse shared/libraries { rounding }\nuse ordering/failures { CartEmpty }\nuse ordering/events { OrderPlaced }\nuse inventory\n\ntype CheckoutTotal = Output {\n    total: ItemPrice\n}\n\npublic action checkout(subtotal: ItemPrice, quantity: Quantity) fails CartEmpty -> CheckoutTotal {\n    if (subtotal == ItemPrice(0.00)) {\n        reject CartEmpty\n    }\n    inventory.reserve_stock(quantity)\n    var total: ItemPrice = rounding.half_even(subtotal)\n    emit OrderPlaced {\n        total: total\n    }\n    return CheckoutTotal {\n        total: total\n    }\n}\n",
     ),
     (
         "domains/ordering/events/order_placed.jadpo",
-        "use shared/types { Price }\n\ntype OrderPlaced = Event {\n    total: Price\n}\n",
+        "use shared/types { ItemPrice }\n\ntype OrderPlaced = Event {\n    total: ItemPrice\n}\n",
     ),
     (
         "domains/ordering/routes/checkouts.jadpo",
@@ -53,7 +53,7 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "tests/checkout_reserves_stock.test.jadpo",
-        "use shared/types { Price, Quantity }\nuse ordering\n\ntest \"checkout reserves stock\" {\n    attempt ordering.checkout(Price(1.00), Quantity(1))\n}\n",
+        "use shared/types { ItemPrice, Quantity }\nuse ordering\n\ntest \"checkout reserves stock\" {\n    attempt ordering.checkout(ItemPrice(1.00), Quantity(1))\n}\n",
     ),
     ("database/seeds/local_demo.jadpo", "seed local_demo {}\n"),
 ];
@@ -69,7 +69,7 @@ fn the_same_files_in_any_order_give_the_same_result() {
     reversed.reverse();
     reversed.push((
         "domains/ordering/actions/refund.jadpo",
-        "use shared/types { Price }\n\naction refund(total: Missing) -> Unit {}\n\naction refund(total: Price) -> Unit {}\n",
+        "use shared/types { ItemPrice }\n\naction refund(total: Missing) -> Unit {}\n\naction refund(total: ItemPrice) -> Unit {}\n",
     ));
     let mut forwards = SHOP.to_vec();
     forwards.push(reversed.last().copied().expect("the extra file"));
@@ -228,7 +228,7 @@ fn public_is_only_for_what_another_domain_uses() {
             stocked(true),
             (
                 "domains/ordering/actions/checkout.test.jadpo",
-                "use shared/types { Price }\nuse inventory\n\ntest \"checking out stocked items\" {\n    attempt checkout(Price(1.00), inventory.stocked())\n}\n"
+                "use shared/types { ItemPrice }\nuse inventory\n\ntest \"checking out stocked items\" {\n    attempt checkout(ItemPrice(1.00), inventory.stocked())\n}\n"
             ),
         ]),
         Vec::<String>::new()
@@ -267,7 +267,7 @@ fn calls_name_their_owner() {
     assert_eq!(
         with(&[(
             "domains/ordering/actions/reprice.jadpo",
-            "use shared/types { Price }\n\naction reprice(price: Price) -> Price {\n    return half_even(price)\n}\n"
+            "use shared/types { ItemPrice }\n\naction reprice(price: ItemPrice) -> ItemPrice {\n    return half_even(price)\n}\n"
         )]),
         [
             "domains/ordering/actions/reprice.jadpo semantic.unknown_callee: `half_even` is in library `rounding`"
@@ -276,7 +276,7 @@ fn calls_name_their_owner() {
     assert_eq!(
         with(&[(
             "domains/ordering/actions/reprice.jadpo",
-            "use shared/types { Price }\nuse shared/libraries { rounding }\n\naction reprice(price: Price) -> Price {\n    return rounding.half_odd(price)\n}\n"
+            "use shared/types { ItemPrice }\nuse shared/libraries { rounding }\n\naction reprice(price: ItemPrice) -> ItemPrice {\n    return rounding.half_odd(price)\n}\n"
         )]),
         [
             "domains/ordering/actions/reprice.jadpo semantic.unknown_callee: Library `rounding` has no function `half_odd`"
@@ -285,7 +285,7 @@ fn calls_name_their_owner() {
     assert_eq!(
         with(&[(
             "domains/ordering/actions/reprice.jadpo",
-            "use shared/types { Price }\n\naction reprice(price: Price) -> Price {\n    return temporal.nope(price)\n}\n"
+            "use shared/types { ItemPrice }\n\naction reprice(price: ItemPrice) -> ItemPrice {\n    return temporal.nope(price)\n}\n"
         )]),
         [
             "domains/ordering/actions/reprice.jadpo semantic.unknown_callee: `temporal` has no operation `nope`"
@@ -379,7 +379,7 @@ fn a_public_fixture_is_offered_to_other_domains_tests_fixtures_and_seeds() {
             stocked(true),
             (
                 "domains/ordering/actions/checkout.test.jadpo",
-                "use shared/types { Price }\nuse inventory\n\ntest \"checking out stocked items\" {\n    attempt checkout(Price(1.00), inventory.stocked())\n}\n"
+                "use shared/types { ItemPrice }\nuse inventory\n\ntest \"checking out stocked items\" {\n    attempt checkout(ItemPrice(1.00), inventory.stocked())\n}\n"
             ),
             (
                 "domains/ordering/fixtures/stocked_order.jadpo",
@@ -387,7 +387,7 @@ fn a_public_fixture_is_offered_to_other_domains_tests_fixtures_and_seeds() {
             ),
             (
                 "tests/stocked_items_check_out.test.jadpo",
-                "use shared/types { Price }\nuse inventory\nuse ordering\n\ntest \"stocked items check out\" {\n    attempt ordering.checkout(Price(1.00), inventory.stocked())\n}\n"
+                "use shared/types { ItemPrice }\nuse inventory\nuse ordering\n\ntest \"stocked items check out\" {\n    attempt ordering.checkout(ItemPrice(1.00), inventory.stocked())\n}\n"
             ),
             (
                 "database/seeds/stocked_demo.jadpo",
@@ -403,11 +403,11 @@ fn a_private_fixture_stays_in_its_domain() {
     let calls = [
         (
             "domains/ordering/actions/checkout.test.jadpo",
-            "use shared/types { Price }\nuse inventory\n\ntest \"checking out stocked items\" {\n    attempt checkout(Price(1.00), inventory.stocked())\n}\n",
+            "use shared/types { ItemPrice }\nuse inventory\n\ntest \"checking out stocked items\" {\n    attempt checkout(ItemPrice(1.00), inventory.stocked())\n}\n",
         ),
         (
             "tests/stocked_items_check_out.test.jadpo",
-            "use shared/types { Price }\nuse inventory\nuse ordering\n\ntest \"stocked items check out\" {\n    attempt ordering.checkout(Price(1.00), inventory.stocked())\n}\n",
+            "use shared/types { ItemPrice }\nuse inventory\nuse ordering\n\ntest \"stocked items check out\" {\n    attempt ordering.checkout(ItemPrice(1.00), inventory.stocked())\n}\n",
         ),
         (
             "database/seeds/stocked_demo.jadpo",
@@ -447,7 +447,7 @@ fn a_private_fixture_stays_in_its_domain() {
             stocked(true),
             (
                 "domains/ordering/actions/checkout.test.jadpo",
-                "use shared/types { Price }\n\ntest \"checking out stocked items\" {\n    attempt checkout(Price(1.00), stocked())\n}\n"
+                "use shared/types { ItemPrice }\n\ntest \"checking out stocked items\" {\n    attempt checkout(ItemPrice(1.00), stocked())\n}\n"
             ),
         ]),
         [
@@ -497,7 +497,7 @@ fn declarations_move_when_a_second_file_or_domain_uses_them() {
     assert_eq!(
         with(&[(
             "domains/ordering/actions/quote.jadpo",
-            "use shared/types { Price }\nuse ordering/actions { CheckoutTotal }\n\naction quote(subtotal: Price) -> CheckoutTotal {\n    return CheckoutTotal {\n        total: subtotal\n    }\n}\n"
+            "use shared/types { ItemPrice }\nuse ordering/actions { CheckoutTotal }\n\naction quote(subtotal: ItemPrice) -> CheckoutTotal {\n    return CheckoutTotal {\n        total: subtotal\n    }\n}\n"
         )]),
         [
             "domains/ordering/actions/checkout.jadpo layout.promotion_required: `CheckoutTotal` is used beyond this file"
@@ -557,7 +557,7 @@ fn a_route_counts_as_a_user_only_when_nothing_else_uses_the_type() {
         with(&[
             (
                 "domains/ordering/routes/carts.jadpo",
-                "use shared/types { Price }\n\ntype CartView = Output {\n    total: Price\n}\n\nroutes Carts {\n    prefix: /carts\n\n    GET / {\n        output: CartView\n    }\n}\n"
+                "use shared/types { ItemPrice }\n\ntype CartView = Output {\n    total: ItemPrice\n}\n\nroutes Carts {\n    prefix: /carts\n\n    GET / {\n        output: CartView\n    }\n}\n"
             ),
             (
                 "domains/ordering/routes/quotes.jadpo",
@@ -658,7 +658,7 @@ fn a_file_holds_only_what_its_primary_declaration_uses() {
         with(&[
             (
                 "domains/ordering/actions/quote.jadpo",
-                "use shared/types { Price }\n\naction quote(subtotal: Price) -> Price {\n    return doubled(subtotal)\n}\n\nfunction doubled(amount: Price) -> Price {\n    return summed(amount, amount)\n}\n\nfunction summed(a: Price, b: Price) -> Price {\n    return Price(a + b)\n}\n\ntype Note = Text {}\n\nfunction noted(note: Note) -> Note {\n    return note\n}\n"
+                "use shared/types { ItemPrice }\n\naction quote(subtotal: ItemPrice) -> ItemPrice {\n    return doubled(subtotal)\n}\n\nfunction doubled(amount: ItemPrice) -> ItemPrice {\n    return summed(amount, amount)\n}\n\nfunction summed(a: ItemPrice, b: ItemPrice) -> ItemPrice {\n    return ItemPrice(a + b)\n}\n\ntype Note = Text {}\n\nfunction noted(note: Note) -> Note {\n    return note\n}\n"
             ),
             (
                 "domains/ordering/actions/quote.test.jadpo",
@@ -687,7 +687,7 @@ fn a_file_holds_only_what_its_primary_declaration_uses() {
     assert_eq!(
         with(&[(
             "domains/ordering/actions/quote.jadpo",
-            "use shared/types { Price }\n\naction quote(subtotal: Price) -> Price {\n    return dobuled(subtotal)\n}\n\nfunction doubled(amount: Price) -> Price {\n    return Price(amount + amount)\n}\n"
+            "use shared/types { ItemPrice }\n\naction quote(subtotal: ItemPrice) -> ItemPrice {\n    return dobuled(subtotal)\n}\n\nfunction doubled(amount: ItemPrice) -> ItemPrice {\n    return ItemPrice(amount + amount)\n}\n"
         )]),
         [
             "domains/ordering/actions/quote.jadpo semantic.unknown_callee: `dobuled` isn't a function, action or query"
@@ -705,7 +705,7 @@ fn a_file_holds_only_what_its_primary_declaration_uses() {
         with(&[
             (
                 "domains/ordering/actions/quote.jadpo",
-                "use shared/types { Price }\n\naction quote(subtotal: Price) -> Price {\n    return subtotal\n}\n\ntype Note = Text {}\n"
+                "use shared/types { ItemPrice }\n\naction quote(subtotal: ItemPrice) -> ItemPrice {\n    return subtotal\n}\n\ntype Note = Text {}\n"
             ),
             (
                 "domains/ordering/actions/annotate.jadpo",

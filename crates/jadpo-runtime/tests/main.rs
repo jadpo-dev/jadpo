@@ -9,6 +9,7 @@ mod maths;
 mod money;
 mod numbers;
 mod percentages;
+mod prices;
 mod quantities;
 mod schedules;
 mod sets_maps;

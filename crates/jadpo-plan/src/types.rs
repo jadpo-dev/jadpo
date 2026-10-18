@@ -344,7 +344,8 @@ impl Types {
                 },
                 // A standard type held as text (area 19, chunk 5.5i) has no
                 // node: it is text with its own check, or, held as a whole
-                // number, an `Int` with its range (chunk 5.5n).
+                // number, an `Int` with its range (chunk 5.5n), or its
+                // built-in type with its bounds (chunk 5.5i3).
                 TypeRef::Std(name, args) if args.is_empty() => {
                     let (builtin, own) = jadpo_std::standard::declared(&name)?;
                     rules.push(own);
@@ -509,7 +510,7 @@ impl Types {
     /// copied fields where the line that copied them stands.
     fn fields(&self, parent: &Key, depth: usize) -> Vec<FieldPlan> {
         let Some(id) = self.graph.find(parent) else {
-            return Vec::new();
+            return standard_variant_fields(parent);
         };
         self.graph
             .fields(id)
@@ -635,6 +636,7 @@ pub(crate) fn part_type(host: &str, field: &str, part: jadpo_std::Part) -> TypeR
     match part {
         jadpo_std::Part::Of(builtin) => TypeRef::Builtin(builtin),
         jadpo_std::Part::Whole(..)
+        | jadpo_std::Part::Bounded { .. }
         | jadpo_std::Part::Line
         | jadpo_std::Part::Matching(_)
         | jadpo_std::Part::Paragraph => {
@@ -648,15 +650,46 @@ pub(crate) fn part_type(host: &str, field: &str, part: jadpo_std::Part) -> TypeR
     }
 }
 
-/// What the standard object type's field `key` names (`LocalTime.hour`)
-/// is built on, and the rules its part keeps: a whole number's range, a
-/// line's pattern; for a part that may be `none` or is a list, its own
-/// part's.
+/// The fields a variant of a standard choice carries (chunk 5.5i3), which
+/// has no node: its entry's parts, each keyed `field <Choice>.<variant>.
+/// <field>`, as an application's variant's fields are. None for any other
+/// key.
+fn standard_variant_fields(key: &Key) -> Vec<FieldPlan> {
+    let fields = (key.kind() == Some(Kind::Variant))
+        .then(|| key.name().split_once('.'))
+        .flatten()
+        .and_then(|(host, variant)| jadpo_std::standard::choice_variant(host, variant))
+        .unwrap_or_default();
+    fields
+        .iter()
+        .map(|(field, _)| FieldPlan {
+            key: format!("field {}.{field}", key.name()),
+            name: (*field).to_string(),
+            validator: ValidatorId(u32::MAX),
+            absent: None,
+            omittable: false,
+            none_left_out: false,
+            section: None,
+        })
+        .collect()
+}
+
+/// What the standard object type's field `key` names (`LocalTime.hour`),
+/// or a standard choice's variant's (`Discount.amount_off.amount`, chunk
+/// 5.5i3), is built on, and the rules its part keeps: a whole number's
+/// range, a line's pattern, an amount's bounds; for a part that may be
+/// `none` or is a list, its own part's.
 fn standard_part(key: &Key) -> Option<(jadpo_std::Builtin, Rules)> {
     let (host, field) = key.name().split_once('.')?;
-    let jadpo_std::standard::Holds::Object(fields) = jadpo_std::standard_type(host)?.holds else {
-        return None;
+    let fields = match jadpo_std::standard_type(host)?.holds {
+        jadpo_std::standard::Holds::Object(fields) => fields,
+        jadpo_std::standard::Holds::Choice(_) => {
+            let (variant, _) = field.split_once('.')?;
+            jadpo_std::standard::choice_variant(host, variant)?
+        }
+        _ => return None,
     };
+    let field = field.rsplit('.').next().unwrap_or(field);
     let mut part = fields.iter().find(|(name, _)| *name == field)?.1;
     while let jadpo_std::Part::Optional(inner) | jadpo_std::Part::List(inner) = part {
         part = *inner;

@@ -490,8 +490,9 @@ impl TypeTable {
         // baseline only"): each a type built on `Text` the standard
         // library declares, with its own check as its rule, or on the
         // standard type it is a narrower form of (a `UrlPath` is a
-        // `RelativeUrl`); and those held as a whole number, each built on
-        // `Int` with its range (chunk 5.5n).
+        // `RelativeUrl`); those held as a whole number, each built on
+        // `Int` with its range (chunk 5.5n); and those built on a built-in
+        // type with bounds of their own, a `TaxRate` (chunk 5.5i3).
         for entry in jadpo_std::STANDARD_TYPES {
             if let Some((builtin, rules)) = jadpo_std::standard::declared(entry.name) {
                 let parent = match jadpo_std::standard::within(entry.name) {
@@ -520,6 +521,30 @@ impl TypeTable {
                         .collect(),
                 },
             );
+        }
+        // The choices, each an enum whose variants carry their entry's
+        // parts as fields, as an application's enum with data does (chunk
+        // 5.5i3).
+        for entry in jadpo_std::STANDARD_TYPES {
+            if let jadpo_std::standard::Holds::Choice(variants) = entry.holds {
+                table.defs.insert(
+                    entry.name.to_string(),
+                    Def::Enum {
+                        variants: variants
+                            .iter()
+                            .map(|(variant, fields)| VariantDef {
+                                name: (*variant).to_string(),
+                                fields: Some(
+                                    fields
+                                        .iter()
+                                        .map(|(field, part)| standard_field(field, *part))
+                                        .collect(),
+                                ),
+                            })
+                            .collect(),
+                    },
+                );
+            }
         }
         for (name, kind) in shapes {
             let def = match kind {
@@ -981,13 +1006,24 @@ pub trait TypeView {
     }
 
     /// The standard type held as text (area 19) a value of this type is,
-    /// along its chain: `Iban` for a type built on `Iban`.
+    /// along its chain: `Iban` for a type built on `Iban`; or the one
+    /// built on a built-in type with bounds of its own, `TaxRate` (chunk
+    /// 5.5i3).
     fn standard_text(&self, ty: &Ty) -> Option<&'static jadpo_std::StandardType> {
         let mut current = ty.strip_nullable().clone();
         for _ in 0..DEPTH {
             match &current {
                 Ty::Field(host, path) => {
                     current = self.field(host, path)?.declared.strip_nullable().clone();
+                }
+                // One built on a built-in type with bounds of its own
+                // (chunk 5.5i3) is its own standard type too.
+                Ty::Named(name)
+                    if jadpo_std::standard_type(name).is_some_and(|entry| {
+                        matches!(entry.holds, jadpo_std::standard::Holds::Bounded { .. })
+                    }) =>
+                {
+                    return jadpo_std::standard_type(name);
                 }
                 Ty::Named(name) => match self.def(name)? {
                     Def::Scalar { parent, rules } => {
@@ -1169,6 +1205,7 @@ fn part_ty(part: jadpo_std::Part) -> Ty {
     match part {
         jadpo_std::Part::Of(builtin) => Ty::Prim(builtin),
         jadpo_std::Part::Whole(..) => Ty::Prim(Prim::Int),
+        jadpo_std::Part::Bounded { of, .. } => Ty::Prim(of),
         jadpo_std::Part::Line | jadpo_std::Part::Matching(_) | jadpo_std::Part::Paragraph => {
             Ty::Prim(Prim::Text)
         }

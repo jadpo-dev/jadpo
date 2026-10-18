@@ -12,7 +12,7 @@ use crate::support;
 use jadpo_db::{Database, Layout};
 use jadpo_diag::Diagnostic;
 
-const NAMES: &str = "type Price = Money {\n    currency: Currency.gbp\n}\n\ntype Rate = Percentage {}\n\ntype Discount = Percentage {\n    min: 0%\n    max: 100%\n}\n\ntype Board = Length {}\n\ntype Share = Decimal {\n    scale: 4\n}\n\ntype Count = Int {}\n\ntype Answer = Bool {}\n\ntype Typed = Text {}\n\ntype Unreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
+const NAMES: &str = "type ItemPrice = Money {\n    currency: Currency.gbp\n}\n\ntype Rate = Percentage {}\n\ntype Reduction = Percentage {\n    min: 0%\n    max: 100%\n}\n\ntype Board = Length {}\n\ntype Share = Decimal {\n    scale: 4\n}\n\ntype Count = Int {}\n\ntype Answer = Bool {}\n\ntype Typed = Text {}\n\ntype Unreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
 
 fn diagnostics(source: &str) -> Vec<Diagnostic> {
     let db = Database::default();
@@ -44,10 +44,10 @@ const NONE: &[&str] = &[];
 
 #[test]
 fn a_percent_literal_is_a_percentage() {
-    let source = "function vat() -> Rate {\n    return Rate(20%)\n}\n\nfunction small() -> Rate {\n    return Rate(12.5%)\n}\n\nfunction cut() -> Rate {\n    return Rate(-5%)\n}\n\nfunction most() -> Discount {\n    return Discount(100%)\n}\n\nfunction plain() -> Rate {\n    var half: Percentage = 50%\n    return Rate(half)\n}\n";
+    let source = "function vat() -> Rate {\n    return Rate(20%)\n}\n\nfunction small() -> Rate {\n    return Rate(12.5%)\n}\n\nfunction cut() -> Rate {\n    return Rate(-5%)\n}\n\nfunction most() -> Reduction {\n    return Reduction(100%)\n}\n\nfunction plain() -> Rate {\n    var half: Percentage = 50%\n    return Rate(half)\n}\n";
     assert_eq!(rules(source), NONE);
     assert_eq!(
-        rules("function f() -> Discount {\n    return Discount(120%)\n}\n"),
+        rules("function f() -> Reduction {\n    return Reduction(120%)\n}\n"),
         ["type.invalid_literal"],
         "a literal is checked against the type's bounds"
     );
@@ -97,13 +97,14 @@ fn a_ratio_becomes_a_percentage_by_construction() {
 
 #[test]
 fn the_table_s_percentage_rows() {
-    let source = "function charged(p: Price, r: Rate) -> Price {\n    return Price(p * r)\n}\n\nfunction vat(p: Price) -> Price {\n    return Price(p * 20%)\n}\n\nfunction gross(p: Price) -> Price {\n    return Price(p * 120%)\n}\n\nfunction trimmed() -> Board {\n    var total: Length = 2metre + 45cm + 3inch\n    var trim: Length = total * 15%\n    return Board(trim)\n}\n\nfunction scaled(s: Share, r: Rate) -> Share {\n    return Share(s * r)\n}\n\nfunction counted(n: Count, r: Rate) -> Share {\n    return Share(n * r)\n}\n\nfunction both(a: Rate, b: Rate) -> Rate {\n    return Rate(a * b)\n}\n\nfunction added(a: Rate, b: Rate) -> Rate {\n    return Rate(a + b - 5%)\n}\n\nfunction twice(a: Rate) -> Rate {\n    return Rate(a * 2)\n}\n\nfunction bigger(a: Rate, b: Rate) -> Answer {\n    return Answer(a > b and a >= 5%)\n}\n";
+    let source = "function charged(p: ItemPrice, r: Rate) -> ItemPrice {\n    return ItemPrice(p * r)\n}\n\nfunction vat(p: ItemPrice) -> ItemPrice {\n    return ItemPrice(p * 20%)\n}\n\nfunction gross(p: ItemPrice) -> ItemPrice {\n    return ItemPrice(p * 120%)\n}\n\nfunction trimmed() -> Board {\n    var total: Length = 2metre + 45cm + 3inch\n    var trim: Length = total * 15%\n    return Board(trim)\n}\n\nfunction scaled(s: Share, r: Rate) -> Share {\n    return Share(s * r)\n}\n\nfunction counted(n: Count, r: Rate) -> Share {\n    return Share(n * r)\n}\n\nfunction both(a: Rate, b: Rate) -> Rate {\n    return Rate(a * b)\n}\n\nfunction added(a: Rate, b: Rate) -> Rate {\n    return Rate(a + b - 5%)\n}\n\nfunction twice(a: Rate) -> Rate {\n    return Rate(a * 2)\n}\n\nfunction bigger(a: Rate, b: Rate) -> Answer {\n    return Answer(a > b and a >= 5%)\n}\n";
     assert_eq!(rules(source), NONE);
 }
 
 #[test]
 fn money_plus_a_percentage_is_ambiguous() {
-    let found = diagnostics("function f(p: Price) -> Price {\n    return Price(p + 20%)\n}\n");
+    let found =
+        diagnostics("function f(p: ItemPrice) -> ItemPrice {\n    return ItemPrice(p + 20%)\n}\n");
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0].rule.id, "type.arithmetic_operand");
     let next = next_of(&found[0]);
@@ -111,14 +112,15 @@ fn money_plus_a_percentage_is_ambiguous() {
         next.contains("`p * 120%`") && next.contains("`p + p * 20%`"),
         "{next}"
     );
-    let found = diagnostics("function f(p: Price) -> Price {\n    return Price(p - 20%)\n}\n");
+    let found =
+        diagnostics("function f(p: ItemPrice) -> ItemPrice {\n    return ItemPrice(p - 20%)\n}\n");
     let next = next_of(&found[0]);
     assert!(
         next.contains("`p * 80%`") && next.contains("`p - p * 20%`"),
         "{next}"
     );
     assert_eq!(
-        rules("function f(p: Price, r: Rate) -> Price {\n    return Price(p + r)\n}\n"),
+        rules("function f(p: ItemPrice, r: Rate) -> ItemPrice {\n    return ItemPrice(p + r)\n}\n"),
         ["type.arithmetic_operand"]
     );
 }
@@ -127,7 +129,7 @@ fn money_plus_a_percentage_is_ambiguous() {
 fn what_the_table_has_no_row_for_is_refused() {
     for (source, why) in [
         (
-            "function f(p: Price, r: Rate) -> Price {\n    return Price(r * p)\n}\n",
+            "function f(p: ItemPrice, r: Rate) -> ItemPrice {\n    return ItemPrice(r * p)\n}\n",
             "the amount is written first",
         ),
         (

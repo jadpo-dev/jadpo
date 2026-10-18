@@ -116,11 +116,14 @@ fn port(text: &str) -> bool {
 }
 
 /// Whether `text` is a whole number's canonical text from `min` to `max`:
-/// digits with no sign and no leading zero.
+/// digits with no leading zero, and `-` before a negative one where the
+/// range has them (basis points, chunk 5.5i3), never `-0`.
 pub fn whole_in(text: &str, min: i64, max: i64) -> bool {
-    !text.is_empty()
-        && text.bytes().all(|b| b.is_ascii_digit())
-        && (text == "0" || !text.starts_with('0'))
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    !digits.is_empty()
+        && digits.bytes().all(|b| b.is_ascii_digit())
+        && (digits == "0" || !digits.starts_with('0'))
+        && text != "-0"
         && text.parse::<i64>().is_ok_and(|n| (min..=max).contains(&n))
 }
 

@@ -156,7 +156,7 @@ fn each_mistake_gives_its_rule() {
             "type.arithmetic_operand",
         ),
         (
-            "type Price = Decimal {\n    scale: 2\n}\n\nfunction f(price: Price, quantity: Quantity) -> Price {\n    return Price(price % quantity)\n}\n",
+            "type ItemPrice = Decimal {\n    scale: 2\n}\n\nfunction f(price: ItemPrice, quantity: Quantity) -> ItemPrice {\n    return ItemPrice(price % quantity)\n}\n",
             "type.arithmetic_operand",
         ),
         (

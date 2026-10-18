@@ -1362,20 +1362,20 @@ type OrderTotal = Int {
 ```
 
 ```jadpo check project=e-direction file=domains/ordering/actions/apply_discount.jadpo hidden
-use shared/types { Discount }
+use shared/types { DiscountTerms }
 
-action apply_discount(discount: Discount) -> Unit {}
+action apply_discount(discount: DiscountTerms) -> Unit {}
 ```
 
-```jadpo check project=e-direction file=shared/types/discount.jadpo expect=layout.call_direction
-type Discount = Object {
+```jadpo check project=e-direction file=shared/types/discount_terms.jadpo expect=layout.call_direction
+type DiscountTerms = Object {
     applies_to: OrderTotal
 }
 ```
 
 ```text output
 error: Shared code uses `OrderTotal` from domain `ordering`
- --> shared/types/discount.jadpo:2:17
+ --> shared/types/discount_terms.jadpo:2:17
   |
 2 |     applies_to: OrderTotal
   |                 ^^^^^^^^^^ domain code

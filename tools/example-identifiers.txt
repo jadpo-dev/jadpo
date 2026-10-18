@@ -22,6 +22,8 @@ add_partner
 add_tagged_memo
 add_todo
 admin_orders
+after_fifth
+after_five
 afternoon
 afterwards
 agreed_term
@@ -34,7 +36,6 @@ allergies
 allergy
 already_archived
 amendment
-amount_off
 amount_too_precise
 animal_free
 ann
@@ -42,10 +43,10 @@ ann_on_bob
 anns
 app_orders
 app_version
+apples
 application_configuration
 applies_to
 apply_code
-apply_discount
 appoint_editor
 appraisal
 approve_consent
@@ -101,6 +102,7 @@ band_rate
 bap
 bar_hours
 basket
+basket_discount
 basket_empty
 basket_from
 basket_line
@@ -156,6 +158,7 @@ budget
 build_product
 bulletin
 bumped
+bun
 bun_cost
 bun_count
 buns
@@ -173,6 +176,7 @@ by_owner
 by_partner
 by_shelf
 cake
+cake_amount
 cake_count
 cake_id
 cake_line
@@ -254,6 +258,7 @@ class_count
 class_schedule
 class_time
 clear_cart
+clearance
 clock_reading
 close_enough
 close_outlet
@@ -343,6 +348,8 @@ day_count
 days_left
 days_overdue
 de_parcel
+deal
+deal_label
 dearer
 declare_lost
 decline_reason
@@ -376,11 +383,11 @@ diary_text
 diary_unreadable
 disable_user
 disabled_at
-discount
 discount_code
 discount_for
 discount_loaf
 discount_rate
+discount_terms
 discount_too_large
 display_name
 display_word
@@ -453,6 +460,7 @@ fee
 fee_charged
 fee_for
 fees
+fifth_off
 file_text
 fill_tray
 fill_trays
@@ -469,6 +477,7 @@ first_quantity
 first_use
 fits_shop
 fitted
+five_off
 flapjack
 flavour
 flavours
@@ -600,6 +609,7 @@ item_id
 item_missing
 item_name
 item_page
+item_price
 jadpo_audit
 jar_label
 jar_name
@@ -684,6 +694,7 @@ loan_days
 loan_id
 loan_not_out
 loan_period
+loan_rate
 loan_status
 loan_view
 loans
@@ -798,6 +809,7 @@ northwind
 not_a_call
 not_a_domain
 not_a_product_code
+not_a_rate
 not_a_vat_number
 not_a_version
 not_an_address
@@ -902,6 +914,7 @@ oven_setting
 oven_temperature
 ovens
 ovens_lit
+over_base
 over_maximum
 over_plan
 overdue
@@ -992,7 +1005,6 @@ pounds_to_euros
 praised
 praised_notes
 pretend_pure
-price
 price_basket
 price_flour
 price_item
@@ -1082,6 +1094,7 @@ record_payment
 record_payment_webhook
 redeem_card
 redeemed
+reduced
 reduction
 register_and_record
 register_both
@@ -1202,6 +1215,7 @@ service_fake_identity
 set_oven
 severe
 share_code
+share_off
 shelf
 shelf_card
 shelf_empty
@@ -1345,6 +1359,7 @@ tag_memo
 tag_name
 tagged_memo
 take_flour
+take_loan
 take_off_menu
 take_on
 takings
@@ -1441,6 +1456,7 @@ unknown_trade_term
 unlink_phone
 unlinked
 unpacked
+untaxed
 update_profile
 update_statistics
 updated_at
@@ -1462,6 +1478,7 @@ vat_due_rate
 vat_in
 vat_on
 vat_rate
+vat_rate_from
 vat_rate_on
 vegan
 vegetarian
@@ -1501,6 +1518,7 @@ whole_team
 wholemeal
 wildcard_failure
 with_brackets
+with_deal
 with_delivery
 with_todos
 with_vat
@@ -1516,6 +1534,7 @@ write_note
 write_recipe
 written_at
 written_by_dee
+wrong_currency
 wrong_rate
 wrong_total
 yamada

@@ -48,7 +48,7 @@ test "an empty basket and an unknown code fail" {
 test "a percentage off rounds to the nearest penny" {
     // A pure test: `amount_off` is a function. 10% of 3865 is 386.5, and
     // a half penny goes to the even penny.
-    var tenth: Discount = Discount.percent {
+    var tenth: BasketDiscount = BasketDiscount.percent {
         off: 10
     }
     assert amount_off(tenth, 3865) == 386

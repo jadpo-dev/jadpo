@@ -33,6 +33,7 @@ pub mod places;
 mod places_data;
 pub mod postal;
 mod postal_codes_data;
+pub mod prices;
 pub mod recurrence;
 mod schedules;
 pub mod software;
@@ -77,6 +78,25 @@ pub enum Holds {
     /// reads only its canonical digits, failing `malformed` outside the
     /// range, as a type held as text fails it for text outside its check.
     Whole { min: i64, max: i64 },
+    /// A type built on the built-in type `of` with the bounds the standard
+    /// library gives it, both included where given (chunk 5.5i3): a
+    /// `TaxRate` is a `Percentage` never below 0%. A program holds it as a
+    /// type built on `of` whose rules are those bounds ([`declared`]),
+    /// as a declared refinement is, so its construction, text, JSON,
+    /// storage and format are `of`'s, its bounds broken as `min` and `max`.
+    Bounded {
+        of: Builtin,
+        min: Option<crate::Num>,
+        max: Option<crate::Num>,
+    },
+    /// A choice of other types (chunk 5.5i3): an enum whose variants each
+    /// carry fields, area 2's tagged union, each variant with its fields in
+    /// declared order, each field a [`Part`]. A `Discount` is an amount off
+    /// or a percentage off. A program builds and matches one as it does its
+    /// own enum with data (`Discount.amount_off { amount: ... }`); it is
+    /// sent in area 2's tagged form ([`Json::Tagged`]) and stored as that
+    /// JSON.
+    Choice(&'static [(&'static str, &'static [(&'static str, Part)])]),
 }
 
 /// What one field of a standard object type holds (area 19, chunk 5.5k).
@@ -102,6 +122,16 @@ pub enum Part {
     /// character but a tab or a line feed ([`events::PARAGRAPH_PATTERN`]):
     /// an event's description (chunk 5.5k3).
     Paragraph,
+    /// A value built on the built-in type `of`, from `min` to `max`, both
+    /// included where given (chunk 5.5i3): a price's amount never below 0,
+    /// a discount's percentage from 0% to 100%. `min:` and `max:` read as
+    /// they do on a type built on `of` (area 2): minor units for `Money`,
+    /// the fraction for a `Percentage`.
+    Bounded {
+        of: Builtin,
+        min: Option<crate::Num>,
+        max: Option<crate::Num>,
+    },
     /// The part, or `none`: a person's family name.
     Optional(&'static Part),
     /// A list of the part: an address's lines.
@@ -115,6 +145,7 @@ impl Part {
         match self {
             Part::Of(builtin) => Some(builtin),
             Part::Whole(..) => Some(Builtin::Int),
+            Part::Bounded { of, .. } => Some(of),
             Part::Line | Part::Matching(_) | Part::Paragraph => Some(Builtin::Text),
             Part::Standard(_) | Part::Optional(_) | Part::List(_) => None,
         }
@@ -131,6 +162,11 @@ impl Part {
             Part::Whole(min, max) => crate::Rules {
                 min: Some(whole(min)),
                 max: Some(whole(max)),
+                ..crate::Rules::default()
+            },
+            Part::Bounded { min, max, .. } => crate::Rules {
+                min,
+                max,
                 ..crate::Rules::default()
             },
             Part::Line => crate::Rules {
@@ -256,8 +292,9 @@ pub enum TextForm {
     /// property a line, joined by line feeds, an all-day event's `DTEND`
     /// the day after its last.
     Event,
-    /// A whole number's digits, with no sign and no leading zero, within
-    /// its type's range: `404` (chunk 5.5n).
+    /// A whole number's digits, with no leading zero and `-` before a
+    /// negative one, within its type's range: `404` (chunk 5.5n), `-25`
+    /// (chunk 5.5i3).
     Whole,
     /// The query that carries a visit's UTM parameters (chunk 5.5n,
     /// [`web::utm_text`]): `utm_source=mailing&utm_medium=email&...`,
@@ -277,6 +314,11 @@ pub enum Json {
     /// `ZonedTime`'s `instant` and `zone` (area 10), `InstantRange`'s
     /// `start` and `end`.
     Fields(&'static [&'static str]),
+    /// Area 2's form of an enum's variant with data: an object of `tag`,
+    /// the variant's name, and the variant's fields, each in its own JSON
+    /// shape, `{"tag": "percentage_off", "percentage": "20%"}` (a
+    /// [`Holds::Choice`], chunk 5.5i3).
+    Tagged,
     /// An object of these members, as RFC 9457 sends a problem (chunk
     /// 5.5n): like [`Json::Fields`], but a part that is `none` is left out
     /// rather than sent as `null`, and one left out reads as `none`.
@@ -291,7 +333,7 @@ impl Json {
     pub const fn fields(self) -> Option<&'static [&'static str]> {
         match self {
             Json::Fields(names) | Json::Members(names) => Some(names),
-            Json::Text | Json::Number => None,
+            Json::Text | Json::Number | Json::Tagged => None,
         }
     }
 }
@@ -393,6 +435,17 @@ pub enum FormatKey {
     MaskedCard,
     /// A card's expiry as the card prints it, `12/28` (chunk 5.5i2).
     CardExpiry,
+    /// The parts named, in order, each shown as its own type is with no
+    /// options, joined by `separator`: a price's amount, `£10.50`; an
+    /// interest rate's rate and basis, `5.5% APR`. A choice's variant shows
+    /// the parts it has (chunk 5.5i3).
+    Parts {
+        parts: &'static [&'static str],
+        separator: &'static str,
+    },
+    /// A number in the locale's digits and separators, then `suffix`,
+    /// which no locale changes: basis points, `25 bp` (chunk 5.5i3).
+    Suffixed(&'static str),
     /// The text in the object's part `part`, shown as its last four after
     /// `mask`: a tax or identity document's number, `•••• 6789` (chunk
     /// 5.5i2).
@@ -918,8 +971,9 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// `contact`), and `PhoneNumber`, `CallingCode`, `PostalCode` and
 /// `UnLocode`, held as text (chunk 5.5l2, in `phones`, `postal` and
 /// `places`), `CalendarEvent` (chunk 5.5k3, in `events`), the 20 web
-/// and network types (chunk 5.5n, in `web`), and the 18 software types
-/// (chunk 5.5n2, in `software`).
+/// and network types (chunk 5.5n, in `web`), the money group's records
+/// (chunk 5.5i3, in `prices`), and the 18 software types (chunk 5.5n2, in
+/// `software`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     lists::ALLERGEN_ENTRY,
@@ -939,6 +993,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("10000 sqm", "10,000 m²"),
         ],
     ),
+    prices::BASIS_POINTS_ENTRY,
     identifiers::BIC,
     quantity(
         crate::QuantityKind::Bitrate,
@@ -1104,6 +1159,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         release: FIRST_RELEASE,
     },
     software::DIGEST,
+    prices::DISCOUNT_ENTRY,
     software::DOI,
     web::DOMAIN_NAME,
     documents::DRIVING_LICENCE_NUMBER_TYPE,
@@ -1386,6 +1442,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    prices::INTEREST_RATE_ENTRY,
+    prices::INTEREST_RATE_BASIS_ENTRY,
     identifiers::INVOICE_NUMBER,
     checked(
         "IpAddress",
@@ -1661,6 +1719,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("101325 Pa", "101,325 Pa"),
         ],
     ),
+    prices::PRICE_ENTRY,
     web::PROBLEM_DETAILS_ENTRY,
     web::PUSH_TOKEN,
     // A quarter of a calendar year, ordered by year and quarter.
@@ -1784,6 +1843,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     codes::SSCC,
     documents::TAX_ID_TYPE,
+    prices::TAX_RATE_ENTRY,
     quantity(
         crate::QuantityKind::Temperature,
         &[
@@ -1812,6 +1872,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     software::ULID,
     places::UN_LOCODE,
     codes::UN_NUMBER,
+    prices::UNIT_PRICE_ENTRY,
     codes::UPC_A,
     contact::UPRN,
     checked(
@@ -2129,10 +2190,25 @@ pub fn text_rules(name: &str) -> Option<crate::Rules> {
     })
 }
 
-/// What a standard type held as text or as a whole number is built on, and
-/// the rules a program's type of it keeps (area 19, chunks 5.5i and 5.5n):
-/// `Text` with its own check, or `Int` with its range, each naming the
-/// type as their `standard`. `None` for any other type.
+/// The variant `variant` of the standard choice `name`, with its fields
+/// (chunk 5.5i3); `None` when `name` isn't a choice or has no such variant.
+pub fn choice_variant(name: &str, variant: &str) -> Option<&'static [(&'static str, Part)]> {
+    let Holds::Choice(variants) = standard_type(name)?.holds else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|(listed, _)| *listed == variant)
+        .map(|(_, fields)| *fields)
+}
+
+/// What a standard type held as text, as a whole number or with bounds of
+/// its own is built on, and the rules a program's type of it keeps (area
+/// 19, chunks 5.5i, 5.5n and 5.5i3): `Text` with its own check, or `Int`
+/// with its range, each naming the type as their `standard`; or its
+/// built-in type with its bounds, a `TaxRate`'s `Percentage` from 0%, which
+/// name none, so a plain value of that type builds one by its bounds alone.
+/// `None` for any other type.
 pub fn declared(name: &str) -> Option<(Builtin, crate::Rules)> {
     let entry = standard_type(name)?;
     let whole = |n: i64| crate::Num {
@@ -2147,6 +2223,14 @@ pub fn declared(name: &str) -> Option<(Builtin, crate::Rules)> {
                 min: Some(whole(min)),
                 max: Some(whole(max)),
                 standard: Some(entry.name),
+                ..crate::Rules::default()
+            },
+        )),
+        Holds::Bounded { of, min, max } => Some((
+            of,
+            crate::Rules {
+                min,
+                max,
                 ..crate::Rules::default()
             },
         )),
@@ -2254,6 +2338,15 @@ impl StandardType {
         }
     }
 
+    /// The names of its variants, for an enum or a choice (chunk 5.5i3).
+    pub fn variants(&self) -> Option<Vec<&'static str>> {
+        match self.holds {
+            Holds::Enum(codes) => Some(codes.iter().map(|(name, _)| *name).collect()),
+            Holds::Choice(variants) => Some(variants.iter().map(|(name, _)| *name).collect()),
+            _ => None,
+        }
+    }
+
     /// The codes of every variant in `form`, in the variants' order, for a
     /// closed list with data for it.
     pub fn form_codes(&self, form: crate::CodeForm) -> Option<&'static [&'static str]> {
@@ -2336,9 +2429,16 @@ impl StandardType {
             (SqlType::Timestamp, _) => Column::Instant,
             (SqlType::Date, _) => Column::Date,
             (SqlType::Int8, Holds::Builtin(Builtin::Duration)) => Column::Duration,
-            (SqlType::Int4, Holds::Whole { .. }) => Column::Int,
+            (SqlType::Int4 | SqlType::Int8, Holds::Whole { .. }) => Column::Int,
             (SqlType::Numeric, Holds::Builtin(Builtin::Quantity(kind))) => Column::Quantity(kind),
-            (SqlType::Numeric, Holds::Builtin(Builtin::Percentage)) => Column::Percentage,
+            (SqlType::Numeric, Holds::Builtin(Builtin::Percentage))
+            | (
+                SqlType::Numeric,
+                Holds::Bounded {
+                    of: Builtin::Percentage,
+                    ..
+                },
+            ) => Column::Percentage,
             _ => return None,
         })
     }
@@ -2400,7 +2500,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 164, "the 164 standard types built so far");
+        assert_eq!(names.len(), 171, "the 171 standard types built so far");
     }
 
     #[test]
@@ -2463,6 +2563,18 @@ mod tests {
                     .map(|(name, _)| wire_name(entry.name, name))
                     .collect();
                 assert_eq!(declared, names, "{}'s JSON is its fields", entry.name);
+            }
+            // A choice is sent in area 2's tagged form, and has no single
+            // text form (chunk 5.5i3).
+            assert_eq!(
+                matches!(entry.holds, Holds::Choice(_)),
+                entry.json == Json::Tagged,
+                "{} is sent tagged exactly when it is a choice",
+                entry.name
+            );
+            if let Holds::Choice(variants) = entry.holds {
+                assert!(entry.text.is_none(), "{}", entry.name);
+                assert!(variants.iter().all(|(_, fields)| !fields.is_empty()));
             }
             if let Holds::Whole { min, max } = entry.holds {
                 assert_eq!(entry.text, Some(TextForm::Whole), "{}", entry.name);

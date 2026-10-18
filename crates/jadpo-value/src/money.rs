@@ -227,6 +227,59 @@ pub fn mask(card: &Value) -> Result<Value, Fault> {
     ))
 }
 
+/// `money.apply_discount(price, discount)`: `price` with `discount` taken
+/// off its amount, keeping whether it includes tax (chunk 5.5i3). An
+/// amount off is in the price's currency, or the call fails
+/// `currency_mismatch`; a percentage off is that share of the amount,
+/// rounded half to even to a whole minor unit before it is taken off, so a
+/// receipt's discount line and its total agree. A discount larger than the
+/// price leaves nothing, never less, as a payment provider applies a
+/// coupon.
+pub fn apply_discount(price: &Value, discount: &Value) -> Result<Value, Fault> {
+    use jadpo_std::standard::prices::PRICE;
+    let Value::Record(record) = price else {
+        return Err(Fault::Shape);
+    };
+    let field = |name: &str| record.get(name).ok_or(Fault::Shape);
+    let amount = money_of(field("amount")?)?;
+    let includes_tax = field("includes_tax")?.clone();
+    let Value::Variant(variant) = discount else {
+        return Err(Fault::Shape);
+    };
+    let part = |name: &str| {
+        variant
+            .fields
+            .iter()
+            .find(|(field, _)| &**field == name)
+            .map(|(_, value)| value)
+            .ok_or(Fault::Shape)
+    };
+    let off = match &*variant.name {
+        "amount_off" => {
+            let off = money_of(part("amount")?)?;
+            if off.currency != amount.currency {
+                return Err(MISMATCH);
+            }
+            off
+        }
+        "percentage_off" => {
+            let Value::Percentage(fraction) = part("percentage")? else {
+                return Err(Fault::Shape);
+            };
+            multiply(amount, &Value::Decimal(*fraction), Rounding::HalfEven)?
+        }
+        _ => return Err(Fault::Shape),
+    };
+    let left = minor(i128::from(amount.minor) - i128::from(off.minor))?.max(0);
+    Ok(Value::record(
+        PRICE,
+        vec![
+            ("amount".into(), value(amount.currency, left)),
+            ("includes_tax".into(), includes_tax),
+        ],
+    ))
+}
+
 /// `money.convert(value, rate)`: `value` in the rate's `to` currency,
 /// given in its `from` one: the major units times the rate, rounded half
 /// to even to the `to` currency's minor unit. An amount in any other
@@ -413,6 +466,79 @@ mod tests {
                 other => panic!("{other:?}"),
             })
             .collect()
+    }
+
+    /// A `Price` of `minor` pence, tax included.
+    fn price(minor: i64) -> Value {
+        Value::record(
+            jadpo_std::standard::prices::PRICE,
+            vec![
+                ("amount".into(), Value::Money(pounds(minor))),
+                ("includes_tax".into(), Value::Bool(true)),
+            ],
+        )
+    }
+
+    fn amount_off(money: Money) -> Value {
+        Value::variant(
+            jadpo_std::standard::prices::DISCOUNT,
+            0,
+            "amount_off",
+            vec![("amount".into(), Value::Money(money))],
+        )
+    }
+
+    fn percentage_off(mantissa: i128, scale: u32) -> Value {
+        Value::variant(
+            jadpo_std::standard::prices::DISCOUNT,
+            1,
+            "percentage_off",
+            vec![(
+                "percentage".into(),
+                Value::Percentage(Decimal::new(mantissa, scale)),
+            )],
+        )
+    }
+
+    #[test]
+    fn a_discount_comes_off_a_price_either_way() {
+        // £5.00 off £12.50, and 20% off it.
+        assert_eq!(
+            apply_discount(&price(1250), &amount_off(pounds(500))),
+            Ok(price(750))
+        );
+        assert_eq!(
+            apply_discount(&price(1250), &percentage_off(20, 2)),
+            Ok(price(1000))
+        );
+        // 15% of £10.05 is 150.75p, a penny short of half up: £1.51 off.
+        assert_eq!(
+            apply_discount(&price(1005), &percentage_off(15, 2)),
+            Ok(price(854))
+        );
+        // 12.5% of 20p is 2.5p, half to even: 2p off.
+        assert_eq!(
+            apply_discount(&price(20), &percentage_off(125, 3)),
+            Ok(price(18))
+        );
+        // More off than the price leaves nothing; all of it, the same.
+        assert_eq!(
+            apply_discount(&price(300), &amount_off(pounds(500))),
+            Ok(price(0))
+        );
+        assert_eq!(
+            apply_discount(&price(300), &percentage_off(100, 2)),
+            Ok(price(0))
+        );
+        // An amount off in another currency.
+        let euros = Money {
+            currency: jadpo_std::money::ordinal_of_code("EUR").unwrap(),
+            minor: 500,
+        };
+        assert_eq!(
+            apply_discount(&price(1250), &amount_off(euros)),
+            Err(MISMATCH)
+        );
     }
 
     #[test]

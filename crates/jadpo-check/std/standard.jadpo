@@ -44,6 +44,10 @@ public type Angle = Angle {}
 /// or `2ha`; a `Length` times a `Length`.
 public type Area = Area {}
 
+/// A count of hundredths of a percent (area 19), a whole number of any
+/// sign, so 25 basis points is never read as 25%: shown `25 bp`.
+public type BasisPoints = Int {}
+
 /// A bank identifier code (area 19, ISO 9362), 8 or 11 characters:
 /// `DEUTDEFF`.
 public type Bic = Text {}
@@ -207,6 +211,18 @@ public type DateRange = Object {
 
 /// An active ISO 4217 currency (area 19), written as its code, `GBP`.
 public type Currency = Enum {}
+
+/// An amount off a price or a percentage off it (area 19), a choice:
+/// `money.apply_discount` takes one off a `Price`. An amount off is never
+/// below 0, and a percentage off is from 0% to 100%.
+public type Discount = Enum {
+    amount_off: {
+        amount: Money
+    }
+    percentage_off: {
+        percentage: Percentage
+    }
+}
 
 /// A driving licence's number with the country that issued it (area 19):
 /// the number upper case with no spaces, in that country's form where it
@@ -391,6 +407,23 @@ public type Instant = Instant {}
 public type InstantRange = Object {
     start: Instant
     end: Instant
+}
+
+/// A rate of interest a year and the basis it is quoted on (area 19),
+/// shown as a lender writes it, `5.5% APR`. The rate may be below 0%, as
+/// central banks' have been.
+public type InterestRate = Object {
+    rate: Percentage
+    basis: InterestRateBasis
+}
+
+/// The basis an interest rate is quoted on (area 19): the annual
+/// equivalent rate of savings (`aer`), the annual percentage rate of
+/// borrowing (`apr`), or a flat rate on the sum first lent (`flat`).
+public type InterestRateBasis = Enum {
+    aer
+    apr
+    flat
 }
 
 /// An invoice's number (area 19, EN 16931): 1 to 200 characters, with no
@@ -588,6 +621,14 @@ public type Power = Power {}
 /// A pressure, held in pascals to 3 places (area 19), written `1013hPa`.
 public type Pressure = Pressure {}
 
+/// An amount and whether it includes tax (area 19), so a gross price is
+/// never taken for a net one: shown as its amount, `£10.50`. The amount
+/// is never below 0.
+public type Price = Object {
+    amount: Money
+    includes_tax: Bool
+}
+
 /// An HTTP API's error body (area 19, RFC 9457): what kind of problem it
 /// is (`about:blank` when `none`), the status, a short title, a detail
 /// for people and the URL of this occurrence, each of which may be
@@ -694,6 +735,9 @@ public type TaxId = Object {
     number: Text
 }
 
+/// A rate of tax (area 19), a percentage never below 0%: `20%`.
+public type TaxRate = Percentage {}
+
 /// A temperature, held in kelvin to 3 places (area 19), written
 /// `21degC`, `70degF` or `300kelvin`. It adds only a
 /// `TemperatureDifference`.
@@ -730,6 +774,29 @@ public type UnLocode = Text {}
 /// A dangerous good's UN number (area 19, the UN Model Regulations):
 /// `UN1203`, printed `UN 1203`.
 public type UnNumber = Text {}
+
+/// A price per an amount of a quantity (area 19), a choice by the
+/// quantity's kind, as the UK's Price Marking Order prices goods by
+/// weight, volume, length and area: shown `£2.50/1 kg`. Neither the price
+/// nor the amount is below 0.
+public type UnitPrice = Enum {
+    per_mass: {
+        price: Money
+        per: Mass
+    }
+    per_volume: {
+        price: Money
+        per: Volume
+    }
+    per_length: {
+        price: Money
+        per: Length
+    }
+    per_area: {
+        price: Money
+        per: Area
+    }
+}
 
 /// A GTIN-12, the universal product code (area 19, GS1), its check digit
 /// passing and its leading zero kept: `036000291452`.

@@ -135,7 +135,13 @@ pub struct StandardStub {
     /// An enum's variants, or an object's fields with their types, in
     /// declared order.
     pub members: Vec<(String, Option<TypeRef>)>,
+    /// A choice's variants that carry data, each with its fields and
+    /// their types, in declared order (chunk 5.5i3).
+    pub payloads: Vec<(String, Vec<StubField>)>,
 }
+
+/// A field a stub declares, with its type as written.
+pub type StubField = (String, Option<TypeRef>);
 
 #[derive(Debug, Default)]
 pub struct StdNames {
@@ -263,8 +269,32 @@ impl StdNames {
                             members.iter().map(|(variant, _)| variant.clone()).collect(),
                         );
                     }
+                    // A choice's variants that carry data (chunk 5.5i3).
+                    let payloads = tree::members(decl.member_list())
+                        .into_iter()
+                        .filter_map(|(variant, member)| {
+                            let block = member.block()?;
+                            let fields = tree::members(Some(block))
+                                .into_iter()
+                                .filter_map(|(field, member)| {
+                                    Some((
+                                        tree::name_text(&field)?,
+                                        member.value().map(|value| TypeRef::from_expr(&value)),
+                                    ))
+                                })
+                                .collect();
+                            Some((tree::name_text(&variant)?, fields))
+                        })
+                        .collect();
                     if standard {
-                        self.standard.insert(name, StandardStub { base, members });
+                        self.standard.insert(
+                            name,
+                            StandardStub {
+                                base,
+                                members,
+                                payloads,
+                            },
+                        );
                     }
                 }
                 Decl::LibraryDecl(library) => {

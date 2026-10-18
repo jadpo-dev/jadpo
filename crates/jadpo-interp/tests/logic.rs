@@ -392,11 +392,11 @@ fn a_library_function_is_called_through_its_library() {
     let program = program(&[
         (
             "pricing.jadpo",
-            "type Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\nlibrary pricing {\n    function doubled(amount: Price) -> Price {\n        return Price(amount * 2)\n    }\n}\n",
+            "type ItemPrice = Decimal {\n    scale: 2\n    min: 0.00\n}\n\nlibrary pricing {\n    function doubled(amount: ItemPrice) -> ItemPrice {\n        return ItemPrice(amount * 2)\n    }\n}\n",
         ),
         (
             "main.jadpo",
-            "function total(subtotal: Price) -> Price {\n    var total: Price = pricing.doubled(subtotal)\n    return total\n}\n",
+            "function total(subtotal: ItemPrice) -> ItemPrice {\n    var total: ItemPrice = pricing.doubled(subtotal)\n    return total\n}\n",
         ),
     ]);
     assert_eq!(
