@@ -17,6 +17,7 @@ use crate::read::SqlType;
 use crate::{Builtin, LOCALE, ZONE};
 
 pub mod addresses_data;
+pub mod banks;
 pub mod card_types;
 mod codes;
 mod contact;
@@ -25,6 +26,7 @@ pub mod emoji_data;
 pub mod events;
 mod identifiers;
 pub mod lists;
+pub mod modulus;
 pub mod opening_hours;
 pub mod person_names_data;
 pub mod phones;
@@ -446,11 +448,12 @@ pub enum FormatKey {
     /// A number in the locale's digits and separators, then `suffix`,
     /// which no locale changes: basis points, `25 bp` (chunk 5.5i3).
     Suffixed(&'static str),
-    /// The text in the object's part `part`, shown as its last four after
-    /// `mask`: a tax or identity document's number, `•••• 6789` (chunk
-    /// 5.5i2).
+    /// The text in the first of `parts` the value has, an object's part
+    /// or a choice's variant's, shown as its last four after `mask`: a tax
+    /// or identity document's number, `•••• 6789` (chunk 5.5i2); a bank
+    /// account's number or IBAN (chunk 5.5i4).
     PartLastFour {
-        part: &'static str,
+        parts: &'static [&'static str],
         mask: &'static str,
     },
 }
@@ -993,6 +996,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("10000 sqm", "10,000 m²"),
         ],
     ),
+    banks::BANK_ACCOUNT_ENTRY,
     prices::BASIS_POINTS_ENTRY,
     identifiers::BIC,
     quantity(
@@ -2370,6 +2374,7 @@ impl StandardType {
             Holds::Text { personal, .. } => personal,
             _ => contact::PERSONAL
                 .iter()
+                .chain(banks::PERSONAL)
                 .chain(card_types::PERSONAL)
                 .chain(documents::PERSONAL)
                 .chain(lists::PERSONAL)
@@ -2500,7 +2505,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 171, "the 171 standard types built so far");
+        assert_eq!(names.len(), 172, "the 172 standard types built so far");
     }
 
     #[test]

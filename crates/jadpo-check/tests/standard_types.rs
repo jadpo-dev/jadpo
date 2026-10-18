@@ -45,6 +45,24 @@ fn types(entry: &StandardType) -> (String, String) {
     )
 }
 
+/// A part as a stub writes it: the type it is built on, `Text` for a
+/// line, another standard type by its name, `T?` for a part that may be
+/// `none`, `List<T>` for a list.
+fn written(part: jadpo_std::Part) -> jadpo_check::types::TypeRef {
+    use jadpo_check::types::TypeRef;
+    match part {
+        jadpo_std::Part::Optional(inner) => TypeRef::Nullable(Box::new(written(*inner))),
+        jadpo_std::Part::List(inner) => {
+            TypeRef::Path(vec!["List".to_string()], vec![written(*inner)])
+        }
+        jadpo_std::Part::Standard(other) => TypeRef::Path(vec![other.to_string()], Vec::new()),
+        part => TypeRef::Path(
+            vec![part.builtin().map_or("", Builtin::name).to_string()],
+            Vec::new(),
+        ),
+    }
+}
+
 #[test]
 fn every_stub_agrees_with_its_data_entry() {
     let stubs = jadpo_check::standard_stubs();
@@ -93,26 +111,6 @@ fn every_stub_agrees_with_its_data_entry() {
                     .iter()
                     .map(|(name, ty)| (name.clone(), format!("{ty:?}")))
                     .collect();
-                // A part as a stub writes it: `Text` for a line, `T?` for
-                // a part that may be `none`, `List<T>` for a list.
-                fn written(part: jadpo_std::Part) -> jadpo_check::types::TypeRef {
-                    use jadpo_check::types::TypeRef;
-                    match part {
-                        jadpo_std::Part::Optional(inner) => {
-                            TypeRef::Nullable(Box::new(written(*inner)))
-                        }
-                        jadpo_std::Part::List(inner) => {
-                            TypeRef::Path(vec!["List".to_string()], vec![written(*inner)])
-                        }
-                        jadpo_std::Part::Standard(other) => {
-                            TypeRef::Path(vec![other.to_string()], Vec::new())
-                        }
-                        part => TypeRef::Path(
-                            vec![part.builtin().map_or("", Builtin::name).to_string()],
-                            Vec::new(),
-                        ),
-                    }
-                }
                 let expected: Vec<(String, String)> = fields
                     .iter()
                     .map(|(name, part): &(&str, jadpo_std::Part)| {
@@ -155,11 +153,7 @@ fn every_stub_agrees_with_its_data_entry() {
                         let fields = fields
                             .iter()
                             .map(|(name, part)| {
-                                let ty = jadpo_check::types::TypeRef::Path(
-                                    vec![part.builtin().map_or("", Builtin::name).to_string()],
-                                    Vec::new(),
-                                );
-                                ((*name).to_string(), format!("{:?}", Some(ty)))
+                                ((*name).to_string(), format!("{:?}", Some(written(*part))))
                             })
                             .collect();
                         ((*variant).to_string(), fields)

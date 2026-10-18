@@ -44,6 +44,25 @@ public type Angle = Angle {}
 /// or `2ha`; a `Length` times a `Length`.
 public type Area = Area {}
 
+/// A bank account to pay into or take from (area 19): a UK sort code and
+/// account number, an IBAN, or another country's account by its country,
+/// its bank's code where it has one, and its number. Shown masked to its
+/// number's last four. Personal data.
+public type BankAccount = Enum {
+    uk: {
+        sort_code: UkSortCode
+        account_number: UkAccountNumber
+    }
+    iban: {
+        iban: Iban
+    }
+    other: {
+        country: Country
+        bank_code: Text?
+        account_number: Text
+    }
+}
+
 /// A count of hundredths of a percent (area 19), a whole number of any
 /// sign, so 25 basis points is never read as 25%: shown `25 bp`.
 public type BasisPoints = Int {}

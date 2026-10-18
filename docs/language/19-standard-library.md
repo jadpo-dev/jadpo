@@ -120,7 +120,7 @@ exception to the rule.
 | People and contact (12) | **`PersonName`**, **`GivenName`**, **`FamilyName`**, **`Username`**, **`Email`**, **`EmailWithName`**, **`PhoneNumber`**, **`PhoneExtension`**, **`PostalAddress`**, **`PostalCode`**, **`Uprn`**, **`Nationality`** (enum) | `web` |
 | Places (10) | **`Country`** (enum), **`CountrySubdivision`** (enum), **`Continent`** (enum), **`UnLocode`**, **`CallingCode`**, **`Language`** (enum), **`WritingScript`** (enum), **`TextDirection`** (enum), **`Locale`** (enum), **`Zone`** (enum) | |
 | Geospatial (17) | `Point` (optional altitude), `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` | `geo` (future area) |
-| Money, payments, banking (24) | **`Money`**, **`Currency`** (enum), **`ExchangeRate`**, **`Price`**, **`UnitPrice`**, **`TaxRate`**, **`Discount`**, **`BasisPoints`**, **`InterestRate`**, **`PaymentCardNumber`**, **`MaskedCardNumber`**, **`CardBrand`** (enum), **`CardBin`**, **`CardExpiry`**, **`PaymentReference`**, **`InvoiceNumber`**, **`Iban`**, **`Bic`**, **`UkSortCode`**, **`UkAccountNumber`**, `BankAccount`, **`AbaRoutingNumber`**, **`Lei`**, **`Isin`** | `money` |
+| Money, payments, banking (24) | **`Money`**, **`Currency`** (enum), **`ExchangeRate`**, **`Price`**, **`UnitPrice`**, **`TaxRate`**, **`Discount`**, **`BasisPoints`**, **`InterestRate`**, **`PaymentCardNumber`**, **`MaskedCardNumber`**, **`CardBrand`** (enum), **`CardBin`**, **`CardExpiry`**, **`PaymentReference`**, **`InvoiceNumber`**, **`Iban`**, **`Bic`**, **`UkSortCode`**, **`UkAccountNumber`**, **`BankAccount`**, **`AbaRoutingNumber`**, **`Lei`**, **`Isin`** | `money` |
 | Tax and identity numbers (11, and `IdentityDocumentKind`) | **`VatNumber`**, **`TaxId`**, **`UkUtr`**, **`UkCompanyNumber`**, **`UkNationalInsuranceNumber`**, **`UsSsn`**, **`UsEin`**, **`PassportNumber`**, **`DrivingLicenceNumber`**, **`IdentityDocument`** with **`IdentityDocumentKind`** (enum), **`NhsNumber`** | |
 | Commerce and logistics (20) | **`Sku`**, **`Ean13`**, **`UpcA`**, **`Isbn`**, **`Sscc`**, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, **`HsCode`**, **`Incoterm`** (enum), `TrackingNumber`, **`Carrier`**, **`ContainerNumber`**, **`LotNumber`**, **`SerialNumber`**, **`Vin`**, `VehicleRegistration` | `units`, `media` |
 | Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), **`LocalTime`**, **`LocalDateTime`**, **`Month`** (enum), **`YearMonth`**, **`Year`**, **`Quarter`**, **`IsoWeek`**, **`UtcOffset`**, **`DateRange`**, **`InstantRange`**, **`CalendarPeriod`**, **`RecurrenceRule`**, **`OpeningHours`**, **`CalendarEvent`** | `temporal`, `range` |
@@ -392,7 +392,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `Angle`, `Area`, `BasisPoints`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Concentration`, `ContainerImage`, `ContainerNumber`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Discount`, `Doi`, `DomainName`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `Fraction`, `Frequency`, `GitRef`, `GivenName`, `Hostname`, `HsCode`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `Imei`, `Incoterm`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LogLevel`, `LotNumber`, `MacAddress`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PackageUrl`, `PassportNumber`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PushToken`, `Quarter`, `Range`, `Ratio`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `SemanticVersion`, `SerialNumber`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `TraceId`, `TraceParent`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VersionRange`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `Angle`, `Area`, `BankAccount`, `BasisPoints`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Concentration`, `ContainerImage`, `ContainerNumber`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Discount`, `Doi`, `DomainName`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `Fraction`, `Frequency`, `GitRef`, `GivenName`, `Hostname`, `HsCode`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `Imei`, `Incoterm`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LogLevel`, `LotNumber`, `MacAddress`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PackageUrl`, `PassportNumber`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PushToken`, `Quarter`, `Range`, `Ratio`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `SemanticVersion`, `SerialNumber`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `TraceId`, `TraceParent`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VersionRange`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -2241,6 +2241,146 @@ test "a loan keeps its rate over base as it was written" {
 > contract, and `money.apply_discount`; storing the records and choices
 > waits, as an `ExchangeRate` does, on area 5's structured storage. What
 > the pages left open is "Chosen in chunk 5.5i3".
+
+### Bank accounts
+
+A `BankAccount` is a choice of the three ways an account is written down
+(chunk 5.5i4):
+
+| Variant | What it holds | Sent as |
+|---|---|---|
+| `uk` | `sort_code`, a `UkSortCode`, and `account_number`, a `UkAccountNumber` | `{"tag": "uk", "sort_code": "089999", "account_number": "66374958"}` |
+| `iban` | `iban`, an `Iban` | `{"tag": "iban", "iban": "GB29NWBK60161331926819"}` |
+| `other` | `country`, a `Country`; `bank_code`, its bank's code where the country uses one (a US routing number, an Indian IFSC), or `none`; and `account_number`, each up to ISO 20022's lengths in capital letters and digits | `{"tag": "other", "country": "US", "bank_code": "021000021", "account_number": "123456789"}` |
+
+Each part keeps its own type's rules: a sort code's six digits, an IBAN's
+mod-97 and its country's length. It is financial personal data, as an
+IBAN and a UK account number are, and `text.format` shows it masked to
+its number's last four, `•••• 4958`, as it shows a card number. It has no
+single text form, and is stored as its JSON in one `jsonb` column, which
+waits on area 5's structured storage, as a `Discount` does.
+
+A UK account number also has to fit its sort code, by the modulus check
+Vocalink publishes for Pay.UK's schemes ("Validating account numbers: UK
+modulus checking", version 9.10, 5 September 2026): each range of sort
+codes has one or two checks, a standard modulus 10 or 11 or a double
+alternate, with fourteen exceptions. The check needs Vocalink's weight
+table and sort code substitution table, published with the
+specification under "all rights reserved", so no release ships them, and
+a `BankAccount` takes any sort code and account number that are each well
+formed, as the specification says to treat a sort code its table doesn't
+cover. `jadpo-std` holds the check, which passes all 34 of the
+specification's test cases against Vocalink's tables, ready for them
+once they may ship.
+
+A business pays its suppliers by the account on each invoice, reads a
+payee's account from a payments form, and shows each account only by its
+last four:
+
+```jadpo check project=bank-accounts
+type FormText = Text {}
+
+type NotAnAccount = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type ByFasterPayments = Bool {}
+
+/// A supplier's UK account, from the sort code and number on its invoice.
+function supplier_account(
+    printed_code: UkSortCode,
+    printed_number: UkAccountNumber
+) -> BankAccount {
+    return BankAccount.uk {
+        sort_code: printed_code
+        account_number: printed_number
+    }
+}
+
+/// A payee's account as the payments form sends it.
+function payee_account(sent: FormText) fails NotAnAccount -> BankAccount {
+    return attempt json.read(sent, as: BankAccount) {
+        malformed: NotAnAccount
+        mismatch: NotAnAccount
+    }
+}
+
+/// Whether a payment to the account goes by Faster Payments, which takes
+/// a UK sort code and account number.
+function paid_by_faster_payments(account: BankAccount) -> ByFasterPayments {
+    return match account {
+        BankAccount.uk -> true
+        BankAccount.iban -> false
+        BankAccount.other -> false
+    }
+}
+
+/// An account as a payment's confirmation shows it.
+function account_label(account: BankAccount, viewer: Locale) -> PresentationText {
+    return text.format(account, locale: viewer)
+}
+```
+
+```jadpo check project=bank-accounts file=main.test.jadpo
+test "an account is paid by its kind and shown by its last four" {
+    var supplier: BankAccount = supplier_account("089999", "66374958")
+    assert paid_by_faster_payments(supplier)
+    assert account_label(supplier, Locale.en_gb) == "•••• 4958"
+    var abroad: BankAccount = attempt payee_account(
+        "{\"tag\":\"iban\",\"iban\":\"DE89370400440532013000\"}"
+    )
+    assert not paid_by_faster_payments(abroad)
+    assert account_label(abroad, Locale.de_de) == "•••• 3000"
+    var in_dollars: BankAccount = attempt payee_account(
+        "{\"tag\":\"other\",\"country\":\"US\",\"bank_code\":\"021000021\",\"account_number\":\"123456789\"}"
+    )
+    assert account_label(in_dollars, Locale.en_us) == "•••• 6789"
+}
+
+test "an account whose parts break their rules isn't read" {
+    assert payee_account(
+        "{\"tag\":\"iban\",\"iban\":\"DE89370400440532013001\"}"
+    ) fails NotAnAccount
+    assert payee_account(
+        "{\"tag\":\"uk\",\"sort_code\":\"08-99-99\",\"account_number\":\"66374958\"}"
+    ) fails NotAnAccount
+    assert payee_account(
+        "{\"tag\":\"other\",\"country\":\"US\",\"bank_code\":\"021000021\",\"account_number\":\"1234-5678\"}"
+    ) fails NotAnAccount
+}
+```
+
+A sort code written out is checked while compiling, as any part's
+literal is:
+
+```jadpo check project=bank-account-literal expect=type.invalid_literal
+/// The account the business's own payments go out from.
+function paying_account() -> BankAccount {
+    return BankAccount.uk {
+        sort_code: "08-99-99"
+        account_number: "66374958"
+    }
+}
+```
+
+```text output
+error: `"08-99-99"` isn't a valid `BankAccount.uk.sort_code`
+ --> main.jadpo:4:20
+  |
+4 |         sort_code: "08-99-99"
+  |                    ^^^^^^^^^^ not a valid `UkSortCode`
+  reason: The value isn't a valid `UkSortCode`: its pattern and check digits accept only `UkSortCode`'s canonical text, and a literal is checked while compiling.
+  next: Write a valid `UkSortCode` in its canonical text (agent)
+  rule: type.invalid_literal
+  help: docs/language/02-values-and-types.html#type-invalid-literal
+
+check failed: 1 error, 1 file
+```
+
+> Built in chunk 5.5i4: `BankAccount` on the contract, on chunk 5.5i3's
+> choice of types, and Vocalink's modulus check in
+> `jadpo_std::standard::modulus`, which no `BankAccount` runs until its
+> tables can ship. What the pages left open is "Chosen in chunk 5.5i4".
 
 ## Physical quantities
 
@@ -4165,7 +4305,7 @@ test "they are shown as they are printed" {
 > `UkNationalInsuranceNumber`, `UsSsn`, `UsEin` and `NhsNumber`, each a
 > pattern and, where the table above names one, a validator; the UK
 > modulus check, which needs a sort code and an account number together,
-> comes with `BankAccount` in chunk 5.5i4, on 5.5i3's choice of types.
+> came with `BankAccount` in chunk 5.5i4, under "Bank accounts".
 > The identity documents are chunk 5.5i2's. What the page left open is "Chosen in chunk
 > 5.5i", under "Review".
 
@@ -4277,7 +4417,7 @@ check failed: 1 error, 1 file
 > form where a literal writes both and as JSON is read, and each stored in
 > a column per part. `Price`, `UnitPrice`, `TaxRate`, `Discount`,
 > `BasisPoints` and `InterestRate` were built in chunk 5.5i3, under "Money
-> and payments"; `BankAccount` is chunk 5.5i4's. What the page left open
+> and payments"; `BankAccount` in chunk 5.5i4, under "Bank accounts". What the page left open
 > is "Chosen in chunk 5.5i2", under "Review".
 
 A shop sends parcels abroad and prints each label for the person who
@@ -5428,7 +5568,7 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, the 18 software types with `semver.satisfies` in 5.5n2, each other group of types in 5.5i4 to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, each other group of types in the chunks after them to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}`; `apply_discount` in 5.5i3 |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
@@ -7200,6 +7340,61 @@ under "Errors").
   a shape added later reports every such type at once.
 - **Clashes renamed:** the tests' `Digest` (bytes) is `HashBytes`.
 
+### Chosen in chunk 5.5i4
+
+- **Three variants,** `uk { sort_code, account_number }`, `iban { iban }`
+  and `other { country, bank_code, account_number }`: the catalogue's
+  `uk` and `iban`, and, for its `us` and the "…", one variant for any
+  other country, since the catalogue left `UsBankAccount` out with no
+  standard. Each part of `uk` and `iban` is the standard type of chunk
+  5.5i, keeping its rules. `other`'s `bank_code` is the code of the
+  account's bank where its country uses one (a US routing number, an
+  Indian IFSC) and `none` where the bank is part of the number (New
+  Zealand's); it and `account_number` are capital letters and digits with
+  no spaces or punctuation, as a document's number is (chunk 5.5i2), up to
+  ISO 20022's lengths, 35 and 34. No country's own form is checked yet,
+  as a document's country without a published one isn't: a release adds
+  them (a US bank code as an `AbaRoutingNumber`) as they are needed, and
+  `other` doesn't refuse a country that uses IBANs.
+- **The modulus check is built, and not run.** `jadpo_std::standard::
+  modulus` is Vocalink's "Validating account numbers: UK modulus
+  checking", version 9.10 of 5 September 2026: the standard modulus 10
+  and 11 checks, the double alternate check and exceptions 1 to 14, with
+  the order of the checks and which exceptions need only one to pass
+  taken from the specification's 34 test cases where its flow diagram
+  disagrees with them (exception 5 needs both, as cases 23 and 24 say).
+  It passes all 34 (Chapter 3), and reads Vocalink's tables in their own
+  text format. The tables, `valacdos.txt` and `scsubtab.txt`, are
+  published with the specification under "© Vocalink Limited 2026. All
+  rights reserved", which says the information may be used only for the
+  purpose it was provided for, with no licence to redistribute it; this
+  repository is Apache-2.0, so no release ships them, the same call
+  chunk 5.5l2 made for UN/LOCODE. Without them every sort code is one no
+  range covers, which §2.2.1 says to presume valid, so a `BankAccount`
+  takes any well-formed sort code and account number and the check is
+  not wired into construction or `json.read`. The tables aren't shipped
+  pending Vocalink's permission, and no part of them is in this
+  repository: the check's own tests run on a weight and a substitution
+  table made up for them, every method and exceptions 1 to 14, and the 34
+  cases (each only its sort code, account number and expected result,
+  cited by number) run against Vocalink's tables only when
+  `JADPO_VOCALINK_TABLES` names a folder holding the `valacdos.txt` and
+  `scsubtab.txt` downloaded from Vocalink's site, `JADPO_VOCALINK_TABLES=
+  <folder> cargo test -p jadpo-std modulus`, and are skipped with a
+  message otherwise.
+- **Shown masked to its last four,** `•••• 4958`, the last four of a UK
+  or other account's number or of an IBAN, as a card number and a
+  document's number are (chunks 5.5i and 5.5i2): `FormatKey::PartLastFour`
+  now takes the first of several parts, from a variant too. The sort
+  code isn't shown, though it isn't secret, so one form serves every
+  variant.
+- **`financial` personal data,** as an IBAN and a UK account number are
+  on their own (chunk 5.5i).
+- **Stored as its JSON** in one `jsonb` column, waiting on area 5's
+  structured storage as a `Discount` does; no shape, as no choice has one,
+  so an application's `Object { sort_code, account_number }` isn't
+  `type.standard_exists`.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -7665,7 +7860,7 @@ first; each group of types then arrives with its baseline and its extras.
   5.5i4.
 - **5.5i4 Bank accounts** `opus · high`: `BankAccount` on 5.5i3's choice,
   with the UK modulus check by Vocalink's specification and its 34 test
-  cases.
+  cases. Built; the check waits on Vocalink's tables.
 - **5.5j Quantities** `opus · high`: the 17 physical quantities with
   `DataSize` and `Bitrate`, their units, SI storage at each kind's
   scale, suffixed literals, the product and quotient table,

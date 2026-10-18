@@ -631,7 +631,7 @@ const fn examples(
 /// Shown as its number's last four, as a card number is (chunk 5.5i).
 const MASKED: Format = Format {
     key: FormatKey::PartLastFour {
-        part: "number",
+        parts: &["number"],
         mask: "•••• ",
     },
     options: NO_OPTIONS,
