@@ -75,6 +75,7 @@ fn every_stub_agrees_with_its_data_entry() {
     for entry in STANDARD_TYPES {
         let StandardStub {
             base,
+            arguments,
             members,
             payloads,
         } = &stubs[entry.name];
@@ -173,6 +174,28 @@ fn every_stub_agrees_with_its_data_entry() {
             Holds::Whole { .. } => {
                 assert_eq!(base, "Int", "{} is a whole number", entry.name);
                 assert!(members.is_empty(), "{}'s range is its entry's", entry.name);
+            }
+            // A named collection, built on a list or a map of its parts
+            // (chunk 5.5o2).
+            Holds::List(item) => {
+                assert_eq!(base, "List", "{}", entry.name);
+                assert_eq!(
+                    format!("{arguments:?}"),
+                    format!("{:?}", [written(item)]),
+                    "{}'s items",
+                    entry.name
+                );
+                assert!(members.is_empty(), "{}", entry.name);
+            }
+            Holds::Map(key, value) => {
+                assert_eq!(base, "Map", "{}", entry.name);
+                assert_eq!(
+                    format!("{arguments:?}"),
+                    format!("{:?}", [written(key), written(value)]),
+                    "{}'s entries",
+                    entry.name
+                );
+                assert!(members.is_empty(), "{}", entry.name);
             }
             Holds::Range => {
                 assert_eq!(base, "Object", "{}", entry.name);
@@ -450,6 +473,9 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
             }
             // A range's schema is its item type's ends.
             Holds::Range => continue,
+            // A named collection's: an array of its items, an object of its
+            // entries (chunk 5.5o2).
+            Holds::List(_) | Holds::Map(..) => standard_object_schema(entry),
         };
         let kind = schema
             .get("type")
@@ -458,6 +484,18 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
         match entry.json {
             Json::Text => assert_eq!(kind.as_deref(), Some("string"), "{name}"),
             Json::Tagged => unreachable!("{name}: only a choice is sent tagged"),
+            Json::Array => {
+                assert_eq!(kind.as_deref(), Some("array"), "{name}");
+                assert!(schema.get("items").is_some(), "{name}: its items");
+            }
+            Json::Keyed => {
+                assert_eq!(kind.as_deref(), Some("object"), "{name}");
+                assert!(schema.get("propertyNames").is_some(), "{name}: its keys");
+                assert!(
+                    schema.get("additionalProperties").is_some(),
+                    "{name}: its values"
+                );
+            }
             Json::Number => assert_eq!(kind.as_deref(), Some("integer"), "{name}"),
             Json::Fields(fields) | Json::Members(fields) => {
                 assert_eq!(kind.as_deref(), Some("object"), "{name}");

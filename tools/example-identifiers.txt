@@ -433,6 +433,7 @@ edit_start
 edit_todo
 edited_at
 editor_id
+editor_json
 effort
 egg
 email_on_completion
@@ -776,6 +777,9 @@ menu_entry
 menu_filter
 menu_item
 meringue
+method_from
+method_page
+method_unreadable
 mid_grey
 middle
 mild
@@ -857,6 +861,7 @@ nothing_to_bake
 notify_owner
 nut_free
 oat
+oat_method
 off_menu_cake
 offcut
 offcut_label
@@ -1091,7 +1096,6 @@ quantity_too_small
 quantity_unavailable
 quantity_unreadable
 queue_overdue_reminders
-quote
 quote_cake
 radius
 raise_priority
@@ -1117,6 +1121,7 @@ recipe_card
 recipe_costing
 recipe_id
 recipe_label
+recipe_method
 recipe_name
 recipe_scale
 recipe_title
@@ -1192,6 +1197,7 @@ revoke_outlet_key
 rise
 risen
 rival
+roggen
 room_depth
 room_floor
 rotated

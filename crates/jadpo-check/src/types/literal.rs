@@ -333,6 +333,24 @@ pub fn diagnostic(
             ))
             .next(format!("Write a valid `{standard}` in its canonical text"))
         }
+        // A span's link, written so the sanitiser keeps it (chunk 5.5o2):
+        // said in words, not as its pattern.
+        Problem::Broken(_, broken)
+            if broken.key == jadpo_std::RuleKey::Pattern
+                && broken
+                    .rule
+                    .contains(jadpo_std::standard::rich_text::LINK_PATTERN) =>
+        {
+            Diagnostic::new(
+                &rule::TYPE_INVALID_LITERAL,
+                format!("`{written}` isn't a link a `RichText` can hold"),
+            )
+            .at(span, "not an `https:` or `mailto:` address")
+            .reason(
+                "A span links only to an `https:` URL with a host or a `mailto:` address, written so the HTML sanitiser keeps it as it is, since `markup.rich_to_html` writes every link out; a literal is checked while compiling.",
+            )
+            .next("Write an `https:` or `mailto:` address, such as `https://example.com/`")
+        }
         Problem::Broken(host, broken) => Diagnostic::new(
             &rule::TYPE_INVALID_LITERAL,
             format!("`{written}` isn't a valid `{expected}`"),
