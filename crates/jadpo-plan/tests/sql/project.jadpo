@@ -622,3 +622,42 @@ query closest_articles(question_meaning: ArticleMeaning) -> List<Nearest<Article
     order: [HelpArticle.body_meaning nearest question_meaning]
     limit: 50
 }
+
+/// A paper's meaning, longer than a full-precision index takes.
+type PaperMeaning = Vector {
+    dimensions: 3072
+}
+
+/// A paper's meaning from a model too large for any index.
+type FullPaperMeaning = Vector {
+    dimensions: 5000
+    distance: VectorDistance.inner_product
+}
+
+entity Paper {
+    id: Uuid
+    meaning: PaperMeaning?
+    full_meaning: FullPaperMeaning?
+
+    policy: {
+        read: [Access.public]
+    }
+}
+
+/// A vector of 2,001 to 4,000 dimensions (chunk 5.5v1c): ordered by the
+/// distance between `halfvec` casts, the expression its index holds,
+/// while the distance read back is the full one.
+query closest_papers(question_meaning: PaperMeaning) -> List<Nearest<Paper>> {
+    from: Paper
+    order: [Paper.meaning nearest question_meaning]
+    limit: 10
+}
+
+/// Over 4,000 dimensions, declined: every record measured, ordered with
+/// its tie-break in one statement, and no search settings.
+query closest_papers_exactly(question_meaning: FullPaperMeaning) -> List<Nearest<Paper>> {
+    from: Paper
+    decline query.nearest_exact: "A few hundred papers, read in full"
+    order: [Paper.full_meaning nearest question_meaning]
+    limit: 10
+}

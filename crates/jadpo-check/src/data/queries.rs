@@ -66,8 +66,52 @@ pub const NEAREST: &str = "Nearest";
 pub const MOST_NEAREST: u64 = 100;
 
 /// The longest vector pgvector's HNSW index takes at full precision; a
-/// longer type's index is chunk 5.5v1c's.
+/// longer one is indexed at half precision (area 21, "The index").
 pub const MOST_INDEXED_DIMENSIONS: u64 = 2_000;
+
+/// The longest vector pgvector's HNSW index takes at half precision, as a
+/// `halfvec`; a longer one is searched exactly (area 21, "The index").
+pub const MOST_HALF_INDEXED_DIMENSIONS: u64 = 4_000;
+
+/// How a nearest-neighbour query searches, from its vector's length (area
+/// 21, "The index"; chunk 5.5v1c).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum VectorSearch {
+    /// Through an HNSW index on the column: up to 2,000 dimensions.
+    Index,
+    /// Through an HNSW index on the column cast to `halfvec(n)`, the query
+    /// ordering by the same expression: 2,001 to 4,000 dimensions.
+    HalfPrecision(u64),
+    /// Every record measured and sorted, which `query.nearest_exact`
+    /// names and a decline accepts: over 4,000 dimensions.
+    Exact,
+}
+
+impl VectorSearch {
+    /// How a vector of `dimensions` is searched.
+    pub fn of(dimensions: u64) -> VectorSearch {
+        if dimensions <= MOST_INDEXED_DIMENSIONS {
+            VectorSearch::Index
+        } else if dimensions <= MOST_HALF_INDEXED_DIMENSIONS {
+            VectorSearch::HalfPrecision(dimensions)
+        } else {
+            VectorSearch::Exact
+        }
+    }
+}
+
+/// A count as a sentence writes it, thousands apart: `5,000`.
+pub(crate) fn grouped(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, digit) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
+}
 
 // --- the model ---------------------------------------------------------------
 
@@ -196,6 +240,10 @@ pub struct NearestOrder {
     /// The most records the query returns: its `limit:`, or the most its
     /// value's type allows.
     pub most: u64,
+    /// The field's type's `dimensions:`.
+    pub dimensions: u64,
+    /// How it searches, from them (chunk 5.5v1c).
+    pub search: VectorSearch,
 }
 
 /// One query, as its SQL and codecs are made from it, without positions.
@@ -3262,21 +3310,6 @@ impl Reader<'_> {
             );
             return None;
         };
-        if dimensions > MOST_INDEXED_DIMENSIONS {
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("Searching `{written}` by nearness isn't built yet"),
-                )
-                .at(field_span, format!("{dimensions} dimensions"))
-                .reason(format!(
-                    "pgvector's HNSW index takes a `vector` of up to {MOST_INDEXED_DIMENSIONS} dimensions; a longer one is indexed through a half-precision expression, or read in full over 4,000 (area 21, \"The index\"), which comes in chunk 5.5v1c."
-                ))
-                .next("Ask the model for fewer dimensions with `embedding_dimensions:`, or wait for chunk 5.5v1c")
-                .help_at("21-ai.html#the-index"),
-            );
-            return None;
-        }
         let field_ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
         let vector = vector_type(self.lookup, &field_ty)?;
         let metric = metric(self.lookup, &vector);
@@ -3359,11 +3392,38 @@ impl Reader<'_> {
             );
             return None;
         }
+        // Over 4,000 dimensions no index serves it: each call reads every
+        // record, a cost the author accepts with a decline (area 1).
+        let search = VectorSearch::of(dimensions);
+        if search == VectorSearch::Exact {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_NEAREST_EXACT,
+                    format!(
+                        "`{written}` is too long to index, so `nearest` reads every `{}`",
+                        entity.name
+                    ),
+                )
+                .at(field_span, format!("{} dimensions", grouped(dimensions)))
+                .reason(format!(
+                    "pgvector's HNSW index takes a vector of up to {} dimensions, at half precision, and `{vector}` has {}; with no index, each call measures its distance to every `{}` with a vector and sorts them, which slows as the table grows.",
+                    grouped(MOST_HALF_INDEXED_DIMENSIONS),
+                    grouped(dimensions),
+                    entity.name
+                ))
+                .next(format!(
+                    "Give `{vector}` at most {} `dimensions:`, asking the model for fewer with `embedding_dimensions:`",
+                    grouped(MOST_HALF_INDEXED_DIMENSIONS)
+                )),
+            );
+        }
         Some(NearestOrder {
             field: field.name.clone(),
             value,
             metric,
             most,
+            dimensions,
+            search,
         })
     }
 }

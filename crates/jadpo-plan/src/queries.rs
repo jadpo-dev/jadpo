@@ -23,7 +23,7 @@
 
 use jadpo_check::data::queries::{
     self as model, Bound, Condition, Include, IncludeKind, OrderField, QueryModel, Source as From,
-    Value,
+    Value, VectorSearch,
 };
 use jadpo_check::data::{DataModel, EntityModel, FieldModel};
 use jadpo_check::lookups::Lookup;
@@ -206,11 +206,20 @@ impl Planner<'_> {
                 let id = field(entity, "id")?;
                 columns.add(&id.name, self.column(entity, id)?);
                 let from = statement.bind(&nearest.value, SqlType::Vector)?;
-                let distance = format!(
-                    "{} {} {from}",
-                    jadpo_sql::ident(&vector.born),
-                    nearest.metric.operator()
-                );
+                let column = jadpo_sql::ident(&vector.born);
+                let operator = nearest.metric.operator();
+                let distance = format!("{column} {operator} {from}");
+                // A vector of 2,001 to 4,000 dimensions is ordered by the
+                // distance between `halfvec` casts, the expression its
+                // index holds; the distance read back stays the full
+                // one, as `ai.distance` gives it (chunk 5.5v1c).
+                let order = match nearest.search {
+                    VectorSearch::HalfPrecision(n) => Some(format!(
+                        "{column}::halfvec({n}) {operator} {from}::vector({n})::halfvec({n})"
+                    )),
+                    VectorSearch::Index => Some(distance.clone()),
+                    VectorSearch::Exact => None,
+                };
                 let at = u32::try_from(columns.names.len()).ok()?;
                 record = Record {
                     ty: model::NEAREST.to_string(),
@@ -219,7 +228,7 @@ impl Planner<'_> {
                         ("distance".to_string(), Field::Column(at)),
                     ],
                 };
-                Some((distance, vector.born.clone(), nearest.most))
+                Some((distance, order, vector.born.clone(), nearest.most))
             }
             None => None,
         };
@@ -237,7 +246,7 @@ impl Planner<'_> {
             conditions.push(self.condition(&mut statement, entity, line, false)?);
         }
         // A record whose vector is `none` is never near anything.
-        if let Some((_, column, _)) = &nearest {
+        if let Some((_, _, column, _)) = &nearest {
             conditions.push(format!("{} IS NOT NULL", jadpo_sql::ident(column)));
         }
         conditions.extend(self.access(&mut statement, entity, Reach::Read)?);
@@ -273,15 +282,26 @@ impl Planner<'_> {
         // The statement with its policy, and without, which a test's call
         // without a caller runs.
         let write = |conditions: &[String]| {
-            if let (Some((distance, _, _)), Some(n)) = (&nearest, &limit) {
-                return text::nearest(
-                    &borns(entity, &columns.names),
-                    &entity.table,
-                    distance,
-                    conditions,
-                    n,
-                    "id",
-                );
+            if let (Some((distance, order, _, _)), Some(n)) = (&nearest, &limit) {
+                return match order {
+                    Some(order) => text::nearest(
+                        &borns(entity, &columns.names),
+                        &entity.table,
+                        distance,
+                        order,
+                        conditions,
+                        n,
+                        "id",
+                    ),
+                    None => text::nearest_exact(
+                        &borns(entity, &columns.names),
+                        &entity.table,
+                        distance,
+                        conditions,
+                        n,
+                        "id",
+                    ),
+                };
             }
             let mut sql = text::select(&borns(entity, &columns.names), &entity.table, "");
             text::where_clause(&mut sql, conditions, "");
@@ -323,12 +343,13 @@ impl Planner<'_> {
         // least as many candidates as the query returns, and iterative
         // scans in strict order, so a filtered search still fills its
         // limit (pgvector 0.8.0 and later).
+        // An exact search reads no index, and needs neither.
         let settings = match &nearest {
-            Some((_, _, most)) => vec![
+            Some((_, Some(_), _, most)) => vec![
                 format!("SET LOCAL hnsw.ef_search = {}", (*most).max(EF_SEARCH)),
                 "SET LOCAL hnsw.iterative_scan = strict_order".to_string(),
             ],
-            None => Vec::new(),
+            _ => Vec::new(),
         };
         let select = Select {
             sql,

@@ -332,7 +332,53 @@ pub struct ListRule {
     /// An index's `kind:`, where it has one: `IndexKind.geographic`, a
     /// GiST index on a geometry (area 20, "Indexes"; chunk 5.5u4).
     pub kind: Option<IndexKind>,
+    /// An `IndexKind.hnsw` index's vector and tuning (area 21, "The
+    /// index"; chunk 5.5v1c).
+    pub hnsw: Option<HnswIndex>,
 }
+
+/// A declared HNSW index's vector, and the tuning its entry writes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HnswIndex {
+    /// How the field's type measures.
+    pub metric: jadpo_std::VectorDistance,
+    /// The field's type's `dimensions:`.
+    pub dimensions: u64,
+    /// `m:` and `ef_construction:` as written, in that order.
+    pub with: Vec<(String, u32)>,
+}
+
+/// pgvector's HNSW index for a vector of `dimensions` measured by
+/// `metric`, with storage parameters `with` (area 21, "The index"): on the
+/// column with the metric's operator class up to 2,000 dimensions, and on
+/// the column cast to `halfvec(n)` with the half-precision class up to
+/// 4,000, the expression a query orders by (chunk 5.5v1c).
+pub fn hnsw_method(
+    metric: jadpo_std::VectorDistance,
+    dimensions: u64,
+    with: Vec<(String, u32)>,
+) -> physical::IndexMethod {
+    let half = matches!(
+        queries::VectorSearch::of(dimensions),
+        queries::VectorSearch::HalfPrecision(_)
+    );
+    physical::IndexMethod {
+        name: "hnsw".to_string(),
+        operator_class: if half {
+            metric.half_operator_class()
+        } else {
+            metric.operator_class()
+        }
+        .to_string(),
+        cast: half.then(|| format!("halfvec({dimensions})")),
+        with,
+    }
+}
+
+/// pgvector's bounds for an HNSW index's `m` and `ef_construction`, and
+/// their defaults (pgvector's `hnsw.h`, verified on pgvector 0.7.0).
+const HNSW_M: (u64, u64, u64) = (2, 100, 16);
+const HNSW_EF_CONSTRUCTION: (u64, u64, u64) = (4, 1000, 64);
 
 /// Where an entity's parts are written: what a problem points at.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1241,6 +1287,198 @@ impl Reader<'_> {
         );
     }
 
+    /// An `IndexKind.hnsw` entry's vector and tuning, checked: one field
+    /// holding a vector of fixed length, at most 4,000 dimensions, and
+    /// `m:` and `ef_construction:` whole numbers within pgvector's bounds,
+    /// `ef_construction` at least twice `m` (area 21, "The index").
+    fn hnsw_index(
+        &mut self,
+        entity: &EntityModel,
+        rule_name: &str,
+        fields: &[String],
+        at: &Span,
+        tuning: &[(&'static str, Option<Expr>, Span, Span)],
+    ) -> Option<HnswIndex> {
+        let vector = match fields {
+            [only] => entity
+                .fields
+                .iter()
+                .find(|f| f.name == *only)
+                .filter(|f| f.compound.is_none())
+                .and_then(|f| {
+                    let dimensions = f
+                        .sql_type
+                        .as_deref()?
+                        .strip_prefix("vector(")?
+                        .strip_suffix(')')?
+                        .parse::<u64>()
+                        .ok()?;
+                    let ty = queries::vector_type(
+                        self.lookup,
+                        &Ty::Field(entity.name.clone(), vec![f.name.clone()]),
+                    )?;
+                    Some((f, ty, dimensions))
+                }),
+            _ => None,
+        };
+        let Some((field, vector, dimensions)) = vector else {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_SETTING_VALUE,
+                    format!("The HNSW index `{rule_name}` isn't on one vector field of fixed length"),
+                )
+                .at(at.clone(), "hnsw")
+                .reason("An HNSW index is pgvector's, on one field whose type is built on `Vector` with `dimensions:`, which `nearest` searches (area 21, \"The index\").")
+                .next(format!("List one such field in `{rule_name}`, or leave `kind:` out")),
+            );
+            return None;
+        };
+        if dimensions > queries::MOST_HALF_INDEXED_DIMENSIONS {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_SETTING_VALUE,
+                    format!("`{}.{}` is too long for an HNSW index", entity.name, field.name),
+                )
+                .at(at.clone(), format!("{} dimensions", queries::grouped(dimensions)))
+                .reason(format!(
+                    "pgvector's HNSW index takes a vector of up to {} dimensions, at half precision, and `{vector}` has {}, so no index can hold it; a `nearest` query on it reads every record (`query.nearest_exact`).",
+                    queries::grouped(queries::MOST_HALF_INDEXED_DIMENSIONS),
+                    queries::grouped(dimensions)
+                ))
+                .next(format!(
+                    "Remove `{rule_name}`, or give `{vector}` at most {} `dimensions:`",
+                    queries::grouped(queries::MOST_HALF_INDEXED_DIMENSIONS)
+                )),
+            );
+            return None;
+        }
+        // Each setting a whole number within pgvector's bounds.
+        let mut with: Vec<(String, u32)> = Vec::new();
+        let mut spans: BTreeMap<&str, Span> = BTreeMap::new();
+        let mut broken = false;
+        for (setting, value, key_span, value_span) in tuning {
+            let (least, most, default) = if *setting == "m" {
+                HNSW_M
+            } else {
+                HNSW_EF_CONSTRUCTION
+            };
+            let what = if *setting == "m" {
+                "how many neighbours each vector links to in pgvector's HNSW index: more finds the nearest more reliably, but builds slower and takes more space"
+            } else {
+                "how many candidates pgvector weighs as it links each vector into its HNSW index: more finds the nearest more reliably, but builds slower"
+            };
+            if with.iter().any(|(name, _)| name == setting) {
+                broken = true;
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::DATA_DUPLICATE_RULE,
+                        format!("The index `{rule_name}` sets `{setting}` twice"),
+                    )
+                    .at(key_span.clone(), "set again")
+                    .reason(format!("An index's `{setting}:` has one value."))
+                    .next(format!("Remove the second `{setting}`")),
+                );
+                continue;
+            }
+            let whole = match value.as_ref().map(Const::from_expr) {
+                Some(Const::Number {
+                    value: n,
+                    decimal: false,
+                }) => u64::try_from(n.mantissa).ok(),
+                _ => None,
+            };
+            let label = match whole {
+                Some(n) if n < least => format!("below {least}"),
+                Some(n) if n > most => format!("above {}", queries::grouped(most)),
+                Some(_) => String::new(),
+                None => "not a whole number".to_string(),
+            };
+            if !label.is_empty() {
+                broken = true;
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_SETTING_VALUE,
+                        format!(
+                            "`{setting}` takes a whole number from {least} to {}",
+                            queries::grouped(most)
+                        ),
+                    )
+                    .at(value_span.clone(), label)
+                    .reason(format!(
+                        "`{setting}` is {what}. pgvector takes {least} to {}, and {default} when it isn't set.",
+                        queries::grouped(most)
+                    ))
+                    .next(format!(
+                        "Give `{setting}` a value from {least} to {}, or leave it out for {default}",
+                        queries::grouped(most)
+                    )),
+                );
+                continue;
+            }
+            let value = u32::try_from(whole.unwrap_or_default()).unwrap_or_default();
+            spans.insert(setting, value_span.clone());
+            with.push(((*setting).to_string(), value));
+        }
+        if broken {
+            return None;
+        }
+        // pgvector builds no index weighing fewer candidates than twice
+        // each vector's links.
+        let set = |name: &str| {
+            with.iter()
+                .find(|(setting, _)| setting == name)
+                .map(|(_, value)| u64::from(*value))
+        };
+        let m = set("m").unwrap_or(HNSW_M.2);
+        let ef_construction = set("ef_construction").unwrap_or(HNSW_EF_CONSTRUCTION.2);
+        if ef_construction < 2 * m {
+            let (headline, place, label, next) = match (set("m"), set("ef_construction")) {
+                (_, Some(_)) => (
+                    format!("`ef_construction` is {ef_construction}, less than twice `m`"),
+                    spans.get("ef_construction"),
+                    format!("below {}", 2 * m),
+                    format!(
+                        "Give `ef_construction` at least {}, or a smaller `m`",
+                        2 * m
+                    ),
+                ),
+                _ => (
+                    format!("`m` is {m}, more than half of `ef_construction`"),
+                    spans.get("m"),
+                    format!("above {}", ef_construction / 2),
+                    format!(
+                        "Give `ef_construction` at least {}, or `m` at most {}",
+                        2 * m,
+                        ef_construction / 2
+                    ),
+                ),
+            };
+            let shown = |name: &str, value: u64, default: u64| {
+                if set(name).is_some() {
+                    format!("{value}")
+                } else {
+                    format!("{default} when it isn't set")
+                }
+            };
+            self.out.push(
+                Diagnostic::new(&rule::TYPE_SETTING_VALUE, headline)
+                    .at(place.cloned().unwrap_or_else(|| at.clone()), label)
+                    .reason(format!(
+                        "pgvector weighs at least twice as many candidates as each vector's links as it builds an HNSW index, and refuses to build one with fewer; here `m` is {} and `ef_construction` {}.",
+                        shown("m", m, HNSW_M.2),
+                        shown("ef_construction", ef_construction, HNSW_EF_CONSTRUCTION.2)
+                    ))
+                    .next(next),
+            );
+            return None;
+        }
+        Some(HnswIndex {
+            metric: queries::metric(self.lookup, &vector),
+            dimensions,
+            with,
+        })
+    }
+
     /// The rules in a `unique:` or `indexes:` section.
     fn rules(
         &mut self,
@@ -1282,6 +1520,8 @@ impl Reader<'_> {
             // 5.5u4).
             let mut kind: Option<(IndexKind, Span)> = None;
             let mut listed = None;
+            // An HNSW index's tuning, each with where its key and value are.
+            let mut tuning: Vec<(&'static str, Option<Expr>, Span, Span)> = Vec::new();
             if !unique && let Some(options) = rule_member.block() {
                 let mut broken = false;
                 for (key, option) in tree::members(Some(options)) {
@@ -1313,14 +1553,18 @@ impl Reader<'_> {
                                     self.out.push(
                                         Diagnostic::new(
                                             &rule::TYPE_SETTING_VALUE,
-                                            "`kind` takes `IndexKind.geographic`",
+                                            "`kind` takes `IndexKind.geographic` or `IndexKind.hnsw`",
                                         )
                                         .at(value_span, "not an index kind")
-                                        .reason("An index's `kind:` names a special kind of index the store builds: `IndexKind.geographic`, a GiST index on a geometry field (area 20, \"Indexes\"). An index without `kind:` is an ordinary one.")
-                                        .next("Write `kind: IndexKind.geographic`, or leave `kind:` out"),
+                                        .reason("An index's `kind:` names a special kind of index the store builds: `IndexKind.geographic`, a GiST index on a geometry field (area 20, \"Indexes\"), or `IndexKind.hnsw`, pgvector's index on a vector field (area 21, \"The index\"). An index without `kind:` is an ordinary one.")
+                                        .next("Write `kind: IndexKind.geographic` or `kind: IndexKind.hnsw`, or leave `kind:` out"),
                                     );
                                 }
                             }
+                        }
+                        "m" => tuning.push(("m", option.value(), key_span, value_span)),
+                        "ef_construction" => {
+                            tuning.push(("ef_construction", option.value(), key_span, value_span));
                         }
                         other => {
                             broken = true;
@@ -1330,10 +1574,26 @@ impl Reader<'_> {
                                     format!("An index has no setting `{other}`"),
                                 )
                                 .at(key_span, "not an index setting")
-                                .reason("An index with options is a block of `fields:`, the list of the entity's fields it covers, and `kind:`, the kind of index (area 5, \"Indexes\").")
+                                .reason("An index with options is a block of `fields:`, the list of the entity's fields it covers, and `kind:`, the kind of index (area 5, \"Indexes\"); an HNSW index may add `m:` and `ef_construction:` (area 21, \"The index\").")
                                 .next(format!("Remove `{other}`")),
                             );
                         }
+                    }
+                }
+                if !matches!(kind, Some((IndexKind::Hnsw, _))) {
+                    for (setting, _, key_span, _) in &tuning {
+                        broken = true;
+                        self.out.push(
+                            Diagnostic::new(
+                                &rule::TYPE_UNKNOWN_SETTING,
+                                format!("The index `{rule_name}` has no setting `{setting}`"),
+                            )
+                            .at(key_span.clone(), "only an HNSW index's")
+                            .reason(format!(
+                                "`m:` and `ef_construction:` tune pgvector's HNSW index on a vector field, which `kind: IndexKind.hnsw` asks for (area 21, \"The index\"); `{rule_name}` isn't one."
+                            ))
+                            .next(format!("Remove `{setting}`, or add `kind: IndexKind.hnsw` if `{rule_name}` is on a vector field")),
+                        );
                     }
                 }
                 if broken {
@@ -1492,6 +1752,16 @@ impl Reader<'_> {
                     continue;
                 }
             }
+            // An HNSW index is pgvector's, on one vector field of up to
+            // 4,000 dimensions, tuned within pgvector's bounds (area 21,
+            // "The index"; chunk 5.5v1c).
+            let mut hnsw = None;
+            if let Some((IndexKind::Hnsw, at)) = &kind {
+                let Some(found) = self.hnsw_index(entity, &rule_name, &fields, at, &tuning) else {
+                    continue;
+                };
+                hnsw = Some(found);
+            }
             let kind = kind.map(|(kind, _)| kind);
             let same = |a: &[String], b: &[String]| {
                 if unique {
@@ -1527,6 +1797,7 @@ impl Reader<'_> {
                 name: rule_name,
                 fields,
                 kind,
+                hnsw,
             });
             spans.push(span);
         }
@@ -2172,13 +2443,20 @@ fn nearest_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &
         else {
             continue;
         };
-        let method = physical::IndexMethod {
-            name: "hnsw".to_string(),
-            operator_class: nearest.metric.operator_class().to_string(),
-        };
+        // Over 4,000 dimensions it is searched exactly, with no index
+        // (chunk 5.5v1c).
+        if nearest.search == queries::VectorSearch::Exact {
+            continue;
+        }
+        let method = hnsw_method(nearest.metric, nearest.dimensions, Vec::new());
         let column = field.born.clone();
+        // One the entity declares, tuned or not, serves it.
         if table.indexes.values().any(|index| {
-            index.columns == [column.clone()] && index.method.as_ref() == Some(&method)
+            index.columns == [column.clone()]
+                && index
+                    .method
+                    .as_ref()
+                    .is_some_and(|found| found.same_but_tuning(&method))
         }) {
             continue;
         }
@@ -2383,11 +2661,19 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                 collate: Vec::new(),
                 // A geographic index is GiST, with `geography`'s own
                 // operator class (area 20, "Indexes"; chunk 5.5u4).
-                method: index.kind.map(|kind| match kind {
-                    IndexKind::Geographic => physical::IndexMethod {
+                // An HNSW index is pgvector's, tuned as its entry says (area
+                // 21, "The index"; chunk 5.5v1c).
+                method: index.kind.and_then(|kind| match kind {
+                    IndexKind::Geographic => Some(physical::IndexMethod {
                         name: "gist".into(),
                         operator_class: String::new(),
-                    },
+                        cast: None,
+                        with: Vec::new(),
+                    }),
+                    IndexKind::Hnsw => index
+                        .hnsw
+                        .as_ref()
+                        .map(|hnsw| hnsw_method(hnsw.metric, hnsw.dimensions, hnsw.with.clone())),
                 }),
             },
         );

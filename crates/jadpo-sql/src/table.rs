@@ -272,36 +272,68 @@ pub struct IndexColumn<'a> {
     pub collate: bool,
 }
 
+/// An index's access method other than a B-tree: its name, its column's
+/// operator class (empty for its type's own), the type its column is cast
+/// to when it indexes that expression, and its storage parameters.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IndexMethod<'a> {
+    pub name: &'a str,
+    pub operator_class: &'a str,
+    pub cast: Option<&'a str>,
+    pub with: &'a [(String, u32)],
+}
+
 /// Creates the index `name` on `columns` of `table`, holding only the rows
 /// `predicate` (a condition, without parameters) lets through when given,
-/// by `method` (an access method and its columns' operator class, `hnsw`
-/// with `vector_cosine_ops`, area 21; `gist` with none, its type's own,
-/// for a geometry, area 20) when given, else a B-tree.
+/// by `method` when given, else a B-tree: `hnsw` with `vector_cosine_ops`,
+/// or on `("column"::halfvec(3072))` with `halfvec_cosine_ops`, tuned
+/// `WITH (m = 24, ef_construction = 128)` (area 21); `gist` with none, its
+/// type's own, for a geometry (area 20).
 pub fn create_index(
     table: &str,
     name: &str,
     columns: &[IndexColumn<'_>],
     predicate: Option<&str>,
-    method: Option<(&str, &str)>,
+    method: Option<IndexMethod<'_>>,
 ) -> String {
     let columns = columns
         .iter()
-        .map(|column| match method {
-            Some((_, "")) => ident(column.name),
-            Some((_, class)) => format!("{} {class}", ident(column.name)),
-            None if column.collate => format!("{} COLLATE \"C\"", ident(column.name)),
-            None => ident(column.name),
+        .map(|column| {
+            let indexed = match method.and_then(|method| method.cast) {
+                Some(cast) => format!("({}::{cast})", ident(column.name)),
+                None => ident(column.name),
+            };
+            match method {
+                Some(IndexMethod {
+                    operator_class: "", ..
+                }) => indexed,
+                Some(method) => format!("{indexed} {}", method.operator_class),
+                None if column.collate => format!("{indexed} COLLATE \"C\""),
+                None => indexed,
+            }
         })
         .collect::<Vec<_>>()
         .join(", ");
     let using = method
-        .map(|(method, _)| format!(" USING {method}"))
+        .map(|method| format!(" USING {}", method.name))
         .unwrap_or_default();
+    let with = match method {
+        Some(method) if !method.with.is_empty() => format!(
+            " WITH ({})",
+            method
+                .with
+                .iter()
+                .map(|(setting, value)| format!("{setting} = {value}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        _ => String::new(),
+    };
     let partial = predicate
         .map(|predicate| format!(" WHERE {predicate}"))
         .unwrap_or_default();
     format!(
-        "CREATE INDEX {} ON {}{using} ({columns}){partial}",
+        "CREATE INDEX {} ON {}{using} ({columns}){with}{partial}",
         ident(name),
         ident(table)
     )

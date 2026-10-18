@@ -637,3 +637,336 @@ fn an_older_pgvector_is_refused_before_a_nearest_query_s_index_is_built() {
         status.stdout
     );
 }
+
+// --- longer vectors and tuning (chunk 5.5v1c) --------------------------------
+
+/// A project of help articles whose meaning has `dimensions`, measured by
+/// cosine, with `indexes` on the entity and the five nearest articles a
+/// question, `decline` written above the query's `order:`.
+fn search_project(name: &str, dimensions: u32, indexes: &str, decline: &str) -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("vectors-{name}"));
+    let _ = fs::remove_dir_all(&root);
+    write(&root, "app.jadpo", "application {}\n");
+    for (file, text) in [
+        (
+            "types/article_meaning.jadpo".to_string(),
+            format!(
+                "/// A help article's meaning, as the configured embedding model makes it.\ntype ArticleMeaning = Vector {{\n    dimensions: {dimensions}\n}}\n"
+            ),
+        ),
+        (
+            "types/article_title.jadpo".to_string(),
+            "/// A help article's title.\ntype ArticleTitle = Text {\n    max_length: 120\n}\n"
+                .to_string(),
+        ),
+        (
+            "entities/help_article.jadpo".to_string(),
+            format!(
+                "use support/types {{ ArticleMeaning, ArticleTitle }}\n\n/// An article on the help site, with its meaning once it is embedded.\nentity HelpArticle {{\n    id: Uuid\n    title: ArticleTitle\n    body_meaning: ArticleMeaning?\n\n    policy: {{\n        read: [Access.public]\n    }}\n{indexes}}}\n"
+            ),
+        ),
+        (
+            "types/article_excerpt.jadpo".to_string(),
+            "use support/entities { HelpArticle }\n\n/// What a reader sees of a help article in a list of answers.\ntype ArticleExcerpt = Output {\n    pick: [HelpArticle.id, HelpArticle.title]\n}\n"
+                .to_string(),
+        ),
+        (
+            "queries/closest_articles.jadpo".to_string(),
+            format!(
+                "use support/entities {{ HelpArticle }}\nuse support/types {{ ArticleExcerpt, ArticleMeaning }}\n\n/// The five articles nearest a question.\nquery closest_articles(question_meaning: ArticleMeaning) -> List<Nearest<ArticleExcerpt>> {{\n    from: HelpArticle\n{decline}    order: [HelpArticle.body_meaning nearest question_meaning]\n    limit: 5\n}}\n"
+            ),
+        ),
+        (
+            "actions/answer_from.jadpo".to_string(),
+            "use support/queries { closest_articles }\nuse support/types { ArticleExcerpt, ArticleMeaning }\n\n/// The articles to answer a question from.\naction answer_from(question_meaning: ArticleMeaning) -> List<Nearest<ArticleExcerpt>> {\n    return closest_articles(question_meaning)\n}\n"
+                .to_string(),
+        ),
+    ] {
+        write(&root, &format!("domains/support/{file}"), &text);
+    }
+    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    root
+}
+
+/// A question of `dimensions` and `count` articles: the first five near it,
+/// the `k`th with `k` items a sixteenth away, so each is nearer than the
+/// next; the rest elsewhere, one in ten without a meaning.
+fn planted(dimensions: usize, count: u64) -> (Vec<f32>, Vec<([u8; 16], Option<Vec<f32>>)>) {
+    let question = sixteenths(7, dimensions);
+    let mut articles = Vec::new();
+    for i in 0..count {
+        let mut id = [0u8; 16];
+        id[..8].copy_from_slice(&(i + 1).to_be_bytes());
+        id[8..].copy_from_slice(&(i.wrapping_mul(2_654_435_761)).to_be_bytes());
+        id[6] = (id[6] & 0x0f) | 0x40;
+        id[8] = (id[8] & 0x3f) | 0x80;
+        let meaning = if i < 5 {
+            let mut near = question.clone();
+            for item in near.iter_mut().take(usize::try_from(i).expect("small") + 1) {
+                *item = if *item > 0.5 {
+                    *item - 0.0625
+                } else {
+                    *item + 0.0625
+                };
+            }
+            Some(near)
+        } else if i % 10 == 0 {
+            None
+        } else {
+            Some(sixteenths(i + 100, dimensions))
+        };
+        articles.push((id, meaning));
+    }
+    (question, articles)
+}
+
+/// Applies the project's migration to a new database and stores
+/// `articles` in it; the database's address.
+fn stored(root: &Path, stem: &str, articles: &[([u8; 16], Option<Vec<f32>>)]) -> String {
+    let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
+    let url = server.create_database(stem).expect("database");
+    let applied = jadpo(root, &["migrate", "apply", "--url", &url]);
+    assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
+    let store = jadpo_host_native::postgres(&url).expect("store");
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let mut transaction = store.begin().await.expect("begin");
+        for (i, (id, meaning)) in articles.iter().enumerate() {
+            transaction
+                .execute(
+                    "INSERT INTO help_article (id, title, body_meaning) VALUES ($1, $2, $3)",
+                    &[
+                        SqlValue::Uuid(*id),
+                        SqlValue::Text(format!("Article {i}")),
+                        match meaning {
+                            Some(items) => bits(items),
+                            None => SqlValue::Null(jadpo_runtime::SqlType::Vector),
+                        },
+                    ],
+                )
+                .await
+                .expect("insert");
+        }
+        transaction.commit().await.expect("commit");
+    });
+    rows(&url, "ANALYZE help_article", &[]);
+    url
+}
+
+/// The five `ai.distance` puts nearest `question`, ties by `id`, each as
+/// its distance's text and its `id`.
+fn nearest_in_code(
+    question: &[f32],
+    articles: &[([u8; 16], Option<Vec<f32>>)],
+) -> Vec<(String, String)> {
+    let mut expected: Vec<(f64, String)> = articles
+        .iter()
+        .filter_map(|(id, meaning)| {
+            let found = jadpo_value::vector::distance(
+                &vector(meaning.as_ref()?),
+                &vector(question),
+                &Value::text("cosine"),
+            )
+            .expect("a distance");
+            Some((
+                found.to_string().parse().expect("a decimal"),
+                jadpo_runtime::uuid_text(id),
+            ))
+        })
+        .collect();
+    expected.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    assert!(expected[4].0 < expected[5].0, "no tie at the fifth");
+    expected
+        .into_iter()
+        .take(5)
+        .map(|(distance, id)| (jadpo_std::standard::ai::distance_text(distance), id))
+        .collect()
+}
+
+/// What `answer_from` returns for `question`, run by the interpreter on
+/// the database at `url`, each as its distance's text and its `id`.
+fn answered(root: &Path, url: &str, question: &[f32]) -> Vec<(String, String)> {
+    let loaded = jadpo_db::load(root);
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let id = program.plan().find("answer_from").expect("the action");
+    let host = Store(jadpo_host_native::postgres(url).expect("store"));
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    let found = runtime.block_on(async {
+        let env = Env {
+            seed: Some(1),
+            clock: Clock::TEST,
+        };
+        let mut ctx = Ctx::new(program.places(), &host, env);
+        program.run(&mut ctx, id, vec![vector(question)]).await
+    });
+    let Outcome::Value(Value::List(found)) = found else {
+        panic!("expected a list, got {found:?}");
+    };
+    found
+        .iter()
+        .map(|nearest| {
+            let Value::Record(nearest) = nearest else {
+                panic!("not a record: {nearest:?}");
+            };
+            let Some(Value::Record(item)) = nearest.get("item") else {
+                panic!("no item: {nearest:?}");
+            };
+            let id = item.get("id").expect("an id").to_string();
+            let distance = nearest.get("distance").expect("a distance").to_string();
+            (distance, id.trim_matches('"').to_string())
+        })
+        .collect()
+}
+
+/// The plan PostgreSQL makes for `closest_articles` on `question`, after
+/// its own settings and `more`.
+fn explained(root: &Path, url: &str, question: &[f32], more: &[&str]) -> Vec<String> {
+    let loaded = jadpo_db::load(root);
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let plan = program
+        .plan()
+        .query_named("closest_articles")
+        .expect("the query's plan");
+    let params: Vec<SqlValue> = plan
+        .read
+        .select
+        .params
+        .iter()
+        .map(|param| match &param.source {
+            jadpo_std::read::Source::Arg { .. } => bits(question),
+            jadpo_std::read::Source::Stored(value) => value.clone(),
+            other => panic!("a parameter from {other:?}"),
+        })
+        .collect();
+    let store = jadpo_host_native::postgres(url).expect("store");
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    let rows = runtime.block_on(async {
+        let mut transaction = store.begin().await.expect("begin");
+        for setting in plan
+            .read
+            .settings
+            .iter()
+            .map(String::as_str)
+            .chain(more.iter().copied())
+        {
+            transaction.batch(setting).await.expect("a setting");
+        }
+        let rows = transaction
+            .query(&format!("EXPLAIN {}", plan.read.select.sql), &params)
+            .await
+            .expect("explain");
+        let _ = transaction.rollback().await;
+        rows
+    });
+    rows.iter()
+        .filter_map(|row| match row.first() {
+            Some(SqlValue::Text(line)) => Some(line.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_longer_vector_s_migration_indexes_it_at_half_precision() {
+    let root = search_project("half-index", 3072, "", "");
+    let (sql, _) = migration_sql(&root);
+    assert!(
+        sql.contains("CREATE INDEX \"help_article_body_meaning_idx\" ON \"help_article\" USING hnsw ((\"body_meaning\"::halfvec(3072)) halfvec_cosine_ops);"),
+        "{sql}"
+    );
+    assert!(
+        sql.contains("\"body_meaning\" vector(3072)"),
+        "stored in full: {sql}"
+    );
+}
+
+#[test]
+fn a_3072_dimension_nearest_query_reads_its_half_precision_index() {
+    if skipped() || pgvector_too_old() {
+        return;
+    }
+    let root = search_project("half-nearest", 3072, "", "");
+    let (question, articles) = planted(3072, 300);
+    let url = stored(&root, "vector_half_nearest", &articles);
+    // The five code works out, with the full-precision distances.
+    assert_eq!(
+        answered(&root, &url, &question),
+        nearest_in_code(&question, &articles),
+        "the same five, with the same distances"
+    );
+    // Its order is the expression the index holds. A table this small is
+    // cheaper to read whole, so sequential scans are turned off to see
+    // that the index serves the order at all.
+    let lines = explained(&root, &url, &question, &["SET LOCAL enable_seqscan = off"]);
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("Index Scan using help_article_body_meaning_idx")),
+        "{}",
+        lines.join("\n")
+    );
+}
+
+#[test]
+fn a_vector_too_long_to_index_is_searched_exactly_once_declined() {
+    let decline = "    decline query.nearest_exact: \"A few hundred articles, read in full\"\n";
+    let root = search_project("exact", 5000, "", decline);
+    let (sql, _) = migration_sql(&root);
+    assert!(!sql.contains("USING hnsw"), "no index: {sql}");
+    if skipped() {
+        return;
+    }
+    // No index, so any pgvector serves it.
+    let (question, articles) = planted(5000, 60);
+    let url = stored(&root, "vector_exact", &articles);
+    assert_eq!(
+        answered(&root, &url, &question),
+        nearest_in_code(&question, &articles),
+        "the same five, with the same distances"
+    );
+    let lines = explained(&root, &url, &question, &[]);
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("Seq Scan on help_article")),
+        "{}",
+        lines.join("\n")
+    );
+}
+
+#[test]
+fn a_tuned_hnsw_index_s_migration_sets_m_and_ef_construction() {
+    let indexes = "\n    indexes: {\n        by_meaning: {\n            fields: [body_meaning]\n            kind: IndexKind.hnsw\n            m: 24\n            ef_construction: 128\n        }\n    }\n";
+    let root = search_project("tuned", 8, indexes, "");
+    let (sql, _) = migration_sql(&root);
+    assert!(
+        sql.contains("CREATE INDEX \"help_article_by_meaning_idx\" ON \"help_article\" USING hnsw (\"body_meaning\" vector_cosine_ops) WITH (m = 24, ef_construction = 128);"),
+        "{sql}"
+    );
+    assert_eq!(
+        sql.matches("USING hnsw").count(),
+        1,
+        "the declared index serves the query: {sql}"
+    );
+    if skipped() || pgvector_too_old() {
+        return;
+    }
+    let (question, articles) = planted(8, 200);
+    let url = stored(&root, "vector_tuned", &articles);
+    let built = rows(
+        &url,
+        "SELECT indexdef FROM pg_indexes WHERE indexname = 'help_article_by_meaning_idx'",
+        &[],
+    );
+    assert!(
+        matches!(built.first().and_then(|row| row.first()), Some(SqlValue::Text(def)) if def.contains("WITH (m='24', ef_construction='128')")),
+        "{built:?}"
+    );
+    assert_eq!(
+        answered(&root, &url, &question),
+        nearest_in_code(&question, &articles)
+    );
+}
