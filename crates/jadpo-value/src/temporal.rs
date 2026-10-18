@@ -244,14 +244,13 @@ pub fn occurrence_days(rule: &str, from: i32, count: i64) -> Result<Vec<i32>, Fa
             .collect();
     }
     let mut found = Vec::new();
-    let mut counted: u64 = 0;
-    for at in rule.local_occurrences(first_period(&rule, i64::from(from))?) {
+    let occurrences = rule.local_occurrences(first_period(&rule, i64::from(from))?);
+    for (counted, at) in (0_u64..).zip(occurrences) {
         match rule.end {
             End::UntilDay(until) if at.date > until => break,
             End::Count(most) if counted >= u64::from(most) => break,
             _ => {}
         }
-        counted += 1;
         if at.date >= from {
             found.push(at.date);
             if found.len() == wanted {

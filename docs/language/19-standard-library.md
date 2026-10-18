@@ -2988,7 +2988,7 @@ function covers_reader_day(event: CalendarEvent, at: SeenAt, zone: Zone) -> Cove
 /// When a timed event starts: its local start in its zone, the earlier of
 /// the two on the night the clocks go back and an hour on in the hour they
 /// skip; none for an all-day event.
-function first_start(event: CalendarEvent) -> SeenAt? {
+function event_start(event: CalendarEvent) -> SeenAt? {
     return match event.start {
         some(start) -> match event.zone {
             some(zone) -> SeenAt(
@@ -3126,7 +3126,7 @@ test "a timed event runs past midnight and repeats at its local time" {
     assert diary_entry_from_json(
         "{\"summary\":\"Night shift\",\"first_day\":\"2026-10-24\",\"last_day\":\"2026-10-26\",\"start\":null,\"end\":null,\"zone\":\"Europe/London\",\"location\":null,\"description\":null,\"recurrence\":null}"
     ) fails DiaryUnreadable
-    assert first_start(night_shift) == SeenAt("2026-10-24T21:00:00Z")
+    assert event_start(night_shift) == SeenAt("2026-10-24T21:00:00Z")
 }
 
 test "a start resolves across both clock changes as `dst:` chooses" {
@@ -3218,7 +3218,7 @@ test "a birthday on 29 February comes round in leap years" {
         ReaderDay("2028-02-29"),
         ReaderDay("2032-02-29")
     ]
-    assert first_start(birthday) == none
+    assert event_start(birthday) == none
     var birthday_vevent: DiaryText = DiaryText(text.from(birthday))
     assert birthday_vevent == "BEGIN:VEVENT\nDTSTART;VALUE=DATE:20240229\nDTEND;VALUE=DATE:20240301\nSUMMARY:Sam's birthday\nRRULE:FREQ=YEARLY\nEND:VEVENT"
     var birthday_from_text: CalendarEvent = attempt diary_entry_from_text(birthday_vevent)

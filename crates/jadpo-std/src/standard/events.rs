@@ -206,7 +206,7 @@ pub fn broken(parts: &Parts<'_>) -> Option<Broken> {
             return refuse("last_day", &LAST_DAY_FIRST);
         }
         // A date-only rule from the first day, so the event recurs on
-        // days, a birthday, wherever it is read.
+        // days, an anniversary, wherever it is read.
         if let (Some(text), Some(first)) = (parts.recurrence.value(), parts.first_day.value())
             && Rule::read(text).is_none_or(|rule| rule.zone.is_some() || rule.start.date != *first)
         {
@@ -454,8 +454,8 @@ macro_rules! vevent {
 }
 
 /// Its examples: an all-day event of one day, one over the night the
-/// clocks go back with a location and a description to escape, a
-/// birthday that repeats yearly on its day, and a timed event across
+/// clocks go back with a location and a description to escape, an
+/// anniversary that repeats yearly on its day, and a timed event across
 /// midnight that repeats weekly.
 const VALID: &[(&str, &str)] = &[
     (
@@ -490,13 +490,13 @@ const VALID: &[(&str, &str)] = &[
         vevent!(
             "DTSTART;VALUE=DATE:20240229",
             "DTEND;VALUE=DATE:20240301",
-            "SUMMARY:Sam's birthday",
+            "SUMMARY:Wedding anniversary",
             "RRULE:FREQ=YEARLY",
         ),
         vevent!(
             "DTSTART;VALUE=DATE:20240229",
             "DTEND;VALUE=DATE:20240301",
-            "SUMMARY:Sam's birthday",
+            "SUMMARY:Wedding anniversary",
             "RRULE:FREQ=YEARLY",
         ),
     ),

@@ -208,7 +208,7 @@ impl Body<'_> {
 
     /// Whether `temporal.occurrences` is given a date as `from:`, which
     /// gives days (chunk 5.5k4).
-    pub(super) fn from_a_date(
+    pub(super) fn given_a_date(
         &self,
         table: &Operation,
         args: &[ast::Arg],
@@ -506,8 +506,9 @@ impl Body<'_> {
         // A first argument the call doesn't take is reported as that, not
         // as options meaning nothing for it.
         let fits = match table.params.first().map(|param| param.kind) {
-            Some(jadpo_std::Kind::OneOf(accepts)) => built_on
-                .is_some_and(|built_on| accepts.iter().any(|accepted| *accepted == built_on)),
+            Some(jadpo_std::Kind::OneOf(accepts)) => {
+                built_on.is_some_and(|built_on| accepts.contains(&built_on))
+            }
             Some(jadpo_std::Kind::Local) => local || built_on == Some(Prim::CalendarDate),
             _ => true,
         };

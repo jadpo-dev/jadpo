@@ -1207,7 +1207,7 @@ impl Body<'_> {
         // Occurrences from a date are days (chunk 5.5k4).
         if let Some(table) = table
             && table.op == jadpo_std::Op::TemporalOccurrences
-            && self.from_a_date(table, &args, &slots)
+            && self.given_a_date(table, &args, &slots)
         {
             return Ty::List(Box::new(Ty::Prim(Prim::CalendarDate)));
         }
