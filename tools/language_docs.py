@@ -948,7 +948,7 @@ AREAS = [
     (5, 'Data'), (6, 'Reads and writes'), (7, 'HTTP'), (8, 'Identity'), (9, 'Policy'),
     (10, 'Configuration and time'), (11, 'External services'), (12, 'Jobs and events'),
     (13, 'Testing'), (14, 'Tooling'), (15, 'Personal data'), (16, 'Built-in services'), (17, 'Debugging and review'), (18, 'Records and manifest'),
-    (19, 'Standard library'),
+    (19, 'Standard library'), (20, 'Geospatial'),
 ]
 
 
