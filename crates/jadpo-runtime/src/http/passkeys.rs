@@ -842,7 +842,9 @@ struct Credential {
 
 impl Credential {
     /// Its JSON, as `WebAuthnCredential` is sent and stored: bytes in
-    /// Base64, the count as text, `last_used_at` left out until it is used.
+    /// Base64, the count a JSON number, as the contract sends a whole number
+    /// whose range JavaScript holds (chunk 5.5w3), `last_used_at` left out
+    /// until it is used.
     fn to_json(&self) -> String {
         let mut object = serde_json::Map::new();
         let part = &self.ceremony;
@@ -851,7 +853,7 @@ impl Credential {
             to_base64(&part.credential_id).into(),
         );
         object.insert("public_key".into(), to_base64(&part.public_key).into());
-        object.insert("sign_count".into(), part.sign_count.to_string().into());
+        object.insert("sign_count".into(), part.sign_count.into());
         object.insert(
             "transports".into(),
             serde_json::Value::Array(
@@ -881,7 +883,10 @@ fn read_credential(stored: &str) -> Option<Credential> {
         ceremony: PasskeyParts {
             credential_id: from_base64(text("credential_id")?)?,
             public_key: from_base64(text("public_key")?)?,
-            sign_count: text("sign_count")?.parse().ok()?,
+            sign_count: json
+                .get("sign_count")?
+                .as_u64()
+                .and_then(|n| u32::try_from(n).ok())?,
             transports: json
                 .get("transports")?
                 .as_array()?
@@ -1024,7 +1029,7 @@ mod tests {
         let json = credential.to_json();
         assert_eq!(
             json,
-            r#"{"backed_up":false,"backup_eligible":true,"credential_id":"AQID","name":"Work phone","public_key":"BAU=","registered_at":"2026-10-18T09:00:00Z","sign_count":"7","transports":["internal"]}"#
+            r#"{"backed_up":false,"backup_eligible":true,"credential_id":"AQID","name":"Work phone","public_key":"BAU=","registered_at":"2026-10-18T09:00:00Z","sign_count":7,"transports":["internal"]}"#
         );
         assert_eq!(read_credential(&json), Some(credential));
     }

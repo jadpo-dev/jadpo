@@ -565,7 +565,10 @@ const BOUNDARIES: &[&str] = &[
 
 /// A file's code, without its comments and its tests: what it runs.
 fn code_of(text: &str) -> String {
-    let text = text.split("#[cfg(test)]").next().unwrap_or_default();
+    let text = text
+        .split("#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or_default();
     text.lines()
         .map(|line| line.split("//").next().unwrap_or_default())
         .collect::<Vec<_>>()

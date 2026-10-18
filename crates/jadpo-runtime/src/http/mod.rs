@@ -633,7 +633,12 @@ fn exchange(request: &Request, request_id: &str, (token, expires): (String, i64)
     let mut body = String::from("{\"token\":");
     write_string(&token, &mut body);
     body.push_str(",\"expires_at\":");
-    write_string(&jadpo_std::format_instant(expires), &mut body);
+    // An instant, as the contract sends one (chunk 5.5w3).
+    let expires = jadpo_value::Value::Instant(expires);
+    match jadpo_value::standard::entry_of(&expires) {
+        Some(entry) => jadpo_value::standard::json::write(entry, &expires, &mut body),
+        None => body.push_str("null"),
+    }
     body.push('}');
     Response {
         status: 200,
