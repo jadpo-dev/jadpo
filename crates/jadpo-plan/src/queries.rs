@@ -567,6 +567,7 @@ impl Planner<'_> {
                 Prim::Duration => Column::Duration,
                 // In its kind's base unit (area 19).
                 Prim::Quantity(kind) => Column::Quantity(kind),
+                Prim::Percentage => Column::Percentage,
                 // A compound standard type, read from its several columns
                 // (area 19).
                 prim if let Some(entry) = jadpo_std::standard::of_builtin(prim)

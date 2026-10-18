@@ -203,6 +203,16 @@ pub enum TextForm {
     /// unit's code, `2.5 kg`, `1000 metre`; read back with any of the
     /// kind's units, `5 km`, the space optional.
     Quantity,
+    /// A percentage (chosen in chunk 5.5j2): the fraction it holds as a
+    /// percentage with no trailing zeros, and `%`, `20%`, `12.5%`; read
+    /// back with a space before the `%` too, as French and German write it.
+    Percentage,
+    /// A ratio of two decimal numbers, each with the places it was given,
+    /// joined by `:`, `16:9`, `1.85:1` (chosen in chunk 5.5j2).
+    Ratio,
+    /// A fraction of two whole numbers joined by `/`, its denominator at
+    /// least 1, `3/4`, `-1/2` (chosen in chunk 5.5j2).
+    Fraction,
 }
 
 /// How a standard type is sent and read as JSON.
@@ -266,6 +276,10 @@ pub enum FormatKey {
     /// ICU4X has one (`2.5 m`, `247,62 cm`), else the number, a space and
     /// the unit's symbol (`21 °C`) (chosen in chunk 5.5j).
     Units,
+    /// CLDR's percent pattern, through ICU4X: the fraction as a
+    /// percentage in the locale's digits and separators, with every place
+    /// it keeps, `12.5%`, `20 %` (chosen in chunk 5.5j2).
+    Percent,
     /// Its canonical text in groups, as it is printed: an IBAN in fours,
     /// a sort code in pairs with dashes. The locale doesn't change it.
     Grouped(Grouping),
@@ -694,6 +708,26 @@ pub const EXCHANGE_RATE_FIELDS: [(&str, Part); 4] = [
     ("at", Part::Of(Builtin::Instant)),
 ];
 
+/// `Ratio` (area 19, "Maths and data"): one decimal number to another,
+/// as written.
+pub const RATIO: &str = "Ratio";
+
+/// `Ratio`'s fields, in order.
+pub const RATIO_FIELDS: [(&str, Part); 2] = [
+    ("numerator", Part::Of(Builtin::Decimal)),
+    ("denominator", Part::Of(Builtin::Decimal)),
+];
+
+/// `Fraction` (area 19, "Maths and data"): an exact rational number, as
+/// written.
+pub const FRACTION: &str = "Fraction";
+
+/// `Fraction`'s fields, in order: its denominator at least 1.
+pub const FRACTION_FIELDS: [(&str, Part); 2] = [
+    ("numerator", Part::Of(Builtin::Int)),
+    ("denominator", Part::Whole(1, i64::MAX)),
+];
+
 /// `DateRange`'s fields, in order.
 pub const DATE_RANGE_FIELDS: [(&str, Part); 2] = [
     ("start", Part::Of(Builtin::CalendarDate)),
@@ -710,7 +744,8 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// Every standard type built so far, sorted by name: the 13 areas 2, 10
 /// and 16 built, run through the contract in chunk 5.5a, `Range<T>`
 /// (chunk 5.5c2), `Money` and `Currency` (chunk 5.5h), ten of the time
-/// group (chunk 5.5k), `ExchangeRate` (chunk 5.5h2), the 17 payment
+/// group (chunk 5.5k), `ExchangeRate` (chunk 5.5h2), `Percentage`,
+/// `Ratio` and `Fraction` (chunk 5.5j2), the 17 payment
 /// and identity numbers held as text (chunk 5.5i, in `identifiers`),
 /// `RecurrenceRule` and `OpeningHours`, held as text (chunk 5.5k2, in
 /// `schedules`), 15 of people and places (chunk 5.5l, in `places` and
@@ -1021,6 +1056,45 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    // An exact rational number as written (chunk 5.5j2): `1/2` and `2/4`
+    // are two values, as any object's fields are, and unordered. Sent as
+    // its canonical text and stored as that JSON, as the time objects are.
+    StandardType {
+        name: FRACTION,
+        holds: Holds::Object(&FRACTION_FIELDS),
+        text: Some(TextForm::Fraction),
+        json: Json::Text,
+        storage: Storage::Column(SqlType::Json),
+        format: canonical(),
+        ordered: false,
+        validator: None,
+        shape: Some(&[
+            FieldMatch {
+                meaning: "a numerator",
+                names: &["numerator"],
+                built_on: &[Builtin::Int],
+                or_enum: false,
+            },
+            FieldMatch {
+                meaning: "a denominator",
+                names: &["denominator"],
+                built_on: &[Builtin::Int],
+                or_enum: false,
+            },
+        ]),
+        examples: Examples {
+            valid: &[
+                ("3/4", "3/4"),
+                ("-1/2", "-1/2"),
+                ("30000/1001", "30000/1001"),
+            ],
+            format: None,
+            malformed: &["3/0", "3", "3 / 4", "0.5/1", "3/-4", ""],
+            of: None,
+            settings: "",
+        },
+        release: FIRST_RELEASE,
+    },
     quantity(
         crate::QuantityKind::Frequency,
         &[
@@ -1319,6 +1393,34 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     schedules::OPENING_HOURS,
     identifiers::PAYMENT_CARD_NUMBER,
     identifiers::PAYMENT_REFERENCE,
+    // A proportion where 0.20 is 20% (chunk 5.5j2): one `numeric` column
+    // holding the fraction, sent as its canonical text, so a client never
+    // reads 0.2 as 0.2%; ordered.
+    StandardType {
+        name: "Percentage",
+        holds: Holds::Builtin(Builtin::Percentage),
+        text: Some(TextForm::Percentage),
+        json: Json::Text,
+        storage: Storage::Column(SqlType::Numeric),
+        format: shown_as(FormatKey::Percent),
+        ordered: true,
+        validator: None,
+        shape: None,
+        examples: Examples {
+            valid: &[
+                ("-5%", "-5%"),
+                ("0%", "0%"),
+                ("12.5%", "12.5%"),
+                ("20%", "20%"),
+                ("1500%", "1,500%"),
+            ],
+            format: None,
+            malformed: &["20", "0.2", "%", "twenty%", "20 percent", ""],
+            of: None,
+            settings: "",
+        },
+        release: FIRST_RELEASE,
+    },
     contact::PERSON_NAME,
     contact::PHONE_EXTENSION,
     phones::PHONE_NUMBER,
@@ -1390,6 +1492,45 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 "/2026-11-01",
             ],
             of: Some("CalendarDate"),
+            settings: "",
+        },
+        release: FIRST_RELEASE,
+    },
+    // One number to another as written (chunk 5.5j2): `16:9` and `32:18`
+    // are two values, unordered. Sent as its canonical text and stored as
+    // that JSON, as the time objects are.
+    StandardType {
+        name: RATIO,
+        holds: Holds::Object(&RATIO_FIELDS),
+        text: Some(TextForm::Ratio),
+        json: Json::Text,
+        storage: Storage::Column(SqlType::Json),
+        format: canonical(),
+        ordered: false,
+        validator: None,
+        shape: Some(&[
+            FieldMatch {
+                meaning: "a numerator",
+                names: &["numerator"],
+                built_on: &[Builtin::Decimal],
+                or_enum: false,
+            },
+            FieldMatch {
+                meaning: "a denominator",
+                names: &["denominator"],
+                built_on: &[Builtin::Decimal],
+                or_enum: false,
+            },
+        ]),
+        examples: Examples {
+            valid: &[
+                ("16:9", "16:9"),
+                ("1.85:1", "1.85:1"),
+                ("4.0:3.0", "4.0:3.0"),
+            ],
+            format: None,
+            malformed: &["16/9", "16 : 9", "16:", ":9", "16:9:1", ""],
+            of: None,
             settings: "",
         },
         release: FIRST_RELEASE,
@@ -1883,6 +2024,7 @@ impl StandardType {
             (SqlType::Date, _) => Column::Date,
             (SqlType::Int8, Holds::Builtin(Builtin::Duration)) => Column::Duration,
             (SqlType::Numeric, Holds::Builtin(Builtin::Quantity(kind))) => Column::Quantity(kind),
+            (SqlType::Numeric, Holds::Builtin(Builtin::Percentage)) => Column::Percentage,
             _ => return None,
         })
     }
@@ -1944,7 +2086,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 84, "the 84 standard types built so far");
+        assert_eq!(names.len(), 87, "the 87 standard types built so far");
     }
 
     #[test]

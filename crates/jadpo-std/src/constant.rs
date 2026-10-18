@@ -31,6 +31,12 @@ pub enum Constant {
         kind: crate::QuantityKind,
         amount: i128,
     },
+    /// A percentage, as the fraction it is: `20%` is `mantissa` 20 at
+    /// `scale` 2 (area 19).
+    Percentage {
+        mantissa: i128,
+        scale: u32,
+    },
     /// A variant of an enum, the `ordinal`th it declares, with a payload's
     /// fields in their declared order: a field's default.
     Variant {

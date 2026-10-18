@@ -626,6 +626,15 @@ impl Reader<'_> {
                 Problem::UnitRequired(kind) => {
                     literal::unit_required(kind, &shown, &ty.to_string(), at)
                 }
+                Problem::PercentRequired(number) => Diagnostic::new(
+                    &rule::CONFIGURATION_DEFAULT_TYPE,
+                    format!("`{shown}` can't be the {word} of `{name}`"),
+                )
+                .at(at, "a bare number")
+                .reason(format!(
+                    "`{name}` is `{ty}`, a percentage, written with `%`; a bare number could be a ratio or a percentage already."
+                ))
+                .next(literal::percent_readings(number, &shown)),
                 Problem::Builtin(why) => Diagnostic::new(
                     &rule::CONFIGURATION_DEFAULT_INVALID,
                     format!("`{shown}` isn't a valid `{ty}`"),

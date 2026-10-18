@@ -153,6 +153,13 @@ impl<'a> Writer<'a> {
                     )?),
                     _ => return Err(Fault::Shape),
                 },
+                // A percentage, as `text.format` shows it in the locale.
+                Piece::Percent(name) => match self.find(name, payload)? {
+                    Value::Percentage(fraction) => {
+                        out.push_str(&super::percent::percent(fraction, &self.tag)?);
+                    }
+                    _ => return Err(Fault::Shape),
+                },
                 Piece::Field(name) => {
                     let found = self.find(name, payload)?;
                     match found {
@@ -354,6 +361,27 @@ mod tests {
             say(&e, "de_de", &p, vec![price()]),
             "Summe: 1.234,50\u{a0}£"
         );
+    }
+
+    #[test]
+    fn a_percentage_is_written_as_text_format_shows_it() {
+        let e = entry(
+            &[("rate", ParamKind::Percent)],
+            vec![
+                (
+                    "en_gb",
+                    Wording::Plain(template("VAT: {rate, number, percent}")),
+                ),
+                (
+                    "de_de",
+                    Wording::Plain(template("MwSt.: {rate, number, percent}")),
+                ),
+            ],
+        );
+        let p = plan("en_gb", &["en_gb", "de_de"], &[]);
+        let rate = || Value::Percentage(crate::Decimal::new(125, 3));
+        assert_eq!(say(&e, "en_gb", &p, vec![rate()]), "VAT: 12.5%");
+        assert_eq!(say(&e, "de_de", &p, vec![rate()]), "MwSt.: 12,5\u{a0}%");
     }
 
     #[test]

@@ -14,7 +14,7 @@ use crate::support;
 use jadpo_db::{Database, Layout};
 use jadpo_diag::Diagnostic;
 
-const NAMES: &str = "type Shelf = Length {\n    min: 0metre\n    max: 3metre\n}\n\ntype Board = Length {}\n\ntype Gap = Length {\n    min: 1mm\n}\n\ntype Floor = Area {}\n\ntype Tank = Volume {}\n\ntype Load = Mass {}\n\ntype Pace = Speed {}\n\ntype Trip = Duration {\n    min: 1s\n}\n\ntype Room = Temperature {}\n\ntype Warming = TemperatureDifference {}\n\ntype Noise = SoundLevel {}\n\ntype Upload = DataSize {}\n\ntype Line = Bitrate {}\n\ntype Answer = Bool {}\n\ntype Ratio = Decimal {\n    scale: 4\n}\n\ntype Count = Int {}\n\ntype Places = Decimal {\n    scale: 2\n}\n\ntype Typed = Text {}\n\ntype Unreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype WrongUnit = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype TooLong = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
+const NAMES: &str = "type Shelf = Length {\n    min: 0metre\n    max: 3metre\n}\n\ntype Board = Length {}\n\ntype Gap = Length {\n    min: 1mm\n}\n\ntype Floor = Area {}\n\ntype Tank = Volume {}\n\ntype Load = Mass {}\n\ntype Pace = Speed {}\n\ntype Trip = Duration {\n    min: 1s\n}\n\ntype Room = Temperature {}\n\ntype Warming = TemperatureDifference {}\n\ntype Noise = SoundLevel {}\n\ntype Upload = DataSize {}\n\ntype Line = Bitrate {}\n\ntype Answer = Bool {}\n\ntype Factor = Decimal {\n    scale: 4\n}\n\ntype Count = Int {}\n\ntype Places = Decimal {\n    scale: 2\n}\n\ntype Typed = Text {}\n\ntype Unreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype WrongUnit = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype TooLong = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
 
 fn diagnostics(source: &str) -> Vec<Diagnostic> {
     let db = Database::default();
@@ -105,7 +105,7 @@ fn a_suffix_that_names_no_unit_is_reported_with_its_near_misses() {
 
 #[test]
 fn one_kind_adds_compares_and_scales_across_units() {
-    let source = "function total(a: Shelf) -> Board {\n    var sum: Length = 2metre + 45cm + 3inch\n    return Board(a + sum)\n}\n\nfunction same() -> Answer {\n    return Answer(1km == 1000metre)\n}\n\nfunction longer(a: Board, b: Board) -> Answer {\n    return Answer(a < b)\n}\n\nfunction twice(a: Board) -> Board {\n    return Board(a * 2)\n}\n\nfunction part(a: Board) -> Board {\n    return Board(a / 2.5)\n}\n\nfunction share(a: Gap, b: Gap) -> Ratio {\n    return Ratio(a / b)\n}\n\nfunction short(a: Board) -> Answer {\n    return Answer(a < 3metre)\n}\n";
+    let source = "function total(a: Shelf) -> Board {\n    var sum: Length = 2metre + 45cm + 3inch\n    return Board(a + sum)\n}\n\nfunction same() -> Answer {\n    return Answer(1km == 1000metre)\n}\n\nfunction longer(a: Board, b: Board) -> Answer {\n    return Answer(a < b)\n}\n\nfunction twice(a: Board) -> Board {\n    return Board(a * 2)\n}\n\nfunction part(a: Board) -> Board {\n    return Board(a / 2.5)\n}\n\nfunction share(a: Gap, b: Gap) -> Factor {\n    return Factor(a / b)\n}\n\nfunction short(a: Board) -> Answer {\n    return Answer(a < 3metre)\n}\n";
     assert_eq!(rules(source), NONE);
 }
 

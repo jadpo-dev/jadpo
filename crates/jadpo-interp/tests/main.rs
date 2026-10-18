@@ -24,6 +24,7 @@ mod maths;
 mod money;
 mod named_collections;
 mod numbers;
+mod percentages;
 mod proofs;
 mod quantities;
 mod reports;

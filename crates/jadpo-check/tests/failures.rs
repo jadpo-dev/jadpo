@@ -137,7 +137,7 @@ fn the_standard_divisions_are_proved_like_slash() {
     // dividend, so a bounded result still needs its check.
     assert_eq!(
         one(
-            "type Price = Decimal {\n    scale: 2\n    min: 0.00\n    max: 10.00\n}\n\ntype Fraction = Decimal {\n    scale: 2\n    min: 0.01\n    max: 1.00\n}\n\nfunction scaled(bill: Price, by: Fraction) -> Price {\n    return Price(decimal.divide(bill, by, rounding: Rounding.half_up))\n}\n"
+            "type Price = Decimal {\n    scale: 2\n    min: 0.00\n    max: 10.00\n}\n\ntype Portion = Decimal {\n    scale: 2\n    min: 0.01\n    max: 1.00\n}\n\nfunction scaled(bill: Price, by: Portion) -> Price {\n    return Price(decimal.divide(bill, by, rounding: Rounding.half_up))\n}\n"
         ),
         ["failure.attempt_required"]
     );

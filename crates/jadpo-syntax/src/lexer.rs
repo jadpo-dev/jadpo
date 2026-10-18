@@ -8,7 +8,9 @@
 //!   path: `/items/{item_id: Item.id}/complete` is `/`, a segment, `/` and a
 //!   typed placeholder whose inside is ordinary Jadpo.
 //! - **Quantities.** Digits followed by letters are one token: `15m`, `30d`,
-//!   `5mb`.
+//!   `5mb`; so are digits followed by `%`, a percentage, `20%`, unless a
+//!   name or a number touches the `%` (`20%3`), which could be a remainder
+//!   too and is reported.
 //! - **Templates.** In an email template, text runs until `{{`, and Jadpo is
 //!   read until the matching `}}`.
 
@@ -33,6 +35,10 @@ pub(crate) enum LexErrorKind {
     LoneCarriageReturn,
     UnterminatedString,
     InvalidEscape(char),
+    /// A number, `%` and a name or number with no spaces, `20%3`: a
+    /// percentage followed by a value, or a remainder (area 19). Lexed as
+    /// the remainder.
+    PercentOrRemainder,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -736,6 +742,21 @@ impl Lexer<'_> {
         if self.peek().is_some_and(|c| c.is_ascii_alphabetic()) {
             self.bump_while(is_ident_continue);
             kind = UNIT_NUMBER;
+        } else if self.peek() == Some('%') {
+            // `20%` is a percentage; `20%3` could be one followed by `3`
+            // or a remainder, so it is reported and read as the remainder.
+            let after = self.peek_at(1);
+            if after.is_some_and(is_ident_continue) {
+                let rest = &self.text[self.pos + 1..];
+                let touching = rest
+                    .find(|c: char| !is_ident_continue(c))
+                    .unwrap_or(rest.len());
+                let end = self.pos + 1 + touching;
+                self.error(start, end, LexErrorKind::PercentOrRemainder);
+            } else {
+                self.pos += 1;
+                kind = UNIT_NUMBER;
+            }
         }
         self.push(kind, start);
     }
@@ -811,6 +832,36 @@ mod tests {
                 (INT_NUMBER, "42"),
                 (STRING, "\"a\\\"b\"")
             ]
+        );
+    }
+
+    #[test]
+    fn a_percentage_is_one_token_and_a_touching_remainder_is_reported() {
+        assert_eq!(
+            kinds("20% 12.5% 20 % 3"),
+            vec![
+                (UNIT_NUMBER, "20%"),
+                (UNIT_NUMBER, "12.5%"),
+                (INT_NUMBER, "20"),
+                (PERCENT, "%"),
+                (INT_NUMBER, "3"),
+            ]
+        );
+        let (_, errors) = lex("20%3", LexMode::Source);
+        assert_eq!(
+            errors
+                .iter()
+                .map(|e| (e.start, e.end, &e.kind))
+                .collect::<Vec<_>>(),
+            vec![(0, 4, &LexErrorKind::PercentOrRemainder)]
+        );
+        assert_eq!(
+            kinds("20%3"),
+            vec![(INT_NUMBER, "20"), (PERCENT, "%"), (INT_NUMBER, "3")]
+        );
+        assert_eq!(
+            kinds("(20%)"),
+            vec![(L_PAREN, "("), (UNIT_NUMBER, "20%"), (R_PAREN, ")")]
         );
     }
 

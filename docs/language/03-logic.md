@@ -621,7 +621,8 @@ other languages](#habits-from-other-languages)).
 > remainder keeps `%` written with spaces, as the formatter writes every
 > binary operator, and `20%3` is an error naming both readings.
 > `Rounding` gains `down`, toward zero (question 25). Built in chunks 5.5d,
-> 5.5h and 5.5j.
+> 5.5h, 5.5j and 5.5j2, which built the `%` literal and
+> `syntax.percent_ambiguous`.
 
 Questions 6 and 7 decided operator typing and division:
 
