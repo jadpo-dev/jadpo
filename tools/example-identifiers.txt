@@ -2,6 +2,7 @@ a_days_flour
 abc_photo
 about_section
 abroad
+abstract_meaning
 accept_invitation
 accept_invitation_in_app
 accepted_at
@@ -324,6 +325,7 @@ close_enough
 close_outlet
 close_project
 closest_articles
+closest_papers
 club_hours
 code_bytes
 code_digest
@@ -1123,6 +1125,7 @@ paid_by_faster_payments
 paid_signature
 pale
 pantry
+paper_meaning
 parcel
 parcel_count
 parcel_held

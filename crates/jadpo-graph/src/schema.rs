@@ -263,10 +263,27 @@ pub struct Index {
 pub struct IndexMethod {
     pub name: String,
     pub operator_class: String,
-    /// A type its one column is cast to, so the index holds the cast
-    /// value: `geometry`, for a `BoundingBox` filter on a point's
-    /// `geography` (area 20, "Indexes", chunk 5.5u5).
+    /// The type its one column is cast to, which makes it an index of
+    /// that expression: `halfvec(3072)` for a vector of 2,001 to 4,000
+    /// dimensions, indexed at half precision (area 21, chunk 5.5v1c), or
+    /// `geometry` for a `BoundingBox` filter on a point's `geography` (area
+    /// 20, "Indexes", chunk 5.5u5).
     pub cast: Option<String>,
+    /// Its storage parameters in the order written, `WITH (m = 24,
+    /// ef_construction = 128)`: an HNSW index's tuning (area 21, chunk
+    /// 5.5v1c).
+    pub with: Vec<(String, u32)>,
+}
+
+impl IndexMethod {
+    /// Whether it builds the same index as `other` but for its storage
+    /// parameters: the one a tuned `indexes:` entry and a query's own
+    /// would both be.
+    pub fn same_but_tuning(&self, other: &IndexMethod) -> bool {
+        self.name == other.name
+            && self.operator_class == other.operator_class
+            && self.cast == other.cast
+    }
 }
 
 /// A name the database keeps whole: `table_part1_suffix`, cut to fit
@@ -410,6 +427,12 @@ impl Table {
                 if let Some(cast) = &method.cast {
                     entry.set("cast", cast);
                 }
+                let with: Vec<String> = method
+                    .with
+                    .iter()
+                    .map(|(name, value)| format!("{name} = {value}"))
+                    .collect();
+                entry.set_some("with", strings(&with));
             }
             indexes.set(name, entry);
         }
@@ -498,6 +521,20 @@ impl Table {
                             name: method.to_string(),
                             operator_class: text_of(entry, "operator_class")?,
                             cast: entry.get("cast").and_then(Value::as_str).map(String::from),
+                            with: list_of(entry, "with")
+                                .unwrap_or_default()
+                                .iter()
+                                .map(|setting| {
+                                    setting
+                                        .split_once(" = ")
+                                        .and_then(|(name, value)| {
+                                            Some((name.to_string(), value.parse().ok()?))
+                                        })
+                                        .ok_or_else(|| {
+                                            format!("`{setting}` isn't an index's setting")
+                                        })
+                                })
+                                .collect::<Result<_, _>>()?,
                         }),
                         None => None,
                     },
@@ -1023,6 +1060,36 @@ mod tests {
         assert_eq!(Schema::read(&document), Ok(schema));
         assert!(Schema::read(&document.replace("  ", "    ")).is_err());
         assert!(Schema::read("{\"format\": 2, \"stores\": {}}\n").is_err());
+    }
+
+    #[test]
+    fn a_tuned_half_precision_index_reads_back_as_written() {
+        // Area 21, "The index" (chunk 5.5v1c): its cast and its storage
+        // parameters, in the order written.
+        let mut schema = todo(true);
+        let table = schema
+            .stores
+            .get_mut("main")
+            .and_then(|store| store.tables.get_mut("todo"))
+            .expect("the table");
+        table.indexes.insert(
+            "todo_meaning_idx".into(),
+            Index {
+                columns: vec!["meaning".into()],
+                reason: "index Todo.by_meaning".into(),
+                predicate: None,
+                collate: Vec::new(),
+                method: Some(IndexMethod {
+                    name: "hnsw".into(),
+                    operator_class: "halfvec_cosine_ops".into(),
+                    cast: Some("halfvec(3072)".into()),
+                    with: vec![("m".into(), 24), ("ef_construction".into(), 128)],
+                }),
+            },
+        );
+        let document = schema.to_document();
+        assert!(document.contains("\"with\": [\n"), "{document}");
+        assert_eq!(Schema::read(&document), Ok(schema));
     }
 
     #[test]

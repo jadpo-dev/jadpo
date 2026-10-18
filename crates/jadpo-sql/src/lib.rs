@@ -95,9 +95,26 @@ mod tests {
                     name: "hnsw",
                     operator_class: "vector_cosine_ops",
                     cast: None,
+                    with: &[],
                 })
             ),
             "CREATE INDEX \"help_article_body_meaning_idx\" ON \"help_article\" USING hnsw (\"body_meaning\" vector_cosine_ops)"
+        );
+        // A longer vector's, at half precision and tuned (chunk 5.5v1c).
+        assert_eq!(
+            table::create_index(
+                "help_article",
+                "help_article_body_meaning_idx",
+                &column,
+                Some("\"deleted_at\" IS NULL"),
+                Some(table::IndexMethod {
+                    name: "hnsw",
+                    operator_class: "halfvec_cosine_ops",
+                    cast: Some("halfvec(3072)"),
+                    with: &[("m".to_string(), 24), ("ef_construction".to_string(), 128)],
+                })
+            ),
+            "CREATE INDEX \"help_article_body_meaning_idx\" ON \"help_article\" USING hnsw ((\"body_meaning\"::halfvec(3072)) halfvec_cosine_ops) WITH (m = 24, ef_construction = 128) WHERE \"deleted_at\" IS NULL"
         );
         assert_eq!(
             table::create_index(
@@ -127,6 +144,7 @@ mod tests {
                     name: "gist",
                     operator_class: "",
                     cast: Some("geometry"),
+                    with: &[],
                 })
             ),
             "CREATE INDEX \"bakery_spot_box_idx\" ON \"bakery\" USING gist ((\"spot\"::geometry))"

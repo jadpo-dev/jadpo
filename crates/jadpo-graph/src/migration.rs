@@ -769,6 +769,7 @@ fn create_index(table: &str, name: &str, def: &Table) -> Statement {
             name: &m.name,
             operator_class: &m.operator_class,
             cast: m.cast.as_deref(),
+            with: &m.with,
         });
     Statement {
         sql: table::create_index(table, name, &columns, predicate, method),
