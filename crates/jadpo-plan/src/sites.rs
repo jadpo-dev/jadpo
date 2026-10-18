@@ -284,7 +284,13 @@ impl Decoder<'_> {
                         validator: self.types.validator_id(&TypeRef::Field(field.clone())),
                     })
                     .collect();
-                let object = TypeRef::Node(key.clone());
+                // A standard object's rules across its parts are its data
+                // entry's (area 19, chunk 5.5t2).
+                let object = if standard.is_some() {
+                    TypeRef::Std(key.name().to_string(), Vec::new())
+                } else {
+                    TypeRef::Node(key.clone())
+                };
                 let across = (key.kind() == Some(jadpo_graph::Kind::Type)
                     && !self.types.across(&object).is_empty())
                 .then(|| {

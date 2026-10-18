@@ -77,35 +77,37 @@ fn timecode(minutes: i64, seconds: i64, frames: i64, rate: (i64, i64), drop: boo
     )
 }
 
+/// The first rule across its parts a value breaks, by name (chunk 5.5t2).
 fn broken(value: &Value) -> Option<&'static str> {
-    match value {
-        Value::Record(record) => standard::broken_part(record),
-        _ => panic!("a record"),
-    }
+    assert!(matches!(value, Value::Record(_)), "a record");
+    jadpo_value::across::broken_standard(value)
 }
 
 #[test]
 fn drop_frame_counts_as_smpte_st_12_1_has_it() {
     let ntsc = (30_000, 1001);
     // Frames 0 and 1 are skipped at each minute but every tenth.
-    assert_eq!(broken(&timecode(1, 0, 0, ntsc, true)), Some("frames"));
-    assert_eq!(broken(&timecode(1, 0, 1, ntsc, true)), Some("frames"));
+    assert_eq!(broken(&timecode(1, 0, 0, ntsc, true)), Some("frame_not_dropped"));
+    assert_eq!(broken(&timecode(1, 0, 1, ntsc, true)), Some("frame_not_dropped"));
     assert_eq!(broken(&timecode(1, 0, 2, ntsc, true)), None);
     assert_eq!(broken(&timecode(10, 0, 0, ntsc, true)), None);
     assert_eq!(broken(&timecode(1, 0, 0, ntsc, false)), None);
     // 0 to 3 at 59.94.
     assert_eq!(
         broken(&timecode(1, 0, 3, (60_000, 1001), true)),
-        Some("frames")
+        Some("frame_not_dropped")
     );
     assert_eq!(broken(&timecode(1, 0, 4, (60_000, 1001), true)), None);
     // Drop-frame only at those rates; frames below the rate's.
     assert_eq!(
         broken(&timecode(0, 0, 0, (25, 1), true)),
-        Some("drop_frame")
+        Some("drop_frame_rate")
     );
     assert_eq!(broken(&timecode(0, 0, 29, ntsc, false)), None);
-    assert_eq!(broken(&timecode(0, 0, 30, ntsc, false)), Some("frames"));
+    assert_eq!(
+        broken(&timecode(0, 0, 30, ntsc, false)),
+        Some("frames_within_rate")
+    );
     assert_eq!(broken(&timecode(0, 0, 24, (25, 1), false)), None);
 }
 
@@ -122,10 +124,16 @@ fn a_cue_ends_after_it_starts_and_holds_no_arrow() {
         )
     };
     assert_eq!(broken(&cue(1000, 4000, "Hello")), None);
-    assert_eq!(broken(&cue(4000, 1000, "Hello")), Some("end"));
-    assert_eq!(broken(&cue(1000, 1000, "Hello")), Some("end"));
-    assert_eq!(broken(&cue(-1, 1000, "Hello")), Some("start"));
-    assert_eq!(broken(&cue(1000, 4000, "a --> b")), Some("text"));
+    assert_eq!(broken(&cue(4000, 1000, "Hello")), Some("end_after_start"));
+    assert_eq!(broken(&cue(1000, 1000, "Hello")), Some("end_after_start"));
+    assert_eq!(
+        broken(&cue(-1, 1000, "Hello")),
+        Some("start_not_negative")
+    );
+    assert_eq!(
+        broken(&cue(1000, 4000, "a --> b")),
+        Some("text_without_arrow")
+    );
     // Its canonical text, as the page's test writes it.
     assert_eq!(
         standard::from(&cue(1000, 4000, "Never drink liquid nitrogen.")),
@@ -142,8 +150,15 @@ fn a_rating_is_one_of_its_body_s_categories() {
     assert!(read("bbfc 12A").is_ok(), "a body's code ignores case");
     assert!(read("MPA NC-17").is_ok());
     assert!(read("ESRB AO").is_ok());
+    // Refused as text (a lower-case category), or by its rule across its
+    // parts, `rating_of_scheme`, once read (chunk 5.5t2).
     for refused in ["BBFC PG-13", "MPA 12A", "PEGI 15", "ESRB 18", "BBFC 12a"] {
-        assert!(read(refused).is_err(), "{refused}");
+        assert!(
+            read(refused).is_err()
+                || read(refused)
+                    .is_ok_and(|rating| jadpo_value::across::broken_standard(&rating) == Some("rating_of_scheme")),
+            "{refused}"
+        );
     }
     assert_eq!(
         read("bbfc 12A").and_then(|rating| standard::from(&rating)),

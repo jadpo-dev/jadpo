@@ -217,7 +217,8 @@ fn range_ends(record: &crate::Record) -> Result<(Option<&Value>, Option<&Value>)
 
 /// `Range<T>` read from its canonical text, each end as `item` (the
 /// standard type or representation `T` is built on), `..` for an open
-/// end; a start after its end is `malformed`, as for an `InstantRange`.
+/// end. A start after its end breaks its rule `start_not_after_end`, which
+/// the range is checked by once it is read (chunk 5.5t2).
 pub fn read_range(raw: &str, item: &str) -> Result<Value, Fault> {
     let (from, to) = raw.split_once('/').ok_or(MALFORMED)?;
     let end = |text: &str| -> Result<Option<Value>, Fault> {
@@ -231,11 +232,6 @@ pub fn read_range(raw: &str, item: &str) -> Result<Value, Fault> {
         }
     };
     let (start, end) = (end(from)?, end(to)?);
-    if let (Some(start), Some(end)) = (&start, &end)
-        && crate::ops::compare(start, end) == Some(std::cmp::Ordering::Greater)
-    {
-        return Err(MALFORMED);
-    }
     Ok(crate::range::range_of(start, end))
 }
 
@@ -388,45 +384,6 @@ fn written_in(raw: &str, ty: &str, country: &crate::Variant) -> Result<Value, Fa
         _ => return Err(Fault::Shape),
     };
     read.map(|text| Value::text(&text)).ok_or(MALFORMED)
-}
-
-/// The part of a standard object a rule across its parts refuses (an
-/// address's postal code that doesn't fit its country, a passport number
-/// that isn't one of its country's, an event with both days and times), if
-/// any.
-pub fn broken_part(record: &crate::Record) -> Option<&'static str> {
-    if &*record.ty == jadpo_std::standard::events::CALENDAR_EVENT {
-        return crate::event::broken_part(record).map(|broken| broken.part);
-    }
-    if let Some(part) = crate::media::broken_part(record) {
-        return Some(part);
-    }
-    if let Some(part) = crate::measures::broken_part(record) {
-        return Some(part);
-    }
-    if let Some(part) = crate::geo::broken_part(record) {
-        return Some(part);
-    }
-    jadpo_std::standard::part_rules(&record.ty)
-        .iter()
-        .find(|rule| {
-            let Some(Value::Text(text)) = record.get(rule.part) else {
-                return false;
-            };
-            let codes: Option<Vec<&str>> = rule
-                .by
-                .iter()
-                .map(|by| match record.get(by) {
-                    Some(Value::Variant(by)) => standard_type(&by.ty)
-                        .and_then(StandardType::codes)
-                        .and_then(|codes| codes.get(by.ordinal as usize))
-                        .map(|(_, code)| *code),
-                    _ => None,
-                })
-                .collect();
-            codes.is_some_and(|codes| !(rule.fits)(text, &codes))
-        })
-        .map(|rule| rule.part)
 }
 
 /// `text.parse(raw, as:)`, given the name of the standard type or the
@@ -607,14 +564,14 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
                     .map(Value::Date),
                 _ => None,
             };
+            // A start after its end breaks the range's rule, which it is
+            // checked by once it is read (chunk 5.5t2).
             raw.split_once('/').and_then(|(from, to)| {
                 let (from, to) = (end_of(from)?, end_of(to)?);
-                (crate::ops::compare(&from, &to) != Some(std::cmp::Ordering::Greater)).then(|| {
-                    Value::record(
-                        entry.name,
-                        vec![((*start).into(), from), ((*end).into(), to)],
-                    )
-                })
+                Some(Value::record(
+                    entry.name,
+                    vec![((*start).into(), from), ((*end).into(), to)],
+                ))
             })
         }
     };
@@ -692,14 +649,17 @@ fn read_card_expiry(entry: &StandardType, raw: &str) -> Option<Value> {
 }
 
 /// A VAT number from VIES's form: its country's code (`EL` for Greece),
-/// read ignoring case as every code is, then the number in its country's
-/// form (chosen in chunk 5.5i2).
+/// read ignoring case as every code is, then the number within a VAT
+/// number's bounds (chosen in chunk 5.5i2). A number not in its country's
+/// form breaks the type's rule `number_of_country`, which it is checked by
+/// once it is read (chunk 5.5t2).
 fn read_vat_number(entry: &StandardType, raw: &str) -> Option<Value> {
     let (prefix, number) = (raw.get(..2)?, raw.get(2..)?);
     let country_code = jadpo_std::standard::documents::vat_country(prefix)?;
     let countries = standard_type(jadpo_std::standard::places::COUNTRY)?;
     let country = code(countries, country_code)?;
-    jadpo_std::standard::documents::vat_fits(number, country_code).then(|| {
+    let bounds = jadpo_std::Part::Matching(jadpo_std::standard::documents::VAT_BOUNDS);
+    bounds.rules().check_text(number).is_ok().then(|| {
         Value::record(
             entry.name,
             vec![

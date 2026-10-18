@@ -101,7 +101,7 @@ const ROOMS: &[(&str, &str)] = &[
     ),
     (
         "domains/rooms/actions/slot_of.jadpo",
-        "use rooms/types { Booking, Slot }\n\n/// The slot a booking takes.\naction slot_of(booking: Booking) -> Slot {\n    return Slot {\n        starts_at: booking.slot.starts_at\n        ends_at: booking.slot.ends_at\n    }\n}\n",
+        "use rooms/types { Booking, Slot }\n\n/// The slot a booking takes.\naction slot_of(booking: Booking) -> Slot {\n    return Slot {\n        starts_at: \"2026-10-26T09:00:00Z\"\n        ends_at: \"2026-10-26T17:00:00Z\"\n    }\n}\n",
     ),
 ];
 
@@ -173,7 +173,7 @@ fn a_swap_uses_the_standard_type_and_its_field_names_everywhere() {
     );
     assert_eq!(
         texts["domains/rooms/actions/slot_of.jadpo"],
-        "use rooms/types { Booking }\n\n/// The slot a booking takes.\naction slot_of(booking: Booking) -> InstantRange {\n    return InstantRange {\n        start: booking.slot.start\n        end: booking.slot.end\n    }\n}\n"
+        "use rooms/types { Booking }\n\n/// The slot a booking takes.\naction slot_of(booking: Booking) -> InstantRange {\n    return InstantRange {\n        start: \"2026-10-26T09:00:00Z\"\n        end: \"2026-10-26T17:00:00Z\"\n    }\n}\n"
     );
     assert_eq!(
         texts["domains/rooms/actions/start_of.jadpo"],

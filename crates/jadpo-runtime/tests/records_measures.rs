@@ -132,11 +132,10 @@ fn measures_are_shown_in_the_unit_a_reader_expects() {
     );
 }
 
+/// The first rule across its parts a value breaks, by name (chunk 5.5t2).
 fn broken(value: &Value) -> Option<&'static str> {
-    match value {
-        Value::Record(record) => standard::broken_part(record),
-        _ => panic!("a record"),
-    }
+    assert!(matches!(value, Value::Record(_)), "a record");
+    jadpo_value::across::broken_standard(value)
 }
 
 #[test]
@@ -158,9 +157,9 @@ fn rules_across_parts_hold_where_json_is_read() {
         None,
         "the best is on the scale"
     );
-    assert_eq!(broken(&rating("5.5", "5", "1")), Some("value"));
-    assert_eq!(broken(&rating("0.5", "5", "1")), Some("value"));
-    assert_eq!(broken(&rating("1", "1", "1")), Some("best"));
+    assert_eq!(broken(&rating("5.5", "5", "1")), Some("value_on_scale"));
+    assert_eq!(broken(&rating("0.5", "5", "1")), Some("value_on_scale"));
+    assert_eq!(broken(&rating("1", "1", "1")), Some("best_above_worst"));
     let pressure = |systolic: i128, diastolic: i128| {
         Value::record(
             "BloodPressure",
@@ -178,6 +177,6 @@ fn rules_across_parts_hold_where_json_is_read() {
     };
     // 120/80 mmHg in thousandths of a pascal.
     assert_eq!(broken(&pressure(15_998_686, 10_665_791)), None);
-    assert_eq!(broken(&pressure(10_665_791, 15_998_686)), Some("diastolic"));
-    assert_eq!(broken(&pressure(12_000_000, 12_000_000)), Some("diastolic"));
+    assert_eq!(broken(&pressure(10_665_791, 15_998_686)), Some("diastolic_below_systolic"));
+    assert_eq!(broken(&pressure(12_000_000, 12_000_000)), Some("diastolic_below_systolic"));
 }

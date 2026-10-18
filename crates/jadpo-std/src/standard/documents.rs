@@ -4,15 +4,17 @@
 //! `IdentityDocument`, each an object of a `Country` and a number, and
 //! `IdentityDocumentKind`, what kind of document one is. A number is upper
 //! case with no spaces or punctuation, as the payment numbers are (chunk
-//! 5.5i), and fits its country's published form (`part_rules`): a pattern
+//! 5.5i), and fits its country's published form (its rule
+//! `number_of_country`, chunk 5.5t2): a pattern
 //! and, where the issuer publishes one, a check digit. A country that
 //! publishes no form takes any number within the type's bounds, so a
 //! number from a country not listed here is never refused for its country
 //! alone; a release adds countries as their forms are published.
 
+use super::across::{Check, Parts, StandardRule, Verdict, fits};
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part, PartRule,
-    StandardType, Storage, TextForm, identifiers, matches_whole,
+    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part, StandardType,
+    Storage, TextForm, identifiers, matches_whole,
 };
 use crate::Builtin;
 use crate::read::SqlType;
@@ -271,61 +273,76 @@ pub fn document_fits(number: &str, kind: &str, country: &str) -> bool {
     fits_forms(forms, NUMBER_BOUNDS, number, country)
 }
 
-/// The rules across the parts of the document type `ty`: its number fits
-/// its country (and its kind, for an `IdentityDocument`).
-pub fn part_rules(ty: &str) -> &'static [PartRule] {
-    const VAT: &[PartRule] = &[PartRule {
-        part: "number",
-        by: &["country"],
-        fits: |number, by| by.first().is_some_and(|country| vat_fits(number, country)),
-        says: "a VAT number of its country",
-        noun: "a VAT number",
-        authority: "the tax authority",
-    }];
-    const TAX: &[PartRule] = &[PartRule {
-        part: "number",
-        by: &["country"],
-        fits: |number, by| {
-            by.first()
-                .is_some_and(|country| fits_forms(TAX_ID_FORMS, NUMBER_BOUNDS, number, country))
-        },
-        says: "a taxpayer number of its country",
-        noun: "a taxpayer number",
-        authority: "the tax authority",
-    }];
-    const PASSPORT: &[PartRule] = &[PartRule {
-        part: "number",
-        by: &["country"],
-        fits: |number, by| {
-            by.first()
-                .is_some_and(|country| fits_forms(PASSPORT_FORMS, NUMBER_BOUNDS, number, country))
-        },
-        says: "a passport number of its country",
-        noun: "a passport number",
-        authority: "the passport office",
-    }];
-    const LICENCE: &[PartRule] = &[PartRule {
-        part: "number",
-        by: &["country"],
-        fits: |number, by| {
-            by.first().is_some_and(|country| {
-                fits_forms(DRIVING_LICENCE_FORMS, NUMBER_BOUNDS, number, country)
+/// A document type's rule that its `number` is in its country's form,
+/// named `number_of_country` (chunk 5.5t2), for a document whose forms
+/// `fit` says.
+const fn number_of_country(
+    reason: &'static str,
+    check: fn(&dyn Parts) -> Verdict,
+) -> StandardRule {
+    StandardRule {
+        name: "number_of_country",
+        written: "number is in the form of its country's numbers",
+        label: "not a number of the document's country",
+        reason,
+        next: "Write a number in the country's form, or change `country`",
+        check: Check::By(check),
+    }
+}
+
+/// The rules across the parts of the document type `ty` (chunk 5.5t2): its
+/// number fits its country, and its kind for an `IdentityDocument`.
+pub fn rules(ty: &str) -> &'static [StandardRule] {
+    const VAT: &[StandardRule] = &[number_of_country(
+        "A `VatNumber`'s `number` is in the form its `country`'s tax authority writes, with its check digits where it has them.",
+        |parts| {
+            fits(parts, "number", &["country"], |number, by| {
+                by.first().is_some_and(|country| vat_fits(number, country))
             })
         },
-        says: "a driving licence number of its country",
-        noun: "a driving licence number",
-        authority: "the licensing authority",
-    }];
-    const DOCUMENT: &[PartRule] = &[PartRule {
-        part: "number",
-        by: &["kind", "country"],
-        fits: |number, by| match by {
-            [kind, country] => document_fits(number, kind, country),
-            _ => false,
+    )];
+    const TAX: &[StandardRule] = &[number_of_country(
+        "A `TaxId`'s `number` is in the form its `country`'s tax authority writes, with its check digits where it has them.",
+        |parts| {
+            fits(parts, "number", &["country"], |number, by| {
+                by.first().is_some_and(|country| {
+                    fits_forms(TAX_ID_FORMS, NUMBER_BOUNDS, number, country)
+                })
+            })
         },
-        says: "a number of its kind of document from its country",
-        noun: "a document number",
-        authority: "the issuer",
+    )];
+    const PASSPORT: &[StandardRule] = &[number_of_country(
+        "A `PassportNumber`'s `number` is in the form its `country`'s passport office writes.",
+        |parts| {
+            fits(parts, "number", &["country"], |number, by| {
+                by.first().is_some_and(|country| {
+                    fits_forms(PASSPORT_FORMS, NUMBER_BOUNDS, number, country)
+                })
+            })
+        },
+    )];
+    const LICENCE: &[StandardRule] = &[number_of_country(
+        "A `DrivingLicenceNumber`'s `number` is in the form its `country`'s licensing authority writes.",
+        |parts| {
+            fits(parts, "number", &["country"], |number, by| {
+                by.first().is_some_and(|country| {
+                    fits_forms(DRIVING_LICENCE_FORMS, NUMBER_BOUNDS, number, country)
+                })
+            })
+        },
+    )];
+    const DOCUMENT: &[StandardRule] = &[StandardRule {
+        name: "number_of_kind_and_country",
+        written: "number is in the form of its kind of document from its country",
+        label: "not a number of the document's kind and country",
+        reason: "An `IdentityDocument`'s `number` is in the form its `country` issues its `kind` of document in, with its check digit where it has one.",
+        next: "Write a number in the form of that kind of document from that country, or change `kind` or `country`",
+        check: Check::By(|parts| {
+            fits(parts, "number", &["kind", "country"], |number, by| match by {
+                [kind, country] => document_fits(number, kind, country),
+                _ => false,
+            })
+        }),
     }];
     match ty {
         VAT_NUMBER => VAT,

@@ -265,6 +265,21 @@ pub fn epoch_day(year: i64, month: i64, day: i64) -> Option<i32> {
         .filter(|day| (DATE_MIN..=DATE_MAX).contains(day))
 }
 
+/// How many weeks ISO 8601's week-numbering year `year` has: 53 when it
+/// starts on a Thursday, or on a Wednesday in a leap year, otherwise 52;
+/// `None` outside the years a `CalendarDate` holds.
+pub fn iso_weeks_in(year: i64) -> Option<i64> {
+    let first = epoch_day(year, 1, 1)?;
+    // 1970-01-01 was a Thursday; Monday is 0.
+    let weekday = (i64::from(first) + 3).rem_euclid(7);
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    Some(if weekday == 3 || (leap && weekday == 2) {
+        53
+    } else {
+        52
+    })
+}
+
 /// How many days month `month` of `year` has.
 pub fn days_in_month(year: i64, month: i64) -> i64 {
     let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);

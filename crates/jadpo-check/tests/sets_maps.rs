@@ -193,7 +193,15 @@ fn an_instant_range_is_built_from_its_two_instants() {
         rules(
             "function f(open: InstantRange) -> InstantRange {\n    return InstantRange {\n        start: open.start\n        end: \"2026-10-26T12:00:00Z\"\n    }\n}\n"
         ),
-        NONE
+        ["failure.attempt_required"],
+        "its start may be after the end written (chunk 5.5t2)"
+    );
+    assert_eq!(
+        rules(
+            "function f(open: InstantRange) -> InstantRange {\n    return InstantRange {\n        start: open.start\n        end: open.end\n    }\n}\n"
+        ),
+        ["failure.attempt_required"],
+        "the parts of another range prove nothing of themselves"
     );
     assert_eq!(
         rules(
@@ -363,7 +371,7 @@ fn a_range_meets_the_contract_through_its_ends() {
         ),
         // Read end by end as a standard type or a representation.
         (
-            "function f(raw: Wire) fails Unreadable -> Range<Int> {\n    var read: Range<Int> = attempt text.parse(raw, as: Range<Int>) {\n        malformed: Unreadable\n    }\n    return read\n}\n",
+            "function f(raw: Wire) fails Unreadable -> Range<Int> {\n    var read: Range<Int> = attempt text.parse(raw, as: Range<Int>) {\n        malformed: Unreadable\n        start_not_after_end: Unreadable\n    }\n    return read\n}\n",
             &[],
         ),
         (

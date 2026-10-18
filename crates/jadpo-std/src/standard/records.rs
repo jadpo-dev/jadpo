@@ -10,8 +10,9 @@
 //! like the rest; what the page left open is area 19's "Chosen in chunk
 //! 5.5m2".
 
+use super::across::{Order, StandardRule, in_order};
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, FormatOption, Holds, Json, NO_OPTIONS, OrderRule,
+    Examples, FIRST_RELEASE, Format, FormatKey, FormatOption, Holds, Json, NO_OPTIONS,
     Part, ShownIn, StandardType, Storage, TextForm,
 };
 use crate::read::SqlType;
@@ -256,35 +257,27 @@ pub const RATING_FIELDS: [(&str, Part); 3] = [
     ("worst", Part::Of(Builtin::Decimal)),
 ];
 
-/// The rules across a rating's parts: its scale runs from a worst below
-/// its best, and its value is on it.
-pub const RATING_RULES: &[OrderRule] = &[
-    OrderRule {
-        lower: "worst",
-        upper: "best",
-        strict: true,
-        at: "best",
+/// `Rating`'s rules across its parts (chunk 5.5t2): its scale runs from a
+/// worst below its best, and its value is on it.
+pub const RATING_RULES: &[StandardRule] = &[
+    StandardRule {
+        name: "best_above_worst",
+        written: "best > worst",
         label: "not above the worst",
         reason: "A `Rating`'s scale runs from its `worst` up to its `best`, so the best is above the worst (schema.org's `Rating`).",
         next: "Write a `best` above the `worst`",
+        check: in_order(&[Order::below("worst", "best")], "best"),
     },
-    OrderRule {
-        lower: "worst",
-        upper: "value",
-        strict: false,
-        at: "value",
-        label: "below the worst",
+    StandardRule {
+        name: "value_on_scale",
+        written: "worst <= value and value <= best",
+        label: "off its scale",
         reason: "A `Rating`'s `value` is on its scale, from its `worst` to its `best` (schema.org's `Rating`).",
         next: "Write a value from the `worst` to the `best`",
-    },
-    OrderRule {
-        lower: "value",
-        upper: "best",
-        strict: false,
-        at: "value",
-        label: "above the best",
-        reason: "A `Rating`'s `value` is on its scale, from its `worst` to its `best` (schema.org's `Rating`).",
-        next: "Write a value from the `worst` to the `best`",
+        check: in_order(
+            &[Order::at_most("worst", "value"), Order::at_most("value", "best")],
+            "value",
+        ),
     },
 ];
 
@@ -742,10 +735,3 @@ pub const MODEL_ID_ENTRY: StandardType = StandardType {
     release: FIRST_RELEASE,
 };
 
-/// The rules across the parts of the records here.
-pub fn order_rules(ty: &str) -> &'static [OrderRule] {
-    match ty {
-        RATING => RATING_RULES,
-        _ => &[],
-    }
-}

@@ -8,6 +8,11 @@
 //! object's value: no store, clock, setting or key. Its locals are numbered
 //! as its typed body numbers them: the object's fields first, in the order
 //! the type declares them, then each name a `match` arm binds.
+//!
+//! A standard object type's rules across its parts (area 19, chunk 5.5t2)
+//! are the same plain data, each a [`RuleExpr::Standard`] naming the check
+//! `standard::across` holds for it, so a standard type's rule is run, named
+//! and reported exactly as an application's is.
 
 use crate::{Constant, Op, Rounding};
 
@@ -56,6 +61,11 @@ pub enum RuleExpr {
         subject: Box<RuleExpr>,
         arms: Vec<RuleArm>,
     },
+    /// A standard object type's rule across its parts (area 19, chunk
+    /// 5.5t2), by the type's name and the rule's: its one check is
+    /// `standard::across`'s, run over the object's fields, which are its
+    /// parts in their declared order.
+    Standard { ty: String, rule: String },
 }
 
 /// One arm of a `match` in a condition.

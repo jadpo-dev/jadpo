@@ -16,6 +16,7 @@
 use crate::read::SqlType;
 use crate::{Builtin, LOCALE, ZONE};
 
+pub mod across;
 pub mod addresses_data;
 pub mod ai;
 pub mod banks;
@@ -667,48 +668,6 @@ impl ShownIn {
     /// The unit itself.
     pub fn unit(&self) -> Option<&'static crate::QuantityUnit> {
         self.kind.unit_named(self.unit)
-    }
-}
-
-/// A rule that one part of a standard object is below another (chunk
-/// 5.5m2): a rating's worst below its best, a blood pressure's diastolic
-/// below its systolic. Proved for a literal that writes both parts as
-/// numbers or quantities, and checked as JSON is read, breaking `format`
-/// at `at`; one built in code from values waits on cross-field rules
-/// (chunk 5.5t), as a postal code's fit to its country does.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct OrderRule {
-    pub lower: &'static str,
-    pub upper: &'static str,
-    /// Whether the two may not be equal.
-    pub strict: bool,
-    /// The part a refusal points at.
-    pub at: &'static str,
-    pub label: &'static str,
-    pub reason: &'static str,
-    pub next: &'static str,
-}
-
-impl OrderRule {
-    /// Whether `lower` and `upper`, in that order, keep the rule.
-    pub fn holds(&self, order: std::cmp::Ordering) -> bool {
-        match order {
-            std::cmp::Ordering::Less => true,
-            std::cmp::Ordering::Equal => !self.strict,
-            std::cmp::Ordering::Greater => false,
-        }
-    }
-}
-
-/// The rules ordering the parts of standard object type `ty` (chunk
-/// 5.5m2).
-pub fn order_rules(ty: &str) -> &'static [OrderRule] {
-    match ty {
-        records::RATING => records::order_rules(ty),
-        geo::BOUNDING_BOX => geo::order_rules(ty),
-        security::PASSWORD_POLICY => security::PASSWORD_POLICY_ORDER,
-        ai::TOKEN_USAGE => ai::order_rules(ty),
-        _ => health::order_rules(ty),
     }
 }
 
@@ -1860,7 +1819,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ISIN,
     // A week of an ISO week-numbering year, ordered by year and week.
     time_object(
-        "IsoWeek",
+        ISO_WEEK,
         &[("year", YEARS), ("week", Part::Whole(1, 53))],
         TextForm::IsoWeek,
         // CLDR's week patterns aren't in ICU4X yet (chosen in chunk 5.5k).
@@ -2523,6 +2482,31 @@ pub const INSTANT_RANGE_FIELDS: [(&str, Part); 2] = [
     ("end", Part::Of(Builtin::Instant)),
 ];
 
+/// `IsoWeek` (area 19, "Time and calendar additions").
+pub const ISO_WEEK: &str = "IsoWeek";
+
+/// `IsoWeek`'s rule across its parts (chunk 5.5t2): week 53 only in a year
+/// that has one.
+pub const ISO_WEEK_RULES: &[across::StandardRule] = &[across::StandardRule {
+    name: "week_in_year",
+    written: "week is 53 only in a year with 53 ISO weeks",
+    label: "a week its year doesn't have",
+    reason: "An ISO 8601 week-numbering year has 53 weeks when it starts on a Thursday, or on a Wednesday in a leap year, and 52 otherwise, so week 53 of a 52-week year isn't a week.",
+    next: "Write a week from 1 to 52, or a year with 53 weeks",
+    check: across::Check::By(|parts| {
+        let week = parts.part("week").value().and_then(|week| week.whole());
+        if week.is_some_and(|week| week <= 52) {
+            return across::Verdict::Holds;
+        }
+        let year = parts.part("year").value().and_then(|year| year.whole());
+        match (week, year.and_then(crate::iso_weeks_in)) {
+            (Some(week), Some(weeks)) if week <= weeks => across::Verdict::Holds,
+            (Some(_), Some(_)) => across::Verdict::Breaks("week"),
+            _ => across::Verdict::Unknown,
+        }
+    }),
+}];
+
 /// `Month` (area 19, question 22).
 pub const MONTH: &str = "Month";
 
@@ -2734,50 +2718,6 @@ pub fn wire_name<'a>(ty: &str, field: &'a str) -> &'a str {
 /// a country, given `country:` (chunk 5.5l2).
 pub fn reads_by_country(name: &str) -> bool {
     matches!(name, "PhoneNumber" | "PostalCode")
-}
-
-/// A rule across the parts of a standard object (chunk 5.5l2): the text
-/// in part `part` fits the codes of the enums in parts `by`, as a postal
-/// code fits its address's country and a passport number its issuing
-/// country (chunk 5.5i2). A literal that writes them all is proved while
-/// compiling and a value read from JSON is checked as it is read, breaking
-/// `format` at `part`; one built in code from values waits on cross-field
-/// rules (chunk 5.5t).
-#[derive(Clone, Copy, Debug)]
-pub struct PartRule {
-    pub part: &'static str,
-    pub by: &'static [&'static str],
-    /// Whether the part's text fits the other parts' codes, in `by`'s
-    /// order.
-    pub fits: fn(&str, &[&str]) -> bool,
-    /// What a refusal says the part must be: "a postal code of the
-    /// address's country".
-    pub says: &'static str,
-    /// What the part is, as a refusal's label says it: "a postal code".
-    pub noun: &'static str,
-    /// Who decides the part's form, as a refusal's reason says it: "the
-    /// postal service" (of the address's country).
-    pub authority: &'static str,
-}
-
-/// The rules across the parts of standard object type `ty`.
-pub fn part_rules(ty: &str) -> &'static [PartRule] {
-    const POSTAL_ADDRESS: &[PartRule] = &[PartRule {
-        part: "postal_code",
-        by: &["country"],
-        fits: |code, by| {
-            by.first()
-                .is_some_and(|country| postal::fits(code, country))
-        },
-        says: "a postal code of the address's country",
-        noun: "a postal code",
-        authority: "the postal service",
-    }];
-    match ty {
-        "PostalAddress" => POSTAL_ADDRESS,
-        media::CONTENT_RATING => media::CONTENT_RATING_RULES,
-        _ => documents::part_rules(ty),
-    }
 }
 
 impl StandardType {

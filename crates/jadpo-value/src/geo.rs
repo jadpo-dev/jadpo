@@ -590,20 +590,6 @@ pub fn shown(value: &Value, tag: &str) -> Result<String, Fault> {
     }
 }
 
-/// The part of a map tile its zoom refuses, if any: a column or a row at
-/// or past 2 to the zoom.
-pub fn broken_part(record: &Record) -> Option<&'static str> {
-    if &*record.ty != MAP_TILE {
-        return None;
-    }
-    let Some(Value::Int(zoom)) = record.get("zoom") else {
-        return None;
-    };
-    let tiles = 1i64.checked_shl(u32::try_from(*zoom).ok()?)?;
-    ["x", "y"]
-        .into_iter()
-        .find(|name| matches!(record.get(name), Some(Value::Int(n)) if *n >= tiles))
-}
 
 #[cfg(test)]
 mod tests {
@@ -701,21 +687,18 @@ mod tests {
     #[test]
     fn map_tiles_stay_within_their_zoom() {
         let tile = |zoom: i64, x: i64, y: i64| {
-            let Value::Record(record) = Value::record(
+            crate::across::broken_standard(&Value::record(
                 MAP_TILE,
                 vec![
                     ("zoom".into(), Value::Int(zoom)),
                     ("x".into(), Value::Int(x)),
                     ("y".into(), Value::Int(y)),
                 ],
-            ) else {
-                unreachable!()
-            };
-            broken_part(&record)
+            ))
         };
         assert_eq!(tile(1, 1, 1), None);
-        assert_eq!(tile(1, 2, 0), Some("x"));
-        assert_eq!(tile(1, 0, 2), Some("y"));
+        assert_eq!(tile(1, 2, 0), Some("within_zoom"));
+        assert_eq!(tile(1, 0, 2), Some("within_zoom"));
         assert_eq!(tile(30, (1 << 30) - 1, 0), None);
     }
 }
