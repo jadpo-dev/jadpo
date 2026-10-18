@@ -8565,7 +8565,8 @@ under "Errors").
   ISBN Users' Manual's, GS1's, UPS's sample tracking number) and made up
   to the rules where it doesn't.
 - **Clashes renamed:** area 2's `syntax.type_parent_required` example's
-  `Dimensions` is `BoxSize`.
+  `Dimensions` is `BoxSize`, and the interpreter's percentages test's
+  `Dose` is `MedicineMass`.
 
 ### Chosen in chunk 5.5q
 

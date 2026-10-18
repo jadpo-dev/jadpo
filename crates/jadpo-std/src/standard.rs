@@ -2640,10 +2640,7 @@ impl StandardType {
                 },
                 _,
             ) => Some(kind),
-            (_, FormatKey::Measures { units, .. }) => match units {
-                [only] => Some(only.kind),
-                _ => None,
-            },
+            (_, FormatKey::Measures { units: [only], .. }) => Some(only.kind),
             _ => None,
         }
     }

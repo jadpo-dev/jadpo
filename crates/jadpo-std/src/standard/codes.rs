@@ -711,7 +711,7 @@ pub fn isbn_from_isbn10(text: &str) -> Option<String> {
         .zip((1..=10).rev())
         .map(|(digit, factor)| digit * factor)
         .sum();
-    if sum % 11 != 0 {
+    if !sum.is_multiple_of(11) {
         return None;
     }
     let mut isbn: String = std::iter::once("978".to_string())
