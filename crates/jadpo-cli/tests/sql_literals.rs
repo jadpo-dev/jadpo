@@ -275,12 +275,14 @@ fn every_standard_literal_is_bound_and_written_as_the_runtime_binds_it() {
 
     // A backfill writes that value into the migration as SQL text.
     let latest = latest(&root);
-    let migration = fs::read_to_string(root.join(format!("database/migrations/{latest}/postgres.sql")))
-        .expect("postgres.sql");
+    let migration =
+        fs::read_to_string(root.join(format!("database/migrations/{latest}/postgres.sql")))
+            .expect("postgres.sql");
     for case in &all {
         let written = jadpo_sql::literal::sql(&case.bound()).expect("SQL text");
         let column = case.backfilled();
-        let fill = format!("UPDATE \"holder\" SET \"{column}\" = {written} WHERE \"{column}\" IS NULL;");
+        let fill =
+            format!("UPDATE \"holder\" SET \"{column}\" = {written} WHERE \"{column}\" IS NULL;");
         assert!(migration.contains(&fill), "{fill}\n{migration}");
     }
     let note = jadpo_sql::literal::sql(&SqlValue::Text(NASTY.into())).expect("SQL text");
@@ -288,7 +290,10 @@ fn every_standard_literal_is_bound_and_written_as_the_runtime_binds_it() {
         migration.contains(&format!("UPDATE \"holder\" SET \"note\" = {note} WHERE")),
         "{note}\n{migration}"
     );
-    assert!(note.starts_with("E'"), "a backslash makes an escape string: {note}");
+    assert!(
+        note.starts_with("E'"),
+        "a backslash makes an escape string: {note}"
+    );
 
     if skipped() {
         return;
@@ -304,14 +309,20 @@ fn every_standard_literal_is_bound_and_written_as_the_runtime_binds_it() {
     let runtime = jadpo_host_native::Runtime::new().expect("a runtime");
     let store = jadpo_host_native::postgres(&url).expect("a store");
     runtime.block_on(async {
-        jadpo_runtime::migrate(&store, &steps[..1]).await.expect("the first migration");
+        jadpo_runtime::migrate(&store, &steps[..1])
+            .await
+            .expect("the first migration");
         let mut transaction = store.begin().await.expect("begins");
         transaction
-            .batch("INSERT INTO \"holder\" (\"id\") VALUES ('0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e')")
+            .batch(
+                "INSERT INTO \"holder\" (\"id\") VALUES ('0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e')",
+            )
             .await
             .expect("a holder");
         transaction.commit().await.expect("commits");
-        jadpo_runtime::migrate(&store, &steps).await.expect("the backfills");
+        jadpo_runtime::migrate(&store, &steps)
+            .await
+            .expect("the backfills");
         let mut transaction = store.begin().await.expect("begins");
         for case in &all {
             let rows = transaction
@@ -362,7 +373,10 @@ fn text_written_into_sql_stays_one_value_in_any_session() {
     }
     // PostgreSQL text can't hold the NUL character: it is never written,
     // and the runtime's parameter holding one is refused too.
-    assert_eq!(jadpo_sql::literal::sql(&SqlValue::Text("a\0b".into())), None);
+    assert_eq!(
+        jadpo_sql::literal::sql(&SqlValue::Text("a\0b".into())),
+        None
+    );
     if skipped() {
         return;
     }

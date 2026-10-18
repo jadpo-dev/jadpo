@@ -160,6 +160,8 @@ impl Planner<'_> {
                 // Each field's value, as the new record's grants read it.
                 let mut new: Vec<(String, String)> = Vec::new();
                 for field in &entity_model.fields {
+                    // Every field is stored, or there is no statement.
+                    column_type(field)?;
                     if let Some(lifecycle) = lifecycle.filter(|l| l.owns(&field.name)) {
                         // A field the lifecycle owns starts at its
                         // `initial:` value, or `none`.
@@ -169,9 +171,7 @@ impl Planner<'_> {
                             .find(|(name, _)| *name == field.name)
                             .map_or_else(
                                 || Some(jadpo_sql::NULL.to_string()),
-                                |(_, value)| {
-                                    jadpo_sql::value(&mut writing, value, &field.column())
-                                },
+                                |(_, value)| jadpo_sql::value(&mut writing, value, &field.column()),
                             )?;
                         names.push(field.born.clone());
                         new.push((field.name.clone(), value.clone()));

@@ -59,6 +59,8 @@ pub async fn admit(ctx: &mut Ctx<'_>, gate: &Gate, site: u32) -> Stored {
                 .iter()
                 .map(|param| match &param.source {
                     Source::Caller(part) => ctx.caller_param(*part),
+                    // A role, as the storage codec bound it (chunk 5.5w3b).
+                    Source::Stored(value) => value.clone(),
                     _ => SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
                 })
                 .collect();

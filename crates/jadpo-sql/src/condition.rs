@@ -313,7 +313,10 @@ pub fn value(bind: &mut dyn Bind, value: &Value, column: &Column<'_>) -> Option<
     let ty = column.param()?;
     match value {
         Value::Literal(literal) => bind.stored(self::literal(literal, column)?),
-        Value::Variant { ty: enum_ty, variant } => bind.stored(
+        Value::Variant {
+            ty: enum_ty,
+            variant,
+        } => bind.stored(
             storage::bind(
                 &Stored::Variant {
                     ty: enum_ty,
@@ -498,19 +501,19 @@ mod tests {
                 "price",
                 Value::Literal(number("5")),
                 SqlValue::Numeric("5.00".into()),
-                "5.00::numeric",
+                "5.00",
             ),
             (
                 "share",
                 Value::Literal(Literal::Percentage("20%".into())),
                 SqlValue::Numeric("0.20".into()),
-                "0.20::numeric",
+                "0.20",
             ),
             (
                 "shelf",
                 Value::Literal(Literal::Quantity("2.5km".into())),
                 SqlValue::Numeric("2500".into()),
-                "2500::numeric",
+                "2500",
             ),
             (
                 "currency",
@@ -521,12 +524,7 @@ mod tests {
                 SqlValue::Text("GBP".into()),
                 "'GBP'",
             ),
-            (
-                "rank",
-                Value::Literal(number("3")),
-                SqlValue::Int8(3),
-                "3",
-            ),
+            ("rank", Value::Literal(number("3")), SqlValue::Int8(3), "3"),
             (
                 "key",
                 Value::Literal(Literal::Text("0192F0C4-3B5E-7C1A-9D2E-4F6A8B0C1D2E".into())),

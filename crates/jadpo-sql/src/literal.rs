@@ -22,7 +22,8 @@
 //!   character, which PostgreSQL text can't hold, isn't written at all;
 //! - an instant is written in UTC with its offset (`+00`), so the session's
 //!   `TimeZone` doesn't change it, and a year before 1 as `BC`;
-//! - a number is written only when it is digits, a sign and a point.
+//! - a number is written bare, and only when it is digits, a sign and a
+//!   point.
 
 use jadpo_std::{SqlType, SqlValue};
 
@@ -38,10 +39,12 @@ pub fn sql(value: &SqlValue) -> Option<String> {
         SqlValue::Int4(n) => n.to_string(),
         SqlValue::Int8(n) => n.to_string(),
         SqlValue::Numeric(text) => {
+            // A constant with a point is `numeric`, and a whole one meets
+            // a `numeric` column as one.
             if !is_number(text) {
                 return None;
             }
-            format!("{text}::numeric")
+            text.clone()
         }
         SqlValue::Text(text) => text_value(text)?,
         SqlValue::Json(text) => format!("{}::jsonb", text_value(text)?),
@@ -256,7 +259,7 @@ mod tests {
             (SqlValue::Int2(-3), "-3"),
             (SqlValue::Int4(7), "7"),
             (SqlValue::Int8(i64::MIN), "-9223372036854775808"),
-            (SqlValue::Numeric("-12.50".into()), "-12.50::numeric"),
+            (SqlValue::Numeric("-12.50".into()), "-12.50"),
             (SqlValue::Text("open".into()), "'open'"),
             (
                 SqlValue::Json("{\"a\":\"it's\"}".into()),

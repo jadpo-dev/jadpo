@@ -565,7 +565,10 @@ const BOUNDARIES: &[(&str, Option<&str>)] = &[
     ("crates/jadpo-check/src/routes/wire.rs", None),
     ("crates/jadpo-sql/src/condition.rs", None),
     ("crates/jadpo-sql/src/literal.rs", None),
-    ("crates/jadpo-check/src/data/migrations.rs", Some("fn backfill_sql")),
+    (
+        "crates/jadpo-check/src/data/migrations.rs",
+        Some("fn backfill_sql"),
+    ),
 ];
 
 /// The function `name` of `code`: from its signature to the first line
