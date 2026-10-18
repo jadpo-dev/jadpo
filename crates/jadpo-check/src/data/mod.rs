@@ -2381,7 +2381,14 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                 reason: format!("index {}.{}", entity.born, index.name),
                 predicate: None,
                 collate: Vec::new(),
-                method: None,
+                // A geographic index is GiST, with `geography`'s own
+                // operator class (area 20, "Indexes"; chunk 5.5u4).
+                method: index.kind.map(|kind| match kind {
+                    IndexKind::Geographic => physical::IndexMethod {
+                        name: "gist".into(),
+                        operator_class: String::new(),
+                    },
+                }),
             },
         );
     }

@@ -275,7 +275,8 @@ pub struct IndexColumn<'a> {
 /// Creates the index `name` on `columns` of `table`, holding only the rows
 /// `predicate` (a condition, without parameters) lets through when given,
 /// by `method` (an access method and its columns' operator class, `hnsw`
-/// with `vector_cosine_ops`, area 21) when given, else a B-tree.
+/// with `vector_cosine_ops`, area 21; `gist` with none, its type's own,
+/// for a geometry, area 20) when given, else a B-tree.
 pub fn create_index(
     table: &str,
     name: &str,
@@ -286,6 +287,7 @@ pub fn create_index(
     let columns = columns
         .iter()
         .map(|column| match method {
+            Some((_, "")) => ident(column.name),
             Some((_, class)) => format!("{} {class}", ident(column.name)),
             None if column.collate => format!("{} COLLATE \"C\"", ident(column.name)),
             None => ident(column.name),

@@ -2,7 +2,7 @@
 title: Geospatial
 area: 20
 status: decided
-checked-with: this checkout's jadpo on every gate run, from chunk 5.5u2; the other examples are fragments until chunks 5.5u4 to 5.5u6 build them
+checked-with: this checkout's jadpo on every gate run, from chunk 5.5u2; the other examples are fragments until chunks 5.5u5 and 5.5u6 build them
 rules: []
 ---
 
@@ -17,7 +17,7 @@ other geometries and `Geometry`, all in WGS84 and sent as GeoJSON. This
 page adds what they were waiting for: the `geo.` operations, storage in
 PostGIS, query conditions and indexes, and the formats other systems use.
 
-> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Chunk 5.5u2 built the measures, `geo.distance`, `length`, `bearing` and `area`, and every coordinate held as the shortest decimal of the nearest double, as "Chosen in chunk 5.5u2" records; chunk 5.5u3 built the predicates, `centroid`, `bounding_box` and `rings_valid`, as "Chosen in chunk 5.5u3" records; chunks 5.5u4 to 5.5u6 build the rest, in the order under "Building it". Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
+> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Chunk 5.5u2 built the measures, `geo.distance`, `length`, `bearing` and `area`, and every coordinate held as the shortest decimal of the nearest double, as "Chosen in chunk 5.5u2" records; chunk 5.5u3 built the predicates, `centroid`, `bounding_box` and `rings_valid`, as "Chosen in chunk 5.5u3" records; chunk 5.5u4 built storage and the declared index, as "Chosen in chunk 5.5u4" records; chunks 5.5u5 and 5.5u6 build the rest, in the order under "Building it". Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
 
 | Part | Decided | Builds on |
 |---|---|---|
@@ -479,16 +479,49 @@ the rest.
   index never creates the extension and never needs PostGIS on its
   server, as an application with no entity needs no database (area 5).
 
-```jadpo fragment
-// domains/baking/entities/bakery.jadpo
+A bakery's position and its delivery patches, each stored as it was
+given:
+
+```jadpo check project=geo-storage file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=geo-storage file=domains/baking/types/bakery_name.jadpo hidden
+/// What a bakery is called.
+type BakeryName = Text {
+    max_length: 80
+}
+```
+
+```jadpo check project=geo-storage file=domains/baking/types/patch_name.jadpo hidden
+/// What a delivery patch is called.
+type PatchName = Text {
+    max_length: 80
+}
+```
+
+```jadpo check project=geo-storage file=domains/baking/entities/bakery.jadpo
+use baking/types { BakeryName }
+
 /// A shop that bakes and delivers.
 entity Bakery {
     id: Uuid
     name: BakeryName
     spot: Point
-}
 
-// domains/baking/entities/delivery_patch.jadpo
+    indexes: {
+        by_spot: {
+            fields: [spot]
+            kind: IndexKind.geographic  // the map service's own lookups
+        }
+    }
+}
+```
+
+```jadpo check project=geo-storage file=domains/baking/entities/delivery_patch.jadpo
+use baking/entities { Bakery }
+use baking/types { PatchName }
+
 /// An area one bakery delivers to.
 entity DeliveryPatch {
     id: Uuid
@@ -500,14 +533,50 @@ entity DeliveryPatch {
 }
 ```
 
+```jadpo check project=geo-storage file=domains/baking/actions/open_bakery.jadpo hidden migrate=initial
+use baking/entities { Bakery }
+use baking/types { BakeryName }
+
+/// Opens a bakery at its spot.
+action open_bakery(name: BakeryName, spot: Point) -> Bakery {
+    return Bakery.create {
+        set: {
+            name: name
+            spot: spot
+        }
+    }
+}
+```
+
+```jadpo check project=geo-storage file=domains/baking/actions/open_bakery.test.jadpo
+use baking/entities { Bakery }
+use baking/types { BakeryName }
+
+test "a bakery's spot reads back as it was given" {
+    var spot: Point = Point {
+        latitude: 51.5072
+        longitude: -0.1276
+        altitude: 35metre
+    }
+    var new_bakery: Bakery = open_bakery(BakeryName("Crumbs"), spot)
+    var stored_bakery: Bakery = attempt Bakery.get(new_bakery.id)
+    assert stored_bakery.spot == spot
+}
+```
+
+The initial migration's SQL for `Bakery`, PostGIS created first in the
+store's transaction:
+
 ```sql
-CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS "postgis";
 CREATE TABLE "bakery" (
-  "id" uuid PRIMARY KEY,
-  "name" text NOT NULL,
-  "spot" geography NOT NULL
-    CONSTRAINT "bakery_spot_check" CHECK (ST_SRID("spot") = 4326 AND GeometryType("spot") = 'POINT')
+    "id" uuid NOT NULL,
+    "name" text NOT NULL,
+    "spot" geography NOT NULL,
+    CONSTRAINT "bakery_pkey" PRIMARY KEY ("id")
 );
+ALTER TABLE "bakery" ADD CONSTRAINT "bakery_spot_check" CHECK (ST_SRID("spot") = 4326 AND GeometryType("spot") = 'POINT');
+CREATE INDEX "bakery_by_spot_idx" ON "bakery" USING gist ("spot");
 ```
 
 ### Indexes
@@ -525,7 +594,9 @@ A GiST index holds one geometry column; a query that also filters on
 other fields uses their ordinary indexes beside it, which PostgreSQL
 combines. Verified: `ST_DWithin`, `ST_Covers` and the box test each use
 these indexes, the first two through `&&` on the geography's box, then
-the exact test.
+the exact test. Chunk 5.5u4 built the declared index (`Bakery`'s
+`by_spot` above); the derived ones come with the conditions that need
+them, in chunk 5.5u5.
 
 ### A store with no PostGIS
 
@@ -538,7 +609,16 @@ the exact test.
 
 So the compiler refuses what it can see (a condition on a store that has
 no spatial queries), and the deploy step refuses what only the server
-knows. Nothing waits for the first query to fail.
+knows. Nothing waits for the first query to fail. A role that can't
+create PostGIS, built in chunk 5.5u4:
+
+```text
+error: `main` has no `postgis` extension, and its role can't create it
+  reason: `postgis` is PostGIS, which keeps the project's geometries in `geography` columns; there is no fallback, since a geometry kept any other way would be measured and compared differently. The project's migrations create it, and its database server offers it, but the role applying migrations isn't allowed to create it, so nothing was applied. PostGIS isn't a trusted extension: a superuser, or the provider's own admin role, creates it.
+  next: Have a role allowed to create it run `CREATE EXTENSION postgis` once in this database, then run the command again (human)
+  rule: migration.extension_missing
+  help: docs/language/14-tooling.html#command-errors
+```
 
 ## Queries
 
@@ -695,7 +775,8 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
 | The 17 geospatial types, GeoJSON geometries, `type.standard_exists` for `Point` | Decided (area 19) and built (5.5s) |
 | `geo.distance`, `length`, `bearing` and `area`; coordinates held as doubles' shortest decimals | Decided 2026-10-18; built (5.5u2) |
 | `geo.intersects`, `contains`, `within` (with `distance:`, a `BoundingBox` and a `Circle`), `centroid`, `bounding_box`; `rings_valid` | Decided 2026-10-18; built (5.5u3) |
-| Everything else on this page | Decided 2026-10-18; built by 5.5u4 to 5.5u6 |
+| Storage: `geography` columns and their checks, `BoundingBox` and `Circle` in named columns, PostGIS created by the first migration that needs it, `migration.extension_missing`, `kind: IndexKind.geographic` | Decided 2026-10-18; built (5.5u4) |
+| Everything else on this page | Decided 2026-10-18; built by 5.5u5 and 5.5u6 |
 
 ### Consistency with the rest of the language
 
@@ -952,6 +1033,83 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
   a signature can't name (`type.primitive_signature`); it returns a
   `Delivers` built on it.
 
+### Chosen in chunk 5.5u4
+
+- **EWKB on the wire, the doubles kept by their bits.** A geometry is
+  bound as a shape of positions, each coordinate the double its decimal
+  is (exactly, since question 2), and the PostgreSQL driver sends it in
+  PostGIS's extended WKB with SRID 4326 and a third coordinate where the
+  positions have altitudes, with no type number, so the server takes the
+  column's own type, as pgvector's is sent (chunk 5.5v1); it reads
+  `geography_send`'s EWKB back. The compiler writes a geometry into a
+  statement as EWKT, each coordinate the shortest decimal of its double.
+  WKB lives in the driver only, as question 9 decided.
+- **The check is added after the table,** `ALTER TABLE ... ADD
+  CONSTRAINT "<table>_<column>_check" CHECK (ST_SRID(...) = 4326 AND
+  GeometryType(...) = 'POINT')`, as Jadpo adds every check constraint,
+  rather than inline as this page first sketched it. A `Geometry`'s check
+  lists the six types with `IN`; a circle's centre has a point's.
+  `GeometryType` gives `POINT` for a point with an altitude (verified,
+  PostGIS 3.4.2).
+- **Stored as given, read back as stored.** A ring keeps the order its
+  points were given, clockwise or not: PostGIS keeps it so (verified), and
+  only GeoJSON winds rings by the right-hand rule. Each coordinate read
+  back is the shortest decimal of its double, held to its range; an
+  altitude is that decimal rounded half to even to the micrometre. A
+  polygon read back is checked as a polygon read from GeoJSON is (closed
+  rings of four points or more, `rings_valid`), since another program may
+  have written the row; one that isn't, or a geometry of another kind
+  than the field's, is a fault naming the rule, never the value.
+- **A geometry whose positions mix altitudes isn't stored.** A
+  `geography` holds every position with a third coordinate or none
+  ("can not mix dimensionality in a geometry", verified), but a Jadpo
+  geometry may mix them (a `LineString` with one point at a height, as
+  GeoJSON allows), so storing one is a fault, `internal_fault`, saying
+  PostGIS can't hold it. Nothing is stored changed. Open for Richard: the
+  recommendation is to make "every position with an altitude, or none"
+  part of a geometry's validity, refused as `format` when read and by a
+  named rule when built, so every geometry can be stored.
+- **Whether the role may create the extension is tried, then undone.**
+  Before anything runs, `jadpo migrate apply` creates each extension a
+  pending migration needs and the database lacks inside a savepoint, and
+  rolls it back: whether a role may create an extension that isn't trusted
+  depends on the server and the provider's roles (Amazon RDS's
+  `rds_superuser` and Neon's `neon_superuser` aren't PostgreSQL
+  superusers; assumption from their documentation), so trying is the one
+  sure test. A role that can't is `migration.extension_missing`, saying
+  the server offers it and that a role allowed to run `CREATE EXTENSION
+  postgis` does so once; once the database has it, the migration's
+  `IF NOT EXISTS` needs nothing more. The same holds for pgvector.
+- **The declared index.** An `indexes:` entry may be a block of
+  `fields:` and `kind:`; `kind: IndexKind.geographic` is a GiST index with
+  `geography`'s own operator class on exactly one geometry field (one of
+  the six or `Geometry`), refused otherwise as `type.setting_value`; a
+  setting a block hasn't is `type.unknown_setting`, a block without
+  `fields:` `data.field_list_required`, and the same fields and kind
+  twice `data.duplicate_rule`. `IndexKind` has `geographic` only; area
+  21's `hnsw` and area 5's other kinds come with their chunks. A plain
+  index on a geometry field stays a plain one.
+- **Derived GiST indexes move to chunk 5.5u5,** which builds the `geo.`
+  conditions that would need them: until a query can test a geometry,
+  nothing derives one.
+- **Redis.** An entity in Redis isn't built yet (`toolchain.not_built_yet`,
+  area 5), so nothing stores a geometry there. What a Redis entity will
+  keep, its GeoJSON, is the contract's own reading and writing, and a
+  test holds every geometry, with and without altitude, to come back from
+  its GeoJSON unchanged; a polygon wound clockwise comes back wound by
+  the right-hand rule, which PostGIS storage doesn't do.
+- **`BoundingBox` and `Circle`** are named columns as question 7 decided:
+  a box's sides `numeric`, unchecked in the database like every compound
+  type's rules, and a circle's radius `numeric(38, 6)`, commented as a
+  `Length` in metres.
+- **Where it was tested.** The Done-when test (`jadpo-cli`'s `geography`,
+  the gate's "live PostgreSQL: geography" step) stores every geometry
+  with and without altitude, a `Geometry` of each kind, a box and a
+  circle, and reads each back equal; it checks each column's constraint
+  refuses a line in a point's column and a point in ETRS89, and that
+  PostGIS's `ST_DWithin` uses the declared index. It runs on CI's image
+  (PostGIS 3.6.4) and on Postgres.app here (PostGIS 3.4.2).
+
 ### Open questions
 
 1. **Are edges great circles?** RFC 7946 §3.1.1 says a line between two
@@ -1076,7 +1234,9 @@ Five chunks, each one session, placed after 5.5u on the roadmap:
   indexes derived and declared with `kind: IndexKind.geographic`,
   geometries in Redis as GeoJSON, and CI on `postgis/postgis:16-3.4`.
   Done when an entity stores and reads back every geometry, with and
-  without altitude, unchanged.
+  without altitude, unchanged. *Built:* CI runs `tools/postgres/Dockerfile`
+  (chunk 5.5v1); derived indexes moved to 5.5u5, and Redis entities aren't
+  built yet ("Chosen in chunk 5.5u4").
 - **5.5u5 Geospatial query conditions** `opus · high`, after 5.5u3 and
   5.5u4: the `geo.` conditions, the box and circle filters and order by
   distance, with area 6 amended and golden SQL for each. Done when each

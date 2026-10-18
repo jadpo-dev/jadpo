@@ -120,7 +120,7 @@ fn project(name: &str) -> PathBuf {
     write(
         &root,
         "domains/maps/entities/survey.jadpo",
-        "/// Every geometry, kept.\nentity Survey {\n    id: Uuid\n    point: Point\n    line: LineString\n    polygon: Polygon\n    points: MultiPoint\n    lines: MultiLineString\n    polygons: MultiPolygon\n    shape: Geometry\n    view: BoundingBox\n    reach: Circle\n    maybe_point: Point?\n    maybe_reach: Circle?\n}\n",
+        "/// Every geometry, kept.\nentity Survey {\n    id: Uuid\n    point: Point\n    line: LineString\n    polygon: Polygon\n    points: MultiPoint\n    lines: MultiLineString\n    polygons: MultiPolygon\n    shape: Geometry\n    view: BoundingBox\n    reach: Circle\n    maybe_point: Point?\n    maybe_reach: Circle?\n\n    indexes: {\n        by_point: {\n            fields: [point]\n            kind: IndexKind.geographic\n        }\n    }\n}\n",
     );
     write(
         &root,
@@ -247,6 +247,7 @@ fn every_geometry_is_stored_and_read_back_unchanged() {
         "ALTER TABLE \"survey\" ADD CONSTRAINT \"survey_lines_check\" CHECK (ST_SRID(\"lines\") = 4326 AND GeometryType(\"lines\") = 'MULTILINESTRING');",
         "ALTER TABLE \"survey\" ADD CONSTRAINT \"survey_shape_check\" CHECK (ST_SRID(\"shape\") = 4326 AND GeometryType(\"shape\") IN ('POINT', 'LINESTRING', 'POLYGON', 'MULTIPOINT', 'MULTILINESTRING', 'MULTIPOLYGON'));",
         "ALTER TABLE \"survey\" ADD CONSTRAINT \"survey_reach_centre_check\" CHECK (ST_SRID(\"reach_centre\") = 4326 AND GeometryType(\"reach_centre\") = 'POINT');",
+        "CREATE INDEX \"survey_by_point_idx\" ON \"survey\" USING gist (\"point\");",
     ] {
         assert!(sql.contains(expected), "`{expected}` in:\n{sql}");
     }
@@ -324,6 +325,23 @@ fn each_column_s_check_holds_it_to_its_type_and_wgs84() {
     assert!(refused.contains("survey_point_check"), "{refused}");
     let refused = insert("SRID=4258;POINT(1 2)").expect_err("a point in ETRS89");
     assert!(refused.contains("survey_point_check"), "{refused}");
+    // The declared geographic index serves PostGIS's distance test.
+    let planned = jadpo_host_native::Runtime::new().expect("runtime").block_on(async {
+        let store = jadpo_host_native::postgres(&url).expect("store");
+        let mut transaction = store.begin().await.expect("begin");
+        transaction.batch("SET LOCAL enable_seqscan = off").await.expect("set");
+        let found = transaction
+            .query(
+                "EXPLAIN SELECT \"id\" FROM \"survey\" WHERE ST_DWithin(\"point\", 'SRID=4326;POINT(-0.1276 51.5072)'::geography, 1000)",
+                &[],
+            )
+            .await
+            .expect("explained");
+        let _ = transaction.rollback().await;
+        found
+    });
+    let text = format!("{planned:?}");
+    assert!(text.contains("survey_by_point_idx"), "{text}");
 }
 
 #[test]
@@ -407,7 +425,7 @@ fn a_role_that_can_t_create_postgis_is_refused_before_anything_runs() {
     assert_eq!(refused.code, 1, "{}{}", refused.stdout, refused.stderr);
     assert_eq!(
         refused.stderr,
-        "error: `main` has no `postgis` extension, and its role can't create it\n  reason: `postgis` is PostGIS, which keeps the project's geometries in `geography` columns; there is no fallback, since a geometry kept any other way would be measured and searched differently. The project's migrations create it, and its database server offers it, but the role applying migrations isn't allowed to create it, so nothing was applied. PostGIS isn't a trusted extension: a superuser, or the provider's own admin role, creates it.\n  next: Have a role allowed to create it run `CREATE EXTENSION postgis` once in this database, then run the command again (human)\n  rule: migration.extension_missing\n  help: docs/language/14-tooling.html#command-errors\n"
+        "error: `main` has no `postgis` extension, and its role can't create it\n  reason: `postgis` is PostGIS, which keeps the project's geometries in `geography` columns; there is no fallback, since a geometry kept any other way would be measured and compared differently. The project's migrations create it, and its database server offers it, but the role applying migrations isn't allowed to create it, so nothing was applied. PostGIS isn't a trusted extension: a superuser, or the provider's own admin role, creates it.\n  next: Have a role allowed to create it run `CREATE EXTENSION postgis` once in this database, then run the command again (human)\n  rule: migration.extension_missing\n  help: docs/language/14-tooling.html#command-errors\n"
     );
     let tables = rows(
         &url,

@@ -1143,7 +1143,7 @@ fn run<T>(
 fn extension_purpose(extension: &str) -> String {
     match extension {
         "vector" => "`vector` is pgvector, which stores and searches the project's vectors; there is no fallback, since a search held anywhere else would behave differently from the one that was tested.".to_string(),
-        "postgis" => "`postgis` is PostGIS, which keeps the project's geometries in `geography` columns; there is no fallback, since a geometry kept any other way would be measured and searched differently.".to_string(),
+        "postgis" => "`postgis` is PostGIS, which keeps the project's geometries in `geography` columns; there is no fallback, since a geometry kept any other way would be measured and compared differently.".to_string(),
         other => format!("`{other}` is a PostgreSQL extension the project's columns need."),
     }
 }
