@@ -1930,6 +1930,7 @@ domains/
     schedules/    expire_quotes.jadpo
     fixtures/     sample_catalogue.jadpo
     translations/ order_shipped.jadpo  en_gb.jadpo  de_de.jadpo  sources.jadpo_record
+    prompts/      suggest_gift_note.jadpo  suggest_gift_note.prompt
     documents/    invoice_document.jadpo  invoice_document.html
   inventory/
     actions/      reserve_stock.jadpo        public: called by checkout in one transaction
@@ -2014,6 +2015,7 @@ build/
 | (none) | Third-party APIs are provider packages: connections in `app.jadpo`; installed packages in root `packages/`, pinned in `jadpo.lock`; the app's own in `shared/providers/` | Amended 2026-10-13 by area 11, revised 2026-10-16; the `integrations/` folder and `integration` keyword are gone |
 | `emails/` | Email types and their templates, one email per name (`welcome_email.jadpo`, `welcome_email.html`, `welcome_email.txt`) | Added 2026-10-13 (Richard, area 16) |
 | `translations/` | One `type X = Message` per file, one `translations { }` language file per locale named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects, and the generated, committed `sources.jadpo_record` (area 18; named `sources.json` until the records are renamed, 2026-10-16) | Added 2026-10-16 (Richard, area 10); a message a second domain uses goes in `shared/translations/`. Built in chunk 5.4c: the folder is one `layout.unknown_location` lists, and a language file's name is a locale, not its `translations { }` |
+| `prompts/` | One `type X = Prompt` per file, each with its text in `<name>.prompt` beside it, two sections, `# Instructions` and `# Request` (area 21) | Added 2026-10-18 (Richard, area 21); a prompt a second domain uses goes in `shared/prompts/`, as a message does. Built in chunk 5.5v2 |
 | `documents/` | Document types and their templates, one document per name (`invoice_document.jadpo`, `invoice_document.html`), rendered to HTML or PDF by the `documents` capability | Added 2026-10-16 (Richard, area 16) |
 | `fixtures/` | Test data shared by several test files in the domain | |
 

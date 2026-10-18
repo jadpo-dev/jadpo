@@ -42,6 +42,7 @@ impl ItemKind {
             ItemKind::Type(Base::Event) => "event",
             ItemKind::Type(Base::EmailMessage) => "email",
             ItemKind::Type(Base::Message) => "message",
+            ItemKind::Type(Base::Prompt) => "prompt",
             ItemKind::Type(_) => "type",
             ItemKind::Function => "function",
             ItemKind::Constant => "constant",
@@ -98,6 +99,9 @@ pub enum Base {
     /// `type X = Message { ... }` (area 10, "Translations as messages"):
     /// text for people, its fields the wording's placeholders.
     Message,
+    /// `type X = Prompt { ... }` (area 21, "Prompts as files"): what a
+    /// model is asked, its fields the placeholders of its `.prompt` file.
+    Prompt,
     /// A built-in representation or another named type, as written.
     Named(String),
 }
@@ -114,6 +118,7 @@ impl Base {
             "Event" => Base::Event,
             "EmailMessage" => Base::EmailMessage,
             "Message" => Base::Message,
+            "Prompt" => Base::Prompt,
             other => Base::Named(other.to_string()),
         }
     }
@@ -128,6 +133,7 @@ impl Base {
                 | Base::Event
                 | Base::EmailMessage
                 | Base::Message
+                | Base::Prompt
         )
     }
 }

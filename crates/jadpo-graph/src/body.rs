@@ -466,6 +466,9 @@ pub enum Callee {
     /// `translations.<key>(locale:, ...)` (area 10): the key, whose message
     /// the runtime formats in the locale given.
     Translation(String),
+    /// `prompts.render(prompt)` (area 21): the prompt's name, whose text
+    /// the runtime fills from the value given.
+    Prompt(String),
     /// Nothing that can be called: already reported.
     Unknown,
 }
@@ -488,6 +491,7 @@ impl Callee {
             | Callee::Session(_)
             | Callee::AdvanceClock
             | Callee::Translation(_)
+            | Callee::Prompt(_)
             | Callee::Unknown => None,
         }
     }

@@ -322,6 +322,9 @@ pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
     for node in translation_nodes(db, project) {
         builder.node(node.clone());
     }
+    for node in prompt_nodes(db, project) {
+        builder.node(node.clone());
+    }
     let (nodes, edges) = policy_nodes(db, project);
     for node in nodes {
         builder.node(node.clone());
@@ -436,6 +439,63 @@ pub fn translation_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
         node.digest = Some(jadpo_graph::Digest::of(
             std::iter::once(facts.key.as_str()).chain(facts.text.iter().map(String::as_str)),
         ));
+        out.push(node);
+    }
+    out
+}
+
+/// Each prompt (area 21), keyed by its name, placed at its `.prompt` file,
+/// with its type as its parent and its version, `answer_question@3fa9c2d1`:
+/// the first 8 hex characters of a SHA-256 over its two files, which every
+/// call's trace carries. Its digest covers both files, so an edit to its
+/// words reaches the tests of what renders it.
+#[salsa::tracked(returns(ref))]
+pub fn prompt_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
+    let registry = registry(db, project);
+    let records = project.records(db);
+    let mut out = Vec::new();
+    for facts in &crate::prompts::analysis(db, project).prompts {
+        let Some(version) = &facts.digest else {
+            continue;
+        };
+        let Some(text) = records
+            .iter()
+            .find(|record| record.path == facts.text_path)
+            .and_then(|record| record.text.as_ref().ok())
+        else {
+            continue;
+        };
+        let Some(file) =
+            crate::lookups::file_at(db, project, crate::lookups::Name::new(db, facts.path.clone()))
+        else {
+            continue;
+        };
+        let mut node = Node::new(
+            registry.key(Kind::Prompt, &facts.key, None),
+            Kind::Prompt,
+            facts.key.clone(),
+        );
+        let lines = LineIndex::new(text);
+        let end = u32::try_from(text.len()).unwrap_or(u32::MAX);
+        node.place = Some(jadpo_graph::Place {
+            file: facts.text_path.clone(),
+            start: 0,
+            end,
+            lines: (1, lines.line(end.saturating_sub(1)).max(1)),
+        });
+        node.digest = Some(jadpo_graph::Digest::of([file.text(db).as_str(), text.as_str()]));
+        node.domain = facts.ownership.domain().map(str::to_string);
+        node.parent = Some(item_key(
+            registry,
+            Kind::Type,
+            &ItemKind::Type(jadpo_db::Base::Prompt),
+            &facts.type_name,
+            &facts.ownership,
+        ));
+        node.doc = facts.description.clone();
+        node.detail = jadpo_graph::Detail::Prompt {
+            version: format!("{}@{version}", facts.key),
+        };
         out.push(node);
     }
     out

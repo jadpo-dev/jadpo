@@ -32,6 +32,7 @@ fn holding(folder: Folder) -> &'static str {
         Folder::Subscribers => "one subscriber per file",
         Folder::Emails => "one email per file",
         Folder::Translations => "one message per file, and one language file for each locale",
+        Folder::Prompts => "one prompt per file, each with its `.prompt` text beside it",
         Folder::Fixtures => "test data shared by the domain's tests",
     }
 }

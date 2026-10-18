@@ -51,6 +51,7 @@ mod passkeys;
 mod people_places;
 mod percentages;
 mod policy;
+mod prompts;
 mod project;
 mod quantities;
 mod randomness;

@@ -167,7 +167,8 @@ impl Body<'_> {
                 Reach::Caller(_)
                 | Reach::Session(_)
                 | Reach::AdvanceClock
-                | Reach::Translation { .. },
+                | Reach::Translation { .. }
+                | Reach::Prompt(_),
             ) => Fallible::Never,
             Some(Reach::Entity { entity, operation }) => self.entity_fallible(entity, operation),
             Some(Reach::Construct(_) | Reach::Unknown) | None => Fallible::Unknown,

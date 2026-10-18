@@ -354,6 +354,9 @@ impl Body<'_> {
             if head == "clock" && member == "advance" {
                 return self.advance_clock(call, callee, &written);
             }
+            if head == crate::prompts::PROMPTS && member == "render" {
+                return self.prompt_render(call, &written);
+            }
             // Nothing else a generated namespace holds is called: `clock.now`
             // is a value, and the rest wait for their areas.
             let span = self.span(callee);

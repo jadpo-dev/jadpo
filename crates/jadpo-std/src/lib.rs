@@ -66,6 +66,7 @@ mod num;
 mod operations;
 pub mod percentage;
 pub mod policy;
+pub mod prompt;
 pub mod quantity;
 pub mod read;
 mod rules;

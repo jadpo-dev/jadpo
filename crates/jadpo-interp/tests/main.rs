@@ -32,6 +32,7 @@ mod money;
 mod named_collections;
 mod numbers;
 mod percentages;
+mod prompts;
 mod proofs;
 mod quantities;
 mod randomness;
