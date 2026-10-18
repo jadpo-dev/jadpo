@@ -10,6 +10,7 @@ mod support;
 
 mod bodies;
 mod calendar;
+mod calendar_events;
 mod client_address;
 mod conditions;
 mod config;

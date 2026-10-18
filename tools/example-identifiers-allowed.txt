@@ -7,6 +7,7 @@
 # Words the language itself defines: `Enum.all` lists an enum's variants
 # (area 19, question 22), and the standard types' names and parts
 all
+first_day
 phone
 postal_code
 

@@ -119,6 +119,7 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
             }
         }
         (TextForm::Mailbox, Value::Record(record)) => crate::mailbox::mailbox_text(record)?,
+        (TextForm::Event, Value::Record(record)) => crate::event::event_text(record)?,
         (TextForm::Code, Value::Variant(variant)) => entry
             .codes()
             .and_then(|codes| codes.get(variant.ordinal as usize))
@@ -177,8 +178,9 @@ pub fn read_range(raw: &str, item: &str) -> Result<Value, Fault> {
 
 /// A compound standard type's value as the columns its entry lists hold
 /// it (area 19): `Money`'s minor units and currency code, an object's parts
-/// in its fields' order (chunk 5.5l), a standard enum's as its code. `None`
-/// for a type stored in one column.
+/// in its fields' order (chunk 5.5l), a standard enum's as its code, and
+/// another standard object as its canonical text (an event's local times,
+/// chunk 5.5k3). `None` for a type stored in one column.
 pub fn to_parts(value: &Value) -> Option<Vec<Value>> {
     match value {
         Value::Money(money) => Some(vec![Value::Int(money.minor), Value::text(money.code())]),
@@ -197,6 +199,7 @@ pub fn to_parts(value: &Value) -> Option<Vec<Value>> {
                         .and_then(StandardType::codes)
                         .and_then(|codes| codes.get(variant.ordinal as usize))
                         .map(|(_, code)| Value::text(code)),
+                    part @ Value::Record(_) => from(part).ok(),
                     other => Some(other.clone()),
                 })
                 .collect()
@@ -318,8 +321,12 @@ fn written_in(raw: &str, ty: &str, country: &crate::Variant) -> Result<Value, Fa
 }
 
 /// The part of a standard object a rule across its parts refuses (an
-/// address's postal code that doesn't fit its country), if any.
+/// address's postal code that doesn't fit its country, an event with both
+/// days and times), if any.
 pub fn broken_part(record: &crate::Record) -> Option<&'static str> {
+    if &*record.ty == jadpo_std::standard::events::CALENDAR_EVENT {
+        return crate::event::broken_part(record).map(|broken| broken.part);
+    }
     jadpo_std::standard::part_rules(&record.ty)
         .iter()
         .find(|rule| {
@@ -444,6 +451,7 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
             )
         }),
         TextForm::Mailbox => crate::mailbox::read_mailbox(entry, raw),
+        TextForm::Event => crate::event::read_event(raw),
         // Its ends' type is the range type's argument, which `parse` reads.
         TextForm::Range => return Err(Fault::Shape),
         // The time group's forms, which `calendar` reads above.
