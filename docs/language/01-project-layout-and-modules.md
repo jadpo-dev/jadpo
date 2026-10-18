@@ -1086,7 +1086,7 @@ library due_dates {
 ```text output
 error: `helpers/` isn't a folder a domain has
  --> domains/planning/helpers/due_dates.jadpo
-  reason: A domain holds only `entities/`, `types/`, `failures/`, `actions/`, `queries/`, `libraries/`, `routes/`, `schedules/`, `events/`, `subscribers/`, `emails/`, `translations/` and `fixtures/`, each named after what its files declare.
+  reason: A domain holds only `entities/`, `types/`, `failures/`, `actions/`, `queries/`, `libraries/`, `routes/`, `schedules/`, `events/`, `subscribers/`, `emails/`, `translations/`, `prompts/` and `fixtures/`, each named after what its files declare.
   next: Move the file to `domains/planning/libraries/due_dates.jadpo` (agent)
   rule: layout.unknown_location
   help: docs/language/01-project-layout-and-modules.html#layout-unknown-location

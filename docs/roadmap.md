@@ -1205,7 +1205,7 @@ reference only).
   when a filtered nearest query of five returns the same five records
   interpreted and on PostgreSQL, its plan uses the index, and each new
   error has a checked example.
-- [ ] **5.5v2 Prompt files** `opus · high` (area 21, "Prompts as
+- [x] **5.5v2 Prompt files** `opus · high` (area 21, "Prompts as
   files"): the `Prompt` type base, `prompts/` in a domain,
   `<name>.prompt` with `# Instructions` and `# Request`, placeholders
   checked as translations' are, free text only as tagged data blocks
@@ -1213,7 +1213,14 @@ reference only).
   turns, `prompts.render` and `jadpo ai show`, and each prompt's digest
   in the manifest. Done when a rendered prompt matches the page's
   example byte for byte, an injected closing tag can't end its block,
-  and each `prompt.` error has a checked example.
+  and each `prompt.` error has a checked example. Built: the page's
+  request renders byte for byte (a test reads it from the page); every
+  closing tag in a block is escaped, in any case, spaced, with HTML
+  references, percent and backslash encodings and Unicode lookalikes,
+  and nested, in text and in JSON, which stays the same document; the
+  five `prompt.` errors have checked examples; `prompts.render` gives a
+  `List<ChatMessage>`, and `jadpo ai show` prints a prompt unfilled. What
+  the page left open is area 21's "Chosen in chunk 5.5v2".
 - [x] **5.5w Every boundary through the contract: storage** `opus · high`
   (area 19, "Every standard type meets one contract"; Richard,
   2026-10-17), after the standard type groups. Split (2026-10-18) after a
