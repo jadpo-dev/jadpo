@@ -1083,6 +1083,7 @@ name = "jadpo-host-native"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "getrandom",
  "http-body-util",
  "hyper",
  "hyper-util",

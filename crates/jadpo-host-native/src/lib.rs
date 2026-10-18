@@ -40,7 +40,6 @@ pub mod http;
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::io;
-use std::io::Read as _;
 use std::rc::Rc;
 
 use jadpo_drivers::{Endpoint, Stream, Transport};
@@ -165,10 +164,10 @@ impl Host for NativeHost {
         std::env::var(name).ok()
     }
 
+    /// The operating system's cryptographic generator, through getrandom:
+    /// `false` when it can't give, never a weaker source.
     fn random(&self, bytes: &mut [u8]) -> bool {
-        std::fs::File::open("/dev/urandom")
-            .and_then(|mut source| source.read_exact(bytes))
-            .is_ok()
+        getrandom::fill(bytes).is_ok()
     }
 
     /// tokio's timer, which runs inside [`Runtime::block_on`].
@@ -228,6 +227,15 @@ mod tests {
         let begun = runtime.block_on(store.begin());
         assert_eq!(begun.err(), Some(StoreError::Unavailable));
         let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn random_bytes_come_from_the_operating_systems_generator() {
+        let host = NativeHost::new();
+        let (mut a, mut b) = ([0u8; 32], [0u8; 32]);
+        assert!(host.random(&mut a) && host.random(&mut b));
+        assert_ne!(a, b, "each fill is new");
+        assert_ne!(a, [0u8; 32]);
     }
 
     #[test]

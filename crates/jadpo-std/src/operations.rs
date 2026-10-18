@@ -255,6 +255,11 @@ pub enum Op {
     MoneyOf,
     MoneySplit,
     MoneySum,
+    RandomCode,
+    RandomInteger,
+    RandomSample,
+    RandomShuffle,
+    RandomToken,
     RangeContains,
     RangeIntersection,
     RangeOverlaps,
@@ -616,6 +621,26 @@ const fn list(
     Operation {
         op,
         namespace: "list",
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: &[],
+        rust,
+    }
+}
+
+/// A `random` operation (area 19, "Randomness"), which fails on nothing.
+const fn random(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace: "random",
         name,
         params,
         result,
@@ -1675,6 +1700,43 @@ pub const OPERATIONS: &[Operation] = &[
             "money::sum",
         )
     },
+    // Randomness (area 19, "Randomness", question 19): each reads the
+    // generator, the operating system's outside tests and one seeded per
+    // test in them, so it is called only in actions, as `clock.now` is
+    // ([`Op::reads_generator`]). Each is one function in `jadpo-value`'s
+    // `random` module, given the invocation's source of random bytes.
+    random(
+        Op::RandomCode,
+        "code",
+        &[Param {
+            within: Some((4, 32)),
+            ..param("length", INT)
+        }],
+        TEXT,
+        "random::code",
+    ),
+    random(
+        Op::RandomInteger,
+        "integer",
+        &[param("min", INT), param("max", INT)],
+        INT,
+        "random::integer",
+    ),
+    random(
+        Op::RandomSample,
+        "sample",
+        &[ITEMS, count("count")],
+        Kind::List,
+        "random::sample",
+    ),
+    random(
+        Op::RandomShuffle,
+        "shuffle",
+        &[ITEMS],
+        Kind::List,
+        "random::shuffle",
+    ),
+    random(Op::RandomToken, "token", &[], TEXT, "random::token"),
     // The range operations (area 19, "Ranges"), each one function in
     // `jadpo-value`'s `range` module, by the range's own end rule: a
     // `Range<T>` and an `InstantRange` hold their start and not their end,
@@ -2298,6 +2360,22 @@ impl Op {
             .find(|operation| operation.op == self)
             // The table lists every operation, which its test holds it to.
             .unwrap_or(&DIVIDE)
+    }
+
+    /// Whether it reads the generator, the one exception to every
+    /// operation being pure (area 19, "What every operation follows"):
+    /// called only in actions, as `clock.now` is, and given the
+    /// invocation's random bytes, which a test seeds and a recorded run
+    /// replays (question 19).
+    pub fn reads_generator(self) -> bool {
+        matches!(
+            self,
+            Op::RandomCode
+                | Op::RandomInteger
+                | Op::RandomSample
+                | Op::RandomShuffle
+                | Op::RandomToken
+        )
     }
 }
 

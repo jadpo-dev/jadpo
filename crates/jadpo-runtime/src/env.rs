@@ -6,9 +6,10 @@
 /// An invocation's environment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Env {
-    /// Seeds what an invocation decides at random, such as new identities,
-    /// so a test that uses them reproduces. A test's comes from the run's
-    /// order seed and the test's key, never from the order tests run in.
+    /// Seeds what an invocation decides at random, new identities and
+    /// what `random` gives (area 19, question 19), so a test that uses
+    /// them reproduces. A test's comes from its key alone, never from the
+    /// run or the order tests run in, so a rerun gives it the same values.
     /// `None` in a deployable: what it decides at random takes the host's
     /// random bytes ([`crate::Host::random`]), since the seeded generator
     /// can be run backwards from what it gave.

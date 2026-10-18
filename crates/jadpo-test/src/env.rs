@@ -45,14 +45,17 @@ fn digest(text: &str) -> u64 {
 }
 
 impl TestEnv {
-    /// The environment of the test with key `key` in a run seeded `seed`:
-    /// its seed comes from both, so a rerun with the same seed gives it the
-    /// same one wherever it falls in the order. Its clock starts at the
-    /// fixed default, 2000-01-01T00:00:00Z, which a test's `clock:` moves.
-    pub fn new(seed: u64, key: &str) -> TestEnv {
+    /// The environment of the test with key `key`: its seed comes from
+    /// the key alone, so every run gives the test the same identities,
+    /// tokens, codes and shuffles wherever it falls in the order, as its
+    /// clock is fixed (area 13, "Controlling time", amended by area 19,
+    /// question 19); the run's order seed decides only the order. Its
+    /// clock starts at the fixed default, 2000-01-01T00:00:00Z, which a
+    /// test's `clock:` moves.
+    pub fn new(key: &str) -> TestEnv {
         TestEnv {
             env: Env {
-                seed: Some(splitmix(seed ^ digest(key))),
+                seed: Some(splitmix(digest(key))),
                 clock: Clock::TEST,
             },
             database: TestDatabase::None,
@@ -72,11 +75,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_tests_seed_follows_the_run_and_the_test_not_the_order() {
-        let a = TestEnv::new(1, "test sizes \"a\"");
-        assert_eq!(a, TestEnv::new(1, "test sizes \"a\""));
-        assert_ne!(a.env.seed, TestEnv::new(2, "test sizes \"a\"").env.seed);
-        assert_ne!(a.env.seed, TestEnv::new(1, "test sizes \"b\"").env.seed);
+    fn a_tests_seed_follows_the_test_not_the_run_or_the_order() {
+        let a = TestEnv::new("test sizes \"a\"");
+        assert_eq!(a, TestEnv::new("test sizes \"a\""));
+        assert_ne!(a.env.seed, TestEnv::new("test sizes \"b\"").env.seed);
         assert_eq!(a.env.clock, Clock::TEST);
     }
 }

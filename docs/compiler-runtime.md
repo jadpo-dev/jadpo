@@ -314,6 +314,12 @@ route table's kind of codec for each type a call reads or writes, built by
 the same code, numbered per call through the site's `Decoded::Json`, so a
 document in memory is read and written exactly as a request and a
 response are (area 19, "Data formats").
+Since chunk 5.5q the table marks the operations that read the generator
+(`Op::reads_generator`, `random`'s five): the one exception to every
+operation being pure. The checker refuses them outside actions and tests
+(`type.random_context`, as `clock.now`'s `type.clock_context`), and each
+executor runs them through `jadpo_value::random::run`, given the
+invocation's source of random bytes, rather than `jadpo_value::run`.
 Since chunk 5.5g2 an `attempt` arm that maps `json.read`'s `mismatch` to
 a failure declaring `problem: DecodeProblem` carries that field's place
 (`RuleArm::problem` in the graph, `Raise::problem` in the plan), and the
@@ -1671,7 +1677,15 @@ when the invocation has no seed, as in a deployable; a test's environment
 keeps its seed (`Env::seed`), whose SplitMix generator makes the same
 identities on every run but can be run backwards, so it serves tests
 only. A host with no randomness asked for an identity without a seed is a
-defect at the write. A store's refusal becomes what the
+defect at the write. Since chunk 5.5q a test's seed comes from its key
+alone, not the run's order seed, so a rerun gives it the same values
+whatever order it runs in (area 19, question 19); every other random byte
+an invocation is given (`random`'s values, the tokens signing in makes)
+comes through `Ctx::random_bytes`: a replayed run's recorded bytes
+(`Ctx::replay_random`), else the host's, else the seed's, kept while
+recording (`Ctx::record_random`), and none at all, never a weaker source,
+when there is neither a generator nor a seed. The native host reads the
+operating system's generator through `getrandom`. A store's refusal becomes what the
 runtime raises: `unavailable`, a rerun after a concurrent change, and
 otherwise the `Store` fault with the driver's reason.
 

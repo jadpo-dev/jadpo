@@ -597,6 +597,27 @@ impl Body<'_> {
         );
     }
 
+    /// A `random` operation reads the generator, an effect only actions
+    /// have, as the clock is (area 19, question 19).
+    pub(super) fn random_read(&mut self, span: jadpo_diag::Span, written: &str) {
+        if !self.context.is_pure() {
+            return;
+        }
+        let caller = self.context.with_a();
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_RANDOM_CONTEXT,
+                format!("{} can't call `{written}`", super::capital(caller)),
+            )
+            .at(span, "reads the generator")
+            .reason(format!(
+                "{} is pure: it gives the same result for the same arguments, so a random value it needs arrives as a parameter; only actions read the generator, which a test seeds so that it repeats.",
+                super::capital(caller)
+            ))
+            .next("Pass the value in as a parameter, made in the action that calls this"),
+        );
+    }
+
     /// `Type.member` as a value: an enum's variant.
     pub(super) fn type_member(
         &mut self,

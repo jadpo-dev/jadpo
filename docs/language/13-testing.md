@@ -575,7 +575,9 @@ one with `.run()` (question 5).
 
 > Amended 2026-10-17 by area 19 (question 19): the standard library's
 > `random` namespace is fixed in tests as the clock is: seeded per test,
-> so a rerun gives the same tokens, codes and shuffles (chunk 5.5q).
+> so a rerun gives the same tokens, codes and shuffles. Built in chunk
+> 5.5q: the seed comes from the test alone, never the run's order seed,
+> so a test may name the exact code it expects; new identities share it.
 
 ## Configuration in tests
 

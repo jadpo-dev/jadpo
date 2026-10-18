@@ -105,6 +105,18 @@ impl fmt::Debug for Held {
     }
 }
 
+/// What happens to the random bytes an invocation is given (area 17).
+enum Tape {
+    Off,
+    /// Kept, in the order they were given.
+    Recording(Vec<u8>),
+    /// A recorded run's, given back from `at`.
+    Replaying {
+        bytes: Vec<u8>,
+        at: usize,
+    },
+}
+
 /// One invocation's context.
 pub struct Ctx<'p> {
     places: &'p Places,
@@ -132,6 +144,9 @@ pub struct Ctx<'p> {
     pub(crate) unpoliced: bool,
     /// How many random values it has made from its seed.
     draws: u64,
+    /// The random bytes a recorded run keeps, or a replayed run gives back
+    /// (area 17, "Replaying a production request").
+    tape: Tape,
     /// When the request being answered runs out of time, on the host's
     /// monotonic clock (area 7, "Time limits").
     deadline: Option<u64>,
@@ -171,6 +186,7 @@ impl<'p> Ctx<'p> {
             client: None,
             unpoliced: false,
             draws: 0,
+            tape: Tape::Off,
             deadline: None,
             settings: Vec::new(),
         }
@@ -241,10 +257,36 @@ impl<'p> Ctx<'p> {
         }
     }
 
-    /// Fills `out` with random bytes: the host's, or under a seed (a
+    /// Fills `out` with random bytes: in a replayed run, the next bytes the
+    /// recorded run was given; otherwise the host's, or under a seed (a
     /// test's) from a generator the seed starts, so a test reproduces.
-    /// `false` when there is neither.
+    /// While recording, what it gives is kept. `false` when there is none
+    /// to give, a replay that has run out included: never a weaker source.
+    /// What `random` gives and the tokens signing in makes come from here
+    /// (areas 8 and 19).
     pub fn random_bytes(&mut self, out: &mut [u8]) -> bool {
+        if let Tape::Replaying { bytes, at } = &mut self.tape {
+            let Some(next) = at
+                .checked_add(out.len())
+                .and_then(|end| bytes.get(*at..end))
+            else {
+                return false;
+            };
+            out.copy_from_slice(next);
+            *at += out.len();
+            return true;
+        }
+        if !self.fresh_random(out) {
+            return false;
+        }
+        if let Tape::Recording(kept) = &mut self.tape {
+            kept.extend_from_slice(out);
+        }
+        true
+    }
+
+    /// Random bytes no recording gave: the host's, or the seed's.
+    fn fresh_random(&mut self, out: &mut [u8]) -> bool {
         if self.host.random(out) {
             return true;
         }
@@ -265,6 +307,29 @@ impl<'p> Ctx<'p> {
             }
         }
         true
+    }
+
+    /// Keeps the random bytes the invocation is given from now on, for
+    /// [`Ctx::recorded_random`]: what a recorded run replays (area 17).
+    pub fn record_random(&mut self) {
+        self.tape = Tape::Recording(Vec::new());
+    }
+
+    /// The random bytes kept since [`Ctx::record_random`]; `None` when not
+    /// recording. They can hold tokens, so they never leave the process
+    /// except as area 17's recording does.
+    pub fn recorded_random(&self) -> Option<&[u8]> {
+        match &self.tape {
+            Tape::Recording(kept) => Some(kept),
+            _ => None,
+        }
+    }
+
+    /// Gives `bytes`, a recorded run's, as the invocation's random bytes,
+    /// in order, so it makes the same tokens, codes and shuffles; once
+    /// they run out it has no randomness to give (area 17).
+    pub fn replay_random(&mut self, bytes: Vec<u8>) {
+        self.tape = Tape::Replaying { bytes, at: 0 };
     }
 
     /// Records what the running action did to the request's session;
@@ -774,6 +839,51 @@ mod tests {
         let none = MemoryHost::new();
         let mut ctx = Ctx::new(&places, &none, live);
         assert_eq!(ctx.new_id(), None, "no seed and no randomness");
+    }
+
+    #[test]
+    fn random_bytes_follow_the_seed_and_a_recorded_run_replays_them() {
+        let places = places();
+        let none = MemoryHost::new();
+        let seeded = Env {
+            seed: Some(7),
+            clock: crate::Clock::TEST,
+        };
+        let draw = |ctx: &mut Ctx<'_>| {
+            let mut bytes = [0u8; 12];
+            assert!(ctx.random_bytes(&mut bytes));
+            bytes
+        };
+        // A seed gives the same bytes every time, each draw new.
+        let mut ctx = Ctx::new(&places, &none, seeded);
+        let first = draw(&mut ctx);
+        let second = draw(&mut ctx);
+        assert_ne!(first, second);
+        let mut again = Ctx::new(&places, &none, seeded);
+        assert_eq!((draw(&mut again), draw(&mut again)), (first, second));
+        // A deployable's run, on the host's generator, recorded...
+        let live = Env {
+            seed: None,
+            ..seeded
+        };
+        let host = Random(0x5a);
+        let mut recorded = Ctx::new(&places, &host, live);
+        recorded.record_random();
+        let given = (draw(&mut recorded), draw(&mut recorded));
+        let tape = recorded.recorded_random().expect("recording").to_vec();
+        assert_eq!(tape.len(), 24);
+        // ...replays on a host with no generator and no seed, and once
+        // the recording runs out there is no randomness, never a weaker one.
+        let mut replayed = Ctx::new(&places, &none, live);
+        replayed.replay_random(tape);
+        assert_eq!((draw(&mut replayed), draw(&mut replayed)), given);
+        assert!(!replayed.random_bytes(&mut [0u8; 1]));
+        assert!(!Ctx::new(&places, &none, live).random_bytes(&mut [0u8; 1]));
+        assert!(format!("{recorded:?}").contains("Ctx"));
+        assert!(
+            !format!("{recorded:?}").contains("90, 90"),
+            "never the bytes"
+        );
     }
 
     #[test]
