@@ -178,6 +178,16 @@ fn a_pattern_that_is_a_types_validation_is_found() {
 }
 
 #[test]
+fn a_pattern_in_matches_is_read_too() {
+    let text = "/// Text.\ntype Line = Text {}\n\n/// Whether it looks like an identifier.\nfunction looks_right(written: Line) -> Bool {\n    return written matches \"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"\n}\n";
+    let found = of(Signal::Validation, text);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].suggestion, "Uuid");
+    let other = "/// Text.\ntype Line = Text {}\n\n/// Whether it looks like a code.\nfunction looks_right(written: Line) -> Bool {\n    return written matches \"[A-Z]+\"\n}\n";
+    assert_eq!(of(Signal::Validation, other), Vec::<Finding>::new());
+}
+
+#[test]
 fn a_loop_an_operation_replaces_is_found() {
     let text = "/// An item.\ntype Item = Object {\n    weight: Int\n}\n\n/// Items.\ntype Items = List<Item> {}\n\n/// A whole number.\ntype Whole = Int {}\n\n/// The total.\nfunction total(items: Items) -> Whole {\n    var mut sum: Int = 0\n    for item in items {\n        sum = sum + item.weight\n    }\n    return Whole(sum)\n}\n";
     assert_eq!(problems(text), Vec::<String>::new());

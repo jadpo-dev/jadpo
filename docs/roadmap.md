@@ -1186,7 +1186,7 @@ reference only).
   cells for types with no single text form, the bytes a personal value's
   log hash covers, developer reports' value form, and integration fields
   without `wire:`. Decide each of those on its owning page, then build.
-- [ ] **5.5x `jadpo suggest`** `opus · high` (area 14; decided by Richard,
+- [x] **5.5x `jadpo suggest`** `opus · high` (area 14; decided by Richard,
   2026-10-17): first write the command's section on area 14 from this
   design, then build it. A command that hints, never edits, where code
   could use a standard type or operation; edits stay with the agent and,
