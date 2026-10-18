@@ -179,3 +179,92 @@ fn hash_encoding_and_json_are_reserved() {
         1
     );
 }
+
+/// A map's key is written by `json.write` as its canonical text and read
+/// back by `json.read` (chunk 5.5w2), so a key type with no single text
+/// form, an object, a choice, a collection or an enum with data, is
+/// refused either way. Made from every standard type's entry, so a type
+/// added later is held to it too; geometries and vectors wait on their
+/// areas.
+#[test]
+fn a_map_key_has_one_text_form() {
+    use jadpo_std::standard::{Holds, Json, STANDARD_TYPES, Storage, TextForm};
+    let mut source = String::from("type Day = CalendarDate {}\n\n");
+    let mut refused = Vec::new();
+    let mut at = 0;
+    for entry in STANDARD_TYPES {
+        if matches!(entry.json, Json::GeoJson | Json::Secret)
+            || entry.storage == Storage::Vector
+            || entry.storage == Storage::Never
+        {
+            continue;
+        }
+        at += 1;
+        let key = match entry.holds {
+            Holds::Builtin(_) => {
+                source.push_str(&format!("type Key{at} = {} {{}}\n\n", entry.name));
+                format!("Key{at}")
+            }
+            Holds::Range => format!("{}<Day>", entry.name),
+            _ => entry.name.to_string(),
+        };
+        source.push_str(&format!(
+            "function written_{at}(weights: Map<{key}, Quantity>) -> Encoded {{\n    return Encoded(json.write(weights))\n}}\n\n"
+        ));
+        // A password's hash never leaves the server, whatever holds it.
+        if entry.text.is_none()
+            || entry.text == Some(TextForm::Secret)
+            || entry.name == jadpo_std::standard::security::PASSWORD_HASH
+        {
+            refused.push(key);
+        }
+    }
+    let found = shown(&source);
+    let named: Vec<&String> = refused
+        .iter()
+        .filter(|key| {
+            found.iter().any(|problem| {
+                problem.contains("type.mismatch")
+                    && problem.contains(&format!("`Map<{key}, Quantity>` as JSON"))
+            })
+        })
+        .collect();
+    assert_eq!(named.len(), refused.len(), "{refused:?}\n{found:#?}");
+    assert_eq!(found.len(), refused.len(), "{found:#?}");
+    // Reading is held to it too, and an application's object or enum with
+    // data has no single text form either.
+    let read = |what: &str| {
+        check(&format!(
+            "type Day = CalendarDate {{}}\n\ntype Kind = Enum {{\n    plain\n    priced: {{\n        quantity: Quantity\n    }}\n}}\n\nfunction f(note: Note) fails Invalid -> Map<{what}, Quantity> {{\n    return attempt json.read(note, as: Map<{what}, Quantity>) {{\n        invalid: Invalid\n    }}\n}}\n"
+        ))
+    };
+    assert_eq!(read("Note"), NONE);
+    assert_eq!(read("Day"), NONE);
+    assert_eq!(read("Currency"), NONE);
+    for refused in ["PostalAddress", "ImportLine", "Kind", "List<Note>"] {
+        assert_eq!(read(refused), ["type.mismatch"], "{refused}");
+    }
+}
+
+/// A query string and a URL's segment hold no object, and the contract's
+/// JSON sends an amount of money, a quantity and a `ZonedTime` as one, so
+/// each is refused there as an object is (chunk 5.5w2); a body takes them.
+#[test]
+fn a_value_sent_as_an_object_never_goes_in_a_url() {
+    let route = |field: &str, method: &str, path: &str| {
+        check(&format!(
+            "type Fare = Money {{}}\n\ntype ShelfLength = Length {{}}\n\ntype Seen = ZonedTime {{}}\n\ntype Find = Input {{\n    value: {field}\n}}\n\ntype Found = Output {{\n    note: Note\n}}\n\naction find(input: Find) -> Found {{\n    return Found {{\n        note: \"found\"\n    }}\n}}\n\naction find_at(at: {field}) -> Found {{\n    return Found {{\n        note: \"found\"\n    }}\n}}\n\nroutes Finds {{\n    prefix: /finds\n\n    {method} {path} {{\n        authentication: RouteAuthentication.none\n        {input}output: Found\n        run: {run}\n    }}\n}}\n\npolicy {{\n    actions: {{\n        find: [Access.public]\n        find_at: [Access.public]\n    }}\n}}\n",
+            input = if path == "/" { "input: Find\n        " } else { "" },
+            run = if path == "/" { "find(input)" } else { "find_at(at)" },
+        ))
+    };
+    for field in ["Fare", "ShelfLength", "Seen"] {
+        assert_eq!(route(field, "GET", "/"), ["route.query_field_unsupported"], "{field}");
+        assert_eq!(route(field, "POST", "/"), NONE, "{field} in a body");
+        assert_eq!(
+            route(field, "GET", &format!("/{{at: {field}}}")),
+            ["route.placeholder_type"],
+            "{field} in a path"
+        );
+    }
+}
