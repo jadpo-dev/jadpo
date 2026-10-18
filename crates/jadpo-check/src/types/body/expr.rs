@@ -626,6 +626,37 @@ impl Body<'_> {
             return Ty::Error;
         };
         let name = text(variant);
+        // `Enum.all` (area 19, question 22): every variant, in the enum's
+        // order, for an enum whose variants carry no data; a closed list's
+        // retired codes aren't offered.
+        if name == "all" && !variants.iter().any(|v| v.name == name) {
+            if variants.iter().any(|v| v.fields.is_some()) {
+                let span = self.span(variant);
+                let shown = crate::types::shown(host);
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_UNKNOWN_ENUM_VARIANT,
+                        format!("`{shown}` has no `all`"),
+                    )
+                    .at(span, "some variants carry data")
+                    .reason(format!(
+                        "`.all` lists an enum's variants as values, and only an enum whose variants carry no data has one value for each; a variant of `{shown}` carries fields, given when it is built."
+                    ))
+                    .next(format!("List the values of `{shown}` that are needed")),
+                );
+                return Ty::Error;
+            }
+            let entry = jadpo_std::standard_type(host);
+            let listed: Vec<String> = variants
+                .iter()
+                .filter(|v| !entry.is_some_and(|entry| entry.is_retired(&v.name)))
+                .map(|v| v.name.clone())
+                .collect();
+            self.facts
+                .all_variants
+                .insert(node_key(expr.syntax()), (host.to_string(), listed));
+            return Ty::List(Box::new(Ty::Named(self.table.canonical(host))));
+        }
         match variants.iter().find(|v| v.name == name) {
             None => {
                 self.unknown_variant(host, variant);
@@ -636,6 +667,7 @@ impl Body<'_> {
                     node_key(expr.syntax()),
                     (host.to_string(), found.name.clone()),
                 );
+                self.retired_variant(host, &found.name, expr);
                 if let Some(fields) = &found.fields
                     && !fields.is_empty()
                 {
@@ -657,6 +689,40 @@ impl Body<'_> {
                 Ty::Named(self.table.canonical(host))
             }
         }
+    }
+
+    /// A closed list's withdrawn code written as a value (area 19, question
+    /// 22): stored data still reads it, but new code doesn't write it,
+    /// unless a decline gives the reason, such as reading old records.
+    fn retired_variant(&mut self, host: &str, variant: &str, expr: &Expr) {
+        let Some(list) = jadpo_std::standard::closed_list(host) else {
+            return;
+        };
+        let Some(english) = jadpo_std::standard::retired(host, variant) else {
+            return;
+        };
+        let code = jadpo_std::standard_type(host)
+            .and_then(jadpo_std::StandardType::codes)
+            .and_then(|codes| codes.iter().find(|(name, _)| *name == variant))
+            .map_or(variant, |(_, code)| *code);
+        let named = if english.is_empty() {
+            String::new()
+        } else {
+            format!(" ({english})")
+        };
+        let span = self.span(expr);
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_VARIANT_RETIRED,
+                format!("`{host}.{variant}` is a retired code"),
+            )
+            .at(span, "only read")
+            .reason(format!(
+                "{} withdrew `{code}`{named}. `{host}.{variant}` stays so that stored data and old messages still read, but new code doesn't write it.",
+                list.authority
+            ))
+            .next("Use the code that replaced it"),
+        );
     }
 
     pub(super) fn unknown_variant(&mut self, host: &str, variant: &ast::NameRef) {

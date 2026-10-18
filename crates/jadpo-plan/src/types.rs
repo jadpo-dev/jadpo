@@ -176,7 +176,7 @@ impl Types {
     ) -> ShapeId {
         let fields: Vec<(&str, TypeRef)> = fields
             .iter()
-            .map(|(field, part)| (*field, part_type(*part)))
+            .map(|(field, part)| (*field, part_type(name, field, *part)))
             .collect();
         self.typed_shape(name, &fields)
     }
@@ -611,37 +611,37 @@ impl Types {
     }
 }
 
-/// The type a standard object type's field holds (area 19): what its part
-/// is built on, or the standard type it is.
-pub(crate) fn part_type(part: jadpo_std::Part) -> TypeRef {
-    match part.builtin() {
-        Some(builtin) => TypeRef::Builtin(builtin),
-        None => match part {
-            jadpo_std::Part::Standard(name) => TypeRef::Std(name.to_string(), Vec::new()),
-            _ => TypeRef::Builtin(jadpo_std::Builtin::Unit),
-        },
+/// The type the field `field` of the standard object type `host` holds
+/// (area 19): what its part is built on, the standard type it is, the part
+/// or `none`, or a list of it. A part with rules of its own (a whole
+/// number's range, a line of text) is the field itself, whose chain
+/// [`standard_part`] gives.
+pub(crate) fn part_type(host: &str, field: &str, part: jadpo_std::Part) -> TypeRef {
+    match part {
+        jadpo_std::Part::Of(builtin) => TypeRef::Builtin(builtin),
+        jadpo_std::Part::Whole(..) | jadpo_std::Part::Line => {
+            TypeRef::Field(Key::from_text(format!("field {host}.{field}")))
+        }
+        jadpo_std::Part::Standard(name) => TypeRef::Std(name.to_string(), Vec::new()),
+        jadpo_std::Part::Optional(inner) => {
+            TypeRef::Nullable(Box::new(part_type(host, field, *inner)))
+        }
+        jadpo_std::Part::List(inner) => TypeRef::List(Box::new(part_type(host, field, *inner))),
     }
 }
 
 /// What the standard object type's field `key` names (`LocalTime.hour`)
-/// is built on, and the rules its part keeps: a whole number's range.
+/// is built on, and the rules its part keeps: a whole number's range, a
+/// line's pattern; for a part that may be `none` or is a list, its own
+/// part's.
 fn standard_part(key: &Key) -> Option<(jadpo_std::Builtin, Rules)> {
     let (host, field) = key.name().split_once('.')?;
     let jadpo_std::standard::Holds::Object(fields) = jadpo_std::standard_type(host)?.holds else {
         return None;
     };
-    let (_, part) = fields.iter().find(|(name, _)| *name == field)?;
-    let whole = |n: i64| jadpo_std::Num {
-        mantissa: i128::from(n),
-        scale: 0,
-    };
-    let rules = match part {
-        jadpo_std::Part::Whole(min, max) => Rules {
-            min: Some(whole(*min)),
-            max: Some(whole(*max)),
-            ..Rules::default()
-        },
-        _ => Rules::default(),
-    };
-    Some((part.builtin()?, rules))
+    let mut part = fields.iter().find(|(name, _)| *name == field)?.1;
+    while let jadpo_std::Part::Optional(inner) | jadpo_std::Part::List(inner) = part {
+        part = *inner;
+    }
+    Some((part.builtin()?, part.rules()))
 }

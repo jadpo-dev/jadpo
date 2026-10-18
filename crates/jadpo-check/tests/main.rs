@@ -40,6 +40,7 @@ mod not_values;
 mod numbers;
 mod one_error;
 mod percentages;
+mod people_places;
 mod policy;
 mod project;
 mod quantities;

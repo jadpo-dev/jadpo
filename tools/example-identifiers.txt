@@ -241,6 +241,7 @@ chores
 citation
 citation_id
 citation_view
+citizen_of
 class_count
 class_schedule
 class_time
@@ -275,6 +276,7 @@ confirm_sign_in
 confirm_total
 consent
 consent_id
+consignment
 contact_address
 contact_email
 contact_text
@@ -293,9 +295,7 @@ count_todos
 counted_or_missing
 counter
 counter_id
-country
-country_id
-country_view
+countess
 course
 create_booking
 create_member
@@ -332,6 +332,7 @@ cyd
 day_count
 days_left
 days_overdue
+de_parcel
 dearer
 declare_lost
 decline_reason
@@ -341,6 +342,7 @@ dees_place
 deleted_at
 deliver_to
 delivered
+delivered_to
 deliveries_in
 deliveries_on
 delivery
@@ -413,6 +415,7 @@ end_of_day
 end_of_january
 end_shift
 enrol
+enrolled
 entered
 entered_amount
 entry_count
@@ -434,6 +437,7 @@ fee
 fee_charged
 fee_for
 fees
+file_text
 fill_tray
 fill_trays
 find_article
@@ -480,6 +484,7 @@ good_share
 grain
 grams_in
 greeting
+greeting_name
 gross
 grown
 growth
@@ -573,9 +578,12 @@ jar_name
 job_run_at
 joined_at
 jot_down
+jp_parcel
 judge_note
 keep_memo
 keeper
+kept_after
+kept_record
 key_bytes
 key_expires_at
 key_in_order
@@ -681,6 +689,7 @@ lowest
 loyalty
 lunch
 lunch_overlap
+made_in
 mail_api_key
 make_badge
 manual
@@ -729,6 +738,7 @@ nand
 nearly
 needs_cooling
 never_rose
+new_address
 new_bakery
 new_card
 new_key
@@ -737,6 +747,7 @@ new_staff
 new_todo
 new_york_autumn
 new_york_spring
+newsletter
 next_classes
 next_day
 next_free
@@ -862,6 +873,7 @@ owner_email
 owner_id
 owners
 pace_of
+packer
 page_count
 page_todos
 paid
@@ -870,6 +882,8 @@ pantry
 parcel
 parcel_count
 parcel_held
+parcel_label
+parcel_to
 parcels
 partner
 partner_added
@@ -902,7 +916,6 @@ per_kilo
 per_todo
 per_tray
 percent_of
-phone
 phone_linked
 phone_token_id
 phone_tokens
@@ -927,7 +940,6 @@ platform_staff
 pong
 portion_count
 portions
-postal_code
 postcode
 postcodes
 poster_line
@@ -1000,6 +1012,8 @@ reaction
 read_by_bob
 read_by_dee
 read_clock
+readdress
+readdressed
 reader_locale
 reader_pick
 receipt
@@ -1014,6 +1028,7 @@ recipe_name
 recipe_scale
 recipe_title
 recipes
+recipient
 record_delivery
 record_payment
 record_payment_webhook
@@ -1147,6 +1162,7 @@ shelvable
 shelves
 shift_end
 ship_parcel
+ship_to
 shipment
 shipped
 shipping_address
@@ -1228,6 +1244,7 @@ stripe_v2024
 stroll
 stroll_time
 subscribe
+subscribed
 subscription
 subtitle
 subtotal
@@ -1236,6 +1253,7 @@ summarise_line
 summary_view
 supplier
 supplier_contact
+supplier_country
 supplier_desk
 supplier_label
 supplier_line
@@ -1260,6 +1278,9 @@ team
 team_id
 temperature_for
 tenth
+territory
+territory_id
+territory_view
 terse
 test_configuration
 the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest
@@ -1282,6 +1303,7 @@ title_again
 title_back
 title_blank
 titles
+to_belgrade
 todo
 todo_by_id
 todo_changes
@@ -1328,6 +1350,7 @@ typed_name
 typed_shelf
 uk_bands
 uk_rate
+unknown_country
 unknown_failure
 unlink_phone
 unlinked
@@ -1407,4 +1430,5 @@ written_at
 written_by_dee
 wrong_rate
 wrong_total
+yamada
 zopf

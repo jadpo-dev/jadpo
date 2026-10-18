@@ -49,6 +49,7 @@ Pence
 Percent
 Phrase
 Placed
+PostalCode
 Pounds
 Product
 Profile

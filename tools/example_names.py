@@ -8,7 +8,9 @@ into tools/example-identifiers.txt, minus the generic words listed in
 tools/example-identifiers-allowed.txt, and checks that no listed name appears,
 in any case style, as an identifier or string in crates/*/src/ or in the
 standard library's stubs (crates/*/std/). Comments are not checked, and tests
-may use the names freely.
+may use the names freely, as may a file of an authority's data generated
+into the source, whose first line is `// @generated` (a subdivision called
+Baker Island special-cases no example).
 
 An example entity whose name is an allowed word (`Order`, `Session`) is still
 a sign of special-casing when it stands as a string, so those names go to
@@ -257,7 +259,10 @@ def sources_to_scan():
     Rust source without its test modules, the standard library's Jadpo
     stubs and its names list."""
     for path in sorted(ROOT.glob('crates/*/src/**/*.rs')):
-        yield path, rust_tokens(without_test_modules(path.read_text()))
+        text = path.read_text()
+        if text.startswith('// @generated'):
+            continue
+        yield path, rust_tokens(without_test_modules(text))
     for path in sorted(ROOT.glob('crates/*/std/*.jadpo')):
         yield path, jadpo_tokens(path.read_text())
     for path in sorted(ROOT.glob('crates/*/std/*.txt')):

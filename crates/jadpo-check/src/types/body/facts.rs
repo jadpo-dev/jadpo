@@ -109,6 +109,9 @@ pub(crate) struct Facts {
     pub fields: BTreeMap<NodeKey, (String, Vec<String>)>,
     /// Each plain variant written as a value: `Shade.plain`.
     pub variants: BTreeMap<NodeKey, (String, String)>,
+    /// Each `Enum.all` (area 19, question 22): the enum and the variants it
+    /// lists, in order, a closed list's retired ones left out.
+    pub all_variants: BTreeMap<NodeKey, (String, Vec<String>)>,
     /// Each object or variant built with its fields.
     pub builds: BTreeMap<NodeKey, BuildFact>,
     /// Whether each construction can fail.

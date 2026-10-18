@@ -377,8 +377,9 @@ impl Body<'_> {
                 .find(|(_, at)| **at == Some(slot))
                 .map(|(arg, _)| arg)
         };
+        self.form_option(table, args, slots, entry, shown);
         for (slot, param) in table.params.iter().enumerate() {
-            if !param.by_type {
+            if !param.by_type || param.name == "form" {
                 continue;
             }
             let name = param.name;
@@ -433,6 +434,87 @@ impl Body<'_> {
                 _ => {}
             }
         }
+    }
+}
+
+impl Body<'_> {
+    /// `form:` on `text.parse` and `text.from` (area 19, question 22): a
+    /// `CodeForm` written out, for a closed list with data in that code
+    /// system.
+    pub(super) fn form_option(
+        &mut self,
+        table: &Operation,
+        args: &[ast::Arg],
+        slots: &[Option<usize>],
+        entry: Option<&'static StandardType>,
+        shown: &Ty,
+    ) {
+        let Some(slot) = table.params.iter().position(|param| param.name == "form") else {
+            return;
+        };
+        let Some(arg) = args
+            .iter()
+            .zip(slots)
+            .find(|(_, at)| **at == Some(slot))
+            .map(|(arg, _)| arg)
+        else {
+            return;
+        };
+        let Some(value) = arg.expr() else {
+            return;
+        };
+        let written = tree::written(value.syntax());
+        let form = written
+            .strip_prefix("CodeForm.")
+            .and_then(jadpo_std::CodeForm::from_name);
+        let Some(form) = form else {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`form:` is a code system written out, not `{written}`"),
+                )
+                .at(self.span(&value), "not written out")
+                .reason(
+                    "`form:` says which of a closed list's code systems the text is in, which is known where the call is written, as `form: CodeForm.alpha3`: a value can't say, and a list with no codes in it would have nothing to read.",
+                )
+                .next("Write the code system itself, such as `form: CodeForm.alpha3`"),
+            );
+            return;
+        };
+        if entry.and_then(|entry| entry.form_codes(form)).is_some() {
+            return;
+        }
+        let span = arg
+            .name()
+            .map_or_else(|| self.span(arg), |name| self.span(&name));
+        let removal = self.argument_removal(arg);
+        let has: Vec<String> = entry
+            .and_then(|entry| jadpo_std::standard::closed_list(entry.name))
+            .map(|list| {
+                list.forms
+                    .iter()
+                    .map(|(form, _)| format!("`CodeForm.{}`", form.name()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let others = if has.is_empty() {
+            "it is written in its own code alone".to_string()
+        } else {
+            format!("it has {}", crate::and_list(&has))
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_TEMPORAL_OPTION_UNUSED,
+                format!("`form: {written}` means nothing for a `{shown}`"),
+            )
+            .at(span, format!("no `{}` codes", form.name()))
+            .reason(format!(
+                "`form:` reads or writes a closed list's code in another of its code systems; `{shown}` has no codes in `{}`, and {others}.",
+                form.name()
+            ))
+            .next("Remove `form: ...`")
+            .edit(removal, ""),
+        );
     }
 }
 

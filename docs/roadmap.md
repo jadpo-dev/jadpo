@@ -738,19 +738,36 @@ reference only).
   5.5k2".
 - [ ] **5.5k3 Calendar events** `opus · high` (area 19, "Time and
   calendar additions", split from 5.5k2): `CalendarEvent` as an object
-  whose parts code reads, which first needs optional parts in a standard
-  object (`Part`), and an all-day event's dates beside a timed one's
+  whose parts code reads, with parts that may be `none` (`Part::Optional`,
+  built in 5.5l), and an all-day event's dates beside a timed one's
   local times and zone; its canonical text an RFC 5545 `VEVENT` (an
   all-day end exclusive, as the RFC writes it), its JSON its parts, its
   recurrence a `RecurrenceRule`. Done when it passes the harness and an
   all-day event's text, JSON and storage round-trip without moving a
   day.
-- [ ] **5.5l People and places** `opus · high` (area 19, question 22): the
-  19 new types, the closed lists as built-in enums with `form:`, `.all`
-  and retired codes (`type.variant_retired`), `PhoneNumber`'s E.164
-  metadata, `PostalAddress` and `PersonName` in each locale's order, and
-  `PostalCode` per country. Done when every type passes the harness and
-  `text.format` writes an address in two locales' orders.
+- [x] **5.5l People and places** `opus · high` (area 19, question 22): 15
+  of the 19 new types: the closed lists (`Country`, `CountrySubdivision`,
+  `Continent`, `Language`, `WritingScript`, `TextDirection`,
+  `Nationality`) as built-in enums with `form:`, `.all` and retired codes
+  (`type.variant_retired`, with the currencies 5.5h left out); `GivenName`,
+  `FamilyName`, `Username`, `PhoneExtension` and `Uprn`; and `PersonName`,
+  `EmailWithName` and `PostalAddress` as objects with optional parts,
+  stored in named columns, `PostalAddress` and `PersonName` in each
+  locale's order. Done when every type passes the harness and
+  `text.format` writes an address in two locales' orders and a name in
+  two orders. Split on 2026-10-18; the rest is 5.5l2. Built, with
+  `type.variant_retired` and `type.reserved_variant_name`, the lists from
+  CLDR 48.2, ISO 639 and ISO 15924, names by CLDR's person-name patterns
+  and addresses by libaddressinput's formats, an object stored in a column
+  per part (checked in PostgreSQL); what the pages left open is area 19's
+  "Chosen in chunk 5.5l".
+- [ ] **5.5l2 Phone numbers and postal codes** `opus · high` (area 19,
+  "Groups with the baseline only", split from 5.5l): `PhoneNumber` with
+  libphonenumber's E.164 metadata, `CallingCode` against the assigned
+  codes, `PostalCode` per country (and `PostalAddress`'s postal code
+  checked by its country), and `UnLocode` against its list. Done when
+  each passes the harness with valid and invalid examples per country
+  rule.
 - [ ] **5.5i2 Payment records and identity documents** `opus · high` (area
   19, "The standard types", split from 5.5i), after 5.5j and 5.5l: the 15
   that are records or choices of other types. `Price`, `UnitPrice`,

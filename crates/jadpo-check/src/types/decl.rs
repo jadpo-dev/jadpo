@@ -533,6 +533,20 @@ impl Decls<'_> {
                 );
                 continue;
             }
+            // `Enum.all` lists an enum's variants (area 19, question 22).
+            if text == "all" {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_RESERVED_VARIANT_NAME,
+                        format!("`all` can't be a variant of `{host}`"),
+                    )
+                    .at(span.clone(), "reserved")
+                    .reason(format!(
+                        "`{host}.all` lists every variant of `{host}`, so no variant takes the name `all`."
+                    ))
+                    .next("Rename the variant"),
+                );
+            }
             seen.insert(text.clone(), span);
             if let Some(block) = block {
                 let lines = shape::lines(Some(block.clone()), FieldsBase::Object);

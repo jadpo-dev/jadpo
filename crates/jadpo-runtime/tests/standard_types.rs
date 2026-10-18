@@ -76,36 +76,28 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
         Holds::Object(fields) => {
             let mut codecs = vec![Codec::Object {
                 shape: ShapeId(0),
-                fields: (1..=fields.len() as u32).map(CodecId).collect(),
+                fields: Vec::new(),
             }];
             let mut validators = Vec::new();
             let mut plans = Vec::new();
-            for (at, (name, part)) in fields.iter().enumerate() {
-                // A built-in type, or a standard enum (`ExchangeRate`'s
-                // currencies).
-                match (part.builtin(), part) {
-                    (Some(builtin), _) => {
-                        codecs.push(scalar(builtin, at as u32));
-                        validators.push(Validator::new(Some(builtin), Vec::new()));
-                    }
-                    (None, jadpo_std::Part::Standard(other)) => {
-                        let other = jadpo_std::standard_type(other).expect("a standard type");
-                        let codes = other.codes().expect("an object's fields hold enums");
-                        codecs.push(enum_codec(other, codes));
-                        validators.push(Validator::new(None, Vec::new()));
-                    }
-                    _ => panic!("{}: an object sent as fields", entry.name),
-                }
+            let mut tops = Vec::new();
+            for (name, part) in fields {
+                let validator = ValidatorId(validators.len() as u32);
+                tops.push(part_codec(*part, &mut codecs, &mut validators));
                 plans.push(FieldPlan {
                     key: format!("field {}.{name}", entry.name),
                     name: (*name).to_string(),
-                    validator: ValidatorId(at as u32),
+                    validator,
                     omittable: false,
                     absent: None,
                     none_left_out: false,
                     section: None,
                 });
             }
+            codecs[0] = Codec::Object {
+                shape: ShapeId(0),
+                fields: tops,
+            };
             let shape = Shape::new(&ShapePlan {
                 ty: entry.name.to_string(),
                 variant: None,
@@ -159,6 +151,63 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
     }
 }
 
+/// The codec of one part of a standard object, pushed with the codecs and
+/// validators it needs, as the plan makes them: a built-in type with the
+/// rules its part keeps (a line of text's pattern), a standard enum by its
+/// codes, a type held as text with its own check, the part or `null`, or a
+/// list of it.
+fn part_codec(
+    part: jadpo_std::Part,
+    codecs: &mut Vec<Codec>,
+    validators: &mut Vec<Validator>,
+) -> CodecId {
+    let codec = match part {
+        jadpo_std::Part::Optional(inner) => {
+            let inner = part_codec(*inner, codecs, validators);
+            Codec::Nullable(inner)
+        }
+        jadpo_std::Part::List(inner) => {
+            let item = part_codec(*inner, codecs, validators);
+            let validator = ValidatorId(validators.len() as u32);
+            validators.push(Validator::new(None, Vec::new()));
+            Codec::List { item, validator }
+        }
+        jadpo_std::Part::Standard(other) => {
+            let other = jadpo_std::standard_type(other).expect("a standard type");
+            match (other.codes(), other.holds) {
+                (Some(codes), _) => enum_codec(other, codes),
+                (None, Holds::Text { .. }) => {
+                    let validator = ValidatorId(validators.len() as u32);
+                    validators.push(Validator::new(
+                        Some(Builtin::Text),
+                        jadpo_std::standard::text_rules(other.name)
+                            .into_iter()
+                            .collect(),
+                    ));
+                    Codec::Scalar {
+                        builtin: Builtin::Text,
+                        validator,
+                        int_as_number: false,
+                    }
+                }
+                _ => panic!("{}: a part sent as fields", other.name),
+            }
+        }
+        part => {
+            let builtin = part.builtin().expect("a built-in part");
+            let validator = ValidatorId(validators.len() as u32);
+            validators.push(Validator::new(Some(builtin), vec![part.rules()]));
+            Codec::Scalar {
+                builtin,
+                validator,
+                int_as_number: false,
+            }
+        }
+    };
+    codecs.push(codec);
+    CodecId(codecs.len() as u32 - 1)
+}
+
 /// The type name `text.parse` is given for the entry's examples: its own,
 /// or with its examples' type argument (`Range<CalendarDate>`).
 fn parsed_as(entry: &StandardType) -> String {
@@ -174,6 +223,14 @@ fn read(entry: &StandardType, text: &str) -> Result<Value, Fault> {
         Holds::Range => standard::parse(text, &parsed_as(entry)),
         _ => standard::read(entry, text),
     }
+}
+
+/// An example of a type with no single text form (`PersonName`), read
+/// from its JSON, as the wire reads it.
+fn read_json(table: &Codecs<'_>, text: &str) -> Option<Value> {
+    let json: serde_json::Value = serde_json::from_str(text).ok()?;
+    let mut problems = Vec::new();
+    table.read(CodecId(0), &json, &Path::default(), &mut problems)
 }
 
 fn london() -> Value {
@@ -193,24 +250,37 @@ fn every_standard_type_meets_the_contract() {
         };
         let mut values = Vec::new();
         for (text, shown) in entry.examples.valid {
-            // Canonical text, both ways.
-            let value = read(entry, text)
-                .unwrap_or_else(|fault| panic!("{name}: `{text}` reads ({fault:?})"));
-            assert_eq!(
-                standard::canonical(entry, &value).as_deref(),
-                Ok(*text),
-                "{name}: `{text}` is written back as it was read"
-            );
-            assert_eq!(
-                standard::from(&value),
-                Ok(Value::text(text)),
-                "{name}: `text.from` gives the canonical text"
-            );
-            assert_eq!(
-                standard::parse(text, &parsed_as(entry)),
-                Ok(value.clone()),
-                "{name}: `text.parse` reads it"
-            );
+            // A type with no single text form: its examples are its JSON.
+            let value = if entry.text.is_none() {
+                read_json(&table, text).unwrap_or_else(|| panic!("{name}: {text} reads"))
+            } else {
+                read(entry, text)
+                    .unwrap_or_else(|fault| panic!("{name}: `{text}` reads ({fault:?})"))
+            };
+            if entry.text.is_none() {
+                assert_eq!(
+                    standard::from(&value),
+                    Err(Fault::Shape),
+                    "{name}: has no canonical text"
+                );
+            } else {
+                // Canonical text, both ways.
+                assert_eq!(
+                    standard::canonical(entry, &value).as_deref(),
+                    Ok(*text),
+                    "{name}: `{text}` is written back as it was read"
+                );
+                assert_eq!(
+                    standard::from(&value),
+                    Ok(Value::text(text)),
+                    "{name}: `text.from` gives the canonical text"
+                );
+                assert_eq!(
+                    standard::parse(text, &parsed_as(entry)),
+                    Ok(value.clone()),
+                    "{name}: `text.parse` reads it"
+                );
+            }
             // For people, in en_gb, with the options the type takes: a
             // range's are its item type's.
             let formatted = entry
@@ -237,6 +307,7 @@ fn every_standard_type_meets_the_contract() {
             table.write(CodecId(0), &value, &mut json);
             let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
             match entry.json {
+                Json::Text if entry.text.is_none() => panic!("{name}: JSON is its fields"),
                 Json::Text => assert_eq!(
                     parsed,
                     serde_json::Value::String((*text).to_string()),
@@ -267,25 +338,25 @@ fn every_standard_type_meets_the_contract() {
             // than one column (`Money`, area 19) as its parts, read back
             // together.
             if !entry.columns().is_empty() {
-                let Value::Money(money) = &value else {
-                    panic!("{name}: only an amount of money is stored in two columns");
-                };
-                let row = [
-                    jadpo_runtime::to_sql(&Value::Int(money.minor), jadpo_std::SqlType::Int8)
-                        .unwrap(),
-                    jadpo_runtime::to_sql(&Value::text(money.code()), jadpo_std::SqlType::Text)
-                        .unwrap(),
-                ];
-                let columns = [
-                    jadpo_std::read::Column::Compound(name.to_string()),
-                    jadpo_std::read::Column::Part,
-                ];
+                let parts = standard::to_parts(&value)
+                    .unwrap_or_else(|| panic!("{name}: `{text}` has its parts"));
+                assert_eq!(parts.len(), entry.columns().len(), "{name}");
+                let row: Vec<_> = parts
+                    .iter()
+                    .zip(entry.columns())
+                    .map(|(part, (_, column))| {
+                        let sql = jadpo_std::SqlType::of_column(column).expect("a column type");
+                        jadpo_runtime::to_sql(part, sql)
+                            .unwrap_or_else(|why| panic!("{name}: a part is stored ({why})"))
+                    })
+                    .collect();
+                let mut columns = vec![jadpo_std::read::Column::Compound(name.to_string())];
+                columns.resize(row.len(), jadpo_std::read::Column::Part);
                 assert_eq!(
                     jadpo_runtime::field_value(&row, &columns, 0),
                     Ok(value.clone()),
                     "{name}: `{text}` reads back from its columns"
                 );
-                assert_eq!(entry.columns().len(), 2, "{name}");
             } else if let (Some(column), jadpo_std::standard::Storage::Column(storage)) =
                 (entry.column(), entry.storage)
             {
@@ -316,6 +387,11 @@ fn every_standard_type_meets_the_contract() {
             }
         }
         for text in entry.examples.malformed {
+            // A type with no single text form: JSON that isn't one.
+            if entry.text.is_none() {
+                assert_eq!(read_json(&table, text), None, "{name}: {text} isn't one");
+                continue;
+            }
             assert_eq!(
                 read(entry, text),
                 Err(Fault::Broke(RuleKey::Malformed)),
