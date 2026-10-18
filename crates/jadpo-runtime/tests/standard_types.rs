@@ -106,6 +106,18 @@ fn type_codec(entry: &StandardType, tables: &mut Tables) -> CodecId {
             ));
             tables.push(scalar(Builtin::Text, validator))
         }
+        // Bytes with their own check (chunk 5.5r3), sent as `Bytes` is,
+        // in Base64.
+        Holds::Bytes => {
+            let validator = tables.validator(Validator::new(
+                Some(Builtin::Bytes),
+                jadpo_std::standard::declared(entry.name)
+                    .map(|(_, rules)| rules)
+                    .into_iter()
+                    .collect(),
+            ));
+            tables.push(scalar(Builtin::Bytes, validator))
+        }
         // A whole number with its range (chunk 5.5n), a JSON number.
         Holds::Whole { .. } => {
             let validator = tables.validator(Validator::new(

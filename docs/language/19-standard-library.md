@@ -106,7 +106,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 240 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2, the 17 geospatial types in 5.5s, `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims` in 5.5r, the secret values `Password`, `ApiKey`, `BearerToken`, `TotpSecret` and `SecretText` in 5.5r2, the five AI types in 5.5s2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (accepted by the lead session, "Decisions"), and `ChatRole`, who wrote a `ChatMessage`, in chunk 5.5s2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: thirty-one are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2, `ChatRole` in 5.5s2), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 246 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2, the 17 geospatial types in 5.5s, `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims` in 5.5r, the secret values `Password`, `ApiKey`, `BearerToken`, `TotpSecret` and `SecretText` in 5.5r2, the five AI types in 5.5s2, the security records `Hash`, `Hmac`, `EncryptedValue`, `OneTimeCode`, `PasswordPolicy` and `WebAuthnCredential` in 5.5r3); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (accepted by the lead session, "Decisions"), and `ChatRole`, who wrote a `ChatMessage`, in chunk 5.5s2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: thirty-one are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2, `ChatRole` in 5.5s2), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -134,7 +134,7 @@ exception to the rule.
 | Web and network (23) | **`Url`**, **`UrlPath`**, **`RelativeUrl`**, **`Slug`**, **`DomainName`**, **`Hostname`**, **`WebOrigin`**, **`HttpMethod`** (enum), **`HttpStatus`**, **`HttpHeaderName`**, **`FileType`**, **`UserAgent`**, **`ProblemDetails`**, **`JsonPointer`**, **`Cookie`**, **`UtmParameters`**, **`IpAddress`**, **`Cidr`**, **`NetworkPort`**, **`MacAddress`**, **`Imei`**, **`Emoji`**, **`PushToken`** | `web` |
 | Software (19) | **`SemanticVersion`**, **`VersionRange`**, **`GitRef`**, **`PackageUrl`**, **`Cve`**, **`SpdxLicence`**, **`TraceId`**, **`SpanId`**, **`TraceParent`**, **`LogLevel`** (enum), **`FilePath`**, **`FileName`**, **`RegularExpression`**, **`ContainerImage`**, **`Digest`**, **`Uuid`**, **`Ulid`**, **`IdempotencyKey`**, **`Doi`** | `semver` |
 | Text formats (4) | **`Markdown`**, **`Html`**, **`RichText`**, **`LocalisedText`** | `markup`, `text` |
-| Security (20) | **`Password`**, **`PasswordHash`**, `PasswordPolicy`, `Hash`, `Hmac`, **`Jwt`**, **`JwtClaims`**, **`Jwk`**, **`PublicKey`**, **`PrivateKey`**, `Certificate`, **`TotpSecret`**, `OneTimeCode`, **`ApiKey`**, **`SecretText`**, **`BearerToken`**, **`OAuthScope`**, **`OidcClaims`**, `WebAuthnCredential`, `EncryptedValue` | `crypto` |
+| Security (20) | **`Password`**, **`PasswordHash`**, **`PasswordPolicy`**, **`Hash`**, **`Hmac`**, **`Jwt`**, **`JwtClaims`**, **`Jwk`**, **`PublicKey`**, **`PrivateKey`**, `Certificate`, **`TotpSecret`**, **`OneTimeCode`**, **`ApiKey`**, **`SecretText`**, **`BearerToken`**, **`OAuthScope`**, **`OidcClaims`**, **`WebAuthnCredential`**, **`EncryptedValue`** | `crypto` |
 | Travel (6) | **`IataAirport`**, **`IcaoAirport`**, **`IataAirline`**, **`FlightNumber`**, **`CabinClass`** (enum), **`BookingReference`** | |
 | Other with a published standard (10) | **`UnNumber`**, **`Orcid`**, **`CefrLevel`** (enum), **`Mpan`**, **`Mprn`**, **`EpcRating`** (enum), **`Tenure`** (enum), **`LawfulBasis`** (enum), **`Jurisdiction`**, **`ModelId`** | |
 | AI (3, and `ChatRole`) | **`TokenCount`**, **`TokenUsage`**, **`ChatMessage`** with **`ChatRole`** (enum) | AI area |
@@ -403,7 +403,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `ApiKey`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `Barcode`, `BasisPoints`, `BearerToken`, `Bearing`, `Bic`, `Bitrate`, `BloodGlucose`, `BloodPressure`, `BloodType`, `BookingReference`, `BoundingBox`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `ChatMessage`, `ChatRole`, `Cidr`, `Circle`, `ClothingSize`, `ClothingSizeSystem`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Crs`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Dimensions`, `Discount`, `Doi`, `DomainName`, `DosageInstruction`, `Dose`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `EastingNorthing`, `Email`, `EmailWithName`, `Embedding`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `FlightNumber`, `Fraction`, `FrameRate`, `Frequency`, `Geohash`, `Geometry`, `GitRef`, `GivenName`, `H3Cell`, `HeartRate`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Jurisdiction`, `Jwk`, `Jwt`, `JwtClaims`, `Language`, `Latitude`, `LawfulBasis`, `Lei`, `Length`, `LineString`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `Longitude`, `LotNumber`, `MacAddress`, `MapTile`, `Markdown`, `MaskedCardNumber`, `Mass`, `ModelId`, `Money`, `Month`, `Mpan`, `Mprn`, `MultiLineString`, `MultiPoint`, `MultiPolygon`, `Nationality`, `NetworkPort`, `NhsNumber`, `OAuthScope`, `OidcClaims`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `Password`, `PasswordCheck`, `PasswordHash`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `Point`, `Polygon`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PublicKey`, `PushToken`, `Quarter`, `Range`, `Rating`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `RouteOfAdministration`, `SecretText`, `SemanticVersion`, `SerialNumber`, `ShoeSize`, `ShoeSizeSystem`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TokenCount`, `TokenUsage`, `TotpSecret`, `TraceId`, `TraceParent`, `TrackingNumber`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UnitQuantity`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `Vector`, `VehicleRegistration`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `ApiKey`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `Barcode`, `BasisPoints`, `BearerToken`, `Bearing`, `Bic`, `Bitrate`, `BloodGlucose`, `BloodPressure`, `BloodType`, `BookingReference`, `BoundingBox`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `ChatMessage`, `ChatRole`, `Cidr`, `Circle`, `ClothingSize`, `ClothingSizeSystem`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Crs`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Dimensions`, `Discount`, `Doi`, `DomainName`, `DosageInstruction`, `Dose`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `EastingNorthing`, `Email`, `EmailWithName`, `Embedding`, `Emoji`, `EncryptedValue`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `FlightNumber`, `Fraction`, `FrameRate`, `Frequency`, `Geohash`, `Geometry`, `GitRef`, `GivenName`, `H3Cell`, `Hash`, `HeartRate`, `Hmac`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Jurisdiction`, `Jwk`, `Jwt`, `JwtClaims`, `Language`, `Latitude`, `LawfulBasis`, `Lei`, `Length`, `LineString`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `Longitude`, `LotNumber`, `MacAddress`, `MapTile`, `Markdown`, `MaskedCardNumber`, `Mass`, `ModelId`, `Money`, `Month`, `Mpan`, `Mprn`, `MultiLineString`, `MultiPoint`, `MultiPolygon`, `Nationality`, `NetworkPort`, `NhsNumber`, `OAuthScope`, `OidcClaims`, `OneTimeCode`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `Password`, `PasswordCheck`, `PasswordHash`, `PasswordPolicy`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `Point`, `Polygon`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PublicKey`, `PushToken`, `Quarter`, `Range`, `Rating`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `RouteOfAdministration`, `SecretText`, `SemanticVersion`, `SerialNumber`, `ShoeSize`, `ShoeSizeSystem`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TokenCount`, `TokenUsage`, `TotpSecret`, `TraceId`, `TraceParent`, `TrackingNumber`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UnitQuantity`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `Vector`, `VehicleRegistration`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebAuthnCredential`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -4277,7 +4277,8 @@ test "a partner's token signs in only while it holds" {
 ### Secret values
 
 A `Password`, an `ApiKey`, a `BearerToken`, a `TotpSecret`, a `SecretText`
-and a `Jwt` are secret values (chunk 5.5r2): each arrives, in a request's
+and a `Jwt` are secret values (chunk 5.5r2), and a `OneTimeCode`, the code
+a person types (chunk 5.5r3): each arrives, in a request's
 `Input` or through `text.parse` and `json.read`, and is never sent,
 logged, stored or shown.
 
@@ -4452,6 +4453,126 @@ test failed: 1 failed, 1 pure test
 > `Storage::Never`); `jadpo-value`'s `Secret`, compared in constant time
 > and written only redacted; and `type.secret_exposed`. What the page left
 > open is under "Chosen in chunk 5.5r2".
+
+### Security records
+
+`Hash`, `Hmac` and `EncryptedValue` are the bytes `hash.sha256`,
+`crypto.hmac` and `crypto.encrypt` give, as types (chunk 5.5r3): each is
+built on `Bytes`, so building one from the call that makes it needs no
+`attempt`, and any other bytes are checked as they are built (`format`).
+Each is sent and read as `Bytes` is, as its Base64, stored as `bytea` and
+compared in constant time. An `EncryptedValue` is ciphertext, so it may be
+stored and sent; only `crypto.decrypt`, with the key, reads what it holds.
+
+A clinic keeps what it needs to recognise a partner's API key, signs the
+webhooks it sends, and keeps each referral letter sealed to its record:
+
+```jadpo check project=security-records file=config.jadpo
+config {
+    letters_key: EncryptionKey
+    outbound_webhook_secret: SigningKey
+}
+```
+
+```jadpo check project=security-records
+type ReferralText = Text {
+    max_length: 4000
+}
+
+type ReferralId = Text {}
+
+type PartnerKeyDigest = Hash {}
+
+type OutboundSignature = Hmac {}
+
+type KeyRecognised = Bool {}
+
+type ReferralUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// What is kept of a partner's API key: its SHA-256, which signs no one
+/// in.
+function partner_key_digest(partner_key: ApiKey) -> PartnerKeyDigest {
+    return PartnerKeyDigest(hash.sha256(partner_key))
+}
+
+/// Whether a key a partner sends is the one it was issued; the digests
+/// compare in constant time.
+function partner_key_recognised(
+    offered_key: ApiKey,
+    kept_digest: PartnerKeyDigest
+) -> KeyRecognised {
+    return KeyRecognised(partner_key_digest(offered_key) == kept_digest)
+}
+
+/// The signature on a webhook the clinic sends.
+function outbound_signature(outgoing_body: ReferralText) -> OutboundSignature {
+    return OutboundSignature(crypto.hmac(outgoing_body, key: config.outbound_webhook_secret))
+}
+
+/// A referral letter sealed to its own record, which may be stored and
+/// sent as it is.
+action sealed_referral(referral_letter: ReferralText, referral: ReferralId) -> EncryptedValue {
+    return EncryptedValue(
+        crypto.encrypt(referral_letter, key: config.letters_key, context: referral)
+    )
+}
+
+/// A sealed referral's text, for its own record only.
+function opened_referral(
+    kept_letter: EncryptedValue,
+    referral: ReferralId
+) fails ReferralUnreadable -> ReferralText {
+    var letter_bytes: Bytes = attempt crypto.decrypt(
+        kept_letter,
+        key: config.letters_key,
+        context: referral
+    ) {
+        unreadable: ReferralUnreadable
+    }
+    var letter_text: Text = attempt encoding.from_utf8(letter_bytes) {
+        malformed: ReferralUnreadable
+    }
+    return attempt ReferralText(letter_text) {
+        max_length: ReferralUnreadable
+    }
+}
+```
+
+The digest of `abc` is FIPS 180-4's:
+
+```jadpo check project=security-records file=main.test.jadpo
+test "a partner's key is recognised by its digest" {
+    var kept_digest: PartnerKeyDigest = partner_key_digest("example_key_0123456789abcdef")
+    assert partner_key_recognised("example_key_0123456789abcdef", kept_digest)
+    assert not partner_key_recognised("example_key_0123456789abcdeX", kept_digest)
+    assert text.from(partner_key_digest("abc")) == "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0="
+}
+
+test "a sealed referral opens only for its own record" {
+    var kept_letter: EncryptedValue = sealed_referral("Please see Ms Okafor.", "referral-7")
+    var read_back: ReferralText = attempt opened_referral(kept_letter, "referral-7")
+    assert read_back == "Please see Ms Okafor."
+    assert opened_referral(kept_letter, "referral-8") fails ReferralUnreadable
+}
+```
+
+`PasswordPolicy` holds NIST SP 800-63B's rules for a password: its fewest
+and most characters and whether a new one is checked against a list of
+breached passwords, with no composition rules and no expiry.
+`WebAuthnCredential` is a passkey as the server keeps it (area 8,
+"Passkeys"): its credential ID, its public key, its signature counter, its
+transports, whether it may be and is backed up, the name the person gave
+it, and when it was made and last used; never a biometric.
+
+> Built in chunk 5.5r3: `Hash`, `Hmac` and `EncryptedValue` on the
+> contract as types built on `Bytes` (`Holds::Bytes`, `TextForm::Base64`),
+> each built from its operation with no arm; every `Bytes` compared in
+> constant time; `OneTimeCode` a secret value; `PasswordPolicy` and
+> `WebAuthnCredential` standard objects, the passkey's parts mapped to
+> what `webauthn-rs` keeps. `Certificate` is chunk 5.5r5. What the page
+> left open is under "Chosen in chunk 5.5r3".
 
 ## Randomness
 
@@ -10092,6 +10213,84 @@ most conservative reading:
   `Password` with `format: password`, so generated clients hide it as it is
   typed.
 
+### Chosen in chunk 5.5r3
+
+Choices the page left open when the security records were built, each the
+most conservative reading:
+
+- **Split.** `Hash`, `Hmac`, `EncryptedValue`, `OneTimeCode`,
+  `PasswordPolicy` and `WebAuthnCredential` are built here; `Certificate`,
+  which needs an X.509 crate and parts read from what it parses, is chunk
+  5.5r5. No crate was added.
+- **Three types built on `Bytes`** (`Holds::Bytes`). A `Hash` is a
+  SHA-256 digest's 32 bytes, an `Hmac` an HMAC-SHA-256 tag's 32, and an
+  `EncryptedValue` 5.5q2's sealed format: its version (1) and algorithm
+  (1, XChaCha20-Poly1305), and room for its key identity, nonce and tag,
+  46 bytes at least, with no most. Each is its type's own check, broken as
+  `format`; whether a sealed value opens is `crypto.decrypt`'s to say, with
+  the key. `hash.sha256`, `crypto.hmac` and `crypto.encrypt` still give
+  `Bytes`, as question 24 decided, and building each type from its call is
+  proved while compiling (`security::made_by`), so `Hash(hash.sha256(x))`
+  needs no arm, while `Hmac(hash.sha256(x))` and bytes from anywhere else
+  do. `crypto.decrypt` takes an `EncryptedValue` as the `Bytes` it is.
+- **No algorithm tag in their text.** Each has one algorithm, its type
+  ("No algorithm choices"), and a sealed value carries its own in its
+  second byte. Their canonical text and their JSON are area 2's Base64 of
+  the bytes, standard alphabet, padded, in one spelling, as every `Bytes`
+  is sent, so a field that was `Bytes {}` becomes a `Hash` with no change
+  on the wire; `encoding.to_hex` writes a digest as hexadecimal for an
+  ETag. Each is stored as `bytea`, shown to people as its Base64, and not
+  ordered.
+- **Every `Bytes` compares in constant time**, not just these three:
+  `==` looks at every byte of two values of one length, whatever the first
+  difference, inside records and lists too, and the canonical order a set
+  keeps does the same, so comparing a received signature with the one
+  expected says nothing of where they differ.
+- **`OneTimeCode`** is a secret value: six to eight ASCII digits (RFC
+  4226's six at least, RFC 6238's eight at most), a leading zero kept,
+  read from text and JSON and never written, shown or stored. Storing one
+  is `type.secret_exposed`, whose `next:` keeps only when it was used. No
+  operation reads one yet: `crypto.verify_totp` waits for keys held as
+  data, and `hash.sha256` doesn't take one, since a six-digit code's digest
+  is found in a million tries.
+- **`PasswordPolicy`** is `min_length`, from NIST SP 800-63B's 8 (15 where
+  a password is the only factor) to a `Password`'s 256; `max_length`, from
+  NIST's "at least 64" to 256; and `check_breached`. The fewest is never
+  more than the most, proved on a literal and checked as JSON is read.
+  There are no composition rules, no expiry and no hints, which NIST says
+  not to impose. NIST says a new password SHALL be compared against a list
+  of breached ones; the page names no list and no operation, so the hook
+  that checks one isn't built, and `check_breached` records whether the
+  application checks. Sent as an object of its parts, stored as that JSON,
+  and shown as its lengths, `15–64`.
+- **`WebAuthnCredential`** is shaped to `webauthn-rs` 0.5.2's stored
+  `Passkey`, a `Credential` (its `CredentialV5`), for 5.5z to build one
+  from the other part by part:
+
+  | Part | `webauthn-rs` | What it holds |
+  |---|---|---|
+  | `credential_id` | `cred_id` | 1 to 1,023 bytes (WebAuthn Level 3) |
+  | `public_key` | `cred`, a `COSEKey` | The COSE_Key (RFC 9052 §7) in CBOR, 1 to 2,048 bytes: loaded with `webauthn-rs`'s own `COSEKey::try_from` of the CBOR, and written from a `COSEKey` as its labels (`1` the key type, `3` the algorithm, `-1` the curve or RSA's `n`, `-2` `x` or RSA's `e`, `-3` `y`) |
+  | `sign_count` | `counter` | 0 to 4,294,967,295, a `u32` |
+  | `transports` | `transports` | `usb`, `nfc`, `ble`, `internal`, `hybrid`; an empty list is `None`; `smart-card` and `webauthn-rs`'s own `test` aren't kept |
+  | `backup_eligible` | `backup_eligible` | Whether it may be backed up or synced |
+  | `backed_up` | `backup_state` | Whether it is |
+  | `name` | none | The person's name for it, one line |
+  | `registered_at`, `last_used_at` | none | When it was registered, and last used (`none` until then) |
+
+  What `webauthn-rs` keeps besides is the same for every passkey 5.5z
+  registers, so it isn't held and 5.5z fills it as it loads one:
+  `user_verified` true and `registration_policy` `required`, since a
+  passkey is always verified; `extensions` `RegisteredExtensions::none()`;
+  and, since attestation is never requested, `attestation`
+  `ParsedAttestation::default()` and `attestation_format` `None`. 5.5z
+  checks that leaving out the extensions changes nothing in `webauthn-rs`'s
+  authentication, and adds a part if it does. No biometric is held. A
+  `Bytes` part of a standard object is bounded by its length
+  (`Part::Bounded` on `Bytes`). It is sent with its parts' names, the
+  bytes as Base64 and the count as area 2 sends an `Int`, stored as that
+  JSON, and shown by its name.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -10638,6 +10837,13 @@ first; each group of types then arrives with its baseline and its extras.
   `BearerToken`, `TotpSecret`, `SecretText`) are 5.5r2, and `Hash`,
   `Hmac`, `Certificate`, `OneTimeCode`, `PasswordPolicy`,
   `WebAuthnCredential` and `EncryptedValue` 5.5r3. The first part built.
+- **5.5r3 Security records** `opus · high`: `Hash`, `Hmac`,
+  `EncryptedValue`, `OneTimeCode`, `PasswordPolicy` and
+  `WebAuthnCredential`. Built; split on 2026-10-18, `Certificate` is
+  5.5r5.
+- **5.5r5 Certificates** `opus · high`: `Certificate`, X.509 from PEM or
+  DER on an audited crate, its subject, issuer, validity and fingerprint
+  read-only.
 - **5.5s Geospatial types' baselines** `opus · high`: the 17
   geospatial types, with construction, text and JSON from the contract;
   their storage and operations come with the geospatial area. Split on

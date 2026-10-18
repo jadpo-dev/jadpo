@@ -673,13 +673,16 @@ judge_note
 keep_memo
 keeper
 kept_after
+kept_digest
 kept_hash
+kept_letter
 kept_record
 kept_verifier
 key_bytes
 key_expires_at
 key_fingerprint
 key_in_order
+key_recognised
 key_set_text
 key_set_unreadable
 key_verifier
@@ -727,6 +730,8 @@ lend
 lend_count
 lending
 let_go
+letter_bytes
+letter_text
 light_grey
 line_count
 line_one
@@ -952,6 +957,7 @@ open_outlet
 open_outlets
 open_project_with_board
 open_todos
+opened_referral
 opening_caption
 opening_sign
 opening_unclear
@@ -991,7 +997,9 @@ order_view
 ordered_at
 ordered_quantity
 out_of_stock
+outbound_signature
 outcome_label
+outgoing_body
 outlet
 outlet_id
 outlet_key_id
@@ -1044,6 +1052,8 @@ partner_added
 partner_claims
 partner_id
 partner_key
+partner_key_digest
+partner_key_recognised
 partner_key_set
 partner_keys
 partner_login
@@ -1229,6 +1239,11 @@ redeem_card
 redeemed
 reduced
 reduction
+referral
+referral_id
+referral_letter
+referral_text
+referral_unreadable
 register_and_record
 register_both
 registration_closed
@@ -1325,6 +1340,7 @@ scone
 seal_note
 sealed_copy
 sealed_note
+sealed_referral
 search_from
 search_link
 search_page

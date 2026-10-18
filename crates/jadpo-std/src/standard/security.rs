@@ -26,10 +26,18 @@
 //! format [`FormatKey::Redacted`] and its storage [`Storage::Never`], and
 //! the runtime holds it as `jadpo-value`'s `Secret`, compared in constant
 //! time and written only redacted.
+//!
+//! Chunk 5.5r3 added the security records: `Hash` and `Hmac`, a SHA-256
+//! digest and an HMAC-SHA-256 tag as `hash.sha256` and `crypto.hmac` give
+//! them, and `EncryptedValue`, the sealed bytes `crypto.encrypt` gives
+//! (each a type built on `Bytes`, [`Holds::Bytes`], compared in constant
+//! time); `OneTimeCode`, the code a person types, a secret value;
+//! `PasswordPolicy`, NIST SP 800-63B's rules for a password; and
+//! `WebAuthnCredential`, a passkey as `webauthn-rs` keeps one.
 
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part, StandardType,
-    Storage, TextForm, Validator,
+    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, OrderRule, Part,
+    StandardType, Storage, TextForm, Validator,
 };
 use crate::Builtin;
 use crate::read::SqlType;
@@ -60,18 +68,32 @@ pub const BEARER_TOKEN: &str = "BearerToken";
 pub const TOTP_SECRET: &str = "TotpSecret";
 /// `SecretText` (area 19, chunk 5.5r2).
 pub const SECRET_TEXT: &str = "SecretText";
+/// `Hash` (area 19, chunk 5.5r3).
+pub const HASH: &str = "Hash";
+/// `Hmac` (area 19, chunk 5.5r3).
+pub const HMAC: &str = "Hmac";
+/// `EncryptedValue` (area 19, chunk 5.5r3).
+pub const ENCRYPTED_VALUE: &str = "EncryptedValue";
+/// `OneTimeCode` (area 19, chunk 5.5r3).
+pub const ONE_TIME_CODE: &str = "OneTimeCode";
+/// `PasswordPolicy` (area 19, chunk 5.5r3).
+pub const PASSWORD_POLICY: &str = "PasswordPolicy";
+/// `WebAuthnCredential` (area 19, chunk 5.5r3).
+pub const WEB_AUTHN_CREDENTIAL: &str = "WebAuthnCredential";
 
 /// The secret values (area 19, "Secret values", chunk 5.5r2): never in a
 /// response, an `Output`, a failure, an event, an email, a message,
 /// `json.write` or a log, compared in constant time, and redacted
 /// wherever a value is shown to a person.
-pub const SECRET_VALUES: [&str; 6] = [
+/// `OneTimeCode` joined them in chunk 5.5r3.
+pub const SECRET_VALUES: [&str; 7] = [
     PASSWORD,
     API_KEY,
     BEARER_TOKEN,
     TOTP_SECRET,
     SECRET_TEXT,
     JWT,
+    ONE_TIME_CODE,
 ];
 
 /// The secret value standard type named `name`, as the static name the
@@ -313,6 +335,50 @@ pub const SECRET_TEXT_ENTRY: StandardType = secret_entry(
         ],
         format: None,
         malformed: &[""],
+        of: None,
+        settings: "",
+    },
+);
+
+/// The fewest and most digits a `OneTimeCode` has: RFC 4226's six to
+/// eight (§5.3, "at least 6 digits"), which RFC 6238 keeps (chosen in
+/// chunk 5.5r3).
+pub const ONE_TIME_CODE_DIGITS: (usize, usize) = (6, 8);
+
+/// Whether `text` is a `OneTimeCode`: six to eight ASCII digits, a leading
+/// zero kept, as an authenticator app or a text message shows one.
+pub fn is_one_time_code(text: &str) -> bool {
+    (ONE_TIME_CODE_DIGITS.0..=ONE_TIME_CODE_DIGITS.1).contains(&text.len())
+        && text.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// The code a person types from an authenticator app, a text message or
+/// an email (area 19, chunk 5.5r3; RFC 4226, RFC 6238): a secret value,
+/// checked when it arrives and never kept, so a code can't be replayed
+/// from a log or a response.
+pub const ONE_TIME_CODE_ENTRY: StandardType = secret_entry(
+    ONE_TIME_CODE,
+    r"[0-9]{6,8}",
+    Validator::OneTimeCode,
+    Examples {
+        // RFC 4226's HOTP value for count 1, and RFC 6238's eight-digit
+        // TOTP at 59 seconds, with a leading zero kept.
+        valid: &[
+            ("287082", "<redacted OneTimeCode>"),
+            ("94287082", "<redacted OneTimeCode>"),
+            ("012345", "<redacted OneTimeCode>"),
+        ],
+        format: None,
+        // Five digits, nine, a space, digits that aren't ASCII, letters,
+        // nothing at all.
+        malformed: &[
+            "28708",
+            "942870820",
+            "287 082",
+            "\u{661}\u{662}\u{663}\u{664}\u{665}\u{666}",
+            "abcdef",
+            "",
+        ],
         of: None,
         settings: "",
     },
@@ -975,6 +1041,369 @@ pub const OIDC_CLAIMS_ENTRY: StandardType = StandardType {
     release: FIRST_RELEASE,
 };
 
+/// How many bytes a `Hash` and an `Hmac` hold: SHA-256's digest, which
+/// HMAC-SHA-256's tag is too (FIPS 180-4, RFC 2104).
+pub const DIGEST_BYTES: usize = 32;
+
+/// The sealed format's first two bytes, its version and its algorithm
+/// (XChaCha20-Poly1305), and the fewest bytes a sealed value has: those
+/// two, the key's identity (4), the nonce (24) and the tag (16), with
+/// nothing sealed (chosen in chunk 5.5q2; `jadpo-value`'s `crypto` module
+/// writes them).
+pub const SEALED_VERSION: u8 = 1;
+pub const SEALED_ALGORITHM: u8 = 1;
+pub const SEALED_MIN_BYTES: usize = 2 + 4 + 24 + 16;
+
+/// Whether `bytes` are a `Hash`: a SHA-256 digest's 32.
+pub fn is_hash(bytes: &[u8]) -> bool {
+    bytes.len() == DIGEST_BYTES
+}
+
+/// Whether `bytes` are an `Hmac`: an HMAC-SHA-256 tag's 32.
+pub fn is_hmac(bytes: &[u8]) -> bool {
+    bytes.len() == DIGEST_BYTES
+}
+
+/// Whether `bytes` are an `EncryptedValue`: the sealed format's version
+/// and algorithm, and room for its key identity, nonce and tag. Whether
+/// they open is `crypto.decrypt`'s to say, with the key.
+pub fn is_sealed(bytes: &[u8]) -> bool {
+    bytes.len() >= SEALED_MIN_BYTES
+        && bytes.first() == Some(&SEALED_VERSION)
+        && bytes.get(1) == Some(&SEALED_ALGORITHM)
+}
+
+/// The bytes `text` holds in RFC 4648's standard alphabet, padded, in its
+/// one spelling, as area 2 writes every `Bytes` in JSON; `None` for
+/// anything else, an empty text included.
+pub fn decode_base64(text: &str) -> Option<Vec<u8>> {
+    if !text.len().is_multiple_of(4) || text.contains(['-', '_']) {
+        return None;
+    }
+    let body = text.trim_end_matches('=');
+    let padding = text.len() - body.len();
+    if padding != (4 - body.len() % 4) % 4 {
+        return None;
+    }
+    decode_base64url(&body.replace('+', "-").replace('/', "_"))
+}
+
+/// The standard type built on `Bytes` whose check every result of `op`
+/// passes (chunk 5.5r3), so building one from the call needs no `attempt`:
+/// `Hash(hash.sha256(body))`, `Hmac(crypto.hmac(body, key: ...))`,
+/// `EncryptedValue(crypto.encrypt(...))`.
+pub fn made_by(op: crate::Op) -> Option<&'static str> {
+    match op {
+        crate::Op::HashSha256 => Some(HASH),
+        crate::Op::CryptoHmac => Some(HMAC),
+        crate::Op::CryptoEncrypt => Some(ENCRYPTED_VALUE),
+        _ => None,
+    }
+}
+
+/// A type built on `Bytes` (chunk 5.5r3): its canonical text and its JSON
+/// are area 2's Base64 of its bytes, so a field of one is sent as a field
+/// of `Bytes` is; it is stored as `bytea`, shown as its text, and not
+/// ordered.
+const fn bytes_entry(name: &'static str, validator: Validator, examples: Examples) -> StandardType {
+    StandardType {
+        name,
+        holds: Holds::Bytes,
+        text: Some(TextForm::Base64),
+        json: Json::Text,
+        storage: Storage::Column(SqlType::Bytes),
+        format: Format {
+            key: FormatKey::Canonical,
+            options: NO_OPTIONS,
+        },
+        ordered: false,
+        validator: Some(validator),
+        shape: None,
+        examples,
+        release: FIRST_RELEASE,
+    }
+}
+
+/// A SHA-256 digest (area 19, chunk 5.5r3; FIPS 180-4): what `hash.sha256`
+/// gives, kept as a key's verifier or a file's content key.
+pub const HASH_ENTRY: StandardType = bytes_entry(
+    HASH,
+    Validator::Hash,
+    Examples {
+        // FIPS 180-4's digests of nothing and of `abc`.
+        valid: &[
+            (
+                "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+                "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+            ),
+            (
+                "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=",
+                "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=",
+            ),
+        ],
+        format: None,
+        // 31 bytes, 33, hexadecimal, unpadded, the URL alphabet, nothing.
+        malformed: &[
+            "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFQ==",
+            "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0A",
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU",
+            "47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU=",
+            "",
+        ],
+        of: None,
+        settings: "",
+    },
+);
+
+/// An HMAC-SHA-256 tag (area 19, chunk 5.5r3; RFC 2104): what
+/// `crypto.hmac` gives, a webhook's signature among them.
+pub const HMAC_ENTRY: StandardType = bytes_entry(
+    HMAC,
+    Validator::Hmac,
+    Examples {
+        // RFC 4231's first and second test cases.
+        valid: &[
+            (
+                "sDRMYdjbOFNcqK/OrwvxK4gdwgDJgz2nJuk3bC4yz/c=",
+                "sDRMYdjbOFNcqK/OrwvxK4gdwgDJgz2nJuk3bC4yz/c=",
+            ),
+            (
+                "W9zBRr9gdU5qBCQmCJV1x1oAPwidJzmDnexYuWTsOEM=",
+                "W9zBRr9gdU5qBCQmCJV1x1oAPwidJzmDnexYuWTsOEM=",
+            ),
+        ],
+        format: None,
+        // 31 bytes, 33, unpadded, nothing.
+        malformed: &[
+            "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFQ==",
+            "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0A",
+            "sDRMYdjbOFNcqK/OrwvxK4gdwgDJgz2nJuk3bC4yz/c",
+            "",
+        ],
+        of: None,
+        settings: "",
+    },
+);
+
+/// A value sealed by `crypto.encrypt` (area 19, chunk 5.5r3; the format
+/// chosen in chunk 5.5q2): ciphertext, so it may be stored and sent, and
+/// only `crypto.decrypt`, with the key, reads what it holds.
+pub const ENCRYPTED_VALUE_ENTRY: StandardType = bytes_entry(
+    ENCRYPTED_VALUE,
+    Validator::EncryptedValue,
+    Examples {
+        // Nothing sealed, and five bytes, each under key identity
+        // a1b2c3d4.
+        valid: &[
+            (
+                "AQGhssPUAAECAwQFBgcICQoLDA0ODxAREhMUFRYXgIGCg4SFhoeIiYqLjI2Ojw==",
+                "AQGhssPUAAECAwQFBgcICQoLDA0ODxAREhMUFRYXgIGCg4SFhoeIiYqLjI2Ojw==",
+            ),
+            (
+                "AQGhssPUGBkaGxwdHh8gISIjJCUmJygpKissLS4vaGVsbG+QkZKTlJWWl5iZmpucnZ6f",
+                "AQGhssPUGBkaGxwdHh8gISIjJCUmJygpKissLS4vaGVsbG+QkZKTlJWWl5iZmpucnZ6f",
+            ),
+        ],
+        format: None,
+        // Version 2, algorithm 2, a byte short of a tag, the URL alphabet
+        // unpadded, nothing.
+        malformed: &[
+            "AgGhssPUAAECAwQFBgcICQoLDA0ODxAREhMUFRYXgIGCg4SFhoeIiYqLjI2Ojw==",
+            "AQKhssPUAAECAwQFBgcICQoLDA0ODxAREhMUFRYXgIGCg4SFhoeIiYqLjI2Ojw==",
+            "AQGhssPUAAECAwQFBgcICQoLDA0ODxAREhMUFRYXgIGCg4SFhoeIiYqLjI2O",
+            "AQGhssPUAAECAwQFBgcICQoLDA0ODxAREhMUFRYXgIGCg4SFhoeIiYqLjI2Ojw",
+            "",
+        ],
+        of: None,
+        settings: "",
+    },
+);
+
+/// `PasswordPolicy`'s parts, in order (NIST SP 800-63B, chunk 5.5r3): the
+/// fewest characters, from NIST's 8 (15 where a password is the only
+/// factor) to a `Password`'s 256; the most, at least NIST's 64; and whether
+/// a new password is compared against a list of breached ones. There are no
+/// composition rules and no expiry, which NIST says not to impose.
+pub const PASSWORD_POLICY_FIELDS: [(&str, Part); 3] = [
+    ("min_length", Part::Whole(8, 256)),
+    ("max_length", Part::Whole(64, 256)),
+    ("check_breached", Part::Of(Builtin::Bool)),
+];
+
+/// A policy's fewest characters are never more than its most (chunk
+/// 5.5r3).
+pub const PASSWORD_POLICY_ORDER: &[OrderRule] = &[OrderRule {
+    lower: "min_length",
+    upper: "max_length",
+    strict: false,
+    at: "min_length",
+    label: "more than its `max_length`",
+    reason: "A password policy's fewest characters can't be more than its most, or no password would meet it.",
+    next: "Give `min_length` a number no greater than `max_length`",
+}];
+
+/// The rules a password must meet (NIST SP 800-63B, area 19, chunk 5.5r3):
+/// sent as an object of its parts, stored as that JSON, and shown as its
+/// lengths, `15–64`.
+pub const PASSWORD_POLICY_ENTRY: StandardType = StandardType {
+    name: PASSWORD_POLICY,
+    holds: Holds::Object(&PASSWORD_POLICY_FIELDS),
+    text: None,
+    json: Json::Fields(&["min_length", "max_length", "check_breached"]),
+    storage: Storage::Column(SqlType::Json),
+    format: Format {
+        key: FormatKey::Parts {
+            parts: &["min_length", "max_length"],
+            separator: "–",
+        },
+        options: NO_OPTIONS,
+    },
+    ordered: false,
+    validator: None,
+    shape: None,
+    examples: Examples {
+        valid: &[
+            (
+                r#"{"min_length":"15","max_length":"64","check_breached":true}"#,
+                "15–64",
+            ),
+            (
+                r#"{"min_length":"8","max_length":"256","check_breached":false}"#,
+                "8–256",
+            ),
+        ],
+        format: None,
+        // Fewer than NIST's 8, a most below 64, a fewest above the most, a
+        // composition rule it doesn't have, no breach check said, and not
+        // an object.
+        malformed: &[
+            r#"{"min_length":"6","max_length":"64","check_breached":true}"#,
+            r#"{"min_length":"8","max_length":"32","check_breached":true}"#,
+            r#"{"min_length":"100","max_length":"64","check_breached":true}"#,
+            r#"{"min_length":"8","max_length":"64","check_breached":true,"require_digit":true}"#,
+            r#"{"min_length":"8","max_length":"64"}"#,
+            r#""15-64""#,
+        ],
+        of: None,
+        settings: "",
+    },
+    release: FIRST_RELEASE,
+};
+
+/// The transports a passkey says it can be reached by, as WebAuthn names
+/// them and `webauthn-rs` reads them (chunk 5.5r3): `smart-card`, which
+/// `webauthn-rs` doesn't read, and its own `test` aren't kept.
+pub const WEB_AUTHN_TRANSPORT_PATTERN: &str = "usb|nfc|ble|internal|hybrid";
+
+/// `WebAuthnCredential`'s parts, in order (W3C WebAuthn Level 3, chunk
+/// 5.5r3), each mapped to `webauthn-rs` 0.5's stored `Credential`:
+/// `credential_id` its `cred_id` (WebAuthn's at most 1,023 bytes),
+/// `public_key` its `cred` as the authenticator gave it, a COSE_Key (RFC
+/// 9052 §7) in CBOR, `sign_count` its `counter` (a `u32`), `transports` its
+/// `transports` (none for an empty list), `backup_eligible` and `backed_up`
+/// its `backup_eligible` and `backup_state`; the person's `name` for it and
+/// when it was made and last used are the application's. No biometric is
+/// held: the authenticator keeps that.
+pub const WEB_AUTHN_CREDENTIAL_FIELDS: [(&str, Part); 9] = [
+    (
+        "credential_id",
+        Part::Bounded {
+            of: Builtin::Bytes,
+            min: Some(crate::Num {
+                mantissa: 1,
+                scale: 0,
+            }),
+            max: Some(crate::Num {
+                mantissa: 1023,
+                scale: 0,
+            }),
+        },
+    ),
+    (
+        "public_key",
+        Part::Bounded {
+            of: Builtin::Bytes,
+            min: Some(crate::Num {
+                mantissa: 1,
+                scale: 0,
+            }),
+            max: Some(crate::Num {
+                mantissa: 2048,
+                scale: 0,
+            }),
+        },
+    ),
+    ("sign_count", Part::Whole(0, 4_294_967_295)),
+    (
+        "transports",
+        Part::List(&Part::Matching(WEB_AUTHN_TRANSPORT_PATTERN)),
+    ),
+    ("backup_eligible", Part::Of(Builtin::Bool)),
+    ("backed_up", Part::Of(Builtin::Bool)),
+    ("name", Part::Line),
+    ("registered_at", Part::Of(Builtin::Instant)),
+    ("last_used_at", Part::Optional(&Part::Of(Builtin::Instant))),
+];
+
+/// A passkey (area 19, chunk 5.5r3; area 8, "Passkeys"): what the server
+/// keeps of a credential a person registered, sent with its parts' names,
+/// stored as that JSON, and shown by the name the person gave it.
+pub const WEB_AUTHN_CREDENTIAL_ENTRY: StandardType = StandardType {
+    name: WEB_AUTHN_CREDENTIAL,
+    holds: Holds::Object(&WEB_AUTHN_CREDENTIAL_FIELDS),
+    text: None,
+    json: Json::Members(&[
+        "credential_id",
+        "public_key",
+        "sign_count",
+        "transports",
+        "backup_eligible",
+        "backed_up",
+        "name",
+        "registered_at",
+        "last_used_at",
+    ]),
+    storage: Storage::Column(SqlType::Json),
+    format: Format {
+        key: FormatKey::FirstPart(&["name"]),
+        options: NO_OPTIONS,
+    },
+    ordered: false,
+    validator: None,
+    shape: None,
+    examples: Examples {
+        // An ES256 key (`webauthn-rs`'s own COSE test vector) on a phone,
+        // synced, used once; an Ed25519 key (RFC 8032's first) on a
+        // security key, never used since it was made.
+        valid: &[
+            (
+                r#"{"credential_id":"AAECAwQFBgcICQoLDA0ODw==","public_key":"pQECAyYgASFYIGXtpaEld8K66ClDf+M4cBoQqqN14btbXeEI3kOcCFUdIlggHlLtdXARY/f55A3fnzQbPcm6hgr34Mp8p+nuzQCE0Zw=","sign_count":"0","transports":["internal","hybrid"],"backup_eligible":true,"backed_up":true,"name":"Work phone","registered_at":"2026-10-18T09:00:00Z","last_used_at":"2026-10-18T09:05:00Z"}"#,
+                "Work phone",
+            ),
+            (
+                r#"{"credential_id":"8dA=","public_key":"pAEBAycgBiFYINdamAGCsQq31Uv+08lkBzoO4XLz2qYjJa8CGmj3B1Ea","sign_count":"42","transports":["usb","nfc"],"backup_eligible":false,"backed_up":false,"name":"Security key","registered_at":"2026-10-18T09:00:00Z"}"#,
+                "Security key",
+            ),
+        ],
+        format: None,
+        // No credential ID, a count past a `u32`, a transport WebAuthn
+        // doesn't name, an empty name, a biometric it doesn't hold, and not
+        // an object.
+        malformed: &[
+            r#"{"credential_id":"","public_key":"8dA=","sign_count":"0","transports":[],"backup_eligible":false,"backed_up":false,"name":"Phone","registered_at":"2026-10-18T09:00:00Z"}"#,
+            r#"{"credential_id":"8dA=","public_key":"8dA=","sign_count":"4294967296","transports":[],"backup_eligible":false,"backed_up":false,"name":"Phone","registered_at":"2026-10-18T09:00:00Z"}"#,
+            r#"{"credential_id":"8dA=","public_key":"8dA=","sign_count":"0","transports":["bluetooth"],"backup_eligible":false,"backed_up":false,"name":"Phone","registered_at":"2026-10-18T09:00:00Z"}"#,
+            r#"{"credential_id":"8dA=","public_key":"8dA=","sign_count":"0","transports":[],"backup_eligible":false,"backed_up":false,"name":"","registered_at":"2026-10-18T09:00:00Z"}"#,
+            r#"{"credential_id":"8dA=","public_key":"8dA=","sign_count":"0","transports":[],"backup_eligible":false,"backed_up":false,"name":"Phone","registered_at":"2026-10-18T09:00:00Z","fingerprint":"8dA="}"#,
+            r#""8dA=""#,
+        ],
+        of: None,
+        settings: "",
+    },
+    release: FIRST_RELEASE,
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1059,6 +1488,37 @@ mod tests {
     }
 
     #[test]
+    fn records_built_on_bytes_hold_what_crypto_gives() {
+        for entry in [HASH_ENTRY, HMAC_ENTRY, ENCRYPTED_VALUE_ENTRY] {
+            for (valid, _) in entry.examples.valid {
+                assert!(entry.accepts(valid), "{}: {valid}", entry.name);
+            }
+            for malformed in entry.examples.malformed {
+                assert!(!entry.accepts(malformed), "{}: {malformed}", entry.name);
+            }
+        }
+        assert_eq!(decode_base64("AQAB"), Some(vec![1, 0, 1]));
+        assert_eq!(decode_base64("AQ=="), Some(vec![1]));
+        // Unpadded, over-padded, bits past the last byte, the URL alphabet.
+        assert_eq!(decode_base64("AQ"), None);
+        assert_eq!(decode_base64("AQ==="), None);
+        assert_eq!(decode_base64("AR=="), None);
+        assert_eq!(decode_base64("A-_B"), None);
+        assert!(is_sealed(&[[1, 1].as_slice(), &[0; 44]].concat()));
+        assert!(!is_sealed(&[[1, 1].as_slice(), &[0; 43]].concat()));
+        assert_eq!(made_by(crate::Op::HashSha256), Some(HASH));
+        assert_eq!(made_by(crate::Op::CryptoSign), None);
+    }
+
+    #[test]
+    fn a_one_time_code_is_six_to_eight_digits() {
+        assert!(is_one_time_code("000000"));
+        assert!(is_one_time_code("12345678"));
+        assert!(!is_one_time_code("1234567a"));
+        assert!(!is_one_time_code("123456789"));
+    }
+
+    #[test]
     fn secret_values_have_their_bounds() {
         for entry in [
             PASSWORD_ENTRY,
@@ -1067,6 +1527,7 @@ mod tests {
             TOTP_SECRET_ENTRY,
             SECRET_TEXT_ENTRY,
             JWT_ENTRY,
+            ONE_TIME_CODE_ENTRY,
         ] {
             assert_eq!(secret_value(entry.name), Some(entry.name));
             for (valid, _) in entry.examples.valid {

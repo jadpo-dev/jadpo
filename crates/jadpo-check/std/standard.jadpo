@@ -789,6 +789,54 @@ public type TotpSecret = Text {}
 /// never sent, logged, stored or shown.
 public type SecretText = Text {}
 
+/// The code a person types from an authenticator app, a text message or an
+/// email (area 19, RFC 4226 and RFC 6238): six to eight digits, a leading
+/// zero kept. A secret value, checked when it arrives and never kept.
+public type OneTimeCode = Text {}
+
+/// A SHA-256 digest (area 19, FIPS 180-4): the 32 bytes `hash.sha256`
+/// gives, so `Hash(hash.sha256(body))` builds one. Sent and read back as
+/// its Base64, compared in constant time.
+public type Hash = Bytes {}
+
+/// An HMAC-SHA-256 tag (area 19, RFC 2104): the 32 bytes `crypto.hmac`
+/// gives, a webhook's signature among them. Compared in constant time.
+public type Hmac = Bytes {}
+
+/// A value sealed by `crypto.encrypt` (area 19): its version, algorithm,
+/// key identity, nonce, ciphertext and tag. Ciphertext, so it may be
+/// stored and sent; only `crypto.decrypt`, with the key, reads what it
+/// holds.
+public type EncryptedValue = Bytes {}
+
+/// The rules a password must meet (area 19, NIST SP 800-63B): the fewest
+/// characters, from 8 (15 where a password is the only factor), the most,
+/// at least 64, and whether a new password is checked against a list of
+/// breached ones. No composition rules and no expiry, as NIST says.
+public type PasswordPolicy = Object {
+    min_length: Int
+    max_length: Int
+    check_breached: Bool
+}
+
+/// A passkey a person registered (area 19, W3C WebAuthn; area 8,
+/// "Passkeys"), as `webauthn-rs` keeps one: its credential ID, its public
+/// key as a COSE_Key in CBOR, its signature counter, the transports it
+/// says it can be reached by, whether it may be and is backed up, the name
+/// the person gave it, and when it was made and last used. Never a
+/// biometric.
+public type WebAuthnCredential = Object {
+    credential_id: Bytes
+    public_key: Bytes
+    sign_count: Int
+    transports: List<Text>
+    backup_eligible: Bool
+    backed_up: Bool
+    name: Text
+    registered_at: Instant
+    last_used_at: Instant?
+}
+
 /// A payment card's number (area 19, ISO/IEC 7812), 12 to 19 digits with
 /// a Luhn check digit: `4242424242424242`. Shown to people as its last
 /// four only, `•••• 4242`. Personal data.

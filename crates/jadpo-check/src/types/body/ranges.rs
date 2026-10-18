@@ -810,10 +810,14 @@ impl Body<'_> {
         // same check only when it is built on the same one. `Html` is made
         // safe as it is built, so its construction never breaks it (chunk
         // 5.5o).
+        // A type built on `Bytes` is built without an arm from the call
+        // that always makes its bytes: `Hash(hash.sha256(body))` (chunk
+        // 5.5r3).
         let standard = needs.standard.is_none_or(|name| {
             has.standard == Some(name)
                 || jadpo_std::standard::markup::sanitises(name)
                 || jadpo_std::standard::ai::rounds(name)
+                || self.made_as(value) == Some(name)
         });
         if (needs.email && !is_email) || !checked || !standard {
             out.push("format".to_string());
@@ -838,6 +842,20 @@ impl Body<'_> {
             }
         }
         verdict
+    }
+
+    /// The standard type built on `Bytes` whose check every value of
+    /// `value` passes, for a call to the operation that makes it (chunk
+    /// 5.5r3): `hash.sha256`'s digest is always a `Hash`.
+    fn made_as(&self, value: &Expr) -> Option<&'static str> {
+        match value {
+            Expr::ParenExpr(paren) => self.made_as(&paren.expr()?),
+            Expr::CallExpr(call) => match self.facts.reaches.get(&node_key(call.syntax()))? {
+                super::facts::Reach::Std(op) => jadpo_std::standard::security::made_by(*op),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     /// The most code points a text expression can hold when its type
