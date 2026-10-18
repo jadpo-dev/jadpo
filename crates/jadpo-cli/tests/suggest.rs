@@ -1,8 +1,8 @@
 //! `jadpo suggest` (area 14, "Suggestions"; chunk 5.5x): the numbered
 //! findings and the agent's routine, `--catalogue`, a finding taken when
 //! it disappears, `ignore` keeping a snippet and its variants quiet until
-//! it changes, `found` keeping a miss's text through the fix and teaching
-//! it to the next scan, and `share`, which isn't built yet.
+//! it changes, and `found` keeping a miss's text through the fix and
+//! teaching it to the next scan; `share` is in `suggest_share`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -301,23 +301,6 @@ fn the_catalogue_lists_every_signal() {
         signals
             .iter()
             .any(|s| s["suggestion"] == "Point" && s["signal"] == "shape")
-    );
-}
-
-#[test]
-fn share_is_not_built_yet() {
-    let root = shop("share");
-    let output = jadpo(&root, &["suggest", "share"]);
-    assert_ne!(output.code, 0);
-    assert!(
-        output.stderr.contains("toolchain.not_built_yet"),
-        "{}",
-        output.stderr
-    );
-    assert!(
-        output.stderr.contains("isn't built yet"),
-        "{}",
-        output.stderr
     );
 }
 

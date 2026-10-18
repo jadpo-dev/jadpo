@@ -760,8 +760,12 @@ pub static COMMANDS: &[Command] = &[
                       quiet until its code changes, in the committed \
                       ignored_suggestions.jadpo_record. `found` records something the scan \
                       missed, before the code changes, and teaches it so the next scan finds the \
-                      same pattern. `share` sends what was learned to Jadpo HQ (not built yet). \
-                      `--catalogue` lists every signal.",
+                      same pattern, in the committed taught_suggestions.jadpo_record. `share` \
+                      sends the hashes of what was learned to Jadpo HQ at once, shows exactly \
+                      what it would send of the snippets HQ asks for, and sends them only with \
+                      `--approve`, after a person said yes; `suggestions { share: false }` in \
+                      app.jadpo or JADPO_SUGGEST_SHARE=off turns sharing off. `--catalogue` \
+                      lists every signal.",
         arguments: &[
             Argument {
                 name: "action",
@@ -788,12 +792,38 @@ pub static COMMANDS: &[Command] = &[
                 values: Values::Fixed(&[]),
             },
         ],
-        flags: &[Flag {
-            name: "--catalogue",
-            value: None,
-            description: "List every signal the scan looks for",
-            values: &[],
-        }],
+        flags: &[
+            Flag {
+                name: "--catalogue",
+                value: None,
+                description: "List every signal the scan looks for",
+                values: &[],
+            },
+            Flag {
+                name: "--approve",
+                value: None,
+                description: "With share, send the snippets HQ asked for; only after the person said yes",
+                values: &[],
+            },
+            Flag {
+                name: "--decline",
+                value: None,
+                description: "With share, drop the snippets HQ asked for, sending nothing",
+                values: &[],
+            },
+            Flag {
+                name: "--new-token",
+                value: None,
+                description: "With share, replace the project token first",
+                values: &[],
+            },
+            Flag {
+                name: "--unattended",
+                value: None,
+                description: "With share, send only hashes and skip HQ's request (also when CI is set)",
+                values: &[],
+            },
+        ],
         examples: &[
             Example {
                 description: "Find where the code could use a standard type",
@@ -811,11 +841,19 @@ pub static COMMANDS: &[Command] = &[
                 description: "See every signal it looks for",
                 command: "jadpo suggest --catalogue",
             },
+            Example {
+                description: "Send what was learned to Jadpo HQ",
+                command: "jadpo suggest share",
+            },
+            Example {
+                description: "Send the snippets HQ asked for, after the person said yes",
+                command: "jadpo suggest share --approve",
+            },
         ],
         arguments_rule: &rule::CLI_SUGGEST_ARGUMENTS,
         raises: &[
             &rule::SUGGEST_RECORD_INVALID,
-            &rule::TOOLCHAIN_NOT_BUILT_YET,
+            &rule::SUGGEST_SHARE_FAILED,
             &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
