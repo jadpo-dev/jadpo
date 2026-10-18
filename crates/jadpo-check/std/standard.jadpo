@@ -159,8 +159,8 @@ public type LocalTime = Object {
 /// A CLDR locale (area 10), written as its BCP 47 tag, `en-GB`.
 public type Locale = Enum {}
 
-/// A mass, held in kilograms to 6 places (area 19), written `250g` or
-/// `2.5kg`.
+/// A mass, held in kilograms to 9 places, a microgram (area 19), written
+/// `250g`, `2.5kg` or `500mcg`.
 public type Mass = Mass {}
 
 /// A month of the year (area 19).

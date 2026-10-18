@@ -1881,7 +1881,7 @@ exist only at construction and display.
 | `Area` | square metre | 6 |
 | `Volume` | cubic metre | 9 (a cubic millimetre) |
 | `Angle` | radian | 9 |
-| `Mass` | kilogram | 6 (a milligram) |
+| `Mass` | kilogram | 9 (a microgram) |
 | `Pressure` | pascal | 3 |
 | `Energy` | joule | 3 |
 | `Power` | watt | 3 |
@@ -4697,8 +4697,9 @@ under "Errors").
   is π / 180 radians to 30 digits; `psi` is a pound-force on a square inch,
   `kcal` the thermochemical 4,184 J, `t` the tonne and `knot` 1,852 m an
   hour. A value is converted exactly where the unit is defined exactly and
-  rounded half to even to its kind's scale, so `1mcg` is held as nothing:
-  a `Mass` keeps milligrams.
+  rounded half to even to its kind's scale. A `Mass` was first held to the
+  milligram, so `1mcg` was held as nothing; the lead session corrected it
+  on 2026-10-18 to the microgram ("Decisions").
 - **A literal's suffix decides its kind:** a duration's suffix (`ms`, `s`,
   `m`, `h`, `d`) makes a `Duration`, any other a quantity, matched exactly;
   a quantity literal may be negative (`-40degC`), as a duration may not.
@@ -4723,8 +4724,8 @@ under "Errors").
 - **`text.format`'s `unit:`** is a unit of the value's kind, the base unit
   when left out. The number is the value in that unit, exact where the
   conversion ends within the places the kind's scale gives in that unit,
-  otherwise rounded half to even to one place fewer (`1lb`, held as
-  0.453592 kg, is shown as `1 lb`), in the locale's digits and separators.
+  otherwise rounded half to even to one place fewer (`1oz`, held as
+  0.028349523 kg, is shown as `1 oz`), in the locale's digits and separators.
   Where ICU4X compiles CLDR's unit names, for lengths, areas, volumes and
   masses, the locale's short pattern places it (`252,62 cm`); for the
   other kinds, the number, a space and the unit's SI symbol (`21 °C`, but
@@ -5013,6 +5014,7 @@ under "Errors").
 | SQL forms (question 28) | Used by computed backfills in 5.6, then by aggregate queries in 5.6c (Richard, as recommended) | 2026-10-17 |
 | `at_most_length_of` (question 29) | Recorded for `trim`, `slice`, `keep_*` and `drop_*` only (Richard, as recommended) | 2026-10-17 |
 | Reserved namespaces (question 30) | Every standard namespace is reserved (`list`, `set`, `map`, `range`, `text`, `markup`, `money`, `units`, `hash`, `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`, `json_lines`, `colour`, `media`, `web`, `semver`, then `geo` and `ai`); fields and named arguments keep every word; clashing names renamed in the chunk that adds each namespace (`text` in 5.5f, `range` in 5.5c) (Richard, as recommended) | 2026-10-17 |
+| A `Mass` to the microgram | A `Mass` is held in kilograms to 9 places, `numeric(38, 9)`, so the table's `mcg` is exact (`1mcg` is 0.000000001 kg), as a medicine's dose needs; it was first built to 6, which held `1mcg` as nothing. No other kind has a suffix finer than its scale. A correction made by the lead session, not a question for Richard | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 
 ### Open questions
