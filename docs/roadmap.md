@@ -736,7 +736,7 @@ reference only).
   Split on 2026-10-18; `CalendarEvent` is 5.5k3. Both held as their
   standard text; what the pages left open is area 19's "Chosen in chunk
   5.5k2".
-- [ ] **5.5k3 Calendar events** `opus · high` (area 19, "Time and
+- [x] **5.5k3 Calendar events** `opus · high` (area 19, "Time and
   calendar additions", split from 5.5k2): `CalendarEvent` as an object
   whose parts code reads, with parts that may be `none` (`Part::Optional`,
   built in 5.5l), and an all-day event's dates beside a timed one's
@@ -744,7 +744,11 @@ reference only).
   all-day end exclusive, as the RFC writes it), its JSON its parts, its
   recurrence a `RecurrenceRule`. Done when it passes the harness and an
   all-day event's text, JSON and storage round-trip without moving a
-  day.
+  day. Built, its rules across parts (days or times, a recurrence only
+  on a timed event and from its start) proved for a literal and checked
+  as text and JSON are read, and stored a column per part (checked in
+  PostgreSQL); what the pages left open is area 19's "Chosen in chunk
+  5.5k3".
 - [ ] **5.5k4 Local times to instants, and all-day recurrence** `opus ·
   high` (areas 10 and 19; decided by the lead session, 2026-10-18, from
   5.5k3's findings): `temporal.resolve` taking a `LocalDateTime` (and a

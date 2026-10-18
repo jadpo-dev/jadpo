@@ -498,7 +498,7 @@ fn weekday_entry(text: &str) -> Option<WeekdayEntry> {
 /// RFC 5545's basic date and time, `20261026T093000`, with a `Z` for UTC:
 /// a real date in the years a `CalendarDate` holds and a clock time to the
 /// second (no leap second).
-fn basic_date_time(text: &str) -> Option<(LocalAt, bool)> {
+pub(super) fn basic_date_time(text: &str) -> Option<(LocalAt, bool)> {
     let (text, utc) = match text.strip_suffix('Z') {
         Some(local) => (local, true),
         None => (text, false),

@@ -20,6 +20,7 @@
 mod calls;
 mod contract;
 mod currency;
+mod events;
 mod expr;
 pub(crate) mod facts;
 mod failing;

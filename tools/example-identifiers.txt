@@ -186,6 +186,7 @@ cake_sold_out
 cake_stand
 cake_view
 cakes
+calendar_text
 can_take
 cancel_unpaid_orders
 candle_count
@@ -297,6 +298,7 @@ counter
 counter_id
 countess
 course
+covers_reader_day
 create_booking
 create_member
 create_note
@@ -359,6 +361,11 @@ describe_status
 destination_company_id
 devices
 dialled_as
+diary_entry_from_json
+diary_entry_from_text
+diary_json
+diary_text
+diary_unreadable
 disable_user
 disabled_at
 discount
@@ -447,7 +454,6 @@ find_customer
 find_note
 find_todo
 finish_review
-first_day
 first_loan
 first_page
 first_placed
@@ -495,6 +501,13 @@ guest_list
 guest_name
 guests
 half_price
+half_term
+half_term_booked
+half_term_from_json
+half_term_from_text
+half_term_json
+half_term_kept
+half_term_vevent
 hand_over
 hand_over_recipe
 handle_taken
@@ -755,9 +768,11 @@ next_classes
 next_day
 next_free
 next_page
+next_shift_starts
 nickname
 night_opening
 night_opening_anyway
+night_shift
 no_guests
 no_stock
 no_subtitle
@@ -1019,6 +1034,8 @@ read_by_dee
 read_clock
 readdress
 readdressed
+reader_day
+reader_local_day
 reader_locale
 reader_pick
 receipt
@@ -1166,7 +1183,13 @@ shelf_unit_wrong
 shelf_unreadable
 shelvable
 shelves
+shift_booked
+shift_count
 shift_end
+shift_from_json
+shift_from_text
+shift_kept
+shift_vevent
 ship_parcel
 ship_to
 shipment
