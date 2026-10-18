@@ -2004,6 +2004,28 @@ ended the session. The plan appends a `RoutePlan` with `Run::Exchange` for
 sign-in signs the token the response gives; the API record, OpenAPI and
 `jadpo routes` list it from `Identity::exchanges`.
 
+Built in chunk 5.5z: passkeys (area 8, "Passkeys"). The identity reads
+`sign_in: { passkey: }` into `Identity::passkey`, kept only with a browser
+session and its `origin:`; the schema adds `jadpo_passkeys` and
+`jadpo_passkey_challenges` beside `jadpo_sessions`. The plan appends one
+`RoutePlan` per `jadpo_std::http::PasskeyStep` under `path:`, with
+`Run::Passkey`, in the first API that accepts browser sessions, and writes
+`PasskeyPlan::lookup`, a passkey by its credential ID joined laterally to
+its user's record and `active:`. The HTTP component answers them in
+`http::passkeys`, after signing in and with no idempotency key: it keeps
+each challenge server-side by its BLAKE3 verifier, bound to a
+`<cookie>_passkey` cookie's verifier or the session, takes it once with
+`DELETE … RETURNING` before the answer is checked, and starts the session
+in the transaction that writes the passkey's new counter, only if the
+counter is still the one read. The ceremonies are a host capability,
+`Host::passkeys` (`jadpo_runtime::Passkeys`), with the configured origin
+and plain data across it, so the runtime crate stays free of them on
+wasm32: the native host and a test's host carry `webauthn-rs` 0.5.5,
+whose OpenSSL doesn't build for wasm32, so a Workers host waits for its
+pure-Rust release; `jadpo_host_native::test_authenticator` (feature
+`test-authenticator`, tests only) is a software device the live tests
+sign in with.
+
 Built in chunk 4.4: policy (area 9). `jadpo_check::policy` reads each
 entity's `policy:` and `membership:` by name (`policy_read`,
 `membership_read`) and root `policy { }` once (`root_read`), resolving

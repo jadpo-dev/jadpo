@@ -354,7 +354,7 @@ client to format in its own language.
 
 ## Generated routes
 
-Some features generate routes: magic-link sign-in (area 8), the privacy
+Some features generate routes: magic-link sign-in and passkeys (area 8), the privacy
 requests (area 15), `POST /auth/exchange` (area 8), `GET /flags` (area 16),
 a provider package's webhooks (area 11), each API's
 `GET <prefix>/openapi.json` (below), and connecting and disconnecting an
@@ -370,7 +370,9 @@ OpenAPI like any route, marked generated (question 12).
   after which the app writes its own routes over the feature's generated
   operations (`magic_links.request`, `magic_links.redeem`,
   `sessions.start`), which keep every protection.
-- Webhook routes can change path but cannot be switched off.
+- Webhook routes can change path but cannot be switched off, and so can
+  passkeys', whose bodies are WebAuthn's rather than the app's (area 8,
+  chosen in chunk 5.5z).
 - A generated route's response shape is fixed; only its path changes.
 
 ## Rate-limited requests

@@ -832,7 +832,7 @@ authentication {
 }
 ```
 
-```jadpo check project=passkeys file=domains/journal/entities/member.jadpo
+```jadpo check project=passkeys file=domains/journal/entities/member.jadpo migrate=initial
 entity Member {
     id: Uuid
     email: Email {
@@ -843,6 +843,67 @@ entity Member {
         read: [id]
     }
 }
+```
+
+The API record lists the routes the runtime answers, as `jadpo routes`
+and OpenAPI do; WebAuthn's own JSON goes in and out of the ceremonies,
+named here for what it is:
+
+```jadpo check project=passkeys file=api/main.api
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 1
+
+authentication: browser_session
+
+GET /auth/passkey
+    generated: passkey
+    caller: user
+    output: List<PasskeyView>
+    status: 200
+
+POST /auth/passkey/register
+    generated: passkey
+    caller: user
+    input: PasskeyRegistration (body)
+    output: PasskeyView
+    status: 201
+
+POST /auth/passkey/register/options
+    generated: passkey
+    caller: user
+    output: PasskeyCreationOptions
+    status: 200
+
+POST /auth/passkey/sign-in
+    generated: passkey
+    authentication: none
+    input: PasskeyAnswer (body)
+    status: 204
+
+POST /auth/passkey/sign-in/options
+    generated: passkey
+    authentication: none
+    output: PasskeyRequestOptions
+    status: 200
+
+PATCH /auth/passkey/{passkey_id: Uuid}
+    generated: passkey
+    caller: user
+    input: PasskeyName (body)
+    output: PasskeyView
+    status: 200
+
+DELETE /auth/passkey/{passkey_id: Uuid}
+    generated: passkey
+    caller: user
+    status: 204
+
+output PasskeyView
+    id: Uuid
+    name: Text
+    registered_at: Instant
+    last_used_at: Instant?
 ```
 
 Without an origin there is nothing to bind a passkey to:
@@ -872,7 +933,17 @@ entity Member {
 ```
 
 ```text output
-PLACEHOLDER
+error: `passkey:` needs the browser session's `origin:`
+ --> main.jadpo:12:9
+   |
+12 |         passkey: {}
+   |         ^^^^^^^ no origin to bind to
+  reason: A passkey works only on the site it was made for: every answer from a device is checked against the origin `browser_session:`'s `origin:` reads from configuration (area 10), never one the request names.
+  next: Add `origin: config.<name>` to `browser_session:`, reading a `Url` setting (agent)
+  rule: semantic.auth_setting_required
+  help: docs/language/08-identity.html#semantic-auth-setting-required
+
+check failed: 1 error, 1 file
 ```
 
 ### A person the app has not seen
@@ -3381,13 +3452,25 @@ method's `signing_key:`, read from a `SigningKey` setting with its
 without a read, renewing reads the record, and a `fresh` route always
 does. The runtime answers `POST /auth/exchange`, which the API record,
 OpenAPI and `jadpo routes` list, and a browser session's `origin:` is
-read from a `Url` setting.
+read from a `Url` setting. Since chunk 5.5z `sign_in:` is read, with
+`passkey:` built: the runtime answers its seven routes, registering,
+signing in, listing, renaming and removing passkeys, on `webauthn-rs`
+through the host, keeping passkeys in `jadpo_passkeys` and ceremonies in
+`jadpo_passkey_challenges`; the API record, OpenAPI, `jadpo routes` and
+the per-locale failure export list them.
 
 Not yet, each `toolchain.not_built_yet` where it is written:
 
-- `external_token`, `sign_in:` (magic links and providers),
-  `on_first_sign_in:` and `oauth_provider:`, after the first build; no
-  roadmap chunk builds them yet (magic links since moved to chunk 7.3b).
+- `external_token`, `sign_in:`'s `magic_link:` and `providers:`,
+  `on_first_sign_in:` and `oauth_provider:`, after the first build (magic
+  links since moved to chunk 7.3b).
+- Passkeys' recovery through a magic link, the check that `passkey:` has
+  `magic_link:` beside it, `test_passkeys` in route tests, and their
+  events (chunk 5.5z2, after magic links and events). Until then the
+  device lists a passkey under the principal's subject.
+- Passkeys on Workers: `webauthn-rs` 0.5 verifies with OpenSSL, which
+  doesn't build for wasm32, so the Workers host waits for a pure-Rust
+  release (its 0.6 line, on RustCrypto, is a pre-release).
 - OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting
   routes and `on_behalf_of:` (decided 2026-10-16, area 11); no roadmap chunk
   yet. `Driver.oidc` for Google and Microsoft sign-in comes with providers,
@@ -3648,3 +3731,8 @@ builds it.
 | Renewing (chosen in chunk 5.1b) | A browser session's cookie and an API token are the 64 hexadecimal digits they are issued as, and after renewal those digits, `.` and the signed part; either form signs in with or without a delay, so turning one on or off signs no one out. A request whose credential has no good part reads the record (one statement, area 8, question 12) and its response renews it: the session's cookie set again, `HttpOnly; Secure; SameSite=Strict`, with `Max-Age` the session's time left, or the API token in an `X-Jadpo-Token` response header, which a client keeps; a client that ignores it reads the record on every request after the delay. A response whose action started or ended the session renews nothing, and neither does a refusal or a repeat answered from an `Idempotency-Key`. A `fresh` route reads the record by the credential's verifier whatever its part says, and renews it only when its part wasn't good. A write with a good part checks the CSRF token against the verifier the part holds | 2026-10-16 |
 | The key exchange (chosen in chunk 5.1b) | The runtime answers `POST /auth/exchange` when `revocation_delay:` is set and `service_key:` is declared with the principal's `service:`; it signs in to every API that accepts service keys and is listed in each one's record (`generated: exchange`, `output: ExchangedToken`), OpenAPI (`x-jadpo-generated: true`) and `jadpo routes` (`generated exchange`). It takes a service key directly and nothing else: an exchanged token is 401 `invalid_credentials`, a user's credential 403 (`not_permitted`, or `csrf_rejected` for a cookie without its CSRF token), a query string or body 422 `invalid_input`; it reads no `Idempotency-Key` and keeps nothing, so a repeat is a new exchange. It answers 200 with `token`, `jadpo_service_token_` and a signed part, and `expires_at`, the delay from now or the key's end if sooner, with `Cache-Control: no-store`. An exchanged token signs in wherever the API accepts service keys, without a read except on a `fresh` route, which reads the key with the service's record by the key's verifier the part holds; it is never renewed. A route the application writes at `POST /auth/exchange` is `route.path_overlap` | 2026-10-16 |
 | Passkeys (Richard) | A third built-in way to check a person (WebAuthn, FIDO2): registration and sign-in ceremonies built in on `webauthn-rs`, no attestation, credentials stored as `WebAuthnCredential`, several per person, recovery by magic link. Built in 5.5z | 2026-10-18 |
+| `sign_in:` and passkeys (chosen in chunk 5.5z) | `sign_in:` is a block in `authentication { }` holding `magic_link:`, `passkey:` and `providers:`, each once (`semantic.auth_method_duplicate`); anything else is `semantic.auth_method_unknown`, and `magic_link:` and `providers:` are `toolchain.not_built_yet` until chunk 7.3b. `passkey:` takes `expires_after:` (`1m` to `10m`, default `5m`; outside it, or not a duration, `semantic.auth_setting_invalid`, a hard limit rather than an acceptance, since a longer challenge buys nothing) and `path:` (`/` and lower-case segments of letters, digits, `-` and `_`, default `/auth/passkey`). It needs `browser_session:` with `origin:` (`semantic.auth_setting_required`); the requirement of `magic_link:` waits for chunk 5.5z2. There is no `routes: false` and no generated operation: the bodies are WebAuthn's, so an app's own route would add nothing. A person has at most 20 passkeys; a passkey signs in a browser session only | 2026-10-18 |
+| Passkey ceremonies (chosen in chunk 5.5z) | `webauthn-rs` 0.5.5 (MPL-2.0, unmodified), its passkey ceremonies: user verification required, attestation `none`, ES256 and RS256, `credProtect` asked for as `webauthn-rs` asks. The relying-party ID is the configured origin's host and only that origin is accepted (no subdomain, no other port). Registration asks for a resident key (`residentKey: "required"`, `requireResidentKey: true`) and sign-in is discoverable (`webauthn-rs`'s `conditional-ui`, `mediation: "conditional"`), so no address is asked for and nothing tells which addresses have an account; `allowCredentials` is empty and `excludeCredentials` lists the person's passkeys. The user handle is 16 random bytes per passkey (`webauthn-rs` takes a UUID), never the user's `id`, and an answer's must match the passkey's. Its challenge is `webauthn-rs`'s own, from the operating system's generator; the cookie and the user handle are the runtime's random bytes. Its state is kept as `webauthn-rs` serialises it (`danger-allow-state-serialisation`), server-side only, and a stored passkey is loaded part by part (`danger-credential-internals`) | 2026-10-18 |
+| Passkey challenges (chosen in chunk 5.5z) | `jadpo_passkey_challenges` keeps each by the BLAKE3 digest of its bytes, with its purpose, its binding, its state and when it expires, in the user entity's store. A sign-in challenge is bound to `<cookie>_passkey` (32 random bytes, kept as its digest; `HttpOnly; Secure; SameSite=Strict; Path=/`, `Max-Age` `expires_after:`, cleared on success), a registration challenge to the session row the request came with and its user; one per binding and purpose, a new request replacing it. The answer's challenge is taken with `DELETE … RETURNING` before the answer is checked, so it is used once whatever the answer; one missing, expired, bound elsewhere or for another user is `passkey_challenge_expired` (401). Expired challenges are swept when a new one is kept. The options routes take no body or query string, and every passkey POST needs an `Origin` naming the configured origin (`csrf_rejected`); the signed-in ones also need the session's CSRF token. Registering reads the record now (`fresh`) | 2026-10-18 |
+| Checking an answer and the counter (chosen in chunk 5.5z) | Any failure `webauthn-rs` reports, an unreadable answer, an unknown or removed passkey or a user handle that doesn't match is `passkey_rejected` (401), never saying which. The counter is `webauthn-rs`'s strict WebAuthn check: when the stored or the answered count is above zero, one not above the stored count is refused and nothing is written; a passkey that keeps no counter sends `0` and passes. Backup eligibility may not change on a discoverable sign-in. On success the passkey's counter, backup flags and `last_used_at` are written only if its counter is still the one read (`passkey_rejected` otherwise), in the transaction that keeps the new session, which `user_disabled` (403) stops when the user's `active:` doesn't hold | 2026-10-18 |
+| Keeping and showing passkeys (chosen in chunk 5.5z) | `jadpo_passkeys` holds `id`, `principal_id`, `credential_id` (`bytea`, unique), `user_handle`, `credential` (the `WebAuthnCredential` JSON: bytes in Base64, the count as text, `last_used_at` left out until used) and `registered_at`. A passkey registered already is `passkey_already_registered` (409), a 21st `passkey_limit_reached` (409). `name` is required, one line (area 19's `Line`, 1 to 200 characters; else 422 `invalid_input`). Listing, renaming and removing reach only the signed-in person's passkeys, oldest first, any other `id` `passkey_not_found` (404); `PasskeyView` is `id`, `name`, `registered_at` and `last_used_at` (or `null`). The routes go in the first API that accepts browser sessions, its record (`generated: passkey`), OpenAPI (`x-jadpo-generated: true`) and `jadpo routes` (`generated passkey …`), and their failures' wording is Jadpo's own, on with `passkey:` (area 16). Until 5.5z2 the device lists a passkey under the principal's subject | 2026-10-18 |

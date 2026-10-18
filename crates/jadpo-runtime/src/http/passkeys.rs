@@ -976,15 +976,14 @@ fn cookie_value<'r>(request: &'r Request, name: &str) -> Option<&'r str> {
 }
 
 fn format_uuid(bytes: &[u8; 16]) -> String {
-    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
-    format!(
-        "{}-{}-{}-{}-{}",
-        &hex[0..8],
-        &hex[8..12],
-        &hex[12..16],
-        &hex[16..20],
-        &hex[20..32]
-    )
+    let mut out = String::with_capacity(36);
+    for (at, byte) in bytes.iter().enumerate() {
+        if matches!(at, 4 | 6 | 8 | 10) {
+            out.push('-');
+        }
+        out.push_str(&format!("{byte:02x}"));
+    }
+    out
 }
 
 fn parse_uuid(text: &str) -> Option<[u8; 16]> {

@@ -10285,7 +10285,12 @@ most conservative reading:
   and, since attestation is never requested, `attestation`
   `ParsedAttestation::default()` and `attestation_format` `None`. 5.5z
   checks that leaving out the extensions changes nothing in `webauthn-rs`'s
-  authentication, and adds a part if it does. No biometric is held. A
+  authentication, and adds a part if it does. Checked in chunk 5.5z, on
+  `webauthn-rs` 0.5.5, whose stored `Credential` is 0.5.2's: checking an
+  answer reads a stored credential's key, counter, `user_verified`,
+  `registration_policy` and backup flags, and its `transports` when it
+  lists the credentials allowed, never its `extensions`, so no part is
+  added. No biometric is held. A
   `Bytes` part of a standard object is bounded by its length
   (`Part::Bounded` on `Bytes`). It is sent with its parts' names, the
   bytes as Base64 and the count as area 2 sends an `Int`, stored as that
