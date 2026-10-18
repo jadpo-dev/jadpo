@@ -1411,6 +1411,9 @@ fn uuid(text: &str) -> In {
     In::Val(Value::uuid(text), UUID, Held::Builtin(Builtin::Uuid))
 }
 
+/// An operator on two values, as the runtime runs it.
+type Binary = fn(&Value, &Value) -> Result<Value, jadpo_value::Fault>;
+
 fn truth(value: &Value) -> bool {
     matches!(value, Value::Bool(true))
 }
@@ -1448,10 +1451,7 @@ fn operators(forms: &mut Forms) {
             .into_iter()
             .map(|(a, b)| vec![narrow(a), narrow(b)]),
     );
-    let arithmetic: [(
-        Operator,
-        fn(&Value, &Value) -> Result<Value, jadpo_value::Fault>,
-    ); 5] = [
+    let arithmetic: [(Operator, Binary); 5] = [
         (Operator::Add, ops::add),
         (Operator::Subtract, ops::subtract),
         (Operator::Multiply, ops::multiply),
@@ -1501,10 +1501,7 @@ fn operators(forms: &mut Forms) {
         }
     }
     for (op, run) in [
-        (
-            Operator::Add,
-            ops::add as fn(&Value, &Value) -> Result<Value, jadpo_value::Fault>,
-        ),
+        (Operator::Add, ops::add as Binary),
         (Operator::Subtract, ops::subtract),
     ] {
         let mut cases = decimal_pairs.clone();
@@ -1615,10 +1612,7 @@ fn operators(forms: &mut Forms) {
         .map(|(a, b)| vec![duration(a), duration(b)])
         .collect();
     for (op, run) in [
-        (
-            Operator::Add,
-            ops::add as fn(&Value, &Value) -> Result<Value, jadpo_value::Fault>,
-        ),
+        (Operator::Add, ops::add as Binary),
         (Operator::Subtract, ops::subtract),
     ] {
         forms.check_operator(
