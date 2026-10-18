@@ -230,3 +230,192 @@ pub fn layout(entry: &StandardType) -> Option<Vec<Laid>> {
         _ => None,
     }
 }
+
+// --- The storage codec (chunk 5.5w3b) -----------------------------------------
+
+/// A value as the storage codec takes it: what a runtime value and a value
+/// known while compiling (a literal, an enum value) both are, so one
+/// function, [`bind`], makes what a column is given from either, and a
+/// literal the compiler writes into a statement is the value the runtime
+/// binds (area 19, "Every boundary through the contract"; chunk 5.5w3b).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Stored<'a> {
+    None,
+    Bool(bool),
+    Int(i64),
+    /// `mantissa × 10^-scale`, at the places it keeps.
+    Decimal {
+        mantissa: i128,
+        scale: u32,
+    },
+    Text(&'a str),
+    Uuid(&'a str),
+    Bytes(&'a [u8]),
+    /// Milliseconds since 1970-01-01T00:00:00Z.
+    Instant(i64),
+    /// Days since 1970-01-01.
+    Date(i32),
+    /// Milliseconds.
+    Duration(i64),
+    /// In its kind's base unit, a mantissa at the kind's scale.
+    Quantity {
+        kind: crate::QuantityKind,
+        amount: i128,
+    },
+    /// The fraction it is: `20%` is `mantissa` 20 at `scale` 2.
+    Percentage {
+        mantissa: i128,
+        scale: u32,
+    },
+    /// A variant without fields of the enum `ty`.
+    Variant {
+        ty: &'a str,
+        name: &'a str,
+    },
+    /// A list's items, or a range's ends and whether it holds its upper
+    /// one, as the runtime holds a range's columns.
+    List(Vec<Stored<'a>>),
+    /// A set's items.
+    Set(Vec<Stored<'a>>),
+}
+
+impl Stored<'_> {
+    /// What kind of value it is, never what it holds, as a fault names it
+    /// (chunk 5.5w2).
+    pub fn described(&self) -> String {
+        let kind = match self {
+            Stored::None => "`none`",
+            Stored::Bool(_) => "a `Bool`",
+            Stored::Int(_) => "an `Int`",
+            Stored::Decimal { .. } => "a `Decimal`",
+            Stored::Text(_) => "text",
+            Stored::Bytes(_) => "bytes",
+            Stored::Uuid(_) => "a `Uuid`",
+            Stored::Instant(_) => "an `Instant`",
+            Stored::Date(_) => "a `CalendarDate`",
+            Stored::Duration(_) => "a `Duration`",
+            Stored::Quantity { .. } => "a quantity",
+            Stored::Percentage { .. } => "a `Percentage`",
+            Stored::Variant { ty, .. } => return format!("a `{ty}`"),
+            Stored::List(_) => "a list",
+            Stored::Set(_) => "a set",
+        };
+        kind.to_string()
+    }
+}
+
+/// `value` as a parameter of a column of type `ty`, as the contract's
+/// storage holds it: a duration as its milliseconds, a quantity in its
+/// kind's base unit, a percentage as the fraction it is, an enum's value by
+/// its code where its column holds codes, an instant as microseconds. The
+/// one encoder the runtime binds every parameter with and the compiler
+/// writes every literal with (chunk 5.5w3b). `Err` names what the value is
+/// and the rule, never the value (chunk 5.5w2).
+pub fn bind(value: &Stored<'_>, ty: crate::SqlType) -> Result<crate::SqlValue, String> {
+    use crate::{SqlType, SqlValue};
+    Ok(match (value, ty) {
+        (Stored::None, ty) => SqlValue::Null(ty),
+        (Stored::Bool(b), SqlType::Bool) => SqlValue::Bool(*b),
+        (Stored::Int(n), SqlType::Int8) => SqlValue::Int8(*n),
+        (Stored::Int(n), SqlType::Int4) => SqlValue::Int4(
+            i32::try_from(*n).map_err(|_| "a whole number too large for its column")?,
+        ),
+        (Stored::Int(n), SqlType::Int2) => SqlValue::Int2(
+            i16::try_from(*n).map_err(|_| "a whole number too large for its column")?,
+        ),
+        (Stored::Int(n), SqlType::Numeric) => SqlValue::Numeric(n.to_string()),
+        (Stored::Decimal { mantissa, scale }, SqlType::Numeric) => SqlValue::Numeric(
+            crate::Num {
+                mantissa: *mantissa,
+                scale: *scale,
+            }
+            .to_string(),
+        ),
+        (Stored::Text(text), SqlType::Text) => SqlValue::Text(text.to_string()),
+        (Stored::Uuid(text) | Stored::Text(text), SqlType::Uuid) => {
+            SqlValue::Uuid(uuid_bytes(text).ok_or("text that isn't a UUID")?)
+        }
+        (Stored::Uuid(text), SqlType::Text) => SqlValue::Text(text.to_string()),
+        (Stored::Bytes(bytes), SqlType::Bytes) => SqlValue::Bytes(bytes.to_vec()),
+        (Stored::Instant(millis), SqlType::Timestamp) => {
+            SqlValue::Timestamp(millis.checked_mul(1000).ok_or("an instant out of range")?)
+        }
+        (Stored::Date(day), SqlType::Date) => SqlValue::Date(*day),
+        (Stored::Duration(millis), SqlType::Int8) => SqlValue::Int8(*millis),
+        // In its kind's base unit at its scale (area 19).
+        (Stored::Quantity { kind, amount }, SqlType::Numeric) => {
+            SqlValue::Numeric(crate::quantity::number_text(*amount, kind.scale()))
+        }
+        // The fraction it is (area 19).
+        (Stored::Percentage { mantissa, scale }, SqlType::Numeric) => SqlValue::Numeric(
+            crate::Num {
+                mantissa: *mantissa,
+                scale: *scale,
+            }
+            .to_string(),
+        ),
+        // By its code where its column holds codes: `Currency`'s (area 19).
+        (Stored::Variant { ty, name }, SqlType::Text) => {
+            SqlValue::Text(super::stored_variant(ty, name).to_string())
+        }
+        // A `LocalTime` and a `LocalDateTime`, as microseconds (chunk 5.5w).
+        (Stored::Int(micros), SqlType::Time) => SqlValue::Time(*micros),
+        (Stored::Int(micros), SqlType::LocalTimestamp) => SqlValue::LocalTimestamp(*micros),
+        // A range's ends and whether it holds its upper one (chunk 5.5w).
+        (Stored::List(ends), SqlType::Range(element)) => match &ends[..] {
+            // One whose start is its end holds nothing, and PostgreSQL keeps
+            // such a range as `empty`, without its ends, so it wouldn't
+            // read back.
+            [lower, upper, Stored::Bool(false)] if *lower != Stored::None && lower == upper => {
+                return Err(
+                    "a range whose start is its end, which PostgreSQL keeps without its ends"
+                        .into(),
+                );
+            }
+            [lower, upper, Stored::Bool(upper_held)] => {
+                let end = |value: &Stored<'_>| -> Result<Option<Box<SqlValue>>, String> {
+                    Ok(match value {
+                        Stored::None => None,
+                        value => Some(Box::new(bind(value, *element)?)),
+                    })
+                };
+                SqlValue::Range {
+                    element: *element,
+                    lower: end(lower)?,
+                    upper: end(upper)?,
+                    upper_held: *upper_held,
+                }
+            }
+            _ => return Err("a range without its two ends".into()),
+        },
+        (Stored::List(items) | Stored::Set(items), SqlType::Array(inner)) => SqlValue::Array(
+            *inner,
+            items
+                .iter()
+                .map(|item| bind(item, *inner))
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+        (value, ty) => {
+            return Err(format!(
+                "{} that a `{ty:?}` column can't hold",
+                value.described()
+            ));
+        }
+    })
+}
+
+/// A UUID's sixteen bytes from its text, hyphens anywhere.
+pub fn uuid_bytes(text: &str) -> Option<[u8; 16]> {
+    let hex: Vec<u8> = text.bytes().filter(|b| *b != b'-').collect();
+    if hex.len() != 32 {
+        return None;
+    }
+    let mut out = [0u8; 16];
+    for (byte, pair) in out.iter_mut().zip(hex.chunks(2)) {
+        let [high, low] = pair else { return None };
+        let high = (*high as char).to_digit(16)?;
+        let low = (*low as char).to_digit(16)?;
+        *byte = u8::try_from(high * 16 + low).ok()?;
+    }
+    Some(out)
+}

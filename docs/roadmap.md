@@ -1344,7 +1344,7 @@ reference only).
   `jadpo-cli/tests/standard_boundaries.rs` holds the JSON boundary and
   OpenAPI to it. What clients see change is area 19's "Chosen in chunk
   5.5w3".
-- [ ] **5.5w3b Every boundary through the contract: SQL literals**
+- [x] **5.5w3b Every boundary through the contract: SQL literals**
   `opus · high` (area 19; split from 5.5w3), after 5.5w3: the
   compile-time SQL literals (`jadpo-sql`'s conditions, backfills in
   `jadpo-check`'s migrations) share the runtime's storage codec, so a
@@ -1352,6 +1352,17 @@ reference only).
   when no boundary has an encoder of its own: each calls the contract's
   JSON, storage or text for a standard type, and 5.5w3's test covers the
   SQL literals too.
+  Built: the storage codec and `SqlValue` moved to the shared leaf
+  (`jadpo_std::standard::storage::bind`), which the runtime's `to_sql`
+  calls and every literal is made with, decoded for its field by
+  `jadpo_std::constant::literal`; statements bind a literal as a
+  parameter (`Source::Stored`, `WriteSource::Stored`,
+  `PurgeSource::Stored`), and a partial index's predicate, a backfill and
+  the fixed identity statements write it with `jadpo_sql::literal`;
+  backfills take every literal a field's type has; the guard test holds
+  the SQL literals too, and `jadpo-cli/tests/sql_literals.rs` holds each
+  standard type's literal to what the runtime binds, live. What it chose
+  is area 19's "Chosen in chunk 5.5w3b".
 - [x] **5.5x `jadpo suggest`** `opus · high` (area 14; decided by Richard,
   2026-10-17): first write the command's section on area 14 from this
   design, then build it. A command that hints, never edits, where code
