@@ -20,6 +20,7 @@ pub mod addresses_data;
 pub mod card_types;
 mod contact;
 pub mod documents;
+pub mod events;
 mod identifiers;
 pub mod opening_hours;
 pub mod person_names_data;
@@ -84,6 +85,10 @@ pub enum Part {
     /// Text matching this pattern whole: a masked card's last four digits
     /// (chunk 5.5i2).
     Matching(&'static str),
+    /// Text for people that may run over several lines, with no control
+    /// character but a tab or a line feed ([`events::PARAGRAPH_PATTERN`]):
+    /// an event's description (chunk 5.5k3).
+    Paragraph,
     /// The part, or `none`: a person's family name.
     Optional(&'static Part),
     /// A list of the part: an address's lines.
@@ -97,7 +102,7 @@ impl Part {
         match self {
             Part::Of(builtin) => Some(builtin),
             Part::Whole(..) => Some(Builtin::Int),
-            Part::Line | Part::Matching(_) => Some(Builtin::Text),
+            Part::Line | Part::Matching(_) | Part::Paragraph => Some(Builtin::Text),
             Part::Standard(_) | Part::Optional(_) | Part::List(_) => None,
         }
     }
@@ -121,6 +126,10 @@ impl Part {
             },
             Part::Matching(pattern) => crate::Rules {
                 pattern: Some(pattern.to_string()),
+                ..crate::Rules::default()
+            },
+            Part::Paragraph => crate::Rules {
+                pattern: Some(events::PARAGRAPH_PATTERN.to_string()),
                 ..crate::Rules::default()
             },
             Part::Optional(inner) | Part::List(inner) => inner.rules(),
@@ -230,6 +239,10 @@ pub enum TextForm {
     /// Greece), then the number with no spaces or punctuation,
     /// `GB980780684` (chosen in chunk 5.5i2).
     VatNumber,
+    /// An RFC 5545 `VEVENT` (chosen in chunk 5.5k3, [`events`]): a
+    /// property a line, joined by line feeds, an all-day event's `DTEND`
+    /// the day after its last.
+    Event,
 }
 
 /// How a standard type is sent and read as JSON.
@@ -783,7 +796,7 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// `schedules`), 15 of people and places (chunk 5.5l, in `places` and
 /// `contact`), and `PhoneNumber`, `CallingCode`, `PostalCode` and
 /// `UnLocode`, held as text (chunk 5.5l2, in `phones`, `postal` and
-/// `places`).
+/// `places`), and `CalendarEvent` (chunk 5.5k3, in `events`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     quantity(
@@ -834,6 +847,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    events::CALENDAR_EVENT_ENTRY,
     // An amount of calendar time, unordered: one month and 30 days don't
     // compare (area 19, "Time and calendar additions").
     time_object(
@@ -2141,7 +2155,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 96, "the 96 standard types built so far");
+        assert_eq!(names.len(), 97, "the 97 standard types built so far");
     }
 
     #[test]

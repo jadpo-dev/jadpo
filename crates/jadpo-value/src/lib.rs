@@ -34,6 +34,7 @@
 pub mod calendar;
 pub mod decimal;
 pub mod encoding;
+mod event;
 pub mod hash;
 pub mod integer;
 pub mod json;

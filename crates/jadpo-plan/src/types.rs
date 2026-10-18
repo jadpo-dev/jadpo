@@ -619,7 +619,10 @@ impl Types {
 pub(crate) fn part_type(host: &str, field: &str, part: jadpo_std::Part) -> TypeRef {
     match part {
         jadpo_std::Part::Of(builtin) => TypeRef::Builtin(builtin),
-        jadpo_std::Part::Whole(..) | jadpo_std::Part::Line | jadpo_std::Part::Matching(_) => {
+        jadpo_std::Part::Whole(..)
+        | jadpo_std::Part::Line
+        | jadpo_std::Part::Matching(_)
+        | jadpo_std::Part::Paragraph => {
             TypeRef::Field(Key::from_text(format!("field {host}.{field}")))
         }
         jadpo_std::Part::Standard(name) => TypeRef::Std(name.to_string(), Vec::new()),

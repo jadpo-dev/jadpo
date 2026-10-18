@@ -190,6 +190,11 @@ fn part_codec(
                         int_as_number: false,
                     }
                 }
+                // Another standard object sent as its canonical text: an
+                // event's local times (chunk 5.5k3).
+                (None, Holds::Object(_)) if other.json == Json::Text => Codec::Standard {
+                    ty: other.name.to_string(),
+                },
                 _ => panic!("{}: a part sent as fields", other.name),
             }
         }
@@ -656,5 +661,69 @@ fn a_masked_card_keeps_the_brand_and_last_four() {
     assert_eq!(
         shown(&masked("9999999999999995")).as_deref(),
         Ok("•••• 9995")
+    );
+}
+
+#[test]
+fn an_event_s_parts_are_checked_together_as_json_is_read() {
+    let event = jadpo_std::standard_type("CalendarEvent").unwrap();
+    let (codecs, validators, shapes) = codecs(event);
+    let table = Codecs {
+        codecs: &codecs,
+        validators: &validators,
+        shapes: &shapes,
+    };
+    let posted = |changes: serde_json::Value| {
+        let mut json = serde_json::json!({
+            "summary": "Night shift",
+            "first_day": null,
+            "last_day": null,
+            "start": "2026-10-24T22:00:00",
+            "end": "2026-10-25T02:00:00",
+            "zone": "Europe/London",
+            "location": null,
+            "description": null,
+            "recurrence": "DTSTART;TZID=Europe/London:20261024T220000\nRRULE:FREQ=WEEKLY;COUNT=4",
+        });
+        for (name, value) in changes.as_object().unwrap() {
+            json[name] = value.clone();
+        }
+        let mut problems = Vec::new();
+        let read = table.read(CodecId(0), &json, &Path::default(), &mut problems);
+        (read, problems)
+    };
+    let (read, problems) = posted(serde_json::json!({}));
+    assert!(read.is_some(), "{problems:?}");
+    let broken = |changes: serde_json::Value, part: &str| {
+        let (read, problems) = posted(changes.clone());
+        assert_eq!(read, None, "{changes}");
+        assert!(
+            problems
+                .iter()
+                .any(|problem| problem.field.ends_with(part) && problem.rule == "format"),
+            "{changes}: {problems:?}"
+        );
+    };
+    broken(serde_json::json!({ "first_day": "2026-10-24" }), "last_day");
+    broken(
+        serde_json::json!({ "first_day": "2026-10-24", "last_day": "2026-10-26" }),
+        "start",
+    );
+    broken(serde_json::json!({ "zone": null }), "zone");
+    broken(serde_json::json!({ "end": "2026-10-24T21:00:00" }), "end");
+    broken(
+        serde_json::json!({ "recurrence": "DTSTART;TZID=Europe/Paris:20261024T220000\nRRULE:FREQ=WEEKLY" }),
+        "recurrence",
+    );
+    broken(
+        serde_json::json!({
+            "first_day": "2026-10-24",
+            "last_day": "2026-10-23",
+            "start": null,
+            "end": null,
+            "zone": null,
+            "recurrence": null,
+        }),
+        "last_day",
     );
 }

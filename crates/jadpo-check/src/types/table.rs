@@ -1162,7 +1162,9 @@ fn part_ty(part: jadpo_std::Part) -> Ty {
     match part {
         jadpo_std::Part::Of(builtin) => Ty::Prim(builtin),
         jadpo_std::Part::Whole(..) => Ty::Prim(Prim::Int),
-        jadpo_std::Part::Line | jadpo_std::Part::Matching(_) => Ty::Prim(Prim::Text),
+        jadpo_std::Part::Line | jadpo_std::Part::Matching(_) | jadpo_std::Part::Paragraph => {
+            Ty::Prim(Prim::Text)
+        }
         jadpo_std::Part::Standard(other)
             if jadpo_std::standard_type(other).is_some_and(|entry| {
                 entry.codes().is_some()

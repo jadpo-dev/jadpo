@@ -674,7 +674,18 @@ of a pattern and an optional check digit (`CountryForm`), with bounds for
 a country that has none. `Part::Matching` is a part of text matching a
 pattern (a masked card's last four). `money.mask` (`Op::MoneyMask`) makes
 a `MaskedCardNumber` from a `PaymentCardNumber` by its issuer range
-(`card_types::brand_of`), and a compound column may now hold a `date` part.
+(`card_types::brand_of`).
+Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
+text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
+`jadpo_std::standard::events`, which also holds the rules across its parts
+(days or times, their order, a recurrence from the event's start) over
+what is known of each (`Known`): the checker proves them for a literal in
+`types/body/events.rs`, reading a part written `none` as absent and one
+written out as given, and `jadpo_value::event` checks a value read from
+text or JSON by them. A part may be another standard object
+(`Part::Standard("LocalDateTime")`), sent as its canonical text and stored
+as it in a `text` column (`to_parts`), or text over several lines
+(`Part::Paragraph`); a `date` part reads back from PostgreSQL as a date.
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from
