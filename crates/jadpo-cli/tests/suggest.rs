@@ -116,7 +116,11 @@ What to do
     assert_eq!(second["text"], "total_price * 100");
     assert_eq!(second["canonical"], "(* 100 total_price)");
     assert_eq!(second["hash"].as_str().map(str::len), Some(16));
-    assert!(read(&root, ".gitignore").lines().any(|line| line == ".jadpo/"));
+    assert!(
+        read(&root, ".gitignore")
+            .lines()
+            .any(|line| line == ".jadpo/")
+    );
 }
 
 #[test]
@@ -149,18 +153,26 @@ fn a_finding_that_disappears_was_taken() {
     );
     let output = jadpo(&root, &["suggest"]);
     assert!(
-        output.stdout.ends_with("1 suggestion: 1 file, 1 taken since the last run\n"),
+        output
+            .stdout
+            .ends_with("1 suggestion: 1 file, 1 taken since the last run\n"),
         "{}",
         output.stdout
     );
-    assert_eq!(pending(&root), ["accepted conversion Money: total_price * 100"]);
+    assert_eq!(
+        pending(&root),
+        ["accepted conversion Money: total_price * 100"]
+    );
 }
 
 #[test]
 fn an_ignored_snippet_and_its_variants_stay_quiet_until_it_changes() {
     let root = shop("ignore");
     jadpo(&root, &["suggest"]);
-    let output = jadpo(&root, &["suggest", "ignore", "S2", "Basis points, not money"]);
+    let output = jadpo(
+        &root,
+        &["suggest", "ignore", "S2", "Basis points, not money"],
+    );
     assert_eq!(output.stderr, "");
     assert_eq!(
         output.stdout,
@@ -171,9 +183,18 @@ fn an_ignored_snippet_and_its_variants_stay_quiet_until_it_changes() {
 "
     );
     let record = read(&root, "ignored_suggestions.jadpo_record");
-    assert!(record.starts_with("// Written by `jadpo suggest ignore`"), "{record}");
-    assert!(record.contains(" conversion Money \"Basis points, not money\"\n"), "{record}");
-    assert_eq!(pending(&root), ["ignored conversion Money: total_price * 100"]);
+    assert!(
+        record.starts_with("// Written by `jadpo suggest ignore`"),
+        "{record}"
+    );
+    assert!(
+        record.contains(" conversion Money \"Basis points, not money\"\n"),
+        "{record}"
+    );
+    assert_eq!(
+        pending(&root),
+        ["ignored conversion Money: total_price * 100"]
+    );
 
     // Quiet, and not taken.
     let quiet = json(&root, &["suggest"]);
@@ -189,7 +210,10 @@ fn an_ignored_snippet_and_its_variants_stay_quiet_until_it_changes() {
     );
     let variant = json(&root, &["suggest"]);
     assert_eq!(variant["data"]["ignored"], 1);
-    assert_eq!(variant["data"]["findings"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        variant["data"]["findings"].as_array().map(Vec::len),
+        Some(1)
+    );
 
     // Changed, it is found again and the stale entry drops out.
     write(
@@ -244,7 +268,10 @@ fn a_found_snippet_keeps_its_text_through_the_fix_and_teaches_the_next_scan() {
         "use shop/types { Whole }\n\n/// What to charge.\naction charge_of(subtotal: Whole, delivery: Whole) -> Whole {\n    return Whole(delivery + subtotal)\n}\n",
     );
     let next = json(&root, &["suggest"]);
-    let findings = next["data"]["findings"].as_array().cloned().unwrap_or_default();
+    let findings = next["data"]["findings"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     assert_eq!(findings.len(), 1, "{findings:?}");
     assert_eq!(findings[0]["signal"], "taught");
     assert_eq!(findings[0]["suggestion"], "Money");
@@ -256,14 +283,25 @@ fn the_catalogue_lists_every_signal() {
     let root = folder("catalogue");
     let output = jadpo(&root, &["suggest", "--catalogue"]);
     assert_eq!(output.code, 0);
-    assert!(output.stdout.starts_with("Catalogue\n"), "{}", output.stdout);
+    assert!(
+        output.stdout.starts_with("Catalogue\n"),
+        "{}",
+        output.stdout
+    );
     assert!(output.stdout.contains("list.sum"), "{}", output.stdout);
     let document = json(&root, &["suggest", "--catalogue"]);
-    let signals = document["data"]["signals"].as_array().cloned().unwrap_or_default();
+    let signals = document["data"]["signals"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     assert!(signals.iter().any(|s| s["suggestion"] == "Money"
         && s["signal"] == "conversion"
         && s["values"] == serde_json::json!(["100", "1000"])));
-    assert!(signals.iter().any(|s| s["suggestion"] == "Point" && s["signal"] == "shape"));
+    assert!(
+        signals
+            .iter()
+            .any(|s| s["suggestion"] == "Point" && s["signal"] == "shape")
+    );
 }
 
 #[test]
@@ -271,29 +309,65 @@ fn share_is_not_built_yet() {
     let root = shop("share");
     let output = jadpo(&root, &["suggest", "share"]);
     assert_ne!(output.code, 0);
-    assert!(output.stderr.contains("toolchain.not_built_yet"), "{}", output.stderr);
-    assert!(output.stderr.contains("isn't built yet"), "{}", output.stderr);
+    assert!(
+        output.stderr.contains("toolchain.not_built_yet"),
+        "{}",
+        output.stderr
+    );
+    assert!(
+        output.stderr.contains("isn't built yet"),
+        "{}",
+        output.stderr
+    );
 }
 
 #[test]
 fn wrong_arguments_say_what_is_meant() {
     let root = shop("arguments");
     let output = jadpo(&root, &["suggest", "ignor"]);
-    assert!(output.stderr.contains("cli.suggest_arguments"), "{}", output.stderr);
-    assert!(output.stderr.contains("Did you mean `ignore`?"), "{}", output.stderr);
+    assert!(
+        output.stderr.contains("cli.suggest_arguments"),
+        "{}",
+        output.stderr
+    );
+    assert!(
+        output.stderr.contains("Did you mean `ignore`?"),
+        "{}",
+        output.stderr
+    );
     jadpo(&root, &["suggest"]);
     let output = jadpo(&root, &["suggest", "ignore", "S9", "why"]);
     assert!(output.stderr.contains("S1 or S2"), "{}", output.stderr);
     let output = jadpo(&root, &["suggest", "ignore", "S1"]);
-    assert!(output.stderr.contains("needs a reason"), "{}", output.stderr);
-    let output = jadpo(
-        &root,
-        &["suggest", "found", "domains/shop/actions/pence_of.jadpo:5", "Mony", "why"],
+    assert!(
+        output.stderr.contains("needs a reason"),
+        "{}",
+        output.stderr
     );
-    assert!(output.stderr.contains("Did you mean `Money`?"), "{}", output.stderr);
     let output = jadpo(
         &root,
-        &["suggest", "found", "domains/shop/actions/pence_of.jadpo:2", "Money", "why"],
+        &[
+            "suggest",
+            "found",
+            "domains/shop/actions/pence_of.jadpo:5",
+            "Mony",
+            "why",
+        ],
+    );
+    assert!(
+        output.stderr.contains("Did you mean `Money`?"),
+        "{}",
+        output.stderr
+    );
+    let output = jadpo(
+        &root,
+        &[
+            "suggest",
+            "found",
+            "domains/shop/actions/pence_of.jadpo:2",
+            "Money",
+            "why",
+        ],
     );
     assert!(output.stderr.contains("has nothing"), "{}", output.stderr);
 }

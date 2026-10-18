@@ -9,7 +9,9 @@
 
 use std::collections::HashMap;
 
-use jadpo_graph::body::{BinaryOp, Body, Callee, Expr, Literal, LocalId, LocalKind, Node, SiteId, Stmt, UnaryOp};
+use jadpo_graph::body::{
+    BinaryOp, Body, Callee, Expr, Literal, LocalId, LocalKind, Node, SiteId, Stmt, UnaryOp,
+};
 use jadpo_graph::{Detail, Graph, Key};
 use jadpo_std::Num;
 
@@ -300,13 +302,15 @@ impl<'a> Canon<'a> {
                 let inner = self.opt(*inner);
                 C::Tag("attempt", vec![inner])
             }
-            Expr::Constant { constant } => match self.graph.get(constant).map(|node| &node.detail) {
-                Some(Detail::Constant { value, .. }) => match Num::parse(value) {
-                    Some(num) => C::Num(normal(num)),
-                    None => C::Atom(value.clone()),
-                },
-                _ => C::Name(vec![constant.written().to_string()]),
-            },
+            Expr::Constant { constant } => {
+                match self.graph.get(constant).map(|node| &node.detail) {
+                    Some(Detail::Constant { value, .. }) => match Num::parse(value) {
+                        Some(num) => C::Num(normal(num)),
+                        None => C::Atom(value.clone()),
+                    },
+                    _ => C::Name(vec![constant.written().to_string()]),
+                }
+            }
             Expr::Config { field } => C::Name(vec!["config".into(), last(field)]),
             Expr::Stored { field } => C::Name(vec![field.written().to_string()]),
             Expr::Inline { params, body } => {
@@ -323,11 +327,18 @@ impl<'a> Canon<'a> {
             }
             Expr::Reject { failure, .. } => C::Tag(
                 "reject",
-                failure.iter().map(|key| C::Atom(key.written().to_string())).collect(),
+                failure
+                    .iter()
+                    .map(|key| C::Atom(key.written().to_string()))
+                    .collect(),
             ),
-            Expr::Write { entity, .. } => C::Tag("write", vec![C::Atom(entity.written().to_string())]),
+            Expr::Write { entity, .. } => {
+                C::Tag("write", vec![C::Atom(entity.written().to_string())])
+            }
             Expr::Propagate { .. } => C::Tag("propagate", Vec::new()),
-            Expr::Request { route, .. } => C::Tag("request", vec![C::Atom(route.written().to_string())]),
+            Expr::Request { route, .. } => {
+                C::Tag("request", vec![C::Atom(route.written().to_string())])
+            }
             Expr::Unchecked => C::Atom("…".into()),
         }
     }

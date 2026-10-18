@@ -164,7 +164,10 @@ pub fn suggestions() -> Vec<String> {
 /// The words of a name, lower case: `totalPrice` and `total_price` are
 /// `total price`.
 fn words(name: &str) -> Vec<String> {
-    name_words(name).iter().map(|word| word.to_lowercase()).collect()
+    name_words(name)
+        .iter()
+        .map(|word| word.to_lowercase())
+        .collect()
 }
 
 /// How many of `written` words are one of `hints`, or its plural.
@@ -388,7 +391,14 @@ fn first_line(text: &str) -> String {
     }
 }
 
-fn snippet(path: &str, file_text: &str, start: u32, end: u32, shown: Option<String>, canonical: &C) -> Snippet {
+fn snippet(
+    path: &str,
+    file_text: &str,
+    start: u32,
+    end: u32,
+    shown: Option<String>,
+    canonical: &C,
+) -> Snippet {
     let text = slice(file_text, start, end);
     let canonical = canonical.render();
     Snippet {
@@ -406,7 +416,10 @@ fn snippet(path: &str, file_text: &str, start: u32, end: u32, shown: Option<Stri
 
 /// A field or parameter's canonical form: its name and declared type.
 fn member(name: &str, ty: &TypeRef) -> C {
-    C::Tag("member", vec![C::Atom(name.to_string()), C::Atom(ty.to_string())])
+    C::Tag(
+        "member",
+        vec![C::Atom(name.to_string()), C::Atom(ty.to_string())],
+    )
 }
 
 /// The end of a parameter written from `start`: the `,` or `)` closing it.
@@ -510,7 +523,13 @@ fn settle(mut found: Vec<Finding>) -> Vec<Finding> {
         .collect()
 }
 
-fn finding(snippet: Snippet, signal: Signal, reading: &Reading, weight: usize, reason: String) -> Finding {
+fn finding(
+    snippet: Snippet,
+    signal: Signal,
+    reading: &Reading,
+    weight: usize,
+    reason: String,
+) -> Finding {
     Finding {
         snippet,
         signal,
@@ -543,7 +562,12 @@ fn declarations(
             (Kind::Field, Detail::Field { ty, .. }, Some(place)) => {
                 if let Some(parent) = &node.parent {
                     fields.entry(parent).or_default().push(Field {
-                        name: node.name.rsplit('.').next().unwrap_or(&node.name).to_string(),
+                        name: node
+                            .name
+                            .rsplit('.')
+                            .next()
+                            .unwrap_or(&node.name)
+                            .to_string(),
                         ty,
                         place,
                     });
@@ -563,9 +587,12 @@ fn declarations(
                         found,
                     );
                 }
-                taught_at(taught, &canonical, || {
-                    snippet(&place.file, text, place.start, place.end, None, &canonical)
-                }, found);
+                taught_at(
+                    taught,
+                    &canonical,
+                    || snippet(&place.file, text, place.start, place.end, None, &canonical),
+                    found,
+                );
             }
             (
                 Kind::Type,
@@ -583,9 +610,14 @@ fn declarations(
                 if let TypeRef::Builtin(builtin) = inner {
                     let canonical = C::Tag(
                         "type",
-                        vec![C::Atom(node.name.clone()), C::Atom(builtin.name().to_string())],
+                        vec![
+                            C::Atom(node.name.clone()),
+                            C::Atom(builtin.name().to_string()),
+                        ],
                     );
-                    let end = decl.find('{').map_or(place.end, |at| place.start + at as u32);
+                    let end = decl
+                        .find('{')
+                        .map_or(place.end, |at| place.start + at as u32);
                     let end = place.start + slice(text, place.start, end).trim_end().len() as u32;
                     named(
                         readings,
@@ -619,10 +651,24 @@ fn declarations(
         }
     }
     for (host, members) in &fields {
-        let Some(node) = graph.get(host) else { continue };
+        let Some(node) = graph.get(host) else {
+            continue;
+        };
         let object = match (&node.kind, &node.detail) {
-            (Kind::Type, Detail::Type { base: Base::Object, .. }) => true,
-            (Kind::Type, Detail::Type { base: Base::Input | Base::Output, .. }) | (Kind::Entity, _) => false,
+            (
+                Kind::Type,
+                Detail::Type {
+                    base: Base::Object, ..
+                },
+            ) => true,
+            (
+                Kind::Type,
+                Detail::Type {
+                    base: Base::Input | Base::Output,
+                    ..
+                },
+            )
+            | (Kind::Entity, _) => false,
             _ => continue,
         };
         let host_name = node.name.clone();
@@ -634,14 +680,17 @@ fn declarations(
             continue;
         }
         for reading in readings {
-            let Some(shape) = reading.entry.shape else { continue };
+            let Some(shape) = reading.entry.shape else {
+                continue;
+            };
             let mut taken: Vec<&Field<'_>> = Vec::new();
             let mut missing = false;
             for wanted in shape {
                 let hit = members.iter().find(|field| {
                     wanted.names.contains(&field.name.as_str())
                         && !matches!(field.ty, TypeRef::Nullable(_))
-                        && (base_builtin(graph, field.ty).is_some_and(|b| wanted.built_on.contains(&b))
+                        && (base_builtin(graph, field.ty)
+                            .is_some_and(|b| wanted.built_on.contains(&b))
                             || (wanted.or_enum && is_enum(graph, field.ty)))
                         && !taken.iter().any(|t| t.name == field.name)
                 });
@@ -660,7 +709,9 @@ fn declarations(
                 continue;
             }
             let path = &taken[0].place.file;
-            let Some(text) = texts.get(path) else { continue };
+            let Some(text) = texts.get(path) else {
+                continue;
+            };
             let start = taken.iter().map(|f| f.place.start).min().unwrap_or(0);
             let end = taken.iter().map(|f| f.place.end).max().unwrap_or(0);
             let mut parts: Vec<String> = taken
@@ -731,7 +782,12 @@ fn named(
 }
 
 /// The `validation` signal on one pattern.
-fn validation(readings: &[Reading], pattern: &str, snip: impl Fn() -> Snippet, found: &mut Vec<Finding>) {
+fn validation(
+    readings: &[Reading],
+    pattern: &str,
+    snip: impl Fn() -> Snippet,
+    found: &mut Vec<Finding>,
+) {
     let Ok(compiled) = jadpo_std::compile_pattern(pattern) else {
         return;
     };
@@ -784,7 +840,13 @@ fn taught_at(
 
 /// The signals inside one body: `conversion`, `format`, `validation` on
 /// `matches`, `loop`, `name` on parameters, and taught snippets.
-fn body(read: &Read<'_>, graph: &Graph, readings: &[Reading], taught: &HashMap<&str, &Taught>, found: &mut Vec<Finding>) {
+fn body(
+    read: &Read<'_>,
+    graph: &Graph,
+    readings: &[Reading],
+    taught: &HashMap<&str, &Taught>,
+    found: &mut Vec<Finding>,
+) {
     let body = read.body;
     let mut canon = Canon::new(body, graph);
     for &param in &body.params {
@@ -796,14 +858,22 @@ fn body(read: &Read<'_>, graph: &Graph, readings: &[Reading], taught: &HashMap<&
         let canonical = member(&local.name, &local.ty);
         let snip = || snippet(read.path, read.text, local.start, end, None, &canonical);
         if let Some(builtin) = base_builtin(graph, &local.ty) {
-            named(readings, &local.name, builtin, type_name(&local.ty), snip, found);
+            named(
+                readings,
+                &local.name,
+                builtin,
+                type_name(&local.ty),
+                snip,
+                found,
+            );
         }
         taught_at(taught, &canonical, snip, found);
     }
     for (index, site) in body.sites.iter().enumerate() {
         let id = SiteId(index as u32);
         let shape = canon.site(id);
-        let snip = |canonical: &C| snippet(read.path, read.text, site.start, site.end, None, canonical);
+        let snip =
+            |canonical: &C| snippet(read.path, read.text, site.start, site.end, None, canonical);
         // A variable's use is its value's snippet, not one of its own.
         if !matches!(site.node, Node::Expr(Expr::Local(_))) {
             taught_at(taught, &shape, || snip(&shape), found);
@@ -817,7 +887,9 @@ fn body(read: &Read<'_>, graph: &Graph, readings: &[Reading], taught: &HashMap<&
                 let types = [&site.ty, &body.site(*lhs).ty, &body.site(*rhs).ty];
                 conversion(graph, readings, &types, &shape, || snip(&shape), found);
             }
-            Node::Expr(Expr::Binary { op: BinaryOp::Add, .. }) => format(readings, &shape, || snip(&shape), found),
+            Node::Expr(Expr::Binary {
+                op: BinaryOp::Add, ..
+            }) => format(readings, &shape, || snip(&shape), found),
             Node::Expr(Expr::Binary {
                 op: BinaryOp::Matches,
                 ..
@@ -940,7 +1012,8 @@ fn loop_operation(item: &str, only: &C) -> Option<LoopShape> {
     let mentions = |c: &C| {
         let mut names = Vec::new();
         c.names(&mut names);
-        names.first().is_some_and(|first| first == item) || matches!(c, C::Name(path) if path.first().map(String::as_str) == Some(item))
+        names.first().is_some_and(|first| first == item)
+            || matches!(c, C::Name(path) if path.first().map(String::as_str) == Some(item))
     };
     match only {
         // `total = total + item.price`
@@ -952,7 +1025,9 @@ fn loop_operation(item: &str, only: &C) -> Option<LoopShape> {
                 return None;
             };
             let has_target = operands.iter().any(|o| o == &C::Name(target.clone()));
-            let has_item = operands.iter().any(|o| o != &C::Name(target.clone()) && mentions(o));
+            let has_item = operands
+                .iter()
+                .any(|o| o != &C::Name(target.clone()) && mentions(o));
             (has_target && has_item).then_some(LoopShape::Accumulate)
         }
         // `if item.price < best.price { best = item }`
@@ -969,7 +1044,8 @@ fn loop_operation(item: &str, only: &C) -> Option<LoopShape> {
             if value.as_slice() != [item.to_string()] {
                 return None;
             }
-            let starts = |c: &C, name: &[String]| matches!(c, C::Name(path) if path.first() == name.first());
+            let starts =
+                |c: &C, name: &[String]| matches!(c, C::Name(path) if path.first() == name.first());
             match sides.as_slice() {
                 [smaller, larger] if starts(smaller, value) && starts(larger, kept) => {
                     Some(LoopShape::KeepSmallest)
@@ -988,7 +1064,10 @@ fn loop_operation(item: &str, only: &C) -> Option<LoopShape> {
 /// value of the first statement that starts on it (or the statement), or
 /// else the field or parameter declared there.
 pub fn snippet_at(db: &dyn Db, project: Project, path: &str, line: u32) -> Option<Snippet> {
-    let file = project.files(db).iter().find(|file| file.path(db) == path)?;
+    let file = project
+        .files(db)
+        .iter()
+        .find(|file| file.path(db) == path)?;
     let text = file.text(db);
     let graph = crate::graph::graph(db, project).clone();
     for callable in callables_of(db, file.to_owned()) {
@@ -996,7 +1075,9 @@ pub fn snippet_at(db: &dyn Db, project: Project, path: &str, line: u32) -> Optio
         let body = &checked.body;
         let mut canon = Canon::new(body, &graph);
         for (index, site) in body.sites.iter().enumerate() {
-            let Node::Stmt(stmt) = &site.node else { continue };
+            let Node::Stmt(stmt) = &site.node else {
+                continue;
+            };
             if site.line != line {
                 continue;
             }
@@ -1027,17 +1108,32 @@ pub fn snippet_at(db: &dyn Db, project: Project, path: &str, line: u32) -> Optio
             let local = body.local(param);
             if line_of(text, local.start) == line {
                 let end = parameter_end(text, local.start);
-                return Some(snippet(path, text, local.start, end, None, &member(&local.name, &local.ty)));
+                return Some(snippet(
+                    path,
+                    text,
+                    local.start,
+                    end,
+                    None,
+                    &member(&local.name, &local.ty),
+                ));
             }
         }
     }
     for node in graph.nodes() {
-        if let (Kind::Field, Detail::Field { ty, .. }, Some(place)) = (&node.kind, &node.detail, &node.place)
+        if let (Kind::Field, Detail::Field { ty, .. }, Some(place)) =
+            (&node.kind, &node.detail, &node.place)
             && place.file == path
             && place.lines.0 == line
         {
             let name = node.name.rsplit('.').next().unwrap_or(&node.name);
-            return Some(snippet(path, text, place.start, place.end, None, &member(name, ty)));
+            return Some(snippet(
+                path,
+                text,
+                place.start,
+                place.end,
+                None,
+                &member(name, ty),
+            ));
         }
     }
     None
@@ -1092,7 +1188,10 @@ pub fn catalogue() -> Vec<Entry> {
             out.push(Entry {
                 suggestion: name.clone(),
                 signal: Signal::Format,
-                looks_for: format!("{} in text joined to a value", reading.format_literals.join(", ")),
+                looks_for: format!(
+                    "{} in text joined to a value",
+                    reading.format_literals.join(", ")
+                ),
                 values: reading.format_literals.clone(),
             });
         }

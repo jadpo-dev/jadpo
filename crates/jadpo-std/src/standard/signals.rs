@@ -152,7 +152,11 @@ pub const UUID: Signals = Signals {
             "0192f0c4-9a1e-7b3c-8d2e-4f5a6b7c8d9e",
             "123e4567-e89b-12d3-a456-426614174000",
         ],
-        refuses: &["0192f0c4", "not-a-uuid", "0192f0c49a1e7b3c8d2e4f5a6b7c8d9e1"],
+        refuses: &[
+            "0192f0c4",
+            "not-a-uuid",
+            "0192f0c49a1e7b3c8d2e4f5a6b7c8d9e1",
+        ],
     }),
 };
 

@@ -29,7 +29,10 @@ fn rows(text: &str) -> Vec<String> {
 
 /// The findings of one signal.
 fn of(signal: Signal, text: &str) -> Vec<Finding> {
-    scan(text).into_iter().filter(|f| f.signal == signal).collect()
+    scan(text)
+        .into_iter()
+        .filter(|f| f.signal == signal)
+        .collect()
 }
 
 /// [`rows`] of one signal.
@@ -130,7 +133,8 @@ fn a_name_on_a_built_in_type_is_found() {
             "name Email: contact_email: Text"
         ]
     );
-    let typed = "/// A delivery.\ntype Delivery = Object {\n    timeout: Duration\n    count: Int\n}\n";
+    let typed =
+        "/// A delivery.\ntype Delivery = Object {\n    timeout: Duration\n    count: Int\n}\n";
     assert_eq!(rows(typed), Vec::<String>::new());
 }
 
@@ -161,7 +165,10 @@ fn fields_holding_a_shape_among_others_are_found() {
 #[test]
 fn a_symbol_joined_to_a_value_is_found() {
     let text = "/// A whole number.\ntype Whole = Int {}\n\n/// Text for people.\ntype Label = Text {}\n\n/// A price for people.\nfunction shown(amount: Whole) -> Label {\n    return Label(\"£\" + text.from(amount))\n}\n";
-    assert_eq!(rows(text).first().map(String::as_str), Some("format Money: \"£\" + text.from(amount)"));
+    assert_eq!(
+        rows(text).first().map(String::as_str),
+        Some("format Money: \"£\" + text.from(amount)")
+    );
     let plain = "/// A whole number.\ntype Whole = Int {}\n\n/// Text for people.\ntype Label = Text {}\n\n/// A label.\nfunction shown(count: Whole) -> Label {\n    return Label(\"Order \" + text.from(count))\n}\n";
     assert_eq!(rows(plain), Vec::<String>::new());
 }
@@ -173,7 +180,8 @@ fn a_pattern_that_is_a_types_validation_is_found() {
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0].signal, Signal::Validation);
     assert_eq!(found[0].suggestion, "Email");
-    let code = "/// A batch code.\ntype BatchCode = Text {\n    pattern: \"[A-Z]{2}-[0-9]{3}\"\n}\n";
+    let code =
+        "/// A batch code.\ntype BatchCode = Text {\n    pattern: \"[A-Z]{2}-[0-9]{3}\"\n}\n";
     assert_eq!(rows(code), Vec::<String>::new());
 }
 

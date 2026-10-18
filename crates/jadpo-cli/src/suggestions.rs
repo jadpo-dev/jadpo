@@ -124,7 +124,11 @@ pub fn suggest(call: &Call) -> Reply {
     }
 }
 
-fn arguments(message: impl Into<String>, reason: impl Into<String>, next: impl Into<String>) -> Reply {
+fn arguments(
+    message: impl Into<String>,
+    reason: impl Into<String>,
+    next: impl Into<String>,
+) -> Reply {
     Reply::failed(
         Diagnostic::new(&rule::CLI_SUGGEST_ARGUMENTS, message)
             .reason(reason)
@@ -186,7 +190,10 @@ fn append_lines(root: &Path, file: &str, lines: &[Value]) -> Result<(), Box<Diag
     if lines.is_empty() {
         return Ok(());
     }
-    let mut kept: Vec<Value> = read_lines(root, file).into_iter().map(Value::Object).collect();
+    let mut kept: Vec<Value> = read_lines(root, file)
+        .into_iter()
+        .map(Value::Object)
+        .collect();
     kept.extend(lines.iter().cloned());
     write_lines(root, file, &kept)
 }
@@ -211,7 +218,14 @@ fn text(object: &serde_json::Map<String, Value>, key: &str) -> String {
 }
 
 /// A pending entry to share (area 14, "What is kept, and where").
-fn pending(kind: &str, signal: Signal, suggestion: &str, snippet: &Snippet, reason: Option<&str>, canonical: bool) -> Value {
+fn pending(
+    kind: &str,
+    signal: Signal,
+    suggestion: &str,
+    snippet: &Snippet,
+    reason: Option<&str>,
+    canonical: bool,
+) -> Value {
     let mut entry = serde_json::json!({
         "kind": kind,
         "signal": signal.word(),
@@ -283,8 +297,10 @@ fn ignores(root: &Path) -> Result<(Vec<record::Ignore>, bool), Box<Diagnostic>> 
     let Ok(text) = std::fs::read_to_string(&path) else {
         return Ok((Vec::new(), false));
     };
-    record::parse(&text).map(|entries| (entries, true)).map_err(|(line, why)| {
-        Box::new(
+    record::parse(&text)
+        .map(|entries| (entries, true))
+        .map_err(|(line, why)| {
+            Box::new(
             Diagnostic::new(
                 &rule::SUGGEST_RECORD_INVALID,
                 format!("`{}` can't be read", record::FILE),
@@ -298,7 +314,7 @@ fn ignores(root: &Path) -> Result<(Vec<record::Ignore>, bool), Box<Diagnostic>> 
                 record::FILE
             )),
         )
-    })
+        })
 }
 
 fn write_record(root: &Path, entries: &[record::Ignore]) -> Result<(), Box<Diagnostic>> {
@@ -361,7 +377,8 @@ fn scan(call: &Call, cwd: &Path, root: &Path) -> Reply {
             .any(|f| ignore.covers(&f.snippet.hash, f.signal, &f.suggestion))
     });
     let stale = before - ignored.len();
-    if recorded && stale > 0
+    if recorded
+        && stale > 0
         && let Err(problem) = write_record(root, &ignored)
     {
         return Reply::failed(*problem);
@@ -379,15 +396,21 @@ fn scan(call: &Call, cwd: &Path, root: &Path) -> Reply {
             continue;
         };
         let suggestion = text(&object, "suggestion");
-        let still = findings
-            .iter()
-            .chain(&quiet)
-            .any(|f| f.snippet.hash == snippet.hash && f.signal == signal && f.suggestion == suggestion);
+        let still = findings.iter().chain(&quiet).any(|f| {
+            f.snippet.hash == snippet.hash && f.signal == signal && f.suggestion == suggestion
+        });
         let now_ignored = ignored
             .iter()
             .any(|ignore| ignore.covers(&snippet.hash, signal, &suggestion));
         if !still && !now_ignored {
-            accepted.push(pending("accepted", signal, &suggestion, &snippet, None, false));
+            accepted.push(pending(
+                "accepted",
+                signal,
+                &suggestion,
+                &snippet,
+                None,
+                false,
+            ));
         }
     }
     if let Err(problem) = append_lines(root, PENDING, &accepted) {
@@ -406,7 +429,13 @@ fn scan(call: &Call, cwd: &Path, root: &Path) -> Reply {
     let numbers: Vec<String> = (1..=findings.len()).map(|n| format!("S{n}")).collect();
     let places: Vec<String> = findings
         .iter()
-        .map(|f| format!("{}:{}", shown_path(shown_root.as_deref(), &f.snippet.path), f.snippet.line))
+        .map(|f| {
+            format!(
+                "{}:{}",
+                shown_path(shown_root.as_deref(), &f.snippet.path),
+                f.snippet.line
+            )
+        })
         .collect();
     let width = |items: &mut dyn Iterator<Item = usize>| items.max().unwrap_or(0);
     let number_width = width(&mut numbers.iter().map(String::len));
@@ -450,13 +479,20 @@ fn scan(call: &Call, cwd: &Path, root: &Path) -> Reply {
         facts.push(Fact::plain(count(files.len(), "file", "files")));
     }
     if !accepted.is_empty() {
-        facts.push(Fact::plain(format!("{} since the last run", count(accepted.len(), "taken", "taken"))));
+        facts.push(Fact::plain(format!(
+            "{} since the last run",
+            count(accepted.len(), "taken", "taken")
+        )));
     }
     if !quiet.is_empty() {
         facts.push(Fact::plain(format!("{} ignored", quiet.len())));
     }
     if stale > 0 {
-        facts.push(Fact::plain(count(stale, "stale ignore dropped", "stale ignores dropped")));
+        facts.push(Fact::plain(count(
+            stale,
+            "stale ignore dropped",
+            "stale ignores dropped",
+        )));
     }
     let instruction = routine(!findings.is_empty());
     let mut screen = Screen::new();
@@ -482,12 +518,20 @@ fn scan(call: &Call, cwd: &Path, root: &Path) -> Reply {
     let data = Json::object([
         (
             "findings",
-            Json::array(findings.iter().zip(&numbers).map(|(f, number)| finding_json(number, f))),
+            Json::array(
+                findings
+                    .iter()
+                    .zip(&numbers)
+                    .map(|(f, number)| finding_json(number, f)),
+            ),
         ),
         ("accepted", accepted.len().into()),
         ("ignored", quiet.len().into()),
         ("staleIgnores", stale.into()),
-        ("instruction", Json::array(instruction.iter().map(|line| Json::from(line.as_str())))),
+        (
+            "instruction",
+            Json::array(instruction.iter().map(|line| Json::from(line.as_str()))),
+        ),
     ]);
     Reply::screen(screen, data)
 }
@@ -523,12 +567,20 @@ fn ignore(call: &Call, root: &Path) -> Reply {
         );
     };
     let wanted = written.to_uppercase();
-    let wanted = if wanted.starts_with('S') { wanted } else { format!("S{wanted}") };
+    let wanted = if wanted.starts_with('S') {
+        wanted
+    } else {
+        format!("S{wanted}")
+    };
     let Some(object) = note.iter().find(|object| text(object, "number") == wanted) else {
         let reason = if numbers.is_empty() {
-            "The last scan found nothing to ignore, or `jadpo suggest` hasn't run here yet.".to_string()
+            "The last scan found nothing to ignore, or `jadpo suggest` hasn't run here yet."
+                .to_string()
         } else {
-            format!("The last scan numbered its suggestions {}.", either(&numbers))
+            format!(
+                "The last scan numbered its suggestions {}.",
+                either(&numbers)
+            )
         };
         return arguments(
             format!("`{written}` isn't a suggestion of the last scan"),
@@ -536,7 +588,11 @@ fn ignore(call: &Call, root: &Path) -> Reply {
             "Run `jadpo suggest` to see the numbers",
         );
     };
-    let reason = call.arguments.get(2).map(|why| why.trim().to_string()).unwrap_or_default();
+    let reason = call
+        .arguments
+        .get(2)
+        .map(|why| why.trim().to_string())
+        .unwrap_or_default();
     if reason.is_empty() {
         return arguments(
             format!("`jadpo suggest ignore {wanted}` needs a reason"),
@@ -567,7 +623,14 @@ fn ignore(call: &Call, root: &Path) -> Reply {
     if let Err(problem) = write_record(root, &entries) {
         return Reply::failed(*problem);
     }
-    let entry = pending("ignored", signal, &suggestion, &snippet, Some(&reason), false);
+    let entry = pending(
+        "ignored",
+        signal,
+        &suggestion,
+        &snippet,
+        Some(&reason),
+        false,
+    );
     if let Err(problem) = append_lines(root, PENDING, &[entry]) {
         return Reply::failed(*problem);
     }
@@ -644,7 +707,11 @@ fn found(call: &Call, cwd: &Path, root: &Path) -> Reply {
                 .next("Run `jadpo suggest --catalogue` to see the types and operations it knows"),
         });
     }
-    let reason = call.arguments.get(3).map(|why| why.trim().to_string()).unwrap_or_default();
+    let reason = call
+        .arguments
+        .get(3)
+        .map(|why| why.trim().to_string())
+        .unwrap_or_default();
     if reason.is_empty() {
         return arguments(
             format!("`jadpo suggest found {place} {suggestion}` needs a reason"),
@@ -662,7 +729,9 @@ fn found(call: &Call, cwd: &Path, root: &Path) -> Reply {
     };
     let mut signals: Vec<Value> = read_lines(root, SIGNALS)
         .into_iter()
-        .filter(|object| !(text(object, "hash") == snippet.hash && text(object, "suggestion") == *suggestion))
+        .filter(|object| {
+            !(text(object, "hash") == snippet.hash && text(object, "suggestion") == *suggestion)
+        })
         .map(Value::Object)
         .collect();
     signals.push(serde_json::json!({
@@ -675,7 +744,14 @@ fn found(call: &Call, cwd: &Path, root: &Path) -> Reply {
     if let Err(problem) = write_lines(root, SIGNALS, &signals) {
         return Reply::failed(*problem);
     }
-    let entry = pending("found", Signal::Taught, suggestion, &snippet, Some(&reason), true);
+    let entry = pending(
+        "found",
+        Signal::Taught,
+        suggestion,
+        &snippet,
+        Some(&reason),
+        true,
+    );
     if let Err(problem) = append_lines(root, PENDING, &[entry]) {
         return Reply::failed(*problem);
     }
@@ -688,7 +764,10 @@ fn found(call: &Call, cwd: &Path, root: &Path) -> Reply {
                 ("reason".to_string(), reason.clone()),
             ],
         })
-        .with(Block::hint("jadpo suggest", "finds the same pattern elsewhere"));
+        .with(Block::hint(
+            "jadpo suggest",
+            "finds the same pattern elsewhere",
+        ));
     let data = Json::object([
         ("path", Json::from(path.as_str())),
         ("line", Json::from(line as usize)),
@@ -751,8 +830,16 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
 
 fn catalogue() -> Reply {
     let entries = suggest::catalogue();
-    let name_width = entries.iter().map(|e| e.suggestion.chars().count()).max().unwrap_or(0);
-    let signal_width = entries.iter().map(|e| e.signal.word().len()).max().unwrap_or(0);
+    let name_width = entries
+        .iter()
+        .map(|e| e.suggestion.chars().count())
+        .max()
+        .unwrap_or(0);
+    let signal_width = entries
+        .iter()
+        .map(|e| e.signal.word().len())
+        .max()
+        .unwrap_or(0);
     let indent = name_width + 2 + signal_width + 2;
     let room = WIDTH.saturating_sub(2 + indent).max(20);
     let mut lines = Vec::new();
@@ -779,7 +866,11 @@ fn catalogue() -> Reply {
         .with(Block::summary(
             Outcome::Success,
             count(entries.len(), "signal", "signals"),
-            [Fact::plain(count(named.len(), "type or operation", "types and operations"))],
+            [Fact::plain(count(
+                named.len(),
+                "type or operation",
+                "types and operations",
+            ))],
         ));
     let data = Json::object([(
         "signals",
@@ -788,7 +879,10 @@ fn catalogue() -> Reply {
                 ("suggestion", Json::from(entry.suggestion.as_str())),
                 ("signal", Json::from(entry.signal.word())),
                 ("looksFor", Json::from(entry.looks_for.as_str())),
-                ("values", Json::array(entry.values.iter().map(|v| Json::from(v.as_str())))),
+                (
+                    "values",
+                    Json::array(entry.values.iter().map(|v| Json::from(v.as_str()))),
+                ),
             ])
         })),
     )]);
