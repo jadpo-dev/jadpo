@@ -79,20 +79,19 @@ fn select(out: &mut String, select: &Select, depth: usize) {
             "{indent}-- the caller may read a row: column {at}\n"
         ));
     }
-    let fields: Vec<String> = select
-        .record
-        .fields
-        .iter()
-        .map(|(name, field)| match field {
-            Field::Column(at) => format!("{name} = column {at}"),
-            Field::Include(at) => format!("{name} = include {at}"),
-        })
-        .collect();
-    out.push_str(&format!(
-        "{indent}-- record {}: {}\n",
-        select.record.ty,
-        fields.join(", ")
-    ));
+    fn shown(record: &jadpo_std::read::Record) -> String {
+        let fields: Vec<String> = record
+            .fields
+            .iter()
+            .map(|(name, field)| match field {
+                Field::Column(at) => format!("{name} = column {at}"),
+                Field::Include(at) => format!("{name} = include {at}"),
+                Field::Record(inner) => format!("{name} = ({})", shown(inner)),
+            })
+            .collect();
+        format!("{}: {}", record.ty, fields.join(", "))
+    }
+    out.push_str(&format!("{indent}-- record {}\n", shown(&select.record)));
     for (i, include) in select.includes.iter().enumerate() {
         let shape = match include.shape {
             IncludeShape::One => "one",
@@ -110,6 +109,9 @@ fn select(out: &mut String, select: &Select, depth: usize) {
 fn read(name: &str, read: &ReadPlan) -> String {
     let cardinality = read.cardinality.word();
     let mut out = format!("-- {name}: {cardinality}, store {}\n", read.store);
+    for setting in &read.settings {
+        out.push_str(&format!("{setting};\n"));
+    }
     if let Some(page) = &read.page {
         let size = match &page.size {
             Size::Fixed(n) => n.to_string(),

@@ -459,6 +459,7 @@ double_quantity
 doubled_checked
 doubled_order
 draft_name
+draft_reply
 drawn_patch
 drift
 driven
@@ -1347,6 +1348,7 @@ rental_term
 replies
 reply_count
 reply_locale
+reply_meaning
 reply_total
 reprice
 reprice_line
@@ -1511,6 +1513,7 @@ sign_up_form
 signed_in
 signed_up
 signup_ip
+similar_drafts
 size_of
 size_price
 slice_count

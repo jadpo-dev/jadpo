@@ -11,7 +11,7 @@
 # options they use. `DecodeProblem` is what a failure mapped from
 # `json.read`'s `mismatch` receives (area 19), its fields in `jadpo-std`.
 [types]
-Page
+Page Nearest
 File Principal Response Access
 IssuedToken IssuedKey DecodeProblem
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol

@@ -346,10 +346,21 @@ fn built() -> BTreeSet<String> {
             .map(|k| format!("query include {k}")),
     );
     out.extend(
-        ["comparison", "in", "none", "and", "or", "not", "present"]
-            .iter()
-            .map(|c| format!("query condition {c}")),
+        [
+            "comparison",
+            "in",
+            "none",
+            "and",
+            "or",
+            "not",
+            "present",
+            "distance",
+        ]
+        .iter()
+        .map(|c| format!("query condition {c}")),
     );
+    // Area 21: a nearest-neighbour query (chunk 5.5v1b).
+    out.insert("query result nearest".to_string());
     // Area 6's isolation levels (chunk 3.7), each on an action that writes.
     out.extend(
         jadpo_std::Isolation::ALL
@@ -1216,8 +1227,11 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
         {
             used.insert("query section where".to_string());
         }
-        if query.order.iter().any(|o| !o.added) {
+        if query.order.iter().any(|o| !o.added) || query.nearest.is_some() {
             used.insert("query section order".to_string());
+        }
+        if query.nearest.is_some() {
+            used.insert("query result nearest".to_string());
         }
         if query.limit.is_some() {
             let section = if query.after.is_some() {
@@ -1246,6 +1260,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                         used.insert("query section where_present".to_string());
                         "present"
                     }
+                    Condition::Distance { .. } => "distance",
                 };
                 used.insert(format!("query condition {word}"));
                 match condition {

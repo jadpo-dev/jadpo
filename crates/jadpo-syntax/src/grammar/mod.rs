@@ -2872,12 +2872,21 @@ fn list(p: &mut Parser<'_>) {
                     break;
                 }
                 let before = p.position();
-                if let Some(item) = expr(p)
+                let item = expr(p);
+                if let Some(item) = item
                     && (p.at_word("asc") || p.at_word("desc"))
                 {
                     let m = item.precede(p);
                     let kind = if p.at_word("asc") { ASC_KW } else { DESC_KW };
                     p.bump_remap(kind);
+                    m.complete(p, ORDERED_EXPR);
+                } else if let Some(item) = item
+                    && p.at_word("nearest")
+                {
+                    // `F nearest v`: nearest first to the value (area 21).
+                    let m = item.precede(p);
+                    p.bump_remap(NEAREST_KW);
+                    expr(p);
                     m.complete(p, ORDERED_EXPR);
                 }
                 if p.position() == before {
