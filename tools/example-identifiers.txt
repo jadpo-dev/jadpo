@@ -142,6 +142,7 @@ books
 books_after
 books_titled
 borrower
+box_count
 box_size
 bread
 brought_over
@@ -179,6 +180,7 @@ cake_photo
 cake_price
 cake_quote
 cake_request
+cake_share
 cake_size
 cake_sold_out
 cake_stand
@@ -270,6 +272,7 @@ company_projects
 company_role
 complete_todo
 completed_at
+confirm_discount
 confirm_sign_in
 confirm_total
 consent
@@ -369,6 +372,7 @@ discount
 discount_code
 discount_for
 discount_loaf
+discount_rate
 discount_too_large
 display_name
 display_word
@@ -484,6 +488,7 @@ give_note
 gluten
 goals
 golden
+good_share
 grain
 grams_in
 greeting
@@ -574,6 +579,7 @@ is_overdue
 isbn
 issue_card
 issue_outlet_key
+issue_voucher
 issued_at
 issued_label
 item_changes
@@ -801,6 +807,8 @@ nut_free
 nuts
 oat
 off_menu_cake
+offcut
+offcut_label
 oland
 old_reference
 old_todo
@@ -824,6 +832,7 @@ order_after_deposit
 order_amount
 order_back
 order_by_id
+order_discount
 order_empty
 order_for
 order_id
@@ -907,6 +916,7 @@ partners
 party_id
 party_label
 party_title
+pass_rate
 passed_on
 pastry
 patch_todo
@@ -918,6 +928,7 @@ payment_outcome
 payment_refused
 payment_succeeded
 payout_account
+penny_cake
 people
 per_kilo
 per_todo
@@ -1013,6 +1024,7 @@ quote
 quote_cake
 radius
 raise_priority
+rate_label
 rate_on
 rated
 raw_name
@@ -1363,6 +1375,7 @@ trays
 trays_out
 trays_to_bake
 turned_down
+twenty_in_threes
 two_open_todos
 typed_in
 typed_name
@@ -1412,6 +1425,8 @@ vouch
 vouched
 vouched_by
 voucher
+voucher_made
+voucher_on_file
 walk_time
 walking_pace
 wallet
@@ -1437,6 +1452,7 @@ wildcard_failure
 with_brackets
 with_delivery
 with_todos
+with_vat
 withdraw_copy
 withdrawn
 work_address

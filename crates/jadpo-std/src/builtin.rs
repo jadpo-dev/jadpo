@@ -31,6 +31,10 @@ pub enum Builtin {
     /// unit at the kind's scale, its unit chosen only where it is made or
     /// shown.
     Quantity(crate::QuantityKind),
+    /// A proportion where 0.20 is 20% (area 19, "The standard operator
+    /// table"): an exact `Decimal` fraction, written `20%`, shown as the
+    /// locale writes a percentage.
+    Percentage,
     Unit,
     /// The opaque cursor a page of results gives for the next one (area
     /// 6, "Order and pages"): text to the program, read only by the query
@@ -93,7 +97,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
 };
 
 impl Builtin {
-    pub const ALL: [Builtin; 43] = [
+    pub const ALL: [Builtin; 44] = [
         Builtin::Bool,
         Builtin::Int,
         Builtin::Decimal,
@@ -127,6 +131,7 @@ impl Builtin {
         Builtin::Quantity(QuantityKind::Concentration),
         Builtin::Quantity(QuantityKind::DataSize),
         Builtin::Quantity(QuantityKind::Bitrate),
+        Builtin::Percentage,
         Builtin::Unit,
         Builtin::PageCursor,
         Builtin::PageSize,
@@ -156,6 +161,7 @@ impl Builtin {
             Builtin::Duration => "Duration",
             Builtin::Money => "Money",
             Builtin::Quantity(kind) => kind.name(),
+            Builtin::Percentage => "Percentage",
             Builtin::Unit => "Unit",
             Builtin::PageCursor => "PageCursor",
             Builtin::PageSize => "PageSize",

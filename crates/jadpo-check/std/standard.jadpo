@@ -141,6 +141,13 @@ public type ExchangeRate = Object {
 /// A file's IANA media type (area 16), written `image/png`.
 public type FileType = Enum {}
 
+/// An exact rational number as written (area 19), `3/4`: `1/2` and `2/4`
+/// are two values. `denominator` is at least 1.
+public type Fraction = Object {
+    numerator: Int
+    denominator: Int
+}
+
 /// A family name (area 19), one line as the person writes it. Personal
 /// data.
 public type FamilyName = Text {}
@@ -219,8 +226,8 @@ public type LocalTime = Object {
 /// A CLDR locale (area 10), written as its BCP 47 tag, `en-GB`.
 public type Locale = Enum {}
 
-/// A mass, held in kilograms to 6 places (area 19), written `250g` or
-/// `2.5kg`.
+/// A mass, held in kilograms to 9 places, a microgram (area 19), written
+/// `250g`, `2.5kg` or `500mcg`.
 public type Mass = Mass {}
 
 /// A month of the year (area 19).
@@ -261,6 +268,11 @@ public type PaymentCardNumber = Text {}
 /// The reference a payer sees on a UK bank payment (area 19): up to 18
 /// of Bacs's characters, `INV-2026/0042`.
 public type PaymentReference = Text {}
+
+/// A proportion where 0.20 is 20% (area 19), written `20%`: held as the
+/// exact fraction, shown as the reader's locale writes a percentage.
+/// `Percentage(ratio)` makes one from a `Decimal` ratio, 0.25 being 25%.
+public type Percentage = Percentage {}
 
 /// A person's name (area 19): their given name and, where they have one,
 /// their family name. It has no single text form; `text.format` writes it
@@ -317,6 +329,13 @@ public type Money = Money {}
 public type Range = Object {
     start: T?
     end: T?
+}
+
+/// One number to another as written (area 19), `16:9`: `16:9` and `32:18`
+/// are two values.
+public type Ratio = Object {
+    numerator: Decimal
+    denominator: Decimal
 }
 
 /// When something recurs (area 19, RFC 5545): its first occurrence as a

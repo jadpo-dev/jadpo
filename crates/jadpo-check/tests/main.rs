@@ -41,6 +41,7 @@ mod not_values;
 mod numbers;
 mod one_error;
 mod people_places;
+mod percentages;
 mod policy;
 mod project;
 mod quantities;

@@ -226,6 +226,23 @@ fn lex_error(text: &str, error: &LexError) -> SyntaxError {
         .reason("A string starts and ends with `\"` on the same line.")
         .next("Add `\"` where the string ends")
         .edit(TextEdit::insert(end, "\"")),
+        LexErrorKind::PercentOrRemainder => {
+            let written = text.get(start as usize..end as usize).unwrap_or("");
+            let (number, rest) = written.split_once('%').unwrap_or((written, ""));
+            SyntaxError::new(
+                &rule::SYNTAX_PERCENT_AMBIGUOUS,
+                format!("`{written}` could be `{number}% {rest}` or `{number} % {rest}`"),
+                start,
+                end,
+            )
+            .label("a percentage or a remainder")
+            .reason(format!(
+                "A number touching `%` is a percentage, `{number}%`, and the remainder is written with spaces, `{number} % {rest}`, as the formatter writes every binary operator; with `{rest}` touching the `%` too, either could be meant."
+            ))
+            .next(format!(
+                "Write `{number} % {rest}` for the remainder, or put the percentage `{number}%` apart from what follows it"
+            ))
+        }
         LexErrorKind::InvalidEscape(c) => {
             let written = text.get(start as usize..end as usize).unwrap_or("");
             SyntaxError::new(

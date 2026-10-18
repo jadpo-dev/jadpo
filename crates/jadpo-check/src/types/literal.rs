@@ -21,6 +21,9 @@ pub enum Problem {
     /// A bare number where a quantity of this kind goes, which needs its
     /// unit (area 19, `type.unit_required`).
     UnitRequired(jadpo_std::QuantityKind),
+    /// A bare number where a percentage goes, which could be a ratio or a
+    /// percentage already (area 19): written with `%` instead.
+    PercentRequired(jadpo_std::Num),
 }
 
 /// Checks a constant against the type it goes into.
@@ -77,6 +80,21 @@ pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), P
         return Err(Problem::Kind { fix });
     };
     let representation = base.representation();
+    // A percentage is written with `%` (area 19): a bare number could be
+    // 0.2 or 20.
+    if representation == Prim::Percentage {
+        match value {
+            Const::Percentage(_) if value.percentage().is_some() => {}
+            Const::Number { value: number, .. } => {
+                return Err(Problem::PercentRequired(*number));
+            }
+            _ => return Err(Problem::Kind { fix: None }),
+        }
+        for (host, rules) in table.rule_chain(expected) {
+            check_rules(rules, value).map_err(|broken| Problem::Broken(host, broken))?;
+        }
+        return Ok(());
+    }
     // A quantity is always made with its unit (area 19): a bare number is
     // the mistake its type exists to prevent. A suffix that names no unit
     // is reported where the literal is read.
@@ -235,6 +253,25 @@ pub fn diagnostic(
             }
         }
         Problem::UnitRequired(kind) => unit_required(kind, written, &expected.to_string(), span),
+        Problem::PercentRequired(number) => {
+            let headline = if constructor {
+                Diagnostic::new(
+                    &rule::TYPE_CONSTRUCTOR_INPUT,
+                    format!("`{expected}` can't be built from `{written}`"),
+                )
+            } else {
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{written}` can't be used where `{expected}` is required"),
+                )
+            };
+            headline
+                .at(span, "a bare number")
+                .reason(format!(
+                    "`{expected}` is a percentage, written with `%`, so a bare number could be read two ways: as a ratio, where 0.2 is 20%, or as a percentage already, where 20 is 20%."
+                ))
+                .next(percent_readings(number, written))
+        }
         Problem::Builtin(why) => {
             let base = table
                 .base_prim(expected)
@@ -372,6 +409,15 @@ pub fn unit_unknown(written: &str, span: Span) -> Diagnostic {
     problem
 }
 
+/// The next step for a bare number where a percentage goes: both
+/// readings, with no edit guessing which (area 19).
+pub fn percent_readings(number: jadpo_std::Num, written: &str) -> String {
+    let as_ratio = jadpo_std::percentage::canonical(number.mantissa, number.scale);
+    format!(
+        "Write it with `%`: `{as_ratio}` if `{written}` is a ratio, or `{written}%` if it is already a percentage"
+    )
+}
+
 /// A literal in the reader's words.
 fn describe(written: &str) -> &'static str {
     if written == "none" {
@@ -382,6 +428,8 @@ fn describe(written: &str) -> &'static str {
         "a `Bool`"
     } else if written.starts_with('[') {
         "a list"
+    } else if written.ends_with('%') {
+        "a percentage"
     } else if written.contains('.') {
         "a decimal number"
     } else if written.ends_with(|c: char| c.is_ascii_alphabetic())

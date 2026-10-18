@@ -66,27 +66,23 @@ fn every_unit_converts_to_its_base_and_back() {
         assert_eq!(held.kind, kind, "{}", unit_row.name);
         // One of a unit is shown as one in that unit: exactly where the
         // kind's scale holds it, and otherwise within the places that scale
-        // gives in the unit (a microgram is below a milligram, the scale
-        // of a `Mass`, so it is held as nothing).
+        // gives in the unit. Every suffix is at least its kind's smallest
+        // step, so none is held as nothing (a microgram is a `Mass`'s,
+        // corrected 2026-10-18).
         let shown = quantity::shown_in(held.amount, unit_row);
-        if unit_row.name == "microgram" {
-            assert_eq!(shown, Some((0, 0)));
-        } else {
-            assert_eq!(shown, Some((1, 0)), "{}", unit_row.name);
-        }
+        assert_eq!(shown, Some((1, 0)), "{}", unit_row.name);
+        assert_ne!(held.amount, 0, "{}", unit_row.name);
         let back = call(
             Op::UnitsIn,
             &[made.clone(), given, Value::Int(0), rounding("half_even")],
         )
         .unwrap();
-        if unit_row.name != "microgram" {
-            assert_eq!(
-                back,
-                Value::Decimal(Decimal::new(1, 0)),
-                "{}",
-                unit_row.name
-            );
-        }
+        assert_eq!(
+            back,
+            Value::Decimal(Decimal::new(1, 0)),
+            "{}",
+            unit_row.name
+        );
         if unit_row.suffix {
             assert_eq!(
                 made,
@@ -221,4 +217,21 @@ fn a_quantity_is_sent_and_stored_in_its_base_unit() {
         Ok(literal("45cm"))
     );
     assert_eq!(QuantityKind::Length.column_type(), "numeric(38, 6)");
+    assert_eq!(QuantityKind::Mass.column_type(), "numeric(38, 9)");
+    // A microgram round-trips exactly, through its column and the wire.
+    let dose = literal("1mcg");
+    assert_eq!(dose, units::value(QuantityKind::Mass, 1));
+    let sql = jadpo_runtime::to_sql(&dose, jadpo_std::SqlType::Numeric).unwrap();
+    assert_eq!(
+        jadpo_runtime::from_sql(&sql, &jadpo_std::read::Column::Quantity(QuantityKind::Mass)),
+        Ok(dose.clone())
+    );
+    assert_eq!(
+        table.write_value(CodecId(0), &dose),
+        "{\"value\":\"0.000000001\",\"unit\":\"kg\"}"
+    );
+    assert_eq!(
+        read("{\"value\": \"1\", \"unit\": \"mcg\"}"),
+        (Some(dose), vec![])
+    );
 }

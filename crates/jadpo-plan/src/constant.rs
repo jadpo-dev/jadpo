@@ -46,6 +46,20 @@ pub fn literal(
                     amount,
                 })
         }
+        Literal::Percentage(written) => {
+            jadpo_std::percentage::parse_literal(written).map(|fraction| Constant::Percentage {
+                mantissa: fraction.mantissa,
+                scale: fraction.scale,
+            })
+        }
+        // A ratio built into a percentage, `Percentage(0.25)`, is the
+        // fraction it is (area 19).
+        Literal::Number { value, .. } if builtin == Some(Builtin::Percentage) => {
+            Some(Constant::Percentage {
+                mantissa: value.mantissa,
+                scale: value.scale,
+            })
+        }
         // Only the zero `units.sum` is given for no items, which the
         // checker fills: a written number never stands for a quantity
         // (area 19, `type.unit_required`).

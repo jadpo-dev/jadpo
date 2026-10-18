@@ -704,7 +704,7 @@ reference only).
   checked example. Split on 2026-10-18; the rest is 5.5j2. Built, with
   `type.unit_unknown` and quantities compared and ordered in queries;
   what the pages left open is area 19's "Chosen in chunk 5.5j".
-- [ ] **5.5j2 Percentages, ratios and fractions** `opus · high` (area 19,
+- [x] **5.5j2 Percentages, ratios and fractions** `opus · high` (area 19,
   "The standard operator table", questions 16 and 17; split from 5.5j):
   `Percentage`, `Ratio` and `Fraction` on the contract; the `%` literal,
   with remainder keeping its spaced `%` and `20%3` an error; the operator
@@ -714,7 +714,11 @@ reference only).
   0.25 → 25%; `{n, number, percent}` in messages. Done when the
   percentage examples pass and the showcase `var total: Length = 2metre
   + 45cm + 3inch` then `var trim: Length = total * 15%` gives the right
-  metres, shown in centimetres in two locales.
+  metres, shown in centimetres in two locales. Built, with
+  `syntax.percent_ambiguous`, a `Mass` held to the microgram so `1mcg` is
+  exact (a correction by the lead session), and a percentage stored as
+  its fraction and sent as `"20%"`; what the pages left open is area 19's
+  "Chosen in chunk 5.5j2".
 - [x] **5.5k Time and calendar** `opus · high` (area 19, "Time and
   calendar additions"): ten of the 13 new time types (`LocalTime`,
   `LocalDateTime`, `Month`, `YearMonth`, `Year`, `Quarter`, `IsoWeek`,

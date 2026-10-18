@@ -664,8 +664,17 @@ fn an_amount_of_money_is_written_with_its_style() {
             "{boxes} colis : {total, number, currency}",
             "CakePrice"
         ),
+        ["translation.placeholder_style"],
+        "money written as a percentage"
+    );
+    assert_eq!(
+        priced(
+            "{boxes} boxes: {total, number, integer}",
+            "{boxes} colis : {total, number, currency}",
+            "CakePrice"
+        ),
         ["translation.wording_invalid"],
-        "the one style there is"
+        "the two styles there are"
     );
     assert_eq!(
         priced(
@@ -675,6 +684,67 @@ fn an_amount_of_money_is_written_with_its_style() {
         ),
         ["import.unused", "type.mismatch"],
         "a call gives the message an amount, and `CakePrice` goes unused"
+    );
+}
+
+/// A message with a percentage, worded in both languages (area 19,
+/// question 16, chunk 5.5j2).
+fn discounted(en_wording: &str, fr_wording: &str) -> Vec<String> {
+    let rate = "/// A discount off a basket.\ntype DiscountRate = Percentage {}\n";
+    let message = "use shipping/types { DiscountRate, ParcelCount }\n\n/// The discount on a basket, on the checkout page.\ntype BasketDiscount = Message {\n    off: DiscountRate\n    boxes: ParcelCount\n}\n";
+    let caller = "use shipping/types { DiscountRate, ParcelCount }\n\n/// The basket's discount, in the customer's language.\naction discount_line(off: DiscountRate, boxes: ParcelCount, reader_locale: Locale) -> PresentationText {\n    return translations.shipping.basket_discount(off: off, boxes: boxes, locale: reader_locale)\n}\n";
+    let en = EN.replace(
+        "parcels: {",
+        &format!("basket_discount: \"{en_wording}\"\n    parcels: {{"),
+    );
+    let fr = FR.replace(
+        "parcels: {",
+        &format!("basket_discount: \"{fr_wording}\"\n    parcels: {{"),
+    );
+    rules(&[
+        ("domains/shipping/types/discount_rate.jadpo", rate),
+        (
+            "domains/shipping/translations/basket_discount.jadpo",
+            message,
+        ),
+        ("domains/shipping/actions/discount_line.jadpo", caller),
+        (EN_PATH, &en),
+        (FR_PATH, &fr),
+    ])
+}
+
+#[test]
+fn a_percentage_is_written_with_its_style() {
+    assert_eq!(
+        discounted(
+            "{off, number, percent} off {boxes} boxes",
+            "{off, number, percent} de remise sur {boxes} colis"
+        ),
+        CLEAN
+    );
+    assert_eq!(
+        discounted(
+            "{off} off {boxes} boxes",
+            "{off, number, percent} de remise sur {boxes} colis"
+        ),
+        ["translation.placeholder_style"],
+        "a percentage without its style"
+    );
+    assert_eq!(
+        discounted(
+            "{off, number, currency} off {boxes} boxes",
+            "{off, number, percent} de remise sur {boxes} colis"
+        ),
+        ["translation.placeholder_style"],
+        "a percentage written as money"
+    );
+    assert_eq!(
+        discounted(
+            "{off, number, percent} off {boxes, number, percent} boxes",
+            "{off, number, percent} de remise sur {boxes} colis"
+        ),
+        ["translation.placeholder_style"],
+        "a number written as a percentage"
     );
 }
 

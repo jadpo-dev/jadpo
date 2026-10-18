@@ -1139,7 +1139,8 @@ dependency change of its own (chosen in chunk 5.2).
 > here use `text.format`. Area 19 also adds
 > three `temporal` operations (`occurrences`, `open_at`,
 > `period_between`, chunks 5.5k and 5.5k2) and `{price, number, currency}` to the
-> placeholder styles, built in chunk 5.5h2 ("Messages", below).
+> placeholder styles, built in chunk 5.5h2 ("Messages", below), and
+> `{rate, number, percent}`, built in chunk 5.5j2.
 
 Formatting needs three things the server must never guess: the zone, the
 language and the format. Decided (question 7): one call that takes all
@@ -1814,7 +1815,8 @@ How a message's type maps to its wording in each language's file:
 | The type's name, `OrderShipped` | The member `order_shipped`, in the language files of the type's own `translations/` folder |
 | No fields | A plain string |
 | A `Text`, `PresentationText`, `Int` or `Decimal` field, or a named type built on `Text`, `Int` or `Decimal` | A `{field}` placeholder; numbers are written the locale's way |
-| A field built on `Money` | A `{field, number, currency}` placeholder, the one style, written as `text.format` shows the amount in the locale (area 19); `{field}` alone is `translation.placeholder_style` |
+| A field built on `Money` | A `{field, number, currency}` placeholder, written as `text.format` shows the amount in the locale (area 19); `{field}` alone is `translation.placeholder_style` |
+| A field built on `Percentage` | A `{field, number, percent}` placeholder, written as `text.format` shows the percentage in the locale (area 19, chunk 5.5j2); `{field}` alone is `translation.placeholder_style` |
 | One enum field | One member per value of the enum; the field is not a placeholder |
 | One `PluralCount` field | One member per plural form the language needs, from Unicode CLDR (English `one` and `other`; Polish `one`, `few`, `many` and `other`); `{count}` is available in each |
 | Any other field type (`Instant`, an object, `T?`) | `translation.field_type`: format it in code and pass the text |
@@ -1877,6 +1879,60 @@ test "a price is written each language's way" {
     var total: OrderAmount = OrderAmount(money.from_minor(123450, Currency.mxn))
     assert confirm_total(total, Locale.en_gb) == "Your order comes to MX$1,234.50."
     assert confirm_total(total, Locale.es_mx) == "Tu pedido suma $1,234.50."
+}
+```
+
+A percentage is a placeholder of its own in the same way, written
+`{rate, number, percent}` (area 19, built in chunk 5.5j2):
+
+```jadpo check project=translation-percent file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.es_mx]
+}
+```
+
+```jadpo check project=translation-percent file=domains/orders/types/discount_rate.jadpo hidden
+/// A discount off an order.
+type DiscountRate = Percentage {}
+```
+
+```jadpo check project=translation-percent file=domains/orders/translations/order_discount.jadpo
+use orders/types { DiscountRate }
+
+/// The discount on an order, on its confirmation page.
+type OrderDiscount = Message {
+    reduction: DiscountRate
+}
+```
+
+```jadpo check project=translation-percent file=domains/orders/translations/en_gb.jadpo
+translations {
+    order_discount: "You saved {reduction, number, percent}."
+}
+```
+
+```jadpo check project=translation-percent file=domains/orders/translations/es_mx.jadpo
+translations {
+    order_discount: "Ahorraste {reduction, number, percent}."
+}
+```
+
+```jadpo check project=translation-percent file=domains/orders/actions/confirm_discount.jadpo hidden
+use orders/types { DiscountRate }
+
+/// The order's discount, in the customer's language.
+action confirm_discount(reduction: DiscountRate, reader_locale: Locale) -> PresentationText {
+    return translations.orders.order_discount(reduction: reduction, locale: reader_locale)
+}
+```
+
+```jadpo check project=translation-percent file=domains/orders/actions/confirm_discount.test.jadpo
+test "a discount is written each language's way" {
+    assert confirm_discount(12.5%, Locale.en_gb) == "You saved 12.5%."
+    assert confirm_discount(12.5%, Locale.es_mx) == "Ahorraste 12.5%."
 }
 ```
 
@@ -2429,9 +2485,9 @@ Built in chunk 5.4c, each with its own error below:
   is not a value of the enum, or a plural form the language does not use
   (`translation.variant_unknown`); a missing variant or plural form
   (`translation.variant_missing`); a placeholder that is not a field
-  (`translation.placeholder_unknown`); an amount of money written without
-  its style, or the style on another field (`translation.placeholder_style`,
-  chunk 5.5h2); a field type a wording cannot hold
+  (`translation.placeholder_unknown`); an amount of money or a percentage
+  written without its style, or a style on another field
+  (`translation.placeholder_style`, chunks 5.5h2 and 5.5j2); a field type a wording cannot hold
   (`translation.field_type`), or more than one enum or `PluralCount` field
   (`translation.too_many_selectors`); a language file that is not named for
   a locale (`translation.file_name_invalid`) or is for one the application
@@ -4820,8 +4876,9 @@ check failed: 1 error, 4 files
 ### `translation.placeholder_style`
 
 An amount of money is written with its style, `{price, number,
-currency}`, so a translator sees it is a price; the style on a field
-that isn't money is the same mistake the other way round.
+currency}`, so a translator sees it is a price, and a percentage with
+its own, `{rate, number, percent}`; a style on a field of another kind
+is the same mistake the other way round.
 
 ```jadpo check project=e-tr-placeholder-style file=app.jadpo hidden
 application {}
@@ -5003,8 +5060,8 @@ error: `LeftAt.when` is typed `Instant`, which a wording can't write
  --> domains/shipping/translations/left_at.jadpo:3:5
   |
 3 |     when: Instant
-  |     ^^^^ not text, a number, money or a choice
-  reason: A message's fields are the placeholders of its wording, and a placeholder is text (`Text`, `PresentationText`), a number (`Int`, `Decimal`), an amount of money (`Money`, written `{field, number, currency}`) or a plural count (`PluralCount`), or a type built on one of them; one `enum` field picks which wording is written. Dates and times are formatted in code, with `text.format`, and passed in as `PresentationText`.
+  |     ^^^^ not text, a number, money, a percentage or a choice
+  reason: A message's fields are the placeholders of its wording, and a placeholder is text (`Text`, `PresentationText`), a number (`Int`, `Decimal`), an amount of money (`Money`, written `{field, number, currency}`), a percentage (`Percentage`, written `{field, number, percent}`) or a plural count (`PluralCount`), or a type built on one of them; one `enum` field picks which wording is written. Dates and times are formatted in code, with `text.format`, and passed in as `PresentationText`.
   next: Make `when` a `PresentationText` and format the value where the message is called (agent)
   rule: translation.field_type
   help: docs/language/10-configuration-and-time.html#translation-field-type
@@ -5832,7 +5889,7 @@ Library packages' translations come with packages in Phase 7.
 | Where translations live | In the domain that uses them, `domains/<domain>/translations/`; a message a second domain uses moves to `shared/translations/` under area 1's promotion rule; the root `translations/` holds only the app's wording for Jadpo's own messages (Richard) | 2026-10-16 |
 | Messages | `type X = Message { ... }`, a type base beside `Failure`, `Event` and `EmailMessage`, one per file; fields are placeholders; `///` descriptions are translator context (Richard) | 2026-10-16 |
 | Language files | One unnamed `translations { }` per locale in a file named after it (`de_de.jadpo`); members are message, failure, enum or email names in lower_snake_case; every wording a plain string whose only syntax is `{field}`, a literal brace doubled (`{{`, `}}`); no grouping or nesting beyond variants and plural forms; JSON and ICU MessageFormat dropped (Richard) | 2026-10-16 |
-| Mapping a message to wording | No fields: a string; `Text`, `PresentationText`, `Int`, `Decimal`: placeholders, numbers written the locale's way; one enum field: one wording per value; one `PluralCount` field: one wording per CLDR plural form; any other field type, or more than one enum or `PluralCount` field, an error; a placeholder that is not a field an error; a field no wording uses a warning (Richard). Revised 2026-10-17 for area 1, question 11: a declinable error, `translation.field_unused`. Revised by area 19, question 16 (built in chunk 5.5h2): a field built on `Money` is a placeholder written `{price, number, currency}`, the one style, and `translation.placeholder_style` refuses it written otherwise | 2026-10-16 |
+| Mapping a message to wording | No fields: a string; `Text`, `PresentationText`, `Int`, `Decimal`: placeholders, numbers written the locale's way; one enum field: one wording per value; one `PluralCount` field: one wording per CLDR plural form; any other field type, or more than one enum or `PluralCount` field, an error; a placeholder that is not a field an error; a field no wording uses a warning (Richard). Revised 2026-10-17 for area 1, question 11: a declinable error, `translation.field_unused`. Revised by area 19, question 16 (built in chunk 5.5h2): a field built on `Money` is a placeholder written `{price, number, currency}`, the one style, and `translation.placeholder_style` refuses it written otherwise. Revised by the same question (built in chunk 5.5j2): a field built on `Percentage` is written `{rate, number, percent}`, the second style | 2026-10-16 |
 | Generated calls | `translations.<domain>.<message>(field: value, ..., locale: ...)`, every field by name, returning `PresentationText`; `translations.shared.<message>` for `shared/translations/`; in email templates the email's locale (Richard) | 2026-10-16 |
 | Email subjects | An `EmailMessage`'s member in its domain's language files is its subject line, its fields usable as placeholders; the body is the `.html` and `.txt` templates (Richard) | 2026-10-16 |
 | Enum wording | An enum can be written out once its domain's language files give each value a wording, a value's fields usable as placeholders; area 2's "no display labels" stands (Richard) | 2026-10-16 |

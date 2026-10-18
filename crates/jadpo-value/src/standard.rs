@@ -28,6 +28,7 @@ pub fn entry_of(value: &Value) -> Option<&'static StandardType> {
         Value::Duration(_) => jadpo_std::Builtin::Duration,
         Value::Money(_) => jadpo_std::Builtin::Money,
         Value::Quantity(quantity) => jadpo_std::Builtin::Quantity(quantity.kind),
+        Value::Percentage(_) => jadpo_std::Builtin::Percentage,
         Value::Variant(variant) => return standard_type(&variant.ty),
         Value::Record(record) => return standard_type(&record.ty),
         _ => return None,
@@ -98,6 +99,25 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
             jadpo_std::quantity::canonical(quantity.kind, quantity.amount)
         }
         (TextForm::ExchangeRate, Value::Record(record)) => exchange_rate_text(record)?,
+        (TextForm::Percentage, Value::Percentage(fraction)) => {
+            jadpo_std::percentage::canonical(fraction.mantissa, fraction.scale)
+        }
+        (TextForm::Ratio, Value::Record(record)) => {
+            match (record.get("numerator"), record.get("denominator")) {
+                (Some(Value::Decimal(top)), Some(Value::Decimal(bottom))) => {
+                    format!("{top}:{bottom}")
+                }
+                _ => return Err(Fault::Shape),
+            }
+        }
+        (TextForm::Fraction, Value::Record(record)) => {
+            match (record.get("numerator"), record.get("denominator")) {
+                (Some(Value::Int(top)), Some(Value::Int(bottom))) => {
+                    jadpo_std::percentage::fraction_text(*top, *bottom)
+                }
+                _ => return Err(Fault::Shape),
+            }
+        }
         (TextForm::Mailbox, Value::Record(record)) => crate::mailbox::mailbox_text(record)?,
         (TextForm::Event, Value::Record(record)) => crate::event::event_text(record)?,
         (TextForm::Code, Value::Variant(variant)) => entry
@@ -404,6 +424,32 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
             };
         }
         TextForm::ExchangeRate => read_exchange_rate(raw),
+        TextForm::Percentage => jadpo_std::percentage::parse_text(raw)
+            .map(|fraction| Value::Percentage(Decimal::new(fraction.mantissa, fraction.scale))),
+        TextForm::Ratio => jadpo_std::percentage::parse_ratio(raw).map(|(top, bottom)| {
+            Value::record(
+                entry.name,
+                vec![
+                    (
+                        "numerator".into(),
+                        Value::Decimal(Decimal::new(top.mantissa, top.scale)),
+                    ),
+                    (
+                        "denominator".into(),
+                        Value::Decimal(Decimal::new(bottom.mantissa, bottom.scale)),
+                    ),
+                ],
+            )
+        }),
+        TextForm::Fraction => jadpo_std::percentage::parse_fraction(raw).map(|(top, bottom)| {
+            Value::record(
+                entry.name,
+                vec![
+                    ("numerator".into(), Value::Int(top)),
+                    ("denominator".into(), Value::Int(bottom)),
+                ],
+            )
+        }),
         TextForm::Mailbox => crate::mailbox::read_mailbox(entry, raw),
         TextForm::Event => crate::event::read_event(raw),
         // Its ends' type is the range type's argument, which `parse` reads.
@@ -631,6 +677,7 @@ pub fn format(
         (Some(_), Value::Quantity(quantity)) => {
             present::units::format(quantity.amount, unit_of(quantity.kind, unit)?, tag)?
         }
+        (Some(_), Value::Percentage(fraction)) => present::percent(fraction, tag)?,
         (Some(entry), value) => shown(entry, value, tag, zone, format_spec)?,
         // `Email`, `Url` and `IpAddress` are shown as they are written.
         (None, Value::Text(text)) => text.to_string(),
@@ -683,6 +730,7 @@ pub fn shown(
         (FormatKey::Units, Value::Quantity(quantity)) => {
             present::units::format(quantity.amount, quantity.kind.base_unit(), tag)?
         }
+        (FormatKey::Percent, Value::Percentage(fraction)) => present::percent(fraction, tag)?,
         (FormatKey::CurrencyName, value) => {
             present::money::currency_name(&canonical(entry, value)?, tag)?
         }

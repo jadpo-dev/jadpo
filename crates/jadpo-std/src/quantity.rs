@@ -126,11 +126,15 @@ impl QuantityKind {
         match self {
             QuantityKind::Length
             | QuantityKind::Area
-            | QuantityKind::Mass
             | QuantityKind::Speed
             | QuantityKind::Voltage
             | QuantityKind::Current => 6,
-            QuantityKind::Volume | QuantityKind::Angle | QuantityKind::Concentration => 9,
+            // A microgram is a `Mass`'s smallest step, so a medicine's dose
+            // in `mcg` is exact (corrected 2026-10-18).
+            QuantityKind::Volume
+            | QuantityKind::Angle
+            | QuantityKind::Mass
+            | QuantityKind::Concentration => 9,
             QuantityKind::Pressure
             | QuantityKind::Energy
             | QuantityKind::Power
@@ -1091,8 +1095,8 @@ pub fn from_base(amount: i128, unit: &Unit, places: u32, rounding: Rounding) -> 
 /// A value held in the base unit as people see it in `unit`: exact where
 /// the conversion ends within the places the kind's scale gives in that
 /// unit (2.4762 m is 247.62 cm), and otherwise rounded half to even to one
-/// place fewer, so a value made in the unit reads back as written: `1lb`
-/// is held as 0.453592 kg, which is 0.99999918 lb, shown as 1. The
+/// place fewer, so a value made in the unit reads back as written: `1oz`
+/// is held as 0.028349523 kg, which is 0.99999998 oz, shown as 1. The
 /// mantissa and its places, with no trailing zeros.
 pub fn shown_in(amount: i128, unit: &Unit) -> Option<(i128, u32)> {
     let scale = unit.kind.scale();
@@ -1559,8 +1563,12 @@ mod tests {
         assert_eq!(base("1km"), 1_000_000_000);
         assert_eq!(base("3inch"), 76_200);
         assert_eq!(base("45cm"), 450_000);
-        assert_eq!(base("2.5kg"), 2_500_000);
-        assert_eq!(base("250g"), 250_000);
+        assert_eq!(base("2.5kg"), 2_500_000_000);
+        assert_eq!(base("250g"), 250_000_000);
+        // A microgram is exact, as a medicine's dose needs, and so is a
+        // pound (corrected 2026-10-18).
+        assert_eq!(base("1mcg"), 1);
+        assert_eq!(base("1lb"), 453_592_370);
         assert_eq!(base("0degC"), 273_150);
         assert_eq!(base("-40degC"), base("-40degF"));
         assert_eq!(base("212degF"), 373_150);
@@ -1642,7 +1650,10 @@ mod tests {
         assert_eq!(parse_text(K::Length, "5 kg"), Err(TextProblem::UnknownUnit));
         assert_eq!(parse_text(K::Length, "km"), Err(TextProblem::Malformed));
         assert_eq!(parse_text(K::Length, "5"), Err(TextProblem::Malformed));
-        assert_eq!(canonical(K::Mass, 2_500_000), "2.5 kg");
+        assert_eq!(canonical(K::Mass, 2_500_000_000), "2.5 kg");
+        assert_eq!(canonical(K::Mass, 1), "0.000000001 kg");
+        let microgram = K::Mass.unit_named("microgram").unwrap();
+        assert_eq!(shown_in(1, microgram), Some((1, 0)));
         assert_eq!(canonical(K::Length, 1_000_000_000), "1000 metre");
         assert_eq!(
             written(K::Volume, 1_000_000),
