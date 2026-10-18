@@ -766,6 +766,14 @@ impl Decls<'_> {
     fn boundary_map_key(&mut self, declared: &Ty, node: &TypeNode, host: &str) {
         let mut current = declared.clone();
         for _ in 0..16 {
+            // A standard named collection is sent as its contract's JSON,
+            // whose keys its entry chose: a `LocalisedText`'s locales'
+            // tags (area 19, chunk 5.5o2).
+            if let Ty::Named(name) = current.strip_nullable()
+                && jadpo_std::standard_type(name).is_some()
+            {
+                return;
+            }
             match self.table.structure(&current) {
                 Ty::List(inner) | Ty::Set(inner) => current = *inner,
                 Ty::Map(key, value) => {

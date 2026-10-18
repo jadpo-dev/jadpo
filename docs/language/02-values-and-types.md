@@ -3213,7 +3213,8 @@ type RetagTodo = Input {
 `["urgent", "urgent"]` is rejected as a duplicate. `Map<Instant, Weight>` at a
 boundary is a compile error, because JSON object keys are text. Built in
 chunk 1.9: a map in an `Input` or `Output`, however nested, is keyed by a type
-built on `Text` or `Uuid` (`type.map_key_boundary`), and a set literal that
+built on `Text` or `Uuid` (`type.map_key_boundary`; a standard named
+collection such as `LocalisedText` is sent as its entry says, chunk 5.5w2), and a set literal that
 repeats a value is `type.invalid_literal`. Built in chunk 2.7: a list
 written where a named set type is expected (`type Tags = Set<TagName> {}`)
 is a set, so `[b, a]` equals `[a, b]`; and since equal computed items

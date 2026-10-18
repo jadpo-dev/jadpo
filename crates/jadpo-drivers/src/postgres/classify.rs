@@ -44,8 +44,13 @@ pub fn classify(cause: Cause<'_>) -> StoreError {
             // a value it can't take (class 22), `NULL` in a required
             // column or a broken check (23502, 23514), or a feature it
             // lacks (class 0A).
+            // A value it can't take: PostgreSQL's message for one (class
+            // 22) may quote the value, which may be personal or secret, so
+            // only its code is kept (chunk 5.5w2).
+            _ if code.starts_with("22") => {
+                StoreError::Statement(format!("{code}: a value the server can't take"))
+            }
             _ if (code.starts_with("42") && !matches!(code, "42501" | "42P01" | "42703"))
-                || code.starts_with("22")
                 || code.starts_with("0A")
                 || matches!(code, "23502" | "23514") =>
             {
@@ -109,12 +114,22 @@ mod tests {
         // Other integrity errors are not conflicts: a not-null or check
         // violation is a bug in the plan, not a race; so are a missing
         // operator and a negative `LIMIT`.
-        for code in [
-            "23502", "23514", "42883", "42601", "2201W", "22P02", "0A000",
-        ] {
+        for code in ["23502", "23514", "42883", "42601", "0A000"] {
             assert_eq!(
                 server(code, Some("c")),
                 StoreError::Statement(format!("{code}: the message"))
+            );
+        }
+        // A value it can't take, whose message may quote the value, is
+        // named by its code alone (chunk 5.5w2).
+        for code in ["2201W", "22P02", "22001"] {
+            assert_eq!(
+                classify(Cause::Server {
+                    code,
+                    constraint: None,
+                    message: "invalid input syntax for type uuid: \"hunter2\"",
+                }),
+                StoreError::Statement(format!("{code}: a value the server can't take"))
             );
         }
     }
