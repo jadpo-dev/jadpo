@@ -1048,7 +1048,7 @@ reference only).
   wasm32, its subject, issuer, validity and SHA-256 fingerprint (a `Hash`)
   read-only, never set by code. Chain validation is out of scope unless
   the page says otherwise. Done when the type passes the harness.
-- [ ] **5.5z Passkeys** `opus · high` (area 8, "Passkeys"; decided by
+- [x] **5.5z Passkeys** `opus · high` (area 8, "Passkeys"; decided by
   Richard, 2026-10-18), after 5.5q2 and 5.5r3: passkeys (WebAuthn, FIDO2)
   as the third built-in way to check a person. First finish area 8's
   section (the `sign_in:` option, routes, events, errors, test helpers,
@@ -1060,6 +1060,14 @@ reference only).
   and a removed passkey can't sign in. Split on 2026-10-18: magic links
   are 7.3b and events area 12, both later, so recovery, the check that
   magic links are on, the route-test helpers and the events are 5.5z2.
+  Built, on `webauthn-rs` 0.5.5 through the host's `Passkeys` capability
+  (its OpenSSL doesn't build for wasm32, so Workers waits for a pure-Rust
+  release): seven routes under `path:`, registering, signing in with a
+  discoverable passkey, listing, renaming and removing; challenges kept
+  server-side, used once, expiring and bound to the browser or session;
+  the strict counter check; a stored credential's extensions are never
+  read, so `WebAuthnCredential` gains no part. What the pages left open is
+  area 8's "Chosen in chunk 5.5z".
 - [x] **5.5s Geospatial types' baselines** `opus · high` (area 19,
   "The standard types"): the 17 geospatial types, with construction, text
   and JSON from the contract, GeoJSON (RFC 7946) on the wire and
