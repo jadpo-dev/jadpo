@@ -131,6 +131,9 @@ pub struct App<'a> {
     pub table: &'a RouteTable,
     pub codecs: Codecs<'a>,
     pub failures: &'a [FailurePlan],
+    /// The codecs a JSON-held column a route's query reads is read with
+    /// (chunk 5.5w2b): the plan's JSON table's.
+    pub json: crate::JsonCodecs<'a>,
     /// What signing in reads from the settings the application started
     /// with: each method's signing key and the browser session's origin
     /// (area 8; area 10, "Signing keys").
@@ -848,8 +851,15 @@ async fn run_with_caller(
                     Frame::ENTRY,
                 )),
                 Run::Query(plan) => {
-                    match crate::store(ctx, StoreOp::Read(plan), app.failures, &args, Frame::ENTRY)
-                        .await
+                    match crate::store(
+                        ctx,
+                        StoreOp::Read(plan),
+                        app.failures,
+                        app.json,
+                        &args,
+                        Frame::ENTRY,
+                    )
+                    .await
                     {
                         Stored::Value(value) => Outcome::Value(value),
                         Stored::Failed(failure) => Outcome::Failed(failure),

@@ -313,8 +313,9 @@ that instruction, each the most conservative reading:
 > boundaries to the contract (requests and responses, OpenAPI, `json.read`
 > and `json.write`, settings, query strings, `text.parse` and
 > `text.from`), each with a test made from every standard type's entry
-> ("Chosen in chunk 5.5w2"); the JSON-held values' storage (`RichText`,
-> `RichTextBlock`, `LocalisedText`) is 5.5w2b, the single encoders 5.5w3;
+> ("Chosen in chunk 5.5w2"); chunk 5.5w2b stored the JSON-held values
+> (`RichText`, `RichTextBlock`, `LocalisedText`) as their contract's JSON
+> ("Chosen in chunk 5.5w2b"); the single encoders are 5.5w3;
 > the boundaries not built yet take these encodings in the chunks that
 > build them.
 
@@ -10826,6 +10827,27 @@ What the pages left open, each the most conservative reading:
   form no longer compiles. Nothing is deployed, so nothing needs
   migrating.
 
+### Chosen in chunk 5.5w2b
+
+What the pages left open, each the most conservative reading (lead
+session, 2026-10-18):
+
+- **One codec, the route's.** A `RichText`, `RichTextBlock` or
+  `LocalisedText` field's `jsonb` column holds exactly what `json.write`
+  writes for it, and is read back as `json.read` reads it, with an
+  `Input`'s rules: the plan numbers each such field's type in the JSON
+  table beside `json.read`'s, a column reads it and a write's parameter
+  writes it. PostgreSQL keeps `jsonb` in its own key order and spacing,
+  so the stored text isn't byte for byte what was written, but it reads
+  back `==`.
+- **What doesn't read back is a fault,** as any other column that doesn't
+  make its type is, named by its field's path and the rule it broke,
+  never the value, as chunk 5.5w2's faults are.
+- **A query doesn't compare one yet.** A condition on a JSON-held field is
+  `toolchain.not_built_yet`, as one on a compound type is, and ordering by
+  one was already refused; an application's own structured fields stay
+  refused where they are declared, since their codec isn't built.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -10877,7 +10899,7 @@ What the pages left open, each the most conservative reading:
 | The clinical units | `PressureUnit.millimetre_of_mercury`, `FrequencyUnit.beat_per_minute`, `ConcentrationUnit.milligram_per_decilitre` and the glucose-only `ConcentrationUnit.millimole_of_glucose_per_litre` (glucose's molar mass fixed at CLDR's 180.1557 g/mol), as UK meters report glucose, added in chunk 5.5m2. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `mmHg` and `bpm` suffixes | Question 17's table gains `mmHg` for a `Pressure` and `bpm` for a `Frequency`, purely additive and clashing with no suffix or keyword; a milligram a decilitre keeps no suffix, since a suffix can't hold `/`. Decided by the lead session, not a question for Richard | 2026-10-18 |
 | `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens; `HEAD`, `OPTIONS`, `CONNECT` and `TRACE` aren't variants, since the runtime answers `HEAD` and `OPTIONS` itself and adding them later breaks nothing (decided by the lead session, as chunk 5.5n recommended) | 2026-10-18 |
-| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes (Richard); the encodings the pages left open, event, job and batch payloads, CSV cells, a personal value's log hash, developer reports and integration fields without `wire:`, decided under "Every boundary through the contract" by the lead session, as was storing every object and choice in named columns ("Chosen in chunk 5.5w"); built for the boundaries that are built, with fault text that never carries a value, one reader per text form and map keys as canonical text ("Chosen in chunk 5.5w2") | 2026-10-18 |
+| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes (Richard); the encodings the pages left open, event, job and batch payloads, CSV cells, a personal value's log hash, developer reports and integration fields without `wire:`, decided under "Every boundary through the contract" by the lead session, as was storing every object and choice in named columns ("Chosen in chunk 5.5w"); built for the boundaries that are built, with fault text that never carries a value, one reader per text form and map keys as canonical text ("Chosen in chunk 5.5w2"), and the JSON-held values stored as their contract's JSON ("Chosen in chunk 5.5w2b") | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 | A `PasswordHash` never leaves the server | It is stored as its PHC string, but refused in an `Output` (so a response), a request's `Input`, a failure's fields and `json.write` and `json.read`, as `type.password_hash_exposed` or `type.mismatch`; no page needs one read for imports, so `Input` refuses it too (lead session, chunk 5.5q2) | 2026-10-18 |
 | `crypto.public_key` | `crypto.public_key(key: config.<name>)` gives the `PublicKey` of a `PrivateKey` setting, Ed25519's public half, so an app can publish its key and a test can sign and verify; the key is still read only through `key:` (lead session, chunk 5.5q2) | 2026-10-18 |
