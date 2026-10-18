@@ -103,7 +103,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 87 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: twelve are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 96 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, and `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: fourteen are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -120,10 +120,10 @@ exception to the rule.
 | People and contact (12) | **`PersonName`**, **`GivenName`**, **`FamilyName`**, **`Username`**, **`Email`**, **`EmailWithName`**, **`PhoneNumber`**, **`PhoneExtension`**, **`PostalAddress`**, **`PostalCode`**, **`Uprn`**, **`Nationality`** (enum) | `web` |
 | Places (10) | **`Country`** (enum), **`CountrySubdivision`** (enum), **`Continent`** (enum), **`UnLocode`**, **`CallingCode`**, **`Language`** (enum), **`WritingScript`** (enum), **`TextDirection`** (enum), **`Locale`** (enum), **`Zone`** (enum) | |
 | Geospatial (17) | `Point` (optional altitude), `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` | `geo` (future area) |
-| Money, payments, banking (24) | **`Money`**, **`Currency`** (enum), **`ExchangeRate`**, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, **`PaymentCardNumber`**, `MaskedCardNumber`, `CardBrand` (enum), **`CardBin`**, `CardExpiry`, **`PaymentReference`**, **`InvoiceNumber`**, **`Iban`**, **`Bic`**, **`UkSortCode`**, **`UkAccountNumber`**, `BankAccount`, **`AbaRoutingNumber`**, **`Lei`**, **`Isin`** | `money` |
-| Tax and identity numbers (11) | `VatNumber`, `TaxId`, **`UkUtr`**, **`UkCompanyNumber`**, **`UkNationalInsuranceNumber`**, **`UsSsn`**, **`UsEin`**, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, **`NhsNumber`** | |
+| Money, payments, banking (24) | **`Money`**, **`Currency`** (enum), **`ExchangeRate`**, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, **`PaymentCardNumber`**, **`MaskedCardNumber`**, **`CardBrand`** (enum), **`CardBin`**, **`CardExpiry`**, **`PaymentReference`**, **`InvoiceNumber`**, **`Iban`**, **`Bic`**, **`UkSortCode`**, **`UkAccountNumber`**, `BankAccount`, **`AbaRoutingNumber`**, **`Lei`**, **`Isin`** | `money` |
+| Tax and identity numbers (11, and `IdentityDocumentKind`) | **`VatNumber`**, **`TaxId`**, **`UkUtr`**, **`UkCompanyNumber`**, **`UkNationalInsuranceNumber`**, **`UsSsn`**, **`UsEin`**, **`PassportNumber`**, **`DrivingLicenceNumber`**, **`IdentityDocument`** with **`IdentityDocumentKind`** (enum), **`NhsNumber`** | |
 | Commerce and logistics (20) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, `HsCode`, `Incoterm` (enum), `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` | `units`, `media` |
-| Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), **`LocalTime`**, **`LocalDateTime`**, **`Month`** (enum), **`YearMonth`**, **`Year`**, **`Quarter`**, **`IsoWeek`**, **`UtcOffset`**, **`DateRange`**, **`InstantRange`**, **`CalendarPeriod`**, **`RecurrenceRule`**, **`OpeningHours`**, `CalendarEvent` | `temporal`, `range` |
+| Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), **`LocalTime`**, **`LocalDateTime`**, **`Month`** (enum), **`YearMonth`**, **`Year`**, **`Quarter`**, **`IsoWeek`**, **`UtcOffset`**, **`DateRange`**, **`InstantRange`**, **`CalendarPeriod`**, **`RecurrenceRule`**, **`OpeningHours`**, **`CalendarEvent`** | `temporal`, `range` |
 | Physical quantities (17) | **`Length`**, **`Area`**, **`Volume`**, **`Angle`**, **`Mass`**, **`Pressure`**, **`Energy`**, **`Power`**, **`Temperature`**, **`TemperatureDifference`**, **`Speed`**, **`Frequency`**, **`Voltage`**, **`Current`**, **`Illuminance`**, **`SoundLevel`**, **`Concentration`** | `units` |
 | Maths and data (8) | **`Percentage`**, **`Ratio`**, **`Fraction`**, **`Range<T>`**, **`DataSize`**, **`Bitrate`**, `Vector`, `Embedding` | `range`, `units`; AI area |
 | Health (9) | `BloodType` (enum), `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` (enum) | |
@@ -251,7 +251,7 @@ test "standard values are read, written and shown one way" {
 
 | Group | Extras | Count |
 |---|---|---|
-| Money and payments | `money.from_minor`, `of`, `minor`, `currency`, `sum`, `allocate`, `split`, `convert` (with a given `ExchangeRate`, never fetched) | 8; arithmetic by the operator table |
+| Money and payments | `money.from_minor`, `of`, `minor`, `currency`, `sum`, `allocate`, `split`, `convert` (with a given `ExchangeRate`, never fetched), `mask` (a `MaskedCardNumber` from a `PaymentCardNumber`, chunk 5.5i2) | 9; arithmetic by the operator table |
 | Physical quantities, `DataSize`, `Bitrate` | `units.of`, `in`, `sum`; operators within a kind and the defined products and quotients | 3 |
 | Time and calendar | Area 10's 21, plus `temporal.occurrences`, `temporal.open_at` and `temporal.period_between`; `CalendarPeriod` arithmetic by the operator table | 3 new |
 | Ranges (`Range<T>`, `DateRange`, `InstantRange`) | `range.contains`, `range.overlaps`, `range.intersection` | 3 |
@@ -389,7 +389,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Angle`, `Area`, `Bic`, `Bitrate`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `Concentration`, `Continent`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `DataSize`, `DateRange`, `Duration`, `Email`, `EmailWithName`, `Energy`, `ExchangeRate`, `FamilyName`, `FileType`, `Fraction`, `Frequency`, `GivenName`, `Iban`, `Illuminance`, `Instant`, `InstantRange`, `InvoiceNumber`, `IpAddress`, `Isin`, `IsoWeek`, `Language`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `Mass`, `Money`, `Month`, `Nationality`, `NhsNumber`, `OpeningHours`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Quarter`, `Range`, `Ratio`, `RecurrenceRule`, `SoundLevel`, `Speed`, `Temperature`, `TemperatureDifference`, `TextDirection`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `UnLocode`, `Uprn`, `Url`, `UsEin`, `UsSsn`, `Username`, `UtcOffset`, `Uuid`, `Voltage`, `Volume`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Angle`, `Area`, `Bic`, `Bitrate`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Concentration`, `Continent`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `DataSize`, `DateRange`, `DrivingLicenceNumber`, `Duration`, `Email`, `EmailWithName`, `Energy`, `ExchangeRate`, `FamilyName`, `FileType`, `Fraction`, `Frequency`, `GivenName`, `Iban`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `Instant`, `InstantRange`, `InvoiceNumber`, `IpAddress`, `Isin`, `IsoWeek`, `Language`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Nationality`, `NhsNumber`, `OpeningHours`, `PassportNumber`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Quarter`, `Range`, `Ratio`, `RecurrenceRule`, `SoundLevel`, `Speed`, `TaxId`, `Temperature`, `TemperatureDifference`, `TextDirection`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `UnLocode`, `Uprn`, `Url`, `UsEin`, `UsSsn`, `Username`, `UtcOffset`, `Uuid`, `VatNumber`, `Voltage`, `Volume`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -1883,6 +1883,7 @@ check failed: 1 error, 1 file
 | `money.sum(items, currency:)` | `Money`; `currency:` gives the zero for an empty list | `currency_mismatch` | none |
 | `money.allocate(total, ratios)` | `List<Money>` in proportion to `ratios` (whole numbers), adding up to `total` exactly: leftover minor units go one each to the first shares | | none |
 | `money.split(total, parts)` | `List<Money>`, `parts` near-equal shares adding up to `total`; `parts` at least 1 | | none |
+| `money.mask(card)` | `MaskedCardNumber` of a `PaymentCardNumber`: its brand by its issuer range (`none` for a range no listed scheme issues) and its last four (chunk 5.5i2) | | none |
 | `money.convert(value, rate)` | `Money` in the rate's other currency, rounded half to even to its minor unit; `rate` an `ExchangeRate` the app was given | `currency_mismatch` (the rate is for another currency) | none |
 
 - **Arithmetic is the standard operator table's:** `+`, `-` and
@@ -3640,6 +3641,7 @@ cover. Where a rule is more than a pattern, the type names one validator.
 | People and contact | `PhoneNumber` (E.164 per country), `PostalCode` (per country), `PostalAddress` and `PersonName` (CLDR order for `text.format`) |
 | Places | `CountrySubdivision` against ISO 3166-2, `UnLocode` against its list |
 | Payment and identity numbers | `Iban` (mod-97), `PaymentCardNumber` (Luhn), `UkSortCode` with `UkAccountNumber` (modulus check), `AbaRoutingNumber`, `Lei`, `Isin`, `NhsNumber` (mod-11), `UkNationalInsuranceNumber` (prefix rules) |
+| Tax and identity documents | `VatNumber`, `TaxId`, `PassportNumber`, `DrivingLicenceNumber` and `IdentityDocument`, each number by its country's published form and check digit (VIES, the OECD's and the EU's TIN pages, each issuer's own), by length where a country publishes none |
 | Commerce and logistics | `Ean13`, `UpcA`, `Isbn`, `Sscc` (GS1 check digits), `Vin` (check digit), `ContainerNumber` (ISO 6346) |
 | Health | `SnomedConcept` (Verhoeff), `Icd10Code` against its release |
 | Travel | `IataAirport`, `IcaoAirport`, `IataAirline` against their lists |
@@ -3714,9 +3716,119 @@ test "they are shown as they are printed" {
 > `UkNationalInsuranceNumber`, `UsSsn`, `UsEin` and `NhsNumber`, each a
 > pattern and, where the table above names one, a validator; the UK
 > modulus check, which needs a sort code and an account number together,
-> comes with `BankAccount` in chunk 5.5i2, with the money group's records
-> and the identity documents. What the page left open is "Chosen in chunk
+> comes with `BankAccount` in chunk 5.5i3, with the money group's records.
+> The identity documents are chunk 5.5i2's. What the page left open is "Chosen in chunk
 > 5.5i", under "Review".
+
+A shop keeps what it may of a customer's card once its payment provider
+has the number, checks a supplier's VAT number by its country's form,
+and records the passport a traveller shows, each number shown masked:
+
+```jadpo check project=cards-and-documents
+type FormText = Text {}
+
+type NotAVatNumber = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// What the shop keeps of a card: its brand and last four.
+function card_on_file(card: PaymentCardNumber) -> MaskedCardNumber {
+    return money.mask(card)
+}
+
+/// A supplier's VAT number as its invoice prints it, with its country's
+/// code.
+function supplier_vat(raw: FormText) fails NotAVatNumber -> VatNumber {
+    var number: VatNumber = attempt text.parse(raw, as: VatNumber) {
+        malformed: NotAVatNumber
+    }
+    return number
+}
+
+/// A card on file as a receipt shows it.
+function card_label(card: MaskedCardNumber, viewer: Locale) -> PresentationText {
+    return text.format(card, locale: viewer)
+}
+
+/// A document as a booking shows it: its number's last four.
+function document_label(held_document: IdentityDocument, viewer: Locale) -> PresentationText {
+    return text.format(held_document, locale: viewer)
+}
+```
+
+```jadpo check project=cards-and-documents file=main.test.jadpo
+test "a card is kept as its brand and last four" {
+    var stored_card: MaskedCardNumber = card_on_file(PaymentCardNumber("4242424242424242"))
+    assert stored_card == MaskedCardNumber {
+        brand: CardBrand.visa
+        last_four: "4242"
+    }
+    assert card_label(stored_card, Locale.en_gb) == "Visa •••• 4242"
+    var charge_card: MaskedCardNumber = card_on_file(PaymentCardNumber("378282246310005"))
+    assert charge_card.brand == CardBrand.american_express
+    var runs_until: CardExpiry = CardExpiry {
+        year: 2028
+        month: 12
+    }
+    assert text.from(runs_until) == "2028-12"
+    assert text.format(runs_until, locale: Locale.en_gb) == "12/28"
+}
+
+test "a VAT number fits its country's form" {
+    var supplier: VatNumber = attempt supplier_vat("DE143454214")
+    assert supplier.country == Country.de
+    assert supplier_vat("DE143454215") fails NotAVatNumber
+    var greek_supplier: VatNumber = attempt supplier_vat("EL094259216")
+    assert greek_supplier.country == Country.gr
+    assert supplier_vat("GR094259216") fails NotAVatNumber
+}
+
+test "an identity document is shown by its number's last four" {
+    var passport: IdentityDocument = IdentityDocument {
+        kind: IdentityDocumentKind.passport
+        country: Country.fr
+        number: "12AB34567"
+        expires: "2031-05-31"
+    }
+    assert document_label(passport, Locale.fr_fr) == "•••• 4567"
+}
+```
+
+A number written out with its country is checked while compiling: a
+French passport's number is two digits, two letters and five digits.
+
+```jadpo check project=passport-form expect=type.invalid_literal
+/// The passport a traveller showed at the desk.
+function shown_at_desk() -> PassportNumber {
+    return PassportNumber {
+        country: Country.fr
+        number: "123456789"
+    }
+}
+```
+
+```text output
+error: `"123456789"` isn't a passport number of its country
+ --> main.jadpo:5:17
+  |
+5 |         number: "123456789"
+  |                 ^^^^^^^^^^^ not a passport number of `Country.fr`
+  reason: A `PassportNumber`'s `number` is in the form the passport office of its `country` writes, and a literal is checked while compiling.
+  next: Write a passport number of `Country.fr` in its canonical text, or change `country` (agent)
+  rule: type.invalid_literal
+  help: docs/language/02-values-and-types.html#type-invalid-literal
+
+check failed: 1 error, 1 file
+```
+
+> Built in chunk 5.5i2: `CardBrand`, `MaskedCardNumber` with
+> `money.mask`, `CardExpiry`, `VatNumber`, `TaxId`, `PassportNumber`,
+> `DrivingLicenceNumber`, `IdentityDocument` and its
+> `IdentityDocumentKind`, each number checked by its country's published
+> form where a literal writes both and as JSON is read, and each stored in
+> a column per part. `Price`, `UnitPrice`, `TaxRate`, `Discount`,
+> `BasisPoints`, `InterestRate` and `BankAccount` are chunk 5.5i3's. What
+> the page left open is "Chosen in chunk 5.5i2", under "Review".
 
 A shop sends parcels abroad and prints each label for the person who
 packs it, greets its customers by name, and reads the countries a
@@ -4790,7 +4902,7 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, each other group of types in 5.5i2 to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, each other group of types in 5.5i3 to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}` |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
@@ -6057,6 +6169,120 @@ under "Errors").
   single value.
 - **Area 2's** `PostalCode` example type is `ShippingCode`.
 
+### Chosen in chunk 5.5i2
+
+- **Split.** The cards and the identity documents are built here; the
+  money group's records on `Money`, `Percentage` and the quantities
+  (`Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`,
+  `InterestRate`) and `BankAccount` with the UK modulus check are chunk
+  5.5i3, since `Discount` and `BankAccount` are the first standard types
+  that are a choice of other types.
+- **`CardBrand`** is the eight schemes that issue cards under ranges of
+  their own worldwide: American Express, Diners Club, Discover, JCB,
+  Maestro, Mastercard, UnionPay and Visa. No authority codes them, so
+  each variant's code is its own name (`american_express`), as a
+  `Continent`'s is, and it is shown by the scheme's own name in every
+  locale ("American Express"). It isn't personal data.
+- **`MaskedCardNumber`** is the catalogue's shape, its last four named in
+  full, `last_four`, four digits (a new `Part::Matching`, text matching a
+  pattern), and its `brand` a `CardBrand` that is `none` for a card no
+  listed scheme issued. It has no single text form; its JSON is its parts
+  and it is stored a column per part; it is shown as a receipt prints
+  one, `Visa •••• 4242`, or `•••• 1234` with no brand. It is `financial`
+  personal data, as the number is.
+- **The conversion is `money.mask(card)`,** an operation in `money`,
+  rather than `MaskedCardNumber(card)`, since a construction converts only
+  between types with one representation (area 2). It takes the brand from
+  the longest issuer range the number starts with: Discover Global
+  Network's published ranges for Discover, Diners Club International, JCB
+  and UnionPay, Mastercard's for its 2-series, and the long-known ranges
+  for Visa, American Express and Maestro.
+- **`CardExpiry`** is a `year` from 2000 to 2099 and a `month`, the year
+  first so it orders as a month does. Its canonical text is ISO 8601's
+  `2028-12` and only that is read; it is shown as the card prints it,
+  `12/28`, in every locale, which the years' bounds keep to one month. It
+  is sent as its text and stored as two `integer` columns, `financial`
+  personal data as PCI DSS counts it. Whether a card has expired at a
+  given day is an operation no page decides, so none is built.
+- **A number is upper case with no spaces or punctuation,** as the
+  payment numbers are (chunk 5.5i), and fits its country's published
+  form, `PartRule` now reading any number of parts (a document's kind and
+  country), proved where a literal writes them all and checked as JSON is
+  read, breaking `format` at `number`; one built in code from values waits
+  on cross-field rules (chunk 5.5t). A country that publishes no form
+  takes any number within the type's bounds, 1 to 25 capitals and digits
+  (the longest a US state's licence number may be, by AAMVA's 2020 card
+  standard), and 2 to 15 for a VAT number, so a number is never refused
+  for its country alone; a release adds countries as their forms are
+  published.
+- **`VatNumber`** is a `Country` and its number. Its canonical text is
+  VIES's, the country's code and the number, `GB980780684`, Greece's code
+  `EL` (so `GR...` is malformed); Northern Ireland's `XI` isn't a country
+  code, so a trader there has its `GB` number. It is sent as that text,
+  stored a column per part and shown as it is, since a business prints it
+  on its invoices; it isn't personal data, as a US EIN isn't (chunk 5.5i).
+  The forms are VIES's table for the 27 member states, HMRC's for the
+  United Kingdom (its mod-97 and the 9755 variant for newer numbers, a
+  branch's three digits unchecked), Norway's and Switzerland's mod-11
+  organisation numbers with their `MVA` and `MWST` suffixes, and, outside
+  Europe, Australia's ABN, whose check the ABR publishes. The Commission
+  publishes no member state's check digit, so only Germany's (ISO 7064
+  MOD 11,10), France's (a key of two digits; one with a letter is
+  unchecked) and Ireland's check letter are checked, as every number those
+  authorities issue passes them; Ireland's old numbers with `+` or `*`
+  aren't read.
+- **`TaxId`** is a `Country` and its number, without the catalogue's
+  scheme: the OECD's common reporting standard records a jurisdiction
+  and a TIN, and code that needs one scheme has its type (`UkUtr`,
+  `UsSsn`, `UsEin`). A number fits any of its country's forms, from the
+  OECD's TIN page for each country and the EU's TIN algorithms (DG
+  TAXUD's functional specification 5.03, 2017-02-24): the United
+  Kingdom's UTR (unchecked; HMRC publishes no check) or National Insurance
+  number, Germany's tax identification number with its repetition rule,
+  France's numéro fiscal, Ireland's PPS number, the US SSN, ITIN and EIN
+  (by the prefixes the IRS assigns), India's PAN, Australia's tax file
+  number (the older eight-digit form by its length, its check
+  unpublished) and Canada's SIN (Luhn).
+- **`PassportNumber`** and **`DrivingLicenceNumber`** are a `Country` and a
+  number. Passports: the United Kingdom's nine digits (HMPO), Germany's
+  nine of its 26 characters (the Federal Interior Ministry), the United
+  States' nine digits or a letter and eight (the State Department), and
+  France's, Ireland's, India's, Canada's and Japan's forms as their
+  offices state them. Licences: Great Britain's by the pattern DVLA's own
+  API checks and Northern Ireland's eight digits, Germany's eleven
+  characters (its check digit's algorithm is published only second-hand,
+  so unchecked), and India's fifteen; France and Ireland publish no form
+  and the United States has none nationally, so each takes the bounds.
+- **`IdentityDocument`** is its `kind`, its `country`, its `number` and
+  the day it `expires`, which may be `none`, as Spain's DNI for someone
+  over 70 never expires. The catalogue's `type` is `kind`, since `type` is
+  a reserved word, and the kind is **`IdentityDocumentKind`**, a standard
+  enum of `passport`, `identity_card`, `driving_licence` and
+  `residence_permit`, each its own code, shown as its code: a part must be
+  a standard type to be read, sent and stored by its code, so the kind is
+  one beside the 247, the only one added, which the lead session accepted
+  ("Decisions"). The number fits its kind and
+  country: a passport's or a licence's forms above, Germany's identity
+  card, Ireland's Passport Card and India's Aadhaar number (Verhoeff's
+  check, UIDAI); no residence permit's form is published, and the United
+  Kingdom, the United States and France publish no identity card's.
+- **Masked by `text.format`, the conservative choice:** a `TaxId`, a
+  `PassportNumber`, a `DrivingLicenceNumber` and an `IdentityDocument`
+  are shown as their number's last four, `•••• 6789`, as a card number
+  and an SSN are (chunk 5.5i), since each is `government_id` personal data
+  that identifies its holder to the state; code that must show the whole
+  number reads `number`.
+- **Test values are published ones** where an issuer publishes them
+  (DVLA's licence examples, the EU's TIN samples, the OECD's PAN, the
+  ATO's own ABN, Stripe's test cards) or a company prints its own (SAP's,
+  TotalEnergies', Google Ireland's and Equinor's VAT numbers), and made
+  up to the rules elsewhere; `documents::DOCUMENT_EXAMPLES` holds a valid
+  and an invalid number per rule for GB, DE, FR, IE, US and a country
+  outside Europe (Australia, India or Japan) for each type.
+- **No shapes:** `type.standard_exists` matches none of the new objects,
+  since `{ country, number }` is too common in applications' own types to
+  be distinctive (question 5).
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -6100,6 +6326,7 @@ under "Errors").
 | `at_most_length_of` (question 29) | Recorded for `trim`, `slice`, `keep_*` and `drop_*` only (Richard, as recommended) | 2026-10-17 |
 | Reserved namespaces (question 30) | Every standard namespace is reserved (`list`, `set`, `map`, `range`, `text`, `markup`, `money`, `units`, `hash`, `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`, `json_lines`, `colour`, `media`, `web`, `semver`, then `geo` and `ai`); fields and named arguments keep every word; clashing names renamed in the chunk that adds each namespace (`text` in 5.5f, `range` in 5.5c) (Richard, as recommended) | 2026-10-17 |
 | A `Mass` to the microgram | A `Mass` is held in kilograms to 9 places, `numeric(38, 9)`, so the table's `mcg` is exact (`1mcg` is 0.000000001 kg), as a medicine's dose needs; it was first built to 6, which held `1mcg` as nothing. No other kind has a suffix finer than its scale. A correction made by the lead session, not a question for Richard | 2026-10-18 |
+| `IdentityDocumentKind` | A standard enum of `passport`, `identity_card`, `driving_licence` and `residence_permit`, an `IdentityDocument`'s kind, added in chunk 5.5i2 beside the 247 since a part must be a standard type to be read, sent and stored by its code. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 
 ### Open questions
@@ -6509,10 +6736,13 @@ first; each group of types then arrives with its baseline and its extras.
   identity numbers that are text, each a pattern or check digit (mod-97,
   Luhn, mod-11) on the contract. Built; split on 2026-10-18, the rest is
   5.5i2.
-- **5.5i2 Payment records and identity documents** `opus · high`, after
-  5.5j and 5.5l: the money group's records (`Price`, `TaxRate`,
-  `Discount`, `MaskedCardNumber`, `BankAccount` with the UK modulus check,
-  and the rest) and the identity documents on `Country`.
+- **5.5i2 Cards and identity documents** `opus · high`, after 5.5l:
+  `CardBrand`, `MaskedCardNumber`, `CardExpiry` and the identity
+  documents on `Country`. Split on 2026-10-18, the rest is 5.5i3.
+- **5.5i3 Prices, discounts and bank accounts** `opus · high`: the money
+  group's records (`Price`, `UnitPrice`, `TaxRate`, `Discount`,
+  `BasisPoints`, `InterestRate`) and `BankAccount` with the UK modulus
+  check.
 - **5.5j Quantities** `opus · high`: the 17 physical quantities with
   `DataSize` and `Bitrate`, their units, SI storage at each kind's
   scale, suffixed literals, the product and quotient table,

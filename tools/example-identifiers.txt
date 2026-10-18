@@ -199,6 +199,7 @@ card_full
 card_label
 card_name
 card_not_full
+card_on_file
 card_view
 cards
 carrot
@@ -216,6 +217,7 @@ changed_at
 changed_by_ann
 changed_by_bob
 charge
+charge_card
 charged
 check_allergens
 check_delivery
@@ -377,6 +379,7 @@ discount_too_large
 display_name
 display_word
 divider
+document_label
 done_at
 doors
 double_booked
@@ -491,6 +494,7 @@ golden
 good_share
 grain
 grams_in
+greek_supplier
 greeting
 greeting_name
 gross
@@ -522,6 +526,7 @@ heater_power
 heaviest
 heavy
 heavy_ingredients
+held_document
 hello
 hide_todo
 higher
@@ -781,6 +786,7 @@ northing
 northing_after
 northwind
 not_a_call
+not_a_vat_number
 not_an_address
 not_an_iban
 not_an_nhs_number
@@ -1122,6 +1128,7 @@ room_depth
 room_floor
 rotated
 royal_code
+runs_until
 rush
 rye
 sack_count
@@ -1209,6 +1216,7 @@ show_note
 show_on_menu
 show_placed
 show_sent
+shown_at_desk
 sign_in_email
 sign_locale
 sign_out_everywhere
@@ -1268,6 +1276,7 @@ still_to_bake
 stock
 stock_badge
 stock_badges
+stored_card
 story
 street
 street_address
@@ -1291,6 +1300,7 @@ supplier_line
 supplier_message
 supplier_order
 supplier_site
+supplier_vat
 surface
 suspend
 suspend_customer
@@ -1404,7 +1414,6 @@ user_view
 usual_contacts
 usual_order
 valid_from
-vat
 vat_band
 vat_bands
 vat_date
