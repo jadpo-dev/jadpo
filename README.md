@@ -46,7 +46,7 @@ Workers, and every test will then run both ways.
 
 ## Where it stands
 
-- **The language is specified:** twenty areas, all decided, in
+- **The language is specified:** twenty-one areas, all decided, in
   [docs/language](docs/language/README.md).
 - **Built so far:** project layout, values and types, logic, failures, the
   interpreter, the test runner and watch mode, and stored data: entities,

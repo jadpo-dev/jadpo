@@ -8,7 +8,7 @@ and the [language pages](language/README.md), not here.
 ## The direction (decided 2026-10-13)
 
 - **The language is specified** in [docs/language](language/README.md):
-  twenty areas, all decided. Those pages are the specification and their
+  twenty-one areas, all decided. Those pages are the specification and their
   examples become the tests.
 - **A new compiler, built around one graph**
   ([compiler-runtime §1.1–1.2](compiler-runtime.md#11-graph-centred-compiler-decided-2026-10-13)).
@@ -1143,11 +1143,47 @@ reference only).
   `ContentRating`, the tax and document numbers and `BoundingBox` came
   along, and `text.parse` breaks the rules by name too. The names and what
   the chunk chose are area 19's "Chosen in chunk 5.5t2".
-- [ ] **5.5u Geospatial: the plan** `opus · high` (area 19, question 12):
+- [x] **5.5u Geospatial: the plan** `opus · high` (area 19, question 12):
   write the geospatial area page from area 19's scope (the types in
   WGS84, GeoJSON on the wire, `geo.` construction and operations, PostGIS
   `geography` storage, query conditions and GiST indexes), and place its
-  build on this roadmap. **Needs Richard** to decide the page.
+  build on this roadmap. **Needs Richard** to decide the page. Decided
+  2026-10-18 (Richard), as recommended, with PostGIS needed only once an
+  app has a geometry column or index: [area 20](language/20-geospatial.md).
+- [ ] **5.5u2 Geospatial measures** `opus · xhigh` (area 20, "Operations"
+  and "Precision and determinism"):
+  `geo.distance`, `geo.length`, `geo.bearing` and `geo.area` by Karney's
+  methods in Jadpo's decimal code, and coordinates held as doubles'
+  shortest decimals. Done when each matches a sample of GeographicLib's
+  `GeodTest` set to the micrometre, gives the same digits on native and
+  wasm32, and is benchmarked.
+- [ ] **5.5u3 Geospatial predicates and shapes** `opus · xhigh` (area 20,
+  "Operations"), after 5.5u2:
+  `geo.intersects`, `contains` and `within` (with `distance:`, a
+  `BoundingBox` and a `Circle`), `centroid`, `bounding_box`, and
+  `rings_valid` on the sphere. Done when each agrees with PostGIS on cases
+  away from a boundary and every validity case reads and builds as the
+  page says.
+- [ ] **5.5u4 Geospatial storage and indexes** `opus · high` (area 20,
+  "Storage"): `geography` columns
+  with their checks, `BoundingBox` and `Circle` as named columns, `CREATE
+  EXTENSION` in migrations and `migration.extension_missing`, GiST indexes
+  derived and declared with `kind: IndexKind.geographic`, geometries in
+  Redis as GeoJSON, and CI on `postgis/postgis:16-3.4`. Done when an
+  entity stores and reads back every geometry, with and without altitude,
+  unchanged.
+- [ ] **5.5u5 Geospatial query conditions** `opus · high` (area 20,
+  "Queries"; area 6), after 5.5u3
+  and 5.5u4: the `geo.` conditions, the box and circle filters and order
+  by distance within a radius, with area 6 amended and golden SQL for
+  each. Done when each of the page's queries runs on PostGIS through its
+  index and agrees with the code's answer on the page's examples.
+- [ ] **5.5u6 Geospatial interop** `opus · high` (area 20, "Interop"),
+  after 5.5u4: `Feature` and
+  `FeatureCollection`, `geo.from_wkt` and `geo.to_wkt`, and
+  `type.standard_exists`' shapes for `LineString` and `Polygon`. Done when
+  a feature collection round-trips through JSON and a WKT polygon through
+  PostGIS unchanged.
 - [x] **5.5v AI: the plan** `opus · high` (area 19, question 20): write the
   AI area page from area 19's scope (the `ai` capability, typed
   `ai.generate`, streaming, embeddings with pgvector, checked prompt
@@ -1164,8 +1200,8 @@ reference only).
   expression index from 2,001 to 4,000 dimensions), `hnsw.ef_search` and
   strict iterative scans per query, `CREATE EXTENSION` in the migration
   with `jadpo migrate apply` and the start-up check refusing a store
-  without pgvector, and CI's and `jadpo dev`'s PostgreSQL moved to
-  `pgvector/pgvector:pg16`. Design the errors on area 21 first. Done
+  without pgvector, and CI's and `jadpo dev`'s PostgreSQL on an image
+  with both pgvector and PostGIS (5.5u4 moves it to PostGIS's). Design the errors on area 21 first. Done
   when a filtered nearest query of five returns the same five records
   interpreted and on PostgreSQL, its plan uses the index, and each new
   error has a checked example.
@@ -1211,7 +1247,7 @@ reference only).
   that is a built-in type held as a standard type (`OidcClaims`' `email`)
   as that type. What the chunk chose is area 19's "Chosen in chunk 5.5w",
   the encodings its "Every boundary through the contract".
-- [ ] **5.5w2 Every boundary through the contract: JSON and the built
+- [x] **5.5w2 Every boundary through the contract: JSON and the built
   boundaries** `opus · high` (area 19; split from 5.5w), after 5.5w.
   First, a privacy fix (lead session, 2026-10-18): a value that a column
   can't hold is written into the fault's text (`jadpo-runtime/src/read.rs`
@@ -1225,16 +1261,33 @@ reference only).
   settings take an `Instant` with an offset, as do a `ZonedTime`'s instant
   and `text.parse` of an `InstantRange`; an `Int` with `+`; a `Decimal`
   as `1_000`, `.5` or `--5`); a `Duration` setting takes `5m` but not its
-  canonical `PT5M`; `RichText`, `RichTextBlock` and `LocalisedText` are
-  stored as area 5's `jsonb`, written and read by the route codec, which
-  structured fields don't have yet. Done when a test per built boundary
-  (a request and a response, OpenAPI's shape, `json.read` and
-  `json.write` with the value as a map key, storage, settings, a query
-  string, `text.parse` and `text.from`) round-trips one value of every
-  standard type but geometries and vectors. The boundaries not built yet
-  (caches, events, jobs and batches, CSV, TSV and JSON Lines, logs and
-  traces, email, outbound provider calls, files) take their round-trip
-  test with the chunk that builds each, by the encoding 5.5w decided.
+  canonical `PT5M`. Done when a test per built boundary (a request and a
+  response, OpenAPI's shape, `json.read` and `json.write` with the value
+  as a map key, settings, a query string, `text.parse` and `text.from`)
+  round-trips one value of every standard type but geometries and
+  vectors that the boundary carries, and refuses the rest while
+  compiling; storage's is 5.5w's and 5.5w2b's. The boundaries not built
+  yet (caches, events, jobs and batches, CSV, TSV and JSON Lines, logs
+  and traces, email, outbound provider calls, files) take their
+  round-trip test with the chunk that builds each, by the encoding 5.5w
+  decided. Split on 2026-10-18: the `jsonb` storage of the JSON-held
+  values is 5.5w2b. Built: one reader per built-in type's text
+  (`jadpo_value::standard::builtin_text`) behind every boundary; map keys
+  as canonical text, a key type with none `type.mismatch`; money,
+  quantities and zoned times refused in a URL; OpenAPI's `Range<T>`; the
+  boundary test generated from the entries
+  (`jadpo-cli/tests/standard_boundaries.rs`, with settings in the
+  runtime harness). What it chose, and what clients see change, is area
+  19's "Chosen in chunk 5.5w2".
+- [ ] **5.5w2b Every boundary through the contract: the JSON-held values
+  in storage** `opus · high` (area 19; split from 5.5w2), after 5.5w2:
+  `RichText`, `RichTextBlock` and `LocalisedText` are stored as area 5's
+  `jsonb`, written and read by the route codec, which structured fields
+  don't have yet: the plan numbers each stored type's codec in the JSON
+  table, a column reads it (`Column::Json`) and a write's parameter
+  writes it, the runtime's store operations given the JSON codecs as
+  `json.read` is. Done when 5.5w's storage test stores and reads back
+  each of the three's examples.
 - [ ] **5.5w3 Every boundary through the contract: one encoder**
   `opus · high` (area 19; split from 5.5w), after 5.5w2: the JSON reader
   and writer (`scalar_from_text`, `write_scalar`, the `ZonedTime`, `Money`

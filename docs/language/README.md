@@ -1,6 +1,6 @@
 # Language reference
 
-Twenty areas, all decided, one page per area, numbered in reading order.
+Twenty-one areas, all decided, one page per area, numbered in reading order.
 These pages are the source of truth for documentation;
 `tools/language_docs.py` checks them and renders them as web pages into
 `build/language-site/`.

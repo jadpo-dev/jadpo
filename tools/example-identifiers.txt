@@ -102,6 +102,8 @@ baker
 baker_id
 baker_place
 bakeries
+bakeries_in_view
+bakeries_near
 bakeries_recipes
 bakeries_staff
 bakery
@@ -133,6 +135,7 @@ bench
 bench_name
 best_before
 beta_release
+big_ben
 bill
 bill_shares
 bill_total
@@ -405,11 +408,13 @@ delivered
 delivered_to
 deliveries_in
 deliveries_on
+delivers_to
 delivery
 delivery_cost
 delivery_fee
 delivery_id
 delivery_note
+delivery_patch
 delivery_state
 delivery_view
 delivery_window
@@ -439,6 +444,7 @@ divider
 document_label
 done_at
 doors
+doorstep
 double_booked
 double_if_room
 double_order
@@ -473,6 +479,7 @@ editor_id
 editor_json
 effort
 egg
+eiffel_tower
 email_on_completion
 email_on_done
 email_taken
@@ -523,6 +530,7 @@ find_customer
 find_note
 find_todo
 finish_review
+first_leg
 first_loan
 first_page
 first_placed
@@ -830,6 +838,7 @@ manual_pages
 market
 market_street
 max_login_attempts
+max_trip
 may_change
 member_by_email
 member_handle
@@ -1038,6 +1047,7 @@ outlet_status
 outlet_view
 outlet_with_menu
 outlets
+outline
 outsider
 oven
 oven_down
@@ -1107,8 +1117,12 @@ password_to_keep
 past_expiry
 pasted_about
 pastry
+patch_layer
+patch_properties
 patch_release
 patch_todo
+patches
+patches_for
 patient
 patient_nhs_number
 patient_number
@@ -1408,6 +1422,7 @@ sent_rate
 sent_text
 service_fake_identity
 set_oven
+setting_off
 settings_colour
 severe
 share_code
@@ -1494,6 +1509,7 @@ spacer
 spelt
 split_evenly
 sponge
+spot
 square_centimetres
 square_side
 staff
