@@ -284,7 +284,7 @@ pub const PASSWORD_CHECK_ENTRY: StandardType = StandardType {
             ("correct_outdated", "correct_outdated"),
         ],
         format: None,
-        malformed: &["right", "Correct", "correct ", ""],
+        malformed: &["right", "correctly", "correct ", ""],
         of: None,
         settings: "",
     },

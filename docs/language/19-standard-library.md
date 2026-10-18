@@ -6249,7 +6249,9 @@ check failed: 1 error, 1 file
 ### `type.random_context`
 
 A `random` operation reads the generator, so only actions and tests call
-it; a function is pure, and so is an inline function or a constant.
+it; a function is pure, and so is an inline function or a constant. So
+do `crypto.encrypt`, for its nonce, and `crypto.hash_password`, for its
+salt (chunk 5.5q2).
 
 ```jadpo check project=e-random-context expect=type.random_context
 type OrderReference = Text {}

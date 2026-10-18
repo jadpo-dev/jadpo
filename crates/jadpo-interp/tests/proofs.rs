@@ -41,7 +41,26 @@ fn load(files: &[(String, String)]) -> Option<Program> {
         Vec::new(),
     );
     // A project written to show an error doesn't run.
-    Program::load(&db, project).ok()
+    let program = Program::load(&db, project).ok()?;
+    // It runs with a test run's settings, as `jadpo test` gives them: each
+    // `test:` value and default, and throwaway secrets, keys included,
+    // made from a counter here so a run repeats.
+    let counter = std::cell::Cell::new(0u8);
+    let values = program.prepared().config(
+        &|_: &str| None,
+        jadpo_runtime::config::Mode::Test,
+        &|bytes: &mut [u8]| {
+            for byte in bytes {
+                counter.set(counter.get().wrapping_add(29));
+                *byte = counter.get();
+            }
+            true
+        },
+    );
+    Some(match values {
+        Ok(values) => program.with_config(&values),
+        Err(_) => program,
+    })
 }
 
 /// The defect an outcome ends in, if any.

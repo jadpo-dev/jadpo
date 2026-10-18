@@ -260,7 +260,6 @@ citation
 citation_id
 citation_view
 citizen_of
-claimed_signature
 class_count
 class_schedule
 class_time
@@ -627,7 +626,6 @@ issue_outlet_key
 issue_voucher
 issued_at
 issued_label
-issuer_key
 item_changes
 item_count
 item_id
