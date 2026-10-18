@@ -18,4 +18,5 @@ mod sets_maps;
 mod software;
 mod standard_types;
 mod text;
+mod text_formats;
 mod web_network;

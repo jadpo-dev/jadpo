@@ -241,6 +241,8 @@ pub enum Op {
     MapValues,
     MapWith,
     MapWithout,
+    MarkupToHtml,
+    MarkupToPlainText,
     MediaFit,
     MoneyAllocate,
     MoneyApplyDiscount,
@@ -747,6 +749,28 @@ const fn semver(
     Operation {
         op,
         namespace: "semver",
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: &[],
+        rust,
+    }
+}
+
+/// `markup`'s operations (area 19, "Text formats", chunk 5.5o), each one
+/// function in `jadpo-value`'s `markup` module over
+/// `jadpo_std::standard::markup`'s sanitiser.
+const fn markup(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace: "markup",
         name,
         params,
         result,
@@ -1496,6 +1520,23 @@ pub const OPERATIONS: &[Operation] = &[
         &[ENTRIES, param("key", Kind::Any)],
         Kind::Map,
         "map::without",
+    ),
+    // `markup`'s operations (area 19, "Text formats"): neither fails,
+    // since every text is CommonMark and every `Html` was made safe when it
+    // was built. `rich_to_html` comes with `RichText` (chunk 5.5o2).
+    markup(
+        Op::MarkupToHtml,
+        "to_html",
+        &[param("markdown", Kind::Std("Markdown"))],
+        Kind::Std("Html"),
+        "markup::to_html",
+    ),
+    markup(
+        Op::MarkupToPlainText,
+        "to_plain_text",
+        &[param("html", Kind::Std("Html"))],
+        TEXT,
+        "markup::to_plain_text",
     ),
     // `media`'s operation (area 19, "Media").
     media_op(

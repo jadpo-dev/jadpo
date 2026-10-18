@@ -43,6 +43,7 @@ pub mod list;
 pub mod locale;
 mod mailbox;
 pub mod map;
+pub mod markup;
 mod maths;
 pub mod media;
 pub mod money;
@@ -282,6 +283,10 @@ pub fn run(
         // `semver`'s operation (area 19, "Web and software").
         (Op::SemverSatisfies, [version, range]) => semver::satisfies(version, range),
         (Op::SemverSatisfies, _) => Err(Fault::Shape),
+        // `markup`'s operations (area 19, "Text formats").
+        (Op::MarkupToHtml, [markdown]) => markup::to_html(markdown),
+        (Op::MarkupToPlainText, [html]) => markup::to_plain_text(html),
+        (Op::MarkupToHtml | Op::MarkupToPlainText, _) => Err(Fault::Shape),
         // `colour`'s and `media`'s operations (area 19, "Colour" and
         // "Media").
         (Op::ColourFromHsl, [hue, saturation, lightness]) => {
@@ -785,6 +790,8 @@ mod tests {
                     vec![Value::text("192.0.2.0/24"), Value::text("192.0.2.7")]
                 }
                 Op::WebResolve => vec![Value::text("https://example.com/a/b"), Value::text("../c")],
+                Op::MarkupToHtml => vec![Value::text("**bold**")],
+                Op::MarkupToPlainText => vec![Value::text("<p>text</p>")],
                 Op::ColourFromHsl => vec![
                     units::value(jadpo_std::QuantityKind::Angle, 2_094_395_102),
                     Value::Percentage(Decimal::new(100, 2)),

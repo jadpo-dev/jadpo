@@ -88,7 +88,7 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
         return text;
     }
     Ok(match (form, value) {
-        (TextForm::Checked, Value::Text(text)) => text.to_string(),
+        (TextForm::Checked | TextForm::Html, Value::Text(text)) => text.to_string(),
         (TextForm::Uuid, Value::Uuid(text)) => text.to_ascii_lowercase(),
         (TextForm::Instant, Value::Instant(millis)) => jadpo_std::format_instant(*millis),
         (TextForm::Date, Value::Date(day)) => jadpo_std::format_date(*day),
@@ -521,6 +521,8 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         },
         TextForm::UtmQuery => crate::web::read_utm(raw),
         TextForm::SemanticVersion => crate::semver::read_version(raw),
+        // Any text is `Html` once it is made safe (chunk 5.5o).
+        TextForm::Html => Some(Value::text(&jadpo_std::standard::markup::sanitise(raw))),
         TextForm::Colour => jadpo_std::standard::colour::read_hex(raw)
             .map(|rgba| crate::colour::colour_value(rgba.map(i64::from))),
         TextForm::Wholes(separator) | TextForm::Decimals(separator) => {
@@ -820,6 +822,13 @@ pub fn shown(
 ) -> Result<String, Fault> {
     Ok(match (entry.format.key, value) {
         (FormatKey::Canonical, value) => canonical(entry, value)?,
+        // The text people read in it (chunk 5.5o).
+        (FormatKey::PlainText, Value::Text(text))
+            if entry.name == jadpo_std::standard::markup::MARKDOWN =>
+        {
+            crate::markup::markdown_text(text)
+        }
+        (FormatKey::PlainText, Value::Text(text)) => jadpo_std::standard::markup::plain_text(text),
         (FormatKey::DateTime, value) => {
             text_of(present::format_in(value, zone, tag, format_spec)?)?
         }

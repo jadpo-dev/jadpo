@@ -734,8 +734,12 @@ impl Body<'_> {
             Some(builtin) => base == Some(builtin),
         };
         // A standard type held as text: the value's own type makes the
-        // same check only when it is built on the same one.
-        let standard = needs.standard.is_none_or(|name| has.standard == Some(name));
+        // same check only when it is built on the same one. `Html` is made
+        // safe as it is built, so its construction never breaks it (chunk
+        // 5.5o).
+        let standard = needs.standard.is_none_or(|name| {
+            has.standard == Some(name) || jadpo_std::standard::markup::sanitises(name)
+        });
         if (needs.email && !is_email) || !checked || !standard {
             out.push("format".to_string());
         }

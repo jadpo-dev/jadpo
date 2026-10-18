@@ -7,6 +7,7 @@ Blank
 Booking
 Broken
 BrowserSession
+Caption
 Card
 CardNumber
 Celsius
