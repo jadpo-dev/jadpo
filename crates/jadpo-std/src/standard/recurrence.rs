@@ -15,13 +15,17 @@
 //! ```
 //!
 //! `DTSTART` is a local date and time with the IANA zone it is in (RFC
-//! 5545, 3.3.5's third form), and the rule takes RFC 5545's grammar
+//! 5545, 3.3.5's third form), or a date alone, `DTSTART;VALUE=DATE:20240229`
+//! (chunk 5.5k4), for something that happens on a day wherever it is read,
+//! a birthday, whose occurrences are days. The rule takes RFC 5545's grammar
 //! (3.3.10) with each part at most once, in any order: `FREQ` daily,
 //! weekly, monthly or yearly, `INTERVAL`, `COUNT` or `UNTIL` (a UTC time,
-//! as the RFC requires with a zoned start), `WKST`, and `BYMONTH`,
+//! as the RFC requires with a zoned start, and a date with a date-only
+//! one), `WKST`, and `BYMONTH`,
 //! `BYWEEKNO`, `BYYEARDAY`, `BYMONTHDAY`, `BYDAY` (with ordinals, `2TU`,
-//! `-1FR`), `BYHOUR`, `BYMINUTE`, `BYSECOND` and `BYSETPOS`, where the
-//! RFC's table allows each with the frequency. The start must be the
+//! `-1FR`), `BYHOUR`, `BYMINUTE`, `BYSECOND` (none of the three with a
+//! date-only start, as the RFC says) and `BYSETPOS`, where the RFC's table
+//! allows each with the frequency. The start must be the
 //! rule's first occurrence, since RFC 5545 leaves a recurrence whose start
 //! the rule doesn't give undefined and calendars disagree on it.
 
@@ -47,6 +51,9 @@ pub enum End {
     /// At this instant, milliseconds since 1970-01-01T00:00:00Z, included
     /// when the rule gives it.
     Until(i64),
+    /// On this day, days since 1970-01-01, included when the rule gives
+    /// it: a date-only rule's `UNTIL` (RFC 5545 3.3.10).
+    UntilDay(i32),
 }
 
 /// A local date and clock time: days since 1970-01-01 and seconds since
@@ -68,9 +75,11 @@ pub struct WeekdayEntry {
 /// An RFC 5545 recurrence as `RecurrenceRule`'s text holds it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rule {
-    /// The rule's zone, its place among `Zone`'s variants.
-    pub zone: u32,
-    /// The first occurrence, in local time.
+    /// The rule's zone, its place among `Zone`'s variants; `None` for a
+    /// rule that starts on a date alone, whose occurrences are days.
+    pub zone: Option<u32>,
+    /// The first occurrence, in local time; a date-only rule's at
+    /// midnight, which its occurrences keep.
     pub start: LocalAt,
     pub frequency: Frequency,
     pub interval: i64,
@@ -105,14 +114,27 @@ impl Rule {
 
     fn parse(text: &str) -> Option<Rule> {
         let (start_line, rule_line) = text.split_once('\n')?;
-        let (zone_name, start) = start_line.strip_prefix("DTSTART;TZID=")?.split_once(':')?;
-        let zone = ZONES.iter().position(|(_, iana)| *iana == zone_name)?;
-        let (start, utc) = basic_date_time(start)?;
-        if utc {
-            return None;
-        }
+        let (zone, start) = match start_line.strip_prefix("DTSTART;VALUE=DATE:") {
+            Some(day) => (
+                None,
+                LocalAt {
+                    date: read_basic_date(day)?,
+                    second: 0,
+                },
+            ),
+            None => {
+                let (zone_name, start) =
+                    start_line.strip_prefix("DTSTART;TZID=")?.split_once(':')?;
+                let zone = ZONES.iter().position(|(_, iana)| *iana == zone_name)?;
+                let (start, utc) = basic_date_time(start)?;
+                if utc {
+                    return None;
+                }
+                (Some(u32::try_from(zone).ok()?), start)
+            }
+        };
         let mut rule = Rule {
-            zone: u32::try_from(zone).ok()?,
+            zone,
             start,
             frequency: Frequency::Daily,
             interval: 1,
@@ -153,6 +175,10 @@ impl Rule {
                     rule.end = End::Count(
                         u32::try_from(number(value, 1, i64::from(u32::MAX), false)?).ok()?,
                     );
+                }
+                // A date-only rule ends on a day (RFC 5545 3.3.10).
+                "UNTIL" if rule.end == End::Never && rule.zone.is_none() => {
+                    rule.end = End::UntilDay(read_basic_date(value)?);
                 }
                 "UNTIL" if rule.end == End::Never => {
                     let (until, utc) = basic_date_time(value)?;
@@ -200,7 +226,11 @@ impl Rule {
             || !self.hours.is_empty()
             || !self.minutes.is_empty()
             || !self.seconds.is_empty();
-        (self.week_numbers.is_empty() || yearly)
+        // A rule on dates has no clock times to pick (RFC 5545 3.3.10).
+        let timed = self.zone.is_some()
+            || self.hours.is_empty() && self.minutes.is_empty() && self.seconds.is_empty();
+        timed
+            && (self.week_numbers.is_empty() || yearly)
             && (self.year_days.is_empty() || yearly)
             && (self.month_days.is_empty() || self.frequency != Frequency::Weekly)
             && (!ordinals
@@ -530,6 +560,21 @@ pub(super) fn basic_date_time(text: &str) -> Option<(LocalAt, bool)> {
         },
         utc,
     ))
+}
+
+/// RFC 5545's basic date, `20240229`: a real date in the years a
+/// `CalendarDate` holds.
+pub(super) fn read_basic_date(text: &str) -> Option<i32> {
+    if text.len() != 8 || !text.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let year: i64 = text.get(0..4)?.parse().ok()?;
+    let month: i64 = text.get(4..6)?.parse().ok()?;
+    let day: i64 = text.get(6..8)?.parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=crate::days_in_month(year, month)).contains(&day) {
+        return None;
+    }
+    crate::epoch_day(year, month, day)
 }
 
 /// The weekday of the day `day` days after 1970-01-01 (a Thursday), 0 for
@@ -892,6 +937,55 @@ mod tests {
             "DTSTART;TZID=Europe/London:20261026T093000Z\nRRULE:FREQ=DAILY",
             "DTSTART;TZID=Europe/London:20261026T093000\r\nRRULE:FREQ=DAILY",
             "RRULE:FREQ=DAILY\nDTSTART;TZID=Europe/London:20261026T093000",
+        ] {
+            assert_eq!(Rule::read(text), None, "`{text}`");
+        }
+    }
+
+    #[test]
+    fn a_rule_can_start_on_a_date_alone() {
+        // A birthday on 29 February: yearly, its occurrences days with no
+        // zone, and the years with no 29 February skipped, not counted
+        // (RFC 5545 3.3.10).
+        let rule = Rule::read("DTSTART;VALUE=DATE:20240229\nRRULE:FREQ=YEARLY;COUNT=3")
+            .expect("a date-only rule");
+        assert_eq!(rule.zone, None);
+        assert_eq!(rule.end, End::Count(3));
+        let days: Vec<String> = rule
+            .local_occurrences(0)
+            .take(3)
+            .map(|at| {
+                assert_eq!(at.second, 0, "a day, at no clock time");
+                written(at).get(..8).unwrap_or_default().to_string()
+            })
+            .collect();
+        assert_eq!(days, ["20240229", "20280229", "20320229"]);
+        // `UNTIL` is a date, included.
+        let until = Rule::read("DTSTART;VALUE=DATE:20261225\nRRULE:FREQ=YEARLY;UNTIL=20281225")
+            .expect("a date-only rule");
+        assert_eq!(until.end, End::UntilDay(at("20281225T000000").date));
+        // Monthly on the last day, for a date-only start.
+        let rule = Rule::read("DTSTART;VALUE=DATE:20260131\nRRULE:FREQ=MONTHLY;BYMONTHDAY=-1")
+            .expect("a date-only rule");
+        let days: Vec<String> = rule
+            .local_occurrences(0)
+            .take(3)
+            .map(|at| written(at).get(..8).unwrap_or_default().to_string())
+            .collect();
+        assert_eq!(days, ["20260131", "20260228", "20260331"]);
+        for text in [
+            // No clock times on dates, and an `UNTIL` of the other form.
+            "DTSTART;VALUE=DATE:20261225\nRRULE:FREQ=DAILY;BYHOUR=9",
+            "DTSTART;VALUE=DATE:20261225\nRRULE:FREQ=DAILY;BYMINUTE=0",
+            "DTSTART;VALUE=DATE:20261225\nRRULE:FREQ=DAILY;BYSECOND=0",
+            "DTSTART;VALUE=DATE:20261225\nRRULE:FREQ=YEARLY;UNTIL=20281225T000000Z",
+            "DTSTART;TZID=Europe/London:20261225T090000\nRRULE:FREQ=YEARLY;UNTIL=20281225",
+            // A day the calendar doesn't have, a time on a date, and a
+            // start the rule doesn't give (25 December 2026 is a Friday).
+            "DTSTART;VALUE=DATE:20250229\nRRULE:FREQ=YEARLY",
+            "DTSTART;VALUE=DATE:20261225T000000\nRRULE:FREQ=YEARLY",
+            "DTSTART;VALUE=DATE:20261225\nRRULE:FREQ=WEEKLY;BYDAY=MO",
+            "DTSTART;VALUE=DATE-TIME:20261225T000000\nRRULE:FREQ=YEARLY",
         ] {
             assert_eq!(Rule::read(text), None, "`{text}`");
         }

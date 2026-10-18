@@ -166,17 +166,17 @@ pub const END_AFTER_START: PartsRule = PartsRule {
     next: "Write an end later than the start",
 };
 
-/// Only a timed event recurs.
-pub const TIMED_RECURRENCE: PartsRule = PartsRule {
-    label: "an all-day event doesn't recur",
-    reason: "A `RecurrenceRule` starts at a local time in a zone, which an all-day event doesn't have.",
-    next: "Make the event timed, or leave its `recurrence` as `none`",
+/// An all-day event's recurrence starts on its first day (chunk 5.5k4).
+pub const DAY_RECURRENCE_STARTS: PartsRule = PartsRule {
+    label: "doesn't start on the event's first day",
+    reason: "An all-day event's recurrence starts on the event's own `first_day`, a date with no clock time or zone, `DTSTART;VALUE=DATE:`: a `VEVENT` writes one `DTSTART` for both.",
+    next: "Write the recurrence's `DTSTART` as `DTSTART;VALUE=DATE:` and the event's first day",
 };
 
-/// A recurrence starts when its event does.
+/// A timed event's recurrence starts when it does.
 pub const RECURRENCE_STARTS: PartsRule = PartsRule {
     label: "doesn't start when the event does",
-    reason: "An event's recurrence starts at the event's own `start`, in its `zone`: a `VEVENT` writes one `DTSTART` for both.",
+    reason: "A timed event's recurrence starts at the event's own `start`, in its `zone`: a `VEVENT` writes one `DTSTART` for both.",
     next: "Write the recurrence's `DTSTART` as the event's start in its zone",
 };
 
@@ -205,8 +205,12 @@ pub fn broken(parts: &Parts<'_>) -> Option<Broken> {
         {
             return refuse("last_day", &LAST_DAY_FIRST);
         }
-        if parts.recurrence.given() {
-            return refuse("recurrence", &TIMED_RECURRENCE);
+        // A date-only rule from the first day, so the event recurs on
+        // days, a birthday, wherever it is read.
+        if let (Some(text), Some(first)) = (parts.recurrence.value(), parts.first_day.value())
+            && Rule::read(text).is_none_or(|rule| rule.zone.is_some() || rule.start.date != *first)
+        {
+            return refuse("recurrence", &DAY_RECURRENCE_STARTS);
         }
         return None;
     }
@@ -234,7 +238,7 @@ pub fn broken(parts: &Parts<'_>) -> Option<Broken> {
         parts.recurrence.value(),
         parts.start.value(),
         parts.zone.value(),
-    ) && Rule::read(text).is_none_or(|rule| rule.start != *start || rule.zone != *zone)
+    ) && Rule::read(text).is_none_or(|rule| rule.start != *start || rule.zone != Some(*zone))
     {
         return refuse("recurrence", &RECURRENCE_STARTS);
     }
@@ -317,7 +321,10 @@ impl Event {
             end_line.strip_prefix("DTEND;VALUE=DATE:"),
         ) {
             (Some(first), Some(after)) => {
-                let (first, after) = (read_basic_date(first)?, read_basic_date(after)?);
+                let (first, after) = (
+                    super::recurrence::read_basic_date(first)?,
+                    super::recurrence::read_basic_date(after)?,
+                );
                 When::Days {
                     first,
                     last: after.checked_sub(1)?,
@@ -372,20 +379,6 @@ impl Event {
 fn basic_date(day: i32) -> String {
     let (year, month, day) = crate::civil_date(day);
     format!("{year:04}{month:02}{day:02}")
-}
-
-/// A date read from RFC 5545's basic form.
-fn read_basic_date(text: &str) -> Option<i32> {
-    if text.len() != 8 || !text.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    let year: i64 = text.get(0..4)?.parse().ok()?;
-    let month: i64 = text.get(4..6)?.parse().ok()?;
-    let day: i64 = text.get(6..8)?.parse().ok()?;
-    if !(1..=12).contains(&month) || !(1..=crate::days_in_month(year, month)).contains(&day) {
-        return None;
-    }
-    crate::epoch_day(year, month, day)
 }
 
 /// `DTSTART;TZID=Europe/London:20261024T220000`.
@@ -461,8 +454,9 @@ macro_rules! vevent {
 }
 
 /// Its examples: an all-day event of one day, one over the night the
-/// clocks go back with a location and a description to escape, and a
-/// timed event across midnight that repeats weekly.
+/// clocks go back with a location and a description to escape, a
+/// birthday that repeats yearly on its day, and a timed event across
+/// midnight that repeats weekly.
 const VALID: &[(&str, &str)] = &[
     (
         vevent!(
@@ -490,6 +484,20 @@ const VALID: &[(&str, &str)] = &[
             "SUMMARY:Half-term walk",
             "LOCATION:Keswick\\, Cumbria",
             "DESCRIPTION:Boots\\; maps\\nFlask",
+        ),
+    ),
+    (
+        vevent!(
+            "DTSTART;VALUE=DATE:20240229",
+            "DTEND;VALUE=DATE:20240301",
+            "SUMMARY:Sam's birthday",
+            "RRULE:FREQ=YEARLY",
+        ),
+        vevent!(
+            "DTSTART;VALUE=DATE:20240229",
+            "DTEND;VALUE=DATE:20240301",
+            "SUMMARY:Sam's birthday",
+            "RRULE:FREQ=YEARLY",
         ),
     ),
     (
@@ -539,13 +547,17 @@ const MALFORMED: &[&str] = &[
         "DTEND:20261025T020000",
         "SUMMARY:Night shift",
     ),
-    // An all-day event doesn't recur yet.
+    // An all-day recurrence on days the event doesn't start on: 25
+    // December 2026 is a Friday.
     vevent!(
         "DTSTART;VALUE=DATE:20261225",
         "DTEND;VALUE=DATE:20261226",
         "SUMMARY:Christmas Day",
-        "RRULE:FREQ=YEARLY",
+        "RRULE:FREQ=WEEKLY;BYDAY=MO",
     ),
+    // A recurrence at a time on an all-day event, and one on days on a
+    // timed event.
+    "BEGIN:VEVENT\nDTSTART;VALUE=DATE:20261225\nDTEND;VALUE=DATE:20261226\nSUMMARY:Christmas Day\nRRULE:FREQ=YEARLY;BYHOUR=9\nEND:VEVENT",
     // A recurrence whose first occurrence isn't the event's start.
     vevent!(
         "DTSTART;TZID=Europe/London:20261024T220000",
@@ -720,5 +732,44 @@ mod tests {
             ..nothing
         };
         assert_eq!(broken(&backwards).map(|b| b.part), Some("last_day"));
+        // An all-day event recurs on days from its first (chunk 5.5k4),
+        // never at a time; a timed one at its start, never on days.
+        let christmas = Parts {
+            first_day: Known::Given(Some(day("2026-12-25"))),
+            last_day: Known::Given(Some(day("2026-12-25"))),
+            ..nothing
+        };
+        let yearly = |text| Parts {
+            recurrence: Known::Given(Some(text)),
+            ..christmas
+        };
+        assert_eq!(
+            broken(&yearly("DTSTART;VALUE=DATE:20261225\nRRULE:FREQ=YEARLY")),
+            None
+        );
+        for text in [
+            "DTSTART;VALUE=DATE:20251225\nRRULE:FREQ=YEARLY",
+            "DTSTART;TZID=Europe/London:20261225T000000\nRRULE:FREQ=YEARLY",
+        ] {
+            assert_eq!(
+                broken(&yearly(text)).map(|b| (b.part, b.rule)),
+                Some(("recurrence", &DAY_RECURRENCE_STARTS)),
+                "`{text}`"
+            );
+        }
+        let shift = Parts {
+            start: Known::Given(Some(LocalAt {
+                date: day("2026-12-25"),
+                second: 0,
+            })),
+            end: Known::Unknown,
+            zone: Known::Given(Some(0)),
+            recurrence: Known::Given(Some("DTSTART;VALUE=DATE:20261225\nRRULE:FREQ=YEARLY")),
+            ..nothing
+        };
+        assert_eq!(
+            broken(&shift).map(|b| (b.part, b.rule)),
+            Some(("recurrence", &RECURRENCE_STARTS))
+        );
     }
 }

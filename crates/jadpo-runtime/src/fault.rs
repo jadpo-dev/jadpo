@@ -75,6 +75,10 @@ impl From<jadpo_value::Fault> for FaultKind {
             jadpo_value::Fault::EmptyRange => {
                 FaultKind::Defect("`random.integer` given a `min` above its `max`".into())
             }
+            jadpo_value::Fault::DateOnlyRule => FaultKind::Defect(
+                "a recurrence on dates asked for instants; its days come from a date `from:`"
+                    .into(),
+            ),
             jadpo_value::Fault::Shape | jadpo_value::Fault::Stopped => {
                 FaultKind::Defect("a value of a kind the checker would have refused".into())
             }

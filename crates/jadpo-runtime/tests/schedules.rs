@@ -174,3 +174,185 @@ fn opening_hours_are_read_by_the_clock_on_the_wall() {
     assert!(open(new_york, "2026-11-01T06:30:00Z"));
     assert!(!open(new_york, "2026-11-01T07:00:00Z"));
 }
+
+/// A `LocalDateTime` as compiled code holds one: a record of its date and
+/// its `LocalTime`.
+fn local(date: &str, hour: i64, minute: i64) -> Value {
+    Value::record(
+        "LocalDateTime",
+        vec![
+            (
+                "date".into(),
+                Value::Date(jadpo_std::date_number(date).expect("a date")),
+            ),
+            (
+                "time".into(),
+                Value::record(
+                    "LocalTime",
+                    vec![
+                        ("hour".into(), Value::Int(hour)),
+                        ("minute".into(), Value::Int(minute)),
+                        ("second".into(), Value::Int(0)),
+                    ],
+                ),
+            ),
+        ],
+    )
+}
+
+fn variant(ty: &str, name: &str) -> Value {
+    let ordinal = jadpo_std::variant_ordinal(ty, name).expect("a variant");
+    Value::variant(ty, ordinal, name, Vec::new())
+}
+
+/// The instant `temporal.resolve` gives for a `LocalDateTime` in `zone`
+/// under `dst` (`None` left out), or `None` when it fails.
+fn resolved(at: &Value, zone: &str, dst: Option<&str>) -> Option<String> {
+    let dst = dst.map_or(Value::None, |name| variant(jadpo_std::Dst::NAME, name));
+    let args = [at.clone(), Value::None, variant(jadpo_std::ZONE, zone), dst];
+    match run(Op::TemporalResolve, &args, None, &mut |_| None) {
+        Ok(Value::Zoned(zoned)) => Some(jadpo_std::format_instant(zoned.millis)),
+        Ok(other) => panic!("a zoned time: {other:?}"),
+        Err(_) => None,
+    }
+}
+
+#[test]
+fn a_local_time_resolves_across_both_clock_changes() {
+    // (local time, zone, earlier, later): an overlap's two instants, or the
+    // clock time moved back and forward by a gap's length. `compatible` is
+    // earlier in an overlap and later in a gap; left out, both fail.
+    let cases = [
+        // London's clocks go forward at 01:00 GMT on 29 March 2026.
+        (
+            local("2026-03-29", 1, 30),
+            "europe_london",
+            "2026-03-29T00:30:00Z",
+            "2026-03-29T01:30:00Z",
+            false,
+        ),
+        // And back at 02:00 BST on 25 October.
+        (
+            local("2026-10-25", 1, 30),
+            "europe_london",
+            "2026-10-25T00:30:00Z",
+            "2026-10-25T01:30:00Z",
+            true,
+        ),
+        // New York's go forward at 02:00 EST on 8 March 2026.
+        (
+            local("2026-03-08", 2, 30),
+            "america_new_york",
+            "2026-03-08T06:30:00Z",
+            "2026-03-08T07:30:00Z",
+            false,
+        ),
+        // And back at 02:00 EDT on 1 November.
+        (
+            local("2026-11-01", 1, 30),
+            "america_new_york",
+            "2026-11-01T05:30:00Z",
+            "2026-11-01T06:30:00Z",
+            true,
+        ),
+    ];
+    for (at, zone, earlier, later, overlap) in cases {
+        assert_eq!(
+            resolved(&at, zone, Some("earlier")).as_deref(),
+            Some(earlier)
+        );
+        assert_eq!(resolved(&at, zone, Some("later")).as_deref(), Some(later));
+        let compatible = if overlap { earlier } else { later };
+        assert_eq!(
+            resolved(&at, zone, Some("compatible")).as_deref(),
+            Some(compatible)
+        );
+        assert_eq!(resolved(&at, zone, Some("reject")), None);
+        assert_eq!(resolved(&at, zone, None), None);
+    }
+    // An ordinary time is one instant whatever `dst:` says.
+    assert_eq!(
+        resolved(&local("2026-10-24", 22, 0), "europe_london", None).as_deref(),
+        Some("2026-10-24T21:00:00Z")
+    );
+    // A date with a `LocalTime` for `at:` is the same instant.
+    let Value::Record(record) = local("2026-10-25", 1, 30) else {
+        unreachable!()
+    };
+    let args = [
+        record.get("date").cloned().expect("a date"),
+        record.get("time").cloned().expect("a time"),
+        variant(jadpo_std::ZONE, "europe_london"),
+        variant(jadpo_std::Dst::NAME, "later"),
+    ];
+    let Value::Zoned(zoned) = call(Op::TemporalResolve, &args) else {
+        panic!("a zoned time");
+    };
+    assert_eq!(
+        jadpo_std::format_instant(zoned.millis),
+        "2026-10-25T01:30:00Z"
+    );
+}
+
+/// The days of the next `count` occurrences of `rule` from the day `from`.
+fn days(rule: &str, from: &str, count: i64) -> Vec<String> {
+    let from = Value::Date(jadpo_std::date_number(from).expect("a date"));
+    let found = call(
+        Op::TemporalOccurrences,
+        &[Value::text(rule), from, Value::Int(count)],
+    );
+    let Value::List(items) = found else {
+        panic!("a list: {found:?}");
+    };
+    items
+        .iter()
+        .map(|item| match item {
+            Value::Date(day) => jadpo_std::format_date(*day),
+            other => panic!("a date: {other:?}"),
+        })
+        .collect()
+}
+
+#[test]
+fn a_rule_on_dates_gives_days() {
+    // Yearly from 29 February 2024: 2025 to 2027 have no 29 February, so
+    // they are skipped and not counted (RFC 5545 3.3.10).
+    let leap_day = "DTSTART;VALUE=DATE:20240229\nRRULE:FREQ=YEARLY";
+    assert_eq!(
+        days(leap_day, "2024-01-01", 3),
+        ["2024-02-29", "2028-02-29", "2032-02-29"]
+    );
+    assert_eq!(days(leap_day, "2024-03-01", 1), ["2028-02-29"]);
+    assert_eq!(
+        days(
+            "DTSTART;VALUE=DATE:20240229\nRRULE:FREQ=YEARLY;COUNT=2",
+            "2020-01-01",
+            10
+        ),
+        ["2024-02-29", "2028-02-29"]
+    );
+    assert_eq!(
+        days(
+            "DTSTART;VALUE=DATE:20261225\nRRULE:FREQ=YEARLY;UNTIL=20281225",
+            "2026-01-01",
+            10
+        ),
+        ["2026-12-25", "2027-12-25", "2028-12-25"]
+    );
+    // A timed rule's days are its occurrences' local dates in its zone:
+    // 22:00 in New York is the next day in UTC.
+    assert_eq!(
+        days(
+            "DTSTART;TZID=America/New_York:20261030T220000\nRRULE:FREQ=DAILY",
+            "2026-10-31",
+            2
+        ),
+        ["2026-10-31", "2026-11-01"]
+    );
+    // A rule on dates has no instants to give.
+    let args = [Value::text(leap_day), Value::Instant(0), Value::Int(1)];
+    assert_eq!(
+        run(Op::TemporalOccurrences, &args, None, &mut |_| None),
+        Err(jadpo_value::Fault::DateOnlyRule)
+    );
+}

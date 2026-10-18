@@ -125,7 +125,7 @@ fn days_and_times_come_in_order() {
 }
 
 #[test]
-fn only_a_timed_event_recurs_from_its_start() {
+fn an_event_recurs_from_its_start() {
     let start = at("2026-10-24", 22, 0);
     let end = at("2026-10-25", 2, 0);
     let weekly = |rule: &'static str| {
@@ -170,7 +170,38 @@ fn only_a_timed_event_recurs_from_its_start() {
             ),
         ])),
         ["type.invalid_literal"],
-        "an all-day event doesn't recur"
+        "an all-day event recurs on days, not at a time"
+    );
+    // An all-day event recurs on days from its first (chunk 5.5k4).
+    assert_eq!(
+        rules(&event(&[
+            ("first_day", "\"2024-02-29\""),
+            ("last_day", "\"2024-02-29\""),
+            (
+                "recurrence",
+                "\"DTSTART;VALUE=DATE:20240229\\nRRULE:FREQ=YEARLY\""
+            ),
+        ])),
+        NONE
+    );
+    assert_eq!(
+        rules(&event(&[
+            ("first_day", "\"2024-02-29\""),
+            ("last_day", "\"2024-02-29\""),
+            (
+                "recurrence",
+                "\"DTSTART;VALUE=DATE:20280229\\nRRULE:FREQ=YEARLY\""
+            ),
+        ])),
+        ["type.invalid_literal"],
+        "from another day"
+    );
+    assert_eq!(
+        parts(&weekly(
+            "\"DTSTART;VALUE=DATE:20261024\\nRRULE:FREQ=WEEKLY;COUNT=4\""
+        )),
+        ["type.invalid_literal"],
+        "a timed event recurs at its start, not on days"
     );
 }
 
