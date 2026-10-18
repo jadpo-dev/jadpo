@@ -551,7 +551,7 @@ impl Body<'_> {
             };
             let word = tree::written(key.syntax());
             let span = self.span(&key);
-            let removal = removal(self.path, &member);
+            let removal = crate::tree::removal(self.path, &member);
             if word == "invalid" {
                 self.walk(|walk| walk.member(&member));
                 self.out.push(
@@ -1866,7 +1866,7 @@ impl Body<'_> {
                 rule.written()
             ),
         };
-        let removal = removal(self.path, &arm.member);
+        let removal = crate::tree::removal(self.path, &arm.member);
         let problem = Diagnostic::new(
             &rule::DATA_CONFLICT_CANNOT_BREAK,
             format!(
@@ -1932,21 +1932,4 @@ pub(crate) fn breakable(
             })
             .collect(),
     }
-}
-
-/// The edit that removes a member's line from its block.
-fn removal(path: &str, member: &ast::Member) -> Span {
-    let node = member.syntax();
-    let end = u32::from(node.text_range().end());
-    let start = node
-        .first_token()
-        .and_then(|token| {
-            std::iter::successors(token.prev_token(), |t| t.prev_token())
-                .find(|t| !t.kind().is_trivia())
-        })
-        .map_or_else(
-            || u32::from(node.text_range().start()),
-            |token| u32::from(token.text_range().end()),
-        );
-    Span::new(path, start, end)
 }

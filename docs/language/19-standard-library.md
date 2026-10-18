@@ -29,7 +29,7 @@ own features needed. This page collects them, adds what real applications
 keep reaching for, says which gaps in the language block the rest and how
 to close them, and says what is left out on purpose and why.
 
-> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunks 5.5h2, 5.5k and 5.5k2: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2); `Money` and `Currency`, the operator table's `Money` rows and the money operations but `convert`, stored in two columns (5.5h); `ExchangeRate`, `money.convert` and `{price, number, currency}` in messages (5.5h2); ten of the time types, with `CalendarPeriod`'s operator rows and `temporal.period_between` (5.5k); `RecurrenceRule` and `OpeningHours`, with `temporal.occurrences` and `temporal.open_at` (5.5k2); `temporal.resolve` of a `LocalDateTime`, and a recurrence on dates for an all-day event (5.5k4); `Colour` and the media types, with `colour`'s operations and `media.fit` (5.5p); and the `random` namespace, seeded per test (5.5q); and the 17 geospatial types, sent as GeoJSON (5.5s). The rest is built by chunks 5.5i to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
+> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunks 5.5h2, 5.5k and 5.5k2: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2); `Money` and `Currency`, the operator table's `Money` rows and the money operations but `convert`, stored in two columns (5.5h); `ExchangeRate`, `money.convert` and `{price, number, currency}` in messages (5.5h2); rate types that fix their currencies with `from:` and `to:` (5.5h4); ten of the time types, with `CalendarPeriod`'s operator rows and `temporal.period_between` (5.5k); `RecurrenceRule` and `OpeningHours`, with `temporal.occurrences` and `temporal.open_at` (5.5k2); `temporal.resolve` of a `LocalDateTime`, and a recurrence on dates for an all-day event (5.5k4); `Colour` and the media types, with `colour`'s operations and `media.fit` (5.5p); and the `random` namespace, seeded per test (5.5q); and the 17 geospatial types, sent as GeoJSON (5.5s). The rest is built by chunks 5.5i to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
 
 | Namespace | Holds | Operations | Decided in |
 |---|---|---|---|
@@ -1887,6 +1887,155 @@ error: `rate` converts from EUR, and `cake` is in GBP
 check failed: 1 error, 1 file
 ```
 
+A type built on `ExchangeRate` fixes its currencies with `from:` and
+`to:`, as a `Money` type fixes its one with `currency:` (chunk 5.5h4), so
+a signature carries them: the right rate needs no `attempt`, the wrong
+one doesn't compile wherever it is passed, and a rate the app was given,
+or reads from JSON or text, is checked against them where it becomes one:
+
+```jadpo check project=money-rate-types
+type CakePrice = Money {
+    currency: Currency.gbp
+    min: 0
+}
+
+type EuroPrice = Money {
+    currency: Currency.eur
+}
+
+/// The rate a shop is given each morning for pricing in euros.
+type PoundsToEuros = ExchangeRate {
+    from: Currency.gbp  // fixed: a rate from euros doesn't compile
+    to: Currency.eur
+}
+
+type QuoteJson = Text {}
+
+type WrongRate = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type NotARate = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A cake's price in euros: the rate's type fixes both currencies, so
+/// the call needs no `attempt` and the result is in euros.
+function priced_in_euros(cake: CakePrice, rate: PoundsToEuros) -> EuroPrice {
+    return EuroPrice(money.convert(cake, rate))
+}
+
+/// The morning's rate, checked once, where it arrives.
+function morning_rate(todays_quote: ExchangeRate) fails WrongRate -> PoundsToEuros {
+    return attempt PoundsToEuros(todays_quote) {
+        from: WrongRate  // a rate from euros, the wrong way round
+        to: WrongRate  // a rate to dollars
+    }
+}
+
+/// A rate a provider sent as JSON.
+function sent_rate(sent: QuoteJson) fails NotARate -> PoundsToEuros {
+    return attempt json.read(sent, as: PoundsToEuros) {
+        malformed: NotARate
+        mismatch: NotARate  // other currencies
+    }
+}
+```
+
+```jadpo check project=money-rate-types file=main.test.jadpo
+test "a rate type converts from its own currency only" {
+    var todays_quote: ExchangeRate = ExchangeRate {
+        from: Currency.gbp
+        to: Currency.eur
+        rate: 1.17
+        at: "2026-10-18T09:00:00Z"
+    }
+    var backwards_quote: ExchangeRate = ExchangeRate {
+        from: Currency.eur
+        to: Currency.gbp
+        rate: 0.85
+        at: "2026-10-18T09:00:00Z"
+    }
+    var rate: PoundsToEuros = attempt morning_rate(todays_quote)
+    var cake: CakePrice = CakePrice(money.from_minor(1050, Currency.gbp))
+    assert priced_in_euros(cake, rate) == money.from_minor(1228, Currency.eur)
+    assert morning_rate(backwards_quote) fails WrongRate
+    var sent: PoundsToEuros = attempt sent_rate(
+        "{\"from\":\"GBP\",\"to\":\"EUR\",\"rate\":\"1.17\",\"at\":\"2026-10-18T09:00:00Z\"}"
+    )
+    assert sent == rate
+    assert sent_rate(
+        "{\"from\":\"EUR\",\"to\":\"GBP\",\"rate\":\"0.85\",\"at\":\"2026-10-18T09:00:00Z\"}"
+    ) fails NotARate
+}
+```
+
+A rate whose type is the wrong way round is a type error in the function
+it is passed to, with no condition in sight:
+
+```jadpo check project=money-rate-type-inverted expect=type.mismatch
+type CakePrice = Money {
+    currency: Currency.gbp
+}
+
+type Payment = Money {}
+
+type EurosToPounds = ExchangeRate {
+    from: Currency.eur
+    to: Currency.gbp
+}
+
+/// A cake's price, at a rate whose type is the wrong way round.
+function priced_abroad(cake: CakePrice, rate: EurosToPounds) -> Payment {
+    return Payment(money.convert(cake, rate))
+}
+```
+
+```text output
+error: `rate` converts from EUR, and `cake` is in GBP
+ --> main.jadpo:14:40
+   |
+14 |     return Payment(money.convert(cake, rate))
+   |                                        ^^^^ a rate from EUR to GBP
+  reason: `money.convert` applies a rate to an amount in the rate's `from` currency. `cake` is in GBP and `rate` converts from EUR, as their types, how they were made or a condition around the call fix, so the rate is the wrong way round or for another currency.
+  next: Pass a rate from GBP, or an amount in EUR (agent)
+  rule: type.mismatch
+  help: docs/language/02-values-and-types.html#type-mismatch
+
+check failed: 1 error, 1 file
+```
+
+A type built on one that fixes a currency repeats it or leaves it out, as
+a type built on another only narrows it (area 2): another one, for an
+amount's `currency:` or a rate's `from:` and `to:`, leaves no value that
+follows both, and the fix removes it (chunk 5.5h4):
+
+```jadpo check project=money-currency-kept expect=type.constraint_contradiction
+type CakePrice = Money {
+    currency: Currency.gbp
+    min: 0
+}
+
+/// A cake's price for the shop in Paris.
+type ParisPrice = CakePrice {
+    currency: Currency.eur
+}
+```
+
+```text output
+error: `currency: Currency.eur` is different from `CakePrice`'s `currency: Currency.gbp`
+ --> main.jadpo:8:15
+  |
+8 |     currency: Currency.eur
+  |               ^^^^^^^^^^^^ different from `CakePrice`'s `currency: Currency.gbp`
+  reason: `CakePrice` fixes the currency at GBP, and a type built on another only narrows it, so it repeats that currency or leaves it out; with another one no value could follow both, and the type could never be built.
+  next: Remove `currency:`, so the type keeps `CakePrice`'s GBP (agent)
+  rule: type.constraint_contradiction
+  help: docs/language/02-values-and-types.html#type-constraint-contradiction
+
+check failed: 1 error, 1 file
+```
+
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
 | `money.from_minor(amount, currency)` | `Money` of `amount` minor units | | none |
@@ -2246,6 +2395,11 @@ test "a loan keeps its rate over base as it was written" {
 > translation messages (area 10); what the pages left open is "Chosen in
 > chunk 5.5h2". `Money * Percentage` came with `Percentage` in chunk
 > 5.5j2, under "The standard operator table".
+> Built in chunk 5.5h4: a rate type's `from:` and `to:`, an inverted
+> typed rate a compile error across function boundaries, its
+> construction, JSON and text checked against them; storing one waits
+> with `ExchangeRate`. What the page left open is "Chosen in chunk
+> 5.5h4".
 > Built in chunk 5.5i3: `Price`, `UnitPrice`, `TaxRate`, `Discount`,
 > `BasisPoints` and `InterestRate`, with `InterestRateBasis`, on the
 > contract, and `money.apply_discount`; storing the records and choices
@@ -6904,7 +7058,7 @@ check failed: 1 error, 1 file
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2; `resolve` of a `LocalDateTime` and `occurrences` of days in 5.5k4 |
 | The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, `Html` and `Markdown` with `markup.to_html` and `to_plain_text` in 5.5o, `Colour` and the media types with `colour`'s five operations and `media.fit` in 5.5p, `RichText` and `LocalisedText` with `markup.rich_to_html` and `text.pick` in 5.5o2, `PasswordHash`, `PasswordCheck` and `PublicKey` with `crypto` in 5.5q2, the 17 geospatial types in 5.5s, each other group of types in the chunks after them to 5.5s |
-| `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}`; `apply_discount` in 5.5i3 |
+| `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; a rate type's `from:` and `to:` in 5.5h4; the `Percentage` rows in 5.5j2 with `{rate, number, percent}`; `apply_discount` in 5.5i3 |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` built in 5.5o2 |
 | A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2: `type.standard_clash`, `jadpo fix`'s swap and rename, the editor's swap |
@@ -7536,8 +7690,8 @@ under "Errors").
   `currency_mismatch` under `attempt`. The result is in the rate's `to`
   where that is known, so building a type that fixes that currency needs
   no arm. A `from:` and `to:` on a type built on `ExchangeRate`, as
-  `Money` has `currency:`, would carry the currencies in signatures; it
-  is left out until an app needs it.
+  `Money` has `currency:`, came with chunk 5.5h4 (decided by the lead
+  session, 2026-10-18), under "Chosen in chunk 5.5h4".
 - **`money.convert` rounds half to even** to the `to` currency's minor
   unit, whatever the amount's type's `rounding:`, as the operation table
   says: £10.50 at 1.17 is €12.285, so €12.28.
@@ -7551,6 +7705,54 @@ under "Errors").
   does with its default options, in the locale the message is written in.
   A failure's `client:` fields still can't be money: the client app
   formats those, and the export has no money format yet.
+
+### Chosen in chunk 5.5h4
+
+- **`from:` and `to:` are a rate type's settings,** each a `Currency`
+  variant written out, `type PoundsToEuros = ExchangeRate { from:
+  Currency.gbp, to: Currency.eur }`, either alone (`type FromPounds =
+  ExchangeRate { from: Currency.gbp }`). On any other type they are
+  `type.constraint_base`, and `currency:` on a rate type is too.
+- **A type built on one that fixes a currency keeps it** (decided by the
+  lead session, 2026-10-18): it repeats the currency or leaves it out,
+  for a `Money` type's `currency:` and a rate type's `from:` and `to:`
+  alike, since a type built on another only narrows it (area 2). Another
+  one is area 2's `type.constraint_contradiction`, no new rule, as a
+  `scale:` other than the inherited one is, and its one-step fix removes
+  the setting. A currency the parent leaves open (`to:` on a type built
+  on `FromPounds`) may be fixed.
+- **The rate's type is the first thing the proof reads,** before a rate
+  written out or a condition on `rate.from` (5.5h2's machinery, no
+  second one): an amount whose type or making fixes the rate type's
+  `from` needs no `attempt`, one fixed to another currency is
+  5.5h2's `type.mismatch` wherever the rate was passed from, its label
+  naming both currencies (`a rate from EUR to GBP`), and the result is
+  in the type's `to`. An amount whose currency only the running program
+  knows still takes `currency_mismatch` under `attempt`.
+- **A type built on an object is built from a value of that object,**
+  its representation in area 2's sense: `PoundsToEuros(rate)` from an
+  `ExchangeRate`, or from another type built on one, which a constructor
+  refused before as `type.constructor_input`. It is checked against the
+  rules the type adds; a rate type's break as `from` and `to`, new rule
+  keys named for their settings, as area 2 names every construction
+  failure, settled with no arm by the value's own type, a rate written
+  out, or a condition on `rate.from` and `rate.to`. An arm for a currency
+  the type leaves open is `failure.unknown_mapping`. Braces don't build
+  one: `PoundsToEuros { ... }` is still `type.not_record`, and a rate
+  written out is `PoundsToEuros(ExchangeRate { ... })`.
+- **A rate read at the boundary is checked against its type:** an
+  object's codec carries the type's validator when the type adds rules,
+  so `json.read` and a request body check the whole rate once its fields
+  are read, failing `mismatch` with the rule `from` or `to` in its
+  `DecodeProblem`; `text.parse` fails `from` or `to` beside `malformed`.
+  OpenAPI shows each fixed currency as an `enum` of its one code, as for
+  a `Money` type's, and the API record writes the type `ExchangeRate {
+  from: GBP, to: EUR }`, so changing them shows as an API change.
+- **Storage follows `ExchangeRate`'s gap:** a rate is stored as its JSON,
+  which waits on area 5's structured storage (`toolchain.not_built_yet`),
+  so a rate type has no column, and no check constraint, yet; the chunk
+  that stores it holds the stored rate's currencies to the type's, as
+  5.5h's constraint holds a `Money` column's.
 
 ### Chosen in chunk 5.5j
 

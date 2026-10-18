@@ -170,13 +170,21 @@ impl Codecs<'_> {
                     None
                 }
             },
-            Codec::Object { shape, fields } => {
+            Codec::Object {
+                shape,
+                fields,
+                validator,
+            } => {
                 let serde_json::Value::Object(entries) = json else {
                     Self::problem(problems, path, "type");
                     return None;
                 };
                 let shape = self.shapes.get(shape.0 as usize)?;
-                self.object(shape, fields, entries, path, problems)
+                let value = self.object(shape, fields, entries, path, problems)?;
+                match validator {
+                    Some(validator) => self.checked(*validator, value, path, problems),
+                    None => Some(value),
+                }
             }
             Codec::Enum { ty, variants } => match json {
                 serde_json::Value::String(name) => {
@@ -1112,6 +1120,7 @@ mod tests {
             Codec::Object {
                 shape: ShapeId(0),
                 fields: vec![CodecId(0), CodecId(1)],
+                validator: None,
             },
         ];
         let validators = [quantity, any_int];

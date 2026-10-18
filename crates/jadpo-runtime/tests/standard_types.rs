@@ -209,6 +209,7 @@ fn type_codec(entry: &StandardType, tables: &mut Tables) -> CodecId {
             tables.codecs[at.0 as usize] = Codec::Object {
                 shape,
                 fields: tops,
+                validator: None,
             };
             at
         }
@@ -270,6 +271,7 @@ fn type_codec(entry: &StandardType, tables: &mut Tables) -> CodecId {
             tables.codecs[at.0 as usize] = Codec::Object {
                 shape,
                 fields: vec![end, end],
+                validator: None,
             };
             at
         }

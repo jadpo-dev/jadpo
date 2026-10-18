@@ -46,7 +46,9 @@ These types exist without being declared, and their names cannot be reused.
 > (`StockCode`), chunk 5.5i3 its `Price` (`ItemPrice`), chunk 5.5m2 its
 > `Dimensions` (`BoxSize`), and chunk 5.5h gave a
 > `Money` type its `currency:` and `rounding:` settings, with `min:` and
-> `max:` in minor units (area 19, "Money and payments"). A shape that copies a standard type under
+> `max:` in minor units (area 19, "Money and payments"), and chunk 5.5h4
+> gave a type built on `ExchangeRate` its `from:` and `to:`, the
+> currencies it converts between. A shape that copies a standard type under
 > another name is the declinable error `type.standard_exists`. Still no
 > `Float`: maths on `Decimal` (area 19, question 18) meets the need
 > question 8 waited for.
@@ -131,7 +133,9 @@ Built in chunk 1.9: a refinement can only add to the rules of the type it
 builds on, so a `max` below an inherited `min` (or the other way round, for
 lengths and durations too) is `type.constraint_contradiction`, and so is a
 `Decimal` refinement whose `scale` differs from the one it inherits, since
-the scale decides how the value is stored and sent. Since chunk 2.7, a bound
+the scale decides how the value is stored and sent; since chunk 5.5h4, so
+is a currency other than the one it inherits, a `Money` type's `currency:`
+or a rate type's `from:` and `to:` (area 19). Since chunk 2.7, a bound
 looser than the one it inherits (`max_length: 50` on a type with
 `max_length: 40`) is `type.constraint_loosened`. The same settings rules
 hold for the fields of every type with fields, entities and events included;
@@ -1680,7 +1684,7 @@ error: `maxlength` isn't a setting Jadpo knows
   |
 3 |     maxlength: 120
   |     ^^^^^^^^^ unknown setting
-  reason: A type's block holds the constraints `min`, `max`, `min_length`, `max_length`, `pattern`, `format`, `scale`, `version`, `currency` and `rounding`. Did you mean `max_length`?
+  reason: A type's block holds the constraints `min`, `max`, `min_length`, `max_length`, `pattern`, `format`, `scale`, `version`, `currency`, `rounding`, `from` and `to`. Did you mean `max_length`?
   next: Use `max_length` instead of `maxlength` (agent)
   rule: type.unknown_setting
   help: docs/language/02-values-and-types.html#type-unknown-setting

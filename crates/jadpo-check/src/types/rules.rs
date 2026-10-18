@@ -207,12 +207,15 @@ pub(crate) fn unescape(text: &str) -> String {
 pub enum Subject {
     Prim(Prim),
     Collection,
+    /// The standard `ExchangeRate`, whose currencies `from:` and `to:`
+    /// fix (area 19, chunk 5.5h4).
+    ExchangeRate,
     /// An object, enum or a type a later area defines: no constraints.
     Other,
 }
 
 /// The constraints area 2 defines, in the order the reader learns them.
-pub const CONSTRAINTS: [&str; 10] = [
+pub const CONSTRAINTS: [&str; 12] = [
     "min",
     "max",
     "min_length",
@@ -223,6 +226,8 @@ pub const CONSTRAINTS: [&str; 10] = [
     "version",
     "currency",
     "rounding",
+    "from",
+    "to",
 ];
 
 /// The settings a field of an `Input` may have beside its constraints.
@@ -509,34 +514,19 @@ pub fn constraint(
             if subject != Subject::Prim(Prim::Money) {
                 return Err(Problem::Base("`Money` types"));
             }
-            let named = |path: &[String]| match path {
-                [host, code] if host == jadpo_std::CURRENCY => {
-                    jadpo_std::money::ordinal_of_variant(code)
-                }
-                _ => None,
-            };
-            match value {
-                Const::Path(path) if named(path).is_some() => rules.currency = named(path),
-                Const::Path(path)
-                    if path.len() == 1
-                        && jadpo_std::money::ordinal_of_variant(&path[0]).is_some() =>
-                {
-                    let written = format!("{}.{}", jadpo_std::CURRENCY, path[0]);
-                    return Err(Problem::Value(
-                        format!("a `{}` value, such as `{written}`", jadpo_std::CURRENCY),
-                        Some(written),
-                    ));
-                }
-                _ => {
-                    return Err(Problem::Value(
-                        format!(
-                            "a `{}` value, such as `{}.gbp`",
-                            jadpo_std::CURRENCY,
-                            jadpo_std::CURRENCY
-                        ),
-                        None,
-                    ));
-                }
+            rules.currency = Some(currency_value(value)?);
+        }
+        // The currencies a type built on `ExchangeRate` converts from and
+        // to (area 19, chunk 5.5h4).
+        "from" | "to" => {
+            if subject != Subject::ExchangeRate {
+                return Err(Problem::Base("`ExchangeRate` types"));
+            }
+            let code = Some(currency_value(value)?);
+            if name == "from" {
+                rules.rate_from = code;
+            } else {
+                rules.rate_to = code;
             }
         }
         // How `*` and `/` round a `Money` type's amounts (area 19).
@@ -579,6 +569,36 @@ pub fn constraint(
         _ => return Err(Problem::Unknown),
     }
     Ok(())
+}
+
+/// A `Currency` variant written out, `Currency.gbp`, by its place among
+/// `Currency`'s variants: a `Money` type's `currency:`, and a rate type's
+/// `from:` and `to:`.
+fn currency_value(value: &Const) -> Result<u32, Problem> {
+    let named = |path: &[String]| match path {
+        [host, code] if host == jadpo_std::CURRENCY => jadpo_std::money::ordinal_of_variant(code),
+        _ => None,
+    };
+    match value {
+        Const::Path(path) if let Some(code) = named(path) => Ok(code),
+        Const::Path(path)
+            if path.len() == 1 && jadpo_std::money::ordinal_of_variant(&path[0]).is_some() =>
+        {
+            let written = format!("{}.{}", jadpo_std::CURRENCY, path[0]);
+            Err(Problem::Value(
+                format!("a `{}` value, such as `{written}`", jadpo_std::CURRENCY),
+                Some(written),
+            ))
+        }
+        _ => Err(Problem::Value(
+            format!(
+                "a `{}` value, such as `{}.gbp`",
+                jadpo_std::CURRENCY,
+                jadpo_std::CURRENCY
+            ),
+            None,
+        )),
+    }
 }
 
 /// Checks a constant against one declaration's rules, with the
