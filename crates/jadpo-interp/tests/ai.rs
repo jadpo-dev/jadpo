@@ -262,7 +262,7 @@ fn each_is_shown_to_people() {
     let asked = value(&program, "asked", vec![]);
     assert_eq!(
         value(&program, "message_shown", vec![asked, locale("en_gb")]),
-        text("User: Which soups are vegan?")
+        text("user: Which soups are vegan?")
     );
     let usage = value(
         &program,

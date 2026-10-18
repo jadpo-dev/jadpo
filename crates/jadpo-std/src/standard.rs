@@ -614,7 +614,7 @@ pub enum FormatKey {
     /// joined by `, `, the labels the same in every locale (chunk 5.5s2):
     /// a token usage's `input 1,200, output 350`. Each pair is a label and
     /// the part it names.
-    Labelled(&'static [(&'static str, &'static str)]),
+    ByLabel(&'static [(&'static str, &'static str)]),
 }
 
 /// A unit a measure is shown in (chunk 5.5m2): its kind, its name in the

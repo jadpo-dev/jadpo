@@ -834,7 +834,7 @@ checked by `Rules::check_length` before the lengths it decides, proved by
 OpenAPI's `minItems` and `maxItems`. A vector's storage is
 `Storage::Vector`, a pgvector `vector` column the data model reports as
 `toolchain.not_built_yet` until the AI area. `FormatKey::Vector` and
-`FormatKey::Labelled` show vectors and labelled parts.
+`FormatKey::ByLabel` show vectors and labelled parts.
 Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
 text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
 `jadpo_std::standard::events`, which also holds the rules across its parts

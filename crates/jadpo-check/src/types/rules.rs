@@ -552,7 +552,7 @@ pub fn constraint(
             };
             let Some(count) = count else {
                 return Err(Problem::Value(
-                    format!("a whole number from 1 to {}", group(most)),
+                    format!("a whole number from 1 to {most}"),
                     None,
                 ));
             };
@@ -774,18 +774,4 @@ mod tests {
         );
         assert_eq!(rules.version, Some(UuidVersion::V7));
     }
-}
-
-/// A whole number with its thousands grouped, as an error writes one:
-/// `16,000`.
-fn group(n: u64) -> String {
-    let digits = n.to_string();
-    let mut out = String::new();
-    for (at, digit) in digits.chars().enumerate() {
-        if at > 0 && (digits.len() - at) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(digit);
-    }
-    out
 }

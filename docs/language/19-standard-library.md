@@ -6214,7 +6214,7 @@ A help article's embedding is three numbers here, where a real model's
 are 1,536 or more; a list of the wrong length is refused by name:
 
 ```jadpo check project=embeddings
-type ModelAnswer = Text {}
+type ModelReply = Text {}
 
 type EmbeddingUnreadable = Failure {
     kind: FailureKind.invalid_value
@@ -6225,10 +6225,10 @@ type ArticleVector = Vector {
     dimensions: 3
 }
 
-/// A help article's embedding from the model's answer: JSON that isn't one
+/// A help article's embedding from the model's reply: JSON that isn't one
 /// at all, or a vector of another length.
-function article_vector(answer: ModelAnswer) fails EmbeddingUnreadable -> ArticleVector {
-    return attempt json.read(answer, as: ArticleVector) {
+function article_vector(model_reply: ModelReply) fails EmbeddingUnreadable -> ArticleVector {
+    return attempt json.read(model_reply, as: ArticleVector) {
         malformed: EmbeddingUnreadable
         mismatch: EmbeddingUnreadable
     }
@@ -6237,8 +6237,8 @@ function article_vector(answer: ModelAnswer) fails EmbeddingUnreadable -> Articl
 
 ```jadpo check project=embeddings file=main.test.jadpo
 test "an embedding has its model's length" {
-    var read: ArticleVector = attempt article_vector("[0.5,-0.25,1]")
-    assert read == ArticleVector([0.5, -0.25, 1.0])
+    var article_meaning: ArticleVector = attempt article_vector("[0.5,-0.25,1]")
+    assert article_meaning == ArticleVector([0.5, -0.25, 1.0])
     assert article_vector("[0.5,-0.25]") fails EmbeddingUnreadable
     assert article_vector("[0.5,-0.25,1e39]") fails EmbeddingUnreadable
 }
@@ -9637,10 +9637,10 @@ Choices the page left open when the AI types' baselines were built, each
 the most conservative reading:
 
 - **`ChatRole`** is a standard enum of a message's four roles, `system`,
-  `user`, `assistant` and `tool`, written as its variant's name, as every
-  provider's API writes a `role`, and shown `System`, `User`, `Assistant`
-  and `Tool` in every locale; the catalogue's `Enum { ... }` needed a
-  name, as `IdentityDocumentKind` did.
+  `user`, `assistant` and `tool`, written and shown as its variant's
+  name in every locale, as every provider's API and a transcript write a
+  `role`; the catalogue's `Enum { ... }` needed a name, as
+  `IdentityDocumentKind` did.
 - **A vector's items are single-precision floats,** as pgvector's
   `vector` column stores them and as models make embeddings, so storing
   one later loses nothing. Each item is held as the decimal that is the
@@ -9704,7 +9704,7 @@ the most conservative reading:
   "content": "..."}`; a message's name, a tool call's id and content parts
   (images, tool calls and results as blocks) come with the AI area, and a
   member for any of them is refused for now. It is stored a `text` column
-  each and shown `User: Which soups are vegan?`.
+  each and shown after its role, `user: Which soups are vegan?`.
 - **A message is personal data, `identifying`,** whatever field holds it
   (area 15): what a person writes to a model, or is written back, can name
   them and say anything about them, and no category describes free text

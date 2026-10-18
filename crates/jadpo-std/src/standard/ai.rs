@@ -114,7 +114,7 @@ pub const TOKEN_USAGE_ENTRY: StandardType = StandardType {
         fixed: None,
     },
     format: Format {
-        key: FormatKey::Labelled(&[
+        key: FormatKey::ByLabel(&[
             ("input", "input"),
             ("output", "output"),
             ("cached", "cached"),
@@ -169,7 +169,7 @@ pub const CHAT_ROLE_ENTRY: StandardType = StandardType {
     json: Json::Text,
     storage: Storage::Column(SqlType::Text),
     format: Format {
-        key: FormatKey::Names(&["System", "User", "Assistant", "Tool"]),
+        key: FormatKey::Canonical,
         options: NO_OPTIONS,
     },
     ordered: false,
@@ -177,10 +177,10 @@ pub const CHAT_ROLE_ENTRY: StandardType = StandardType {
     shape: None,
     examples: examples(
         &[
-            ("system", "System"),
-            ("user", "User"),
-            ("assistant", "Assistant"),
-            ("tool", "Tool"),
+            ("system", "system"),
+            ("user", "user"),
+            ("assistant", "assistant"),
+            ("tool", "tool"),
         ],
         &["developer", "model", "human", ""],
     ),
@@ -195,7 +195,7 @@ pub const CHAT_MESSAGE_FIELDS: [(&str, Part); 2] = [
 
 /// One message in a conversation with a model, in the shape the major
 /// providers' APIs share, `{"role": "user", "content": "..."}`: sent as
-/// named fields, stored a column each, and shown by who wrote it.
+/// named fields, stored a column each, and shown after its role.
 pub const CHAT_MESSAGE_ENTRY: StandardType = StandardType {
     name: CHAT_MESSAGE,
     holds: Holds::Object(&CHAT_MESSAGE_FIELDS),
@@ -219,20 +219,20 @@ pub const CHAT_MESSAGE_ENTRY: StandardType = StandardType {
         &[
             (
                 r#"{"role":"system","content":"Answer in British English."}"#,
-                "System: Answer in British English.",
+                "system: Answer in British English.",
             ),
             (
-                r#"{"role":"user","content":"Which soups are vegan?\nThanks"}"#,
-                "User: Which soups are vegan?\nThanks",
+                r#"{"role":"user","content":"Summarise this page.\nThanks"}"#,
+                "user: Summarise this page.\nThanks",
             ),
-            (r#"{"role":"assistant","content":""}"#, "Assistant: "),
+            (r#"{"role":"assistant","content":""}"#, "assistant: "),
         ],
         &[
             r#"{"role":"developer","content":"Answer briefly."}"#,
             r#"{"role":"user"}"#,
-            r#"{"role":"user","content":[{"type":"text","text":"Hello"}]}"#,
-            r#"{"role":"user","content":"Hello","name":"ada"}"#,
-            r#""user: Hello""#,
+            r#"{"role":"user","content":[{"type":"text","text":"Summarise this page."}]}"#,
+            r#"{"role":"user","content":"Summarise this page.","name":"someone"}"#,
+            r#""user: Summarise this page.""#,
         ],
     ),
     release: FIRST_RELEASE,

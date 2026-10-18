@@ -1029,7 +1029,7 @@ pub fn shown(
             )
         }
         // Each part the value has, by its label (chunk 5.5s2).
-        (FormatKey::Labelled(labels), Value::Record(record)) => {
+        (FormatKey::ByLabel(labels), Value::Record(record)) => {
             let mut out = Vec::new();
             for (label, part) in labels {
                 let shown = match record.get(part) {
